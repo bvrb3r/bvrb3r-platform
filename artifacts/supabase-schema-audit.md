@@ -1,0 +1,1879 @@
+# Supabase Schema Audit
+
+Generated from repo migrations on 2026-03-17T07:55:16.080Z.
+
+Note: This is the schema defined in the repository. It does not prove a remote Supabase project has already applied the migrations.
+
+## Summary
+- Migration files: 12
+- Public tables defined: 88
+- Indexes defined: 75
+- Policies defined: 98
+- Tables with RLS enabled: 66
+
+## Tables
+### public.appointment_status_history
+- Sources: 0001_initial_schema.sql
+- RLS: not specified
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - appointment_id: uuid not null references public.appointments(id) on delete cascade
+  - status: public.appointment_status not null
+  - changed_by: uuid references public.profiles(id) on delete set null
+  - changed_at: timestamptz not null default now()
+- Foreign keys:
+  - appointment_id -> uuid not null references public.appointments(id) on delete cascade
+  - changed_by -> uuid references public.profiles(id) on delete set null
+- Indexes:
+  - None found in migrations
+- Policies:
+  - None found in migrations
+
+### public.appointments
+- Sources: 0001_initial_schema.sql
+- RLS: enabled
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - location_id: uuid not null references public.locations(id) on delete cascade
+  - barber_id: uuid not null references public.barbers(id) on delete restrict
+  - client_id: uuid not null references public.clients(id) on delete restrict
+  - service_id: uuid not null references public.services(id) on delete restrict
+  - status: public.appointment_status not null default 'booked'
+  - source: text not null default 'booking'
+  - starts_at: timestamptz not null
+  - ends_at: timestamptz not null
+  - chair_label: text
+  - deposit_amount: numeric(10,2) not null default 0
+  - total_amount: numeric(10,2) not null default 0
+  - balance_due: numeric(10,2) not null default 0
+  - tip_amount: numeric(10,2) not null default 0
+  - client_note: text
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - location_id -> uuid not null references public.locations(id) on delete cascade
+  - barber_id -> uuid not null references public.barbers(id) on delete restrict
+  - client_id -> uuid not null references public.clients(id) on delete restrict
+  - service_id -> uuid not null references public.services(id) on delete restrict
+- Indexes:
+  - None found in migrations
+- Policies:
+  - appointments scoped by profile: for select using ( exists ( select 1 from public.barbers b where b.id = barber_id and b.profile_id = auth.uid() ) or exists ( select 1 from public.clients c where c.id = client_id and c.profile_id = auth.uid() ) or exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role in ('owner', 'manager', 'front_desk') ) )
+
+### public.audit_logs
+- Sources: 0001_initial_schema.sql
+- RLS: enabled
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - actor_profile_id: uuid references public.profiles(id) on delete set null
+  - action: text not null
+  - target: text not null
+  - severity: text not null default 'info'
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - actor_profile_id -> uuid references public.profiles(id) on delete set null
+- Indexes:
+  - None found in migrations
+- Policies:
+  - audit logs owner only: for select using ( exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner') )
+
+### public.availability_rules
+- Sources: 0001_initial_schema.sql
+- RLS: not specified
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - barber_id: uuid not null references public.barbers(id) on delete cascade
+  - location_id: uuid not null references public.locations(id) on delete cascade
+  - weekday: integer not null check (weekday between 0 and 6)
+  - start_time: time not null
+  - end_time: time not null
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - barber_id -> uuid not null references public.barbers(id) on delete cascade
+  - location_id -> uuid not null references public.locations(id) on delete cascade
+- Indexes:
+  - None found in migrations
+- Policies:
+  - None found in migrations
+
+### public.barber_follows
+- Sources: 0006_engagement_architecture.sql
+- RLS: enabled
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - client_reference: text not null
+  - client_email: text not null
+  - barber_reference: text not null
+  - barber_email: text not null
+  - notify_on_availability: boolean not null default true
+  - notify_on_portfolio: boolean not null default true
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists barber_follows_lookup_idx on public.barber_follows (client_reference, barber_reference, created_at desc)
+- Policies:
+  - barber follows scoped read: for select using ( client_email = coalesce(auth.jwt() ->> 'email', '') or barber_email = coalesce(auth.jwt() ->> 'email', '') or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner') )
+  - barber follows client mutate: for all using ( client_email = coalesce(auth.jwt() ->> 'email', '') or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner') ) with check ( client_email = coalesce(auth.jwt() ->> 'email', '') or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner') )
+
+### public.barber_portfolios
+- Sources: 0005_marketplace_foundation.sql
+- RLS: enabled
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - barber_reference: text not null
+  - barber_email: text not null
+  - storage_path: text not null
+  - caption: text not null default ''
+  - style_tag_ids: text[] not null default '{}'
+  - featured: boolean not null default false
+  - created_at: timestamptz not null default now()
+  - updated_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists barber_portfolios_barber_idx on public.barber_portfolios (barber_reference, featured desc)
+- Policies:
+  - barber portfolios public read: for select using (true)
+  - barber portfolios owner or self mutate: for all using ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) or barber_email = coalesce(auth.jwt() ->> 'email', '') ) with check ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) or barber_email = coalesce(auth.jwt() ->> 'email', '') )
+
+### public.barber_profiles
+- Sources: 0005_marketplace_foundation.sql
+- RLS: enabled
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - barber_reference: text not null unique
+  - barber_email: text not null
+  - username: text not null unique
+  - display_name: text not null
+  - bio: text not null default ''
+  - years_experience: integer not null default 0
+  - shop_reference: text
+  - profile_photo_path: text
+  - specialties: text[] not null default '{}'
+  - badges: text[] not null default '{}'
+  - service_area_label: text
+  - next_available_at: timestamptz
+  - visibility_state: public.marketplace_visibility_state not null default 'public'
+  - created_at: timestamptz not null default now()
+  - updated_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists barber_profiles_visibility_idx on public.barber_profiles (visibility_state, next_available_at)
+- Policies:
+  - barber profiles public read: for select using (visibility_state in ('public', 'featured'))
+  - barber profiles owner or self mutate: for all using ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) or barber_email = coalesce(auth.jwt() ->> 'email', '') ) with check ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) or barber_email = coalesce(auth.jwt() ->> 'email', '') )
+
+### public.barber_rankings
+- Sources: 0005_marketplace_foundation.sql, 0007_marketplace_persistence_and_ranking.sql, 0008_trust_verification_safety.sql
+- RLS: enabled
+- Columns:
+  - barber_reference: text primary key
+  - distance_score: numeric(8,2) not null default 0
+  - average_rating_score: numeric(8,2) not null default 0
+  - review_volume_score: numeric(8,2) not null default 0
+  - retention_score: numeric(8,2) not null default 0
+  - availability_score: numeric(8,2) not null default 0
+  - portfolio_engagement_score: numeric(8,2) not null default 0
+  - ranking_score: numeric(8,2) not null default 0
+  - updated_at: timestamptz not null default now()
+  - created_at: timestamptz not null default now()
+  - follow_count: integer not null default 0, add column if not exists reputation_score numeric(8,2) not null default 0, add column if not exists service_popularity_score numeric(8,2) not null default 0, add column if not exists rebooking_score numeric(8,2) not null default 0, add column if not exists conversion_score numeric(8,2) not null default 0, add column if not exists visibility_score numeric(8,2) not null default 0, add column if not exists label text
+  - trust_score: numeric(8,2) not null default 0, add column if not exists reliability_score numeric(8,2) not null default 0, add column if not exists integrity_score numeric(8,2) not null default 0, add column if not exists moderation_penalty_score numeric(8,2) not null default 0
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists barber_rankings_marketplace_idx on public.barber_rankings (ranking_score desc, availability_score desc, follow_count desc)
+- Policies:
+  - barber rankings public read: for select using (true)
+
+### public.barber_verifications
+- Sources: 0008_trust_verification_safety.sql
+- RLS: enabled
+- Columns:
+  - id: text primary key
+  - barber_reference: text not null
+  - category: text not null
+  - legal_name: text not null
+  - license_type: text
+  - license_number: text
+  - issuing_state: text
+  - expiration_date: date
+  - verification_status: public.verification_status not null default 'pending'
+  - verification_submitted_at: timestamptz
+  - verification_reviewed_at: timestamptz
+  - verification_notes: text
+  - document_path: text
+  - updated_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists barber_verifications_barber_idx on public.barber_verifications (barber_reference, verification_status, updated_at desc)
+- Policies:
+  - barber verifications self or owner: for all using ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) or exists ( select 1 from public.barber_profiles bp where bp.barber_reference = barber_verifications.barber_reference and bp.barber_email = coalesce(auth.jwt() ->> 'email', '') ) ) with check ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) or exists ( select 1 from public.barber_profiles bp where bp.barber_reference = barber_verifications.barber_reference and bp.barber_email = coalesce(auth.jwt() ->> 'email', '') ) )
+
+### public.barbers
+- Sources: 0001_initial_schema.sql
+- RLS: not specified
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - profile_id: uuid not null references public.profiles(id) on delete cascade
+  - compensation_model: text not null check (compensation_model in ('commission', 'booth_rent'))
+  - commission_rate: numeric(5,4)
+  - booth_rent_amount: numeric(10,2)
+  - booth_rent_frequency: text check (booth_rent_frequency in ('weekly', 'monthly'))
+  - bio: text
+  - booking_slug: text unique
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - profile_id -> uuid not null references public.profiles(id) on delete cascade
+- Indexes:
+  - None found in migrations
+- Policies:
+  - None found in migrations
+
+### public.billing_customers
+- Sources: 0002_auth_storage_payments.sql
+- RLS: enabled
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - profile_id: uuid not null references public.profiles(id) on delete cascade
+  - provider: text not null check (provider in ('stripe', 'mock'))
+  - provider_customer_id: text not null
+  - default_payment_method_id: text
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - profile_id -> uuid not null references public.profiles(id) on delete cascade
+- Indexes:
+  - None found in migrations
+- Policies:
+  - billing customers self or owner: for select using ( profile_id = auth.uid() or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner') )
+  - billing customers self insert: for insert with check ( profile_id = auth.uid() or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('owner', 'front_desk', 'manager')) )
+
+### public.blocked_times
+- Sources: 0001_initial_schema.sql
+- RLS: not specified
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - barber_id: uuid not null references public.barbers(id) on delete cascade
+  - starts_at: timestamptz not null
+  - ends_at: timestamptz not null
+  - reason: text
+- Foreign keys:
+  - barber_id -> uuid not null references public.barbers(id) on delete cascade
+- Indexes:
+  - None found in migrations
+- Policies:
+  - None found in migrations
+
+### public.bonuses
+- Sources: 0001_initial_schema.sql
+- RLS: not specified
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - barber_id: uuid not null references public.barbers(id) on delete cascade
+  - label: text not null
+  - amount: numeric(10,2) not null
+  - awarded_at: date not null
+- Foreign keys:
+  - barber_id -> uuid not null references public.barbers(id) on delete cascade
+- Indexes:
+  - None found in migrations
+- Policies:
+  - None found in migrations
+
+### public.boost_campaigns
+- Sources: 0009_marketplace_activation_and_monetization.sql
+- RLS: enabled
+- Columns:
+  - id: text primary key
+  - scope_type: text not null
+  - scope_reference: text not null
+  - status: text not null
+  - placement_label: text not null
+  - placement_scope: text not null
+  - city_slug: text
+  - category_slug: text
+  - trust_eligible: boolean not null default false
+  - trust_reason: text not null default ''
+  - spend_cents: integer not null default 0
+  - daily_budget_cents: integer not null default 0
+  - starts_at: timestamptz not null
+  - ends_at: timestamptz not null
+  - created_by_role: public.app_role not null
+  - created_by_reference: text not null
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists boost_campaigns_scope_idx on public.boost_campaigns (scope_reference, status, starts_at desc)
+- Policies:
+  - boost campaigns public read: for select using (status in ('active', 'paused', 'ended'))
+  - boost campaigns owner or eligible self mutate: for all using ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) or exists ( select 1 from public.barber_profiles bp where bp.barber_reference = boost_campaigns.scope_reference and bp.barber_email = coalesce(auth.jwt() ->> 'email', '') ) ) with check ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) or exists ( select 1 from public.barber_profiles bp where bp.barber_reference = boost_campaigns.scope_reference and bp.barber_email = coalesce(auth.jwt() ->> 'email', '') ) )
+
+### public.booth_rent_ledgers
+- Sources: 0001_initial_schema.sql
+- RLS: enabled
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - barber_id: uuid not null references public.barbers(id) on delete cascade
+  - period_label: text not null
+  - due_date: date not null
+  - amount: numeric(10,2) not null
+  - status: public.rent_status not null default 'due'
+  - paid_date: date
+- Foreign keys:
+  - barber_id -> uuid not null references public.barbers(id) on delete cascade
+- Indexes:
+  - None found in migrations
+- Policies:
+  - booth rent owner or barber: for select using ( exists (select 1 from public.barbers b where b.id = barber_id and b.profile_id = auth.uid()) or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner') )
+
+### public.city_rollouts
+- Sources: 0009_marketplace_activation_and_monetization.sql
+- RLS: enabled
+- Columns:
+  - id: text primary key
+  - city_slug: text not null unique
+  - city_label: text not null
+  - state_code: text not null
+  - neighborhood_label: text
+  - activation_state: text not null
+  - density_score: numeric(8,2) not null default 0
+  - launch_visible: boolean not null default false
+  - featured_barber_ids: text[] not null default '{}'
+  - featured_shop_ids: text[] not null default '{}'
+  - market_notes: text not null default ''
+  - activated_at: timestamptz
+  - updated_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists city_rollouts_state_idx on public.city_rollouts (activation_state, density_score desc)
+- Policies:
+  - city rollouts owner read: for select using ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) )
+  - city rollouts owner mutate: for all using ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) ) with check ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) )
+
+### public.client_preferences
+- Sources: 0005_marketplace_foundation.sql
+- RLS: enabled
+- Columns:
+  - client_reference: text primary key
+  - client_email: text not null
+  - favorite_shop_reference: text
+  - preferred_location_reference: text
+  - preferred_style_tag_ids: text[] not null default '{}'
+  - prefers_instant_booking: boolean not null default false
+  - updated_at: timestamptz not null default now()
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists client_preferences_shop_idx on public.client_preferences (favorite_shop_reference, preferred_location_reference)
+- Policies:
+  - client preferences self mutate: for all using ( client_email = coalesce(auth.jwt() ->> 'email', '') ) with check ( client_email = coalesce(auth.jwt() ->> 'email', '') )
+
+### public.clients
+- Sources: 0001_initial_schema.sql
+- RLS: not specified
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - profile_id: uuid references public.profiles(id) on delete set null
+  - favorite_barber_id: uuid references public.barbers(id) on delete set null
+  - loyalty_points: integer not null default 0
+  - retention_tag: text not null default 'new'
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - profile_id -> uuid references public.profiles(id) on delete set null
+  - favorite_barber_id -> uuid references public.barbers(id) on delete set null
+- Indexes:
+  - None found in migrations
+- Policies:
+  - None found in migrations
+
+### public.commission_rules
+- Sources: 0001_initial_schema.sql
+- RLS: not specified
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - location_id: uuid not null references public.locations(id) on delete cascade
+  - label: text not null
+  - commission_rate: numeric(5,4) not null
+  - retail_commission_rate: numeric(5,4)
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - location_id -> uuid not null references public.locations(id) on delete cascade
+- Indexes:
+  - None found in migrations
+- Policies:
+  - None found in migrations
+
+### public.compensation_snapshots
+- Sources: 0003_operations_hardening.sql, 0004_multi_user_realtime_readiness.sql
+- RLS: enabled
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - appointment_reference: text not null unique
+  - location_reference: text not null
+  - barber_reference: text not null
+  - barber_user_reference: text not null
+  - client_reference: text not null
+  - compensation_model: text not null check (compensation_model in ('commission', 'booth_rent'))
+  - business_date: date not null
+  - gross_service_amount: numeric(10,2) not null default 0
+  - deposit_amount: numeric(10,2) not null default 0
+  - collected_amount: numeric(10,2) not null default 0
+  - tip_amount: numeric(10,2) not null default 0
+  - commission_rate: numeric(5,4)
+  - commission_amount: numeric(10,2) not null default 0
+  - booth_rent_amount: numeric(10,2)
+  - booth_rent_period_label: text
+  - rent_coverage_amount: numeric(10,2)
+  - checkout_reference: text
+  - captured_at: timestamptz not null default now()
+  - updated_at: timestamptz not null default now()
+  - barber_email: text not null default '', add column if not exists client_email text not null default ''
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists compensation_snapshots_barber_reference_idx on public.compensation_snapshots (barber_reference, business_date desc)
+  - CREATE index if not exists compensation_snapshots_location_reference_idx on public.compensation_snapshots (location_reference, business_date desc)
+- Policies:
+  - compensation snapshots internal or barber read: for select using ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role in ('owner', 'manager', 'front_desk') ) or barber_email = coalesce(auth.jwt() ->> 'email', '') )
+  - compensation snapshots internal insert: for insert with check ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role in ('owner', 'manager', 'front_desk') ) )
+  - compensation snapshots internal update: for update using ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role in ('owner', 'manager', 'front_desk') ) ) with check ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role in ('owner', 'manager', 'front_desk') ) )
+
+### public.deep_link_events
+- Sources: 0010_mobile_push_and_native_activation.sql
+- RLS: enabled
+- Columns:
+  - id: text primary key
+  - route: text not null
+  - label: text not null
+  - web_url: text not null
+  - app_url: text not null
+  - source: text not null
+  - user_email: text
+  - app_role: public.app_role
+  - device_id: text
+  - metadata: jsonb not null default '{}'::jsonb
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists deep_link_events_user_idx on public.deep_link_events (user_email, created_at desc)
+  - CREATE index if not exists deep_link_events_route_idx on public.deep_link_events (route, created_at desc)
+- Policies:
+  - deep link events scoped read: for select using ( user_email = coalesce(auth.jwt() ->> 'email', '') or exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) )
+  - deep link events self mutate: for all using ( user_email = coalesce(auth.jwt() ->> 'email', '') or exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) ) with check ( user_email = coalesce(auth.jwt() ->> 'email', '') or exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) )
+
+### public.deposits
+- Sources: 0001_initial_schema.sql
+- RLS: not specified
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - appointment_id: uuid not null references public.appointments(id) on delete cascade
+  - amount: numeric(10,2) not null
+  - retained: boolean not null default false
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - appointment_id -> uuid not null references public.appointments(id) on delete cascade
+- Indexes:
+  - None found in migrations
+- Policies:
+  - None found in migrations
+
+### public.device_registrations
+- Sources: 0010_mobile_push_and_native_activation.sql
+- RLS: enabled
+- Columns:
+  - id: text primary key
+  - user_email: text not null
+  - app_role: public.app_role not null
+  - client_reference: text
+  - barber_reference: text
+  - device_id: text not null
+  - platform: text not null default 'unknown'
+  - runtime_mode: text not null default 'browser'
+  - device_label: text not null
+  - status: text not null default 'active'
+  - user_agent: text
+  - push_supported: boolean not null default false
+  - share_supported: boolean not null default false
+  - standalone_supported: boolean not null default false
+  - service_worker_supported: boolean not null default false
+  - notification_permission: text not null default 'default'
+  - last_seen_at: timestamptz not null default now()
+  - created_at: timestamptz not null default now()
+  - updated_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists device_registrations_user_idx on public.device_registrations (user_email, status, updated_at desc)
+- Policies:
+  - device registrations scoped read: for select using ( user_email = coalesce(auth.jwt() ->> 'email', '') or exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) )
+  - device registrations self mutate: for all using ( user_email = coalesce(auth.jwt() ->> 'email', '') or exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) ) with check ( user_email = coalesce(auth.jwt() ->> 'email', '') or exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) )
+
+### public.dispute_events
+- Sources: 0008_trust_verification_safety.sql
+- RLS: enabled
+- Columns:
+  - id: text primary key
+  - dispute_reference: text not null references public.disputes(id) on delete cascade
+  - actor_role: public.app_role not null
+  - actor_reference: text not null
+  - action_label: text not null
+  - notes: text
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - dispute_reference -> text not null references public.disputes(id) on delete cascade
+- Indexes:
+  - CREATE index if not exists dispute_events_dispute_idx on public.dispute_events (dispute_reference, created_at desc)
+- Policies:
+  - dispute events scoped read: for select using ( exists ( select 1 from public.disputes d where d.id = dispute_events.dispute_reference and d.submitted_by_reference = coalesce(auth.jwt() ->> 'email', '') ) or exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) )
+
+### public.disputes
+- Sources: 0008_trust_verification_safety.sql
+- RLS: enabled
+- Columns:
+  - id: text primary key
+  - dispute_type: text not null
+  - dispute_status: public.safety_report_status not null default 'open'
+  - submitted_by_role: public.app_role not null
+  - submitted_by_reference: text not null
+  - involved_party_type: text not null
+  - involved_party_reference: text not null
+  - appointment_reference: text
+  - location_reference: text
+  - summary: text not null
+  - resolution_notes: text
+  - created_at: timestamptz not null default now()
+  - updated_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists disputes_scope_idx on public.disputes (involved_party_type, involved_party_reference, dispute_status, created_at desc)
+- Policies:
+  - disputes scoped read: for select using ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) or submitted_by_reference = coalesce(auth.jwt() ->> 'email', '') or exists ( select 1 from public.barber_profiles bp where bp.barber_reference = disputes.involved_party_reference and bp.barber_email = coalesce(auth.jwt() ->> 'email', '') ) )
+  - disputes scoped mutate: for all using ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) or submitted_by_reference = coalesce(auth.jwt() ->> 'email', '') ) with check ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) or submitted_by_reference = coalesce(auth.jwt() ->> 'email', '') )
+
+### public.engagement_events
+- Sources: 0006_engagement_architecture.sql, 0007_marketplace_persistence_and_ranking.sql
+- RLS: enabled
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - actor_role: public.app_role not null
+  - actor_reference: text not null
+  - actor_email: text
+  - target_type: text not null
+  - target_reference: text not null
+  - target_email: text
+  - event_type: text not null
+  - metadata: jsonb not null default '{}'::jsonb
+  - created_at: timestamptz not null default now()
+  - dedupe_key: text
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists engagement_events_actor_idx on public.engagement_events (actor_reference, actor_role, created_at desc)
+  - CREATE index if not exists engagement_events_target_idx on public.engagement_events (target_reference, target_type, created_at desc)
+  - CREATE unique index if not exists engagement_events_dedupe_uidx on public.engagement_events (dedupe_key) where dedupe_key is not null
+- Policies:
+  - engagement events scoped read: for select using ( actor_email = coalesce(auth.jwt() ->> 'email', '') or target_email = coalesce(auth.jwt() ->> 'email', '') or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner') )
+  - engagement events actor mutate: for all using ( actor_email = coalesce(auth.jwt() ->> 'email', '') or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner') ) with check ( actor_email = coalesce(auth.jwt() ->> 'email', '') or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner') )
+
+### public.featured_placements
+- Sources: 0009_marketplace_activation_and_monetization.sql
+- RLS: enabled
+- Columns:
+  - id: text primary key
+  - scope_type: text not null
+  - scope_reference: text not null
+  - label: text not null
+  - placement_scope: text not null
+  - city_slug: text
+  - category_slug: text
+  - status: text not null
+  - trust_eligible: boolean not null default false
+  - starts_at: timestamptz not null
+  - ends_at: timestamptz not null
+  - priority: integer not null default 1
+  - created_by_role: public.app_role not null
+  - created_by_reference: text not null
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists featured_placements_scope_idx on public.featured_placements (scope_reference, status, priority)
+- Policies:
+  - featured placements public read: for select using (status in ('active', 'scheduled', 'expired'))
+  - featured placements owner mutate: for all using ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) ) with check ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) )
+
+### public.featured_profiles
+- Sources: 0005_marketplace_foundation.sql
+- RLS: enabled
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - barber_reference: text not null
+  - label: text not null
+  - starts_at: timestamptz
+  - ends_at: timestamptz
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists featured_profiles_barber_idx on public.featured_profiles (barber_reference)
+- Policies:
+  - featured profiles public read: for select using (true)
+  - featured profiles owner mutate: for all using ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) ) with check ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) )
+
+### public.gift_cards
+- Sources: 0001_initial_schema.sql
+- RLS: not specified
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - code: text unique not null
+  - balance: numeric(10,2) not null default 0
+  - status: text not null default 'active'
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - None found in migrations
+- Policies:
+  - None found in migrations
+
+### public.growth_recommendations
+- Sources: 0006_engagement_architecture.sql
+- RLS: enabled
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - barber_reference: text not null
+  - barber_email: text not null
+  - title: text not null
+  - description: text not null
+  - focus_area: text not null
+  - priority: text not null default 'medium'
+  - status: text not null default 'open'
+  - action_label: text not null
+  - metadata: jsonb not null default '{}'::jsonb
+  - created_at: timestamptz not null default now()
+  - updated_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists growth_recommendations_barber_idx on public.growth_recommendations (barber_reference, status, priority)
+- Policies:
+  - growth recommendations self or owner: for all using ( barber_email = coalesce(auth.jwt() ->> 'email', '') or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner') ) with check ( barber_email = coalesce(auth.jwt() ->> 'email', '') or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner') )
+
+### public.inventory_movements
+- Sources: 0001_initial_schema.sql
+- RLS: not specified
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - product_id: uuid not null references public.retail_products(id) on delete cascade
+  - delta: integer not null
+  - reason: text
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - product_id -> uuid not null references public.retail_products(id) on delete cascade
+- Indexes:
+  - None found in migrations
+- Policies:
+  - None found in migrations
+
+### public.live_appointments
+- Sources: 0004_multi_user_realtime_readiness.sql
+- RLS: enabled
+- Columns:
+  - appointment_reference: text primary key
+  - location_reference: text not null
+  - barber_reference: text not null
+  - barber_user_reference: text not null
+  - barber_email: text not null
+  - client_reference: text not null references public.live_clients(client_reference) on delete restrict
+  - client_email: text not null
+  - service_reference: text not null
+  - status: public.appointment_status not null default 'booked'
+  - source: text not null default 'booking'
+  - starts_at: timestamptz not null
+  - ends_at: timestamptz not null
+  - chair_label: text
+  - add_on_references: text[] not null default '{}'
+  - deposit_amount: numeric(10,2) not null default 0
+  - total_amount: numeric(10,2) not null default 0
+  - balance_due: numeric(10,2) not null default 0
+  - tip_amount: numeric(10,2) not null default 0
+  - client_note: text
+  - lifecycle_revision: integer not null default 1
+  - last_actor_role: text
+  - last_event_type: text
+  - checkout_reference: text
+  - updated_at: timestamptz not null default now()
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - client_reference -> text not null references public.live_clients(client_reference) on delete restrict
+- Indexes:
+  - CREATE index if not exists live_appointments_location_status_idx on public.live_appointments (location_reference, status, starts_at)
+  - CREATE index if not exists live_appointments_barber_idx on public.live_appointments (barber_reference, starts_at)
+- Policies:
+  - live appointments read: for select using ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role in ('owner', 'manager', 'front_desk') ) or barber_email = coalesce(auth.jwt() ->> 'email', '') or client_email = coalesce(auth.jwt() ->> 'email', '') )
+  - live appointments insert: for insert with check ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role in ('owner', 'manager', 'front_desk', 'client') ) or client_email = coalesce(auth.jwt() ->> 'email', '') )
+  - live appointments update: for update using ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role in ('owner', 'manager', 'front_desk') ) or barber_email = coalesce(auth.jwt() ->> 'email', '') or client_email = coalesce(auth.jwt() ->> 'email', '') ) with check ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role in ('owner', 'manager', 'front_desk') ) or barber_email = coalesce(auth.jwt() ->> 'email', '') or client_email = coalesce(auth.jwt() ->> 'email', '') )
+
+### public.live_clients
+- Sources: 0004_multi_user_realtime_readiness.sql
+- RLS: enabled
+- Columns:
+  - client_reference: text primary key
+  - full_name: text not null
+  - phone: text not null
+  - email: text not null
+  - favorite_barber_reference: text
+  - loyalty_points: integer not null default 0
+  - retention_tag: text not null default 'new'
+  - notes: jsonb not null default '[]'::jsonb
+  - created_at: timestamptz not null default now()
+  - updated_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists live_clients_email_idx on public.live_clients (email)
+  - CREATE index if not exists live_clients_phone_idx on public.live_clients (phone)
+- Policies:
+  - live clients read: for select using ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role in ('owner', 'manager', 'front_desk') ) or email = coalesce(auth.jwt() ->> 'email', '') )
+  - live clients mutate: for all using ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role in ('owner', 'manager', 'front_desk') ) or email = coalesce(auth.jwt() ->> 'email', '') ) with check ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role in ('owner', 'manager', 'front_desk') ) or email = coalesce(auth.jwt() ->> 'email', '') )
+
+### public.live_walk_in_queue
+- Sources: 0004_multi_user_realtime_readiness.sql
+- RLS: enabled
+- Columns:
+  - queue_reference: text primary key
+  - location_reference: text not null
+  - client_name: text not null
+  - requested_service: text not null
+  - requested_at: timestamptz not null
+  - status: public.walk_in_status not null default 'waiting'
+  - assigned_barber_reference: text
+  - wait_minutes: integer not null default 0
+  - updated_at: timestamptz not null default now()
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists live_walk_in_queue_location_idx on public.live_walk_in_queue (location_reference, requested_at)
+- Policies:
+  - live walk in queue read: for select using ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role in ('owner', 'manager', 'front_desk') ) )
+  - live walk in queue mutate: for all using ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role in ('owner', 'manager', 'front_desk') ) ) with check ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role in ('owner', 'manager', 'front_desk') ) )
+
+### public.location_memberships
+- Sources: 0002_auth_storage_payments.sql
+- RLS: enabled
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - profile_id: uuid not null references public.profiles(id) on delete cascade
+  - location_id: uuid not null references public.locations(id) on delete cascade
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - profile_id -> uuid not null references public.profiles(id) on delete cascade
+  - location_id -> uuid not null references public.locations(id) on delete cascade
+- Indexes:
+  - None found in migrations
+- Policies:
+  - location memberships self or owner: for select using ( profile_id = auth.uid() or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner') )
+
+### public.location_search_index
+- Sources: 0005_marketplace_foundation.sql
+- RLS: enabled
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - location_reference: text not null
+  - shop_reference: text
+  - barber_reference: text
+  - latitude: numeric(9,6) not null
+  - longitude: numeric(9,6) not null
+  - distance_miles: numeric(8,2) not null default 0
+  - updated_at: timestamptz not null default now()
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists location_search_index_lookup_idx on public.location_search_index (location_reference, barber_reference, shop_reference)
+- Policies:
+  - location search index public read: for select using (true)
+
+### public.locations
+- Sources: 0001_initial_schema.sql
+- RLS: enabled
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - name: text not null
+  - neighborhood: text not null
+  - city: text not null
+  - state: text not null
+  - phone: text
+  - hours: jsonb not null default '{}'::jsonb
+  - tax_rate: numeric(5,4) not null default 0
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - None found in migrations
+- Policies:
+  - locations readable by authenticated: for select using (auth.role() = 'authenticated')
+
+### public.loyalty_accounts
+- Sources: 0001_initial_schema.sql, 0006_engagement_architecture.sql, 0007_marketplace_persistence_and_ranking.sql
+- RLS: enabled
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - client_id: uuid not null references public.clients(id) on delete cascade
+  - points: integer not null default 0
+  - tier: text
+  - updated_at: timestamptz not null default now()
+  - client_reference: text
+- Foreign keys:
+  - client_id -> uuid not null references public.clients(id) on delete cascade
+- Indexes:
+  - CREATE index if not exists loyalty_accounts_client_email_idx on public.loyalty_accounts (client_email, client_reference)
+  - CREATE unique index if not exists loyalty_accounts_client_reference_uidx on public.loyalty_accounts (client_reference)
+- Policies:
+  - loyalty accounts self or owner: for all using ( client_email = coalesce(auth.jwt() ->> 'email', '') or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner') ) with check ( client_email = coalesce(auth.jwt() ->> 'email', '') or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner') )
+
+### public.loyalty_transactions
+- Sources: 0006_engagement_architecture.sql, 0007_marketplace_persistence_and_ranking.sql
+- RLS: enabled
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - loyalty_account_id: uuid references public.loyalty_accounts(id) on delete cascade
+  - client_reference: text not null
+  - client_email: text not null
+  - reason: text not null
+  - points_delta: integer not null
+  - label: text not null
+  - reference_id: text
+  - metadata: jsonb not null default '{}'::jsonb
+  - created_at: timestamptz not null default now()
+  - dedupe_key: text
+- Foreign keys:
+  - loyalty_account_id -> uuid references public.loyalty_accounts(id) on delete cascade
+- Indexes:
+  - CREATE index if not exists loyalty_transactions_client_idx on public.loyalty_transactions (client_reference, created_at desc)
+  - CREATE unique index if not exists loyalty_transactions_dedupe_uidx on public.loyalty_transactions (dedupe_key) where dedupe_key is not null
+- Policies:
+  - loyalty transactions self or owner: for all using ( client_email = coalesce(auth.jwt() ->> 'email', '') or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner') ) with check ( client_email = coalesce(auth.jwt() ->> 'email', '') or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner') )
+
+### public.marketplace_booking_attributions
+- Sources: 0007_marketplace_persistence_and_ranking.sql
+- RLS: enabled
+- Columns:
+  - appointment_reference: text primary key
+  - barber_reference: text not null
+  - username: text
+  - client_reference: text
+  - client_email: text
+  - location_reference: text
+  - source_kind: text not null
+  - matched_from: text
+  - discovery_query: text
+  - metadata: jsonb not null default '{}'::jsonb
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists marketplace_booking_attributions_source_idx on public.marketplace_booking_attributions (source_kind, location_reference, created_at desc)
+- Policies:
+  - marketplace booking attributions owner read: for select using ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) )
+  - marketplace booking attributions self scoped read: for select using ( client_email = coalesce(auth.jwt() ->> 'email', '') or exists ( select 1 from public.barber_profiles bp where bp.barber_reference = marketplace_booking_attributions.barber_reference and bp.barber_email = coalesce(auth.jwt() ->> 'email', '') ) )
+
+### public.marketplace_conversion_events
+- Sources: 0007_marketplace_persistence_and_ranking.sql
+- RLS: enabled
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - event_type: text not null
+  - barber_reference: text
+  - username: text
+  - client_reference: text
+  - client_email: text
+  - appointment_reference: text
+  - location_reference: text
+  - source_kind: text not null
+  - source_reference: text
+  - metadata: jsonb not null default '{}'::jsonb
+  - dedupe_key: text not null
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists marketplace_conversion_events_barber_idx on public.marketplace_conversion_events (barber_reference, event_type, created_at desc)
+  - CREATE index if not exists marketplace_conversion_events_source_idx on public.marketplace_conversion_events (source_kind, event_type, created_at desc)
+- Policies:
+  - marketplace conversion events owner read: for select using ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) )
+  - marketplace conversion events self scoped read: for select using ( client_email = coalesce(auth.jwt() ->> 'email', '') or exists ( select 1 from public.barber_profiles bp where bp.barber_reference = marketplace_conversion_events.barber_reference and bp.barber_email = coalesce(auth.jwt() ->> 'email', '') ) )
+
+### public.marketplace_monetization_events
+- Sources: 0009_marketplace_activation_and_monetization.sql
+- RLS: enabled
+- Columns:
+  - id: text primary key
+  - event_type: text not null
+  - barber_reference: text
+  - shop_reference: text
+  - campaign_reference: text
+  - placement_reference: text
+  - city_slug: text
+  - source_kind: text not null
+  - reference_id: text
+  - metadata: jsonb not null default '{}'::jsonb
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists marketplace_monetization_events_barber_idx on public.marketplace_monetization_events (barber_reference, event_type, created_at desc)
+  - CREATE index if not exists marketplace_monetization_events_city_idx on public.marketplace_monetization_events (city_slug, event_type, created_at desc)
+- Policies:
+  - marketplace monetization owner read: for select using ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) )
+
+### public.marketplace_service_popularity
+- Sources: 0005_marketplace_foundation.sql
+- RLS: enabled
+- Columns:
+  - service_reference: text primary key
+  - booking_count: integer not null default 0
+  - revenue_generated: numeric(10,2) not null default 0
+  - average_rating: numeric(4,2) not null default 0
+  - repeat_rate: numeric(5,2) not null default 0
+  - popularity_rank: integer not null default 0
+  - updated_at: timestamptz not null default now()
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - None found in migrations
+- Policies:
+  - marketplace service popularity public read: for select using (true)
+
+### public.marketplace_services
+- Sources: 0007_marketplace_persistence_and_ranking.sql
+- RLS: enabled
+- Columns:
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists marketplace_services_owner_idx on public.marketplace_services (owner_type, shop_reference, barber_reference)
+  - CREATE index if not exists marketplace_services_name_idx on public.marketplace_services (name)
+- Policies:
+  - marketplace services public read: for select using (true)
+  - marketplace services owner or self mutate: for all using ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) or exists ( select 1 from public.barber_profiles bp where bp.barber_reference = marketplace_services.barber_reference and bp.barber_email = coalesce(auth.jwt() ->> 'email', '') ) ) with check ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) or exists ( select 1 from public.barber_profiles bp where bp.barber_reference = marketplace_services.barber_reference and bp.barber_email = coalesce(auth.jwt() ->> 'email', '') ) )
+
+### public.marketplace_visibility
+- Sources: 0005_marketplace_foundation.sql
+- RLS: enabled
+- Columns:
+  - barber_reference: text primary key
+  - barber_email: text not null
+  - visibility_state: public.marketplace_visibility_state not null default 'public'
+  - accepts_instant_bookings: boolean not null default true
+  - featured_rank: integer
+  - created_at: timestamptz not null default now()
+  - updated_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - None found in migrations
+- Policies:
+  - marketplace visibility public read: for select using (visibility_state in ('public', 'featured'))
+  - marketplace visibility owner or self mutate: for all using ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) or barber_email = coalesce(auth.jwt() ->> 'email', '') ) with check ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) or barber_email = coalesce(auth.jwt() ->> 'email', '') )
+
+### public.marketplace_waitlist_requests
+- Sources: 0007_marketplace_persistence_and_ranking.sql
+- RLS: enabled
+- Columns:
+  - request_reference: text primary key
+  - barber_reference: text
+  - client_reference: text
+  - client_email: text
+  - service_reference: text not null
+  - location_reference: text not null
+  - source_query: text
+  - status: text not null default 'queued'
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists marketplace_waitlist_requests_lookup_idx on public.marketplace_waitlist_requests (location_reference, barber_reference, created_at desc)
+- Policies:
+  - marketplace waitlist self or owner: for all using ( client_email = coalesce(auth.jwt() ->> 'email', '') or exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) ) with check ( client_email = coalesce(auth.jwt() ->> 'email', '') or exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) )
+
+### public.media_assets
+- Sources: 0001_initial_schema.sql
+- RLS: not specified
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - owner_profile_id: uuid references public.profiles(id) on delete set null
+  - asset_type: text not null
+  - storage_path: text not null
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - owner_profile_id -> uuid references public.profiles(id) on delete set null
+- Indexes:
+  - None found in migrations
+- Policies:
+  - None found in migrations
+
+### public.moderation_actions
+- Sources: 0008_trust_verification_safety.sql
+- RLS: enabled
+- Columns:
+  - id: text primary key
+  - target_type: text not null
+  - target_reference: text not null
+  - action_label: text not null
+  - actor_role: text not null
+  - actor_reference: text not null
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists moderation_actions_target_idx on public.moderation_actions (target_type, target_reference, created_at desc)
+- Policies:
+  - moderation actions owner only: for all using ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) ) with check ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) )
+
+### public.native_push_tokens
+- Sources: 0012_real_device_qa_and_store_submission.sql
+- RLS: enabled
+- Columns:
+  - id: text primary key
+  - user_email: text not null
+  - app_role: public.app_role not null
+  - client_reference: text
+  - barber_reference: text
+  - device_id: text not null
+  - provider: text not null
+  - token_hash: text not null
+  - token_preview: text not null
+  - status: text not null default 'pending'
+  - environment: text not null default 'unknown'
+  - bundle_or_package_id: text
+  - app_version: text
+  - runtime_mode: text not null default 'native_wrap_ready'
+  - rotated_from_id: text
+  - last_registered_at: timestamptz not null default now()
+  - last_refreshed_at: timestamptz
+  - last_used_at: timestamptz
+  - created_at: timestamptz not null default now()
+  - updated_at: timestamptz not null default now()
+  - revoked_at: timestamptz
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE unique index if not exists native_push_tokens_unique_device_hash_idx on public.native_push_tokens (user_email, device_id, provider, token_hash)
+  - CREATE index if not exists native_push_tokens_user_provider_idx on public.native_push_tokens (user_email, provider, status, updated_at desc)
+  - CREATE index if not exists native_push_tokens_device_provider_idx on public.native_push_tokens (device_id, provider, updated_at desc)
+- Policies:
+  - native push tokens scoped read: for select using ( user_email = coalesce(auth.jwt() ->> 'email', '') or exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) )
+  - native push tokens self mutate: for all using ( user_email = coalesce(auth.jwt() ->> 'email', '') or exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) ) with check ( user_email = coalesce(auth.jwt() ->> 'email', '') or exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) )
+
+### public.notes
+- Sources: 0001_initial_schema.sql
+- RLS: not specified
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - appointment_id: uuid references public.appointments(id) on delete cascade
+  - client_id: uuid references public.clients(id) on delete cascade
+  - body: text not null
+  - created_by: uuid references public.profiles(id) on delete set null
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - appointment_id -> uuid references public.appointments(id) on delete cascade
+  - client_id -> uuid references public.clients(id) on delete cascade
+  - created_by -> uuid references public.profiles(id) on delete set null
+- Indexes:
+  - None found in migrations
+- Policies:
+  - None found in migrations
+
+### public.notification_deliveries
+- Sources: 0009_marketplace_activation_and_monetization.sql, 0011_native_distribution_and_live_delivery.sql
+- RLS: enabled
+- Columns:
+  - id: text primary key
+  - notification_reference: text not null
+  - channel: text not null
+  - provider: text not null
+  - status: text not null
+  - destination: text not null
+  - title: text not null
+  - sent_at: timestamptz
+  - error_message: text
+  - metadata: jsonb not null default '{}'::jsonb
+  - created_at: timestamptz not null default now()
+  - last_attempted_at: timestamptz, add column if not exists updated_at timestamptz not null default now(), add column if not exists retry_count integer not null default 0, add column if not exists provider_message_id text
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists notification_deliveries_notification_idx on public.notification_deliveries (notification_reference, created_at desc)
+  - CREATE index if not exists notification_deliveries_updated_idx on public.notification_deliveries (updated_at desc, status)
+- Policies:
+  - notification deliveries scoped read: for select using ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) or destination = coalesce(auth.jwt() ->> 'email', '') )
+
+### public.notification_delivery_attempts
+- Sources: 0010_mobile_push_and_native_activation.sql, 0011_native_distribution_and_live_delivery.sql
+- RLS: enabled
+- Columns:
+  - id: text primary key
+  - delivery_reference: text not null
+  - notification_reference: text not null
+  - channel: text not null
+  - provider: text not null
+  - status: text not null
+  - user_email: text not null
+  - destination: text not null
+  - attempt_number: integer not null default 1
+  - device_id: text
+  - push_subscription_reference: text
+  - deep_link_url: text
+  - error_message: text
+  - metadata: jsonb not null default '{}'::jsonb
+  - created_at: timestamptz not null default now()
+  - updated_at: timestamptz not null default now()
+  - provider_message_id: text, add column if not exists provider_status_code integer, add column if not exists executed_at timestamptz, add column if not exists next_retry_at timestamptz, add column if not exists provider_metadata jsonb not null default '{}'::jsonb
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists notification_delivery_attempts_user_idx on public.notification_delivery_attempts (user_email, status, created_at desc)
+  - CREATE index if not exists notification_delivery_attempts_delivery_idx on public.notification_delivery_attempts (delivery_reference, attempt_number)
+  - CREATE index if not exists notification_delivery_attempts_retry_idx on public.notification_delivery_attempts (status, next_retry_at desc nulls last)
+- Policies:
+  - delivery attempts scoped read: for select using ( user_email = coalesce(auth.jwt() ->> 'email', '') or exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) )
+
+### public.notification_preferences
+- Sources: 0006_engagement_architecture.sql
+- RLS: enabled
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - role: public.app_role not null
+  - user_email: text not null
+  - client_reference: text
+  - barber_reference: text
+  - in_app_enabled: boolean not null default true
+  - sms_enabled: boolean not null default false
+  - email_enabled: boolean not null default true
+  - push_enabled: boolean not null default false
+  - updated_at: timestamptz not null default now()
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists notification_preferences_user_idx on public.notification_preferences (user_email, role)
+- Policies:
+  - notification preferences self or owner: for all using ( user_email = coalesce(auth.jwt() ->> 'email', '') or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner') ) with check ( user_email = coalesce(auth.jwt() ->> 'email', '') or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner') )
+
+### public.notifications
+- Sources: 0001_initial_schema.sql, 0006_engagement_architecture.sql, 0007_marketplace_persistence_and_ranking.sql
+- RLS: enabled
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - profile_id: uuid references public.profiles(id) on delete cascade
+  - channel: text not null
+  - title: text not null
+  - body: text not null
+  - status: text not null default 'scheduled'
+  - scheduled_for: timestamptz
+  - audience_role: public.app_role, add column if not exists audience_email text, add column if not exists client_reference text, add column if not exists client_email text, add column if not exists barber_reference text, add column if not exists barber_email text, add column if not exists location_reference text, add column if not exists notification_type text, add column if not exists metadata jsonb not null default '{}'::jsonb, add column if not exists delivered_at timestamptz, add column if not exists read_at timestamptz
+  - dedupe_key: text
+- Foreign keys:
+  - profile_id -> uuid references public.profiles(id) on delete cascade
+- Indexes:
+  - CREATE index if not exists notifications_audience_email_idx on public.notifications (audience_email, audience_role, scheduled_for desc)
+  - CREATE unique index if not exists notifications_dedupe_uidx on public.notifications (dedupe_key) where dedupe_key is not null
+- Policies:
+  - notifications self or owner: for all using ( audience_email = coalesce(auth.jwt() ->> 'email', '') or client_email = coalesce(auth.jwt() ->> 'email', '') or barber_email = coalesce(auth.jwt() ->> 'email', '') or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner') ) with check ( audience_email = coalesce(auth.jwt() ->> 'email', '') or client_email = coalesce(auth.jwt() ->> 'email', '') or barber_email = coalesce(auth.jwt() ->> 'email', '') or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner') )
+
+### public.owner_daily_analytics
+- Sources: 0003_operations_hardening.sql, 0004_multi_user_realtime_readiness.sql
+- RLS: enabled
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - location_reference: text not null
+  - business_date: date not null
+  - booked_count: integer not null default 0
+  - completed_services_count: integer not null default 0
+  - paid_appointments_count: integer not null default 0
+  - revenue_total: numeric(10,2) not null default 0
+  - tip_total: numeric(10,2) not null default 0
+  - outstanding_balance: numeric(10,2) not null default 0
+  - updated_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists owner_daily_analytics_location_reference_idx on public.owner_daily_analytics (location_reference, business_date desc)
+- Policies:
+  - owner analytics owner or manager read: for select using ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role in ('owner', 'manager') ) )
+  - owner analytics internal insert: for insert with check ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role in ('owner', 'manager', 'front_desk') ) )
+  - owner analytics internal update: for update using ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role in ('owner', 'manager', 'front_desk') ) ) with check ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role in ('owner', 'manager', 'front_desk') ) )
+
+### public.payments
+- Sources: 0001_initial_schema.sql
+- RLS: not specified
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - appointment_id: uuid references public.appointments(id) on delete set null
+  - amount: numeric(10,2) not null
+  - type: text not null
+  - provider: text
+  - status: text not null
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - appointment_id -> uuid references public.appointments(id) on delete set null
+- Indexes:
+  - None found in migrations
+- Policies:
+  - None found in migrations
+
+### public.payouts
+- Sources: 0001_initial_schema.sql
+- RLS: not specified
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - barber_id: uuid not null references public.barbers(id) on delete cascade
+  - period_start: date not null
+  - period_end: date not null
+  - gross_amount: numeric(10,2) not null
+  - payout_amount: numeric(10,2) not null
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - barber_id -> uuid not null references public.barbers(id) on delete cascade
+- Indexes:
+  - None found in migrations
+- Policies:
+  - None found in migrations
+
+### public.profiles
+- Sources: 0001_initial_schema.sql
+- RLS: enabled
+- Columns:
+  - id: uuid primary key
+  - role: public.app_role not null
+  - full_name: text not null
+  - email: text unique not null
+  - phone: text
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - None found in migrations
+- Policies:
+  - profiles self or owner: for select using (auth.uid() = id or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner'))
+
+### public.promo_codes
+- Sources: 0001_initial_schema.sql
+- RLS: not specified
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - code: text unique not null
+  - description: text
+  - active: boolean not null default true
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - None found in migrations
+- Policies:
+  - None found in migrations
+
+### public.push_subscriptions
+- Sources: 0010_mobile_push_and_native_activation.sql, 0011_native_distribution_and_live_delivery.sql
+- RLS: enabled
+- Columns:
+  - id: text primary key
+  - user_email: text not null
+  - app_role: public.app_role not null
+  - client_reference: text
+  - barber_reference: text
+  - device_id: text not null
+  - endpoint: text not null
+  - provider: text not null default 'web_push_placeholder'
+  - status: text not null default 'pending'
+  - p256dh_key: text
+  - auth_key: text
+  - expiration_time: timestamptz
+  - platform: text not null default 'unknown'
+  - runtime_mode: text not null default 'browser'
+  - user_agent: text
+  - last_seen_at: timestamptz not null default now()
+  - created_at: timestamptz not null default now()
+  - updated_at: timestamptz not null default now()
+  - revoked_at: timestamptz
+  - native_bridge: text, add column if not exists app_bundle_id text, add column if not exists app_version text, add column if not exists last_validated_at timestamptz
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists push_subscriptions_user_idx on public.push_subscriptions (user_email, status, updated_at desc)
+  - CREATE index if not exists push_subscriptions_native_idx on public.push_subscriptions (provider, native_bridge, status, updated_at desc)
+- Policies:
+  - push subscriptions scoped read: for select using ( user_email = coalesce(auth.jwt() ->> 'email', '') or exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) )
+  - push subscriptions self mutate: for all using ( user_email = coalesce(auth.jwt() ->> 'email', '') or exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) ) with check ( user_email = coalesce(auth.jwt() ->> 'email', '') or exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) )
+
+### public.ranking_snapshots
+- Sources: 0006_engagement_architecture.sql
+- RLS: enabled
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - barber_reference: text not null
+  - barber_email: text
+  - dimension: text not null
+  - rank_position: integer not null default 0
+  - score: numeric(8,2) not null default 0
+  - label: text not null
+  - metadata: jsonb not null default '{}'::jsonb
+  - observed_at: timestamptz not null default now()
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists ranking_snapshots_dimension_idx on public.ranking_snapshots (dimension, rank_position, observed_at desc)
+- Policies:
+  - ranking snapshots public read: for select using (true)
+  - ranking snapshots owner mutate: for all using ( exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner') ) with check ( exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner') )
+
+### public.rebooking_cycles
+- Sources: 0006_engagement_architecture.sql
+- RLS: enabled
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - client_reference: text not null
+  - client_email: text not null
+  - barber_reference: text
+  - service_reference: text
+  - average_cycle_days: integer not null default 14
+  - confidence: text not null default 'low'
+  - last_completed_at: timestamptz
+  - next_suggested_at: timestamptz
+  - updated_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists rebooking_cycles_client_idx on public.rebooking_cycles (client_reference, barber_reference)
+- Policies:
+  - rebooking cycles self or owner: for all using ( client_email = coalesce(auth.jwt() ->> 'email', '') or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner') ) with check ( client_email = coalesce(auth.jwt() ->> 'email', '') or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner') )
+
+### public.rebooking_recommendations
+- Sources: 0006_engagement_architecture.sql
+- RLS: enabled
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - client_reference: text not null
+  - client_email: text not null
+  - barber_reference: text
+  - service_reference: text
+  - message: text not null
+  - remind_at: timestamptz
+  - status: text not null default 'suggested'
+  - reason: text
+  - metadata: jsonb not null default '{}'::jsonb
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists rebooking_recommendations_client_idx on public.rebooking_recommendations (client_reference, status, remind_at desc)
+- Policies:
+  - rebooking recommendations self or owner: for all using ( client_email = coalesce(auth.jwt() ->> 'email', '') or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner') ) with check ( client_email = coalesce(auth.jwt() ->> 'email', '') or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner') )
+
+### public.referral_codes
+- Sources: 0006_engagement_architecture.sql
+- RLS: enabled
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - client_reference: text not null
+  - client_email: text not null
+  - code: text not null unique
+  - reward_points: integer not null default 0
+  - active: boolean not null default true
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists referral_codes_client_idx on public.referral_codes (client_reference, code)
+- Policies:
+  - referral codes self or owner: for all using ( client_email = coalesce(auth.jwt() ->> 'email', '') or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner') ) with check ( client_email = coalesce(auth.jwt() ->> 'email', '') or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner') )
+
+### public.referral_events
+- Sources: 0006_engagement_architecture.sql
+- RLS: enabled
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - referral_code_id: uuid references public.referral_codes(id) on delete cascade
+  - referrer_client_reference: text not null
+  - referrer_client_email: text not null
+  - referred_client_email: text not null
+  - status: text not null default 'invited'
+  - reward_points: integer not null default 0
+  - metadata: jsonb not null default '{}'::jsonb
+  - created_at: timestamptz not null default now()
+  - completed_at: timestamptz
+- Foreign keys:
+  - referral_code_id -> uuid references public.referral_codes(id) on delete cascade
+- Indexes:
+  - CREATE index if not exists referral_events_referrer_idx on public.referral_events (referrer_client_reference, status, created_at desc)
+- Policies:
+  - referral events self or owner: for all using ( referrer_client_email = coalesce(auth.jwt() ->> 'email', '') or referred_client_email = coalesce(auth.jwt() ->> 'email', '') or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner') ) with check ( referrer_client_email = coalesce(auth.jwt() ->> 'email', '') or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner') )
+
+### public.reliability_scores
+- Sources: 0008_trust_verification_safety.sql
+- RLS: enabled
+- Columns:
+  - barber_reference: text primary key
+  - completion_rate: numeric(8,2) not null default 0
+  - on_time_rate: numeric(8,2) not null default 0
+  - rebooking_rate: numeric(8,2) not null default 0
+  - review_integrity_score: numeric(8,2) not null default 0
+  - overall_trust_score: numeric(8,2) not null default 0
+  - updated_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists reliability_scores_rank_idx on public.reliability_scores (overall_trust_score desc, completion_rate desc)
+- Policies:
+  - reliability scores public read: for select using (true)
+  - reliability scores owner mutate: for all using ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) ) with check ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) )
+
+### public.report_events
+- Sources: 0008_trust_verification_safety.sql
+- RLS: enabled
+- Columns:
+  - id: text primary key
+  - report_reference: text not null references public.safety_reports(id) on delete cascade
+  - actor_role: public.app_role not null
+  - actor_reference: text not null
+  - action_label: text not null
+  - notes: text
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - report_reference -> text not null references public.safety_reports(id) on delete cascade
+- Indexes:
+  - CREATE index if not exists report_events_report_idx on public.report_events (report_reference, created_at desc)
+- Policies:
+  - report events reporter or owner: for select using ( exists ( select 1 from public.safety_reports sr where sr.id = report_events.report_reference and sr.reporter_email = coalesce(auth.jwt() ->> 'email', '') ) or exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) )
+
+### public.reputation_scores
+- Sources: 0006_engagement_architecture.sql
+- RLS: enabled
+- Columns:
+  - barber_reference: text primary key
+  - barber_email: text
+  - review_score: numeric(8,2) not null default 0
+  - punctuality_score: numeric(8,2) not null default 0
+  - completion_score: numeric(8,2) not null default 0
+  - retention_score: numeric(8,2) not null default 0
+  - overall_score: numeric(8,2) not null default 0
+  - reputation_tier: text not null default 'standard'
+  - updated_at: timestamptz not null default now()
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists reputation_scores_tier_idx on public.reputation_scores (reputation_tier, overall_score desc)
+- Policies:
+  - reputation scores public read: for select using (true)
+  - reputation scores owner mutate: for all using ( exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner') ) with check ( exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner') )
+
+### public.retail_products
+- Sources: 0001_initial_schema.sql
+- RLS: not specified
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - location_id: uuid not null references public.locations(id) on delete cascade
+  - name: text not null
+  - sku: text
+  - price: numeric(10,2) not null
+  - stock: integer not null default 0
+- Foreign keys:
+  - location_id -> uuid not null references public.locations(id) on delete cascade
+- Indexes:
+  - None found in migrations
+- Policies:
+  - None found in migrations
+
+### public.review_moderation
+- Sources: 0008_trust_verification_safety.sql
+- RLS: enabled
+- Columns:
+  - id: text primary key
+  - review_reference: text not null
+  - barber_reference: text not null
+  - client_reference: text not null
+  - appointment_reference: text
+  - eligible: boolean not null default true
+  - moderation_status: public.review_moderation_status not null default 'eligible'
+  - suspicious_flags: text[] not null default '{}'
+  - abuse_reported: boolean not null default false
+  - integrity_score: numeric(8,2) not null default 100
+  - reviewed_at: timestamptz
+  - created_at: timestamptz not null default now()
+  - updated_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists review_moderation_barber_idx on public.review_moderation (barber_reference, moderation_status, updated_at desc)
+- Policies:
+  - review moderation owner or barber: for select using ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) or exists ( select 1 from public.barber_profiles bp where bp.barber_reference = review_moderation.barber_reference and bp.barber_email = coalesce(auth.jwt() ->> 'email', '') ) )
+
+### public.reviews
+- Sources: 0001_initial_schema.sql
+- RLS: not specified
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - appointment_id: uuid references public.appointments(id) on delete set null
+  - barber_id: uuid not null references public.barbers(id) on delete cascade
+  - client_id: uuid not null references public.clients(id) on delete cascade
+  - location_id: uuid not null references public.locations(id) on delete cascade
+  - rating: integer not null check (rating between 1 and 5)
+  - message: text
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - appointment_id -> uuid references public.appointments(id) on delete set null
+  - barber_id -> uuid not null references public.barbers(id) on delete cascade
+  - client_id -> uuid not null references public.clients(id) on delete cascade
+  - location_id -> uuid not null references public.locations(id) on delete cascade
+- Indexes:
+  - None found in migrations
+- Policies:
+  - None found in migrations
+
+### public.risk_flags
+- Sources: 0008_trust_verification_safety.sql
+- RLS: enabled
+- Columns:
+  - id: text primary key
+  - entity_type: text not null
+  - entity_reference: text not null
+  - signal_type: text not null
+  - severity: public.risk_severity not null default 'low'
+  - score: numeric(8,2) not null default 0
+  - public_impact: boolean not null default false
+  - is_open: boolean not null default true
+  - notes: text not null
+  - created_at: timestamptz not null default now()
+  - resolved_at: timestamptz
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists risk_flags_entity_idx on public.risk_flags (entity_type, entity_reference, is_open, severity)
+- Policies:
+  - risk flags owner only: for all using ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) ) with check ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) )
+
+### public.safety_reports
+- Sources: 0008_trust_verification_safety.sql
+- RLS: enabled
+- Columns:
+  - id: text primary key
+  - reporter_role: public.app_role not null
+  - reporter_reference: text not null
+  - reporter_email: text
+  - subject_type: text not null
+  - subject_reference: text not null
+  - category: text not null
+  - details: text not null
+  - status: public.safety_report_status not null default 'open'
+  - location_reference: text
+  - created_at: timestamptz not null default now()
+  - updated_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists safety_reports_scope_idx on public.safety_reports (subject_type, subject_reference, status, created_at desc)
+- Policies:
+  - safety reports reporter or owner: for all using ( reporter_email = coalesce(auth.jwt() ->> 'email', '') or exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) ) with check ( reporter_email = coalesce(auth.jwt() ->> 'email', '') or exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) )
+
+### public.saved_payment_methods
+- Sources: 0002_auth_storage_payments.sql
+- RLS: enabled
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - profile_id: uuid not null references public.profiles(id) on delete cascade
+  - billing_customer_id: uuid not null references public.billing_customers(id) on delete cascade
+  - provider: text not null check (provider in ('stripe', 'mock'))
+  - provider_payment_method_id: text not null
+  - brand: text
+  - last4: text
+  - exp_month: integer
+  - exp_year: integer
+  - is_default: boolean not null default false
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - profile_id -> uuid not null references public.profiles(id) on delete cascade
+  - billing_customer_id -> uuid not null references public.billing_customers(id) on delete cascade
+- Indexes:
+  - None found in migrations
+- Policies:
+  - saved payment methods self or owner: for select using ( profile_id = auth.uid() or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner') )
+  - saved payment methods self insert: for insert with check ( profile_id = auth.uid() or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('owner', 'front_desk', 'manager')) )
+
+### public.search_history
+- Sources: 0005_marketplace_foundation.sql
+- RLS: enabled
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - client_reference: text not null
+  - client_email: text not null
+  - query: text not null
+  - filters: jsonb not null default '{}'::jsonb
+  - searched_at: timestamptz not null default now()
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists search_history_client_idx on public.search_history (client_reference, searched_at desc)
+- Policies:
+  - search history self mutate: for all using ( client_email = coalesce(auth.jwt() ->> 'email', '') ) with check ( client_email = coalesce(auth.jwt() ->> 'email', '') )
+
+### public.services
+- Sources: 0001_initial_schema.sql, 0005_marketplace_foundation.sql
+- RLS: not specified
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - location_id: uuid references public.locations(id) on delete cascade
+  - category: text not null
+  - name: text not null
+  - description: text
+  - duration_min: integer not null
+  - buffer_min: integer not null default 0
+  - price: numeric(10,2) not null
+  - deposit_amount: numeric(10,2) not null default 0
+  - full_prepay_required: boolean not null default false
+  - active: boolean not null default true
+  - service_owner_type: public.service_owner_type not null default 'shop', add column if not exists barber_reference text, add column if not exists shop_reference text, add column if not exists style_tag_ids text[] not null default '{}', add column if not exists booking_count integer not null default 0, add column if not exists revenue_generated numeric(10,2) not null default 0, add column if not exists average_rating numeric(4,2) not null default 0, add column if not exists repeat_rate numeric(5,2) not null default 0, add column if not exists popularity_rank integer not null default 0
+- Foreign keys:
+  - location_id -> uuid references public.locations(id) on delete cascade
+- Indexes:
+  - CREATE index if not exists services_owner_scope_idx on public.services (service_owner_type, shop_reference, barber_reference)
+  - CREATE index if not exists services_popularity_rank_idx on public.services (popularity_rank, booking_count desc)
+- Policies:
+  - None found in migrations
+
+### public.shop_verifications
+- Sources: 0008_trust_verification_safety.sql
+- RLS: enabled
+- Columns:
+  - id: text primary key
+  - shop_reference: text not null
+  - category: text not null
+  - business_name: text not null
+  - verification_status: public.verification_status not null default 'pending'
+  - verification_submitted_at: timestamptz
+  - verification_reviewed_at: timestamptz
+  - verification_notes: text
+  - document_path: text
+  - updated_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists shop_verifications_shop_idx on public.shop_verifications (shop_reference, verification_status, updated_at desc)
+- Policies:
+  - shop verifications owner only: for all using ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) ) with check ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) )
+
+### public.staff_locations
+- Sources: 0001_initial_schema.sql
+- RLS: not specified
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - profile_id: uuid not null references public.profiles(id) on delete cascade
+  - location_id: uuid not null references public.locations(id) on delete cascade
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - profile_id -> uuid not null references public.profiles(id) on delete cascade
+  - location_id -> uuid not null references public.locations(id) on delete cascade
+- Indexes:
+  - None found in migrations
+- Policies:
+  - None found in migrations
+
+### public.style_barbers
+- Sources: 0005_marketplace_foundation.sql
+- RLS: enabled
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - style_tag_slug: text not null
+  - barber_reference: text not null
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists style_barbers_style_idx on public.style_barbers (style_tag_slug, barber_reference)
+- Policies:
+  - style barbers public read: for select using (true)
+
+### public.style_images
+- Sources: 0005_marketplace_foundation.sql
+- RLS: enabled
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - style_tag_slug: text not null
+  - storage_path: text not null
+  - caption: text not null default ''
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - None found in migrations
+- Policies:
+  - style images public read: for select using (true)
+
+### public.style_tags
+- Sources: 0005_marketplace_foundation.sql
+- RLS: enabled
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - name: text not null
+  - slug: text not null unique
+  - category: text not null
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists style_tags_slug_idx on public.style_tags (slug)
+- Policies:
+  - style tags public read: for select using (true)
+
+### public.tasks
+- Sources: 0001_initial_schema.sql
+- RLS: not specified
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - location_id: uuid not null references public.locations(id) on delete cascade
+  - title: text not null
+  - assignee_profile_id: uuid references public.profiles(id) on delete set null
+  - status: text not null default 'open'
+  - priority: text not null default 'medium'
+- Foreign keys:
+  - location_id -> uuid not null references public.locations(id) on delete cascade
+  - assignee_profile_id -> uuid references public.profiles(id) on delete set null
+- Indexes:
+  - None found in migrations
+- Policies:
+  - None found in migrations
+
+### public.trending_styles
+- Sources: 0005_marketplace_foundation.sql
+- RLS: enabled
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - style_tag_slug: text not null
+  - region_label: text not null
+  - booking_count: integer not null default 0
+  - rank: integer not null default 0
+  - updated_at: timestamptz not null default now()
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists trending_styles_rank_idx on public.trending_styles (region_label, rank)
+- Policies:
+  - trending styles public read: for select using (true)
+
+### public.trust_badges
+- Sources: 0008_trust_verification_safety.sql
+- RLS: enabled
+- Columns:
+  - id: text primary key
+  - scope_type: public.verification_owner_type not null
+  - scope_reference: text not null
+  - badge_kind: public.trust_badge_kind not null
+  - label: text not null
+  - public_visible: boolean not null default true
+  - granted_at: timestamptz not null default now()
+  - expires_at: timestamptz
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists trust_badges_scope_idx on public.trust_badges (scope_type, scope_reference, public_visible)
+- Policies:
+  - trust badges public read: for select using (public_visible = true)
+  - trust badges owner mutate: for all using ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) ) with check ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) )
+
+### public.verification_documents
+- Sources: 0008_trust_verification_safety.sql, 0009_marketplace_activation_and_monetization.sql
+- RLS: enabled
+- Columns:
+  - id: text primary key
+  - owner_type: public.verification_owner_type not null
+  - owner_reference: text not null
+  - category: text not null
+  - storage_path: text not null
+  - uploaded_at: timestamptz not null default now()
+  - expires_at: timestamptz
+  - file_name: text, add column if not exists content_type text, add column if not exists file_size_bytes bigint, add column if not exists upload_status text not null default 'uploaded', add column if not exists uploaded_by_role public.app_role, add column if not exists secure_reference text
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - None found in migrations
+- Policies:
+  - verification documents self or owner: for all using ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) or ( verification_documents.owner_type = 'barber' and exists ( select 1 from public.barber_profiles bp where bp.barber_reference = verification_documents.owner_reference and bp.barber_email = coalesce(auth.jwt() ->> 'email', '') ) ) ) with check ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' ) or ( verification_documents.owner_type = 'barber' and exists ( select 1 from public.barber_profiles bp where bp.barber_reference = verification_documents.owner_reference and bp.barber_email = coalesce(auth.jwt() ->> 'email', '') ) ) )
+
+### public.waitlist_entries
+- Sources: 0001_initial_schema.sql
+- RLS: not specified
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - location_id: uuid not null references public.locations(id) on delete cascade
+  - client_id: uuid not null references public.clients(id) on delete cascade
+  - service_id: uuid not null references public.services(id) on delete cascade
+  - preferred_window: text
+  - requested_date: date not null
+  - barber_preference: uuid references public.barbers(id) on delete set null
+  - created_at: timestamptz not null default now()
+- Foreign keys:
+  - location_id -> uuid not null references public.locations(id) on delete cascade
+  - client_id -> uuid not null references public.clients(id) on delete cascade
+  - service_id -> uuid not null references public.services(id) on delete cascade
+  - barber_preference -> uuid references public.barbers(id) on delete set null
+- Indexes:
+  - None found in migrations
+- Policies:
+  - None found in migrations
+
+### public.walk_in_queue
+- Sources: 0001_initial_schema.sql
+- RLS: not specified
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - location_id: uuid not null references public.locations(id) on delete cascade
+  - client_name: text not null
+  - requested_service: text not null
+  - requested_at: timestamptz not null
+  - status: public.walk_in_status not null default 'waiting'
+  - assigned_barber_id: uuid references public.barbers(id) on delete set null
+- Foreign keys:
+  - location_id -> uuid not null references public.locations(id) on delete cascade
+  - assigned_barber_id -> uuid references public.barbers(id) on delete set null
+- Indexes:
+  - None found in migrations
+- Policies:
+  - None found in migrations
+
+### public.workflow_events
+- Sources: 0003_operations_hardening.sql, 0004_multi_user_realtime_readiness.sql
+- RLS: enabled
+- Columns:
+  - id: uuid primary key default gen_random_uuid()
+  - appointment_reference: text not null
+  - location_reference: text not null
+  - barber_reference: text not null
+  - barber_user_reference: text not null
+  - client_reference: text not null
+  - actor_role: text not null
+  - event_type: text not null check (event_type in ('booking', 'check_in', 'service_start', 'service_complete', 'checkout'))
+  - title: text not null
+  - detail: text
+  - event_payload: jsonb not null default '{}'::jsonb
+  - created_at: timestamptz not null default now()
+  - barber_email: text not null default '', add column if not exists client_email text not null default ''
+- Foreign keys:
+  - None found in migrations
+- Indexes:
+  - CREATE index if not exists workflow_events_appointment_reference_idx on public.workflow_events (appointment_reference, created_at desc)
+  - CREATE index if not exists workflow_events_location_reference_idx on public.workflow_events (location_reference, created_at desc)
+- Policies:
+  - workflow events internal read: for select using ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role in ('owner', 'manager', 'front_desk') ) or barber_email = coalesce(auth.jwt() ->> 'email', '') or client_email = coalesce(auth.jwt() ->> 'email', '') )
+  - workflow events internal insert: for insert with check ( exists ( select 1 from public.profiles p where p.id = auth.uid() and p.role in ('owner', 'manager', 'front_desk', 'commission_barber', 'booth_rent_barber', 'client') ) )
+

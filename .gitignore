@@ -1,0 +1,13 @@
+.next
+node_modules
+.env
+.env.local
+.env.staging
+.env.production
+.env.staging.local
+.env.production.local
+.tools
+coverage
+dist
+.android-user-home
+.gradle-user-home

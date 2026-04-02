@@ -1,0 +1,519 @@
+"use client";
+
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { DiscoveryResult, HaircutNowMatch } from "@/types/domain";
+import type { LiveAppointmentRecord } from "@/lib/operations/live-state";
+import type { AppointmentViewModel } from "@/lib/utils/operations";
+import type { PublicBarberProfileView } from "@/lib/marketplace/engine";
+import type { ClientMembershipExecutionView, ClientMembershipValueView } from "@/types/monetization";
+import type { PointsBalanceView } from "@/types/points";
+import type { BillingHistoryView, BillingInvoiceView, BookingMoneyTimelineView, BookingReceiptView, BookingTransactionBreakdownView } from "@/types/fintech";
+import { runGuardedAction } from "@/lib/mobile/action-guard";
+
+export interface BookingApiError extends Error {
+  status?: number;
+  code?: string;
+  latestAppointment?: LiveAppointmentRecord;
+}
+
+export interface ClientHomeResponse {
+  client: {
+    clientReference: string;
+    fullName: string;
+    phone: string;
+    email: string;
+    favoriteBarberReference?: string;
+    favoriteShopReference?: string;
+    loyaltyPoints: number;
+    retentionTag: string;
+    notes: string[];
+  } | null;
+  shops: Array<{
+    id: string;
+    name: string;
+    brandLine: string;
+    neighborhood: string;
+    city: string;
+    state: string;
+    phone: string;
+    address: string;
+    kind: string;
+    latitude?: number;
+    longitude?: number;
+  }>;
+  trustedBarbers: DiscoveryResult[];
+  favoriteBarber: DiscoveryResult | null;
+  nextAvailableChair: HaircutNowMatch | null;
+  locationId: string;
+}
+
+export interface BarberSearchResponse {
+  mode: "browse" | "search";
+  query: string;
+  category: string;
+  shops: ClientHomeResponse["shops"];
+  barbers: DiscoveryResult[];
+}
+
+export interface BarberAvailabilityResponse {
+  barberId: string;
+  locationId: string;
+  service: {
+    id: string;
+    name: string;
+    durationMin: number;
+    bufferMin: number;
+    price: number;
+    deposit: number;
+    fullPrepay: boolean;
+  } | null;
+  slots: Array<{
+    startsAt: string;
+    endsAt: string;
+    label: string;
+    locationId: string;
+    barberId: string;
+    serviceId?: string;
+  }>;
+}
+
+type AppointmentServiceSnapshot = {
+  appointment_reference: string;
+  service_reference: string;
+  service_name: string;
+  category: string;
+  description: string | null;
+  duration_min: number;
+  buffer_min: number;
+  price: number | string;
+  deposit_amount: number | string;
+  full_prepay_required: boolean;
+  add_on_references: string[] | null;
+};
+
+export type RoutineCadenceId = "weekly" | "biweekly" | "monthly";
+
+export interface ClientRoutineResponse {
+  cadenceId: RoutineCadenceId;
+  label: string;
+  averageCycleDays: number;
+  confidence: string;
+  barberReference?: string;
+  serviceReference?: string;
+  lastCompletedAt: string | null;
+  nextSuggestedAt: string | null;
+  updatedAt: string;
+}
+
+export interface ClientPaymentMethodSummary {
+  id: string;
+  provider: "stripe" | "mock";
+  brand: string | null;
+  last4: string | null;
+  expMonth: number | null;
+  expYear: number | null;
+  isDefault: boolean;
+  createdAt: string;
+  label: string;
+}
+
+export interface ClientAppointmentReviewSummary {
+  id: string;
+  rating: number;
+  message: string;
+  createdAt: string;
+}
+
+export interface AppointmentPaymentSummaryResponse {
+  appointmentId: string;
+  outstandingBalance: number;
+  authorizedAmount: number;
+  capturedAmount: number;
+  refundedAmount: number;
+  tipAmount: number;
+  latestBookingPayment: {
+    id: string;
+    amount: number;
+    currency: string;
+    provider: "stripe" | "mock" | null;
+    paymentStatus: "pending" | "authorized" | "captured" | "failed" | "refunded" | "partially_refunded" | "voided";
+    paymentType: "booking" | "tip" | "add_on" | "booth_rent" | "subscription";
+    paidAt: string | null;
+    createdAt: string;
+  } | null;
+  defaultPaymentMethod: ClientPaymentMethodSummary | null;
+}
+
+export interface ClientBookingsResponse {
+  client: ClientHomeResponse["client"];
+  favoriteBarber: PublicBarberProfileView | null;
+  nextAppointment: (LiveAppointmentRecord & {
+    serviceSnapshot: AppointmentServiceSnapshot | null;
+    view: AppointmentViewModel;
+    receipt?: BookingReceiptView | null;
+    breakdown?: BookingTransactionBreakdownView | null;
+    moneyTimeline?: BookingMoneyTimelineView | null;
+  }) | null;
+  history: Array<LiveAppointmentRecord & {
+    serviceSnapshot: AppointmentServiceSnapshot | null;
+    view: AppointmentViewModel;
+    review: ClientAppointmentReviewSummary | null;
+    canReview: boolean;
+    receipt?: BookingReceiptView | null;
+    breakdown?: BookingTransactionBreakdownView | null;
+    moneyTimeline?: BookingMoneyTimelineView | null;
+  }>;
+  routine: ClientRoutineResponse | null;
+  membershipValue: ClientMembershipValueView | null;
+  membershipExecution: ClientMembershipExecutionView | null;
+  nextAppointmentPayment: AppointmentPaymentSummaryResponse | null;
+}
+
+export interface ClientMembershipResponse {
+  membership: ClientMembershipExecutionView;
+}
+
+export interface ClientMembershipSubscribeResponse extends ClientMembershipResponse {
+  checkoutUrl: string | null;
+  sessionId: string;
+}
+
+export interface ClientBillingHistoryResponse {
+  billing: BillingHistoryView;
+}
+
+export interface ClientBillingInvoicesResponse {
+  invoices: BillingInvoiceView[];
+}
+
+export interface ClientBillingRetryResponse {
+  retry: {
+    recoveryUrl: string;
+    invoice: BillingInvoiceView;
+  };
+}
+
+export interface SaveFavoriteBarberPayload {
+  barberReference: string;
+}
+
+export interface SaveClientRoutinePayload {
+  cadenceId: RoutineCadenceId;
+  barberReference?: string;
+  serviceReference?: string;
+  anchorStartAt?: string;
+  lastCompletedAt?: string;
+}
+
+export interface SubmitClientReviewPayload {
+  appointmentId: string;
+  rating: number;
+  message?: string;
+}
+
+export interface ClientPointsBalanceResponse {
+  balance: PointsBalanceView;
+}
+
+export interface CreateBookingPayload {
+  locationId: string;
+  barberId: string;
+  serviceId: string;
+  addOnIds: string[];
+  appointmentTime: string;
+  clientName: string;
+  clientPhone: string;
+  pointsToRedeem?: number;
+  sourceKind?: "direct" | "discovery" | "public_profile" | "haircut_now" | "client_dashboard";
+  matchedFrom?: "favorite_barber" | "favorite_shop" | "nearby" | "available_now";
+  discoveryQuery?: string;
+  barberUsername?: string;
+  promotionId?: string;
+  promotionCode?: string;
+}
+
+async function requestJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
+  const response = await fetch(input, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...(init?.headers ?? {})
+    }
+  });
+
+  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!response.ok) {
+    const error = new Error((body.error as string | undefined) ?? `Request failed with status ${response.status}`) as BookingApiError;
+    error.status = response.status;
+    error.code = body.code as string | undefined;
+    error.latestAppointment = body.latestAppointment as LiveAppointmentRecord | undefined;
+    throw error;
+  }
+
+  return body as T;
+}
+
+function toQueryString(values: Record<string, string | number | undefined>) {
+  const params = new URLSearchParams();
+  Object.entries(values).forEach(([key, value]) => {
+    if (value === undefined || value === "") {
+      return;
+    }
+    params.set(key, String(value));
+  });
+  return params.toString();
+}
+
+export function useClientHomeQuery() {
+  return useQuery({
+    queryKey: ["client-home"],
+    queryFn: () => requestJson<ClientHomeResponse>("/api/client/home")
+  });
+}
+
+export function useBarberSearchQuery(params: { query?: string; category?: string }) {
+  const queryString = toQueryString({ q: params.query, category: params.category });
+  return useQuery({
+    queryKey: ["barber-search", params],
+    queryFn: () => requestJson<BarberSearchResponse>(`/api/barbers/search${queryString ? `?${queryString}` : ""}`)
+  });
+}
+
+export function useBarberProfileQuery(barberId?: string) {
+  return useQuery({
+    queryKey: ["barber-profile", barberId],
+    queryFn: () => requestJson<PublicBarberProfileView>(`/api/barbers/${barberId}`),
+    enabled: Boolean(barberId)
+  });
+}
+
+export function useBarberAvailabilityQuery(params: { barberId?: string; serviceId?: string; locationId?: string }) {
+  const queryString = toQueryString({ serviceId: params.serviceId, locationId: params.locationId });
+  return useQuery({
+    queryKey: ["barber-availability", params],
+    queryFn: () => requestJson<BarberAvailabilityResponse>(`/api/barbers/${params.barberId}/availability${queryString ? `?${queryString}` : ""}`),
+    enabled: Boolean(params.barberId)
+  });
+}
+
+export function useClientBookingsQuery() {
+  return useQuery({
+    queryKey: ["client-bookings"],
+    queryFn: () => requestJson<ClientBookingsResponse>("/api/client/bookings")
+  });
+}
+
+export function useClientMembershipQuery() {
+  return useQuery({
+    queryKey: ["client-membership"],
+    queryFn: () => requestJson<ClientMembershipResponse>("/api/client/membership"),
+    select: (data) => data.membership
+  });
+}
+
+export function useClientPointsBalanceQuery(enabled = true) {
+  return useQuery({
+    queryKey: ["points", "balance"],
+    queryFn: () => requestJson<ClientPointsBalanceResponse>("/api/points/balance"),
+    select: (data) => data.balance,
+    staleTime: 15_000,
+    enabled
+  });
+}
+
+export function useClientBillingHistoryQuery(enabled = true) {
+  return useQuery({
+    queryKey: ["client-billing", "history"],
+    queryFn: () => requestJson<ClientBillingHistoryResponse>("/api/billing/history"),
+    select: (data) => data.billing,
+    enabled,
+    staleTime: 15_000
+  });
+}
+
+export function useClientBillingInvoicesQuery(enabled = true) {
+  return useQuery({
+    queryKey: ["client-billing", "invoices"],
+    queryFn: () => requestJson<ClientBillingInvoicesResponse>("/api/billing/invoices"),
+    select: (data) => data.invoices,
+    enabled,
+    staleTime: 15_000
+  });
+}
+
+export function useRetryClientBillingMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () =>
+      runGuardedAction(
+        "client-billing:retry",
+        () => requestJson<ClientBillingRetryResponse>("/api/billing/retry", {
+          method: "POST",
+          body: JSON.stringify({})
+        })
+      ),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["client-billing"] }),
+        queryClient.invalidateQueries({ queryKey: ["client-bookings"] }),
+        queryClient.invalidateQueries({ queryKey: ["client-home"] })
+      ]);
+    }
+  });
+}
+
+export function useCreateBookingMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: CreateBookingPayload) =>
+      runGuardedAction(
+        `booking:create:${payload.locationId}:${payload.barberId}:${payload.serviceId}:${payload.appointmentTime}:${payload.clientPhone}`,
+        () => requestJson<{ appointment: LiveAppointmentRecord }>("/api/bookings", {
+          method: "POST",
+          body: JSON.stringify(payload)
+        })
+      ),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["client-home"] }),
+        queryClient.invalidateQueries({ queryKey: ["client-bookings"] }),
+        queryClient.invalidateQueries({ queryKey: ["points"] }),
+        queryClient.invalidateQueries({ queryKey: ["barber-search"] }),
+        queryClient.invalidateQueries({ queryKey: ["barber-availability"] }),
+        queryClient.invalidateQueries({ queryKey: ["operations"] })
+      ]);
+    }
+  });
+}
+
+export function useCancelBookingMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ appointmentId, expectedRevision }: { appointmentId: string; expectedRevision: number }) =>
+      runGuardedAction(
+        `booking:cancel:${appointmentId}:${expectedRevision}`,
+        () => requestJson<{ appointment: LiveAppointmentRecord }>(`/api/bookings/${appointmentId}/cancel`, {
+          method: "POST",
+          body: JSON.stringify({ expectedRevision })
+        })
+      ),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["client-bookings"] }),
+        queryClient.invalidateQueries({ queryKey: ["client-home"] }),
+        queryClient.invalidateQueries({ queryKey: ["points"] }),
+        queryClient.invalidateQueries({ queryKey: ["operations"] })
+      ]);
+    }
+  });
+}
+
+export function useSaveFavoriteBarberMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: SaveFavoriteBarberPayload) =>
+      requestJson<{
+        client: ClientHomeResponse["client"];
+        favoriteBarber: PublicBarberProfileView | null;
+      }>("/api/client/favorite-barber", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["client-home"] }),
+        queryClient.invalidateQueries({ queryKey: ["client-bookings"] }),
+        queryClient.invalidateQueries({ queryKey: ["barber-search"] }),
+        queryClient.invalidateQueries({ queryKey: ["engagement", "client", "summary"] }),
+        queryClient.invalidateQueries({ queryKey: ["marketplace"] })
+      ]);
+    }
+  });
+}
+
+export function useSubscribeClientMembershipMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: { planCode: string }) =>
+      requestJson<ClientMembershipSubscribeResponse>("/api/client/membership", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["client-membership"] }),
+        queryClient.invalidateQueries({ queryKey: ["client-billing"] }),
+        queryClient.invalidateQueries({ queryKey: ["client-bookings"] }),
+        queryClient.invalidateQueries({ queryKey: ["client-home"] }),
+        queryClient.invalidateQueries({ queryKey: ["points"] }),
+        queryClient.invalidateQueries({ queryKey: ["engagement", "client", "summary"] })
+      ]);
+    }
+  });
+}
+
+export function useCancelClientMembershipMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () =>
+      requestJson<ClientMembershipResponse>("/api/client/membership", {
+        method: "DELETE"
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["client-membership"] }),
+        queryClient.invalidateQueries({ queryKey: ["client-billing"] }),
+        queryClient.invalidateQueries({ queryKey: ["client-bookings"] }),
+        queryClient.invalidateQueries({ queryKey: ["client-home"] }),
+        queryClient.invalidateQueries({ queryKey: ["points"] }),
+        queryClient.invalidateQueries({ queryKey: ["engagement", "client", "summary"] })
+      ]);
+    }
+  });
+}
+
+
+export function useSaveClientRoutineMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: SaveClientRoutinePayload) =>
+      requestJson<{ routine: ClientRoutineResponse }>("/api/client/routine", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["client-bookings"] }),
+        queryClient.invalidateQueries({ queryKey: ["client-home"] })
+      ]);
+    }
+  });
+}
+
+export function useSubmitClientReviewMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: SubmitClientReviewPayload) =>
+      requestJson<{ review: ClientAppointmentReviewSummary }>("/api/client/reviews", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["client-bookings"] }),
+        queryClient.invalidateQueries({ queryKey: ["client-home"] }),
+        queryClient.invalidateQueries({ queryKey: ["engagement", "client", "summary"] }),
+        queryClient.invalidateQueries({ queryKey: ["marketplace"] }),
+        queryClient.invalidateQueries({ queryKey: ["barber-profile"] })
+      ]);
+    }
+  });
+}

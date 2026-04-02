@@ -1,0 +1,65 @@
+BVRB3R Platform Pre-Staging Checkpoint
+Created: 2026-03-11 20:25:20 -04:00
+Workspace: D:\bvrb3r-platform
+Archive: D:\bvrb3r-platform\checkpoints\pre-staging-checkpoint-20260311-202516.zip
+
+Checkpoint type: Filesystem snapshot fallback
+Reason: No .git metadata is present in this workspace, so a Git commit/tag rollback point could not be created.
+
+Baseline validation:
+- npm run lint: PASS
+- npm run typecheck: PASS
+- npm run test: PASS
+- npm run build: PASS
+
+Included top-level items:
+- .env.example
+- .eslintrc.json
+- .gitignore
+- app
+- capacitor.config.ts
+- CHANGELOG.md
+- components
+- eslint.config.mjs
+- lib
+- MOBILE_DEVICE_QA.md
+- next.config.ts
+- next-env.d.ts
+- package.json
+- package-lock.json
+- PLANS.md
+- postcss.config.mjs
+- public
+- QA_MANUAL_CHECKLIST.md
+- README.md
+- RELEASE_CANDIDATE_CERTIFICATION.md
+- RELEASE_CERTIFICATION.md
+- RUNBOOK.md
+- scripts
+- SPEC.md
+- STORE_LAUNCH_CHECKLIST.md
+- styles
+- supabase
+- tests
+- TODO.md
+- tsconfig.json
+- tsconfig.typecheck.json
+- types
+- VISION.md
+- VISION_ALIGNMENT_REPORT.md
+- vitest.config.ts
+- vitest.setup.ts
+
+Excluded items:
+- .next (generated build output)
+- node_modules (reinstallable dependency cache)
+- artifacts (generated output folder; preserved separately in workspace)
+- checkpoints (to avoid recursive snapshotting)
+- .codex-* logs (session logs)
+- tsconfig.tsbuildinfo (generated TypeScript cache)
+
+Restore guidance:
+1. Copy or extract the zip to a safe location.
+2. Replace the working tree contents with the archive contents.
+3. Run npm install.
+4. Re-run lint, typecheck, test, and build before resuming staging cutover work.

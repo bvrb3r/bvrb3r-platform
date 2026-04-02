@@ -1,0 +1,39 @@
+
+> bvrb3r-platform@0.1.0 qa:app
+> npm run dev:local
+
+
+> bvrb3r-platform@0.1.0 dev:local
+> npm run dev:clean-port && node --env-file-if-exists=.env.local ./node_modules/next/dist/bin/next dev -p 3000
+
+
+> bvrb3r-platform@0.1.0 dev:clean-port
+> node scripts/dev-clean-port.mjs
+
+OK: Port 3000 is ready
+   ▲ Next.js 15.5.12
+   - Local:        http://localhost:3000
+   - Network:      http://192.168.200.2:3000
+   - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 2.9s
+ ○ Compiling /profile ...
+ ✓ Compiled /profile in 6.7s (1093 modules)
+ GET /profile 200 in 11635ms
+ ○ Compiling /api/operations/state ...
+ ✓ Compiled /api/operations/state in 852ms (710 modules)
+ GET /api/operations/state?view=client 200 in 1581ms
+ ✓ Compiled /api/stripe/webhook in 196ms (698 modules)
+ POST /api/stripe/webhook 200 in 978ms
+ POST /api/stripe/webhook 500 in 1000ms
+ POST /api/stripe/webhook 500 in 1352ms
+ POST /api/stripe/webhook 200 in 1769ms
+ POST /api/stripe/webhook 200 in 2093ms
+ POST /api/stripe/webhook 200 in 1876ms
+ POST /api/stripe/webhook 500 in 1492ms
+ POST /api/stripe/webhook 200 in 1225ms
+ POST /api/stripe/webhook 500 in 1379ms
+ POST /api/stripe/webhook 200 in 1626ms
+ POST /api/stripe/webhook 200 in 1537ms
+ POST /api/stripe/webhook 200 in 2133ms

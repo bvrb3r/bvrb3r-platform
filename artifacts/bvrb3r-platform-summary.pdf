@@ -1,0 +1,277 @@
+%PDF-1.4
+%ÿÿÿÿ
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R /F2 6 0 R /F3 7 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 9625 >>
+stream
+0.949 0.933 0.902 rg
+1 w 0 0 612 792 re f
+0.929 0.965 0.875 rg
+1 w 454 718 126 126 re f
+0.09 0.09 0.09 rg
+0.133 0.133 0.133 RG
+1.2 w 34 676 544 82 re B
+0.843 1 0.671 rg
+BT /F2 8.2 Tf 1 0 0 1 48 742 Tm (REPO SUMMARY) Tj ET
+1 1 1 rg
+BT /F2 26 Tf 1 0 0 1 48 714 Tm (BVRB3R Platform) Tj ET
+0.847 0.847 0.847 rg
+BT /F1 11.2 Tf 1 0 0 1 48 695 Tm (One-page summary built from repository evidence on March 11, 2026.) Tj ET
+0.133 0.2 0.075 rg
+0.208 0.337 0.078 RG
+0.8 w 48 680 178 14 re B
+0.843 1 0.671 rg
+BT /F2 7.4 Tf 1 0 0 1 56 684.5 Tm (NEXT.JS 15 + SUPABASE-READY + PWA) Tj ET
+0.984 0.973 0.949 rg
+0.843 0.816 0.761 RG
+1 w 34 572 334 76 re B
+0.247 0.427 0 rg
+BT /F2 8.1 Tf 1 0 0 1 48 630 Tm (WHAT IT IS) Tj ET
+0.867 0.843 0.796 RG
+0.8 w 48 624 m 354 624 l S
+0.082 0.082 0.082 rg
+BT /F1 10.7 Tf 1 0 0 1 48 615 Tm (BVRB3R Platform is a multi-role, barbershop-first) Tj ET
+0.082 0.082 0.082 rg
+BT /F1 10.7 Tf 1 0 0 1 48 601.4 Tm (operating system for The BVRB3R Shop\(TM\) & Co. In this) Tj ET
+0.082 0.082 0.082 rg
+BT /F1 10.7 Tf 1 0 0 1 48 587.8 Tm (repo it unifies marketing, discovery, booking, shop) Tj ET
+0.082 0.082 0.082 rg
+BT /F1 10.7 Tf 1 0 0 1 48 574.2 Tm (operations, growth tooling, and PWA/mobile activation in) Tj ET
+0.082 0.082 0.082 rg
+BT /F1 10.7 Tf 1 0 0 1 48 560.6 Tm (one Next.js app.) Tj ET
+0.984 0.973 0.949 rg
+0.843 0.816 0.761 RG
+1 w 34 316 334 242 re B
+0.247 0.427 0 rg
+BT /F2 8.1 Tf 1 0 0 1 48 540 Tm (WHAT IT DOES) Tj ET
+0.867 0.843 0.796 RG
+0.8 w 48 534 m 354 534 l S
+0.082 0.082 0.082 rg
+BT /F2 10.6 Tf 1 0 0 1 48 525 Tm (-) Tj ET
+0.082 0.082 0.082 rg
+BT /F1 10.6 Tf 1 0 0 1 58 525 Tm (Public marketing site with auth, features, pricing,) Tj ET
+0.082 0.082 0.082 rg
+BT /F1 10.6 Tf 1 0 0 1 58 511.8 Tm (and contact routes.) Tj ET
+0.082 0.082 0.082 rg
+BT /F2 10.6 Tf 1 0 0 1 48 496.6 Tm (-) Tj ET
+0.082 0.082 0.082 rg
+BT /F1 10.6 Tf 1 0 0 1 58 496.6 Tm (Booking, appointment transitions, checkout, and live) Tj ET
+0.082 0.082 0.082 rg
+BT /F1 10.6 Tf 1 0 0 1 58 483.4 Tm (operations APIs.) Tj ET
+0.082 0.082 0.082 rg
+BT /F2 10.6 Tf 1 0 0 1 48 468.2 Tm (-) Tj ET
+0.082 0.082 0.082 rg
+BT /F1 10.6 Tf 1 0 0 1 58 468.2 Tm (Role dashboards for owner, manager, front desk,) Tj ET
+0.082 0.082 0.082 rg
+BT /F1 10.6 Tf 1 0 0 1 58 455 Tm (barber, and client users.) Tj ET
+0.082 0.082 0.082 rg
+BT /F2 10.6 Tf 1 0 0 1 48 439.8 Tm (-) Tj ET
+0.082 0.082 0.082 rg
+BT /F1 10.6 Tf 1 0 0 1 58 439.8 Tm (Marketplace discovery, barber profiles, leaderboards,) Tj ET
+0.082 0.082 0.082 rg
+BT /F1 10.6 Tf 1 0 0 1 58 426.6 Tm (style/top feeds, waitlists, and haircut-now matching.) Tj ET
+0.082 0.082 0.082 rg
+BT /F2 10.6 Tf 1 0 0 1 48 411.4 Tm (-) Tj ET
+0.082 0.082 0.082 rg
+BT /F1 10.6 Tf 1 0 0 1 58 411.4 Tm (Service, follow, referral, engagement, ranking, and) Tj ET
+0.082 0.082 0.082 rg
+BT /F1 10.6 Tf 1 0 0 1 58 398.2 Tm (attribution workflows.) Tj ET
+0.082 0.082 0.082 rg
+BT /F2 10.6 Tf 1 0 0 1 48 383 Tm (-) Tj ET
+0.082 0.082 0.082 rg
+BT /F1 10.6 Tf 1 0 0 1 58 383 Tm (Trust plus mobile/PWA features: verification,) Tj ET
+0.082 0.082 0.082 rg
+BT /F1 10.6 Tf 1 0 0 1 58 369.8 Tm (disputes, reports, offline shell, deep links, and) Tj ET
+0.082 0.082 0.082 rg
+BT /F1 10.6 Tf 1 0 0 1 58 356.6 Tm (push.) Tj ET
+0.984 0.973 0.949 rg
+0.843 0.816 0.761 RG
+1 w 34 170 334 132 re B
+0.247 0.427 0 rg
+BT /F2 8.1 Tf 1 0 0 1 48 284 Tm (HOW TO RUN) Tj ET
+0.867 0.843 0.796 RG
+0.8 w 48 278 m 354 278 l S
+0.082 0.082 0.082 rg
+BT /F2 10.5 Tf 1 0 0 1 48 269 Tm (1.) Tj ET
+0.082 0.082 0.082 rg
+BT /F1 10.5 Tf 1 0 0 1 64 269 Tm (Install Node.js 22+ and npm 10+.) Tj ET
+0.082 0.082 0.082 rg
+BT /F2 10.5 Tf 1 0 0 1 48 254.7 Tm (2.) Tj ET
+0.082 0.082 0.082 rg
+BT /F1 10.5 Tf 1 0 0 1 64 254.7 Tm (Copy .env.example to .env.local.) Tj ET
+0.082 0.082 0.082 rg
+BT /F2 10.5 Tf 1 0 0 1 48 240.4 Tm (3.) Tj ET
+0.082 0.082 0.082 rg
+BT /F1 10.5 Tf 1 0 0 1 64 240.4 Tm (For the fastest start, keep) Tj ET
+0.082 0.082 0.082 rg
+BT /F1 10.5 Tf 1 0 0 1 64 227.6 Tm (NEXT_PUBLIC_AUTH_MODE=demo and) Tj ET
+0.082 0.082 0.082 rg
+BT /F1 10.5 Tf 1 0 0 1 64 214.8 Tm (PAYMENTS_PROVIDER=mock.) Tj ET
+0.082 0.082 0.082 rg
+BT /F2 10.5 Tf 1 0 0 1 48 200.5 Tm (4.) Tj ET
+0.082 0.082 0.082 rg
+BT /F1 10.5 Tf 1 0 0 1 64 200.5 Tm (Run npm install.) Tj ET
+0.082 0.082 0.082 rg
+BT /F2 10.5 Tf 1 0 0 1 48 186.2 Tm (5.) Tj ET
+0.082 0.082 0.082 rg
+BT /F1 10.5 Tf 1 0 0 1 64 186.2 Tm (Run npm run dev, then open http://localhost:3000.) Tj ET
+0.984 0.973 0.949 rg
+0.843 0.816 0.761 RG
+1 w 382 560 196 88 re B
+0.247 0.427 0 rg
+BT /F2 8.1 Tf 1 0 0 1 396 630 Tm (WHO IT'S FOR) Tj ET
+0.867 0.843 0.796 RG
+0.8 w 396 624 m 564 624 l S
+0.082 0.082 0.082 rg
+BT /F1 10 Tf 1 0 0 1 396 605 Tm (Primary persona: a barbershop) Tj ET
+0.082 0.082 0.082 rg
+BT /F1 10 Tf 1 0 0 1 396 592.6 Tm (owner/operator managing daily) Tj ET
+0.082 0.082 0.082 rg
+BT /F1 10 Tf 1 0 0 1 396 580.2 Tm (shop operations and growth.) Tj ET
+0.082 0.082 0.082 rg
+BT /F1 10 Tf 1 0 0 1 396 567.8 Tm (Additional surfaces exist for) Tj ET
+0.082 0.082 0.082 rg
+BT /F1 10 Tf 1 0 0 1 396 555.4 Tm (managers, front desk staff,) Tj ET
+0.082 0.082 0.082 rg
+BT /F1 10 Tf 1 0 0 1 396 543 Tm (barbers, and clients.) Tj ET
+0.106 0.106 0.106 rg
+0.173 0.173 0.173 RG
+1 w 382 170 196 376 re B
+0.843 1 0.671 rg
+BT /F2 8.1 Tf 1 0 0 1 396 528 Tm (HOW IT WORKS) Tj ET
+0.227 0.227 0.227 RG
+0.8 w 396 522 m 564 522 l S
+0.961 0.961 0.961 rg
+BT /F2 9.55 Tf 1 0 0 1 396 512 Tm (-) Tj ET
+0.961 0.961 0.961 rg
+BT /F1 9.55 Tf 1 0 0 1 406 512 Tm (UI: Next.js App Router pages) Tj ET
+0.961 0.961 0.961 rg
+BT /F1 9.55 Tf 1 0 0 1 406 500.1 Tm (for marketing, auth, role) Tj ET
+0.961 0.961 0.961 rg
+BT /F1 9.55 Tf 1 0 0 1 406 488.2 Tm (dashboards, discovery, and) Tj ET
+0.961 0.961 0.961 rg
+BT /F1 9.55 Tf 1 0 0 1 406 476.3 Tm (public barber profiles.) Tj ET
+0.961 0.961 0.961 rg
+BT /F2 9.55 Tf 1 0 0 1 396 462.4 Tm (-) Tj ET
+0.961 0.961 0.961 rg
+BT /F1 9.55 Tf 1 0 0 1 406 462.4 Tm (Client runtime: React Query) Tj ET
+0.961 0.961 0.961 rg
+BT /F1 9.55 Tf 1 0 0 1 406 450.5 Tm (plus a PWA provider for) Tj ET
+0.961 0.961 0.961 rg
+BT /F1 9.55 Tf 1 0 0 1 406 438.6 Tm (install, offline, deep-link,) Tj ET
+0.961 0.961 0.961 rg
+BT /F1 9.55 Tf 1 0 0 1 406 426.7 Tm (and push UX.) Tj ET
+0.961 0.961 0.961 rg
+BT /F2 9.55 Tf 1 0 0 1 396 412.8 Tm (-) Tj ET
+0.961 0.961 0.961 rg
+BT /F1 9.55 Tf 1 0 0 1 406 412.8 Tm (API layer: app/api routes cover) Tj ET
+0.961 0.961 0.961 rg
+BT /F1 9.55 Tf 1 0 0 1 406 400.9 Tm (operations, marketplace,) Tj ET
+0.961 0.961 0.961 rg
+BT /F1 9.55 Tf 1 0 0 1 406 389 Tm (engagement, trust, mobile, and) Tj ET
+0.961 0.961 0.961 rg
+BT /F1 9.55 Tf 1 0 0 1 406 377.1 Tm (payments.) Tj ET
+0.961 0.961 0.961 rg
+BT /F2 9.55 Tf 1 0 0 1 396 363.2 Tm (-) Tj ET
+0.961 0.961 0.961 rg
+BT /F1 9.55 Tf 1 0 0 1 406 363.2 Tm (Domain services:) Tj ET
+0.961 0.961 0.961 rg
+BT /F1 9.55 Tf 1 0 0 1 406 351.3 Tm (lib/operations,) Tj ET
+0.961 0.961 0.961 rg
+BT /F1 9.55 Tf 1 0 0 1 406 339.4 Tm (lib/marketplace,) Tj ET
+0.961 0.961 0.961 rg
+BT /F1 9.55 Tf 1 0 0 1 406 327.5 Tm (lib/engagement, lib/mobile,) Tj ET
+0.961 0.961 0.961 rg
+BT /F1 9.55 Tf 1 0 0 1 406 315.6 Tm (lib/trust, and lib/payments.) Tj ET
+0.961 0.961 0.961 rg
+BT /F2 9.55 Tf 1 0 0 1 396 301.7 Tm (-) Tj ET
+0.961 0.961 0.961 rg
+BT /F1 9.55 Tf 1 0 0 1 406 301.7 Tm (Persistence: demo mode uses) Tj ET
+0.961 0.961 0.961 rg
+BT /F1 9.55 Tf 1 0 0 1 406 289.8 Tm (in-memory state; Supabase mode) Tj ET
+0.961 0.961 0.961 rg
+BT /F1 9.55 Tf 1 0 0 1 406 277.9 Tm (uses server/admin clients and) Tj ET
+0.961 0.961 0.961 rg
+BT /F1 9.55 Tf 1 0 0 1 406 266 Tm (persisted tables; payments) Tj ET
+0.961 0.961 0.961 rg
+BT /F1 9.55 Tf 1 0 0 1 406 254.1 Tm (switch between mock and Stripe.) Tj ET
+0.961 0.961 0.961 rg
+BT /F2 9.55 Tf 1 0 0 1 396 240.2 Tm (-) Tj ET
+0.961 0.961 0.961 rg
+BT /F1 9.55 Tf 1 0 0 1 406 240.2 Tm (Flow: browser/PWA ->) Tj ET
+0.961 0.961 0.961 rg
+BT /F1 9.55 Tf 1 0 0 1 406 228.3 Tm (page/component -> API route ->) Tj ET
+0.961 0.961 0.961 rg
+BT /F1 9.55 Tf 1 0 0 1 406 216.4 Tm (provider -> demo state or) Tj ET
+0.961 0.961 0.961 rg
+BT /F1 9.55 Tf 1 0 0 1 406 204.5 Tm (Supabase/Stripe -> JSON) Tj ET
+0.961 0.961 0.961 rg
+BT /F1 9.55 Tf 1 0 0 1 406 192.6 Tm (response.) Tj ET
+0.961 0.961 0.961 rg
+BT /F2 9.55 Tf 1 0 0 1 396 178.7 Tm (-) Tj ET
+0.961 0.961 0.961 rg
+BT /F1 9.55 Tf 1 0 0 1 406 178.7 Tm (Hosting target: Not found in) Tj ET
+0.961 0.961 0.961 rg
+BT /F1 9.55 Tf 1 0 0 1 406 166.8 Tm (repo.) Tj ET
+0.141 0.141 0.141 rg
+0.204 0.204 0.204 RG
+0.8 w 396 196 168 46 re B
+0.843 1 0.671 rg
+BT /F2 8 Tf 1 0 0 1 406 226 Tm (Observed wiring from repo evidence:) Tj ET
+0.937 0.937 0.937 rg
+BT /F1 8.4 Tf 1 0 0 1 406 213 Tm (AppProviders adds React Query and) Tj ET
+0.937 0.937 0.937 rg
+BT /F1 8.4 Tf 1 0 0 1 406 202.8 Tm (PWA state; route handlers call) Tj ET
+0.937 0.937 0.937 rg
+BT /F1 8.4 Tf 1 0 0 1 406 192.6 Tm (provider abstractions that choose) Tj ET
+0.937 0.937 0.937 rg
+BT /F1 8.4 Tf 1 0 0 1 406 182.4 Tm (demo or Supabase/Stripe backends) Tj ET
+0.937 0.937 0.937 rg
+BT /F1 8.4 Tf 1 0 0 1 406 172.2 Tm (at runtime.) Tj ET
+0.969 0.953 0.922 rg
+0.843 0.816 0.761 RG
+1 w 34 108 544 42 re B
+0.247 0.427 0 rg
+BT /F2 8.1 Tf 1 0 0 1 48 133 Tm (EVIDENCE USED) Tj ET
+0.365 0.353 0.333 rg
+BT /F1 8.3 Tf 1 0 0 1 132 133 Tm (README, package.json, route structure under app/, app/layout.tsx,) Tj ET
+0.365 0.353 0.333 rg
+BT /F1 8.3 Tf 1 0 0 1 132 123 Tm (components/providers/app-providers.tsx, app/api/*, provider files in lib/operations, lib/marketplace,) Tj ET
+0.365 0.353 0.333 rg
+BT /F1 8.3 Tf 1 0 0 1 132 113 Tm (lib/mobile, lib/payments, plus public/sw.js and app/manifest.ts.) Tj ET
+0.365 0.353 0.333 rg
+BT /F3 8.3 Tf 1 0 0 1 48 90 Tm (Generated locally from repo evidence only.) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+6 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+7 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique >>
+endobj
+xref
+0 8
+0000000000 65535 f 
+0000000019 00000 n 
+0000000068 00000 n 
+0000000125 00000 n 
+0000000271 00000 n 
+0000009948 00000 n 
+0000010018 00000 n 
+0000010093 00000 n 
+trailer
+<< /Size 8 /Root 1 0 R >>
+startxref
+10171
+%%EOF

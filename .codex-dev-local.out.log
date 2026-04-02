@@ -1,0 +1,103 @@
+   ▲ Next.js 15.5.12
+   - Local:        http://localhost:3000
+   - Network:      http://192.168.0.175:3000
+   - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 3.2s
+ ○ Compiling / ...
+ ✓ Compiled / in 8.8s (741 modules)
+ GET / 200 in 9355ms
+ ✓ Compiled in 471ms (302 modules)
+ ✓ Compiled in 131ms (302 modules)
+ ✓ Compiled in 168ms (302 modules)
+ ✓ Compiled in 349ms (302 modules)
+ ✓ Compiled in 135ms (302 modules)
+ ✓ Compiled in 104ms (302 modules)
+ ✓ Compiled in 191ms (302 modules)
+ ✓ Compiled /_not-found in 467ms (746 modules)
+ GET / 404 in 684ms
+ GET / 200 in 169ms
+ ✓ Compiled in 211ms (302 modules)
+ ✓ Compiled /_not-found in 248ms (746 modules)
+ ○ Compiling /_error ...
+ ✓ Compiled /_error in 560ms (1078 modules)
+ GET / 500 in 1434ms
+ ✓ Compiled in 399ms (454 modules)
+ ✓ Compiled in 317ms (454 modules)
+ ✓ Compiled in 113ms (454 modules)
+ ✓ Compiled in 130ms (454 modules)
+ ✓ Compiled /_not-found in 358ms (1092 modules)
+ GET / 500 in 489ms
+ GET / 500 in 29ms
+ ✓ Compiled in 152ms (458 modules)
+ ✓ Compiled in 140ms (458 modules)
+ ✓ Compiled in 172ms (458 modules)
+ ✓ Compiled in 104ms (458 modules)
+ ✓ Compiled in 177ms (458 modules)
+ ✓ Compiled in 125ms (458 modules)
+ ✓ Compiled in 125ms (458 modules)
+ GET / 500 in 147ms
+ GET / 500 in 35ms
+ ✓ Compiled in 247ms (454 modules)
+ GET / 500 in 112ms
+ GET / 500 in 32ms
+ ✓ Compiled in 170ms (454 modules)
+ ✓ Compiled in 103ms (454 modules)
+ ✓ Compiled in 168ms (454 modules)
+ ✓ Compiled in 122ms (454 modules)
+ ✓ Compiled /_not-found in 294ms (1092 modules)
+ GET / 500 in 433ms
+ GET / 500 in 32ms
+ ✓ Compiled in 147ms (458 modules)
+ GET / 500 in 107ms
+ GET / 500 in 32ms
+ ✓ Compiled in 154ms (454 modules)
+ ✓ Compiled in 113ms (454 modules)
+ ✓ Compiled in 326ms (454 modules)
+ ✓ Compiled in 330ms (454 modules)
+ ✓ Compiled in 108ms (454 modules)
+ ✓ Compiled in 127ms (454 modules)
+ ✓ Compiled /_not-found in 292ms (1092 modules)
+ GET / 500 in 460ms
+ GET / 500 in 50ms
+ ✓ Compiled in 139ms (454 modules)
+ ✓ Compiled in 120ms (454 modules)
+ ✓ Compiled in 166ms (454 modules)
+ ✓ Compiled in 133ms (454 modules)
+ ✓ Compiled in 117ms (454 modules)
+ ✓ Compiled /_not-found in 267ms (1092 modules)
+ GET / 500 in 410ms
+ GET / 500 in 42ms
+ ✓ Compiled in 173ms (458 modules)
+ ✓ Compiled in 128ms (458 modules)
+ ✓ Compiled in 196ms (458 modules)
+ ✓ Compiled in 179ms (458 modules)
+ GET / 500 in 105ms
+ GET / 500 in 28ms
+ ✓ Compiled in 153ms (458 modules)
+ ✓ Compiled in 213ms (454 modules)
+ ✓ Compiled in 251ms (454 modules)
+ ✓ Compiled in 231ms (454 modules)
+ ✓ Compiled in 140ms (454 modules)
+ ✓ Compiled in 134ms (454 modules)
+ ✓ Compiled in 572ms (454 modules)
+ ✓ Compiled in 331ms (454 modules)
+ ✓ Compiled in 346ms (454 modules)
+ ✓ Compiled in 387ms (454 modules)
+ ✓ Compiled in 352ms (454 modules)
+ ✓ Compiled in 312ms (454 modules)
+ GET / 500 in 602ms
+ GET / 500 in 131ms
+ ✓ Compiled in 377ms (454 modules)
+ ✓ Compiled in 319ms (454 modules)
+ ✓ Compiled in 448ms (454 modules)
+ ✓ Compiled in 494ms (454 modules)
+ ✓ Compiled in 478ms (454 modules)
+ ✓ Compiled in 473ms (454 modules)
+ ✓ Compiled in 505ms (454 modules)
+ ○ Compiling /_not-found ...
+ ✓ Compiled /_not-found in 1226ms (1078 modules)
+ GET / 500 in 1951ms
+ GET / 500 in 114ms
+[?25h

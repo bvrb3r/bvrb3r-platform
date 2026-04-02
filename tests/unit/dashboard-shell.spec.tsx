@@ -1,0 +1,41 @@
+import { render, screen } from "@testing-library/react";
+import { DashboardShell } from "@/components/dashboard/dashboard-shell";
+import { getDefaultRouteForUser, resolveDemoUser } from "@/lib/auth/demo-auth";
+
+describe("dashboard shell identity and navigation", () => {
+  it.each([
+    ["owner@bvrb3r.demo", "Brandon Rivers", "Shop Owner", "Active role: Shop owner", ["Dashboard", "Team", "Schedule", "Money", "Growth", "Settings"]],
+    ["manager@bvrb3r.demo", "Mia Torres", "Shop Manager", "Active role: Shop manager", ["Dashboard", "Schedule", "Team", "Queue", "Profile"]],
+    ["frontdesk@bvrb3r.demo", "Kayla Brooks", "Front Desk / Kiosk Ops", "Active role: Front desk", ["Check-in", "Waitlist", "Schedule", "Barbers", "Profile"]],
+    ["wave@bvrb3r.demo", "Wave Carter", "Barber Manager", "Active role: Barber manager", ["Dashboard", "Schedule", "Team", "Queue", "Profile"]],
+    ["blaze@bvrb3r.demo", "Blaze King", "Booth-Rent Barber", "Active role: Booth-rent barber", ["Home", "Command", "Earnings", "Clients", "Profile"]],
+    ["lux@bvrb3r.demo", "Luxe Reed", "Freelance Barber", "Active role: Freelance barber", ["Home", "Command", "Earnings", "Clients", "Profile"]],
+    ["client@bvrb3r.demo", "Jordan Ellis", "Client", "Active role: Client", ["Home", "Search", "Bookings", "Rewards", "Profile"]]
+  ])("renders the selected identity for %s", (email, name, title, roleLabel, navLabels) => {
+    const user = resolveDemoUser(email);
+    const activeHref = getDefaultRouteForUser(user);
+
+    render(
+      <DashboardShell user={user} activeHref={activeHref} title="Workspace" subtitle="Testing shell identity.">
+        <div>Workspace body</div>
+      </DashboardShell>
+    );
+
+    expect(screen.getByTestId("shell-identity-name")).toHaveTextContent(name);
+    expect(screen.getByTestId("shell-identity-title")).toHaveTextContent(title);
+    expect(screen.getByTestId("shell-identity-role")).toHaveTextContent(roleLabel);
+
+    navLabels.forEach((label, index) => {
+      const links = screen.getAllByRole("link", { name: new RegExp(label, "i") });
+      expect(links.length).toBeGreaterThan(0);
+      if (index === 0) {
+        expect(links.some((link) => link.getAttribute("href") === activeHref && link.getAttribute("aria-current") === "page")).toBe(true);
+      }
+    });
+
+    if (email !== "owner@bvrb3r.demo") {
+      expect(screen.queryByText("Money")).not.toBeInTheDocument();
+      expect(screen.queryByText("Brandon Rivers")).not.toBeInTheDocument();
+    }
+  });
+});

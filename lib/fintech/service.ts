@@ -1,0 +1,3697 @@
+import Stripe from "stripe";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { isSupabaseEnabled } from "@/lib/config/runtime";
+import {
+  calculatePaymentRouting,
+  createPayoutExecutionIdempotencyKey,
+  derivePayoutExecutionReconciliationStatus,
+  deriveOperationalFintechStatus,
+  determinePayoutExecutionBlockReason,
+  determinePayoutReadiness,
+  evaluateLegalAgreementState,
+  inferStripeProcessorStatuses,
+  normalizeCompensationAssignment,
+  normalizeConnectedAccountStatus,
+  normalizeLegalAcceptance,
+  normalizeRequirementList,
+  normalizeRoutingModel,
+  roundCurrency,
+  type AgreementType,
+  type BoothRentFrequency,
+  type CompensationAssignmentInput,
+  type ConnectedAccountStatusInput,
+  type FintechLegalReadinessStatus,
+  type FintechOnboardingStatus,
+  type FintechOperationalStatus,
+  type FintechPayoutReadinessStatus,
+  type FintechProvider,
+  type FintechSubjectType,
+  type FintechTaxReadinessStatus,
+  type LegalAcceptanceInput,
+  type MoneyRoutingStatus,
+  type PayoutExecutionReconciliationStatus,
+  type PayoutExecutionStatus,
+  type PayoutExecutionType,
+  type RoutingModel
+} from "@/lib/fintech/domain";
+import type { InternalPaymentStatus, InternalPaymentType } from "@/lib/payments/domain";
+import {
+  StripeConnectError,
+  buildStripeReturnUrl,
+  createStripeConnectedAccount,
+  createStripeDashboardLoginLink,
+  createStripeOnboardingLink,
+  createStripeTransfer,
+  createStripeTransferReversal,
+  retrieveStripeConnectedAccount,
+  retrieveStripePaymentIntentSettlement,
+  verifyStripeWebhookEvent
+} from "@/lib/stripe/connect";
+import { processStripeBillingWebhookEvent } from "@/lib/monetization/service";
+import { syncStripeConnectVerificationLane } from "@/lib/trust/provider-sync";
+import { buildPublicTrustSignal, computeShopVerificationDecision, getVerificationGateDecision } from "@/lib/trust/engine";
+import { getTrustProvider } from "@/lib/trust/provider";
+import { calculateInstantPayoutAmounts } from "@/lib/wallet/domain";
+import { syncWalletBalancesForPayment } from "@/lib/wallet/service";
+import type { UserAccount } from "@/types/domain";
+
+type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
+
+type ProfileRow = {
+  id: string;
+  email: string;
+  full_name: string | null;
+  role: UserAccount["role"];
+};
+
+type BarberRow = {
+  id: string;
+  reference_code: string | null;
+  profile_id: string;
+  compensation_model: string;
+  commission_rate: number | string | null;
+  booth_rent_amount: number | string | null;
+  booth_rent_frequency: BoothRentFrequency | null;
+};
+
+type LocationRow = {
+  id: string;
+  reference_code: string | null;
+  name: string;
+  neighborhood: string;
+  city: string;
+  state: string;
+};
+
+type StaffMembershipRow = {
+  id: string;
+  profile_id: string;
+  location_id: string;
+  routing_model: string | null;
+  commission_rate: number | string | null;
+  booth_rent_amount: number | string | null;
+  booth_rent_frequency: BoothRentFrequency | null;
+  payout_block_reason: string | null;
+  updated_at: string;
+  fintech_updated_at: string;
+};
+
+type BillingSubscriptionGuardRow = {
+  id: string;
+  subject_type: "barber" | "shop" | "client";
+  barber_id: string | null;
+  shop_id: string | null;
+  subscription_status: string;
+  billing_state: string;
+};
+
+type ConnectedAccountRow = {
+  id: string;
+  subject_type: FintechSubjectType;
+  barber_id: string | null;
+  shop_id: string | null;
+  provider: FintechProvider;
+  provider_account_id: string | null;
+  onboarding_status: FintechOnboardingStatus;
+  payout_readiness_status: FintechPayoutReadinessStatus;
+  legal_readiness_status: FintechLegalReadinessStatus;
+  tax_readiness_status: FintechTaxReadinessStatus;
+  requirements_currently_due: unknown;
+  requirements_eventually_due: unknown;
+  requirements_past_due: unknown;
+  disabled_reason: string | null;
+  charges_enabled: boolean;
+  payouts_enabled: boolean;
+  last_checked_at: string | null;
+  onboarding_started_at: string | null;
+  onboarding_completed_at: string | null;
+  processor_last_synced_at: string | null;
+  processor_last_event_id: string | null;
+  processor_last_event_type: string | null;
+  dashboard_last_accessed_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type LegalAcceptanceRow = {
+  id: string;
+  agreement_type: AgreementType;
+  agreement_version: string;
+  actor_profile_id: string;
+  actor_role: UserAccount["role"];
+  barber_id: string | null;
+  shop_id: string | null;
+  accepted_at: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
+type PaymentRow = {
+  id: string;
+  appointment_id: string | null;
+  client_id: string | null;
+  shop_id: string | null;
+  barber_id: string | null;
+  provider: string | null;
+  provider_payment_intent_id: string | null;
+  amount: number | string;
+  currency: string;
+  payment_status: InternalPaymentStatus;
+  payment_type: InternalPaymentType;
+  paid_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type AppointmentRow = {
+  id: string;
+  reference_code: string | null;
+  status: string;
+  membership_id: string | null;
+  barber_id: string;
+  shop_id: string | null;
+  location_id: string;
+  client_id: string;
+};
+
+type RefundRow = {
+  id: string;
+  amount: number | string;
+};
+
+type PaymentRoutingRow = {
+  id: string;
+  payment_id: string;
+  appointment_id: string | null;
+  membership_id: string | null;
+  routing_model: RoutingModel;
+  payout_recipient_type: "barber" | "shop" | "split";
+  provider_gross_amount: number | string;
+  refunded_amount: number | string;
+  provider_fee_amount: number | string;
+  provider_net_amount: number | string;
+  platform_fee_amount: number | string;
+  barber_payout_amount: number | string;
+  shop_split_amount: number | string;
+  currency: string;
+  payout_readiness_status: FintechPayoutReadinessStatus;
+  money_routing_status: MoneyRoutingStatus;
+  blocked_reason: string | null;
+  processor_charge_id: string | null;
+  processor_balance_transaction_id: string | null;
+  reconciliation_status: PayoutExecutionReconciliationStatus;
+  last_reconciled_at: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+type PayoutExecutionRow = {
+  id: string;
+  routing_record_id: string;
+  payment_id: string;
+  appointment_id: string | null;
+  membership_id: string | null;
+  target_subject_type: "barber" | "shop";
+  execution_type: PayoutExecutionType;
+  target_connected_account_id: string | null;
+  target_provider_account_id: string | null;
+  amount: number | string;
+  currency: string;
+  execution_status: PayoutExecutionStatus;
+  blocked_reason: string | null;
+  failure_reason: string | null;
+  processor_transfer_id: string | null;
+  processor_reversal_id: string | null;
+  idempotency_key: string;
+  source_execution_id: string | null;
+  source_refund_id: string | null;
+  payout_reference: string | null;
+  payout_speed: "standard" | "instant";
+  instant_payout_fee_amount: number | string;
+  net_transfer_amount: number | string;
+  processor_payout_id: string | null;
+  reconciliation_status: PayoutExecutionReconciliationStatus;
+  metadata: Record<string, unknown>;
+  initiated_by: string | null;
+  attempt_count: number;
+  last_attempted_at: string | null;
+  executed_at: string | null;
+  failed_at: string | null;
+  reversed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type StripeWebhookEventRow = {
+  id: string;
+  stripe_event_id: string;
+  stripe_account_id: string | null;
+  connected_account_id: string | null;
+  event_type: string;
+  livemode: boolean;
+  api_version: string | null;
+  processing_status: "received" | "processed" | "ignored" | "failed";
+  attempt_count: number;
+  payload_excerpt: Record<string, unknown>;
+  error_message: string | null;
+  received_at: string;
+  processed_at: string | null;
+  updated_at: string;
+};
+
+type FintechActorContext = {
+  profile: ProfileRow;
+  role: UserAccount["role"];
+  locationIds: string[];
+  barber: BarberRow | null;
+};
+
+type ConnectedAccountState = {
+  row: ConnectedAccountRow;
+  missingAgreements: AgreementType[];
+  outdatedAgreements: AgreementType[];
+  missingSteps: string[];
+};
+
+export type LegalAcceptanceView = {
+  agreementType: AgreementType;
+  agreementVersion: string;
+  acceptedAt: string;
+};
+
+export type ConnectedAccountReadinessView = {
+  id: string;
+  subjectType: FintechSubjectType;
+  provider: FintechProvider;
+  operationalStatus: FintechOperationalStatus;
+  providerAccountId: string | null;
+  onboardingStatus: FintechOnboardingStatus;
+  payoutReadinessStatus: FintechPayoutReadinessStatus;
+  legalReadinessStatus: FintechLegalReadinessStatus;
+  taxReadinessStatus: FintechTaxReadinessStatus;
+  chargesEnabled: boolean;
+  payoutsEnabled: boolean;
+  requirementsCurrentlyDue: string[];
+  requirementsEventuallyDue: string[];
+  requirementsPastDue: string[];
+  missingAgreements: AgreementType[];
+  outdatedAgreements: AgreementType[];
+  missingSteps: string[];
+  disabledReason: string | null;
+  lastCheckedAt: string | null;
+  onboardingStartedAt: string | null;
+  onboardingCompletedAt: string | null;
+  processorLastSyncedAt: string | null;
+  processorLastEventId: string | null;
+  processorLastEventType: string | null;
+  dashboardLastAccessedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MembershipCompensationView = {
+  id: string;
+  barberId: string;
+  barberName: string;
+  shopId: string;
+  shopLabel: string;
+  routingModel: RoutingModel;
+  commissionRate: number | null;
+  boothRentAmount: number | null;
+  boothRentFrequency: BoothRentFrequency | null;
+  payoutBlockReason: string | null;
+  updatedAt: string;
+};
+
+export type FintechRoutingView = {
+  id: string;
+  paymentId: string;
+  appointmentId: string | null;
+  barberName: string | null;
+  shopLabel: string | null;
+  routingModel: RoutingModel;
+  paymentType: InternalPaymentType;
+  paymentStatus: InternalPaymentStatus;
+  providerGrossAmount: number;
+  refundedAmount: number;
+  processorFeeAmount: number;
+  providerNetAmount: number;
+  platformFeeAmount: number;
+  barberPayoutAmount: number;
+  shopSplitAmount: number;
+  payoutReadinessStatus: FintechPayoutReadinessStatus;
+  moneyRoutingStatus: MoneyRoutingStatus;
+  reconciliationStatus: PayoutExecutionReconciliationStatus;
+  blockedReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type FintechManagementAccountView = ConnectedAccountReadinessView & {
+  displayName: string;
+  shopId: string | null;
+  shopLabel: string | null;
+  barberId: string | null;
+  barberName: string | null;
+};
+
+export type FintechManagementPayload = {
+  summary: {
+    totalAccounts: number;
+    readyAccounts: number;
+    blockedAccounts: number;
+    needsAttentionAccounts: number;
+    notReadyAccounts: number;
+    blockedRoutingRecords: number;
+    readyForPayoutAmount: number;
+  };
+  shops: FintechManagementAccountView[];
+  barbers: FintechManagementAccountView[];
+  memberships: MembershipCompensationView[];
+  blockedPayments: FintechRoutingView[];
+};
+
+export type BarberFintechMembershipView = MembershipCompensationView & {
+  shopAccount: ConnectedAccountReadinessView | null;
+};
+
+export type BarberFintechReadinessPayload = {
+  barberId: string;
+  barberName: string;
+  connectedAccount: ConnectedAccountReadinessView;
+  agreements: LegalAcceptanceView[];
+  memberships: BarberFintechMembershipView[];
+  routingSummary: {
+    blockedPaymentsCount: number;
+    pendingPaymentsCount: number;
+    readyForPayoutAmount: number;
+    blockedReasons: string[];
+  };
+  blockedPayments: FintechRoutingView[];
+};
+
+export type PayoutExecutionView = {
+  id: string;
+  routingRecordId: string;
+  paymentId: string;
+  appointmentId: string | null;
+  targetSubjectType: "barber" | "shop";
+  targetDisplayName: string | null;
+  barberName: string | null;
+  shopLabel: string | null;
+  routingModel: RoutingModel;
+  executionType: PayoutExecutionType;
+  executionStatus: PayoutExecutionStatus;
+  reconciliationStatus: PayoutExecutionReconciliationStatus;
+  amount: number;
+  payoutReference: string | null;
+  payoutSpeed: "standard" | "instant";
+  instantPayoutFeeAmount: number;
+  netTransferAmount: number;
+  currency: string;
+  blockedReason: string | null;
+  failureReason: string | null;
+  processorTransferId: string | null;
+  processorPayoutId: string | null;
+  processorReversalId: string | null;
+  providerFeeAmount: number;
+  platformFeeAmount: number;
+  createdAt: string;
+  executedAt: string | null;
+  failedAt: string | null;
+  reversedAt: string | null;
+};
+
+export type FintechPayoutsPayload = {
+  summary: {
+    executableRoutingRecords: number;
+    readyForPayoutAmount: number;
+    blockedExecutionRecords: number;
+    failedExecutionRecords: number;
+    executedTransferCount: number;
+    reversedExecutionCount: number;
+    executedAmount: number;
+    reversedAmount: number;
+    processorFeeTracked: number;
+  };
+  readyRouting: FintechRoutingView[];
+  recentExecutions: PayoutExecutionView[];
+};
+
+export type BarberPayoutsPayload = {
+  summary: {
+    executableRoutingRecords: number;
+    readyForPayoutAmount: number;
+    blockedExecutionRecords: number;
+    failedExecutionRecords: number;
+    executedTransferCount: number;
+    reversedExecutionCount: number;
+    executedAmount: number;
+    reversedAmount: number;
+  };
+  recentExecutions: PayoutExecutionView[];
+};
+
+export type ExecuteFintechPayoutsResult = {
+  summary: {
+    executed: number;
+    blocked: number;
+    failed: number;
+    skipped: number;
+    reversed: number;
+  };
+  recentExecutions: PayoutExecutionView[];
+};
+
+export type StripeConnectSessionResult = {
+  account: ConnectedAccountReadinessView;
+  url: string;
+};
+
+export type StripeWebhookSyncResult = {
+  received: boolean;
+  duplicate: boolean;
+  status: "processed" | "ignored";
+};
+
+export class FintechServiceError extends Error {
+  status: number;
+
+  constructor(message: string, status = 400) {
+    super(message);
+    this.status = status;
+  }
+}
+
+const CONNECTED_ACCOUNT_SELECT = "id, subject_type, barber_id, shop_id, provider, provider_account_id, onboarding_status, payout_readiness_status, legal_readiness_status, tax_readiness_status, requirements_currently_due, requirements_eventually_due, requirements_past_due, disabled_reason, charges_enabled, payouts_enabled, last_checked_at, onboarding_started_at, onboarding_completed_at, processor_last_synced_at, processor_last_event_id, processor_last_event_type, dashboard_last_accessed_at, created_by, created_at, updated_at";
+const PAYMENT_SELECT = "id, appointment_id, client_id, shop_id, barber_id, provider, provider_payment_intent_id, amount, currency, payment_status, payment_type, paid_at, created_at, updated_at";
+const PAYMENT_ROUTING_SELECT = "id, payment_id, appointment_id, membership_id, routing_model, payout_recipient_type, provider_gross_amount, refunded_amount, provider_fee_amount, provider_net_amount, platform_fee_amount, barber_payout_amount, shop_split_amount, currency, payout_readiness_status, money_routing_status, blocked_reason, processor_charge_id, processor_balance_transaction_id, reconciliation_status, last_reconciled_at, metadata, created_at, updated_at";
+const PAYOUT_EXECUTION_SELECT = "id, routing_record_id, payment_id, appointment_id, membership_id, target_subject_type, execution_type, target_connected_account_id, target_provider_account_id, amount, currency, execution_status, blocked_reason, failure_reason, processor_transfer_id, processor_reversal_id, idempotency_key, source_execution_id, source_refund_id, payout_reference, payout_speed, instant_payout_fee_amount, net_transfer_amount, processor_payout_id, reconciliation_status, metadata, initiated_by, attempt_count, last_attempted_at, executed_at, failed_at, reversed_at, created_at, updated_at";
+
+function numeric(value: number | string | null | undefined) {
+  return Number(value ?? 0);
+}
+
+function getSupabaseOrThrow() {
+  if (!isSupabaseEnabled()) {
+    throw new FintechServiceError("Fintech readiness is only available when Supabase is configured.", 503);
+  }
+
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) {
+    throw new FintechServiceError("Fintech readiness is only available when Supabase is configured.", 503);
+  }
+
+  return supabase;
+}
+
+async function readTrustStateSafe() {
+  try {
+    const trustProvider = await getTrustProvider();
+    return await trustProvider.readState();
+  } catch (error) {
+    console.error("[fintech-service] verification trust state unavailable", {
+      message: error instanceof Error ? error.message : String(error)
+    });
+    return undefined;
+  }
+}
+
+function isManagementRole(role: UserAccount["role"]) {
+  return role === "owner" || role === "manager";
+}
+
+function formatShopLabel(location: Pick<LocationRow, "name" | "neighborhood" | "city" | "state">) {
+  const area = [location.neighborhood, location.city].filter(Boolean).join(" / ");
+  return area ? `${location.name} / ${area}` : [location.name, location.state].filter(Boolean).join(" / ");
+}
+
+function mapAgreementView(row: LegalAcceptanceRow): LegalAcceptanceView {
+  return {
+    agreementType: row.agreement_type,
+    agreementVersion: row.agreement_version,
+    acceptedAt: row.accepted_at
+  };
+}
+
+async function resolveActor(user: UserAccount, supabase: SupabaseClient): Promise<FintechActorContext> {
+  const profileResult = await supabase
+    .from("profiles")
+    .select("id, email, full_name, role")
+    .eq("email", user.email)
+    .maybeSingle();
+
+  if (profileResult.error) {
+    throw new FintechServiceError("Unable to resolve the fintech profile.", 500);
+  }
+
+  if (!profileResult.data) {
+    throw new FintechServiceError("No fintech profile is available for this account.", 404);
+  }
+
+  let barber: BarberRow | null = null;
+  if (user.role === "commission_barber" || user.role === "booth_rent_barber") {
+    const barberResult = await supabase
+      .from("barbers")
+      .select("id, reference_code, profile_id, compensation_model, commission_rate, booth_rent_amount, booth_rent_frequency")
+      .eq("profile_id", profileResult.data.id)
+      .maybeSingle();
+
+    if (barberResult.error) {
+      throw new FintechServiceError("Unable to resolve the barber payout profile.", 500);
+    }
+
+    if (!barberResult.data) {
+      throw new FintechServiceError("No barber payout profile is available for this account.", 404);
+    }
+
+    barber = barberResult.data as BarberRow;
+  }
+
+  return {
+    profile: profileResult.data as ProfileRow,
+    role: user.role,
+    locationIds: user.locationIds,
+    barber
+  };
+}
+
+function assertManagementActor(actor: FintechActorContext) {
+  if (!isManagementRole(actor.role)) {
+    throw new FintechServiceError("Only owner and manager roles can manage payout readiness.", 403);
+  }
+}
+
+function assertBarberActor(actor: FintechActorContext) {
+  if (!(actor.role === "commission_barber" || actor.role === "booth_rent_barber") || !actor.barber) {
+    throw new FintechServiceError("Only barbers can access payout readiness.", 403);
+  }
+}
+
+function isLocationReadableByActor(actor: FintechActorContext, locationId: string) {
+  return actor.role === "owner" || actor.locationIds.length === 0 || actor.locationIds.includes(locationId);
+}
+
+type StripeConnectSubjectResolution = {
+  subjectType: FintechSubjectType;
+  barberId: string | null;
+  shopId: string | null;
+  barber: BarberRow | null;
+  location: LocationRow | null;
+  displayName: string;
+  email: string;
+  createdBy: string;
+};
+
+function toFintechServiceError(error: unknown, fallbackMessage: string, status = 502) {
+  if (error instanceof FintechServiceError) {
+    return error;
+  }
+
+  if (error instanceof StripeConnectError) {
+    return new FintechServiceError(error.message, error.status);
+  }
+
+  const message = error instanceof Error ? error.message : fallbackMessage;
+  return new FintechServiceError(message || fallbackMessage, status);
+}
+
+async function resolveStripeConnectSubject(
+  actor: FintechActorContext,
+  supabase: SupabaseClient,
+  input?: {
+    subjectType?: FintechSubjectType;
+    shopId?: string | null;
+  }
+): Promise<StripeConnectSubjectResolution> {
+  if (actor.role === "commission_barber" || actor.role === "booth_rent_barber") {
+    assertBarberActor(actor);
+
+    if (input?.subjectType && input.subjectType !== "barber") {
+      throw new FintechServiceError("Barbers can only manage their own connected account.", 403);
+    }
+
+    return {
+      subjectType: "barber",
+      barberId: actor.barber!.id,
+      shopId: null,
+      barber: actor.barber!,
+      location: null,
+      displayName: actor.profile.full_name ?? actor.profile.email,
+      email: actor.profile.email,
+      createdBy: actor.profile.id
+    };
+  }
+
+  assertManagementActor(actor);
+  const shopId = input?.shopId?.trim() || null;
+  if (!shopId) {
+    throw new FintechServiceError("A shop is required for Stripe Connect management actions.", 400);
+  }
+
+  if (!isLocationReadableByActor(actor, shopId)) {
+    throw new FintechServiceError("This shop is outside the viewer's scope.", 403);
+  }
+
+  const locationResult = await supabase
+    .from("locations")
+    .select("id, reference_code, name, neighborhood, city, state")
+    .eq("id", shopId)
+    .maybeSingle();
+
+  if (locationResult.error) {
+    throw new FintechServiceError("Unable to load the shop for Stripe Connect.", 500);
+  }
+
+  if (!locationResult.data) {
+    throw new FintechServiceError("Shop not found for Stripe Connect.", 404);
+  }
+
+  return {
+    subjectType: "shop",
+    barberId: null,
+    shopId,
+    barber: null,
+    location: locationResult.data as LocationRow,
+    displayName: (locationResult.data as LocationRow).name,
+    email: actor.profile.email,
+    createdBy: actor.profile.id
+  };
+}
+
+async function loadLocationsInScope(actor: FintechActorContext, supabase: SupabaseClient) {
+  const query = actor.role === "owner" || actor.locationIds.length === 0
+    ? supabase.from("locations").select("id, reference_code, name, neighborhood, city, state").order("name")
+    : supabase.from("locations").select("id, reference_code, name, neighborhood, city, state").in("id", actor.locationIds).order("name");
+
+  const result = await query;
+  if (result.error) {
+    throw new FintechServiceError("Unable to load the payout-ready shop scope.", 500);
+  }
+
+  return (result.data ?? []) as LocationRow[];
+}
+
+async function loadMembershipsForLocations(locationIds: string[], supabase: SupabaseClient) {
+  if (!locationIds.length) {
+    return [] as StaffMembershipRow[];
+  }
+
+  const result = await supabase
+    .from("staff_locations")
+    .select("id, profile_id, location_id, routing_model, commission_rate, booth_rent_amount, booth_rent_frequency, payout_block_reason, updated_at, fintech_updated_at")
+    .in("location_id", locationIds)
+    .order("updated_at", { ascending: false });
+
+  if (result.error) {
+    throw new FintechServiceError("Unable to load shop compensation assignments.", 500);
+  }
+
+  return (result.data ?? []) as StaffMembershipRow[];
+}
+
+async function loadMembershipsForBarber(profileId: string, supabase: SupabaseClient) {
+  const result = await supabase
+    .from("staff_locations")
+    .select("id, profile_id, location_id, routing_model, commission_rate, booth_rent_amount, booth_rent_frequency, payout_block_reason, updated_at, fintech_updated_at")
+    .eq("profile_id", profileId)
+    .order("updated_at", { ascending: false });
+
+  if (result.error) {
+    throw new FintechServiceError("Unable to load the barber compensation assignments.", 500);
+  }
+
+  return (result.data ?? []) as StaffMembershipRow[];
+}
+
+async function loadBarbersByProfileIds(profileIds: string[], supabase: SupabaseClient) {
+  if (!profileIds.length) {
+    return [] as BarberRow[];
+  }
+
+  const result = await supabase
+    .from("barbers")
+    .select("id, reference_code, profile_id, compensation_model, commission_rate, booth_rent_amount, booth_rent_frequency")
+    .in("profile_id", profileIds);
+
+  if (result.error) {
+    throw new FintechServiceError("Unable to load barbers for payout readiness.", 500);
+  }
+
+  return (result.data ?? []) as BarberRow[];
+}
+
+async function loadBarbersByIds(barberIds: string[], supabase: SupabaseClient) {
+  if (!barberIds.length) {
+    return [] as BarberRow[];
+  }
+
+  const result = await supabase
+    .from("barbers")
+    .select("id, reference_code, profile_id, compensation_model, commission_rate, booth_rent_amount, booth_rent_frequency")
+    .in("id", barberIds);
+
+  if (result.error) {
+    throw new FintechServiceError("Unable to load barbers for payout execution.", 500);
+  }
+
+  return (result.data ?? []) as BarberRow[];
+}
+
+async function loadProfiles(profileIds: string[], supabase: SupabaseClient) {
+  if (!profileIds.length) {
+    return [] as ProfileRow[];
+  }
+
+  const result = await supabase
+    .from("profiles")
+    .select("id, email, full_name, role")
+    .in("id", profileIds);
+
+  if (result.error) {
+    throw new FintechServiceError("Unable to load the fintech actor directory.", 500);
+  }
+
+  return (result.data ?? []) as ProfileRow[];
+}
+
+async function ensureConnectedAccounts(
+  supabase: SupabaseClient,
+  input: {
+    barberIds?: string[];
+    shopIds?: string[];
+    createdBy?: string | null;
+  }
+) {
+  const barberIds = [...new Set((input.barberIds ?? []).filter(Boolean))];
+  const shopIds = [...new Set((input.shopIds ?? []).filter(Boolean))];
+  const existingRows: ConnectedAccountRow[] = [];
+
+  if (barberIds.length) {
+    const result = await supabase
+      .from("connected_accounts")
+      .select(CONNECTED_ACCOUNT_SELECT)
+      .in("barber_id", barberIds);
+    if (result.error) {
+      throw new FintechServiceError("Unable to inspect barber connected accounts.", 500);
+    }
+    existingRows.push(...((result.data ?? []) as ConnectedAccountRow[]));
+  }
+
+  if (shopIds.length) {
+    const result = await supabase
+      .from("connected_accounts")
+      .select(CONNECTED_ACCOUNT_SELECT)
+      .in("shop_id", shopIds);
+    if (result.error) {
+      throw new FintechServiceError("Unable to inspect shop connected accounts.", 500);
+    }
+    existingRows.push(...((result.data ?? []) as ConnectedAccountRow[]));
+  }
+
+  const existingBarberIds = new Set(existingRows.map((row) => row.barber_id).filter(Boolean) as string[]);
+  const existingShopIds = new Set(existingRows.map((row) => row.shop_id).filter(Boolean) as string[]);
+  const inserts: Array<Record<string, unknown>> = [];
+
+  for (const barberId of barberIds) {
+    if (!existingBarberIds.has(barberId)) {
+      inserts.push({
+        subject_type: "barber",
+        barber_id: barberId,
+        provider: "stripe_connect",
+        created_by: input.createdBy ?? null,
+        updated_at: new Date().toISOString()
+      });
+    }
+  }
+
+  for (const shopId of shopIds) {
+    if (!existingShopIds.has(shopId)) {
+      inserts.push({
+        subject_type: "shop",
+        shop_id: shopId,
+        provider: "stripe_connect",
+        created_by: input.createdBy ?? null,
+        updated_at: new Date().toISOString()
+      });
+    }
+  }
+
+  if (inserts.length) {
+    const insertResult = await supabase.from("connected_accounts").insert(inserts);
+    if (insertResult.error) {
+      throw new FintechServiceError("Unable to seed the payout-readiness records.", 500);
+    }
+  }
+}
+
+async function loadConnectedAccountsForScope(
+  supabase: SupabaseClient,
+  input: {
+    barberIds?: string[];
+    shopIds?: string[];
+  }
+) {
+  const barberIds = [...new Set((input.barberIds ?? []).filter(Boolean))];
+  const shopIds = [...new Set((input.shopIds ?? []).filter(Boolean))];
+  const rows: ConnectedAccountRow[] = [];
+
+  if (barberIds.length) {
+    const result = await supabase
+      .from("connected_accounts")
+      .select(CONNECTED_ACCOUNT_SELECT)
+      .in("barber_id", barberIds);
+    if (result.error) {
+      throw new FintechServiceError("Unable to load barber connected accounts.", 500);
+    }
+    rows.push(...((result.data ?? []) as ConnectedAccountRow[]));
+  }
+
+  if (shopIds.length) {
+    const result = await supabase
+      .from("connected_accounts")
+      .select(CONNECTED_ACCOUNT_SELECT)
+      .in("shop_id", shopIds);
+    if (result.error) {
+      throw new FintechServiceError("Unable to load shop connected accounts.", 500);
+    }
+    rows.push(...((result.data ?? []) as ConnectedAccountRow[]));
+  }
+
+  return rows;
+}
+
+async function loadLegalAcceptancesForScope(
+  supabase: SupabaseClient,
+  input: {
+    barberIds?: string[];
+    shopIds?: string[];
+  }
+) {
+  const barberIds = [...new Set((input.barberIds ?? []).filter(Boolean))];
+  const shopIds = [...new Set((input.shopIds ?? []).filter(Boolean))];
+  const rows: LegalAcceptanceRow[] = [];
+
+  if (barberIds.length) {
+    const result = await supabase
+      .from("legal_acceptances")
+      .select("id, agreement_type, agreement_version, actor_profile_id, actor_role, barber_id, shop_id, accepted_at, metadata, created_at")
+      .in("barber_id", barberIds)
+      .order("accepted_at", { ascending: false });
+    if (result.error) {
+      throw new FintechServiceError("Unable to load barber legal acceptances.", 500);
+    }
+    rows.push(...((result.data ?? []) as LegalAcceptanceRow[]));
+  }
+
+  if (shopIds.length) {
+    const result = await supabase
+      .from("legal_acceptances")
+      .select("id, agreement_type, agreement_version, actor_profile_id, actor_role, barber_id, shop_id, accepted_at, metadata, created_at")
+      .in("shop_id", shopIds)
+      .order("accepted_at", { ascending: false });
+    if (result.error) {
+      throw new FintechServiceError("Unable to load shop legal acceptances.", 500);
+    }
+    rows.push(...((result.data ?? []) as LegalAcceptanceRow[]));
+  }
+
+  return rows;
+}
+
+function acceptanceKey(subjectType: FintechSubjectType, subjectId: string, agreementType: AgreementType) {
+  return `${subjectType}:${subjectId}:${agreementType}`;
+}
+
+function latestAcceptancesForSubject(
+  subjectType: FintechSubjectType,
+  subjectId: string,
+  rows: LegalAcceptanceRow[]
+) {
+  const latest = new Map<string, LegalAcceptanceRow>();
+
+  for (const row of rows) {
+    const rowSubjectId = subjectType === "barber" ? row.barber_id : row.shop_id;
+    if (rowSubjectId !== subjectId) {
+      continue;
+    }
+
+    const key = acceptanceKey(subjectType, subjectId, row.agreement_type);
+    if (!latest.has(key)) {
+      latest.set(key, row);
+    }
+  }
+
+  return [...latest.values()].sort((left, right) => right.accepted_at.localeCompare(left.accepted_at));
+}
+
+async function syncConnectedAccountState(
+  supabase: SupabaseClient,
+  account: ConnectedAccountRow,
+  acceptances: LegalAcceptanceRow[]
+) {
+  const subjectId = account.subject_type === "barber" ? account.barber_id : account.shop_id;
+  if (!subjectId) {
+    throw new FintechServiceError("Connected account subject is incomplete.", 500);
+  }
+
+  const latestAcceptances = latestAcceptancesForSubject(account.subject_type, subjectId, acceptances);
+  const acceptedVersions = latestAcceptances.reduce((record, row) => {
+    record[row.agreement_type] = row.agreement_version;
+    return record;
+  }, {} as Partial<Record<AgreementType, string>>);
+  const legalState = evaluateLegalAgreementState(account.subject_type, acceptedVersions);
+  const requirementsCurrentlyDue = normalizeRequirementList(account.requirements_currently_due as string[] | string | null);
+  const requirementsPastDue = normalizeRequirementList(account.requirements_past_due as string[] | string | null);
+  const payoutReadinessStatus = determinePayoutReadiness({
+    onboardingStatus: account.onboarding_status,
+    legalReadinessStatus: legalState.legalReadinessStatus,
+    taxReadinessStatus: account.tax_readiness_status,
+    chargesEnabled: account.charges_enabled,
+    payoutsEnabled: account.payouts_enabled,
+    requirementsCurrentlyDue,
+    requirementsPastDue,
+    disabledReason: account.disabled_reason
+  });
+
+  const updatedAt = new Date().toISOString();
+  if (
+    account.legal_readiness_status !== legalState.legalReadinessStatus
+    || account.payout_readiness_status !== payoutReadinessStatus
+  ) {
+    const updateResult = await supabase
+      .from("connected_accounts")
+      .update({
+        legal_readiness_status: legalState.legalReadinessStatus,
+        payout_readiness_status: payoutReadinessStatus,
+        updated_at: updatedAt
+      })
+      .eq("id", account.id);
+
+    if (updateResult.error) {
+      throw new FintechServiceError("Unable to sync the payout-readiness state.", 500);
+    }
+
+    account = {
+      ...account,
+      legal_readiness_status: legalState.legalReadinessStatus,
+      payout_readiness_status: payoutReadinessStatus,
+      updated_at: updatedAt
+    };
+  }
+
+  const missingSteps = [
+    ...legalState.missingAgreements.map((agreementType) => `Legal acceptance missing: ${agreementType.replaceAll("_", " ")}`),
+    ...legalState.outdatedAgreements.map((agreementType) => `Agreement update required: ${agreementType.replaceAll("_", " ")}`),
+    ...requirementsPastDue.map((entry) => `Past due requirement: ${entry}`),
+    ...requirementsCurrentlyDue.map((entry) => `Current requirement: ${entry}`)
+  ];
+
+  if (account.provider === "stripe_connect" && !account.provider_account_id) {
+    missingSteps.unshift("Stripe onboarding has not started.");
+  }
+
+  if (account.provider === "stripe_connect" && account.provider_account_id && !account.charges_enabled && !account.payouts_enabled) {
+    missingSteps.push("Stripe account verification is still pending.");
+  }
+
+  if (account.disabled_reason) {
+    missingSteps.push(account.disabled_reason);
+  }
+
+  return {
+    row: account,
+    missingAgreements: legalState.missingAgreements,
+    outdatedAgreements: legalState.outdatedAgreements,
+    missingSteps
+  } satisfies ConnectedAccountState;
+}
+
+function mapConnectedAccountView(state: ConnectedAccountState): ConnectedAccountReadinessView {
+  const requirementsCurrentlyDue = normalizeRequirementList(state.row.requirements_currently_due as string[] | string | null);
+  const requirementsEventuallyDue = normalizeRequirementList(state.row.requirements_eventually_due as string[] | string | null);
+  const requirementsPastDue = normalizeRequirementList(state.row.requirements_past_due as string[] | string | null);
+
+  return {
+    id: state.row.id,
+    subjectType: state.row.subject_type,
+    provider: state.row.provider,
+    operationalStatus: deriveOperationalFintechStatus({
+      onboardingStatus: state.row.onboarding_status,
+      payoutReadinessStatus: state.row.payout_readiness_status,
+      requirementsCurrentlyDue,
+      requirementsPastDue,
+      disabledReason: state.row.disabled_reason
+    }),
+    providerAccountId: state.row.provider_account_id,
+    onboardingStatus: state.row.onboarding_status,
+    payoutReadinessStatus: state.row.payout_readiness_status,
+    legalReadinessStatus: state.row.legal_readiness_status,
+    taxReadinessStatus: state.row.tax_readiness_status,
+    chargesEnabled: state.row.charges_enabled,
+    payoutsEnabled: state.row.payouts_enabled,
+    requirementsCurrentlyDue,
+    requirementsEventuallyDue,
+    requirementsPastDue,
+    missingAgreements: state.missingAgreements,
+    outdatedAgreements: state.outdatedAgreements,
+    missingSteps: state.missingSteps,
+    disabledReason: state.row.disabled_reason,
+    lastCheckedAt: state.row.last_checked_at,
+    onboardingStartedAt: state.row.onboarding_started_at,
+    onboardingCompletedAt: state.row.onboarding_completed_at,
+    processorLastSyncedAt: state.row.processor_last_synced_at,
+    processorLastEventId: state.row.processor_last_event_id,
+    processorLastEventType: state.row.processor_last_event_type,
+    dashboardLastAccessedAt: state.row.dashboard_last_accessed_at,
+    createdAt: state.row.created_at,
+    updatedAt: state.row.updated_at
+  };
+}
+
+function getVerificationConnectProviderStatus(account: ConnectedAccountReadinessView) {
+  if (account.payoutsEnabled && account.chargesEnabled && !account.requirementsCurrentlyDue.length && !account.requirementsPastDue.length && !account.disabledReason) {
+    return "payouts_enabled";
+  }
+
+  if (account.disabledReason || account.requirementsPastDue.length) {
+    return "restricted";
+  }
+
+  if (account.requirementsCurrentlyDue.length) {
+    return "requirements_due";
+  }
+
+  if (account.onboardingStatus === "submitted" || account.operationalStatus === "pending_verification") {
+    return "submitted";
+  }
+
+  if (account.onboardingStatus === "invited" || account.onboardingStatus === "pending") {
+    return "in_progress";
+  }
+
+  return "not_started";
+}
+
+async function syncVerificationLaneFromConnectedAccount(
+  row: ConnectedAccountRow,
+  account: ConnectedAccountReadinessView,
+  userId?: string
+) {
+  const role = row.subject_type === "barber" ? "barber" : "shop_owner";
+  await syncStripeConnectVerificationLane({
+    role,
+    userId,
+    barberId: row.barber_id,
+    shopId: row.shop_id,
+    providerAccountId: row.provider_account_id ?? account.providerAccountId ?? "",
+    providerStatus: getVerificationConnectProviderStatus(account),
+    onboardingStatus: account.onboardingStatus,
+    operationalStatus: account.operationalStatus,
+    payoutReadinessStatus: account.payoutReadinessStatus,
+    legalReadinessStatus: account.legalReadinessStatus,
+    taxReadinessStatus: account.taxReadinessStatus,
+    chargesEnabled: account.chargesEnabled,
+    payoutsEnabled: account.payoutsEnabled,
+    detailsSubmitted: account.onboardingStatus === "submitted" || account.onboardingStatus === "verified" || account.chargesEnabled || account.payoutsEnabled,
+    requirementsCurrentlyDue: account.requirementsCurrentlyDue,
+    requirementsEventuallyDue: account.requirementsEventuallyDue,
+    requirementsPastDue: account.requirementsPastDue,
+    missingAgreements: account.missingAgreements,
+    outdatedAgreements: account.outdatedAgreements,
+    missingSteps: account.missingSteps,
+    disabledReason: account.disabledReason,
+    processorLastEventId: account.processorLastEventId,
+    processorLastEventType: account.processorLastEventType,
+    lastCheckedAt: account.lastCheckedAt
+  });
+}
+
+function scopeForConnectedAccount(account: ConnectedAccountRow) {
+  return {
+    barberIds: account.barber_id ? [account.barber_id] : [],
+    shopIds: account.shop_id ? [account.shop_id] : []
+  };
+}
+
+async function ensureConnectedAccountForSubject(
+  supabase: SupabaseClient,
+  subject: StripeConnectSubjectResolution
+) {
+  await ensureConnectedAccounts(supabase, {
+    barberIds: subject.barberId ? [subject.barberId] : [],
+    shopIds: subject.shopId ? [subject.shopId] : [],
+    createdBy: subject.createdBy
+  });
+
+  const accounts = await loadConnectedAccountsForScope(supabase, {
+    barberIds: subject.barberId ? [subject.barberId] : [],
+    shopIds: subject.shopId ? [subject.shopId] : []
+  });
+  const account = accounts.find((row) =>
+    subject.subjectType === "barber"
+      ? row.barber_id === subject.barberId
+      : row.shop_id === subject.shopId
+  );
+
+  if (!account) {
+    throw new FintechServiceError("Unable to resolve the connected account subject.", 500);
+  }
+
+  return account;
+}
+
+function buildStripeMetadata(subject: StripeConnectSubjectResolution) {
+  return {
+    platform: "bvrb3r",
+    subject_type: subject.subjectType,
+    barber_id: subject.barberId ?? "",
+    shop_id: subject.shopId ?? "",
+    created_by: subject.createdBy
+  };
+}
+
+async function syncConnectedAccountFromStripe(
+  supabase: SupabaseClient,
+  account: ConnectedAccountRow,
+  stripeAccount: Stripe.Account,
+  options?: {
+    eventId?: string | null;
+    eventType?: string | null;
+    markOnboardingStarted?: boolean;
+    markDashboardAccessed?: boolean;
+  }
+) {
+  const now = new Date().toISOString();
+  const requirementsCurrentlyDue = normalizeRequirementList((stripeAccount.requirements?.currently_due ?? []) as string[]);
+  const requirementsEventuallyDue = normalizeRequirementList(
+    ((stripeAccount.future_requirements?.eventually_due ?? stripeAccount.requirements?.eventually_due ?? []) as string[])
+  );
+  const requirementsPastDue = normalizeRequirementList((stripeAccount.requirements?.past_due ?? []) as string[]);
+  const disabledReason = stripeAccount.requirements?.disabled_reason?.trim() || null;
+  const inferredStatuses = inferStripeProcessorStatuses({
+    currentOnboardingStatus: account.onboarding_status,
+    detailsSubmitted: Boolean(stripeAccount.details_submitted),
+    chargesEnabled: Boolean(stripeAccount.charges_enabled),
+    payoutsEnabled: Boolean(stripeAccount.payouts_enabled),
+    requirementsCurrentlyDue,
+    requirementsPastDue,
+    requirementsEventuallyDue,
+    disabledReason
+  });
+
+  let onboardingStatus = inferredStatuses.onboardingStatus;
+  if (options?.markOnboardingStarted && onboardingStatus === "not_started") {
+    onboardingStatus = account.onboarding_status === "pending" ? "pending" : "invited";
+  }
+
+  const updateResult = await supabase
+    .from("connected_accounts")
+    .update({
+      provider: "stripe_connect",
+      provider_account_id: stripeAccount.id,
+      onboarding_status: onboardingStatus,
+      tax_readiness_status: inferredStatuses.taxReadinessStatus,
+      charges_enabled: Boolean(stripeAccount.charges_enabled),
+      payouts_enabled: Boolean(stripeAccount.payouts_enabled),
+      requirements_currently_due: requirementsCurrentlyDue,
+      requirements_eventually_due: requirementsEventuallyDue,
+      requirements_past_due: requirementsPastDue,
+      disabled_reason: disabledReason,
+      last_checked_at: now,
+      onboarding_started_at: options?.markOnboardingStarted ? (account.onboarding_started_at ?? now) : account.onboarding_started_at,
+      onboarding_completed_at: onboardingStatus === "verified" ? (account.onboarding_completed_at ?? now) : account.onboarding_completed_at,
+      processor_last_synced_at: now,
+      processor_last_event_id: options?.eventId ?? account.processor_last_event_id,
+      processor_last_event_type: options?.eventType ?? account.processor_last_event_type,
+      dashboard_last_accessed_at: options?.markDashboardAccessed ? now : account.dashboard_last_accessed_at,
+      updated_at: now
+    })
+    .eq("id", account.id)
+    .select(CONNECTED_ACCOUNT_SELECT)
+    .single();
+
+  if (updateResult.error) {
+    throw new FintechServiceError("Unable to sync the Stripe connected account.", 500);
+  }
+
+  const refreshed = updateResult.data as ConnectedAccountRow;
+  const acceptances = await loadLegalAcceptancesForScope(supabase, scopeForConnectedAccount(refreshed));
+  const state = await syncConnectedAccountState(supabase, refreshed, acceptances);
+  return state;
+}
+
+async function provisionStripeConnectedAccountForSubject(
+  supabase: SupabaseClient,
+  subject: StripeConnectSubjectResolution
+) {
+  const account = await ensureConnectedAccountForSubject(supabase, subject);
+
+  try {
+    if (account.provider_account_id) {
+      const stripeAccount = await retrieveStripeConnectedAccount(account.provider_account_id);
+      return syncConnectedAccountFromStripe(supabase, account, stripeAccount);
+    }
+
+    const stripeAccount = await createStripeConnectedAccount({
+      subjectType: subject.subjectType,
+      email: subject.email,
+      displayName: subject.displayName,
+      metadata: buildStripeMetadata(subject)
+    });
+
+    return syncConnectedAccountFromStripe(supabase, account, stripeAccount);
+  } catch (error) {
+    throw toFintechServiceError(error, "Unable to provision the Stripe connected account.");
+  }
+}
+
+function createStripeEventExcerpt(event: Stripe.Event) {
+  const object = typeof event.data.object === "object" && event.data.object
+    ? event.data.object as unknown as Record<string, unknown>
+    : null;
+
+  return {
+    id: event.id,
+    type: event.type,
+    created: event.created,
+    account: event.account ?? null,
+    objectType: object?.object ?? null,
+    objectId: typeof object?.id === "string" ? object.id : null
+  };
+}
+
+async function beginStripeWebhookAudit(supabase: SupabaseClient, event: Stripe.Event) {
+  const existingResult = await supabase
+    .from("stripe_webhook_events")
+    .select("id, stripe_event_id, stripe_account_id, connected_account_id, event_type, livemode, api_version, processing_status, attempt_count, payload_excerpt, error_message, received_at, processed_at, updated_at")
+    .eq("stripe_event_id", event.id)
+    .maybeSingle();
+
+  if (existingResult.error) {
+    throw new FintechServiceError("Unable to inspect Stripe webhook idempotency.", 500);
+  }
+
+  const now = new Date().toISOString();
+  if (existingResult.data) {
+    const existing = existingResult.data as StripeWebhookEventRow;
+    if (existing.processing_status === "processed" || existing.processing_status === "ignored") {
+      return { row: existing, duplicate: true };
+    }
+
+    const updateResult = await supabase
+      .from("stripe_webhook_events")
+      .update({
+        stripe_account_id: event.account ?? existing.stripe_account_id,
+        event_type: event.type,
+        livemode: event.livemode,
+        api_version: event.api_version ?? existing.api_version,
+        processing_status: "received",
+        attempt_count: existing.attempt_count + 1,
+        payload_excerpt: createStripeEventExcerpt(event),
+        error_message: null,
+        updated_at: now
+      })
+      .eq("id", existing.id)
+      .select("id, stripe_event_id, stripe_account_id, connected_account_id, event_type, livemode, api_version, processing_status, attempt_count, payload_excerpt, error_message, received_at, processed_at, updated_at")
+      .single();
+
+    if (updateResult.error) {
+      throw new FintechServiceError("Unable to update Stripe webhook audit state.", 500);
+    }
+
+    return { row: updateResult.data as StripeWebhookEventRow, duplicate: false };
+  }
+
+  const insertResult = await supabase
+    .from("stripe_webhook_events")
+    .insert({
+      stripe_event_id: event.id,
+      stripe_account_id: event.account ?? null,
+      event_type: event.type,
+      livemode: event.livemode,
+      api_version: event.api_version ?? null,
+      processing_status: "received",
+      payload_excerpt: createStripeEventExcerpt(event),
+      received_at: now,
+      updated_at: now
+    })
+    .select("id, stripe_event_id, stripe_account_id, connected_account_id, event_type, livemode, api_version, processing_status, attempt_count, payload_excerpt, error_message, received_at, processed_at, updated_at")
+    .single();
+
+  if (insertResult.error) {
+    throw new FintechServiceError("Unable to record the Stripe webhook audit.", 500);
+  }
+
+  return { row: insertResult.data as StripeWebhookEventRow, duplicate: false };
+}
+
+async function completeStripeWebhookAudit(
+  supabase: SupabaseClient,
+  rowId: string,
+  input: {
+    processingStatus: "processed" | "ignored" | "failed";
+    connectedAccountId?: string | null;
+    errorMessage?: string | null;
+  }
+) {
+  const now = new Date().toISOString();
+  const updateResult = await supabase
+    .from("stripe_webhook_events")
+    .update({
+      processing_status: input.processingStatus,
+      connected_account_id: input.connectedAccountId ?? null,
+      error_message: input.errorMessage ?? null,
+      processed_at: input.processingStatus === "failed" ? null : now,
+      updated_at: now
+    })
+    .eq("id", rowId);
+
+  if (updateResult.error) {
+    throw new FintechServiceError("Unable to finalize the Stripe webhook audit.", 500);
+  }
+}
+
+async function loadPaymentAndContext(supabase: SupabaseClient, paymentId: string) {
+  const paymentResult = await supabase
+    .from("payments")
+    .select(PAYMENT_SELECT)
+    .eq("id", paymentId)
+    .maybeSingle();
+
+  if (paymentResult.error) {
+    throw new FintechServiceError("Unable to load the payment for routing.", 500);
+  }
+
+  if (!paymentResult.data) {
+    throw new FintechServiceError("Payment not found for routing.", 404);
+  }
+
+  const payment = paymentResult.data as PaymentRow;
+  const appointment = payment.appointment_id
+    ? await supabase
+      .from("appointments")
+      .select("id, reference_code, status, membership_id, barber_id, shop_id, location_id, client_id")
+      .eq("id", payment.appointment_id)
+      .maybeSingle()
+    : { data: null, error: null };
+
+  if (appointment.error) {
+    throw new FintechServiceError("Unable to load the payment appointment context.", 500);
+  }
+
+  const refundsResult = await supabase
+    .from("refunds")
+    .select("id, amount")
+    .eq("payment_id", payment.id);
+
+  if (refundsResult.error) {
+    throw new FintechServiceError("Unable to load payment refund activity.", 500);
+  }
+
+  return {
+    payment,
+    appointment: (appointment.data as AppointmentRow | null) ?? null,
+    refundedAmount: ((refundsResult.data ?? []) as RefundRow[]).reduce((sum, row) => sum + numeric(row.amount), 0)
+  };
+}
+
+async function hasActiveDisputeHold(
+  supabase: SupabaseClient,
+  appointmentReference?: string | null
+) {
+  if (!appointmentReference?.trim()) {
+    return false;
+  }
+
+  const disputeResult = await supabase
+    .from("disputes")
+    .select("id")
+    .eq("appointment_reference", appointmentReference)
+    .in("dispute_status", ["open", "under_review", "escalated"])
+    .limit(1)
+    .maybeSingle();
+
+  if (disputeResult.error) {
+    throw new FintechServiceError("Unable to inspect payout dispute holds.", 500);
+  }
+
+  return Boolean(disputeResult.data);
+}
+
+function mapRoutingView(
+  row: PaymentRoutingRow,
+  payment: PaymentRow | undefined,
+  barberName: string | null,
+  shopLabel: string | null
+): FintechRoutingView {
+  return {
+    id: row.id,
+    paymentId: row.payment_id,
+    appointmentId: row.appointment_id,
+    barberName,
+    shopLabel,
+    routingModel: row.routing_model,
+    paymentType: payment?.payment_type ?? "booking",
+    paymentStatus: payment?.payment_status ?? "pending",
+    providerGrossAmount: numeric(row.provider_gross_amount),
+    refundedAmount: numeric(row.refunded_amount),
+    processorFeeAmount: numeric(row.provider_fee_amount),
+    providerNetAmount: numeric(row.provider_net_amount),
+    platformFeeAmount: numeric(row.platform_fee_amount),
+    barberPayoutAmount: numeric(row.barber_payout_amount),
+    shopSplitAmount: numeric(row.shop_split_amount),
+    payoutReadinessStatus: row.payout_readiness_status,
+    moneyRoutingStatus: row.money_routing_status,
+    reconciliationStatus: row.reconciliation_status,
+    blockedReason: row.blocked_reason,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+async function readPlatformBillingBlockers(
+  supabase: SupabaseClient,
+  input: {
+    barberId?: string | null;
+    shopId?: string | null;
+  }
+) {
+  const queries = [
+    input.barberId
+      ? supabase
+        .from("billing_subscriptions")
+        .select("id, subject_type, barber_id, shop_id, subscription_status, billing_state")
+        .eq("barber_id", input.barberId)
+        .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+    input.shopId
+      ? supabase
+        .from("billing_subscriptions")
+        .select("id, subject_type, barber_id, shop_id, subscription_status, billing_state")
+        .eq("shop_id", input.shopId)
+        .maybeSingle()
+      : Promise.resolve({ data: null, error: null })
+  ] as const;
+
+  const [barberResult, shopResult] = await Promise.all(queries);
+  if (barberResult.error || shopResult.error) {
+    throw new FintechServiceError("Unable to load platform billing guardrails.", 500);
+  }
+
+  const rows = [barberResult.data, shopResult.data].filter(Boolean) as BillingSubscriptionGuardRow[];
+  return rows.flatMap((row) => {
+    const isBlocked = row.billing_state === "past_due"
+      || row.subscription_status === "past_due"
+      || row.subscription_status === "cancelled";
+    if (!isBlocked) {
+      return [];
+    }
+
+    return [
+      row.subject_type === "barber"
+        ? "Barber subscription billing is past due and payout is blocked until billing is recovered."
+        : "Shop subscription billing is past due and payout is blocked until billing is recovered."
+    ];
+  });
+}
+
+export async function syncPaymentRoutingRecord(
+  supabase: SupabaseClient,
+  paymentId: string,
+  options?: {
+    providerFeeAmount?: number | null;
+    platformFeeAmount?: number | null;
+    processorChargeId?: string | null;
+    processorBalanceTransactionId?: string | null;
+    reconciliationStatus?: PayoutExecutionReconciliationStatus | null;
+    lastReconciledAt?: string | null;
+  }
+) {
+  const { payment, appointment, refundedAmount } = await loadPaymentAndContext(supabase, paymentId);
+  const shopId = payment.shop_id ?? appointment?.shop_id ?? appointment?.location_id ?? null;
+  const barberId = payment.barber_id ?? appointment?.barber_id ?? null;
+
+  if (!barberId && !shopId) {
+    return null;
+  }
+
+  const barberResult = barberId
+    ? await supabase
+      .from("barbers")
+      .select("id, reference_code, profile_id, compensation_model, commission_rate, booth_rent_amount, booth_rent_frequency")
+      .eq("id", barberId)
+      .maybeSingle()
+    : { data: null, error: null };
+
+  if (barberResult.error) {
+    throw new FintechServiceError("Unable to load the routing barber context.", 500);
+  }
+
+  const barber = (barberResult.data as BarberRow | null) ?? null;
+  const barberReference = barber?.reference_code ?? barber?.id ?? null;
+  const locationResult = shopId
+    ? await supabase
+      .from("locations")
+      .select("id, reference_code, name, neighborhood, city, state")
+      .eq("id", shopId)
+      .maybeSingle()
+    : { data: null, error: null };
+
+  if (locationResult.error) {
+    throw new FintechServiceError("Unable to load the routing shop context.", 500);
+  }
+
+  const shopLocation = (locationResult.data as LocationRow | null) ?? null;
+  const shopVerificationScopeId = shopLocation?.reference_code ?? shopId ?? null;
+  let membership: StaffMembershipRow | null = null;
+  if (appointment?.membership_id) {
+    const membershipResult = await supabase
+      .from("staff_locations")
+      .select("id, profile_id, location_id, routing_model, commission_rate, booth_rent_amount, booth_rent_frequency, payout_block_reason, updated_at, fintech_updated_at")
+      .eq("id", appointment.membership_id)
+      .maybeSingle();
+
+    if (membershipResult.error) {
+      throw new FintechServiceError("Unable to load the captured compensation assignment.", 500);
+    }
+
+    membership = (membershipResult.data as StaffMembershipRow | null) ?? null;
+  }
+
+  if (!membership && barber?.profile_id && shopId) {
+    const membershipResult = await supabase
+      .from("staff_locations")
+      .select("id, profile_id, location_id, routing_model, commission_rate, booth_rent_amount, booth_rent_frequency, payout_block_reason, updated_at, fintech_updated_at")
+      .eq("profile_id", barber.profile_id)
+      .eq("location_id", shopId)
+      .maybeSingle();
+
+    if (membershipResult.error) {
+      throw new FintechServiceError("Unable to resolve the routing membership assignment.", 500);
+    }
+
+    membership = (membershipResult.data as StaffMembershipRow | null) ?? null;
+  }
+
+  const routingModel = membership?.routing_model
+    ? normalizeRoutingModel(membership.routing_model)
+    : !shopId
+      ? "freelance"
+      : normalizeRoutingModel(barber?.compensation_model, "commission");
+  const commissionRate = membership?.commission_rate === null || membership?.commission_rate === undefined
+    ? barber?.commission_rate === null || barber?.commission_rate === undefined
+      ? null
+      : numeric(barber.commission_rate)
+    : numeric(membership.commission_rate);
+
+  await ensureConnectedAccounts(supabase, {
+    barberIds: barberId ? [barberId] : [],
+    shopIds: shopId ? [shopId] : [],
+    createdBy: barber?.profile_id ?? null
+  });
+
+  const [accounts, acceptances] = await Promise.all([
+    loadConnectedAccountsForScope(supabase, {
+      barberIds: barberId ? [barberId] : [],
+      shopIds: shopId ? [shopId] : []
+    }),
+    loadLegalAcceptancesForScope(supabase, {
+      barberIds: barberId ? [barberId] : [],
+      shopIds: shopId ? [shopId] : []
+    })
+  ]);
+  const syncedStates = await Promise.all(accounts.map((account) => syncConnectedAccountState(supabase, account, acceptances)));
+  const barberAccountState = syncedStates.find((state) => state.row.subject_type === "barber" && state.row.barber_id === barberId) ?? null;
+  const shopAccountState = syncedStates.find((state) => state.row.subject_type === "shop" && state.row.shop_id === shopId) ?? null;
+  const existingRoutingResult = await supabase
+    .from("payment_routing_records")
+    .select(PAYMENT_ROUTING_SELECT)
+    .eq("payment_id", payment.id)
+    .maybeSingle();
+
+  if (existingRoutingResult.error) {
+    throw new FintechServiceError("Unable to inspect the existing payment routing ledger.", 500);
+  }
+
+  const existingRouting = (existingRoutingResult.data as PaymentRoutingRow | null) ?? null;
+  const providerFeeAmount = options?.providerFeeAmount ?? (existingRouting ? numeric(existingRouting.provider_fee_amount) : 0);
+  const disputeHold = await hasActiveDisputeHold(supabase, appointment?.reference_code ?? null);
+  const trustState = await readTrustStateSafe();
+  const barberPayoutGate = trustState && barberReference
+    ? getVerificationGateDecision(
+      buildPublicTrustSignal(trustState, barberReference, shopVerificationScopeId ?? undefined).verificationDecision,
+      "payout"
+    )
+    : null;
+  const shopPayoutGate = trustState && shopVerificationScopeId
+    ? getVerificationGateDecision(computeShopVerificationDecision(trustState, shopVerificationScopeId), "payout")
+    : null;
+
+  const calculated = calculatePaymentRouting({
+    paymentType: payment.payment_type,
+    paymentStatus: payment.payment_status,
+    grossAmount: numeric(payment.amount),
+    refundedAmount,
+    providerFeeAmount,
+    platformFeeAmount: options?.platformFeeAmount ?? undefined,
+    routingModel,
+    commissionRate,
+    barberReady: barberAccountState?.row.payout_readiness_status === "ready",
+    shopReady: shopAccountState?.row.payout_readiness_status === "ready",
+    barberVerificationAllowed: barberPayoutGate?.allowed,
+    barberVerificationReason: barberPayoutGate?.reasons[0] ?? null,
+    shopVerificationAllowed: shopPayoutGate?.allowed,
+    shopVerificationReason: shopPayoutGate?.reasons[0] ?? null,
+    appointmentCompleted: appointment?.status === "completed" || appointment?.status === "refunded",
+    disputeHold
+  });
+  const subscriptionBlockedReasons = await readPlatformBillingBlockers(supabase, {
+    barberId,
+    shopId
+  });
+
+  const membershipBlockedReason = shopId && !membership && payment.payment_type !== "tip"
+    ? "No shop compensation assignment is stored for this payment."
+    : null;
+  const blockedReason =
+    membership?.payout_block_reason?.trim()
+    || membershipBlockedReason
+    || subscriptionBlockedReasons[0]
+    || calculated.blockedReason;
+  const payoutReadinessStatus: FintechPayoutReadinessStatus = blockedReason ? "blocked" : calculated.payoutReadinessStatus;
+  const moneyRoutingStatus: MoneyRoutingStatus =
+    payment.payment_status === "refunded"
+      ? "refunded"
+      : blockedReason
+        ? "blocked"
+        : calculated.moneyRoutingStatus;
+  const now = new Date().toISOString();
+  const reconciliationStatus =
+    options?.reconciliationStatus
+    ?? existingRouting?.reconciliation_status
+    ?? "open";
+  const lastReconciledAt =
+    options?.lastReconciledAt
+    ?? existingRouting?.last_reconciled_at
+    ?? null;
+
+  const upsertResult = await supabase
+    .from("payment_routing_records")
+    .upsert(
+      {
+        payment_id: payment.id,
+        appointment_id: payment.appointment_id,
+        membership_id: membership?.id ?? appointment?.membership_id ?? null,
+        routing_model: routingModel,
+        payout_recipient_type: calculated.payoutRecipientType,
+        provider_gross_amount: calculated.providerGrossAmount,
+        refunded_amount: calculated.refundedAmount,
+        provider_fee_amount: calculated.providerFeeAmount,
+        provider_net_amount: calculated.providerNetAmount,
+        platform_fee_amount: calculated.platformFeeAmount,
+        barber_payout_amount: calculated.barberPayoutAmount,
+        shop_split_amount: calculated.shopSplitAmount,
+        currency: payment.currency.toLowerCase(),
+        payout_readiness_status: payoutReadinessStatus,
+        money_routing_status: moneyRoutingStatus,
+        blocked_reason: blockedReason,
+        processor_charge_id: options?.processorChargeId ?? existingRouting?.processor_charge_id ?? null,
+        processor_balance_transaction_id: options?.processorBalanceTransactionId ?? existingRouting?.processor_balance_transaction_id ?? null,
+        reconciliation_status: reconciliationStatus,
+        last_reconciled_at: lastReconciledAt,
+        metadata: {
+          paymentType: payment.payment_type,
+          paymentStatus: payment.payment_status,
+          provider: payment.provider,
+          providerPaymentIntentId: payment.provider_payment_intent_id,
+          shopId,
+          barberId,
+          barberReference,
+          shopVerificationScopeId,
+          appointmentStatus: appointment?.status ?? null,
+          disputeHold,
+          subscriptionBlockedReasons,
+          barberPayoutGate,
+          shopPayoutGate
+        },
+        created_at: existingRouting?.created_at ?? now,
+        updated_at: now
+      },
+      { onConflict: "payment_id" }
+    )
+    .select(PAYMENT_ROUTING_SELECT)
+    .single();
+
+  if (upsertResult.error) {
+    throw new FintechServiceError("Unable to write the payment routing ledger.", 500);
+  }
+
+  await syncWalletBalancesForPayment(supabase, payment.id);
+  return upsertResult.data as PaymentRoutingRow;
+}
+
+type RoutingExecutionTarget = {
+  targetSubjectType: "barber" | "shop";
+  amount: number;
+  connectedAccount: ConnectedAccountRow | null;
+};
+
+function buildRoutingExecutionTargets(
+  routing: PaymentRoutingRow,
+  payment: PaymentRow,
+  accountByBarberId: Map<string, ConnectedAccountRow>,
+  accountByShopId: Map<string, ConnectedAccountRow>
+) {
+  const targets: RoutingExecutionTarget[] = [];
+
+  if ((routing.payout_recipient_type === "barber" || routing.payout_recipient_type === "split") && numeric(routing.barber_payout_amount) > 0) {
+    targets.push({
+      targetSubjectType: "barber",
+      amount: roundCurrency(numeric(routing.barber_payout_amount)),
+      connectedAccount: payment.barber_id ? accountByBarberId.get(payment.barber_id) ?? null : null
+    });
+  }
+
+  if ((routing.payout_recipient_type === "shop" || routing.payout_recipient_type === "split") && numeric(routing.shop_split_amount) > 0) {
+    targets.push({
+      targetSubjectType: "shop",
+      amount: roundCurrency(numeric(routing.shop_split_amount)),
+      connectedAccount: payment.shop_id ? accountByShopId.get(payment.shop_id) ?? null : null
+    });
+  }
+
+  return targets;
+}
+
+function evaluateRoutingExecutionReadiness(
+  routing: PaymentRoutingRow,
+  payment: PaymentRow,
+  accountByBarberId: Map<string, ConnectedAccountRow>,
+  accountByShopId: Map<string, ConnectedAccountRow>
+) {
+  const targets = buildRoutingExecutionTargets(routing, payment, accountByBarberId, accountByShopId);
+  const blockedReasons = targets
+    .map((target) => determinePayoutExecutionBlockReason({
+      paymentProvider: payment.provider,
+      paymentStatus: payment.payment_status,
+      moneyRoutingStatus: routing.money_routing_status,
+      payoutReadinessStatus: target.connectedAccount?.payout_readiness_status ?? "not_ready",
+      targetAmount: target.amount,
+      processorChargeId: routing.processor_charge_id,
+      targetProviderAccountId: target.connectedAccount?.provider_account_id ?? null,
+      blockedReason: routing.blocked_reason
+    }))
+    .filter(Boolean) as string[];
+
+  return {
+    targets,
+    executable: routing.money_routing_status === "ready_for_payout" && targets.length > 0 && blockedReasons.length === 0,
+    blockedReasons,
+    totalAmount: roundCurrency(targets.reduce((sum, target) => sum + target.amount, 0))
+  };
+}
+
+async function loadPayoutExecutionsForPaymentIds(supabase: SupabaseClient, paymentIds: string[]) {
+  if (!paymentIds.length) {
+    return [] as PayoutExecutionRow[];
+  }
+
+  const result = await supabase
+    .from("payout_executions")
+    .select(PAYOUT_EXECUTION_SELECT)
+    .in("payment_id", paymentIds)
+    .order("updated_at", { ascending: false });
+
+  if (result.error) {
+    throw new FintechServiceError("Unable to load payout execution records.", 500);
+  }
+
+  return (result.data ?? []) as PayoutExecutionRow[];
+}
+
+async function loadPayoutExecutionsForRoutingId(supabase: SupabaseClient, routingId: string) {
+  const result = await supabase
+    .from("payout_executions")
+    .select(PAYOUT_EXECUTION_SELECT)
+    .eq("routing_record_id", routingId)
+    .order("created_at", { ascending: true });
+
+  if (result.error) {
+    throw new FintechServiceError("Unable to load payout executions for reconciliation.", 500);
+  }
+
+  return (result.data ?? []) as PayoutExecutionRow[];
+}
+
+async function persistPayoutExecutionRow(
+  supabase: SupabaseClient,
+  existingId: string | null,
+  values: Record<string, unknown>
+) {
+  if (existingId) {
+    const result = await supabase
+      .from("payout_executions")
+      .update(values)
+      .eq("id", existingId)
+      .select(PAYOUT_EXECUTION_SELECT)
+      .single();
+
+    if (result.error) {
+      throw new FintechServiceError("Unable to update the payout execution record.", 500);
+    }
+
+    return result.data as PayoutExecutionRow;
+  }
+
+  const result = await supabase
+    .from("payout_executions")
+    .insert(values)
+    .select(PAYOUT_EXECUTION_SELECT)
+    .single();
+
+  if (result.error) {
+    throw new FintechServiceError("Unable to create the payout execution record.", 500);
+  }
+
+  return result.data as PayoutExecutionRow;
+}
+
+function buildPayoutExecutionIdempotencyKey(
+  routingId: string,
+  targetSubjectType: "barber" | "shop",
+  executionType: PayoutExecutionType,
+  suffix?: string | null
+) {
+  return createPayoutExecutionIdempotencyKey(routingId, targetSubjectType, executionType, suffix);
+}
+
+async function syncRoutingExecutionState(supabase: SupabaseClient, routingId: string) {
+  const routingResult = await supabase
+    .from("payment_routing_records")
+    .select(PAYMENT_ROUTING_SELECT)
+    .eq("id", routingId)
+    .maybeSingle();
+
+  if (routingResult.error) {
+    throw new FintechServiceError("Unable to reload the payment routing record for reconciliation.", 500);
+  }
+
+  if (!routingResult.data) {
+    throw new FintechServiceError("Payment routing record not found for reconciliation.", 404);
+  }
+
+  const routing = routingResult.data as PaymentRoutingRow;
+  const executions = await loadPayoutExecutionsForRoutingId(supabase, routing.id);
+  const transferExecutions = executions.filter((row) => row.execution_type === "transfer");
+  const reversalExecutions = executions.filter((row) => row.execution_type === "reversal");
+
+  for (const transferExecution of transferExecutions) {
+    const relatedReversals = reversalExecutions.filter((row) => row.source_execution_id === transferExecution.id);
+    const executedAmount = transferExecution.execution_status === "executed"
+      ? numeric(transferExecution.amount)
+      : 0;
+    const reversedAmount = relatedReversals
+      .filter((row) => row.execution_status === "reversed")
+      .reduce((sum, row) => sum + numeric(row.amount), 0);
+    const targetAmount = transferExecution.target_subject_type === "barber"
+      ? numeric(routing.barber_payout_amount)
+      : numeric(routing.shop_split_amount);
+    const reconciliationStatus = derivePayoutExecutionReconciliationStatus({
+      targetAmount,
+      executedAmount,
+      reversedAmount,
+      hasFailures: transferExecution.execution_status === "failed" || relatedReversals.some((row) => row.execution_status === "failed"),
+      hasBlockedExecutions: transferExecution.execution_status === "blocked" || relatedReversals.some((row) => row.execution_status === "blocked"),
+      routingStatus: routing.money_routing_status
+    });
+
+    if (transferExecution.reconciliation_status !== reconciliationStatus) {
+      await persistPayoutExecutionRow(supabase, transferExecution.id, {
+        reconciliation_status: reconciliationStatus,
+        updated_at: new Date().toISOString()
+      });
+    }
+  }
+
+  for (const reversalExecution of reversalExecutions) {
+    const nextReconciliationStatus =
+      reversalExecution.execution_status === "reversed"
+        ? "reversed"
+        : reversalExecution.execution_status === "failed" || reversalExecution.execution_status === "blocked"
+          ? "manual_review"
+          : reversalExecution.reconciliation_status;
+
+    if (reversalExecution.reconciliation_status !== nextReconciliationStatus) {
+      await persistPayoutExecutionRow(supabase, reversalExecution.id, {
+        reconciliation_status: nextReconciliationStatus,
+        updated_at: new Date().toISOString()
+      });
+    }
+  }
+
+  const totalExecutedAmount = transferExecutions
+    .filter((row) => row.execution_status === "executed")
+    .reduce((sum, row) => sum + numeric(row.amount), 0);
+  const totalReversedAmount = reversalExecutions
+    .filter((row) => row.execution_status === "reversed")
+    .reduce((sum, row) => sum + numeric(row.amount), 0);
+  const targetAmount = roundCurrency(numeric(routing.barber_payout_amount) + numeric(routing.shop_split_amount));
+  const netExecutedAmount = roundCurrency(Math.max(totalExecutedAmount - totalReversedAmount, 0));
+  const reconciliationStatus = derivePayoutExecutionReconciliationStatus({
+    targetAmount,
+    executedAmount: totalExecutedAmount,
+    reversedAmount: totalReversedAmount,
+    hasFailures: executions.some((row) => row.execution_status === "failed"),
+    hasBlockedExecutions: executions.some((row) => row.execution_status === "blocked"),
+    routingStatus: routing.money_routing_status
+  });
+  const nextMoneyRoutingStatus: MoneyRoutingStatus =
+    routing.money_routing_status === "refunded"
+      ? "refunded"
+      : (targetAmount > 0 && netExecutedAmount === targetAmount && reconciliationStatus !== "manual_review")
+        ? "paid_out"
+        : routing.money_routing_status;
+
+  if (
+    routing.reconciliation_status !== reconciliationStatus
+    || routing.money_routing_status !== nextMoneyRoutingStatus
+  ) {
+    const updateResult = await supabase
+      .from("payment_routing_records")
+      .update({
+        reconciliation_status: reconciliationStatus,
+        money_routing_status: nextMoneyRoutingStatus,
+        last_reconciled_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq("id", routing.id)
+      .select(PAYMENT_ROUTING_SELECT)
+      .single();
+
+    if (updateResult.error) {
+      throw new FintechServiceError("Unable to update payout reconciliation state.", 500);
+    }
+
+    await syncWalletBalancesForPayment(supabase, routing.payment_id);
+    return updateResult.data as PaymentRoutingRow;
+  }
+
+  await syncWalletBalancesForPayment(supabase, routing.payment_id);
+  return routing;
+}
+
+function mapPayoutExecutionView(
+  execution: PayoutExecutionRow,
+  routing: PaymentRoutingRow | undefined,
+  payment: PaymentRow | undefined,
+  barberName: string | null,
+  shopLabel: string | null
+): PayoutExecutionView {
+  const targetDisplayName = execution.target_subject_type === "barber" ? barberName : shopLabel;
+
+  return {
+    id: execution.id,
+    routingRecordId: execution.routing_record_id,
+    paymentId: execution.payment_id,
+    appointmentId: execution.appointment_id,
+    targetSubjectType: execution.target_subject_type,
+    targetDisplayName,
+    barberName,
+    shopLabel,
+    routingModel: routing?.routing_model ?? "commission",
+    executionType: execution.execution_type,
+    executionStatus: execution.execution_status,
+    reconciliationStatus: execution.reconciliation_status,
+    amount: numeric(execution.amount),
+    payoutReference: execution.payout_reference,
+    payoutSpeed: execution.payout_speed,
+    instantPayoutFeeAmount: numeric(execution.instant_payout_fee_amount),
+    netTransferAmount: numeric(execution.net_transfer_amount),
+    currency: execution.currency,
+    blockedReason: execution.blocked_reason,
+    failureReason: execution.failure_reason,
+    processorTransferId: execution.processor_transfer_id,
+    processorPayoutId: execution.processor_payout_id,
+    processorReversalId: execution.processor_reversal_id,
+    providerFeeAmount: routing ? numeric(routing.provider_fee_amount) : 0,
+    platformFeeAmount: routing ? numeric(routing.platform_fee_amount) : 0,
+    createdAt: execution.created_at,
+    executedAt: execution.executed_at,
+    failedAt: execution.failed_at,
+    reversedAt: execution.reversed_at
+  };
+}
+
+function summarizeExecutionViews(executions: PayoutExecutionView[], readyRouting: FintechRoutingView[]) {
+  return {
+    executableRoutingRecords: readyRouting.length,
+    readyForPayoutAmount: roundCurrency(
+      readyRouting.reduce((sum, row) => sum + row.barberPayoutAmount + row.shopSplitAmount, 0)
+    ),
+    blockedExecutionRecords: executions.filter((row) => row.executionStatus === "blocked").length,
+    failedExecutionRecords: executions.filter((row) => row.executionStatus === "failed").length,
+    executedTransferCount: executions.filter((row) => row.executionType === "transfer" && row.executionStatus === "executed").length,
+    reversedExecutionCount: executions.filter((row) => row.executionType === "reversal" && row.executionStatus === "reversed").length,
+    executedAmount: roundCurrency(
+      executions
+        .filter((row) => row.executionType === "transfer" && row.executionStatus === "executed")
+        .reduce((sum, row) => sum + row.amount, 0)
+    ),
+    reversedAmount: roundCurrency(
+      executions
+        .filter((row) => row.executionType === "reversal" && row.executionStatus === "reversed")
+        .reduce((sum, row) => sum + row.amount, 0)
+    ),
+    processorFeeTracked: roundCurrency(
+      readyRouting.reduce((sum, row) => sum + row.processorFeeAmount, 0)
+    )
+  };
+}
+
+export async function syncStripeSettlementForPayment(
+  supabase: SupabaseClient,
+  paymentId: string,
+  options?: { throwOnError?: boolean }
+) {
+  const { payment } = await loadPaymentAndContext(supabase, paymentId);
+  if (payment.provider !== "stripe" || !payment.provider_payment_intent_id?.trim()) {
+    return null;
+  }
+
+  try {
+    const paymentIntent = await retrieveStripePaymentIntentSettlement(payment.provider_payment_intent_id);
+    const latestCharge = typeof paymentIntent.latest_charge === "string" ? null : paymentIntent.latest_charge;
+    const balanceTransaction =
+      latestCharge
+      && latestCharge.balance_transaction
+      && typeof latestCharge.balance_transaction !== "string"
+        ? latestCharge.balance_transaction
+        : null;
+
+    const routing = await syncPaymentRoutingRecord(supabase, payment.id, {
+      providerFeeAmount: balanceTransaction ? roundCurrency(balanceTransaction.fee / 100) : 0,
+      processorChargeId: latestCharge?.id ?? null,
+      processorBalanceTransactionId: balanceTransaction?.id ?? null,
+      lastReconciledAt: new Date().toISOString()
+    });
+
+    if (routing) {
+      await syncRoutingExecutionState(supabase, routing.id);
+    }
+
+    return routing;
+  } catch (error) {
+    if (options?.throwOnError) {
+      throw toFintechServiceError(error, "Unable to sync processor settlement for the payment.");
+    }
+    return null;
+  }
+}
+
+async function executeTransferForRoutingTarget(
+  supabase: SupabaseClient,
+  routing: PaymentRoutingRow,
+  payment: PaymentRow,
+  target: RoutingExecutionTarget,
+  initiatedBy: string,
+  speed: "standard" | "instant" = "standard"
+) {
+  const existingResult = await supabase
+    .from("payout_executions")
+    .select(PAYOUT_EXECUTION_SELECT)
+    .eq("routing_record_id", routing.id)
+    .eq("target_subject_type", target.targetSubjectType)
+    .eq("execution_type", "transfer")
+    .maybeSingle();
+
+  if (existingResult.error) {
+    throw new FintechServiceError("Unable to inspect existing payout transfer executions.", 500);
+  }
+
+  const existing = (existingResult.data as PayoutExecutionRow | null) ?? null;
+  if (existing?.execution_status === "executed" && existing.processor_transfer_id) {
+    return existing;
+  }
+
+  const blockedReason = determinePayoutExecutionBlockReason({
+    paymentProvider: payment.provider,
+    paymentStatus: payment.payment_status,
+    moneyRoutingStatus: routing.money_routing_status,
+    payoutReadinessStatus: target.connectedAccount?.payout_readiness_status ?? "not_ready",
+    targetAmount: target.amount,
+    processorChargeId: routing.processor_charge_id,
+    targetProviderAccountId: target.connectedAccount?.provider_account_id ?? null,
+    blockedReason: routing.blocked_reason
+  });
+  const now = new Date().toISOString();
+  const payoutMath = calculateInstantPayoutAmounts({
+    grossAmount: target.amount,
+    speed
+  });
+  const payoutReference = existing?.payout_reference ?? `payout:${routing.id}:${target.targetSubjectType}`;
+
+  const plannedExecution = await persistPayoutExecutionRow(supabase, existing?.id ?? null, {
+    routing_record_id: routing.id,
+    payment_id: routing.payment_id,
+    appointment_id: routing.appointment_id,
+    membership_id: routing.membership_id,
+    target_subject_type: target.targetSubjectType,
+    execution_type: "transfer",
+    target_connected_account_id: target.connectedAccount?.id ?? null,
+    target_provider_account_id: target.connectedAccount?.provider_account_id ?? null,
+    amount: payoutMath.grossAmount,
+    currency: routing.currency.toLowerCase(),
+    execution_status: blockedReason ? "blocked" : "pending",
+    blocked_reason: blockedReason,
+    failure_reason: null,
+    processor_transfer_id: existing?.processor_transfer_id ?? null,
+    processor_reversal_id: existing?.processor_reversal_id ?? null,
+    idempotency_key: existing?.idempotency_key ?? buildPayoutExecutionIdempotencyKey(routing.id, target.targetSubjectType, "transfer"),
+    source_execution_id: null,
+    source_refund_id: null,
+    payout_reference: payoutReference,
+    payout_speed: payoutMath.speed,
+    instant_payout_fee_amount: payoutMath.instantFeeAmount,
+    net_transfer_amount: payoutMath.netTransferAmount,
+    processor_payout_id: existing?.processor_payout_id ?? null,
+    reconciliation_status: blockedReason ? "manual_review" : "open",
+    metadata: {
+      routingModel: routing.routing_model,
+      payoutRecipientType: routing.payout_recipient_type,
+      paymentStatus: payment.payment_status,
+      paymentType: payment.payment_type,
+      payoutSpeed: payoutMath.speed,
+      instantPayoutFeeAmount: payoutMath.instantFeeAmount,
+      netTransferAmount: payoutMath.netTransferAmount
+    },
+    initiated_by: existing?.initiated_by ?? initiatedBy,
+    last_attempted_at: blockedReason ? existing?.last_attempted_at ?? null : now,
+    attempt_count: blockedReason ? existing?.attempt_count ?? 0 : (existing?.attempt_count ?? 0) + 1,
+    created_at: existing?.created_at ?? now,
+    updated_at: now
+  });
+
+  if (blockedReason) {
+    return plannedExecution;
+  }
+
+  try {
+    const transfer = await createStripeTransfer({
+      amount: payoutMath.netTransferAmount,
+      currency: routing.currency,
+      destinationAccountId: target.connectedAccount!.provider_account_id!,
+      transferGroup: `bvrb3r:payment:${routing.payment_id}`,
+      metadata: {
+        routing_record_id: routing.id,
+        payment_id: routing.payment_id,
+        appointment_id: routing.appointment_id ?? "",
+        execution_id: plannedExecution.id,
+        target_subject_type: target.targetSubjectType,
+        payout_reference: payoutReference,
+        payout_speed: payoutMath.speed
+      },
+      idempotencyKey: plannedExecution.idempotency_key
+    });
+
+    return persistPayoutExecutionRow(supabase, plannedExecution.id, {
+      execution_status: "executed",
+      blocked_reason: null,
+      failure_reason: null,
+      processor_transfer_id: transfer.id,
+      payout_reference: payoutReference,
+      payout_speed: payoutMath.speed,
+      instant_payout_fee_amount: payoutMath.instantFeeAmount,
+      net_transfer_amount: payoutMath.netTransferAmount,
+      reconciliation_status: "settled",
+      executed_at: now,
+      last_attempted_at: now,
+      updated_at: now
+    });
+  } catch (error) {
+    return persistPayoutExecutionRow(supabase, plannedExecution.id, {
+      execution_status: "failed",
+      failure_reason: error instanceof Error ? error.message : "Transfer execution failed.",
+      blocked_reason: null,
+      payout_reference: payoutReference,
+      payout_speed: payoutMath.speed,
+      instant_payout_fee_amount: payoutMath.instantFeeAmount,
+      net_transfer_amount: payoutMath.netTransferAmount,
+      reconciliation_status: "manual_review",
+      failed_at: now,
+      last_attempted_at: now,
+      updated_at: now
+    });
+  }
+}
+
+export async function reconcilePaymentPayoutExecutions(
+  supabase: SupabaseClient,
+  paymentId: string,
+  input?: {
+    refundId?: string | null;
+    initiatedBy?: string | null;
+  }
+) {
+  const routingResult = await supabase
+    .from("payment_routing_records")
+    .select(PAYMENT_ROUTING_SELECT)
+    .eq("payment_id", paymentId)
+    .maybeSingle();
+
+  if (routingResult.error) {
+    throw new FintechServiceError("Unable to load the payment routing record for payout reconciliation.", 500);
+  }
+
+  if (!routingResult.data) {
+    return null;
+  }
+
+  const routing = routingResult.data as PaymentRoutingRow;
+  const { payment } = await loadPaymentAndContext(supabase, paymentId);
+  const transferExecutions = (await loadPayoutExecutionsForRoutingId(supabase, routing.id))
+    .filter((row) => row.execution_type === "transfer" && row.execution_status === "executed" && row.processor_transfer_id);
+
+  for (const transferExecution of transferExecutions) {
+    const targetAmount = transferExecution.target_subject_type === "barber"
+      ? numeric(routing.barber_payout_amount)
+      : numeric(routing.shop_split_amount);
+    const reversedAmountResult = await supabase
+      .from("payout_executions")
+      .select(PAYOUT_EXECUTION_SELECT)
+      .eq("source_execution_id", transferExecution.id)
+      .eq("execution_type", "reversal");
+
+    if (reversedAmountResult.error) {
+      throw new FintechServiceError("Unable to inspect payout reversal history.", 500);
+    }
+
+    const existingReversals = (reversedAmountResult.data ?? []) as PayoutExecutionRow[];
+    const reversedAmount = existingReversals
+      .filter((row) => row.execution_status === "reversed")
+      .reduce((sum, row) => sum + numeric(row.amount), 0);
+    const currentlyTransferredAmount = roundCurrency(Math.max(numeric(transferExecution.amount) - reversedAmount, 0));
+    const reversalNeeded = roundCurrency(Math.max(currentlyTransferredAmount - targetAmount, 0));
+
+    if (reversalNeeded <= 0) {
+      continue;
+    }
+
+    const existingForRefund = input?.refundId
+      ? existingReversals.find((row) => row.source_refund_id === input.refundId)
+      : null;
+    if (existingForRefund && existingForRefund.execution_status === "reversed") {
+      continue;
+    }
+
+    const blockedReason =
+      !transferExecution.processor_transfer_id
+        ? "No Stripe transfer exists to reverse for this payout."
+        : payment.provider !== "stripe"
+          ? "Only Stripe-backed payments can execute processor reversals."
+          : null;
+    const now = new Date().toISOString();
+    const plannedReversal = await persistPayoutExecutionRow(supabase, existingForRefund?.id ?? null, {
+      routing_record_id: routing.id,
+      payment_id: routing.payment_id,
+      appointment_id: routing.appointment_id,
+      membership_id: routing.membership_id,
+      target_subject_type: transferExecution.target_subject_type,
+      execution_type: "reversal",
+      target_connected_account_id: transferExecution.target_connected_account_id,
+      target_provider_account_id: transferExecution.target_provider_account_id,
+      amount: reversalNeeded,
+      currency: routing.currency,
+      execution_status: blockedReason ? "blocked" : "pending",
+      blocked_reason: blockedReason,
+      failure_reason: null,
+      processor_transfer_id: transferExecution.processor_transfer_id,
+      processor_reversal_id: existingForRefund?.processor_reversal_id ?? null,
+      idempotency_key: existingForRefund?.idempotency_key ?? buildPayoutExecutionIdempotencyKey(routing.id, transferExecution.target_subject_type, "reversal", input?.refundId ?? transferExecution.id),
+      source_execution_id: transferExecution.id,
+      source_refund_id: input?.refundId ?? null,
+      payout_reference: transferExecution.payout_reference,
+      payout_speed: transferExecution.payout_speed,
+      instant_payout_fee_amount: 0,
+      net_transfer_amount: reversalNeeded,
+      processor_payout_id: transferExecution.processor_payout_id,
+      reconciliation_status: blockedReason ? "manual_review" : "open",
+      metadata: {
+        sourceTransferId: transferExecution.processor_transfer_id,
+        refundId: input?.refundId ?? null,
+        sourcePayoutReference: transferExecution.payout_reference
+      },
+      initiated_by: existingForRefund?.initiated_by ?? input?.initiatedBy ?? null,
+      last_attempted_at: blockedReason ? existingForRefund?.last_attempted_at ?? null : now,
+      attempt_count: blockedReason ? existingForRefund?.attempt_count ?? 0 : (existingForRefund?.attempt_count ?? 0) + 1,
+      created_at: existingForRefund?.created_at ?? now,
+      updated_at: now
+    });
+
+    if (blockedReason) {
+      continue;
+    }
+
+    try {
+      const reversal = await createStripeTransferReversal({
+        transferId: transferExecution.processor_transfer_id!,
+        amount: reversalNeeded,
+        metadata: {
+          routing_record_id: routing.id,
+          payment_id: routing.payment_id,
+          source_execution_id: transferExecution.id,
+          reversal_execution_id: plannedReversal.id
+        },
+        idempotencyKey: plannedReversal.idempotency_key
+      });
+
+      await persistPayoutExecutionRow(supabase, plannedReversal.id, {
+        execution_status: "reversed",
+        blocked_reason: null,
+        failure_reason: null,
+        processor_reversal_id: reversal.id,
+        payout_reference: transferExecution.payout_reference,
+        payout_speed: transferExecution.payout_speed,
+        net_transfer_amount: reversalNeeded,
+        reconciliation_status: "reversed",
+        reversed_at: now,
+        last_attempted_at: now,
+        updated_at: now
+      });
+    } catch (error) {
+      await persistPayoutExecutionRow(supabase, plannedReversal.id, {
+        execution_status: "failed",
+        failure_reason: error instanceof Error ? error.message : "Transfer reversal failed.",
+        blocked_reason: null,
+        payout_reference: transferExecution.payout_reference,
+        payout_speed: transferExecution.payout_speed,
+        net_transfer_amount: reversalNeeded,
+        reconciliation_status: "manual_review",
+        failed_at: now,
+        last_attempted_at: now,
+        updated_at: now
+      });
+    }
+  }
+
+  return syncRoutingExecutionState(supabase, routing.id);
+}
+
+async function buildPayoutExecutionScope(
+  supabase: SupabaseClient,
+  payments: PaymentRow[],
+  locations: LocationRow[]
+) {
+  const paymentIds = payments.map((payment) => payment.id);
+  const routingRows = paymentIds.length
+    ? await supabase
+      .from("payment_routing_records")
+      .select(PAYMENT_ROUTING_SELECT)
+      .in("payment_id", paymentIds)
+      .order("updated_at", { ascending: false })
+    : { data: [], error: null };
+
+  if (routingRows.error) {
+    throw new FintechServiceError("Unable to load payout routing records for the requested scope.", 500);
+  }
+
+  const routingData = (routingRows.data ?? []) as PaymentRoutingRow[];
+  const payoutExecutions = await loadPayoutExecutionsForPaymentIds(supabase, paymentIds);
+  const barbers = await loadBarbersByIds(
+    [...new Set(payments.map((payment) => payment.barber_id).filter(Boolean) as string[])],
+    supabase
+  );
+  const profiles = await loadProfiles(barbers.map((barber) => barber.profile_id), supabase);
+  const accountStates = await loadConnectedAccountsForScope(supabase, {
+    barberIds: barbers.map((barber) => barber.id),
+    shopIds: [...new Set(locations.map((location) => location.id))]
+  });
+  const accountByBarberId = new Map(
+    accountStates
+      .filter((row) => row.barber_id)
+      .map((row) => [row.barber_id as string, row])
+  );
+  const accountByShopId = new Map(
+    accountStates
+      .filter((row) => row.shop_id)
+      .map((row) => [row.shop_id as string, row])
+  );
+  const locationById = new Map(locations.map((location) => [location.id, location]));
+  const paymentById = new Map(payments.map((payment) => [payment.id, payment]));
+  const routingById = new Map(routingData.map((row) => [row.id, row]));
+  const barberById = new Map(barbers.map((barber) => [barber.id, barber]));
+  const profileNameById = new Map(profiles.map((profile) => [profile.id, profile.full_name ?? profile.email]));
+
+  const readyRouting = routingData
+    .filter((row) => {
+      const payment = paymentById.get(row.payment_id);
+      if (!payment) {
+        return false;
+      }
+      return evaluateRoutingExecutionReadiness(row, payment, accountByBarberId, accountByShopId).executable;
+    })
+    .slice(0, 12)
+    .map((row) => {
+      const payment = paymentById.get(row.payment_id);
+      const barber = payment?.barber_id ? barberById.get(payment.barber_id) : undefined;
+      const shop = payment?.shop_id ? locationById.get(payment.shop_id) : undefined;
+      return mapRoutingView(
+        row,
+        payment,
+        barber ? profileNameById.get(barber.profile_id) ?? barber.reference_code ?? barber.id : null,
+        shop ? formatShopLabel(shop) : null
+      );
+    });
+
+  const allExecutions = payoutExecutions
+    .map((execution) => {
+      const routing = routingById.get(execution.routing_record_id);
+      const payment = paymentById.get(execution.payment_id);
+      const barber = payment?.barber_id ? barberById.get(payment.barber_id) : undefined;
+      const shop = payment?.shop_id ? locationById.get(payment.shop_id) : undefined;
+      return mapPayoutExecutionView(
+        execution,
+        routing,
+        payment,
+        barber ? profileNameById.get(barber.profile_id) ?? barber.reference_code ?? barber.id : null,
+        shop ? formatShopLabel(shop) : null
+      );
+    });
+  const recentExecutions = allExecutions.slice(0, 16);
+
+  return {
+    routingRows: routingData,
+    payoutExecutions,
+    allExecutions,
+    readyRouting,
+    recentExecutions,
+    paymentById,
+    accountByBarberId,
+    accountByShopId
+  };
+}
+
+export async function listFintechPayouts(user: UserAccount): Promise<FintechPayoutsPayload> {
+  const supabase = getSupabaseOrThrow();
+  const actor = await resolveActor(user, supabase);
+  assertManagementActor(actor);
+
+  const locations = await loadLocationsInScope(actor, supabase);
+  const paymentsResult = locations.length
+    ? await supabase
+      .from("payments")
+      .select(PAYMENT_SELECT)
+      .in("shop_id", locations.map((location) => location.id))
+      .order("created_at", { ascending: false })
+    : { data: [], error: null };
+
+  if (paymentsResult.error) {
+    throw new FintechServiceError("Unable to load payout execution payments for the current scope.", 500);
+  }
+
+  const payments = (paymentsResult.data ?? []) as PaymentRow[];
+  const scope = await buildPayoutExecutionScope(supabase, payments, locations);
+
+  return {
+    summary: summarizeExecutionViews(scope.allExecutions, scope.readyRouting),
+    readyRouting: scope.readyRouting,
+    recentExecutions: scope.recentExecutions
+  };
+}
+
+export async function getBarberPayouts(user: UserAccount): Promise<BarberPayoutsPayload> {
+  const supabase = getSupabaseOrThrow();
+  const actor = await resolveActor(user, supabase);
+  assertBarberActor(actor);
+
+  const paymentsResult = await supabase
+    .from("payments")
+    .select(PAYMENT_SELECT)
+    .eq("barber_id", actor.barber!.id)
+    .order("created_at", { ascending: false });
+
+  if (paymentsResult.error) {
+    throw new FintechServiceError("Unable to load barber payout execution payments.", 500);
+  }
+
+  const payments = (paymentsResult.data ?? []) as PaymentRow[];
+  const shopIds = [...new Set(payments.map((payment) => payment.shop_id).filter(Boolean) as string[])];
+  const locationsResult = shopIds.length
+    ? await supabase
+      .from("locations")
+      .select("id, reference_code, name, neighborhood, city, state")
+      .in("id", shopIds)
+    : { data: [], error: null };
+
+  if (locationsResult.error) {
+    throw new FintechServiceError("Unable to load barber payout shop labels.", 500);
+  }
+
+  const scope = await buildPayoutExecutionScope(supabase, payments, (locationsResult.data ?? []) as LocationRow[]);
+  const summary = summarizeExecutionViews(scope.allExecutions, scope.readyRouting);
+
+  return {
+    summary: {
+      executableRoutingRecords: summary.executableRoutingRecords,
+      readyForPayoutAmount: summary.readyForPayoutAmount,
+      blockedExecutionRecords: summary.blockedExecutionRecords,
+      failedExecutionRecords: summary.failedExecutionRecords,
+      executedTransferCount: summary.executedTransferCount,
+      reversedExecutionCount: summary.reversedExecutionCount,
+      executedAmount: summary.executedAmount,
+      reversedAmount: summary.reversedAmount
+    },
+    recentExecutions: scope.recentExecutions
+  };
+}
+
+export async function executeFintechPayouts(
+  user: UserAccount,
+  input?: {
+    mode?: "ready" | "retry_failed";
+    speed?: "standard" | "instant";
+  }
+): Promise<ExecuteFintechPayoutsResult> {
+  const supabase = getSupabaseOrThrow();
+  const actor = await resolveActor(user, supabase);
+  assertManagementActor(actor);
+
+  const locations = await loadLocationsInScope(actor, supabase);
+  const paymentsResult = locations.length
+    ? await supabase
+      .from("payments")
+      .select(PAYMENT_SELECT)
+      .in("shop_id", locations.map((location) => location.id))
+      .order("created_at", { ascending: true })
+    : { data: [], error: null };
+
+  if (paymentsResult.error) {
+    throw new FintechServiceError("Unable to load payments for payout execution.", 500);
+  }
+
+  const payments = (paymentsResult.data ?? []) as PaymentRow[];
+  const scope = await buildPayoutExecutionScope(supabase, payments, locations);
+  const mode = input?.mode ?? "ready";
+  const speed = input?.speed ?? "standard";
+  let executed = 0;
+  let blocked = 0;
+  let failed = 0;
+  let skipped = 0;
+
+  for (const routing of scope.routingRows) {
+    const payment = scope.paymentById.get(routing.payment_id);
+    if (!payment) {
+      continue;
+    }
+    await syncStripeSettlementForPayment(supabase, payment.id);
+    const refreshedRoutingResult = await supabase
+      .from("payment_routing_records")
+      .select(PAYMENT_ROUTING_SELECT)
+      .eq("id", routing.id)
+      .maybeSingle();
+
+    if (refreshedRoutingResult.error) {
+      throw new FintechServiceError("Unable to refresh payout routing before execution.", 500);
+    }
+
+    const currentRouting = (refreshedRoutingResult.data as PaymentRoutingRow | null) ?? routing;
+
+    const existingTransferExecutions = scope.payoutExecutions.filter((row) =>
+      row.routing_record_id === currentRouting.id
+      && row.execution_type === "transfer"
+    );
+    if (mode === "retry_failed" && !existingTransferExecutions.some((row) => row.execution_status === "failed")) {
+      continue;
+    }
+    if (mode === "ready" && currentRouting.money_routing_status !== "ready_for_payout") {
+      continue;
+    }
+
+    const targets = buildRoutingExecutionTargets(currentRouting, payment, scope.accountByBarberId, scope.accountByShopId);
+    if (!targets.length) {
+      skipped += 1;
+      continue;
+    }
+
+    for (const target of targets) {
+      const existingForTarget = existingTransferExecutions.find((row) => row.target_subject_type === target.targetSubjectType);
+      if (mode === "retry_failed" && existingForTarget?.execution_status !== "failed") {
+        continue;
+      }
+      if (mode === "ready" && existingForTarget?.execution_status === "executed" && existingForTarget.processor_transfer_id) {
+        skipped += 1;
+        continue;
+      }
+
+      const execution = await executeTransferForRoutingTarget(supabase, currentRouting, payment, target, actor.profile.id, speed);
+      if (execution.execution_status === "executed") {
+        executed += 1;
+      } else if (execution.execution_status === "blocked") {
+        blocked += 1;
+      } else if (execution.execution_status === "failed") {
+        failed += 1;
+      } else {
+        skipped += 1;
+      }
+    }
+
+    await syncRoutingExecutionState(supabase, currentRouting.id);
+  }
+
+  const refreshed = await listFintechPayouts(user);
+  return {
+    summary: {
+      executed,
+      blocked,
+      failed,
+      skipped,
+      reversed: refreshed.summary.reversedExecutionCount
+    },
+    recentExecutions: refreshed.recentExecutions
+  };
+}
+
+export async function getBarberFintechReadiness(user: UserAccount): Promise<BarberFintechReadinessPayload> {
+  const supabase = getSupabaseOrThrow();
+  const actor = await resolveActor(user, supabase);
+  assertBarberActor(actor);
+
+  const barber = actor.barber!;
+  const memberships = await loadMembershipsForBarber(barber.profile_id, supabase);
+  const shopIds = [...new Set(memberships.map((membership) => membership.location_id))];
+  const locationsResult = shopIds.length
+    ? await supabase
+      .from("locations")
+      .select("id, reference_code, name, neighborhood, city, state")
+      .in("id", shopIds)
+    : { data: [], error: null };
+
+  if (locationsResult.error) {
+    throw new FintechServiceError("Unable to load the barber shop labels.", 500);
+  }
+
+  const locations = (locationsResult.data ?? []) as LocationRow[];
+  await ensureConnectedAccounts(supabase, {
+    barberIds: [barber.id],
+    shopIds,
+    createdBy: actor.profile.id
+  });
+
+  const [accounts, acceptances] = await Promise.all([
+    loadConnectedAccountsForScope(supabase, { barberIds: [barber.id], shopIds }),
+    loadLegalAcceptancesForScope(supabase, { barberIds: [barber.id], shopIds })
+  ]);
+  const syncedStates = await Promise.all(accounts.map((account) => syncConnectedAccountState(supabase, account, acceptances)));
+  const connectedAccountState = syncedStates.find((state) => state.row.subject_type === "barber" && state.row.barber_id === barber.id);
+  if (!connectedAccountState) {
+    throw new FintechServiceError("No barber connected account is available.", 404);
+  }
+
+  const paymentsResult = await supabase
+    .from("payments")
+    .select(PAYMENT_SELECT)
+    .eq("barber_id", barber.id)
+    .order("created_at", { ascending: false });
+
+  if (paymentsResult.error) {
+    throw new FintechServiceError("Unable to load the barber routing activity.", 500);
+  }
+
+  const payments = (paymentsResult.data ?? []) as PaymentRow[];
+  const paymentIds = payments.map((payment) => payment.id);
+  const routingResult = paymentIds.length
+    ? await supabase
+      .from("payment_routing_records")
+      .select(PAYMENT_ROUTING_SELECT)
+      .in("payment_id", paymentIds)
+      .order("updated_at", { ascending: false })
+    : { data: [], error: null };
+
+  if (routingResult.error) {
+    throw new FintechServiceError("Unable to load the barber payout routing records.", 500);
+  }
+
+  const routingRows = (routingResult.data ?? []) as PaymentRoutingRow[];
+  const locationById = new Map(locations.map((location) => [location.id, location]));
+  const paymentById = new Map(payments.map((payment) => [payment.id, payment]));
+  const shopStateById = new Map(
+    syncedStates
+      .filter((state) => state.row.subject_type === "shop" && state.row.shop_id)
+      .map((state) => [state.row.shop_id as string, state])
+  );
+  const membershipsView = memberships.map((membership) => {
+    const location = locationById.get(membership.location_id);
+    return {
+      id: membership.id,
+      barberId: barber.id,
+      barberName: actor.profile.full_name ?? actor.profile.email,
+      shopId: membership.location_id,
+      shopLabel: location ? formatShopLabel(location) : membership.location_id,
+      routingModel: normalizeRoutingModel(membership.routing_model, barber.compensation_model === "booth_rent" ? "booth_rent" : "commission"),
+      commissionRate: membership.commission_rate === null ? null : numeric(membership.commission_rate),
+      boothRentAmount: membership.booth_rent_amount === null ? null : numeric(membership.booth_rent_amount),
+      boothRentFrequency: membership.booth_rent_frequency,
+      payoutBlockReason: membership.payout_block_reason,
+      updatedAt: membership.updated_at,
+      shopAccount: shopStateById.get(membership.location_id) ? mapConnectedAccountView(shopStateById.get(membership.location_id)!) : null
+    } satisfies BarberFintechMembershipView;
+  });
+  const latestBarberAcceptances = latestAcceptancesForSubject("barber", barber.id, acceptances).map(mapAgreementView);
+  const blockedRoutingRows = routingRows
+    .filter((row) => row.money_routing_status === "blocked" || row.money_routing_status === "manual_review")
+    .slice(0, 8)
+    .map((row) => {
+      const payment = paymentById.get(row.payment_id);
+      const shop = payment?.shop_id ? locationById.get(payment.shop_id) : undefined;
+      return mapRoutingView(
+        row,
+        payment,
+        actor.profile.full_name ?? actor.profile.email,
+        shop ? formatShopLabel(shop) : null
+      );
+    });
+  const readyForPayoutAmount = routingRows
+    .filter((row) => row.money_routing_status === "ready_for_payout")
+    .reduce((sum, row) => sum + numeric(row.barber_payout_amount), 0);
+
+  return {
+    barberId: barber.id,
+    barberName: actor.profile.full_name ?? actor.profile.email,
+    connectedAccount: mapConnectedAccountView(connectedAccountState),
+    agreements: latestBarberAcceptances,
+    memberships: membershipsView,
+    routingSummary: {
+      blockedPaymentsCount: routingRows.filter((row) => row.money_routing_status === "blocked" || row.money_routing_status === "manual_review").length,
+      pendingPaymentsCount: routingRows.filter((row) => row.money_routing_status === "pending").length,
+      readyForPayoutAmount: roundCurrency(readyForPayoutAmount),
+      blockedReasons: [...new Set(routingRows.map((row) => row.blocked_reason).filter(Boolean) as string[])].slice(0, 5)
+    },
+    blockedPayments: blockedRoutingRows
+  };
+}
+
+export async function listFintechManagementPayload(user: UserAccount): Promise<FintechManagementPayload> {
+  const supabase = getSupabaseOrThrow();
+  const actor = await resolveActor(user, supabase);
+  assertManagementActor(actor);
+
+  const locations = await loadLocationsInScope(actor, supabase);
+  const memberships = await loadMembershipsForLocations(locations.map((location) => location.id), supabase);
+  const barbers = await loadBarbersByProfileIds([...new Set(memberships.map((membership) => membership.profile_id))], supabase);
+  const profiles = await loadProfiles(barbers.map((barber) => barber.profile_id), supabase);
+  const profileNameById = new Map(profiles.map((profile) => [profile.id, profile.full_name ?? profile.email]));
+  const locationById = new Map(locations.map((location) => [location.id, location]));
+  const barberByProfileId = new Map(barbers.map((barber) => [barber.profile_id, barber]));
+
+  await ensureConnectedAccounts(supabase, {
+    barberIds: barbers.map((barber) => barber.id),
+    shopIds: locations.map((location) => location.id),
+    createdBy: actor.profile.id
+  });
+
+  const [accounts, acceptances, paymentsResult] = await Promise.all([
+    loadConnectedAccountsForScope(supabase, {
+      barberIds: barbers.map((barber) => barber.id),
+      shopIds: locations.map((location) => location.id)
+    }),
+    loadLegalAcceptancesForScope(supabase, {
+      barberIds: barbers.map((barber) => barber.id),
+      shopIds: locations.map((location) => location.id)
+    }),
+    locations.length
+      ? supabase
+        .from("payments")
+        .select(PAYMENT_SELECT)
+        .in("shop_id", locations.map((location) => location.id))
+        .order("created_at", { ascending: false })
+      : Promise.resolve({ data: [], error: null })
+  ]);
+
+  if (paymentsResult.error) {
+    throw new FintechServiceError("Unable to load the payment routing scope.", 500);
+  }
+
+  const syncedStates = await Promise.all(accounts.map((account) => syncConnectedAccountState(supabase, account, acceptances)));
+  const accountByBarberId = new Map(
+    syncedStates
+      .filter((state) => state.row.subject_type === "barber" && state.row.barber_id)
+      .map((state) => [state.row.barber_id as string, state])
+  );
+  const accountByShopId = new Map(
+    syncedStates
+      .filter((state) => state.row.subject_type === "shop" && state.row.shop_id)
+      .map((state) => [state.row.shop_id as string, state])
+  );
+
+  const payments = (paymentsResult.data ?? []) as PaymentRow[];
+  const paymentIds = payments.map((payment) => payment.id);
+  const routingResult = paymentIds.length
+    ? await supabase
+      .from("payment_routing_records")
+      .select(PAYMENT_ROUTING_SELECT)
+      .in("payment_id", paymentIds)
+      .order("updated_at", { ascending: false })
+    : { data: [], error: null };
+
+  if (routingResult.error) {
+    throw new FintechServiceError("Unable to load payment routing readiness.", 500);
+  }
+
+  const routingRows = (routingResult.data ?? []) as PaymentRoutingRow[];
+  const paymentById = new Map(payments.map((payment) => [payment.id, payment]));
+
+  const membershipsView = memberships.flatMap((membership) => {
+    const barber = barberByProfileId.get(membership.profile_id);
+    const location = locationById.get(membership.location_id);
+    if (!barber || !location) {
+      return [];
+    }
+
+    return [{
+      id: membership.id,
+      barberId: barber.id,
+      barberName: profileNameById.get(barber.profile_id) ?? barber.reference_code ?? barber.id,
+      shopId: location.id,
+      shopLabel: formatShopLabel(location),
+      routingModel: normalizeRoutingModel(membership.routing_model, barber.compensation_model === "booth_rent" ? "booth_rent" : "commission"),
+      commissionRate: membership.commission_rate === null ? null : numeric(membership.commission_rate),
+      boothRentAmount: membership.booth_rent_amount === null ? null : numeric(membership.booth_rent_amount),
+      boothRentFrequency: membership.booth_rent_frequency,
+      payoutBlockReason: membership.payout_block_reason,
+      updatedAt: membership.updated_at
+    } satisfies MembershipCompensationView];
+  });
+
+  const shopViews = locations.map((location) => {
+    const state = accountByShopId.get(location.id);
+    if (!state) {
+      return null;
+    }
+
+    return {
+      ...mapConnectedAccountView(state),
+      displayName: location.name,
+      shopId: location.id,
+      shopLabel: formatShopLabel(location),
+      barberId: null,
+      barberName: null
+    } satisfies FintechManagementAccountView;
+  }).filter(Boolean) as FintechManagementAccountView[];
+
+  const barberViews = barbers.map((barber) => {
+    const state = accountByBarberId.get(barber.id);
+    if (!state) {
+      return null;
+    }
+
+    const primaryMembership = memberships.find((membership) => membership.profile_id === barber.profile_id);
+    const primaryLocation = primaryMembership ? locationById.get(primaryMembership.location_id) : null;
+
+    return {
+      ...mapConnectedAccountView(state),
+      displayName: profileNameById.get(barber.profile_id) ?? barber.reference_code ?? barber.id,
+      shopId: primaryMembership?.location_id ?? null,
+      shopLabel: primaryLocation ? formatShopLabel(primaryLocation) : null,
+      barberId: barber.id,
+      barberName: profileNameById.get(barber.profile_id) ?? barber.reference_code ?? barber.id
+    } satisfies FintechManagementAccountView;
+  }).filter(Boolean) as FintechManagementAccountView[];
+
+  const blockedPayments = routingRows
+    .filter((row) => row.money_routing_status === "blocked" || row.money_routing_status === "manual_review")
+    .slice(0, 12)
+    .map((row) => {
+      const payment = paymentById.get(row.payment_id);
+      const barber = payment?.barber_id ? barbers.find((entry) => entry.id === payment.barber_id) : undefined;
+      const shop = payment?.shop_id ? locationById.get(payment.shop_id) : undefined;
+      return mapRoutingView(
+        row,
+        payment,
+        barber ? profileNameById.get(barber.profile_id) ?? barber.reference_code ?? barber.id : null,
+        shop ? formatShopLabel(shop) : null
+      );
+    });
+
+  return {
+    summary: {
+      totalAccounts: syncedStates.length,
+      readyAccounts: syncedStates.filter((state) => state.row.payout_readiness_status === "ready").length,
+      blockedAccounts: syncedStates.filter((state) => state.row.payout_readiness_status === "blocked").length,
+      needsAttentionAccounts: syncedStates.filter((state) => state.row.payout_readiness_status === "needs_attention").length,
+      notReadyAccounts: syncedStates.filter((state) => state.row.payout_readiness_status === "not_ready").length,
+      blockedRoutingRecords: routingRows.filter((row) => row.money_routing_status === "blocked" || row.money_routing_status === "manual_review").length,
+      readyForPayoutAmount: roundCurrency(
+        routingRows
+          .filter((row) => row.money_routing_status === "ready_for_payout")
+          .reduce((sum, row) => sum + numeric(row.barber_payout_amount) + numeric(row.shop_split_amount), 0)
+      )
+    },
+    shops: shopViews,
+    barbers: barberViews,
+    memberships: membershipsView,
+    blockedPayments
+  };
+}
+
+function getStripeReturnPath(subject: StripeConnectSubjectResolution) {
+  return subject.subjectType === "barber" ? "/earnings" : "/reports";
+}
+
+export async function ensureStripeConnectSubjectAccount(
+  user: UserAccount,
+  input?: {
+    subjectType?: FintechSubjectType;
+    shopId?: string | null;
+  }
+) {
+  const supabase = getSupabaseOrThrow();
+  const actor = await resolveActor(user, supabase);
+  const subject = await resolveStripeConnectSubject(actor, supabase, input);
+  const state = await provisionStripeConnectedAccountForSubject(supabase, subject);
+  const account = mapConnectedAccountView(state);
+  await syncVerificationLaneFromConnectedAccount(state.row, account, user.id);
+
+  return {
+    account
+  };
+}
+
+export async function createStripeConnectOnboardingSession(
+  user: UserAccount,
+  input?: {
+    subjectType?: FintechSubjectType;
+    shopId?: string | null;
+  }
+): Promise<StripeConnectSessionResult> {
+  const supabase = getSupabaseOrThrow();
+  const actor = await resolveActor(user, supabase);
+  const subject = await resolveStripeConnectSubject(actor, supabase, input);
+  const provisionedState = await provisionStripeConnectedAccountForSubject(supabase, subject);
+  const providerAccountId = provisionedState.row.provider_account_id;
+
+  if (!providerAccountId) {
+    throw new FintechServiceError("Stripe onboarding could not be started for this account.", 500);
+  }
+
+    try {
+      const link = await createStripeOnboardingLink({
+      accountId: providerAccountId,
+      refreshUrl: buildStripeReturnUrl(getStripeReturnPath(subject)),
+      returnUrl: buildStripeReturnUrl(getStripeReturnPath(subject))
+    });
+    const stripeAccount = await retrieveStripeConnectedAccount(providerAccountId);
+      const syncedState = await syncConnectedAccountFromStripe(supabase, provisionedState.row, stripeAccount, {
+        markOnboardingStarted: true
+      });
+      const account = mapConnectedAccountView(syncedState);
+      await syncVerificationLaneFromConnectedAccount(syncedState.row, account, user.id);
+
+      return {
+        account,
+        url: link.url
+      };
+  } catch (error) {
+    throw toFintechServiceError(error, "Unable to create the Stripe onboarding link.");
+  }
+}
+
+export async function createStripeConnectDashboardSession(
+  user: UserAccount,
+  input?: {
+    subjectType?: FintechSubjectType;
+    shopId?: string | null;
+  }
+): Promise<StripeConnectSessionResult> {
+  const supabase = getSupabaseOrThrow();
+  const actor = await resolveActor(user, supabase);
+  const subject = await resolveStripeConnectSubject(actor, supabase, input);
+  const provisionedState = await provisionStripeConnectedAccountForSubject(supabase, subject);
+  const providerAccountId = provisionedState.row.provider_account_id;
+
+  if (!providerAccountId) {
+    throw new FintechServiceError("Stripe dashboard access is not available until onboarding starts.", 409);
+  }
+
+  try {
+    const loginLink = await createStripeDashboardLoginLink(providerAccountId);
+    const stripeAccount = await retrieveStripeConnectedAccount(providerAccountId);
+    const syncedState = await syncConnectedAccountFromStripe(supabase, provisionedState.row, stripeAccount, {
+      markDashboardAccessed: true
+    });
+
+    return {
+      account: mapConnectedAccountView(syncedState),
+      url: loginLink.url
+    };
+  } catch (error) {
+    throw toFintechServiceError(error, "Unable to create the Stripe dashboard link.");
+  }
+}
+
+export async function refreshStripeConnectSubjectAccount(
+  user: UserAccount,
+  input?: {
+    subjectType?: FintechSubjectType;
+    shopId?: string | null;
+  }
+) {
+  const supabase = getSupabaseOrThrow();
+  const actor = await resolveActor(user, supabase);
+  const subject = await resolveStripeConnectSubject(actor, supabase, input);
+  const account = await ensureConnectedAccountForSubject(supabase, subject);
+
+  if (!account.provider_account_id) {
+    throw new FintechServiceError("Stripe onboarding has not started for this account yet.", 409);
+  }
+
+    try {
+      const stripeAccount = await retrieveStripeConnectedAccount(account.provider_account_id);
+      const state = await syncConnectedAccountFromStripe(supabase, account, stripeAccount);
+      const accountView = mapConnectedAccountView(state);
+      await syncVerificationLaneFromConnectedAccount(state.row, accountView, user.id);
+      return {
+        account: accountView
+      };
+  } catch (error) {
+    throw toFintechServiceError(error, "Unable to refresh the Stripe readiness state.");
+  }
+}
+
+async function processStripeMoneyMovementWebhook(
+  supabase: SupabaseClient,
+  event: Stripe.Event
+) {
+  const eventObject = event.data.object as unknown as Record<string, unknown>;
+
+  if (event.type === "charge.dispute.created" || event.type === "charge.dispute.updated" || event.type === "charge.dispute.closed") {
+    const dispute = event.data.object as Stripe.Dispute;
+    const paymentIntentId =
+      typeof eventObject.payment_intent === "string"
+        ? eventObject.payment_intent
+        : null;
+    const chargeId = typeof dispute.charge === "string" ? dispute.charge : null;
+
+    let payment: PaymentRow | null = null;
+    if (paymentIntentId) {
+      const paymentResult = await supabase
+        .from("payments")
+        .select(PAYMENT_SELECT)
+        .eq("provider", "stripe")
+        .eq("provider_payment_intent_id", paymentIntentId)
+        .maybeSingle();
+
+      if (paymentResult.error) {
+        throw new FintechServiceError("Unable to map the Stripe dispute into payment routing.", 500);
+      }
+
+      payment = (paymentResult.data as PaymentRow | null) ?? null;
+    }
+
+    if (!payment && chargeId) {
+      const routingResult = await supabase
+        .from("payment_routing_records")
+        .select(PAYMENT_ROUTING_SELECT)
+        .eq("processor_charge_id", chargeId)
+        .maybeSingle();
+
+      if (routingResult.error) {
+        throw new FintechServiceError("Unable to map the disputed Stripe charge into payment routing.", 500);
+      }
+
+      const routing = (routingResult.data as PaymentRoutingRow | null) ?? null;
+      if (routing?.payment_id) {
+        const paymentResult = await supabase
+          .from("payments")
+          .select(PAYMENT_SELECT)
+          .eq("id", routing.payment_id)
+          .maybeSingle();
+
+        if (paymentResult.error) {
+          throw new FintechServiceError("Unable to load the payment linked to the disputed Stripe charge.", 500);
+        }
+
+        payment = (paymentResult.data as PaymentRow | null) ?? null;
+      }
+    }
+
+    let appointmentReference: string | null = null;
+    let locationReference: string | null = null;
+    if (payment?.appointment_id) {
+      const appointmentResult = await supabase
+        .from("appointments")
+        .select("id, reference_code, location_id")
+        .eq("id", payment.appointment_id)
+        .maybeSingle();
+
+      if (appointmentResult.error) {
+        throw new FintechServiceError("Unable to load the disputed appointment context.", 500);
+      }
+
+      const appointment = appointmentResult.data as { id: string; reference_code: string | null; location_id: string | null } | null;
+      appointmentReference = appointment?.reference_code ?? appointment?.id ?? null;
+      locationReference = appointment?.location_id ?? payment.shop_id ?? null;
+    }
+
+    const now = new Date().toISOString();
+    const stripeDisputeStatus = String(dispute.status ?? "").trim();
+    const mappedStatus =
+      stripeDisputeStatus === "warning_under_review" || stripeDisputeStatus === "under_review"
+        ? "under_review"
+        : stripeDisputeStatus === "warning_needs_response" || stripeDisputeStatus === "needs_response"
+          ? "open"
+          : stripeDisputeStatus === "lost"
+            ? "escalated"
+            : stripeDisputeStatus === "won" || stripeDisputeStatus === "charge_refunded" || stripeDisputeStatus === "prevented" || stripeDisputeStatus === "closed" || stripeDisputeStatus === "warning_closed"
+              ? "resolved"
+              : "open";
+    const summary = appointmentReference
+      ? `Stripe dispute ${dispute.reason?.replaceAll("_", " ") ?? "payment issue"} opened for booking ${appointmentReference}.`
+      : `Stripe dispute ${dispute.reason?.replaceAll("_", " ") ?? "payment issue"} was received for a card payment.`;
+
+    const disputeUpsert = await supabase
+      .from("disputes")
+      .upsert({
+        id: `stripe-dispute:${dispute.id}`,
+        dispute_type: "payment_dispute",
+        dispute_status: mappedStatus,
+        submitted_by_role: "owner",
+        submitted_by_reference: "stripe:webhook",
+        involved_party_type: "payment",
+        involved_party_reference: payment?.id ?? dispute.id,
+        appointment_reference: appointmentReference,
+        location_reference: locationReference,
+        summary,
+        resolution_notes: mappedStatus === "resolved" ? `Stripe marked this dispute as ${stripeDisputeStatus}.` : null,
+        updated_at: now
+      }, { onConflict: "id" });
+
+    if (disputeUpsert.error) {
+      throw new FintechServiceError("Unable to persist the canonical dispute hold.", 500);
+    }
+
+    const disputeEventUpsert = await supabase
+      .from("dispute_events")
+      .upsert({
+        id: event.id,
+        dispute_reference: `stripe-dispute:${dispute.id}`,
+        actor_role: "owner",
+        actor_reference: "stripe:webhook",
+        action_label: event.type,
+        notes: `${summary} Stripe status: ${stripeDisputeStatus}.`,
+        created_at: now
+      }, { onConflict: "id" });
+
+    if (disputeEventUpsert.error) {
+      throw new FintechServiceError("Unable to persist the dispute event audit trail.", 500);
+    }
+
+    if (payment) {
+      await syncPaymentRoutingRecord(supabase, payment.id);
+    }
+
+    return { handled: true, connectedAccountId: null as string | null };
+  }
+
+  if (event.type === "payment_intent.succeeded") {
+    const paymentIntentId = typeof eventObject.id === "string" ? eventObject.id : null;
+    if (!paymentIntentId) {
+      return { handled: false, connectedAccountId: null as string | null };
+    }
+
+    const paymentResult = await supabase
+      .from("payments")
+      .select(PAYMENT_SELECT)
+      .eq("provider", "stripe")
+      .eq("provider_payment_intent_id", paymentIntentId)
+      .maybeSingle();
+
+    if (paymentResult.error) {
+      throw new FintechServiceError("Unable to map the Stripe payment intent into payment routing.", 500);
+    }
+
+    if (!paymentResult.data) {
+      return { handled: false, connectedAccountId: null as string | null };
+    }
+
+    await syncStripeSettlementForPayment(supabase, (paymentResult.data as PaymentRow).id, { throwOnError: true });
+    return { handled: true, connectedAccountId: null as string | null };
+  }
+
+  if (event.type === "charge.succeeded" || event.type === "charge.updated") {
+    const paymentIntentId = typeof eventObject.payment_intent === "string" ? eventObject.payment_intent : null;
+    if (!paymentIntentId) {
+      return { handled: false, connectedAccountId: null as string | null };
+    }
+
+    const paymentResult = await supabase
+      .from("payments")
+      .select(PAYMENT_SELECT)
+      .eq("provider", "stripe")
+      .eq("provider_payment_intent_id", paymentIntentId)
+      .maybeSingle();
+
+    if (paymentResult.error) {
+      throw new FintechServiceError("Unable to map the Stripe charge into payment routing.", 500);
+    }
+
+    if (!paymentResult.data) {
+      return { handled: false, connectedAccountId: null as string | null };
+    }
+
+    await syncStripeSettlementForPayment(supabase, (paymentResult.data as PaymentRow).id, { throwOnError: true });
+    return { handled: true, connectedAccountId: null as string | null };
+  }
+
+  if (event.type === "transfer.created" || event.type === "transfer.updated" || event.type === "transfer.reversed") {
+    const transferId = typeof eventObject.id === "string" ? eventObject.id : null;
+    if (!transferId) {
+      return { handled: false, connectedAccountId: null as string | null };
+    }
+
+    const executionResult = await supabase
+      .from("payout_executions")
+      .select(PAYOUT_EXECUTION_SELECT)
+      .eq("processor_transfer_id", transferId)
+      .eq("execution_type", "transfer")
+      .maybeSingle();
+
+    if (executionResult.error) {
+      throw new FintechServiceError("Unable to map the Stripe transfer into payout execution state.", 500);
+    }
+
+    if (!executionResult.data) {
+      return { handled: false, connectedAccountId: null as string | null };
+    }
+
+    const execution = executionResult.data as PayoutExecutionRow;
+    const transfer = event.data.object as Stripe.Transfer;
+    const now = new Date().toISOString();
+
+    await persistPayoutExecutionRow(supabase, execution.id, {
+      execution_status: "executed",
+      failure_reason: null,
+      blocked_reason: null,
+      executed_at: execution.executed_at ?? now,
+      processor_transfer_id: transfer.id,
+      reconciliation_status:
+        transfer.amount_reversed > 0
+          ? (transfer.amount_reversed >= transfer.amount ? "reversed" : "partially_reversed")
+          : execution.reconciliation_status,
+      updated_at: now
+    });
+
+    await syncRoutingExecutionState(supabase, execution.routing_record_id);
+    return { handled: true, connectedAccountId: execution.target_connected_account_id };
+  }
+
+  if (event.type === "payout.paid" || event.type === "payout.failed") {
+    const processorAccountId = event.account || (typeof eventObject.account === "string" ? eventObject.account : null);
+    if (!processorAccountId) {
+      return { handled: false, connectedAccountId: null as string | null };
+    }
+
+    const accountResult = await supabase
+      .from("connected_accounts")
+      .select(CONNECTED_ACCOUNT_SELECT)
+      .eq("provider", "stripe_connect")
+      .eq("provider_account_id", processorAccountId)
+      .maybeSingle();
+
+    if (accountResult.error) {
+      throw new FintechServiceError("Unable to map the Stripe payout event into connected account state.", 500);
+    }
+
+    if (!accountResult.data) {
+      return { handled: false, connectedAccountId: null as string | null };
+    }
+
+    return { handled: true, connectedAccountId: (accountResult.data as ConnectedAccountRow).id };
+  }
+
+  return { handled: false, connectedAccountId: null as string | null };
+}
+
+export async function processStripeConnectWebhook(
+  payload: string,
+  signature: string
+): Promise<StripeWebhookSyncResult> {
+  const supabase = getSupabaseOrThrow();
+  let event: Stripe.Event;
+
+  try {
+    event = verifyStripeWebhookEvent(payload, signature);
+  } catch (error) {
+    throw toFintechServiceError(error, "Unable to verify the Stripe webhook signature.", 400);
+  }
+
+  const audit = await beginStripeWebhookAudit(supabase, event);
+  if (audit.duplicate) {
+    return {
+      received: true,
+      duplicate: true,
+      status: audit.row.processing_status === "ignored" ? "ignored" : "processed"
+    };
+  }
+
+  try {
+    const billingResult = await processStripeBillingWebhookEvent(event);
+    if (billingResult.handled) {
+      await completeStripeWebhookAudit(supabase, audit.row.id, {
+        processingStatus: "processed"
+      });
+      return { received: true, duplicate: false, status: "processed" };
+    }
+
+    const eventObject = event.data.object as unknown as Record<string, unknown>;
+    const processorAccountId =
+      event.account
+      || (eventObject.object === "account" && typeof eventObject.id === "string" ? eventObject.id : null)
+      || (typeof eventObject.account === "string" ? eventObject.account : null);
+    const supportedAccountEvents = new Set(["account.updated", "capability.updated", "person.updated"]);
+    if (supportedAccountEvents.has(event.type) && processorAccountId) {
+      const accountResult = await supabase
+        .from("connected_accounts")
+        .select(CONNECTED_ACCOUNT_SELECT)
+        .eq("provider", "stripe_connect")
+        .eq("provider_account_id", processorAccountId)
+        .maybeSingle();
+
+      if (accountResult.error) {
+        throw new FintechServiceError("Unable to load the Stripe connected account record.", 500);
+      }
+
+      if (!accountResult.data) {
+        await completeStripeWebhookAudit(supabase, audit.row.id, {
+          processingStatus: "ignored"
+        });
+        return { received: true, duplicate: false, status: "ignored" };
+      }
+
+      const stripeAccount = eventObject.object === "account" && eventObject.id === processorAccountId
+        ? event.data.object as Stripe.Account
+        : await retrieveStripeConnectedAccount(processorAccountId);
+      const state = await syncConnectedAccountFromStripe(supabase, accountResult.data as ConnectedAccountRow, stripeAccount, {
+        eventId: event.id,
+        eventType: event.type
+      });
+      await syncVerificationLaneFromConnectedAccount(state.row, mapConnectedAccountView(state));
+
+      await completeStripeWebhookAudit(supabase, audit.row.id, {
+        processingStatus: "processed",
+        connectedAccountId: state.row.id
+      });
+
+      return { received: true, duplicate: false, status: "processed" };
+    }
+
+    const moneyMovementResult = await processStripeMoneyMovementWebhook(supabase, event);
+    if (!moneyMovementResult.handled) {
+      await completeStripeWebhookAudit(supabase, audit.row.id, {
+        processingStatus: "ignored"
+      });
+      return { received: true, duplicate: false, status: "ignored" };
+    }
+
+    await completeStripeWebhookAudit(supabase, audit.row.id, {
+      processingStatus: "processed",
+      connectedAccountId: moneyMovementResult.connectedAccountId
+    });
+
+    return { received: true, duplicate: false, status: "processed" };
+  } catch (error) {
+    const fintechError = toFintechServiceError(error, "Unable to process the Stripe webhook event.");
+    await completeStripeWebhookAudit(supabase, audit.row.id, {
+      processingStatus: "failed",
+      errorMessage: fintechError.message
+    });
+    throw fintechError;
+  }
+}
+
+export async function recordLegalAcceptance(
+  user: UserAccount,
+  input: LegalAcceptanceInput & {
+    barberId?: string | null;
+    shopId?: string | null;
+  }
+) {
+  const supabase = getSupabaseOrThrow();
+  const actor = await resolveActor(user, supabase);
+  const normalized = normalizeLegalAcceptance(input);
+
+  let barberId: string | null = null;
+  let shopId: string | null = null;
+  if (actor.role === "commission_barber" || actor.role === "booth_rent_barber") {
+    assertBarberActor(actor);
+    barberId = actor.barber!.id;
+    if (!(normalized.agreementType === "platform_terms" || normalized.agreementType === "barber_agreement" || normalized.agreementType === "payout_tax_acknowledgment")) {
+      throw new FintechServiceError("Barbers can only accept barber payout and platform agreements.", 403);
+    }
+  } else if (isManagementRole(actor.role)) {
+    assertManagementActor(actor);
+    shopId = input.shopId?.trim() || null;
+    if (!shopId) {
+      throw new FintechServiceError("A shop is required for management legal acceptance.", 400);
+    }
+    if (!isLocationReadableByActor(actor, shopId)) {
+      throw new FintechServiceError("This legal acceptance is outside the viewer's shop scope.", 403);
+    }
+    if (!(normalized.agreementType === "platform_terms" || normalized.agreementType === "shop_agreement" || normalized.agreementType === "payout_tax_acknowledgment")) {
+      throw new FintechServiceError("Management can only record shop legal and payout acknowledgments.", 403);
+    }
+  } else {
+    throw new FintechServiceError("This role cannot record payout legal acceptances.", 403);
+  }
+
+  const acceptedAt = new Date().toISOString();
+  const insertResult = await supabase
+    .from("legal_acceptances")
+    .insert({
+      agreement_type: normalized.agreementType,
+      agreement_version: normalized.agreementVersion,
+      actor_profile_id: actor.profile.id,
+      actor_role: actor.profile.role,
+      barber_id: barberId,
+      shop_id: shopId,
+      accepted_at: acceptedAt,
+      metadata: { source: "phase13_fintech" },
+      created_at: acceptedAt
+    })
+    .select("id, agreement_type, agreement_version, actor_profile_id, actor_role, barber_id, shop_id, accepted_at, metadata, created_at")
+    .single();
+
+  if (insertResult.error) {
+    throw new FintechServiceError("Unable to record the legal acceptance.", 500);
+  }
+
+  await ensureConnectedAccounts(supabase, {
+    barberIds: barberId ? [barberId] : [],
+    shopIds: shopId ? [shopId] : [],
+    createdBy: actor.profile.id
+  });
+
+  const [accounts, acceptances] = await Promise.all([
+    loadConnectedAccountsForScope(supabase, { barberIds: barberId ? [barberId] : [], shopIds: shopId ? [shopId] : [] }),
+    loadLegalAcceptancesForScope(supabase, { barberIds: barberId ? [barberId] : [], shopIds: shopId ? [shopId] : [] })
+  ]);
+  const syncedStates = await Promise.all(accounts.map((account) => syncConnectedAccountState(supabase, account, acceptances)));
+
+  return {
+    acceptance: mapAgreementView(insertResult.data as LegalAcceptanceRow),
+    accounts: syncedStates.map(mapConnectedAccountView)
+  };
+}
+
+export async function updateMembershipCompensation(
+  user: UserAccount,
+  membershipId: string,
+  input: CompensationAssignmentInput
+) {
+  const supabase = getSupabaseOrThrow();
+  const actor = await resolveActor(user, supabase);
+  assertManagementActor(actor);
+
+  const membershipResult = await supabase
+    .from("staff_locations")
+    .select("id, profile_id, location_id, routing_model, commission_rate, booth_rent_amount, booth_rent_frequency, payout_block_reason, updated_at, fintech_updated_at")
+    .eq("id", membershipId)
+    .maybeSingle();
+
+  if (membershipResult.error) {
+    throw new FintechServiceError("Unable to load the requested compensation assignment.", 500);
+  }
+
+  if (!membershipResult.data) {
+    throw new FintechServiceError("Compensation assignment not found.", 404);
+  }
+
+  const membership = membershipResult.data as StaffMembershipRow;
+  if (!isLocationReadableByActor(actor, membership.location_id)) {
+    throw new FintechServiceError("This compensation assignment is outside the viewer's shop scope.", 403);
+  }
+
+  const normalized = normalizeCompensationAssignment(input);
+  const updatedAt = new Date().toISOString();
+  const updateResult = await supabase
+    .from("staff_locations")
+    .update({
+      routing_model: normalized.routingModel,
+      commission_rate: normalized.commissionRate,
+      booth_rent_amount: normalized.boothRentAmount,
+      booth_rent_frequency: normalized.boothRentFrequency,
+      payout_block_reason: normalized.payoutBlockReason,
+      updated_at: updatedAt,
+      fintech_updated_at: updatedAt
+    })
+    .eq("id", membership.id);
+
+  if (updateResult.error) {
+    throw new FintechServiceError("Unable to update the compensation assignment.", 500);
+  }
+
+  const [barberResult, locationResult, profileResult] = await Promise.all([
+    supabase
+      .from("barbers")
+      .select("id, reference_code, profile_id, compensation_model, commission_rate, booth_rent_amount, booth_rent_frequency")
+      .eq("profile_id", membership.profile_id)
+      .maybeSingle(),
+    supabase
+      .from("locations")
+      .select("id, reference_code, name, neighborhood, city, state")
+      .eq("id", membership.location_id)
+      .maybeSingle(),
+    supabase
+      .from("profiles")
+      .select("id, email, full_name, role")
+      .eq("id", membership.profile_id)
+      .maybeSingle()
+  ]);
+
+  if (barberResult.error || locationResult.error || profileResult.error) {
+    throw new FintechServiceError("Unable to rebuild the compensation response.", 500);
+  }
+
+  if (!barberResult.data || !locationResult.data || !profileResult.data) {
+    throw new FintechServiceError("The compensation assignment references missing records.", 500);
+  }
+
+  return {
+    membership: {
+      id: membership.id,
+      barberId: (barberResult.data as BarberRow).id,
+      barberName: (profileResult.data as ProfileRow).full_name ?? (profileResult.data as ProfileRow).email,
+      shopId: (locationResult.data as LocationRow).id,
+      shopLabel: formatShopLabel(locationResult.data as LocationRow),
+      routingModel: normalized.routingModel,
+      commissionRate: normalized.commissionRate,
+      boothRentAmount: normalized.boothRentAmount,
+      boothRentFrequency: normalized.boothRentFrequency,
+      payoutBlockReason: normalized.payoutBlockReason,
+      updatedAt
+    } satisfies MembershipCompensationView
+  };
+}
+
+export async function updateConnectedAccountStatus(
+  user: UserAccount,
+  accountId: string,
+  input: ConnectedAccountStatusInput
+) {
+  const supabase = getSupabaseOrThrow();
+  const actor = await resolveActor(user, supabase);
+  assertManagementActor(actor);
+
+  const accountResult = await supabase
+    .from("connected_accounts")
+    .select(CONNECTED_ACCOUNT_SELECT)
+    .eq("id", accountId)
+    .maybeSingle();
+
+  if (accountResult.error) {
+    throw new FintechServiceError("Unable to load the connected account.", 500);
+  }
+
+  if (!accountResult.data) {
+    throw new FintechServiceError("Connected account not found.", 404);
+  }
+
+  const account = accountResult.data as ConnectedAccountRow;
+  const scopedLocationId = account.shop_id;
+  if (!scopedLocationId && account.barber_id && actor.role !== "owner") {
+    const barberLookup = await supabase
+      .from("barbers")
+      .select("profile_id")
+      .eq("id", account.barber_id)
+      .maybeSingle();
+
+    if (barberLookup.error || !barberLookup.data) {
+      throw new FintechServiceError("Unable to scope the connected account.", 500);
+    }
+
+    const membershipLookup = await supabase
+      .from("staff_locations")
+      .select("location_id")
+      .eq("profile_id", (barberLookup.data as { profile_id: string }).profile_id)
+      .order("location_id");
+
+    if (membershipLookup.error) {
+      throw new FintechServiceError("Unable to scope the connected account.", 500);
+    }
+
+    const membershipLocationIds = ((membershipLookup.data ?? []) as Array<{ location_id: string }>).map((row) => row.location_id);
+    if (!membershipLocationIds.some((locationId) => isLocationReadableByActor(actor, locationId))) {
+      throw new FintechServiceError("This connected account is outside the viewer's shop scope.", 403);
+    }
+  }
+
+  if (scopedLocationId && !isLocationReadableByActor(actor, scopedLocationId)) {
+    throw new FintechServiceError("This connected account is outside the viewer's shop scope.", 403);
+  }
+
+  const normalized = normalizeConnectedAccountStatus(input);
+  const updatedAt = new Date().toISOString();
+  const updateResult = await supabase
+    .from("connected_accounts")
+    .update({
+      provider: normalized.provider,
+      provider_account_id: normalized.providerAccountId,
+      onboarding_status: normalized.onboardingStatus,
+      tax_readiness_status: normalized.taxReadinessStatus,
+      charges_enabled: normalized.chargesEnabled,
+      payouts_enabled: normalized.payoutsEnabled,
+      requirements_currently_due: normalized.requirementsCurrentlyDue,
+      requirements_eventually_due: normalized.requirementsEventuallyDue,
+      requirements_past_due: normalized.requirementsPastDue,
+      disabled_reason: normalized.disabledReason,
+      last_checked_at: updatedAt,
+      updated_at: updatedAt
+    })
+    .eq("id", account.id);
+
+  if (updateResult.error) {
+    throw new FintechServiceError("Unable to update the connected account readiness.", 500);
+  }
+
+  const [accounts, acceptances] = await Promise.all([
+    loadConnectedAccountsForScope(supabase, {
+      barberIds: account.barber_id ? [account.barber_id] : [],
+      shopIds: account.shop_id ? [account.shop_id] : []
+    }),
+    loadLegalAcceptancesForScope(supabase, {
+      barberIds: account.barber_id ? [account.barber_id] : [],
+      shopIds: account.shop_id ? [account.shop_id] : []
+    })
+  ]);
+  const syncedStates = await Promise.all(accounts.map((row) => syncConnectedAccountState(supabase, row, acceptances)));
+  const currentState = syncedStates.find((state) => state.row.id === account.id);
+
+  if (!currentState) {
+    throw new FintechServiceError("Unable to rebuild the connected account state.", 500);
+  }
+
+  return {
+    account: mapConnectedAccountView(currentState)
+  };
+}
