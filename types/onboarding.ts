@@ -1,4 +1,5 @@
 import type { Route } from "next";
+import type { ApprovalStatus, BarberSubtype, IdentityOnboardingState } from "@/types/domain";
 import type { VerificationSubjectRole, VerificationSubjectProfileView } from "@/types/trust";
 
 export type OnboardingRole = VerificationSubjectRole;
@@ -57,6 +58,23 @@ export interface OnboardingMePayload {
   warnings: string[];
 }
 
+export interface RoleSelectionPayload {
+  role: OnboardingRole;
+  barberSubtype?: BarberSubtype;
+  shopName?: string;
+}
+
+export interface ContactVerificationStatusPayload {
+  email: string;
+  phone: string;
+  emailVerified: boolean;
+  phoneVerified: boolean;
+  canContinue: boolean;
+  requiresRoleSelection: boolean;
+  onboardingState: IdentityOnboardingState;
+  degraded?: boolean;
+}
+
 export interface ActivationStatusLaneView {
   role: OnboardingRole;
   activationState: ActivationState;
@@ -65,6 +83,8 @@ export interface ActivationStatusLaneView {
   verificationProfile?: VerificationSubjectProfileView;
   resumePath: Route;
   dashboardPath: Route;
+  appApprovalStatus?: ApprovalStatus;
+  shopApprovalStatus?: ApprovalStatus;
 }
 
 export interface ActivationStatusPayload {
@@ -73,4 +93,3 @@ export interface ActivationStatusPayload {
   lanes: ActivationStatusLaneView[];
   warnings: string[];
 }
-

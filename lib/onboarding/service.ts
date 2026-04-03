@@ -1,10 +1,11 @@
 import type { Route } from "next";
+import { initializeProductionRoleSelection } from "@/lib/auth/production-identity";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import { getTrustState, setTrustState } from "@/lib/trust/state";
 import { getVerificationMePayload } from "@/lib/trust/verification-service";
 import { getOnboardingStateStore, setOnboardingStateStore } from "@/lib/onboarding/state";
-import type { UserAccount } from "@/types/domain";
+import type { BarberSubtype, UserAccount } from "@/types/domain";
 import type {
   ActivationState,
   ActivationStatusLaneView,
@@ -74,6 +75,11 @@ function getStepDefinitions(role: OnboardingRole) {
 
 function getFirstStep(role: OnboardingRole) {
   return getStepDefinitions(role)[0].key;
+}
+
+function getLastStep(role: OnboardingRole) {
+  const steps = getStepDefinitions(role);
+  return steps[steps.length - 1]?.key ?? steps[0].key;
 }
 
 function getStepRoute(role: OnboardingRole, step: OnboardingStepKey): Route {
@@ -183,13 +189,21 @@ async function persistState(record: OnboardingStateRecord) {
   return { degraded: false };
 }
 
-function createEmptyState(user: UserAccount, role: OnboardingRole): OnboardingStateRecord {
+function createEmptyState(
+  user: UserAccount,
+  role: OnboardingRole,
+  seedProfileData: Record<string, unknown> = {}
+): OnboardingStateRecord {
   const now = new Date().toISOString();
   const seededProfileData: Record<string, unknown> =
     role === "client"
       ? { clientId: user.clientId ?? `client-${user.id.slice(0, 8)}` }
       : role === "barber"
-        ? { barberId: user.barberId ?? `barber-${user.id.slice(0, 8)}`, compensationModel: "booth_rent" }
+        ? {
+            barberId: user.barberId ?? `barber-${user.id.slice(0, 8)}`,
+            barberSubtype: user.barberSubtype ?? "freelance",
+            compensationModel: user.role === "commission_barber" ? "commission" : "booth_rent"
+          }
         : {};
 
   return {
@@ -199,9 +213,29 @@ function createEmptyState(user: UserAccount, role: OnboardingRole): OnboardingSt
     status: "in_progress",
     currentStep: getFirstStep(role),
     completedSteps: [],
-    profileData: seededProfileData,
+    profileData: {
+      ...seededProfileData,
+      ...seedProfileData
+    },
     createdAt: now,
     updatedAt: now
+  };
+}
+
+function createCompletedLaneState(
+  user: UserAccount,
+  role: OnboardingRole,
+  seedProfileData: Record<string, unknown> = {}
+): OnboardingStateRecord {
+  const base = createEmptyState(user, role, seedProfileData);
+  const now = new Date().toISOString();
+  return {
+    ...base,
+    status: "completed",
+    currentStep: getLastStep(role),
+    completedSteps: getStepDefinitions(role).map((entry) => entry.key),
+    updatedAt: now,
+    completedAt: now
   };
 }
 
@@ -349,23 +383,67 @@ function assertOnboardingRoleAccess(
   }
 }
 
-export async function initializeUserRole(user: UserAccount, role: OnboardingRole) {
+export async function initializeUserRole(
+  user: UserAccount,
+  role: OnboardingRole,
+  seedProfileData: Record<string, unknown> = {}
+) {
   const { rows, degraded } = await readPersistedStates(user.id);
   assertOnboardingRoleAccess(user, role, rows);
   const existing = rows.find((entry) => entry.role === role);
-  const state = existing ?? createEmptyState(user, role);
+  const state = existing ?? createEmptyState(user, role, seedProfileData);
   if (role !== "client") {
     await ensureCanonicalVerificationProfile(user, role);
   }
 
   const persistResult = await persistState({
     ...state,
+    profileData: {
+      ...state.profileData,
+      ...seedProfileData
+    },
     updatedAt: new Date().toISOString()
   });
 
   return {
     state: existing ?? state,
     degraded: degraded || persistResult.degraded
+  };
+}
+
+export async function initializeSelectedUserLane(
+  user: UserAccount,
+  input: { role: OnboardingRole; barberSubtype?: BarberSubtype; shopName?: string }
+) {
+  const { rows } = await readPersistedStates(user.id);
+  assertOnboardingRoleAccess(user, input.role, rows);
+
+  const selection = await initializeProductionRoleSelection({
+    id: user.id,
+    email: user.email,
+    phone: user.phone,
+    email_confirmed_at: user.emailVerified ? new Date().toISOString() : null,
+    phone_confirmed_at: user.phoneVerified ? new Date().toISOString() : null,
+    user_metadata: {
+      full_name: user.name,
+      phone: user.phone ?? ""
+    }
+  }, {
+    role: input.role,
+    barberSubtype: input.barberSubtype,
+      shopName: input.shopName
+  });
+
+  const completedState = createCompletedLaneState(selection.user, input.role, selection.seedProfileData);
+  if (input.role !== "client") {
+    await ensureCanonicalVerificationProfile(selection.user, input.role);
+  }
+  const persistResult = await persistState(completedState);
+
+  return {
+    user: selection.user,
+    state: completedState,
+    degraded: persistResult.degraded
   };
 }
 
@@ -463,6 +541,10 @@ export async function resolvePostAuthDestination(
     return "/login?account=disabled";
   }
 
+  if (user.emailVerified === false || user.phoneVerified === false || user.onboardingState === "awaiting_contact_verification") {
+    return "/verify-contact";
+  }
+
   if (user.accountStatus === "active" && user.role === "platform_admin") {
     return "/architect";
   }
@@ -507,7 +589,9 @@ export async function getActivationStatusForUser(user: UserAccount): Promise<Act
     requirements: lane.verificationProfile?.currentRequirements ?? [],
     verificationProfile: lane.verificationProfile,
     resumePath: lane.resumePath,
-    dashboardPath: getDashboardPath(lane.role)
+    dashboardPath: getDashboardPath(lane.role),
+    appApprovalStatus: lane.role === "client" ? "not_required" : user.appApprovalStatus,
+    shopApprovalStatus: lane.role === "barber" ? user.shopApprovalStatus : undefined
   }));
 
   return {

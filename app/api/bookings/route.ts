@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
       clientId: clientContext.clientId || undefined,
       pointsUserId: clientContext.viewer.role === "client" ? clientContext.viewer.id : undefined,
       actorRole: "client",
-      actorEmail: clientContext.activeClient.email,
+      actorEmail: clientContext.activeClient?.email ?? clientContext.viewer.email,
       bookingSource: sourceKind ?? "booking"
     });
 

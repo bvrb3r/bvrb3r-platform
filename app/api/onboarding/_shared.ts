@@ -36,6 +36,14 @@ export function toOnboardingErrorResponse(error: unknown) {
     return NextResponse.json({ error: "Finish or resume your current onboarding lane first." }, { status: 409 });
   }
 
+  if (message === "contact_verification_required") {
+    return NextResponse.json({ error: "Verify email and phone before selecting a lane." }, { status: 409 });
+  }
+
+  if (message === "shop_name_required") {
+    return NextResponse.json({ error: "A shop name is required to open the owner lane." }, { status: 400 });
+  }
+
   return NextResponse.json({ error: message }, { status: 500 });
 }
 

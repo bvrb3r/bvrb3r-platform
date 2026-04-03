@@ -5,12 +5,12 @@ import { resolveDemoUser } from "@/lib/auth/demo-auth";
 const {
   getOnboardingSessionUserMock,
   getOnboardingStateMock,
-  initializeUserRoleMock,
+  initializeSelectedUserLaneMock,
   getActivationStatusForUserMock
 } = vi.hoisted(() => ({
   getOnboardingSessionUserMock: vi.fn(),
   getOnboardingStateMock: vi.fn(),
-  initializeUserRoleMock: vi.fn(),
+  initializeSelectedUserLaneMock: vi.fn(),
   getActivationStatusForUserMock: vi.fn()
 }));
 
@@ -23,9 +23,9 @@ vi.mock("@/app/api/onboarding/_shared", () => ({
 
 vi.mock("@/lib/onboarding/service", () => ({
   getOnboardingState: getOnboardingStateMock,
-  initializeUserRole: initializeUserRoleMock,
+  initializeSelectedUserLane: initializeSelectedUserLaneMock,
   getActivationStatusForUser: getActivationStatusForUserMock,
-  resolvePostAuthDestination: vi.fn().mockResolvedValue("/onboarding/client/profile")
+  resolvePostAuthDestination: vi.fn().mockResolvedValue("/dashboard/client")
 }));
 
 import { GET as getOnboardingMe } from "@/app/api/onboarding/me/route";
@@ -36,7 +36,7 @@ describe("onboarding routes", () => {
   beforeEach(() => {
     getOnboardingSessionUserMock.mockReset();
     getOnboardingStateMock.mockReset();
-    initializeUserRoleMock.mockReset();
+    initializeSelectedUserLaneMock.mockReset();
     getActivationStatusForUserMock.mockReset();
   });
 
@@ -54,8 +54,9 @@ describe("onboarding routes", () => {
   it("initializes a selected role", async () => {
     const client = resolveDemoUser("client@bvrb3r.demo");
     getOnboardingSessionUserMock.mockResolvedValue(client);
-    initializeUserRoleMock.mockResolvedValue({
-      state: { id: "lane-1", role: "client", currentStep: "client_profile", completedSteps: [], profileData: {}, status: "in_progress" },
+    initializeSelectedUserLaneMock.mockResolvedValue({
+      user: client,
+      state: { id: "lane-1", role: "client", currentStep: "client_preferences", completedSteps: ["client_profile", "client_preferences"], profileData: {}, status: "completed" },
       degraded: false
     });
 
@@ -67,6 +68,7 @@ describe("onboarding routes", () => {
 
     expect(response.status).toBe(201);
     expect(body.lane.role).toBe("client");
+    expect(body.nextPath).toBe("/dashboard/client");
   });
 
   it("returns activation status without leaking internal transport details", async () => {

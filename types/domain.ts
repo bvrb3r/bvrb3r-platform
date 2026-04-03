@@ -8,6 +8,14 @@
   | "client";
 
 export type CompensationModel = "commission" | "booth_rent";
+export type IdentityLane = "client" | "barber" | "shop_owner";
+export type BarberSubtype = "freelance" | "blueprint" | "commission";
+export type ApprovalStatus = "not_required" | "pending" | "under_review" | "approved" | "rejected";
+export type IdentityOnboardingState =
+  | "awaiting_contact_verification"
+  | "awaiting_role_selection"
+  | "role_selected"
+  | "active";
 export type AppointmentStatus = "pending" | "confirmed" | "booked" | "checked_in" | "in_service" | "completed" | "cancelled" | "no_show" | "refunded";
 export type WalkInStatus =
   | "waiting"
@@ -53,9 +61,18 @@ export interface UserAccount {
   title: string;
   locationIds: string[];
   platformAdmin?: boolean;
+  phone?: string;
   accountStatus?: "active" | "deactivated" | "suspended" | "profile_only";
+  primaryOnboardingRole?: IdentityLane;
+  onboardingState?: IdentityOnboardingState;
+  emailVerified?: boolean;
+  phoneVerified?: boolean;
   barberId?: string;
+  barberSubtype?: BarberSubtype;
   clientId?: string;
+  ownedShopId?: string;
+  appApprovalStatus?: ApprovalStatus;
+  shopApprovalStatus?: ApprovalStatus;
 }
 
 export interface Location {

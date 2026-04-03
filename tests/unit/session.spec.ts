@@ -47,7 +47,7 @@ describe("server session resolution", () => {
     expect(result.user.email).toBe("wave@bvrb3r.demo");
   });
 
-  it("uses the selected demo cookie as a fallback in supabase mode when no auth user exists", async () => {
+  it("returns an unauthenticated production guest when no supabase user exists", async () => {
     isDemoModeMock.mockReturnValue(false);
     isSupabaseEnabledMock.mockReturnValue(false);
     cookiesMock.mockResolvedValue({
@@ -63,7 +63,8 @@ describe("server session resolution", () => {
     const result = await getCurrentUserFromServer();
 
     expect(result.mode).toBe("supabase");
-    expect(result.user.email).toBe("manager@bvrb3r.demo");
+    expect(result.authenticated).toBe(false);
+    expect(result.user.email).toBe("guest@bvrb3r.local");
   });
 
   it("prefers the authenticated supabase user over the demo cookie", async () => {

@@ -18,6 +18,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { getDefaultRouteForUser, getUserRoleLabel } from "@/lib/auth/demo-auth";
+import { isDemoMode } from "@/lib/config/runtime";
 import { auditLogs, demoAppointments, demoBarbers, demoClients, demoLocations, demoWalkIns, ownerKpis } from "@/lib/data/demo";
 import { cn, currency, dateLabel } from "@/lib/utils";
 import type { Role, UserAccount } from "@/types/domain";
@@ -35,6 +36,14 @@ type UtilityCard = {
   value: string;
   detail: string;
   icon: LucideIcon;
+};
+
+type ApprovalBanner = {
+  eyebrow: string;
+  title: string;
+  detail: string;
+  href: ComponentProps<typeof Link>["href"];
+  ctaLabel: string;
 };
 
 function getNavigation(user: UserAccount): NavItem[] {
@@ -177,7 +186,45 @@ function getAlertLabel(role: Role) {
   }
 }
 
-function getUtilityCards(user: UserAccount): UtilityCard[] {
+function getUtilityCards(user: UserAccount, useDemoData: boolean): UtilityCard[] {
+  if (!useDemoData) {
+    switch (user.role) {
+      case "owner":
+        return [
+          { label: "Owner lane", value: user.appApprovalStatus?.replaceAll("_", " ") ?? "ready", detail: "Business approval and verification continue from the owner dashboard.", icon: ShieldCheck },
+          { label: "Shop scope", value: user.ownedShopId ? "1" : "0", detail: user.ownedShopId ? "One shop linked to this account" : "Create or attach a shop lane", icon: MapPinned },
+          { label: "Controls", value: "Live", detail: "Money, growth, and settings stay in the owner-safe lane.", icon: WalletCards }
+        ];
+      case "manager":
+        return [
+          { label: "Manager lane", value: "Live", detail: "Schedule, team, and floor operations stay in one place.", icon: CalendarDays },
+          { label: "Shop scope", value: String(user.locationIds.length), detail: "Assigned locations on this session", icon: MapPinned },
+          { label: "Operator tools", value: "Ready", detail: "Owner-only financial controls stay protected.", icon: Users }
+        ];
+      case "front_desk":
+        return [
+          { label: "Front desk lane", value: "Live", detail: "Queue, arrivals, and handoff tools are ready.", icon: Clock3 },
+          { label: "Shop scope", value: String(user.locationIds.length), detail: "Assigned locations on this session", icon: MapPinned },
+          { label: "Operator tools", value: "Ready", detail: "Public intake and operator tools stay separated.", icon: Bell }
+        ];
+      case "commission_barber":
+      case "booth_rent_barber":
+        return [
+          { label: "Barber lane", value: user.barberSubtype?.replaceAll("_", " ") ?? "ready", detail: "Your chair, earnings, and clients stay tied to this authenticated account.", icon: CalendarDays },
+          { label: "Approval", value: user.appApprovalStatus?.replaceAll("_", " ") ?? "ready", detail: user.shopApprovalStatus && user.shopApprovalStatus !== "not_required" ? `Shop approval ${user.shopApprovalStatus.replaceAll("_", " ")}` : "No extra shop approval required", icon: ShieldCheck },
+          { label: "Chair scope", value: String(user.locationIds.length), detail: "Assigned locations on this session", icon: WalletCards }
+        ];
+      case "client":
+        return [
+          { label: "Client lane", value: "Ready", detail: "This account starts clean with no seeded rewards or booking history.", icon: CalendarDays },
+          { label: "Preferences", value: "Fresh", detail: "Favorites, points, and history will build from real activity.", icon: Sparkles },
+          { label: "Profile", value: "Connected", detail: "Your dashboard now follows the authenticated account only.", icon: UserRound }
+        ];
+      default:
+        return [{ label: "Workspace", value: "Ready", detail: "Role-aware view", icon: Sparkles }];
+    }
+  }
+
   switch (user.role) {
     case "owner":
       return [
@@ -270,6 +317,74 @@ function getProfileHref(role: Role): ComponentProps<typeof Link>["href"] {
   return role === "client" ? "/profile" : "/workspace/profile";
 }
 
+function formatApprovalStatus(status?: UserAccount["appApprovalStatus"]) {
+  switch (status) {
+    case "approved":
+      return "approved";
+    case "under_review":
+      return "under review";
+    case "rejected":
+      return "needs attention";
+    case "pending":
+      return "pending";
+    default:
+      return null;
+  }
+}
+
+function getApprovalBanner(user: UserAccount): ApprovalBanner | null {
+  if (user.role === "client") {
+    return null;
+  }
+
+  if (user.role === "owner") {
+    const status = formatApprovalStatus(user.appApprovalStatus);
+    if (!status || user.appApprovalStatus === "approved") {
+      return null;
+    }
+
+    return {
+      eyebrow: "Owner approval",
+      title: `Owner lane is ${status}.`,
+      detail: "Your dashboard is live, but public business activation and payout readiness stay controlled until BVRB3R approval and verification clear.",
+      href: "/activation-status",
+      ctaLabel: "Open activation status"
+    };
+  }
+
+  if (user.role === "commission_barber" || user.role === "booth_rent_barber") {
+    const appStatus = formatApprovalStatus(user.appApprovalStatus);
+    const shopStatus = user.shopApprovalStatus && user.shopApprovalStatus !== "not_required"
+      ? formatApprovalStatus(user.shopApprovalStatus)
+      : null;
+    if ((!appStatus || user.appApprovalStatus === "approved") && (!shopStatus || user.shopApprovalStatus === "approved")) {
+      return null;
+    }
+
+    const subtypeLabel = user.barberSubtype === "commission"
+      ? "Commission barber"
+      : user.barberSubtype === "blueprint"
+        ? "Blueprint barber"
+        : "Freelance barber";
+    const detailParts = [
+      `${subtypeLabel} lane is open for setup.`,
+      appStatus && user.appApprovalStatus !== "approved" ? `BVRB3R approval is ${appStatus}.` : null,
+      shopStatus && user.shopApprovalStatus !== "approved" ? `Shop approval is ${shopStatus}.` : null,
+      "Discovery, live bookings, and payouts stay blocked until approval and verification clear."
+    ].filter(Boolean);
+
+    return {
+      eyebrow: "Barber approval",
+      title: "This barber account is not publicly live yet.",
+      detail: detailParts.join(" "),
+      href: "/activation-status",
+      ctaLabel: "Open activation status"
+    };
+  }
+
+  return null;
+}
+
 export function DashboardShell({
   user,
   title,
@@ -285,11 +400,25 @@ export function DashboardShell({
 }) {
   const nav = getNavigation(user);
   const activeRole = getUserRoleLabel(user);
-  const visibleLocations = demoLocations.filter((location) => user.locationIds.includes(location.id));
-  const utilityCards = getUtilityCards(user);
+  const useDemoData = isDemoMode();
+  const visibleLocations = useDemoData
+    ? demoLocations.filter((location) => user.locationIds.includes(location.id))
+    : user.locationIds.map((locationId) => ({
+        id: locationId,
+        name: locationId,
+        city: "Assigned",
+        neighborhood: "",
+        state: "",
+        phone: "",
+        hours: "",
+        chairs: 0,
+        taxRate: 0
+      }));
+  const utilityCards = getUtilityCards(user, useDemoData);
   const notificationsHref = getNotificationsHref(user.role);
   const messagesHref = getMessagesHref(user.role);
   const profileHref = getProfileHref(user.role);
+  const approvalBanner = getApprovalBanner(user);
 
   return (
     <div className="app-screen safe-top-pad px-2 py-2 pb-[calc(env(safe-area-inset-bottom,0px)+6.5rem)] sm:px-3 sm:py-3 lg:px-5 lg:py-5 lg:pb-5">
@@ -484,6 +613,23 @@ export function DashboardShell({
               </div>
             </div>
           </Card>
+          {approvalBanner ? (
+            <Card className="rounded-[30px] border border-[#cfff93]/18 bg-[linear-gradient(180deg,rgba(124,255,0,0.08),rgba(10,10,10,0.98))] p-5 sm:p-6">
+              <p className="surface-label text-[#d7ffab]">{approvalBanner.eyebrow}</p>
+              <div className="mt-3 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                <div className="max-w-3xl">
+                  <p className="text-2xl font-semibold text-white">{approvalBanner.title}</p>
+                  <p className="mt-3 text-sm leading-7 text-white/66">{approvalBanner.detail}</p>
+                </div>
+                <Link
+                  href={approvalBanner.href}
+                  className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#cfff93]/34 bg-[#7cff00]/10 px-5 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#e8ffc2] transition hover:border-[#cfff93]/52 hover:bg-[#7cff00]/16"
+                >
+                  {approvalBanner.ctaLabel}
+                </Link>
+              </div>
+            </Card>
+          ) : null}
           {children}
         </div>
       </div>

@@ -2,7 +2,12 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Route } from "next";
-import type { ActivationStatusPayload, OnboardingMePayload, OnboardingRole } from "@/types/onboarding";
+import type {
+  ActivationStatusPayload,
+  ContactVerificationStatusPayload,
+  OnboardingMePayload,
+  RoleSelectionPayload
+} from "@/types/onboarding";
 
 export interface OnboardingApiError extends Error {
   status?: number;
@@ -44,19 +49,61 @@ export function useActivationStatus(enabled = true) {
   });
 }
 
+export function useContactVerificationStatus(enabled = true) {
+  return useQuery({
+    queryKey: ["auth", "verification-status"],
+    queryFn: () => requestJson<ContactVerificationStatusPayload>("/api/auth/verification-status"),
+    enabled,
+    staleTime: 5_000
+  });
+}
+
 export function useInitializeRoleMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (role: OnboardingRole) =>
+    mutationFn: (payload: RoleSelectionPayload) =>
       requestJson<{ nextPath: Route }>("/api/onboarding/role", {
         method: "POST",
-        body: JSON.stringify({ role })
+        body: JSON.stringify(payload)
       }),
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["onboarding"] }),
         queryClient.invalidateQueries({ queryKey: ["activation"] }),
-        queryClient.invalidateQueries({ queryKey: ["verification", "me"] })
+        queryClient.invalidateQueries({ queryKey: ["verification", "me"] }),
+        queryClient.invalidateQueries({ queryKey: ["auth", "verification-status"] })
+      ]);
+    }
+  });
+}
+
+export function useSendPhoneVerificationMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { phone: string }) =>
+      requestJson<ContactVerificationStatusPayload>("/api/auth/phone/send", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["auth", "verification-status"] });
+    }
+  });
+}
+
+export function useVerifyPhoneVerificationMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { code: string }) =>
+      requestJson<ContactVerificationStatusPayload>("/api/auth/phone/verify", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["auth", "verification-status"] }),
+        queryClient.invalidateQueries({ queryKey: ["onboarding"] }),
+        queryClient.invalidateQueries({ queryKey: ["activation"] })
       ]);
     }
   });

@@ -28,7 +28,7 @@ async function readExecutionSummary(context: Awaited<ReturnType<typeof getClient
 
   return buildClientMembershipExecutionSummary({
     clientId: context.clientId,
-    clientName: context.activeClient.name,
+    clientName: context.activeClient?.name ?? context.viewer.name,
     pointsBalance: summary.pointsBalance,
     referralCredits: summary.referralCredits,
     unlockedRewardCount: summary.rewards.filter((reward) => reward.unlocked).length,

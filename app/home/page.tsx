@@ -7,7 +7,11 @@ export default async function HomeRoutePage() {
 
   return (
     <ClientAppShell activeTab="home">
-      <ClientHomeScreen clientId={context.clientId} isSignedInClient={context.isSignedInClient} displayName={context.activeClient.name} />
+      <ClientHomeScreen
+        clientId={context.clientId}
+        isSignedInClient={context.isSignedInClient}
+        displayName={context.activeClient?.name ?? context.viewer.name}
+      />
     </ClientAppShell>
   );
 }
