@@ -18,9 +18,9 @@ vi.mock("@supabase/ssr", () => ({
   createServerClient: createServerClientMock
 }));
 
-import { GET as getAuthCallback } from "@/app/auth/callback/route";
+import { GET as getAuthCallbackExchange } from "@/app/auth/callback/exchange/route";
 
-describe("auth callback route", () => {
+describe("auth callback exchange route", () => {
   beforeEach(() => {
     cookiesMock.mockReset();
     createServerClientMock.mockReset();
@@ -44,25 +44,25 @@ describe("auth callback route", () => {
   it("exchanges the OAuth code and redirects to /post-auth by default", async () => {
     exchangeCodeForSessionMock.mockResolvedValue({ error: null });
 
-    const response = await getAuthCallback(new Request("https://bvrb3r.app/auth/callback?code=oauth-code"));
+    const response = await getAuthCallbackExchange(new Request("https://bvrb3r.app/auth/callback/exchange?code=oauth-code"));
 
     expect(exchangeCodeForSessionMock).toHaveBeenCalledWith("oauth-code");
-    expect(response.headers.get("location")).toBe("https://bvrb3r.app/post-auth");
+    expect(response.headers.get("location")).toBe("https://bvrb3r.app/auth/callback");
   });
 
-  it("honors a safe internal next path", async () => {
+  it("falls back to the callback page when the code is missing", async () => {
     exchangeCodeForSessionMock.mockResolvedValue({ error: null });
 
-    const response = await getAuthCallback(new Request("https://bvrb3r.app/auth/callback?code=oauth-code&next=/role-select"));
+    const response = await getAuthCallbackExchange(new Request("https://bvrb3r.app/auth/callback/exchange"));
 
-    expect(response.headers.get("location")).toBe("https://bvrb3r.app/role-select");
+    expect(response.headers.get("location")).toBe("https://bvrb3r.app/auth/callback");
   });
 
   it("redirects back to login when code exchange fails", async () => {
     exchangeCodeForSessionMock.mockResolvedValue({ error: { message: "OAuth exchange failed" } });
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
-    const response = await getAuthCallback(new Request("https://bvrb3r.app/auth/callback?code=oauth-code"));
+    const response = await getAuthCallbackExchange(new Request("https://bvrb3r.app/auth/callback/exchange?code=oauth-code"));
 
     expect(response.headers.get("location")).toBe("https://bvrb3r.app/login?error=OAuth+exchange+failed");
     expect(consoleErrorSpy).toHaveBeenCalled();

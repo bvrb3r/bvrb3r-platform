@@ -2,16 +2,7 @@ import { createServerClient, type SetAllCookies } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
-const DEFAULT_REDIRECT_PATH = "/post-auth";
-
-function resolveNextPath(requestUrl: URL) {
-  const next = requestUrl.searchParams.get("next");
-  if (!next || !next.startsWith("/")) {
-    return DEFAULT_REDIRECT_PATH;
-  }
-
-  return next;
-}
+const CALLBACK_REDIRECT_PATH = "/auth/callback";
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
@@ -25,17 +16,16 @@ export async function GET(request: Request) {
     return NextResponse.redirect(loginUrl);
   }
 
-  const redirectPath = resolveNextPath(requestUrl);
-  const redirectUrl = new URL(redirectPath, requestUrl.origin);
+  const callbackUrl = new URL(CALLBACK_REDIRECT_PATH, requestUrl.origin);
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (!code || !supabaseUrl || !supabaseAnonKey) {
-    return NextResponse.redirect(redirectUrl);
+    return NextResponse.redirect(callbackUrl);
   }
 
   const cookieStore = await cookies();
-  const response = NextResponse.redirect(redirectUrl);
+  const response = NextResponse.redirect(callbackUrl);
   const setAllCookies: SetAllCookies = (cookiesToSet) => {
     cookiesToSet.forEach(({ name, value, options }) => {
       cookieStore.set(name, value, options);

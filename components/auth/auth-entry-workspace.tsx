@@ -97,7 +97,7 @@ export function AuthEntryWorkspace({ mode }: { mode: AuthMode }) {
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
-        redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`
+        redirectTo: `${window.location.origin}/auth/callback`
       }
     });
 
@@ -146,7 +146,7 @@ export function AuthEntryWorkspace({ mode }: { mode: AuthMode }) {
         email,
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback?next=/post-auth`,
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
           data: {
             full_name: fullName,
             phone
