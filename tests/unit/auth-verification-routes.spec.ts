@@ -4,11 +4,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   getAuthenticatedAuthUserMock,
   getContactVerificationStateMock,
+  updateContactVerificationProfileMock,
   sendPhoneVerificationChallengeMock,
   verifyPhoneVerificationChallengeMock
 } = vi.hoisted(() => ({
   getAuthenticatedAuthUserMock: vi.fn(),
   getContactVerificationStateMock: vi.fn(),
+  updateContactVerificationProfileMock: vi.fn(),
   sendPhoneVerificationChallengeMock: vi.fn(),
   verifyPhoneVerificationChallengeMock: vi.fn()
 }));
@@ -27,11 +29,13 @@ vi.mock("@/app/api/auth/_shared", () => ({
 
 vi.mock("@/lib/auth/production-identity", () => ({
   getContactVerificationState: getContactVerificationStateMock,
+  updateContactVerificationProfile: updateContactVerificationProfileMock,
   sendPhoneVerificationChallenge: sendPhoneVerificationChallengeMock,
   verifyPhoneVerificationChallenge: verifyPhoneVerificationChallengeMock
 }));
 
 import { GET as getVerificationStatus } from "@/app/api/auth/verification-status/route";
+import { POST as postContactProfile } from "@/app/api/auth/contact/route";
 import { POST as postSendPhone } from "@/app/api/auth/phone/send/route";
 import { POST as postVerifyPhone } from "@/app/api/auth/phone/verify/route";
 
@@ -39,6 +43,7 @@ describe("auth verification routes", () => {
   beforeEach(() => {
     getAuthenticatedAuthUserMock.mockReset();
     getContactVerificationStateMock.mockReset();
+    updateContactVerificationProfileMock.mockReset();
     sendPhoneVerificationChallengeMock.mockReset();
     verifyPhoneVerificationChallengeMock.mockReset();
 
@@ -57,13 +62,16 @@ describe("auth verification routes", () => {
 
   it("returns the current contact verification state", async () => {
     getContactVerificationStateMock.mockResolvedValue({
+      firstName: "Jordan",
+      lastName: "Ellis",
       email: "client@example.com",
       phone: "+18135550100",
       emailVerified: true,
       phoneVerified: false,
       canContinue: false,
       requiresRoleSelection: false,
-      onboardingState: "awaiting_contact_verification"
+      onboardingState: "awaiting_contact_verification",
+      missingFields: ["phone"]
     });
 
     const response = await getVerificationStatus();
@@ -74,8 +82,10 @@ describe("auth verification routes", () => {
     expect(body.phoneVerified).toBe(false);
   });
 
-  it("sends an SMS verification challenge for the authenticated user", async () => {
-    sendPhoneVerificationChallengeMock.mockResolvedValue({
+  it("updates canonical contact details for the authenticated user", async () => {
+    updateContactVerificationProfileMock.mockResolvedValue({
+      firstName: "Jordan",
+      lastName: "Ellis",
       email: "client@example.com",
       phone: "+18135550100",
       emailVerified: true,
@@ -83,6 +93,39 @@ describe("auth verification routes", () => {
       canContinue: false,
       requiresRoleSelection: false,
       onboardingState: "awaiting_contact_verification",
+      missingFields: []
+    });
+
+    const response = await postContactProfile(new NextRequest("https://bvrb3r.app/api/auth/contact", {
+      method: "POST",
+      body: JSON.stringify({
+        firstName: "Jordan",
+        lastName: "Ellis",
+        phone: "(813) 555-0100"
+      })
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(updateContactVerificationProfileMock).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "user-client" }),
+      expect.objectContaining({ firstName: "Jordan", lastName: "Ellis" })
+    );
+    expect(body.firstName).toBe("Jordan");
+  });
+
+  it("sends an SMS verification challenge for the authenticated user", async () => {
+    sendPhoneVerificationChallengeMock.mockResolvedValue({
+      firstName: "Jordan",
+      lastName: "Ellis",
+      email: "client@example.com",
+      phone: "+18135550100",
+      emailVerified: true,
+      phoneVerified: false,
+      canContinue: false,
+      requiresRoleSelection: false,
+      onboardingState: "awaiting_contact_verification",
+      missingFields: ["phone"],
       degraded: false
     });
 

@@ -29,9 +29,20 @@ describe("onboarding service", () => {
 
   it("initializes a new role and resumes at the first onboarding step", async () => {
     const client = resolveDemoUser("client@bvrb3r.demo");
-    await initializeUserRole({ ...client, accountStatus: "profile_only", clientId: undefined }, "client");
+    const pendingClient: UserAccount = {
+      ...client,
+      firstName: "Jordan",
+      lastName: "Ellis",
+      phone: "+18135550110",
+      accountStatus: "profile_only",
+      clientId: undefined,
+      onboardingState: "awaiting_role_selection",
+      emailVerified: true,
+      phoneVerified: true
+    };
+    await initializeUserRole(pendingClient, "client");
 
-    const payload = await getOnboardingState({ ...client, accountStatus: "profile_only", clientId: undefined });
+    const payload = await getOnboardingState(pendingClient);
 
     expect(payload.selectedRole).toBe("client");
     expect(payload.nextPath).toBe("/onboarding/client/profile");
@@ -40,7 +51,17 @@ describe("onboarding service", () => {
 
   it("routes completed client onboarding to the client dashboard", async () => {
     const client = resolveDemoUser("client@bvrb3r.demo");
-    const pendingClient: UserAccount = { ...client, accountStatus: "profile_only", clientId: undefined };
+    const pendingClient: UserAccount = {
+      ...client,
+      firstName: "Jordan",
+      lastName: "Ellis",
+      phone: "+18135550110",
+      accountStatus: "active",
+      clientId: "client-jordan",
+      onboardingState: "active",
+      emailVerified: true,
+      phoneVerified: true
+    };
 
     await initializeUserRole(pendingClient, "client");
     await markOnboardingStepComplete(pendingClient, "client", "client_profile", {
@@ -66,6 +87,8 @@ describe("onboarding service", () => {
       email: "fresh@bvrb3r.demo",
       password: "",
       name: "Fresh User",
+      firstName: "Fresh",
+      lastName: "User",
       title: "Client",
       phone: "+18135550100",
       locationIds: [],
@@ -80,42 +103,80 @@ describe("onboarding service", () => {
     expect(destination).toBe("/role-select");
   });
 
-  it("routes a completed barber onboarding lane to activation until verification is live", async () => {
+  it("routes an existing barber with no subtype to the barber type step", async () => {
     const barber = resolveDemoUser("lux@bvrb3r.demo");
-    const pendingBarber = { ...barber, accountStatus: "profile_only" as const };
-
-    await initializeUserRole(pendingBarber, "barber");
-    await markOnboardingStepComplete(pendingBarber, "barber", "barber_profile", {
-      fullName: barber.name,
-      phone: "(813) 555-0100",
-      city: "Tampa",
-      professionalType: "Barber",
-      yearsExperience: "7",
-      bio: "Precision barber with premium repeat clients.",
-      compensationModel: "booth_rent"
-    });
-    await markOnboardingStepComplete(pendingBarber, "barber", "barber_services", {
-      primaryServices: "Cuts",
-      startingPrice: "45",
-      averageDuration: "45"
-    });
-    await markOnboardingStepComplete(pendingBarber, "barber", "barber_availability", {
-      weeklySchedule: "Tue-Sat 9a-6p",
-      acceptsSameDay: true,
-      serviceMode: "In-shop"
-    });
-    await markOnboardingStepComplete(pendingBarber, "barber", "barber_verification", {});
+    const pendingBarber: UserAccount = {
+      ...barber,
+      firstName: "Lux",
+      lastName: "Reed",
+      phone: "+18135550111",
+      accountStatus: "profile_only",
+      primaryOnboardingRole: "barber",
+      onboardingState: "role_selected",
+      emailVerified: true,
+      phoneVerified: true,
+      barberSubtype: undefined,
+      barberId: undefined
+    };
 
     const destination = await resolvePostAuthDestination(pendingBarber);
-    const activation = await getActivationStatusForUser(pendingBarber);
 
-    expect(destination).toBe("/activation-status");
-    expect(activation.lanes[0]?.activationState).toBe("verification");
+    expect(destination).toBe("/onboarding/barber-type");
+  });
+
+  it("routes a completed barber lane with subtype to the barber dashboard", async () => {
+    const barber = resolveDemoUser("lux@bvrb3r.demo");
+    const activeBarber: UserAccount = {
+      ...barber,
+      firstName: "Lux",
+      lastName: "Reed",
+      phone: "+18135550111",
+      accountStatus: "active",
+      primaryOnboardingRole: "barber",
+      onboardingState: "active",
+      emailVerified: true,
+      phoneVerified: true,
+      barberSubtype: "freelance",
+      barberId: "barber-lux"
+    };
+
+    const destination = await resolvePostAuthDestination(activeBarber);
+
+    expect(destination).toBe("/dashboard/barber");
+  });
+
+  it("routes owner and shop_owner lanes safely into the owner dashboard", async () => {
+    const owner = resolveDemoUser("owner@bvrb3r.demo");
+    const activeOwner: UserAccount = {
+      ...owner,
+      firstName: "Maya",
+      lastName: "Lane",
+      phone: "+18135550112",
+      accountStatus: "active",
+      primaryOnboardingRole: "shop_owner",
+      onboardingState: "active",
+      emailVerified: true,
+      phoneVerified: true,
+      ownedShopId: "shop-maya"
+    };
+
+    const destination = await resolvePostAuthDestination(activeOwner);
+
+    expect(destination).toBe("/dashboard/owner");
   });
 
   it("keeps onboarding verification payloads subject-safe", async () => {
     const barber = resolveDemoUser("fade@bvrb3r.demo");
-    const pendingBarber = { ...barber, accountStatus: "profile_only" as const };
+    const pendingBarber: UserAccount = {
+      ...barber,
+      firstName: "Fade",
+      lastName: "Garner",
+      phone: "+18135550113",
+      accountStatus: "profile_only",
+      emailVerified: true,
+      phoneVerified: true,
+      onboardingState: "awaiting_role_selection"
+    };
     const current = getTrustState();
 
     setTrustState({

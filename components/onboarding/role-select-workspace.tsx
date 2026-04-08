@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useInitializeRoleMutation } from "@/lib/onboarding/client";
-import type { BarberSubtype } from "@/types/domain";
 import type { OnboardingRole, RoleSelectionPayload } from "@/types/onboarding";
 
 const roleCards: Array<{ role: OnboardingRole; title: string; copy: string }> = [
@@ -16,37 +15,10 @@ const roleCards: Array<{ role: OnboardingRole; title: string; copy: string }> = 
   { role: "shop_owner", title: "Shop Owner", copy: "Open the owner lane, create the shop identity, and move into business approval the right way." }
 ];
 
-const barberSubtypeCards: Array<{
-  subtype: BarberSubtype;
-  title: string;
-  copy: string;
-  approvalCopy: string;
-}> = [
-  {
-    subtype: "freelance",
-    title: "Freelance Barber",
-    copy: "Independent barber building a personal chair and book of business through BVRB3R.",
-    approvalCopy: "Requires BVRB3R app approval before going live."
-  },
-  {
-    subtype: "blueprint",
-    title: "Blueprint Barber",
-    copy: "Barber operating inside a Blueprint-style shop lane with shop alignment and approval controls.",
-    approvalCopy: "Requires BVRB3R app approval and shop approval."
-  },
-  {
-    subtype: "commission",
-    title: "Commission Barber",
-    copy: "Commission-based barber working under shop operating controls and payout structure.",
-    approvalCopy: "Requires BVRB3R app approval and shop approval."
-  }
-];
-
 export function RoleSelectWorkspace() {
   const router = useRouter();
   const mutation = useInitializeRoleMutation();
   const [selectedRole, setSelectedRole] = useState<OnboardingRole | null>(null);
-  const [selectedSubtype, setSelectedSubtype] = useState<BarberSubtype>("freelance");
   const [shopName, setShopName] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -121,38 +93,17 @@ export function RoleSelectWorkspace() {
 
             {selectedRole === "barber" ? (
               <>
-                <div className="mt-5 grid gap-4 lg:grid-cols-3">
-                  {barberSubtypeCards.map((card) => {
-                    const isSelected = selectedSubtype === card.subtype;
-                    return (
-                      <button
-                        key={card.subtype}
-                        type="button"
-                        onClick={() => setSelectedSubtype(card.subtype)}
-                        className={`flex min-h-[210px] flex-col justify-between rounded-[24px] border p-4 text-left transition ${
-                          isSelected
-                            ? "border-[#7cff00]/34 bg-[#7cff00]/10"
-                            : "border-white/8 bg-black/25 hover:border-[#7cff00]/18 hover:bg-black/35"
-                        }`}
-                      >
-                        <div>
-                          <p className="text-[11px] uppercase tracking-[0.22em] text-[#cfff93]">Subtype</p>
-                          <h3 className="mt-3 text-xl font-semibold text-white">{card.title}</h3>
-                          <p className="mt-3 text-sm leading-7 text-white/62">{card.copy}</p>
-                        </div>
-                        <p className="mt-5 text-xs leading-6 text-[#d7ffab]">{card.approvalCopy}</p>
-                      </button>
-                    );
-                  })}
-                </div>
+                <p className="mt-5 text-sm leading-7 text-white/58">
+                  The next step will ask whether you are entering as a freelance, commission, or booth-rent / blueprint barber, then attach the correct approval lane before you reach the barber dashboard.
+                </p>
                 <div className="mt-5 flex flex-wrap gap-3">
                   <Button
                     type="button"
                     className="h-12 px-6"
                     disabled={mutation.isPending}
-                    onClick={() => void handleContinue({ role: "barber", barberSubtype: selectedSubtype })}
+                    onClick={() => void handleContinue({ role: "barber" })}
                   >
-                    {mutation.isPending ? "Creating barber account..." : "Continue as barber"}
+                    {mutation.isPending ? "Opening barber setup..." : "Continue as barber"}
                   </Button>
                 </div>
               </>

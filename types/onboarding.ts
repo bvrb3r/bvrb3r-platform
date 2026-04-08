@@ -65,6 +65,8 @@ export interface RoleSelectionPayload {
 }
 
 export interface ContactVerificationStatusPayload {
+  firstName: string;
+  lastName: string;
   email: string;
   phone: string;
   emailVerified: boolean;
@@ -72,6 +74,7 @@ export interface ContactVerificationStatusPayload {
   canContinue: boolean;
   requiresRoleSelection: boolean;
   onboardingState: IdentityOnboardingState;
+  missingFields: string[];
   degraded?: boolean;
 }
 

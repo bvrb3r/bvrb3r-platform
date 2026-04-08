@@ -62,11 +62,15 @@ describe("auth callback page", () => {
   it("redirects to login when no authenticated session exists after callback", async () => {
     authGetUserMock.mockResolvedValue({ data: { user: null } });
 
-    await expect(
-      AuthCallbackPage({
-        searchParams: Promise.resolve({})
-      })
-    ).rejects.toThrow("REDIRECT:/login");
+    const result = await AuthCallbackPage({
+      searchParams: Promise.resolve({})
+    });
+
+    expect(result).toMatchObject({
+      props: {
+        mode: "callback"
+      }
+    });
   });
 
   it("routes a fresh authenticated user into role selection", async () => {

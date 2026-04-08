@@ -1,5 +1,6 @@
 import type { Route } from "next";
 import { redirect } from "next/navigation";
+import { AuthSessionRecovery } from "@/components/auth/auth-session-recovery";
 import { buildRuntimeUserFromProductionAuth } from "@/lib/auth/production-identity";
 import { resolvePostAuthDestination } from "@/lib/onboarding/service";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -20,6 +21,10 @@ export default async function AuthCallbackPage({
   searchParams: CallbackSearchParams;
 }) {
   const params = await searchParams;
+  console.info("[auth] callback page entered", {
+    hasCode: Boolean(params.code),
+    hasError: Boolean(params.error)
+  });
 
   if (params.error) {
     redirect(toLoginErrorPath(params.error_description ?? params.error));
@@ -34,7 +39,7 @@ export default async function AuthCallbackPage({
   const authUser = result?.data.user;
 
   if (!authUser) {
-    redirect("/login");
+    return <AuthSessionRecovery mode="callback" />;
   }
 
   const runtimeUser = await buildRuntimeUserFromProductionAuth({
@@ -46,5 +51,10 @@ export default async function AuthCallbackPage({
     user_metadata: authUser.user_metadata as Record<string, unknown> | undefined
   });
 
-  redirect(await resolvePostAuthDestination(runtimeUser));
+  const destination = await resolvePostAuthDestination(runtimeUser);
+  console.info("[auth] callback resolved destination", {
+    userId: runtimeUser.id,
+    destination
+  });
+  redirect(destination);
 }

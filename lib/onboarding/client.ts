@@ -91,6 +91,24 @@ export function useSendPhoneVerificationMutation() {
   });
 }
 
+export function useUpdateContactVerificationMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { firstName: string; lastName: string; phone: string; email?: string }) =>
+      requestJson<ContactVerificationStatusPayload>("/api/auth/contact", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["auth", "verification-status"] }),
+        queryClient.invalidateQueries({ queryKey: ["onboarding"] }),
+        queryClient.invalidateQueries({ queryKey: ["activation"] })
+      ]);
+    }
+  });
+}
+
 export function useVerifyPhoneVerificationMutation() {
   const queryClient = useQueryClient();
   return useMutation({

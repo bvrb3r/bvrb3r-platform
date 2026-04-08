@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import {
   useContactVerificationStatus,
   useSendPhoneVerificationMutation,
+  useUpdateContactVerificationMutation,
   useVerifyPhoneVerificationMutation
 } from "@/lib/onboarding/client";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
@@ -17,15 +18,46 @@ export function ContactVerificationWorkspace() {
   const router = useRouter();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const statusQuery = useContactVerificationStatus();
+  const updateContactMutation = useUpdateContactVerificationMutation();
   const sendPhoneMutation = useSendPhoneVerificationMutation();
   const verifyPhoneMutation = useVerifyPhoneVerificationMutation();
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const payload = statusQuery.data;
+  const resolvedFirstName = firstName || payload?.firstName || "";
+  const resolvedLastName = lastName || payload?.lastName || "";
   const resolvedPhone = phone || payload?.phone || "";
+
+  async function handleSaveProfile(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    try {
+      const result = await updateContactMutation.mutateAsync({
+        firstName: resolvedFirstName,
+        lastName: resolvedLastName,
+        phone: resolvedPhone,
+        email: payload?.email
+      });
+      setFirstName(result.firstName);
+      setLastName(result.lastName);
+      setPhone(result.phone);
+      setSuccessMessage(result.canContinue
+        ? "Contact details are complete. Continue to choose your BVRB3R lane."
+        : "Contact details saved. Finish the remaining verification to continue.");
+      if (result.canContinue) {
+        router.replace("/post-auth");
+      }
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to save your contact details.");
+    }
+  }
 
   async function handleResendEmail() {
     setErrorMessage(null);
@@ -98,7 +130,53 @@ export function ContactVerificationWorkspace() {
           Account creation stays fast, but we do not treat the account as fully onboarded until contact verification is complete.
         </p>
 
-        <div className="mt-8 grid gap-4 lg:grid-cols-2">
+        <div className="mt-8 grid gap-4 lg:grid-cols-3">
+          <Card className="rounded-[28px] border border-white/8 bg-black/20 p-5">
+            <p className="surface-label">Contact profile</p>
+            <form onSubmit={handleSaveProfile} className="mt-5 grid gap-3">
+              <Input
+                value={resolvedFirstName}
+                onChange={(event) => setFirstName(event.target.value)}
+                placeholder="First name"
+                autoComplete="given-name"
+              />
+              <Input
+                value={resolvedLastName}
+                onChange={(event) => setLastName(event.target.value)}
+                placeholder="Last name"
+                autoComplete="family-name"
+              />
+              <Input
+                value={payload?.email ?? ""}
+                readOnly
+                placeholder="Email"
+                type="email"
+                autoComplete="email"
+              />
+              <Input
+                value={resolvedPhone}
+                onChange={(event) => setPhone(event.target.value)}
+                placeholder="Phone number"
+                type="tel"
+                autoComplete="tel"
+              />
+              <Button
+                type="submit"
+                variant="secondary"
+                className="h-12 w-full"
+                disabled={updateContactMutation.isPending}
+              >
+                {updateContactMutation.isPending ? "Saving contact details..." : "Save contact details"}
+              </Button>
+            </form>
+            <p className="mt-3 text-sm leading-7 text-white/62">
+              We use your canonical profile data to decide whether you can move into lane selection. First name, last name, email, and phone must all be present before dashboard access unlocks.
+            </p>
+            <div className="mt-5 flex flex-wrap gap-3 text-xs uppercase tracking-[0.22em] text-white/48">
+              {payload?.missingFields?.length ? `Missing: ${payload.missingFields.join(", ").replaceAll("_", " ")}` : "Contact fields complete"}
+            </div>
+          </Card>
+
           <Card className="rounded-[28px] border border-white/8 bg-black/20 p-5">
             <p className="surface-label">Email verification</p>
             <p className="mt-3 text-xl font-semibold text-white">{payload?.email ?? "Loading email..."}</p>
@@ -126,13 +204,6 @@ export function ContactVerificationWorkspace() {
               We send a short SMS code to the phone number attached to this account. Phone verification is required before role selection.
             </p>
             <form onSubmit={handleSendSms} className="mt-5 grid gap-3">
-              <Input
-                value={resolvedPhone}
-                onChange={(event) => setPhone(event.target.value)}
-                placeholder="Phone number"
-                type="tel"
-                autoComplete="tel"
-              />
               <Button type="submit" variant="secondary" className="h-12 w-full" disabled={sendPhoneMutation.isPending}>
                 {sendPhoneMutation.isPending ? "Sending code..." : payload?.phoneVerified ? "Send another code" : "Send SMS code"}
               </Button>

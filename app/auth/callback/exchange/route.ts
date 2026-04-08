@@ -11,6 +11,10 @@ export async function GET(request: Request) {
   const errorDescription = requestUrl.searchParams.get("error_description");
 
   if (error) {
+    console.error("[auth] OAuth callback exchange received provider error", {
+      error,
+      errorDescription
+    });
     const loginUrl = new URL("/login", requestUrl.origin);
     loginUrl.searchParams.set("error", errorDescription ?? error);
     return NextResponse.redirect(loginUrl);
@@ -21,6 +25,11 @@ export async function GET(request: Request) {
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (!code || !supabaseUrl || !supabaseAnonKey) {
+    console.error("[auth] OAuth callback exchange missing code or Supabase env", {
+      hasCode: Boolean(code),
+      hasSupabaseUrl: Boolean(supabaseUrl),
+      hasSupabaseAnonKey: Boolean(supabaseAnonKey)
+    });
     return NextResponse.redirect(callbackUrl);
   }
 

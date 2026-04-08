@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { HeroSection } from "@/components/marketing/hero-section";
 import { FeatureGrid } from "@/components/marketing/feature-grid";
+import { AuthSessionRecovery } from "@/components/auth/auth-session-recovery";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
@@ -15,6 +16,7 @@ export default async function HomePage() {
 
   return (
     <main>
+      <AuthSessionRecovery mode="public" />
       <header className="page-shell safe-top-pad pt-4">
         <div className="flex flex-col gap-4 rounded-[28px] border border-white/8 bg-[linear-gradient(180deg,rgba(14,14,14,0.94),rgba(8,8,8,0.94))] px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <div>

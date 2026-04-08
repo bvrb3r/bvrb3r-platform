@@ -22,7 +22,7 @@ type AuthUserLike = {
 
 type ProfileRow = {
   id: string;
-  role: Role;
+  role: Role | "shop_owner" | null;
   full_name: string | null;
   email: string | null;
   phone: string | null;
@@ -71,6 +71,8 @@ type PhoneChallengeRow = {
 };
 
 type ContactVerificationState = {
+  firstName: string;
+  lastName: string;
   email: string;
   phone: string;
   emailVerified: boolean;
@@ -78,6 +80,7 @@ type ContactVerificationState = {
   canContinue: boolean;
   requiresRoleSelection: boolean;
   onboardingState: IdentityOnboardingState;
+  missingFields: string[];
 };
 
 type RoleSelectionInput = {
@@ -147,18 +150,9 @@ function isSchemaError(error: unknown) {
 }
 
 function getDisplayName(authUser: AuthUserLike, profile?: ProfileRow | null) {
-  const metadata = authUser.user_metadata ?? {};
-  if (profile?.full_name?.trim()) {
-    return profile.full_name.trim();
-  }
-
-  const fromMetadata = typeof metadata.full_name === "string" && metadata.full_name.trim()
-    ? metadata.full_name.trim()
-    : typeof metadata.name === "string" && metadata.name.trim()
-      ? metadata.name.trim()
-      : "";
-  if (fromMetadata) {
-    return fromMetadata;
+  const canonicalName = getCanonicalNameState(authUser, profile);
+  if (canonicalName.fullName) {
+    return canonicalName.fullName;
   }
 
   return authUser.email?.split("@")[0] ?? "New account";
@@ -186,12 +180,127 @@ function normalizePhoneNumber(phone?: string | null) {
   return raw.startsWith("+") ? raw : `+${digits}`;
 }
 
+function splitFullName(fullName?: string | null) {
+  const normalized = `${fullName ?? ""}`.trim().replace(/\s+/g, " ");
+  if (!normalized) {
+    return {
+      firstName: "",
+      lastName: "",
+      fullName: ""
+    };
+  }
+
+  const [firstName, ...rest] = normalized.split(" ");
+  return {
+    firstName: firstName ?? "",
+    lastName: rest.join(" ").trim(),
+    fullName: normalized
+  };
+}
+
+function getMetadataNameParts(authUser: AuthUserLike) {
+  const metadata = authUser.user_metadata ?? {};
+  const givenName = typeof metadata.given_name === "string" ? metadata.given_name.trim() : "";
+  const familyName = typeof metadata.family_name === "string" ? metadata.family_name.trim() : "";
+  if (givenName && familyName) {
+    return {
+      firstName: givenName,
+      lastName: familyName,
+      fullName: `${givenName} ${familyName}`.trim()
+    };
+  }
+
+  const firstName = typeof metadata.first_name === "string" ? metadata.first_name.trim() : "";
+  const lastName = typeof metadata.last_name === "string" ? metadata.last_name.trim() : "";
+  if (firstName && lastName) {
+    return {
+      firstName,
+      lastName,
+      fullName: `${firstName} ${lastName}`.trim()
+    };
+  }
+
+  if (typeof metadata.full_name === "string" && metadata.full_name.trim()) {
+    return splitFullName(metadata.full_name);
+  }
+
+  if (typeof metadata.name === "string" && metadata.name.trim()) {
+    return splitFullName(metadata.name);
+  }
+
+  return {
+    firstName: "",
+    lastName: "",
+    fullName: ""
+  };
+}
+
+function getCanonicalNameState(authUser: AuthUserLike, profile?: ProfileRow | null) {
+  const profileParts = splitFullName(profile?.full_name);
+  if (profileParts.firstName && profileParts.lastName) {
+    return profileParts;
+  }
+
+  const metadataParts = getMetadataNameParts(authUser);
+  if (metadataParts.firstName && metadataParts.lastName) {
+    return metadataParts;
+  }
+
+  if (profileParts.fullName) {
+    return profileParts;
+  }
+
+  if (metadataParts.fullName) {
+    return metadataParts;
+  }
+
+  return {
+    firstName: "",
+    lastName: "",
+    fullName: ""
+  };
+}
+
+function getResolvedEmail(authUser: AuthUserLike, profile?: ProfileRow | null) {
+  return profile?.email ?? authUser.email ?? `${authUser.id}@bvrb3r.local`;
+}
+
+function getRequiredContactFields(authUser: AuthUserLike, profile?: ProfileRow | null) {
+  const name = getCanonicalNameState(authUser, profile);
+  const email = getResolvedEmail(authUser, profile).trim();
+  const phone = normalizePhoneNumber(profile?.phone ?? authUser.phone ?? null);
+  const missingFields: string[] = [];
+
+  if (!name.firstName) {
+    missingFields.push("first_name");
+  }
+
+  if (!name.lastName) {
+    missingFields.push("last_name");
+  }
+
+  if (!email) {
+    missingFields.push("email");
+  }
+
+  if (!phone) {
+    missingFields.push("phone");
+  }
+
+  return {
+    ...name,
+    email,
+    phone,
+    missingFields
+  };
+}
+
 function toRuntimeRole(input: {
   primaryRole?: IdentityLane | null;
-  profileRole?: Role | null;
+  profileRole?: Role | "shop_owner" | null;
   compensationModel?: CompensationModel | null;
 }) {
-  if (input.primaryRole === "shop_owner" || input.profileRole === "owner") {
+  if (input.primaryRole === "shop_owner" || input.profileRole === "owner" || input.profileRole === "shop_owner") {
     return "owner" as const;
   }
 
@@ -241,11 +350,12 @@ function getTitle(role: Role, subtype?: BarberSubtype | null) {
 function inferOnboardingState(input: {
   emailVerified: boolean;
   phoneVerified: boolean;
+  hasRequiredContactFields: boolean;
   primaryRole?: IdentityLane | null;
   hasLaneRecord: boolean;
   persistedState?: IdentityOnboardingState | null;
 }) {
-  if (!input.emailVerified || !input.phoneVerified) {
+  if (!input.hasRequiredContactFields || !input.emailVerified || !input.phoneVerified) {
     return "awaiting_contact_verification" satisfies IdentityOnboardingState;
   }
 
@@ -261,15 +371,13 @@ function inferOnboardingState(input: {
 }
 
 function buildMinimalRuntimeUser(authUser: AuthUserLike): UserAccount {
-  const email = authUser.email ?? `${authUser.id}@bvrb3r.local`;
-  const phone = normalizePhoneNumber(
-    typeof authUser.user_metadata?.phone === "string" ? authUser.user_metadata.phone : authUser.phone
-  );
+  const requiredContact = getRequiredContactFields(authUser);
   const emailVerified = Boolean(authUser.email_confirmed_at);
   const phoneVerified = Boolean(authUser.phone_confirmed_at);
   const onboardingState = inferOnboardingState({
     emailVerified,
     phoneVerified,
+    hasRequiredContactFields: requiredContact.missingFields.length === 0,
     primaryRole: null,
     hasLaneRecord: false
   });
@@ -277,11 +385,13 @@ function buildMinimalRuntimeUser(authUser: AuthUserLike): UserAccount {
   return {
     id: authUser.id,
     role: "client",
-    email,
+    email: requiredContact.email,
     password: "",
     name: getDisplayName(authUser),
     title: "Client",
-    phone,
+    phone: requiredContact.phone,
+    firstName: requiredContact.firstName || undefined,
+    lastName: requiredContact.lastName || undefined,
     locationIds: [],
     accountStatus: "profile_only",
     onboardingState,
@@ -290,23 +400,24 @@ function buildMinimalRuntimeUser(authUser: AuthUserLike): UserAccount {
   };
 }
 
-function getProfileSyncPayload(authUser: AuthUserLike) {
-  const phone = normalizePhoneNumber(
-    typeof authUser.user_metadata?.phone === "string" ? authUser.user_metadata.phone : authUser.phone
-  );
-  const fullName = getDisplayName(authUser);
+function getProfileSyncPayload(authUser: AuthUserLike, profile?: ProfileRow | null) {
+  const requiredContact = getRequiredContactFields(authUser, profile);
   const emailVerified = Boolean(authUser.email_confirmed_at);
   const phoneVerified = Boolean(authUser.phone_confirmed_at);
   const onboardingState = inferOnboardingState({
     emailVerified,
     phoneVerified,
+    hasRequiredContactFields: requiredContact.missingFields.length === 0,
     primaryRole: null,
     hasLaneRecord: false
   });
 
   return {
-    fullName,
-    phone,
+    fullName: requiredContact.fullName || authUser.email?.split("@")[0] || "New account",
+    firstName: requiredContact.firstName,
+    lastName: requiredContact.lastName,
+    email: requiredContact.email,
+    phone: requiredContact.phone,
     emailVerified,
     phoneVerified,
     onboardingState
@@ -320,17 +431,23 @@ async function syncProfileFromAuth(authUser: AuthUserLike) {
   }
 
   const profile = await readProfile(authUser.id);
-  const payload = getProfileSyncPayload(authUser);
-  const email = authUser.email ?? `${authUser.id}@bvrb3r.local`;
+  const payload = getProfileSyncPayload(authUser, profile);
   const nextPhoneVerifiedAt = profile?.phone_verified_at ?? (payload.phoneVerified ? new Date().toISOString() : null);
+  const nextFullName = profile?.full_name?.trim()
+    ? profile.full_name.trim()
+    : payload.fullName;
+  const nextEmail = profile?.email?.trim()
+    ? profile.email.trim()
+    : payload.email;
+  const nextPhone = normalizePhoneNumber(profile?.phone ?? null) || payload.phone || null;
 
   if (profile?.id) {
     const update = await supabase
       .from("profiles")
       .update({
-        full_name: payload.fullName,
-        email,
-        phone: payload.phone || null,
+        full_name: nextFullName,
+        email: nextEmail,
+        phone: nextPhone,
         phone_verified_at: nextPhoneVerifiedAt,
         onboarding_state: profile.onboarding_state ?? payload.onboardingState
       })
@@ -344,9 +461,9 @@ async function syncProfileFromAuth(authUser: AuthUserLike) {
       const fallback = await supabase
         .from("profiles")
         .update({
-          full_name: payload.fullName,
-          email,
-          phone: payload.phone || null
+          full_name: nextFullName,
+          email: nextEmail,
+          phone: nextPhone
         })
         .eq("id", authUser.id);
 
@@ -364,7 +481,7 @@ async function syncProfileFromAuth(authUser: AuthUserLike) {
       id: authUser.id,
       role: "client",
       full_name: payload.fullName,
-      email,
+      email: payload.email,
       phone: payload.phone || null,
       phone_verified_at: nextPhoneVerifiedAt,
       onboarding_state: payload.onboardingState
@@ -381,7 +498,7 @@ async function syncProfileFromAuth(authUser: AuthUserLike) {
         id: authUser.id,
         role: "client",
         full_name: payload.fullName,
-        email,
+        email: payload.email,
         phone: payload.phone || null
       });
 
@@ -576,6 +693,7 @@ export async function buildRuntimeUserFromProductionAuth(authUser: AuthUserLike)
       readOwnedShopByProfile(authUser.id)
     ]);
 
+    const requiredContact = getRequiredContactFields(authUser, profile);
     const emailVerified = Boolean(authUser.email_confirmed_at);
     const phoneVerified = Boolean(profile?.phone_verified_at || authUser.phone_confirmed_at);
     const primaryRole = profile?.primary_onboarding_role
@@ -594,21 +712,40 @@ export async function buildRuntimeUserFromProductionAuth(authUser: AuthUserLike)
     const onboardingState = inferOnboardingState({
       emailVerified,
       phoneVerified,
+      hasRequiredContactFields: requiredContact.missingFields.length === 0,
       primaryRole,
       hasLaneRecord,
       persistedState: profile?.onboarding_state
+    });
+    const displayName = getDisplayName(authUser, profile);
+    const accountStatus = hasLaneRecord
+      && emailVerified
+      && phoneVerified
+      && requiredContact.missingFields.length === 0
+        ? "active"
+        : "profile_only";
+
+    console.info("[auth] production identity resolved", {
+      userId: authUser.id,
+      primaryRole,
+      runtimeRole,
+      hasLaneRecord,
+      onboardingState,
+      accountStatus
     });
 
     return {
       id: authUser.id,
       role: runtimeRole,
-      email: profile?.email ?? authUser.email ?? `${authUser.id}@bvrb3r.local`,
+      email: requiredContact.email,
       password: "",
-      name: getDisplayName(authUser, profile),
+      name: displayName,
       title: getTitle(runtimeRole, barber?.barber_subtype),
-      phone: normalizePhoneNumber(profile?.phone ?? authUser.phone ?? null),
+      phone: requiredContact.phone,
+      firstName: requiredContact.firstName || undefined,
+      lastName: requiredContact.lastName || undefined,
       locationIds,
-      accountStatus: hasLaneRecord && emailVerified && phoneVerified ? "active" : "profile_only",
+      accountStatus,
       primaryOnboardingRole: primaryRole ?? undefined,
       onboardingState,
       emailVerified,
@@ -632,9 +769,23 @@ async function readContactState(authUser: AuthUserLike): Promise<ContactVerifica
   const runtimeUser = await buildRuntimeUserFromProductionAuth(authUser);
   const emailVerified = Boolean(runtimeUser.emailVerified);
   const phoneVerified = Boolean(runtimeUser.phoneVerified);
+  const missingFields: string[] = [];
+  if (!runtimeUser.firstName) {
+    missingFields.push("first_name");
+  }
+  if (!runtimeUser.lastName) {
+    missingFields.push("last_name");
+  }
+  if (!runtimeUser.email?.trim()) {
+    missingFields.push("email");
+  }
+  if (!runtimeUser.phone?.trim()) {
+    missingFields.push("phone");
+  }
   const onboardingState = inferOnboardingState({
     emailVerified,
     phoneVerified,
+    hasRequiredContactFields: missingFields.length === 0,
     primaryRole: runtimeUser.primaryOnboardingRole,
     hasLaneRecord: Boolean(
       runtimeUser.clientId
@@ -645,18 +796,80 @@ async function readContactState(authUser: AuthUserLike): Promise<ContactVerifica
   });
 
   return {
+    firstName: runtimeUser.firstName ?? "",
+    lastName: runtimeUser.lastName ?? "",
     email: runtimeUser.email,
     phone: runtimeUser.phone ?? "",
     emailVerified,
     phoneVerified,
-    canContinue: emailVerified && phoneVerified,
+    canContinue: missingFields.length === 0 && emailVerified && phoneVerified,
     requiresRoleSelection: emailVerified && phoneVerified && !runtimeUser.primaryOnboardingRole,
-    onboardingState
+    onboardingState,
+    missingFields
   };
 }
 
 export async function getContactVerificationState(authUser: AuthUserLike) {
   return readContactState(authUser);
+}
+
+export async function updateContactVerificationProfile(
+  authUser: AuthUserLike,
+  input: {
+    firstName: string;
+    lastName: string;
+    phone: string;
+    email?: string;
+  }
+) {
+  const supabase = getSupabase();
+  const profileId = await resolveProfileId(authUser);
+  const firstName = input.firstName.trim();
+  const lastName = input.lastName.trim();
+  const fullName = `${firstName} ${lastName}`.trim();
+  const phone = normalizePhoneNumber(input.phone);
+  const email = `${input.email ?? authUser.email ?? ""}`.trim();
+
+  if (!firstName || !lastName) {
+    throw new Error("First and last name are required.");
+  }
+
+  if (!phone) {
+    throw new Error("A valid phone number is required.");
+  }
+
+  if (!email) {
+    throw new Error("An email address is required.");
+  }
+
+  if (supabase) {
+    const update = await supabase
+      .from("profiles")
+      .upsert({
+        id: profileId,
+        role: "client",
+        full_name: fullName,
+        email,
+        phone
+      }, { onConflict: "id" });
+
+    if (update.error && !isSchemaError(update.error)) {
+      throw update.error;
+    }
+  }
+
+  return readContactState({
+    ...authUser,
+    email,
+    phone,
+    user_metadata: {
+      ...(authUser.user_metadata ?? {}),
+      full_name: fullName,
+      given_name: firstName,
+      family_name: lastName,
+      phone
+    }
+  });
 }
 
 function buildChallengeHash(profileId: string, phone: string, code: string) {
@@ -907,6 +1120,7 @@ async function upsertProfileForLane(input: {
   profileId: string;
   role: Role;
   primaryOnboardingRole: IdentityLane;
+  onboardingState: IdentityOnboardingState;
   fullName: string;
   email: string;
   phone: string;
@@ -926,7 +1140,7 @@ async function upsertProfileForLane(input: {
       email: input.email,
       phone: input.phone || null,
       primary_onboarding_role: input.primaryOnboardingRole,
-      onboarding_state: "active",
+      onboarding_state: input.onboardingState,
       last_onboarded_at: now
     }, { onConflict: "id" });
 
@@ -1339,8 +1553,8 @@ export async function initializeProductionRoleSelection(
   }
 
   const identity = {
-    email: authUser.email ?? `${authUser.id}@bvrb3r.local`,
-    name: getDisplayName(authUser),
+    email: contactState.email || authUser.email || `${authUser.id}@bvrb3r.local`,
+    name: `${contactState.firstName} ${contactState.lastName}`.trim() || getDisplayName(authUser),
     phone: normalizePhoneNumber(contactState.phone)
   };
   const profileId = await resolveProfileId(authUser);
@@ -1350,6 +1564,7 @@ export async function initializeProductionRoleSelection(
       profileId,
       role: "client",
       primaryOnboardingRole: "client",
+      onboardingState: "active",
       fullName: identity.name,
       email: identity.email,
       phone: identity.phone
@@ -1364,12 +1579,36 @@ export async function initializeProductionRoleSelection(
   }
 
   if (input.role === "barber") {
-    const subtype = input.barberSubtype ?? "freelance";
+    if (!input.barberSubtype) {
+      const existingProfile = await readProfile(profileId);
+      await upsertProfileForLane({
+        profileId,
+        role: (existingProfile?.role && existingProfile.role !== "shop_owner" ? existingProfile.role : "client") as Role,
+        primaryOnboardingRole: "barber",
+        onboardingState: "role_selected",
+        fullName: identity.name,
+        email: identity.email,
+        phone: identity.phone
+      });
+
+      const user = await buildRuntimeUserFromProductionAuth(authUser);
+      return {
+        user,
+        seedProfileData: {
+          fullName: identity.name,
+          email: identity.email,
+          phone: identity.phone
+        }
+      };
+    }
+
+    const subtype = input.barberSubtype;
     const lane = await ensureBarberLane(profileId, identity, subtype);
     await upsertProfileForLane({
       profileId,
       role: lane.role,
       primaryOnboardingRole: "barber",
+      onboardingState: "active",
       fullName: identity.name,
       email: identity.email,
       phone: identity.phone
@@ -1398,6 +1637,7 @@ export async function initializeProductionRoleSelection(
     profileId,
     role: "owner",
     primaryOnboardingRole: "shop_owner",
+    onboardingState: "active",
     fullName: identity.name,
     email: identity.email,
     phone: identity.phone

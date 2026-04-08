@@ -3,29 +3,22 @@ import { z } from "zod";
 import { getOnboardingSessionUser, toOnboardingErrorResponse } from "@/app/api/onboarding/_shared";
 import { initializeSelectedUserLane, resolvePostAuthDestination } from "@/lib/onboarding/service";
 
-const schema = z.discriminatedUnion("role", [
-  z.object({
-    role: z.literal("client")
-  }),
-  z.object({
-    role: z.literal("barber"),
-    barberSubtype: z.enum(["freelance", "blueprint", "commission"]).optional()
-  }),
-  z.object({
-    role: z.literal("shop_owner"),
-    shopName: z.string().trim().min(2)
-  })
-]);
+const schema = z.object({
+  barberSubtype: z.enum(["freelance", "commission", "blueprint"])
+});
 
 export async function POST(request: NextRequest) {
   try {
     const parsed = schema.safeParse(await request.json().catch(() => ({})));
     if (!parsed.success) {
-      return NextResponse.json({ error: "A valid role selection is required." }, { status: 400 });
+      return NextResponse.json({ error: "A barber subtype is required." }, { status: 400 });
     }
 
     const user = await getOnboardingSessionUser();
-    const result = await initializeSelectedUserLane(user, parsed.data);
+    const result = await initializeSelectedUserLane(user, {
+      role: "barber",
+      barberSubtype: parsed.data.barberSubtype
+    });
     const nextPath = await resolvePostAuthDestination(result.user);
 
     return NextResponse.json({

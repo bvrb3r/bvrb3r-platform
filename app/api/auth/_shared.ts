@@ -62,5 +62,9 @@ export function toAuthErrorResponse(error: unknown) {
     return NextResponse.json({ error: message }, { status: 400 });
   }
 
+  if (message.includes("first") || message.includes("last") || message.includes("email")) {
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
+
   return NextResponse.json({ error: message }, { status: 500 });
 }

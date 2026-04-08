@@ -1,0 +1,99 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { useOnboardingStepMutation } from "@/lib/onboarding/client";
+import type { BarberSubtype } from "@/types/domain";
+
+const barberSubtypeCards: Array<{
+  subtype: BarberSubtype;
+  title: string;
+  copy: string;
+  approvalCopy: string;
+}> = [
+  {
+    subtype: "freelance",
+    title: "Freelance Barber",
+    copy: "Independent barber building a personal chair and book of business through BVRB3R.",
+    approvalCopy: "Requires BVRB3R app approval before going live."
+  },
+  {
+    subtype: "commission",
+    title: "Commission Barber",
+    copy: "Commission-based barber working inside shop operating controls and payout structure.",
+    approvalCopy: "Requires BVRB3R app approval and shop approval."
+  },
+  {
+    subtype: "blueprint",
+    title: "Booth Rent / Blueprint Barber",
+    copy: "Independent booth-rent or Blueprint-style barber operating inside a shop with location approval and verification controls.",
+    approvalCopy: "Requires BVRB3R app approval and shop approval."
+  }
+];
+
+export function BarberTypeWorkspace() {
+  const router = useRouter();
+  const mutation = useOnboardingStepMutation("/api/onboarding/barber/type");
+  const [selectedSubtype, setSelectedSubtype] = useState<BarberSubtype>("freelance");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  async function handleContinue() {
+    setErrorMessage(null);
+    try {
+      const result = await mutation.mutateAsync({ barberSubtype: selectedSubtype });
+      router.replace(result.nextPath);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to save your barber subtype.");
+    }
+  }
+
+  return (
+    <section className="page-shell safe-top-pad app-safe-bottom flex min-h-[100svh] min-h-[100dvh] items-start py-6 sm:items-center sm:py-10">
+      <Card className="w-full rounded-[34px] p-6 sm:p-8 lg:p-10">
+        <Badge>Barber type</Badge>
+        <h1 className="mt-5 text-balance text-4xl font-semibold sm:text-5xl" data-display="true">
+          Choose the barber lane you operate inside BVRB3R.
+        </h1>
+        <p className="mt-5 max-w-3xl text-sm leading-7 text-white/66 sm:text-base">
+          Your subtype controls the approval path, compensation posture, and which barber dashboard state you enter after setup.
+        </p>
+
+        <div className="mt-8 grid gap-4 lg:grid-cols-3">
+          {barberSubtypeCards.map((card) => {
+            const isSelected = selectedSubtype === card.subtype;
+            return (
+              <button
+                key={card.subtype}
+                type="button"
+                onClick={() => setSelectedSubtype(card.subtype)}
+                className={`flex min-h-[210px] flex-col justify-between rounded-[24px] border p-4 text-left transition ${
+                  isSelected
+                    ? "border-[#7cff00]/34 bg-[#7cff00]/10"
+                    : "border-white/8 bg-black/25 hover:border-[#7cff00]/18 hover:bg-black/35"
+                }`}
+              >
+                <div>
+                  <p className="text-[11px] uppercase tracking-[0.22em] text-[#cfff93]">Subtype</p>
+                  <h2 className="mt-3 text-2xl font-semibold text-white">{card.title}</h2>
+                  <p className="mt-3 text-sm leading-7 text-white/62">{card.copy}</p>
+                </div>
+                <p className="mt-5 text-xs leading-6 text-[#d7ffab]">{card.approvalCopy}</p>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="mt-6 flex flex-wrap gap-3">
+          <Button type="button" className="h-12 px-6" disabled={mutation.isPending} onClick={() => void handleContinue()}>
+            {mutation.isPending ? "Saving subtype..." : "Continue to barber dashboard"}
+          </Button>
+        </div>
+
+        {errorMessage ? <p className="mt-5 text-sm leading-7 text-[#ff8f8f]">{errorMessage}</p> : null}
+      </Card>
+    </section>
+  );
+}

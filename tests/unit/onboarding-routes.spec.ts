@@ -6,12 +6,14 @@ const {
   getOnboardingSessionUserMock,
   getOnboardingStateMock,
   initializeSelectedUserLaneMock,
-  getActivationStatusForUserMock
+  getActivationStatusForUserMock,
+  resolvePostAuthDestinationMock
 } = vi.hoisted(() => ({
   getOnboardingSessionUserMock: vi.fn(),
   getOnboardingStateMock: vi.fn(),
   initializeSelectedUserLaneMock: vi.fn(),
-  getActivationStatusForUserMock: vi.fn()
+  getActivationStatusForUserMock: vi.fn(),
+  resolvePostAuthDestinationMock: vi.fn()
 }));
 
 vi.mock("@/app/api/onboarding/_shared", () => ({
@@ -25,7 +27,7 @@ vi.mock("@/lib/onboarding/service", () => ({
   getOnboardingState: getOnboardingStateMock,
   initializeSelectedUserLane: initializeSelectedUserLaneMock,
   getActivationStatusForUser: getActivationStatusForUserMock,
-  resolvePostAuthDestination: vi.fn().mockResolvedValue("/dashboard/client")
+  resolvePostAuthDestination: resolvePostAuthDestinationMock
 }));
 
 import { GET as getOnboardingMe } from "@/app/api/onboarding/me/route";
@@ -38,6 +40,8 @@ describe("onboarding routes", () => {
     getOnboardingStateMock.mockReset();
     initializeSelectedUserLaneMock.mockReset();
     getActivationStatusForUserMock.mockReset();
+    resolvePostAuthDestinationMock.mockReset();
+    resolvePostAuthDestinationMock.mockResolvedValue("/dashboard/client");
   });
 
   it("returns onboarding state for the signed-in user", async () => {
@@ -69,6 +73,27 @@ describe("onboarding routes", () => {
     expect(response.status).toBe(201);
     expect(body.lane.role).toBe("client");
     expect(body.nextPath).toBe("/dashboard/client");
+  });
+
+  it("routes barber role selection into the subtype step when subtype is still missing", async () => {
+    const barber = resolveDemoUser("lux@bvrb3r.demo");
+    getOnboardingSessionUserMock.mockResolvedValue(barber);
+    initializeSelectedUserLaneMock.mockResolvedValue({
+      user: barber,
+      state: { id: "lane-2", role: "barber", currentStep: "barber_profile", completedSteps: [], profileData: {}, status: "in_progress" },
+      degraded: false
+    });
+
+    resolvePostAuthDestinationMock.mockResolvedValueOnce("/onboarding/barber-type");
+
+    const response = await postOnboardingRole(new NextRequest("https://bvrb3r.demo/api/onboarding/role", {
+      method: "POST",
+      body: JSON.stringify({ role: "barber" })
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(body.nextPath).toBe("/onboarding/barber-type");
   });
 
   it("returns activation status without leaking internal transport details", async () => {

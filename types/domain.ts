@@ -58,6 +58,8 @@ export interface UserAccount {
   email: string;
   password: string;
   name: string;
+  firstName?: string;
+  lastName?: string;
   title: string;
   locationIds: string[];
   platformAdmin?: boolean;
