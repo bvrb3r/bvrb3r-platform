@@ -1,10 +1,18 @@
-import Link from "next/link";
+import { redirect } from "next/navigation";
 import { HeroSection } from "@/components/marketing/hero-section";
 import { FeatureGrid } from "@/components/marketing/feature-grid";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { getCurrentUserFromServer } from "@/lib/auth/session";
+import { resolvePostAuthDestination } from "@/lib/onboarding/service";
+import Link from "next/link";
 
-export default function HomePage() {
+export default async function HomePage() {
+  const session = await getCurrentUserFromServer();
+  if (session.mode === "supabase" && session.authenticated) {
+    redirect(await resolvePostAuthDestination(session.user));
+  }
+
   return (
     <main>
       <header className="page-shell safe-top-pad pt-4">

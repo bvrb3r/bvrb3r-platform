@@ -59,6 +59,27 @@ describe("onboarding service", () => {
     expect(activation.lanes[0]?.activationState).toBe("active");
   });
 
+  it("routes a verified fresh user with no selected lane to role-select", async () => {
+    const freshUser: UserAccount = {
+      id: "auth-fresh-user",
+      role: "client",
+      email: "fresh@bvrb3r.demo",
+      password: "",
+      name: "Fresh User",
+      title: "Client",
+      phone: "+18135550100",
+      locationIds: [],
+      accountStatus: "profile_only",
+      onboardingState: "awaiting_role_selection",
+      emailVerified: true,
+      phoneVerified: true
+    };
+
+    const destination = await resolvePostAuthDestination(freshUser);
+
+    expect(destination).toBe("/role-select");
+  });
+
   it("routes a completed barber onboarding lane to activation until verification is live", async () => {
     const barber = resolveDemoUser("lux@bvrb3r.demo");
     const pendingBarber = { ...barber, accountStatus: "profile_only" as const };

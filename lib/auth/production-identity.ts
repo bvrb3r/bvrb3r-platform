@@ -290,27 +290,104 @@ function buildMinimalRuntimeUser(authUser: AuthUserLike): UserAccount {
   };
 }
 
+function getProfileSyncPayload(authUser: AuthUserLike) {
+  const phone = normalizePhoneNumber(
+    typeof authUser.user_metadata?.phone === "string" ? authUser.user_metadata.phone : authUser.phone
+  );
+  const fullName = getDisplayName(authUser);
+  const emailVerified = Boolean(authUser.email_confirmed_at);
+  const phoneVerified = Boolean(authUser.phone_confirmed_at);
+  const onboardingState = inferOnboardingState({
+    emailVerified,
+    phoneVerified,
+    primaryRole: null,
+    hasLaneRecord: false
+  });
+
+  return {
+    fullName,
+    phone,
+    emailVerified,
+    phoneVerified,
+    onboardingState
+  };
+}
+
 async function syncProfileFromAuth(authUser: AuthUserLike) {
   const supabase = getSupabase();
   if (!supabase) {
     return;
   }
 
-  const phone = normalizePhoneNumber(
-    typeof authUser.user_metadata?.phone === "string" ? authUser.user_metadata.phone : authUser.phone
-  );
-  const fullName = getDisplayName(authUser);
-  const update = await supabase
-    .from("profiles")
-    .update({
-      full_name: fullName,
-      email: authUser.email ?? null,
-      phone: phone || null
-    })
-    .eq("id", authUser.id);
+  const profile = await readProfile(authUser.id);
+  const payload = getProfileSyncPayload(authUser);
+  const email = authUser.email ?? `${authUser.id}@bvrb3r.local`;
+  const nextPhoneVerifiedAt = profile?.phone_verified_at ?? (payload.phoneVerified ? new Date().toISOString() : null);
 
-  if (update.error && !isSchemaError(update.error)) {
-    throw update.error;
+  if (profile?.id) {
+    const update = await supabase
+      .from("profiles")
+      .update({
+        full_name: payload.fullName,
+        email,
+        phone: payload.phone || null,
+        phone_verified_at: nextPhoneVerifiedAt,
+        onboarding_state: profile.onboarding_state ?? payload.onboardingState
+      })
+      .eq("id", authUser.id);
+
+    if (update.error) {
+      if (!isSchemaError(update.error)) {
+        throw update.error;
+      }
+
+      const fallback = await supabase
+        .from("profiles")
+        .update({
+          full_name: payload.fullName,
+          email,
+          phone: payload.phone || null
+        })
+        .eq("id", authUser.id);
+
+      if (fallback.error && !isSchemaError(fallback.error)) {
+        throw fallback.error;
+      }
+    }
+
+    return;
+  }
+
+  const insert = await supabase
+    .from("profiles")
+    .insert({
+      id: authUser.id,
+      role: "client",
+      full_name: payload.fullName,
+      email,
+      phone: payload.phone || null,
+      phone_verified_at: nextPhoneVerifiedAt,
+      onboarding_state: payload.onboardingState
+    });
+
+  if (insert.error) {
+    if (!isSchemaError(insert.error)) {
+      throw insert.error;
+    }
+
+    const fallback = await supabase
+      .from("profiles")
+      .insert({
+        id: authUser.id,
+        role: "client",
+        full_name: payload.fullName,
+        email,
+        phone: payload.phone || null
+      });
+
+    if (fallback.error && !isSchemaError(fallback.error)) {
+      throw fallback.error;
+    }
   }
 }
 
@@ -840,9 +917,10 @@ async function upsertProfileForLane(input: {
   }
 
   const now = new Date().toISOString();
-  const update = await supabase
+  const upsert = await supabase
     .from("profiles")
-    .update({
+    .upsert({
+      id: input.profileId,
       role: input.role,
       full_name: input.fullName,
       email: input.email,
@@ -850,28 +928,26 @@ async function upsertProfileForLane(input: {
       primary_onboarding_role: input.primaryOnboardingRole,
       onboarding_state: "active",
       last_onboarded_at: now
-    })
-    .eq("id", input.profileId);
+    }, { onConflict: "id" });
 
-  if (update.error) {
-    if (isSchemaError(update.error)) {
-      const fallback = await supabase
-        .from("profiles")
-        .update({
-          role: input.role,
-          full_name: input.fullName,
-          email: input.email,
-          phone: input.phone || null
-        })
-        .eq("id", input.profileId);
-
-      if (fallback.error) {
-        throw fallback.error;
-      }
-      return;
+  if (upsert.error) {
+    if (!isSchemaError(upsert.error)) {
+      throw upsert.error;
     }
 
-    throw update.error;
+    const fallback = await supabase
+      .from("profiles")
+      .upsert({
+        id: input.profileId,
+        role: input.role,
+        full_name: input.fullName,
+        email: input.email,
+        phone: input.phone || null
+      }, { onConflict: "id" });
+
+    if (fallback.error) {
+      throw fallback.error;
+    }
   }
 }
 
