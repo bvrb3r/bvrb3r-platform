@@ -1,13 +1,15 @@
 "use client";
 
+import type { Route } from "next";
 import { useRouter } from "next/navigation";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   useContactVerificationStatus,
+  useOnboardingMe,
   useSendPhoneVerificationMutation,
   useUpdateContactVerificationMutation,
   useVerifyPhoneVerificationMutation
@@ -18,20 +20,64 @@ export function ContactVerificationWorkspace() {
   const router = useRouter();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const statusQuery = useContactVerificationStatus();
+  const onboardingQuery = useOnboardingMe(false);
   const updateContactMutation = useUpdateContactVerificationMutation();
   const sendPhoneMutation = useSendPhoneVerificationMutation();
   const verifyPhoneMutation = useVerifyPhoneVerificationMutation();
+  const hasForwardedRef = useRef(false);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [isContinuing, setIsContinuing] = useState(false);
 
   const payload = statusQuery.data;
   const resolvedFirstName = firstName || payload?.firstName || "";
   const resolvedLastName = lastName || payload?.lastName || "";
   const resolvedPhone = phone || payload?.phone || "";
+
+  async function continueFromCanonicalState(preferredNextPath?: Route) {
+    if (isContinuing) {
+      return preferredNextPath ?? null;
+    }
+
+    setIsContinuing(true);
+    try {
+      const [contactResult, onboardingResult] = await Promise.all([
+        statusQuery.refetch(),
+        onboardingQuery.refetch()
+      ]);
+      const nextPath: Route = onboardingResult.data?.nextPath
+        ?? contactResult.data?.nextPath
+        ?? preferredNextPath
+        ?? "/post-auth";
+
+      if (nextPath && nextPath !== "/verify-contact") {
+        hasForwardedRef.current = true;
+        router.replace(nextPath);
+      }
+
+      return nextPath;
+    } finally {
+      setIsContinuing(false);
+    }
+  }
+
+  useEffect(() => {
+    if (hasForwardedRef.current || !payload?.canContinue) {
+      return;
+    }
+
+    const nextPath = payload.nextPath ?? "/post-auth";
+    if (nextPath === "/verify-contact") {
+      return;
+    }
+
+    hasForwardedRef.current = true;
+    router.replace(nextPath);
+  }, [payload?.canContinue, payload?.nextPath, router]);
 
   async function handleSaveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -52,7 +98,7 @@ export function ContactVerificationWorkspace() {
         ? "Contact details are complete. Continue to choose your BVRB3R lane."
         : "Contact details saved. Finish the remaining verification to continue.");
       if (result.canContinue) {
-        router.replace("/post-auth");
+        await continueFromCanonicalState(result.nextPath);
       }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to save your contact details.");
@@ -110,9 +156,16 @@ export function ContactVerificationWorkspace() {
       const result = await verifyPhoneMutation.mutateAsync({ code });
       setPhone(result.phone);
       setCode("");
-      setSuccessMessage("Phone verification complete.");
-      if (result.canContinue) {
-        router.replace("/post-auth");
+      const nextPath = await continueFromCanonicalState(result.nextPath);
+      setSuccessMessage(
+        nextPath && nextPath !== "/verify-contact"
+          ? "Phone verification complete. Taking you to the next step now."
+          : result.canContinue
+            ? "Phone verification complete. Continue to the next step."
+            : "Phone verification complete. Finish the remaining required fields to continue."
+      );
+      if (!result.canContinue && nextPath === "/verify-contact") {
+        hasForwardedRef.current = false;
       }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to verify this code.");
@@ -225,8 +278,13 @@ export function ContactVerificationWorkspace() {
 
         {payload?.canContinue ? (
           <div className="mt-6 flex flex-wrap gap-3">
-            <Button type="button" className="h-12 px-6" onClick={() => router.replace("/post-auth")}>
-              Continue to role selection
+            <Button
+              type="button"
+              className="h-12 px-6"
+              disabled={isContinuing}
+              onClick={() => void continueFromCanonicalState(payload.nextPath)}
+            >
+              {isContinuing ? "Continuing..." : "Continue"}
             </Button>
           </div>
         ) : null}

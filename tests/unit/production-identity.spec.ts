@@ -178,7 +178,11 @@ function createSupabaseAdminMock(state: TableState) {
   };
 }
 
-import { buildRuntimeUserFromProductionAuth, initializeProductionRoleSelection } from "@/lib/auth/production-identity";
+import {
+  buildRuntimeUserFromProductionAuth,
+  initializeProductionRoleSelection,
+  updateContactVerificationProfile
+} from "@/lib/auth/production-identity";
 
 describe("production identity provisioning", () => {
   let state: TableState;
@@ -250,5 +254,67 @@ describe("production identity provisioning", () => {
     });
     expect(result.user.clientId).toBeTruthy();
     expect(result.user.accountStatus).toBe("active");
+  });
+
+  it("updates a stale onboarding state after phone verification completes", async () => {
+    state.profiles.push({
+      id: "auth-user-3",
+      role: "client",
+      full_name: "Taylor Lane",
+      email: "taylor@bvrb3r.app",
+      phone: "+18135550124",
+      phone_verified_at: "2026-04-08T12:00:00.000Z",
+      onboarding_state: "awaiting_contact_verification"
+    });
+
+    const runtimeUser = await buildRuntimeUserFromProductionAuth({
+      id: "auth-user-3",
+      email: "taylor@bvrb3r.app",
+      phone: "+18135550124",
+      email_confirmed_at: "2026-04-08T12:00:00.000Z",
+      phone_confirmed_at: null,
+      user_metadata: {
+        full_name: "Taylor Lane",
+        phone: "+18135550124"
+      }
+    });
+
+    expect(runtimeUser.onboardingState).toBe("awaiting_role_selection");
+    expect(state.profiles[0]?.onboarding_state).toBe("awaiting_role_selection");
+  });
+
+  it("preserves an existing owner lane when contact details are updated", async () => {
+    state.profiles.push({
+      id: "auth-owner-1",
+      role: "owner",
+      full_name: "Owner In Progress",
+      email: "owner@bvrb3r.app",
+      phone: null,
+      primary_onboarding_role: "shop_owner",
+      onboarding_state: "role_selected",
+      phone_verified_at: null
+    });
+
+    await updateContactVerificationProfile({
+      id: "auth-owner-1",
+      email: "owner@bvrb3r.app",
+      phone: null,
+      email_confirmed_at: "2026-04-08T12:00:00.000Z",
+      phone_confirmed_at: null,
+      user_metadata: {}
+    }, {
+      firstName: "Maya",
+      lastName: "Lane",
+      phone: "(813) 555-0125",
+      email: "owner@bvrb3r.app"
+    });
+
+    expect(state.profiles[0]).toMatchObject({
+      id: "auth-owner-1",
+      role: "owner",
+      primary_onboarding_role: "shop_owner",
+      full_name: "Maya Lane",
+      phone: "+18135550125"
+    });
   });
 });

@@ -1,6 +1,9 @@
+import type { Route } from "next";
 import { NextResponse } from "next/server";
+import { buildRuntimeUserFromProductionAuth } from "@/lib/auth/production-identity";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
 import { isDemoMode } from "@/lib/config/runtime";
+import { resolvePostAuthDestination } from "@/lib/onboarding/service";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export type AuthUserLike = {
@@ -45,6 +48,21 @@ export async function getAuthenticatedAuthUser(): Promise<AuthUserLike> {
     email_confirmed_at: result.data.user.email_confirmed_at,
     phone_confirmed_at: result.data.user.phone_confirmed_at,
     user_metadata: result.data.user.user_metadata as Record<string, unknown> | undefined
+  };
+}
+
+export async function resolveAuthenticatedNextPath(authUser: AuthUserLike): Promise<Route> {
+  const runtimeUser = await buildRuntimeUserFromProductionAuth(authUser);
+  return resolvePostAuthDestination(runtimeUser);
+}
+
+export async function withResolvedAuthNextPath<T extends Record<string, unknown>>(
+  authUser: AuthUserLike,
+  payload: T
+): Promise<T & { nextPath: Route }> {
+  return {
+    ...payload,
+    nextPath: await resolveAuthenticatedNextPath(authUser)
   };
 }
 

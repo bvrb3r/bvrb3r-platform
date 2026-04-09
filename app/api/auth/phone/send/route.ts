@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { sendPhoneVerificationChallenge } from "@/lib/auth/production-identity";
-import { getAuthenticatedAuthUser, toAuthErrorResponse } from "@/app/api/auth/_shared";
+import {
+  getAuthenticatedAuthUser,
+  toAuthErrorResponse,
+  withResolvedAuthNextPath
+} from "@/app/api/auth/_shared";
 
 const schema = z.object({
   phone: z.string().trim().min(7)
@@ -16,7 +20,7 @@ export async function POST(request: NextRequest) {
 
     const authUser = await getAuthenticatedAuthUser();
     const payload = await sendPhoneVerificationChallenge(authUser, parsed.data);
-    return NextResponse.json(payload);
+    return NextResponse.json(await withResolvedAuthNextPath(authUser, payload));
   } catch (error) {
     return toAuthErrorResponse(error);
   }

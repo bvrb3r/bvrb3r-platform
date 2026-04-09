@@ -544,6 +544,78 @@ async function readProfile(authUserId: string) {
   return fallback.data as ProfileRow | null;
 }
 
+async function persistResolvedProfileState(input: {
+  profile: ProfileRow | null;
+  profileId: string;
+  runtimeRole: Role;
+  primaryRole: IdentityLane | null;
+  onboardingState: IdentityOnboardingState;
+  fullName: string;
+  email: string;
+  phone: string;
+  phoneVerified: boolean;
+}) {
+  const supabase = getSupabase();
+  if (!supabase || !input.profileId) {
+    return;
+  }
+
+  const normalizedCurrentPhone = normalizePhoneNumber(input.profile?.phone ?? null);
+  const normalizedNextPhone = normalizePhoneNumber(input.phone);
+  const nextPhoneVerifiedAt = input.phoneVerified
+    ? input.profile?.phone_verified_at ?? new Date().toISOString()
+    : input.profile?.phone_verified_at ?? null;
+  const nextFullName = input.fullName.trim();
+  const nextEmail = input.email.trim();
+  const currentRole = input.profile?.role === "shop_owner" ? "owner" : input.profile?.role ?? null;
+  const currentPrimaryRole = input.profile?.primary_onboarding_role ?? null;
+  const currentOnboardingState = input.profile?.onboarding_state ?? null;
+  const needsSync = currentRole !== input.runtimeRole
+    || currentPrimaryRole !== input.primaryRole
+    || currentOnboardingState !== input.onboardingState
+    || (input.profile?.full_name ?? "") !== nextFullName
+    || (input.profile?.email ?? "") !== nextEmail
+    || normalizedCurrentPhone !== normalizedNextPhone
+    || Boolean(input.profile?.phone_verified_at) !== Boolean(nextPhoneVerifiedAt);
+
+  if (!needsSync) {
+    return;
+  }
+
+  const update = await supabase
+    .from("profiles")
+    .update({
+      role: input.runtimeRole,
+      full_name: nextFullName,
+      email: nextEmail,
+      phone: normalizedNextPhone || null,
+      primary_onboarding_role: input.primaryRole,
+      onboarding_state: input.onboardingState,
+      phone_verified_at: nextPhoneVerifiedAt
+    })
+    .eq("id", input.profileId);
+
+  if (update.error) {
+    if (!isSchemaError(update.error)) {
+      throw update.error;
+    }
+
+    const fallback = await supabase
+      .from("profiles")
+      .update({
+        role: input.runtimeRole,
+        full_name: nextFullName,
+        email: nextEmail,
+        phone: normalizedNextPhone || null
+      })
+      .eq("id", input.profileId);
+
+    if (fallback.error && !isSchemaError(fallback.error)) {
+      throw fallback.error;
+    }
+  }
+}
+
 async function readClientByProfile(profileId: string) {
   const supabase = getSupabase();
   if (!supabase) {
@@ -724,6 +796,19 @@ export async function buildRuntimeUserFromProductionAuth(authUser: AuthUserLike)
       && requiredContact.missingFields.length === 0
         ? "active"
         : "profile_only";
+    const canonicalFullName = requiredContact.fullName || displayName;
+
+    await persistResolvedProfileState({
+      profile,
+      profileId: authUser.id,
+      runtimeRole,
+      primaryRole,
+      onboardingState,
+      fullName: canonicalFullName,
+      email: requiredContact.email,
+      phone: requiredContact.phone,
+      phoneVerified
+    });
 
     console.info("[auth] production identity resolved", {
       userId: authUser.id,
@@ -739,7 +824,7 @@ export async function buildRuntimeUserFromProductionAuth(authUser: AuthUserLike)
       role: runtimeRole,
       email: requiredContact.email,
       password: "",
-      name: displayName,
+      name: canonicalFullName,
       title: getTitle(runtimeRole, barber?.barber_subtype),
       phone: requiredContact.phone,
       firstName: requiredContact.firstName || undefined,
@@ -843,14 +928,21 @@ export async function updateContactVerificationProfile(
   }
 
   if (supabase) {
+    const existingProfile = await readProfile(profileId);
+    const nextRole = existingProfile?.role === "shop_owner"
+      ? "owner"
+      : existingProfile?.role ?? "client";
     const update = await supabase
       .from("profiles")
       .upsert({
         id: profileId,
-        role: "client",
+        role: nextRole,
         full_name: fullName,
         email,
-        phone
+        phone,
+        primary_onboarding_role: existingProfile?.primary_onboarding_role ?? null,
+        onboarding_state: existingProfile?.onboarding_state ?? undefined,
+        phone_verified_at: existingProfile?.phone_verified_at ?? null
       }, { onConflict: "id" });
 
     if (update.error && !isSchemaError(update.error)) {

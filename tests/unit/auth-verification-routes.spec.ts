@@ -3,12 +3,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   getAuthenticatedAuthUserMock,
+  withResolvedAuthNextPathMock,
   getContactVerificationStateMock,
   updateContactVerificationProfileMock,
   sendPhoneVerificationChallengeMock,
   verifyPhoneVerificationChallengeMock
 } = vi.hoisted(() => ({
   getAuthenticatedAuthUserMock: vi.fn(),
+  withResolvedAuthNextPathMock: vi.fn(),
   getContactVerificationStateMock: vi.fn(),
   updateContactVerificationProfileMock: vi.fn(),
   sendPhoneVerificationChallengeMock: vi.fn(),
@@ -17,6 +19,7 @@ const {
 
 vi.mock("@/app/api/auth/_shared", () => ({
   getAuthenticatedAuthUser: getAuthenticatedAuthUserMock,
+  withResolvedAuthNextPath: withResolvedAuthNextPathMock,
   toAuthErrorResponse: (error: unknown) => {
     const message = error instanceof Error ? error.message : "error";
     if (message === "auth_required") {
@@ -42,6 +45,7 @@ import { POST as postVerifyPhone } from "@/app/api/auth/phone/verify/route";
 describe("auth verification routes", () => {
   beforeEach(() => {
     getAuthenticatedAuthUserMock.mockReset();
+    withResolvedAuthNextPathMock.mockReset();
     getContactVerificationStateMock.mockReset();
     updateContactVerificationProfileMock.mockReset();
     sendPhoneVerificationChallengeMock.mockReset();
@@ -58,6 +62,10 @@ describe("auth verification routes", () => {
         phone: "+18135550100"
       }
     });
+    withResolvedAuthNextPathMock.mockImplementation(async (_authUser, payload) => ({
+      ...payload,
+      nextPath: "/verify-contact"
+    }));
   });
 
   it("returns the current contact verification state", async () => {
@@ -80,6 +88,7 @@ describe("auth verification routes", () => {
     expect(response.status).toBe(200);
     expect(body.email).toBe("client@example.com");
     expect(body.phoneVerified).toBe(false);
+    expect(body.nextPath).toBe("/verify-contact");
   });
 
   it("updates canonical contact details for the authenticated user", async () => {
@@ -112,6 +121,7 @@ describe("auth verification routes", () => {
       expect.objectContaining({ firstName: "Jordan", lastName: "Ellis" })
     );
     expect(body.firstName).toBe("Jordan");
+    expect(body.nextPath).toBe("/verify-contact");
   });
 
   it("sends an SMS verification challenge for the authenticated user", async () => {
@@ -141,6 +151,36 @@ describe("auth verification routes", () => {
       { phone: "(813) 555-0100" }
     );
     expect(body.degraded).toBe(false);
+    expect(body.nextPath).toBe("/verify-contact");
+  });
+
+  it("returns the canonical next step after successful phone verification", async () => {
+    verifyPhoneVerificationChallengeMock.mockResolvedValue({
+      firstName: "Jordan",
+      lastName: "Ellis",
+      email: "client@example.com",
+      phone: "+18135550100",
+      emailVerified: true,
+      phoneVerified: true,
+      canContinue: true,
+      requiresRoleSelection: true,
+      onboardingState: "awaiting_role_selection",
+      missingFields: []
+    });
+    withResolvedAuthNextPathMock.mockImplementation(async (_authUser, payload) => ({
+      ...payload,
+      nextPath: "/role-select"
+    }));
+
+    const response = await postVerifyPhone(new NextRequest("https://bvrb3r.app/api/auth/phone/verify", {
+      method: "POST",
+      body: JSON.stringify({ code: "123456" })
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.phoneVerified).toBe(true);
+    expect(body.nextPath).toBe("/role-select");
   });
 
   it("rejects unauthenticated phone verification attempts cleanly", async () => {

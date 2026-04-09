@@ -76,6 +76,7 @@ export interface ContactVerificationStatusPayload {
   onboardingState: IdentityOnboardingState;
   missingFields: string[];
   degraded?: boolean;
+  nextPath?: Route;
 }
 
 export interface ActivationStatusLaneView {
