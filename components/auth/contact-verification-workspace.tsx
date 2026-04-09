@@ -97,9 +97,7 @@ export function ContactVerificationWorkspace() {
       setSuccessMessage(result.canContinue
         ? "Contact details are complete. Continue to choose your BVRB3R lane."
         : "Contact details saved. Finish the remaining verification to continue.");
-      if (result.canContinue) {
-        await continueFromCanonicalState(result.nextPath);
-      }
+      await continueFromCanonicalState(result.nextPath);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to save your contact details.");
     }

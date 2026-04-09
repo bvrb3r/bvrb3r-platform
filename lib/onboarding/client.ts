@@ -85,7 +85,8 @@ export function useSendPhoneVerificationMutation() {
         method: "POST",
         body: JSON.stringify(payload)
       }),
-    onSuccess: async () => {
+    onSuccess: async (data) => {
+      queryClient.setQueryData(["auth", "verification-status"], data);
       await queryClient.invalidateQueries({ queryKey: ["auth", "verification-status"] });
     }
   });
@@ -99,7 +100,8 @@ export function useUpdateContactVerificationMutation() {
         method: "POST",
         body: JSON.stringify(payload)
       }),
-    onSuccess: async () => {
+    onSuccess: async (data) => {
+      queryClient.setQueryData(["auth", "verification-status"], data);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["auth", "verification-status"] }),
         queryClient.invalidateQueries({ queryKey: ["onboarding"] }),
@@ -117,7 +119,8 @@ export function useVerifyPhoneVerificationMutation() {
         method: "POST",
         body: JSON.stringify(payload)
       }),
-    onSuccess: async () => {
+    onSuccess: async (data) => {
+      queryClient.setQueryData(["auth", "verification-status"], data);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["auth", "verification-status"] }),
         queryClient.invalidateQueries({ queryKey: ["onboarding"] }),

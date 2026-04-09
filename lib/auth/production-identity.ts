@@ -24,6 +24,8 @@ type ProfileRow = {
   id: string;
   role: Role | "shop_owner" | null;
   full_name: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
   email: string | null;
   phone: string | null;
   primary_onboarding_role?: IdentityLane | null;
@@ -236,6 +238,16 @@ function getMetadataNameParts(authUser: AuthUserLike) {
 }
 
 function getCanonicalNameState(authUser: AuthUserLike, profile?: ProfileRow | null) {
+  const explicitProfileFirstName = `${profile?.first_name ?? ""}`.trim();
+  const explicitProfileLastName = `${profile?.last_name ?? ""}`.trim();
+  if (explicitProfileFirstName && explicitProfileLastName) {
+    return {
+      firstName: explicitProfileFirstName,
+      lastName: explicitProfileLastName,
+      fullName: `${explicitProfileFirstName} ${explicitProfileLastName}`.trim()
+    };
+  }
+
   const profileParts = splitFullName(profile?.full_name);
   if (profileParts.firstName && profileParts.lastName) {
     return profileParts;
@@ -433,6 +445,8 @@ async function syncProfileFromAuth(authUser: AuthUserLike) {
   const profile = await readProfile(authUser.id);
   const payload = getProfileSyncPayload(authUser, profile);
   const nextPhoneVerifiedAt = profile?.phone_verified_at ?? (payload.phoneVerified ? new Date().toISOString() : null);
+  const nextFirstName = `${profile?.first_name ?? ""}`.trim() || payload.firstName;
+  const nextLastName = `${profile?.last_name ?? ""}`.trim() || payload.lastName;
   const nextFullName = profile?.full_name?.trim()
     ? profile.full_name.trim()
     : payload.fullName;
@@ -446,6 +460,8 @@ async function syncProfileFromAuth(authUser: AuthUserLike) {
       .from("profiles")
       .update({
         full_name: nextFullName,
+        first_name: nextFirstName || null,
+        last_name: nextLastName || null,
         email: nextEmail,
         phone: nextPhone,
         phone_verified_at: nextPhoneVerifiedAt,
@@ -481,6 +497,8 @@ async function syncProfileFromAuth(authUser: AuthUserLike) {
       id: authUser.id,
       role: "client",
       full_name: payload.fullName,
+      first_name: payload.firstName || null,
+      last_name: payload.lastName || null,
       email: payload.email,
       phone: payload.phone || null,
       phone_verified_at: nextPhoneVerifiedAt,
@@ -516,7 +534,7 @@ async function readProfile(authUserId: string) {
 
   const preferred = await supabase
     .from("profiles")
-    .select("id, role, full_name, email, phone, primary_onboarding_role, onboarding_state, phone_verified_at")
+    .select("id, role, full_name, first_name, last_name, email, phone, primary_onboarding_role, onboarding_state, phone_verified_at")
     .eq("id", authUserId)
     .maybeSingle();
 
@@ -565,6 +583,7 @@ async function persistResolvedProfileState(input: {
   const nextPhoneVerifiedAt = input.phoneVerified
     ? input.profile?.phone_verified_at ?? new Date().toISOString()
     : input.profile?.phone_verified_at ?? null;
+  const nextNameParts = splitFullName(input.fullName);
   const nextFullName = input.fullName.trim();
   const nextEmail = input.email.trim();
   const currentRole = input.profile?.role === "shop_owner" ? "owner" : input.profile?.role ?? null;
@@ -574,6 +593,8 @@ async function persistResolvedProfileState(input: {
     || currentPrimaryRole !== input.primaryRole
     || currentOnboardingState !== input.onboardingState
     || (input.profile?.full_name ?? "") !== nextFullName
+    || `${input.profile?.first_name ?? ""}`.trim() !== nextNameParts.firstName
+    || `${input.profile?.last_name ?? ""}`.trim() !== nextNameParts.lastName
     || (input.profile?.email ?? "") !== nextEmail
     || normalizedCurrentPhone !== normalizedNextPhone
     || Boolean(input.profile?.phone_verified_at) !== Boolean(nextPhoneVerifiedAt);
@@ -587,6 +608,8 @@ async function persistResolvedProfileState(input: {
     .update({
       role: input.runtimeRole,
       full_name: nextFullName,
+      first_name: nextNameParts.firstName || null,
+      last_name: nextNameParts.lastName || null,
       email: nextEmail,
       phone: normalizedNextPhone || null,
       primary_onboarding_role: input.primaryRole,
@@ -938,6 +961,8 @@ export async function updateContactVerificationProfile(
         id: profileId,
         role: nextRole,
         full_name: fullName,
+        first_name: firstName,
+        last_name: lastName,
         email,
         phone,
         primary_onboarding_role: existingProfile?.primary_onboarding_role ?? null,
@@ -945,8 +970,24 @@ export async function updateContactVerificationProfile(
         phone_verified_at: existingProfile?.phone_verified_at ?? null
       }, { onConflict: "id" });
 
-    if (update.error && !isSchemaError(update.error)) {
-      throw update.error;
+    if (update.error) {
+      if (!isSchemaError(update.error)) {
+        throw update.error;
+      }
+
+      const fallback = await supabase
+        .from("profiles")
+        .upsert({
+          id: profileId,
+          role: nextRole,
+          full_name: fullName,
+          email,
+          phone
+        }, { onConflict: "id" });
+
+      if (fallback.error && !isSchemaError(fallback.error)) {
+        throw fallback.error;
+      }
     }
   }
 
@@ -1083,7 +1124,7 @@ function getPhoneChallengeHash(challenge: AnyPhoneChallenge) {
   return "code_hash" in challenge ? challenge.code_hash : challenge.codeHash;
 }
 
-async function markPhoneChallengeVerified(challengeId: string, profileId: string) {
+async function markPhoneChallengeVerified(challengeId: string, profileId: string, phone: string) {
   const supabase = getSupabase();
   const now = new Date().toISOString();
   if (!supabase) {
@@ -1103,6 +1144,7 @@ async function markPhoneChallengeVerified(challengeId: string, profileId: string
     supabase
       .from("profiles")
       .update({
+        phone,
         phone_verified_at: now
       })
       .eq("id", profileId)
@@ -1144,12 +1186,16 @@ export async function sendPhoneVerificationChallenge(
   const supabase = getSupabase();
 
   if (supabase) {
+    const existingProfile = await readProfile(profileId);
     const update = await supabase
       .from("profiles")
-      .update({
+      .upsert({
+        id: profileId,
+        role: existingProfile?.role === "shop_owner" ? "owner" : existingProfile?.role ?? "client",
+        full_name: existingProfile?.full_name?.trim() || getDisplayName(authUser, existingProfile),
+        email: existingProfile?.email?.trim() || authUser.email || `${profileId}@bvrb3r.local`,
         phone: normalizedPhone
-      })
-      .eq("id", profileId);
+      }, { onConflict: "id" });
 
     if (update.error && !isSchemaError(update.error)) {
       throw update.error;
@@ -1193,7 +1239,7 @@ export async function verifyPhoneVerificationChallenge(
     throw new Error("That verification code is not valid.");
   }
 
-  await markPhoneChallengeVerified(challenge.id, profileId);
+  await markPhoneChallengeVerified(challenge.id, profileId, phone);
   return readContactState({
     ...authUser,
     phone
