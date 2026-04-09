@@ -180,6 +180,7 @@ function createSupabaseAdminMock(state: TableState) {
 
 import {
   buildRuntimeUserFromProductionAuth,
+  getContactVerificationState,
   initializeProductionRoleSelection,
   updateContactVerificationProfile
 } from "@/lib/auth/production-identity";
@@ -318,5 +319,73 @@ describe("production identity provisioning", () => {
       full_name: "Maya Lane",
       phone: "+18135550125"
     });
+  });
+
+  it("treats a production full_name/email/phone row as contact-complete without split name columns", async () => {
+    state.profiles.push({
+      id: "auth-user-4",
+      role: "client",
+      full_name: "Phillip Mcgee",
+      email: "bvrb3r@gmail.com",
+      phone: "+18136250040",
+      phone_verified_at: "2026-04-09T12:00:00.000Z",
+      onboarding_state: "awaiting_contact_verification",
+      primary_onboarding_role: null
+    });
+
+    const contactState = await getContactVerificationState({
+      id: "auth-user-4",
+      email: "bvrb3r@gmail.com",
+      phone: null,
+      email_confirmed_at: "2026-04-09T12:00:00.000Z",
+      phone_confirmed_at: null,
+      user_metadata: {
+        full_name: "Phillip Mcgee"
+      }
+    });
+
+    expect(contactState.fullName).toBe("Phillip Mcgee");
+    expect(contactState.phone).toBe("+18136250040");
+    expect(contactState.phoneVerified).toBe(true);
+    expect(contactState.missingFields).toEqual([]);
+    expect(contactState.canContinue).toBe(true);
+    expect(contactState.requiresRoleSelection).toBe(true);
+    expect(contactState.onboardingState).toBe("awaiting_role_selection");
+  });
+
+  it("persists phone to the canonical profile row before recomputing contact completeness", async () => {
+    state.profiles.push({
+      id: "auth-user-5",
+      role: "client",
+      full_name: "Phillip Mcgee",
+      email: "bvrb3r@gmail.com",
+      phone: null,
+      phone_verified_at: null,
+      onboarding_state: "awaiting_contact_verification"
+    });
+
+    const result = await updateContactVerificationProfile({
+      id: "auth-user-5",
+      email: "bvrb3r@gmail.com",
+      phone: null,
+      email_confirmed_at: "2026-04-09T12:00:00.000Z",
+      phone_confirmed_at: null,
+      user_metadata: {
+        full_name: "Phillip Mcgee"
+      }
+    }, {
+      firstName: "Phillip",
+      lastName: "Mcgee",
+      phone: "(813) 625-0040",
+      email: "bvrb3r@gmail.com"
+    });
+
+    expect(state.profiles[0]).toMatchObject({
+      full_name: "Phillip Mcgee",
+      email: "bvrb3r@gmail.com",
+      phone: "+18136250040"
+    });
+    expect(result.missingFields).not.toContain("phone");
+    expect(result.phone).toBe("+18136250040");
   });
 });

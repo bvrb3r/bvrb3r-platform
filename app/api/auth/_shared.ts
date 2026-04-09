@@ -1,6 +1,9 @@
 import type { Route } from "next";
 import { NextResponse } from "next/server";
-import { buildRuntimeUserFromProductionAuth } from "@/lib/auth/production-identity";
+import {
+  buildRuntimeUserFromProductionAuth,
+  getContactVerificationState
+} from "@/lib/auth/production-identity";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
 import { isDemoMode } from "@/lib/config/runtime";
 import { resolvePostAuthDestination } from "@/lib/onboarding/service";
@@ -52,6 +55,15 @@ export async function getAuthenticatedAuthUser(): Promise<AuthUserLike> {
 }
 
 export async function resolveAuthenticatedNextPath(authUser: AuthUserLike): Promise<Route> {
+  const contactState = await getContactVerificationState(authUser);
+  if (!contactState.canContinue) {
+    return "/verify-contact";
+  }
+
+  if (contactState.requiresRoleSelection) {
+    return "/role-select";
+  }
+
   const runtimeUser = await buildRuntimeUserFromProductionAuth(authUser);
   return resolvePostAuthDestination(runtimeUser);
 }

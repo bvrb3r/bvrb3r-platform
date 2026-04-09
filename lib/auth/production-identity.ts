@@ -84,6 +84,21 @@ type ContactVerificationState = {
   missingFields: string[];
 };
 
+type CanonicalContactSnapshot = {
+  profile: ProfileRow | null;
+  fullName: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  emailVerified: boolean;
+  phoneVerified: boolean;
+  primaryRole: IdentityLane | null;
+  hasLaneRecord: boolean;
+  onboardingState: IdentityOnboardingState;
+  missingFields: string[];
+};
+
 type RoleSelectionInput = {
   role: IdentityLane;
   barberSubtype?: BarberSubtype;
@@ -701,6 +716,101 @@ async function readOwnedShopByProfile(profileId: string) {
   return null;
 }
 
+async function safeHasLaneRecord(profileId: string, primaryRole: IdentityLane | null) {
+  try {
+    if (primaryRole === "client") {
+      return Boolean(await readClientByProfile(profileId));
+    }
+
+    if (primaryRole === "barber") {
+      return Boolean(await readBarberByProfile(profileId));
+    }
+
+    if (primaryRole === "shop_owner") {
+      return Boolean(await readOwnedShopByProfile(profileId));
+    }
+  } catch (error) {
+    console.warn("[auth] unable to resolve lane record during contact-state check", {
+      profileId,
+      primaryRole,
+      error
+    });
+  }
+
+  return false;
+}
+
+async function readCanonicalContactSnapshot(
+  authUser: AuthUserLike,
+  options?: { skipSync?: boolean }
+): Promise<CanonicalContactSnapshot> {
+  if (!options?.skipSync) {
+    await syncProfileFromAuth(authUser);
+  }
+
+  const profile = await readProfile(authUser.id);
+  const profileName = splitFullName(profile?.full_name);
+  const metadataName = getMetadataNameParts(authUser);
+  const fullName = `${profile?.full_name ?? ""}`.trim();
+  const email = `${profile?.email ?? authUser.email ?? ""}`.trim();
+  const phone = normalizePhoneNumber(profile?.phone ?? null);
+  const emailVerified = Boolean(authUser.email_confirmed_at);
+  const phoneVerified = Boolean(profile?.phone_verified_at);
+  const primaryRole = profile?.primary_onboarding_role ?? null;
+  const hasLaneRecord = profile?.id ? await safeHasLaneRecord(profile.id, primaryRole) : false;
+  const missingFields: string[] = [];
+
+  if (!fullName) {
+    missingFields.push("full_name");
+  }
+
+  if (!email) {
+    missingFields.push("email");
+  }
+
+  if (!phone) {
+    missingFields.push("phone");
+  }
+
+  const onboardingState = inferOnboardingState({
+    emailVerified,
+    phoneVerified,
+    hasRequiredContactFields: missingFields.length === 0,
+    primaryRole,
+    hasLaneRecord,
+    persistedState: profile?.onboarding_state
+  });
+
+  if (profile?.id && profile.onboarding_state !== onboardingState) {
+    const supabase = getSupabase();
+    if (supabase) {
+      const sync = await supabase
+        .from("profiles")
+        .update({ onboarding_state: onboardingState })
+        .eq("id", profile.id);
+
+      if (sync.error && !isSchemaError(sync.error)) {
+        throw sync.error;
+      }
+    }
+  }
+
+  return {
+    profile,
+    fullName,
+    firstName: profileName.firstName || metadataName.firstName,
+    lastName: profileName.lastName || metadataName.lastName,
+    email,
+    phone,
+    emailVerified,
+    phoneVerified,
+    primaryRole,
+    hasLaneRecord,
+    onboardingState,
+    missingFields
+  };
+}
+
 async function readLocationReferencesForProfile(profileId: string, ownedShopId?: string | null) {
   const supabase = getSupabase();
   const references: string[] = [];
@@ -848,46 +958,20 @@ export async function buildRuntimeUserFromProductionAuth(authUser: AuthUserLike)
 }
 
 async function readContactState(authUser: AuthUserLike): Promise<ContactVerificationState> {
-  const runtimeUser = await buildRuntimeUserFromProductionAuth(authUser);
-  const emailVerified = Boolean(runtimeUser.emailVerified);
-  const phoneVerified = Boolean(runtimeUser.phoneVerified);
-  const fullName = runtimeUser.canonicalFullName?.trim()
-    || `${runtimeUser.firstName ?? ""} ${runtimeUser.lastName ?? ""}`.trim();
-  const missingFields: string[] = [];
-  if (!fullName) {
-    missingFields.push("full_name");
-  }
-  if (!runtimeUser.email?.trim()) {
-    missingFields.push("email");
-  }
-  if (!runtimeUser.phone?.trim()) {
-    missingFields.push("phone");
-  }
-  const onboardingState = inferOnboardingState({
-    emailVerified,
-    phoneVerified,
-    hasRequiredContactFields: missingFields.length === 0,
-    primaryRole: runtimeUser.primaryOnboardingRole,
-    hasLaneRecord: Boolean(
-      runtimeUser.clientId
-      || runtimeUser.barberId
-      || runtimeUser.ownedShopId
-    ),
-    persistedState: runtimeUser.onboardingState
-  });
+  const snapshot = await readCanonicalContactSnapshot(authUser);
 
   return {
-    fullName,
-    firstName: runtimeUser.firstName ?? "",
-    lastName: runtimeUser.lastName ?? "",
-    email: runtimeUser.email,
-    phone: runtimeUser.phone ?? "",
-    emailVerified,
-    phoneVerified,
-    canContinue: missingFields.length === 0 && emailVerified && phoneVerified,
-    requiresRoleSelection: emailVerified && phoneVerified && !runtimeUser.primaryOnboardingRole,
-    onboardingState,
-    missingFields
+    fullName: snapshot.fullName,
+    firstName: snapshot.firstName,
+    lastName: snapshot.lastName,
+    email: snapshot.email,
+    phone: snapshot.phone,
+    emailVerified: snapshot.emailVerified,
+    phoneVerified: snapshot.phoneVerified,
+    canContinue: snapshot.missingFields.length === 0 && snapshot.emailVerified && snapshot.phoneVerified,
+    requiresRoleSelection: snapshot.emailVerified && snapshot.phoneVerified && !snapshot.primaryRole,
+    onboardingState: snapshot.onboardingState,
+    missingFields: snapshot.missingFields
   };
 }
 
@@ -961,6 +1045,15 @@ export async function updateContactVerificationProfile(
         throw fallback.error;
       }
     }
+
+    const persistedProfile = await readProfile(profileId);
+    console.info("[auth] contact details saved", {
+      profileId,
+      fullName: persistedProfile?.full_name ?? fullName,
+      email: persistedProfile?.email ?? email,
+      phone: persistedProfile?.phone ?? phone,
+      onboardingState: persistedProfile?.onboarding_state ?? null
+    });
   }
 
   return readContactState({
@@ -1129,6 +1222,14 @@ async function markPhoneChallengeVerified(challengeId: string, profileId: string
   if (profileUpdate.error && !isSchemaError(profileUpdate.error)) {
     throw profileUpdate.error;
   }
+
+  const persistedProfile = await readProfile(profileId);
+  console.info("[auth] phone verification persisted", {
+    profileId,
+    phone: persistedProfile?.phone ?? phone,
+    phoneVerifiedAt: persistedProfile?.phone_verified_at ?? now,
+    onboardingState: persistedProfile?.onboarding_state ?? null
+  });
 }
 
 async function resolveProfileId(authUser: AuthUserLike) {
