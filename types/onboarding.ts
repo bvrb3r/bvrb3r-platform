@@ -65,6 +65,7 @@ export interface RoleSelectionPayload {
 }
 
 export interface ContactVerificationStatusPayload {
+  fullName: string;
   firstName: string;
   lastName: string;
   email: string;

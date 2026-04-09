@@ -87,13 +87,12 @@ describe("onboarding service", () => {
       email: "fresh@bvrb3r.demo",
       password: "",
       name: "Fresh User",
-      firstName: "Fresh",
-      lastName: "User",
+      canonicalFullName: "Fresh User",
       title: "Client",
       phone: "+18135550100",
       locationIds: [],
       accountStatus: "profile_only",
-      onboardingState: "awaiting_role_selection",
+      onboardingState: "awaiting_contact_verification",
       emailVerified: true,
       phoneVerified: true
     };

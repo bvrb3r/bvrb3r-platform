@@ -221,7 +221,7 @@ export function ContactVerificationWorkspace() {
               </Button>
             </form>
             <p className="mt-3 text-sm leading-7 text-white/62">
-              We use your canonical profile data to decide whether you can move into lane selection. First name, last name, email, and phone must all be present before dashboard access unlocks.
+              We use your saved canonical profile row to decide whether you can move into lane selection. Your full name, email, and phone must all be present before dashboard access unlocks.
             </p>
             <div className="mt-5 flex flex-wrap gap-3 text-xs uppercase tracking-[0.22em] text-white/48">
               {payload?.missingFields?.length ? `Missing: ${payload.missingFields.join(", ").replaceAll("_", " ")}` : "Contact fields complete"}

@@ -24,8 +24,6 @@ type ProfileRow = {
   id: string;
   role: Role | "shop_owner" | null;
   full_name: string | null;
-  first_name?: string | null;
-  last_name?: string | null;
   email: string | null;
   phone: string | null;
   primary_onboarding_role?: IdentityLane | null;
@@ -73,6 +71,7 @@ type PhoneChallengeRow = {
 };
 
 type ContactVerificationState = {
+  fullName: string;
   firstName: string;
   lastName: string;
   email: string;
@@ -238,16 +237,6 @@ function getMetadataNameParts(authUser: AuthUserLike) {
 }
 
 function getCanonicalNameState(authUser: AuthUserLike, profile?: ProfileRow | null) {
-  const explicitProfileFirstName = `${profile?.first_name ?? ""}`.trim();
-  const explicitProfileLastName = `${profile?.last_name ?? ""}`.trim();
-  if (explicitProfileFirstName && explicitProfileLastName) {
-    return {
-      firstName: explicitProfileFirstName,
-      lastName: explicitProfileLastName,
-      fullName: `${explicitProfileFirstName} ${explicitProfileLastName}`.trim()
-    };
-  }
-
   const profileParts = splitFullName(profile?.full_name);
   if (profileParts.firstName && profileParts.lastName) {
     return profileParts;
@@ -283,12 +272,8 @@ function getRequiredContactFields(authUser: AuthUserLike, profile?: ProfileRow |
   const phone = normalizePhoneNumber(profile?.phone ?? authUser.phone ?? null);
   const missingFields: string[] = [];
 
-  if (!name.firstName) {
-    missingFields.push("first_name");
-  }
-
-  if (!name.lastName) {
-    missingFields.push("last_name");
+  if (!name.fullName) {
+    missingFields.push("full_name");
   }
 
   if (!email) {
@@ -400,6 +385,7 @@ function buildMinimalRuntimeUser(authUser: AuthUserLike): UserAccount {
     email: requiredContact.email,
     password: "",
     name: getDisplayName(authUser),
+    canonicalFullName: requiredContact.fullName || undefined,
     title: "Client",
     phone: requiredContact.phone,
     firstName: requiredContact.firstName || undefined,
@@ -426,8 +412,6 @@ function getProfileSyncPayload(authUser: AuthUserLike, profile?: ProfileRow | nu
 
   return {
     fullName: requiredContact.fullName || authUser.email?.split("@")[0] || "New account",
-    firstName: requiredContact.firstName,
-    lastName: requiredContact.lastName,
     email: requiredContact.email,
     phone: requiredContact.phone,
     emailVerified,
@@ -445,8 +429,6 @@ async function syncProfileFromAuth(authUser: AuthUserLike) {
   const profile = await readProfile(authUser.id);
   const payload = getProfileSyncPayload(authUser, profile);
   const nextPhoneVerifiedAt = profile?.phone_verified_at ?? (payload.phoneVerified ? new Date().toISOString() : null);
-  const nextFirstName = `${profile?.first_name ?? ""}`.trim() || payload.firstName;
-  const nextLastName = `${profile?.last_name ?? ""}`.trim() || payload.lastName;
   const nextFullName = profile?.full_name?.trim()
     ? profile.full_name.trim()
     : payload.fullName;
@@ -460,8 +442,6 @@ async function syncProfileFromAuth(authUser: AuthUserLike) {
       .from("profiles")
       .update({
         full_name: nextFullName,
-        first_name: nextFirstName || null,
-        last_name: nextLastName || null,
         email: nextEmail,
         phone: nextPhone,
         phone_verified_at: nextPhoneVerifiedAt,
@@ -497,8 +477,6 @@ async function syncProfileFromAuth(authUser: AuthUserLike) {
       id: authUser.id,
       role: "client",
       full_name: payload.fullName,
-      first_name: payload.firstName || null,
-      last_name: payload.lastName || null,
       email: payload.email,
       phone: payload.phone || null,
       phone_verified_at: nextPhoneVerifiedAt,
@@ -534,7 +512,7 @@ async function readProfile(authUserId: string) {
 
   const preferred = await supabase
     .from("profiles")
-    .select("id, role, full_name, first_name, last_name, email, phone, primary_onboarding_role, onboarding_state, phone_verified_at")
+    .select("id, role, full_name, email, phone, primary_onboarding_role, onboarding_state, phone_verified_at")
     .eq("id", authUserId)
     .maybeSingle();
 
@@ -583,7 +561,6 @@ async function persistResolvedProfileState(input: {
   const nextPhoneVerifiedAt = input.phoneVerified
     ? input.profile?.phone_verified_at ?? new Date().toISOString()
     : input.profile?.phone_verified_at ?? null;
-  const nextNameParts = splitFullName(input.fullName);
   const nextFullName = input.fullName.trim();
   const nextEmail = input.email.trim();
   const currentRole = input.profile?.role === "shop_owner" ? "owner" : input.profile?.role ?? null;
@@ -593,8 +570,6 @@ async function persistResolvedProfileState(input: {
     || currentPrimaryRole !== input.primaryRole
     || currentOnboardingState !== input.onboardingState
     || (input.profile?.full_name ?? "") !== nextFullName
-    || `${input.profile?.first_name ?? ""}`.trim() !== nextNameParts.firstName
-    || `${input.profile?.last_name ?? ""}`.trim() !== nextNameParts.lastName
     || (input.profile?.email ?? "") !== nextEmail
     || normalizedCurrentPhone !== normalizedNextPhone
     || Boolean(input.profile?.phone_verified_at) !== Boolean(nextPhoneVerifiedAt);
@@ -608,8 +583,6 @@ async function persistResolvedProfileState(input: {
     .update({
       role: input.runtimeRole,
       full_name: nextFullName,
-      first_name: nextNameParts.firstName || null,
-      last_name: nextNameParts.lastName || null,
       email: nextEmail,
       phone: normalizedNextPhone || null,
       primary_onboarding_role: input.primaryRole,
@@ -848,6 +821,7 @@ export async function buildRuntimeUserFromProductionAuth(authUser: AuthUserLike)
       email: requiredContact.email,
       password: "",
       name: canonicalFullName,
+      canonicalFullName,
       title: getTitle(runtimeRole, barber?.barber_subtype),
       phone: requiredContact.phone,
       firstName: requiredContact.firstName || undefined,
@@ -877,12 +851,11 @@ async function readContactState(authUser: AuthUserLike): Promise<ContactVerifica
   const runtimeUser = await buildRuntimeUserFromProductionAuth(authUser);
   const emailVerified = Boolean(runtimeUser.emailVerified);
   const phoneVerified = Boolean(runtimeUser.phoneVerified);
+  const fullName = runtimeUser.canonicalFullName?.trim()
+    || `${runtimeUser.firstName ?? ""} ${runtimeUser.lastName ?? ""}`.trim();
   const missingFields: string[] = [];
-  if (!runtimeUser.firstName) {
-    missingFields.push("first_name");
-  }
-  if (!runtimeUser.lastName) {
-    missingFields.push("last_name");
+  if (!fullName) {
+    missingFields.push("full_name");
   }
   if (!runtimeUser.email?.trim()) {
     missingFields.push("email");
@@ -904,6 +877,7 @@ async function readContactState(authUser: AuthUserLike): Promise<ContactVerifica
   });
 
   return {
+    fullName,
     firstName: runtimeUser.firstName ?? "",
     lastName: runtimeUser.lastName ?? "",
     email: runtimeUser.email,
@@ -961,8 +935,6 @@ export async function updateContactVerificationProfile(
         id: profileId,
         role: nextRole,
         full_name: fullName,
-        first_name: firstName,
-        last_name: lastName,
         email,
         phone,
         primary_onboarding_role: existingProfile?.primary_onboarding_role ?? null,
@@ -1692,7 +1664,7 @@ export async function initializeProductionRoleSelection(
 
   const identity = {
     email: contactState.email || authUser.email || `${authUser.id}@bvrb3r.local`,
-    name: `${contactState.firstName} ${contactState.lastName}`.trim() || getDisplayName(authUser),
+    name: contactState.fullName.trim() || getDisplayName(authUser),
     phone: normalizePhoneNumber(contactState.phone)
   };
   const profileId = await resolveProfileId(authUser);

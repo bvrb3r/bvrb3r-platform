@@ -227,6 +227,7 @@ describe("production identity provisioning", () => {
     });
     expect(first.accountStatus).toBe("profile_only");
     expect(first.onboardingState).toBe("awaiting_contact_verification");
+    expect(first.canonicalFullName).toBe("Fresh User");
     expect(second.email).toBe("fresh@bvrb3r.app");
   });
 
@@ -280,6 +281,7 @@ describe("production identity provisioning", () => {
     });
 
     expect(runtimeUser.onboardingState).toBe("awaiting_role_selection");
+    expect(runtimeUser.canonicalFullName).toBe("Taylor Lane");
     expect(state.profiles[0]?.onboarding_state).toBe("awaiting_role_selection");
   });
 

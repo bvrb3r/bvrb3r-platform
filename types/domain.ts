@@ -58,6 +58,7 @@ export interface UserAccount {
   email: string;
   password: string;
   name: string;
+  canonicalFullName?: string;
   firstName?: string;
   lastName?: string;
   title: string;

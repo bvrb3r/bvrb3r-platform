@@ -70,6 +70,7 @@ describe("auth verification routes", () => {
 
   it("returns the current contact verification state", async () => {
     getContactVerificationStateMock.mockResolvedValue({
+      fullName: "Jordan Ellis",
       firstName: "Jordan",
       lastName: "Ellis",
       email: "client@example.com",
@@ -93,6 +94,7 @@ describe("auth verification routes", () => {
 
   it("updates canonical contact details for the authenticated user", async () => {
     updateContactVerificationProfileMock.mockResolvedValue({
+      fullName: "Jordan Ellis",
       firstName: "Jordan",
       lastName: "Ellis",
       email: "client@example.com",
@@ -126,6 +128,7 @@ describe("auth verification routes", () => {
 
   it("sends an SMS verification challenge for the authenticated user", async () => {
     sendPhoneVerificationChallengeMock.mockResolvedValue({
+      fullName: "Jordan Ellis",
       firstName: "Jordan",
       lastName: "Ellis",
       email: "client@example.com",
@@ -156,6 +159,7 @@ describe("auth verification routes", () => {
 
   it("returns the canonical next step after successful phone verification", async () => {
     verifyPhoneVerificationChallengeMock.mockResolvedValue({
+      fullName: "Jordan Ellis",
       firstName: "Jordan",
       lastName: "Ellis",
       email: "client@example.com",

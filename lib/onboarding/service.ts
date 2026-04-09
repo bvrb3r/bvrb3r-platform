@@ -302,9 +302,11 @@ function inferSelectedRoleFromUser(user: UserAccount): OnboardingRole | null {
 }
 
 function hasRequiredContactData(user: UserAccount) {
+  const fullName = user.canonicalFullName?.trim()
+    || `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim();
+
   return Boolean(
-    user.firstName?.trim()
-    && user.lastName?.trim()
+    fullName
     && user.email?.trim()
     && user.phone?.trim()
   );
@@ -594,7 +596,7 @@ export async function resolvePostAuthDestination(
     return "/login?account=disabled";
   }
 
-  if (!hasRequiredContactData(user) || user.emailVerified === false || user.phoneVerified === false || user.onboardingState === "awaiting_contact_verification") {
+  if (!hasRequiredContactData(user) || user.emailVerified === false || user.phoneVerified === false) {
     return "/verify-contact";
   }
 

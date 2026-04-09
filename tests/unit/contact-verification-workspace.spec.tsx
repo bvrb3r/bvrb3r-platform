@@ -68,6 +68,7 @@ describe("contact verification workspace", () => {
 
     useContactVerificationStatusMock.mockReturnValue({
       data: {
+        fullName: "Owner Lane",
         firstName: "Owner",
         lastName: "Lane",
         email: "owner@bvrb3r.app",
@@ -105,6 +106,7 @@ describe("contact verification workspace", () => {
 
   it("continues immediately to the canonical next step after successful phone verification", async () => {
     verifyMutateAsyncMock.mockResolvedValue({
+      fullName: "Owner Lane",
       firstName: "Owner",
       lastName: "Lane",
       email: "owner@bvrb3r.app",
@@ -145,6 +147,7 @@ describe("contact verification workspace", () => {
   it("auto-forwards users when canonical contact state already has a next step", async () => {
     useContactVerificationStatusMock.mockReturnValue({
       data: {
+        fullName: "Maya Lane",
         firstName: "Maya",
         lastName: "Lane",
         email: "maya@bvrb3r.app",
