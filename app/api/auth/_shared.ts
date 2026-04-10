@@ -118,6 +118,12 @@ export function toAuthErrorResponse(error: unknown) {
     return NextResponse.json({ error: "Authentication is required." }, { status: 401 });
   }
 
+  if (message === "canonical_profile_missing") {
+    return NextResponse.json({
+      error: "We could not create or load your account profile. Please sign out and try again."
+    }, { status: 500, headers: AUTH_NO_STORE_HEADERS });
+  }
+
   if (message.includes("verification code")) {
     return NextResponse.json({ error: message }, { status: 400 });
   }

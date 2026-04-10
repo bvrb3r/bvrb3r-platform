@@ -1,7 +1,10 @@
 import type { Route } from "next";
 import { redirect } from "next/navigation";
 import { AuthSessionRecovery } from "@/components/auth/auth-session-recovery";
-import { buildRuntimeUserFromProductionAuth } from "@/lib/auth/production-identity";
+import {
+  buildRuntimeUserFromProductionAuth,
+  ensureCanonicalProfileForAuthUser
+} from "@/lib/auth/production-identity";
 import { resolvePostAuthDestination } from "@/lib/onboarding/service";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -42,14 +45,17 @@ export default async function AuthCallbackPage({
     return <AuthSessionRecovery mode="callback" />;
   }
 
-  const runtimeUser = await buildRuntimeUserFromProductionAuth({
+  const identityUser = {
     id: authUser.id,
     email: authUser.email,
     phone: authUser.phone,
     email_confirmed_at: authUser.email_confirmed_at,
     phone_confirmed_at: authUser.phone_confirmed_at,
     user_metadata: authUser.user_metadata as Record<string, unknown> | undefined
-  });
+  };
+
+  await ensureCanonicalProfileForAuthUser(identityUser);
+  const runtimeUser = await buildRuntimeUserFromProductionAuth(identityUser);
 
   const destination = await resolvePostAuthDestination(runtimeUser);
   console.info("[auth] callback resolved destination", {

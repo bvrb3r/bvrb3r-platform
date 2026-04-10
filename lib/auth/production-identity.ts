@@ -1,5 +1,6 @@
 import { createHash, randomInt, randomUUID } from "node:crypto";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { hasTwilioDeliveryConfig, isSupabaseEnabled, runtimeConfig } from "@/lib/config/runtime";
 import type {
   ApprovalStatus,
@@ -149,12 +150,22 @@ declare global {
   var __bvrb3rPhoneChallenges: InMemoryPhoneChallenge[] | undefined;
 }
 
-function getSupabase() {
+async function getSupabase() {
   if (!isSupabaseEnabled()) {
     return null;
   }
 
-  return createSupabaseAdminClient();
+  const adminClient = createSupabaseAdminClient();
+  if (adminClient) {
+    return adminClient;
+  }
+
+  try {
+    return await createSupabaseServerClient();
+  } catch (error) {
+    console.warn("[auth] unable to create authenticated Supabase fallback client", { error });
+    return null;
+  }
 }
 
 function getChallengeStore() {
@@ -452,8 +463,12 @@ function getProfileSyncPayload(authUser: AuthUserLike, profile?: ProfileRow | nu
 }
 
 async function syncProfileFromAuth(authUser: AuthUserLike) {
-  const supabase = getSupabase();
+  const supabase = await getSupabase();
   if (!supabase) {
+    console.error("[auth] canonical profile sync skipped because no Supabase profile client is available", {
+      userId: authUser.id,
+      hasEmail: Boolean(authUser.email)
+    });
     return;
   }
 
@@ -504,7 +519,7 @@ async function syncProfileFromAuth(authUser: AuthUserLike) {
 
   const insert = await supabase
     .from("profiles")
-    .insert({
+    .upsert({
       id: authUser.id,
       role: "client",
       full_name: payload.fullName,
@@ -512,7 +527,7 @@ async function syncProfileFromAuth(authUser: AuthUserLike) {
       phone: payload.phone || null,
       phone_verified_at: nextPhoneVerifiedAt,
       onboarding_state: payload.onboardingState
-    });
+    }, { onConflict: "id" });
 
   if (insert.error) {
     if (!isSchemaError(insert.error)) {
@@ -521,13 +536,13 @@ async function syncProfileFromAuth(authUser: AuthUserLike) {
 
     const fallback = await supabase
       .from("profiles")
-      .insert({
+      .upsert({
         id: authUser.id,
         role: "client",
         full_name: payload.fullName,
         email: payload.email,
         phone: payload.phone || null
-      });
+      }, { onConflict: "id" });
 
     if (fallback.error && !isSchemaError(fallback.error)) {
       throw fallback.error;
@@ -535,8 +550,23 @@ async function syncProfileFromAuth(authUser: AuthUserLike) {
   }
 }
 
+export async function ensureCanonicalProfileForAuthUser(authUser: AuthUserLike) {
+  await syncProfileFromAuth(authUser);
+  const profile = await readProfile(authUser.id);
+  console.info("[auth] canonical profile ensured", {
+    userId: authUser.id,
+    profile
+  });
+
+  if (!profile?.id) {
+    throw new Error("canonical_profile_missing");
+  }
+
+  return profile;
+}
+
 async function readProfile(authUserId: string) {
-  const supabase = getSupabase();
+  const supabase = await getSupabase();
   if (!supabase) {
     return null;
   }
@@ -582,7 +612,7 @@ async function persistResolvedProfileState(input: {
   phone: string;
   phoneVerified: boolean;
 }) {
-  const supabase = getSupabase();
+  const supabase = await getSupabase();
   if (!supabase || !input.profileId) {
     return;
   }
@@ -644,7 +674,7 @@ async function persistResolvedProfileState(input: {
 }
 
 async function readClientByProfile(profileId: string) {
-  const supabase = getSupabase();
+  const supabase = await getSupabase();
   if (!supabase) {
     return null;
   }
@@ -668,7 +698,7 @@ async function readClientByProfile(profileId: string) {
 }
 
 async function readBarberByProfile(profileId: string) {
-  const supabase = getSupabase();
+  const supabase = await getSupabase();
   if (!supabase) {
     return null;
   }
@@ -708,7 +738,7 @@ async function readBarberByProfile(profileId: string) {
 }
 
 async function readOwnedShopByProfile(profileId: string) {
-  const supabase = getSupabase();
+  const supabase = await getSupabase();
   if (!supabase) {
     return null;
   }
@@ -794,6 +824,23 @@ async function readCanonicalContactSnapshot(
     missingFields.push("phone");
   }
 
+  if (email && !emailVerified) {
+    missingFields.push("email_verification");
+  }
+
+  if (phone && !phoneVerified) {
+    missingFields.push("phone_verification");
+  }
+
+  if (!profile?.id) {
+    console.error("[auth] canonical profile missing after sync", {
+      userId: authUser.id,
+      skipSync: Boolean(options?.skipSync),
+      beforeSyncProfile
+    });
+    throw new Error("canonical_profile_missing");
+  }
+
   const onboardingState = inferOnboardingState({
     emailVerified,
     phoneVerified,
@@ -804,7 +851,7 @@ async function readCanonicalContactSnapshot(
   });
 
   if (profile?.id && profile.onboarding_state !== onboardingState) {
-    const supabase = getSupabase();
+    const supabase = await getSupabase();
     if (supabase) {
       const sync = await supabase
         .from("profiles")
@@ -851,7 +898,7 @@ async function readCanonicalContactSnapshot(
 }
 
 async function readLocationReferencesForProfile(profileId: string, ownedShopId?: string | null) {
-  const supabase = getSupabase();
+  const supabase = await getSupabase();
   const references: string[] = [];
   if (ownedShopId) {
     references.push(ownedShopId);
@@ -1014,7 +1061,7 @@ export async function updateContactVerificationProfile(
     email?: string;
   }
 ) {
-  const supabase = getSupabase();
+  const supabase = await getSupabase();
   const profileId = await resolveProfileId(authUser);
   const firstName = input.firstName.trim();
   const lastName = input.lastName.trim();
@@ -1164,7 +1211,7 @@ async function deliverPhoneCode(phone: string, code: string) {
 }
 
 async function writePhoneChallenge(profileId: string, phone: string, codeHash: string, expiresAt: string) {
-  const supabase = getSupabase();
+  const supabase = await getSupabase();
   if (!supabase) {
     const store = getChallengeStore();
     store.unshift({
@@ -1209,7 +1256,7 @@ async function writePhoneChallenge(profileId: string, phone: string, codeHash: s
 }
 
 async function readLatestPhoneChallenge(profileId: string) {
-  const supabase = getSupabase();
+  const supabase = await getSupabase();
   if (!supabase) {
     return getChallengeStore()
       .filter((entry) => entry.profileId === profileId && !entry.consumedAt)
@@ -1246,7 +1293,7 @@ function getPhoneChallengeHash(challenge: AnyPhoneChallenge) {
 }
 
 async function markPhoneChallengeVerified(challengeId: string, profileId: string, phone: string) {
-  const supabase = getSupabase();
+  const supabase = await getSupabase();
   const now = new Date().toISOString();
   if (!supabase) {
     const store = getChallengeStore();
@@ -1319,7 +1366,7 @@ export async function sendPhoneVerificationChallenge(
   });
   const persisted = await writePhoneChallenge(profileId, normalizedPhone, codeHash, expiresAt);
   const delivery = await deliverPhoneCode(normalizedPhone, code);
-  const supabase = getSupabase();
+  const supabase = await getSupabase();
 
   if (supabase) {
     const existingProfile = await readProfile(profileId);
@@ -1456,7 +1503,7 @@ async function upsertProfileForLane(input: {
   email: string;
   phone: string;
 }) {
-  const supabase = getSupabase();
+  const supabase = await getSupabase();
   if (!supabase) {
     return;
   }
@@ -1497,7 +1544,7 @@ async function upsertProfileForLane(input: {
 }
 
 async function ensureClientLane(profileId: string, identity: { email: string; name: string; phone: string; }) {
-  const supabase = getSupabase();
+  const supabase = await getSupabase();
   const clientReference = `client-${profileId.slice(0, 8)}`;
   if (!supabase) {
     return {
@@ -1595,7 +1642,7 @@ async function ensureBarberLane(
   identity: { email: string; name: string; phone: string; },
   subtype: BarberSubtype
 ) {
-  const supabase = getSupabase();
+  const supabase = await getSupabase();
   const barberReference = `barber-${profileId.slice(0, 8)}`;
   const compensationModel = toBarberCompensation(subtype);
   const runtimeRole: Role = compensationModel === "commission" ? "commission_barber" : "booth_rent_barber";
@@ -1726,7 +1773,7 @@ async function ensureBarberLane(
 }
 
 async function ensureOwnerLane(profileId: string, identity: { email: string; name: string; phone: string; }, shopName: string) {
-  const supabase = getSupabase();
+  const supabase = await getSupabase();
   const shopId = `shop-${slugify(shopName)}-${profileId.slice(0, 6)}`;
   if (!supabase) {
     return {
