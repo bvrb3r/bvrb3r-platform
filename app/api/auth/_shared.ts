@@ -9,6 +9,10 @@ import { isDemoMode } from "@/lib/config/runtime";
 import { resolvePostAuthDestination } from "@/lib/onboarding/service";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
+export const AUTH_NO_STORE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, max-age=0, must-revalidate"
+} as const;
+
 export type AuthUserLike = {
   id: string;
   email?: string | null;
@@ -56,16 +60,46 @@ export async function getAuthenticatedAuthUser(): Promise<AuthUserLike> {
 
 export async function resolveAuthenticatedNextPath(authUser: AuthUserLike): Promise<Route> {
   const contactState = await getContactVerificationState(authUser);
+  console.info("[auth] resolve next path contact gate", {
+    userId: authUser.id,
+    fullName: contactState.fullName,
+    email: contactState.email,
+    phone: contactState.phone,
+    missingFields: contactState.missingFields,
+    onboardingState: contactState.onboardingState,
+    canContinue: contactState.canContinue,
+    requiresRoleSelection: contactState.requiresRoleSelection
+  });
+
   if (!contactState.canContinue) {
+    console.info("[auth] resolve next path result", {
+      userId: authUser.id,
+      reason: "contact_incomplete",
+      nextPath: "/verify-contact"
+    });
     return "/verify-contact";
   }
 
   if (contactState.requiresRoleSelection) {
+    console.info("[auth] resolve next path result", {
+      userId: authUser.id,
+      reason: "role_selection_required",
+      nextPath: "/role-select"
+    });
     return "/role-select";
   }
 
   const runtimeUser = await buildRuntimeUserFromProductionAuth(authUser);
-  return resolvePostAuthDestination(runtimeUser);
+  const nextPath = await resolvePostAuthDestination(runtimeUser);
+  console.info("[auth] resolve next path result", {
+    userId: authUser.id,
+    runtimeRole: runtimeUser.role,
+    accountStatus: runtimeUser.accountStatus,
+    primaryOnboardingRole: runtimeUser.primaryOnboardingRole,
+    onboardingState: runtimeUser.onboardingState,
+    nextPath
+  });
+  return nextPath;
 }
 
 export async function withResolvedAuthNextPath<T extends Record<string, unknown>>(

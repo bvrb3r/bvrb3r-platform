@@ -16,6 +16,7 @@ export interface OnboardingApiError extends Error {
 const requestJson = async <T,>(input: RequestInfo, init?: RequestInit): Promise<T> => {
   const response = await fetch(input, {
     ...init,
+    cache: "no-store",
     headers: {
       "Content-Type": "application/json",
       ...(init?.headers ?? {})
@@ -36,7 +37,7 @@ export function useOnboardingMe(enabled = true) {
     queryKey: ["onboarding", "me"],
     queryFn: () => requestJson<OnboardingMePayload>("/api/onboarding/me"),
     enabled,
-    staleTime: 10_000
+    staleTime: 0
   });
 }
 
@@ -54,7 +55,7 @@ export function useContactVerificationStatus(enabled = true) {
     queryKey: ["auth", "verification-status"],
     queryFn: () => requestJson<ContactVerificationStatusPayload>("/api/auth/verification-status"),
     enabled,
-    staleTime: 5_000
+    staleTime: 0
   });
 }
 

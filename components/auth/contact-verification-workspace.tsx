@@ -38,6 +38,25 @@ export function ContactVerificationWorkspace() {
   const resolvedLastName = lastName || payload?.lastName || "";
   const resolvedPhone = phone || payload?.phone || "";
 
+  useEffect(() => {
+    if (!payload) {
+      return;
+    }
+
+    console.info("[verify-contact] canonical state loaded", {
+      fullName: payload.fullName,
+      firstName: payload.firstName,
+      lastName: payload.lastName,
+      email: payload.email,
+      phone: payload.phone,
+      emailVerified: payload.emailVerified,
+      phoneVerified: payload.phoneVerified,
+      missingFields: payload.missingFields,
+      onboardingState: payload.onboardingState,
+      nextPath: payload.nextPath
+    });
+  }, [payload]);
+
   async function continueFromCanonicalState(preferredNextPath?: Route) {
     if (isContinuing) {
       return preferredNextPath ?? null;
@@ -54,8 +73,16 @@ export function ContactVerificationWorkspace() {
         ?? preferredNextPath
         ?? "/post-auth";
 
+      console.info("[verify-contact] continuation resolved", {
+        contactState: contactResult.data,
+        onboardingState: onboardingResult.data,
+        preferredNextPath,
+        nextPath
+      });
+
       if (nextPath && nextPath !== "/verify-contact") {
         hasForwardedRef.current = true;
+        console.info("[verify-contact] redirecting", { nextPath });
         router.replace(nextPath);
       }
 
@@ -85,6 +112,12 @@ export function ContactVerificationWorkspace() {
     setSuccessMessage(null);
 
     try {
+      console.info("[verify-contact] saving contact details", {
+        firstName: resolvedFirstName,
+        lastName: resolvedLastName,
+        phone: resolvedPhone,
+        email: payload?.email
+      });
       const result = await updateContactMutation.mutateAsync({
         firstName: resolvedFirstName,
         lastName: resolvedLastName,
@@ -133,6 +166,9 @@ export function ContactVerificationWorkspace() {
     setSuccessMessage(null);
 
     try {
+      console.info("[verify-contact] sending sms code", {
+        phone: resolvedPhone
+      });
       const result = await sendPhoneMutation.mutateAsync({ phone: resolvedPhone });
       setPhone(result.phone);
       setSuccessMessage(
@@ -151,6 +187,9 @@ export function ContactVerificationWorkspace() {
     setSuccessMessage(null);
 
     try {
+      console.info("[verify-contact] verifying phone code", {
+        codeLength: code.trim().length
+      });
       const result = await verifyPhoneMutation.mutateAsync({ code });
       setPhone(result.phone);
       setCode("");

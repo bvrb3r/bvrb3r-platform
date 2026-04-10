@@ -99,6 +99,22 @@ type CanonicalContactSnapshot = {
   missingFields: string[];
 };
 
+function toContactVerificationState(snapshot: CanonicalContactSnapshot): ContactVerificationState {
+  return {
+    fullName: snapshot.fullName,
+    firstName: snapshot.firstName,
+    lastName: snapshot.lastName,
+    email: snapshot.email,
+    phone: snapshot.phone,
+    emailVerified: snapshot.emailVerified,
+    phoneVerified: snapshot.phoneVerified,
+    canContinue: snapshot.missingFields.length === 0 && snapshot.emailVerified && snapshot.phoneVerified,
+    requiresRoleSelection: snapshot.emailVerified && snapshot.phoneVerified && !snapshot.primaryRole,
+    onboardingState: snapshot.onboardingState,
+    missingFields: snapshot.missingFields
+  };
+}
+
 type RoleSelectionInput = {
   role: IdentityLane;
   barberSubtype?: BarberSubtype;
@@ -744,6 +760,12 @@ async function readCanonicalContactSnapshot(
   authUser: AuthUserLike,
   options?: { skipSync?: boolean }
 ): Promise<CanonicalContactSnapshot> {
+  const beforeSyncProfile = await readProfile(authUser.id);
+  console.info("[auth] contact snapshot pre-sync", {
+    userId: authUser.id,
+    rawProfile: beforeSyncProfile
+  });
+
   if (!options?.skipSync) {
     await syncProfileFromAuth(authUser);
   }
@@ -794,6 +816,23 @@ async function readCanonicalContactSnapshot(
       }
     }
   }
+
+  console.info("[auth] contact snapshot resolved", {
+    userId: authUser.id,
+    rawProfile: profile,
+    computed: {
+      fullName,
+      email,
+      phone,
+      emailVerified,
+      phoneVerified,
+      primaryRole,
+      hasLaneRecord,
+      onboardingState,
+      missingFields,
+      contactComplete: missingFields.length === 0 && emailVerified && phoneVerified
+    }
+  });
 
   return {
     profile,
@@ -959,20 +998,7 @@ export async function buildRuntimeUserFromProductionAuth(authUser: AuthUserLike)
 
 async function readContactState(authUser: AuthUserLike): Promise<ContactVerificationState> {
   const snapshot = await readCanonicalContactSnapshot(authUser);
-
-  return {
-    fullName: snapshot.fullName,
-    firstName: snapshot.firstName,
-    lastName: snapshot.lastName,
-    email: snapshot.email,
-    phone: snapshot.phone,
-    emailVerified: snapshot.emailVerified,
-    phoneVerified: snapshot.phoneVerified,
-    canContinue: snapshot.missingFields.length === 0 && snapshot.emailVerified && snapshot.phoneVerified,
-    requiresRoleSelection: snapshot.emailVerified && snapshot.phoneVerified && !snapshot.primaryRole,
-    onboardingState: snapshot.onboardingState,
-    missingFields: snapshot.missingFields
-  };
+  return toContactVerificationState(snapshot);
 }
 
 export async function getContactVerificationState(authUser: AuthUserLike) {
@@ -1008,23 +1034,42 @@ export async function updateContactVerificationProfile(
     throw new Error("An email address is required.");
   }
 
+  console.info("[auth] contact save requested", {
+    userId: authUser.id,
+    incomingPayload: {
+      firstName,
+      lastName,
+      fullName,
+      email,
+      phone
+    }
+  });
+
   if (supabase) {
     const existingProfile = await readProfile(profileId);
     const nextRole = existingProfile?.role === "shop_owner"
       ? "owner"
       : existingProfile?.role ?? "client";
+    const writePayload = {
+      id: profileId,
+      role: nextRole,
+      full_name: fullName,
+      email,
+      phone,
+      primary_onboarding_role: existingProfile?.primary_onboarding_role ?? null,
+      onboarding_state: existingProfile?.onboarding_state ?? undefined,
+      phone_verified_at: existingProfile?.phone_verified_at ?? null
+    };
+
+    console.info("[auth] contact save before write", {
+      profileId,
+      rawProfile: existingProfile,
+      writePayload
+    });
+
     const update = await supabase
       .from("profiles")
-      .upsert({
-        id: profileId,
-        role: nextRole,
-        full_name: fullName,
-        email,
-        phone,
-        primary_onboarding_role: existingProfile?.primary_onboarding_role ?? null,
-        onboarding_state: existingProfile?.onboarding_state ?? undefined,
-        phone_verified_at: existingProfile?.phone_verified_at ?? null
-      }, { onConflict: "id" });
+      .upsert(writePayload, { onConflict: "id" });
 
     if (update.error) {
       if (!isSchemaError(update.error)) {
@@ -1049,14 +1094,15 @@ export async function updateContactVerificationProfile(
     const persistedProfile = await readProfile(profileId);
     console.info("[auth] contact details saved", {
       profileId,
-      fullName: persistedProfile?.full_name ?? fullName,
-      email: persistedProfile?.email ?? email,
-      phone: persistedProfile?.phone ?? phone,
-      onboardingState: persistedProfile?.onboarding_state ?? null
+      rawProfile: persistedProfile
     });
+
+    if (!persistedProfile?.full_name?.trim() || !persistedProfile.email?.trim() || !normalizePhoneNumber(persistedProfile.phone)) {
+      throw new Error("Canonical contact persistence failed. Please retry saving your contact details.");
+    }
   }
 
-  return readContactState({
+  const snapshot = await readCanonicalContactSnapshot({
     ...authUser,
     email,
     phone,
@@ -1067,7 +1113,17 @@ export async function updateContactVerificationProfile(
       family_name: lastName,
       phone
     }
+  }, { skipSync: true });
+
+  console.info("[auth] contact save recomputed", {
+    userId: authUser.id,
+    rawProfile: snapshot.profile,
+    missingFields: snapshot.missingFields,
+    onboardingState: snapshot.onboardingState,
+    contactComplete: snapshot.missingFields.length === 0 && snapshot.emailVerified && snapshot.phoneVerified
   });
+
+  return toContactVerificationState(snapshot);
 }
 
 function buildChallengeHash(profileId: string, phone: string, code: string) {
@@ -1254,6 +1310,13 @@ export async function sendPhoneVerificationChallenge(
   const code = `${randomInt(0, 1_000_000)}`.padStart(6, "0");
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
   const codeHash = buildChallengeHash(profileId, normalizedPhone, code);
+  const profileBeforeSend = await readProfile(profileId);
+  console.info("[auth] phone send requested", {
+    userId: authUser.id,
+    profileId,
+    phone: normalizedPhone,
+    rawProfileBeforeSend: profileBeforeSend
+  });
   const persisted = await writePhoneChallenge(profileId, normalizedPhone, codeHash, expiresAt);
   const delivery = await deliverPhoneCode(normalizedPhone, code);
   const supabase = getSupabase();
@@ -1275,17 +1338,29 @@ export async function sendPhoneVerificationChallenge(
     }
   }
 
-  const nextState = await readContactState({
+  const snapshot = await readCanonicalContactSnapshot({
     ...authUser,
     phone: normalizedPhone,
     user_metadata: {
       ...(authUser.user_metadata ?? {}),
       phone: normalizedPhone
     }
+  }, { skipSync: true });
+
+  console.info("[auth] phone send recomputed", {
+    userId: authUser.id,
+    profileId,
+    rawProfileAfterSend: snapshot.profile,
+    missingFields: snapshot.missingFields,
+    onboardingState: snapshot.onboardingState
   });
 
+  if (!normalizePhoneNumber(snapshot.profile?.phone ?? null)) {
+    throw new Error("Canonical phone persistence failed before SMS delivery could continue.");
+  }
+
   return {
-    ...nextState,
+    ...toContactVerificationState(snapshot),
     degraded: delivery.degraded || !persisted
   };
 }
@@ -1306,6 +1381,18 @@ export async function verifyPhoneVerificationChallenge(
   }
 
   const phone = getPhoneChallengePhone(challenge);
+  const profileBeforeVerify = await readProfile(profileId);
+  console.info("[auth] phone verify requested", {
+    userId: authUser.id,
+    profileId,
+    codeLength: code.trim().length,
+    phone,
+    rawProfileBeforeVerify: profileBeforeVerify,
+    updateValues: {
+      phone,
+      phone_verified_at: "now()"
+    }
+  });
   const expectedHash = buildChallengeHash(profileId, phone, code.trim());
   const currentHash = getPhoneChallengeHash(challenge);
   if (expectedHash !== currentHash) {
@@ -1313,10 +1400,43 @@ export async function verifyPhoneVerificationChallenge(
   }
 
   await markPhoneChallengeVerified(challenge.id, profileId, phone);
-  return readContactState({
+  const snapshot = await readCanonicalContactSnapshot({
     ...authUser,
     phone
+  }, { skipSync: true });
+
+  console.info("[auth] phone verify recomputed", {
+    userId: authUser.id,
+    profileId,
+    rawProfileAfterVerify: snapshot.profile,
+    missingFields: snapshot.missingFields,
+    onboardingState: snapshot.onboardingState,
+    contactComplete: snapshot.missingFields.length === 0 && snapshot.emailVerified && snapshot.phoneVerified
   });
+
+  if (!normalizePhoneNumber(snapshot.profile?.phone ?? null) || !snapshot.profile?.phone_verified_at) {
+    throw new Error("Phone verification did not persist to the canonical profile row. Please request a new code.");
+  }
+
+  return toContactVerificationState(snapshot);
+}
+
+export async function getContactVerificationDebugState(authUser: AuthUserLike) {
+  const snapshot = await readCanonicalContactSnapshot(authUser);
+  return {
+    profile: snapshot.profile,
+    computed: {
+      fullName: snapshot.fullName,
+      email: snapshot.email,
+      phone: snapshot.phone,
+      emailVerified: snapshot.emailVerified,
+      phoneVerified: snapshot.phoneVerified,
+      missingFields: snapshot.missingFields,
+      contactComplete: snapshot.missingFields.length === 0 && snapshot.emailVerified && snapshot.phoneVerified,
+      onboardingState: snapshot.onboardingState,
+      requiresRoleSelection: snapshot.emailVerified && snapshot.phoneVerified && !snapshot.primaryRole
+    }
+  };
 }
 
 function slugify(value: string) {

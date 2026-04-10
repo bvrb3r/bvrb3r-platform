@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { verifyPhoneVerificationChallenge } from "@/lib/auth/production-identity";
 import {
+  AUTH_NO_STORE_HEADERS,
   getAuthenticatedAuthUser,
   toAuthErrorResponse,
   withResolvedAuthNextPath
@@ -20,7 +21,9 @@ export async function POST(request: NextRequest) {
 
     const authUser = await getAuthenticatedAuthUser();
     const payload = await verifyPhoneVerificationChallenge(authUser, parsed.data.code);
-    return NextResponse.json(await withResolvedAuthNextPath(authUser, payload));
+    return NextResponse.json(await withResolvedAuthNextPath(authUser, payload), {
+      headers: AUTH_NO_STORE_HEADERS
+    });
   } catch (error) {
     return toAuthErrorResponse(error);
   }

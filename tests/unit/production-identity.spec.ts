@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 type TableState = Record<string, Array<Record<string, unknown>>>;
@@ -182,7 +183,8 @@ import {
   buildRuntimeUserFromProductionAuth,
   getContactVerificationState,
   initializeProductionRoleSelection,
-  updateContactVerificationProfile
+  updateContactVerificationProfile,
+  verifyPhoneVerificationChallenge
 } from "@/lib/auth/production-identity";
 
 describe("production identity provisioning", () => {
@@ -387,5 +389,57 @@ describe("production identity provisioning", () => {
     });
     expect(result.missingFields).not.toContain("phone");
     expect(result.phone).toBe("+18136250040");
+  });
+
+  it("persists phone verification to the canonical profile row and advances onboarding", async () => {
+    const profileId = "auth-user-6";
+    const phone = "+18136250040";
+    const code = "123456";
+
+    state.profiles.push({
+      id: profileId,
+      role: "client",
+      full_name: "Phillip Mcgee",
+      email: "bvrb3r@gmail.com",
+      phone,
+      phone_verified_at: null,
+      onboarding_state: "awaiting_contact_verification",
+      primary_onboarding_role: null
+    });
+
+    state.phone_verification_challenges = [{
+      id: "phone-challenge-1",
+      profile_id: profileId,
+      phone,
+      code_hash: createHash("sha256").update(`${profileId}:${phone}:${code}`).digest("hex"),
+      attempt_count: 0,
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
+      consumed_at: null,
+      created_at: new Date().toISOString()
+    }];
+
+    const result = await verifyPhoneVerificationChallenge({
+      id: profileId,
+      email: "bvrb3r@gmail.com",
+      phone: null,
+      email_confirmed_at: "2026-04-09T12:00:00.000Z",
+      phone_confirmed_at: null,
+      user_metadata: {
+        full_name: "Phillip Mcgee"
+      }
+    }, code);
+
+    expect(state.profiles[0]).toMatchObject({
+      full_name: "Phillip Mcgee",
+      email: "bvrb3r@gmail.com",
+      phone: "+18136250040",
+      onboarding_state: "awaiting_role_selection"
+    });
+    expect(state.profiles[0]?.phone_verified_at).toBeTruthy();
+    expect(result.phoneVerified).toBe(true);
+    expect(result.missingFields).toEqual([]);
+    expect(result.canContinue).toBe(true);
+    expect(result.requiresRoleSelection).toBe(true);
+    expect(result.onboardingState).toBe("awaiting_role_selection");
   });
 });
