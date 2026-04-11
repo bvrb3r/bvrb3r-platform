@@ -76,7 +76,17 @@ function applySelect(state: TableState, table: string, filters: Filter[], orderB
   return { data: rows, error: null };
 }
 
-function createSelectBuilder(state: TableState, table: string) {
+type MaybeSingleResult = { data: Record<string, unknown> | null; error: null };
+
+type SupabaseMockOptions = {
+  maybeSingle?: (input: {
+    table: string;
+    filters: Filter[];
+    result: MaybeSingleResult;
+  }) => MaybeSingleResult;
+};
+
+function createSelectBuilder(state: TableState, table: string, options?: SupabaseMockOptions) {
   const filters: Filter[] = [];
   let orderBy: { field: string; ascending: boolean } | undefined;
   let limit: number | undefined;
@@ -104,10 +114,15 @@ function createSelectBuilder(state: TableState, table: string) {
     },
     maybeSingle() {
       const result = applySelect(state, table, filters, orderBy, limit);
-      return Promise.resolve({
+      const maybeSingleResult = {
         data: result.data[0] ?? null,
         error: result.error
-      });
+      };
+      return Promise.resolve(options?.maybeSingle?.({
+        table,
+        filters,
+        result: maybeSingleResult
+      }) ?? maybeSingleResult);
     },
     then(onFulfilled?: (value: { data: Array<Record<string, unknown>>; error: null }) => unknown, onRejected?: (reason: unknown) => unknown) {
       return Promise.resolve(applySelect(state, table, filters, orderBy, limit)).then(onFulfilled, onRejected);
@@ -157,12 +172,12 @@ function upsertRows(state: TableState, table: string, payload: Record<string, un
   }
 }
 
-function createSupabaseAdminMock(state: TableState) {
+function createSupabaseAdminMock(state: TableState, options?: SupabaseMockOptions) {
   return {
     from(table: string) {
       return {
         select() {
-          return createSelectBuilder(state, table);
+          return createSelectBuilder(state, table, options);
         },
         insert(payload: Record<string, unknown> | Array<Record<string, unknown>>) {
           const rows = Array.isArray(payload) ? payload : [payload];
@@ -186,6 +201,7 @@ function createSupabaseAdminMock(state: TableState) {
 
 import {
   buildRuntimeUserFromProductionAuth,
+  getContactVerificationDebugState,
   getContactVerificationState,
   initializeProductionRoleSelection,
   updateContactVerificationProfile,
@@ -386,6 +402,53 @@ describe("production identity provisioning", () => {
     expect(contactState.canContinue).toBe(true);
     expect(contactState.requiresRoleSelection).toBe(true);
     expect(contactState.onboardingState).toBe("awaiting_role_selection");
+  });
+
+  it("does not replace a known canonical profile with null when the post-state-update read flakes", async () => {
+    state.profiles.push({
+      id: "auth-user-read-flake",
+      role: "client",
+      full_name: "Phillip Mcgee",
+      email: "bvrb3r@gmail.com",
+      phone: "+18136250040",
+      phone_verified_at: "2026-04-09T12:00:00.000Z",
+      onboarding_state: "awaiting_contact_verification",
+      primary_onboarding_role: null
+    });
+
+    let profileReadCount = 0;
+    createSupabaseAdminClientMock.mockReturnValue(createSupabaseAdminMock(state, {
+      maybeSingle({ table, result }) {
+        if (table !== "profiles") {
+          return result;
+        }
+
+        profileReadCount += 1;
+        return profileReadCount >= 3
+          ? { data: null, error: null }
+          : result;
+      }
+    }));
+
+    const debugState = await getContactVerificationDebugState({
+      id: "auth-user-read-flake",
+      email: "bvrb3r@gmail.com",
+      phone: null,
+      email_confirmed_at: "2026-04-09T12:00:00.000Z",
+      phone_confirmed_at: null,
+      user_metadata: {
+        full_name: "Phillip Mcgee"
+      }
+    });
+
+    expect(debugState.profile).toMatchObject({
+      id: "auth-user-read-flake",
+      full_name: "Phillip Mcgee",
+      phone: "+18136250040",
+      onboarding_state: "awaiting_role_selection"
+    });
+    expect(debugState.computed.missingFields).toEqual([]);
+    expect(debugState.computed.requiresRoleSelection).toBe(true);
   });
 
   it("persists phone to the canonical profile row before recomputing contact completeness", async () => {
