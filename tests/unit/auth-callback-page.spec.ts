@@ -5,6 +5,7 @@ const {
   createSupabaseServerClientMock,
   authGetUserMock,
   buildRuntimeUserFromProductionAuthMock,
+  ensureCanonicalProfileForAuthUserMock,
   resolvePostAuthDestinationMock
 } = vi.hoisted(() => ({
   redirectMock: vi.fn((path: string) => {
@@ -13,6 +14,7 @@ const {
   createSupabaseServerClientMock: vi.fn(),
   authGetUserMock: vi.fn(),
   buildRuntimeUserFromProductionAuthMock: vi.fn(),
+  ensureCanonicalProfileForAuthUserMock: vi.fn(),
   resolvePostAuthDestinationMock: vi.fn()
 }));
 
@@ -25,7 +27,8 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 vi.mock("@/lib/auth/production-identity", () => ({
-  buildRuntimeUserFromProductionAuth: buildRuntimeUserFromProductionAuthMock
+  buildRuntimeUserFromProductionAuth: buildRuntimeUserFromProductionAuthMock,
+  ensureCanonicalProfileForAuthUser: ensureCanonicalProfileForAuthUserMock
 }));
 
 vi.mock("@/lib/onboarding/service", () => ({
@@ -40,12 +43,16 @@ describe("auth callback page", () => {
     createSupabaseServerClientMock.mockReset();
     authGetUserMock.mockReset();
     buildRuntimeUserFromProductionAuthMock.mockReset();
+    ensureCanonicalProfileForAuthUserMock.mockReset();
     resolvePostAuthDestinationMock.mockReset();
 
     createSupabaseServerClientMock.mockResolvedValue({
       auth: {
         getUser: authGetUserMock
       }
+    });
+    ensureCanonicalProfileForAuthUserMock.mockResolvedValue({
+      id: "auth-user-1"
     });
   });
 

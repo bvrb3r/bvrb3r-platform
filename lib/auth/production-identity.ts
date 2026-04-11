@@ -850,6 +850,8 @@ async function readCanonicalContactSnapshot(
     persistedState: profile?.onboarding_state
   });
 
+  let resolvedProfile: ProfileRow | null = profile;
+
   if (profile?.id && profile.onboarding_state !== onboardingState) {
     const supabase = await getSupabase();
     if (supabase) {
@@ -861,12 +863,14 @@ async function readCanonicalContactSnapshot(
       if (sync.error && !isSchemaError(sync.error)) {
         throw sync.error;
       }
+
+      resolvedProfile = await readProfile(profile.id);
     }
   }
 
   console.info("[auth] contact snapshot resolved", {
     userId: authUser.id,
-    rawProfile: profile,
+    rawProfile: resolvedProfile,
     computed: {
       fullName,
       email,
@@ -882,7 +886,7 @@ async function readCanonicalContactSnapshot(
   });
 
   return {
-    profile,
+    profile: resolvedProfile,
     fullName,
     firstName: profileName.firstName || metadataName.firstName,
     lastName: profileName.lastName || metadataName.lastName,
@@ -1414,7 +1418,8 @@ export async function sendPhoneVerificationChallenge(
 
 export async function verifyPhoneVerificationChallenge(
   authUser: AuthUserLike,
-  code: string
+  code: string,
+  input?: { phone?: string | null }
 ): Promise<VerifyPhoneChallengeResult> {
   const profileId = await resolveProfileId(authUser);
   const challenge = await readLatestPhoneChallenge(profileId);
@@ -1427,13 +1432,25 @@ export async function verifyPhoneVerificationChallenge(
     throw new Error("That verification code has expired. Request a new SMS code.");
   }
 
-  const phone = getPhoneChallengePhone(challenge);
+  const challengePhone = normalizePhoneNumber(getPhoneChallengePhone(challenge));
+  const submittedPhone = normalizePhoneNumber(input?.phone ?? null);
+  if (submittedPhone && challengePhone && submittedPhone !== challengePhone) {
+    throw new Error("That verification code was requested for a different phone number.");
+  }
+
+  const phone = challengePhone || submittedPhone;
+  if (!phone) {
+    throw new Error("A valid phone number is required.");
+  }
+
   const profileBeforeVerify = await readProfile(profileId);
   console.info("[auth] phone verify requested", {
     userId: authUser.id,
     profileId,
     codeLength: code.trim().length,
     phone,
+    submittedPhone,
+    challengePhone,
     rawProfileBeforeVerify: profileBeforeVerify,
     updateValues: {
       phone,

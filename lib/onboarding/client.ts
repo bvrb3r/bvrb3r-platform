@@ -115,7 +115,7 @@ export function useUpdateContactVerificationMutation() {
 export function useVerifyPhoneVerificationMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: { code: string }) =>
+    mutationFn: (payload: { code: string; phone?: string }) =>
       requestJson<ContactVerificationStatusPayload>("/api/auth/phone/verify", {
         method: "POST",
         body: JSON.stringify(payload)

@@ -191,13 +191,16 @@ describe("auth verification routes", () => {
 
     const response = await postVerifyPhone(new NextRequest("https://bvrb3r.app/api/auth/phone/verify", {
       method: "POST",
-      body: JSON.stringify({ code: "123456" })
+      body: JSON.stringify({ code: "123456", phone: "+18135550100" })
     }));
     const body = await response.json();
 
     expect(response.status).toBe(200);
     expect(body.phoneVerified).toBe(true);
     expect(body.nextPath).toBe("/role-select");
+    expect(verifyPhoneVerificationChallengeMock).toHaveBeenCalledWith(expect.anything(), "123456", {
+      phone: "+18135550100"
+    });
   });
 
   it("rejects unauthenticated phone verification attempts cleanly", async () => {

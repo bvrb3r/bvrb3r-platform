@@ -9,7 +9,8 @@ import {
 } from "@/app/api/auth/_shared";
 
 const schema = z.object({
-  code: z.string().trim().min(4).max(8)
+  code: z.string().trim().min(4).max(8),
+  phone: z.string().trim().min(7).optional()
 });
 
 export async function POST(request: NextRequest) {
@@ -20,7 +21,9 @@ export async function POST(request: NextRequest) {
     }
 
     const authUser = await getAuthenticatedAuthUser();
-    const payload = await verifyPhoneVerificationChallenge(authUser, parsed.data.code);
+    const payload = await verifyPhoneVerificationChallenge(authUser, parsed.data.code, {
+      phone: parsed.data.phone
+    });
     return NextResponse.json(await withResolvedAuthNextPath(authUser, payload), {
       headers: AUTH_NO_STORE_HEADERS
     });

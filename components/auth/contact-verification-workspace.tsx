@@ -188,9 +188,13 @@ export function ContactVerificationWorkspace() {
 
     try {
       console.info("[verify-contact] verifying phone code", {
-        codeLength: code.trim().length
+        codeLength: code.trim().length,
+        phone: resolvedPhone
       });
-      const result = await verifyPhoneMutation.mutateAsync({ code });
+      const result = await verifyPhoneMutation.mutateAsync({
+        code,
+        phone: resolvedPhone
+      });
       setPhone(result.phone);
       setCode("");
       const nextPath = await continueFromCanonicalState(result.nextPath);

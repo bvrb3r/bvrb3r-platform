@@ -139,7 +139,10 @@ describe("contact verification workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: /verify phone/i }));
 
     await waitFor(() => {
-      expect(verifyMutateAsyncMock).toHaveBeenCalledWith({ code: "123456" });
+      expect(verifyMutateAsyncMock).toHaveBeenCalledWith({
+        code: "123456",
+        phone: "+18135550100"
+      });
       expect(routerReplaceMock).toHaveBeenCalledWith("/role-select");
     });
   });

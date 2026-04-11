@@ -7,8 +7,9 @@ type Filter =
   | { type: "in"; field: string; values: unknown[] }
   | { type: "is"; field: string; value: unknown };
 
-const { createSupabaseAdminClientMock } = vi.hoisted(() => ({
-  createSupabaseAdminClientMock: vi.fn()
+const { createSupabaseAdminClientMock, createSupabaseServerClientMock } = vi.hoisted(() => ({
+  createSupabaseAdminClientMock: vi.fn(),
+  createSupabaseServerClientMock: vi.fn()
 }));
 
 vi.mock("@/lib/config/runtime", () => ({
@@ -24,6 +25,10 @@ vi.mock("@/lib/config/runtime", () => ({
 
 vi.mock("@/lib/supabase/admin", () => ({
   createSupabaseAdminClient: createSupabaseAdminClientMock
+}));
+
+vi.mock("@/lib/supabase/server", () => ({
+  createSupabaseServerClient: createSupabaseServerClientMock
 }));
 
 function cloneRow<T extends Record<string, unknown>>(row: T): T {
@@ -203,7 +208,9 @@ describe("production identity provisioning", () => {
     };
 
     createSupabaseAdminClientMock.mockReset();
+    createSupabaseServerClientMock.mockReset();
     createSupabaseAdminClientMock.mockReturnValue(createSupabaseAdminMock(state));
+    createSupabaseServerClientMock.mockResolvedValue(createSupabaseAdminMock(state));
   });
 
   it("provisions a missing profile row idempotently for an authenticated OAuth user", async () => {
@@ -232,6 +239,32 @@ describe("production identity provisioning", () => {
     expect(first.onboardingState).toBe("awaiting_contact_verification");
     expect(first.canonicalFullName).toBe("Fresh User");
     expect(second.email).toBe("fresh@bvrb3r.app");
+  });
+
+  it("falls back to the authenticated server client when the service role client is unavailable", async () => {
+    createSupabaseAdminClientMock.mockReturnValue(null);
+    createSupabaseServerClientMock.mockResolvedValue(createSupabaseAdminMock(state));
+
+    const contactState = await getContactVerificationState({
+      id: "auth-user-fallback",
+      email: "fallback@bvrb3r.app",
+      phone: null,
+      email_confirmed_at: "2026-04-08T12:00:00.000Z",
+      phone_confirmed_at: null,
+      user_metadata: {
+        full_name: "Fallback User"
+      }
+    });
+
+    expect(state.profiles).toHaveLength(1);
+    expect(state.profiles[0]).toMatchObject({
+      id: "auth-user-fallback",
+      role: "client",
+      full_name: "Fallback User",
+      email: "fallback@bvrb3r.app"
+    });
+    expect(contactState.fullName).toBe("Fallback User");
+    expect(contactState.missingFields).toContain("phone");
   });
 
   it("creates a clean client lane even when the app-side profile row was deleted previously", async () => {
@@ -427,7 +460,9 @@ describe("production identity provisioning", () => {
       user_metadata: {
         full_name: "Phillip Mcgee"
       }
-    }, code);
+    }, code, {
+      phone
+    });
 
     expect(state.profiles[0]).toMatchObject({
       full_name: "Phillip Mcgee",
