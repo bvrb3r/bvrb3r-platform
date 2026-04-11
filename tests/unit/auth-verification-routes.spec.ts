@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   getAuthenticatedAuthUserMock,
+  getAuthenticatedAuthUserForRouteMock,
   resolveAuthenticatedNextPathMock,
   withResolvedAuthNextPathMock,
   getContactVerificationStateMock,
@@ -12,6 +13,7 @@ const {
   verifyPhoneVerificationChallengeMock
 } = vi.hoisted(() => ({
   getAuthenticatedAuthUserMock: vi.fn(),
+  getAuthenticatedAuthUserForRouteMock: vi.fn(),
   resolveAuthenticatedNextPathMock: vi.fn(),
   withResolvedAuthNextPathMock: vi.fn(),
   getContactVerificationStateMock: vi.fn(),
@@ -25,7 +27,14 @@ vi.mock("@/app/api/auth/_shared", () => ({
   AUTH_NO_STORE_HEADERS: {
     "Cache-Control": "no-store, no-cache, max-age=0, must-revalidate"
   },
+  createAuthRouteContext: (route: string) => ({
+    requestId: "test-request-id",
+    route
+  }),
+  getAuthenticatedAuthUserForRoute: getAuthenticatedAuthUserForRouteMock,
   getAuthenticatedAuthUser: getAuthenticatedAuthUserMock,
+  logAuthRoute: vi.fn(),
+  readAuthJsonBody: async (request: Request) => request.json().catch(() => ({})),
   resolveAuthenticatedNextPath: resolveAuthenticatedNextPathMock,
   withResolvedAuthNextPath: withResolvedAuthNextPathMock,
   toAuthErrorResponse: (error: unknown) => {
@@ -55,6 +64,7 @@ import { POST as postVerifyPhone } from "@/app/api/auth/phone/verify/route";
 describe("auth verification routes", () => {
   beforeEach(() => {
     getAuthenticatedAuthUserMock.mockReset();
+    getAuthenticatedAuthUserForRouteMock.mockReset();
     resolveAuthenticatedNextPathMock.mockReset();
     withResolvedAuthNextPathMock.mockReset();
     getContactVerificationStateMock.mockReset();
@@ -63,7 +73,7 @@ describe("auth verification routes", () => {
     sendPhoneVerificationChallengeMock.mockReset();
     verifyPhoneVerificationChallengeMock.mockReset();
 
-    getAuthenticatedAuthUserMock.mockResolvedValue({
+    const authUser = {
       id: "user-client",
       email: "client@example.com",
       phone: "+18135550100",
@@ -73,7 +83,9 @@ describe("auth verification routes", () => {
         full_name: "Jordan Ellis",
         phone: "+18135550100"
       }
-    });
+    };
+    getAuthenticatedAuthUserMock.mockResolvedValue(authUser);
+    getAuthenticatedAuthUserForRouteMock.mockResolvedValue(authUser);
     withResolvedAuthNextPathMock.mockImplementation(async (_authUser, payload) => ({
       ...payload,
       nextPath: "/verify-contact"
@@ -205,6 +217,7 @@ describe("auth verification routes", () => {
 
   it("rejects unauthenticated phone verification attempts cleanly", async () => {
     getAuthenticatedAuthUserMock.mockRejectedValue(new Error("auth_required"));
+    getAuthenticatedAuthUserForRouteMock.mockRejectedValue(new Error("auth_required"));
 
     const response = await postVerifyPhone(new NextRequest("https://bvrb3r.app/api/auth/phone/verify", {
       method: "POST",

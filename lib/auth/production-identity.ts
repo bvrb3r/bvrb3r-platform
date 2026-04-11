@@ -101,6 +101,7 @@ type CanonicalContactSnapshot = {
 };
 
 function toContactVerificationState(snapshot: CanonicalContactSnapshot): ContactVerificationState {
+  const contactComplete = snapshot.missingFields.length === 0 && snapshot.emailVerified && snapshot.phoneVerified;
   return {
     fullName: snapshot.fullName,
     firstName: snapshot.firstName,
@@ -109,8 +110,8 @@ function toContactVerificationState(snapshot: CanonicalContactSnapshot): Contact
     phone: snapshot.phone,
     emailVerified: snapshot.emailVerified,
     phoneVerified: snapshot.phoneVerified,
-    canContinue: snapshot.missingFields.length === 0 && snapshot.emailVerified && snapshot.phoneVerified,
-    requiresRoleSelection: snapshot.emailVerified && snapshot.phoneVerified && !snapshot.primaryRole,
+    canContinue: contactComplete,
+    requiresRoleSelection: contactComplete && !snapshot.primaryRole,
     onboardingState: snapshot.onboardingState,
     missingFields: snapshot.missingFields
   };
@@ -190,6 +191,25 @@ function isSchemaError(error: unknown) {
     || message.includes("does not exist")
     || message.includes("could not find the table")
     || message.includes("could not find the column");
+}
+
+function describeSupabaseError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return `${error ?? "unknown error"}`;
+  }
+
+  const candidate = error as {
+    code?: string | null;
+    message?: string | null;
+    details?: string | null;
+    hint?: string | null;
+  };
+  return [
+    candidate.message,
+    candidate.code ? `code=${candidate.code}` : null,
+    candidate.details ? `details=${candidate.details}` : null,
+    candidate.hint ? `hint=${candidate.hint}` : null
+  ].filter(Boolean).join(" | ") || "unknown Supabase error";
 }
 
 function getDisplayName(authUser: AuthUserLike, profile?: ProfileRow | null) {
@@ -497,7 +517,11 @@ async function syncProfileFromAuth(authUser: AuthUserLike) {
 
     if (update.error) {
       if (!isSchemaError(update.error)) {
-        throw update.error;
+        console.error("[auth] canonical profile sync update failed", {
+          userId: authUser.id,
+          error: describeSupabaseError(update.error)
+        });
+        throw new Error(`Profile sync failed: ${describeSupabaseError(update.error)}`);
       }
 
       const fallback = await supabase
@@ -510,7 +534,11 @@ async function syncProfileFromAuth(authUser: AuthUserLike) {
         .eq("id", authUser.id);
 
       if (fallback.error && !isSchemaError(fallback.error)) {
-        throw fallback.error;
+        console.error("[auth] canonical profile sync fallback update failed", {
+          userId: authUser.id,
+          error: describeSupabaseError(fallback.error)
+        });
+        throw new Error(`Profile sync fallback failed: ${describeSupabaseError(fallback.error)}`);
       }
     }
 
@@ -531,7 +559,11 @@ async function syncProfileFromAuth(authUser: AuthUserLike) {
 
   if (insert.error) {
     if (!isSchemaError(insert.error)) {
-      throw insert.error;
+      console.error("[auth] canonical profile sync insert failed", {
+        userId: authUser.id,
+        error: describeSupabaseError(insert.error)
+      });
+      throw new Error(`Profile bootstrap failed: ${describeSupabaseError(insert.error)}`);
     }
 
     const fallback = await supabase
@@ -545,7 +577,11 @@ async function syncProfileFromAuth(authUser: AuthUserLike) {
       }, { onConflict: "id" });
 
     if (fallback.error && !isSchemaError(fallback.error)) {
-      throw fallback.error;
+      console.error("[auth] canonical profile sync fallback insert failed", {
+        userId: authUser.id,
+        error: describeSupabaseError(fallback.error)
+      });
+      throw new Error(`Profile bootstrap fallback failed: ${describeSupabaseError(fallback.error)}`);
     }
   }
 }
@@ -582,6 +618,10 @@ async function readProfile(authUserId: string) {
   }
 
   if (preferred.error && !isSchemaError(preferred.error)) {
+    console.error("[auth] canonical profile read failed", {
+      userId: authUserId,
+      error: describeSupabaseError(preferred.error)
+    });
     throw preferred.error;
   }
 
@@ -1129,9 +1169,15 @@ export async function updateContactVerificationProfile(
       .from("profiles")
       .upsert(writePayload, { onConflict: "id" });
 
+    console.info("[auth] contact save write result", {
+      profileId,
+      method: "profiles.upsert",
+      error: update.error ? describeSupabaseError(update.error) : null
+    });
+
     if (update.error) {
       if (!isSchemaError(update.error)) {
-        throw update.error;
+        throw new Error(`Profile save failed: ${describeSupabaseError(update.error)}`);
       }
 
       const fallback = await supabase
@@ -1144,8 +1190,14 @@ export async function updateContactVerificationProfile(
           phone
         }, { onConflict: "id" });
 
+      console.info("[auth] contact save fallback write result", {
+        profileId,
+        method: "profiles.upsert:fallback",
+        error: fallback.error ? describeSupabaseError(fallback.error) : null
+      });
+
       if (fallback.error && !isSchemaError(fallback.error)) {
-        throw fallback.error;
+        throw new Error(`Profile save fallback failed: ${describeSupabaseError(fallback.error)}`);
       }
     }
 
@@ -1189,6 +1241,13 @@ function buildChallengeHash(profileId: string, phone: string, code: string) {
 }
 
 async function deliverPhoneCode(phone: string, code: string) {
+  console.info("[auth] sms delivery readiness", {
+    phone,
+    hasTwilioConfig: hasTwilioDeliveryConfig(),
+    usesMessagingService: Boolean(runtimeConfig.twilioMessagingServiceSid),
+    usesFromNumber: Boolean(runtimeConfig.twilioFromNumber)
+  });
+
   if (!hasTwilioDeliveryConfig()) {
     console.info(`[auth] SMS verification code for ${phone}: ${code}`);
     return { degraded: true };
@@ -1215,9 +1274,18 @@ async function deliverPhoneCode(phone: string, code: string) {
 
   if (!response.ok) {
     const body = await response.text().catch(() => "");
+    console.error("[auth] sms delivery failed", {
+      phone,
+      status: response.status,
+      body
+    });
     throw new Error(body || "Unable to send the SMS verification code.");
   }
 
+  console.info("[auth] sms delivery succeeded", {
+    phone,
+    status: response.status
+  });
   return { degraded: false };
 }
 
@@ -1260,7 +1328,12 @@ async function writePhoneChallenge(profileId: string, phone: string, codeHash: s
       });
       return false;
     }
-    throw result.error;
+    console.error("[auth] phone challenge insert failed", {
+      profileId,
+      phone,
+      error: describeSupabaseError(result.error)
+    });
+    throw new Error(`SMS send failed: challenge insert failed: ${describeSupabaseError(result.error)}`);
   }
 
   return true;
@@ -1289,7 +1362,11 @@ async function readLatestPhoneChallenge(profileId: string) {
         .filter((entry) => entry.profileId === profileId && !entry.consumedAt)
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0] ?? null;
     }
-    throw result.error;
+    console.error("[auth] phone challenge lookup failed", {
+      profileId,
+      error: describeSupabaseError(result.error)
+    });
+    throw new Error(`Phone verify failed: challenge lookup failed: ${describeSupabaseError(result.error)}`);
   }
 
   return result.data as PhoneChallengeRow | null;
@@ -1330,16 +1407,28 @@ async function markPhoneChallengeVerified(challengeId: string, profileId: string
   ]);
 
   if (challengeUpdate.error && !isSchemaError(challengeUpdate.error)) {
-    throw challengeUpdate.error;
+    console.error("[auth] phone verification challenge update failed", {
+      profileId,
+      challengeId,
+      error: describeSupabaseError(challengeUpdate.error)
+    });
+    throw new Error(`Phone verify failed: challenge update failed: ${describeSupabaseError(challengeUpdate.error)}`);
   }
 
   if (profileUpdate.error && !isSchemaError(profileUpdate.error)) {
-    throw profileUpdate.error;
+    console.error("[auth] phone verification profile update failed", {
+      profileId,
+      challengeId,
+      error: describeSupabaseError(profileUpdate.error)
+    });
+    throw new Error(`Phone verify failed: phone_verified_at did not persist: ${describeSupabaseError(profileUpdate.error)}`);
   }
 
   const persistedProfile = await readProfile(profileId);
   console.info("[auth] phone verification persisted", {
     profileId,
+    challengeUpdateError: challengeUpdate.error ? describeSupabaseError(challengeUpdate.error) : null,
+    profileUpdateError: profileUpdate.error ? describeSupabaseError(profileUpdate.error) : null,
     phone: persistedProfile?.phone ?? phone,
     phoneVerifiedAt: persistedProfile?.phone_verified_at ?? now,
     onboardingState: persistedProfile?.onboarding_state ?? null
@@ -1360,23 +1449,29 @@ export async function sendPhoneVerificationChallenge(
   input: { phone?: string | null }
 ): Promise<SendPhoneChallengeResult> {
   const profileId = await resolveProfileId(authUser);
-  const normalizedPhone = normalizePhoneNumber(input.phone ?? authUser.phone ?? null);
-  if (!normalizedPhone) {
+  const requestedPhone = normalizePhoneNumber(input.phone ?? null);
+  let profileBeforeSend = await readProfile(profileId);
+  if (!profileBeforeSend?.id) {
+    await syncProfileFromAuth(authUser);
+    profileBeforeSend = await readProfile(profileId);
+  }
+
+  const candidatePhone = requestedPhone
+    || normalizePhoneNumber(profileBeforeSend?.phone ?? null)
+    || normalizePhoneNumber(authUser.phone ?? null);
+  if (!candidatePhone) {
     throw new Error("A valid phone number is required.");
   }
 
-  const code = `${randomInt(0, 1_000_000)}`.padStart(6, "0");
-  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-  const codeHash = buildChallengeHash(profileId, normalizedPhone, code);
-  const profileBeforeSend = await readProfile(profileId);
   console.info("[auth] phone send requested", {
     userId: authUser.id,
     profileId,
-    phone: normalizedPhone,
-    rawProfileBeforeSend: profileBeforeSend
+    requestedPhone,
+    candidatePhone,
+    rawProfileBeforeSend: profileBeforeSend,
+    twilioReady: hasTwilioDeliveryConfig()
   });
-  const persisted = await writePhoneChallenge(profileId, normalizedPhone, codeHash, expiresAt);
-  const delivery = await deliverPhoneCode(normalizedPhone, code);
+
   const supabase = await getSupabase();
 
   if (supabase) {
@@ -1388,20 +1483,77 @@ export async function sendPhoneVerificationChallenge(
         role: existingProfile?.role === "shop_owner" ? "owner" : existingProfile?.role ?? "client",
         full_name: existingProfile?.full_name?.trim() || getDisplayName(authUser, existingProfile),
         email: existingProfile?.email?.trim() || authUser.email || `${profileId}@bvrb3r.local`,
-        phone: normalizedPhone
+        phone: candidatePhone,
+        primary_onboarding_role: existingProfile?.primary_onboarding_role ?? null,
+        onboarding_state: existingProfile?.onboarding_state ?? "awaiting_contact_verification",
+        phone_verified_at: existingProfile?.phone_verified_at ?? null
       }, { onConflict: "id" });
 
-    if (update.error && !isSchemaError(update.error)) {
-      throw update.error;
+    console.info("[auth] phone send canonical phone write result", {
+      profileId,
+      method: "profiles.upsert",
+      error: update.error ? describeSupabaseError(update.error) : null
+    });
+
+    if (update.error) {
+      if (!isSchemaError(update.error)) {
+        throw new Error(`SMS send failed: canonical phone could not be persisted: ${describeSupabaseError(update.error)}`);
+      }
+
+      const fallback = await supabase
+        .from("profiles")
+        .upsert({
+          id: profileId,
+          role: existingProfile?.role === "shop_owner" ? "owner" : existingProfile?.role ?? "client",
+          full_name: existingProfile?.full_name?.trim() || getDisplayName(authUser, existingProfile),
+          email: existingProfile?.email?.trim() || authUser.email || `${profileId}@bvrb3r.local`,
+          phone: candidatePhone
+        }, { onConflict: "id" });
+
+      console.info("[auth] phone send canonical phone fallback write result", {
+        profileId,
+        method: "profiles.upsert:fallback",
+        error: fallback.error ? describeSupabaseError(fallback.error) : null
+      });
+
+      if (fallback.error && !isSchemaError(fallback.error)) {
+        throw new Error(`SMS send failed: canonical phone fallback could not persist: ${describeSupabaseError(fallback.error)}`);
+      }
     }
   }
 
+  const canonicalProfileBeforeDelivery = await readProfile(profileId);
+  const canonicalPhone = supabase
+    ? normalizePhoneNumber(canonicalProfileBeforeDelivery?.phone ?? null)
+    : candidatePhone;
+  console.info("[auth] phone send canonical profile before delivery", {
+    profileId,
+    rawProfileBeforeDelivery: canonicalProfileBeforeDelivery,
+    canonicalPhone
+  });
+
+  if (!canonicalPhone) {
+    throw new Error("SMS send failed: canonical phone missing after profile persistence.");
+  }
+
+  const code = `${randomInt(0, 1_000_000)}`.padStart(6, "0");
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+  const codeHash = buildChallengeHash(profileId, canonicalPhone, code);
+  const persisted = await writePhoneChallenge(profileId, canonicalPhone, codeHash, expiresAt);
+  const delivery = await deliverPhoneCode(canonicalPhone, code);
+  console.info("[auth] phone send delivery result", {
+    profileId,
+    phone: canonicalPhone,
+    challengePersisted: persisted,
+    degraded: delivery.degraded
+  });
+
   const snapshot = await readCanonicalContactSnapshot({
     ...authUser,
-    phone: normalizedPhone,
+    phone: canonicalPhone,
     user_metadata: {
       ...(authUser.user_metadata ?? {}),
-      phone: normalizedPhone
+      phone: canonicalPhone
     }
   }, { skipSync: true });
 
@@ -1429,7 +1581,24 @@ export async function verifyPhoneVerificationChallenge(
   input?: { phone?: string | null }
 ): Promise<VerifyPhoneChallengeResult> {
   const profileId = await resolveProfileId(authUser);
+  let profileBeforeVerify = await readProfile(profileId);
+  if (!profileBeforeVerify?.id) {
+    await syncProfileFromAuth(authUser);
+    profileBeforeVerify = await readProfile(profileId);
+  }
+
+  if (!profileBeforeVerify?.id) {
+    throw new Error("Phone verify failed: canonical profile row is missing.");
+  }
+
   const challenge = await readLatestPhoneChallenge(profileId);
+  console.info("[auth] phone verify challenge lookup result", {
+    userId: authUser.id,
+    profileId,
+    foundChallenge: Boolean(challenge),
+    canonicalProfileBeforeVerify: profileBeforeVerify
+  });
+
   if (!challenge) {
     throw new Error("No active SMS verification code was found.");
   }
@@ -1450,7 +1619,6 @@ export async function verifyPhoneVerificationChallenge(
     throw new Error("A valid phone number is required.");
   }
 
-  const profileBeforeVerify = await readProfile(profileId);
   console.info("[auth] phone verify requested", {
     userId: authUser.id,
     profileId,
@@ -1494,6 +1662,7 @@ export async function verifyPhoneVerificationChallenge(
 
 export async function getContactVerificationDebugState(authUser: AuthUserLike) {
   const snapshot = await readCanonicalContactSnapshot(authUser);
+  const contactComplete = snapshot.missingFields.length === 0 && snapshot.emailVerified && snapshot.phoneVerified;
   return {
     profile: snapshot.profile,
     computed: {
@@ -1503,9 +1672,9 @@ export async function getContactVerificationDebugState(authUser: AuthUserLike) {
       emailVerified: snapshot.emailVerified,
       phoneVerified: snapshot.phoneVerified,
       missingFields: snapshot.missingFields,
-      contactComplete: snapshot.missingFields.length === 0 && snapshot.emailVerified && snapshot.phoneVerified,
+      contactComplete,
       onboardingState: snapshot.onboardingState,
-      requiresRoleSelection: snapshot.emailVerified && snapshot.phoneVerified && !snapshot.primaryRole
+      requiresRoleSelection: contactComplete && !snapshot.primaryRole
     }
   };
 }

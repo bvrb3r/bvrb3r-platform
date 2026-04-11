@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { Route } from "next";
 import { NextResponse } from "next/server";
 import {
@@ -21,6 +22,85 @@ export type AuthUserLike = {
   phone_confirmed_at?: string | null;
   user_metadata?: Record<string, unknown>;
 };
+
+export type AuthRouteContext = {
+  requestId: string;
+  route: string;
+};
+
+export function createAuthRouteContext(route: string): AuthRouteContext {
+  return {
+    requestId: randomUUID(),
+    route
+  };
+}
+
+export function logAuthRoute(context: AuthRouteContext, event: string, details?: Record<string, unknown>) {
+  console.info(`[auth-route] ${event}`, {
+    requestId: context.requestId,
+    route: context.route,
+    ...(details ?? {})
+  });
+}
+
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (error && typeof error === "object" && "message" in error && typeof error.message === "string") {
+    return error.message;
+  }
+
+  if (typeof error === "string") {
+    return error;
+  }
+
+  return "Unable to complete the authentication request.";
+}
+
+function getErrorDiagnostics(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return null;
+  }
+
+  return {
+    code: "code" in error ? error.code : undefined,
+    details: "details" in error ? error.details : undefined,
+    hint: "hint" in error ? error.hint : undefined,
+    name: "name" in error ? error.name : undefined
+  };
+}
+
+export async function readAuthJsonBody(request: Request, context: AuthRouteContext) {
+  const rawBody = await request.text().catch(() => "");
+  let body: unknown = {};
+
+  if (rawBody.trim()) {
+    try {
+      body = JSON.parse(rawBody);
+    } catch {
+      logAuthRoute(context, "request_body_parse_failed", {
+        rawBodyLength: rawBody.length
+      });
+      throw new Error("Request body must be valid JSON.");
+    }
+  }
+
+  const loggedBody = body && typeof body === "object"
+    ? {
+        ...(body as Record<string, unknown>),
+        code: "code" in body ? `[${`${(body as Record<string, unknown>).code ?? ""}`.length} chars]` : undefined
+      }
+    : body;
+
+  logAuthRoute(context, "request_body_received", {
+    rawBodyLength: rawBody.length,
+    body: loggedBody
+  });
+
+  return body;
+}
 
 export async function getAuthenticatedAuthUser(): Promise<AuthUserLike> {
   if (isDemoMode()) {
@@ -56,6 +136,28 @@ export async function getAuthenticatedAuthUser(): Promise<AuthUserLike> {
     phone_confirmed_at: result.data.user.phone_confirmed_at,
     user_metadata: result.data.user.user_metadata as Record<string, unknown> | undefined
   };
+}
+
+export async function getAuthenticatedAuthUserForRoute(context: AuthRouteContext): Promise<AuthUserLike> {
+  logAuthRoute(context, "auth_lookup_started");
+
+  try {
+    const authUser = await getAuthenticatedAuthUser();
+    logAuthRoute(context, "auth_lookup_succeeded", {
+      userId: authUser.id,
+      hasEmail: Boolean(authUser.email),
+      emailVerified: Boolean(authUser.email_confirmed_at),
+      hasPhone: Boolean(authUser.phone),
+      phoneVerified: Boolean(authUser.phone_confirmed_at)
+    });
+    return authUser;
+  } catch (error) {
+    logAuthRoute(context, "auth_lookup_failed", {
+      error: getErrorMessage(error),
+      diagnostics: getErrorDiagnostics(error)
+    });
+    throw error;
+  }
 }
 
 export async function resolveAuthenticatedNextPath(authUser: AuthUserLike): Promise<Route> {
@@ -112,29 +214,47 @@ export async function withResolvedAuthNextPath<T extends Record<string, unknown>
   };
 }
 
-export function toAuthErrorResponse(error: unknown) {
-  const message = error instanceof Error ? error.message : "Unable to complete the authentication request.";
+export function toAuthErrorResponse(error: unknown, context?: AuthRouteContext) {
+  const message = getErrorMessage(error);
+  const diagnostics = getErrorDiagnostics(error);
+
+  if (context) {
+    logAuthRoute(context, "route_failed", {
+      error: message,
+      diagnostics
+    });
+  }
+
   if (message === "auth_required") {
-    return NextResponse.json({ error: "Authentication is required." }, { status: 401 });
+    return NextResponse.json({
+      error: "No authenticated server session found.",
+      requestId: context?.requestId
+    }, { status: 401, headers: AUTH_NO_STORE_HEADERS });
   }
 
   if (message === "canonical_profile_missing") {
     return NextResponse.json({
-      error: "We could not create or load your account profile. Please sign out and try again."
+      error: "Canonical profile row could not be created or loaded for the authenticated user.",
+      requestId: context?.requestId,
+      diagnostics
     }, { status: 500, headers: AUTH_NO_STORE_HEADERS });
   }
 
   if (message.includes("verification code")) {
-    return NextResponse.json({ error: message }, { status: 400 });
+    return NextResponse.json({ error: message, requestId: context?.requestId }, { status: 400, headers: AUTH_NO_STORE_HEADERS });
   }
 
   if (message.includes("phone")) {
-    return NextResponse.json({ error: message }, { status: 400 });
+    return NextResponse.json({ error: message, requestId: context?.requestId }, { status: 400, headers: AUTH_NO_STORE_HEADERS });
   }
 
   if (message.includes("first") || message.includes("last") || message.includes("email")) {
-    return NextResponse.json({ error: message }, { status: 400 });
+    return NextResponse.json({ error: message, requestId: context?.requestId }, { status: 400, headers: AUTH_NO_STORE_HEADERS });
   }
 
-  return NextResponse.json({ error: message }, { status: 500 });
+  return NextResponse.json({
+    error: message,
+    requestId: context?.requestId,
+    diagnostics
+  }, { status: 500, headers: AUTH_NO_STORE_HEADERS });
 }
