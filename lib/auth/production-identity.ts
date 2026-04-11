@@ -800,7 +800,8 @@ async function readCanonicalContactSnapshot(
     await syncProfileFromAuth(authUser);
   }
 
-  const profile = await readProfile(authUser.id);
+  const profileAfterSync = await readProfile(authUser.id);
+  const profile = profileAfterSync ?? beforeSyncProfile;
   const profileName = splitFullName(profile?.full_name);
   const metadataName = getMetadataNameParts(authUser);
   const fullName = `${profile?.full_name ?? ""}`.trim();
@@ -864,7 +865,13 @@ async function readCanonicalContactSnapshot(
         throw sync.error;
       }
 
-      resolvedProfile = await readProfile(profile.id);
+      const refreshedProfile = await readProfile(profile.id);
+      resolvedProfile = refreshedProfile
+        ? refreshedProfile
+        : {
+            ...profile,
+            onboarding_state: onboardingState
+          };
     }
   }
 
