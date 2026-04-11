@@ -14,6 +14,18 @@ export interface OnboardingApiError extends Error {
 }
 
 const requestJson = async <T,>(input: RequestInfo, init?: RequestInit): Promise<T> => {
+  const inputLabel = typeof input === "string" ? input : input.toString();
+  const isAuthContactRequest = inputLabel.startsWith("/api/auth/");
+  if (isAuthContactRequest) {
+    console.info("[verify-contact] client request started", {
+      input: inputLabel,
+      method: init?.method ?? "GET",
+      body: typeof init?.body === "string"
+        ? init.body.replace(/"code"\s*:\s*"([^"]*)"/, (_, code: string) => `"code":"[${code.length} chars]"`)
+        : undefined
+    });
+  }
+
   const response = await fetch(input, {
     ...init,
     cache: "no-store",
@@ -23,6 +35,15 @@ const requestJson = async <T,>(input: RequestInfo, init?: RequestInit): Promise<
     }
   });
   const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  if (isAuthContactRequest) {
+    console.info("[verify-contact] client response received", {
+      input: inputLabel,
+      status: response.status,
+      ok: response.ok,
+      body
+    });
+  }
+
   if (!response.ok) {
     const error = new Error((body.error as string | undefined) ?? `Request failed with status ${response.status}`) as OnboardingApiError;
     error.status = response.status;
