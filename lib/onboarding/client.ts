@@ -15,9 +15,10 @@ export interface OnboardingApiError extends Error {
 
 const requestJson = async <T,>(input: RequestInfo, init?: RequestInit): Promise<T> => {
   const inputLabel = typeof input === "string" ? input : input.toString();
-  const isAuthContactRequest = inputLabel.startsWith("/api/auth/");
-  if (isAuthContactRequest) {
-    console.info("[verify-contact] client request started", {
+  const isInstrumentedOnboardingRequest = inputLabel.startsWith("/api/auth/")
+    || inputLabel.startsWith("/api/onboarding/");
+  if (isInstrumentedOnboardingRequest) {
+    console.info("[onboarding-client] request started", {
       input: inputLabel,
       method: init?.method ?? "GET",
       body: typeof init?.body === "string"
@@ -35,8 +36,8 @@ const requestJson = async <T,>(input: RequestInfo, init?: RequestInit): Promise<
     }
   });
   const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-  if (isAuthContactRequest) {
-    console.info("[verify-contact] client response received", {
+  if (isInstrumentedOnboardingRequest) {
+    console.info("[onboarding-client] response received", {
       input: inputLabel,
       status: response.status,
       ok: response.ok,

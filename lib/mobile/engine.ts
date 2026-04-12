@@ -203,10 +203,19 @@ export function syncMobileStateLifecycle(state: MobileState, referenceAt = new D
 }
 
 export function createInitialMobileState(): MobileState {
+  const now = new Date().toISOString();
   return syncMobileStateLifecycle(clone({
     devices: demoDeviceRegistrations,
     pushSubscriptions: demoPushSubscriptions,
-    nativePushTokens: demoNativePushTokens,
+    nativePushTokens: demoNativePushTokens.map((token) => (
+      token.status === "active" || token.status === "pending"
+        ? {
+            ...token,
+            lastRefreshedAt: now,
+            updatedAt: now
+          }
+        : token
+    )),
     deliveryAttempts: demoNotificationDeliveryAttempts,
     deepLinks: demoDeepLinks
   }));

@@ -19,14 +19,40 @@ const schema = z.discriminatedUnion("role", [
 
 export async function POST(request: NextRequest) {
   try {
-    const parsed = schema.safeParse(await request.json().catch(() => ({})));
+    console.info("[onboarding-route] role launch route entry");
+    const body = await request.json().catch(() => ({}));
+    console.info("[onboarding-route] role launch request body", {
+      body
+    });
+    const parsed = schema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json({ error: "A valid role selection is required." }, { status: 400 });
+      console.info("[onboarding-route] role launch validation failed", {
+        issues: parsed.error.issues
+      });
+      return NextResponse.json({
+        error: "A valid role selection is required.",
+        issues: parsed.error.issues
+      }, { status: 400 });
     }
 
     const user = await getOnboardingSessionUser();
+    console.info("[onboarding-route] role launch authenticated user", {
+      userId: user.id,
+      runtimeRole: user.role,
+      accountStatus: user.accountStatus ?? null,
+      primaryOnboardingRole: user.primaryOnboardingRole ?? null,
+      onboardingState: user.onboardingState ?? null,
+      selectedLane: parsed.data.role
+    });
     const result = await initializeSelectedUserLane(user, parsed.data);
     const nextPath = await resolvePostAuthDestination(result.user);
+    console.info("[onboarding-route] role launch response", {
+      userId: user.id,
+      selectedLane: parsed.data.role,
+      lane: result.state,
+      degraded: result.degraded,
+      nextPath
+    });
 
     return NextResponse.json({
       lane: result.state,
