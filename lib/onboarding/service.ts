@@ -69,6 +69,38 @@ function isMissingTableError(error: unknown) {
     || message.includes("could not find the table");
 }
 
+function describeOnboardingError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return `${error ?? "unknown error"}`;
+  }
+
+  const candidate = error as {
+    code?: string | null;
+    message?: string | null;
+    details?: string | null;
+    hint?: string | null;
+  };
+
+  return [
+    candidate.message,
+    candidate.code ? `code=${candidate.code}` : null,
+    candidate.details ? `details=${candidate.details}` : null,
+    candidate.hint ? `hint=${candidate.hint}` : null
+  ].filter(Boolean).join(" | ") || "unknown onboarding error";
+}
+
+function hasVerifiedContactData(user: UserAccount) {
+  return Boolean(
+    hasRequiredContactData(user)
+    && user.emailVerified !== false
+    && user.phoneVerified !== false
+  );
+}
+
+function logLaneLaunch(event: string, details: Record<string, unknown>) {
+  console.info(`[onboarding] ${event}`, details);
+}
+
 function getStepDefinitions(role: OnboardingRole) {
   return ONBOARDING_STEPS[role];
 }
@@ -201,8 +233,12 @@ function createEmptyState(
       : role === "barber"
         ? {
             barberId: user.barberId ?? `barber-${user.id.slice(0, 8)}`,
-            barberSubtype: user.barberSubtype ?? "freelance",
-            compensationModel: user.role === "commission_barber" ? "commission" : "booth_rent"
+            ...(user.barberSubtype
+              ? {
+                  barberSubtype: user.barberSubtype,
+                  compensationModel: user.role === "commission_barber" ? "commission" : "booth_rent"
+                }
+              : {})
           }
         : {};
 
@@ -286,6 +322,10 @@ function inferSelectedRoleFromUser(user: UserAccount): OnboardingRole | null {
     return user.primaryOnboardingRole;
   }
 
+  if (user.accountStatus !== "active" || user.onboardingState !== "active") {
+    return null;
+  }
+
   if (user.role === "owner") {
     return "shop_owner";
   }
@@ -294,8 +334,8 @@ function inferSelectedRoleFromUser(user: UserAccount): OnboardingRole | null {
     return "barber";
   }
 
-  if (user.role === "client" && (user.clientId || user.accountStatus === "profile_only")) {
-    return user.clientId ? "client" : null;
+  if (user.role === "client" && user.clientId) {
+    return "client";
   }
 
   return null;
@@ -401,6 +441,10 @@ async function ensureCanonicalVerificationProfile(user: UserAccount, role: Exclu
 }
 
 function isRuntimeRoleAllowedForOnboarding(user: UserAccount, role: OnboardingRole) {
+  if (!user.primaryOnboardingRole && user.onboardingState !== "active") {
+    return user.role !== "platform_admin" && user.role !== "manager" && user.role !== "front_desk";
+  }
+
   if (user.accountStatus !== "active") {
     return true;
   }
@@ -425,14 +469,71 @@ function assertOnboardingRoleAccess(
   role: OnboardingRole,
   rows: OnboardingStateRecord[]
 ) {
+  logLaneLaunch("lane access check", {
+    userId: user.id,
+    requestedRole: role,
+    runtimeRole: user.role,
+    primaryOnboardingRole: user.primaryOnboardingRole ?? null,
+    onboardingState: user.onboardingState ?? null,
+    accountStatus: user.accountStatus ?? null,
+    contactComplete: hasVerifiedContactData(user),
+    existingRows: rows.map((entry) => ({
+      role: entry.role,
+      status: entry.status,
+      currentStep: entry.currentStep
+    }))
+  });
+
+  if (!hasVerifiedContactData(user)) {
+    logLaneLaunch("lane access blocked", {
+      userId: user.id,
+      requestedRole: role,
+      reason: "contact_verification_required"
+    });
+    throw new Error("contact_verification_required");
+  }
+
   if (!isRuntimeRoleAllowedForOnboarding(user, role)) {
+    logLaneLaunch("lane access blocked", {
+      userId: user.id,
+      requestedRole: role,
+      reason: "onboarding_role_forbidden",
+      runtimeRole: user.role,
+      primaryOnboardingRole: user.primaryOnboardingRole ?? null,
+      onboardingState: user.onboardingState ?? null,
+      accountStatus: user.accountStatus ?? null
+    });
     throw new Error("onboarding_role_forbidden");
   }
 
   const selectedRole = chooseSelectedRole(rows);
-  if (user.accountStatus === "profile_only" && selectedRole && selectedRole !== role) {
+  if (user.primaryOnboardingRole && user.primaryOnboardingRole !== role) {
+    logLaneLaunch("lane access blocked", {
+      userId: user.id,
+      requestedRole: role,
+      selectedRole,
+      reason: "onboarding_role_mismatch",
+      primaryOnboardingRole: user.primaryOnboardingRole
+    });
     throw new Error("onboarding_role_mismatch");
   }
+
+  if (user.accountStatus === "profile_only" && user.primaryOnboardingRole && selectedRole && selectedRole !== role) {
+    logLaneLaunch("lane access blocked", {
+      userId: user.id,
+      requestedRole: role,
+      selectedRole,
+      reason: "onboarding_role_mismatch"
+    });
+    throw new Error("onboarding_role_mismatch");
+  }
+
+  logLaneLaunch("lane access allowed", {
+    userId: user.id,
+    requestedRole: role,
+    selectedRole,
+    reason: user.primaryOnboardingRole ? "official_lane_matches" : "no_official_lane_selected"
+  });
 }
 
 export async function initializeUserRole(
@@ -441,6 +542,12 @@ export async function initializeUserRole(
   seedProfileData: Record<string, unknown> = {}
 ) {
   const { rows, degraded } = await readPersistedStates(user.id);
+  logLaneLaunch("legacy initialize user role requested", {
+    userId: user.id,
+    requestedRole: role,
+    seedProfileData,
+    persistedRowsBefore: rows.map((entry) => ({ role: entry.role, status: entry.status, currentStep: entry.currentStep }))
+  });
   assertOnboardingRoleAccess(user, role, rows);
   const existing = rows.find((entry) => entry.role === role);
   const state = existing ?? createEmptyState(user, role, seedProfileData);
@@ -457,6 +564,13 @@ export async function initializeUserRole(
     updatedAt: new Date().toISOString()
   });
 
+  logLaneLaunch("legacy initialize user role completed", {
+    userId: user.id,
+    requestedRole: role,
+    degraded: degraded || persistResult.degraded,
+    state: existing ?? state
+  });
+
   return {
     state: existing ?? state,
     degraded: degraded || persistResult.degraded
@@ -468,6 +582,25 @@ export async function initializeSelectedUserLane(
   input: { role: OnboardingRole; barberSubtype?: BarberSubtype; shopName?: string }
 ) {
   const { rows } = await readPersistedStates(user.id);
+  logLaneLaunch("selected lane launch requested", {
+    userId: user.id,
+    selectedLane: input.role,
+    barberSubtype: input.barberSubtype ?? null,
+    hasShopName: Boolean(input.shopName?.trim()),
+    runtimeUserBeforeLaunch: {
+      role: user.role,
+      accountStatus: user.accountStatus ?? null,
+      primaryOnboardingRole: user.primaryOnboardingRole ?? null,
+      onboardingState: user.onboardingState ?? null,
+      emailVerified: user.emailVerified ?? null,
+      phoneVerified: user.phoneVerified ?? null,
+      clientId: user.clientId ?? null,
+      barberId: user.barberId ?? null,
+      ownedShopId: user.ownedShopId ?? null
+    },
+    persistedRowsBefore: rows.map((entry) => ({ role: entry.role, status: entry.status, currentStep: entry.currentStep }))
+  });
+
   assertOnboardingRoleAccess(user, input.role, rows);
 
   const selection = await initializeProductionRoleSelection({
@@ -495,6 +628,23 @@ export async function initializeSelectedUserLane(
   }
   const persistResult = await persistState(nextState);
 
+  logLaneLaunch("selected lane launch completed", {
+    userId: user.id,
+    selectedLane: input.role,
+    persistedState: nextState,
+    degraded: persistResult.degraded,
+    runtimeUserAfterLaunch: {
+      role: selection.user.role,
+      accountStatus: selection.user.accountStatus ?? null,
+      primaryOnboardingRole: selection.user.primaryOnboardingRole ?? null,
+      onboardingState: selection.user.onboardingState ?? null,
+      clientId: selection.user.clientId ?? null,
+      barberId: selection.user.barberId ?? null,
+      barberSubtype: selection.user.barberSubtype ?? null,
+      ownedShopId: selection.user.ownedShopId ?? null
+    }
+  });
+
   return {
     user: selection.user,
     state: nextState,
@@ -504,6 +654,85 @@ export async function initializeSelectedUserLane(
 
 export async function getOnboardingStates(user: UserAccount) {
   return readPersistedStates(user.id);
+}
+
+async function readDebugRow(table: string, select: string, field: string, value: string) {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return { data: null, error: "supabase_unavailable" };
+  }
+
+  const result = await supabase
+    .from(table)
+    .select(select)
+    .eq(field, value)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (result.error && !isMissingTableError(result.error)) {
+    return { data: null, error: describeOnboardingError(result.error) };
+  }
+
+  return { data: result.data ?? null, error: result.error ? describeOnboardingError(result.error) : null };
+}
+
+export async function getLaneLaunchDebugState(user: UserAccount) {
+  const { rows, degraded } = await readPersistedStates(user.id);
+  const [profile, client, barber, shop] = await Promise.all([
+    readDebugRow("profiles", "id, role, full_name, email, phone, primary_onboarding_role, onboarding_state, phone_verified_at", "id", user.id),
+    readDebugRow("clients", "id, profile_id, reference_code", "profile_id", user.id),
+    readDebugRow("barbers", "id, profile_id, reference_code, compensation_model, barber_subtype, app_approval_status, shop_approval_status", "profile_id", user.id),
+    readDebugRow("shops", "id, owner_profile_id, name, app_approval_status", "owner_profile_id", user.id)
+  ]);
+  const roles: OnboardingRole[] = ["client", "barber", "shop_owner"];
+  const allowedLanes = roles.map((role) => {
+    try {
+      assertOnboardingRoleAccess(user, role, rows);
+      return { role, allowed: true, reason: "allowed" };
+    } catch (error) {
+      return {
+        role,
+        allowed: false,
+        reason: error instanceof Error ? error.message : "unknown"
+      };
+    }
+  });
+
+  return {
+    userId: user.id,
+    runtimeUser: {
+      role: user.role,
+      accountStatus: user.accountStatus ?? null,
+      primaryOnboardingRole: user.primaryOnboardingRole ?? null,
+      onboardingState: user.onboardingState ?? null,
+      emailVerified: user.emailVerified ?? null,
+      phoneVerified: user.phoneVerified ?? null,
+      clientId: user.clientId ?? null,
+      barberId: user.barberId ?? null,
+      barberSubtype: user.barberSubtype ?? null,
+      ownedShopId: user.ownedShopId ?? null
+    },
+    canonicalProfile: profile.data,
+    canonicalProfileError: profile.error,
+    contactComplete: hasVerifiedContactData(user),
+    persistedOnboardingRows: rows,
+    degraded,
+    laneRows: {
+      client: client.data,
+      clientError: client.error,
+      barber: barber.data,
+      barberError: barber.error,
+      shopOwner: shop.data,
+      shopOwnerError: shop.error
+    },
+    allowedLanes,
+    predictedNextPathByLane: {
+      client: "/dashboard/client",
+      barber: "/onboarding/barber-type",
+      shop_owner: "/dashboard/owner"
+    }
+  };
 }
 
 export async function markOnboardingStepComplete(

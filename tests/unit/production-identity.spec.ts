@@ -150,6 +150,40 @@ function createUpdateBuilder(state: TableState, table: string, values: Record<st
   return builder;
 }
 
+function createInsertBuilder(state: TableState, table: string, payload: Record<string, unknown> | Array<Record<string, unknown>>) {
+  let insertedRows: Array<Record<string, unknown>> | null = null;
+  const write = () => {
+    if (insertedRows) {
+      return insertedRows;
+    }
+
+    const rows = Array.isArray(payload) ? payload : [payload];
+    state[table] ??= [];
+    insertedRows = rows.map((row) => cloneRow(row));
+    for (const row of insertedRows) {
+      state[table].push(row);
+    }
+    return insertedRows;
+  };
+
+  const builder = {
+    select() {
+      return {
+        single() {
+          const rows = write();
+          return Promise.resolve({ data: rows[0] ?? null, error: null });
+        }
+      };
+    },
+    then(onFulfilled?: (value: { data: null; error: null }) => unknown, onRejected?: (reason: unknown) => unknown) {
+      write();
+      return Promise.resolve({ data: null, error: null }).then(onFulfilled, onRejected);
+    }
+  };
+
+  return builder;
+}
+
 function upsertRows(state: TableState, table: string, payload: Record<string, unknown> | Array<Record<string, unknown>>, onConflict?: string) {
   const rows = Array.isArray(payload) ? payload : [payload];
   state[table] ??= [];
@@ -180,12 +214,7 @@ function createSupabaseAdminMock(state: TableState, options?: SupabaseMockOption
           return createSelectBuilder(state, table, options);
         },
         insert(payload: Record<string, unknown> | Array<Record<string, unknown>>) {
-          const rows = Array.isArray(payload) ? payload : [payload];
-          state[table] ??= [];
-          for (const row of rows) {
-            state[table].push(cloneRow(row));
-          }
-          return Promise.resolve({ data: null, error: null });
+          return createInsertBuilder(state, table, payload);
         },
         update(values: Record<string, unknown>) {
           return createUpdateBuilder(state, table, values);
@@ -539,5 +568,136 @@ describe("production identity provisioning", () => {
     expect(result.canContinue).toBe(true);
     expect(result.requiresRoleSelection).toBe(true);
     expect(result.onboardingState).toBe("awaiting_role_selection");
+  });
+
+  it("does not infer official client lane from stale client rows when primary onboarding role is null", async () => {
+    state.profiles.push({
+      id: "auth-stale-client",
+      role: "client",
+      full_name: "Stale Client",
+      email: "stale@bvrb3r.app",
+      phone: "+18135550130",
+      phone_verified_at: "2026-04-10T12:00:00.000Z",
+      onboarding_state: "awaiting_role_selection",
+      primary_onboarding_role: null
+    });
+    state.clients.push({
+      id: "client-row-stale",
+      profile_id: "auth-stale-client",
+      reference_code: "client-stale"
+    });
+
+    const runtimeUser = await buildRuntimeUserFromProductionAuth({
+      id: "auth-stale-client",
+      email: "stale@bvrb3r.app",
+      phone: null,
+      email_confirmed_at: "2026-04-10T12:00:00.000Z",
+      phone_confirmed_at: null,
+      user_metadata: {
+        full_name: "Stale Client"
+      }
+    });
+
+    expect(runtimeUser.primaryOnboardingRole).toBeUndefined();
+    expect(runtimeUser.accountStatus).toBe("profile_only");
+    expect(runtimeUser.onboardingState).toBe("awaiting_role_selection");
+    expect(state.profiles[0]).toMatchObject({
+      primary_onboarding_role: null,
+      onboarding_state: "awaiting_role_selection"
+    });
+  });
+
+  it("launches the barber lane without requiring subtype and creates a bootstrap barber row", async () => {
+    state.profiles.push({
+      id: "auth-new-barber",
+      role: "client",
+      full_name: "New Barber",
+      email: "barber@bvrb3r.app",
+      phone: "+18135550131",
+      phone_verified_at: "2026-04-10T12:00:00.000Z",
+      onboarding_state: "awaiting_role_selection",
+      primary_onboarding_role: null
+    });
+
+    const result = await initializeProductionRoleSelection({
+      id: "auth-new-barber",
+      email: "barber@bvrb3r.app",
+      phone: null,
+      email_confirmed_at: "2026-04-10T12:00:00.000Z",
+      phone_confirmed_at: null,
+      user_metadata: {
+        full_name: "New Barber"
+      }
+    }, {
+      role: "barber"
+    });
+
+    expect(state.profiles[0]).toMatchObject({
+      id: "auth-new-barber",
+      primary_onboarding_role: "barber",
+      onboarding_state: "role_selected"
+    });
+    expect(state.barbers[0]).toMatchObject({
+      profile_id: "auth-new-barber",
+      reference_code: "barber-auth-new",
+      barber_subtype: null,
+      app_approval_status: "pending"
+    });
+    expect(result.user.primaryOnboardingRole).toBe("barber");
+    expect(result.user.barberId).toBe("barber-auth-new");
+    expect(result.user.barberSubtype).toBeUndefined();
+    expect(result.seedProfileData.barberId).toBe("barber-auth-new");
+  });
+
+  it("launches the owner lane from a stale client profile and creates owner bootstrap rows", async () => {
+    state.profiles.push({
+      id: "auth-new-owner",
+      role: "client",
+      full_name: "New Owner",
+      email: "owner-new@bvrb3r.app",
+      phone: "+18135550132",
+      phone_verified_at: "2026-04-10T12:00:00.000Z",
+      onboarding_state: "awaiting_role_selection",
+      primary_onboarding_role: null
+    });
+    state.clients.push({
+      id: "client-row-owner-stale",
+      profile_id: "auth-new-owner",
+      reference_code: "client-owner-stale"
+    });
+
+    const result = await initializeProductionRoleSelection({
+      id: "auth-new-owner",
+      email: "owner-new@bvrb3r.app",
+      phone: null,
+      email_confirmed_at: "2026-04-10T12:00:00.000Z",
+      phone_confirmed_at: null,
+      user_metadata: {
+        full_name: "New Owner"
+      }
+    }, {
+      role: "shop_owner",
+      shopName: "New Owner Shop"
+    });
+
+    expect(state.profiles[0]).toMatchObject({
+      id: "auth-new-owner",
+      role: "owner",
+      primary_onboarding_role: "shop_owner",
+      onboarding_state: "active"
+    });
+    expect(state.shops[0]).toMatchObject({
+      id: "shop-new-owner-shop-auth-n",
+      owner_profile_id: "auth-new-owner",
+      name: "New Owner Shop",
+      app_approval_status: "pending"
+    });
+    expect(state.locations[0]).toMatchObject({
+      reference_code: "shop-new-owner-shop-auth-n",
+      name: "New Owner Shop"
+    });
+    expect(result.user.role).toBe("owner");
+    expect(result.user.primaryOnboardingRole).toBe("shop_owner");
+    expect(result.user.ownedShopId).toBe("shop-new-owner-shop-auth-n");
   });
 });

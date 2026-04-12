@@ -128,6 +128,12 @@ type RoleSelectionResult = {
   seedProfileData: Record<string, unknown>;
 };
 
+type LaneRecordSnapshot = {
+  client: ClientRow | null;
+  barber: BarberRow | null;
+  shop: ShopRow | null;
+};
+
 type SendPhoneChallengeResult = ContactVerificationState & {
   degraded: boolean;
 };
@@ -210,6 +216,15 @@ function describeSupabaseError(error: unknown) {
     candidate.details ? `details=${candidate.details}` : null,
     candidate.hint ? `hint=${candidate.hint}` : null
   ].filter(Boolean).join(" | ") || "unknown Supabase error";
+}
+
+function throwSupabaseLaneError(action: string, error: unknown): never {
+  const message = describeSupabaseError(error);
+  console.error("[auth] lane bootstrap failed", {
+    action,
+    error: message
+  });
+  throw new Error(`${action} failed: ${message}`);
 }
 
 function getDisplayName(authUser: AuthUserLike, profile?: ProfileRow | null) {
@@ -826,6 +841,16 @@ async function safeHasLaneRecord(profileId: string, primaryRole: IdentityLane | 
   return false;
 }
 
+async function readLaneRecordSnapshot(profileId: string): Promise<LaneRecordSnapshot> {
+  const [client, barber, shop] = await Promise.all([
+    readClientByProfile(profileId),
+    readBarberByProfile(profileId),
+    readOwnedShopByProfile(profileId)
+  ]);
+
+  return { client, barber, shop };
+}
+
 async function readCanonicalContactSnapshot(
   authUser: AuthUserLike,
   options?: { skipSync?: boolean }
@@ -1011,8 +1036,7 @@ export async function buildRuntimeUserFromProductionAuth(authUser: AuthUserLike)
     const requiredContact = getRequiredContactFields(authUser, profile);
     const emailVerified = Boolean(authUser.email_confirmed_at);
     const phoneVerified = Boolean(profile?.phone_verified_at || authUser.phone_confirmed_at);
-    const primaryRole = profile?.primary_onboarding_role
-      ?? (barber ? "barber" : shop ? "shop_owner" : client ? "client" : null);
+    const primaryRole = profile?.primary_onboarding_role ?? null;
     const runtimeRole = toRuntimeRole({
       primaryRole,
       profileRole: profile?.role,
@@ -1021,7 +1045,7 @@ export async function buildRuntimeUserFromProductionAuth(authUser: AuthUserLike)
     const locationIds = await readLocationReferencesForProfile(authUser.id, shop?.id ?? null);
     const hasLaneRecord = Boolean(
       (primaryRole === "client" && client)
-      || (primaryRole === "barber" && barber)
+      || (primaryRole === "barber" && barber?.barber_subtype)
       || (primaryRole === "shop_owner" && shop)
     );
     const onboardingState = inferOnboardingState({
@@ -1702,36 +1726,58 @@ async function upsertProfileForLane(input: {
   }
 
   const now = new Date().toISOString();
+  const payload = {
+    id: input.profileId,
+    role: input.role,
+    full_name: input.fullName,
+    email: input.email,
+    phone: input.phone || null,
+    primary_onboarding_role: input.primaryOnboardingRole,
+    onboarding_state: input.onboardingState,
+    last_onboarded_at: now
+  };
+
+  console.info("[auth] lane profile upsert requested", {
+    profileId: input.profileId,
+    selectedLane: input.primaryOnboardingRole,
+    payload
+  });
+
   const upsert = await supabase
     .from("profiles")
-    .upsert({
+    .upsert(payload, { onConflict: "id" });
+
+  console.info("[auth] lane profile upsert result", {
+    profileId: input.profileId,
+    selectedLane: input.primaryOnboardingRole,
+    error: upsert.error ? describeSupabaseError(upsert.error) : null
+  });
+
+  if (upsert.error) {
+    if (!isSchemaError(upsert.error)) {
+      throwSupabaseLaneError("Lane profile upsert", upsert.error);
+    }
+
+    const fallbackPayload = {
       id: input.profileId,
       role: input.role,
       full_name: input.fullName,
       email: input.email,
-      phone: input.phone || null,
-      primary_onboarding_role: input.primaryOnboardingRole,
-      onboarding_state: input.onboardingState,
-      last_onboarded_at: now
-    }, { onConflict: "id" });
-
-  if (upsert.error) {
-    if (!isSchemaError(upsert.error)) {
-      throw upsert.error;
-    }
-
+      phone: input.phone || null
+    };
     const fallback = await supabase
       .from("profiles")
-      .upsert({
-        id: input.profileId,
-        role: input.role,
-        full_name: input.fullName,
-        email: input.email,
-        phone: input.phone || null
-      }, { onConflict: "id" });
+      .upsert(fallbackPayload, { onConflict: "id" });
+
+    console.info("[auth] lane profile fallback upsert result", {
+      profileId: input.profileId,
+      selectedLane: input.primaryOnboardingRole,
+      payload: fallbackPayload,
+      error: fallback.error ? describeSupabaseError(fallback.error) : null
+    });
 
     if (fallback.error) {
-      throw fallback.error;
+      throwSupabaseLaneError("Lane profile fallback upsert", fallback.error);
     }
   }
 }
@@ -1739,6 +1785,15 @@ async function upsertProfileForLane(input: {
 async function ensureClientLane(profileId: string, identity: { email: string; name: string; phone: string; }) {
   const supabase = await getSupabase();
   const clientReference = `client-${profileId.slice(0, 8)}`;
+  console.info("[auth] client lane bootstrap requested", {
+    profileId,
+    payload: {
+      profile_id: profileId,
+      reference_code: clientReference,
+      identity
+    }
+  });
+
   if (!supabase) {
     return {
       clientId: clientReference,
@@ -1760,7 +1815,7 @@ async function ensureClientLane(profileId: string, identity: { email: string; na
     .maybeSingle();
 
   if (existing.error && !isSchemaError(existing.error)) {
-    throw existing.error;
+    throwSupabaseLaneError("Client lane existing-row lookup", existing.error);
   }
 
   let clientId = (existing.data as ClientRow | null)?.reference_code ?? clientReference;
@@ -1772,7 +1827,7 @@ async function ensureClientLane(profileId: string, identity: { email: string; na
       retention_tag: "new"
     });
     if (insert.error) {
-      throw insert.error;
+      throwSupabaseLaneError("Client lane row insert", insert.error);
     }
   } else if (!(existing.data as ClientRow).reference_code) {
     const update = await supabase
@@ -1780,7 +1835,7 @@ async function ensureClientLane(profileId: string, identity: { email: string; na
       .update({ reference_code: clientReference })
       .eq("id", (existing.data as ClientRow).id);
     if (update.error) {
-      throw update.error;
+      throwSupabaseLaneError("Client lane reference update", update.error);
     }
     clientId = clientReference;
   }
@@ -1798,7 +1853,7 @@ async function ensureClientLane(profileId: string, identity: { email: string; na
     }, { onConflict: "profile_email" });
 
   if (clientProfileUpsert.error && !isSchemaError(clientProfileUpsert.error)) {
-    throw clientProfileUpsert.error;
+    throwSupabaseLaneError("Client profile bootstrap upsert", clientProfileUpsert.error);
   }
 
   const userRoleUpsert = await supabase
@@ -1812,8 +1867,14 @@ async function ensureClientLane(profileId: string, identity: { email: string; na
     }, { onConflict: "user_email" });
 
   if (userRoleUpsert.error && !isSchemaError(userRoleUpsert.error)) {
-    throw userRoleUpsert.error;
+    throwSupabaseLaneError("Client user role bootstrap upsert", userRoleUpsert.error);
   }
+
+  console.info("[auth] client lane bootstrap completed", {
+    profileId,
+    clientId,
+    existed: Boolean(existing.data)
+  });
 
   return {
     clientId,
@@ -1830,6 +1891,94 @@ function toBarberCompensation(subtype: BarberSubtype): CompensationModel {
   return subtype === "commission" ? "commission" : "booth_rent";
 }
 
+async function ensureBarberLaneBootstrap(
+  profileId: string,
+  identity: { email: string; name: string; phone: string; }
+) {
+  const supabase = await getSupabase();
+  const barberReference = `barber-${profileId.slice(0, 8)}`;
+  console.info("[auth] barber lane bootstrap requested", {
+    profileId,
+    payload: {
+      profile_id: profileId,
+      reference_code: barberReference,
+      compensation_model: "booth_rent",
+      barber_subtype: null,
+      app_approval_status: "pending",
+      shop_approval_status: "pending"
+    }
+  });
+
+  if (!supabase) {
+    return {
+      barberId: barberReference,
+      seedProfileData: {
+        fullName: identity.name,
+        email: identity.email,
+        phone: identity.phone,
+        barberId: barberReference
+      }
+    };
+  }
+
+  const existing = await supabase
+    .from("barbers")
+    .select("id, reference_code")
+    .eq("profile_id", profileId)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (existing.error && !isSchemaError(existing.error)) {
+    throwSupabaseLaneError("Barber lane existing-row lookup", existing.error);
+  }
+
+  if (!existing.data) {
+    const insert = await supabase
+      .from("barbers")
+      .insert({
+        profile_id: profileId,
+        reference_code: barberReference,
+        compensation_model: "booth_rent",
+        barber_subtype: null,
+        app_approval_status: "pending",
+        shop_approval_status: "pending",
+        bio: null,
+        booking_slug: barberReference
+      });
+
+    if (insert.error) {
+      throwSupabaseLaneError("Barber lane bootstrap row insert", insert.error);
+    }
+  } else if (!(existing.data as ClientRow).reference_code) {
+    const update = await supabase
+      .from("barbers")
+      .update({ reference_code: barberReference, booking_slug: barberReference })
+      .eq("id", (existing.data as ClientRow).id);
+
+    if (update.error && !isSchemaError(update.error)) {
+      throwSupabaseLaneError("Barber lane bootstrap reference update", update.error);
+    }
+  }
+
+  const effectiveBarberReference = (existing.data as ClientRow | null)?.reference_code ?? barberReference;
+  console.info("[auth] barber lane bootstrap completed", {
+    profileId,
+    barberId: effectiveBarberReference,
+    existed: Boolean(existing.data)
+  });
+
+  return {
+    barberId: effectiveBarberReference,
+    seedProfileData: {
+      fullName: identity.name,
+      email: identity.email,
+      phone: identity.phone,
+      barberId: effectiveBarberReference
+    }
+  };
+}
+
 async function ensureBarberLane(
   profileId: string,
   identity: { email: string; name: string; phone: string; },
@@ -1839,6 +1988,19 @@ async function ensureBarberLane(
   const barberReference = `barber-${profileId.slice(0, 8)}`;
   const compensationModel = toBarberCompensation(subtype);
   const runtimeRole: Role = compensationModel === "commission" ? "commission_barber" : "booth_rent_barber";
+  console.info("[auth] barber subtype lane bootstrap requested", {
+    profileId,
+    subtype,
+    payload: {
+      profile_id: profileId,
+      reference_code: barberReference,
+      compensation_model: compensationModel,
+      barber_subtype: subtype,
+      app_approval_status: "pending",
+      shop_approval_status: subtype === "freelance" ? "not_required" : "pending"
+    }
+  });
+
   if (!supabase) {
     return {
       role: runtimeRole,
@@ -1865,7 +2027,7 @@ async function ensureBarberLane(
     .maybeSingle();
 
   if (existing.error && !isSchemaError(existing.error)) {
-    throw existing.error;
+    throwSupabaseLaneError("Barber lane existing-row lookup", existing.error);
   }
 
   if (!existing.data) {
@@ -1882,7 +2044,7 @@ async function ensureBarberLane(
         booking_slug: barberReference
       });
     if (insert.error) {
-      throw insert.error;
+      throwSupabaseLaneError("Barber lane row insert", insert.error);
     }
   } else {
     const update = await supabase
@@ -1896,7 +2058,7 @@ async function ensureBarberLane(
       })
       .eq("id", (existing.data as ClientRow).id);
     if (update.error && !isSchemaError(update.error)) {
-      throw update.error;
+      throwSupabaseLaneError("Barber lane row update", update.error);
     }
   }
 
@@ -1918,7 +2080,7 @@ async function ensureBarberLane(
     }, { onConflict: "barber_reference" });
 
   if (barberProfileUpsert.error && !isSchemaError(barberProfileUpsert.error)) {
-    throw barberProfileUpsert.error;
+    throwSupabaseLaneError("Barber profile bootstrap upsert", barberProfileUpsert.error);
   }
 
   const barberStatusUpsert = await supabase
@@ -1932,7 +2094,7 @@ async function ensureBarberLane(
     }, { onConflict: "barber_reference" });
 
   if (barberStatusUpsert.error && !isSchemaError(barberStatusUpsert.error)) {
-    throw barberStatusUpsert.error;
+    throwSupabaseLaneError("Barber status bootstrap upsert", barberStatusUpsert.error);
   }
 
   const userRoleUpsert = await supabase
@@ -1946,8 +2108,16 @@ async function ensureBarberLane(
     }, { onConflict: "user_email" });
 
   if (userRoleUpsert.error && !isSchemaError(userRoleUpsert.error)) {
-    throw userRoleUpsert.error;
+    throwSupabaseLaneError("Barber user role bootstrap upsert", userRoleUpsert.error);
   }
+
+  console.info("[auth] barber subtype lane bootstrap completed", {
+    profileId,
+    barberId: effectiveBarberReference,
+    subtype,
+    runtimeRole,
+    existed: Boolean(existing.data)
+  });
 
   return {
     role: runtimeRole,
@@ -1968,6 +2138,17 @@ async function ensureBarberLane(
 async function ensureOwnerLane(profileId: string, identity: { email: string; name: string; phone: string; }, shopName: string) {
   const supabase = await getSupabase();
   const shopId = `shop-${slugify(shopName)}-${profileId.slice(0, 6)}`;
+  console.info("[auth] owner lane bootstrap requested", {
+    profileId,
+    shopName,
+    payload: {
+      id: shopId,
+      name: shopName,
+      owner_profile_id: profileId,
+      app_approval_status: "pending"
+    }
+  });
+
   if (!supabase) {
     return {
       ownedShopId: shopId,
@@ -1992,7 +2173,7 @@ async function ensureOwnerLane(profileId: string, identity: { email: string; nam
     .maybeSingle();
 
   if (existingShop.error && !isSchemaError(existingShop.error)) {
-    throw existingShop.error;
+    throwSupabaseLaneError("Owner lane existing-shop lookup", existingShop.error);
   }
 
   const effectiveShopId = (existingShop.data as ShopRow | null)?.id ?? shopId;
@@ -2013,7 +2194,7 @@ async function ensureOwnerLane(profileId: string, identity: { email: string; nam
         app_approval_status: "pending"
       });
     if (insertShop.error) {
-      throw insertShop.error;
+      throwSupabaseLaneError("Owner lane shop insert", insertShop.error);
     }
   } else {
     const updateShop = await supabase
@@ -2026,7 +2207,7 @@ async function ensureOwnerLane(profileId: string, identity: { email: string; nam
       })
       .eq("id", effectiveShopId);
     if (updateShop.error && !isSchemaError(updateShop.error)) {
-      throw updateShop.error;
+      throwSupabaseLaneError("Owner lane shop update", updateShop.error);
     }
   }
 
@@ -2038,7 +2219,7 @@ async function ensureOwnerLane(profileId: string, identity: { email: string; nam
     .maybeSingle();
 
   if (existingLocation.error && !isSchemaError(existingLocation.error)) {
-    throw existingLocation.error;
+    throwSupabaseLaneError("Owner lane existing-location lookup", existingLocation.error);
   }
 
   if (existingLocation.data?.id) {
@@ -2054,7 +2235,7 @@ async function ensureOwnerLane(profileId: string, identity: { email: string; nam
       })
       .eq("id", locationId);
     if (updateLocation.error && !isSchemaError(updateLocation.error)) {
-      throw updateLocation.error;
+      throwSupabaseLaneError("Owner lane location update", updateLocation.error);
     }
   } else {
     const insertLocation = await supabase
@@ -2070,7 +2251,7 @@ async function ensureOwnerLane(profileId: string, identity: { email: string; nam
       .select("id")
       .single();
     if (insertLocation.error) {
-      throw insertLocation.error;
+      throwSupabaseLaneError("Owner lane location insert", insertLocation.error);
     }
     locationId = insertLocation.data.id as string;
   }
@@ -2083,7 +2264,7 @@ async function ensureOwnerLane(profileId: string, identity: { email: string; nam
     }, { onConflict: "profile_id,location_id" });
 
   if (membership.error && !isSchemaError(membership.error)) {
-    throw membership.error;
+    throwSupabaseLaneError("Owner lane staff membership upsert", membership.error);
   }
 
   const userRoleUpsert = await supabase
@@ -2097,8 +2278,15 @@ async function ensureOwnerLane(profileId: string, identity: { email: string; nam
     }, { onConflict: "user_email" });
 
   if (userRoleUpsert.error && !isSchemaError(userRoleUpsert.error)) {
-    throw userRoleUpsert.error;
+    throwSupabaseLaneError("Owner user role bootstrap upsert", userRoleUpsert.error);
   }
+
+  console.info("[auth] owner lane bootstrap completed", {
+    profileId,
+    shopId: effectiveShopId,
+    locationId,
+    existed: Boolean(existingShop.data)
+  });
 
   return {
     ownedShopId: effectiveShopId,
@@ -2118,7 +2306,23 @@ export async function initializeProductionRoleSelection(
   authUser: AuthUserLike,
   input: RoleSelectionInput
 ): Promise<RoleSelectionResult> {
+  console.info("[auth] lane launch requested", {
+    userId: authUser.id,
+    selectedLane: input.role,
+    hasBarberSubtype: Boolean(input.barberSubtype),
+    hasShopName: Boolean(input.shopName?.trim())
+  });
+
   const contactState = await readContactState(authUser);
+  console.info("[auth] lane launch contact gate", {
+    userId: authUser.id,
+    selectedLane: input.role,
+    contactComplete: contactState.canContinue,
+    missingFields: contactState.missingFields,
+    onboardingState: contactState.onboardingState,
+    requiresRoleSelection: contactState.requiresRoleSelection
+  });
+
   if (!contactState.canContinue) {
     throw new Error("contact_verification_required");
   }
@@ -2129,6 +2333,20 @@ export async function initializeProductionRoleSelection(
     phone: normalizePhoneNumber(contactState.phone)
   };
   const profileId = await resolveProfileId(authUser);
+  const profileBeforeLaunch = await readProfile(profileId);
+  const rowsBeforeLaunch = await readLaneRecordSnapshot(profileId);
+  console.info("[auth] lane launch canonical state before write", {
+    userId: authUser.id,
+    profileId,
+    selectedLane: input.role,
+    profile: profileBeforeLaunch,
+    laneRows: {
+      clientExists: Boolean(rowsBeforeLaunch.client),
+      barberExists: Boolean(rowsBeforeLaunch.barber),
+      ownerShopExists: Boolean(rowsBeforeLaunch.shop),
+      barberSubtype: rowsBeforeLaunch.barber?.barber_subtype ?? null
+    }
+  });
 
   if (input.role === "client") {
     await upsertProfileForLane({
@@ -2143,6 +2361,13 @@ export async function initializeProductionRoleSelection(
 
     const client = await ensureClientLane(profileId, identity);
     const user = await buildRuntimeUserFromProductionAuth(authUser);
+    const profileAfterLaunch = await readProfile(profileId);
+    console.info("[auth] lane launch completed", {
+      userId: authUser.id,
+      selectedLane: input.role,
+      profileAfterLaunch,
+      seedProfileData: client.seedProfileData
+    });
     return {
       user,
       seedProfileData: client.seedProfileData
@@ -2162,14 +2387,19 @@ export async function initializeProductionRoleSelection(
         phone: identity.phone
       });
 
+      const lane = await ensureBarberLaneBootstrap(profileId, identity);
       const user = await buildRuntimeUserFromProductionAuth(authUser);
+      const profileAfterLaunch = await readProfile(profileId);
+      console.info("[auth] lane launch completed", {
+        userId: authUser.id,
+        selectedLane: input.role,
+        profileAfterLaunch,
+        seedProfileData: lane.seedProfileData,
+        nextExpectedStep: "/onboarding/barber-type"
+      });
       return {
         user,
-        seedProfileData: {
-          fullName: identity.name,
-          email: identity.email,
-          phone: identity.phone
-        }
+        seedProfileData: lane.seedProfileData
       };
     }
 
@@ -2186,6 +2416,13 @@ export async function initializeProductionRoleSelection(
     });
 
     const user = await buildRuntimeUserFromProductionAuth(authUser);
+    const profileAfterLaunch = await readProfile(profileId);
+    console.info("[auth] lane launch completed", {
+      userId: authUser.id,
+      selectedLane: input.role,
+      profileAfterLaunch,
+      seedProfileData: lane.seedProfileData
+    });
     return {
       user: {
         ...user,
@@ -2215,6 +2452,13 @@ export async function initializeProductionRoleSelection(
   });
 
   const user = await buildRuntimeUserFromProductionAuth(authUser);
+  const profileAfterLaunch = await readProfile(profileId);
+  console.info("[auth] lane launch completed", {
+    userId: authUser.id,
+    selectedLane: input.role,
+    profileAfterLaunch,
+    seedProfileData: lane.seedProfileData
+  });
   return {
     user: {
       ...user,

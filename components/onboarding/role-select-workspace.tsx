@@ -29,10 +29,22 @@ export function RoleSelectWorkspace() {
 
   async function handleContinue(payload: RoleSelectionPayload) {
     setErrorMessage(null);
+    console.info("[role-select] submit clicked", {
+      selectedRole,
+      payload
+    });
     try {
       const result = await mutation.mutateAsync(payload);
+      console.info("[role-select] lane launch succeeded", {
+        selectedRole: payload.role,
+        nextPath: result.nextPath
+      });
       router.replace(result.nextPath);
     } catch (error) {
+      console.error("[role-select] lane launch failed", {
+        selectedRole: payload.role,
+        error
+      });
       setErrorMessage(error instanceof Error ? error.message : "Unable to initialize this lane.");
     }
   }
@@ -55,7 +67,13 @@ export function RoleSelectWorkspace() {
               <button
                 key={card.role}
                 type="button"
-                onClick={() => setSelectedRole(card.role)}
+                onClick={() => {
+                  console.info("[role-select] role card selected", {
+                    role: card.role
+                  });
+                  setSelectedRole(card.role);
+                }}
+                data-role-card={card.role}
                 className={`flex min-h-[220px] flex-col justify-between rounded-[28px] border p-5 text-left transition ${
                   isSelected
                     ? "border-[#7cff00]/34 bg-[#7cff00]/10"

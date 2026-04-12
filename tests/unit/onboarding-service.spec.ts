@@ -205,16 +205,92 @@ describe("onboarding service", () => {
   });
 
   it("blocks an active manager from launching the owner onboarding lane", async () => {
-    const manager: UserAccount = { ...resolveDemoUser("manager@bvrb3r.demo"), accountStatus: "active" };
+    const manager: UserAccount = {
+      ...resolveDemoUser("manager@bvrb3r.demo"),
+      canonicalFullName: "Manager User",
+      phone: "+18135550135",
+      accountStatus: "active",
+      emailVerified: true,
+      phoneVerified: true
+    };
 
     await expect(
       initializeUserRole(manager, "shop_owner")
     ).rejects.toThrow("onboarding_role_forbidden");
   });
 
+  it("allows a verified user with stale client runtime role to launch the barber lane", async () => {
+    const client = resolveDemoUser("client@bvrb3r.demo");
+    const staleClient: UserAccount = {
+      ...client,
+      id: "stale-client-runtime",
+      role: "client",
+      firstName: "Stale",
+      lastName: "Runtime",
+      canonicalFullName: "Stale Runtime",
+      phone: "+18135550133",
+      accountStatus: "profile_only",
+      primaryOnboardingRole: undefined,
+      onboardingState: "awaiting_role_selection",
+      emailVerified: true,
+      phoneVerified: true,
+      clientId: "client-stale"
+    };
+
+    await initializeUserRole(staleClient, "client");
+    const result = await initializeUserRole(staleClient, "barber");
+    const payload = await getOnboardingState({
+      ...staleClient,
+      primaryOnboardingRole: "barber"
+    });
+
+    expect(result.state.role).toBe("barber");
+    expect(result.state.status).toBe("in_progress");
+    expect(result.state.profileData.barberSubtype).toBeUndefined();
+    expect(payload.nextPath).toBe("/onboarding/barber-type");
+  });
+
+  it("allows a verified user with stale client runtime role to launch the owner lane", async () => {
+    const client = resolveDemoUser("client@bvrb3r.demo");
+    const staleClient: UserAccount = {
+      ...client,
+      id: "stale-owner-runtime",
+      role: "client",
+      firstName: "Owner",
+      lastName: "Runtime",
+      canonicalFullName: "Owner Runtime",
+      phone: "+18135550134",
+      accountStatus: "profile_only",
+      primaryOnboardingRole: undefined,
+      onboardingState: "awaiting_role_selection",
+      emailVerified: true,
+      phoneVerified: true,
+      clientId: "client-stale-owner"
+    };
+
+    await initializeUserRole(staleClient, "client");
+    const result = await initializeUserRole(staleClient, "shop_owner", {
+      shopName: "Owner Runtime Shop"
+    });
+
+    expect(result.state.role).toBe("shop_owner");
+    expect(result.state.status).toBe("in_progress");
+    expect(result.state.profileData.shopName).toBe("Owner Runtime Shop");
+  });
+
   it("keeps a profile-only user inside the lane they already selected", async () => {
     const client = resolveDemoUser("client@bvrb3r.demo");
-    const pendingClient: UserAccount = { ...client, accountStatus: "profile_only", clientId: undefined };
+    const pendingClient: UserAccount = {
+      ...client,
+      canonicalFullName: "Pending Client",
+      phone: "+18135550136",
+      accountStatus: "profile_only",
+      primaryOnboardingRole: "client",
+      onboardingState: "role_selected",
+      emailVerified: true,
+      phoneVerified: true,
+      clientId: undefined
+    };
 
     await initializeUserRole(pendingClient, "client");
 
