@@ -216,7 +216,7 @@ describe("onboarding service", () => {
 
     await expect(
       initializeUserRole(manager, "shop_owner")
-    ).rejects.toThrow("onboarding_role_forbidden");
+    ).rejects.toThrow("ACTIVE_LANE_LOCKED");
   });
 
   it("allows a verified user with stale client runtime role to launch the barber lane", async () => {
@@ -276,6 +276,31 @@ describe("onboarding service", () => {
     expect(result.state.role).toBe("shop_owner");
     expect(result.state.status).toBe("in_progress");
     expect(result.state.profileData.shopName).toBe("Owner Runtime Shop");
+  });
+
+  it("allows a contact-complete user with active stale client state and no official lane to choose barber", async () => {
+    const client = resolveDemoUser("client@bvrb3r.demo");
+    const staleClient: UserAccount = {
+      ...client,
+      id: "active-stale-client-runtime",
+      role: "client",
+      firstName: "Active",
+      lastName: "Stale",
+      canonicalFullName: "Active Stale",
+      phone: "+18135550139",
+      accountStatus: "active",
+      primaryOnboardingRole: undefined,
+      onboardingState: "active",
+      emailVerified: true,
+      phoneVerified: true,
+      clientId: "client-active-stale"
+    };
+
+    await initializeUserRole(staleClient, "client");
+    const result = await initializeUserRole(staleClient, "barber");
+
+    expect(result.state.role).toBe("barber");
+    expect(result.state.status).toBe("in_progress");
   });
 
   it("recovers a stale incomplete official client lane when a verified user chooses barber", async () => {
@@ -354,6 +379,6 @@ describe("onboarding service", () => {
 
     await expect(
       markOnboardingStepComplete(activeClient, "shop_owner", "owner_shop", { shopName: "Cross-lane test" })
-    ).rejects.toThrow("onboarding_role_forbidden");
+    ).rejects.toThrow("ACTIVE_LANE_LOCKED");
   });
 });

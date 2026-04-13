@@ -68,28 +68,31 @@ export function toOnboardingErrorResponse(error: unknown) {
     return NextResponse.json({ error: "Authentication is required." }, { status: 401 });
   }
 
-  if (message === "onboarding_role_forbidden") {
+  if (message === "CONTACT_NOT_COMPLETE" || message === "contact_verification_required") {
     return NextResponse.json({
-      error: "Lane launch blocked because this account is already assigned to a different active lane.",
-      code: message,
-      diagnostics
-    }, { status: 403 });
-  }
-
-  if (message === "onboarding_role_mismatch") {
-    return NextResponse.json({
-      error: "Lane launch blocked because an official onboarding lane is already selected.",
-      code: message,
+      error: "CONTACT_NOT_COMPLETE",
+      message: "Contact verification is incomplete.",
+      code: "CONTACT_NOT_COMPLETE",
       diagnostics
     }, { status: 409 });
   }
 
-  if (message === "contact_verification_required") {
+  if (message === "ACTIVE_LANE_LOCKED" || message === "onboarding_role_forbidden" || message === "onboarding_role_mismatch") {
     return NextResponse.json({
-      error: "Lane launch blocked because contact verification is incomplete.",
-      code: message,
+      error: "ACTIVE_LANE_LOCKED",
+      message: "An active completed lane is already locked for this account.",
+      code: "ACTIVE_LANE_LOCKED",
       diagnostics
     }, { status: 409 });
+  }
+
+  if (message.startsWith("SERVER_WRITE_FAILED")) {
+    return NextResponse.json({
+      error: "SERVER_WRITE_FAILED",
+      message,
+      code: "SERVER_WRITE_FAILED",
+      diagnostics
+    }, { status: 500 });
   }
 
   if (message === "shop_name_required") {

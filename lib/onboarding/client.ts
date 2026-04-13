@@ -46,7 +46,11 @@ const requestJson = async <T,>(input: RequestInfo, init?: RequestInit): Promise<
   }
 
   if (!response.ok) {
-    const error = new Error((body.error as string | undefined) ?? `Request failed with status ${response.status}`) as OnboardingApiError;
+    const error = new Error(
+      (body.message as string | undefined)
+      ?? (body.error as string | undefined)
+      ?? `Request failed with status ${response.status}`
+    ) as OnboardingApiError;
     error.status = response.status;
     throw error;
   }

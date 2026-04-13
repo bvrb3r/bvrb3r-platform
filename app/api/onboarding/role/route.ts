@@ -24,7 +24,14 @@ export async function POST(request: NextRequest) {
     console.info("[onboarding-route] role launch request body", {
       body
     });
-    const parsed = schema.safeParse(body);
+    const normalizedBody = typeof body === "object" && body !== null
+      ? {
+          ...body,
+          shopName: (body as { shopName?: unknown; shop_name?: unknown }).shopName
+            ?? (body as { shopName?: unknown; shop_name?: unknown }).shop_name
+        }
+      : body;
+    const parsed = schema.safeParse(normalizedBody);
     if (!parsed.success) {
       console.info("[onboarding-route] role launch validation failed", {
         issues: parsed.error.issues

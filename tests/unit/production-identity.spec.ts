@@ -150,6 +150,28 @@ function createUpdateBuilder(state: TableState, table: string, values: Record<st
   return builder;
 }
 
+function createDeleteBuilder(state: TableState, table: string) {
+  const filters: Filter[] = [];
+
+  const builder = {
+    eq(field: string, value: unknown) {
+      filters.push({ type: "eq", field, value });
+      return builder;
+    },
+    in(field: string, values: unknown[]) {
+      filters.push({ type: "in", field, values });
+      return builder;
+    },
+    then(onFulfilled?: (value: { data: null; error: null }) => unknown, onRejected?: (reason: unknown) => unknown) {
+      const rows = state[table] ?? [];
+      state[table] = rows.filter((row) => !matchesFilters(row, filters));
+      return Promise.resolve({ data: null, error: null }).then(onFulfilled, onRejected);
+    }
+  };
+
+  return builder;
+}
+
 function createInsertBuilder(state: TableState, table: string, payload: Record<string, unknown> | Array<Record<string, unknown>>) {
   let insertedRows: Array<Record<string, unknown>> | null = null;
   const write = () => {
@@ -218,6 +240,9 @@ function createSupabaseAdminMock(state: TableState, options?: SupabaseMockOption
         },
         update(values: Record<string, unknown>) {
           return createUpdateBuilder(state, table, values);
+        },
+        delete() {
+          return createDeleteBuilder(state, table);
         },
         upsert(payload: Record<string, unknown> | Array<Record<string, unknown>>, options?: { onConflict?: string }) {
           upsertRows(state, table, payload, options?.onConflict);
@@ -607,7 +632,7 @@ describe("production identity provisioning", () => {
     });
   });
 
-  it("launches the barber lane without requiring subtype and creates a bootstrap barber row", async () => {
+  it("launches the barber lane from stale active client state without requiring subtype", async () => {
     state.profiles.push({
       id: "auth-new-barber",
       role: "client",
@@ -615,8 +640,20 @@ describe("production identity provisioning", () => {
       email: "barber@bvrb3r.app",
       phone: "+18135550131",
       phone_verified_at: "2026-04-10T12:00:00.000Z",
-      onboarding_state: "awaiting_role_selection",
+      onboarding_state: "active",
       primary_onboarding_role: null
+    });
+    state.clients.push({
+      id: "client-row-barber-stale",
+      profile_id: "auth-new-barber",
+      reference_code: "client-barber-stale"
+    });
+    state.user_roles.push({
+      user_email: "barber@bvrb3r.app",
+      role: "client",
+      client_reference: "client-barber-stale",
+      barber_reference: null,
+      location_references: []
     });
 
     const result = await initializeProductionRoleSelection({
@@ -643,6 +680,8 @@ describe("production identity provisioning", () => {
       barber_subtype: null,
       app_approval_status: "pending"
     });
+    expect(state.clients).toHaveLength(0);
+    expect(state.user_roles).toHaveLength(0);
     expect(result.user.primaryOnboardingRole).toBe("barber");
     expect(result.user.barberId).toBe("barber-auth-new");
     expect(result.user.barberSubtype).toBeUndefined();
@@ -664,6 +703,13 @@ describe("production identity provisioning", () => {
       id: "client-row-owner-stale",
       profile_id: "auth-new-owner",
       reference_code: "client-owner-stale"
+    });
+    state.user_roles.push({
+      user_email: "owner-new@bvrb3r.app",
+      role: "client",
+      client_reference: "client-owner-stale",
+      barber_reference: null,
+      location_references: []
     });
 
     const result = await initializeProductionRoleSelection({
@@ -695,6 +741,14 @@ describe("production identity provisioning", () => {
     expect(state.locations[0]).toMatchObject({
       reference_code: "shop-new-owner-shop-auth-n",
       name: "New Owner Shop"
+    });
+    expect(state.clients).toHaveLength(0);
+    expect(state.user_roles).toHaveLength(1);
+    expect(state.user_roles[0]).toMatchObject({
+      user_email: "owner-new@bvrb3r.app",
+      role: "owner",
+      client_reference: null,
+      location_references: ["shop-new-owner-shop-auth-n"]
     });
     expect(result.user.role).toBe("owner");
     expect(result.user.primaryOnboardingRole).toBe("shop_owner");

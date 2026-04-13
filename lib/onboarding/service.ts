@@ -21,6 +21,8 @@ import type {
 import type { VerificationProfileRecord } from "@/types/trust";
 
 const ONBOARDING_WARNING = "Onboarding data is partially unavailable. Core access is still active.";
+const CONTACT_NOT_COMPLETE = "CONTACT_NOT_COMPLETE";
+const ACTIVE_LANE_LOCKED = "ACTIVE_LANE_LOCKED";
 const ONBOARDING_STEPS: Record<OnboardingRole, OnboardingStepDefinition[]> = {
   client: [
     { key: "client_profile", role: "client", title: "Build your client profile", subtitle: "Set the basics so booking and rewards feel personal from your first visit.", route: "/onboarding/client/profile" },
@@ -441,16 +443,16 @@ async function ensureCanonicalVerificationProfile(user: UserAccount, role: Exclu
 }
 
 function isRuntimeRoleAllowedForOnboarding(user: UserAccount, role: OnboardingRole) {
-  if (!user.primaryOnboardingRole && user.onboardingState !== "active") {
-    return user.role !== "platform_admin" && user.role !== "manager" && user.role !== "front_desk";
+  if (user.role === "platform_admin" || user.role === "manager" || user.role === "front_desk") {
+    return false;
+  }
+
+  if (!user.primaryOnboardingRole) {
+    return true;
   }
 
   if (user.accountStatus !== "active") {
     return true;
-  }
-
-  if (user.role === "platform_admin" || user.role === "manager" || user.role === "front_desk") {
-    return false;
   }
 
   if (role === "client") {
@@ -476,8 +478,7 @@ function getOfficialLaneConflict(
 
   const officialLaneRow = rows.find((entry) => entry.role === officialRole);
   const officialLaneIsFinal = Boolean(
-    user.accountStatus === "active"
-    || user.onboardingState === "active"
+    (user.accountStatus === "active" && user.onboardingState === "active" && officialLaneRow)
     || officialLaneRow?.status === "completed"
   );
 
@@ -512,22 +513,35 @@ function assertOnboardingRoleAccess(
     logLaneLaunch("lane access blocked", {
       userId: user.id,
       requestedRole: role,
-      reason: "contact_verification_required"
+      reason: CONTACT_NOT_COMPLETE
     });
-    throw new Error("contact_verification_required");
+    throw new Error(CONTACT_NOT_COMPLETE);
   }
 
   if (!isRuntimeRoleAllowedForOnboarding(user, role)) {
     logLaneLaunch("lane access blocked", {
       userId: user.id,
       requestedRole: role,
-      reason: "onboarding_role_forbidden",
+      reason: ACTIVE_LANE_LOCKED,
       runtimeRole: user.role,
       primaryOnboardingRole: user.primaryOnboardingRole ?? null,
       onboardingState: user.onboardingState ?? null,
       accountStatus: user.accountStatus ?? null
     });
-    throw new Error("onboarding_role_forbidden");
+    throw new Error(ACTIVE_LANE_LOCKED);
+  }
+
+  if (!user.primaryOnboardingRole) {
+    logLaneLaunch("lane access allowed", {
+      userId: user.id,
+      requestedRole: role,
+      selectedRole: null,
+      reason: "no_official_lane_selected_clean_start",
+      ignoredStaleRuntimeRole: user.role,
+      ignoredStaleOnboardingState: user.onboardingState ?? null,
+      ignoredStaleAccountStatus: user.accountStatus ?? null
+    });
+    return;
   }
 
   const selectedRole = chooseSelectedRole(rows);
@@ -537,12 +551,12 @@ function assertOnboardingRoleAccess(
       userId: user.id,
       requestedRole: role,
       selectedRole,
-      reason: "onboarding_role_mismatch",
+      reason: ACTIVE_LANE_LOCKED,
       primaryOnboardingRole: officialConflict.officialRole,
       officialLaneStatus: officialConflict.officialLaneRow?.status ?? null,
       officialLaneCurrentStep: officialConflict.officialLaneRow?.currentStep ?? null
     });
-    throw new Error("onboarding_role_mismatch");
+    throw new Error(ACTIVE_LANE_LOCKED);
   }
 
   if (officialConflict && !officialConflict.officialLaneIsFinal) {
@@ -710,14 +724,63 @@ async function readDebugRow(table: string, select: string, field: string, value:
   return { data: result.data ?? null, error: result.error ? describeOnboardingError(result.error) : null };
 }
 
+async function readDebugRows(table: string, select: string, field: string, value?: string | null) {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return { data: [], error: "supabase_unavailable" };
+  }
+
+  if (!value) {
+    return { data: [], error: null };
+  }
+
+  const result = await supabase
+    .from(table)
+    .select(select)
+    .eq(field, value);
+
+  if (result.error && !isMissingTableError(result.error)) {
+    return { data: [], error: describeOnboardingError(result.error) };
+  }
+
+  return { data: result.data ?? [], error: result.error ? describeOnboardingError(result.error) : null };
+}
+
+export async function getUserLaneState(userId: string, email?: string | null) {
+  const [profile, client, barber, shop, userRoles] = await Promise.all([
+    readDebugRow("profiles", "id, role, full_name, email, phone, primary_onboarding_role, onboarding_state, phone_verified_at", "id", userId),
+    readDebugRow("clients", "id, profile_id, reference_code", "profile_id", userId),
+    readDebugRow("barbers", "id, profile_id, reference_code, compensation_model, barber_subtype, app_approval_status, shop_approval_status", "profile_id", userId),
+    readDebugRow("shops", "id, owner_profile_id, name, app_approval_status", "owner_profile_id", userId),
+    readDebugRows("user_roles", "user_email, role, client_reference, barber_reference, location_references", "user_email", email)
+  ]);
+
+  const canonicalProfile = profile.data as { primary_onboarding_role?: OnboardingRole | null } | null;
+
+  return {
+    primary_onboarding_role: canonicalProfile?.primary_onboarding_role ?? null,
+    clients_exists: Boolean(client.data),
+    barbers_exists: Boolean(barber.data),
+    shops_exists: Boolean(shop.data),
+    user_roles: userRoles.data,
+    raw: {
+      profile,
+      client,
+      barber,
+      shop,
+      userRoles
+    }
+  };
+}
+
 export async function getLaneLaunchDebugState(user: UserAccount) {
   const { rows, degraded } = await readPersistedStates(user.id);
-  const [profile, client, barber, shop] = await Promise.all([
-    readDebugRow("profiles", "id, role, full_name, email, phone, primary_onboarding_role, onboarding_state, phone_verified_at", "id", user.id),
-    readDebugRow("clients", "id, profile_id, reference_code", "profile_id", user.id),
-    readDebugRow("barbers", "id, profile_id, reference_code, compensation_model, barber_subtype, app_approval_status, shop_approval_status", "profile_id", user.id),
-    readDebugRow("shops", "id, owner_profile_id, name, app_approval_status", "owner_profile_id", user.id)
-  ]);
+  const userLaneState = await getUserLaneState(user.id, user.email);
+  const profile = userLaneState.raw.profile;
+  const client = userLaneState.raw.client;
+  const barber = userLaneState.raw.barber;
+  const shop = userLaneState.raw.shop;
+  const userRoles = userLaneState.raw.userRoles;
   const roles: OnboardingRole[] = ["client", "barber", "shop_owner"];
   const allowedLanes = roles.map((role) => {
     try {
@@ -734,6 +797,12 @@ export async function getLaneLaunchDebugState(user: UserAccount) {
 
   return {
     userId: user.id,
+    primary_onboarding_role: userLaneState.primary_onboarding_role,
+    clients_exists: userLaneState.clients_exists,
+    barbers_exists: userLaneState.barbers_exists,
+    shops_exists: userLaneState.shops_exists,
+    user_roles: userLaneState.user_roles,
+    allowed_roles: allowedLanes.filter((lane) => lane.allowed).map((lane) => lane.role),
     runtimeUser: {
       role: user.role,
       accountStatus: user.accountStatus ?? null,
@@ -757,7 +826,9 @@ export async function getLaneLaunchDebugState(user: UserAccount) {
       barber: barber.data,
       barberError: barber.error,
       shopOwner: shop.data,
-      shopOwnerError: shop.error
+      shopOwnerError: shop.error,
+      userRoles: userRoles.data,
+      userRolesError: userRoles.error
     },
     allowedLanes,
     predictedNextPathByLane: {

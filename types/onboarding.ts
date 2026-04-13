@@ -62,6 +62,7 @@ export interface RoleSelectionPayload {
   role: OnboardingRole;
   barberSubtype?: BarberSubtype;
   shopName?: string;
+  shop_name?: string;
 }
 
 export interface ContactVerificationStatusPayload {
