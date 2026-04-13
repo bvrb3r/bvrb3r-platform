@@ -33,6 +33,31 @@ function isJsdomRuntime() {
   return /jsdom/i.test(window.navigator.userAgent);
 }
 
+function getOAuthSearchRedirect() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  if (!params.has("code") && !params.has("error")) {
+    return null;
+  }
+
+  const callbackSearch = new URLSearchParams();
+  for (const key of ["code", "error", "error_description", "error_code", "state", "next"]) {
+    const value = params.get(key);
+    if (value) {
+      callbackSearch.set(key, value);
+    }
+  }
+
+  if (window.location.pathname === "/auth/callback") {
+    return `/auth/callback/exchange?${callbackSearch.toString()}`;
+  }
+
+  return `/auth/callback?${callbackSearch.toString()}`;
+}
+
 export function redirectTo(path: string) {
   if (typeof window === "undefined") {
     return;
@@ -59,6 +84,16 @@ export function AuthSessionRecovery({ mode }: { mode: AuthSessionRecoveryMode })
         if (mode === "callback") {
           redirectTo("/login");
         }
+        return;
+      }
+
+      const oauthSearchRedirect = getOAuthSearchRedirect();
+      if (oauthSearchRedirect) {
+        console.info("[auth] routing OAuth query callback through canonical callback path", {
+          pathname: window.location.pathname,
+          target: oauthSearchRedirect
+        });
+        redirectTo(oauthSearchRedirect);
         return;
       }
 

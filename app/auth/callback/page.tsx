@@ -12,10 +12,24 @@ type CallbackSearchParams = Promise<{
   code?: string;
   error?: string;
   error_description?: string;
+  error_code?: string;
+  next?: string;
+  state?: string;
 }>;
 
 function toLoginErrorPath(message: string): Route {
   return `/login?error=${encodeURIComponent(message)}` as Route;
+}
+
+function toExchangePath(params: Awaited<CallbackSearchParams>): Route {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (typeof value === "string" && value) {
+      search.set(key, value);
+    }
+  }
+
+  return `/auth/callback/exchange?${search.toString()}` as Route;
 }
 
 export default async function AuthCallbackPage({
@@ -34,7 +48,12 @@ export default async function AuthCallbackPage({
   }
 
   if (params.code) {
-    redirect(`/auth/callback/exchange?code=${encodeURIComponent(params.code)}` as Route);
+    console.info("[auth] callback received OAuth code; routing through server exchange", {
+      hasCode: true,
+      hasNext: Boolean(params.next),
+      hasState: Boolean(params.state)
+    });
+    redirect(toExchangePath(params));
   }
 
   const supabase = await createSupabaseServerClient();

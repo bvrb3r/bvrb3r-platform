@@ -75,8 +75,19 @@ describe("public home routing", () => {
     });
     resolvePostAuthDestinationMock.mockResolvedValue("/role-select");
 
-    await expect(HomePage()).rejects.toThrow("REDIRECT:/role-select");
+    await expect(HomePage({ searchParams: Promise.resolve({}) })).rejects.toThrow("REDIRECT:/role-select");
     expect(resolvePostAuthDestinationMock).toHaveBeenCalled();
+  });
+
+  it("routes OAuth code returns on the public root into the canonical callback", async () => {
+    await expect(
+      HomePage({
+        searchParams: Promise.resolve({
+          code: "oauth-code"
+        })
+      })
+    ).rejects.toThrow("REDIRECT:/auth/callback?code=oauth-code");
+    expect(getCurrentUserFromServerMock).not.toHaveBeenCalled();
   });
 
   it("keeps the marketing home available for unauthenticated visitors", async () => {
@@ -94,7 +105,7 @@ describe("public home routing", () => {
       }
     });
 
-    render(await HomePage());
+    render(await HomePage({ searchParams: Promise.resolve({}) }));
 
     expect(screen.getByText("BVRB3R Platform")).toBeInTheDocument();
     expect(screen.getByTestId("hero-section-stub")).toBeInTheDocument();
@@ -117,7 +128,18 @@ describe("public home routing", () => {
     });
     resolvePostAuthDestinationMock.mockResolvedValue("/verify-contact");
 
-    await expect(HomeRoutePage()).rejects.toThrow("REDIRECT:/verify-contact");
+    await expect(HomeRoutePage({ searchParams: Promise.resolve({}) })).rejects.toThrow("REDIRECT:/verify-contact");
+    expect(getClientExperienceContextMock).not.toHaveBeenCalled();
+  });
+
+  it("routes OAuth code returns on /home into the canonical callback", async () => {
+    await expect(
+      HomeRoutePage({
+        searchParams: Promise.resolve({
+          code: "home-oauth-code"
+        })
+      })
+    ).rejects.toThrow("REDIRECT:/auth/callback?code=home-oauth-code");
     expect(getClientExperienceContextMock).not.toHaveBeenCalled();
   });
 });

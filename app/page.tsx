@@ -1,14 +1,25 @@
+import type { Route } from "next";
 import { redirect } from "next/navigation";
 import { HeroSection } from "@/components/marketing/hero-section";
 import { FeatureGrid } from "@/components/marketing/feature-grid";
 import { AuthSessionRecovery } from "@/components/auth/auth-session-recovery";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { buildOAuthCallbackRedirectPath, type OAuthCallbackSearchParams } from "@/lib/auth/oauth-callback";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
 import { resolvePostAuthDestination } from "@/lib/onboarding/service";
 import Link from "next/link";
 
-export default async function HomePage() {
+type HomePageProps = {
+  searchParams?: Promise<OAuthCallbackSearchParams>;
+};
+
+export default async function HomePage({ searchParams }: HomePageProps) {
+  const callbackRedirect = buildOAuthCallbackRedirectPath(await (searchParams ?? Promise.resolve({})));
+  if (callbackRedirect) {
+    redirect(callbackRedirect as Route);
+  }
+
   const session = await getCurrentUserFromServer();
   if (session.mode === "supabase" && session.authenticated) {
     redirect(await resolvePostAuthDestination(session.user));
