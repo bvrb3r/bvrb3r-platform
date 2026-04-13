@@ -44,7 +44,7 @@ function getOAuthSearchRedirect() {
   }
 
   const callbackSearch = new URLSearchParams();
-  for (const key of ["code", "error", "error_description", "error_code", "next"]) {
+  for (const key of ["code", "error", "error_description", "error_code", "state", "next"]) {
     const value = params.get(key);
     if (value) {
       callbackSearch.set(key, value);

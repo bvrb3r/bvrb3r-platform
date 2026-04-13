@@ -94,10 +94,16 @@ export function AuthEntryWorkspace({ mode }: { mode: AuthMode }) {
       return;
     }
 
+    const redirectTo = `${window.location.origin}/auth/callback`;
+    console.info("[auth] OAuth sign-in started", {
+      provider,
+      redirectTo
+    });
+
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`
+        redirectTo
       }
     });
 

@@ -7,6 +7,7 @@ const CALLBACK_QUERY_KEYS = [
   "error",
   "error_description",
   "error_code",
+  "state",
   "next"
 ] as const;
 
