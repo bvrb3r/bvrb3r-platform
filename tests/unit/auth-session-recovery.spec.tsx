@@ -63,4 +63,17 @@ describe("auth session recovery", () => {
       expect(window.location.pathname).toBe("/post-auth");
     });
   });
+
+  it("routes OAuth query callbacks on public surfaces through the canonical callback page", async () => {
+    getSessionMock.mockResolvedValue({ data: { session: null } });
+    window.history.replaceState({}, "", "/?code=oauth-code");
+
+    render(<AuthSessionRecovery mode="public" />);
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/auth/callback");
+      expect(window.location.search).toBe("?code=oauth-code");
+    });
+    expect(getSessionMock).not.toHaveBeenCalled();
+  });
 });

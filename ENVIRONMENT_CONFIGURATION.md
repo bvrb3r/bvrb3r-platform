@@ -108,7 +108,9 @@ This repo supports three environment profiles without changing application logic
 | --- | --- | --- |
 | `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | `lib/payments/provider.ts` | Only needed when `PAYMENTS_PROVIDER=stripe`. |
 | `STRIPE_SECRET_KEY` | `lib/payments/provider.ts` | Server secret for Stripe-backed payment flows. |
-| `STRIPE_WEBHOOK_SECRET` | `.env.example` | Declared in the repo template, but not referenced by current application code. |
+| `STRIPE_WEBHOOK_SECRET` | `lib/stripe/connect.ts`, `lib/stripe/identity.ts`, Stripe webhook routes | Shared fallback webhook signing secret. Prefer lane-specific secrets below when possible. |
+| `STRIPE_CONNECT_WEBHOOK_SECRET` | `lib/stripe/connect.ts` | Preferred webhook signing secret for Stripe Connect account events. |
+| `STRIPE_IDENTITY_WEBHOOK_SECRET` | `lib/stripe/identity.ts` | Preferred webhook signing secret for Stripe Identity verification events. |
 | `GOOGLE_MAPS_API_KEY` | `.env.example` | Declared in the repo template, but not referenced by current application code. |
 
 ## Operational notes
