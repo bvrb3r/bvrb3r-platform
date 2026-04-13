@@ -51,6 +51,14 @@ type ShopRow = {
   app_approval_status?: ApprovalStatus | null;
 };
 
+type UserRoleRow = {
+  user_email?: string | null;
+  role?: string | null;
+  client_reference?: string | null;
+  barber_reference?: string | null;
+  location_references?: string[] | null;
+};
+
 type LocationAssignmentRow = {
   location_id: string;
 };
@@ -224,7 +232,7 @@ function throwSupabaseLaneError(action: string, error: unknown): never {
     action,
     error: message
   });
-  throw new Error(`${action} failed: ${message}`);
+  throw new Error(`SERVER_WRITE_FAILED: ${action}: ${message}`);
 }
 
 function getDisplayName(authUser: AuthUserLike, profile?: ProfileRow | null) {
@@ -849,6 +857,147 @@ async function readLaneRecordSnapshot(profileId: string): Promise<LaneRecordSnap
   ]);
 
   return { client, barber, shop };
+}
+
+async function readUserRolesByEmail(email?: string | null) {
+  const supabase = await getSupabase();
+  if (!supabase || !email) {
+    return [] as UserRoleRow[];
+  }
+
+  const result = await supabase
+    .from("user_roles")
+    .select("user_email, role, client_reference, barber_reference, location_references")
+    .eq("user_email", email);
+
+  if (result.error) {
+    if (isSchemaError(result.error)) {
+      return [] as UserRoleRow[];
+    }
+    throw result.error;
+  }
+
+  return (result.data ?? []) as UserRoleRow[];
+}
+
+export async function getUserLaneState(profileId: string, email?: string | null) {
+  const [profile, rows, userRoles] = await Promise.all([
+    readProfile(profileId),
+    readLaneRecordSnapshot(profileId),
+    readUserRolesByEmail(email)
+  ]);
+
+  return {
+    profile,
+    primary_onboarding_role: profile?.primary_onboarding_role ?? null,
+    clients_exists: Boolean(rows.client),
+    barbers_exists: Boolean(rows.barber),
+    shops_exists: Boolean(rows.shop),
+    user_roles: userRoles,
+    rows
+  };
+}
+
+async function deleteWhereEq(table: string, field: string, value: string | null | undefined, action: string) {
+  const supabase = await getSupabase();
+  if (!supabase || !value) {
+    return false;
+  }
+
+  const result = await supabase
+    .from(table)
+    .delete()
+    .eq(field, value);
+
+  if (result.error && !isSchemaError(result.error)) {
+    throwSupabaseLaneError(action, result.error);
+  }
+
+  return !result.error;
+}
+
+async function resetStaleOnboardingState(input: {
+  profileId: string;
+  email: string;
+  rows: LaneRecordSnapshot;
+  reason: string;
+  selectedLane: IdentityLane;
+}) {
+  const deleted: Record<string, boolean> = {};
+
+  deleted.clientProfilesByReference = await deleteWhereEq(
+    "client_profiles",
+    "client_reference",
+    input.rows.client?.reference_code,
+    "Stale client profile cleanup by reference"
+  );
+  deleted.clientProfilesByEmail = await deleteWhereEq(
+    "client_profiles",
+    "profile_email",
+    input.email,
+    "Stale client profile cleanup by email"
+  );
+  deleted.clients = await deleteWhereEq("clients", "profile_id", input.profileId, "Stale client row cleanup");
+
+  deleted.barberProfiles = await deleteWhereEq(
+    "barber_profiles",
+    "barber_reference",
+    input.rows.barber?.reference_code,
+    "Stale barber profile cleanup"
+  );
+  deleted.barberStatus = await deleteWhereEq(
+    "barber_status",
+    "barber_reference",
+    input.rows.barber?.reference_code,
+    "Stale barber status cleanup"
+  );
+  deleted.barbers = await deleteWhereEq("barbers", "profile_id", input.profileId, "Stale barber row cleanup");
+
+  deleted.staffLocations = await deleteWhereEq(
+    "staff_locations",
+    "profile_id",
+    input.profileId,
+    "Stale owner staff location cleanup"
+  );
+  deleted.locations = await deleteWhereEq(
+    "locations",
+    "reference_code",
+    input.rows.shop?.id,
+    "Stale owner location cleanup"
+  );
+  deleted.shops = await deleteWhereEq("shops", "owner_profile_id", input.profileId, "Stale shop row cleanup");
+
+  deleted.userRoles = await deleteWhereEq("user_roles", "user_email", input.email, "Stale user role cleanup");
+
+  console.info("[auth] Recovered stale onboarding state", {
+    profileId: input.profileId,
+    email: input.email,
+    selectedLane: input.selectedLane,
+    reason: input.reason,
+    rowsBeforeReset: {
+      client: input.rows.client,
+      barber: input.rows.barber,
+      shop: input.rows.shop
+    },
+    deleted
+  });
+}
+
+function isOfficialLaneLocked(profile: ProfileRow | null, rows: LaneRecordSnapshot) {
+  const primaryRole = profile?.primary_onboarding_role ?? null;
+  if (!primaryRole || profile?.onboarding_state !== "active") {
+    return false;
+  }
+
+  if (primaryRole === "client") {
+    return Boolean(rows.client);
+  }
+
+  if (primaryRole === "barber") {
+    return Boolean(rows.barber?.barber_subtype);
+  }
+
+  return Boolean(rows.shop);
 }
 
 async function readCanonicalContactSnapshot(
@@ -2333,8 +2482,9 @@ export async function initializeProductionRoleSelection(
     phone: normalizePhoneNumber(contactState.phone)
   };
   const profileId = await resolveProfileId(authUser);
-  const profileBeforeLaunch = await readProfile(profileId);
-  const rowsBeforeLaunch = await readLaneRecordSnapshot(profileId);
+  let profileBeforeLaunch = await readProfile(profileId);
+  let rowsBeforeLaunch = await readLaneRecordSnapshot(profileId);
+  const userRolesBeforeLaunch = await readUserRolesByEmail(identity.email);
   console.info("[auth] lane launch canonical state before write", {
     userId: authUser.id,
     profileId,
@@ -2345,7 +2495,56 @@ export async function initializeProductionRoleSelection(
       barberExists: Boolean(rowsBeforeLaunch.barber),
       ownerShopExists: Boolean(rowsBeforeLaunch.shop),
       barberSubtype: rowsBeforeLaunch.barber?.barber_subtype ?? null
+    },
+    userRoles: userRolesBeforeLaunch
+  });
+
+  const primaryRoleBeforeLaunch = profileBeforeLaunch?.primary_onboarding_role ?? null;
+  if (!primaryRoleBeforeLaunch) {
+    await resetStaleOnboardingState({
+      profileId,
+      email: identity.email,
+      rows: rowsBeforeLaunch,
+      selectedLane: input.role,
+      reason: "primary_onboarding_role_null"
+    });
+    rowsBeforeLaunch = await readLaneRecordSnapshot(profileId);
+    profileBeforeLaunch = await readProfile(profileId);
+  } else if (primaryRoleBeforeLaunch !== input.role) {
+    if (isOfficialLaneLocked(profileBeforeLaunch, rowsBeforeLaunch)) {
+      console.warn("[auth] lane launch blocked by active official lane", {
+        userId: authUser.id,
+        profileId,
+        selectedLane: input.role,
+        primaryRoleBeforeLaunch,
+        profileBeforeLaunch,
+        rowsBeforeLaunch
+      });
+      throw new Error("ACTIVE_LANE_LOCKED");
     }
+
+    await resetStaleOnboardingState({
+      profileId,
+      email: identity.email,
+      rows: rowsBeforeLaunch,
+      selectedLane: input.role,
+      reason: "incomplete_official_lane_switch"
+    });
+    rowsBeforeLaunch = await readLaneRecordSnapshot(profileId);
+    profileBeforeLaunch = await readProfile(profileId);
+  }
+
+  console.info("[auth] lane launch canonical state after stale reset", {
+    userId: authUser.id,
+    profileId,
+    selectedLane: input.role,
+    profile: profileBeforeLaunch,
+    laneRows: {
+      clientExists: Boolean(rowsBeforeLaunch.client),
+      barberExists: Boolean(rowsBeforeLaunch.barber),
+      ownerShopExists: Boolean(rowsBeforeLaunch.shop)
+    },
+    userRoles: await readUserRolesByEmail(identity.email)
   });
 
   if (input.role === "client") {
@@ -2376,10 +2575,9 @@ export async function initializeProductionRoleSelection(
 
   if (input.role === "barber") {
     if (!input.barberSubtype) {
-      const existingProfile = await readProfile(profileId);
       await upsertProfileForLane({
         profileId,
-        role: (existingProfile?.role && existingProfile.role !== "shop_owner" ? existingProfile.role : "client") as Role,
+        role: "client",
         primaryOnboardingRole: "barber",
         onboardingState: "role_selected",
         fullName: identity.name,
@@ -2440,7 +2638,6 @@ export async function initializeProductionRoleSelection(
     throw new Error("shop_name_required");
   }
 
-  const lane = await ensureOwnerLane(profileId, identity, shopName);
   await upsertProfileForLane({
     profileId,
     role: "owner",
@@ -2450,6 +2647,7 @@ export async function initializeProductionRoleSelection(
     email: identity.email,
     phone: identity.phone
   });
+  const lane = await ensureOwnerLane(profileId, identity, shopName);
 
   const user = await buildRuntimeUserFromProductionAuth(authUser);
   const profileAfterLaunch = await readProfile(profileId);

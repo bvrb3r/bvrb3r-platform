@@ -147,7 +147,7 @@ export function RoleSelectWorkspace() {
                     type="button"
                     className="h-12 px-6"
                     disabled={mutation.isPending || shopName.trim().length < 2}
-                    onClick={() => void handleContinue({ role: "shop_owner", shopName })}
+                    onClick={() => void handleContinue({ role: "shop_owner", shopName, shop_name: shopName })}
                   >
                     {mutation.isPending ? "Creating owner account..." : "Continue as shop owner"}
                   </Button>
