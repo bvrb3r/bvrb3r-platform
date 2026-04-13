@@ -278,24 +278,82 @@ describe("onboarding service", () => {
     expect(result.state.profileData.shopName).toBe("Owner Runtime Shop");
   });
 
-  it("keeps a profile-only user inside the lane they already selected", async () => {
+  it("recovers a stale incomplete official client lane when a verified user chooses barber", async () => {
     const client = resolveDemoUser("client@bvrb3r.demo");
-    const pendingClient: UserAccount = {
+    const staleOfficialClient: UserAccount = {
       ...client,
-      canonicalFullName: "Pending Client",
-      phone: "+18135550136",
+      id: "stale-official-client-barber",
+      role: "client",
+      firstName: "Stale",
+      lastName: "Official",
+      canonicalFullName: "Stale Official",
+      phone: "+18135550137",
       accountStatus: "profile_only",
       primaryOnboardingRole: "client",
       onboardingState: "role_selected",
       emailVerified: true,
       phoneVerified: true,
-      clientId: undefined
+      clientId: "client-stale-official"
     };
 
-    await initializeUserRole(pendingClient, "client");
+    await initializeUserRole(staleOfficialClient, "client");
+    const result = await initializeUserRole(staleOfficialClient, "barber");
+    const payload = await getOnboardingState({
+      ...staleOfficialClient,
+      primaryOnboardingRole: "barber"
+    });
+
+    expect(result.state.role).toBe("barber");
+    expect(result.state.status).toBe("in_progress");
+    expect(payload.nextPath).toBe("/onboarding/barber-type");
+  });
+
+  it("recovers a stale incomplete official client lane when a verified user chooses shop owner", async () => {
+    const client = resolveDemoUser("client@bvrb3r.demo");
+    const staleOfficialClient: UserAccount = {
+      ...client,
+      id: "stale-official-client-owner",
+      role: "client",
+      firstName: "Stale",
+      lastName: "Owner",
+      canonicalFullName: "Stale Owner",
+      phone: "+18135550138",
+      accountStatus: "profile_only",
+      primaryOnboardingRole: "client",
+      onboardingState: "role_selected",
+      emailVerified: true,
+      phoneVerified: true,
+      clientId: "client-stale-owner-official"
+    };
+
+    await initializeUserRole(staleOfficialClient, "client");
+    const result = await initializeUserRole(staleOfficialClient, "shop_owner", {
+      shopName: "Recovered Owner Shop"
+    });
+
+    expect(result.state.role).toBe("shop_owner");
+    expect(result.state.status).toBe("in_progress");
+    expect(result.state.profileData.shopName).toBe("Recovered Owner Shop");
+  });
+
+  it("keeps an active completed user inside the lane they already selected", async () => {
+    const client = resolveDemoUser("client@bvrb3r.demo");
+    const activeClient: UserAccount = {
+      ...client,
+      canonicalFullName: "Active Client",
+      phone: "+18135550136",
+      accountStatus: "active",
+      primaryOnboardingRole: "client",
+      onboardingState: "active",
+      emailVerified: true,
+      phoneVerified: true,
+      clientId: "client-active"
+    };
+
+    await initializeUserRole(activeClient, "client");
 
     await expect(
-      markOnboardingStepComplete(pendingClient, "shop_owner", "owner_shop", { shopName: "Cross-lane test" })
-    ).rejects.toThrow("onboarding_role_mismatch");
+      markOnboardingStepComplete(activeClient, "shop_owner", "owner_shop", { shopName: "Cross-lane test" })
+    ).rejects.toThrow("onboarding_role_forbidden");
   });
 });

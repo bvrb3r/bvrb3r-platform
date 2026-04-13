@@ -464,6 +464,30 @@ function isRuntimeRoleAllowedForOnboarding(user: UserAccount, role: OnboardingRo
   return user.role === "owner";
 }
 
+function getOfficialLaneConflict(
+  user: UserAccount,
+  requestedRole: OnboardingRole,
+  rows: OnboardingStateRecord[]
+) {
+  const officialRole = user.primaryOnboardingRole;
+  if (!officialRole || officialRole === requestedRole) {
+    return null;
+  }
+
+  const officialLaneRow = rows.find((entry) => entry.role === officialRole);
+  const officialLaneIsFinal = Boolean(
+    user.accountStatus === "active"
+    || user.onboardingState === "active"
+    || officialLaneRow?.status === "completed"
+  );
+
+  return {
+    officialRole,
+    officialLaneRow,
+    officialLaneIsFinal
+  };
+}
+
 function assertOnboardingRoleAccess(
   user: UserAccount,
   role: OnboardingRole,
@@ -507,32 +531,41 @@ function assertOnboardingRoleAccess(
   }
 
   const selectedRole = chooseSelectedRole(rows);
-  if (user.primaryOnboardingRole && user.primaryOnboardingRole !== role) {
+  const officialConflict = getOfficialLaneConflict(user, role, rows);
+  if (officialConflict?.officialLaneIsFinal) {
     logLaneLaunch("lane access blocked", {
       userId: user.id,
       requestedRole: role,
       selectedRole,
       reason: "onboarding_role_mismatch",
-      primaryOnboardingRole: user.primaryOnboardingRole
+      primaryOnboardingRole: officialConflict.officialRole,
+      officialLaneStatus: officialConflict.officialLaneRow?.status ?? null,
+      officialLaneCurrentStep: officialConflict.officialLaneRow?.currentStep ?? null
     });
     throw new Error("onboarding_role_mismatch");
   }
 
-  if (user.accountStatus === "profile_only" && user.primaryOnboardingRole && selectedRole && selectedRole !== role) {
-    logLaneLaunch("lane access blocked", {
+  if (officialConflict && !officialConflict.officialLaneIsFinal) {
+    logLaneLaunch("lane access recovered stale official lane", {
       userId: user.id,
       requestedRole: role,
       selectedRole,
-      reason: "onboarding_role_mismatch"
+      previousPrimaryOnboardingRole: officialConflict.officialRole,
+      previousOfficialLaneStatus: officialConflict.officialLaneRow?.status ?? null,
+      previousOfficialLaneCurrentStep: officialConflict.officialLaneRow?.currentStep ?? null,
+      reason: "official_lane_not_final"
     });
-    throw new Error("onboarding_role_mismatch");
   }
 
   logLaneLaunch("lane access allowed", {
     userId: user.id,
     requestedRole: role,
     selectedRole,
-    reason: user.primaryOnboardingRole ? "official_lane_matches" : "no_official_lane_selected"
+    reason: officialConflict
+      ? "recovered_stale_official_lane"
+      : user.primaryOnboardingRole
+        ? "official_lane_matches"
+        : "no_official_lane_selected"
   });
 }
 
