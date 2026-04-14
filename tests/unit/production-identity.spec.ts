@@ -753,5 +753,6 @@ describe("production identity provisioning", () => {
     expect(result.user.role).toBe("owner");
     expect(result.user.primaryOnboardingRole).toBe("shop_owner");
     expect(result.user.ownedShopId).toBe("shop-new-owner-shop-auth-n");
+    expect(result.user.ownedShopName).toBe("New Owner Shop");
   });
 });

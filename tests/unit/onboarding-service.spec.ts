@@ -42,7 +42,10 @@ describe("onboarding service", () => {
     };
     await initializeUserRole(pendingClient, "client");
 
-    const payload = await getOnboardingState(pendingClient);
+    const payload = await getOnboardingState({
+      ...pendingClient,
+      primaryOnboardingRole: "client"
+    });
 
     expect(payload.selectedRole).toBe("client");
     expect(payload.nextPath).toBe("/onboarding/client/profile");
@@ -73,8 +76,12 @@ describe("onboarding service", () => {
       preferredServices: "Signature cut"
     });
 
-    const destination = await resolvePostAuthDestination(pendingClient);
-    const activation = await getActivationStatusForUser(pendingClient);
+    const canonicalClient = {
+      ...pendingClient,
+      primaryOnboardingRole: "client" as const
+    };
+    const destination = await resolvePostAuthDestination(canonicalClient);
+    const activation = await getActivationStatusForUser(canonicalClient);
 
     expect(destination).toBe("/dashboard/client");
     expect(activation.lanes[0]?.activationState).toBe("active");
@@ -100,6 +107,46 @@ describe("onboarding service", () => {
     const destination = await resolvePostAuthDestination(freshUser);
 
     expect(destination).toBe("/role-select");
+  });
+
+  it("keeps a primary-role-null user on role-select even when stale lane rows exist", async () => {
+    const staleClient: UserAccount = {
+      ...resolveDemoUser("client@bvrb3r.demo"),
+      id: "fresh-with-stale-lane-row",
+      role: "client",
+      firstName: "Fresh",
+      lastName: "Stale",
+      canonicalFullName: "Fresh Stale",
+      phone: "+18135550140",
+      accountStatus: "active",
+      primaryOnboardingRole: undefined,
+      onboardingState: "active",
+      emailVerified: true,
+      phoneVerified: true,
+      clientId: "client-stale-row"
+    };
+
+    await initializeUserRole(staleClient, "client");
+
+    const destination = await resolvePostAuthDestination(staleClient);
+
+    expect(destination).toBe("/role-select");
+  });
+
+  it("routes a saved client lane directly to the client dashboard", async () => {
+    const destination = await resolvePostAuthDestination({
+      ...resolveDemoUser("client@bvrb3r.demo"),
+      canonicalFullName: "Saved Client",
+      phone: "+18135550141",
+      accountStatus: "active",
+      primaryOnboardingRole: "client",
+      onboardingState: "active",
+      emailVerified: true,
+      phoneVerified: true,
+      clientId: "client-saved"
+    });
+
+    expect(destination).toBe("/dashboard/client");
   });
 
   it("routes an existing barber with no subtype to the barber type step", async () => {

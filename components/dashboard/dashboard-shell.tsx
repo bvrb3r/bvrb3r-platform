@@ -401,6 +401,9 @@ export function DashboardShell({
   const nav = getNavigation(user);
   const activeRole = getUserRoleLabel(user);
   const useDemoData = isDemoMode();
+  const ownerShopName = user.role === "owner" ? user.ownedShopName?.trim() || null : null;
+  const primaryShellIdentity = ownerShopName ?? "BVRB3R Platform";
+  const mobileWorkspaceLabel = ownerShopName ?? `${activeRole} workspace`;
   const visibleLocations = useDemoData
     ? demoLocations.filter((location) => user.locationIds.includes(location.id))
     : user.locationIds.map((locationId) => ({
@@ -428,7 +431,7 @@ export function DashboardShell({
         <Card className="hidden h-fit rounded-[34px] bg-[linear-gradient(180deg,rgba(16,16,16,0.98),rgba(8,8,8,0.98))] p-4 lg:sticky lg:top-4 lg:block">
           <div className="rounded-[28px] border border-[#7CFF00]/16 bg-[linear-gradient(180deg,rgba(124,255,0,0.12),rgba(124,255,0,0.04))] p-5">
             <p className="surface-label text-[#cfff93]">The BVRB3R Shop(TM)</p>
-            <h1 className="mt-3 text-3xl font-semibold" data-display="true">BVRB3R Platform</h1>
+            <h1 className="mt-3 text-3xl font-semibold" data-display="true" data-testid="shell-business-name">{primaryShellIdentity}</h1>
             <p className="mt-4 text-sm text-white/60" data-testid="shell-identity-name">{user.name}</p>
             <p className="mt-1 text-[11px] uppercase tracking-[0.22em] text-white/40" data-testid="shell-identity-title">{user.title}</p>
             <div className="mt-4 inline-flex items-center rounded-full border border-white/10 bg-black/35 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-[#cfff93]" data-testid="shell-identity-role">
@@ -531,7 +534,7 @@ export function DashboardShell({
                 </div>
                 <div className="min-w-0">
                   <p className="text-[10px] uppercase tracking-[0.26em] text-[#cfff93]">BVRB3R</p>
-                  <p className="mt-1 truncate text-sm font-medium text-white/74">{activeRole} workspace</p>
+                  <p className="mt-1 truncate text-sm font-medium text-white/74" data-testid="shell-mobile-business-name">{mobileWorkspaceLabel}</p>
                 </div>
               </Link>
               <div className="flex items-center gap-2">

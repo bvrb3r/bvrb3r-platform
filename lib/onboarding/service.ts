@@ -320,27 +320,7 @@ function chooseSelectedRole(lanes: OnboardingStateRecord[]) {
 }
 
 function inferSelectedRoleFromUser(user: UserAccount): OnboardingRole | null {
-  if (user.primaryOnboardingRole) {
-    return user.primaryOnboardingRole;
-  }
-
-  if (user.accountStatus !== "active" || user.onboardingState !== "active") {
-    return null;
-  }
-
-  if (user.role === "owner") {
-    return "shop_owner";
-  }
-
-  if (user.role === "commission_barber" || user.role === "booth_rent_barber") {
-    return "barber";
-  }
-
-  if (user.role === "client" && user.clientId) {
-    return "client";
-  }
-
-  return null;
+  return user.primaryOnboardingRole ?? null;
 }
 
 function hasRequiredContactData(user: UserAccount) {
@@ -910,7 +890,7 @@ export async function getOnboardingState(user: UserAccount): Promise<OnboardingM
       };
     });
 
-  const selectedRole = inferSelectedRoleFromUser(user) ?? chooseSelectedRole(rows);
+  const selectedRole = inferSelectedRoleFromUser(user);
   const nextPath = await resolvePostAuthDestination(user, { lanes, selectedRole, warnings });
 
   return {
@@ -962,7 +942,7 @@ export async function resolvePostAuthDestination(
           : null
       }
     : await getOnboardingSummaryForRuntimeUser(user.id);
-  const selectedRole = inferSelectedRoleFromUser(user) ?? onboardingSummary.selectedRole;
+  const selectedRole = inferSelectedRoleFromUser(user);
 
   if (user.role === "platform_admin" && user.accountStatus === "active") {
     return "/architect";

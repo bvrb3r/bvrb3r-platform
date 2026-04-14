@@ -4,12 +4,15 @@ import { getAuthorizedUser } from "@/lib/auth/guards";
 
 export default async function OwnerDashboardPage() {
   const user = await getAuthorizedUser(["owner"]);
+  const shopName = user.ownedShopName?.trim();
   return (
     <DashboardShell
       user={user}
       activeHref="/dashboard/owner"
-      title="Owner control center"
-      subtitle="See revenue, chair flow, team performance, and financial health from one owner-safe command view."
+      title={shopName || "Owner control center"}
+      subtitle={shopName
+        ? `${shopName} is your owner-safe command view for activation, setup, revenue, chair flow, team performance, and financial health.`
+        : "See revenue, chair flow, team performance, and financial health from one owner-safe command view."}
     >
       <OwnerOverview />
     </DashboardShell>

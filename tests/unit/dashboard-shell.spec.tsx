@@ -38,4 +38,28 @@ describe("dashboard shell identity and navigation", () => {
       expect(screen.queryByText("Brandon Rivers")).not.toBeInTheDocument();
     }
   });
+
+  it("shows the canonical saved shop name as the owner business identity", () => {
+    const user = {
+      ...resolveDemoUser("owner@bvrb3r.demo"),
+      name: "Phillip Mcgee",
+      canonicalFullName: "Phillip Mcgee",
+      title: "Shop Owner",
+      ownedShopId: "shop-phillip",
+      ownedShopName: "Phillip's Fresh Cuts",
+      locationIds: ["shop-phillip"]
+    };
+
+    render(
+      <DashboardShell user={user} activeHref="/dashboard/owner" title="Phillip's Fresh Cuts" subtitle="Testing owner identity.">
+        <div>Workspace body</div>
+      </DashboardShell>
+    );
+
+    expect(screen.getByTestId("shell-business-name")).toHaveTextContent("Phillip's Fresh Cuts");
+    expect(screen.getByTestId("shell-identity-name")).toHaveTextContent("Phillip Mcgee");
+    expect(screen.getByTestId("shell-identity-role")).toHaveTextContent("Active role: Shop owner");
+    expect(screen.getAllByText("Phillip's Fresh Cuts").length).toBeGreaterThan(0);
+    expect(screen.queryByTestId("shell-business-name")).not.toHaveTextContent("BVRB3R Platform");
+  });
 });
