@@ -369,6 +369,31 @@ describe("barber workspace", () => {
 
     expect(screen.queryByTestId("barber-subtype-setup")).not.toBeInTheDocument();
     expect(screen.queryByText("Complete your barber setup")).not.toBeInTheDocument();
+    expect(screen.getByTestId("barber-subtype-settings")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Update business model" })).toBeInTheDocument();
+  });
+
+  it("lets a barber update their subtype later from dashboard settings", async () => {
+    const saveSubtype = vi.fn().mockResolvedValue({
+      lane: { role: "barber" },
+      degraded: false,
+      nextPath: "/dashboard/barber"
+    });
+    useSaveBarberSubtypeMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: saveSubtype
+    });
+
+    render(<BarberWorkspace barberName="Blaze King" barberTitle="Freelance Barber" barberSubtype="freelance" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Update business model" }));
+    fireEvent.click(screen.getByRole("button", { name: /Booth rent \/ Blueprint/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Save business model" }));
+
+    await waitFor(() => {
+      expect(saveSubtype).toHaveBeenCalledWith("blueprint");
+    });
+    expect(await screen.findByText("Business model saved. Your barber dashboard is ready to keep moving.")).toBeInTheDocument();
   });
 
   it("opens a one-stop appointment detail drawer from the calendar", () => {
