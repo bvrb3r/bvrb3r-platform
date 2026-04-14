@@ -7,6 +7,7 @@ const {
   useBarberOverviewQueryMock,
   useBarberLifecycleMutationMock,
   useNotifyBarberOpenSlotMutationMock,
+  useSaveBarberSubtypeMutationMock,
   useCreateMessageThreadMutationMock,
   useMarketplaceServiceCatalogMock,
   useCreateQueueEntryMutationMock,
@@ -16,6 +17,7 @@ const {
   useBarberOverviewQueryMock: vi.fn(),
   useBarberLifecycleMutationMock: vi.fn(),
   useNotifyBarberOpenSlotMutationMock: vi.fn(),
+  useSaveBarberSubtypeMutationMock: vi.fn(),
   useCreateMessageThreadMutationMock: vi.fn(),
   useMarketplaceServiceCatalogMock: vi.fn(),
   useCreateQueueEntryMutationMock: vi.fn(),
@@ -54,7 +56,8 @@ vi.mock("next/link", () => ({
 vi.mock("@/lib/operations/barber-client", () => ({
   useBarberOverviewQuery: useBarberOverviewQueryMock,
   useBarberLifecycleMutation: useBarberLifecycleMutationMock,
-  useNotifyBarberOpenSlotMutation: useNotifyBarberOpenSlotMutationMock
+  useNotifyBarberOpenSlotMutation: useNotifyBarberOpenSlotMutationMock,
+  useSaveBarberSubtypeMutation: useSaveBarberSubtypeMutationMock
 }));
 
 vi.mock("@/lib/marketplace/client", () => ({
@@ -78,6 +81,7 @@ describe("barber workspace", () => {
     useBarberOverviewQueryMock.mockReset();
     useBarberLifecycleMutationMock.mockReset();
     useNotifyBarberOpenSlotMutationMock.mockReset();
+    useSaveBarberSubtypeMutationMock.mockReset();
     useCreateMessageThreadMutationMock.mockReset();
     useMarketplaceServiceCatalogMock.mockReset();
     useCreateQueueEntryMutationMock.mockReset();
@@ -93,6 +97,14 @@ describe("barber workspace", () => {
         notificationsQueued: 2,
         audienceCount: 2,
         slotStartsAt: "2026-03-26T14:45:00.000Z"
+      })
+    });
+    useSaveBarberSubtypeMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: vi.fn().mockResolvedValue({
+        lane: { role: "barber" },
+        degraded: false,
+        nextPath: "/dashboard/barber"
       })
     });
     useCreateMessageThreadMutationMock.mockReturnValue({
@@ -317,6 +329,46 @@ describe("barber workspace", () => {
     expect(screen.queryByRole("button", { name: "Start Service" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Open command" })).not.toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: /Create walk-in booking at/i }).length).toBeGreaterThan(0);
+  });
+
+  it("shows an in-dashboard setup prompt when the barber subtype is missing", () => {
+    render(<BarberWorkspace barberName="Blaze King" barberTitle="Barber" />);
+
+    expect(screen.getByTestId("barber-subtype-setup")).toBeInTheDocument();
+    expect(screen.getByText("Complete your barber setup")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Freelance/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Commission/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Booth rent \/ Blueprint/i })).toBeInTheDocument();
+  });
+
+  it("saves the barber subtype from the dashboard setup prompt", async () => {
+    const saveSubtype = vi.fn().mockResolvedValue({
+      lane: { role: "barber" },
+      degraded: false,
+      nextPath: "/dashboard/barber"
+    });
+    useSaveBarberSubtypeMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: saveSubtype
+    });
+
+    render(<BarberWorkspace barberName="Blaze King" barberTitle="Barber" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Commission/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Save business model" }));
+
+    await waitFor(() => {
+      expect(saveSubtype).toHaveBeenCalledWith("commission");
+    });
+    expect(await screen.findByText("Business model saved. Your barber dashboard is ready to keep moving.")).toBeInTheDocument();
+    expect(screen.queryByTestId("barber-subtype-setup")).not.toBeInTheDocument();
+  });
+
+  it("does not show the subtype setup prompt after subtype is saved", () => {
+    render(<BarberWorkspace barberName="Blaze King" barberTitle="Freelance Barber" barberSubtype="freelance" />);
+
+    expect(screen.queryByTestId("barber-subtype-setup")).not.toBeInTheDocument();
+    expect(screen.queryByText("Complete your barber setup")).not.toBeInTheDocument();
   });
 
   it("opens a one-stop appointment detail drawer from the calendar", () => {

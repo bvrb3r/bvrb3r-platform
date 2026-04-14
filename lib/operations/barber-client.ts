@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Client, WalkInEntry } from "@/types/domain";
+import type { BarberSubtype, Client, WalkInEntry } from "@/types/domain";
 import type { BarberMoneyDashboardView } from "@/types/fintech";
 import type { LiveAppointmentRecord } from "@/lib/operations/live-state";
 import type { BarberRevenueIntelligenceView } from "@/types/monetization";
@@ -187,6 +187,12 @@ interface NotifyBarberOpenSlotResponse {
   notificationsQueued: number;
   audienceCount: number;
   slotStartsAt: string;
+}
+
+interface BarberSubtypeSelectionResponse {
+  lane: unknown;
+  degraded: boolean;
+  nextPath: string;
 }
 
 export interface BarberDashboardResponse {
@@ -524,6 +530,27 @@ export function useNotifyBarberOpenSlotMutation() {
           body: JSON.stringify(input)
         })
       )
+  });
+}
+
+export function useSaveBarberSubtypeMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (barberSubtype: BarberSubtype) =>
+      requestJson<BarberSubtypeSelectionResponse>("/api/onboarding/barber/type", {
+        method: "POST",
+        body: JSON.stringify({ barberSubtype })
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["barber-overview"] }),
+        queryClient.invalidateQueries({ queryKey: ["barber-dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["barber-status"] }),
+        queryClient.invalidateQueries({ queryKey: ["onboarding-me"] }),
+        queryClient.invalidateQueries({ queryKey: ["activation-status"] })
+      ]);
+    }
   });
 }
 

@@ -149,25 +149,25 @@ describe("onboarding service", () => {
     expect(destination).toBe("/dashboard/client");
   });
 
-  it("routes an existing barber with no subtype to the barber type step", async () => {
+  it("routes a saved barber lane with no subtype directly to the barber dashboard", async () => {
     const barber = resolveDemoUser("lux@bvrb3r.demo");
     const pendingBarber: UserAccount = {
       ...barber,
       firstName: "Lux",
       lastName: "Reed",
       phone: "+18135550111",
-      accountStatus: "profile_only",
+      accountStatus: "active",
       primaryOnboardingRole: "barber",
-      onboardingState: "role_selected",
+      onboardingState: "active",
       emailVerified: true,
       phoneVerified: true,
       barberSubtype: undefined,
-      barberId: undefined
+      barberId: "barber-lux"
     };
 
     const destination = await resolvePostAuthDestination(pendingBarber);
 
-    expect(destination).toBe("/onboarding/barber-type");
+    expect(destination).toBe("/dashboard/barber");
   });
 
   it("routes a completed barber lane with subtype to the barber dashboard", async () => {
@@ -288,13 +288,17 @@ describe("onboarding service", () => {
     const result = await initializeUserRole(staleClient, "barber");
     const payload = await getOnboardingState({
       ...staleClient,
-      primaryOnboardingRole: "barber"
+      accountStatus: "active",
+      role: "booth_rent_barber",
+      primaryOnboardingRole: "barber",
+      onboardingState: "active",
+      barberId: "barber-stale-cl"
     });
 
     expect(result.state.role).toBe("barber");
     expect(result.state.status).toBe("in_progress");
     expect(result.state.profileData.barberSubtype).toBeUndefined();
-    expect(payload.nextPath).toBe("/onboarding/barber-type");
+    expect(payload.nextPath).toBe("/dashboard/barber");
   });
 
   it("allows a verified user with stale client runtime role to launch the owner lane", async () => {
@@ -372,12 +376,16 @@ describe("onboarding service", () => {
     const result = await initializeUserRole(staleOfficialClient, "barber");
     const payload = await getOnboardingState({
       ...staleOfficialClient,
-      primaryOnboardingRole: "barber"
+      accountStatus: "active",
+      role: "booth_rent_barber",
+      primaryOnboardingRole: "barber",
+      onboardingState: "active",
+      barberId: "barber-stale-of"
     });
 
     expect(result.state.role).toBe("barber");
     expect(result.state.status).toBe("in_progress");
-    expect(payload.nextPath).toBe("/onboarding/barber-type");
+    expect(payload.nextPath).toBe("/dashboard/barber");
   });
 
   it("recovers a stale incomplete official client lane when a verified user chooses shop owner", async () => {

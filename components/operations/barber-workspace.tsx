@@ -18,12 +18,14 @@ import {
   useBarberLifecycleMutation,
   useNotifyBarberOpenSlotMutation,
   useBarberOverviewQuery,
+  useSaveBarberSubtypeMutation,
   type BarberApiError,
   type BarberOperationalAppointment
 } from "@/lib/operations/barber-client";
 import { useCreateQueueEntryMutation, useQueueEntryActionMutation } from "@/lib/operations/queue-client";
 import { currency } from "@/lib/utils";
 import { getReadableActionError } from "@/lib/utils/feedback";
+import type { BarberSubtype } from "@/types/domain";
 
 type DayCalendarRow = {
   key: string;
@@ -54,6 +56,28 @@ type WalkInDraft = {
 };
 
 const MINUTE_ROW_HEIGHT = 2.4;
+
+const barberSubtypeOptions: Array<{
+  subtype: BarberSubtype;
+  label: string;
+  description: string;
+}> = [
+  {
+    subtype: "freelance",
+    label: "Freelance",
+    description: "Operate independently, set your own availability, and keep BVRB3R as your client growth rail."
+  },
+  {
+    subtype: "commission",
+    label: "Commission",
+    description: "Work inside a shop structure where payouts, approval, and shop context travel together."
+  },
+  {
+    subtype: "blueprint",
+    label: "Booth rent / Blueprint",
+    description: "Run your chair like a booth-rent business with platform setup, payout, and booking controls."
+  }
+];
 
 type CompletionPrompt = {
   startsAt: string;
@@ -300,15 +324,18 @@ function CalendarSkeleton() {
 
 export function BarberWorkspace({
   barberName,
-  barberTitle
+  barberTitle,
+  barberSubtype
 }: {
   barberName: string;
   barberTitle: string;
+  barberSubtype?: BarberSubtype;
 }) {
   const router = useRouter();
   const overviewQuery = useBarberOverviewQuery();
   const lifecycleMutation = useBarberLifecycleMutation();
   const notifyOpenSlotMutation = useNotifyBarberOpenSlotMutation();
+  const saveSubtypeMutation = useSaveBarberSubtypeMutation();
   const createThreadMutation = useCreateMessageThreadMutation();
   const createQueueEntryMutation = useCreateQueueEntryMutation();
   const queueActionMutation = useQueueEntryActionMutation();
@@ -318,6 +345,8 @@ export function BarberWorkspace({
   const [statusUpdate, setStatusUpdate] = useState<{ tone: "success" | "info" | "error"; message: string } | null>(null);
   const [completionPrompt, setCompletionPrompt] = useState<CompletionPrompt | null>(null);
   const [walkInSlot, setWalkInSlot] = useState<string | null>(null);
+  const [configuredSubtype, setConfiguredSubtype] = useState<BarberSubtype | undefined>(barberSubtype);
+  const [selectedSubtype, setSelectedSubtype] = useState<BarberSubtype>(barberSubtype ?? "freelance");
   const [walkInDraft, setWalkInDraft] = useState<WalkInDraft>({
     clientName: "",
     clientPhone: "",
@@ -332,6 +361,7 @@ export function BarberWorkspace({
   const earnings = payload?.earnings;
   const isInitialLoading = overviewQuery.isLoading && !payload;
   const errorMessage = overviewQuery.error ? getReadableActionError(overviewQuery.error as BarberApiError) : null;
+  const needsSubtypeSetup = !configuredSubtype;
   const businessDate = summary?.businessDate ?? new Date().toISOString().slice(0, 10);
   const calendarRows = useMemo(() => buildDayCalendarRows(todayAppointments, businessDate), [businessDate, todayAppointments]);
   const pendingWalkIn = createQueueEntryMutation.isPending || queueActionMutation.isPending;
@@ -507,6 +537,25 @@ export function BarberWorkspace({
     }
   }
 
+  async function handleSaveSubtype() {
+    setStatusUpdate(null);
+
+    try {
+      await saveSubtypeMutation.mutateAsync(selectedSubtype);
+      setConfiguredSubtype(selectedSubtype);
+      setStatusUpdate({
+        tone: "success",
+        message: "Business model saved. Your barber dashboard is ready to keep moving."
+      });
+      (router as { refresh?: () => void }).refresh?.();
+    } catch (error) {
+      setStatusUpdate({
+        tone: "error",
+        message: getReadableActionError(error as BarberApiError)
+      });
+    }
+  }
+
   const appointmentActions = selectedAppointment ? getLifecycleActions(selectedAppointment) : [];
 
   return (
@@ -547,6 +596,55 @@ export function BarberWorkspace({
 
       {statusUpdate ? <FeedbackBanner tone={statusUpdate.tone} message={statusUpdate.message} /> : null}
       {errorMessage ? <FeedbackBanner tone="error" message={errorMessage} /> : null}
+      {needsSubtypeSetup ? (
+        <Card
+          className="rounded-[30px] border border-[#7cff00]/18 bg-[linear-gradient(135deg,rgba(124,255,0,0.14),rgba(8,8,8,0.96))] p-5"
+          data-testid="barber-subtype-setup"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="max-w-2xl">
+              <p className="surface-label text-[#d7ffab]">Complete your barber setup</p>
+              <h3 className="mt-3 text-2xl font-semibold" data-display="true">Choose how you operate on BVRB3R.</h3>
+              <p className="mt-3 text-sm leading-6 text-white/68">
+                You can use the dashboard now. This business model setting helps BVRB3R tune approvals, payouts,
+                shop context, and booking controls for your chair.
+              </p>
+            </div>
+            <Link
+              href="/profile"
+              className="rounded-full border border-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/70 transition hover:border-[#7cff00]/35 hover:text-[#d7ffab]"
+            >
+              Profile settings
+            </Link>
+          </div>
+          <div className="mt-5 grid gap-3 md:grid-cols-3">
+            {barberSubtypeOptions.map((option) => {
+              const isSelected = selectedSubtype === option.subtype;
+              return (
+                <button
+                  key={option.subtype}
+                  type="button"
+                  onClick={() => setSelectedSubtype(option.subtype)}
+                  className={`rounded-[24px] border p-4 text-left transition ${
+                    isSelected
+                      ? "border-[#7cff00]/50 bg-[#7cff00]/14 text-white"
+                      : "border-white/10 bg-black/24 text-white/72 hover:border-[#7cff00]/26"
+                  }`}
+                >
+                  <span className="text-base font-semibold">{option.label}</span>
+                  <span className="mt-2 block text-sm leading-6 text-white/60">{option.description}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-white/54">You can update this later if your barber business model changes.</p>
+            <Button type="button" onClick={handleSaveSubtype} disabled={saveSubtypeMutation.isPending}>
+              {saveSubtypeMutation.isPending ? "Saving setup..." : "Save business model"}
+            </Button>
+          </div>
+        </Card>
+      ) : null}
       {completionPrompt ? (
         <Card className="rounded-[28px] border border-[#7cff00]/16 bg-[linear-gradient(180deg,rgba(124,255,0,0.08),rgba(8,8,8,0.98))] p-5">
           <div className="flex flex-wrap items-start justify-between gap-4">

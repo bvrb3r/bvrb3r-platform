@@ -646,9 +646,7 @@ export async function initializeSelectedUserLane(
     shopName: input.shopName
   });
 
-  const nextState = input.role === "barber" && !input.barberSubtype
-    ? createEmptyState(selection.user, input.role, selection.seedProfileData)
-    : createCompletedLaneState(selection.user, input.role, selection.seedProfileData);
+  const nextState = createCompletedLaneState(selection.user, input.role, selection.seedProfileData);
 
   if (input.role !== "client") {
     await ensureCanonicalVerificationProfile(selection.user, input.role);
@@ -813,7 +811,7 @@ export async function getLaneLaunchDebugState(user: UserAccount) {
     allowedLanes,
     predictedNextPathByLane: {
       client: "/dashboard/client",
-      barber: "/onboarding/barber-type",
+      barber: "/dashboard/barber",
       shop_owner: "/dashboard/owner"
     }
   };
@@ -950,10 +948,6 @@ export async function resolvePostAuthDestination(
 
   if (!selectedRole) {
     return "/role-select";
-  }
-
-  if (selectedRole === "barber" && !user.barberSubtype) {
-    return "/onboarding/barber-type";
   }
 
   if (selectedRole === "client" && !user.clientId) {

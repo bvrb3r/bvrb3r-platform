@@ -672,7 +672,8 @@ describe("production identity provisioning", () => {
     expect(state.profiles[0]).toMatchObject({
       id: "auth-new-barber",
       primary_onboarding_role: "barber",
-      onboarding_state: "role_selected"
+      role: "booth_rent_barber",
+      onboarding_state: "active"
     });
     expect(state.barbers[0]).toMatchObject({
       profile_id: "auth-new-barber",
@@ -683,9 +684,63 @@ describe("production identity provisioning", () => {
     expect(state.clients).toHaveLength(0);
     expect(state.user_roles).toHaveLength(0);
     expect(result.user.primaryOnboardingRole).toBe("barber");
+    expect(result.user.accountStatus).toBe("active");
+    expect(result.user.onboardingState).toBe("active");
     expect(result.user.barberId).toBe("barber-auth-new");
     expect(result.user.barberSubtype).toBeUndefined();
     expect(result.seedProfileData.barberId).toBe("barber-auth-new");
+  });
+
+  it("saves the barber subtype to the canonical barber row after dashboard setup", async () => {
+    state.profiles.push({
+      id: "auth-dashboard-barber",
+      role: "booth_rent_barber",
+      full_name: "Dashboard Barber",
+      email: "dashboard-barber@bvrb3r.app",
+      phone: "+18135550141",
+      phone_verified_at: "2026-04-10T12:00:00.000Z",
+      onboarding_state: "active",
+      primary_onboarding_role: "barber"
+    });
+    state.barbers.push({
+      id: "barber-row-dashboard",
+      profile_id: "auth-dashboard-barber",
+      reference_code: "barber-dashboard",
+      compensation_model: "booth_rent",
+      barber_subtype: null,
+      app_approval_status: "pending",
+      shop_approval_status: "not_required"
+    });
+
+    const result = await initializeProductionRoleSelection({
+      id: "auth-dashboard-barber",
+      email: "dashboard-barber@bvrb3r.app",
+      phone: null,
+      email_confirmed_at: "2026-04-10T12:00:00.000Z",
+      phone_confirmed_at: null,
+      user_metadata: {
+        full_name: "Dashboard Barber"
+      }
+    }, {
+      role: "barber",
+      barberSubtype: "commission"
+    });
+
+    expect(state.profiles[0]).toMatchObject({
+      id: "auth-dashboard-barber",
+      primary_onboarding_role: "barber",
+      role: "commission_barber",
+      onboarding_state: "active"
+    });
+    expect(state.barbers[0]).toMatchObject({
+      profile_id: "auth-dashboard-barber",
+      reference_code: "barber-dashboard",
+      barber_subtype: "commission",
+      compensation_model: "commission"
+    });
+    expect(result.user.barberSubtype).toBe("commission");
+    expect(result.user.role).toBe("commission_barber");
+    expect(result.user.accountStatus).toBe("active");
   });
 
   it("launches the owner lane from a stale client profile and creates owner bootstrap rows", async () => {

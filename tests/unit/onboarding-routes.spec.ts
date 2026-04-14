@@ -75,16 +75,16 @@ describe("onboarding routes", () => {
     expect(body.nextPath).toBe("/dashboard/client");
   });
 
-  it("routes barber role selection into the subtype step when subtype is still missing", async () => {
+  it("routes barber role selection directly to the barber dashboard when subtype is still missing", async () => {
     const barber = resolveDemoUser("lux@bvrb3r.demo");
     getOnboardingSessionUserMock.mockResolvedValue(barber);
     initializeSelectedUserLaneMock.mockResolvedValue({
       user: barber,
-      state: { id: "lane-2", role: "barber", currentStep: "barber_profile", completedSteps: [], profileData: {}, status: "in_progress" },
+      state: { id: "lane-2", role: "barber", currentStep: "barber_verification", completedSteps: ["barber_profile", "barber_services", "barber_availability", "barber_verification"], profileData: {}, status: "completed" },
       degraded: false
     });
 
-    resolvePostAuthDestinationMock.mockResolvedValueOnce("/onboarding/barber-type");
+    resolvePostAuthDestinationMock.mockResolvedValueOnce("/dashboard/barber");
 
     const response = await postOnboardingRole(new NextRequest("https://bvrb3r.demo/api/onboarding/role", {
       method: "POST",
@@ -93,7 +93,7 @@ describe("onboarding routes", () => {
     const body = await response.json();
 
     expect(response.status).toBe(201);
-    expect(body.nextPath).toBe("/onboarding/barber-type");
+    expect(body.nextPath).toBe("/dashboard/barber");
   });
 
   it("normalizes shop_name payloads and routes owner role selection to the owner dashboard", async () => {

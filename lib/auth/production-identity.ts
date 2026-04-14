@@ -1009,7 +1009,7 @@ function isOfficialLaneLocked(profile: ProfileRow | null, rows: LaneRecordSnapsh
   }
 
   if (primaryRole === "barber") {
-    return Boolean(rows.barber?.barber_subtype);
+    return Boolean(rows.barber);
   }
 
   return Boolean(rows.shop);
@@ -1209,7 +1209,7 @@ export async function buildRuntimeUserFromProductionAuth(authUser: AuthUserLike)
     const locationIds = await readLocationReferencesForProfile(authUser.id, shop?.id ?? null);
     const hasLaneRecord = Boolean(
       (primaryRole === "client" && client)
-      || (primaryRole === "barber" && barber?.barber_subtype)
+      || (primaryRole === "barber" && barber)
       || (primaryRole === "shop_owner" && shop)
     );
     const onboardingState = inferOnboardingState({
@@ -2676,9 +2676,9 @@ export async function initializeProductionRoleSelection(
     if (!input.barberSubtype) {
       await upsertProfileForLane({
         profileId,
-        role: "client",
+        role: "booth_rent_barber",
         primaryOnboardingRole: "barber",
-        onboardingState: "role_selected",
+        onboardingState: "active",
         fullName: identity.name,
         email: identity.email,
         phone: identity.phone
@@ -2692,7 +2692,7 @@ export async function initializeProductionRoleSelection(
         selectedLane: input.role,
         profileAfterLaunch,
         seedProfileData: lane.seedProfileData,
-        nextExpectedStep: "/onboarding/barber-type"
+        nextExpectedStep: "/dashboard/barber"
       });
       return {
         user,

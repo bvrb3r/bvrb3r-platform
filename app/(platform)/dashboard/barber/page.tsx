@@ -11,7 +11,7 @@ export default async function BarberDashboardPage() {
       title="Chair calendar"
       subtitle="Run the day from the calendar, tap any booking for the full chair context, and fill open time without leaving the schedule."
     >
-      <BarberWorkspace barberName={user.name} barberTitle={user.title} />
+      <BarberWorkspace barberName={user.name} barberTitle={user.title} barberSubtype={user.barberSubtype} />
     </DashboardShell>
   );
 }

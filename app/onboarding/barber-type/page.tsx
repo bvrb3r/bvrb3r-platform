@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import { BarberTypeWorkspace } from "@/components/onboarding/barber-type-workspace";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
 import { resolvePostAuthDestination } from "@/lib/onboarding/service";
 
@@ -10,9 +9,5 @@ export default async function BarberTypePage() {
   }
 
   const destination = await resolvePostAuthDestination(user);
-  if (destination !== "/onboarding/barber-type") {
-    redirect(destination);
-  }
-
-  return <BarberTypeWorkspace />;
+  redirect(destination === "/onboarding/barber-type" ? "/dashboard/barber" : destination);
 }
