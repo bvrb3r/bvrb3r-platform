@@ -1,6 +1,29 @@
 import { createInitialLiveOperationsSnapshot, scopeLiveOperationsSnapshot } from "@/lib/operations/live-state";
 
 describe("live operations snapshot role scoping", () => {
+  it("limits owner views to assigned shop locations only", () => {
+    const snapshot = createInitialLiveOperationsSnapshot();
+    const ownerView = scopeLiveOperationsSnapshot(snapshot, { role: "owner", locationIds: ["loc-ybor"] });
+
+    expect(ownerView.appointments.length).toBeGreaterThan(0);
+    expect(ownerView.appointments.every((appointment) => appointment.locationId === "loc-ybor")).toBe(true);
+    expect(ownerView.walkIns.every((entry) => entry.locationId === "loc-ybor")).toBe(true);
+    expect(ownerView.ownerAnalytics.every((entry) => entry.locationReference === "loc-ybor")).toBe(true);
+    expect(ownerView.compensationSnapshots.every((entry) => entry.locationReference === "loc-ybor")).toBe(true);
+  });
+
+  it("returns an empty operational view for owners without a shop scope", () => {
+    const snapshot = createInitialLiveOperationsSnapshot();
+    const ownerView = scopeLiveOperationsSnapshot(snapshot, { role: "owner", locationIds: [] });
+
+    expect(ownerView.appointments).toHaveLength(0);
+    expect(ownerView.clients).toHaveLength(0);
+    expect(ownerView.walkIns).toHaveLength(0);
+    expect(ownerView.workflowEvents).toHaveLength(0);
+    expect(ownerView.compensationSnapshots).toHaveLength(0);
+    expect(ownerView.ownerAnalytics).toHaveLength(0);
+  });
+
   it("keeps compensation data out of manager and front desk views", () => {
     const snapshot = createInitialLiveOperationsSnapshot();
     const managerView = scopeLiveOperationsSnapshot(snapshot, { role: "manager", locationIds: ["loc-ybor"] });

@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useMemo } from "react";
+import { useMemo, type ComponentProps } from "react";
 import Link from "next/link";
 import { Activity, Building2, CircleDollarSign, ReceiptText, ShieldCheck } from "lucide-react";
 import { RevenueChart } from "@/components/dashboard/revenue-chart";
@@ -64,6 +64,38 @@ function getAppointmentDetail(appointment: ShopDashboardAppointment) {
   return `${appointment.display.statusLabel} at ${appointment.display.locationName}.`;
 }
 
+const ownerSetupCards: Array<{
+  title: string;
+  detail: string;
+  href: ComponentProps<typeof Link>["href"];
+}> = [
+  {
+    title: "Complete shop profile",
+    detail: "Add address, hours, photos, and the details clients need before booking.",
+    href: "/settings"
+  },
+  {
+    title: "Add first barber",
+    detail: "Invite or create the first team member before opening the floor.",
+    href: "/team"
+  },
+  {
+    title: "Set services",
+    detail: "Create the service menu, durations, pricing, deposits, and add-ons.",
+    href: "/services"
+  },
+  {
+    title: "Connect payouts",
+    detail: "Finish money readiness before live bookings and settlement.",
+    href: { pathname: "/reports", query: { view: "money" } }
+  },
+  {
+    title: "Open booking",
+    detail: "Review approval and activation status before your shop goes public.",
+    href: "/activation-status"
+  }
+];
+
 export function OwnerOverview() {
   const shopQuery = useShopDashboardQuery();
   const intelligenceQuery = useOwnerEngagementIntelligence();
@@ -73,6 +105,8 @@ export function OwnerOverview() {
   const workflowEvents = shopQuery.data?.workflowEvents ?? [];
   const appointments = useMemo(() => shopQuery.data?.appointments ?? [], [shopQuery.data?.appointments]);
   const walkIns = useMemo(() => shopQuery.data?.walkIns ?? [], [shopQuery.data?.walkIns]);
+  const barbers = shopQuery.data?.barbers ?? [];
+  const activeBarbers = shopQuery.data?.activeBarbers ?? [];
   const summary = shopQuery.data?.summary;
   const businessDate = summary?.businessDate ?? summary?.latestDate ?? new Date().toISOString().slice(0, 10);
   const todayAppointments = useMemo(
@@ -86,7 +120,20 @@ export function OwnerOverview() {
   const inServiceCount = summary?.inServiceCount ?? todayAppointments.filter((appointment) => appointment.status === "in_service").length;
   const inMotionCount = todayAppointments.filter((appointment) => ["booked", "checked_in", "in_service"].includes(appointment.status)).length;
   const averageTicket = completedCount ? (summary?.revenueToday ?? 0) / Math.max(completedCount, 1) : 0;
+  const hasOwnerActivity = Boolean(
+    appointments.length
+    || walkIns.length
+    || ownerAnalytics.length
+    || workflowEvents.length
+  );
+  const visibleSetupCards = barbers.length
+    ? ownerSetupCards.filter((card) => card.title !== "Add first barber")
+    : ownerSetupCards;
   const quickInsights = useMemo(() => {
+    if (!ownerAnalytics.length && !appointments.length) {
+      return [];
+    }
+
     const sortedAnalytics = [...ownerAnalytics].sort((left, right) => left.businessDate.localeCompare(right.businessDate));
     const latest = sortedAnalytics.at(-1);
     const previous = sortedAnalytics.at(-2);
@@ -105,18 +152,22 @@ export function OwnerOverview() {
         ? `${rebookingOpportunities} repeat clients are due back without a future booking.`
         : "Repeat-client rebooking pressure is under control right now."
     ];
-  }, [intelligenceQuery.data?.retention.rebookingOpportunities, intelligenceQuery.data?.topBarbers, ownerAnalytics]);
+  }, [appointments.length, intelligenceQuery.data?.retention.rebookingOpportunities, intelligenceQuery.data?.topBarbers, ownerAnalytics]);
   const alerts = useMemo(() => {
     const anomalyCount = (anomalyQuery.data?.items ?? []).filter((item) => item.status === "open" || item.status === "investigating").length;
     const billingAttention = intelligenceQuery.data?.monetization.subscriptions.billingAttention ?? 0;
     const blockedRouting = fintechQuery.data?.summary.blockedRoutingRecords ?? 0;
+
+    if (!hasOwnerActivity) {
+      return [];
+    }
 
     return [
       anomalyCount ? `${anomalyCount} unresolved financial anomaly${anomalyCount === 1 ? "" : "ies"} need review.` : "No unresolved financial anomalies are open right now.",
       billingAttention ? `${billingAttention} subscription or billing row${billingAttention === 1 ? "" : "s"} need attention.` : "Billing health is clear across tracked subscriptions.",
       blockedRouting ? `${blockedRouting} payout routing record${blockedRouting === 1 ? "" : "s"} are blocked.` : "No payout routing blockers are currently recorded."
     ];
-  }, [anomalyQuery.data, fintechQuery.data?.summary.blockedRoutingRecords, intelligenceQuery.data?.monetization.subscriptions.billingAttention]);
+  }, [anomalyQuery.data, fintechQuery.data?.summary.blockedRoutingRecords, hasOwnerActivity, intelligenceQuery.data?.monetization.subscriptions.billingAttention]);
   const isInitialLoading = shopQuery.isLoading && !shopQuery.data;
   const errorMessage = shopQuery.error ? getReadableActionError(shopQuery.error) : null;
 
@@ -194,9 +245,9 @@ export function OwnerOverview() {
                 </div>
                 <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
                   <p className="surface-label">Active barbers</p>
-                  <p className="mt-3 text-3xl font-semibold" data-display="true">{shopQuery.data?.activeBarbers.length ?? 0}</p>
+                  <p className="mt-3 text-3xl font-semibold" data-display="true">{activeBarbers.length}</p>
                   <p className="mt-2 text-sm text-white/58">
-                    {(shopQuery.data?.activeBarbers ?? []).slice(0, 2).map((entry) => entry.name).join(", ") || "No chair activity yet"}
+                    {activeBarbers.slice(0, 2).map((entry) => entry.name).join(", ") || "No chair activity yet"}
                   </p>
                 </div>
                 <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
@@ -270,6 +321,33 @@ export function OwnerOverview() {
           </>
         )}
       </section>
+
+      {!isInitialLoading && !hasOwnerActivity ? (
+        <Card className="rounded-[32px] p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="surface-label">Fresh owner setup</p>
+              <h3 className="mt-3 text-2xl font-semibold">Your shop is clean. Build the first real signals from here.</h3>
+              <p className="mt-3 max-w-3xl text-sm leading-7 text-white/62">
+                Metrics, queue entries, clients, barbers, and revenue stay at zero until this owner-linked shop creates real activity.
+              </p>
+            </div>
+            <span className="status-pill text-[#d7ffab]">No demo activity</span>
+          </div>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            {visibleSetupCards.map((card) => (
+              <Link
+                key={card.title}
+                href={card.href}
+                className="rounded-[24px] border border-white/8 bg-black/20 p-4 text-sm transition hover:border-[#7cff00]/25 hover:bg-black/30"
+              >
+                <p className="font-semibold text-white">{card.title}</p>
+                <p className="mt-2 leading-6 text-white/58">{card.detail}</p>
+              </Link>
+            ))}
+          </div>
+        </Card>
+      ) : null}
 
       <ShopManagerPanel />
 

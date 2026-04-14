@@ -49,6 +49,7 @@ import {
   LiveOperationsSnapshot,
   LiveOperationsViewer,
   LiveAppointmentRecord,
+  createEmptyLiveOperationsSnapshot,
   bookAppointmentInSnapshot,
   cancelAppointmentInSnapshot,
   checkoutAppointmentInSnapshot,
@@ -637,6 +638,36 @@ function createDemoProvider(): LiveOperationsProvider {
       const result = checkoutAppointmentInSnapshot(getDemoSnapshot(), input);
       setDemoSnapshot(result.snapshot);
       return result;
+    }
+  };
+}
+
+function createUnavailableSupabaseProvider(): LiveOperationsProvider {
+  const readEmptySnapshot = (viewer: LiveOperationsViewer) =>
+    scopeLiveOperationsSnapshot(createEmptyLiveOperationsSnapshot("supabase"), viewer);
+  const unavailable = (): never => {
+    throw new LiveOperationValidationError(
+      "Live operations are unavailable because the Supabase server provider is not configured.",
+      "invalid_resource_reference"
+    );
+  };
+
+  return {
+    kind: "supabase",
+    async readSnapshot(viewer) {
+      return readEmptySnapshot(viewer);
+    },
+    async createBooking() {
+      return unavailable();
+    },
+    async cancelAppointment() {
+      return unavailable();
+    },
+    async transitionAppointment() {
+      return unavailable();
+    },
+    async checkoutAppointment() {
+      return unavailable();
     }
   };
 }
@@ -1338,7 +1369,8 @@ export async function getLiveOperationsProvider(): Promise<LiveOperationsProvide
 
   const supabase = createSupabaseAdminClient();
   if (!supabase) {
-    return createDemoProvider();
+    console.error("[live-provider] Supabase is enabled but the admin client is unavailable; returning an empty live snapshot instead of demo data.");
+    return createUnavailableSupabaseProvider();
   }
 
   return createSupabaseProvider(supabase);

@@ -74,6 +74,7 @@ export interface UserAccount {
   barberSubtype?: BarberSubtype;
   clientId?: string;
   ownedShopId?: string;
+  ownedShopName?: string;
   appApprovalStatus?: ApprovalStatus;
   shopApprovalStatus?: ApprovalStatus;
 }

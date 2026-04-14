@@ -758,6 +758,22 @@ async function loadQueueRowOrThrow(supabase: SupabaseClient, entryId: string) {
 }
 
 async function getQueuePayloadInternal(scope: QueueScopeContext, supabase: SupabaseClient): Promise<QueueWorkspacePayload> {
+  if (!scope.scopedLocationIds.length) {
+    return {
+      summary: {
+        activeCount: 0,
+        calledCount: 0,
+        assignedCount: 0,
+        averageWaitMinutes: 0
+      },
+      shops: [],
+      barbers: [],
+      services: [],
+      entries: [],
+      recentResolvedEntries: []
+    };
+  }
+
   const dependencies = await loadScopedQueueDependencies(supabase, scope.scopedLocationIds);
   const entries = sortQueueEntries(
     dependencies.queueRows

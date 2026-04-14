@@ -405,8 +405,10 @@ export function DashboardShell({
     ? demoLocations.filter((location) => user.locationIds.includes(location.id))
     : user.locationIds.map((locationId) => ({
         id: locationId,
-        name: locationId,
-        city: "Assigned",
+        name: user.role === "owner" && user.ownedShopId === locationId && user.ownedShopName
+          ? user.ownedShopName
+          : locationId,
+        city: user.role === "owner" && user.ownedShopId === locationId ? "Owner shop" : "Assigned",
         neighborhood: "",
         state: "",
         phone: "",

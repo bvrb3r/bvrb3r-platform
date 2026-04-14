@@ -10,7 +10,7 @@ import {
   readCanonicalWorkingHours,
   type CanonicalAppointmentServiceSnapshotRow
 } from "@/lib/booking/canonical-booking";
-import { isSupabaseEnabled } from "@/lib/config/runtime";
+import { isDemoMode, isSupabaseEnabled } from "@/lib/config/runtime";
 import { demoBarbers, demoClients, demoLocations, demoServices } from "@/lib/data/demo";
 import {
   buildCanonicalAvailabilityPayload,
@@ -367,9 +367,18 @@ function buildDemoOperationalDirectories(): OperationalDirectories {
   };
 }
 
+function buildEmptyOperationalDirectories(): OperationalDirectories {
+  return {
+    barbersByReference: new Map(),
+    servicesByReference: new Map(),
+    locationsByReference: new Map(),
+    barberAssignmentsByLocation: new Map()
+  };
+}
+
 async function readOperationalDirectories(supabase: SupabaseClient | null): Promise<OperationalDirectories> {
   if (!supabase) {
-    return buildDemoOperationalDirectories();
+    return isDemoMode() ? buildDemoOperationalDirectories() : buildEmptyOperationalDirectories();
   }
 
   const [barbersResult, profilesResult, servicesResult, locationsResult, assignmentsResult] = await Promise.all([
@@ -381,7 +390,14 @@ async function readOperationalDirectories(supabase: SupabaseClient | null): Prom
   ]);
 
   if (barbersResult.error || profilesResult.error || servicesResult.error || locationsResult.error || assignmentsResult.error) {
-    return buildDemoOperationalDirectories();
+    console.error("[platform-service] unable to read operational directories", {
+      barbersError: barbersResult.error,
+      profilesError: profilesResult.error,
+      servicesError: servicesResult.error,
+      locationsError: locationsResult.error,
+      assignmentsError: assignmentsResult.error
+    });
+    return isDemoMode() ? buildDemoOperationalDirectories() : buildEmptyOperationalDirectories();
   }
 
   const profileNamesById = new Map(
@@ -1776,13 +1792,7 @@ export async function getShopDashboardPayload(viewer: LiveOperationsViewer) {
       }
     };
   });
-  const locationRefsInScope = viewer.locationIds?.length
-    ? viewer.locationIds
-    : [...new Set([
-        ...appointments.map((entry) => entry.locationId),
-        ...walkIns.map((entry) => entry.locationId),
-        ...directories.locationsByReference.keys()
-      ])];
+  const locationRefsInScope = viewer.locationIds ?? [];
   const assignedBarberIds = new Set<string>();
 
   for (const locationId of locationRefsInScope) {

@@ -66,6 +66,12 @@ function buildOperationalSuggestions(input: {
   ownerIntelligence?: ReturnType<typeof getOwnerIntelligenceSummary> | null;
 }) {
   const suggestions: ShopManagerSuggestion[] = [];
+  const hasOperationalBaseline = Boolean(
+    input.dashboard.appointments.length
+    || input.dashboard.walkIns.length
+    || input.dashboard.barbers.length
+    || input.dashboard.ownerAnalytics.length
+  );
   const businessDate = "businessDate" in input.dashboard.summary
     ? input.dashboard.summary.businessDate
     : input.dashboard.summary.latestDate;
@@ -178,7 +184,7 @@ function buildOperationalSuggestions(input: {
     } : null);
   }
 
-  if (!suggestions.length) {
+  if (!suggestions.length && hasOperationalBaseline) {
     suggestions.push({
       id: "coverage-watch",
       type: "coverage_watch",

@@ -48,6 +48,7 @@ type ClientRow = {
 
 type ShopRow = {
   id: string;
+  name?: string | null;
   app_approval_status?: ApprovalStatus | null;
 };
 
@@ -822,7 +823,7 @@ async function readOwnedShopByProfile(profileId: string) {
 
   const preferred = await supabase
     .from("shops")
-    .select("id, app_approval_status")
+    .select("id, name, app_approval_status")
     .eq("owner_profile_id", profileId)
     .order("created_at", { ascending: true })
     .limit(1)
@@ -1270,6 +1271,7 @@ export async function buildRuntimeUserFromProductionAuth(authUser: AuthUserLike)
       barberId: barber?.reference_code ?? barber?.id ?? undefined,
       barberSubtype: barber?.barber_subtype ?? undefined,
       ownedShopId: shop?.id ?? undefined,
+      ownedShopName: shop?.name ?? undefined,
       appApprovalStatus: runtimeRole === "owner"
         ? (shop?.app_approval_status ?? "pending")
         : barber?.app_approval_status ?? undefined,
