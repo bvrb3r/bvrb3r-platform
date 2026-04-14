@@ -165,22 +165,36 @@ declare global {
   var __bvrb3rPhoneChallenges: InMemoryPhoneChallenge[] | undefined;
 }
 
-async function getSupabase() {
+type SupabaseWriteMode = "service_role" | "authenticated" | "unavailable";
+
+async function getSupabaseWithMode(): Promise<{
+  client: Awaited<ReturnType<typeof createSupabaseServerClient>> | ReturnType<typeof createSupabaseAdminClient>;
+  mode: SupabaseWriteMode;
+}> {
   if (!isSupabaseEnabled()) {
-    return null;
+    return { client: null, mode: "unavailable" };
   }
 
   const adminClient = createSupabaseAdminClient();
   if (adminClient) {
-    return adminClient;
+    return { client: adminClient, mode: "service_role" };
   }
 
   try {
-    return await createSupabaseServerClient();
+    const serverClient = await createSupabaseServerClient();
+    return {
+      client: serverClient,
+      mode: serverClient ? "authenticated" : "unavailable"
+    };
   } catch (error) {
     console.warn("[auth] unable to create authenticated Supabase fallback client", { error });
-    return null;
+    return { client: null, mode: "unavailable" };
   }
+}
+
+async function getSupabase() {
+  const { client } = await getSupabaseWithMode();
+  return client;
 }
 
 function getChallengeStore() {
@@ -2285,16 +2299,18 @@ async function ensureBarberLane(
 }
 
 async function ensureOwnerLane(profileId: string, identity: { email: string; name: string; phone: string; }, shopName: string) {
-  const supabase = await getSupabase();
+  const { client: supabase, mode: supabaseMode } = await getSupabaseWithMode();
   const shopId = `shop-${slugify(shopName)}-${profileId.slice(0, 6)}`;
   console.info("[auth] owner lane bootstrap requested", {
     profileId,
     shopName,
+    supabaseMode,
     payload: {
       id: shopId,
       name: shopName,
       owner_profile_id: profileId,
-      app_approval_status: "pending"
+      app_approval_status: "pending",
+      phonePresent: Boolean(identity.phone)
     }
   });
 
@@ -2327,6 +2343,11 @@ async function ensureOwnerLane(profileId: string, identity: { email: string; nam
 
   const effectiveShopId = (existingShop.data as ShopRow | null)?.id ?? shopId;
   if (!existingShop.data) {
+    console.info("[auth] owner lane shop insert step", {
+      profileId,
+      shopId: effectiveShopId,
+      supabaseMode
+    });
     const insertShop = await supabase
       .from("shops")
       .insert({
@@ -2343,9 +2364,20 @@ async function ensureOwnerLane(profileId: string, identity: { email: string; nam
         app_approval_status: "pending"
       });
     if (insertShop.error) {
+      console.error("[auth] owner lane shop insert failed", {
+        profileId,
+        shopId: effectiveShopId,
+        supabaseMode,
+        error: describeSupabaseError(insertShop.error)
+      });
       throwSupabaseLaneError("Owner lane shop insert", insertShop.error);
     }
   } else {
+    console.info("[auth] owner lane shop update step", {
+      profileId,
+      shopId: effectiveShopId,
+      supabaseMode
+    });
     const updateShop = await supabase
       .from("shops")
       .update({
@@ -2356,6 +2388,12 @@ async function ensureOwnerLane(profileId: string, identity: { email: string; nam
       })
       .eq("id", effectiveShopId);
     if (updateShop.error && !isSchemaError(updateShop.error)) {
+      console.error("[auth] owner lane shop update failed", {
+        profileId,
+        shopId: effectiveShopId,
+        supabaseMode,
+        error: describeSupabaseError(updateShop.error)
+      });
       throwSupabaseLaneError("Owner lane shop update", updateShop.error);
     }
   }
@@ -2373,6 +2411,12 @@ async function ensureOwnerLane(profileId: string, identity: { email: string; nam
 
   if (existingLocation.data?.id) {
     locationId = existingLocation.data.id as string;
+    console.info("[auth] owner lane location update step", {
+      profileId,
+      shopId: effectiveShopId,
+      locationId,
+      supabaseMode
+    });
     const updateLocation = await supabase
       .from("locations")
       .update({
@@ -2384,27 +2428,61 @@ async function ensureOwnerLane(profileId: string, identity: { email: string; nam
       })
       .eq("id", locationId);
     if (updateLocation.error && !isSchemaError(updateLocation.error)) {
+      console.error("[auth] owner lane location update failed", {
+        profileId,
+        shopId: effectiveShopId,
+        locationId,
+        supabaseMode,
+        error: describeSupabaseError(updateLocation.error)
+      });
       throwSupabaseLaneError("Owner lane location update", updateLocation.error);
     }
   } else {
+    const locationPayload = {
+      reference_code: effectiveShopId,
+      name: shopName,
+      neighborhood: "Pending",
+      city: "Pending",
+      state: "Pending",
+      phonePresent: Boolean(identity.phone)
+    };
+    console.info("[auth] owner lane location insert step", {
+      profileId,
+      shopId: effectiveShopId,
+      supabaseMode,
+      payload: locationPayload
+    });
     const insertLocation = await supabase
       .from("locations")
       .insert({
-        reference_code: effectiveShopId,
-        name: shopName,
-        neighborhood: "Pending",
-        city: "Pending",
-        state: "Pending",
+        reference_code: locationPayload.reference_code,
+        name: locationPayload.name,
+        neighborhood: locationPayload.neighborhood,
+        city: locationPayload.city,
+        state: locationPayload.state,
         phone: identity.phone || null
       })
       .select("id")
       .single();
     if (insertLocation.error) {
+      console.error("[auth] owner lane location insert failed", {
+        profileId,
+        shopId: effectiveShopId,
+        supabaseMode,
+        payload: locationPayload,
+        error: describeSupabaseError(insertLocation.error)
+      });
       throwSupabaseLaneError("Owner lane location insert", insertLocation.error);
     }
     locationId = insertLocation.data.id as string;
   }
 
+  console.info("[auth] owner lane staff membership upsert step", {
+    profileId,
+    shopId: effectiveShopId,
+    locationId,
+    supabaseMode
+  });
   const membership = await supabase
     .from("staff_locations")
     .upsert({
@@ -2413,9 +2491,21 @@ async function ensureOwnerLane(profileId: string, identity: { email: string; nam
     }, { onConflict: "profile_id,location_id" });
 
   if (membership.error && !isSchemaError(membership.error)) {
+    console.error("[auth] owner lane staff membership upsert failed", {
+      profileId,
+      shopId: effectiveShopId,
+      locationId,
+      supabaseMode,
+      error: describeSupabaseError(membership.error)
+    });
     throwSupabaseLaneError("Owner lane staff membership upsert", membership.error);
   }
 
+  console.info("[auth] owner lane user role upsert step", {
+    profileId,
+    shopId: effectiveShopId,
+    supabaseMode
+  });
   const userRoleUpsert = await supabase
     .from("user_roles")
     .upsert({
@@ -2427,6 +2517,12 @@ async function ensureOwnerLane(profileId: string, identity: { email: string; nam
     }, { onConflict: "user_email" });
 
   if (userRoleUpsert.error && !isSchemaError(userRoleUpsert.error)) {
+    console.error("[auth] owner lane user role upsert failed", {
+      profileId,
+      shopId: effectiveShopId,
+      supabaseMode,
+      error: describeSupabaseError(userRoleUpsert.error)
+    });
     throwSupabaseLaneError("Owner user role bootstrap upsert", userRoleUpsert.error);
   }
 
@@ -2434,6 +2530,7 @@ async function ensureOwnerLane(profileId: string, identity: { email: string; nam
     profileId,
     shopId: effectiveShopId,
     locationId,
+    supabaseMode,
     existed: Boolean(existingShop.data)
   });
 
