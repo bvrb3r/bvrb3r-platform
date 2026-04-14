@@ -8,9 +8,9 @@ describe("dashboard shell identity and navigation", () => {
     ["manager@bvrb3r.demo", "Mia Torres", "Shop Manager", "Active role: Shop manager", ["Dashboard", "Schedule", "Team", "Queue", "Profile"]],
     ["frontdesk@bvrb3r.demo", "Kayla Brooks", "Front Desk / Kiosk Ops", "Active role: Front desk", ["Check-in", "Waitlist", "Schedule", "Barbers", "Profile"]],
     ["wave@bvrb3r.demo", "Wave Carter", "Barber Manager", "Active role: Barber manager", ["Dashboard", "Schedule", "Team", "Queue", "Profile"]],
-    ["blaze@bvrb3r.demo", "Blaze King", "Booth-Rent Barber", "Active role: Booth-rent barber", ["Home", "Command", "Earnings", "Clients", "Profile"]],
-    ["lux@bvrb3r.demo", "Luxe Reed", "Freelance Barber", "Active role: Freelance barber", ["Home", "Command", "Earnings", "Clients", "Profile"]],
-    ["client@bvrb3r.demo", "Jordan Ellis", "Client", "Active role: Client", ["Home", "Search", "Bookings", "Rewards", "Profile"]]
+    ["blaze@bvrb3r.demo", "Blaze King", "Booth-Rent Barber", "Active role: Booth-rent barber", ["Home", "Command", "Earnings", "Clients", "Profile", "Settings"]],
+    ["lux@bvrb3r.demo", "Luxe Reed", "Freelance Barber", "Active role: Freelance barber", ["Home", "Command", "Earnings", "Clients", "Profile", "Settings"]],
+    ["client@bvrb3r.demo", "Jordan Ellis", "Client", "Active role: Client", ["Home", "Search", "Bookings", "Rewards", "Profile", "Settings"]]
   ])("renders the selected identity for %s", (email, name, title, roleLabel, navLabels) => {
     const user = resolveDemoUser(email);
     const activeHref = getDefaultRouteForUser(user);
@@ -62,4 +62,5 @@ describe("dashboard shell identity and navigation", () => {
     expect(screen.getAllByText("Phillip's Fresh Cuts").length).toBeGreaterThan(0);
     expect(screen.queryByTestId("shell-business-name")).not.toHaveTextContent("BVRB3R Platform");
   });
+
 });

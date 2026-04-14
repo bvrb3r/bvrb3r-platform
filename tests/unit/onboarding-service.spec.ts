@@ -109,6 +109,28 @@ describe("onboarding service", () => {
     expect(destination).toBe("/role-select");
   });
 
+  it("routes an authenticated user with incomplete contact back to verify-contact", async () => {
+    const freshUser: UserAccount = {
+      id: "auth-incomplete-contact",
+      role: "client",
+      email: "incomplete@bvrb3r.demo",
+      password: "",
+      name: "Incomplete Contact",
+      canonicalFullName: "Incomplete Contact",
+      title: "Client",
+      phone: "",
+      locationIds: [],
+      accountStatus: "profile_only",
+      onboardingState: "awaiting_contact_verification",
+      emailVerified: true,
+      phoneVerified: false
+    };
+
+    const destination = await resolvePostAuthDestination(freshUser);
+
+    expect(destination).toBe("/verify-contact");
+  });
+
   it("keeps a primary-role-null user on role-select even when stale lane rows exist", async () => {
     const staleClient: UserAccount = {
       ...resolveDemoUser("client@bvrb3r.demo"),

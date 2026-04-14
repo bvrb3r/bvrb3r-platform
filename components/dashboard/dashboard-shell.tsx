@@ -80,7 +80,8 @@ function getNavigation(user: UserAccount): NavItem[] {
         { href: "/command", activeHref: "/command", label: "Command", icon: LayoutDashboard },
         { href: "/earnings", activeHref: "/earnings", label: "Earnings", icon: WalletCards },
         { href: "/clients", activeHref: "/clients", label: "Clients", icon: Users },
-        { href: "/workspace/profile", activeHref: "/workspace/profile", label: "Profile", icon: UserRound }
+        { href: "/workspace/profile", activeHref: "/workspace/profile", label: "Profile", icon: UserRound },
+        { href: "/settings", activeHref: "/settings", label: "Settings", icon: ShieldCheck }
       ];
     case "client":
       return [
@@ -88,7 +89,8 @@ function getNavigation(user: UserAccount): NavItem[] {
         { href: "/search", activeHref: "/search", label: "Search", icon: Sparkles },
         { href: "/bookings", activeHref: "/bookings", label: "Bookings", icon: CalendarDays },
         { href: "/activity", activeHref: "/activity", label: "Rewards", icon: ClipboardList },
-        { href: "/profile", activeHref: "/profile", label: "Profile", icon: UserRound }
+        { href: "/profile", activeHref: "/profile", label: "Profile", icon: UserRound },
+        { href: "/settings", activeHref: "/settings", label: "Settings", icon: ShieldCheck }
       ];
     default:
       return [{ href: getDefaultRouteForUser(user), activeHref: getDefaultRouteForUser(user), label: "Dashboard", icon: LayoutDashboard }];
@@ -168,7 +170,25 @@ function getLocationScopeLabel(role: Role) {
   }
 }
 
-function getAlertLabel(role: Role) {
+function getAlertLabel(role: Role, useDemoData: boolean) {
+  if (!useDemoData) {
+    switch (role) {
+      case "owner":
+        return "Owner account ready";
+      case "manager":
+        return "No manager alerts yet";
+      case "front_desk":
+        return "No queue alerts yet";
+      case "commission_barber":
+      case "booth_rent_barber":
+        return "No chair alerts yet";
+      case "client":
+        return "No booking reminders yet";
+      default:
+        return "No alerts yet";
+    }
+  }
+
   switch (role) {
     case "owner":
       return "Owner visibility is live";
@@ -606,7 +626,7 @@ export function DashboardShell({
                 <div className="rounded-[24px] border border-white/8 bg-black/25 p-4">
                   <p className="surface-label">Operating as</p>
                   <p className="mt-3 text-lg font-medium">{activeRole}</p>
-                  <p className="mt-2 text-sm text-white/56">{getAlertLabel(user.role)}</p>
+                  <p className="mt-2 text-sm text-white/56">{getAlertLabel(user.role, useDemoData)}</p>
                 </div>
                 <div className="rounded-[24px] border border-white/8 bg-black/25 p-4">
                   <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/35 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-white/68">

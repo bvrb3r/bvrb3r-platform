@@ -34,12 +34,21 @@ vi.mock("@/components/operations/client-workspace", () => ({
   ClientWorkspace: ({ clientId }: { clientId: string }) => <div data-testid="client-workspace-stub">{clientId}</div>
 }));
 
+vi.mock("@/components/auth/account-session-workspace", () => ({
+  AccountSessionWorkspace: () => <div data-testid="account-session-workspace-stub">Account session</div>
+}));
+
+vi.mock("@/components/operations/owner-settings-workspace", () => ({
+  OwnerSettingsWorkspace: () => <div data-testid="owner-settings-workspace-stub">Owner settings</div>
+}));
+
 import OwnerDashboardPage from "@/app/(platform)/dashboard/owner/page";
 import ManagerDashboardPage from "@/app/(platform)/dashboard/manager/page";
 import FrontDeskDashboardPage from "@/app/(platform)/dashboard/front-desk/page";
 import BarberDashboardPage from "@/app/(platform)/dashboard/barber/page";
 import BarberCommandPage from "@/app/(platform)/command/page";
 import ClientDashboardPage from "@/app/(platform)/dashboard/client/page";
+import SettingsPage from "@/app/(platform)/settings/page";
 
 describe("dashboard role pages", () => {
   beforeEach(() => {
@@ -116,5 +125,16 @@ describe("dashboard role pages", () => {
     expect(screen.getByText("Your next visit, already in motion")).toBeInTheDocument();
     expect(screen.getByTestId("client-workspace-stub")).toHaveTextContent("client-jordan");
     expect(screen.queryByText("Owner control center")).not.toBeInTheDocument();
+  });
+
+  it("renders account settings and logout surface for client, barber, and owner lanes", async () => {
+    for (const email of ["client@bvrb3r.demo", "blaze@bvrb3r.demo", "owner@bvrb3r.demo"]) {
+      getAuthorizedUserMock.mockResolvedValue(resolveDemoUser(email));
+
+      render(await SettingsPage());
+
+      expect(getAuthorizedUserMock).toHaveBeenLastCalledWith(["owner", "commission_barber", "booth_rent_barber", "client"]);
+      expect(screen.getAllByTestId("account-session-workspace-stub").length).toBeGreaterThan(0);
+    }
   });
 });

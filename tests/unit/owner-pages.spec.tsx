@@ -22,6 +22,10 @@ vi.mock("@/components/operations/owner-settings-workspace", () => ({
   OwnerSettingsWorkspace: () => <div data-testid="owner-settings-workspace-stub">Owner settings workspace</div>
 }));
 
+vi.mock("@/components/auth/account-session-workspace", () => ({
+  AccountSessionWorkspace: () => <div data-testid="account-session-workspace-stub">Account session workspace</div>
+}));
+
 vi.mock("@/components/operations/owner-money-workspace", () => ({
   OwnerMoneyWorkspace: () => <div data-testid="owner-money-workspace-stub">Owner money workspace</div>
 }));
