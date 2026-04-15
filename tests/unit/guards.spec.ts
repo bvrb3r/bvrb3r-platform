@@ -98,6 +98,25 @@ describe("authorized user guard", () => {
     expect(redirectMock).not.toHaveBeenCalled();
   });
 
+  it("redirects unauthenticated guest visitors away from protected dashboards", async () => {
+    getCurrentUserFromServerMock.mockResolvedValue({
+      mode: "supabase",
+      authenticated: false,
+      user: {
+        id: "guest-user",
+        role: "client",
+        email: "guest@bvrb3r.local",
+        password: "",
+        name: "Guest",
+        title: "Guest",
+        locationIds: [],
+        accountStatus: "profile_only"
+      }
+    });
+
+    await expect(getAuthorizedUser(["client"])).rejects.toThrow("REDIRECT:/login");
+  });
+
   it("redirects owner away from the client workspace", async () => {
     getCurrentUserFromServerMock.mockResolvedValue({ mode: "demo", user: resolveDemoUser("owner@bvrb3r.demo") });
 

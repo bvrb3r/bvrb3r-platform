@@ -1,7 +1,7 @@
 import type { Route } from "next";
 import Link from "next/link";
 import { CalendarDays, Gift, Home, Search, UserRound } from "lucide-react";
-import type { ClientAppTab } from "@/components/client-experience/client-app-shell";
+import type { ClientAppMode, ClientAppTab } from "@/components/client-experience/client-app-shell";
 import { cn } from "@/lib/utils";
 
 const navItems: Array<{ key: ClientAppTab; href: Route; label: string; icon: typeof Home }> = [
@@ -12,11 +12,19 @@ const navItems: Array<{ key: ClientAppTab; href: Route; label: string; icon: typ
   { key: "profile", href: "/profile", label: "Profile", icon: UserRound }
 ];
 
-export function ClientBottomNav({ activeTab }: { activeTab?: ClientAppTab }) {
+const guestNavItems: Array<{ key: ClientAppTab; href: Route; label: string; icon: typeof Home }> = [
+  { key: "search", href: "/discover?entry=guest" as Route, label: "Explore", icon: Search },
+  { key: "home", href: "/" as Route, label: "Account", icon: UserRound },
+  { key: "bookings", href: "/booking/new?source=guest_discovery" as Route, label: "Book", icon: CalendarDays }
+];
+
+export function ClientBottomNav({ activeTab, mode = "client" }: { activeTab?: ClientAppTab; mode?: ClientAppMode }) {
+  const items = mode === "guest" ? guestNavItems : navItems;
+
   return (
     <div className="fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] z-50">
       <nav className="mx-auto flex max-w-xl items-center gap-2 rounded-[30px] border border-white/10 bg-[rgba(6,6,6,0.9)] px-3 py-3 backdrop-blur-xl shadow-[0_24px_44px_rgba(0,0,0,0.34)]">
-        {navItems.map((item) => {
+        {items.map((item) => {
           const Icon = item.icon;
           const isActive = item.key === activeTab;
 

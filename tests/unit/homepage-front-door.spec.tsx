@@ -56,8 +56,8 @@ describe("homepage front door", () => {
     renderHomeFrontDoor();
 
     expect(screen.getByLabelText("BVRB3R home")).toHaveTextContent("BVRB3R");
-    expect(screen.getAllByRole("link", { name: "Log in" })[0]).toHaveAttribute("href", "/login");
-    expect(screen.getAllByRole("link", { name: "Create account" })[0]).toHaveAttribute("href", "/signup");
+    expect(screen.queryByRole("link", { name: "Log in" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Create account" })).toHaveAttribute("href", "/signup");
 
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
       "Run your chair, your shop, and your income — in one system."
@@ -78,9 +78,17 @@ describe("homepage front door", () => {
     expect(screen.getByText("Clients, loyalty, and referrals built in")).toBeInTheDocument();
 
     expect(screen.getByRole("heading", { name: "Barbershop-first. System-driven." })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Enter the Platform" })).toHaveAttribute("href", "/login");
+    expect(screen.getByRole("link", { name: "Enter the Platform" })).toHaveAttribute("href", "/guest");
 
     expect(screen.queryByText(/revenue|live pulse|testimonials|pricing|fake|demo/i)).not.toBeInTheDocument();
+  });
+
+  it("keeps the header brand-only so the auth card is the only account entry surface", () => {
+    render(<HomeHeader />);
+
+    expect(screen.getByLabelText("BVRB3R home")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Log in" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Create account" })).not.toBeInTheDocument();
   });
 
   it("starts Google OAuth through the canonical callback with account selection", async () => {

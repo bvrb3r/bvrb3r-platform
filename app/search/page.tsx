@@ -18,7 +18,7 @@ export default async function SearchPage({
   const params = await searchParams;
 
   return (
-    <ClientAppShell activeTab="search">
+    <ClientAppShell activeTab="search" mode={context.isGuest ? "guest" : "client"}>
       <ClientSearchScreen
         clientId={context.clientId}
         initialQuery={params.q ?? ""}

@@ -8,7 +8,7 @@ export function FinalCta() {
           Barbershop-first. System-driven.
         </h2>
         <Link
-          href="/login"
+          href="/guest"
           className="mt-7 inline-flex min-h-[54px] items-center justify-center rounded-full bg-[#7cff00] px-7 text-center text-[11px] font-semibold uppercase tracking-[0.22em] text-black shadow-[0_18px_40px_rgba(124,255,0,0.26)] transition hover:bg-[#b7ff58] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7cff00] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
         >
           Enter the Platform

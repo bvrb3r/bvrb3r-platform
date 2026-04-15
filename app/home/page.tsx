@@ -26,7 +26,7 @@ export default async function HomeRoutePage({ searchParams }: HomeRoutePageProps
   const context = await getClientExperienceContext();
 
   return (
-    <ClientAppShell activeTab="home">
+    <ClientAppShell activeTab="home" mode={context.isGuest ? "guest" : "client"}>
       <AuthSessionRecovery mode="public" />
       <ClientHomeScreen
         clientId={context.clientId}

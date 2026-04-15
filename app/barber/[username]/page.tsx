@@ -32,7 +32,7 @@ export default async function PublicBarberProfilePage({ params }: { params: Prom
   const canReport = ["client", "commission_barber", "booth_rent_barber", "owner"].includes(context.viewer.role);
 
   return (
-    <ClientAppShell activeTab="search">
+    <ClientAppShell activeTab="search" mode={context.isGuest ? "guest" : "client"}>
       <PublicBarberProfile profile={decoratedProfile} viewerCanFollow={context.isSignedInClient} viewerCanReport={canReport} />
     </ClientAppShell>
   );

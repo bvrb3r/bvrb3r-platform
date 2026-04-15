@@ -156,6 +156,7 @@ export function ClientSearchScreen({
   const barberResults = useMemo(() => discoveryQuery.data ?? [], [discoveryQuery.data]);
   const errorMessage = discoveryQuery.error ? getReadableActionError(discoveryQuery.error as MarketplaceApiError) : null;
   const discoverySections = useMemo(() => buildClientDiscoverySections(barberResults), [barberResults]);
+  const showClientAccountFeatures = Boolean(clientId);
   const categoryLabel = useMemo(
     () => clientServiceCategories.find((category) => category.query === serviceFilter)?.label,
     [serviceFilter]
@@ -415,37 +416,39 @@ export function ClientSearchScreen({
         )}
       </ClientSectionBlock>
 
-      <ClientSectionBlock
-        eyebrow="Referral boost"
-        title="Bring someone into the marketplace with you."
-        subtitle="Referral value now lives alongside discovery so the best moment to share is close to the next great profile."
-      >
-        <div className="rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(19,19,19,0.96),rgba(8,8,8,0.98))] p-5 sm:p-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="max-w-2xl">
-              <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">Referral code</p>
-              <h3 className="mt-3 text-2xl font-semibold text-white" data-display="true">
-                {referralQuery.data?.referralCode?.code ?? "BVRB3R"}
-              </h3>
-              <p className="mt-3 text-sm leading-7 text-white/62">
-                {referralQuery.data?.shareMessage ?? "Share your marketplace invite while the discovery intent is fresh and let the rewards stack into future visits."}
-              </p>
+      {showClientAccountFeatures ? (
+        <ClientSectionBlock
+          eyebrow="Referral boost"
+          title="Bring someone into the marketplace with you."
+          subtitle="Referral value now lives alongside discovery so the best moment to share is close to the next great profile."
+        >
+          <div className="rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(19,19,19,0.96),rgba(8,8,8,0.98))] p-5 sm:p-6">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="max-w-2xl">
+                <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">Referral code</p>
+                <h3 className="mt-3 text-2xl font-semibold text-white" data-display="true">
+                  {referralQuery.data?.referralCode?.code ?? "BVRB3R"}
+                </h3>
+                <p className="mt-3 text-sm leading-7 text-white/62">
+                  {referralQuery.data?.shareMessage ?? "Share your marketplace invite while the discovery intent is fresh and let the rewards stack into future visits."}
+                </p>
+              </div>
+              <div className="rounded-[22px] border border-[#d7ffab]/16 bg-[#d7ffab]/10 px-4 py-3 text-right">
+                <p className="text-[10px] uppercase tracking-[0.2em] text-[#e8ffc2]">Reward points</p>
+                <p className="mt-2 text-2xl font-semibold text-white">{referralQuery.data?.referralCode?.rewardPoints ?? 0}</p>
+              </div>
             </div>
-            <div className="rounded-[22px] border border-[#d7ffab]/16 bg-[#d7ffab]/10 px-4 py-3 text-right">
-              <p className="text-[10px] uppercase tracking-[0.2em] text-[#e8ffc2]">Reward points</p>
-              <p className="mt-2 text-2xl font-semibold text-white">{referralQuery.data?.referralCode?.rewardPoints ?? 0}</p>
+            <div className="mt-5 flex flex-wrap gap-3">
+              <ClientActionLink href="/referrals" size="lg" onClick={() => void handleReferralCta()}>
+                Open referrals
+              </ClientActionLink>
+              <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/18 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-white/62">
+                {referralQuery.data?.totals.completed ?? 0} converted
+              </span>
             </div>
           </div>
-          <div className="mt-5 flex flex-wrap gap-3">
-            <ClientActionLink href="/referrals" size="lg" onClick={() => void handleReferralCta()}>
-              Open referrals
-            </ClientActionLink>
-            <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/18 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-white/62">
-              {referralQuery.data?.totals.completed ?? 0} converted
-            </span>
-          </div>
-        </div>
-      </ClientSectionBlock>
+        </ClientSectionBlock>
+      ) : null}
 
       <ClientSectionBlock
         eyebrow="Shops near you"
