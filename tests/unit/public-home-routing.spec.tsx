@@ -5,18 +5,23 @@ const {
   getCurrentUserFromServerMock,
   resolvePostAuthDestinationMock,
   getClientExperienceContextMock,
+  replaceMock,
   redirectMock
 } = vi.hoisted(() => ({
   getCurrentUserFromServerMock: vi.fn(),
   resolvePostAuthDestinationMock: vi.fn(),
   getClientExperienceContextMock: vi.fn(),
+  replaceMock: vi.fn(),
   redirectMock: vi.fn((path: string) => {
     throw new Error(`REDIRECT:${path}`);
   })
 }));
 
 vi.mock("next/navigation", () => ({
-  redirect: redirectMock
+  redirect: redirectMock,
+  useRouter: () => ({
+    replace: replaceMock
+  })
 }));
 
 vi.mock("@/lib/auth/session", () => ({
@@ -55,6 +60,7 @@ describe("public home routing", () => {
     getCurrentUserFromServerMock.mockReset();
     resolvePostAuthDestinationMock.mockReset();
     getClientExperienceContextMock.mockReset();
+    replaceMock.mockReset();
     redirectMock.mockClear();
   });
 
@@ -90,7 +96,7 @@ describe("public home routing", () => {
     expect(getCurrentUserFromServerMock).not.toHaveBeenCalled();
   });
 
-  it("keeps the marketing home available for unauthenticated visitors", async () => {
+  it("keeps the auth-first public front door available for unauthenticated visitors", async () => {
     getCurrentUserFromServerMock.mockResolvedValue({
       mode: "supabase",
       authenticated: false,
@@ -107,8 +113,12 @@ describe("public home routing", () => {
 
     render(await HomePage({ searchParams: Promise.resolve({}) }));
 
-    expect(screen.getByText("BVRB3R Platform")).toBeInTheDocument();
-    expect(screen.getByTestId("hero-section-stub")).toBeInTheDocument();
+    expect(screen.getByLabelText("BVRB3R home")).toHaveTextContent("BVRB3R");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      "Run your chair, your shop, and your income — in one system."
+    );
+    expect(screen.getByLabelText("Mobile number, email, or username")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue with Google" })).toBeInTheDocument();
   });
 
   it("redirects authenticated Supabase users away from the public client home shell", async () => {
