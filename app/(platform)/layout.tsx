@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { ProtectedSessionBoundary } from "@/components/auth/protected-session-boundary";
 import { isPlatformAdminUser } from "@/lib/auth/demo-auth";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
 import { KIOSK_DEVICE_COOKIE, parseKioskDeviceCookieValue } from "@/lib/kiosk/device";
@@ -15,5 +16,10 @@ export default async function PlatformLayout({ children }: { children: React.Rea
     redirect(`/kiosk/${kioskShopId}`);
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      <ProtectedSessionBoundary />
+      {children}
+    </>
+  );
 }

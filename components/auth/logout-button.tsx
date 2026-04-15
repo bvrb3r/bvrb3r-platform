@@ -5,6 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { clearBrowserAccountState } from "@/lib/auth/session-isolation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { cn } from "@/lib/utils";
 
@@ -49,13 +50,18 @@ export function LogoutButton({
       }
 
       const supabase = createSupabaseBrowserClient();
-      const { error } = supabase ? await supabase.auth.signOut() : { error: null };
-      if (error) {
-        throw new Error(error.message);
+      if (supabase) {
+        const { error } = await supabase.auth.signOut({ scope: "local" });
+        if (error) {
+          console.warn("[auth] browser local signOut returned a non-fatal error", {
+            message: error.message
+          });
+        }
       }
 
       queryClient.clear();
-      router.replace("/login");
+      clearBrowserAccountState();
+      router.replace("/login?logged_out=1");
       router.refresh();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to log out.");

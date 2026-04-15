@@ -40,7 +40,7 @@ describe("auth logout route", () => {
     const response = await postLogout(new NextRequest("https://bvrb3r.app/api/auth/logout", {
       method: "POST",
       headers: {
-        cookie: "sb-access-token=abc; bvrb3r-demo-email=owner%40bvrb3r.demo"
+        cookie: "sb-access-token=abc; sb-project-auth-token.0=chunk; bvrb3r-demo-email=owner%40bvrb3r.demo; bvrb3r-kiosk-device=device"
       }
     }));
 
@@ -48,7 +48,9 @@ describe("auth logout route", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toContain("no-store");
     expect(response.headers.get("set-cookie")).toContain("sb-access-token=");
+    expect(response.headers.get("set-cookie")).toContain("sb-project-auth-token.0=");
     expect(response.headers.get("set-cookie")).toContain(`${DEMO_SESSION_COOKIE}=`);
+    expect(response.headers.get("set-cookie")).toContain("bvrb3r-kiosk-device=");
   });
 
   it("is idempotent when Supabase is not configured", async () => {

@@ -3,12 +3,13 @@
 import type { Route } from "next";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, useMemo, useState, useTransition } from "react";
+import { FormEvent, useEffect, useMemo, useState, useTransition } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { getDemoLauncherAccounts } from "@/lib/auth/demo-auth";
+import { clearBrowserAccountState } from "@/lib/auth/session-isolation";
 import { isDemoMode } from "@/lib/config/runtime";
 import { clearKioskDeviceState } from "@/lib/kiosk/client";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
@@ -86,6 +87,10 @@ export function AuthEntryWorkspace({ mode }: { mode: AuthMode }) {
   const searchMessage = getSearchMessage(searchParams);
   const visibleError = errorMessage ?? searchMessage;
 
+  useEffect(() => {
+    clearBrowserAccountState();
+  }, []);
+
   async function handleOAuth(provider: "google" | "apple") {
     setErrorMessage(null);
     setSuccessMessage(null);
@@ -95,6 +100,7 @@ export function AuthEntryWorkspace({ mode }: { mode: AuthMode }) {
     }
 
     const redirectTo = `${window.location.origin}/auth/callback`;
+    clearBrowserAccountState();
     console.info("[auth] OAuth sign-in started", {
       provider,
       redirectTo
@@ -103,7 +109,8 @@ export function AuthEntryWorkspace({ mode }: { mode: AuthMode }) {
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
-        redirectTo
+        redirectTo,
+        queryParams: provider === "google" ? { prompt: "select_account" } : undefined
       }
     });
 
