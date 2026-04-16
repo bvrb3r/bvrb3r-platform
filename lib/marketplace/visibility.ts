@@ -9,6 +9,7 @@ import type { TrustState } from "@/types/trust";
 
 const PUBLIC_VISIBILITY_STATES = new Set(["public", "featured"]);
 const BARBER_MARKETPLACE_ROLES = new Set(["commission_barber", "booth_rent_barber"]);
+const MARKETPLACE_APPROVED_STATUS = "approved";
 const KNOWN_DEMO_MARKETPLACE_REFERENCES = new Set([
   "barber-wave",
   "barber-fade",
@@ -70,6 +71,19 @@ export function isMarketplaceBookableService(service: Pick<Service, "name" | "ca
     && hasRealMarketplaceText(service.category)
     && service.durationMin >= 15
     && service.price > 0;
+}
+
+export function isMarketplaceApprovedStatus(value: string | null | undefined) {
+  return value === MARKETPLACE_APPROVED_STATUS;
+}
+
+export function isBarberPlatformApproved(barber: { appApprovalStatus?: string | null; shopApprovalStatus?: string | null }) {
+  return isMarketplaceApprovedStatus(barber.appApprovalStatus)
+    && (!barber.shopApprovalStatus || barber.shopApprovalStatus === "not_required" || isMarketplaceApprovedStatus(barber.shopApprovalStatus));
+}
+
+export function isShopPlatformApproved(shop: { appApprovalStatus?: string | null }) {
+  return isMarketplaceApprovedStatus(shop.appApprovalStatus);
 }
 
 export function isKnownNonProductionMarketplaceValue(value: string | null | undefined) {
@@ -199,6 +213,10 @@ export function isBarberMarketplaceVisible(
     return false;
   }
 
+  if (!isBarberPlatformApproved(barber)) {
+    return false;
+  }
+
   if (
     !isPublicMarketplaceVisibilityState(profile.visibilityState)
     || !isPublicMarketplaceVisibilityState(visibility.visibilityState)
@@ -249,7 +267,7 @@ export function isBarberMarketplaceVisible(
     const shopLocations = shop
       ? state.locations.filter((location) => shop.locationIds.includes(location.id))
       : state.locations.filter((location) => location.id === profile.shopId);
-    if (shop && !isRealShopRecord(shop, shopLocations)) {
+    if (shop && (!isShopPlatformApproved(shop) || !isRealShopRecord(shop, shopLocations))) {
       return false;
     }
 
@@ -293,6 +311,10 @@ export function filterVisibleMarketplaceBarbers(state: MarketplaceState, trustSt
 
 export function isShopMarketplaceVisible(state: MarketplaceState, shop: Shop, trustState?: TrustState) {
   const locations = state.locations.filter((location) => shop.locationIds.includes(location.id));
+  if (!isShopPlatformApproved(shop)) {
+    return false;
+  }
+
   if (!isRealShopRecord(shop, locations)) {
     return false;
   }

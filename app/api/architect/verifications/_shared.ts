@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { NextResponse } from "next/server";
-import { isPlatformAdminUser } from "@/lib/auth/demo-auth";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
+import { isPlatformAdminUser } from "@/lib/auth/demo-auth";
 
 export const architectVerificationActionSchema = z.object({
   reason: z.string().trim().min(1).max(400),
@@ -9,7 +9,14 @@ export const architectVerificationActionSchema = z.object({
 });
 
 export async function requireArchitectAdmin() {
-  const { user } = await getCurrentUserFromServer();
+  const { authenticated, user } = await getCurrentUserFromServer();
+  if (!authenticated) {
+    return {
+      ok: false as const,
+      response: NextResponse.json({ error: "Authentication is required." }, { status: 401 })
+    };
+  }
+
   if (user.accountStatus && user.accountStatus !== "active") {
     return {
       ok: false as const,

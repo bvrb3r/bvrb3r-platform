@@ -127,7 +127,7 @@ function toContactVerificationState(snapshot: CanonicalContactSnapshot): Contact
 }
 
 type RoleSelectionInput = {
-  role: IdentityLane;
+  role: Exclude<IdentityLane, "platform_admin">;
   barberSubtype?: BarberSubtype;
   shopName?: string;
 };
@@ -397,6 +397,10 @@ function toRuntimeRole(input: {
   profileRole?: Role | "shop_owner" | null;
   compensationModel?: CompensationModel | null;
 }) {
+  if (input.primaryRole === "platform_admin") {
+    return "platform_admin" as const;
+  }
+
   if (input.primaryRole === "shop_owner" || input.profileRole === "owner" || input.profileRole === "shop_owner") {
     return "owner" as const;
   }
@@ -1211,17 +1215,22 @@ export async function buildRuntimeUserFromProductionAuth(authUser: AuthUserLike)
       (primaryRole === "client" && client)
       || (primaryRole === "barber" && barber)
       || (primaryRole === "shop_owner" && shop)
+      || primaryRole === "platform_admin"
     );
-    const onboardingState = inferOnboardingState({
-      emailVerified,
-      phoneVerified,
-      hasRequiredContactFields: requiredContact.missingFields.length === 0,
-      primaryRole,
-      hasLaneRecord,
-      persistedState: profile?.onboarding_state
-    });
+    const onboardingState = primaryRole === "platform_admin"
+      ? "active" as const
+      : inferOnboardingState({
+          emailVerified,
+          phoneVerified,
+          hasRequiredContactFields: requiredContact.missingFields.length === 0,
+          primaryRole,
+          hasLaneRecord,
+          persistedState: profile?.onboarding_state
+        });
     const displayName = getDisplayName(authUser, profile);
-    const accountStatus = hasLaneRecord
+    const accountStatus = primaryRole === "platform_admin"
+      ? "active"
+      : hasLaneRecord
       && emailVerified
       && phoneVerified
       && requiredContact.missingFields.length === 0
@@ -1879,7 +1888,7 @@ function slugify(value: string) {
 async function upsertProfileForLane(input: {
   profileId: string;
   role: Role;
-  primaryOnboardingRole: IdentityLane;
+  primaryOnboardingRole: Exclude<IdentityLane, "platform_admin">;
   onboardingState: IdentityOnboardingState;
   fullName: string;
   email: string;

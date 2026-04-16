@@ -8,7 +8,7 @@
   | "client";
 
 export type CompensationModel = "commission" | "booth_rent";
-export type IdentityLane = "client" | "barber" | "shop_owner";
+export type IdentityLane = "client" | "barber" | "shop_owner" | "platform_admin";
 export type BarberSubtype = "freelance" | "blueprint" | "commission";
 export type ApprovalStatus = "not_required" | "pending" | "under_review" | "approved" | "rejected";
 export type IdentityOnboardingState =
@@ -101,6 +101,7 @@ export interface Shop {
   phone: string;
   locationIds: string[];
   type: "shop" | "mobile";
+  appApprovalStatus?: ApprovalStatus;
   profilePhotoUrl?: string;
   gallery?: ShopMediaAsset[];
 }
@@ -166,6 +167,8 @@ export interface Barber {
   userId: string;
   name: string;
   role: Extract<Role, "commission_barber" | "booth_rent_barber">;
+  appApprovalStatus?: ApprovalStatus;
+  shopApprovalStatus?: ApprovalStatus;
   locationIds: string[];
   specialties: string[];
   rating: number;

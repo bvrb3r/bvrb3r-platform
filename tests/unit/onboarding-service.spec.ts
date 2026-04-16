@@ -9,6 +9,16 @@ vi.mock("@/lib/config/runtime", async () => {
   };
 });
 
+vi.mock("@/lib/trust/provider", async () => {
+  const state = await vi.importActual<typeof import("@/lib/trust/state")>("@/lib/trust/state");
+  return {
+    getTrustProvider: async () => ({
+      kind: "test",
+      readState: async () => state.getTrustState()
+    })
+  };
+});
+
 import { resolveDemoUser } from "@/lib/auth/demo-auth";
 import {
   getActivationStatusForUser,

@@ -118,6 +118,10 @@ function getSupabase() {
 }
 
 async function readTrustState() {
+  if (!isSupabaseEnabled()) {
+    return clone(getTrustState());
+  }
+
   try {
     const provider = await getTrustProvider();
     return await provider.readState();
@@ -157,10 +161,10 @@ function upsertProfile(state: TrustState, profile: VerificationProfileRecord) {
   ];
 }
 
-function createProfile(userId: string, role: VerificationSubjectRole) {
+function createProfile(userId: string, role: VerificationSubjectRole, profileId?: string) {
   const now = new Date().toISOString();
   return {
-    id: `vprof-sync-${randomUUID().slice(0, 8)}`,
+    id: profileId ?? `vprof-sync-${randomUUID().slice(0, 8)}`,
     userId,
     role,
     overallStatus: "not_started",
@@ -246,7 +250,7 @@ function ensureProfile(
     return existing;
   }
 
-  const created = createProfile(userId, input.role);
+  const created = createProfile(userId, input.role, input.verificationProfileId);
   upsertProfile(state, created);
   return created;
 }

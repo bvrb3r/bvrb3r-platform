@@ -32,7 +32,7 @@ describe("architect console routes", () => {
   });
 
   it("rejects non-founder access to the architect console API", async () => {
-    getCurrentUserFromServerMock.mockResolvedValue({ mode: "demo", user: resolveDemoUser("owner@bvrb3r.demo") });
+    getCurrentUserFromServerMock.mockResolvedValue({ authenticated: true, mode: "demo", user: resolveDemoUser("owner@bvrb3r.demo") });
 
     const response = await GET();
     const body = await response.json();
@@ -42,7 +42,7 @@ describe("architect console routes", () => {
   });
 
   it("returns the architect console payload for the founder", async () => {
-    getCurrentUserFromServerMock.mockResolvedValue({ mode: "demo", user: resolveDemoUser("architect@bvrb3r.demo") });
+    getCurrentUserFromServerMock.mockResolvedValue({ authenticated: true, mode: "demo", user: resolveDemoUser("architect@bvrb3r.demo") });
     getPlatformAdminConsolePayloadMock.mockResolvedValue({
       actorName: "Architect",
       overview: { totalUsers: 10, activeClients: 4, activeBarbers: 3, activeShops: 2, bookingsToday: 8, revenueToday: 420, payoutIssues: 1, billingIssues: 1, fraudFlags: 0, kioskActiveCount: 1, aiManagerActiveCount: 1, releaseReadyCount: 6, releaseAttentionCount: 2 },
@@ -65,7 +65,7 @@ describe("architect console routes", () => {
 
   it("returns a safe degraded payload when the founder console payload is null", async () => {
     const founder = resolveDemoUser("architect@bvrb3r.demo");
-    getCurrentUserFromServerMock.mockResolvedValue({ mode: "demo", user: founder });
+    getCurrentUserFromServerMock.mockResolvedValue({ authenticated: true, mode: "demo", user: founder });
     getPlatformAdminConsolePayloadMock.mockResolvedValue(null);
 
     const response = await GET();
@@ -78,7 +78,7 @@ describe("architect console routes", () => {
 
   it("returns a safe degraded payload when architect tables are missing", async () => {
     const founder = resolveDemoUser("architect@bvrb3r.demo");
-    getCurrentUserFromServerMock.mockResolvedValue({ mode: "demo", user: founder });
+    getCurrentUserFromServerMock.mockResolvedValue({ authenticated: true, mode: "demo", user: founder });
     getPlatformAdminConsolePayloadMock.mockRejectedValue({
       code: "42P01",
       details: null,
@@ -99,7 +99,7 @@ describe("architect console routes", () => {
   });
 
   it("validates architect action payloads", async () => {
-    getCurrentUserFromServerMock.mockResolvedValue({ mode: "demo", user: resolveDemoUser("architect@bvrb3r.demo") });
+    getCurrentUserFromServerMock.mockResolvedValue({ authenticated: true, mode: "demo", user: resolveDemoUser("architect@bvrb3r.demo") });
 
     const response = await POST(new NextRequest("https://bvrb3r.demo/api/architect/actions", {
       method: "POST",
@@ -110,7 +110,7 @@ describe("architect console routes", () => {
   });
 
   it("applies founder actions through the canonical admin service", async () => {
-    getCurrentUserFromServerMock.mockResolvedValue({ mode: "demo", user: resolveDemoUser("architect@bvrb3r.demo") });
+    getCurrentUserFromServerMock.mockResolvedValue({ authenticated: true, mode: "demo", user: resolveDemoUser("architect@bvrb3r.demo") });
     applyPlatformAdminActionMock.mockResolvedValue({ ok: true });
 
     const response = await POST(new NextRequest("https://bvrb3r.demo/api/architect/actions", {

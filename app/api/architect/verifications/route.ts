@@ -1,21 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isPlatformAdminUser } from "@/lib/auth/demo-auth";
-import { getCurrentUserFromServer } from "@/lib/auth/session";
+import { requireArchitectAdmin } from "@/app/api/architect/verifications/_shared";
 import { createEmptyArchitectVerificationQueuePayload, listVerificationProfilesForArchitect } from "@/lib/platform-admin/verification-service";
 import type { ArchitectVerificationQueueFilters } from "@/types/platform-admin";
 
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await getCurrentUserFromServer();
-    if (user.accountStatus && user.accountStatus !== "active") {
-      return NextResponse.json({ error: "Account access is disabled." }, { status: 403 });
+    const access = await requireArchitectAdmin();
+    if (!access.ok) {
+      return access.response;
     }
 
-    if (!isPlatformAdminUser(user)) {
-      return NextResponse.json({ error: "Architect verification access is restricted to the platform admin." }, { status: 403 });
-    }
-
-    const payload = await listVerificationProfilesForArchitect(user, {
+    const payload = await listVerificationProfilesForArchitect(access.user, {
       search: request.nextUrl.searchParams.get("search") ?? undefined,
       role: (request.nextUrl.searchParams.get("role") as "client" | "barber" | "shop_owner" | "all" | null) ?? undefined,
       overallStatus: (request.nextUrl.searchParams.get("overallStatus") ?? undefined) as ArchitectVerificationQueueFilters["overallStatus"],

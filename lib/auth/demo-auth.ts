@@ -100,8 +100,8 @@ export function findDemoUserByRole(role?: Role) {
   return demoUsers.find((user) => user.role === role);
 }
 
-export function isPlatformAdminUser(user?: Pick<UserAccount, "role" | "platformAdmin" | "email"> | null) {
-  return Boolean(user?.role === "platform_admin" || user?.platformAdmin || user?.email === "architect@bvrb3r.demo");
+export function isPlatformAdminUser(user?: Pick<UserAccount, "role" | "primaryOnboardingRole"> | null) {
+  return Boolean(user?.role === "platform_admin" && user.primaryOnboardingRole === "platform_admin");
 }
 
 export function resolveDemoUser(selectedEmail?: string, fallbackEmail = DEFAULT_DEMO_EMAIL) {
@@ -160,7 +160,7 @@ export function getDefaultRouteForUser(user: UserAccount): Route {
 
   switch (user.role) {
     case "platform_admin":
-      return "/architect";
+      return "/post-auth";
     case "owner":
       return "/dashboard/owner";
     case "manager":

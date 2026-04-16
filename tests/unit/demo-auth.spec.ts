@@ -76,7 +76,8 @@ describe("demo account mapping", () => {
     expect(accounts.some((account) => account.user.email === "architect@bvrb3r.demo")).toBe(true);
   });
 
-  it("treats the distinct platform-admin role as founder access even without relying on email aliases", () => {
-    expect(isPlatformAdminUser({ role: "platform_admin", email: "founder@example.com", platformAdmin: false })).toBe(true);
+  it("requires the canonical platform-admin onboarding lane for founder access", () => {
+    expect(isPlatformAdminUser({ role: "platform_admin", primaryOnboardingRole: "platform_admin" })).toBe(true);
+    expect(isPlatformAdminUser({ role: "platform_admin" })).toBe(false);
   });
 });

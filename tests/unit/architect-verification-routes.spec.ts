@@ -51,7 +51,7 @@ describe("architect verification routes", () => {
   });
 
   it("blocks non-admin queue access with a clean 403", async () => {
-    getCurrentUserFromServerMock.mockResolvedValue({ mode: "demo", user: resolveDemoUser("owner@bvrb3r.demo") });
+    getCurrentUserFromServerMock.mockResolvedValue({ authenticated: true, mode: "demo", user: resolveDemoUser("owner@bvrb3r.demo") });
 
     const response = await getQueue(new NextRequest("https://bvrb3r.demo/api/architect/verifications"));
     const body = await response.json();
@@ -62,7 +62,7 @@ describe("architect verification routes", () => {
 
   it("returns the verification queue for the founder", async () => {
     const founder = resolveDemoUser("architect@bvrb3r.demo");
-    getCurrentUserFromServerMock.mockResolvedValue({ mode: "demo", user: founder });
+    getCurrentUserFromServerMock.mockResolvedValue({ authenticated: true, mode: "demo", user: founder });
     listVerificationProfilesForArchitectMock.mockResolvedValue({
       items: [
         {
@@ -101,7 +101,7 @@ describe("architect verification routes", () => {
   });
 
   it("blocks non-admin detail access with a clean 403", async () => {
-    getCurrentUserFromServerMock.mockResolvedValue({ mode: "demo", user: resolveDemoUser("manager@bvrb3r.demo") });
+    getCurrentUserFromServerMock.mockResolvedValue({ authenticated: true, mode: "demo", user: resolveDemoUser("manager@bvrb3r.demo") });
 
     const response = await getDetail(new Request("https://bvrb3r.demo/api/architect/verifications/vprof-barber-fade"), {
       params: Promise.resolve({ profileId: "vprof-barber-fade" })
@@ -112,7 +112,7 @@ describe("architect verification routes", () => {
 
   it("forwards approve actions through the verification service", async () => {
     const founder = resolveDemoUser("architect@bvrb3r.demo");
-    getCurrentUserFromServerMock.mockResolvedValue({ mode: "demo", user: founder });
+    getCurrentUserFromServerMock.mockResolvedValue({ authenticated: true, mode: "demo", user: founder });
     approveVerificationProfileMock.mockResolvedValue({ ok: true, profileId: "vprof-barber-fade" });
 
     const response = await postApprove(new NextRequest("https://bvrb3r.demo/api/architect/verifications/vprof-barber-fade/approve", {
@@ -135,7 +135,7 @@ describe("architect verification routes", () => {
   });
 
   it("blocks non-admin document signed-url access", async () => {
-    getCurrentUserFromServerMock.mockResolvedValue({ mode: "demo", user: resolveDemoUser("owner@bvrb3r.demo") });
+    getCurrentUserFromServerMock.mockResolvedValue({ authenticated: true, mode: "demo", user: resolveDemoUser("owner@bvrb3r.demo") });
 
     const response = await postDocumentSignedUrl(new Request("https://bvrb3r.demo/api/architect/verifications/vprof-barber-fade/documents/doc-fade-identity/signed-url", {
       method: "POST"
@@ -150,7 +150,7 @@ describe("architect verification routes", () => {
 
   it("returns 404 when the requested document does not belong to the profile", async () => {
     const founder = resolveDemoUser("architect@bvrb3r.demo");
-    getCurrentUserFromServerMock.mockResolvedValue({ mode: "demo", user: founder });
+    getCurrentUserFromServerMock.mockResolvedValue({ authenticated: true, mode: "demo", user: founder });
     createArchitectVerificationDocumentSignedUrlMock.mockRejectedValue(
       Object.assign(new Error("Verification document not found for this profile."), {
         name: "VerificationAccessError",

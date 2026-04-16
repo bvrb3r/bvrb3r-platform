@@ -120,13 +120,16 @@ export function visibleMarketplaceState(): MarketplaceState {
     brandLine: "Real cuts only",
     phone: "8135550100",
     locationIds: ["loc-real"],
-    type: "shop"
+    type: "shop",
+    appApprovalStatus: "approved"
   });
   state.barbers.push({
     id: "barber-real",
     userId: "profile-barber-real",
     name: "Real Barber",
     role: "booth_rent_barber",
+    appApprovalStatus: "approved",
+    shopApprovalStatus: "not_required",
     locationIds: ["loc-real"],
     specialties: ["Fades"],
     rating: 4.8,

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { isPlatformAdminUser } from "@/lib/auth/demo-auth";
-import { getCurrentUserFromServer } from "@/lib/auth/session";
+import { requireArchitectAdmin } from "@/app/api/architect/verifications/_shared";
 import { applyPlatformAdminAction } from "@/lib/platform-admin/service";
 
 const actionSchema = z.discriminatedUnion("type", [
@@ -52,13 +51,9 @@ const actionSchema = z.discriminatedUnion("type", [
 
 export async function POST(request: Request) {
   try {
-    const { user } = await getCurrentUserFromServer();
-    if (user.accountStatus && user.accountStatus !== "active") {
-      return NextResponse.json({ error: "Account access is disabled." }, { status: 403 });
-    }
-
-    if (!isPlatformAdminUser(user)) {
-      return NextResponse.json({ error: "Architect Console actions are restricted to the platform admin." }, { status: 403 });
+    const access = await requireArchitectAdmin();
+    if (!access.ok) {
+      return access.response;
     }
 
     const parsed = actionSchema.safeParse(await request.json().catch(() => null));
@@ -66,7 +61,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid Architect Console action payload." }, { status: 400 });
     }
 
-    const result = await applyPlatformAdminAction(user, parsed.data);
+    const result = await applyPlatformAdminAction(access.user, parsed.data);
     return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json(

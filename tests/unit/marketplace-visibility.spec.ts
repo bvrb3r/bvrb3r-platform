@@ -129,13 +129,16 @@ function visibleMarketplaceState(): MarketplaceState {
     brandLine: "Real cuts only",
     phone: "8135550100",
     locationIds: ["loc-real"],
-    type: "shop"
+    type: "shop",
+    appApprovalStatus: "approved"
   });
   state.barbers.push({
     id: "barber-real",
     userId: "profile-barber-real",
     name: "Real Barber",
     role: "booth_rent_barber",
+    appApprovalStatus: "approved",
+    shopApprovalStatus: "not_required",
     locationIds: ["loc-real"],
     specialties: ["Fades"],
     rating: 0,
@@ -294,6 +297,29 @@ describe("marketplace visibility", () => {
 
     expect(searchMarketplace(state, {}, createEmptyTrustState())).toEqual([]);
     expect(getMapDiscoveryMarkers(state, {}, createEmptyTrustState())).toEqual([]);
+  });
+
+  it("hides barbers until the canonical platform approval status is approved", () => {
+    const state = visibleMarketplaceState();
+    state.barbers[0] = {
+      ...state.barbers[0],
+      appApprovalStatus: "pending"
+    };
+
+    expect(searchMarketplace(state, {}, approvedTrustState())).toEqual([]);
+    expect(filterVisibleMarketplaceBarbers(state, approvedTrustState())).toEqual([]);
+  });
+
+  it("hides shops until the canonical shop approval status is approved", () => {
+    const state = visibleMarketplaceState();
+    state.shops[0] = {
+      ...state.shops[0],
+      appApprovalStatus: "under_review"
+    };
+
+    expect(searchMarketplace(state, {}, approvedTrustState())).toEqual([]);
+    expect(filterVisibleMarketplaceShops(state, approvedTrustState())).toEqual([]);
+    expect(getMapDiscoveryMarkers(state, {}, approvedTrustState())).toEqual([]);
   });
 
   it("does not allow known demo or seeded barber references into production discovery", () => {

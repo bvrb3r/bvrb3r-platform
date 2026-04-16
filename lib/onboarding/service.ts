@@ -320,7 +320,15 @@ function chooseSelectedRole(lanes: OnboardingStateRecord[]) {
 }
 
 function inferSelectedRoleFromUser(user: UserAccount): OnboardingRole | null {
-  return user.primaryOnboardingRole ?? null;
+  if (
+    user.primaryOnboardingRole === "client"
+    || user.primaryOnboardingRole === "barber"
+    || user.primaryOnboardingRole === "shop_owner"
+  ) {
+    return user.primaryOnboardingRole;
+  }
+
+  return null;
 }
 
 function hasRequiredContactData(user: UserAccount) {

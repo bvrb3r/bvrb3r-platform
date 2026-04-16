@@ -124,7 +124,7 @@ async function refreshDerivedSignals(supabase: SupabaseClient) {
     supabase.from("marketplace_services").select("*"),
     supabase.from("appointments").select("service_id, barber_id, client_id, status, total_amount, starts_at"),
     supabase.from("services").select("id, reference_code"),
-    supabase.from("barbers").select("id, reference_code"),
+    supabase.from("barbers").select("id, reference_code, app_approval_status, shop_approval_status"),
     supabase.from("clients").select("id, reference_code"),
     supabase.from("reviews").select("barber_id, client_id, rating"),
     supabase.from("barber_follows").select("barber_reference"),
@@ -192,7 +192,13 @@ async function refreshDerivedSignals(supabase: SupabaseClient) {
   }));
 
   const conversionRows = tableRows(conversionEventsResult.data);
-  const barberReferences = tableRows(canonicalBarbersResult.data).map((row: any) => reference(row)).filter(Boolean);
+  const barberReferences = tableRows(canonicalBarbersResult.data)
+    .filter((row: any) =>
+      row.app_approval_status === "approved"
+      && (!row.shop_approval_status || row.shop_approval_status === "not_required" || row.shop_approval_status === "approved")
+    )
+    .map((row: any) => reference(row))
+    .filter(Boolean);
   const rankingRows = barberReferences.map((barberReference) => {
     const barberServices = services.filter((service) => service.barberId === barberReference);
     const barberReviewRows = reviewRows.filter((review) => review.barber_reference === barberReference);
@@ -368,12 +374,12 @@ async function readSupabaseRuntime(supabase: SupabaseClient): Promise<Marketplac
     supabase.from("search_history").select("client_reference, query, filters, searched_at").order("searched_at", { ascending: false }),
     supabase.from("client_preferences").select("client_reference, favorite_shop_reference, preferred_location_reference, preferred_style_tag_ids, prefers_instant_booking"),
     supabase.from("reviews").select("id, appointment_id, barber_id, client_id, location_id, rating, message, created_at").order("created_at", { ascending: false }),
-    supabase.from("barbers").select("id, reference_code, profile_id, compensation_model, commission_rate, booth_rent_amount, booth_rent_frequency, bio, booking_slug"),
+    supabase.from("barbers").select("id, reference_code, profile_id, compensation_model, commission_rate, booth_rent_amount, booth_rent_frequency, bio, booking_slug, app_approval_status, shop_approval_status"),
     supabase.from("profiles").select("id, full_name, primary_onboarding_role, onboarding_state"),
     supabase.from("clients").select("id, reference_code"),
     supabase.from("locations").select("id, reference_code, name, neighborhood, city, state, phone, hours, tax_rate"),
     supabase.from("staff_locations").select("profile_id, location_id"),
-    supabase.from("shops").select("id, name, brand_line, phone, kind"),
+    supabase.from("shops").select("id, name, brand_line, phone, kind, app_approval_status"),
     supabase.from("style_tags").select("id, name, slug, category"),
     supabase.from("featured_profiles").select("id, barber_reference, label"),
     supabase.from("trending_styles").select("id, style_tag_slug, region_label, booking_count, rank"),
@@ -438,6 +444,8 @@ async function readSupabaseRuntime(supabase: SupabaseClient): Promise<Marketplac
       userId: row.profile_id,
       name: publicProfile?.display_name ?? canonicalProfile?.full_name ?? barberReference,
       role,
+      appApprovalStatus: row.app_approval_status ?? "pending",
+      shopApprovalStatus: row.shop_approval_status ?? undefined,
       locationIds,
       specialties: publicProfile?.specialties ?? [],
       rating: 0,
@@ -464,7 +472,8 @@ async function readSupabaseRuntime(supabase: SupabaseClient): Promise<Marketplac
       brandLine: row.brand_line ?? "",
       phone: row.phone ?? "",
       locationIds: uniqueStrings([...indexedLocationIds, ...bootstrapLocationIds]),
-      type: row.kind === "mobile" ? "mobile" : "shop"
+      type: row.kind === "mobile" ? "mobile" : "shop",
+      appApprovalStatus: row.app_approval_status ?? "pending"
     };
   });
   const locationUuidByReference = new Map(tableRows(locations.data).map((row: any) => [reference(row), row.id]));

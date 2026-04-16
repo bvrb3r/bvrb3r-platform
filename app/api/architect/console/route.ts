@@ -1,20 +1,16 @@
 import { NextResponse } from "next/server";
-import { isPlatformAdminUser } from "@/lib/auth/demo-auth";
-import { getCurrentUserFromServer } from "@/lib/auth/session";
+import { requireArchitectAdmin } from "@/app/api/architect/verifications/_shared";
 import { ARCHITECT_DEGRADED_WARNING, createEmptyPlatformAdminConsolePayload, normalizePlatformAdminConsolePayload } from "@/lib/platform-admin/payload";
 import { getPlatformAdminConsolePayload } from "@/lib/platform-admin/service";
 
 export async function GET() {
   try {
-    const { user } = await getCurrentUserFromServer();
-    if (user.accountStatus && user.accountStatus !== "active") {
-      return NextResponse.json({ error: "Account access is disabled." }, { status: 403 });
+    const access = await requireArchitectAdmin();
+    if (!access.ok) {
+      return access.response;
     }
 
-    if (!isPlatformAdminUser(user)) {
-      return NextResponse.json({ error: "Architect Console access is restricted to the platform admin." }, { status: 403 });
-    }
-
+    const { user } = access;
     let payload = createEmptyPlatformAdminConsolePayload(user.name);
     try {
       const result = await getPlatformAdminConsolePayload(user);

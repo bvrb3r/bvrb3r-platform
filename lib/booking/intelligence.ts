@@ -7,6 +7,7 @@ import {
 } from "@/lib/trust/engine";
 import {
   hasRealMarketplaceText,
+  isBarberPlatformApproved,
   isKnownNonProductionMarketplaceValue,
   isMarketplaceBarberTrustApproved,
   isMarketplaceBookableService,
@@ -55,6 +56,8 @@ type CanonicalBarberRow = {
   reference_code: string | null;
   profile_id: string;
   compensation_model: "commission" | "booth_rent";
+  app_approval_status: string | null;
+  shop_approval_status: string | null;
   commission_rate: number | string | null;
   booth_rent_amount: number | string | null;
   booth_rent_frequency: "weekly" | "monthly" | null;
@@ -337,6 +340,13 @@ function isBarberDiscoverable(trustState: TrustState | undefined, barberId: stri
   return isMarketplaceBarberTrustApproved(trustState, barberId);
 }
 
+function isCanonicalBarberPlatformApproved(barber: CanonicalBarberRow) {
+  return isBarberPlatformApproved({
+    appApprovalStatus: barber.app_approval_status ?? undefined,
+    shopApprovalStatus: barber.shop_approval_status ?? undefined
+  });
+}
+
 function getBarberBookingGate(trustState: TrustState | undefined, barberId: string): VerificationGateDecision | null {
   if (!trustState) {
     return null;
@@ -425,7 +435,7 @@ async function readCanonicalSnapshot(supabase: SupabaseClient): Promise<Canonica
     reviewsResult,
     marketplaceVisibilityResult
   ] = await Promise.all([
-    supabase.from("barbers").select("id, reference_code, profile_id, compensation_model, commission_rate, booth_rent_amount, booth_rent_frequency, bio, booking_slug"),
+    supabase.from("barbers").select("id, reference_code, profile_id, compensation_model, app_approval_status, shop_approval_status, commission_rate, booth_rent_amount, booth_rent_frequency, bio, booking_slug"),
     supabase.from("barber_profiles").select("barber_reference, username, display_name, bio, years_experience, shop_reference, specialties, badges, service_area_label, next_available_at, visibility_state"),
     supabase.from("profiles").select("id, full_name, email, phone, primary_onboarding_role"),
     supabase.from("services").select("id, reference_code, location_id, category, name, description, duration_min, buffer_min, price, deposit_amount, full_prepay_required, active, service_owner_type, barber_reference, shop_reference, booking_count, popularity_rank").eq("active", true),
@@ -754,6 +764,7 @@ function buildCandidateRecords(
     const profile = profilesById.get(barberRow.profile_id);
     if (
       profile?.primary_onboarding_role !== "barber"
+      || !isCanonicalBarberPlatformApproved(barberRow)
       || !profileRow
       || !isCanonicalMarketplaceVisibilityReady(snapshot, barberReference, profileRow)
       || !hasRealMarketplaceText(profileRow.username)
@@ -1015,7 +1026,8 @@ export async function findCanonicalBookableSlot(
   const barberReference = toReference(barberRow.id, barberRow.reference_code);
   const profileRow = barberProfilesByReference.get(barberReference);
   if (
-    !isCanonicalMarketplaceVisibilityReady(snapshot, barberReference, profileRow)
+    !isCanonicalBarberPlatformApproved(barberRow)
+    || !isCanonicalMarketplaceVisibilityReady(snapshot, barberReference, profileRow)
     || !isBarberDiscoverable(options.trustState, barberReference)
   ) {
     return null;
@@ -1117,7 +1129,8 @@ export async function buildCanonicalAvailabilityPayload(
   const barberReference = toReference(barberRow.id, barberRow.reference_code);
   const profileRow = barberProfilesByReference.get(barberReference);
   if (
-    !isCanonicalMarketplaceVisibilityReady(snapshot, barberReference, profileRow)
+    !isCanonicalBarberPlatformApproved(barberRow)
+    || !isCanonicalMarketplaceVisibilityReady(snapshot, barberReference, profileRow)
     || !isBarberDiscoverable(options.trustState, barberReference)
   ) {
     return {
@@ -1228,7 +1241,7 @@ export async function buildCanonicalBarberProfile(
   }
 
   const barberReference = toReference(barberRow.id, barberRow.reference_code);
-  if (!isBarberDiscoverable(trustState, barberReference)) {
+  if (!isCanonicalBarberPlatformApproved(barberRow) || !isBarberDiscoverable(trustState, barberReference)) {
     return null;
   }
 

@@ -21,7 +21,7 @@ import {
   summarizeVerificationProviderStatus
 } from "@/lib/trust/serialization";
 import { getTrustState, setTrustState } from "@/lib/trust/state";
-import type { UserAccount } from "@/types/domain";
+import type { ApprovalStatus, UserAccount } from "@/types/domain";
 import type {
   ArchitectVerificationActionInput,
   ArchitectVerificationDetailPayload,
@@ -56,6 +56,46 @@ type VerificationSubject = {
   barberId?: string;
   shopId?: string;
   profile?: VerificationProfileRecord;
+  profileRow?: ProductionProfileRow;
+  barberRow?: ProductionBarberRow;
+  shopRow?: ProductionShopRow;
+};
+
+type ProductionProfileRow = {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+  phone: string | null;
+  primary_onboarding_role: string | null;
+  onboarding_state: string | null;
+  created_at?: string | null;
+};
+
+type ProductionBarberRow = {
+  id: string;
+  reference_code: string | null;
+  profile_id: string;
+  compensation_model: string | null;
+  barber_subtype?: string | null;
+  app_approval_status?: ApprovalStatus | null;
+  shop_approval_status?: ApprovalStatus | null;
+  created_at?: string | null;
+};
+
+type ProductionShopRow = {
+  id: string;
+  name: string | null;
+  owner_profile_id: string | null;
+  app_approval_status?: ApprovalStatus | null;
+  created_at?: string | null;
+};
+
+type ProductionVerificationIndex = {
+  profilesById: Map<string, ProductionProfileRow>;
+  barbersByReference: Map<string, ProductionBarberRow>;
+  barbersByProfileId: Map<string, ProductionBarberRow>;
+  shopsById: Map<string, ProductionShopRow>;
+  shopsByOwnerProfileId: Map<string, ProductionShopRow>;
 };
 
 const VERIFICATION_DEGRADED_WARNING = "Verification review data is partially unavailable. Core architect access is still active.";
@@ -78,7 +118,7 @@ export function isVerificationAccessError(error: unknown): error is Verification
 }
 
 export function resetArchitectVerificationStateForTests() {
-  trustOverlayState = null;
+  stageTrustOverlay(getTrustState());
 }
 
 function clone<T>(value: T): T {
@@ -134,6 +174,102 @@ function getSupabase() {
   }
 
   return createSupabaseAdminClient();
+}
+
+function createEmptyProductionVerificationIndex(): ProductionVerificationIndex {
+  return {
+    profilesById: new Map(),
+    barbersByReference: new Map(),
+    barbersByProfileId: new Map(),
+    shopsById: new Map(),
+    shopsByOwnerProfileId: new Map()
+  };
+}
+
+function productionReference(row: { id?: string; reference_code?: string | null } | null | undefined) {
+  return row?.reference_code ?? row?.id ?? "";
+}
+
+function canonicalSubjectProfileId(role: VerificationSubjectRole, profileId: string) {
+  return role === "barber"
+    ? `canonical-barber-${profileId}`
+    : `canonical-shop-owner-${profileId}`;
+}
+
+function parseCanonicalSubjectProfileId(profileId: string) {
+  if (profileId.startsWith("canonical-barber-")) {
+    return {
+      role: "barber" as const,
+      profileId: profileId.replace("canonical-barber-", "")
+    };
+  }
+
+  if (profileId.startsWith("canonical-shop-owner-")) {
+    return {
+      role: "shop_owner" as const,
+      profileId: profileId.replace("canonical-shop-owner-", "")
+    };
+  }
+
+  return null;
+}
+
+async function readProductionVerificationIndex(warnings: string[] = []): Promise<ProductionVerificationIndex> {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return createEmptyProductionVerificationIndex();
+  }
+
+  try {
+    const [profilesResult, barbersResult, shopsResult] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select("id, full_name, email, phone, primary_onboarding_role, onboarding_state, created_at")
+        .in("primary_onboarding_role", ["barber", "shop_owner"]),
+      supabase
+        .from("barbers")
+        .select("id, reference_code, profile_id, compensation_model, barber_subtype, app_approval_status, shop_approval_status, created_at"),
+      supabase
+        .from("shops")
+        .select("id, name, owner_profile_id, app_approval_status, created_at")
+    ]);
+
+    for (const result of [profilesResult, barbersResult, shopsResult]) {
+      if (result.error) {
+        throw result.error;
+      }
+    }
+
+    const profiles = (profilesResult.data ?? []) as ProductionProfileRow[];
+    const barbers = (barbersResult.data ?? []) as ProductionBarberRow[];
+    const shops = (shopsResult.data ?? []) as ProductionShopRow[];
+    const index = createEmptyProductionVerificationIndex();
+
+    for (const profile of profiles) {
+      index.profilesById.set(profile.id, profile);
+    }
+
+    for (const barber of barbers) {
+      const barberReference = productionReference(barber);
+      if (barberReference) {
+        index.barbersByReference.set(barberReference, barber);
+      }
+      index.barbersByProfileId.set(barber.profile_id, barber);
+    }
+
+    for (const shop of shops) {
+      index.shopsById.set(shop.id, shop);
+      if (shop.owner_profile_id) {
+        index.shopsByOwnerProfileId.set(shop.owner_profile_id, shop);
+      }
+    }
+
+    return index;
+  } catch (error) {
+    logArchitectVerificationError("reading production verification subjects", error);
+    pushWarning(warnings, "Canonical barber and shop-owner account rows are temporarily unavailable.");
+    return createEmptyProductionVerificationIndex();
+  }
 }
 
 function mergeRowsById<T extends { id: string }>(base: T[] | undefined, overlay: T[] | undefined) {
@@ -242,42 +378,53 @@ function getShopRecords(state: TrustState, shopId: string) {
   return state.shopVerifications.filter((record) => record.shopId === shopId);
 }
 
-function getBarberSubjectFromProfile(state: TrustState, profile: VerificationProfileRecord): VerificationSubject {
+function getBarberSubjectFromProfile(state: TrustState, profile: VerificationProfileRecord, production = createEmptyProductionVerificationIndex()): VerificationSubject {
   const matchingRecord = state.barberVerifications.find((record) => record.verificationProfileId === profile.id || record.userId === profile.userId);
+  const productionBarber = matchingRecord
+    ? production.barbersByReference.get(matchingRecord.barberId)
+    : production.barbersByProfileId.get(profile.userId);
   const barber = matchingRecord ? demoBarbers.find((entry) => entry.id === matchingRecord.barberId) : demoBarbers.find((entry) => entry.userId === profile.userId);
+  const barberId = productionBarber ? productionReference(productionBarber) : barber?.id ?? matchingRecord?.barberId;
 
   return {
     profileId: profile.id,
     source: "profile",
     role: "barber",
     userId: profile.userId,
-    barberId: barber?.id ?? matchingRecord?.barberId,
-    shopId: getShopForBarber(barber?.id ?? matchingRecord?.barberId ?? "")?.id,
-    profile
+    barberId,
+    shopId: getShopForBarber(barberId ?? "")?.id,
+    profile,
+    profileRow: production.profilesById.get(profile.userId),
+    barberRow: productionBarber
   };
 }
 
-function getShopSubjectFromProfile(state: TrustState, profile: VerificationProfileRecord): VerificationSubject {
+function getShopSubjectFromProfile(state: TrustState, profile: VerificationProfileRecord, production = createEmptyProductionVerificationIndex()): VerificationSubject {
   const matchingRecord = state.shopVerifications.find((record) => record.verificationProfileId === profile.id || record.userId === profile.userId);
+  const productionShop = matchingRecord
+    ? production.shopsById.get(matchingRecord.shopId)
+    : production.shopsByOwnerProfileId.get(profile.userId);
 
   return {
     profileId: profile.id,
     source: "profile",
     role: "shop_owner",
     userId: profile.userId,
-    shopId: matchingRecord?.shopId,
-    profile
+    shopId: productionShop?.id ?? matchingRecord?.shopId,
+    profile,
+    profileRow: production.profilesById.get(profile.userId),
+    shopRow: productionShop
   };
 }
 
-function collectVerificationSubjects(state: TrustState) {
+function collectVerificationSubjects(state: TrustState, production = createEmptyProductionVerificationIndex()) {
   const subjects: VerificationSubject[] = [];
   const seenBarbers = new Set<string>();
   const seenShops = new Set<string>();
 
   for (const profile of state.verificationProfiles ?? []) {
     if (profile.role === "barber") {
-      const subject = getBarberSubjectFromProfile(state, profile);
+      const subject = getBarberSubjectFromProfile(state, profile, production);
       if (subject.barberId) {
         seenBarbers.add(subject.barberId);
       }
@@ -286,7 +433,7 @@ function collectVerificationSubjects(state: TrustState) {
     }
 
     if (profile.role === "shop_owner") {
-      const subject = getShopSubjectFromProfile(state, profile);
+      const subject = getShopSubjectFromProfile(state, profile, production);
       if (subject.shopId) {
         seenShops.add(subject.shopId);
       }
@@ -300,13 +447,17 @@ function collectVerificationSubjects(state: TrustState) {
     }
 
     const barber = demoBarbers.find((entry) => entry.id === record.barberId);
+    const productionBarber = production.barbersByReference.get(record.barberId);
+    const userId = record.userId ?? productionBarber?.profile_id ?? barber?.userId;
     subjects.push({
       profileId: createSyntheticProfileId("barber", record.barberId),
       source: "legacy_records",
       role: "barber",
-      userId: record.userId ?? barber?.userId,
+      userId,
       barberId: record.barberId,
-      shopId: getShopForBarber(record.barberId)?.id
+      shopId: getShopForBarber(record.barberId)?.id,
+      profileRow: userId ? production.profilesById.get(userId) : undefined,
+      barberRow: productionBarber
     });
     seenBarbers.add(record.barberId);
   }
@@ -320,37 +471,118 @@ function collectVerificationSubjects(state: TrustState) {
       profileId: createSyntheticProfileId("shop_owner", record.shopId),
       source: "legacy_records",
       role: "shop_owner",
-      userId: record.userId ?? "user-owner",
-      shopId: record.shopId
+      userId: record.userId ?? production.shopsById.get(record.shopId)?.owner_profile_id ?? "user-owner",
+      shopId: record.shopId,
+      profileRow: record.userId ? production.profilesById.get(record.userId) : undefined,
+      shopRow: production.shopsById.get(record.shopId)
     });
     seenShops.add(record.shopId);
+  }
+
+  for (const [profileId, barber] of production.barbersByProfileId) {
+    const barberReference = productionReference(barber);
+    const profile = production.profilesById.get(profileId);
+    if (!barberReference || profile?.primary_onboarding_role !== "barber" || seenBarbers.has(barberReference)) {
+      continue;
+    }
+
+    subjects.push({
+      profileId: canonicalSubjectProfileId("barber", profileId),
+      source: "fallback",
+      role: "barber",
+      userId: profileId,
+      barberId: barberReference,
+      profileRow: profile,
+      barberRow: barber
+    });
+    seenBarbers.add(barberReference);
+  }
+
+  for (const [profileId, shop] of production.shopsByOwnerProfileId) {
+    const profile = production.profilesById.get(profileId);
+    if (!shop.id || profile?.primary_onboarding_role !== "shop_owner" || seenShops.has(shop.id)) {
+      continue;
+    }
+
+    subjects.push({
+      profileId: canonicalSubjectProfileId("shop_owner", profileId),
+      source: "fallback",
+      role: "shop_owner",
+      userId: profileId,
+      shopId: shop.id,
+      profileRow: profile,
+      shopRow: shop
+    });
+    seenShops.add(shop.id);
   }
 
   return subjects;
 }
 
-function getSubjectByProfileId(state: TrustState, profileId: string) {
+function getSubjectByProfileId(state: TrustState, profileId: string, production = createEmptyProductionVerificationIndex()) {
   const directProfile = (state.verificationProfiles ?? []).find((profile) => profile.id === profileId);
   if (directProfile) {
     return directProfile.role === "barber"
-      ? getBarberSubjectFromProfile(state, directProfile)
-      : getShopSubjectFromProfile(state, directProfile);
+      ? getBarberSubjectFromProfile(state, directProfile, production)
+      : getShopSubjectFromProfile(state, directProfile, production);
   }
 
-  if (profileId.startsWith("legacy-barber-")) {
-    const barberId = profileId.replace("legacy-barber-", "");
-    const barber = demoBarbers.find((entry) => entry.id === barberId);
-    if (!barber) {
+  const canonicalSubject = parseCanonicalSubjectProfileId(profileId);
+  if (canonicalSubject) {
+    if (canonicalSubject.role === "barber") {
+      const profile = production.profilesById.get(canonicalSubject.profileId);
+      const barber = production.barbersByProfileId.get(canonicalSubject.profileId);
+      const barberReference = productionReference(barber);
+      if (!profile || !barber || !barberReference) {
+        return null;
+      }
+
+      return {
+        profileId,
+        source: "fallback" as const,
+        role: "barber" as const,
+        userId: profile.id,
+        barberId: barberReference,
+        profileRow: profile,
+        barberRow: barber
+      };
+    }
+
+    const profile = production.profilesById.get(canonicalSubject.profileId);
+    const shop = production.shopsByOwnerProfileId.get(canonicalSubject.profileId);
+    if (!profile || !shop?.id) {
       return null;
     }
 
     return {
       profileId,
+      source: "fallback" as const,
+      role: "shop_owner" as const,
+      userId: profile.id,
+      shopId: shop.id,
+      profileRow: profile,
+      shopRow: shop
+    };
+  }
+
+  if (profileId.startsWith("legacy-barber-")) {
+    const barberId = profileId.replace("legacy-barber-", "");
+    const barber = demoBarbers.find((entry) => entry.id === barberId);
+    const productionBarber = production.barbersByReference.get(barberId);
+    if (!barber && !productionBarber) {
+      return null;
+    }
+    const userId = productionBarber?.profile_id ?? barber?.userId;
+
+    return {
+      profileId,
       source: "legacy_records" as const,
       role: "barber" as const,
-      userId: barber.userId,
+      userId,
       barberId,
-      shopId: getShopForBarber(barberId)?.id
+      shopId: getShopForBarber(barberId)?.id,
+      profileRow: userId ? production.profilesById.get(userId) : undefined,
+      barberRow: productionBarber
     };
   }
 
@@ -365,8 +597,10 @@ function getSubjectByProfileId(state: TrustState, profileId: string) {
       profileId,
       source: "legacy_records" as const,
       role: "shop_owner" as const,
-      userId: record.userId ?? "user-owner",
-      shopId
+      userId: record.userId ?? production.shopsById.get(shopId)?.owner_profile_id ?? "user-owner",
+      shopId,
+      profileRow: record.userId ? production.profilesById.get(record.userId) : undefined,
+      shopRow: production.shopsById.get(shopId)
     };
   }
 
@@ -376,29 +610,31 @@ function getSubjectByProfileId(state: TrustState, profileId: string) {
 function buildQueueItemFromSubject(state: TrustState, subject: VerificationSubject): ArchitectVerificationQueueItem | null {
   if (subject.role === "barber" && subject.barberId) {
     const barber = demoBarbers.find((entry) => entry.id === subject.barberId);
-    if (!barber) {
+    const productionBarber = subject.barberRow;
+    if (!barber && !productionBarber) {
       return null;
     }
 
-    const user = getUser(subject.userId ?? barber.userId);
+    const user = getUser(subject.userId ?? barber?.userId);
+    const profileRow = subject.profileRow;
     const decision = computeBarberVerificationDecision(state, subject.barberId);
     const records = getBarberRecords(state, subject.barberId);
     const licenseRecord = records.find((record) => record.category === "license_verification");
-    const submittedAt = maxTimestamp(subject.profile?.createdAt, ...records.map((record) => record.verificationSubmittedAt ?? record.updatedAt));
+    const submittedAt = maxTimestamp(subject.profile?.createdAt, profileRow?.created_at ?? undefined, productionBarber?.created_at ?? undefined, ...records.map((record) => record.verificationSubmittedAt ?? record.updatedAt));
     const lastReviewedAt = maxTimestamp(subject.profile?.lastReviewedAt, ...records.map((record) => record.lastReviewedAt ?? record.verificationReviewedAt));
-    const updatedAt = maxTimestamp(subject.profile?.updatedAt, ...records.map((record) => record.updatedAt)) ?? new Date().toISOString();
+    const updatedAt = maxTimestamp(subject.profile?.updatedAt, productionBarber?.created_at ?? undefined, ...records.map((record) => record.updatedAt)) ?? new Date().toISOString();
 
     return {
       profileId: subject.profileId,
       source: subject.profile ? "profile" : subject.source,
-      userId: user?.id ?? subject.userId,
-      subjectName: user?.name ?? barber.name,
-      subjectEmail: user?.email,
-      subjectPhone: undefined,
+      userId: profileRow?.id ?? user?.id ?? subject.userId,
+      subjectName: profileRow?.full_name ?? user?.name ?? barber?.name ?? productionReference(productionBarber) ?? "Barber",
+      subjectEmail: profileRow?.email ?? user?.email,
+      subjectPhone: profileRow?.phone ?? undefined,
       role: "barber",
-      barberId: barber.id,
+      barberId: subject.barberId,
       shopId: subject.shopId,
-      shopName: getShopForBarber(barber.id)?.name,
+      shopName: subject.shopId ? demoShops.find((entry) => entry.id === subject.shopId)?.name : undefined,
       overallStatus: subject.profile?.overallStatus ?? decision.canonicalOverallStatus,
       canonicalOverallStatus: decision.canonicalOverallStatus,
       identityStatus: toDisplayStatus(decision.identityStatus),
@@ -421,28 +657,31 @@ function buildQueueItemFromSubject(state: TrustState, subject: VerificationSubje
 
   if (subject.role === "shop_owner" && subject.shopId) {
     const shop = demoShops.find((entry) => entry.id === subject.shopId);
-    if (!shop) {
+    const productionShop = subject.shopRow;
+    if (!shop && !productionShop) {
       return null;
     }
 
     const decision = computeShopVerificationDecision(state, subject.shopId);
     const records = getShopRecords(state, subject.shopId);
     const businessRecord = records.find((record) => record.category === "business_verification");
+    const profileRow = subject.profileRow;
     const user = getUser(subject.userId ?? businessRecord?.userId);
-    const submittedAt = maxTimestamp(subject.profile?.createdAt, ...records.map((record) => record.verificationSubmittedAt ?? record.updatedAt));
+    const submittedAt = maxTimestamp(subject.profile?.createdAt, profileRow?.created_at ?? undefined, productionShop?.created_at ?? undefined, ...records.map((record) => record.verificationSubmittedAt ?? record.updatedAt));
     const lastReviewedAt = maxTimestamp(subject.profile?.lastReviewedAt, ...records.map((record) => record.lastReviewedAt ?? record.verificationReviewedAt));
-    const updatedAt = maxTimestamp(subject.profile?.updatedAt, ...records.map((record) => record.updatedAt)) ?? new Date().toISOString();
+    const updatedAt = maxTimestamp(subject.profile?.updatedAt, productionShop?.created_at ?? undefined, ...records.map((record) => record.updatedAt)) ?? new Date().toISOString();
+    const shopName = productionShop?.name ?? shop?.name ?? subject.shopId;
 
     return {
       profileId: subject.profileId,
       source: subject.profile ? "profile" : subject.source,
-      userId: user?.id ?? subject.userId,
-      subjectName: businessRecord?.businessName ?? shop.name,
-      subjectEmail: user?.email,
-      subjectPhone: undefined,
+      userId: profileRow?.id ?? user?.id ?? subject.userId,
+      subjectName: businessRecord?.businessName ?? shopName,
+      subjectEmail: profileRow?.email ?? user?.email,
+      subjectPhone: profileRow?.phone ?? undefined,
       role: "shop_owner",
-      shopId: shop.id,
-      shopName: shop.name,
+      shopId: subject.shopId,
+      shopName,
       overallStatus: subject.profile?.overallStatus ?? decision.canonicalOverallStatus,
       canonicalOverallStatus: decision.canonicalOverallStatus,
       identityStatus: toDisplayStatus(decision.identityStatus),
@@ -459,7 +698,7 @@ function buildQueueItemFromSubject(state: TrustState, subject: VerificationSubje
       updatedAt,
       currentRequirementsCount: decision.currentRequirements.length,
       currentRequirements: decision.currentRequirements,
-      legalBusinessName: businessRecord?.businessName ?? shop.name
+      legalBusinessName: businessRecord?.businessName ?? shopName
     };
   }
 
@@ -677,7 +916,8 @@ function getRelevantAuditEntries(
 
 async function resolveDetailPayload(profileId: string, warnings: string[]) {
   const state = await readArchitectTrustState(warnings);
-  const subject = getSubjectByProfileId(state, profileId);
+  const production = await readProductionVerificationIndex(warnings);
+  const subject = getSubjectByProfileId(state, profileId, production);
   if (!subject) {
     return createEmptyArchitectVerificationDetailPayload(warnings);
   }
@@ -951,7 +1191,7 @@ function ensureProfileForSubject(state: TrustState, subject: VerificationSubject
   }
 
   const profile: VerificationProfileRecord = {
-    id: `verification-profile-${randomUUID().slice(0, 8)}`,
+    id: randomUUID(),
     userId: subject.userId ?? `unknown-${subject.profileId}`,
     role: subject.role,
     overallStatus: "not_started",
@@ -976,8 +1216,148 @@ function ensureProfileForSubject(state: TrustState, subject: VerificationSubject
   return profile;
 }
 
+function getSubjectDisplayName(subject: VerificationSubject) {
+  if (subject.role === "shop_owner") {
+    return subject.shopRow?.name ?? subject.profileRow?.full_name ?? subject.shopId ?? subject.userId ?? "Shop owner";
+  }
+
+  return subject.profileRow?.full_name
+    ?? (subject.userId ? getUser(subject.userId)?.name : undefined)
+    ?? subject.barberId
+    ?? "Barber";
+}
+
+function ensureSubjectVerificationRecords(
+  state: TrustState,
+  subject: VerificationSubject,
+  profile: VerificationProfileRecord,
+  initialStatus: VerificationStatus = "submitted"
+) {
+  const now = new Date().toISOString();
+
+  if (subject.role === "barber" && subject.barberId) {
+    const legalName = getSubjectDisplayName(subject);
+    const categories: BarberVerificationRecord["category"][] = [
+      "identity_verification",
+      "license_verification",
+      "payout_verification"
+    ];
+
+    for (const category of categories) {
+      if (state.barberVerifications.some((record) => record.barberId === subject.barberId && record.category === category)) {
+        continue;
+      }
+
+      state.barberVerifications.push({
+        id: `barber-verification-${randomUUID().slice(0, 8)}`,
+        barberId: subject.barberId,
+        category,
+        legalName,
+        userId: subject.userId,
+        verificationProfileId: profile.id,
+        verificationStatus: initialStatus,
+        verificationSubmittedAt: now,
+        updatedAt: now
+      });
+    }
+  }
+
+  if (subject.role === "shop_owner" && subject.shopId) {
+    const businessName = getSubjectDisplayName(subject);
+    const categories: ShopVerificationRecord["category"][] = [
+      "business_verification",
+      "ownership_verification"
+    ];
+
+    for (const category of categories) {
+      if (state.shopVerifications.some((record) => record.shopId === subject.shopId && record.category === category)) {
+        continue;
+      }
+
+      state.shopVerifications.push({
+        id: `shop-verification-${randomUUID().slice(0, 8)}`,
+        shopId: subject.shopId,
+        category,
+        businessName,
+        userId: subject.userId,
+        verificationProfileId: profile.id,
+        verificationStatus: initialStatus,
+        verificationSubmittedAt: now,
+        updatedAt: now
+      });
+    }
+  }
+}
+
+function getCanonicalApprovalStatusForAction(
+  action: "approve" | "reject" | "request_update" | "suspend" | "reactivate",
+  profile: VerificationProfileRecord
+): ApprovalStatus {
+  if (action === "approve") {
+    return "approved";
+  }
+
+  if (action === "reject") {
+    return "rejected";
+  }
+
+  if (action === "reactivate" && normalizeVerificationStatus(profile.overallStatus) === "approved") {
+    return "approved";
+  }
+
+  return "under_review";
+}
+
+async function persistCanonicalApprovalStatus(
+  subject: VerificationSubject,
+  action: "approve" | "reject" | "request_update" | "suspend" | "reactivate",
+  profile: VerificationProfileRecord,
+  note: string
+) {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return;
+  }
+
+  const nextApprovalStatus = getCanonicalApprovalStatusForAction(action, profile);
+
+  try {
+    if (subject.role === "barber" && subject.barberId) {
+      const result = await supabase
+        .from("barbers")
+        .update({
+          app_approval_status: nextApprovalStatus,
+          approval_notes: note || null
+        })
+        .or(`reference_code.eq.${subject.barberId},id.eq.${subject.barberRow?.id ?? subject.barberId}`);
+
+      if (result.error && !isMissingTableError(result.error)) {
+        throw result.error;
+      }
+      return;
+    }
+
+    if (subject.role === "shop_owner" && subject.shopId) {
+      const result = await supabase
+        .from("shops")
+        .update({
+          app_approval_status: nextApprovalStatus
+        })
+        .eq("id", subject.shopId);
+
+      if (result.error && !isMissingTableError(result.error)) {
+        throw result.error;
+      }
+    }
+  } catch (error) {
+    logArchitectVerificationError("persisting canonical approval status", error);
+    throw error;
+  }
+}
+
 function recomputeProfileState(state: TrustState, subject: VerificationSubject) {
   const profile = ensureProfileForSubject(state, subject);
+  ensureSubjectVerificationRecords(state, subject, profile);
   const now = new Date().toISOString();
   const decision = subject.role === "barber" && subject.barberId
     ? computeBarberVerificationDecision(state, subject.barberId)
@@ -1177,6 +1557,9 @@ async function persistVerificationState(nextState: TrustState, subject: Verifica
   const supabase = getSupabase();
   if (!supabase) {
     setTrustState(clone(nextState));
+    if (trustOverlayState) {
+      stageTrustOverlay(nextState);
+    }
     return;
   }
 
@@ -1216,7 +1599,7 @@ async function persistVerificationState(nextState: TrustState, subject: Verifica
     usedFallback = true;
   }
 
-  if (usedFallback) {
+  if (usedFallback || trustOverlayState) {
     stageTrustOverlay(nextState);
   }
 }
@@ -1334,7 +1717,7 @@ function createReviewRecord(
   input: ArchitectVerificationActionInput
 ): VerificationReviewRecord {
   return {
-    id: `verification-review-${randomUUID().slice(0, 8)}`,
+    id: randomUUID(),
     verificationProfileId: profile.id,
     reviewType: "overall",
     actionType,
@@ -1368,7 +1751,8 @@ async function executeReviewAction(
   assertPlatformAdminAccess(actor);
 
   const state = clone(await readArchitectTrustState());
-  const subject = getSubjectByProfileId(state, profileId);
+  const production = await readProductionVerificationIndex();
+  const subject = getSubjectByProfileId(state, profileId, production);
   if (!subject) {
     throw new Error("Verification profile not found.");
   }
@@ -1396,6 +1780,7 @@ async function executeReviewAction(
   state.verificationReviews = [review, ...(state.verificationReviews ?? [])];
 
   await persistVerificationState(state, subject, review);
+  await persistCanonicalApprovalStatus(subject, action, nextProfile, input.internalNotes?.trim() || input.reason.trim());
   if (!getSupabase()) {
     setTrustState(clone(state));
   }
@@ -1414,6 +1799,7 @@ async function executeReviewAction(
       profileId: nextProfile.id,
       role: nextProfile.role,
       subjectName: after.subjectName,
+      canonicalApprovalStatus: getCanonicalApprovalStatusForAction(action, nextProfile),
       internalNotes: input.internalNotes?.trim() || null
     }
   });
@@ -1433,7 +1819,8 @@ export async function listVerificationProfilesForArchitect(
 
   try {
     const state = await readArchitectTrustState(warnings);
-    const items = collectVerificationSubjects(state)
+    const production = await readProductionVerificationIndex(warnings);
+    const items = collectVerificationSubjects(state, production)
       .map((subject) => buildQueueItemFromSubject(state, subject))
       .filter((item): item is ArchitectVerificationQueueItem => Boolean(item))
       .filter((item) => matchesFilters(item, filters))
@@ -1530,7 +1917,8 @@ export async function createArchitectVerificationDocumentSignedUrl(profileId: st
   assertPlatformAdminAccess(actor);
 
   const state = await readArchitectTrustState();
-  const subject = getSubjectByProfileId(state, profileId);
+  const production = await readProductionVerificationIndex();
+  const subject = getSubjectByProfileId(state, profileId, production);
   if (!subject) {
     throw new VerificationAccessError("Verification profile not found.", 404);
   }

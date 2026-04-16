@@ -1,7 +1,17 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveDemoUser } from "@/lib/auth/demo-auth";
 import { getVerificationMePayload } from "@/lib/trust/verification-service";
 import { getTrustState, resetTrustState, setTrustState } from "@/lib/trust/state";
+
+vi.mock("@/lib/trust/provider", async () => {
+  const state = await vi.importActual<typeof import("@/lib/trust/state")>("@/lib/trust/state");
+  return {
+    getTrustProvider: async () => ({
+      kind: "test",
+      readState: async () => state.getTrustState()
+    })
+  };
+});
 
 describe("trust verification service", () => {
   beforeEach(() => {

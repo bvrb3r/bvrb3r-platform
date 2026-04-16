@@ -208,6 +208,7 @@ describe("architect verification service", () => {
         }
       ]
     });
+    resetArchitectVerificationStateForTests();
 
     const payload = await listVerificationProfilesForArchitect(founder);
     const roles = payload.items
