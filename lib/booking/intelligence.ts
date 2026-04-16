@@ -5,6 +5,14 @@ import {
   computeShopVerificationDecision,
   getVerificationGateDecision
 } from "@/lib/trust/engine";
+import {
+  hasRealMarketplaceText,
+  isKnownNonProductionMarketplaceValue,
+  isMarketplaceBarberTrustApproved,
+  isMarketplaceBookableService,
+  isMarketplaceShopTrustApproved,
+  isPublicMarketplaceVisibilityState
+} from "@/lib/marketplace/visibility";
 import type { PublicBarberProfileView, ServiceCatalogItem } from "@/lib/marketplace/engine";
 import type {
   Barber,
@@ -39,6 +47,7 @@ type CanonicalProfileRow = {
   full_name: string | null;
   email: string | null;
   phone: string | null;
+  primary_onboarding_role: string | null;
 };
 
 type CanonicalBarberRow = {
@@ -126,6 +135,13 @@ type CanonicalBarberProfileRow = {
   visibility_state: string;
 };
 
+type CanonicalMarketplaceVisibilityRow = {
+  barber_reference: string;
+  visibility_state: string;
+  accepts_instant_bookings: boolean;
+  featured_rank: number | null;
+};
+
 type ClientBookingSignal = {
   favoriteBarberReference?: string;
   favoriteShopReference?: string;
@@ -186,6 +202,7 @@ type CanonicalSnapshot = {
   blockedTimes: CanonicalBlockedTimeRow[];
   appointments: CanonicalAppointmentRow[];
   reviews: CanonicalReviewRow[];
+  marketplaceVisibility: CanonicalMarketplaceVisibilityRow[];
 };
 
 const knownBadges = new Set<MarketplaceBadge>([
@@ -317,11 +334,7 @@ function toBadgeList(values: string[] | null | undefined, reviewCount: number, r
 }
 
 function isBarberDiscoverable(trustState: TrustState | undefined, barberId: string) {
-  if (!trustState) {
-    return true;
-  }
-
-  return getVerificationGateDecision(buildPublicTrustSignal(trustState, barberId).verificationDecision, "discovery").allowed;
+  return isMarketplaceBarberTrustApproved(trustState, barberId);
 }
 
 function getBarberBookingGate(trustState: TrustState | undefined, barberId: string): VerificationGateDecision | null {
@@ -333,11 +346,38 @@ function getBarberBookingGate(trustState: TrustState | undefined, barberId: stri
 }
 
 function isShopPubliclyActivatable(trustState: TrustState | undefined, shopId?: string) {
-  if (!trustState || !shopId) {
-    return true;
+  return isMarketplaceShopTrustApproved(trustState, shopId);
+}
+
+function getMarketplaceVisibilityRow(snapshot: CanonicalSnapshot, barberReference: string) {
+  return snapshot.marketplaceVisibility.find((row) => row.barber_reference === barberReference);
+}
+
+function isCanonicalMarketplaceVisibilityReady(
+  snapshot: CanonicalSnapshot,
+  barberReference: string,
+  profileRow?: CanonicalBarberProfileRow
+) {
+  const visibility = getMarketplaceVisibilityRow(snapshot, barberReference);
+  if (!visibility?.accepts_instant_bookings) {
+    return false;
   }
 
-  return getVerificationGateDecision(computeShopVerificationDecision(trustState, shopId), "shop_activation").allowed;
+  if (
+    !profileRow
+    || !isPublicMarketplaceVisibilityState(profileRow.visibility_state)
+    || !isPublicMarketplaceVisibilityState(visibility.visibility_state)
+  ) {
+    return false;
+  }
+
+  return ![
+    barberReference,
+    profileRow.barber_reference,
+    profileRow.username,
+    profileRow.display_name,
+    visibility.barber_reference
+  ].some(isKnownNonProductionMarketplaceValue);
 }
 
 function toCanonicalMarketplaceBadges(
@@ -382,17 +422,19 @@ async function readCanonicalSnapshot(supabase: SupabaseClient): Promise<Canonica
     availabilityResult,
     blockedTimesResult,
     appointmentsResult,
-    reviewsResult
+    reviewsResult,
+    marketplaceVisibilityResult
   ] = await Promise.all([
     supabase.from("barbers").select("id, reference_code, profile_id, compensation_model, commission_rate, booth_rent_amount, booth_rent_frequency, bio, booking_slug"),
     supabase.from("barber_profiles").select("barber_reference, username, display_name, bio, years_experience, shop_reference, specialties, badges, service_area_label, next_available_at, visibility_state"),
-    supabase.from("profiles").select("id, full_name, email, phone"),
+    supabase.from("profiles").select("id, full_name, email, phone, primary_onboarding_role"),
     supabase.from("services").select("id, reference_code, location_id, category, name, description, duration_min, buffer_min, price, deposit_amount, full_prepay_required, active, service_owner_type, barber_reference, shop_reference, booking_count, popularity_rank").eq("active", true),
     supabase.from("locations").select("id, reference_code, name, neighborhood, city, state, phone"),
     supabase.from("availability_rules").select("barber_id, location_id, weekday, start_time, end_time"),
     supabase.from("blocked_times").select("barber_id, starts_at, ends_at, reason"),
     supabase.from("appointments").select("id, reference_code, barber_id, client_id, service_id, location_id, status, starts_at, ends_at, total_amount"),
-    supabase.from("reviews").select("id, appointment_id, barber_id, client_id, location_id, rating, message, created_at")
+    supabase.from("reviews").select("id, appointment_id, barber_id, client_id, location_id, rating, message, created_at"),
+    supabase.from("marketplace_visibility").select("barber_reference, visibility_state, accepts_instant_bookings, featured_rank")
   ]);
 
   for (const result of [
@@ -404,7 +446,8 @@ async function readCanonicalSnapshot(supabase: SupabaseClient): Promise<Canonica
     availabilityResult,
     blockedTimesResult,
     appointmentsResult,
-    reviewsResult
+    reviewsResult,
+    marketplaceVisibilityResult
   ]) {
     if (result.error) {
       throw result.error;
@@ -420,7 +463,8 @@ async function readCanonicalSnapshot(supabase: SupabaseClient): Promise<Canonica
     availabilityRules: (availabilityResult.data ?? []) as CanonicalAvailabilityRuleRow[],
     blockedTimes: (blockedTimesResult.data ?? []) as CanonicalBlockedTimeRow[],
     appointments: (appointmentsResult.data ?? []) as CanonicalAppointmentRow[],
-    reviews: (reviewsResult.data ?? []) as CanonicalReviewRow[]
+    reviews: (reviewsResult.data ?? []) as CanonicalReviewRow[],
+    marketplaceVisibility: (marketplaceVisibilityResult.data ?? []) as CanonicalMarketplaceVisibilityRow[]
   };
 }
 function computeServicePopularity(
@@ -706,12 +750,20 @@ function buildCandidateRecords(
 
   return snapshot.barbers.flatMap((barberRow) => {
     const barberReference = toReference(barberRow.id, barberRow.reference_code);
-    if (!isBarberDiscoverable(options.trustState, barberReference)) {
-      return [];
-    }
-
     const profileRow = barberProfilesByReference.get(barberReference);
     const profile = profilesById.get(barberRow.profile_id);
+    if (
+      profile?.primary_onboarding_role !== "barber"
+      || !profileRow
+      || !isCanonicalMarketplaceVisibilityReady(snapshot, barberReference, profileRow)
+      || !hasRealMarketplaceText(profileRow.username)
+      || !hasRealMarketplaceText(profile?.full_name ?? profileRow.display_name)
+      || !hasRealMarketplaceText(profileRow.bio)
+      || !hasRealMarketplaceText(profileRow.service_area_label)
+      || !isBarberDiscoverable(options.trustState, barberReference)
+    ) {
+      return [];
+    }
     const rawLocationReferences = getCandidateLocationReferences(
       barberReference,
       barberRow.id,
@@ -738,7 +790,14 @@ function buildCandidateRecords(
       return serviceMatchScore(service, normalizedQuery) > 0;
     });
     const servicePool = matchingServices.length ? matchingServices : services;
-    const primaryService = servicePool.sort((left, right) => left.price - right.price)[0];
+    const bookableServicePool = servicePool.filter((service) =>
+      isMarketplaceBookableService(service)
+      && ![service.id, service.name, service.category, service.barberId, service.shopId].some(isKnownNonProductionMarketplaceValue)
+    );
+    const primaryService = [...bookableServicePool].sort((left, right) => left.price - right.price)[0];
+    if (!primaryService) {
+      return [];
+    }
     const candidateLocationReference = options.clientSignal?.favoriteShopReference && locationReferences.includes(options.clientSignal.favoriteShopReference)
       ? options.clientSignal.favoriteShopReference
       : locationReferences.includes(options.locationId)
@@ -778,11 +837,11 @@ function buildCandidateRecords(
       serviceCounts.set(serviceReference, (serviceCounts.get(serviceReference) ?? 0) + 1);
     });
     const mostBookedServiceReference = [...serviceCounts.entries()].sort((left, right) => right[1] - left[1])[0]?.[0];
-    const mostBookedService = services.find((service) => service.id === mostBookedServiceReference)?.name
-      ?? servicePool.sort((left, right) => left.price - right.price)[0]?.name;
+    const mostBookedService = bookableServicePool.find((service) => service.id === mostBookedServiceReference)?.name
+      ?? primaryService.name;
     const specialties = profileRow?.specialties?.length
       ? profileRow.specialties
-      : [...new Set(servicePool.slice(0, 3).map((service) => service.category))];
+      : [...new Set(bookableServicePool.slice(0, 3).map((service) => service.category))];
     const distanceMiles = Number(haversineMiles(defaultLocation, location).toFixed(1));
     const routineDueSoon = Boolean(options.routine?.nextSuggestedAt) && new Date(options.routine!.nextSuggestedAt!).getTime() <= Date.now() + 3 * 24 * 60 * 60 * 1000;
     const matchedFrom = getMatchClassification({
@@ -819,8 +878,8 @@ function buildCandidateRecords(
       rating,
       reviewCount,
       priceRange: [
-        Math.min(...servicePool.map((service) => service.price)),
-        Math.max(...servicePool.map((service) => service.price))
+        Math.min(...bookableServicePool.map((service) => service.price)),
+        Math.max(...bookableServicePool.map((service) => service.price))
       ],
       nextAvailableAt: nextSlot.startsAt,
       appointmentTime: nextSlot.startsAt,
@@ -847,7 +906,7 @@ function buildCandidateRecords(
         barberReference,
         candidateLocationReference
       ),
-      serviceOptions: servicePool,
+      serviceOptions: bookableServicePool,
       primaryService,
       completedCount: completedAppointments.length,
       cancelledCount,
@@ -954,6 +1013,14 @@ export async function findCanonicalBookableSlot(
   const locationReferenceByUuid = new Map(snapshot.locations.map((row) => [row.id, toReference(row.id, row.reference_code)]));
   const locationUuidByReference = new Map(snapshot.locations.map((row) => [toReference(row.id, row.reference_code), row.id]));
   const barberReference = toReference(barberRow.id, barberRow.reference_code);
+  const profileRow = barberProfilesByReference.get(barberReference);
+  if (
+    !isCanonicalMarketplaceVisibilityReady(snapshot, barberReference, profileRow)
+    || !isBarberDiscoverable(options.trustState, barberReference)
+  ) {
+    return null;
+  }
+
   const bookingGate = getBarberBookingGate(options.trustState, barberReference);
   if (bookingGate && !bookingGate.allowed) {
     return null;
@@ -971,7 +1038,11 @@ export async function findCanonicalBookableSlot(
     ? rawLocationReferences.filter((locationReference) => isShopPubliclyActivatable(options.trustState, locationReference))
     : rawLocationReferences;
   const services = getServicesForBarber(barberReference, barberRow.id, locationReferences, snapshot.services, locationReferenceByUuid);
-  const selectedService = services.find((entry) => entry.id === options.serviceId) ?? services[0] ?? null;
+  const bookableServices = services.filter((service) =>
+    isMarketplaceBookableService(service)
+    && ![service.id, service.name, service.category, service.barberId, service.shopId].some(isKnownNonProductionMarketplaceValue)
+  );
+  const selectedService = bookableServices.find((entry) => entry.id === options.serviceId) ?? bookableServices[0] ?? null;
   if (!selectedService) {
     return null;
   }
@@ -1044,6 +1115,20 @@ export async function buildCanonicalAvailabilityPayload(
   const locationReferenceByUuid = new Map(snapshot.locations.map((row) => [row.id, toReference(row.id, row.reference_code)]));
   const locationUuidByReference = new Map(snapshot.locations.map((row) => [toReference(row.id, row.reference_code), row.id]));
   const barberReference = toReference(barberRow.id, barberRow.reference_code);
+  const profileRow = barberProfilesByReference.get(barberReference);
+  if (
+    !isCanonicalMarketplaceVisibilityReady(snapshot, barberReference, profileRow)
+    || !isBarberDiscoverable(options.trustState, barberReference)
+  ) {
+    return {
+      barberId: barberReference,
+      locationId: options.locationId ?? "",
+      service: null,
+      slots: [],
+      gating: getBarberBookingGate(options.trustState, barberReference)
+    };
+  }
+
   const bookingGate = getBarberBookingGate(options.trustState, barberReference);
   const rawLocationReferences = getCandidateLocationReferences(
     barberReference,
@@ -1057,7 +1142,11 @@ export async function buildCanonicalAvailabilityPayload(
     ? rawLocationReferences.filter((locationReference) => isShopPubliclyActivatable(options.trustState, locationReference))
     : rawLocationReferences;
   const services = getServicesForBarber(barberReference, barberRow.id, locationReferences, snapshot.services, locationReferenceByUuid);
-  const selectedService = services.find((entry) => entry.id === options.serviceId) ?? services[0] ?? null;
+  const bookableServices = services.filter((service) =>
+    isMarketplaceBookableService(service)
+    && ![service.id, service.name, service.category, service.barberId, service.shopId].some(isKnownNonProductionMarketplaceValue)
+  );
+  const selectedService = bookableServices.find((entry) => entry.id === options.serviceId) ?? bookableServices[0] ?? null;
   const locationId = options.locationId ?? locationReferences[0] ?? rawLocationReferences[0];
   const locationGate = options.trustState && locationId && !isShopPubliclyActivatable(options.trustState, locationId)
     ? getVerificationGateDecision(computeShopVerificationDecision(options.trustState, locationId), "shop_activation")
@@ -1145,6 +1234,17 @@ export async function buildCanonicalBarberProfile(
 
   const profileRow = barberProfilesByReference.get(barberReference);
   const profile = snapshot.profiles.find((entry) => entry.id === barberRow.profile_id);
+  if (
+    profile?.primary_onboarding_role !== "barber"
+    || !profileRow
+    || !isCanonicalMarketplaceVisibilityReady(snapshot, barberReference, profileRow)
+    || !hasRealMarketplaceText(profileRow.username)
+    || !hasRealMarketplaceText(profile?.full_name ?? profileRow.display_name)
+    || !hasRealMarketplaceText(profileRow.bio)
+    || !hasRealMarketplaceText(profileRow.service_area_label)
+  ) {
+    return null;
+  }
   const locationReferenceByUuid = new Map(snapshot.locations.map((row) => [row.id, toReference(row.id, row.reference_code)]));
   const locationUuidByReference = new Map(snapshot.locations.map((row) => [toReference(row.id, row.reference_code), row.id]));
   const rawLocationReferences = getCandidateLocationReferences(
@@ -1162,13 +1262,17 @@ export async function buildCanonicalBarberProfile(
     .map(mapLocation)
     .filter((location) => locationReferences.includes(location.id))
   const services = getServicesForBarber(barberReference, barberRow.id, locationReferences, snapshot.services, locationReferenceByUuid);
-  if (!locations.length || !services.length) {
+  const bookableServices = services.filter((service) =>
+    isMarketplaceBookableService(service)
+    && ![service.id, service.name, service.category, service.barberId, service.shopId].some(isKnownNonProductionMarketplaceValue)
+  );
+  if (!locations.length || !bookableServices.length) {
     return null;
   }
 
   const serviceUuidByReference = new Map(snapshot.services.map((row) => [toReference(row.id, row.reference_code), row.id]));
-  const serviceMetrics = computeServicePopularity(services, serviceUuidByReference, snapshot.appointments, snapshot.reviews);
-  const serviceCatalog = services
+  const serviceMetrics = computeServicePopularity(bookableServices, serviceUuidByReference, snapshot.appointments, snapshot.reviews);
+  const serviceCatalog = bookableServices
     .map((service) => ({
       service,
       popularity: serviceMetrics.get(service.id) ?? {
@@ -1206,7 +1310,12 @@ export async function buildCanonicalBarberProfile(
     appointments: snapshot.appointments,
     blockedTimes: snapshot.blockedTimes
   });
-  const nextAvailableAt = nextSlots[0]?.startsAt ?? profileRow?.next_available_at ?? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const nextSlot = nextSlots[0];
+  if (!nextSlot) {
+    return null;
+  }
+
+  const nextAvailableAt = nextSlot.startsAt;
   const completedAppointments = snapshot.appointments.filter((entry) => entry.barber_id === barberRow.id && entry.status === "completed");
   const bookingsCreated = snapshot.appointments.filter((entry) => entry.barber_id === barberRow.id && entry.status !== "cancelled").length;
   const completionRate = bookingsCreated ? Math.round((completedAppointments.length / bookingsCreated) * 100) : 100;

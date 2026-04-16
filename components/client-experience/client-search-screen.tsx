@@ -138,6 +138,9 @@ export function ClientSearchScreen({
   }, [defaultLocationId, selectedLocationId]);
 
   const activeShop = shops.find((shop) => shop.id === selectedLocationId) ?? shops[0];
+  const activeAreaLabel = activeShop?.neighborhood ?? "your area";
+  const marketplaceZoneName = activeShop?.name ?? "No live shops yet";
+  const marketplaceZoneLocation = activeShop ? `${activeShop.neighborhood}, ${activeShop.city}` : "Check back soon";
 
   const deferredQuery = useDeferredValue(query);
   const trimmedQuery = deferredQuery.trim();
@@ -194,11 +197,13 @@ export function ClientSearchScreen({
   }, [activeShop?.name, activeShop?.neighborhood, barberResults, nextAvailableChair]);
 
   const resultsTitle = categoryLabel && !trimmedQuery
-    ? `${categoryLabel} around ${activeShop?.neighborhood ?? "Ybor City"}`
-    : `Barber discovery around ${activeShop?.neighborhood ?? "Ybor City"}`;
-  const resultsSubtitle = hasActiveSearchQuery
-    ? "Use the ranked list below to compare reviews, price, retention, and next availability without leaving the booking lane."
-    : "The marketplace now ranks real nearby barbers by retention, review trust, and live booking activity.";
+    ? `${categoryLabel} around ${activeAreaLabel}`
+    : `Barber discovery around ${activeAreaLabel}`;
+  const resultsSubtitle = barberResults.length
+    ? (hasActiveSearchQuery
+      ? "Use the ranked list below to compare reviews, price, retention, and next availability without leaving the booking lane."
+      : "The marketplace ranks real nearby barbers by trust, service readiness, and live booking availability.")
+    : "No barbers are live on BVRB3R in this area yet. Verified, active, bookable barbers will appear here as soon as they are ready.";
 
   async function handleReferralCta() {
     try {
@@ -299,8 +304,8 @@ export function ClientSearchScreen({
           </div>
           <div className="rounded-[22px] border border-white/10 bg-black/22 px-4 py-3 shadow-[0_14px_28px_rgba(0,0,0,0.18)]">
             <p className="text-[10px] uppercase tracking-[0.2em] text-white/46">Marketplace zone</p>
-            <p className="mt-2 text-sm font-medium text-white">{activeShop?.name ?? "BVRB3R Search"}</p>
-            <p className="mt-1 text-sm text-white/58">{activeShop?.neighborhood ?? "Ybor City"}, {activeShop?.city ?? "Tampa"}</p>
+            <p className="mt-2 text-sm font-medium text-white">{marketplaceZoneName}</p>
+            <p className="mt-1 text-sm text-white/58">{marketplaceZoneLocation}</p>
           </div>
         </div>
       </Card>
@@ -457,11 +462,19 @@ export function ClientSearchScreen({
       >
         {homeQuery.isLoading && !homePayload ? (
           <RailSkeleton />
-        ) : (
+        ) : shops.length ? (
           <div className="flex gap-4 overflow-x-auto pb-2 hide-scrollbar">
             {shops.map((shop) => (
               <ClientShopDiscoveryCard key={shop.id} location={shop} />
             ))}
+          </div>
+        ) : (
+          <div className="rounded-[30px] border border-dashed border-white/10 bg-[linear-gradient(180deg,rgba(19,19,19,0.96),rgba(8,8,8,0.98))] p-6 sm:p-7">
+            <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">No live shops</p>
+            <h3 className="mt-3 text-2xl font-semibold text-white" data-display="true">No shops are accepting bookings in this area yet.</h3>
+            <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">
+              Real shop cards appear only after a shop has active, approved, bookable barbers on the platform.
+            </p>
           </div>
         )}
       </ClientSectionBlock>
@@ -469,9 +482,9 @@ export function ClientSearchScreen({
       <ClientSectionBlock
         eyebrow={hasActiveSearchQuery ? "Search results" : "Marketplace feed"}
         title={hasActiveSearchQuery
-          ? (barberResults.length ? `Results for ${trimmedQuery || categoryLabel || "your filters"}` : "No results found")
+          ? (barberResults.length ? `Results for ${trimmedQuery || categoryLabel || "your filters"}` : "No live barbers matched")
           : resultsTitle}
-        subtitle={barberResults.length ? resultsSubtitle : "Try adjusting the filters or broadening your service/search terms."}
+        subtitle={resultsSubtitle}
         action={<span className="inline-flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-[#baff69]" />Deterministic ranking</span>}
       >
         {errorMessage ? <FeedbackBanner tone="error" message={errorMessage} /> : null}
@@ -514,14 +527,18 @@ export function ClientSearchScreen({
         ) : (
           <div className="rounded-[30px] border border-dashed border-white/10 bg-[linear-gradient(180deg,rgba(19,19,19,0.96),rgba(8,8,8,0.98))] p-6 sm:p-7">
             <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">No matching barbers</p>
-            <h3 className="mt-3 text-2xl font-semibold text-white" data-display="true">Try a broader search.</h3>
+            <h3 className="mt-3 text-2xl font-semibold text-white" data-display="true">
+              {hasActiveSearchQuery ? "No live barbers matched those filters." : "No barbers are live on BVRB3R yet."}
+            </h3>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">
-              Search by barber name, shop name, or a service category above to reopen the discovery flow.
+              {hasActiveSearchQuery
+                ? "Only active, approved barbers with real services and bookable availability can appear here. Try clearing a filter or checking back soon."
+                : "When a verified barber has real services and open booking time, they will appear here automatically."}
             </p>
             <div className="mt-5 flex flex-wrap gap-2 text-sm text-white/72">
               <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/18 px-3 py-2">
                 <MapPin className="h-4 w-4 text-[#baff69]" />
-                {activeShop?.name ?? "BVRB3R Search"}
+                {marketplaceZoneName}
               </span>
             </div>
           </div>

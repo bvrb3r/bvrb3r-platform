@@ -24,15 +24,11 @@ function getDescriptor(location: ClientShopCardData) {
     return "Mobile grooming base";
   }
 
-  if (location.neighborhood === "Ybor City") {
-    return "Neighborhood flagship";
-  }
-
   return location.brandLine ?? "Trusted local studio";
 }
 
 function getHoursLabel(location: ClientShopCardData) {
-  return location.hours ?? "Appointments available this week";
+  return location.hours ?? "Accepting bookings";
 }
 
 export function ClientShopDiscoveryCard({ location }: { location: ClientShopCardData; }) {
@@ -68,7 +64,7 @@ export function ClientShopDiscoveryCard({ location }: { location: ClientShopCard
             <p className="mt-1 text-sm text-white/58">{descriptor}</p>
           </div>
           <span className="rounded-[18px] border border-white/8 bg-black/20 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-white/62">
-            {location.kind === "mobile" ? "Mobile" : "Open today"}
+            {location.kind === "mobile" ? "Mobile" : "Live shop"}
           </span>
         </div>
 
@@ -88,7 +84,7 @@ export function ClientShopDiscoveryCard({ location }: { location: ClientShopCard
           <p className="mt-3 text-sm leading-6 text-white/74">
             {location.address
               ? `${location.address} with a clean path into barber selection and booking.`
-              : "A polished neighborhood destination with strong barber coverage and a clean path into booking."}
+              : "An active shop with visible, bookable barbers and a clean path into booking."}
           </p>
         </div>
 

@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
     activationProvider.readState()
   ]);
   const results = decorateDiscoveryWithActivation(buildDiscoveryPayload(runtime, engagementState, trustState, parsed.data), activationState, trustState);
-  const markers = decorateMapMarkers(buildMapPayload(runtime, parsed.data), results);
+  const markers = decorateMapMarkers(buildMapPayload(runtime, parsed.data, trustState), results);
 
   return NextResponse.json({ markers });
 }

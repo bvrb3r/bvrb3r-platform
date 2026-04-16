@@ -10,8 +10,7 @@ import {
   readCanonicalWorkingHours,
   type CanonicalAppointmentServiceSnapshotRow
 } from "@/lib/booking/canonical-booking";
-import { isDemoMode, isSupabaseEnabled } from "@/lib/config/runtime";
-import { demoBarbers, demoClients, demoLocations, demoServices } from "@/lib/data/demo";
+import { isSupabaseEnabled } from "@/lib/config/runtime";
 import {
   buildCanonicalAvailabilityPayload,
   buildCanonicalBarberProfile,
@@ -31,7 +30,7 @@ import {
   buildClientMembershipExecutionSummary,
   buildClientMembershipValueSummary
 } from "@/lib/monetization/service";
-import { buildPublicTrustSignal, computeShopVerificationDecision, getVerificationGateDecision } from "@/lib/trust/engine";
+import { buildPublicTrustSignal, computeShopVerificationDecision, createEmptyTrustState, getVerificationGateDecision } from "@/lib/trust/engine";
 import { getTrustProvider } from "@/lib/trust/provider";
 import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
 import { readAppointmentPaymentSummary, readClientPaymentMethodsByClientId, type ClientPaymentMethodView } from "@/lib/payments/service";
@@ -267,22 +266,6 @@ function getSupabase() {
   return createSupabaseAdminClient();
 }
 
-function mapDemoShop(location: (typeof demoLocations)[number]) {
-  return {
-    id: location.id,
-    name: location.name,
-    brandLine: "Trusted local shop",
-    neighborhood: location.neighborhood,
-    city: location.city,
-    state: location.state,
-    phone: location.phone,
-    address: location.address ?? `${location.name}, ${location.neighborhood}, ${location.city}, ${location.state}`,
-    kind: "shop",
-    latitude: location.latitude,
-    longitude: location.longitude
-  };
-}
-
 function mapLocationRecordAsShop(row: LocationRecord) {
   return {
     id: row.reference_code ?? row.id,
@@ -315,58 +298,6 @@ function formatOperationalLocationLabel(location: Pick<OperationalLocationIdenti
   return area ? `${location.name} • ${area}` : [location.name, location.state].filter(Boolean).join(" • ");
 }
 
-function buildDemoOperationalDirectories(): OperationalDirectories {
-  const barbersByReference = new Map(
-    demoBarbers.map((barber) => [
-      barber.id,
-      {
-        id: barber.id,
-        name: barber.name,
-        compensationModel: barber.compensationModel
-      } satisfies OperationalBarberIdentity
-    ])
-  );
-  const servicesByReference = new Map(
-    demoServices.map((service) => [
-      service.id,
-      {
-        id: service.id,
-        name: service.name,
-        category: service.category
-      } satisfies OperationalServiceIdentity
-    ])
-  );
-  const locationsByReference = new Map(
-    demoLocations.map((location) => [
-      location.id,
-      {
-        id: location.id,
-        name: location.name,
-        neighborhood: location.neighborhood,
-        city: location.city,
-        state: location.state,
-        label: formatOperationalLocationLabel(location)
-      } satisfies OperationalLocationIdentity
-    ])
-  );
-  const barberAssignmentsByLocation = new Map<string, Set<string>>();
-
-  for (const barber of demoBarbers) {
-    for (const locationId of barber.locationIds) {
-      const existing = barberAssignmentsByLocation.get(locationId) ?? new Set<string>();
-      existing.add(barber.id);
-      barberAssignmentsByLocation.set(locationId, existing);
-    }
-  }
-
-  return {
-    barbersByReference,
-    servicesByReference,
-    locationsByReference,
-    barberAssignmentsByLocation
-  };
-}
-
 function buildEmptyOperationalDirectories(): OperationalDirectories {
   return {
     barbersByReference: new Map(),
@@ -378,7 +309,7 @@ function buildEmptyOperationalDirectories(): OperationalDirectories {
 
 async function readOperationalDirectories(supabase: SupabaseClient | null): Promise<OperationalDirectories> {
   if (!supabase) {
-    return isDemoMode() ? buildDemoOperationalDirectories() : buildEmptyOperationalDirectories();
+    return buildEmptyOperationalDirectories();
   }
 
   const [barbersResult, profilesResult, servicesResult, locationsResult, assignmentsResult] = await Promise.all([
@@ -397,7 +328,7 @@ async function readOperationalDirectories(supabase: SupabaseClient | null): Prom
       locationsError: locationsResult.error,
       assignmentsError: assignmentsResult.error
     });
-    return isDemoMode() ? buildDemoOperationalDirectories() : buildEmptyOperationalDirectories();
+    return buildEmptyOperationalDirectories();
   }
 
   const profileNamesById = new Map(
@@ -472,7 +403,7 @@ async function readOperationalDirectories(supabase: SupabaseClient | null): Prom
 
 async function readShops(supabase: SupabaseClient | null) {
   if (!supabase) {
-    return demoLocations.map(mapDemoShop);
+    return [];
   }
 
   const shopResult = await supabase.from("shops").select("*").order("neighborhood");
@@ -498,7 +429,7 @@ async function readShops(supabase: SupabaseClient | null) {
     .order("neighborhood");
 
   if (locationResult.error || !(locationResult.data ?? []).length) {
-    return demoLocations.map(mapDemoShop);
+    return [];
   }
 
   return (locationResult.data as LocationRecord[]).map(mapLocationRecordAsShop);
@@ -618,22 +549,7 @@ async function readClientProfile(supabase: SupabaseClient | null, clientId?: str
   }
 
   if (!supabase) {
-    const demoClient = demoClients.find((entry) => entry.id === clientId);
-    if (!demoClient) {
-      return undefined;
-    }
-
-    return {
-      clientReference: demoClient.id,
-      fullName: demoClient.name,
-      phone: demoClient.phone,
-      email: demoClient.email,
-      favoriteBarberReference: demoClient.favoriteBarberId,
-      favoriteShopReference: demoLocations[0]?.id,
-      loyaltyPoints: demoClient.loyaltyPoints,
-      retentionTag: demoClient.retentionTag,
-      notes: demoClient.notes
-    };
+    return undefined;
   }
 
   const profile = await readCanonicalClientProfile(supabase, clientId);
@@ -645,7 +561,7 @@ async function readClientProfile(supabase: SupabaseClient | null, clientId?: str
 
   return {
     ...profile,
-    favoriteShopReference: preference?.favoriteShopReference ?? demoLocations[0]?.id
+    favoriteShopReference: preference?.favoriteShopReference
   };
 }
 
@@ -667,26 +583,6 @@ function resolveReviewSentiment(rating: number): ReviewSentiment {
   return "watch";
 }
 
-function resolveDemoReviewAppointmentReference(review: { id: string; appointmentId?: string }) {
-  if (review.appointmentId) {
-    return review.appointmentId;
-  }
-
-  if (review.id === "review-2") {
-    return "appt-4";
-  }
-
-  if (review.id === "review-3") {
-    return "appt-5";
-  }
-
-  if (review.id === "review-4") {
-    return "appt-7";
-  }
-
-  return "appt-1";
-}
-
 async function readAppointmentReviewMap(
   supabase: SupabaseClient | null,
   clientId: string,
@@ -699,20 +595,6 @@ async function readAppointmentReviewMap(
   }
 
   if (!supabase) {
-    for (const review of getMarketplaceState().reviews) {
-      const appointmentId = resolveDemoReviewAppointmentReference(review);
-      if (!appointmentIds.includes(appointmentId) || review.clientId !== clientId) {
-        continue;
-      }
-
-      reviewMap.set(appointmentId, {
-        id: review.id,
-        rating: review.rating,
-        message: review.message,
-        createdAt: review.createdAt
-      });
-    }
-
     return reviewMap;
   }
 
@@ -1105,22 +987,32 @@ async function readTrustStateSafe() {
     console.error("[platform-service] verification trust state unavailable", {
       message: error instanceof Error ? error.message : String(error)
     });
-    return undefined;
+    return createEmptyTrustState();
   }
 }
 
-function filterPubliclyActivatableShops<T extends { id: string }>(shops: T[], trustState?: TrustState) {
+function filterBookableMarketplaceShops<T extends { id: string; name?: string }>(
+  shops: T[],
+  trustState: TrustState | undefined,
+  visibleResults: Array<{ locationId?: string; shopName?: string }>
+) {
   if (!trustState) {
-    return shops;
+    return [];
   }
 
+  const activeLocationIds = new Set(visibleResults.map((result) => result.locationId).filter(Boolean));
+  const activeShopNames = new Set(
+    visibleResults.map((result) => result.shopName?.trim().toLowerCase()).filter(Boolean)
+  );
+
   return shops.filter((shop) =>
-    getVerificationGateDecision(computeShopVerificationDecision(trustState, shop.id), "shop_activation").allowed
+    (activeLocationIds.has(shop.id) || activeShopNames.has(shop.name?.trim().toLowerCase() ?? ""))
+    && getVerificationGateDecision(computeShopVerificationDecision(trustState, shop.id), "shop_activation").allowed
   );
 }
 
 function resolveLocationId(shops: Array<{ id: string }>, preferredShopId?: string) {
-  return preferredShopId ?? shops[0]?.id ?? demoLocations[0]?.id ?? "loc-ybor";
+  return preferredShopId ?? shops[0]?.id;
 }
 
 function resolveBarberUsername(runtime: MarketplaceRuntimeData, barberIdOrUsername: string) {
@@ -1169,7 +1061,7 @@ export async function getClientHomePayload(clientId?: string) {
 
     return {
       client: clientProfile ?? null,
-      shops: filterPubliclyActivatableShops(shops, bundle.trustState),
+      shops: filterBookableMarketplaceShops(shops, bundle.trustState, discovery),
       trustedBarbers: discovery.filter((result) => result.barberId !== clientProfile?.favoriteBarberReference).slice(0, 6),
       favoriteBarber: favoriteBarber ?? null,
       nextAvailableChair: nextAvailable,
@@ -1203,7 +1095,7 @@ export async function getClientHomePayload(clientId?: string) {
 
   return {
     client: clientProfile ?? null,
-    shops: filterPubliclyActivatableShops(shops, trustState),
+    shops: filterBookableMarketplaceShops(shops, trustState, discovery),
     trustedBarbers: discovery.filter((result) => result.barberId !== clientProfile?.favoriteBarberReference).slice(0, 6),
     favoriteBarber,
     nextAvailableChair: nextAvailable,
@@ -1231,7 +1123,7 @@ export async function searchBarbersAndShopsPayload(params: { query?: string; cat
       bundle.activationState,
       bundle.trustState
     );
-    const visibleShops = filterPubliclyActivatableShops(shops, bundle.trustState);
+    const visibleShops = filterBookableMarketplaceShops(shops, bundle.trustState, results);
     const matchingShops = queryText
       ? visibleShops.filter((shop) => `${shop.name} ${shop.neighborhood} ${shop.city}`.toLowerCase().includes(queryText.toLowerCase()))
       : visibleShops;
@@ -1258,7 +1150,7 @@ export async function searchBarbersAndShopsPayload(params: { query?: string; cat
     routine,
     trustState
   });
-  const visibleShops = filterPubliclyActivatableShops(shops, trustState);
+  const visibleShops = filterBookableMarketplaceShops(shops, trustState, results);
   const matchingShops = queryText
     ? visibleShops.filter((shop) => `${shop.name} ${shop.neighborhood} ${shop.city}`.toLowerCase().includes(queryText.toLowerCase()))
     : visibleShops;
@@ -1342,10 +1234,21 @@ export async function getBarberAvailabilityPayload(barberId: string, options: { 
   }
 
   const bundle = await readMarketplaceBundle();
+  const username = resolveBarberUsername(bundle.runtime, barberId) ?? barberId;
+  const publicProfile = buildPublicProfilePayload(bundle.runtime, bundle.engagementState, bundle.trustState, username);
+  if (!publicProfile) {
+    return {
+      barberId,
+      locationId: options.locationId ?? "",
+      service: null,
+      slots: [],
+      gating: getVerificationGateDecision(undefined, "booking")
+    };
+  }
+
   const provider = await getLiveOperationsProvider();
   const snapshot = await provider.readSnapshot({ role: "public" } as LiveOperationsViewer);
-  const shops = await readShops(supabase);
-  const locationId = options.locationId ?? shops[0]?.id ?? "loc-ybor";
+  const locationId = options.locationId ?? publicProfile.shopLocations[0]?.id ?? publicProfile.profile.shopId ?? "";
   const bookingGate = getVerificationGateDecision(
     bundle.trustState ? buildPublicTrustSignal(bundle.trustState, barberId, locationId).verificationDecision : undefined,
     "booking"
@@ -1354,9 +1257,11 @@ export async function getBarberAvailabilityPayload(barberId: string, options: { 
     ? getVerificationGateDecision(computeShopVerificationDecision(bundle.trustState, locationId), "shop_activation")
     : null;
   const workingHours = await readWorkingHours(supabase, barberId, locationId);
-  const service = bundle.runtime.state.services.find((entry) => entry.id === options.serviceId)
+  const service = publicProfile.services.find((entry) => entry.service.id === options.serviceId)?.service
+    ?? publicProfile.services[0]?.service
+    ?? bundle.runtime.state.services.find((entry) => entry.id === options.serviceId)
     ?? bundle.runtime.state.services.find((entry) => entry.barberId === barberId)
-    ?? bundle.runtime.state.services[0];
+    ?? null;
   const durationMinutes = (service?.durationMin ?? 45) + (service?.bufferMin ?? 0);
   const days = options.days ?? 7;
   const slots: Array<{ startsAt: string; endsAt: string; label: string; locationId: string; barberId: string; serviceId?: string }> = [];
@@ -1622,22 +1527,25 @@ export async function submitClientReview(input: ClientReviewInput) {
 
     try {
       const engagementProvider = await getEngagementProvider();
-      await engagementProvider.recordEvent(
-        {
-          role: "client",
-          userEmail: snapshot.clients.find((client) => client.id === input.clientId)?.email ?? `${input.clientId}@bvrb3r.demo`,
-          clientId: input.clientId
-        },
-        {
-          eventType: "barber_reviewed",
-          targetType: "barber",
-          targetId: appointment.barberId,
-          metadata: {
-            appointmentId: appointment.id,
-            rating
+      const clientEmail = snapshot.clients.find((client) => client.id === input.clientId)?.email;
+      if (clientEmail) {
+        await engagementProvider.recordEvent(
+          {
+            role: "client",
+            userEmail: clientEmail,
+            clientId: input.clientId
+          },
+          {
+            eventType: "barber_reviewed",
+            targetType: "barber",
+            targetId: appointment.barberId,
+            metadata: {
+              appointmentId: appointment.id,
+              rating
+            }
           }
-        }
-      );
+        );
+      }
     } catch {}
 
     return {
@@ -1671,22 +1579,24 @@ export async function submitClientReview(input: ClientReviewInput) {
   try {
     const engagementProvider = await getEngagementProvider();
     const clientProfile = await readClientProfile(supabase, input.clientId);
-    await engagementProvider.recordEvent(
-      {
-        role: "client",
-        userEmail: clientProfile?.email ?? `${input.clientId}@bvrb3r.demo`,
-        clientId: input.clientId
-      },
-      {
-        eventType: "barber_reviewed",
-        targetType: "barber",
-        targetId: appointment.barberId,
-        metadata: {
-          appointmentId: appointment.id,
-          rating
+    if (clientProfile?.email) {
+      await engagementProvider.recordEvent(
+        {
+          role: "client",
+          userEmail: clientProfile.email,
+          clientId: input.clientId
+        },
+        {
+          eventType: "barber_reviewed",
+          targetType: "barber",
+          targetId: appointment.barberId,
+          metadata: {
+            appointmentId: appointment.id,
+            rating
+          }
         }
-      }
-    );
+      );
+    }
   } catch {}
 
   const row = insertResult.data as ReviewRecordRow;

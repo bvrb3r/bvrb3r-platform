@@ -11,8 +11,6 @@ import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { demoLocations } from "@/lib/data/demo";
-import { demoStyleTags, demoTrendingStyles } from "@/lib/data/marketplace";
 import { useClientEngagementSummary } from "@/lib/engagement/client";
 import { useHaircutNowMatch, useMarketplaceDiscovery, useMarketplaceMap, type MarketplaceApiError } from "@/lib/marketplace/client";
 import { buildMarketplaceBookingHref } from "@/lib/marketplace/links";
@@ -72,13 +70,13 @@ function getMatchLabel(source: string) {
 
 export function DiscoveryWorkspace({ clientId }: { clientId?: string }) {
   const [query, setQuery] = useState("");
-  const [locationId, setLocationId] = useState("loc-ybor");
+  const [locationId, setLocationId] = useState("");
   const [styleTagId, setStyleTagId] = useState("");
-  const [minRating, setMinRating] = useState("4.5");
+  const [minRating, setMinRating] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [availability, setAvailability] = useState<DiscoveryFilters["availability"]>("any");
   const [specialty, setSpecialty] = useState("");
-  const [maxDistanceMiles, setMaxDistanceMiles] = useState("12");
+  const [maxDistanceMiles, setMaxDistanceMiles] = useState("");
   const [showInstantMatch, setShowInstantMatch] = useState(false);
 
   const deferredQuery = useDeferredValue(query);
@@ -103,6 +101,7 @@ export function DiscoveryWorkspace({ clientId }: { clientId?: string }) {
   const instantError = haircutNowQuery.error ? getReadableActionError(haircutNowQuery.error as MarketplaceApiError) : null;
   const results = discoveryQuery.data ?? [];
   const markers = mapQuery.data ?? [];
+  const locationOptions = [...new Map(results.filter((result) => result.locationId).map((result) => [result.locationId!, result.locationLabel ?? result.shopName ?? result.locationId!])).entries()];
   const clientSummary = clientSummaryQuery.data;
   const favoriteUpdates = (clientSummary?.followedBarbers ?? [])
     .map((follow) => results.find((result) => result.barberId === follow.barberId))
@@ -140,11 +139,7 @@ export function DiscoveryWorkspace({ clientId }: { clientId?: string }) {
       items: [...results].filter((result) => result.badges.includes("rising_barber") || (result.rankingLabel ?? "").toLowerCase().includes("growing")).slice(0, 3)
     }
   ].filter((section) => section.items.length);
-  const featuredStyles = demoTrendingStyles
-    .slice()
-    .sort((left, right) => left.rank - right.rank)
-    .map((row) => ({ row, tag: demoStyleTags.find((tag) => tag.id === row.styleTagId) }))
-    .filter((entry) => entry.tag);
+  const featuredStyles: Array<{ id: string; name: string; regionLabel: string; bookingCount: number; rank: number }> = [];
 
   return (
     <div className="space-y-4" data-testid="discovery-workspace">
@@ -206,18 +201,22 @@ export function DiscoveryWorkspace({ clientId }: { clientId?: string }) {
             <Compass className="h-5 w-5 text-[#baff69]" />
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-            {featuredStyles.slice(0, 4).map(({ row, tag }) => (
-              <div key={row.id} className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#7CFF00]/18 hover:bg-black/30">
+            {featuredStyles.length ? featuredStyles.slice(0, 4).map((style) => (
+              <div key={style.id} className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#7CFF00]/18 hover:bg-black/30">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="font-medium">{tag?.name}</p>
-                    <p className="mt-1 text-sm text-white/55">Trending in {row.regionLabel}</p>
+                    <p className="font-medium">{style.name}</p>
+                    <p className="mt-1 text-sm text-white/55">Trending in {style.regionLabel}</p>
                   </div>
-                  <span className="status-pill text-[#d7ffab]">#{row.rank}</span>
+                  <span className="status-pill text-[#d7ffab]">#{style.rank}</span>
                 </div>
-                <p className="mt-3 text-sm text-white/68">{row.bookingCount} bookings powering marketplace demand signals.</p>
+                <p className="mt-3 text-sm text-white/68">{style.bookingCount} real bookings powering marketplace demand signals.</p>
               </div>
-            ))}
+            )) : (
+              <div className="rounded-[24px] border border-dashed border-white/10 bg-black/20 p-5 text-sm leading-6 text-white/58">
+                No marketplace style demand yet. Trending styles will appear after real bookings create a signal.
+              </div>
+            )}
           </div>
           <div className="mt-4 rounded-[28px] border border-dashed border-white/10 bg-black/15 p-5 text-sm leading-7 text-white/58">
             Reputation, follow growth, popularity, and conversion are now part of the ranking foundation. Style-image ranking remains intentionally deferred.
@@ -290,7 +289,7 @@ export function DiscoveryWorkspace({ clientId }: { clientId?: string }) {
             <TrendingUp className="h-5 w-5 text-[#baff69]" />
           </div>
           <div className="mt-4 space-y-3">
-            {results.filter((result) => result.mostBookedService).slice(0, 4).map((result) => (
+            {results.filter((result) => result.mostBookedService).length ? results.filter((result) => result.mostBookedService).slice(0, 4).map((result) => (
               <div key={`service-${result.barberId}`} className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#7CFF00]/18 hover:bg-black/30">
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -303,7 +302,11 @@ export function DiscoveryWorkspace({ clientId }: { clientId?: string }) {
                   </Link>
                 </div>
               </div>
-            ))}
+            )) : (
+              <div className="rounded-[24px] border border-dashed border-white/10 bg-black/20 p-5 text-sm leading-6 text-white/58">
+                No booked-service demand yet. Services will appear here after real marketplace listings and bookings exist.
+              </div>
+            )}
           </div>
         </Card>
       </section>
@@ -321,18 +324,16 @@ export function DiscoveryWorkspace({ clientId }: { clientId?: string }) {
             <div>
               <label className="mb-3 block surface-label">Location</label>
               <Select value={locationId} onChange={(event) => setLocationId(event.target.value)}>
-                {demoLocations.map((location) => (
-                  <option key={location.id} value={location.id}>{location.name}</option>
+                <option value="">Any real location</option>
+                {locationOptions.map(([id, label]) => (
+                  <option key={id} value={id}>{label}</option>
                 ))}
               </Select>
             </div>
             <div>
               <label className="mb-3 block surface-label">Style tag</label>
               <Select value={styleTagId} onChange={(event) => setStyleTagId(event.target.value)}>
-                <option value="">Any style</option>
-                {demoStyleTags.map((style) => (
-                  <option key={style.id} value={style.id}>{style.name}</option>
-                ))}
+                <option value="">Any real style</option>
               </Select>
             </div>
             <div>
@@ -423,7 +424,7 @@ export function DiscoveryWorkspace({ clientId }: { clientId?: string }) {
               </div>
             ) : (
               <div className="empty-state-panel rounded-[28px] p-6 text-sm leading-7 text-white/58">
-                No instant-chair match is visible yet in this filter set.
+                No instant-chair match is live for this filter set. Verified barbers with real services and open booking time will appear here.
               </div>
             )}
           </div>
@@ -512,7 +513,7 @@ export function DiscoveryWorkspace({ clientId }: { clientId?: string }) {
               </div>
             )) : (
               <div className="empty-state-panel rounded-[28px] p-6 text-sm leading-7 text-white/58">
-                No barbers matched this filter set. Widen the distance or clear a filter to reopen the network.
+                No barbers are live on BVRB3R for this filter set. Clear a filter or check back when verified barbers begin accepting bookings.
               </div>
             )}
           </div>

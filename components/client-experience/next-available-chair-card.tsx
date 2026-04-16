@@ -44,21 +44,21 @@ export function NextAvailableChairCard({
             <div>
               <p className="text-[10px] uppercase tracking-[0.22em] text-[#efffd4]">Need a Cut Right Now?</p>
               <h2 className="mt-3 text-balance text-3xl font-semibold text-white sm:text-4xl" data-display="true">
-                Next Available Barber
+                No Instant Chair Yet
               </h2>
             </div>
             <span className="rounded-full border border-[#d7ffab]/16 bg-[#d7ffab]/10 px-3 py-2 text-[11px] font-semibold text-[#efffd4]">
-              In 35 minutes
+              Pre-open
             </span>
           </div>
 
           <div className="mt-5 rounded-[28px] border border-white/10 bg-black/18 p-4 sm:p-5">
             <p className="text-sm leading-7 text-white/76">
-              No instant chair is locked yet, but you can jump straight into the fastest open options across Ybor City and nearby shops.
+              No barbers are live on BVRB3R in this area yet. When a verified barber has real services and open booking time, the fastest chair will appear here.
             </p>
             <div className="mt-5 flex flex-wrap gap-3">
               <ClientActionLink href={fallbackHref} size="lg" className="min-w-[12rem]">
-                Find My Barber
+                Refresh Discovery
                 <ArrowRight className="h-4 w-4" />
               </ClientActionLink>
             </div>

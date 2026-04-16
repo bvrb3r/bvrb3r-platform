@@ -11,15 +11,14 @@ vi.mock("@/lib/config/runtime", async () => {
 import { getBarberAvailabilityPayload, searchBarbersAndShopsPayload } from "@/lib/booking/platform-service";
 
 describe("client booking discovery payloads", () => {
-  it("returns multiple bookable barbers for the client booking flow", async () => {
+  it("returns no marketplace inventory when Supabase is disabled", async () => {
     const payload = await searchBarbersAndShopsPayload({ clientId: "client-jordan" });
-    const barberIds = payload.barbers.map((entry) => entry.barberId);
 
-    expect(payload.barbers.length).toBeGreaterThan(1);
-    expect(barberIds).toEqual(expect.arrayContaining(["barber-wave", "barber-blaze"]));
+    expect(payload.barbers).toEqual([]);
+    expect(payload.shops).toEqual([]);
   });
 
-  it("returns a stable Blaze booking context for the valid service and location combination", async () => {
+  it("does not synthesize availability for a non-visible demo barber", async () => {
     const payload = await getBarberAvailabilityPayload("barber-blaze", {
       locationId: "loc-ybor",
       serviceId: "srv-signature"
@@ -27,7 +26,8 @@ describe("client booking discovery payloads", () => {
 
     expect(payload.barberId).toBe("barber-blaze");
     expect(payload.locationId).toBe("loc-ybor");
-    expect(payload.service?.id).toBe("srv-signature");
-    expect(Array.isArray(payload.slots)).toBe(true);
+    expect(payload.service).toBeNull();
+    expect(payload.slots).toEqual([]);
+    expect(payload.gating?.allowed).toBe(false);
   });
 });

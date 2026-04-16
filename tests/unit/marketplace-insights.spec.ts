@@ -1,22 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { demoMarketplaceConversionEvents } from "@/lib/data/marketplace-analytics";
 import { createInitialEngagementState } from "@/lib/engagement/engine";
 import {
-  createInitialMarketplaceState,
   getPublicBarberProfileByUsername,
   getServicePopularity,
   searchMarketplace
 } from "@/lib/marketplace/engine";
 import { buildBarberProofSignals, enrichPublicProfileWithProof, rankDiscoveryResults } from "@/lib/marketplace/insights";
 import { buildMarketplaceBookingHref } from "@/lib/marketplace/links";
-import { createInitialTrustState } from "@/lib/trust/engine";
+import {
+  approvedMarketplaceTrustState,
+  realBarberConversionEvents,
+  realBarberRankingInput,
+  visibleMarketplaceState
+} from "@/tests/unit/marketplace-fixtures";
 
 describe("marketplace insights", () => {
   it("builds persisted proof signals for discovery ranking", () => {
-    const state = createInitialMarketplaceState();
+    const state = visibleMarketplaceState();
     const engagementState = createInitialEngagementState();
-    const trustState = createInitialTrustState();
-    const discoveryResults = searchMarketplace(state, { locationId: "loc-ybor" });
+    const trustState = approvedMarketplaceTrustState();
+    const discoveryResults = searchMarketplace(state, { locationId: "loc-real" }, trustState);
     const servicePopularity = Array.from(getServicePopularity(state).entries()).map(([serviceId, metrics]) => ({ serviceId, metrics }));
     const serviceIdsByBarber = new Map<string, string[]>();
 
@@ -31,30 +34,30 @@ describe("marketplace insights", () => {
     const proofSignals = buildBarberProofSignals({
       discoveryResults,
       engagementState,
-      rankingInputs: [],
+      rankingInputs: [realBarberRankingInput()],
       servicePopularity,
-      conversionEvents: demoMarketplaceConversionEvents,
+      conversionEvents: realBarberConversionEvents(),
       serviceIdsByBarber,
       trustState
     });
     const ranked = rankDiscoveryResults(discoveryResults, proofSignals);
-    const wave = ranked.find((result) => result.username === "wave");
+    const realBarber = ranked.find((result) => result.username === "realbarber");
 
-    expect(wave).toBeDefined();
-    expect(wave?.followCount).toBeGreaterThan(0);
-    expect(wave?.profileViews).toBeGreaterThan(0);
-    expect(wave?.rankingLabel).toBeTruthy();
-    expect(wave?.trustScore).toBeGreaterThan(0);
-    expect(wave?.trustLabel).toBeTruthy();
-    expect(wave?.retentionScore).toBeGreaterThanOrEqual(0);
-    expect(wave?.activityScore).toBeGreaterThan(0);
+    expect(realBarber).toBeDefined();
+    expect(realBarber?.followCount).toBeGreaterThan(0);
+    expect(realBarber?.profileViews).toBeGreaterThan(0);
+    expect(realBarber?.rankingLabel).toBeTruthy();
+    expect(realBarber?.trustScore).toBeGreaterThan(0);
+    expect(realBarber?.trustLabel).toBeTruthy();
+    expect(realBarber?.retentionScore).toBeGreaterThanOrEqual(0);
+    expect(realBarber?.activityScore).toBeGreaterThan(0);
   });
 
   it("enriches public profiles with proof, trust, and booking CTA data", () => {
-    const state = createInitialMarketplaceState();
+    const state = visibleMarketplaceState();
     const engagementState = createInitialEngagementState();
-    const trustState = createInitialTrustState();
-    const discoveryResults = searchMarketplace(state, {});
+    const trustState = approvedMarketplaceTrustState();
+    const discoveryResults = searchMarketplace(state, {}, trustState);
     const servicePopularity = Array.from(getServicePopularity(state).entries()).map(([serviceId, metrics]) => ({ serviceId, metrics }));
     const serviceIdsByBarber = new Map<string, string[]>();
 
@@ -66,15 +69,15 @@ describe("marketplace insights", () => {
       serviceIdsByBarber.set(service.barberId, [...(serviceIdsByBarber.get(service.barberId) ?? []), service.id]);
     });
 
-    const profile = getPublicBarberProfileByUsername(state, "wave");
+    const profile = getPublicBarberProfileByUsername(state, "realbarber", trustState);
     expect(profile).not.toBeNull();
 
     const proofSignals = buildBarberProofSignals({
       discoveryResults,
       engagementState,
-      rankingInputs: [],
+      rankingInputs: [realBarberRankingInput()],
       servicePopularity,
-      conversionEvents: demoMarketplaceConversionEvents,
+      conversionEvents: realBarberConversionEvents(),
       serviceIdsByBarber,
       trustState
     });
@@ -86,7 +89,7 @@ describe("marketplace insights", () => {
     expect(enriched.proof?.trustScore).toBeGreaterThan(0);
     expect(enriched.proof?.verificationLabels.length).toBeGreaterThan(0);
     expect(enriched.bookingCtaHref).toContain("/booking/new");
-    expect(enriched.bookingCtaHref).toContain("barberId=barber-wave");
+    expect(enriched.bookingCtaHref).toContain("barberId=barber-real");
     expect(enriched.bookingCtaHref).toContain("source=public_profile");
   });
 

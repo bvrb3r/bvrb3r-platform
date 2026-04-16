@@ -1,13 +1,6 @@
 ﻿/* eslint-disable @typescript-eslint/no-explicit-any */
 import { isSupabaseEnabled } from "@/lib/config/runtime";
-import {
-  demoBoostCampaigns,
-  demoCityRollouts,
-  demoFeaturedPlacements,
-  demoMarketplaceMonetizationEvents,
-  demoVerificationUploads
-} from "@/lib/data/activation";
-import { getMonetizationEligibility, type MarketplaceActivationState } from "@/lib/marketplace/activation";
+import { createEmptyMarketplaceActivationState, getMonetizationEligibility, type MarketplaceActivationState } from "@/lib/marketplace/activation";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { buildPublicTrustSignal, computeShopVerificationDecision, getVerificationGateDecision } from "@/lib/trust/engine";
 import { getTrustProvider } from "@/lib/trust/provider";
@@ -48,7 +41,7 @@ export class ActivationValidationError extends Error {
 }
 
 export interface MarketplaceActivationProvider {
-  kind: "demo" | "supabase";
+  kind: "supabase";
   readState(): Promise<MarketplaceActivationState>;
   createVerificationUpload(actor: ActivationActor, input: {
     ownerType: "barber" | "shop";
@@ -92,17 +85,8 @@ export interface MarketplaceActivationProvider {
   recordMonetizationEvent(input: Omit<MarketplaceMonetizationEvent, "id" | "createdAt">): Promise<void>;
 }
 
-const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const nowIso = () => new Date().toISOString();
 const makeId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-
-let demoState: MarketplaceActivationState = {
-  verificationUploads: clone(demoVerificationUploads),
-  boostCampaigns: clone(demoBoostCampaigns),
-  featuredPlacements: clone(demoFeaturedPlacements),
-  cityRollouts: clone(demoCityRollouts),
-  monetizationEvents: clone(demoMarketplaceMonetizationEvents)
-};
 
 function assertOwner(actor: ActivationActor) {
   if (actor.role !== "owner") {
@@ -228,41 +212,7 @@ function monetizationToRow(record: MarketplaceMonetizationEvent) {
   };
 }
 
-async function ensureSupabaseSeeded(supabase: SupabaseClient) {
-  const writes = await Promise.all([
-    supabase.from("verification_documents").upsert(
-      demoVerificationUploads.map((record) => ({
-        id: record.id,
-        owner_type: record.ownerType,
-        owner_reference: record.ownerId,
-        category: record.category,
-        storage_path: record.storagePath,
-        uploaded_at: record.uploadedAt,
-        expires_at: record.expiresAt ?? null,
-        file_name: record.fileName,
-        content_type: record.contentType,
-        file_size_bytes: record.fileSizeBytes,
-        upload_status: record.uploadStatus,
-        uploaded_by_role: record.uploadedByRole,
-        secure_reference: record.secureReference
-      })),
-      { onConflict: "id" }
-    ),
-    supabase.from("boost_campaigns").upsert(demoBoostCampaigns.map(campaignToRow), { onConflict: "id" }),
-    supabase.from("featured_placements").upsert(demoFeaturedPlacements.map(placementToRow), { onConflict: "id" }),
-    supabase.from("city_rollouts").upsert(demoCityRollouts.map(cityToRow), { onConflict: "id" }),
-    supabase.from("marketplace_monetization_events").upsert(demoMarketplaceMonetizationEvents.map(monetizationToRow), { onConflict: "id" })
-  ]);
-
-  for (const write of writes) {
-    if (write.error) {
-      throw write.error;
-    }
-  }
-}
-
 async function readSupabaseState(supabase: SupabaseClient): Promise<MarketplaceActivationState> {
-  await ensureSupabaseSeeded(supabase);
   const [uploads, campaigns, placements, cities, monetizationEvents] = await Promise.all([
     supabase.from("verification_documents").select("*").not("file_name", "is", null).order("uploaded_at", { ascending: false }),
     supabase.from("boost_campaigns").select("*").order("created_at", { ascending: false }),
@@ -346,136 +296,30 @@ async function readSupabaseState(supabase: SupabaseClient): Promise<MarketplaceA
   };
 }
 
-function getDemoState() {
-  return clone(demoState);
-}
+function createEmptyProvider(): MarketplaceActivationProvider {
+  const unavailable = (): never => {
+    throw new ActivationValidationError("Marketplace activation data is unavailable because Supabase is not configured.");
+  };
 
-function createDemoProvider(): MarketplaceActivationProvider {
   return {
-    kind: "demo",
+    kind: "supabase",
     async readState() {
-      return getDemoState();
+      return createEmptyMarketplaceActivationState();
     },
-    async createVerificationUpload(actor, input) {
-      if (input.ownerType === "barber" && actor.role !== "owner" && actor.barberId !== (input.ownerId ?? actor.barberId)) {
-        throw new ActivationPermissionError("You can only upload verification documents for your own barber profile.");
-      }
-      if (input.ownerType === "shop" && actor.role !== "owner") {
-        throw new ActivationPermissionError("Only the owner can upload shop verification documents.");
-      }
-      const upload: VerificationUploadRecord = {
-        id: makeId("upload"),
-        ownerType: input.ownerType,
-        ownerId: input.ownerId ?? actor.barberId ?? "shop-bvrb3r",
-        category: input.category,
-        fileName: input.fileName,
-        contentType: input.contentType,
-        fileSizeBytes: input.fileSizeBytes,
-        storagePath: `verification/${input.ownerType}s/${input.ownerId ?? actor.barberId ?? "shop-bvrb3r"}/${input.fileName}`,
-        secureReference: `secure://verification/${input.ownerType}/${input.ownerId ?? actor.barberId ?? "shop-bvrb3r"}/${makeId("doc")}`,
-        uploadStatus: "uploaded",
-        uploadedByRole: actor.role,
-        uploadedAt: nowIso(),
-        expiresAt: input.expiresAt
-      };
-      demoState = { ...demoState, verificationUploads: [upload, ...demoState.verificationUploads] };
-      return { upload };
+    async createVerificationUpload() {
+      return unavailable();
     },
-    async createBoostCampaign(actor, input) {
-      if (!["owner", "commission_barber", "booth_rent_barber"].includes(actor.role)) {
-        throw new ActivationPermissionError("Only owner or barber roles can launch boosted visibility.");
-      }
-      const scopeType = input.scopeType;
-      const scopeId = input.scopeId ?? actor.barberId;
-      if (!scopeId) {
-        throw new ActivationValidationError("A marketplace scope is required for this boost.");
-      }
-      if (actor.role !== "owner" && scopeType !== "barber") {
-        throw new ActivationPermissionError("Barbers can only boost their own public profile.");
-      }
-      if (actor.role !== "owner" && scopeId !== actor.barberId) {
-        throw new ActivationPermissionError("You can only boost your own barber profile.");
-      }
-      const trustSignal = await getTrustSignal(scopeType, scopeId);
-      const eligibility = getMonetizationEligibility(trustSignal as any);
-      if (!eligibility.canBoostVisibility) {
-        throw new ActivationPermissionError(eligibility.reason);
-      }
-      const campaign: BoostCampaignRecord = {
-        id: makeId("boost"),
-        scopeType,
-        scopeId,
-        status: "active",
-        placementLabel: input.placementLabel,
-        placementScope: input.placementScope,
-        citySlug: input.citySlug,
-        categorySlug: input.categorySlug,
-        trustEligible: true,
-        trustReason: eligibility.reason,
-        spendCents: input.spendCents,
-        dailyBudgetCents: input.dailyBudgetCents,
-        startsAt: input.startsAt ?? nowIso(),
-        endsAt: input.endsAt ?? new Date(Date.now() + 6 * 24 * 60 * 60 * 1000).toISOString(),
-        createdByRole: actor.role,
-        createdById: actor.barberId ?? actor.userEmail ?? "owner",
-        createdAt: nowIso()
-      };
-      demoState = { ...demoState, boostCampaigns: [campaign, ...demoState.boostCampaigns] };
-      return { campaign };
+    async createBoostCampaign() {
+      return unavailable();
     },
-    async createFeaturedPlacement(actor, input) {
-      assertOwner(actor);
-      const trustSignal = await getTrustSignal(input.scopeType, input.scopeId);
-      const eligibility = getMonetizationEligibility(trustSignal as any);
-      if ((input.scopeType === "barber" && !eligibility.canUseFeaturedPlacement)
-        || (input.scopeType === "shop" && !eligibility.canBoostVisibility)) {
-        throw new ActivationPermissionError(eligibility.reason);
-      }
-      const placement: FeaturedPlacementRecord = {
-        id: makeId("featured"),
-        scopeType: input.scopeType,
-        scopeId: input.scopeId,
-        label: input.label,
-        placementScope: input.placementScope,
-        citySlug: input.citySlug,
-        categorySlug: input.categorySlug,
-        status: "active",
-        trustEligible: true,
-        startsAt: input.startsAt,
-        endsAt: input.endsAt,
-        priority: input.priority,
-        createdByRole: actor.role,
-        createdById: actor.userEmail ?? "owner",
-        createdAt: nowIso()
-      };
-      demoState = { ...demoState, featuredPlacements: [placement, ...demoState.featuredPlacements] };
-      return { placement };
+    async createFeaturedPlacement() {
+      return unavailable();
     },
-    async updateCityRollout(actor, input) {
-      assertOwner(actor);
-      const existing = demoState.cityRollouts.find((rollout) => rollout.citySlug === input.citySlug);
-      if (!existing) {
-        throw new ActivationValidationError("City rollout not found.");
-      }
-      const rollout = {
-        ...existing,
-        activationState: input.activationState ?? existing.activationState,
-        launchVisible: input.launchVisible ?? existing.launchVisible,
-        densityScore: input.densityScore ?? existing.densityScore,
-        marketNotes: input.marketNotes ?? existing.marketNotes,
-        updatedAt: nowIso()
-      };
-      demoState = {
-        ...demoState,
-        cityRollouts: [rollout, ...demoState.cityRollouts.filter((entry) => entry.citySlug !== input.citySlug)]
-      };
-      return { rollout };
+    async updateCityRollout() {
+      return unavailable();
     },
-    async recordMonetizationEvent(input) {
-      demoState = {
-        ...demoState,
-        monetizationEvents: [{ id: makeId("monetize"), createdAt: nowIso(), ...input }, ...demoState.monetizationEvents]
-      };
+    async recordMonetizationEvent() {
+      unavailable();
     }
   };
 }
@@ -493,16 +337,20 @@ function createSupabaseProvider(supabase: SupabaseClient): MarketplaceActivation
       if (input.ownerType === "barber" && actor.role !== "owner" && actor.barberId !== (input.ownerId ?? actor.barberId)) {
         throw new ActivationPermissionError("You can only upload verification documents for your own barber profile.");
       }
+      const ownerId = input.ownerId ?? actor.barberId;
+      if (!ownerId) {
+        throw new ActivationValidationError("A real owner reference is required for verification uploads.");
+      }
       const upload: VerificationUploadRecord = {
         id: makeId("upload"),
         ownerType: input.ownerType,
-        ownerId: input.ownerId ?? actor.barberId ?? "shop-bvrb3r",
+        ownerId,
         category: input.category,
         fileName: input.fileName,
         contentType: input.contentType,
         fileSizeBytes: input.fileSizeBytes,
-        storagePath: `verification/${input.ownerType}s/${input.ownerId ?? actor.barberId ?? "shop-bvrb3r"}/${input.fileName}`,
-        secureReference: `secure://verification/${input.ownerType}/${input.ownerId ?? actor.barberId ?? "shop-bvrb3r"}/${makeId("doc")}`,
+        storagePath: `verification/${input.ownerType}s/${ownerId}/${input.fileName}`,
+        secureReference: `secure://verification/${input.ownerType}/${ownerId}/${makeId("doc")}`,
         uploadStatus: "uploaded",
         uploadedByRole: actor.role,
         uploadedAt: nowIso(),
@@ -628,12 +476,12 @@ function createSupabaseProvider(supabase: SupabaseClient): MarketplaceActivation
 
 export async function getMarketplaceActivationProvider(): Promise<MarketplaceActivationProvider> {
   if (!isSupabaseEnabled()) {
-    return createDemoProvider();
+    return createEmptyProvider();
   }
 
   const supabase = createSupabaseAdminClient();
   if (!supabase) {
-    return createDemoProvider();
+    return createEmptyProvider();
   }
 
   return createSupabaseProvider(supabase);

@@ -1,5 +1,4 @@
 ﻿import type { PublicBarberProfileView } from "@/lib/marketplace/engine";
-import { demoLocations } from "@/lib/data/demo";
 import { buildPublicTrustSignal, getVerificationGateDecision } from "@/lib/trust/engine";
 import { buildMarketplaceBookingHref } from "@/lib/marketplace/links";
 import type {
@@ -22,6 +21,16 @@ export interface MarketplaceActivationState {
   featuredPlacements: FeaturedPlacementRecord[];
   cityRollouts: CityRolloutRecord[];
   monetizationEvents: MarketplaceMonetizationEvent[];
+}
+
+export function createEmptyMarketplaceActivationState(): MarketplaceActivationState {
+  return {
+    verificationUploads: [],
+    boostCampaigns: [],
+    featuredPlacements: [],
+    cityRollouts: [],
+    monetizationEvents: []
+  };
 }
 
 function isBetween(nowIso: string, startsAt: string, endsAt: string) {
@@ -84,16 +93,7 @@ export function getActiveFeaturedPlacements(state: MarketplaceActivationState, s
 }
 
 function getResultCitySlug(result: DiscoveryResult) {
-  const location = demoLocations.find((entry) => result.shopName?.includes(entry.name) || result.shopName?.includes(entry.neighborhood));
-  if (!location) {
-    return undefined;
-  }
-
-  if (location.city === "Tampa") {
-    return "tampa-bay";
-  }
-
-  return location.city.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  return result.cityLabel?.toLowerCase().replace(/[^a-z0-9]+/g, "-");
 }
 
 export function decorateDiscoveryWithActivation(results: DiscoveryResult[], state: MarketplaceActivationState, trustState?: TrustState, nowIso = new Date().toISOString()) {
@@ -166,7 +166,7 @@ export function buildBarberActivationSummary(args: {
 }): BarberActivationSummary {
   const nowIso = args.nowIso ?? new Date().toISOString();
   const trustSignal = args.trustState ? buildPublicTrustSignal(args.trustState, args.barberId, args.shopId) : undefined;
-  const scopedDeliveries = args.deliveries.filter((delivery) => delivery.destination.includes(args.barberId) || delivery.destination.includes("@bvrb3r.demo"));
+  const scopedDeliveries = args.deliveries.filter((delivery) => delivery.destination.includes(args.barberId));
 
   return {
     verificationUploads: args.activationState.verificationUploads.filter((upload) => upload.ownerType === "barber" && upload.ownerId === args.barberId),

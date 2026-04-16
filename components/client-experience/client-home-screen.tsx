@@ -189,7 +189,7 @@ export function ClientHomeScreen({
         sourceKind: "haircut_now",
         matchedFrom: nextAvailableChair.matchedFrom
       })
-    : "/booking/new?mode=next-available";
+    : "/search";
 
   const nextAvailablePreview = useMemo(() => {
     if (!nextAvailableChair) {
@@ -202,13 +202,13 @@ export function ClientHomeScreen({
       barberId: nextAvailableChair.barberId,
       barberName: nextAvailableChair.barberName,
       bookHref: bookAsapHref,
-      distanceLabel: matchedDiscoveryResult ? `${matchedDiscoveryResult.distanceMiles.toFixed(1)} mi away` : `${activeShop?.neighborhood ?? "Ybor City"}`,
+      distanceLabel: matchedDiscoveryResult ? `${matchedDiscoveryResult.distanceMiles.toFixed(1)} mi away` : `${activeShop?.neighborhood ?? "your area"}`,
       headline: nextAvailableProfile?.profile.headline ?? nextAvailableChair.matchReason,
       locationId: nextAvailableChair.locationId,
       nextSlotLabel: formatSlotTime(nextAvailableChair.appointmentTime),
       profileHref: nextAvailableProfile ? (`/barber/${nextAvailableProfile.profile.username}` as Route) : undefined,
       rating: nextAvailableChair.rating,
-      shopName: nextAvailableChair.shopName ?? activeShop?.name ?? "BVRB3R Shop",
+      shopName: nextAvailableChair.shopName ?? activeShop?.name ?? "Marketplace barber",
       username: nextAvailableChair.username,
       waitLabel: getEstimatedWaitLabel(nextAvailableChair.matchedFrom, matchedDiscoveryResult?.distanceMiles)
     };
@@ -223,6 +223,8 @@ export function ClientHomeScreen({
   const hasRepeatLane = Boolean(repeatReference || favoriteBarber || favoriteProfile?.bookingCtaHref);
   const primaryCtaHref: Route = hasRepeatLane ? bookAgainHref : "/search";
   const primaryCtaLabel = hasRepeatLane ? "Book Again" : "Find a Barber";
+  const activeAreaLabel = activeShop?.neighborhood ?? "your area";
+  const haircutNowLabel = nextAvailableChair ? "Get a Haircut Now" : "Check Discovery";
   const bestBarberMatches = useMemo(() => getBestBarberForClient({
     clientId: payload?.client?.clientReference,
     candidates: trustedBarbers,
@@ -241,7 +243,7 @@ export function ClientHomeScreen({
           <div className="min-w-0">
             <div className="flex flex-wrap gap-2">
               <span className="rounded-full border border-white/10 bg-black/25 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-white/72">
-                {activeShop?.neighborhood ?? "Ybor City"}
+                {activeShop?.neighborhood ?? "Pre-open"}
               </span>
               <span className="rounded-full border border-[#d7ffab]/16 bg-[#d7ffab]/10 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-[#e8ffc2]">
                 BVRB3R marketplace
@@ -259,7 +261,7 @@ export function ClientHomeScreen({
                 {primaryCtaLabel}
               </ClientActionLink>
               <ClientActionLink href={bookAsapHref} size="lg" variant="secondary">
-                Get a Haircut Now
+                {haircutNowLabel}
               </ClientActionLink>
             </div>
             <div className="mt-5 rounded-[24px] border border-[#d7ffab]/16 bg-[#d7ffab]/8 px-4 py-4 text-sm text-white/78">
@@ -514,15 +516,25 @@ export function ClientHomeScreen({
 
       <ClientSectionBlock
         eyebrow="Trusted barbers"
-        title="Trusted Barbers Around Ybor City"
-        subtitle="Browse nearby chairs with real profile trust, visual proof, and direct booking actions."
+        title={`Trusted barbers around ${activeAreaLabel}`}
+        subtitle={trustedBarbers.length
+          ? "Browse nearby chairs with real profile trust, visual proof, and direct booking actions."
+          : "No barbers are live on BVRB3R in this area yet. Verified barbers with real services and open booking time will appear here."}
       >
         {isInitialLoading ? (
           <FeedSkeleton />
-        ) : (
+        ) : trustedBarbers.length ? (
           <FeedRail>
             {trustedBarbers.map((result) => <ClientDiscoveryCard key={`trusted-${result.barberId}`} result={result} />)}
           </FeedRail>
+        ) : (
+          <div className="rounded-[30px] border border-dashed border-white/10 bg-[linear-gradient(180deg,rgba(19,19,19,0.96),rgba(8,8,8,0.98))] p-6 sm:p-7">
+            <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">No live barbers</p>
+            <h3 className="mt-3 text-2xl font-semibold text-white" data-display="true">No barbers are accepting bookings here yet.</h3>
+            <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">
+              BVRB3R only shows barbers after they are verified, active, and ready to accept a real booking.
+            </p>
+          </div>
         )}
       </ClientSectionBlock>
     </div>

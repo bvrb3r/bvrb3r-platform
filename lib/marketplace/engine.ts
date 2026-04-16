@@ -1,17 +1,3 @@
-﻿import { demoAppointments, demoBarbers, demoClients, demoLocations, demoReviews, demoServices } from "@/lib/data/demo";
-import {
-  demoBarberPortfolios,
-  demoBarberProfiles,
-  demoClientPreferences,
-  demoFeaturedProfiles,
-  demoLocationSearchIndex,
-  demoMarketplaceServices,
-  demoMarketplaceVisibility,
-  demoSearchHistory,
-  demoShops,
-  demoStyleTags,
-  demoTrendingStyles
-} from "@/lib/data/marketplace";
 import type {
   Barber,
   BarberPortfolioAsset,
@@ -37,9 +23,19 @@ import type {
   TrendingStyle
 } from "@/types/domain";
 import type { TrustState } from "@/types/trust";
-import { buildPublicTrustSignal, computeShopVerificationDecision, getVerificationGateDecision } from "@/lib/trust/engine";
+import { buildPublicTrustSignal } from "@/lib/trust/engine";
+import {
+  filterVisibleMarketplaceBarbers,
+  isBarberMarketplaceVisible,
+  isShopMarketplaceVisible
+} from "@/lib/marketplace/visibility";
 
-const DEFAULT_SHOP_ID = "shop-bvrb3r";
+export {
+  filterVisibleMarketplaceBarbers,
+  filterVisibleMarketplaceShops,
+  isBarberMarketplaceVisible,
+  isShopMarketplaceVisible
+} from "@/lib/marketplace/visibility";
 
 const DEFAULT_SERVICE_STYLE_TAGS: Record<string, string[]> = {
   "srv-signature": ["style-low-taper", "style-executive"],
@@ -54,15 +50,10 @@ const DEFAULT_SERVICE_STYLE_TAGS: Record<string, string[]> = {
   "srv-membership": ["style-executive"]
 };
 
-const DEFAULT_PUBLIC_BIO: Record<string, string> = {
-  "barber-wave": "Sharp blends, polished chair flow, and a premium guest experience from first consultation to final detail.",
-  "barber-fade": "Creative specialist built for design-forward work, quick throughput, and a strong repeat-client book.",
-  "barber-blaze": "Independent executive barber serving professionals who need reliable detail, speed, and clean finishing.",
-  "barber-luxe": "Luxury-focused barber for camera-ready finishes, premium grooming, and high-frequency repeat visits."
-};
-
 export interface MarketplaceState {
   services: Service[];
+  barbers: Barber[];
+  locations: Location[];
   barberProfiles: BarberProfile[];
   visibilities: MarketplaceVisibility[];
   barberPortfolios: BarberPortfolioAsset[];
@@ -192,7 +183,6 @@ function normalizeService(service: Service): Service {
   return {
     ...service,
     ownerType: service.ownerType ?? "shop",
-    shopId: service.shopId ?? DEFAULT_SHOP_ID,
     styleTagIds: uniqueStrings(service.styleTagIds ?? DEFAULT_SERVICE_STYLE_TAGS[service.id] ?? [])
   };
 }
@@ -205,8 +195,16 @@ function getProfile(state: MarketplaceState, barberId: string) {
   return state.barberProfiles.find((profile) => profile.barberId === barberId);
 }
 
+function getBarber(state: MarketplaceState, barberId?: string) {
+  return state.barbers.find((barber) => barber.id === barberId);
+}
+
 function getShop(state: MarketplaceState, shopId?: string) {
   return state.shops.find((shop) => shop.id === shopId);
+}
+
+function getLocation(state: MarketplaceState, locationId?: string) {
+  return state.locations.find((location) => location.id === locationId);
 }
 
 function getLocationEntry(state: MarketplaceState, barberId: string, locationId?: string) {
@@ -226,21 +224,27 @@ function getReviewAverage(reviews: Review[]) {
   return Number((reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length).toFixed(2));
 }
 
-export function createInitialMarketplaceState(): MarketplaceState {
+export function createEmptyMarketplaceState(): MarketplaceState {
   return {
-    services: [...demoServices, ...demoMarketplaceServices],
-    barberProfiles: demoBarberProfiles,
-    visibilities: demoMarketplaceVisibility,
-    barberPortfolios: demoBarberPortfolios,
-    reviews: demoReviews,
-    styleTags: demoStyleTags,
-    shops: demoShops,
-    featuredProfiles: demoFeaturedProfiles,
-    searchHistory: demoSearchHistory,
-    clientPreferences: demoClientPreferences,
-    trendingStyles: demoTrendingStyles,
-    locationSearchIndex: demoLocationSearchIndex
+    services: [],
+    barbers: [],
+    locations: [],
+    barberProfiles: [],
+    visibilities: [],
+    barberPortfolios: [],
+    reviews: [],
+    styleTags: [],
+    shops: [],
+    featuredProfiles: [],
+    searchHistory: [],
+    clientPreferences: [],
+    trendingStyles: [],
+    locationSearchIndex: []
   };
+}
+
+export function createInitialMarketplaceState(): MarketplaceState {
+  return createEmptyMarketplaceState();
 }
 
 export function canCreateServiceDefinition(actor: MarketplaceActor) {
@@ -263,22 +267,15 @@ export function canEditServiceDefinition(actor: MarketplaceActor, service: Servi
 
 export function getServicePopularity(state: MarketplaceState) {
   const services = getNormalizedServices(state);
-  const appointments = demoAppointments.filter((appointment) => appointment.status !== "cancelled" && appointment.status !== "no_show");
 
   const rows = services.map((service) => {
-    const matchingAppointments = appointments.filter((appointment) => appointment.serviceId === service.id);
-    const completedAppointments = matchingAppointments.filter((appointment) => appointment.status === "completed");
-    const uniqueClientIds = uniqueStrings(matchingAppointments.map((appointment) => appointment.clientId));
-    const repeatClientCount = uniqueClientIds.filter((clientId) => matchingAppointments.filter((appointment) => appointment.clientId === clientId).length > 1).length;
-    const relatedReviews = state.reviews.filter((review) => matchingAppointments.some((appointment) => appointment.barberId === review.barberId && appointment.clientId === review.clientId));
-
     return {
       serviceId: service.id,
       metrics: {
-        bookingCount: matchingAppointments.length,
-        revenueGenerated: Number(completedAppointments.reduce((sum, appointment) => sum + appointment.totalAmount, 0).toFixed(2)),
-        averageRating: getReviewAverage(relatedReviews),
-        repeatRate: uniqueClientIds.length ? Math.round((repeatClientCount / uniqueClientIds.length) * 100) : 0,
+        bookingCount: 0,
+        revenueGenerated: 0,
+        averageRating: getReviewAverage([]),
+        repeatRate: 0,
         popularityRank: 0
       }
     };
@@ -300,17 +297,21 @@ function getServicesForBarber(state: MarketplaceState, barber: Barber, profile: 
     return services.filter((service) => service.ownerType === "barber" && service.barberId === barber.id);
   }
 
-  return services.filter((service) => service.ownerType === "shop" && (service.shopId ?? DEFAULT_SHOP_ID) === (profile.shopId ?? DEFAULT_SHOP_ID));
+  if (!profile.shopId) {
+    return [];
+  }
+
+  return services.filter((service) => service.ownerType === "shop" && service.shopId === profile.shopId);
 }
 
 function getOwnerLabel(service: Service, state: MarketplaceState) {
   const normalizedService = normalizeService(service);
   if (normalizedService.ownerType === "barber") {
-    const barber = demoBarbers.find((entry) => entry.id === normalizedService.barberId);
+    const barber = getBarber(state, normalizedService.barberId);
     return barber ? `${barber.name} owns this service` : "Barber-owned service";
   }
 
-  const shop = getShop(state, normalizedService.shopId ?? DEFAULT_SHOP_ID);
+  const shop = getShop(state, normalizedService.shopId);
   return shop ? `${shop.name} controls this service` : "Shop-owned service";
 }
 
@@ -375,7 +376,7 @@ export function getServiceCatalogView(state: MarketplaceState, actor: Marketplac
   }
 
   if (actor.role === "commission_barber") {
-    const barber = demoBarbers.find((entry) => entry.id === actor.barberId);
+    const barber = getBarber(state, actor.barberId);
     const profile = actor.barberId ? getProfile(state, actor.barberId) : undefined;
     if (!barber || !profile) {
       return {
@@ -425,15 +426,15 @@ function validateServiceMutation(input: ServiceMutationInput) {
 
 function getPreferredShopId(state: MarketplaceState, actor: MarketplaceActor, requestedShopId?: string) {
   if (actor.role === "owner") {
-    return requestedShopId ?? DEFAULT_SHOP_ID;
+    return requestedShopId ?? state.shops[0]?.id;
   }
 
   if (actor.role === "booth_rent_barber") {
     const profile = actor.barberId ? getProfile(state, actor.barberId) : undefined;
-    return profile?.shopId ?? DEFAULT_SHOP_ID;
+    return profile?.shopId ?? state.shops[0]?.id;
   }
 
-  return DEFAULT_SHOP_ID;
+  return state.shops[0]?.id;
 }
 
 export function createServiceDefinition(state: MarketplaceState, actor: MarketplaceActor, input: ServiceMutationInput) {
@@ -538,29 +539,6 @@ export function deleteServiceDefinition(state: MarketplaceState, actor: Marketpl
   };
 }
 
-function getVisibleProfiles(state: MarketplaceState) {
-  return state.barberProfiles.filter((profile) => {
-    const visibility = state.visibilities.find((entry) => entry.barberId === profile.barberId);
-    return (visibility?.visibilityState ?? profile.visibilityState) !== "hidden";
-  });
-}
-
-function isBarberDiscoverable(trustState: TrustState | undefined, barberId: string) {
-  if (!trustState) {
-    return true;
-  }
-
-  return getVerificationGateDecision(buildPublicTrustSignal(trustState, barberId).verificationDecision, "discovery").allowed;
-}
-
-function isShopPubliclyActivatable(trustState: TrustState | undefined, shopId?: string) {
-  if (!trustState || !shopId) {
-    return true;
-  }
-
-  return getVerificationGateDecision(computeShopVerificationDecision(trustState, shopId), "shop_activation").allowed;
-}
-
 function toMarketplaceBadges(
   profileBadges: MarketplaceBadge[] | undefined,
   trustState: TrustState | undefined,
@@ -637,34 +615,34 @@ export function getPublicBarberProfileByUsername(
   username: string,
   trustState?: TrustState
 ): PublicBarberProfileView | null {
-  const profile = getVisibleProfiles(state).find((entry) => entry.username === username);
+  const profile = state.barberProfiles.find((entry) => entry.username === username);
   if (!profile) {
     return null;
   }
 
-  const barber = demoBarbers.find((entry) => entry.id === profile.barberId);
+  const barber = getBarber(state, profile.barberId);
   if (!barber) {
     return null;
   }
-  if (!isBarberDiscoverable(trustState, barber.id)) {
+  if (!isBarberMarketplaceVisible(state, barber, profile, trustState)) {
     return null;
   }
 
   const shop = getShop(state, profile.shopId);
-  const visibleShop = shop && isShopPubliclyActivatable(trustState, shop.id) ? shop : undefined;
+  const visibleShop = shop && isShopMarketplaceVisible(state, shop, trustState) ? shop : undefined;
   const services = getServicesForPublicProfile(state, barber, profile).map((service) => toCatalogItem(service, state, { role: barber.role, barberId: barber.id }));
   const { reviews, reviewCount, averageRating } = getReviewSnapshot(state, barber);
   const portfolio = state.barberPortfolios.filter((asset) => asset.barberId === barber.id);
   const mostBookedService = [...services].sort((left, right) => left.popularity.popularityRank - right.popularity.popularityRank || right.popularity.bookingCount - left.popularity.bookingCount)[0];
   const prices = services.map((entry) => entry.service.price);
-  const shopLocations = demoLocations.filter((location) => visibleShop?.locationIds.includes(location.id));
+  const shopLocations = state.locations.filter((location) => visibleShop?.locationIds.includes(location.id));
 
   return {
     barber: {
       ...barber,
       rating: averageRating,
       reviewCount,
-      bio: DEFAULT_PUBLIC_BIO[barber.id] ?? barber.bio
+      bio: barber.bio
     },
     profile: {
       ...profile,
@@ -688,11 +666,7 @@ function getDiscoveryRow(
   requestedLocationId?: string,
   trustState?: TrustState
 ): DiscoveryResult | null {
-  const visibility = state.visibilities.find((entry) => entry.barberId === barber.id);
-  if ((visibility?.visibilityState ?? profile.visibilityState) === "hidden") {
-    return null;
-  }
-  if (!isBarberDiscoverable(trustState, barber.id)) {
+  if (!isBarberMarketplaceVisible(state, barber, profile, trustState)) {
     return null;
   }
 
@@ -707,10 +681,10 @@ function getDiscoveryRow(
     .sort((left, right) => (left.popularity?.popularityRank ?? 999) - (right.popularity?.popularityRank ?? 999))[0]?.service;
   const entry = getLocationEntry(state, barber.id, requestedLocationId);
   const shop = getShop(state, profile.shopId);
-  const visibleShop = shop && isShopPubliclyActivatable(trustState, shop.id) ? shop : undefined;
+  const visibleShop = shop && isShopMarketplaceVisible(state, shop, trustState) ? shop : undefined;
   const { reviewCount, averageRating } = getReviewSnapshot(state, barber);
-  const location = demoLocations.find((candidate) => candidate.id === (entry?.locationId ?? requestedLocationId))
-    ?? demoLocations.find((candidate) => barber.locationIds.includes(candidate.id));
+  const location = getLocation(state, entry?.locationId ?? requestedLocationId)
+    ?? state.locations.find((candidate) => barber.locationIds.includes(candidate.id));
   const portfolioPreview = state.barberPortfolios
     .filter((asset) => asset.barberId === barber.id)
     .sort((left, right) => Number(right.featured) - Number(left.featured) || left.id.localeCompare(right.id))
@@ -759,15 +733,12 @@ export function searchMarketplace(state: MarketplaceState, filters: DiscoveryFil
   const normalizedQuery = filters.query?.trim().toLowerCase();
   const requestedLocationId = filters.locationId;
   const requestedStyleTag = filters.styleTagId;
-  const results = getVisibleProfiles(state)
-    .map((profile) => {
-      const barber = demoBarbers.find((entry) => entry.id === profile.barberId);
-      return barber ? getDiscoveryRow(state, barber, profile, requestedLocationId, trustState) : null;
-    })
+  const results = filterVisibleMarketplaceBarbers(state, trustState)
+    .map(({ barber, profile }) => getDiscoveryRow(state, barber, profile, requestedLocationId, trustState))
     .filter((row): row is DiscoveryResult => Boolean(row))
     .filter((row) => {
       const publicProfile = state.barberProfiles.find((profile) => profile.barberId === row.barberId);
-      const barber = demoBarbers.find((entry) => entry.id === row.barberId);
+      const barber = getBarber(state, row.barberId);
       const services = barber && publicProfile ? getServicesForPublicProfile(state, barber, publicProfile) : [];
       const searchText = [
         row.barberName,
@@ -776,7 +747,7 @@ export function searchMarketplace(state: MarketplaceState, filters: DiscoveryFil
         row.specialties.join(" "),
         services.map((service) => service.name).join(" "),
         services.flatMap((service) => service.styleTagIds ?? []).map((styleTagId) => styleTagMap.get(styleTagId)?.name ?? "").join(" "),
-        demoLocations.filter((location) => barber?.locationIds.includes(location.id)).map((location) => `${location.name} ${location.neighborhood} ${location.city}`).join(" ")
+        state.locations.filter((location) => barber?.locationIds.includes(location.id)).map((location) => `${location.name} ${location.neighborhood} ${location.city}`).join(" ")
       ]
         .join(" ")
         .toLowerCase();
@@ -838,20 +809,28 @@ export function getMapDiscoveryMarkers(state: MarketplaceState, filters: Discove
     .filter((entry) => !filters.locationId || entry.locationId === filters.locationId)
     .map((entry): MapDiscoveryMarker | null => {
       const shop = getShop(state, entry.shopId);
-      if (!isShopPubliclyActivatable(trustState, shop?.id)) {
+      if (!shop || !isShopMarketplaceVisible(state, shop, trustState)) {
         return null;
       }
-      const location = demoLocations.find((item) => item.id === entry.locationId);
+      const shopResults = filteredResults.filter((result) =>
+        result.locationId === entry.locationId
+        || state.barberProfiles.some((profile) => profile.barberId === result.barberId && profile.shopId === shop.id)
+      );
+      if (!shopResults.length) {
+        return null;
+      }
+      const location = getLocation(state, entry.locationId);
+      const nextResult = pickEarliest(shopResults);
       return {
         id: `shop-${entry.locationId}`,
         kind: "shop",
-        label: location?.name ?? shop?.name ?? "Shop",
+        label: location?.name ?? shop.name,
         latitude: entry.latitude,
         longitude: entry.longitude,
-        rating: 4.9,
-        priceRangeLabel: "$32 - $96",
-        nextAvailableAt: state.barberProfiles.sort((left, right) => left.nextAvailableAt.localeCompare(right.nextAvailableAt))[0]?.nextAvailableAt ?? new Date().toISOString(),
-        shopName: shop?.name
+        rating: Number((shopResults.reduce((sum, result) => sum + result.rating, 0) / shopResults.length).toFixed(1)),
+        priceRangeLabel: nextResult.priceRangeLabel ?? `$${nextResult.priceRange[0]} - $${nextResult.priceRange[1]}`,
+        nextAvailableAt: nextResult.nextAvailableAt,
+        shopName: shop.name
       };
     })
     .filter((marker): marker is MapDiscoveryMarker => Boolean(marker));
@@ -887,31 +866,20 @@ function pickEarliest(results: DiscoveryResult[]) {
   return [...results].sort((left, right) => new Date(left.nextAvailableAt).getTime() - new Date(right.nextAvailableAt).getTime())[0];
 }
 
+function getMatchLocationId(state: MarketplaceState, result: DiscoveryResult, fallbackLocationId?: string) {
+  return result.locationId
+    ?? getBarber(state, result.barberId)?.locationIds[0]
+    ?? fallbackLocationId;
+}
+
 export function getHaircutNowMatch(
   state: MarketplaceState,
-  clientId = "client-jordan",
+  clientId?: string,
   locationId?: string,
   trustState?: TrustState
 ): HaircutNowMatch | null {
-  const client = demoClients.find((entry) => entry.id === clientId);
   const preferences = state.clientPreferences.find((entry) => entry.clientId === clientId);
   const visibleResults = searchMarketplace(state, { locationId, availability: "any" }, trustState);
-
-  const favoriteBarberResult = client?.favoriteBarberId ? visibleResults.find((result) => result.barberId === client.favoriteBarberId) : undefined;
-  if (favoriteBarberResult) {
-    return {
-      barberId: favoriteBarberResult.barberId,
-      username: favoriteBarberResult.username,
-      barberName: favoriteBarberResult.barberName,
-      matchedFrom: "favorite_barber",
-      matchReason: "Your favorite barber is the fastest trusted chair right now.",
-      appointmentTime: favoriteBarberResult.nextAvailableAt,
-      locationId: demoBarbers.find((entry) => entry.id === favoriteBarberResult.barberId)?.locationIds[0] ?? locationId ?? "loc-ybor",
-      shopName: favoriteBarberResult.shopName,
-      priceFrom: favoriteBarberResult.priceRange[0],
-      rating: favoriteBarberResult.rating
-    };
-  }
 
   const favoriteShopId = preferences?.favoriteShopId;
   const favoriteShopResults = favoriteShopId
@@ -919,6 +887,11 @@ export function getHaircutNowMatch(
     : [];
   const favoriteShopMatch = pickEarliest(favoriteShopResults);
   if (favoriteShopMatch) {
+    const resolvedLocationId = getMatchLocationId(state, favoriteShopMatch, locationId);
+    if (!resolvedLocationId) {
+      return null;
+    }
+
     return {
       barberId: favoriteShopMatch.barberId,
       username: favoriteShopMatch.username,
@@ -926,7 +899,7 @@ export function getHaircutNowMatch(
       matchedFrom: "favorite_shop",
       matchReason: "Your favorite shop has the fastest open chair available.",
       appointmentTime: favoriteShopMatch.nextAvailableAt,
-      locationId: demoBarbers.find((entry) => entry.id === favoriteShopMatch.barberId)?.locationIds[0] ?? locationId ?? "loc-ybor",
+      locationId: resolvedLocationId,
       shopName: favoriteShopMatch.shopName,
       priceFrom: favoriteShopMatch.priceRange[0],
       rating: favoriteShopMatch.rating
@@ -935,6 +908,11 @@ export function getHaircutNowMatch(
 
   const nearbyMatch = pickEarliest([...visibleResults].sort((left, right) => left.distanceMiles - right.distanceMiles || new Date(left.nextAvailableAt).getTime() - new Date(right.nextAvailableAt).getTime()));
   if (nearbyMatch) {
+    const resolvedLocationId = getMatchLocationId(state, nearbyMatch, locationId);
+    if (!resolvedLocationId) {
+      return null;
+    }
+
     return {
       barberId: nearbyMatch.barberId,
       username: nearbyMatch.username,
@@ -942,7 +920,7 @@ export function getHaircutNowMatch(
       matchedFrom: "nearby",
       matchReason: "This is the closest high-fit chair with strong availability right now.",
       appointmentTime: nearbyMatch.nextAvailableAt,
-      locationId: demoBarbers.find((entry) => entry.id === nearbyMatch.barberId)?.locationIds[0] ?? locationId ?? "loc-ybor",
+      locationId: resolvedLocationId,
       shopName: nearbyMatch.shopName,
       priceFrom: nearbyMatch.priceRange[0],
       rating: nearbyMatch.rating
@@ -954,6 +932,11 @@ export function getHaircutNowMatch(
     return null;
   }
 
+  const resolvedLocationId = getMatchLocationId(state, availableNowMatch, locationId);
+  if (!resolvedLocationId) {
+    return null;
+  }
+
   return {
     barberId: availableNowMatch.barberId,
     username: availableNowMatch.username,
@@ -961,7 +944,7 @@ export function getHaircutNowMatch(
     matchedFrom: "available_now",
     matchReason: "This is the fastest next available appointment in the visible network.",
     appointmentTime: availableNowMatch.nextAvailableAt,
-    locationId: demoBarbers.find((entry) => entry.id === availableNowMatch.barberId)?.locationIds[0] ?? locationId ?? "loc-ybor",
+    locationId: resolvedLocationId,
     shopName: availableNowMatch.shopName,
     priceFrom: availableNowMatch.priceRange[0],
     rating: availableNowMatch.rating
