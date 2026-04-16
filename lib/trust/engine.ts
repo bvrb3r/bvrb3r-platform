@@ -763,6 +763,26 @@ export function createInitialTrustState(): TrustState {
   });
 }
 
+export function createEmptyTrustState(): TrustState {
+  return {
+    barberVerifications: [],
+    shopVerifications: [],
+    verificationDocuments: [],
+    verificationProfiles: [],
+    verificationReviews: [],
+    verificationProviderLinks: [],
+    trustBadges: [],
+    reviewModeration: [],
+    safetyReports: [],
+    reportEvents: [],
+    disputes: [],
+    disputeEvents: [],
+    riskFlags: [],
+    moderationActions: [],
+    reliabilityScores: []
+  };
+}
+
 export function buildPublicTrustSignal(state: TrustState, barberId: string, shopId?: string): PublicTrustSignal {
   const verificationDecision = computeBarberVerificationDecision(state, barberId);
   const shopDecision = shopId ? computeShopVerificationDecision(state, shopId) : undefined;
