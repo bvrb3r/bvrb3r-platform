@@ -28,11 +28,7 @@ returns boolean
 language sql
 stable
 as $$
-  select
-    coalesce(auth.jwt() -> 'app_metadata' ->> 'role', '') = 'platform_admin'
-    or coalesce(auth.jwt() -> 'user_metadata' ->> 'role', '') = 'platform_admin'
-    or coalesce(auth.jwt() ->> 'role', '') = 'platform_admin'
-    or public.current_auth_email() = 'architect@bvrb3r.demo';
+  select false;
 $$;
 
 create or replace function public.is_verification_document_subject(

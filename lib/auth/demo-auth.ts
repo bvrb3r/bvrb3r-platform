@@ -6,6 +6,7 @@ import type { Role, UserAccount } from "@/types/domain";
 
 export const DEMO_SESSION_COOKIE = "bvrb3r-demo-email";
 export const DEFAULT_DEMO_EMAIL = "owner@bvrb3r.demo";
+export const CANONICAL_PLATFORM_ADMIN_EMAIL = "bvrb3r@icloud.com";
 
 const demoEmailAliases = new Map<string, string>([
   ["lux@bvrb3r.demop", "lux@bvrb3r.demo"],
@@ -15,7 +16,6 @@ const demoEmailAliases = new Map<string, string>([
 ]);
 
 const demoLauncherOrder = [
-  "architect@bvrb3r.demo",
   "client@bvrb3r.demo",
   "lux@bvrb3r.demo",
   "blaze@bvrb3r.demo",
@@ -27,10 +27,6 @@ const demoLauncherOrder = [
 ] as const;
 
 const demoLauncherCopy: Record<string, { dashboardLabel: string; description: string }> = {
-  "architect@bvrb3r.demo": {
-    dashboardLabel: "Architect console",
-    description: "Enter the founder-only platform control plane for users, shops, risk, and audit oversight."
-  },
   "client@bvrb3r.demo": {
     dashboardLabel: "Client dashboard",
     description: "Book, rebook, manage favorites, and stay on top of your appointments."
@@ -100,8 +96,16 @@ export function findDemoUserByRole(role?: Role) {
   return demoUsers.find((user) => user.role === role);
 }
 
-export function isPlatformAdminUser(user?: Pick<UserAccount, "role" | "primaryOnboardingRole"> | null) {
-  return Boolean(user?.role === "platform_admin" && user.primaryOnboardingRole === "platform_admin");
+function isCanonicalPlatformAdminEmail(email?: string | null) {
+  return email?.trim().toLowerCase() === CANONICAL_PLATFORM_ADMIN_EMAIL;
+}
+
+export function isPlatformAdminUser(user?: Pick<UserAccount, "role" | "primaryOnboardingRole"> & { email?: string | null } | null) {
+  return Boolean(
+    user?.role === "platform_admin"
+    && user.primaryOnboardingRole === "platform_admin"
+    && isCanonicalPlatformAdminEmail(user.email)
+  );
 }
 
 export function resolveDemoUser(selectedEmail?: string, fallbackEmail = DEFAULT_DEMO_EMAIL) {

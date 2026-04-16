@@ -1,8 +1,8 @@
-import { findDemoUserByEmail, getDefaultRouteForUser, getDemoLauncherAccounts, getUserRoleLabel, isPlatformAdminUser, resolveDemoUser } from "@/lib/auth/demo-auth";
+import { CANONICAL_PLATFORM_ADMIN_EMAIL, findDemoUserByEmail, getDefaultRouteForUser, getDemoLauncherAccounts, getUserRoleLabel, isPlatformAdminUser, resolveDemoUser } from "@/lib/auth/demo-auth";
 
 describe("demo account mapping", () => {
   it.each([
-    ["architect@bvrb3r.demo", "platform_admin", "/architect", "Platform admin"],
+    ["architect@bvrb3r.demo", "platform_admin", "/post-auth", "Platform admin"],
     ["client@bvrb3r.demo", "client", "/dashboard/client", "Client"],
     ["lux@bvrb3r.demo", "booth_rent_barber", "/dashboard/barber", "Freelance barber"],
     ["blaze@bvrb3r.demo", "booth_rent_barber", "/dashboard/barber", "Booth-rent barber"],
@@ -50,7 +50,6 @@ describe("demo account mapping", () => {
     const accounts = getDemoLauncherAccounts();
 
     expect(accounts.map((account) => account.user.email)).toEqual([
-      "architect@bvrb3r.demo",
       "client@bvrb3r.demo",
       "lux@bvrb3r.demo",
       "blaze@bvrb3r.demo",
@@ -60,24 +59,34 @@ describe("demo account mapping", () => {
       "manager@bvrb3r.demo",
       "owner@bvrb3r.demo"
     ]);
-    expect(accounts.find((account) => account.user.email === "architect@bvrb3r.demo")?.dashboardLabel).toBe("Architect console");
+    expect(accounts.some((account) => account.user.email === "architect@bvrb3r.demo")).toBe(false);
     expect(accounts.find((account) => account.user.email === "wave@bvrb3r.demo")?.dashboardLabel).toBe("Barber-manager dashboard");
     expect(accounts.find((account) => account.user.email === "lux@bvrb3r.demo")?.roleLabel).toBe("Freelance barber");
   });
 
-  it("routes the founder account into the architect console with a dedicated platform-admin role", () => {
-    const founder = resolveDemoUser("architect@bvrb3r.demo");
+  it("routes only the canonical founder email into the architect console", () => {
+    const retiredDemoArchitect = resolveDemoUser("architect@bvrb3r.demo");
+    const founder = {
+      ...retiredDemoArchitect,
+      email: CANONICAL_PLATFORM_ADMIN_EMAIL
+    };
     const accounts = getDemoLauncherAccounts();
 
-    expect(founder.email).toBe("architect@bvrb3r.demo");
+    expect(retiredDemoArchitect.email).toBe("architect@bvrb3r.demo");
+    expect(retiredDemoArchitect.role).toBe("platform_admin");
+    expect(getDefaultRouteForUser(retiredDemoArchitect)).toBe("/post-auth");
+    expect(isPlatformAdminUser(retiredDemoArchitect)).toBe(false);
+    expect(founder.email).toBe(CANONICAL_PLATFORM_ADMIN_EMAIL);
     expect(founder.role).toBe("platform_admin");
     expect(getDefaultRouteForUser(founder)).toBe("/architect");
     expect(getUserRoleLabel(founder)).toBe("Platform admin");
-    expect(accounts.some((account) => account.user.email === "architect@bvrb3r.demo")).toBe(true);
+    expect(accounts.some((account) => account.user.email === "architect@bvrb3r.demo")).toBe(false);
   });
 
-  it("requires the canonical platform-admin onboarding lane for founder access", () => {
-    expect(isPlatformAdminUser({ role: "platform_admin", primaryOnboardingRole: "platform_admin" })).toBe(true);
-    expect(isPlatformAdminUser({ role: "platform_admin" })).toBe(false);
+  it("requires the canonical platform-admin lane and canonical founder email for founder access", () => {
+    expect(isPlatformAdminUser({ role: "platform_admin", primaryOnboardingRole: "platform_admin", email: CANONICAL_PLATFORM_ADMIN_EMAIL })).toBe(true);
+    expect(isPlatformAdminUser({ role: "platform_admin", primaryOnboardingRole: "platform_admin", email: "pmcgeefsu@gmail.com" })).toBe(false);
+    expect(isPlatformAdminUser({ role: "platform_admin", primaryOnboardingRole: "platform_admin", email: "architect@bvrb3r.demo" })).toBe(false);
+    expect(isPlatformAdminUser({ role: "platform_admin", email: CANONICAL_PLATFORM_ADMIN_EMAIL })).toBe(false);
   });
 });

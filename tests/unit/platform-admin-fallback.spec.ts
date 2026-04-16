@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { resolveDemoUser } from "@/lib/auth/demo-auth";
 
 const {
   createSupabaseAdminClientMock,
@@ -436,8 +435,9 @@ describe("platform admin service fallback", () => {
 
   it("falls back safely when architect control tables are missing", async () => {
     const { getPlatformAdminConsolePayload, getPlatformAccountStatus, readPlatformShopControlState, resetPlatformAdminStateForTests } = await import("@/lib/platform-admin/service");
+    const { makePlatformAdminUser } = await import("@/tests/unit/platform-admin-test-user");
     resetPlatformAdminStateForTests();
-    const founder = resolveDemoUser("architect@bvrb3r.demo");
+    const founder = makePlatformAdminUser();
 
     const payload = await getPlatformAdminConsolePayload(founder);
     const accountStatus = await getPlatformAccountStatus("user-owner");

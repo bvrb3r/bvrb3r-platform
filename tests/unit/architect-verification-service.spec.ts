@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { resolveDemoUser } from "@/lib/auth/demo-auth";
+import { makePlatformAdminUser } from "@/tests/unit/platform-admin-test-user";
 import {
   approveVerificationProfile,
   createArchitectVerificationDocumentSignedUrl,
@@ -18,7 +19,7 @@ import {
 import { getTrustState, resetTrustState, setTrustState } from "@/lib/trust/state";
 
 describe("architect verification service", () => {
-  const founder = resolveDemoUser("architect@bvrb3r.demo");
+  const founder = makePlatformAdminUser();
   const owner = resolveDemoUser("owner@bvrb3r.demo");
   const barber = resolveDemoUser("fade@bvrb3r.demo");
   const wave = resolveDemoUser("wave@bvrb3r.demo");

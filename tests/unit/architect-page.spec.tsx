@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { resolveDemoUser } from "@/lib/auth/demo-auth";
+import { makePlatformAdminUser } from "@/tests/unit/platform-admin-test-user";
 
 const {
   getPlatformAdminUserMock,
@@ -36,7 +36,7 @@ describe("architect page", () => {
   });
 
   it("renders the hidden founder console with server-loaded payload", async () => {
-    getPlatformAdminUserMock.mockResolvedValue(resolveDemoUser("architect@bvrb3r.demo"));
+    getPlatformAdminUserMock.mockResolvedValue(makePlatformAdminUser());
     getPlatformAdminConsolePayloadMock.mockResolvedValue({
       actorName: "Architect",
       overview: {},
@@ -56,7 +56,7 @@ describe("architect page", () => {
   });
 
   it("falls back safely when the architect payload resolves to null", async () => {
-    const founder = resolveDemoUser("architect@bvrb3r.demo");
+    const founder = makePlatformAdminUser();
     getPlatformAdminUserMock.mockResolvedValue(founder);
     getPlatformAdminConsolePayloadMock.mockResolvedValue(null);
 
@@ -67,7 +67,7 @@ describe("architect page", () => {
   });
 
   it("renders a degraded founder payload instead of crashing on raw data-source errors", async () => {
-    const founder = resolveDemoUser("architect@bvrb3r.demo");
+    const founder = makePlatformAdminUser();
     getPlatformAdminUserMock.mockResolvedValue(founder);
     getPlatformAdminConsolePayloadMock.mockRejectedValue({
       code: "42P01",

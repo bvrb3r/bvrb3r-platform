@@ -19,7 +19,7 @@ vi.mock("@/lib/trust/provider", async () => {
   };
 });
 
-import { resolveDemoUser } from "@/lib/auth/demo-auth";
+import { CANONICAL_PLATFORM_ADMIN_EMAIL, resolveDemoUser } from "@/lib/auth/demo-auth";
 import {
   getActivationStatusForUser,
   getOnboardingState,
@@ -115,6 +115,34 @@ describe("onboarding service", () => {
     };
 
     const destination = await resolvePostAuthDestination(freshUser);
+
+    expect(destination).toBe("/role-select");
+  });
+
+  it("routes only the canonical active platform admin to Architect", async () => {
+    const admin = {
+      ...resolveDemoUser("architect@bvrb3r.demo"),
+      email: CANONICAL_PLATFORM_ADMIN_EMAIL,
+      accountStatus: "active" as const
+    };
+
+    const destination = await resolvePostAuthDestination(admin);
+
+    expect(destination).toBe("/architect");
+  });
+
+  it("does not route retired platform-admin profiles to Architect", async () => {
+    const retiredAdmin = {
+      ...resolveDemoUser("architect@bvrb3r.demo"),
+      email: "pmcgeefsu@gmail.com",
+      canonicalFullName: "Retired Admin",
+      phone: "+18135550199",
+      accountStatus: "active" as const,
+      emailVerified: true,
+      phoneVerified: true
+    };
+
+    const destination = await resolvePostAuthDestination(retiredAdmin);
 
     expect(destination).toBe("/role-select");
   });

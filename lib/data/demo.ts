@@ -57,7 +57,7 @@ export const demoServices: Service[] = [
 ];
 
 export const demoUsers: UserAccount[] = [
-  { id: "user-architect", role: "platform_admin", email: "architect@bvrb3r.demo", password: "DevOnly!123", name: "Avery Stone", title: "Founder / Platform Admin", locationIds: ["loc-ybor", "loc-hyde"], primaryOnboardingRole: "platform_admin", platformAdmin: true },
+  { id: "user-architect", role: "platform_admin", email: "architect@bvrb3r.demo", password: "DevOnly!123", name: "Avery Stone", title: "Retired Demo Admin", locationIds: ["loc-ybor", "loc-hyde"], primaryOnboardingRole: "platform_admin" },
   { id: "user-owner", role: "owner", email: "owner@bvrb3r.demo", password: "DevOnly!123", name: "Brandon Rivers", title: "Shop Owner", locationIds: ["loc-ybor", "loc-hyde"] },
   { id: "user-manager", role: "manager", email: "manager@bvrb3r.demo", password: "DevOnly!123", name: "Mia Torres", title: "Shop Manager", locationIds: ["loc-ybor"] },
   { id: "user-frontdesk", role: "front_desk", email: "frontdesk@bvrb3r.demo", password: "DevOnly!123", name: "Kayla Brooks", title: "Front Desk / Kiosk Ops", locationIds: ["loc-ybor"] },

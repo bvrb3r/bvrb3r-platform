@@ -1,4 +1,5 @@
 import type { Route } from "next";
+import { isPlatformAdminUser } from "@/lib/auth/demo-auth";
 import { initializeProductionRoleSelection } from "@/lib/auth/production-identity";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
@@ -915,6 +916,10 @@ export async function resolvePostAuthDestination(
     return "/login?account=disabled";
   }
 
+  if (user.accountStatus === "active" && isPlatformAdminUser(user)) {
+    return "/architect";
+  }
+
   if (!hasRequiredContactData(user) || user.emailVerified === false || user.phoneVerified === false) {
     return "/verify-contact";
   }
@@ -949,10 +954,6 @@ export async function resolvePostAuthDestination(
       }
     : await getOnboardingSummaryForRuntimeUser(user.id);
   const selectedRole = inferSelectedRoleFromUser(user);
-
-  if (user.role === "platform_admin" && user.accountStatus === "active") {
-    return "/architect";
-  }
 
   if (!selectedRole) {
     return "/role-select";

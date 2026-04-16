@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveDemoUser } from "@/lib/auth/demo-auth";
+import { makePlatformAdminUser } from "@/tests/unit/platform-admin-test-user";
 
 const {
   getCurrentUserFromServerMock,
@@ -61,7 +62,7 @@ describe("architect verification routes", () => {
   });
 
   it("returns the verification queue for the founder", async () => {
-    const founder = resolveDemoUser("architect@bvrb3r.demo");
+    const founder = makePlatformAdminUser();
     getCurrentUserFromServerMock.mockResolvedValue({ authenticated: true, mode: "demo", user: founder });
     listVerificationProfilesForArchitectMock.mockResolvedValue({
       items: [
@@ -111,7 +112,7 @@ describe("architect verification routes", () => {
   });
 
   it("forwards approve actions through the verification service", async () => {
-    const founder = resolveDemoUser("architect@bvrb3r.demo");
+    const founder = makePlatformAdminUser();
     getCurrentUserFromServerMock.mockResolvedValue({ authenticated: true, mode: "demo", user: founder });
     approveVerificationProfileMock.mockResolvedValue({ ok: true, profileId: "vprof-barber-fade" });
 
@@ -149,7 +150,7 @@ describe("architect verification routes", () => {
   });
 
   it("returns 404 when the requested document does not belong to the profile", async () => {
-    const founder = resolveDemoUser("architect@bvrb3r.demo");
+    const founder = makePlatformAdminUser();
     getCurrentUserFromServerMock.mockResolvedValue({ authenticated: true, mode: "demo", user: founder });
     createArchitectVerificationDocumentSignedUrlMock.mockRejectedValue(
       Object.assign(new Error("Verification document not found for this profile."), {

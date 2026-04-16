@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveDemoUser } from "@/lib/auth/demo-auth";
+import { makePlatformAdminUser } from "@/tests/unit/platform-admin-test-user";
 
 const { getCurrentUserFromServerMock, redirectMock } = vi.hoisted(() => ({
   getCurrentUserFromServerMock: vi.fn(),
@@ -124,13 +125,19 @@ describe("authorized user guard", () => {
   });
 
   it("returns the founder for the hidden architect route", async () => {
-    getCurrentUserFromServerMock.mockResolvedValue({ mode: "demo", user: resolveDemoUser("architect@bvrb3r.demo") });
+    getCurrentUserFromServerMock.mockResolvedValue({ mode: "demo", user: makePlatformAdminUser() });
 
     const user = await getPlatformAdminUser();
 
-    expect(user.email).toBe("architect@bvrb3r.demo");
+    expect(user.email).toBe("bvrb3r@icloud.com");
     expect(user.role).toBe("platform_admin");
     expect(redirectMock).not.toHaveBeenCalled();
+  });
+
+  it("redirects the retired demo architect identity away from the architect route", async () => {
+    getCurrentUserFromServerMock.mockResolvedValue({ mode: "demo", user: resolveDemoUser("architect@bvrb3r.demo") });
+
+    await expect(getPlatformAdminUser()).rejects.toThrow("REDIRECT:/post-auth");
   });
 
   it("redirects a normal owner away from the architect route", async () => {

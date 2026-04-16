@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { resolveDemoUser } from "@/lib/auth/demo-auth";
+import { makePlatformAdminUser } from "@/tests/unit/platform-admin-test-user";
 import {
   applyPlatformAdminAction,
   getPlatformAdminConsolePayload,
@@ -8,7 +8,7 @@ import {
 } from "@/lib/platform-admin/service";
 
 describe("platform admin service", () => {
-  const founder = resolveDemoUser("architect@bvrb3r.demo");
+  const founder = makePlatformAdminUser();
 
   beforeEach(() => {
     resetPlatformAdminStateForTests();
