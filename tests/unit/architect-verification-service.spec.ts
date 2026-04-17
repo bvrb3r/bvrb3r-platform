@@ -230,7 +230,7 @@ describe("architect verification service", () => {
     expect(payload.items.map((item) => item.subjectName)).not.toEqual(expect.arrayContaining(["Wave Carter", "Blaze King"]));
   });
 
-  it("surfaces canonical pending production rows even before verification profiles exist", async () => {
+  it("does not fabricate queue entries when production rows lack verification profiles", async () => {
     setTrustState(createEmptyTrustState());
     resetArchitectVerificationStateForTests();
     stageArchitectProductionVerificationRowsForTests({
@@ -241,9 +241,7 @@ describe("architect verification service", () => {
 
     const payload = await listVerificationProfilesForArchitect(founder, { submittedOnly: true });
 
-    expect(payload.items.map((item) => item.subjectEmail)).toEqual(
-      expect.arrayContaining(["phillipmcgee813@gmail.com", "bvrb3r@gmail.com"])
-    );
+    expect(payload.items).toEqual([]);
   });
 
   it("ignores fake legacy verification subjects that are not backed by production rows", async () => {

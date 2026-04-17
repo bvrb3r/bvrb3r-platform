@@ -19,7 +19,7 @@ import type {
   OnboardingStepKey,
   OnboardingStepStatus
 } from "@/types/onboarding";
-import type { VerificationProfileRecord } from "@/types/trust";
+import type { VerificationProfileRecord, VerificationStatus } from "@/types/trust";
 
 const ONBOARDING_WARNING = "Onboarding data is partially unavailable. Core access is still active.";
 const CONTACT_NOT_COMPLETE = "CONTACT_NOT_COMPLETE";
@@ -376,6 +376,26 @@ function getDashboardPath(role: OnboardingRole): Route {
   return "/dashboard/owner";
 }
 
+function getVerificationQueueRequirements(role: Exclude<OnboardingRole, "client">) {
+  return role === "barber"
+    ? [
+        "Platform review required.",
+        "Complete identity verification.",
+        "Complete barber license verification.",
+        "Connect payouts before going live."
+      ]
+    : [
+        "Platform review required.",
+        "Complete business verification.",
+        "Connect payouts before going live.",
+        "Complete shop readiness before public listing."
+      ];
+}
+
+function canResubmitVerificationStatus(status?: VerificationStatus | null) {
+  return !status || ["unverified", "not_started", "pending", "in_progress", "submitted"].includes(status);
+}
+
 async function ensureCanonicalVerificationProfile(user: UserAccount, role: Exclude<OnboardingRole, "client">) {
   const supabase = getSupabase();
   const now = new Date().toISOString();
@@ -383,7 +403,7 @@ async function ensureCanonicalVerificationProfile(user: UserAccount, role: Exclu
     id: `vprof-${role}-${user.id.slice(0, 8)}`,
     userId: user.id,
     role,
-    overallStatus: "not_started",
+    overallStatus: "submitted",
     identityStatus: "not_started",
     licenseStatus: "not_started",
     businessStatus: "not_started",
@@ -393,7 +413,7 @@ async function ensureCanonicalVerificationProfile(user: UserAccount, role: Exclu
     canAcceptBookings: false,
     canReceivePayouts: false,
     canCreateShopListing: false,
-    currentRequirements: [],
+    currentRequirements: getVerificationQueueRequirements(role),
     createdAt: now,
     updatedAt: now
   };
@@ -405,6 +425,23 @@ async function ensureCanonicalVerificationProfile(user: UserAccount, role: Exclu
   }
 
   if (!supabase) {
+    return;
+  }
+
+  const existing = await supabase
+    .from("verification_profiles")
+    .select("id, overall_status")
+    .eq("user_id", profile.userId)
+    .eq("role", profile.role)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (existing.error && !isMissingTableError(existing.error)) {
+    throw existing.error;
+  }
+
+  if (existing.data && !canResubmitVerificationStatus(existing.data.overall_status as VerificationStatus | null)) {
     return;
   }
 

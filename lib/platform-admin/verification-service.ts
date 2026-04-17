@@ -225,30 +225,6 @@ function productionReference(row: { id?: string; reference_code?: string | null 
   return row?.reference_code ?? row?.id ?? "";
 }
 
-function canonicalSubjectProfileId(role: VerificationSubjectRole, profileId: string) {
-  return role === "barber"
-    ? `canonical-barber-${profileId}`
-    : `canonical-shop-owner-${profileId}`;
-}
-
-function parseCanonicalSubjectProfileId(profileId: string) {
-  if (profileId.startsWith("canonical-barber-")) {
-    return {
-      role: "barber" as const,
-      profileId: profileId.replace("canonical-barber-", "")
-    };
-  }
-
-  if (profileId.startsWith("canonical-shop-owner-")) {
-    return {
-      role: "shop_owner" as const,
-      profileId: profileId.replace("canonical-shop-owner-", "")
-    };
-  }
-
-  return null;
-}
-
 async function readProductionVerificationIndex(warnings: string[] = []): Promise<ProductionVerificationIndex> {
   const supabase = getSupabase();
   if (!supabase) {
@@ -549,43 +525,6 @@ function collectVerificationSubjects(state: TrustState, production = createEmpty
     seenShops.add(record.shopId);
   }
 
-  for (const [profileId, barber] of production.barbersByProfileId) {
-    const barberReference = productionReference(barber);
-    const profile = production.profilesById.get(profileId);
-    if (!barberReference || profile?.primary_onboarding_role !== "barber" || seenBarbers.has(barberReference)) {
-      continue;
-    }
-
-    subjects.push({
-      profileId: canonicalSubjectProfileId("barber", profileId),
-      source: "fallback",
-      role: "barber",
-      userId: profileId,
-      barberId: barberReference,
-      profileRow: profile,
-      barberRow: barber
-    });
-    seenBarbers.add(barberReference);
-  }
-
-  for (const [profileId, shop] of production.shopsByOwnerProfileId) {
-    const profile = production.profilesById.get(profileId);
-    if (!shop.id || profile?.primary_onboarding_role !== "shop_owner" || seenShops.has(shop.id)) {
-      continue;
-    }
-
-    subjects.push({
-      profileId: canonicalSubjectProfileId("shop_owner", profileId),
-      source: "fallback",
-      role: "shop_owner",
-      userId: profileId,
-      shopId: shop.id,
-      profileRow: profile,
-      shopRow: shop
-    });
-    seenShops.add(shop.id);
-  }
-
   return subjects;
 }
 
@@ -595,44 +534,6 @@ function getSubjectByProfileId(state: TrustState, profileId: string, production 
     return directProfile.role === "barber"
       ? getBarberSubjectFromProfile(state, directProfile, production)
       : getShopSubjectFromProfile(state, directProfile, production);
-  }
-
-  const canonicalSubject = parseCanonicalSubjectProfileId(profileId);
-  if (canonicalSubject) {
-    if (canonicalSubject.role === "barber") {
-      const profile = production.profilesById.get(canonicalSubject.profileId);
-      const barber = production.barbersByProfileId.get(canonicalSubject.profileId);
-      const barberReference = productionReference(barber);
-      if (!profile || !barber || !barberReference) {
-        return null;
-      }
-
-      return {
-        profileId,
-        source: "fallback" as const,
-        role: "barber" as const,
-        userId: profile.id,
-        barberId: barberReference,
-        profileRow: profile,
-        barberRow: barber
-      };
-    }
-
-    const profile = production.profilesById.get(canonicalSubject.profileId);
-    const shop = production.shopsByOwnerProfileId.get(canonicalSubject.profileId);
-    if (!profile || !shop?.id) {
-      return null;
-    }
-
-    return {
-      profileId,
-      source: "fallback" as const,
-      role: "shop_owner" as const,
-      userId: profile.id,
-      shopId: shop.id,
-      profileRow: profile,
-      shopRow: shop
-    };
   }
 
   if (profileId.startsWith("legacy-barber-")) {

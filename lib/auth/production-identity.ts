@@ -11,6 +11,7 @@ import type {
   Role,
   UserAccount
 } from "@/types/domain";
+import type { VerificationStatus, VerificationSubjectRole } from "@/types/trust";
 
 type AuthUserLike = {
   id: string;
@@ -167,6 +168,7 @@ declare global {
 }
 
 type SupabaseWriteMode = "service_role" | "authenticated" | "unavailable";
+type VerificationQueueRole = Extract<VerificationSubjectRole, "barber" | "shop_owner">;
 
 async function getSupabaseWithMode(): Promise<{
   client: Awaited<ReturnType<typeof createSupabaseServerClient>> | ReturnType<typeof createSupabaseAdminClient>;
@@ -248,6 +250,107 @@ function throwSupabaseLaneError(action: string, error: unknown): never {
     error: message
   });
   throw new Error(`SERVER_WRITE_FAILED: ${action}: ${message}`);
+}
+
+function getVerificationQueueRequirements(role: VerificationQueueRole) {
+  return role === "barber"
+    ? [
+        "Platform review required.",
+        "Complete identity verification.",
+        "Complete barber license verification.",
+        "Connect payouts before going live."
+      ]
+    : [
+        "Platform review required.",
+        "Complete business verification.",
+        "Connect payouts before going live.",
+        "Complete shop readiness before public listing."
+      ];
+}
+
+function getVerificationQueuePayload(profileId: string, role: VerificationQueueRole) {
+  const submitted = "submitted" satisfies VerificationStatus;
+  const notStarted = "not_started" satisfies VerificationStatus;
+
+  return {
+    user_id: profileId,
+    role,
+    overall_status: submitted,
+    identity_status: notStarted,
+    license_status: notStarted,
+    business_status: notStarted,
+    payout_status: notStarted,
+    compliance_status: notStarted,
+    public_verified: false,
+    can_accept_bookings: false,
+    can_receive_payouts: false,
+    can_create_shop_listing: false,
+    current_requirements: getVerificationQueueRequirements(role)
+  };
+}
+
+function canResubmitVerificationProfile(status?: string | null) {
+  return !status || ["unverified", "not_started", "pending", "in_progress", "submitted"].includes(status);
+}
+
+async function ensureVerificationProfileQueued(profileId: string, role: VerificationQueueRole) {
+  const { client: supabase, mode: supabaseMode } = await getSupabaseWithMode();
+  if (!supabase) {
+    return;
+  }
+
+  const existing = await supabase
+    .from("verification_profiles")
+    .select("id, overall_status")
+    .eq("user_id", profileId)
+    .eq("role", role)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (existing.error && !isSchemaError(existing.error)) {
+    throwSupabaseLaneError("Verification profile lookup", existing.error);
+  }
+
+  const payload = getVerificationQueuePayload(profileId, role);
+  if (existing.data?.id) {
+    if (!canResubmitVerificationProfile(`${existing.data.overall_status ?? ""}`)) {
+      return;
+    }
+
+    const update = await supabase
+      .from("verification_profiles")
+      .update(payload)
+      .eq("id", existing.data.id as string);
+
+    if (update.error) {
+      throwSupabaseLaneError("Verification profile queue update", update.error);
+    }
+
+    console.info("[auth] verification profile queued", {
+      profileId,
+      role,
+      verificationProfileId: existing.data.id,
+      supabaseMode,
+      existed: true
+    });
+    return;
+  }
+
+  const insert = await supabase
+    .from("verification_profiles")
+    .insert(payload);
+
+  if (insert.error) {
+    throwSupabaseLaneError("Verification profile queue insert", insert.error);
+  }
+
+  console.info("[auth] verification profile queued", {
+    profileId,
+    role,
+    supabaseMode,
+    existed: false
+  });
 }
 
 function getDisplayName(authUser: AuthUserLike, profile?: ProfileRow | null) {
@@ -2136,6 +2239,7 @@ async function ensureBarberLaneBootstrap(
   }
 
   const effectiveBarberReference = (existing.data as ClientRow | null)?.reference_code ?? barberReference;
+  await ensureVerificationProfileQueued(profileId, "barber");
   console.info("[auth] barber lane bootstrap completed", {
     profileId,
     barberId: effectiveBarberReference,
@@ -2285,6 +2389,7 @@ async function ensureBarberLane(
     throwSupabaseLaneError("Barber user role bootstrap upsert", userRoleUpsert.error);
   }
 
+  await ensureVerificationProfileQueued(profileId, "barber");
   console.info("[auth] barber subtype lane bootstrap completed", {
     profileId,
     barberId: effectiveBarberReference,
@@ -2537,6 +2642,7 @@ async function ensureOwnerLane(profileId: string, identity: { email: string; nam
     throwSupabaseLaneError("Owner user role bootstrap upsert", userRoleUpsert.error);
   }
 
+  await ensureVerificationProfileQueued(profileId, "shop_owner");
   console.info("[auth] owner lane bootstrap completed", {
     profileId,
     shopId: effectiveShopId,

@@ -274,7 +274,8 @@ describe("production identity provisioning", () => {
       staff_locations: [],
       locations: [],
       client_profiles: [],
-      user_roles: []
+      user_roles: [],
+      verification_profiles: []
     };
 
     createSupabaseAdminClientMock.mockReset();
@@ -681,6 +682,14 @@ describe("production identity provisioning", () => {
       barber_subtype: null,
       app_approval_status: "pending"
     });
+    expect(state.verification_profiles).toHaveLength(1);
+    expect(state.verification_profiles[0]).toMatchObject({
+      user_id: "auth-new-barber",
+      role: "barber",
+      overall_status: "submitted",
+      public_verified: false,
+      can_accept_bookings: false
+    });
     expect(state.clients).toHaveLength(0);
     expect(state.user_roles).toHaveLength(0);
     expect(result.user.primaryOnboardingRole).toBe("barber");
@@ -711,6 +720,18 @@ describe("production identity provisioning", () => {
       app_approval_status: "pending",
       shop_approval_status: "not_required"
     });
+    state.verification_profiles.push({
+      id: "vprof-dashboard-barber",
+      user_id: "auth-dashboard-barber",
+      role: "barber",
+      overall_status: "not_started",
+      identity_status: "not_started",
+      license_status: "not_started",
+      business_status: "not_started",
+      payout_status: "not_started",
+      compliance_status: "not_started",
+      current_requirements: []
+    });
 
     const result = await initializeProductionRoleSelection({
       id: "auth-dashboard-barber",
@@ -737,6 +758,13 @@ describe("production identity provisioning", () => {
       reference_code: "barber-dashboard",
       barber_subtype: "commission",
       compensation_model: "commission"
+    });
+    expect(state.verification_profiles).toHaveLength(1);
+    expect(state.verification_profiles[0]).toMatchObject({
+      id: "vprof-dashboard-barber",
+      user_id: "auth-dashboard-barber",
+      role: "barber",
+      overall_status: "submitted"
     });
     expect(result.user.barberSubtype).toBe("commission");
     expect(result.user.role).toBe("commission_barber");
@@ -792,6 +820,14 @@ describe("production identity provisioning", () => {
       owner_profile_id: "auth-new-owner",
       name: "New Owner Shop",
       app_approval_status: "pending"
+    });
+    expect(state.verification_profiles).toHaveLength(1);
+    expect(state.verification_profiles[0]).toMatchObject({
+      user_id: "auth-new-owner",
+      role: "shop_owner",
+      overall_status: "submitted",
+      public_verified: false,
+      can_create_shop_listing: false
     });
     expect(state.locations[0]).toMatchObject({
       reference_code: "shop-new-owner-shop-auth-n",
