@@ -55,14 +55,27 @@ function getUnlockShopId(searchParams: ReturnType<typeof useSearchParams>) {
   return shopId ? decodeURIComponent(shopId) : null;
 }
 
-function getSearchMessage(searchParams: ReturnType<typeof useSearchParams>) {
+function getSearchFeedback(searchParams: ReturnType<typeof useSearchParams>) {
   const authError = searchParams.get("error");
   if (authError) {
-    return decodeURIComponent(authError);
+    return {
+      kind: "error" as const,
+      message: decodeURIComponent(authError)
+    };
+  }
+
+  if (searchParams.get("password_reset") === "1") {
+    return {
+      kind: "success" as const,
+      message: "Password updated. Log in with your new password."
+    };
   }
 
   if (searchParams.get("account") === "disabled") {
-    return "This account is disabled. Contact support if you believe this is a mistake.";
+    return {
+      kind: "error" as const,
+      message: "This account is disabled. Contact support if you believe this is a mistake."
+    };
   }
 
   return null;
@@ -84,8 +97,9 @@ export function AuthEntryWorkspace({ mode }: { mode: AuthMode }) {
   const subtitle = mode === "login"
     ? "Google, Apple, and email all route back into the correct lane. New accounts resume verification and role selection automatically."
     : "Account creation stays fast. Identity, lane selection, approval, and verification happen after auth so production trust stays strict.";
-  const searchMessage = getSearchMessage(searchParams);
-  const visibleError = errorMessage ?? searchMessage;
+  const searchFeedback = getSearchFeedback(searchParams);
+  const visibleError = errorMessage ?? (searchFeedback?.kind === "error" ? searchFeedback.message : null);
+  const visibleSuccess = successMessage ?? (searchFeedback?.kind === "success" ? searchFeedback.message : null);
 
   useEffect(() => {
     clearBrowserAccountState();
@@ -226,6 +240,11 @@ export function AuthEntryWorkspace({ mode }: { mode: AuthMode }) {
               ) : null}
               <Input name="email" placeholder="Email" type="email" autoComplete="email" />
               <Input name="password" placeholder="Password" type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} />
+              {mode === "login" ? (
+                <Link href="/forgot-password" className="w-fit text-sm text-[#cfff93] underline-offset-4 hover:underline">
+                  Forgot password?
+                </Link>
+              ) : null}
               <Button type="submit" className="h-12 w-full" disabled={isPending}>
                 {mode === "login" ? "Log in" : "Create account"}
               </Button>
@@ -233,7 +252,7 @@ export function AuthEntryWorkspace({ mode }: { mode: AuthMode }) {
           </div>
 
           {visibleError ? <p className="mt-4 text-sm leading-7 text-[#ff8f8f]">{visibleError}</p> : null}
-          {successMessage ? <p className="mt-4 text-sm leading-7 text-[#d7ffab]">{successMessage}</p> : null}
+          {visibleSuccess ? <p className="mt-4 text-sm leading-7 text-[#d7ffab]">{visibleSuccess}</p> : null}
 
           <p className="mt-6 text-sm leading-7 text-white/52">
             {mode === "login" ? "Need an account?" : "Already have an account?"}{" "}

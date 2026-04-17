@@ -12,6 +12,7 @@ function parseAuthHash(hash: string) {
   return {
     accessToken: params.get("access_token"),
     refreshToken: params.get("refresh_token"),
+    type: params.get("type"),
     error: params.get("error"),
     errorDescription: params.get("error_description")
   };
@@ -43,8 +44,20 @@ function getOAuthSearchRedirect() {
     return null;
   }
 
+  if (params.get("type") === "recovery" && params.has("code")) {
+    const resetSearch = new URLSearchParams();
+    for (const key of ["code", "type", "error", "error_description", "error_code"]) {
+      const value = params.get(key);
+      if (value) {
+        resetSearch.set(key, value);
+      }
+    }
+
+    return `/reset-password?${resetSearch.toString()}`;
+  }
+
   const callbackSearch = new URLSearchParams();
-  for (const key of ["code", "error", "error_description", "error_code", "state", "next"]) {
+  for (const key of ["code", "error", "error_description", "error_code", "state", "next", "type"]) {
     const value = params.get(key);
     if (value) {
       callbackSearch.set(key, value);
@@ -97,7 +110,7 @@ export function AuthSessionRecovery({ mode }: { mode: AuthSessionRecoveryMode })
         return;
       }
 
-      const { accessToken, refreshToken, error, errorDescription } = parseAuthHash(window.location.hash);
+      const { accessToken, refreshToken, type, error, errorDescription } = parseAuthHash(window.location.hash);
       if (error) {
         console.error("[auth] OAuth hash callback returned an error", {
           error,
@@ -111,8 +124,10 @@ export function AuthSessionRecovery({ mode }: { mode: AuthSessionRecoveryMode })
       const hasHashTokens = Boolean(accessToken && refreshToken);
       if (hasHashTokens) {
         setStatus("recovering");
-        console.info("[auth] recovering browser session from OAuth hash fragment", {
-          pathname: window.location.pathname
+        const isPasswordRecovery = type === "recovery";
+        console.info("[auth] recovering browser session from auth hash fragment", {
+          pathname: window.location.pathname,
+          isPasswordRecovery
         });
         removeHashFromUrl();
         const { error: setSessionError } = await supabase.auth.setSession({
@@ -127,6 +142,12 @@ export function AuthSessionRecovery({ mode }: { mode: AuthSessionRecoveryMode })
             setMessage(setSessionError.message);
           }
           redirectTo(`/login?error=${encodeURIComponent(setSessionError.message)}`);
+          return;
+        }
+
+        if (isPasswordRecovery) {
+          window.sessionStorage.setItem("bvrb3r-password-recovery", "1");
+          redirectTo("/reset-password?recovery=1");
           return;
         }
 

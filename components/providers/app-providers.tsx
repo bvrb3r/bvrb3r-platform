@@ -2,6 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactNode, useState } from "react";
+import { PasswordRecoveryRedirectGuard } from "@/components/auth/password-reset-workspace";
 import { PwaProvider } from "@/components/pwa/pwa-provider";
 import { RuntimeResilienceProvider } from "@/components/providers/runtime-resilience-provider";
 
@@ -32,6 +33,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
   }));
   return (
     <QueryClientProvider client={queryClient}>
+      <PasswordRecoveryRedirectGuard />
       <PwaProvider>
         <RuntimeResilienceProvider>{children}</RuntimeResilienceProvider>
       </PwaProvider>

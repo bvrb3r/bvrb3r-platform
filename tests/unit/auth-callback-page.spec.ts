@@ -66,6 +66,18 @@ describe("auth callback page", () => {
     ).rejects.toThrow("REDIRECT:/auth/callback/exchange?code=oauth-code");
   });
 
+  it("routes recovery code returns to reset-password instead of post-auth", async () => {
+    await expect(
+      AuthCallbackPage({
+        searchParams: Promise.resolve({
+          code: "recovery-code",
+          type: "recovery"
+        })
+      })
+    ).rejects.toThrow("REDIRECT:/reset-password?code=recovery-code&type=recovery");
+    expect(resolvePostAuthDestinationMock).not.toHaveBeenCalled();
+  });
+
   it("redirects to login when no authenticated session exists after callback", async () => {
     authGetUserMock.mockResolvedValue({ data: { user: null } });
 

@@ -8,7 +8,8 @@ const CALLBACK_QUERY_KEYS = [
   "error_description",
   "error_code",
   "state",
-  "next"
+  "next",
+  "type"
 ] as const;
 
 function firstValue(value: OAuthCallbackValue) {
@@ -31,6 +32,13 @@ export function buildOAuthCallbackRedirectPath(searchParams?: OAuthCallbackSearc
 
   if (!nextParams.has("code") && !nextParams.has("error")) {
     return null;
+  }
+
+  if (nextParams.get("type") === "recovery" && nextParams.has("code")) {
+    const resetParams = new URLSearchParams();
+    resetParams.set("code", nextParams.get("code") ?? "");
+    resetParams.set("type", "recovery");
+    return `/reset-password?${resetParams.toString()}`;
   }
 
   return `/auth/callback?${nextParams.toString()}`;

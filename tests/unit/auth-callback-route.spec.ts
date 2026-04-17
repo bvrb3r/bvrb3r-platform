@@ -103,6 +103,20 @@ describe("auth callback exchange route", () => {
     expect(response.headers.get("location")).toBe("https://bvrb3r.app/verify-contact");
   });
 
+  it("exchanges recovery codes and redirects to reset-password before role routing", async () => {
+    exchangeCodeForSessionMock.mockResolvedValue({ error: null });
+    resolvePostAuthDestinationMock.mockResolvedValue("/architect");
+
+    const response = await getAuthCallbackExchange(
+      new Request("https://bvrb3r.app/auth/callback/exchange?code=recovery-code&type=recovery")
+    );
+
+    expect(exchangeCodeForSessionMock).toHaveBeenCalledWith("recovery-code");
+    expect(getUserMock).toHaveBeenCalled();
+    expect(resolvePostAuthDestinationMock).not.toHaveBeenCalled();
+    expect(response.headers.get("location")).toBe("https://bvrb3r.app/reset-password?recovery=1");
+  });
+
   it("redirects to login when the code is missing", async () => {
     exchangeCodeForSessionMock.mockResolvedValue({ error: null });
 

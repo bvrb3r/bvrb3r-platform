@@ -45,13 +45,16 @@ export async function GET(request: Request) {
   const code = requestUrl.searchParams.get("code");
   const error = requestUrl.searchParams.get("error");
   const errorDescription = requestUrl.searchParams.get("error_description");
+  const callbackType = requestUrl.searchParams.get("type");
+  const isPasswordRecovery = callbackType === "recovery";
 
   console.info("[auth] OAuth callback exchange entered", {
     requestId,
     origin: requestUrl.origin,
     hasCode: Boolean(code),
     hasError: Boolean(error),
-    hasNext: requestUrl.searchParams.has("next")
+    hasNext: requestUrl.searchParams.has("next"),
+    callbackType
   });
 
   if (error) {
@@ -134,8 +137,13 @@ export async function GET(request: Request) {
   console.info("[auth] OAuth session established", {
     requestId,
     userId: authUser.id,
-    email: authUser.email ?? null
+    email: authUser.email ?? null,
+    isPasswordRecovery
   });
+
+  if (isPasswordRecovery) {
+    return redirectWithAuthCookies(new URL("/reset-password?recovery=1", requestUrl.origin), authCookiesToSet);
+  }
 
   try {
     const identityUser = {

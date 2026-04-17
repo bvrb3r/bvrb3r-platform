@@ -56,4 +56,10 @@ describe("auth entry workspace", () => {
     expect(window.localStorage.getItem("sb-project-auth-token")).toBeNull();
     expect(window.sessionStorage.getItem("bvrb3r-marketplace-cta:owner")).toBeNull();
   });
+
+  it("shows the forgot password entry point on the login screen", () => {
+    render(<AuthEntryWorkspace mode="login" />);
+
+    expect(screen.getByRole("link", { name: "Forgot password?" })).toHaveAttribute("href", "/forgot-password");
+  });
 });

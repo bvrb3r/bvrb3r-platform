@@ -51,6 +51,18 @@ describe("auth entry page routing", () => {
     expect(getCurrentUserFromServerMock).not.toHaveBeenCalled();
   });
 
+  it("routes password recovery code returns on /login into reset-password", async () => {
+    await expect(
+      LoginPage({
+        searchParams: Promise.resolve({
+          code: "login-recovery-code",
+          type: "recovery"
+        })
+      })
+    ).rejects.toThrow("REDIRECT:/reset-password?code=login-recovery-code&type=recovery");
+    expect(getCurrentUserFromServerMock).not.toHaveBeenCalled();
+  });
+
   it("routes OAuth code returns on /signup into the canonical callback", async () => {
     await expect(
       SignupPage({

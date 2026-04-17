@@ -15,6 +15,7 @@ type CallbackSearchParams = Promise<{
   error_code?: string;
   next?: string;
   state?: string;
+  type?: string;
 }>;
 
 function toLoginErrorPath(message: string): Route {
@@ -40,7 +41,8 @@ export default async function AuthCallbackPage({
   const params = await searchParams;
   console.info("[auth] callback page entered", {
     hasCode: Boolean(params.code),
-    hasError: Boolean(params.error)
+    hasError: Boolean(params.error),
+    type: params.type ?? null
   });
 
   if (params.error) {
@@ -48,6 +50,14 @@ export default async function AuthCallbackPage({
   }
 
   if (params.code) {
+    if (params.type === "recovery") {
+      const resetSearch = new URLSearchParams({
+        code: params.code,
+        type: "recovery"
+      });
+      redirect(`/reset-password?${resetSearch.toString()}` as Route);
+    }
+
     console.info("[auth] callback received OAuth code; routing through server exchange", {
       hasCode: true,
       hasNext: Boolean(params.next),
@@ -59,6 +69,10 @@ export default async function AuthCallbackPage({
   const supabase = await createSupabaseServerClient();
   const result = await supabase?.auth.getUser();
   const authUser = result?.data.user;
+
+  if (params.type === "recovery") {
+    redirect("/reset-password?recovery=1");
+  }
 
   if (!authUser) {
     return <AuthSessionRecovery mode="callback" />;
