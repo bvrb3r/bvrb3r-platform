@@ -1,8 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { isPlatformAdminUser } from "@/lib/auth/demo-auth";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
-import { demoBarbers, demoUsers } from "@/lib/data/demo";
-import { demoShops } from "@/lib/data/marketplace";
 import {
   assertPlatformAdminAccess,
   readPlatformAdminAuditLogEntries,
@@ -102,6 +100,7 @@ const VERIFICATION_DEGRADED_WARNING = "Verification review data is partially una
 const DOCUMENT_FALLBACK_BUCKET = "verification-private";
 
 let trustOverlayState: Partial<TrustState> | null = null;
+let productionOverlayIndex: ProductionVerificationIndex | null = null;
 
 export class VerificationAccessError extends Error {
   readonly status: number;
@@ -119,6 +118,7 @@ export function isVerificationAccessError(error: unknown): error is Verification
 
 export function resetArchitectVerificationStateForTests() {
   stageTrustOverlay(getTrustState());
+  productionOverlayIndex = null;
 }
 
 function clone<T>(value: T): T {
@@ -186,6 +186,41 @@ function createEmptyProductionVerificationIndex(): ProductionVerificationIndex {
   };
 }
 
+function cloneProductionVerificationIndex(index: ProductionVerificationIndex): ProductionVerificationIndex {
+  const cloneIndex = createEmptyProductionVerificationIndex();
+  for (const [key, value] of index.profilesById) cloneIndex.profilesById.set(key, clone(value));
+  for (const [key, value] of index.barbersByReference) cloneIndex.barbersByReference.set(key, clone(value));
+  for (const [key, value] of index.barbersByProfileId) cloneIndex.barbersByProfileId.set(key, clone(value));
+  for (const [key, value] of index.shopsById) cloneIndex.shopsById.set(key, clone(value));
+  for (const [key, value] of index.shopsByOwnerProfileId) cloneIndex.shopsByOwnerProfileId.set(key, clone(value));
+  return cloneIndex;
+}
+
+export function stageArchitectProductionVerificationRowsForTests(input: {
+  profiles?: ProductionProfileRow[];
+  barbers?: ProductionBarberRow[];
+  shops?: ProductionShopRow[];
+}) {
+  const index = createEmptyProductionVerificationIndex();
+  for (const profile of input.profiles ?? []) {
+    index.profilesById.set(profile.id, clone(profile));
+  }
+  for (const barber of input.barbers ?? []) {
+    const barberReference = productionReference(barber);
+    if (barberReference) {
+      index.barbersByReference.set(barberReference, clone(barber));
+    }
+    index.barbersByProfileId.set(barber.profile_id, clone(barber));
+  }
+  for (const shop of input.shops ?? []) {
+    index.shopsById.set(shop.id, clone(shop));
+    if (shop.owner_profile_id) {
+      index.shopsByOwnerProfileId.set(shop.owner_profile_id, clone(shop));
+    }
+  }
+  productionOverlayIndex = index;
+}
+
 function productionReference(row: { id?: string; reference_code?: string | null } | null | undefined) {
   return row?.reference_code ?? row?.id ?? "";
 }
@@ -217,7 +252,7 @@ function parseCanonicalSubjectProfileId(profileId: string) {
 async function readProductionVerificationIndex(warnings: string[] = []): Promise<ProductionVerificationIndex> {
   const supabase = getSupabase();
   if (!supabase) {
-    return createEmptyProductionVerificationIndex();
+    return productionOverlayIndex ? cloneProductionVerificationIndex(productionOverlayIndex) : createEmptyProductionVerificationIndex();
   }
 
   try {
@@ -264,11 +299,11 @@ async function readProductionVerificationIndex(warnings: string[] = []): Promise
       }
     }
 
-    return index;
+    return productionOverlayIndex ? cloneProductionVerificationIndex(productionOverlayIndex) : index;
   } catch (error) {
     logArchitectVerificationError("reading production verification subjects", error);
     pushWarning(warnings, "Canonical barber and shop-owner account rows are temporarily unavailable.");
-    return createEmptyProductionVerificationIndex();
+    return productionOverlayIndex ? cloneProductionVerificationIndex(productionOverlayIndex) : createEmptyProductionVerificationIndex();
   }
 }
 
@@ -343,21 +378,8 @@ export function createEmptyArchitectVerificationDetailPayload(warnings: string[]
   };
 }
 
-function getUser(userId?: string) {
-  return userId ? demoUsers.find((user) => user.id === userId) : undefined;
-}
-
 function getReviewerLabel(userId: string) {
-  return getUser(userId)?.name ?? userId;
-}
-
-function getShopForBarber(barberId: string) {
-  const barber = demoBarbers.find((entry) => entry.id === barberId);
-  if (!barber) {
-    return undefined;
-  }
-
-  return demoShops.find((shop) => shop.locationIds.some((locationId) => barber.locationIds.includes(locationId)));
+  return userId;
 }
 
 function toDisplayStatus(status?: VerificationStatus | null) {
@@ -378,41 +400,78 @@ function getShopRecords(state: TrustState, shopId: string) {
   return state.shopVerifications.filter((record) => record.shopId === shopId);
 }
 
-function getBarberSubjectFromProfile(state: TrustState, profile: VerificationProfileRecord, production = createEmptyProductionVerificationIndex()): VerificationSubject {
+function approvalStatusToVerificationStatus(status?: ApprovalStatus | null): VerificationStatus | null {
+  switch (status) {
+    case "approved":
+      return "approved";
+    case "under_review":
+      return "under_review";
+    case "pending":
+      return "submitted";
+    case "rejected":
+      return "rejected";
+    case "not_required":
+    default:
+      return null;
+  }
+}
+
+function getProductionProfileForRole(
+  production: ProductionVerificationIndex,
+  profileId: string | undefined,
+  role: VerificationSubjectRole
+) {
+  if (!profileId) {
+    return undefined;
+  }
+
+  const profile = production.profilesById.get(profileId);
+  return profile?.primary_onboarding_role === role ? profile : undefined;
+}
+
+function getBarberSubjectFromProfile(state: TrustState, profile: VerificationProfileRecord, production = createEmptyProductionVerificationIndex()): VerificationSubject | null {
   const matchingRecord = state.barberVerifications.find((record) => record.verificationProfileId === profile.id || record.userId === profile.userId);
   const productionBarber = matchingRecord
     ? production.barbersByReference.get(matchingRecord.barberId)
     : production.barbersByProfileId.get(profile.userId);
-  const barber = matchingRecord ? demoBarbers.find((entry) => entry.id === matchingRecord.barberId) : demoBarbers.find((entry) => entry.userId === profile.userId);
-  const barberId = productionBarber ? productionReference(productionBarber) : barber?.id ?? matchingRecord?.barberId;
+  const profileRow = getProductionProfileForRole(production, productionBarber?.profile_id ?? profile.userId, "barber");
+  const barberId = productionBarber ? productionReference(productionBarber) : "";
+
+  if (!profileRow || !productionBarber || !barberId) {
+    return null;
+  }
 
   return {
     profileId: profile.id,
     source: "profile",
     role: "barber",
-    userId: profile.userId,
+    userId: profileRow.id,
     barberId,
-    shopId: getShopForBarber(barberId ?? "")?.id,
     profile,
-    profileRow: production.profilesById.get(profile.userId),
+    profileRow,
     barberRow: productionBarber
   };
 }
 
-function getShopSubjectFromProfile(state: TrustState, profile: VerificationProfileRecord, production = createEmptyProductionVerificationIndex()): VerificationSubject {
+function getShopSubjectFromProfile(state: TrustState, profile: VerificationProfileRecord, production = createEmptyProductionVerificationIndex()): VerificationSubject | null {
   const matchingRecord = state.shopVerifications.find((record) => record.verificationProfileId === profile.id || record.userId === profile.userId);
   const productionShop = matchingRecord
     ? production.shopsById.get(matchingRecord.shopId)
     : production.shopsByOwnerProfileId.get(profile.userId);
+  const profileRow = getProductionProfileForRole(production, productionShop?.owner_profile_id ?? profile.userId, "shop_owner");
+
+  if (!profileRow || !productionShop?.id) {
+    return null;
+  }
 
   return {
     profileId: profile.id,
     source: "profile",
     role: "shop_owner",
-    userId: profile.userId,
-    shopId: productionShop?.id ?? matchingRecord?.shopId,
+    userId: profileRow.id,
+    shopId: productionShop.id,
     profile,
-    profileRow: production.profilesById.get(profile.userId),
+    profileRow,
     shopRow: productionShop
   };
 }
@@ -425,19 +484,19 @@ function collectVerificationSubjects(state: TrustState, production = createEmpty
   for (const profile of state.verificationProfiles ?? []) {
     if (profile.role === "barber") {
       const subject = getBarberSubjectFromProfile(state, profile, production);
-      if (subject.barberId) {
+      if (subject?.barberId) {
         seenBarbers.add(subject.barberId);
+        subjects.push(subject);
       }
-      subjects.push(subject);
       continue;
     }
 
     if (profile.role === "shop_owner") {
       const subject = getShopSubjectFromProfile(state, profile, production);
-      if (subject.shopId) {
+      if (subject?.shopId) {
         seenShops.add(subject.shopId);
+        subjects.push(subject);
       }
-      subjects.push(subject);
     }
   }
 
@@ -446,20 +505,25 @@ function collectVerificationSubjects(state: TrustState, production = createEmpty
       continue;
     }
 
-    const barber = demoBarbers.find((entry) => entry.id === record.barberId);
     const productionBarber = production.barbersByReference.get(record.barberId);
-    const userId = record.userId ?? productionBarber?.profile_id ?? barber?.userId;
+    const profileRow = getProductionProfileForRole(production, record.userId ?? productionBarber?.profile_id, "barber");
+    if (!productionBarber || !profileRow) {
+      continue;
+    }
+    const barberReference = productionReference(productionBarber);
+    if (!barberReference) {
+      continue;
+    }
     subjects.push({
-      profileId: createSyntheticProfileId("barber", record.barberId),
+      profileId: createSyntheticProfileId("barber", barberReference),
       source: "legacy_records",
       role: "barber",
-      userId,
-      barberId: record.barberId,
-      shopId: getShopForBarber(record.barberId)?.id,
-      profileRow: userId ? production.profilesById.get(userId) : undefined,
+      userId: profileRow.id,
+      barberId: barberReference,
+      profileRow,
       barberRow: productionBarber
     });
-    seenBarbers.add(record.barberId);
+    seenBarbers.add(barberReference);
   }
 
   for (const record of state.shopVerifications) {
@@ -467,14 +531,20 @@ function collectVerificationSubjects(state: TrustState, production = createEmpty
       continue;
     }
 
+    const productionShop = production.shopsById.get(record.shopId);
+    const profileRow = getProductionProfileForRole(production, record.userId ?? productionShop?.owner_profile_id ?? undefined, "shop_owner");
+    if (!productionShop || !profileRow) {
+      continue;
+    }
+
     subjects.push({
       profileId: createSyntheticProfileId("shop_owner", record.shopId),
       source: "legacy_records",
       role: "shop_owner",
-      userId: record.userId ?? production.shopsById.get(record.shopId)?.owner_profile_id ?? "user-owner",
+      userId: profileRow.id,
       shopId: record.shopId,
-      profileRow: record.userId ? production.profilesById.get(record.userId) : undefined,
-      shopRow: production.shopsById.get(record.shopId)
+      profileRow,
+      shopRow: productionShop
     });
     seenShops.add(record.shopId);
   }
@@ -567,21 +637,19 @@ function getSubjectByProfileId(state: TrustState, profileId: string, production 
 
   if (profileId.startsWith("legacy-barber-")) {
     const barberId = profileId.replace("legacy-barber-", "");
-    const barber = demoBarbers.find((entry) => entry.id === barberId);
     const productionBarber = production.barbersByReference.get(barberId);
-    if (!barber && !productionBarber) {
+    const profileRow = getProductionProfileForRole(production, productionBarber?.profile_id, "barber");
+    if (!productionBarber || !profileRow) {
       return null;
     }
-    const userId = productionBarber?.profile_id ?? barber?.userId;
 
     return {
       profileId,
       source: "legacy_records" as const,
       role: "barber" as const,
-      userId,
+      userId: profileRow.id,
       barberId,
-      shopId: getShopForBarber(barberId)?.id,
-      profileRow: userId ? production.profilesById.get(userId) : undefined,
+      profileRow,
       barberRow: productionBarber
     };
   }
@@ -589,7 +657,9 @@ function getSubjectByProfileId(state: TrustState, profileId: string, production 
   if (profileId.startsWith("legacy-shop-")) {
     const shopId = profileId.replace("legacy-shop-", "");
     const record = state.shopVerifications.find((entry) => entry.shopId === shopId);
-    if (!record) {
+    const productionShop = production.shopsById.get(shopId);
+    const profileRow = getProductionProfileForRole(production, record?.userId ?? productionShop?.owner_profile_id ?? undefined, "shop_owner");
+    if (!record || !productionShop || !profileRow) {
       return null;
     }
 
@@ -597,10 +667,10 @@ function getSubjectByProfileId(state: TrustState, profileId: string, production 
       profileId,
       source: "legacy_records" as const,
       role: "shop_owner" as const,
-      userId: record.userId ?? production.shopsById.get(shopId)?.owner_profile_id ?? "user-owner",
+      userId: profileRow.id,
       shopId,
-      profileRow: record.userId ? production.profilesById.get(record.userId) : undefined,
-      shopRow: production.shopsById.get(shopId)
+      profileRow,
+      shopRow: productionShop
     };
   }
 
@@ -609,15 +679,15 @@ function getSubjectByProfileId(state: TrustState, profileId: string, production 
 
 function buildQueueItemFromSubject(state: TrustState, subject: VerificationSubject): ArchitectVerificationQueueItem | null {
   if (subject.role === "barber" && subject.barberId) {
-    const barber = demoBarbers.find((entry) => entry.id === subject.barberId);
     const productionBarber = subject.barberRow;
-    if (!barber && !productionBarber) {
+    const profileRow = subject.profileRow;
+    if (!productionBarber || !profileRow) {
       return null;
     }
 
-    const user = getUser(subject.userId ?? barber?.userId);
-    const profileRow = subject.profileRow;
     const decision = computeBarberVerificationDecision(state, subject.barberId);
+    const approvalStatus = approvalStatusToVerificationStatus(productionBarber.app_approval_status ?? productionBarber.shop_approval_status);
+    const overallStatus = subject.profile?.overallStatus ?? approvalStatus ?? decision.canonicalOverallStatus;
     const records = getBarberRecords(state, subject.barberId);
     const licenseRecord = records.find((record) => record.category === "license_verification");
     const submittedAt = maxTimestamp(subject.profile?.createdAt, profileRow?.created_at ?? undefined, productionBarber?.created_at ?? undefined, ...records.map((record) => record.verificationSubmittedAt ?? record.updatedAt));
@@ -627,16 +697,16 @@ function buildQueueItemFromSubject(state: TrustState, subject: VerificationSubje
     return {
       profileId: subject.profileId,
       source: subject.profile ? "profile" : subject.source,
-      userId: profileRow?.id ?? user?.id ?? subject.userId,
-      subjectName: profileRow?.full_name ?? user?.name ?? barber?.name ?? productionReference(productionBarber) ?? "Barber",
-      subjectEmail: profileRow?.email ?? user?.email,
-      subjectPhone: profileRow?.phone ?? undefined,
+      userId: profileRow.id,
+      subjectName: profileRow.full_name ?? profileRow.email ?? productionReference(productionBarber) ?? "Barber",
+      subjectEmail: profileRow.email ?? undefined,
+      subjectPhone: profileRow.phone ?? undefined,
       role: "barber",
       barberId: subject.barberId,
       shopId: subject.shopId,
-      shopName: subject.shopId ? demoShops.find((entry) => entry.id === subject.shopId)?.name : undefined,
-      overallStatus: subject.profile?.overallStatus ?? decision.canonicalOverallStatus,
-      canonicalOverallStatus: decision.canonicalOverallStatus,
+      shopName: subject.shopRow?.name ?? undefined,
+      overallStatus,
+      canonicalOverallStatus: normalizeVerificationStatus(overallStatus),
       identityStatus: toDisplayStatus(decision.identityStatus),
       licenseStatus: toDisplayStatus(decision.licenseStatus),
       businessStatus: toDisplayStatus(decision.businessStatus),
@@ -656,34 +726,34 @@ function buildQueueItemFromSubject(state: TrustState, subject: VerificationSubje
   }
 
   if (subject.role === "shop_owner" && subject.shopId) {
-    const shop = demoShops.find((entry) => entry.id === subject.shopId);
     const productionShop = subject.shopRow;
-    if (!shop && !productionShop) {
+    const profileRow = subject.profileRow;
+    if (!productionShop || !profileRow) {
       return null;
     }
 
     const decision = computeShopVerificationDecision(state, subject.shopId);
+    const approvalStatus = approvalStatusToVerificationStatus(productionShop.app_approval_status);
+    const overallStatus = subject.profile?.overallStatus ?? approvalStatus ?? decision.canonicalOverallStatus;
     const records = getShopRecords(state, subject.shopId);
     const businessRecord = records.find((record) => record.category === "business_verification");
-    const profileRow = subject.profileRow;
-    const user = getUser(subject.userId ?? businessRecord?.userId);
     const submittedAt = maxTimestamp(subject.profile?.createdAt, profileRow?.created_at ?? undefined, productionShop?.created_at ?? undefined, ...records.map((record) => record.verificationSubmittedAt ?? record.updatedAt));
     const lastReviewedAt = maxTimestamp(subject.profile?.lastReviewedAt, ...records.map((record) => record.lastReviewedAt ?? record.verificationReviewedAt));
     const updatedAt = maxTimestamp(subject.profile?.updatedAt, productionShop?.created_at ?? undefined, ...records.map((record) => record.updatedAt)) ?? new Date().toISOString();
-    const shopName = productionShop?.name ?? shop?.name ?? subject.shopId;
+    const shopName = productionShop.name ?? subject.shopId;
 
     return {
       profileId: subject.profileId,
       source: subject.profile ? "profile" : subject.source,
-      userId: profileRow?.id ?? user?.id ?? subject.userId,
+      userId: profileRow.id,
       subjectName: businessRecord?.businessName ?? shopName,
-      subjectEmail: profileRow?.email ?? user?.email,
-      subjectPhone: profileRow?.phone ?? undefined,
+      subjectEmail: profileRow.email ?? undefined,
+      subjectPhone: profileRow.phone ?? undefined,
       role: "shop_owner",
       shopId: subject.shopId,
       shopName,
-      overallStatus: subject.profile?.overallStatus ?? decision.canonicalOverallStatus,
-      canonicalOverallStatus: decision.canonicalOverallStatus,
+      overallStatus,
+      canonicalOverallStatus: normalizeVerificationStatus(overallStatus),
       identityStatus: toDisplayStatus(decision.identityStatus),
       licenseStatus: toDisplayStatus(decision.licenseStatus),
       businessStatus: toDisplayStatus(decision.businessStatus),
@@ -1222,7 +1292,7 @@ function getSubjectDisplayName(subject: VerificationSubject) {
   }
 
   return subject.profileRow?.full_name
-    ?? (subject.userId ? getUser(subject.userId)?.name : undefined)
+    ?? subject.profileRow?.email
     ?? subject.barberId
     ?? "Barber";
 }
@@ -1898,9 +1968,7 @@ export async function createVerificationDocumentSignedUrl(documentId: string, ac
   const supabase = getSupabase();
 
   if (!supabase) {
-    return {
-      url: `data:text/plain;charset=utf-8,${encodeURIComponent(`Demo verification document preview for ${document.fileName ?? document.id}. Secure storage path remains private.`)}`
-    };
+    throw new VerificationAccessError("Secure verification document storage is unavailable.", 503);
   }
 
   const result = await supabase.storage.from(bucket).createSignedUrl(document.storagePath, 60);

@@ -255,9 +255,9 @@ export function ArchitectVerificationQueueWorkspace({
             </Card>
           )) : (
             <Card className="rounded-[30px] p-6">
-              <p className="surface-label">No verification cases match this view</p>
+              <p className="surface-label">Everything is caught up</p>
               <p className="mt-3 text-sm leading-7 text-white/58">
-                The architect verification queue is currently empty for these filters. Submitted, approved, and needs-update cases will appear here as verification records move through the canonical trust system.
+                No real barber or shop-owner reviews are pending in this view. When a real submission reaches platform review, it will appear here with its canonical account and business records.
               </p>
             </Card>
           )}

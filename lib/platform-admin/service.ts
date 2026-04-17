@@ -1,8 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { isPlatformAdminUser } from "@/lib/auth/demo-auth";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
-import { boothRentLedger, demoAppointments, demoBarbers, demoClients, demoLocations, demoUsers } from "@/lib/data/demo";
-import { demoShops } from "@/lib/data/marketplace";
 import { getEngagementProvider } from "@/lib/engagement/provider";
 import { dismissFinancialAnomaly, readFinancialAnomalyQueue, resolveFinancialAnomaly, syncFinancialAnomalies } from "@/lib/fintech/anomalies";
 import { buildOwnerMoneyDashboardSummary } from "@/lib/fintech/tax";
@@ -22,7 +20,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getBarberTrustSummary, getOwnerTrustSummary } from "@/lib/trust/engine";
 import { getTrustProvider } from "@/lib/trust/provider";
 import { getTrustState, setTrustState } from "@/lib/trust/state";
-import type { UserAccount } from "@/types/domain";
+import type { ApprovalStatus, IdentityLane, IdentityOnboardingState, Role, UserAccount } from "@/types/domain";
 import type { EngagementState } from "@/types/engagement";
 import type { CashoutReviewQueueView, FinancialAnomalyQueueView, OwnerMoneyDashboardView } from "@/types/fintech";
 import type { OwnerMonetizationSummary } from "@/types/monetization";
@@ -96,6 +94,88 @@ type PlatformAdminControlSnapshot = {
   shopStatuses: Map<string, PlatformAdminShopStatus>;
   kioskEnabled: Map<string, boolean>;
   aiManagerEnabled: Map<string, boolean>;
+};
+
+type ProductionProfileRow = {
+  id: string;
+  role: Role | "shop_owner" | null;
+  full_name: string | null;
+  email: string | null;
+  phone: string | null;
+  primary_onboarding_role: IdentityLane | null;
+  onboarding_state: IdentityOnboardingState | null;
+  created_at?: string | null;
+};
+
+type ProductionClientRow = {
+  id: string;
+  reference_code?: string | null;
+  profile_id: string | null;
+  loyalty_points?: number | null;
+  retention_tag?: string | null;
+  created_at?: string | null;
+};
+
+type ProductionBarberRow = {
+  id: string;
+  reference_code?: string | null;
+  profile_id: string;
+  compensation_model: "commission" | "booth_rent" | string | null;
+  barber_subtype?: string | null;
+  app_approval_status?: ApprovalStatus | null;
+  shop_approval_status?: ApprovalStatus | null;
+  created_at?: string | null;
+};
+
+type ProductionShopRow = {
+  id: string;
+  name: string | null;
+  owner_profile_id: string | null;
+  app_approval_status?: ApprovalStatus | null;
+  neighborhood?: string | null;
+  city?: string | null;
+  state?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  created_at?: string | null;
+};
+
+type ProductionLocationRow = {
+  id: string;
+  reference_code?: string | null;
+  name: string | null;
+  neighborhood?: string | null;
+  city?: string | null;
+  state?: string | null;
+};
+
+type ProductionStaffLocationRow = {
+  profile_id: string;
+  location_id: string;
+};
+
+type ProductionBarberShopMembershipRow = {
+  barber_reference: string;
+  shop_reference: string;
+  active: boolean | null;
+};
+
+type ProductionAdminDirectory = {
+  profiles: ProductionProfileRow[];
+  clients: ProductionClientRow[];
+  barbers: ProductionBarberRow[];
+  shops: ProductionShopRow[];
+  locations: ProductionLocationRow[];
+  staffLocations: ProductionStaffLocationRow[];
+  memberships: ProductionBarberShopMembershipRow[];
+  profilesById: Map<string, ProductionProfileRow>;
+  clientsByProfileId: Map<string, ProductionClientRow>;
+  barbersByProfileId: Map<string, ProductionBarberRow>;
+  barbersByReference: Map<string, ProductionBarberRow>;
+  shopsById: Map<string, ProductionShopRow>;
+  shopsByOwnerProfileId: Map<string, ProductionShopRow>;
+  locationsById: Map<string, ProductionLocationRow>;
+  locationIdsByProfileId: Map<string, string[]>;
 };
 
 const DEFAULT_ACCOUNT_STATUS: PlatformAdminAccountStatus = "active";
@@ -425,12 +505,177 @@ function createEmptyReleaseReadinessSummary(): ReleaseReadinessSummary {
   };
 }
 
+function createEmptyOwnerTrustSummary(): ReturnType<typeof getOwnerTrustSummary> {
+  return {
+    shopStatuses: [],
+    staffVerification: {
+      verified: 0,
+      pending: 0,
+      expired: 0,
+      rejected: 0,
+      unverified: 0
+    },
+    openReports: 0,
+    openDisputes: 0,
+    highRiskFlags: 0,
+    reviewIntegrityAlerts: 0,
+    pendingBarbers: [],
+    recentQueue: [],
+    shopTrustBadges: []
+  };
+}
+
 function getSupabase() {
   if (!isSupabaseEnabled()) {
     return null;
   }
 
   return createSupabaseAdminClient();
+}
+
+function createEmptyProductionAdminDirectory(): ProductionAdminDirectory {
+  return {
+    profiles: [],
+    clients: [],
+    barbers: [],
+    shops: [],
+    locations: [],
+    staffLocations: [],
+    memberships: [],
+    profilesById: new Map(),
+    clientsByProfileId: new Map(),
+    barbersByProfileId: new Map(),
+    barbersByReference: new Map(),
+    shopsById: new Map(),
+    shopsByOwnerProfileId: new Map(),
+    locationsById: new Map(),
+    locationIdsByProfileId: new Map()
+  };
+}
+
+function productionBarberReference(row?: ProductionBarberRow | null) {
+  return row?.reference_code ?? row?.id ?? "";
+}
+
+function buildProductionAdminDirectory(input: {
+  profiles?: ProductionProfileRow[] | null;
+  clients?: ProductionClientRow[] | null;
+  barbers?: ProductionBarberRow[] | null;
+  shops?: ProductionShopRow[] | null;
+  locations?: ProductionLocationRow[] | null;
+  staffLocations?: ProductionStaffLocationRow[] | null;
+  memberships?: ProductionBarberShopMembershipRow[] | null;
+}): ProductionAdminDirectory {
+  const directory = createEmptyProductionAdminDirectory();
+
+  directory.profiles = input.profiles ?? [];
+  directory.clients = input.clients ?? [];
+  directory.barbers = input.barbers ?? [];
+  directory.shops = input.shops ?? [];
+  directory.locations = input.locations ?? [];
+  directory.staffLocations = input.staffLocations ?? [];
+  directory.memberships = input.memberships ?? [];
+
+  for (const profile of directory.profiles) {
+    directory.profilesById.set(profile.id, profile);
+  }
+
+  for (const client of directory.clients) {
+    if (client.profile_id) {
+      directory.clientsByProfileId.set(client.profile_id, client);
+    }
+  }
+
+  for (const barber of directory.barbers) {
+    directory.barbersByProfileId.set(barber.profile_id, barber);
+    const reference = productionBarberReference(barber);
+    if (reference) {
+      directory.barbersByReference.set(reference, barber);
+    }
+  }
+
+  for (const shop of directory.shops) {
+    directory.shopsById.set(shop.id, shop);
+    if (shop.owner_profile_id) {
+      directory.shopsByOwnerProfileId.set(shop.owner_profile_id, shop);
+    }
+  }
+
+  for (const location of directory.locations) {
+    directory.locationsById.set(location.id, location);
+  }
+
+  for (const staffLocation of directory.staffLocations) {
+    const current = directory.locationIdsByProfileId.get(staffLocation.profile_id) ?? [];
+    if (!current.includes(staffLocation.location_id)) {
+      current.push(staffLocation.location_id);
+    }
+    directory.locationIdsByProfileId.set(staffLocation.profile_id, current);
+  }
+
+  return directory;
+}
+
+async function readProductionAdminDirectory(warnings: string[]): Promise<ProductionAdminDirectory> {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return createEmptyProductionAdminDirectory();
+  }
+
+  try {
+    const [profilesResult, clientsResult, barbersResult, shopsResult, locationsResult, staffLocationsResult, membershipsResult] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select("id, role, full_name, email, phone, primary_onboarding_role, onboarding_state, created_at"),
+      supabase
+        .from("clients")
+        .select("id, reference_code, profile_id, loyalty_points, retention_tag, created_at"),
+      supabase
+        .from("barbers")
+        .select("id, reference_code, profile_id, compensation_model, barber_subtype, app_approval_status, shop_approval_status, created_at"),
+      supabase
+        .from("shops")
+        .select("id, name, owner_profile_id, app_approval_status, neighborhood, city, state, phone, address, created_at"),
+      supabase
+        .from("locations")
+        .select("id, reference_code, name, neighborhood, city, state"),
+      supabase
+        .from("staff_locations")
+        .select("profile_id, location_id"),
+      supabase
+        .from("barber_shop_memberships")
+        .select("barber_reference, shop_reference, active")
+    ]);
+
+    const requiredResults = [profilesResult, clientsResult, barbersResult, shopsResult, locationsResult, staffLocationsResult];
+    for (const result of requiredResults) {
+      if (result.error) {
+        throw result.error;
+      }
+    }
+
+    if (membershipsResult.error && !isMissingTableError(membershipsResult.error)) {
+      throw membershipsResult.error;
+    }
+
+    if (membershipsResult.error && isMissingTableError(membershipsResult.error)) {
+      pushArchitectWarning(warnings, "Shop membership rows are unavailable; active barber counts may be incomplete.");
+    }
+
+    return buildProductionAdminDirectory({
+      profiles: profilesResult.data as ProductionProfileRow[] | null,
+      clients: clientsResult.data as ProductionClientRow[] | null,
+      barbers: barbersResult.data as ProductionBarberRow[] | null,
+      shops: shopsResult.data as ProductionShopRow[] | null,
+      locations: locationsResult.data as ProductionLocationRow[] | null,
+      staffLocations: staffLocationsResult.data as ProductionStaffLocationRow[] | null,
+      memberships: membershipsResult.error ? [] : membershipsResult.data as ProductionBarberShopMembershipRow[] | null
+    });
+  } catch (error) {
+    logPlatformAdminServerError("reading production architect directory", error);
+    pushArchitectWarning(warnings, "Production account directory is unavailable; Architect account and shop lists are showing true empty states.");
+    return createEmptyProductionAdminDirectory();
+  }
 }
 
 function isMissingTableError(error: { code?: string | null; message?: string | null }) {
@@ -698,10 +943,78 @@ function getPointsRoleForUser(user: UserAccount): "client" | "barber" | "owner" 
   return null;
 }
 
-function getRelatedShopIds(user: UserAccount) {
-  return demoShops
-    .filter((shop) => shop.locationIds.some((locationId) => user.locationIds.includes(locationId)))
-    .map((shop) => shop.id);
+function getRuntimeRoleForProductionProfile(profile: ProductionProfileRow, barber?: ProductionBarberRow): Role {
+  if (profile.primary_onboarding_role === "platform_admin" || profile.role === "platform_admin") {
+    return "platform_admin";
+  }
+
+  if (profile.primary_onboarding_role === "shop_owner" || profile.role === "shop_owner") {
+    return "owner";
+  }
+
+  if (profile.primary_onboarding_role === "barber" || barber) {
+    return barber?.compensation_model === "booth_rent" ? "booth_rent_barber" : "commission_barber";
+  }
+
+  return (profile.role ?? "client") as Role;
+}
+
+function getProfileTitle(role: Role, primaryRole?: IdentityLane | null) {
+  if (primaryRole === "shop_owner") return "Shop owner";
+  if (primaryRole === "barber") return "Barber";
+  if (primaryRole === "platform_admin") return "Platform admin";
+  return role.replaceAll("_", " ");
+}
+
+function buildProductionUserAccount(profile: ProductionProfileRow, directory: ProductionAdminDirectory): UserAccount {
+  const barber = directory.barbersByProfileId.get(profile.id);
+  const client = directory.clientsByProfileId.get(profile.id);
+  const ownedShop = directory.shopsByOwnerProfileId.get(profile.id);
+  const role = getRuntimeRoleForProductionProfile(profile, barber);
+
+  return {
+    id: profile.id,
+    role,
+    email: profile.email ?? "",
+    password: "",
+    name: profile.full_name ?? profile.email ?? profile.id,
+    title: getProfileTitle(role, profile.primary_onboarding_role),
+    locationIds: directory.locationIdsByProfileId.get(profile.id) ?? [],
+    phone: profile.phone ?? undefined,
+    primaryOnboardingRole: profile.primary_onboarding_role ?? undefined,
+    onboardingState: profile.onboarding_state ?? undefined,
+    barberId: productionBarberReference(barber) || undefined,
+    barberSubtype: barber?.barber_subtype as UserAccount["barberSubtype"],
+    clientId: client?.reference_code ?? client?.id,
+    ownedShopId: ownedShop?.id,
+    ownedShopName: ownedShop?.name ?? undefined,
+    appApprovalStatus: barber?.app_approval_status ?? ownedShop?.app_approval_status ?? undefined,
+    shopApprovalStatus: barber?.shop_approval_status ?? undefined
+  };
+}
+
+function getRelatedShopIds(user: UserAccount, directory: ProductionAdminDirectory) {
+  const shopIds = new Set<string>();
+  if (user.ownedShopId) {
+    shopIds.add(user.ownedShopId);
+  }
+
+  if (user.barberId) {
+    for (const membership of directory.memberships) {
+      if (membership.barber_reference === user.barberId && membership.active !== false) {
+        shopIds.add(membership.shop_reference);
+      }
+    }
+  }
+
+  for (const locationId of user.locationIds) {
+    const location = directory.locationsById.get(locationId);
+    if (location?.reference_code && directory.shopsById.has(location.reference_code)) {
+      shopIds.add(location.reference_code);
+    }
+  }
+
+  return Array.from(shopIds);
 }
 
 function getRoleLabel(user: UserAccount) {
@@ -709,8 +1022,12 @@ function getRoleLabel(user: UserAccount) {
     return "Platform admin";
   }
 
-  if (user.email === "lux@bvrb3r.demo") {
-    return "Freelance barber";
+  if (user.primaryOnboardingRole === "shop_owner") {
+    return "Shop owner";
+  }
+
+  if (user.primaryOnboardingRole === "barber") {
+    return user.role === "booth_rent_barber" ? "Booth-rent barber" : "Commission barber";
   }
 
   return user.role.replaceAll("_", " ");
@@ -738,12 +1055,12 @@ function getShopVerificationItems(state: TrustState, shopId: string): PlatformAd
     }));
 }
 
-function getVerificationStatusForUser(user: UserAccount, trustState: TrustState) {
+function getVerificationStatusForUser(user: UserAccount, trustState: TrustState, directory: ProductionAdminDirectory) {
   if (user.barberId) {
     return getBarberTrustSummary(trustState, user.barberId).overallStatus;
   }
 
-  const relatedShopId = getRelatedShopIds(user)[0];
+  const relatedShopId = getRelatedShopIds(user, directory)[0];
   if (relatedShopId) {
     const records = trustState.shopVerifications.filter((record) => record.shopId === relatedShopId);
     if (!records.length) {
@@ -796,23 +1113,19 @@ function getShopVerificationStatus(state: TrustState, shopId: string) {
 }
 
 function getUserPhone(user: UserAccount) {
-  if (user.clientId) {
-    return demoClients.find((client) => client.id === user.clientId)?.phone;
-  }
-
-  return undefined;
+  return user.phone;
 }
 
-function getShopLabel(shopId: string) {
-  return demoShops.find((shop) => shop.id === shopId)?.name ?? shopId;
+function getShopLabel(shopId: string, directory: ProductionAdminDirectory) {
+  return directory.shopsById.get(shopId)?.name ?? shopId;
 }
 
-function getLocationLabel(locationId: string) {
-  const location = demoLocations.find((entry) => entry.id === locationId);
-  return location ? `${location.name} • ${location.city}` : locationId;
+function getLocationLabel(locationId: string, directory?: ProductionAdminDirectory) {
+  const location = directory?.locationsById.get(locationId);
+  return location ? `${location.name ?? location.id} - ${location.city ?? "Location"}` : locationId;
 }
 
-function getBookingSummaryForUser(user: UserAccount, appointments = demoAppointments) {
+function getBookingSummaryForUser(user: UserAccount, appointments: LiveOperationsSnapshot["appointments"] = []) {
   const relevantAppointments = appointments.filter((appointment) => {
     if (user.clientId) {
       return appointment.clientId === user.clientId;
@@ -907,10 +1220,6 @@ function buildAccountHealth(input: {
       health.push(`Cash-out ${cashoutAttention.status.replaceAll("_", " ")}`);
     }
 
-    const boothRentAttention = boothRentLedger.find((entry) => entry.barberId === input.user.barberId && entry.status === "overdue");
-    if (boothRentAttention) {
-      health.push("Booth rent overdue");
-    }
   }
 
   if (input.user.clientId) {
@@ -984,19 +1293,21 @@ function buildSupportFlags(input: {
 }
 
 function buildUsersView(input: {
+  directory: ProductionAdminDirectory;
   trustState: TrustState;
   engagementState: Awaited<ReturnType<Awaited<ReturnType<typeof getEngagementProvider>>["readState"]>>;
   pointsState: Awaited<ReturnType<typeof readPointsStateSnapshot>>;
   accountControls: PlatformAdminControlSnapshot;
   anomalyQueue: FinancialAnomalyQueueView;
   cashoutQueue: Awaited<ReturnType<typeof readCashoutReviewQueue>>;
-  appointments: typeof demoAppointments;
+  appointments: LiveOperationsSnapshot["appointments"];
 }): PlatformAdminUserView[] {
-  return demoUsers.map((user) => {
+  return input.directory.profiles.map((profile) => {
+    const user = buildProductionUserAccount(profile, input.directory);
     const accountStatus = isPlatformAdminUser(user) ? "active" : getAccountStatus(input.accountControls, user.id);
     const verificationItems = user.barberId
       ? getBarberVerificationItems(input.trustState, user.barberId)
-      : getRelatedShopIds(user).flatMap((shopId) => getShopVerificationItems(input.trustState, shopId));
+      : getRelatedShopIds(user, input.directory).flatMap((shopId) => getShopVerificationItems(input.trustState, shopId));
 
     return {
       id: user.id,
@@ -1009,8 +1320,8 @@ function buildUsersView(input: {
       primaryRole: getRoleLabel(user),
       title: user.title,
       accountStatus,
-      verificationStatus: getVerificationStatusForUser(user, input.trustState),
-      shopRelationships: getRelatedShopIds(user).map((shopId) => getShopLabel(shopId)),
+      verificationStatus: getVerificationStatusForUser(user, input.trustState, input.directory),
+      shopRelationships: getRelatedShopIds(user, input.directory).map((shopId) => getShopLabel(shopId, input.directory)),
       accountHealth: buildAccountHealth({
         user,
         accountStatus,
@@ -1033,7 +1344,7 @@ function buildUsersView(input: {
   }).sort((left, right) => left.name.localeCompare(right.name));
 }
 
-function buildTodayRevenueByLocation(appointments = demoAppointments) {
+function buildTodayRevenueByLocation(appointments: LiveOperationsSnapshot["appointments"] = []) {
   return appointments
     .filter((appointment) => appointment.status === "completed")
     .reduce((map, appointment) => {
@@ -1046,20 +1357,29 @@ function buildTodayRevenueByLocation(appointments = demoAppointments) {
 }
 
 function buildShopsView(input: {
+  directory: ProductionAdminDirectory;
   trustState: TrustState;
   controlSnapshot: PlatformAdminControlSnapshot;
   todayRevenueByLocation: Map<string, number>;
   monetization: Awaited<ReturnType<typeof buildOwnerMonetizationSummary>>;
   ownerTrust: ReturnType<typeof getOwnerTrustSummary>;
 }): PlatformAdminShopView[] {
-  return demoShops.map((shop) => {
-    const locationLabels = shop.locationIds.map((locationId) => getLocationLabel(locationId));
-    const activeBarbers = demoBarbers.filter((barber) =>
-      barber.locationIds.some((locationId) => shop.locationIds.includes(locationId))
-      && getAccountStatus(input.controlSnapshot, barber.userId) === "active"
-    ).length;
+  return input.directory.shops.map((shop) => {
+    const locationIds = input.directory.locations
+      .filter((location) => location.reference_code === shop.id || location.id === shop.id)
+      .map((location) => location.id);
+    const locationLabels = locationIds.map((locationId) => getLocationLabel(locationId, input.directory));
+    const activeBarbers = input.directory.memberships.filter((membership) => {
+      const barber = input.directory.barbersByReference.get(membership.barber_reference);
+      if (!barber) {
+        return false;
+      }
+      return membership.shop_reference === shop.id
+        && membership.active !== false
+        && getAccountStatus(input.controlSnapshot, barber.profile_id) === "active";
+    }).length;
     const revenueToday = roundCurrency(
-      shop.locationIds.reduce((sum, locationId) => sum + (input.todayRevenueByLocation.get(locationId) ?? 0), 0)
+      locationIds.reduce((sum, locationId) => sum + (input.todayRevenueByLocation.get(locationId) ?? 0), 0)
     );
     const billingHealth = input.monetization.subscriptions.billingAttention
       ? `${input.monetization.subscriptions.billingAttention} billing row${input.monetization.subscriptions.billingAttention === 1 ? "" : "s"} need attention`
@@ -1070,8 +1390,8 @@ function buildShopsView(input: {
 
     return {
       id: shop.id,
-      name: shop.name,
-      ownerLabel: demoUsers.find((user) => user.role === "owner" && !isPlatformAdminUser(user))?.name ?? "Unassigned owner",
+      name: shop.name ?? shop.id,
+      ownerLabel: shop.owner_profile_id ? input.directory.profilesById.get(shop.owner_profile_id)?.full_name ?? "Unassigned owner" : "Unassigned owner",
       status: getShopStatus(input.controlSnapshot, shop.id),
       locationLabels,
       activeBarbers,
@@ -1135,22 +1455,24 @@ function buildMoneyRiskView(input: {
 }
 
 function buildSupportItems(input: {
-  appointments: typeof demoAppointments;
+  directory: ProductionAdminDirectory;
+  appointments: LiveOperationsSnapshot["appointments"];
+  clients: LiveOperationsSnapshot["clients"];
   cashoutQueue: Awaited<ReturnType<typeof readCashoutReviewQueue>>;
   pointsState: Awaited<ReturnType<typeof readPointsStateSnapshot>>;
   engagementState: Awaited<ReturnType<Awaited<ReturnType<typeof getEngagementProvider>>["readState"]>>;
   anomalyQueue: FinancialAnomalyQueueView;
 }): PlatformAdminSupportItem[] {
   const bookingItems = input.appointments.slice(0, 4).map((appointment) => {
-    const clientName = demoClients.find((client) => client.id === appointment.clientId)?.name ?? appointment.clientId;
+    const clientName = input.clients.find((client) => client.id === appointment.clientId)?.name ?? appointment.clientId;
     return {
       id: `support-booking-${appointment.id}`,
       kind: "booking" as const,
       title: `Booking ${appointment.id}`,
-      detail: `${clientName} • ${appointment.status.replaceAll("_", " ")} • ${getLocationLabel(appointment.locationId)}`,
+      detail: `${clientName} - ${appointment.status.replaceAll("_", " ")} - ${getLocationLabel(appointment.locationId, input.directory)}`,
       statusLabel: appointment.status.replaceAll("_", " "),
       relatedUserLabel: clientName,
-      relatedShopLabel: getLocationLabel(appointment.locationId),
+      relatedShopLabel: getLocationLabel(appointment.locationId, input.directory),
       href: "/appointments"
     };
   });
@@ -1192,7 +1514,7 @@ function buildSupportItems(input: {
     title: item.summary,
     detail: item.description ?? item.anomalyType.replaceAll("_", " "),
     statusLabel: item.status.replaceAll("_", " "),
-    relatedShopLabel: item.locationId ? getLocationLabel(item.locationId) : undefined,
+    relatedShopLabel: item.locationId ? getLocationLabel(item.locationId, input.directory) : undefined,
     href: "/reports?view=money"
   }));
 
@@ -1203,9 +1525,9 @@ function buildSupportItems(input: {
       id: `support-kiosk-${appointment.id}`,
       kind: "kiosk" as const,
       title: `Kiosk intake ${appointment.id}`,
-      detail: `${getLocationLabel(appointment.locationId)} • ${appointment.status.replaceAll("_", " ")}`,
+      detail: `${getLocationLabel(appointment.locationId, input.directory)} - ${appointment.status.replaceAll("_", " ")}`,
       statusLabel: appointment.status.replaceAll("_", " "),
-      relatedShopLabel: getLocationLabel(appointment.locationId),
+      relatedShopLabel: getLocationLabel(appointment.locationId, input.directory),
       href: "/settings"
     }));
 
@@ -1264,13 +1586,15 @@ async function writeBarberVerification(input: {
   const now = new Date().toISOString();
   const supabase = getSupabase();
   const trustState = await readTrustState();
-  const barber = demoBarbers.find((entry) => entry.id === input.barberId);
+  const directory = await readProductionAdminDirectory([]);
+  const barber = directory.barbersByReference.get(input.barberId);
+  const barberProfile = barber ? directory.profilesById.get(barber.profile_id) : undefined;
   const existing = trustState.barberVerifications.find((record) => record.barberId === input.barberId && record.category === input.category);
   const nextRecord: BarberVerificationRecord = {
     id: existing?.id ?? `barber-verification-${randomUUID().slice(0, 8)}`,
     barberId: input.barberId,
     category: input.category,
-    legalName: existing?.legalName ?? barber?.name ?? input.barberId,
+    legalName: existing?.legalName ?? barberProfile?.full_name ?? input.barberId,
     licenseType: existing?.licenseType,
     licenseNumber: existing?.licenseNumber,
     issuingState: existing?.issuingState,
@@ -1337,7 +1661,8 @@ async function writeShopVerification(input: {
   const now = new Date().toISOString();
   const supabase = getSupabase();
   const trustState = await readTrustState();
-  const shop = demoShops.find((entry) => entry.id === input.shopId);
+  const directory = await readProductionAdminDirectory([]);
+  const shop = directory.shopsById.get(input.shopId);
   const existing = trustState.shopVerifications.find((record) => record.shopId === input.shopId && record.category === input.category);
   const nextRecord: ShopVerificationRecord = {
     id: existing?.id ?? `shop-verification-${randomUUID().slice(0, 8)}`,
@@ -1470,7 +1795,8 @@ export async function getPlatformAdminConsolePayload(actor: UserAccount): Promis
   assertPlatformAdmin(actor);
 
   const warnings: string[] = [];
-  const locationIds = demoLocations.map((location) => location.id);
+  const directory = await readProductionAdminDirectory(warnings);
+  const locationIds = directory.locations.map((location) => location.id);
   const viewer: LiveOperationsViewer = {
     role: "owner",
     email: actor.email,
@@ -1533,7 +1859,7 @@ export async function getPlatformAdminConsolePayload(actor: UserAccount): Promis
 
   const controlSnapshot = buildControlSnapshot(controls);
   const [snapshot, engagementState, anomalyQueue] = await Promise.all([
-    liveProvider
+    liveProvider && locationIds.length
       ? safeArchitectRead({
           context: "reading live operations snapshot",
           warning: "Live operations snapshot is temporarily unavailable; appointments and booking visibility are showing safe fallback values.",
@@ -1557,6 +1883,10 @@ export async function getPlatformAdminConsolePayload(actor: UserAccount): Promis
       warnings,
       fallback: createEmptyAnomalyQueue(),
       load: async () => {
+        if (!locationIds.length) {
+          return createEmptyAnomalyQueue();
+        }
+
         try {
           return await syncFinancialAnomalies({ locationIds });
         } catch (error) {
@@ -1573,18 +1903,20 @@ export async function getPlatformAdminConsolePayload(actor: UserAccount): Promis
       warning: "Monetization data is temporarily unavailable; billing and revenue posture is showing safe fallback values.",
       warnings,
       fallback: createEmptyMonetizationSummary(),
-      load: () => buildOwnerMonetizationSummary({
-        state: engagementState,
-        snapshot,
-        locationIds
-      })
+      load: () => locationIds.length
+        ? buildOwnerMonetizationSummary({
+            state: engagementState,
+            snapshot,
+            locationIds
+          })
+        : Promise.resolve(createEmptyMonetizationSummary())
     }),
     safeArchitectRead({
       context: "building owner points analytics",
       warning: "Points analytics are temporarily unavailable; reward liability and ROI are showing safe fallback values.",
       warnings,
       fallback: createEmptyPointsAnalyticsSummary(),
-      load: () => buildOwnerPointsAnalyticsSummary({ locationIds })
+      load: () => locationIds.length ? buildOwnerPointsAnalyticsSummary({ locationIds }) : Promise.resolve(createEmptyPointsAnalyticsSummary())
     })
   ]);
 
@@ -1594,12 +1926,14 @@ export async function getPlatformAdminConsolePayload(actor: UserAccount): Promis
       warning: "Money dashboard analytics are temporarily unavailable; money-risk visibility is showing safe fallback values.",
       warnings,
       fallback: createEmptyOwnerMoneyDashboardSummary(),
-      load: () => buildOwnerMoneyDashboardSummary({
-        locationIds,
-        snapshot,
-        monetization,
-        points: pointsSummary
-      })
+      load: () => locationIds.length
+        ? buildOwnerMoneyDashboardSummary({
+            locationIds,
+            snapshot,
+            monetization,
+            points: pointsSummary
+          })
+        : Promise.resolve(createEmptyOwnerMoneyDashboardSummary())
     }),
     safeArchitectRead({
       context: "building release readiness summary",
@@ -1614,24 +1948,8 @@ export async function getPlatformAdminConsolePayload(actor: UserAccount): Promis
     context: "building owner trust summary",
     warning: "Trust analytics are temporarily unavailable; verification and fraud visibility are showing safe fallback values.",
     warnings,
-    fallback: {
-      shopStatuses: [],
-      staffVerification: {
-        verified: 0,
-        pending: 0,
-        expired: 0,
-        rejected: 0,
-        unverified: 0
-      },
-      openReports: 0,
-      openDisputes: 0,
-      highRiskFlags: 0,
-      reviewIntegrityAlerts: 0,
-      pendingBarbers: [],
-      recentQueue: [],
-      shopTrustBadges: []
-    },
-    load: async () => getOwnerTrustSummary(trustState, locationIds)
+    fallback: createEmptyOwnerTrustSummary(),
+    load: async () => locationIds.length ? getOwnerTrustSummary(trustState, locationIds) : createEmptyOwnerTrustSummary()
   });
   const ownerSummary = safeArchitectRead({
     context: "building owner analytics summary",
@@ -1655,13 +1973,14 @@ export async function getPlatformAdminConsolePayload(actor: UserAccount): Promis
     warnings,
     fallback: [] as PlatformAdminUserView[],
     load: async () => buildUsersView({
+      directory,
       trustState,
       engagementState,
       pointsState,
       accountControls: controlSnapshot,
       anomalyQueue,
       cashoutQueue,
-      appointments: snapshot.appointments as typeof demoAppointments
+      appointments: snapshot.appointments
     })
   });
   const shops = await safeArchitectRead({
@@ -1670,9 +1989,10 @@ export async function getPlatformAdminConsolePayload(actor: UserAccount): Promis
     warnings,
     fallback: [] as PlatformAdminShopView[],
     load: async () => buildShopsView({
+      directory,
       trustState,
       controlSnapshot,
-      todayRevenueByLocation: buildTodayRevenueByLocation(snapshot.appointments as typeof demoAppointments),
+      todayRevenueByLocation: buildTodayRevenueByLocation(snapshot.appointments),
       monetization,
       ownerTrust: resolvedOwnerTrust
     })
@@ -1696,7 +2016,9 @@ export async function getPlatformAdminConsolePayload(actor: UserAccount): Promis
     warnings,
     fallback: [] as PlatformAdminSupportItem[],
     load: async () => buildSupportItems({
-      appointments: snapshot.appointments as typeof demoAppointments,
+      directory,
+      appointments: snapshot.appointments,
+      clients: snapshot.clients,
       cashoutQueue,
       pointsState,
       engagementState,
@@ -1756,6 +2078,7 @@ export async function applyPlatformAdminAction(actor: UserAccount, action: Platf
   const actionClass = buildActionClass(action);
   requireActionNote(actionClass, "note" in action ? action.note : undefined);
   const createdAt = new Date().toISOString();
+  const actionDirectory = await readProductionAdminDirectory([]);
   let targetType: PlatformAdminTargetType = "control";
   let targetId = "";
   let beforeSummary = "";
@@ -1763,7 +2086,8 @@ export async function applyPlatformAdminAction(actor: UserAccount, action: Platf
 
   switch (action.type) {
     case "set_user_status": {
-      const targetUser = demoUsers.find((user) => user.id === action.userId);
+      const targetProfile = actionDirectory.profilesById.get(action.userId);
+      const targetUser = targetProfile ? buildProductionUserAccount(targetProfile, actionDirectory) : null;
       if (!targetUser) {
         throw new Error("User account not found.");
       }
@@ -1789,7 +2113,7 @@ export async function applyPlatformAdminAction(actor: UserAccount, action: Platf
       break;
     }
     case "set_shop_status": {
-      const shop = demoShops.find((entry) => entry.id === action.shopId);
+      const shop = actionDirectory.shopsById.get(action.shopId);
       if (!shop) {
         throw new Error("Shop not found.");
       }
@@ -1806,12 +2130,12 @@ export async function applyPlatformAdminAction(actor: UserAccount, action: Platf
       });
       targetType = "shop";
       targetId = action.shopId;
-      beforeSummary = `${shop.name} was ${currentState.shopStatus}.`;
-      afterSummary = `${shop.name} is now ${action.nextStatus}.`;
+      beforeSummary = `${shop.name ?? shop.id} was ${currentState.shopStatus}.`;
+      afterSummary = `${shop.name ?? shop.id} is now ${action.nextStatus}.`;
       break;
     }
     case "set_shop_control": {
-      const shop = demoShops.find((entry) => entry.id === action.shopId);
+      const shop = actionDirectory.shopsById.get(action.shopId);
       if (!shop) {
         throw new Error("Shop not found.");
       }
@@ -1829,15 +2153,16 @@ export async function applyPlatformAdminAction(actor: UserAccount, action: Platf
       targetType = "control";
       targetId = `${action.shopId}:${action.controlKey}`;
       const previous = action.controlKey === "kiosk_enabled" ? currentState.kioskEnabled : currentState.aiManagerEnabled;
-      beforeSummary = `${shop.name} ${action.controlKey.replaceAll("_", " ")} was ${previous ? "enabled" : "disabled"}.`;
-      afterSummary = `${shop.name} ${action.controlKey.replaceAll("_", " ")} is now ${action.enabled ? "enabled" : "disabled"}.`;
+      beforeSummary = `${shop.name ?? shop.id} ${action.controlKey.replaceAll("_", " ")} was ${previous ? "enabled" : "disabled"}.`;
+      afterSummary = `${shop.name ?? shop.id} ${action.controlKey.replaceAll("_", " ")} is now ${action.enabled ? "enabled" : "disabled"}.`;
       break;
     }
     case "update_barber_verification": {
-      const barber = demoBarbers.find((entry) => entry.id === action.barberId);
+      const barber = actionDirectory.barbersByReference.get(action.barberId);
       if (!barber) {
         throw new Error("Barber not found.");
       }
+      const barberProfile = actionDirectory.profilesById.get(barber.profile_id);
 
       const trustState = await readTrustState();
       const existing = trustState.barberVerifications.find((record) => record.barberId === action.barberId && record.category === action.category);
@@ -1849,12 +2174,12 @@ export async function applyPlatformAdminAction(actor: UserAccount, action: Platf
       });
       targetType = "barber_verification";
       targetId = `${action.barberId}:${action.category}`;
-      beforeSummary = `${barber.name} ${normalizeVerificationLabel(action.category).toLowerCase()} was ${existing?.verificationStatus ?? "unverified"}.`;
-      afterSummary = `${barber.name} ${normalizeVerificationLabel(action.category).toLowerCase()} is now ${action.status}.`;
+      beforeSummary = `${barberProfile?.full_name ?? action.barberId} ${normalizeVerificationLabel(action.category).toLowerCase()} was ${existing?.verificationStatus ?? "unverified"}.`;
+      afterSummary = `${barberProfile?.full_name ?? action.barberId} ${normalizeVerificationLabel(action.category).toLowerCase()} is now ${action.status}.`;
       break;
     }
     case "update_shop_verification": {
-      const shop = demoShops.find((entry) => entry.id === action.shopId);
+      const shop = actionDirectory.shopsById.get(action.shopId);
       if (!shop) {
         throw new Error("Shop not found.");
       }
@@ -1869,8 +2194,8 @@ export async function applyPlatformAdminAction(actor: UserAccount, action: Platf
       });
       targetType = "shop_verification";
       targetId = `${action.shopId}:${action.category}`;
-      beforeSummary = `${shop.name} ${normalizeVerificationLabel(action.category).toLowerCase()} was ${existing?.verificationStatus ?? "unverified"}.`;
-      afterSummary = `${shop.name} ${normalizeVerificationLabel(action.category).toLowerCase()} is now ${action.status}.`;
+      beforeSummary = `${shop.name ?? shop.id} ${normalizeVerificationLabel(action.category).toLowerCase()} was ${existing?.verificationStatus ?? "unverified"}.`;
+      afterSummary = `${shop.name ?? shop.id} ${normalizeVerificationLabel(action.category).toLowerCase()} is now ${action.status}.`;
       break;
     }
     case "resolve_financial_anomaly": {

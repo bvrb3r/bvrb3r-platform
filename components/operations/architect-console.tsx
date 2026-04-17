@@ -417,6 +417,12 @@ export function ArchitectConsole({ initialData }: { initialData: PlatformAdminCo
             ) : null}
           </Card>
         ))}
+        {!filteredUsers.length ? (
+          <Card className="rounded-[30px] p-6">
+            <p className="surface-label">No real accounts in this view</p>
+            <p className="mt-3 text-sm leading-7 text-white/58">Architect account rows come only from production profiles. Adjust filters or wait for a real account to enter the platform.</p>
+          </Card>
+        ) : null}
       </div>
     </div>
   );
@@ -508,6 +514,12 @@ export function ArchitectConsole({ initialData }: { initialData: PlatformAdminCo
             ) : null}
           </Card>
         ))}
+        {!filteredShops.length ? (
+          <Card className="rounded-[30px] p-6">
+            <p className="surface-label">No real shops in this view</p>
+            <p className="mt-3 text-sm leading-7 text-white/58">Shop rows come only from production shop records. When a real shop owner completes setup, it will appear here.</p>
+          </Card>
+        ) : null}
       </div>
     </div>
   );
@@ -664,6 +676,12 @@ export function ArchitectConsole({ initialData }: { initialData: PlatformAdminCo
             ) : null}
           </Card>
         ))}
+        {!filteredSupport.length ? (
+          <Card className="rounded-[30px] p-6">
+            <p className="surface-label">No real support items in this view</p>
+            <p className="mt-3 text-sm leading-7 text-white/58">Support rows are generated from live production operations only. Nothing is fabricated when there is no activity.</p>
+          </Card>
+        ) : null}
       </div>
     </div>
   );

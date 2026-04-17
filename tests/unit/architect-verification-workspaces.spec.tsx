@@ -87,7 +87,7 @@ describe("architect verification workspaces", () => {
     expect(screen.getByText("Verification review data is partially unavailable. Core architect access is still active.")).toBeInTheDocument();
     expect(screen.getByText("Identity")).toBeInTheDocument();
     expect(screen.getByText("Payout")).toBeInTheDocument();
-    expect(screen.getByText("No verification cases match this view")).toBeInTheDocument();
+    expect(screen.getByText("Everything is caught up")).toBeInTheDocument();
   });
 
   it("renders provider status and safe empty states in the detail workspace", () => {
