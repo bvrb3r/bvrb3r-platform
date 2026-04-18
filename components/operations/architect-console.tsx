@@ -87,7 +87,7 @@ function matchesSearch(values: Array<string | number | undefined | null>, query:
 function getActionClass(action: PlatformAdminActionInput): PlatformAdminActionClass {
   switch (action.type) {
     case "set_user_status":
-      return action.nextStatus === "suspended" ? "critical" : "sensitive";
+      return action.nextStatus === "suspended" || action.nextStatus === "banned" ? "critical" : "sensitive";
     case "set_shop_status":
       return "critical";
     case "set_shop_control":
@@ -311,6 +311,7 @@ export function ArchitectConsole({ initialData }: { initialData: PlatformAdminCo
               <option value="active">Active</option>
               <option value="deactivated">Deactivated</option>
               <option value="suspended">Suspended</option>
+              <option value="banned">Banned</option>
               <option value="profile_only">Profile only</option>
             </Select>
           </div>

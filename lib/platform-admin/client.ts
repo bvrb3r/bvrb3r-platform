@@ -2,6 +2,9 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
+  ArchitectAccountDetailPayload,
+  ArchitectAccountDirectoryFilters,
+  ArchitectAccountDirectoryPayload,
   ArchitectVerificationActionInput,
   ArchitectVerificationDetailPayload,
   ArchitectVerificationQueueFilters,
@@ -44,6 +47,17 @@ function buildVerificationQuery(filters: ArchitectVerificationQueueFilters) {
   return query ? `/api/architect/verifications?${query}` : "/api/architect/verifications";
 }
 
+function buildAccountDirectoryQuery(filters: ArchitectAccountDirectoryFilters) {
+  const params = new URLSearchParams();
+
+  if (filters.search?.trim()) params.set("search", filters.search.trim());
+  if (filters.role && filters.role !== "all") params.set("role", filters.role);
+  if (filters.status && filters.status !== "all") params.set("status", filters.status);
+
+  const query = params.toString();
+  return query ? `/api/architect/accounts?${query}` : "/api/architect/accounts";
+}
+
 export function usePlatformAdminConsoleQuery(initialData?: PlatformAdminConsolePayload) {
   return useQuery({
     queryKey: ["architect-console"],
@@ -64,6 +78,43 @@ export function usePlatformAdminActionMutation() {
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["architect-console"] });
+    }
+  });
+}
+
+export function useArchitectAccountDirectoryQuery(filters: ArchitectAccountDirectoryFilters, initialData?: ArchitectAccountDirectoryPayload) {
+  return useQuery({
+    queryKey: ["architect-accounts", filters],
+    queryFn: () => requestJson<ArchitectAccountDirectoryPayload>(buildAccountDirectoryQuery(filters)),
+    initialData,
+    staleTime: 5_000
+  });
+}
+
+export function useArchitectAccountDetailQuery(profileId: string, initialData?: ArchitectAccountDetailPayload) {
+  return useQuery({
+    queryKey: ["architect-account-detail", profileId],
+    queryFn: () => requestJson<ArchitectAccountDetailPayload>(`/api/architect/accounts/${profileId}`),
+    initialData,
+    staleTime: 5_000
+  });
+}
+
+export function useArchitectAccountActionMutation(profileId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: PlatformAdminActionInput) =>
+      requestJson<{ ok: boolean }>("/api/architect/actions", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["architect-accounts"] }),
+        queryClient.invalidateQueries({ queryKey: ["architect-account-detail", profileId] }),
+        queryClient.invalidateQueries({ queryKey: ["architect-console"] })
+      ]);
     }
   });
 }

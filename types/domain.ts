@@ -65,7 +65,7 @@ export interface UserAccount {
   locationIds: string[];
   platformAdmin?: boolean;
   phone?: string;
-  accountStatus?: "active" | "deactivated" | "suspended" | "profile_only";
+  accountStatus?: "active" | "deactivated" | "suspended" | "banned" | "profile_only";
   primaryOnboardingRole?: IdentityLane;
   onboardingState?: IdentityOnboardingState;
   emailVerified?: boolean;

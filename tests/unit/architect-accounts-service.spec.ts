@@ -1,0 +1,273 @@
+import { beforeEach, describe, expect, it } from "vitest";
+import { makePlatformAdminUser } from "@/tests/unit/platform-admin-test-user";
+import {
+  getArchitectAccountDetailPayload,
+  getArchitectAccountDirectoryPayload,
+  getArchitectDashboardPayload,
+  resetArchitectAccountRowsForTests,
+  stageArchitectAccountRowsForTests
+} from "@/lib/platform-admin/accounts-service";
+import { resetPlatformAdminStateForTests } from "@/lib/platform-admin/service";
+
+const founder = makePlatformAdminUser();
+
+function stageRealAccountRows() {
+  stageArchitectAccountRowsForTests({
+    profiles: [
+      {
+        id: "profile-admin",
+        role: "platform_admin",
+        primary_onboarding_role: "platform_admin",
+        onboarding_state: "complete",
+        full_name: "BVRB3R Architect",
+        email: "bvrb3r@icloud.com",
+        phone: null,
+        created_at: "2026-04-01T12:00:00.000Z"
+      },
+      {
+        id: "profile-barber",
+        role: "barber",
+        primary_onboarding_role: "barber",
+        onboarding_state: "complete",
+        full_name: "Phillip McGee",
+        email: "phillipmcgee813@gmail.com",
+        phone: "8135550101",
+        created_at: "2026-04-02T12:00:00.000Z"
+      },
+      {
+        id: "profile-owner",
+        role: "shop_owner",
+        primary_onboarding_role: "shop_owner",
+        onboarding_state: "complete",
+        full_name: "BVRB3R Shop",
+        email: "bvrb3r@gmail.com",
+        phone: "8135550202",
+        created_at: "2026-04-03T12:00:00.000Z"
+      },
+      {
+        id: "profile-client",
+        role: "client",
+        primary_onboarding_role: "client",
+        onboarding_state: "complete",
+        full_name: "Client One",
+        email: "client@example.com",
+        phone: null,
+        created_at: "2026-04-04T12:00:00.000Z"
+      }
+    ],
+    clients: [
+      {
+        id: "client-1",
+        reference_code: "client-ref-1",
+        profile_id: "profile-client",
+        loyalty_points: 40,
+        retention_tag: "new",
+        created_at: "2026-04-04T12:00:00.000Z"
+      }
+    ],
+    barbers: [
+      {
+        id: "barber-1",
+        reference_code: "barber-ref-1",
+        profile_id: "profile-barber",
+        compensation_model: "commission",
+        barber_subtype: "solo",
+        app_approval_status: "pending",
+        shop_approval_status: "pending",
+        created_at: "2026-04-02T12:00:00.000Z"
+      }
+    ],
+    shops: [
+      {
+        id: "shop-1",
+        name: "BVRB3R Studio",
+        owner_profile_id: "profile-owner",
+        app_approval_status: "pending",
+        neighborhood: "Downtown",
+        city: "Tampa",
+        state: "FL",
+        phone: "8135550303",
+        address: "100 Main St",
+        created_at: "2026-04-03T12:00:00.000Z"
+      }
+    ],
+    memberships: [
+      {
+        barber_reference: "barber-ref-1",
+        shop_reference: "shop-1",
+        active: true
+      }
+    ],
+    barberProfiles: [
+      {
+        barber_reference: "barber-ref-1",
+        username: "phillipmcgee",
+        display_name: "Phillip McGee",
+        shop_reference: "shop-1",
+        visibility_state: "visible",
+        next_available_at: "2026-04-05T12:00:00.000Z"
+      }
+    ],
+    marketplaceVisibilities: [
+      {
+        barber_reference: "barber-ref-1",
+        visibility_state: "visible",
+        accepts_instant_bookings: true
+      }
+    ],
+    barberStatuses: [
+      {
+        barber_reference: "barber-ref-1",
+        shop_reference: "shop-1",
+        status: "active",
+        accepting_bookings: true,
+        next_available_at: "2026-04-05T12:00:00.000Z"
+      }
+    ],
+    services: [
+      {
+        id: "service-1",
+        service_owner_type: "barber",
+        barber_reference: "barber-ref-1",
+        shop_reference: null,
+        active: true
+      }
+    ],
+    availabilityRules: [
+      {
+        id: "availability-1",
+        barber_id: "barber-1",
+        location_id: "location-1"
+      }
+    ],
+    verificationProfiles: [
+      {
+        id: "verification-barber",
+        user_id: "profile-barber",
+        role: "barber",
+        overall_status: "pending",
+        identity_status: "pending",
+        license_status: "pending",
+        business_status: "not_started",
+        payout_status: "not_started",
+        compliance_status: "pending",
+        public_verified: false,
+        can_accept_bookings: false,
+        can_receive_payouts: false,
+        can_create_shop_listing: false,
+        current_requirements: ["Identity review"],
+        created_at: "2026-04-02T13:00:00.000Z",
+        updated_at: "2026-04-02T13:00:00.000Z"
+      },
+      {
+        id: "verification-owner",
+        user_id: "profile-owner",
+        role: "shop_owner",
+        overall_status: "pending",
+        identity_status: "pending",
+        license_status: "not_started",
+        business_status: "pending",
+        payout_status: "not_started",
+        compliance_status: "pending",
+        public_verified: false,
+        can_accept_bookings: false,
+        can_receive_payouts: false,
+        can_create_shop_listing: false,
+        current_requirements: ["Business review"],
+        created_at: "2026-04-03T13:00:00.000Z",
+        updated_at: "2026-04-03T13:00:00.000Z"
+      }
+    ],
+    verificationDocuments: [
+      {
+        id: "document-1",
+        verification_profile_id: "verification-barber",
+        user_id: "profile-barber",
+        document_type: "professional_license",
+        file_name: "license.pdf",
+        status: "pending",
+        uploaded_at: "2026-04-02T14:00:00.000Z"
+      }
+    ],
+    verificationReviews: [
+      {
+        id: "review-1",
+        verification_profile_id: "verification-barber",
+        review_type: "manual",
+        action_type: "request_update",
+        from_status: "pending",
+        to_status: "needs_update",
+        reviewed_by: "profile-admin",
+        reason: "Need license clarity.",
+        internal_notes: null,
+        created_at: "2026-04-02T15:00:00.000Z"
+      }
+    ]
+  });
+}
+
+describe("architect account service", () => {
+  beforeEach(() => {
+    resetPlatformAdminStateForTests();
+    resetArchitectAccountRowsForTests();
+  });
+
+  it("returns real zero counts and empty arrays when no live rows exist", async () => {
+    stageArchitectAccountRowsForTests({});
+
+    const payload = await getArchitectDashboardPayload(founder);
+
+    expect(payload.counts.totalAccounts).toBe(0);
+    expect(payload.recentSignups).toEqual([]);
+    expect(payload.recentApprovalActions).toEqual([]);
+  });
+
+  it("counts live accounts by canonical role and approval posture", async () => {
+    stageRealAccountRows();
+
+    const payload = await getArchitectDashboardPayload(founder);
+
+    expect(payload.counts.totalAccounts).toBe(4);
+    expect(payload.counts.totalClients).toBe(1);
+    expect(payload.counts.totalBarbers).toBe(1);
+    expect(payload.counts.totalShopOwners).toBe(1);
+    expect(payload.counts.totalPlatformAdmins).toBe(1);
+    expect(payload.counts.pendingBarberApprovals).toBe(1);
+    expect(payload.counts.pendingShopOwnerApprovals).toBe(1);
+  });
+
+  it("searches real barber and shop-owner accounts from the all-account directory", async () => {
+    stageRealAccountRows();
+
+    const barberPayload = await getArchitectAccountDirectoryPayload(founder, { search: "phillipmcgee813@gmail.com", role: "all", status: "all" });
+    const ownerPayload = await getArchitectAccountDirectoryPayload(founder, { search: "BVRB3R Studio", role: "all", status: "all" });
+
+    expect(barberPayload.accounts).toHaveLength(1);
+    expect(barberPayload.accounts[0]?.profileId).toBe("profile-barber");
+    expect(ownerPayload.accounts).toHaveLength(1);
+    expect(ownerPayload.accounts[0]?.profileId).toBe("profile-owner");
+  });
+
+  it("opens account detail from real profile data even when marketplace approval is still blocked", async () => {
+    stageRealAccountRows();
+
+    const payload = await getArchitectAccountDetailPayload(founder, "profile-barber");
+
+    expect(payload.account?.email).toBe("phillipmcgee813@gmail.com");
+    expect(payload.account?.barber?.id).toBe("barber-1");
+    expect(payload.account?.documents).toHaveLength(1);
+    expect(payload.account?.reviews).toHaveLength(1);
+    expect(payload.account?.marketplaceBlockers).toContain("Barber approval pending");
+    expect(payload.account?.verificationProfiles[0]?.id).toBe("verification-barber");
+  });
+
+  it("does not fabricate known demo marketplace names in architect account payloads", async () => {
+    stageRealAccountRows();
+
+    const payload = await getArchitectAccountDirectoryPayload(founder, { role: "all", status: "all" });
+    const names = payload.accounts.map((account) => account.fullName).join(" ");
+
+    expect(names).not.toMatch(/Wave Carter/i);
+    expect(names).not.toMatch(/Blaze King/i);
+  });
+});

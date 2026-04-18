@@ -119,6 +119,14 @@ export function ArchitectVerificationQueueWorkspace({
               </div>
             </div>
           </div>
+          <div className="mt-5 flex flex-wrap gap-2">
+            <Link href="/architect">
+              <Button type="button" variant="secondary" className="min-w-[10rem]">Dashboard</Button>
+            </Link>
+            <Link href="/architect/accounts">
+              <Button type="button" variant="secondary" className="min-w-[10rem]">Account search</Button>
+            </Link>
+          </div>
         </Card>
 
         {query.error ? <FeedbackBanner tone="error" message={query.error.message} /> : null}
@@ -223,9 +231,16 @@ export function ArchitectVerificationQueueWorkspace({
                     {item.shopId ? ` - ${item.shopId}` : ""}
                   </p>
                 </div>
-                <Link href={`/architect/verifications/${item.profileId}`}>
-                  <Button type="button" className="min-w-[10rem]">View details</Button>
-                </Link>
+                <div className="flex flex-wrap gap-2">
+                  {item.userId ? (
+                    <Link href={`/architect/accounts/${item.userId}`}>
+                      <Button type="button" variant="secondary" className="min-w-[10rem]">Open account</Button>
+                    </Link>
+                  ) : null}
+                  <Link href={`/architect/verifications/${item.profileId}`}>
+                    <Button type="button" className="min-w-[10rem]">View details</Button>
+                  </Link>
+                </div>
               </div>
 
               <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">

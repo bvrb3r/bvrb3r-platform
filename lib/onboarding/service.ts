@@ -949,7 +949,7 @@ export async function resolvePostAuthDestination(
   user: UserAccount,
   preloaded?: { lanes: OnboardingLaneView[]; selectedRole: OnboardingRole | null; warnings: string[] }
 ): Promise<Route> {
-  if (user.accountStatus === "deactivated" || user.accountStatus === "suspended") {
+  if (user.accountStatus === "deactivated" || user.accountStatus === "suspended" || user.accountStatus === "banned") {
     return "/login?account=disabled";
   }
 

@@ -178,11 +178,22 @@ type ProductionAdminDirectory = {
   locationIdsByProfileId: Map<string, string[]>;
 };
 
+type ProductionAdminDirectoryRows = {
+  profiles?: ProductionProfileRow[] | null;
+  clients?: ProductionClientRow[] | null;
+  barbers?: ProductionBarberRow[] | null;
+  shops?: ProductionShopRow[] | null;
+  locations?: ProductionLocationRow[] | null;
+  staffLocations?: ProductionStaffLocationRow[] | null;
+  memberships?: ProductionBarberShopMembershipRow[] | null;
+};
+
 const DEFAULT_ACCOUNT_STATUS: PlatformAdminAccountStatus = "active";
 const DEFAULT_SHOP_STATUS: PlatformAdminShopStatus = "active";
 
 let demoPlatformAdminControls: PlatformAdminControlRecord[] = [];
 let demoPlatformAdminAuditLog: PlatformAdminAuditLogEntry[] = [];
+let productionAdminDirectoryRowsOverlay: ProductionAdminDirectoryRows | null = null;
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
@@ -557,15 +568,7 @@ function productionBarberReference(row?: ProductionBarberRow | null) {
   return row?.reference_code ?? row?.id ?? "";
 }
 
-function buildProductionAdminDirectory(input: {
-  profiles?: ProductionProfileRow[] | null;
-  clients?: ProductionClientRow[] | null;
-  barbers?: ProductionBarberRow[] | null;
-  shops?: ProductionShopRow[] | null;
-  locations?: ProductionLocationRow[] | null;
-  staffLocations?: ProductionStaffLocationRow[] | null;
-  memberships?: ProductionBarberShopMembershipRow[] | null;
-}): ProductionAdminDirectory {
+function buildProductionAdminDirectory(input: ProductionAdminDirectoryRows): ProductionAdminDirectory {
   const directory = createEmptyProductionAdminDirectory();
 
   directory.profiles = input.profiles ?? [];
@@ -617,6 +620,10 @@ function buildProductionAdminDirectory(input: {
 }
 
 async function readProductionAdminDirectory(warnings: string[]): Promise<ProductionAdminDirectory> {
+  if (productionAdminDirectoryRowsOverlay) {
+    return buildProductionAdminDirectory(clone(productionAdminDirectoryRowsOverlay));
+  }
+
   const supabase = getSupabase();
   if (!supabase) {
     return createEmptyProductionAdminDirectory();
@@ -1544,7 +1551,7 @@ function buildSupportItems(input: {
 function buildActionClass(action: PlatformAdminActionInput): PlatformAdminActionClass {
   switch (action.type) {
     case "set_user_status":
-      return action.nextStatus === "suspended" ? "critical" : "sensitive";
+      return action.nextStatus === "suspended" || action.nextStatus === "banned" ? "critical" : "sensitive";
     case "set_shop_status":
       return "critical";
     case "set_shop_control":
@@ -2263,4 +2270,9 @@ export async function applyPlatformAdminAction(actor: UserAccount, action: Platf
 export function resetPlatformAdminStateForTests() {
   demoPlatformAdminControls = [];
   demoPlatformAdminAuditLog = [];
+  productionAdminDirectoryRowsOverlay = null;
+}
+
+export function stagePlatformAdminDirectoryRowsForTests(input: ProductionAdminDirectoryRows) {
+  productionAdminDirectoryRowsOverlay = clone(input);
 }

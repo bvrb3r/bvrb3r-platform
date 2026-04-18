@@ -7,7 +7,7 @@ const actionSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("set_user_status"),
     userId: z.string().trim().min(1),
-    nextStatus: z.enum(["active", "deactivated", "suspended"]),
+    nextStatus: z.enum(["active", "deactivated", "suspended", "banned"]),
     note: z.string().trim().max(400).optional()
   }),
   z.object({

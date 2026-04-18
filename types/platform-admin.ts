@@ -12,7 +12,7 @@ import type {
 } from "@/types/trust";
 
 export type PlatformAdminActionClass = "safe" | "sensitive" | "critical";
-export type PlatformAdminAccountStatus = "active" | "deactivated" | "suspended" | "profile_only";
+export type PlatformAdminAccountStatus = "active" | "deactivated" | "suspended" | "banned" | "profile_only";
 export type PlatformAdminShopStatus = "active" | "inactive";
 export type PlatformAdminTargetType =
   | "user"
@@ -332,6 +332,168 @@ export interface ArchitectVerificationDetailPayload {
 export interface ArchitectVerificationActionInput {
   reason: string;
   internalNotes?: string;
+}
+
+export type ArchitectAccountRoleFilter = "all" | "client" | "barber" | "shop_owner" | "platform_admin";
+export type ArchitectAccountStatusFilter =
+  | "all"
+  | "active"
+  | "profile_only"
+  | "deactivated"
+  | "suspended"
+  | "banned"
+  | "pending_review"
+  | "approved"
+  | "rejected"
+  | "needs_update";
+
+export interface ArchitectAccountDirectoryFilters {
+  search?: string;
+  role?: ArchitectAccountRoleFilter;
+  status?: ArchitectAccountStatusFilter;
+}
+
+export interface ArchitectAccountSummaryCounts {
+  totalAccounts: number;
+  totalClients: number;
+  totalBarbers: number;
+  totalShopOwners: number;
+  totalPlatformAdmins: number;
+  pendingBarberApprovals: number;
+  pendingShopOwnerApprovals: number;
+  approvedBarbers: number;
+  approvedShops: number;
+  suspendedAccounts: number;
+  bannedAccounts: number;
+}
+
+export interface ArchitectAccountDirectoryItem {
+  profileId: string;
+  authUserId: string;
+  fullName: string;
+  email: string;
+  phone?: string;
+  role: ArchitectAccountRoleFilter;
+  roleLabel: string;
+  primaryOnboardingRole?: string | null;
+  onboardingState?: string | null;
+  accountStatus: PlatformAdminAccountStatus;
+  approvalStatus: string;
+  verificationStatus: string;
+  verificationProfileId?: string;
+  barberId?: string;
+  barberReference?: string;
+  barberSubtype?: string | null;
+  shopId?: string;
+  shopName?: string;
+  clientId?: string;
+  username?: string;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  serviceCount: number;
+  availabilityCount: number;
+  documentCount: number;
+  reviewCount: number;
+  marketplaceBlockers: string[];
+  searchText: string;
+}
+
+export interface ArchitectDashboardPayload {
+  actorName: string;
+  counts: ArchitectAccountSummaryCounts;
+  recentSignups: ArchitectAccountDirectoryItem[];
+  recentApprovalActions: PlatformAdminAuditLogEntry[];
+  warnings: string[];
+}
+
+export interface ArchitectAccountDirectoryPayload {
+  accounts: ArchitectAccountDirectoryItem[];
+  counts: ArchitectAccountSummaryCounts;
+  filters: ArchitectAccountDirectoryFilters;
+  warnings: string[];
+}
+
+export interface ArchitectAccountDetailPayload {
+  account: (ArchitectAccountDirectoryItem & {
+    profile: {
+      id: string;
+      role?: string | null;
+      fullName?: string | null;
+      email?: string | null;
+      phone?: string | null;
+      primaryOnboardingRole?: string | null;
+      onboardingState?: string | null;
+      phoneVerifiedAt?: string | null;
+      lastOnboardedAt?: string | null;
+      createdAt?: string | null;
+    };
+    barber?: {
+      id: string;
+      referenceCode?: string | null;
+      compensationModel?: string | null;
+      barberSubtype?: string | null;
+      appApprovalStatus?: string | null;
+      shopApprovalStatus?: string | null;
+      status?: string | null;
+      acceptingBookings?: boolean | null;
+      nextAvailableAt?: string | null;
+      visibilityState?: string | null;
+      acceptsInstantBookings?: boolean | null;
+      servicesCount: number;
+      availabilityRulesCount: number;
+      workingHoursCount: number;
+      linkedShopIds: string[];
+    };
+    shopOwner?: {
+      shopExists: boolean;
+      id?: string;
+      name?: string | null;
+      appApprovalStatus?: string | null;
+      city?: string | null;
+      state?: string | null;
+      address?: string | null;
+      phone?: string | null;
+      activeLinkedBarbers: number;
+      serviceCount: number;
+      locationLabels: string[];
+      shopStatus?: PlatformAdminShopStatus;
+    };
+    client?: {
+      id?: string;
+      referenceCode?: string | null;
+      retentionTag?: string | null;
+      loyaltyPoints?: number | null;
+      bookingCounts: {
+        total: number;
+        completed: number;
+        active: number;
+        cancelled: number;
+      };
+    };
+    verificationProfiles: Array<{
+      id: string;
+      role: string;
+      overallStatus: string;
+      identityStatus: string;
+      licenseStatus: string;
+      businessStatus: string;
+      payoutStatus: string;
+      complianceStatus: string;
+      publicVerified: boolean;
+      canAcceptBookings: boolean;
+      canReceivePayouts: boolean;
+      canCreateShopListing: boolean;
+      currentRequirements: string[];
+      reviewNotes?: string | null;
+      lastReviewedAt?: string | null;
+      createdAt?: string | null;
+      updatedAt?: string | null;
+    }>;
+    documents: ArchitectVerificationDocumentView[];
+    reviews: ArchitectVerificationReviewView[];
+    auditTrail: PlatformAdminAuditLogEntry[];
+  }) | null;
+  warnings: string[];
 }
 
 export type PlatformAdminActionInput =

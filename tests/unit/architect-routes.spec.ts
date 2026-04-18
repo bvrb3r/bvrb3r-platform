@@ -6,11 +6,15 @@ import { makePlatformAdminUser } from "@/tests/unit/platform-admin-test-user";
 const {
   getCurrentUserFromServerMock,
   getPlatformAdminConsolePayloadMock,
-  applyPlatformAdminActionMock
+  applyPlatformAdminActionMock,
+  getArchitectAccountDirectoryPayloadMock,
+  getArchitectAccountDetailPayloadMock
 } = vi.hoisted(() => ({
   getCurrentUserFromServerMock: vi.fn(),
   getPlatformAdminConsolePayloadMock: vi.fn(),
-  applyPlatformAdminActionMock: vi.fn()
+  applyPlatformAdminActionMock: vi.fn(),
+  getArchitectAccountDirectoryPayloadMock: vi.fn(),
+  getArchitectAccountDetailPayloadMock: vi.fn()
 }));
 
 vi.mock("@/lib/auth/session", () => ({
@@ -22,20 +26,29 @@ vi.mock("@/lib/platform-admin/service", () => ({
   applyPlatformAdminAction: applyPlatformAdminActionMock
 }));
 
-import { GET } from "@/app/api/architect/console/route";
+vi.mock("@/lib/platform-admin/accounts-service", () => ({
+  getArchitectAccountDirectoryPayload: getArchitectAccountDirectoryPayloadMock,
+  getArchitectAccountDetailPayload: getArchitectAccountDetailPayloadMock
+}));
+
+import { GET as getArchitectConsole } from "@/app/api/architect/console/route";
 import { POST } from "@/app/api/architect/actions/route";
+import { GET as getArchitectAccounts } from "@/app/api/architect/accounts/route";
+import { GET as getArchitectAccountDetail } from "@/app/api/architect/accounts/[profileId]/route";
 
 describe("architect console routes", () => {
   beforeEach(() => {
     getCurrentUserFromServerMock.mockReset();
     getPlatformAdminConsolePayloadMock.mockReset();
     applyPlatformAdminActionMock.mockReset();
+    getArchitectAccountDirectoryPayloadMock.mockReset();
+    getArchitectAccountDetailPayloadMock.mockReset();
   });
 
   it("rejects non-founder access to the architect console API", async () => {
     getCurrentUserFromServerMock.mockResolvedValue({ authenticated: true, mode: "demo", user: resolveDemoUser("owner@bvrb3r.demo") });
 
-    const response = await GET();
+    const response = await getArchitectConsole();
     const body = await response.json();
 
     expect(response.status).toBe(403);
@@ -57,7 +70,7 @@ describe("architect console routes", () => {
       warnings: []
     });
 
-    const response = await GET();
+    const response = await getArchitectConsole();
     const body = await response.json();
 
     expect(response.status).toBe(200);
@@ -70,7 +83,7 @@ describe("architect console routes", () => {
     getCurrentUserFromServerMock.mockResolvedValue({ authenticated: true, mode: "demo", user: founder });
     getPlatformAdminConsolePayloadMock.mockResolvedValue(null);
 
-    const response = await GET();
+    const response = await getArchitectConsole();
     const body = await response.json();
 
     expect(response.status).toBe(200);
@@ -89,7 +102,7 @@ describe("architect console routes", () => {
     });
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
-    const response = await GET();
+    const response = await getArchitectConsole();
     const body = await response.json();
 
     expect(response.status).toBe(200);
@@ -137,5 +150,95 @@ describe("architect console routes", () => {
       enabled: false,
       note: "Temporarily disabled during onsite support."
     });
+  });
+
+  it("allows banned account status actions through the validated Architect action schema", async () => {
+    const founder = makePlatformAdminUser();
+    getCurrentUserFromServerMock.mockResolvedValue({ authenticated: true, mode: "demo", user: founder });
+    applyPlatformAdminActionMock.mockResolvedValue({ ok: true });
+
+    const response = await POST(new NextRequest("https://bvrb3r.demo/api/architect/actions", {
+      method: "POST",
+      body: JSON.stringify({
+        type: "set_user_status",
+        userId: "profile-barber",
+        nextStatus: "banned",
+        note: "Confirmed abusive account."
+      })
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(applyPlatformAdminActionMock).toHaveBeenCalledWith(founder, {
+      type: "set_user_status",
+      userId: "profile-barber",
+      nextStatus: "banned",
+      note: "Confirmed abusive account."
+    });
+  });
+
+  it("rejects non-founder access to the all-account directory API", async () => {
+    getCurrentUserFromServerMock.mockResolvedValue({ authenticated: true, mode: "demo", user: resolveDemoUser("owner@bvrb3r.demo") });
+
+    const response = await getArchitectAccounts(new NextRequest("https://bvrb3r.demo/api/architect/accounts"));
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.error).toMatch(/restricted to the platform admin/i);
+    expect(getArchitectAccountDirectoryPayloadMock).not.toHaveBeenCalled();
+  });
+
+  it("returns the real account directory payload for the founder", async () => {
+    const founder = makePlatformAdminUser();
+    getCurrentUserFromServerMock.mockResolvedValue({ authenticated: true, mode: "demo", user: founder });
+    getArchitectAccountDirectoryPayloadMock.mockResolvedValue({
+      accounts: [],
+      counts: {
+        totalAccounts: 0,
+        totalClients: 0,
+        totalBarbers: 0,
+        totalShopOwners: 0,
+        totalPlatformAdmins: 0,
+        pendingBarberApprovals: 0,
+        pendingShopOwnerApprovals: 0,
+        approvedBarbers: 0,
+        approvedShops: 0,
+        suspendedAccounts: 0,
+        bannedAccounts: 0
+      },
+      filters: { search: "phillip", role: "barber", status: "pending_review" },
+      warnings: []
+    });
+
+    const response = await getArchitectAccounts(new NextRequest("https://bvrb3r.demo/api/architect/accounts?search=phillip&role=barber&status=pending_review"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.accounts).toEqual([]);
+    expect(getArchitectAccountDirectoryPayloadMock).toHaveBeenCalledWith(founder, {
+      search: "phillip",
+      role: "barber",
+      status: "pending_review"
+    });
+  });
+
+  it("returns account detail payloads through the platform admin guard", async () => {
+    const founder = makePlatformAdminUser();
+    getCurrentUserFromServerMock.mockResolvedValue({ authenticated: true, mode: "demo", user: founder });
+    getArchitectAccountDetailPayloadMock.mockResolvedValue({
+      account: null,
+      warnings: []
+    });
+
+    const response = await getArchitectAccountDetail(
+      new NextRequest("https://bvrb3r.demo/api/architect/accounts/profile-barber"),
+      { params: Promise.resolve({ profileId: "profile-barber" }) }
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.account).toBeNull();
+    expect(getArchitectAccountDetailPayloadMock).toHaveBeenCalledWith(founder, "profile-barber");
   });
 });

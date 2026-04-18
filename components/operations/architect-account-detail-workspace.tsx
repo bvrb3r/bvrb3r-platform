@@ -1,0 +1,562 @@
+"use client";
+
+import Link from "next/link";
+import { useMemo, useState } from "react";
+import { AlertTriangle, Ban, CheckCircle2, RotateCcw, ShieldAlert, ShieldCheck } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { FeedbackBanner } from "@/components/ui/feedback-banner";
+import { Select } from "@/components/ui/select";
+import {
+  useArchitectAccountActionMutation,
+  useArchitectAccountDetailQuery,
+  useArchitectVerificationActionMutation
+} from "@/lib/platform-admin/client";
+import { cn } from "@/lib/utils";
+import { getReadableActionError } from "@/lib/utils/feedback";
+import type {
+  ArchitectAccountDetailPayload,
+  PlatformAdminAccountStatus,
+  PlatformAdminActionInput,
+  PlatformAdminActionClass
+} from "@/types/platform-admin";
+
+type VerificationAction = "approve" | "reject" | "request-update" | "suspend" | "reactivate";
+
+type PendingAction =
+  | {
+      kind: "account";
+      title: string;
+      detail: string;
+      confirmLabel: string;
+      actionClass: PlatformAdminActionClass;
+      payload: PlatformAdminActionInput;
+    }
+  | {
+      kind: "verification";
+      title: string;
+      detail: string;
+      confirmLabel: string;
+      actionClass: PlatformAdminActionClass;
+      verificationProfileId: string;
+      action: VerificationAction;
+    };
+
+function formatLabel(value?: string | null) {
+  if (!value) return "Not recorded";
+  return value.replaceAll("_", " ").replace(/\b\w/g, (segment) => segment.toUpperCase());
+}
+
+function formatDateTime(value?: string | null) {
+  if (!value) return "Not recorded";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(date);
+}
+
+function badgeClasses(value?: string | null) {
+  const normalized = `${value ?? ""}`.toLowerCase();
+  if (normalized.includes("approved") || normalized.includes("active") || normalized.includes("verified")) {
+    return "border-[#7CFF00]/16 bg-[#7CFF00]/10 text-[#d7ffab]";
+  }
+  if (normalized.includes("pending") || normalized.includes("review") || normalized.includes("needs") || normalized.includes("submitted")) {
+    return "border-amber-300/20 bg-amber-300/10 text-amber-100";
+  }
+  if (normalized.includes("rejected") || normalized.includes("suspended") || normalized.includes("banned") || normalized.includes("missing") || normalized.includes("locked")) {
+    return "border-rose-400/20 bg-rose-400/10 text-rose-100";
+  }
+  return "border-white/10 bg-black/20 text-white/72";
+}
+
+function actionToneClasses(actionClass: PlatformAdminActionClass) {
+  switch (actionClass) {
+    case "critical":
+      return "border-rose-400/20 bg-rose-400/10 text-rose-100";
+    case "sensitive":
+      return "border-amber-300/20 bg-amber-300/10 text-amber-100";
+    default:
+      return "border-[#7CFF00]/16 bg-[#7CFF00]/10 text-[#d7ffab]";
+  }
+}
+
+function DetailMetric({ label, value, detail }: { label: string; value: string | number; detail?: string }) {
+  return (
+    <div className="rounded-[20px] border border-white/8 bg-black/20 p-4">
+      <p className="surface-label">{label}</p>
+      <p className="mt-3 text-2xl font-semibold text-white">{value}</p>
+      {detail ? <p className="mt-2 text-sm text-white/58">{detail}</p> : null}
+    </div>
+  );
+}
+
+function Field({ label, value }: { label: string; value?: string | number | boolean | null }) {
+  return (
+    <div className="rounded-[20px] border border-white/8 bg-black/20 p-4">
+      <p className="surface-label">{label}</p>
+      <p className="mt-3 break-words text-sm leading-6 text-white/68">{value === undefined || value === null || value === "" ? "Not recorded" : String(value)}</p>
+    </div>
+  );
+}
+
+function accountActionClass(nextStatus: PlatformAdminAccountStatus): PlatformAdminActionClass {
+  return nextStatus === "suspended" || nextStatus === "banned" ? "critical" : "sensitive";
+}
+
+function verificationActionClass(action: VerificationAction): PlatformAdminActionClass {
+  return action === "approve" || action === "reactivate" ? "sensitive" : "critical";
+}
+
+export function ArchitectAccountDetailWorkspace({
+  profileId,
+  initialData
+}: {
+  profileId: string;
+  initialData: ArchitectAccountDetailPayload;
+}) {
+  const query = useArchitectAccountDetailQuery(profileId, initialData);
+  const data = query.data ?? initialData;
+  const account = data.account;
+  const [selectedVerificationProfileId, setSelectedVerificationProfileId] = useState(account?.verificationProfileId ?? account?.verificationProfiles[0]?.id ?? "");
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [reason, setReason] = useState("");
+  const [internalNotes, setInternalNotes] = useState("");
+  const [feedback, setFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
+  const accountActionMutation = useArchitectAccountActionMutation(profileId);
+  const verificationActionMutation = useArchitectVerificationActionMutation(selectedVerificationProfileId || "__missing__");
+
+  const selectedVerificationProfile = useMemo(
+    () => account?.verificationProfiles.find((profile) => profile.id === selectedVerificationProfileId) ?? account?.verificationProfiles[0],
+    [account?.verificationProfiles, selectedVerificationProfileId]
+  );
+
+  const queueAccountAction = (nextStatus: Exclude<PlatformAdminAccountStatus, "profile_only">) => {
+    if (!account) return;
+    const label = nextStatus === "active" ? "Reactivate" : nextStatus === "banned" ? "Ban" : formatLabel(nextStatus);
+    setReason("");
+    setInternalNotes("");
+    setPendingAction({
+      kind: "account",
+      title: `${label} ${account.fullName}`,
+      detail: "This changes account access through canonical Architect controls and records the action in the audit log.",
+      confirmLabel: `${label} account`,
+      actionClass: accountActionClass(nextStatus),
+      payload: {
+        type: "set_user_status",
+        userId: account.profileId,
+        nextStatus
+      }
+    });
+  };
+
+  const queueVerificationAction = (action: VerificationAction) => {
+    if (!account || !selectedVerificationProfile) return;
+    setReason("");
+    setInternalNotes("");
+    setPendingAction({
+      kind: "verification",
+      title: `${formatLabel(action)} ${account.fullName}`,
+      detail: "This writes to the canonical verification profile, review history, approval state, and platform admin audit log.",
+      confirmLabel: action === "request-update" ? "Request update" : `${formatLabel(action)} review`,
+      actionClass: verificationActionClass(action),
+      verificationProfileId: selectedVerificationProfile.id,
+      action
+    });
+  };
+
+  const confirmAction = async () => {
+    if (!pendingAction) return;
+    const trimmedReason = reason.trim();
+    const trimmedInternalNotes = internalNotes.trim();
+
+    if (!trimmedReason) {
+      setFeedback({ tone: "error", message: "A reason is required for account and verification actions." });
+      return;
+    }
+
+    try {
+      if (pendingAction.kind === "account") {
+        await accountActionMutation.mutateAsync({
+          ...pendingAction.payload,
+          note: trimmedReason
+        });
+      } else {
+        await verificationActionMutation.mutateAsync({
+          action: pendingAction.action,
+          input: {
+            reason: trimmedReason,
+            internalNotes: trimmedInternalNotes || undefined
+          }
+        });
+      }
+      setFeedback({ tone: "success", message: `${pendingAction.confirmLabel} applied and written to audit history.` });
+      setPendingAction(null);
+      setReason("");
+      setInternalNotes("");
+    } catch (error) {
+      setFeedback({ tone: "error", message: getReadableActionError(error as { message?: string; status?: number; code?: string }) });
+    }
+  };
+
+  if (!account) {
+    return (
+      <div className="app-screen safe-top-pad px-2 py-2 pb-[calc(env(safe-area-inset-bottom,0px)+2rem)] sm:px-3 sm:py-3 lg:px-5 lg:py-5">
+        <div className="mx-auto max-w-4xl space-y-4">
+          <Card className="rounded-[34px] p-6">
+            <p className="surface-label">Account unavailable</p>
+            <h1 className="mt-3 text-3xl font-semibold text-white" data-display="true">No real account found</h1>
+            <p className="mt-4 text-sm leading-7 text-white/62">
+              Architect searched live profile data for this account id and found no matching production profile.
+            </p>
+            <div className="mt-5">
+              <Link href="/architect/accounts">
+                <Button type="button" variant="secondary">Back to accounts</Button>
+              </Link>
+            </div>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  const isPlatformAdmin = account.role === "platform_admin";
+  const canManageAccountAccess = !isPlatformAdmin;
+  const canUseVerificationActions = Boolean(selectedVerificationProfile);
+
+  return (
+    <div className="app-screen safe-top-pad px-2 py-2 pb-[calc(env(safe-area-inset-bottom,0px)+2rem)] sm:px-3 sm:py-3 lg:px-5 lg:py-5">
+      <div className="mx-auto max-w-7xl space-y-4">
+        <Card className="rounded-[34px] p-6">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+            <div className="min-w-0">
+              <div className="editorial-kicker">
+                <span className="accent-rule" />
+                Real account detail
+              </div>
+              <h1 className="mt-3 break-words text-3xl font-semibold sm:text-5xl" data-display="true">{account.fullName}</h1>
+              <p className="mt-4 max-w-3xl text-sm leading-7 text-white/62">
+                {account.email || "No email on file"} - {account.roleLabel} - {account.profileId}
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <span className={cn("status-pill", badgeClasses(account.accountStatus))}>{formatLabel(account.accountStatus)}</span>
+                <span className={cn("status-pill", badgeClasses(account.approvalStatus))}>Approval {formatLabel(account.approvalStatus)}</span>
+                <span className={cn("status-pill", badgeClasses(account.verificationStatus))}>Verification {formatLabel(account.verificationStatus)}</span>
+              </div>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2 xl:w-[25rem]">
+              <Link href="/architect/accounts">
+                <Button type="button" variant="secondary" className="w-full">Account search</Button>
+              </Link>
+              <Link href="/architect/verifications">
+                <Button type="button" variant="secondary" className="w-full">Review queue</Button>
+              </Link>
+            </div>
+          </div>
+        </Card>
+
+        {query.error ? <FeedbackBanner tone="error" message={query.error.message} /> : null}
+        {feedback ? <FeedbackBanner tone={feedback.tone} message={feedback.message} /> : null}
+        {data.warnings.length ? (
+          <Card className="rounded-[28px] border border-amber-300/18 bg-amber-300/8 p-5">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-100" />
+              <div className="space-y-1 text-sm leading-6 text-white/72">
+                {data.warnings.map((warning) => <p key={warning}>{warning}</p>)}
+              </div>
+            </div>
+          </Card>
+        ) : null}
+
+        <section className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+          <Card className="rounded-[32px] p-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="surface-label">Account basics</p>
+                <p className="mt-2 text-sm text-white/58">Canonical profile and onboarding identity.</p>
+              </div>
+              <ShieldCheck className="h-5 w-5 text-[#baff69]" />
+            </div>
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              <Field label="Profile id" value={account.profile.id} />
+              <Field label="Auth-linked id" value={account.authUserId} />
+              <Field label="Email" value={account.profile.email} />
+              <Field label="Phone" value={account.profile.phone} />
+              <Field label="Role" value={account.profile.role} />
+              <Field label="Primary role" value={account.profile.primaryOnboardingRole} />
+              <Field label="Onboarding state" value={account.profile.onboardingState} />
+              <Field label="Phone verified" value={formatDateTime(account.profile.phoneVerifiedAt)} />
+              <Field label="Created" value={formatDateTime(account.profile.createdAt)} />
+            </div>
+          </Card>
+
+          <Card className="rounded-[32px] p-6">
+            <p className="surface-label">Account actions</p>
+            <p className="mt-2 text-sm leading-7 text-white/58">All actions require a reason and write audit history.</p>
+            {canManageAccountAccess ? (
+              <div className="mt-4 grid gap-2">
+                {account.accountStatus !== "active" ? (
+                  <Button type="button" onClick={() => queueAccountAction("active")}>
+                    <RotateCcw className="h-4 w-4" />
+                    Reactivate account
+                  </Button>
+                ) : (
+                  <Button type="button" variant="secondary" onClick={() => queueAccountAction("deactivated")}>Deactivate account</Button>
+                )}
+                {account.accountStatus !== "suspended" ? (
+                  <Button type="button" variant="secondary" onClick={() => queueAccountAction("suspended")}>
+                    <ShieldAlert className="h-4 w-4" />
+                    Suspend account
+                  </Button>
+                ) : null}
+                {account.accountStatus !== "banned" ? (
+                  <Button type="button" variant="secondary" onClick={() => queueAccountAction("banned")}>
+                    <Ban className="h-4 w-4" />
+                    Ban account
+                  </Button>
+                ) : null}
+              </div>
+            ) : (
+              <div className="mt-4 rounded-[22px] border border-white/8 bg-black/20 p-4 text-sm leading-7 text-white/58">
+                Platform admin access cannot be changed from Architect account detail.
+              </div>
+            )}
+          </Card>
+        </section>
+
+        {account.barber ? (
+          <Card className="rounded-[32px] p-6">
+            <p className="surface-label">Barber state</p>
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+              <DetailMetric label="Services" value={account.barber.servicesCount} detail="Active real service paths" />
+              <DetailMetric label="Availability rules" value={account.barber.availabilityRulesCount} />
+              <DetailMetric label="Working hours" value={account.barber.workingHoursCount} />
+              <DetailMetric label="Linked shops" value={account.barber.linkedShopIds.length} />
+              <DetailMetric label="Bookable" value={account.barber.acceptingBookings === true ? "Yes" : "No"} />
+              <Field label="Barber id" value={account.barber.id} />
+              <Field label="Reference" value={account.barber.referenceCode} />
+              <Field label="Subtype" value={account.barber.barberSubtype} />
+              <Field label="App approval" value={account.barber.appApprovalStatus} />
+              <Field label="Shop approval" value={account.barber.shopApprovalStatus} />
+              <Field label="Status" value={account.barber.status} />
+              <Field label="Visibility" value={account.barber.visibilityState} />
+              <Field label="Instant bookings" value={account.barber.acceptsInstantBookings} />
+              <Field label="Next available" value={formatDateTime(account.barber.nextAvailableAt)} />
+            </div>
+          </Card>
+        ) : null}
+
+        {account.role === "shop_owner" || account.shopOwner?.shopExists ? (
+          <Card className="rounded-[32px] p-6">
+            <p className="surface-label">Shop owner state</p>
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+              <DetailMetric label="Shop exists" value={account.shopOwner?.shopExists ? "Yes" : "No"} />
+              <DetailMetric label="Linked barbers" value={account.shopOwner?.activeLinkedBarbers ?? 0} />
+              <DetailMetric label="Shop services" value={account.shopOwner?.serviceCount ?? 0} />
+              <DetailMetric label="Locations" value={account.shopOwner?.locationLabels.length ?? 0} />
+              <DetailMetric label="Shop status" value={formatLabel(account.shopOwner?.shopStatus)} />
+              <Field label="Shop id" value={account.shopOwner?.id} />
+              <Field label="Shop name" value={account.shopOwner?.name} />
+              <Field label="App approval" value={account.shopOwner?.appApprovalStatus} />
+              <Field label="City" value={account.shopOwner?.city} />
+              <Field label="State" value={account.shopOwner?.state} />
+              <Field label="Address" value={account.shopOwner?.address} />
+              <Field label="Phone" value={account.shopOwner?.phone} />
+            </div>
+          </Card>
+        ) : null}
+
+        {account.client ? (
+          <Card className="rounded-[32px] p-6">
+            <p className="surface-label">Client state</p>
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+              <DetailMetric label="Bookings" value={account.client.bookingCounts.total} />
+              <DetailMetric label="Completed" value={account.client.bookingCounts.completed} />
+              <DetailMetric label="Active" value={account.client.bookingCounts.active} />
+              <DetailMetric label="Cancelled" value={account.client.bookingCounts.cancelled} />
+              <DetailMetric label="Loyalty points" value={account.client.loyaltyPoints ?? 0} />
+              <Field label="Client id" value={account.client.id} />
+              <Field label="Client reference" value={account.client.referenceCode} />
+              <Field label="Retention tag" value={account.client.retentionTag} />
+            </div>
+          </Card>
+        ) : null}
+
+        <section className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
+          <Card className="rounded-[32px] p-6">
+            <p className="surface-label">Marketplace blockers</p>
+            {account.marketplaceBlockers.length ? (
+              <div className="mt-4 grid gap-2">
+                {account.marketplaceBlockers.map((blocker) => (
+                  <div key={blocker} className="rounded-[20px] border border-amber-300/18 bg-amber-300/8 p-4 text-sm text-white/72">
+                    {blocker}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-4 rounded-[22px] border border-[#7CFF00]/16 bg-[#7CFF00]/8 p-4 text-sm leading-7 text-white/68">
+                No marketplace blockers are currently detected from live account data.
+              </div>
+            )}
+          </Card>
+
+          <Card className="rounded-[32px] p-6">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="surface-label">Verification actions</p>
+                <p className="mt-2 text-sm text-white/58">Actions apply to a real verification profile only.</p>
+              </div>
+              {account.verificationProfiles.length > 1 ? (
+                <Select value={selectedVerificationProfile?.id ?? ""} onChange={(event) => setSelectedVerificationProfileId(event.target.value)} className="w-full sm:w-[18rem]">
+                  {account.verificationProfiles.map((profile) => (
+                    <option key={profile.id} value={profile.id}>{formatLabel(profile.role)} - {formatLabel(profile.overallStatus)}</option>
+                  ))}
+                </Select>
+              ) : null}
+            </div>
+            {canUseVerificationActions && selectedVerificationProfile ? (
+              <>
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <Field label="Verification profile" value={selectedVerificationProfile.id} />
+                  <Field label="Overall" value={selectedVerificationProfile.overallStatus} />
+                  <Field label="Identity" value={selectedVerificationProfile.identityStatus} />
+                  <Field label="License" value={selectedVerificationProfile.licenseStatus} />
+                  <Field label="Business" value={selectedVerificationProfile.businessStatus} />
+                  <Field label="Compliance" value={selectedVerificationProfile.complianceStatus} />
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Button type="button" onClick={() => queueVerificationAction("approve")}>
+                    <CheckCircle2 className="h-4 w-4" />
+                    Approve
+                  </Button>
+                  <Button type="button" variant="secondary" onClick={() => queueVerificationAction("request-update")}>Request update</Button>
+                  <Button type="button" variant="secondary" onClick={() => queueVerificationAction("reject")}>Reject</Button>
+                  <Button type="button" variant="secondary" onClick={() => queueVerificationAction("suspend")}>Suspend review</Button>
+                  <Button type="button" variant="secondary" onClick={() => queueVerificationAction("reactivate")}>Reactivate review</Button>
+                </div>
+              </>
+            ) : (
+              <div className="mt-4 rounded-[22px] border border-dashed border-white/10 bg-black/20 p-5 text-sm leading-7 text-white/58">
+                No real verification profile is linked yet. The account can still be inspected here so missing pipeline state is visible.
+              </div>
+            )}
+          </Card>
+        </section>
+
+        <section className="grid gap-4 lg:grid-cols-3">
+          <Card className="rounded-[32px] p-6">
+            <p className="surface-label">Documents</p>
+            <div className="mt-4 grid gap-3">
+              {account.documents.length ? account.documents.map((document) => (
+                <div key={document.id} className="rounded-[22px] border border-white/8 bg-black/20 p-4">
+                  <p className="font-semibold text-white">{document.fileName}</p>
+                  <p className="mt-2 text-sm text-white/58">{formatLabel(document.documentType ?? document.legacyCategory)} - {formatLabel(document.status)}</p>
+                  <p className="mt-2 text-xs text-white/44">{formatDateTime(document.uploadedAt)}</p>
+                </div>
+              )) : (
+                <div className="rounded-[22px] border border-dashed border-white/10 bg-black/20 p-5 text-sm leading-7 text-white/58">
+                  No real verification documents are linked to this account.
+                </div>
+              )}
+            </div>
+          </Card>
+
+          <Card className="rounded-[32px] p-6">
+            <p className="surface-label">Review history</p>
+            <div className="mt-4 grid gap-3">
+              {account.reviews.length ? account.reviews.map((review) => (
+                <div key={review.id} className="rounded-[22px] border border-white/8 bg-black/20 p-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-semibold text-white">{formatLabel(review.actionType)}</p>
+                    <span className={cn("status-pill", badgeClasses(review.toStatus))}>{formatLabel(review.toStatus)}</span>
+                  </div>
+                  <p className="mt-2 text-sm text-white/58">{review.reason ?? "No reason recorded."}</p>
+                  <p className="mt-2 text-xs text-white/44">{formatDateTime(review.createdAt)} by {review.reviewerLabel}</p>
+                </div>
+              )) : (
+                <div className="rounded-[22px] border border-dashed border-white/10 bg-black/20 p-5 text-sm leading-7 text-white/58">
+                  No verification review actions have been recorded for this account.
+                </div>
+              )}
+            </div>
+          </Card>
+
+          <Card className="rounded-[32px] p-6">
+            <p className="surface-label">Audit trail</p>
+            <div className="mt-4 grid gap-3">
+              {account.auditTrail.length ? account.auditTrail.map((entry) => (
+                <div key={entry.id} className="rounded-[22px] border border-white/8 bg-black/20 p-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-semibold text-white">{formatLabel(entry.actionType)}</p>
+                    <span className={cn("status-pill", actionToneClasses(entry.actionClass))}>{formatLabel(entry.actionClass)}</span>
+                  </div>
+                  <p className="mt-2 text-sm text-white/58">{entry.note ?? "No note recorded."}</p>
+                  <p className="mt-2 text-xs text-white/44">{formatDateTime(entry.createdAt)}</p>
+                </div>
+              )) : (
+                <div className="rounded-[22px] border border-dashed border-white/10 bg-black/20 p-5 text-sm leading-7 text-white/58">
+                  No architect audit entries are linked to this account yet.
+                </div>
+              )}
+            </div>
+          </Card>
+        </section>
+      </div>
+
+      {pendingAction ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/72 px-3 py-3 sm:items-center sm:px-6">
+          <div className="w-full max-w-2xl rounded-[32px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(8,8,8,0.98))] p-6 shadow-[0_30px_80px_rgba(0,0,0,0.55)]">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="surface-label">Confirm Architect action</p>
+                <h2 className="mt-3 text-2xl font-semibold text-white">{pendingAction.title}</h2>
+              </div>
+              <span className={cn("status-pill", actionToneClasses(pendingAction.actionClass))}>{formatLabel(pendingAction.actionClass)}</span>
+            </div>
+            <p className="mt-4 text-sm leading-7 text-white/62">{pendingAction.detail}</p>
+            <div className="mt-5">
+              <label className="mb-2 block surface-label">Reason</label>
+              <textarea
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+                rows={4}
+                placeholder="Why is this action necessary?"
+                className="min-h-[7.5rem] w-full rounded-[24px] border border-white/8 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(9,9,9,0.98))] px-4 py-4 text-sm text-[#f5f1e8] outline-none transition placeholder:text-white/32 focus:border-[#7CFF00]/55 focus:shadow-[0_0_0_4px_rgba(124,255,0,0.10)]"
+              />
+            </div>
+            {pendingAction.kind === "verification" ? (
+              <div className="mt-4">
+                <label className="mb-2 block surface-label">Internal notes</label>
+                <textarea
+                  value={internalNotes}
+                  onChange={(event) => setInternalNotes(event.target.value)}
+                  rows={3}
+                  placeholder="Private review notes"
+                  className="min-h-[6rem] w-full rounded-[24px] border border-white/8 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(9,9,9,0.98))] px-4 py-4 text-sm text-[#f5f1e8] outline-none transition placeholder:text-white/32 focus:border-[#7CFF00]/55 focus:shadow-[0_0_0_4px_rgba(124,255,0,0.10)]"
+                />
+              </div>
+            ) : null}
+            <div className="mt-5 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                className="min-w-[10rem]"
+                disabled={accountActionMutation.isPending || verificationActionMutation.isPending}
+                onClick={confirmAction}
+              >
+                {accountActionMutation.isPending || verificationActionMutation.isPending ? "Applying..." : pendingAction.confirmLabel}
+              </Button>
+              <Button type="button" variant="secondary" className="min-w-[8rem]" disabled={accountActionMutation.isPending || verificationActionMutation.isPending} onClick={() => setPendingAction(null)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
