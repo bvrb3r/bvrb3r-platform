@@ -1,6 +1,7 @@
 import { assertPlatformAdminAccess, getPlatformAccountStatus, readPlatformAdminAuditLogEntries, readPlatformShopControlState } from "@/lib/platform-admin/service";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { UserAccount } from "@/types/domain";
 import type {
   ArchitectAccountDetailPayload,
@@ -178,6 +179,13 @@ const REJECTED_STATUSES = new Set(["rejected"]);
 
 let accountDataOverlay: AccountData | null = null;
 
+type SupabaseAdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
+type SupabaseServerClient = NonNullable<Awaited<ReturnType<typeof createSupabaseServerClient>>>;
+type SupabaseAccountReadSource =
+  | { client: SupabaseAdminClient; mode: "service_role"; canReadAuthUsers: true }
+  | { client: SupabaseServerClient; mode: "authenticated"; canReadAuthUsers: false }
+  | { client: null; mode: "unavailable"; canReadAuthUsers: false };
+
 function emptyData(): AccountData {
   return {
     authUsers: [],
@@ -205,8 +213,30 @@ function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
-function getSupabase() {
-  return isSupabaseEnabled() ? createSupabaseAdminClient() : null;
+async function getSupabaseReadSource(warnings: string[]): Promise<SupabaseAccountReadSource> {
+  if (!isSupabaseEnabled()) {
+    warnings.push("Supabase runtime is not configured; Architect cannot read live production accounts.");
+    return { client: null, mode: "unavailable", canReadAuthUsers: false };
+  }
+
+  const adminClient = createSupabaseAdminClient();
+  if (adminClient) {
+    return { client: adminClient, mode: "service_role", canReadAuthUsers: true };
+  }
+
+  warnings.push("Supabase service-role key is not configured; auth-only identities are unavailable until production env is repaired.");
+
+  try {
+    const serverClient = await createSupabaseServerClient();
+    if (serverClient) {
+      return { client: serverClient, mode: "authenticated", canReadAuthUsers: false };
+    }
+  } catch (error) {
+    console.error("[Architect Accounts] authenticated Supabase fallback could not be created", error);
+  }
+
+  warnings.push("Authenticated Supabase fallback could not be created; Architect account reads are unavailable.");
+  return { client: null, mode: "unavailable", canReadAuthUsers: false };
 }
 
 function isMissingTableError(error: unknown) {
@@ -247,7 +277,11 @@ function isRealOperationalAuthUser(user: AuthUserRow) {
   return !email.endsWith(".demo") && !email.includes("@bvrb3r.demo");
 }
 
-async function readAuthUsers(warnings: string[], supabase: NonNullable<ReturnType<typeof getSupabase>>): Promise<AuthUserRow[]> {
+async function readAuthUsers(warnings: string[], source: SupabaseAccountReadSource): Promise<AuthUserRow[]> {
+  if (!source.client || !source.canReadAuthUsers) {
+    return [];
+  }
+
   try {
     const users: AuthUserRow[] = [];
     let scanned = 0;
@@ -255,7 +289,7 @@ async function readAuthUsers(warnings: string[], supabase: NonNullable<ReturnTyp
     const perPage = 1000;
 
     while (page <= 20) {
-      const result = await supabase.auth.admin.listUsers({ page, perPage });
+      const result = await source.client.auth.admin.listUsers({ page, perPage });
       if (result.error) throw result.error;
 
       const rawBatch = (result.data?.users ?? []) as AuthUserRow[];
@@ -279,8 +313,15 @@ async function readAuthUsers(warnings: string[], supabase: NonNullable<ReturnTyp
 async function readAccountData(warnings: string[]): Promise<AccountData> {
   if (accountDataOverlay) return clone(accountDataOverlay);
 
-  const supabase = getSupabase();
-  if (!supabase) return emptyData();
+  const source = await getSupabaseReadSource(warnings);
+  const supabase = source.client;
+  if (!supabase) {
+    console.error("[Architect Accounts] live account read failed before querying Supabase", {
+      mode: source.mode,
+      supabaseEnabled: isSupabaseEnabled()
+    });
+    return emptyData();
+  }
 
   const [
     authUsers,
@@ -302,7 +343,7 @@ async function readAccountData(warnings: string[]): Promise<AccountData> {
     verificationDocuments,
     verificationReviews
   ] = await Promise.all([
-    readAuthUsers(warnings, supabase),
+    readAuthUsers(warnings, source),
     safeRows<ProfileRow>(warnings, "Profiles", () => supabase.from("profiles").select("id, role, full_name, email, phone, primary_onboarding_role, onboarding_state, phone_verified_at, last_onboarded_at, created_at")),
     safeRows<ClientRow>(warnings, "Clients", () => supabase.from("clients").select("id, reference_code, profile_id, loyalty_points, retention_tag, created_at")),
     safeRows<BarberRow>(warnings, "Barbers", () => supabase.from("barbers").select("id, reference_code, profile_id, compensation_model, barber_subtype, app_approval_status, shop_approval_status, created_at")),
@@ -387,6 +428,20 @@ function getAuthProviders(user?: AuthUserRow) {
   return Array.from(providers).sort();
 }
 
+function getAuthIdentitySearchValues(user?: AuthUserRow) {
+  if (!user) return [];
+  const values: string[] = [];
+  for (const identity of user.identities ?? []) {
+    if (identity.provider) values.push(identity.provider);
+    const metadata = identity.identity_data ?? {};
+    for (const key of ["email", "phone", "full_name", "name", "display_name", "username", "preferred_username"]) {
+      const value = metadata[key];
+      if (typeof value === "string" && value.trim()) values.push(value.trim());
+    }
+  }
+  return values;
+}
+
 function getAuthPrimaryProvider(user?: AuthUserRow) {
   return getAuthProviders(user)[0];
 }
@@ -403,6 +458,41 @@ function profileFromAuthUser(user: AuthUserRow): ProfileRow {
     phone_verified_at: user.phone_confirmed_at ?? null,
     last_onboarded_at: user.updated_at ?? null,
     created_at: user.created_at ?? null
+  };
+}
+
+function profileFromLinkedAccountRows(profileId: string, data: AccountData): ProfileRow | null {
+  const client = data.clients.find((row) => row.profile_id === profileId);
+  const barber = data.barbers.find((row) => row.profile_id === profileId);
+  const shop = data.shops.find((row) => row.owner_profile_id === profileId);
+  const verification = data.verificationProfiles.find((row) => row.user_id === profileId);
+
+  if (!client && !barber && !shop && !verification) {
+    return null;
+  }
+
+  const role = shop
+    ? "shop_owner"
+    : barber
+      ? "barber"
+      : verification?.role ?? "client";
+  const primary = role === "barber" || role === "shop_owner" || role === "platform_admin"
+    ? role
+    : role === "client"
+      ? "client"
+      : null;
+
+  return {
+    id: profileId,
+    role,
+    full_name: shop?.name ?? null,
+    email: null,
+    phone: shop?.phone ?? null,
+    primary_onboarding_role: primary,
+    onboarding_state: "missing_profile",
+    phone_verified_at: null,
+    last_onboarded_at: verification?.updated_at ?? null,
+    created_at: barber?.created_at ?? shop?.created_at ?? client?.created_at ?? verification?.created_at ?? null
   };
 }
 
@@ -582,14 +672,22 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
   const profilesById = new Map(data.profiles.map((profile) => [profile.id, profile]));
   const realAuthUsers = data.authUsers.filter(isRealOperationalAuthUser);
   const authUsersById = new Map(realAuthUsers.map((user) => [user.id, user]));
-  const accountIds = Array.from(new Set([...data.profiles.map((profile) => profile.id), ...realAuthUsers.map((user) => user.id)]));
+  const accountIds = Array.from(new Set([
+    ...data.profiles.map((profile) => profile.id),
+    ...realAuthUsers.map((user) => user.id),
+    ...data.clients.map((row) => row.profile_id).filter((id): id is string => Boolean(id)),
+    ...data.barbers.map((row) => row.profile_id).filter(Boolean),
+    ...data.shops.map((row) => row.owner_profile_id).filter((id): id is string => Boolean(id)),
+    ...data.verificationProfiles.map((row) => row.user_id).filter(Boolean),
+    ...data.verificationDocuments.map((row) => row.user_id).filter((id): id is string => Boolean(id))
+  ]));
 
   const items: ArchitectAccountDirectoryItem[] = [];
 
   for (const profileId of accountIds) {
     const authUser = authUsersById.get(profileId);
     const existingProfile = profilesById.get(profileId);
-    const baseProfile = existingProfile ?? (authUser ? profileFromAuthUser(authUser) : null);
+    const baseProfile = existingProfile ?? (authUser ? profileFromAuthUser(authUser) : profileFromLinkedAccountRows(profileId, data));
     if (!baseProfile) continue;
 
     const profileExists = Boolean(existingProfile);
@@ -698,6 +796,7 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
         profileExists ? "profile exists" : "missing profile auth only",
         getAuthPrimaryProvider(authUser),
         ...authProviders,
+        ...getAuthIdentitySearchValues(authUser),
         approvalStatus,
         verificationStatus,
         barber?.barber_subtype,
@@ -762,6 +861,23 @@ function createCounts(items: ArchitectAccountDirectoryItem[]): ArchitectAccountS
     approvedShops: items.filter((item) => item.role === "shop_owner" && item.approvalStatus === "approved").length,
     suspendedAccounts: items.filter((item) => item.accountStatus === "suspended").length,
     bannedAccounts: items.filter((item) => item.accountStatus === "banned").length
+  };
+}
+
+const VALID_ROLE_FILTERS = new Set<ArchitectAccountRoleFilter>(["all", "client", "barber", "shop_owner", "platform_admin"]);
+const VALID_STATUS_FILTERS = new Set<ArchitectAccountStatusFilter>(["all", "active", "profile_only", "deactivated", "suspended", "banned", "pending_review", "approved", "rejected", "needs_update"]);
+const VALID_ONBOARDING_FILTERS = new Set<NonNullable<ArchitectAccountDirectoryFilters["onboarding"]>>(["all", "missing_profile", "awaiting_contact_verification", "awaiting_role_selection", "role_selected", "active", "complete"]);
+
+export function normalizeArchitectAccountDirectoryFilters(filters: ArchitectAccountDirectoryFilters = {}): Required<ArchitectAccountDirectoryFilters> {
+  const role = filters.role && VALID_ROLE_FILTERS.has(filters.role) ? filters.role : "all";
+  const status = filters.status && VALID_STATUS_FILTERS.has(filters.status) ? filters.status : "all";
+  const onboarding = filters.onboarding && VALID_ONBOARDING_FILTERS.has(filters.onboarding) ? filters.onboarding : "all";
+
+  return {
+    search: filters.search?.trim() ?? "",
+    role,
+    status,
+    onboarding
   };
 }
 
@@ -840,19 +956,15 @@ export async function getArchitectAccountDirectoryPayload(
   filters: ArchitectAccountDirectoryFilters = {}
 ): Promise<ArchitectAccountDirectoryPayload> {
   assertPlatformAdminAccess(actor);
+  const normalizedFilters = normalizeArchitectAccountDirectoryFilters(filters);
   const warnings: string[] = [];
   const data = await readAccountData(warnings);
   const allAccounts = await buildDirectoryItems(data);
 
   return {
-    accounts: filterItems(allAccounts, filters),
+    accounts: filterItems(allAccounts, normalizedFilters),
     counts: createCounts(allAccounts),
-    filters: {
-      search: filters.search ?? "",
-      role: filters.role ?? "all",
-      status: filters.status ?? "all",
-      onboarding: filters.onboarding ?? "all"
-    },
+    filters: normalizedFilters,
     warnings: dedupeWarnings(warnings.length ? [ACCOUNT_WARNING, ...warnings] : [])
   };
 }

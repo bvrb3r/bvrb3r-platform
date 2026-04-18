@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import type { ComponentProps, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArchitectAccountDetailPayload, ArchitectAccountDirectoryPayload, ArchitectDashboardPayload } from "@/types/platform-admin";
@@ -231,7 +231,8 @@ describe("architect account workspaces", () => {
   it("renders real barber and shop-owner accounts in the searchable directory", () => {
     useArchitectAccountDirectoryQueryMock.mockReturnValue({
       data: directoryPayload,
-      error: null
+      error: null,
+      isFetching: false
     });
 
     render(<ArchitectAccountDirectoryWorkspace initialData={directoryPayload} initialFilters={{ role: "all", status: "all" }} />);
@@ -248,7 +249,8 @@ describe("architect account workspaces", () => {
     const emptyPayload = { ...directoryPayload, accounts: [], counts: { ...directoryPayload.counts, totalAccounts: 0 } };
     useArchitectAccountDirectoryQueryMock.mockReturnValue({
       data: emptyPayload,
-      error: null
+      error: null,
+      isFetching: false
     });
 
     render(<ArchitectAccountDirectoryWorkspace initialData={emptyPayload} initialFilters={{ role: "all", status: "all" }} />);
@@ -256,6 +258,40 @@ describe("architect account workspaces", () => {
     expect(screen.getByText("No real accounts in this view")).toBeInTheDocument();
     expect(screen.queryByText(/Wave Carter/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Blaze King/i)).not.toBeInTheDocument();
+  });
+
+  it("uses an explicit mobile-safe apply flow", () => {
+    useArchitectAccountDirectoryQueryMock.mockReturnValue({
+      data: directoryPayload,
+      error: null,
+      isFetching: false
+    });
+
+    render(<ArchitectAccountDirectoryWorkspace initialData={directoryPayload} initialFilters={{ role: "all", status: "all" }} />);
+
+    fireEvent.change(screen.getByPlaceholderText(/email, phone, name/i), {
+      target: { value: "phillipmcgee813@gmail.com" }
+    });
+    expect(screen.getByText(/filters changed/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /apply search/i }));
+
+    expect(useArchitectAccountDirectoryQueryMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ search: "phillipmcgee813@gmail.com" }),
+      undefined
+    );
+  });
+
+  it("renders loading feedback while live account search is running", () => {
+    useArchitectAccountDirectoryQueryMock.mockReturnValue({
+      data: undefined,
+      error: null,
+      isFetching: true
+    });
+
+    render(<ArchitectAccountDirectoryWorkspace initialData={directoryPayload} initialFilters={{ role: "all", status: "all" }} />);
+
+    expect(screen.getAllByText(/searching accounts/i).length).toBeGreaterThan(0);
   });
 
   it("opens a real account detail page with verification actions and marketplace blockers", () => {

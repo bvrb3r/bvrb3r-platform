@@ -28,7 +28,13 @@ vi.mock("@/lib/platform-admin/service", () => ({
 
 vi.mock("@/lib/platform-admin/accounts-service", () => ({
   getArchitectAccountDirectoryPayload: getArchitectAccountDirectoryPayloadMock,
-  getArchitectAccountDetailPayload: getArchitectAccountDetailPayloadMock
+  getArchitectAccountDetailPayload: getArchitectAccountDetailPayloadMock,
+  normalizeArchitectAccountDirectoryFilters: (filters: { search?: string; role?: string; status?: string; onboarding?: string } = {}) => ({
+    search: filters.search ?? "",
+    role: filters.role ?? "all",
+    status: filters.status ?? "all",
+    onboarding: filters.onboarding ?? "all"
+  })
 }));
 
 import { GET as getArchitectConsole } from "@/app/api/architect/console/route";

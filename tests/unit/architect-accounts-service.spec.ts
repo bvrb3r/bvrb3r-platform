@@ -307,6 +307,116 @@ describe("architect account service", () => {
     expect(ownerPayload.accounts[0]?.profileId).toBe("profile-owner");
   });
 
+  it("does not drop real profile-backed accounts when auth user listing is unavailable", async () => {
+    stageArchitectAccountRowsForTests({
+      authUsers: [],
+      profiles: [
+        {
+          id: "profile-barber",
+          role: "barber",
+          primary_onboarding_role: "barber",
+          onboarding_state: "complete",
+          full_name: "Phillip McGee",
+          email: "phillipmcgee813@gmail.com",
+          phone: "8135550101",
+          created_at: "2026-04-02T12:00:00.000Z"
+        },
+        {
+          id: "profile-owner",
+          role: "shop_owner",
+          primary_onboarding_role: "shop_owner",
+          onboarding_state: "complete",
+          full_name: "BVRB3R Shop",
+          email: "bvrb3r@gmail.com",
+          phone: "8135550202",
+          created_at: "2026-04-03T12:00:00.000Z"
+        }
+      ],
+      barbers: [
+        {
+          id: "barber-1",
+          reference_code: "barber-ref-1",
+          profile_id: "profile-barber",
+          compensation_model: "commission",
+          barber_subtype: "solo",
+          app_approval_status: "pending",
+          shop_approval_status: "pending"
+        }
+      ],
+      shops: [
+        {
+          id: "shop-1",
+          name: "BVRB3R Studio",
+          owner_profile_id: "profile-owner",
+          app_approval_status: "pending",
+          city: "Tampa",
+          state: "FL",
+          phone: "8135550303"
+        }
+      ]
+    });
+
+    const payload = await getArchitectAccountDirectoryPayload(founder, { role: "all", status: "all" });
+    const emails = payload.accounts.map((account) => account.email);
+
+    expect(payload.counts.totalAccounts).toBe(2);
+    expect(emails).toContain("phillipmcgee813@gmail.com");
+    expect(emails).toContain("bvrb3r@gmail.com");
+  });
+
+  it("does not drop lane-backed accounts when profile and verification rows are incomplete", async () => {
+    stageArchitectAccountRowsForTests({
+      authUsers: [],
+      profiles: [],
+      clients: [
+        {
+          id: "client-1",
+          reference_code: "client-ref-1",
+          profile_id: "profile-client",
+          created_at: "2026-04-01T12:00:00.000Z"
+        }
+      ],
+      barbers: [
+        {
+          id: "barber-1",
+          reference_code: "barber-ref-1",
+          profile_id: "profile-barber",
+          compensation_model: "commission",
+          barber_subtype: "solo",
+          app_approval_status: "pending",
+          shop_approval_status: "pending",
+          created_at: "2026-04-02T12:00:00.000Z"
+        }
+      ],
+      shops: [
+        {
+          id: "shop-1",
+          name: "Fallback Shop",
+          owner_profile_id: "profile-owner",
+          app_approval_status: "pending",
+          city: "Tampa",
+          state: "FL"
+        }
+      ]
+    });
+
+    const allPayload = await getArchitectAccountDirectoryPayload(founder, { role: "all", status: "all" });
+    const barberPayload = await getArchitectAccountDirectoryPayload(founder, { role: "barber", status: "all" });
+    const ownerPayload = await getArchitectAccountDirectoryPayload(founder, { search: "Fallback Shop", role: "all", status: "all" });
+
+    expect(allPayload.counts.totalAccounts).toBe(3);
+    expect(barberPayload.accounts[0]).toMatchObject({
+      profileId: "profile-barber",
+      role: "barber",
+      profileExists: false
+    });
+    expect(ownerPayload.accounts[0]).toMatchObject({
+      profileId: "profile-owner",
+      role: "shop_owner",
+      shopName: "Fallback Shop"
+    });
+  });
+
   it("searches by normalized phone and surfaces auth provider identity", async () => {
     stageRealAccountRows();
 

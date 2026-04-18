@@ -11,3 +11,4 @@ coverage
 dist
 .android-user-home
 .gradle-user-home
+.vercel

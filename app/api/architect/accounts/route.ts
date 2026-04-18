@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireArchitectAdmin } from "@/app/api/architect/verifications/_shared";
-import { getArchitectAccountDirectoryPayload } from "@/lib/platform-admin/accounts-service";
+import { getArchitectAccountDirectoryPayload, normalizeArchitectAccountDirectoryFilters } from "@/lib/platform-admin/accounts-service";
 import type { ArchitectAccountDirectoryFilters } from "@/types/platform-admin";
 
 export async function GET(request: NextRequest) {
@@ -9,12 +9,12 @@ export async function GET(request: NextRequest) {
     if (!access.ok) return access.response;
 
     const { searchParams } = request.nextUrl;
-    const filters: ArchitectAccountDirectoryFilters = {
+    const filters: ArchitectAccountDirectoryFilters = normalizeArchitectAccountDirectoryFilters({
       search: searchParams.get("search") ?? "",
-      role: (searchParams.get("role") ?? "all") as ArchitectAccountDirectoryFilters["role"],
-      status: (searchParams.get("status") ?? "all") as ArchitectAccountDirectoryFilters["status"],
-      onboarding: (searchParams.get("onboarding") ?? "all") as ArchitectAccountDirectoryFilters["onboarding"]
-    };
+      role: searchParams.get("role") as ArchitectAccountDirectoryFilters["role"],
+      status: searchParams.get("status") as ArchitectAccountDirectoryFilters["status"],
+      onboarding: searchParams.get("onboarding") as ArchitectAccountDirectoryFilters["onboarding"]
+    });
     const payload = await getArchitectAccountDirectoryPayload(access.user, filters);
     return NextResponse.json(payload);
   } catch (error) {

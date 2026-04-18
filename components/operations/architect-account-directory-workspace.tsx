@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useDeferredValue, useMemo, useState } from "react";
-import { AlertTriangle, Search, ShieldCheck } from "lucide-react";
+import { type FormEvent, useMemo, useState } from "react";
+import { AlertTriangle, Loader2, Search, ShieldCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
@@ -126,6 +126,36 @@ function AccountCard({ account }: { account: ArchitectAccountDirectoryItem }) {
   );
 }
 
+function normalizeFilters(filters: ArchitectAccountDirectoryFilters): Required<ArchitectAccountDirectoryFilters> {
+  return {
+    search: filters.search ?? "",
+    role: filters.role ?? "all",
+    status: filters.status ?? "all",
+    onboarding: filters.onboarding ?? "all"
+  };
+}
+
+function sameFilters(left: ArchitectAccountDirectoryFilters, right: ArchitectAccountDirectoryFilters) {
+  const normalizedLeft = normalizeFilters(left);
+  const normalizedRight = normalizeFilters(right);
+  return normalizedLeft.search === normalizedRight.search
+    && normalizedLeft.role === normalizedRight.role
+    && normalizedLeft.status === normalizedRight.status
+    && normalizedLeft.onboarding === normalizedRight.onboarding;
+}
+
+function createLoadingPayload(
+  filters: ArchitectAccountDirectoryFilters,
+  initialData: ArchitectAccountDirectoryPayload
+): ArchitectAccountDirectoryPayload {
+  return {
+    accounts: [],
+    counts: initialData.counts,
+    filters,
+    warnings: initialData.warnings
+  };
+}
+
 export function ArchitectAccountDirectoryWorkspace({
   initialData,
   initialFilters
@@ -133,16 +163,31 @@ export function ArchitectAccountDirectoryWorkspace({
   initialData: ArchitectAccountDirectoryPayload;
   initialFilters: ArchitectAccountDirectoryFilters;
 }) {
-  const [filters, setFilters] = useState<ArchitectAccountDirectoryFilters>({
-    search: initialFilters.search ?? "",
-    role: initialFilters.role ?? "all",
-    status: initialFilters.status ?? "all",
-    onboarding: initialFilters.onboarding ?? "all"
-  });
-  const deferredSearch = useDeferredValue(filters.search ?? "");
-  const queryFilters = useMemo(() => ({ ...filters, search: deferredSearch }), [deferredSearch, filters]);
-  const query = useArchitectAccountDirectoryQuery(queryFilters, initialData);
-  const data = query.data ?? initialData;
+  const initialNormalizedFilters = normalizeFilters(initialFilters);
+  const [draftFilters, setDraftFilters] = useState<Required<ArchitectAccountDirectoryFilters>>(initialNormalizedFilters);
+  const [appliedFilters, setAppliedFilters] = useState<Required<ArchitectAccountDirectoryFilters>>(initialNormalizedFilters);
+  const queryFilters = useMemo<ArchitectAccountDirectoryFilters>(() => ({
+    search: appliedFilters.search,
+    role: appliedFilters.role,
+    status: appliedFilters.status,
+    onboarding: appliedFilters.onboarding
+  }), [appliedFilters]);
+  const matchingInitialData = sameFilters(queryFilters, initialData.filters) ? initialData : undefined;
+  const query = useArchitectAccountDirectoryQuery(queryFilters, matchingInitialData);
+  const data = query.data ?? createLoadingPayload(queryFilters, initialData);
+  const isSearching = query.isFetching && !query.error;
+  const hasDraftChanges = !sameFilters(draftFilters, appliedFilters);
+
+  const applyFilters = (event?: FormEvent<HTMLFormElement>) => {
+    event?.preventDefault();
+    setAppliedFilters(draftFilters);
+  };
+
+  const clearFilters = () => {
+    const cleared = normalizeFilters({});
+    setDraftFilters(cleared);
+    setAppliedFilters(cleared);
+  };
 
   return (
     <div className="app-screen safe-top-pad px-2 py-2 pb-[calc(env(safe-area-inset-bottom,0px)+2rem)] sm:px-3 sm:py-3 lg:px-5 lg:py-5">
@@ -156,14 +201,14 @@ export function ArchitectAccountDirectoryWorkspace({
               </div>
               <h1 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">Architect Accounts</h1>
               <p className="mt-4 max-w-3xl text-sm leading-7 text-white/62">
-                Search real profiles, onboarding state, approval posture, shop ownership, and marketplace readiness.
+                Search real auth identities, profiles, onboarding state, approval posture, shop ownership, and marketplace readiness.
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 xl:w-[24rem]">
               <div className="rounded-[24px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-4">
                 <p className="surface-label text-[#d7ffab]">Accounts in view</p>
                 <p className="mt-3 text-3xl font-semibold text-white">{data.accounts.length}</p>
-                <p className="mt-2 text-sm text-white/62">Filtered from live profiles.</p>
+                <p className="mt-2 text-sm text-white/62">Filtered from live account truth.</p>
               </div>
               <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
                 <p className="surface-label">Total accounts</p>
@@ -199,42 +244,80 @@ export function ArchitectAccountDirectoryWorkspace({
         ) : null}
 
         <Card className="rounded-[32px] p-6">
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_200px_200px_220px]">
-            <div>
-              <label className="mb-2 block surface-label">Search accounts</label>
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/32" />
-                <Input
-                  value={filters.search ?? ""}
-                  onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))}
-                  className="pl-11"
-                  placeholder="Email, phone, name, role, shop, username, provider"
-                />
+          <form onSubmit={applyFilters} className="space-y-4">
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_200px_200px_220px]">
+              <div>
+                <label className="mb-2 block surface-label">Search accounts</label>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/32" />
+                  <Input
+                    value={draftFilters.search}
+                    onChange={(event) => setDraftFilters((current) => ({ ...current, search: event.target.value }))}
+                    className="pl-11"
+                    placeholder="Email, phone, name, role, shop, username, provider"
+                    enterKeyHint="search"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="mb-2 block surface-label">Role</label>
+                <Select value={draftFilters.role} onChange={(event) => setDraftFilters((current) => ({ ...current, role: event.target.value as ArchitectAccountRoleFilter }))}>
+                  {roleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </Select>
+              </div>
+              <div>
+                <label className="mb-2 block surface-label">Status</label>
+                <Select value={draftFilters.status} onChange={(event) => setDraftFilters((current) => ({ ...current, status: event.target.value as ArchitectAccountStatusFilter }))}>
+                  {statusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </Select>
+              </div>
+              <div>
+                <label className="mb-2 block surface-label">Onboarding</label>
+                <Select value={draftFilters.onboarding} onChange={(event) => setDraftFilters((current) => ({ ...current, onboarding: event.target.value as ArchitectAccountOnboardingFilter }))}>
+                  {onboardingOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </Select>
               </div>
             </div>
-            <div>
-              <label className="mb-2 block surface-label">Role</label>
-              <Select value={filters.role ?? "all"} onChange={(event) => setFilters((current) => ({ ...current, role: event.target.value as ArchitectAccountRoleFilter }))}>
-                {roleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-              </Select>
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-h-6 text-sm text-white/58" aria-live="polite">
+                {isSearching ? (
+                  <span className="inline-flex items-center gap-2 text-white/72">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Searching accounts...
+                  </span>
+                ) : hasDraftChanges ? (
+                  <span>Filters changed. Apply search to refresh live results.</span>
+                ) : (
+                  <span>Showing the latest applied live query.</span>
+                )}
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Button type="button" variant="secondary" onClick={clearFilters} className="min-w-[9rem]">
+                  <X className="h-4 w-4" />
+                  Clear filters
+                </Button>
+                <Button type="submit" className="min-w-[10rem]" disabled={isSearching}>
+                  {isSearching ? "Searching..." : "Apply search"}
+                </Button>
+              </div>
             </div>
-            <div>
-              <label className="mb-2 block surface-label">Status</label>
-              <Select value={filters.status ?? "all"} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value as ArchitectAccountStatusFilter }))}>
-                {statusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-              </Select>
-            </div>
-            <div>
-              <label className="mb-2 block surface-label">Onboarding</label>
-              <Select value={filters.onboarding ?? "all"} onChange={(event) => setFilters((current) => ({ ...current, onboarding: event.target.value as ArchitectAccountOnboardingFilter }))}>
-                {onboardingOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-              </Select>
-            </div>
-          </div>
+          </form>
         </Card>
 
-        <div className="grid gap-4">
-          {data.accounts.length ? data.accounts.map((account) => (
+        <div className="grid gap-4" aria-busy={isSearching}>
+          {isSearching && !query.data ? (
+            <Card className="rounded-[30px] border border-white/8 bg-black/20 p-6">
+              <div className="flex items-center gap-3 text-white/72">
+                <Loader2 className="h-5 w-5 animate-spin text-[#baff69]" />
+                <p className="font-semibold">Searching accounts...</p>
+              </div>
+              <div className="mt-5 grid gap-3">
+                <div className="h-20 rounded-[22px] bg-white/[0.06]" />
+                <div className="h-20 rounded-[22px] bg-white/[0.04]" />
+              </div>
+            </Card>
+          ) : data.accounts.length ? data.accounts.map((account) => (
             <AccountCard key={account.profileId} account={account} />
           )) : (
             <Card className="rounded-[30px] border-dashed p-6 text-center">
