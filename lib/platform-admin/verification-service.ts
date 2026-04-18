@@ -10,7 +10,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   computeBarberVerificationDecision,
   computeShopVerificationDecision,
-  createInitialTrustState,
+  createEmptyTrustState,
   normalizeVerificationStatus
 } from "@/lib/trust/engine";
 import { getTrustProvider } from "@/lib/trust/provider";
@@ -333,7 +333,7 @@ async function readArchitectTrustState(warnings: string[] = []) {
     logArchitectVerificationError("reading trust state", error);
     pushWarning(warnings, VERIFICATION_DEGRADED_WARNING);
     if (isSupabaseEnabled()) {
-      return mergeTrustState(createInitialTrustState(), trustOverlayState);
+      return mergeTrustState(createEmptyTrustState(), trustOverlayState);
     }
 
     return clone(getTrustState());

@@ -2,7 +2,7 @@
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
-  createInitialTrustState,
+  createEmptyTrustState,
   submitBarberVerification as submitBarberVerificationInState,
   submitShopVerification as submitShopVerificationInState,
   submitDispute as submitDisputeInState,
@@ -13,7 +13,6 @@ import {
   type SubmitSafetyReportInput,
   type TrustActor
 } from "@/lib/trust/engine";
-import { getTrustState, setTrustState } from "@/lib/trust/state";
 import type { TrustState } from "@/types/trust";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
@@ -32,8 +31,6 @@ export interface TrustProvider {
   submitDispute(actor: TrustActor, input: SubmitDisputeInput): Promise<DisputeResult>;
 }
 
-const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
-
 function assertNoError(result: { error: unknown }) {
   if (result.error) {
     throw result.error;
@@ -51,12 +48,6 @@ function isMissingTableError(error: unknown) {
     || candidate.code === "PGRST205"
     || message.includes("does not exist")
     || message.includes("could not find the table");
-}
-
-async function hasRows(supabase: SupabaseClient, table: string) {
-  const result = await supabase.from(table).select("*").limit(1);
-  assertNoError(result);
-  return (result.data ?? []).length > 0;
 }
 
 async function insertRows(supabase: SupabaseClient, table: string, rows: Record<string, unknown>[]) {
@@ -98,244 +89,10 @@ async function readOrderedRowsOptional(supabase: SupabaseClient, table: string, 
   }
 }
 
-async function ensureSupabaseSeeded(supabase: SupabaseClient) {
-  if (await hasRows(supabase, "barber_verifications")) {
-    return;
-  }
-
-  const state = createInitialTrustState();
-
-  await Promise.all([
-    upsertRows(
-      supabase,
-      "barber_verifications",
-      state.barberVerifications.map((record) => ({
-        id: record.id,
-        barber_reference: record.barberId,
-        category: record.category,
-        legal_name: record.legalName,
-        license_type: record.licenseType ?? null,
-        license_number: record.licenseNumber ?? null,
-        issuing_state: record.issuingState ?? null,
-        expiration_date: record.expirationDate ?? null,
-        verification_status: record.verificationStatus,
-        verification_submitted_at: record.verificationSubmittedAt ?? null,
-        verification_reviewed_at: record.verificationReviewedAt ?? null,
-        verification_notes: record.verificationNotes ?? null,
-        document_path: record.documentPath ?? null,
-        updated_at: record.updatedAt
-      })),
-      "id"
-    ),
-    upsertRows(
-      supabase,
-      "shop_verifications",
-      state.shopVerifications.map((record) => ({
-        id: record.id,
-        shop_reference: record.shopId,
-        category: record.category,
-        business_name: record.businessName,
-        verification_status: record.verificationStatus,
-        verification_submitted_at: record.verificationSubmittedAt ?? null,
-        verification_reviewed_at: record.verificationReviewedAt ?? null,
-        verification_notes: record.verificationNotes ?? null,
-        document_path: record.documentPath ?? null,
-        updated_at: record.updatedAt
-      })),
-      "id"
-    ),
-    upsertRows(
-      supabase,
-      "verification_documents",
-      state.verificationDocuments.map((record) => ({
-        id: record.id,
-        owner_type: record.ownerType,
-        owner_reference: record.ownerId,
-        category: record.category,
-        storage_path: record.storagePath,
-        uploaded_at: record.uploadedAt,
-        expires_at: record.expiresAt ?? null
-      })),
-      "id"
-    ),
-    upsertRows(
-      supabase,
-      "trust_badges",
-      state.trustBadges.map((record) => ({
-        id: record.id,
-        scope_type: record.scopeType,
-        scope_reference: record.scopeId,
-        badge_kind: record.badge,
-        label: record.label,
-        public_visible: record.publicVisible,
-        granted_at: record.grantedAt,
-        expires_at: record.expiresAt ?? null
-      })),
-      "id"
-    ),
-    upsertRows(
-      supabase,
-      "review_moderation",
-      state.reviewModeration.map((record) => ({
-        id: record.id,
-        review_reference: record.reviewId,
-        barber_reference: record.barberId,
-        client_reference: record.clientId,
-        appointment_reference: record.appointmentId ?? null,
-        eligible: record.eligible,
-        moderation_status: record.moderationStatus,
-        suspicious_flags: record.suspiciousFlags,
-        abuse_reported: record.abuseReported,
-        integrity_score: record.integrityScore,
-        reviewed_at: record.reviewedAt ?? null,
-        created_at: record.createdAt,
-        updated_at: record.updatedAt
-      })),
-      "id"
-    ),
-    upsertRows(
-      supabase,
-      "safety_reports",
-      state.safetyReports.map((record) => ({
-        id: record.id,
-        reporter_role: record.reporterRole,
-        reporter_reference: record.reporterId,
-        reporter_email: record.reporterEmail ?? null,
-        subject_type: record.subjectType,
-        subject_reference: record.subjectId,
-        category: record.category,
-        details: record.details,
-        status: record.status,
-        location_reference: record.locationId ?? null,
-        created_at: record.createdAt,
-        updated_at: record.updatedAt
-      })),
-      "id"
-    ),
-
-    upsertRows(
-      supabase,
-      "disputes",
-      state.disputes.map((record) => ({
-        id: record.id,
-        dispute_type: record.disputeType,
-        dispute_status: record.disputeStatus,
-        submitted_by_role: record.submittedByRole,
-        submitted_by_reference: record.submittedById,
-        involved_party_type: record.involvedPartyType,
-        involved_party_reference: record.involvedPartyId,
-        appointment_reference: record.appointmentId ?? null,
-        location_reference: record.locationId ?? null,
-        summary: record.summary,
-        resolution_notes: record.resolutionNotes ?? null,
-        created_at: record.createdAt,
-        updated_at: record.updatedAt
-      })),
-      "id"
-    ),
-
-    upsertRows(
-      supabase,
-      "risk_flags",
-      state.riskFlags.map((record) => ({
-        id: record.id,
-        entity_type: record.entityType,
-        entity_reference: record.entityId,
-        signal_type: record.signalType,
-        severity: record.severity,
-        score: record.score,
-        public_impact: record.publicImpact,
-        is_open: record.open,
-        notes: record.notes,
-        created_at: record.createdAt,
-        resolved_at: record.resolvedAt ?? null
-      })),
-      "id"
-    ),
-    upsertRows(
-      supabase,
-      "moderation_actions",
-      state.moderationActions.map((record) => ({
-        id: record.id,
-        target_type: record.targetType,
-        target_reference: record.targetId,
-        action_label: record.actionLabel,
-        actor_role: record.actorRole,
-        actor_reference: record.actorId,
-        created_at: record.createdAt
-      })),
-      "id"
-    ),
-    upsertRows(
-      supabase,
-      "reliability_scores",
-      state.reliabilityScores.map((record) => ({
-        barber_reference: record.barberId,
-        completion_rate: record.completionRate,
-        on_time_rate: record.onTimeRate,
-        rebooking_rate: record.rebookingRate,
-        review_integrity_score: record.reviewIntegrityScore,
-        overall_trust_score: record.overallTrustScore,
-        updated_at: record.updatedAt
-      })),
-      "barber_reference"
-    )
-  ]);
-
-  await upsertRows(
-    supabase,
-    "report_events",
-    state.reportEvents.map((record) => ({
-      id: record.id,
-      report_reference: record.reportId,
-      actor_role: record.actorRole,
-      actor_reference: record.actorId,
-      action_label: record.actionLabel,
-      notes: record.notes ?? null,
-      created_at: record.createdAt
-    })),
-    "id"
-  );
-
-  await upsertRows(
-    supabase,
-    "dispute_events",
-    state.disputeEvents.map((record) => ({
-      id: record.id,
-      dispute_reference: record.disputeId,
-      actor_role: record.actorRole,
-      actor_reference: record.actorId,
-      action_label: record.actionLabel,
-      notes: record.notes ?? null,
-      created_at: record.createdAt
-    })),
-    "id"
-  );
-}
-
 async function readSupabaseState(supabase: SupabaseClient): Promise<TrustState> {
-  await ensureSupabaseSeeded(supabase);
-
   const verificationProfiles = await readOrderedRowsOptional(supabase, "verification_profiles", "updated_at");
   const verificationReviews = await readOrderedRowsOptional(supabase, "verification_reviews", "created_at");
   const verificationProviderLinks = await readOrderedRowsOptional(supabase, "verification_provider_links", "updated_at");
-  const results = await Promise.all([
-    supabase.from("barber_verifications").select("*").order("updated_at", { ascending: false }),
-    supabase.from("shop_verifications").select("*").order("updated_at", { ascending: false }),
-    supabase.from("verification_documents").select("*").order("uploaded_at", { ascending: false }),
-    supabase.from("trust_badges").select("*").order("granted_at", { ascending: false }),
-    supabase.from("review_moderation").select("*").order("updated_at", { ascending: false }),
-    supabase.from("safety_reports").select("*").order("created_at", { ascending: false }),
-    supabase.from("report_events").select("*").order("created_at", { ascending: false }),
-    supabase.from("disputes").select("*").order("created_at", { ascending: false }),
-    supabase.from("dispute_events").select("*").order("created_at", { ascending: false }),
-    supabase.from("risk_flags").select("*").order("created_at", { ascending: false }),
-    supabase.from("moderation_actions").select("*").order("created_at", { ascending: false }),
-    supabase.from("reliability_scores").select("*").order("updated_at", { ascending: false })
-  ]);
-
-  results.forEach(assertNoError);
-
   const [
     barberVerifications,
     shopVerifications,
@@ -349,10 +106,23 @@ async function readSupabaseState(supabase: SupabaseClient): Promise<TrustState> 
     riskFlags,
     moderationActions,
     reliabilityScores
-  ] = results;
+  ] = await Promise.all([
+    readOrderedRowsOptional(supabase, "barber_verifications", "updated_at"),
+    readOrderedRowsOptional(supabase, "shop_verifications", "updated_at"),
+    readOrderedRowsOptional(supabase, "verification_documents", "uploaded_at"),
+    readOrderedRowsOptional(supabase, "trust_badges", "granted_at"),
+    readOrderedRowsOptional(supabase, "review_moderation", "updated_at"),
+    readOrderedRowsOptional(supabase, "safety_reports", "created_at"),
+    readOrderedRowsOptional(supabase, "report_events", "created_at"),
+    readOrderedRowsOptional(supabase, "disputes", "created_at"),
+    readOrderedRowsOptional(supabase, "dispute_events", "created_at"),
+    readOrderedRowsOptional(supabase, "risk_flags", "created_at"),
+    readOrderedRowsOptional(supabase, "moderation_actions", "created_at"),
+    readOrderedRowsOptional(supabase, "reliability_scores", "updated_at")
+  ]);
 
   return {
-    barberVerifications: (barberVerifications.data ?? []).map((record: any) => ({
+    barberVerifications: barberVerifications.map((record: any) => ({
       id: record.id,
       barberId: record.barber_reference,
       category: record.category,
@@ -379,7 +149,7 @@ async function readSupabaseState(supabase: SupabaseClient): Promise<TrustState> 
       documentPath: record.document_path ?? undefined,
       updatedAt: record.updated_at
     })),
-    shopVerifications: (shopVerifications.data ?? []).map((record: any) => ({
+    shopVerifications: shopVerifications.map((record: any) => ({
       id: record.id,
       shopId: record.shop_reference,
       category: record.category,
@@ -405,7 +175,7 @@ async function readSupabaseState(supabase: SupabaseClient): Promise<TrustState> 
       documentPath: record.document_path ?? undefined,
       updatedAt: record.updated_at
     })),
-    verificationDocuments: (verificationDocuments.data ?? []).map((record: any) => ({
+    verificationDocuments: verificationDocuments.map((record: any) => ({
       id: record.id,
       ownerType: record.owner_type,
       ownerId: record.owner_reference,
@@ -478,7 +248,7 @@ async function readSupabaseState(supabase: SupabaseClient): Promise<TrustState> 
       createdAt: record.created_at,
       updatedAt: record.updated_at
     })),
-    trustBadges: (trustBadges.data ?? []).map((record: any) => ({
+    trustBadges: trustBadges.map((record: any) => ({
       id: record.id,
       scopeType: record.scope_type,
       scopeId: record.scope_reference,
@@ -488,7 +258,7 @@ async function readSupabaseState(supabase: SupabaseClient): Promise<TrustState> 
       grantedAt: record.granted_at,
       expiresAt: record.expires_at ?? undefined
     })),
-    reviewModeration: (reviewModeration.data ?? []).map((record: any) => ({
+    reviewModeration: reviewModeration.map((record: any) => ({
       id: record.id,
       reviewId: record.review_reference,
       barberId: record.barber_reference,
@@ -503,7 +273,7 @@ async function readSupabaseState(supabase: SupabaseClient): Promise<TrustState> 
       createdAt: record.created_at,
       updatedAt: record.updated_at
     })),
-    safetyReports: (safetyReports.data ?? []).map((record: any) => ({
+    safetyReports: safetyReports.map((record: any) => ({
       id: record.id,
       reporterRole: record.reporter_role,
       reporterId: record.reporter_reference,
@@ -517,7 +287,7 @@ async function readSupabaseState(supabase: SupabaseClient): Promise<TrustState> 
       createdAt: record.created_at,
       updatedAt: record.updated_at
     })),
-    reportEvents: (reportEvents.data ?? []).map((record: any) => ({
+    reportEvents: reportEvents.map((record: any) => ({
       id: record.id,
       reportId: record.report_reference,
       actorRole: record.actor_role,
@@ -526,7 +296,7 @@ async function readSupabaseState(supabase: SupabaseClient): Promise<TrustState> 
       notes: record.notes ?? undefined,
       createdAt: record.created_at
     })),
-    disputes: (disputes.data ?? []).map((record: any) => ({
+    disputes: disputes.map((record: any) => ({
       id: record.id,
       disputeType: record.dispute_type,
       disputeStatus: record.dispute_status,
@@ -541,7 +311,7 @@ async function readSupabaseState(supabase: SupabaseClient): Promise<TrustState> 
       createdAt: record.created_at,
       updatedAt: record.updated_at
     })),
-    disputeEvents: (disputeEvents.data ?? []).map((record: any) => ({
+    disputeEvents: disputeEvents.map((record: any) => ({
       id: record.id,
       disputeId: record.dispute_reference,
       actorRole: record.actor_role,
@@ -550,7 +320,7 @@ async function readSupabaseState(supabase: SupabaseClient): Promise<TrustState> 
       notes: record.notes ?? undefined,
       createdAt: record.created_at
     })),
-    riskFlags: (riskFlags.data ?? []).map((record: any) => ({
+    riskFlags: riskFlags.map((record: any) => ({
       id: record.id,
       entityType: record.entity_type,
       entityId: record.entity_reference,
@@ -563,7 +333,7 @@ async function readSupabaseState(supabase: SupabaseClient): Promise<TrustState> 
       createdAt: record.created_at,
       resolvedAt: record.resolved_at ?? undefined
     })),
-    moderationActions: (moderationActions.data ?? []).map((record: any) => ({
+    moderationActions: moderationActions.map((record: any) => ({
       id: record.id,
       targetType: record.target_type,
       targetId: record.target_reference,
@@ -572,7 +342,7 @@ async function readSupabaseState(supabase: SupabaseClient): Promise<TrustState> 
       actorId: record.actor_reference,
       createdAt: record.created_at
     })),
-    reliabilityScores: (reliabilityScores.data ?? []).map((record: any) => ({
+    reliabilityScores: reliabilityScores.map((record: any) => ({
       barberId: record.barber_reference,
       completionRate: Number(record.completion_rate ?? 0),
       onTimeRate: Number(record.on_time_rate ?? 0),
@@ -584,31 +354,27 @@ async function readSupabaseState(supabase: SupabaseClient): Promise<TrustState> 
   };
 }
 
-function createDemoProvider(): TrustProvider {
+function createEmptyProvider(): TrustProvider {
+  const unavailable = (): never => {
+    throw new Error("Trust data is unavailable because Supabase is not configured.");
+  };
+
   return {
-    kind: "demo",
+    kind: "supabase",
     async readState() {
-      return clone(getTrustState());
+      return createEmptyTrustState();
     },
-    async submitBarberVerification(actor, input) {
-      const result = submitBarberVerificationInState(getTrustState(), actor, input);
-      setTrustState(result.state);
-      return result;
+    async submitBarberVerification() {
+      return unavailable();
     },
-    async submitShopVerification(actor, input) {
-      const result = submitShopVerificationInState(getTrustState(), actor, input);
-      setTrustState(result.state);
-      return result;
+    async submitShopVerification() {
+      return unavailable();
     },
-    async submitSafetyReport(actor, input) {
-      const result = submitSafetyReportInState(getTrustState(), actor, input);
-      setTrustState(result.state);
-      return result;
+    async submitSafetyReport() {
+      return unavailable();
     },
-    async submitDispute(actor, input) {
-      const result = submitDisputeInState(getTrustState(), actor, input);
-      setTrustState(result.state);
-      return result;
+    async submitDispute() {
+      return unavailable();
     }
   };
 }
@@ -787,13 +553,13 @@ function createSupabaseProvider(supabase: SupabaseClient): TrustProvider {
 
 export async function getTrustProvider(): Promise<TrustProvider> {
   if (!isSupabaseEnabled()) {
-    return createDemoProvider();
+    return createEmptyProvider();
   }
 
   const supabase = createSupabaseAdminClient();
 
   if (!supabase) {
-    return createDemoProvider();
+    return createEmptyProvider();
   }
 
   return createSupabaseProvider(supabase);

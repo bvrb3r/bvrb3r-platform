@@ -207,11 +207,11 @@ describe("architect console routes", () => {
         suspendedAccounts: 0,
         bannedAccounts: 0
       },
-      filters: { search: "phillip", role: "barber", status: "pending_review" },
+      filters: { search: "phillip", role: "barber", status: "pending_review", onboarding: "role_selected" },
       warnings: []
     });
 
-    const response = await getArchitectAccounts(new NextRequest("https://bvrb3r.demo/api/architect/accounts?search=phillip&role=barber&status=pending_review"));
+    const response = await getArchitectAccounts(new NextRequest("https://bvrb3r.demo/api/architect/accounts?search=phillip&role=barber&status=pending_review&onboarding=role_selected"));
     const body = await response.json();
 
     expect(response.status).toBe(200);
@@ -219,7 +219,8 @@ describe("architect console routes", () => {
     expect(getArchitectAccountDirectoryPayloadMock).toHaveBeenCalledWith(founder, {
       search: "phillip",
       role: "barber",
-      status: "pending_review"
+      status: "pending_review",
+      onboarding: "role_selected"
     });
   });
 

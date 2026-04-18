@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import type { ComponentProps, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ArchitectAccountDetailPayload, ArchitectAccountDirectoryPayload } from "@/types/platform-admin";
+import type { ArchitectAccountDetailPayload, ArchitectAccountDirectoryPayload, ArchitectDashboardPayload } from "@/types/platform-admin";
 
 const {
   useArchitectAccountDirectoryQueryMock,
@@ -47,12 +47,14 @@ vi.mock("@/lib/platform-admin/client", () => ({
 
 import { ArchitectAccountDirectoryWorkspace } from "@/components/operations/architect-account-directory-workspace";
 import { ArchitectAccountDetailWorkspace } from "@/components/operations/architect-account-detail-workspace";
+import { ArchitectDashboard } from "@/components/operations/architect-dashboard";
 
 const directoryPayload: ArchitectAccountDirectoryPayload = {
   accounts: [
     {
       profileId: "profile-barber",
       authUserId: "profile-barber",
+      profileExists: true,
       fullName: "Phillip McGee",
       email: "phillipmcgee813@gmail.com",
       role: "barber",
@@ -77,6 +79,7 @@ const directoryPayload: ArchitectAccountDirectoryPayload = {
     {
       profileId: "profile-owner",
       authUserId: "profile-owner",
+      profileExists: true,
       fullName: "BVRB3R Shop",
       email: "bvrb3r@gmail.com",
       role: "shop_owner",
@@ -114,11 +117,20 @@ const directoryPayload: ArchitectAccountDirectoryPayload = {
   warnings: []
 };
 
+const dashboardPayload: ArchitectDashboardPayload = {
+  actorName: "BVRB3R Architect",
+  counts: directoryPayload.counts,
+  recentSignups: directoryPayload.accounts,
+  recentApprovalActions: [],
+  warnings: []
+};
+
 const detailPayload: ArchitectAccountDetailPayload = {
   account: {
     ...directoryPayload.accounts[0],
     profile: {
       id: "profile-barber",
+      exists: true,
       role: "barber",
       fullName: "Phillip McGee",
       email: "phillipmcgee813@gmail.com",
@@ -127,7 +139,19 @@ const detailPayload: ArchitectAccountDetailPayload = {
       onboardingState: "complete",
       phoneVerifiedAt: null,
       lastOnboardedAt: null,
-      createdAt: "2026-04-02T12:00:00.000Z"
+      createdAt: "2026-04-02T12:00:00.000Z",
+      updatedAt: "2026-04-02T12:00:00.000Z"
+    },
+    authIdentity: {
+      id: "profile-barber",
+      email: "phillipmcgee813@gmail.com",
+      phone: "8135550101",
+      providers: ["email"],
+      createdAt: "2026-04-02T12:00:00.000Z",
+      updatedAt: "2026-04-02T12:00:00.000Z",
+      lastSignInAt: "2026-04-03T12:00:00.000Z",
+      emailVerified: true,
+      phoneVerified: false
     },
     barber: {
       id: "barber-1",
@@ -189,6 +213,19 @@ describe("architect account workspaces", () => {
       isPending: false,
       mutateAsync: vi.fn()
     });
+  });
+
+  it("renders only founder-priority dashboard cards with filtered links", () => {
+    render(<ArchitectDashboard initialData={dashboardPayload} />);
+
+    expect(screen.getByRole("link", { name: /clients 0 real client accounts/i })).toHaveAttribute("href", "/architect/accounts?role=client");
+    expect(screen.getByRole("link", { name: /barbers 1 real barber accounts/i })).toHaveAttribute("href", "/architect/accounts?role=barber");
+    expect(screen.getByRole("link", { name: /shop owners 1 real owner accounts/i })).toHaveAttribute("href", "/architect/accounts?role=shop_owner");
+    expect(screen.getByRole("link", { name: /pending barbers 1 needs platform review/i })).toHaveAttribute("href", "/architect/accounts?role=barber&status=pending_review");
+    expect(screen.getByRole("link", { name: /pending shops 1 needs platform review/i })).toHaveAttribute("href", "/architect/accounts?role=shop_owner&status=pending_review");
+    expect(screen.queryByText("Platform admins")).not.toBeInTheDocument();
+    expect(screen.queryByText("Approved barbers")).not.toBeInTheDocument();
+    expect(screen.queryByText("Total accounts")).not.toBeInTheDocument();
   });
 
   it("renders real barber and shop-owner accounts in the searchable directory", () => {

@@ -53,6 +53,7 @@ function buildAccountDirectoryQuery(filters: ArchitectAccountDirectoryFilters) {
   if (filters.search?.trim()) params.set("search", filters.search.trim());
   if (filters.role && filters.role !== "all") params.set("role", filters.role);
   if (filters.status && filters.status !== "all") params.set("status", filters.status);
+  if (filters.onboarding && filters.onboarding !== "all") params.set("onboarding", filters.onboarding);
 
   const query = params.toString();
   return query ? `/api/architect/accounts?${query}` : "/api/architect/accounts";

@@ -30,6 +30,27 @@ type ProfileRow = {
   created_at?: string | null;
 };
 
+type AuthUserRow = {
+  id: string;
+  email?: string | null;
+  phone?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  last_sign_in_at?: string | null;
+  email_confirmed_at?: string | null;
+  phone_confirmed_at?: string | null;
+  app_metadata?: {
+    provider?: string | null;
+    providers?: unknown;
+    role?: string | null;
+  } | null;
+  user_metadata?: Record<string, unknown> | null;
+  identities?: Array<{
+    provider?: string | null;
+    identity_data?: Record<string, unknown> | null;
+  }> | null;
+};
+
 type ClientRow = {
   id: string;
   reference_code?: string | null;
@@ -129,6 +150,7 @@ type VerificationReviewRow = {
 };
 
 type AccountData = {
+  authUsers: AuthUserRow[];
   profiles: ProfileRow[];
   clients: ClientRow[];
   barbers: BarberRow[];
@@ -158,6 +180,7 @@ let accountDataOverlay: AccountData | null = null;
 
 function emptyData(): AccountData {
   return {
+    authUsers: [],
     profiles: [],
     clients: [],
     barbers: [],
@@ -218,6 +241,41 @@ async function safeRows<T>(
   }
 }
 
+function isRealOperationalAuthUser(user: AuthUserRow) {
+  const email = `${user.email ?? ""}`.trim().toLowerCase();
+  if (!email) return true;
+  return !email.endsWith(".demo") && !email.includes("@bvrb3r.demo");
+}
+
+async function readAuthUsers(warnings: string[], supabase: NonNullable<ReturnType<typeof getSupabase>>): Promise<AuthUserRow[]> {
+  try {
+    const users: AuthUserRow[] = [];
+    let scanned = 0;
+    let page = 1;
+    const perPage = 1000;
+
+    while (page <= 20) {
+      const result = await supabase.auth.admin.listUsers({ page, perPage });
+      if (result.error) throw result.error;
+
+      const rawBatch = (result.data?.users ?? []) as AuthUserRow[];
+      const batch = rawBatch.filter(isRealOperationalAuthUser);
+      users.push(...batch);
+      scanned += rawBatch.length;
+
+      const total = result.data?.total ?? scanned;
+      if (scanned >= total || rawBatch.length < perPage) break;
+      page += 1;
+    }
+
+    return users;
+  } catch (error) {
+    console.error("[Architect Accounts] Auth users read failed", error);
+    warnings.push("Auth-backed users could not be read; directory is falling back to profile rows.");
+    return [];
+  }
+}
+
 async function readAccountData(warnings: string[]): Promise<AccountData> {
   if (accountDataOverlay) return clone(accountDataOverlay);
 
@@ -225,6 +283,7 @@ async function readAccountData(warnings: string[]): Promise<AccountData> {
   if (!supabase) return emptyData();
 
   const [
+    authUsers,
     profiles,
     clients,
     barbers,
@@ -243,6 +302,7 @@ async function readAccountData(warnings: string[]): Promise<AccountData> {
     verificationDocuments,
     verificationReviews
   ] = await Promise.all([
+    readAuthUsers(warnings, supabase),
     safeRows<ProfileRow>(warnings, "Profiles", () => supabase.from("profiles").select("id, role, full_name, email, phone, primary_onboarding_role, onboarding_state, phone_verified_at, last_onboarded_at, created_at")),
     safeRows<ClientRow>(warnings, "Clients", () => supabase.from("clients").select("id, reference_code, profile_id, loyalty_points, retention_tag, created_at")),
     safeRows<BarberRow>(warnings, "Barbers", () => supabase.from("barbers").select("id, reference_code, profile_id, compensation_model, barber_subtype, app_approval_status, shop_approval_status, created_at")),
@@ -263,6 +323,7 @@ async function readAccountData(warnings: string[]): Promise<AccountData> {
   ]);
 
   return {
+    authUsers,
     profiles,
     clients,
     barbers,
@@ -289,6 +350,60 @@ function dedupeWarnings(warnings: string[]) {
 
 function byProfileId<T extends { profile_id?: string | null }>(rows: T[]) {
   return new Map(rows.filter((row) => row.profile_id).map((row) => [row.profile_id as string, row]));
+}
+
+function stringFromMetadata(metadata: Record<string, unknown> | null | undefined, key: string) {
+  const value = metadata?.[key];
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function getAuthDisplayName(user?: AuthUserRow) {
+  if (!user) return null;
+  const metadata = user.user_metadata;
+  const direct = stringFromMetadata(metadata, "full_name")
+    ?? stringFromMetadata(metadata, "name")
+    ?? stringFromMetadata(metadata, "display_name")
+    ?? stringFromMetadata(metadata, "username");
+  if (direct) return direct;
+
+  const firstName = stringFromMetadata(metadata, "first_name");
+  const lastName = stringFromMetadata(metadata, "last_name");
+  return [firstName, lastName].filter(Boolean).join(" ") || null;
+}
+
+function getAuthProviders(user?: AuthUserRow) {
+  if (!user) return [];
+  const providers = new Set<string>();
+  const metadataProviders = user.app_metadata?.providers;
+  if (Array.isArray(metadataProviders)) {
+    for (const provider of metadataProviders) {
+      if (typeof provider === "string" && provider.trim()) providers.add(provider.trim());
+    }
+  }
+  if (user.app_metadata?.provider) providers.add(user.app_metadata.provider);
+  for (const identity of user.identities ?? []) {
+    if (identity.provider) providers.add(identity.provider);
+  }
+  return Array.from(providers).sort();
+}
+
+function getAuthPrimaryProvider(user?: AuthUserRow) {
+  return getAuthProviders(user)[0];
+}
+
+function profileFromAuthUser(user: AuthUserRow): ProfileRow {
+  return {
+    id: user.id,
+    role: user.app_metadata?.role ?? null,
+    full_name: getAuthDisplayName(user),
+    email: user.email ?? null,
+    phone: user.phone ?? null,
+    primary_onboarding_role: null,
+    onboarding_state: "missing_profile",
+    phone_verified_at: user.phone_confirmed_at ?? null,
+    last_onboarded_at: user.updated_at ?? null,
+    created_at: user.created_at ?? null
+  };
 }
 
 function barberReference(row?: BarberRow | null) {
@@ -375,9 +490,11 @@ function accountStatusFromControl(profile: ProfileRow, status: PlatformAdminAcco
 }
 
 async function getAccountStatuses(data: AccountData) {
-  const entries = await Promise.all(data.profiles.map(async (profile) => [
-    profile.id,
-    accountStatusFromControl(profile, await getPlatformAccountStatus(profile.id))
+  const profileById = new Map(data.profiles.map((profile) => [profile.id, profile]));
+  const ids = Array.from(new Set([...data.profiles.map((profile) => profile.id), ...data.authUsers.filter(isRealOperationalAuthUser).map((user) => user.id)]));
+  const entries = await Promise.all(ids.map(async (id) => [
+    id,
+    accountStatusFromControl(profileById.get(id) ?? profileFromAuthUser({ id }), await getPlatformAccountStatus(id))
   ] as const));
   return new Map(entries);
 }
@@ -444,11 +561,46 @@ function getMarketplaceBlockers(input: {
   return blockers;
 }
 
+function normalizeSearchToken(value?: string | null) {
+  return `${value ?? ""}`.trim().toLowerCase();
+}
+
+function digitsOnly(value?: string | null) {
+  return `${value ?? ""}`.replace(/\D+/g, "");
+}
+
+function buildSearchText(values: Array<string | number | boolean | null | undefined>) {
+  const raw = values.map((value) => normalizeSearchToken(String(value ?? ""))).filter(Boolean);
+  const normalized = raw.map((value) => value.replace(/[^a-z0-9@.]+/g, ""));
+  const phones = raw.map(digitsOnly).filter((value) => value.length >= 4);
+  return Array.from(new Set([...raw, ...normalized, ...phones])).join(" ");
+}
+
 async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountDirectoryItem[]> {
   const indexes = buildIndexes(data);
   const accountStatuses = await getAccountStatuses(data);
+  const profilesById = new Map(data.profiles.map((profile) => [profile.id, profile]));
+  const realAuthUsers = data.authUsers.filter(isRealOperationalAuthUser);
+  const authUsersById = new Map(realAuthUsers.map((user) => [user.id, user]));
+  const accountIds = Array.from(new Set([...data.profiles.map((profile) => profile.id), ...realAuthUsers.map((user) => user.id)]));
 
-  return data.profiles.map((profile) => {
+  const items: ArchitectAccountDirectoryItem[] = [];
+
+  for (const profileId of accountIds) {
+    const authUser = authUsersById.get(profileId);
+    const existingProfile = profilesById.get(profileId);
+    const baseProfile = existingProfile ?? (authUser ? profileFromAuthUser(authUser) : null);
+    if (!baseProfile) continue;
+
+    const profileExists = Boolean(existingProfile);
+    const profile: ProfileRow = {
+      ...baseProfile,
+      full_name: baseProfile.full_name ?? getAuthDisplayName(authUser),
+      email: baseProfile.email ?? authUser?.email ?? null,
+      phone: baseProfile.phone ?? authUser?.phone ?? null,
+      phone_verified_at: baseProfile.phone_verified_at ?? authUser?.phone_confirmed_at ?? null
+    };
+    const authProviders = getAuthProviders(authUser);
     const role = normalizeRole(profile, data);
     const barber = indexes.barbersByProfileId.get(profile.id);
     const shop = indexes.shopsByOwnerProfileId.get(profile.id);
@@ -479,7 +631,7 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
       || (row.owner_reference && (row.owner_reference === reference || row.owner_reference === shop?.id))
     ).length;
     const reviewCount = data.verificationReviews.filter((row) => verificationProfileIds.includes(row.verification_profile_id)).length;
-    const accountStatus = accountStatuses.get(profile.id) ?? "active";
+    const accountStatus = profileExists ? accountStatuses.get(profile.id) ?? "active" : "profile_only";
     const approvalStatus = getApprovalStatus(role, barber, shop);
     const verificationStatus = getVerificationStatus(verification);
     const marketplaceBlockers = getMarketplaceBlockers({
@@ -497,12 +649,19 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
       activeLinkedBarbers
     });
 
-    return {
+    items.push({
       profileId: profile.id,
       authUserId: profile.id,
+      profileExists,
       fullName: profile.full_name ?? profile.email ?? profile.id,
       email: profile.email ?? "",
       phone: profile.phone ?? undefined,
+      authProvider: getAuthPrimaryProvider(authUser),
+      authProviders,
+      authCreatedAt: authUser?.created_at ?? null,
+      lastSignInAt: authUser?.last_sign_in_at ?? null,
+      emailVerified: Boolean(authUser?.email_confirmed_at),
+      phoneVerified: Boolean(profile.phone_verified_at ?? authUser?.phone_confirmed_at),
       role,
       roleLabel: roleLabel(role, barber),
       primaryOnboardingRole: profile.primary_onboarding_role,
@@ -525,14 +684,20 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
       documentCount,
       reviewCount,
       marketplaceBlockers,
-      searchText: [
+      searchText: buildSearchText([
         profile.full_name,
+        authUser ? getAuthDisplayName(authUser) : null,
         profile.email,
+        authUser?.email,
         profile.phone,
+        authUser?.phone,
         role,
         roleLabel(role, barber),
         profile.primary_onboarding_role,
         profile.onboarding_state,
+        profileExists ? "profile exists" : "missing profile auth only",
+        getAuthPrimaryProvider(authUser),
+        ...authProviders,
         approvalStatus,
         verificationStatus,
         barber?.barber_subtype,
@@ -541,9 +706,11 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
         shop?.name,
         shop?.city,
         shop?.state
-      ].filter(Boolean).join(" ").toLowerCase()
-    };
-  }).sort((left, right) => left.fullName.localeCompare(right.fullName));
+      ])
+    });
+  }
+
+  return items.sort((left, right) => left.fullName.localeCompare(right.fullName));
 }
 
 function matchesStatus(item: ArchitectAccountDirectoryItem, status: ArchitectAccountStatusFilter) {
@@ -556,14 +723,29 @@ function matchesStatus(item: ArchitectAccountDirectoryItem, status: ArchitectAcc
   return true;
 }
 
+function matchesOnboarding(item: ArchitectAccountDirectoryItem, onboarding: ArchitectAccountDirectoryFilters["onboarding"]) {
+  if (!onboarding || onboarding === "all") return true;
+  if (onboarding === "missing_profile") return !item.profileExists;
+  return item.onboardingState === onboarding;
+}
+
 function filterItems(items: ArchitectAccountDirectoryItem[], filters: ArchitectAccountDirectoryFilters) {
   const role = filters.role ?? "all";
   const status = filters.status ?? "all";
+  const onboarding = filters.onboarding ?? "all";
   const search = filters.search?.trim().toLowerCase() ?? "";
+  const normalizedSearch = search.replace(/[^a-z0-9@.]+/g, "");
+  const phoneSearch = digitsOnly(search);
   return items.filter((item) =>
     (role === "all" || item.role === role)
     && matchesStatus(item, status)
-    && (!search || item.searchText.includes(search))
+    && matchesOnboarding(item, onboarding)
+    && (
+      !search
+      || item.searchText.includes(search)
+      || (normalizedSearch.length > 0 && item.searchText.includes(normalizedSearch))
+      || (phoneSearch.length >= 4 && item.searchText.includes(phoneSearch))
+    )
   );
 }
 
@@ -668,7 +850,8 @@ export async function getArchitectAccountDirectoryPayload(
     filters: {
       search: filters.search ?? "",
       role: filters.role ?? "all",
-      status: filters.status ?? "all"
+      status: filters.status ?? "all",
+      onboarding: filters.onboarding ?? "all"
     },
     warnings: dedupeWarnings(warnings.length ? [ACCOUNT_WARNING, ...warnings] : [])
   };
@@ -701,7 +884,19 @@ export async function getArchitectAccountDetailPayload(actor: UserAccount, profi
   }
 
   const indexes = buildIndexes(data);
-  const profile = data.profiles.find((row) => row.id === profileId)!;
+  const authUser = data.authUsers.find((row) => row.id === profileId);
+  const existingProfile = data.profiles.find((row) => row.id === profileId);
+  const profile = existingProfile ?? (authUser ? profileFromAuthUser(authUser) : null);
+  if (!profile) {
+    return { account: null, warnings: dedupeWarnings(warnings) };
+  }
+  const effectiveProfile: ProfileRow = {
+    ...profile,
+    full_name: profile.full_name ?? getAuthDisplayName(authUser),
+    email: profile.email ?? authUser?.email ?? null,
+    phone: profile.phone ?? authUser?.phone ?? null,
+    phone_verified_at: profile.phone_verified_at ?? authUser?.phone_confirmed_at ?? null
+  };
   const barber = indexes.barbersByProfileId.get(profileId);
   const shop = indexes.shopsByOwnerProfileId.get(profileId);
   const client = indexes.clientsByProfileId.get(profileId);
@@ -737,17 +932,30 @@ export async function getArchitectAccountDetailPayload(actor: UserAccount, profi
     account: {
       ...account,
       profile: {
-        id: profile.id,
-        role: profile.role,
-        fullName: profile.full_name,
-        email: profile.email,
-        phone: profile.phone,
-        primaryOnboardingRole: profile.primary_onboarding_role,
-        onboardingState: profile.onboarding_state,
-        phoneVerifiedAt: profile.phone_verified_at ?? null,
-        lastOnboardedAt: profile.last_onboarded_at ?? null,
-        createdAt: profile.created_at ?? null
+        id: effectiveProfile.id,
+        exists: Boolean(existingProfile),
+        role: effectiveProfile.role,
+        fullName: effectiveProfile.full_name,
+        email: effectiveProfile.email,
+        phone: effectiveProfile.phone,
+        primaryOnboardingRole: effectiveProfile.primary_onboarding_role,
+        onboardingState: effectiveProfile.onboarding_state,
+        phoneVerifiedAt: effectiveProfile.phone_verified_at ?? null,
+        lastOnboardedAt: effectiveProfile.last_onboarded_at ?? null,
+        createdAt: effectiveProfile.created_at ?? authUser?.created_at ?? null,
+        updatedAt: authUser?.updated_at ?? effectiveProfile.last_onboarded_at ?? null
       },
+      authIdentity: authUser ? {
+        id: authUser.id,
+        email: authUser.email ?? null,
+        phone: authUser.phone ?? null,
+        providers: getAuthProviders(authUser),
+        createdAt: authUser.created_at ?? null,
+        updatedAt: authUser.updated_at ?? null,
+        lastSignInAt: authUser.last_sign_in_at ?? null,
+        emailVerified: Boolean(authUser.email_confirmed_at),
+        phoneVerified: Boolean(authUser.phone_confirmed_at)
+      } : undefined,
       barber: barber ? {
         id: barber.id,
         referenceCode: reference,

@@ -19,7 +19,10 @@ function createEmptyDirectoryPayload(filters: ArchitectAccountDirectoryFilters, 
       suspendedAccounts: 0,
       bannedAccounts: 0
     },
-    filters,
+    filters: {
+      ...filters,
+      onboarding: filters.onboarding ?? "all"
+    },
     warnings
   };
 }
@@ -34,7 +37,8 @@ export default async function ArchitectAccountsPage({
   const initialFilters: ArchitectAccountDirectoryFilters = {
     search: typeof resolved?.search === "string" ? resolved.search : "",
     role: typeof resolved?.role === "string" ? resolved.role as ArchitectAccountDirectoryFilters["role"] : "all",
-    status: typeof resolved?.status === "string" ? resolved.status as ArchitectAccountDirectoryFilters["status"] : "all"
+    status: typeof resolved?.status === "string" ? resolved.status as ArchitectAccountDirectoryFilters["status"] : "all",
+    onboarding: typeof resolved?.onboarding === "string" ? resolved.onboarding as ArchitectAccountDirectoryFilters["onboarding"] : "all"
   };
   let initialData = createEmptyDirectoryPayload(initialFilters);
 

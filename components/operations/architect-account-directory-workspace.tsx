@@ -14,6 +14,7 @@ import type {
   ArchitectAccountDirectoryFilters,
   ArchitectAccountDirectoryItem,
   ArchitectAccountDirectoryPayload,
+  ArchitectAccountOnboardingFilter,
   ArchitectAccountRoleFilter,
   ArchitectAccountStatusFilter
 } from "@/types/platform-admin";
@@ -37,6 +38,16 @@ const statusOptions: Array<{ value: ArchitectAccountStatusFilter; label: string 
   { value: "deactivated", label: "Deactivated" },
   { value: "suspended", label: "Suspended" },
   { value: "banned", label: "Banned" }
+];
+
+const onboardingOptions: Array<{ value: ArchitectAccountOnboardingFilter; label: string }> = [
+  { value: "all", label: "All onboarding" },
+  { value: "missing_profile", label: "Missing profile" },
+  { value: "awaiting_contact_verification", label: "Awaiting contact" },
+  { value: "awaiting_role_selection", label: "Awaiting role" },
+  { value: "role_selected", label: "Role selected" },
+  { value: "active", label: "Active" },
+  { value: "complete", label: "Complete" }
 ];
 
 function formatLabel(value: string) {
@@ -71,6 +82,8 @@ function AccountCard({ account }: { account: ArchitectAccountDirectoryItem }) {
           <div className="mt-3 flex flex-wrap gap-2">
             <span className={cn("status-pill", badgeClasses(account.approvalStatus))}>Approval {formatLabel(account.approvalStatus)}</span>
             <span className={cn("status-pill", badgeClasses(account.verificationStatus))}>Verification {formatLabel(account.verificationStatus)}</span>
+            {!account.profileExists ? <span className="status-pill text-white/72">Auth-only</span> : null}
+            {account.authProvider ? <span className="status-pill text-white/72">{formatLabel(account.authProvider)}</span> : null}
             {account.shopName ? <span className="status-pill text-white/72">{account.shopName}</span> : null}
             {account.username ? <span className="status-pill text-white/72">@{account.username}</span> : null}
           </div>
@@ -123,7 +136,8 @@ export function ArchitectAccountDirectoryWorkspace({
   const [filters, setFilters] = useState<ArchitectAccountDirectoryFilters>({
     search: initialFilters.search ?? "",
     role: initialFilters.role ?? "all",
-    status: initialFilters.status ?? "all"
+    status: initialFilters.status ?? "all",
+    onboarding: initialFilters.onboarding ?? "all"
   });
   const deferredSearch = useDeferredValue(filters.search ?? "");
   const queryFilters = useMemo(() => ({ ...filters, search: deferredSearch }), [deferredSearch, filters]);
@@ -185,7 +199,7 @@ export function ArchitectAccountDirectoryWorkspace({
         ) : null}
 
         <Card className="rounded-[32px] p-6">
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_220px_220px]">
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_200px_200px_220px]">
             <div>
               <label className="mb-2 block surface-label">Search accounts</label>
               <div className="relative">
@@ -194,7 +208,7 @@ export function ArchitectAccountDirectoryWorkspace({
                   value={filters.search ?? ""}
                   onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))}
                   className="pl-11"
-                  placeholder="Email, name, role, shop, username, approval"
+                  placeholder="Email, phone, name, role, shop, username, provider"
                 />
               </div>
             </div>
@@ -208,6 +222,12 @@ export function ArchitectAccountDirectoryWorkspace({
               <label className="mb-2 block surface-label">Status</label>
               <Select value={filters.status ?? "all"} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value as ArchitectAccountStatusFilter }))}>
                 {statusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </Select>
+            </div>
+            <div>
+              <label className="mb-2 block surface-label">Onboarding</label>
+              <Select value={filters.onboarding ?? "all"} onChange={(event) => setFilters((current) => ({ ...current, onboarding: event.target.value as ArchitectAccountOnboardingFilter }))}>
+                {onboardingOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </Select>
             </div>
           </div>

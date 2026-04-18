@@ -346,11 +346,20 @@ export type ArchitectAccountStatusFilter =
   | "approved"
   | "rejected"
   | "needs_update";
+export type ArchitectAccountOnboardingFilter =
+  | "all"
+  | "missing_profile"
+  | "awaiting_contact_verification"
+  | "awaiting_role_selection"
+  | "role_selected"
+  | "active"
+  | "complete";
 
 export interface ArchitectAccountDirectoryFilters {
   search?: string;
   role?: ArchitectAccountRoleFilter;
   status?: ArchitectAccountStatusFilter;
+  onboarding?: ArchitectAccountOnboardingFilter;
 }
 
 export interface ArchitectAccountSummaryCounts {
@@ -370,9 +379,16 @@ export interface ArchitectAccountSummaryCounts {
 export interface ArchitectAccountDirectoryItem {
   profileId: string;
   authUserId: string;
+  profileExists: boolean;
   fullName: string;
   email: string;
   phone?: string;
+  authProvider?: string;
+  authProviders?: string[];
+  authCreatedAt?: string | null;
+  lastSignInAt?: string | null;
+  emailVerified?: boolean;
+  phoneVerified?: boolean;
   role: ArchitectAccountRoleFilter;
   roleLabel: string;
   primaryOnboardingRole?: string | null;
@@ -417,6 +433,7 @@ export interface ArchitectAccountDetailPayload {
   account: (ArchitectAccountDirectoryItem & {
     profile: {
       id: string;
+      exists: boolean;
       role?: string | null;
       fullName?: string | null;
       email?: string | null;
@@ -426,6 +443,18 @@ export interface ArchitectAccountDetailPayload {
       phoneVerifiedAt?: string | null;
       lastOnboardedAt?: string | null;
       createdAt?: string | null;
+      updatedAt?: string | null;
+    };
+    authIdentity?: {
+      id: string;
+      email?: string | null;
+      phone?: string | null;
+      providers: string[];
+      createdAt?: string | null;
+      updatedAt?: string | null;
+      lastSignInAt?: string | null;
+      emailVerified: boolean;
+      phoneVerified: boolean;
     };
     barber?: {
       id: string;

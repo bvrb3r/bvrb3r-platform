@@ -1,11 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import type { ComponentProps } from "react";
 import { AlertTriangle, ClipboardCheck, Search, ShieldCheck, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import type { ArchitectAccountDirectoryItem, ArchitectDashboardPayload, PlatformAdminAuditLogEntry } from "@/types/platform-admin";
+
+type LinkHref = ComponentProps<typeof Link>["href"];
 
 function formatLabel(value: string) {
   return value.replaceAll("_", " ").replace(/\b\w/g, (segment) => segment.toUpperCase());
@@ -43,19 +46,27 @@ function Metric({
   label,
   value,
   detail,
+  href,
   accent = false
 }: {
   label: string;
   value: number;
   detail: string;
+  href: LinkHref;
   accent?: boolean;
 }) {
   return (
-    <div className={cn("rounded-[24px] border p-4", accent ? "border-[#7CFF00]/18 bg-[#7CFF00]/8" : "border-white/8 bg-black/20")}>
+    <Link
+      href={href}
+      className={cn(
+        "block rounded-[24px] border p-4 transition hover:border-[#7CFF00]/30 hover:bg-white/[0.04]",
+        accent ? "border-[#7CFF00]/18 bg-[#7CFF00]/8" : "border-white/8 bg-black/20"
+      )}
+    >
       <p className={cn("surface-label", accent ? "text-[#d7ffab]" : undefined)}>{label}</p>
       <p className="mt-3 text-3xl font-semibold text-white" data-display="true">{value}</p>
       <p className="mt-2 text-sm text-white/58">{detail}</p>
-    </div>
+    </Link>
   );
 }
 
@@ -158,16 +169,11 @@ export function ArchitectDashboard({ initialData }: { initialData: ArchitectDash
         ) : null}
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          <Metric label="Clients" value={data.counts.totalClients} detail="Real client profiles" accent />
-          <Metric label="Barbers" value={data.counts.totalBarbers} detail="Real barber profiles" />
-          <Metric label="Shop owners" value={data.counts.totalShopOwners} detail="Real owner profiles" />
-          <Metric label="Platform admins" value={data.counts.totalPlatformAdmins} detail="Architect-capable profiles" />
-          <Metric label="Suspended / banned" value={data.counts.suspendedAccounts + data.counts.bannedAccounts} detail="Restricted account access" />
-          <Metric label="Pending barbers" value={data.counts.pendingBarberApprovals} detail="Barber approval queue" />
-          <Metric label="Pending shops" value={data.counts.pendingShopOwnerApprovals} detail="Shop-owner approval queue" />
-          <Metric label="Approved barbers" value={data.counts.approvedBarbers} detail="Passed app approval" />
-          <Metric label="Approved shops" value={data.counts.approvedShops} detail="Passed app approval" />
-          <Metric label="Total accounts" value={data.counts.totalAccounts} detail="Profiles in live data" accent />
+          <Metric label="Clients" value={data.counts.totalClients} detail="Real client accounts" href="/architect/accounts?role=client" accent />
+          <Metric label="Barbers" value={data.counts.totalBarbers} detail="Real barber accounts" href="/architect/accounts?role=barber" />
+          <Metric label="Shop owners" value={data.counts.totalShopOwners} detail="Real owner accounts" href="/architect/accounts?role=shop_owner" />
+          <Metric label="Pending barbers" value={data.counts.pendingBarberApprovals} detail="Needs platform review" href="/architect/accounts?role=barber&status=pending_review" accent />
+          <Metric label="Pending shops" value={data.counts.pendingShopOwnerApprovals} detail="Needs platform review" href="/architect/accounts?role=shop_owner&status=pending_review" />
         </section>
 
         {!hasAccounts ? (

@@ -226,7 +226,7 @@ export function ArchitectAccountDetailWorkspace({
   }
 
   const isPlatformAdmin = account.role === "platform_admin";
-  const canManageAccountAccess = !isPlatformAdmin;
+  const canManageAccountAccess = !isPlatformAdmin && account.profileExists;
   const canUseVerificationActions = Boolean(selectedVerificationProfile);
 
   return (
@@ -285,13 +285,18 @@ export function ArchitectAccountDetailWorkspace({
             <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               <Field label="Profile id" value={account.profile.id} />
               <Field label="Auth-linked id" value={account.authUserId} />
+              <Field label="Profile row" value={account.profile.exists ? "Present" : "Missing"} />
+              <Field label="Auth providers" value={account.authIdentity?.providers.join(", ") || account.authProvider} />
               <Field label="Email" value={account.profile.email} />
               <Field label="Phone" value={account.profile.phone} />
+              <Field label="Email verified" value={account.authIdentity?.emailVerified} />
               <Field label="Role" value={account.profile.role} />
               <Field label="Primary role" value={account.profile.primaryOnboardingRole} />
               <Field label="Onboarding state" value={account.profile.onboardingState} />
               <Field label="Phone verified" value={formatDateTime(account.profile.phoneVerifiedAt)} />
+              <Field label="Last sign in" value={formatDateTime(account.authIdentity?.lastSignInAt)} />
               <Field label="Created" value={formatDateTime(account.profile.createdAt)} />
+              <Field label="Updated" value={formatDateTime(account.profile.updatedAt)} />
             </div>
           </Card>
 
@@ -323,7 +328,9 @@ export function ArchitectAccountDetailWorkspace({
               </div>
             ) : (
               <div className="mt-4 rounded-[22px] border border-white/8 bg-black/20 p-4 text-sm leading-7 text-white/58">
-                Platform admin access cannot be changed from Architect account detail.
+                {isPlatformAdmin
+                  ? "Platform admin access cannot be changed from Architect account detail."
+                  : "This auth identity is visible for support, but account access actions require a canonical profile row."}
               </div>
             )}
           </Card>

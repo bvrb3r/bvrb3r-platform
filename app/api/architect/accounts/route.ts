@@ -12,7 +12,8 @@ export async function GET(request: NextRequest) {
     const filters: ArchitectAccountDirectoryFilters = {
       search: searchParams.get("search") ?? "",
       role: (searchParams.get("role") ?? "all") as ArchitectAccountDirectoryFilters["role"],
-      status: (searchParams.get("status") ?? "all") as ArchitectAccountDirectoryFilters["status"]
+      status: (searchParams.get("status") ?? "all") as ArchitectAccountDirectoryFilters["status"],
+      onboarding: (searchParams.get("onboarding") ?? "all") as ArchitectAccountDirectoryFilters["onboarding"]
     };
     const payload = await getArchitectAccountDirectoryPayload(access.user, filters);
     return NextResponse.json(payload);

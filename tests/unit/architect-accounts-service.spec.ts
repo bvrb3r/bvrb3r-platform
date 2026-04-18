@@ -13,6 +13,65 @@ const founder = makePlatformAdminUser();
 
 function stageRealAccountRows() {
   stageArchitectAccountRowsForTests({
+    authUsers: [
+      {
+        id: "profile-admin",
+        email: "bvrb3r@icloud.com",
+        phone: null,
+        created_at: "2026-04-01T12:00:00.000Z",
+        updated_at: "2026-04-01T12:00:00.000Z",
+        last_sign_in_at: "2026-04-05T12:00:00.000Z",
+        email_confirmed_at: "2026-04-01T12:10:00.000Z",
+        phone_confirmed_at: null,
+        app_metadata: { provider: "email", providers: ["email"] },
+        user_metadata: { full_name: "BVRB3R Architect" },
+        identities: [{ provider: "email" }]
+      },
+      {
+        id: "profile-barber",
+        email: "phillipmcgee813@gmail.com",
+        phone: "+18135550101",
+        created_at: "2026-04-02T12:00:00.000Z",
+        updated_at: "2026-04-02T12:00:00.000Z",
+        last_sign_in_at: "2026-04-05T12:00:00.000Z",
+        email_confirmed_at: "2026-04-02T12:10:00.000Z",
+        phone_confirmed_at: "2026-04-02T12:20:00.000Z",
+        app_metadata: { provider: "email", providers: ["email"] },
+        user_metadata: { full_name: "Phillip McGee" },
+        identities: [{ provider: "email" }]
+      },
+      {
+        id: "profile-owner",
+        email: "bvrb3r@gmail.com",
+        phone: "+18135550202",
+        created_at: "2026-04-03T12:00:00.000Z",
+        updated_at: "2026-04-03T12:00:00.000Z",
+        email_confirmed_at: "2026-04-03T12:10:00.000Z",
+        app_metadata: { provider: "google", providers: ["google"] },
+        user_metadata: { full_name: "BVRB3R Shop" },
+        identities: [{ provider: "google" }]
+      },
+      {
+        id: "auth-apple-client",
+        email: "apple-client@icloud.com",
+        phone: "+18135550404",
+        created_at: "2026-04-05T12:00:00.000Z",
+        updated_at: "2026-04-05T12:00:00.000Z",
+        email_confirmed_at: "2026-04-05T12:10:00.000Z",
+        app_metadata: { provider: "apple", providers: ["apple"] },
+        user_metadata: { full_name: "Apple Client" },
+        identities: [{ provider: "apple" }]
+      },
+      {
+        id: "fake-demo-user",
+        email: "blaze@bvrb3r.demo",
+        phone: null,
+        created_at: "2026-04-05T12:00:00.000Z",
+        app_metadata: { provider: "email", providers: ["email"] },
+        user_metadata: { full_name: "Blaze King" },
+        identities: [{ provider: "email" }]
+      }
+    ],
     profiles: [
       {
         id: "profile-admin",
@@ -227,8 +286,8 @@ describe("architect account service", () => {
 
     const payload = await getArchitectDashboardPayload(founder);
 
-    expect(payload.counts.totalAccounts).toBe(4);
-    expect(payload.counts.totalClients).toBe(1);
+    expect(payload.counts.totalAccounts).toBe(5);
+    expect(payload.counts.totalClients).toBe(2);
     expect(payload.counts.totalBarbers).toBe(1);
     expect(payload.counts.totalShopOwners).toBe(1);
     expect(payload.counts.totalPlatformAdmins).toBe(1);
@@ -248,12 +307,42 @@ describe("architect account service", () => {
     expect(ownerPayload.accounts[0]?.profileId).toBe("profile-owner");
   });
 
+  it("searches by normalized phone and surfaces auth provider identity", async () => {
+    stageRealAccountRows();
+
+    const barberPayload = await getArchitectAccountDirectoryPayload(founder, { search: "(813) 555-0101", role: "all", status: "all" });
+    const googlePayload = await getArchitectAccountDirectoryPayload(founder, { search: "google", role: "all", status: "all" });
+    const applePayload = await getArchitectAccountDirectoryPayload(founder, { search: "apple-client@icloud.com", role: "all", status: "all" });
+
+    expect(barberPayload.accounts[0]?.profileId).toBe("profile-barber");
+    expect(barberPayload.accounts[0]?.phoneVerified).toBe(true);
+    expect(googlePayload.accounts[0]?.profileId).toBe("profile-owner");
+    expect(googlePayload.accounts[0]?.authProvider).toBe("google");
+    expect(applePayload.accounts[0]).toMatchObject({
+      profileId: "auth-apple-client",
+      profileExists: false,
+      authProvider: "apple",
+      accountStatus: "profile_only"
+    });
+  });
+
+  it("filters by onboarding state without requiring verification rows", async () => {
+    stageRealAccountRows();
+
+    const payload = await getArchitectAccountDirectoryPayload(founder, { onboarding: "missing_profile" });
+
+    expect(payload.accounts.map((account) => account.profileId)).toEqual(["auth-apple-client"]);
+    expect(payload.accounts[0]?.verificationStatus).toBe("missing_verification_profile");
+  });
+
   it("opens account detail from real profile data even when marketplace approval is still blocked", async () => {
     stageRealAccountRows();
 
     const payload = await getArchitectAccountDetailPayload(founder, "profile-barber");
 
     expect(payload.account?.email).toBe("phillipmcgee813@gmail.com");
+    expect(payload.account?.profile.exists).toBe(true);
+    expect(payload.account?.authIdentity?.providers).toEqual(["email"]);
     expect(payload.account?.barber?.id).toBe("barber-1");
     expect(payload.account?.documents).toHaveLength(1);
     expect(payload.account?.reviews).toHaveLength(1);
