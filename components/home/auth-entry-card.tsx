@@ -117,6 +117,12 @@ export function AuthEntryCard() {
             disabled={isBusy}
           />
         </div>
+        <Link
+          href="/forgot-password"
+          className="w-fit justify-self-end text-sm font-medium text-white/56 underline-offset-4 transition hover:text-[#cfff93] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7cff00] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+        >
+          Forgot password?
+        </Link>
 
         <Button type="submit" className="mt-1 h-14 w-full text-[11px]" disabled={isBusy}>
           Log in

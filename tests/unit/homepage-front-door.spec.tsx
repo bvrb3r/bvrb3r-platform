@@ -66,6 +66,7 @@ describe("homepage front door", () => {
 
     expect(screen.getByLabelText("Mobile number, email, or username")).toBeInTheDocument();
     expect(screen.getByLabelText("Password")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Forgot password?" })).toHaveAttribute("href", "/forgot-password");
     expect(screen.getByRole("button", { name: "Log in" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Continue with Google" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Continue with Apple" })).toBeInTheDocument();
