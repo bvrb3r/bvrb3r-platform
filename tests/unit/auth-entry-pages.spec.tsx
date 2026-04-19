@@ -63,6 +63,24 @@ describe("auth entry page routing", () => {
     expect(getCurrentUserFromServerMock).not.toHaveBeenCalled();
   });
 
+  it("does not send legacy email-link errors from /login back through the callback loop", async () => {
+    getCurrentUserFromServerMock.mockResolvedValue({
+      mode: "supabase",
+      authenticated: false,
+      user: null
+    });
+
+    const result = await LoginPage({
+      searchParams: Promise.resolve({
+        error: "Email link is invalid or has expired",
+        error_code: "otp_expired"
+      })
+    });
+
+    expect(redirectMock).not.toHaveBeenCalled();
+    expect(result).toBeTruthy();
+  });
+
   it("routes OAuth code returns on /signup into the canonical callback", async () => {
     await expect(
       SignupPage({

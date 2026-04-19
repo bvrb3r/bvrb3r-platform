@@ -6,6 +6,7 @@ const {
   authGetUserMock,
   buildRuntimeUserFromProductionAuthMock,
   ensureCanonicalProfileForAuthUserMock,
+  applySignupRoleIntentForAuthUserMock,
   resolvePostAuthDestinationMock
 } = vi.hoisted(() => ({
   redirectMock: vi.fn((path: string) => {
@@ -15,6 +16,7 @@ const {
   authGetUserMock: vi.fn(),
   buildRuntimeUserFromProductionAuthMock: vi.fn(),
   ensureCanonicalProfileForAuthUserMock: vi.fn(),
+  applySignupRoleIntentForAuthUserMock: vi.fn(),
   resolvePostAuthDestinationMock: vi.fn()
 }));
 
@@ -27,6 +29,7 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 vi.mock("@/lib/auth/production-identity", () => ({
+  applySignupRoleIntentForAuthUser: applySignupRoleIntentForAuthUserMock,
   buildRuntimeUserFromProductionAuth: buildRuntimeUserFromProductionAuthMock,
   ensureCanonicalProfileForAuthUser: ensureCanonicalProfileForAuthUserMock
 }));
@@ -44,6 +47,7 @@ describe("auth callback page", () => {
     authGetUserMock.mockReset();
     buildRuntimeUserFromProductionAuthMock.mockReset();
     ensureCanonicalProfileForAuthUserMock.mockReset();
+    applySignupRoleIntentForAuthUserMock.mockReset();
     resolvePostAuthDestinationMock.mockReset();
 
     createSupabaseServerClientMock.mockResolvedValue({
@@ -53,6 +57,10 @@ describe("auth callback page", () => {
     });
     ensureCanonicalProfileForAuthUserMock.mockResolvedValue({
       id: "auth-user-1"
+    });
+    applySignupRoleIntentForAuthUserMock.mockResolvedValue({
+      role: null,
+      provisioned: false
     });
   });
 
@@ -76,6 +84,19 @@ describe("auth callback page", () => {
       })
     ).rejects.toThrow("REDIRECT:/reset-password?code=recovery-code&type=recovery");
     expect(resolvePostAuthDestinationMock).not.toHaveBeenCalled();
+  });
+
+  it("renders a stable error state for invalid or expired email links", async () => {
+    const result = await AuthCallbackPage({
+      searchParams: Promise.resolve({
+        error: "otp_expired",
+        error_description: "Email link is invalid or has expired",
+        error_code: "otp_expired"
+      })
+    });
+
+    expect(redirectMock).not.toHaveBeenCalled();
+    expect(result).toBeTruthy();
   });
 
   it("redirects to login when no authenticated session exists after callback", async () => {
@@ -124,5 +145,6 @@ describe("auth callback page", () => {
         searchParams: Promise.resolve({})
       })
     ).rejects.toThrow("REDIRECT:/role-select");
+    expect(applySignupRoleIntentForAuthUserMock).toHaveBeenCalledWith(expect.objectContaining({ id: "auth-user-1" }));
   });
 });

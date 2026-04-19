@@ -2,6 +2,12 @@ import { createHash, randomInt, randomUUID } from "node:crypto";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { hasTwilioDeliveryConfig, isSupabaseEnabled, runtimeConfig } from "@/lib/config/runtime";
+import {
+  getRuntimeRoleForSignupIntent,
+  getSignupRoleIntentFromMetadata,
+  isSignupRoleIntent,
+  type SignupRoleIntent
+} from "@/lib/auth/signup-role-intent";
 import type {
   ApprovalStatus,
   BarberSubtype,
@@ -639,6 +645,14 @@ async function syncProfileFromAuth(authUser: AuthUserLike) {
 
   const profile = await readProfile(authUser.id);
   const payload = getProfileSyncPayload(authUser, profile);
+  const signupRoleIntent = getSignupRoleIntentFromMetadata(authUser.user_metadata);
+  const nextPrimaryOnboardingRole = profile?.primary_onboarding_role ?? signupRoleIntent ?? null;
+  const existingProfileRole = profile?.role === "shop_owner" ? "owner" : profile?.role ?? null;
+  const nextProfileRole = profile?.primary_onboarding_role
+    ? existingProfileRole ?? "client"
+    : signupRoleIntent
+      ? getRuntimeRoleForSignupIntent(signupRoleIntent)
+      : existingProfileRole ?? "client";
   const nextPhoneVerifiedAt = profile?.phone_verified_at ?? (payload.phoneVerified ? new Date().toISOString() : null);
   const nextFullName = profile?.full_name?.trim()
     ? profile.full_name.trim()
@@ -652,10 +666,12 @@ async function syncProfileFromAuth(authUser: AuthUserLike) {
     const update = await supabase
       .from("profiles")
       .update({
+        role: nextProfileRole,
         full_name: nextFullName,
         email: nextEmail,
         phone: nextPhone,
         phone_verified_at: nextPhoneVerifiedAt,
+        primary_onboarding_role: nextPrimaryOnboardingRole,
         onboarding_state: profile.onboarding_state ?? payload.onboardingState
       })
       .eq("id", authUser.id);
@@ -694,11 +710,12 @@ async function syncProfileFromAuth(authUser: AuthUserLike) {
     .from("profiles")
     .upsert({
       id: authUser.id,
-      role: "client",
+      role: nextProfileRole,
       full_name: payload.fullName,
       email: payload.email,
       phone: payload.phone || null,
       phone_verified_at: nextPhoneVerifiedAt,
+      primary_onboarding_role: nextPrimaryOnboardingRole,
       onboarding_state: payload.onboardingState
     }, { onConflict: "id" });
 
@@ -744,6 +761,157 @@ export async function ensureCanonicalProfileForAuthUser(authUser: AuthUserLike) 
   }
 
   return profile;
+}
+
+async function writeSignupRoleIntentToProfile(authUser: AuthUserLike, role: SignupRoleIntent) {
+  const supabase = await getSupabase();
+  if (!supabase) {
+    return role;
+  }
+
+  const profile = await readProfile(authUser.id);
+  if (profile?.primary_onboarding_role) {
+    return isSignupRoleIntent(profile.primary_onboarding_role) ? profile.primary_onboarding_role : null;
+  }
+
+  const payload = getProfileSyncPayload(authUser, profile);
+  const profileRole = getRuntimeRoleForSignupIntent(role);
+  const updatePayload = {
+    id: authUser.id,
+    role: profileRole,
+    full_name: profile?.full_name?.trim() || payload.fullName,
+    email: profile?.email?.trim() || payload.email,
+    phone: normalizePhoneNumber(profile?.phone ?? null) || payload.phone || null,
+    phone_verified_at: profile?.phone_verified_at ?? (payload.phoneVerified ? new Date().toISOString() : null),
+    primary_onboarding_role: role,
+    onboarding_state: profile?.onboarding_state ?? payload.onboardingState
+  };
+
+  const result = await supabase
+    .from("profiles")
+    .upsert(updatePayload, { onConflict: "id" });
+
+  if (result.error) {
+    if (!isSchemaError(result.error)) {
+      throw new Error(`Signup role intent persistence failed: ${describeSupabaseError(result.error)}`);
+    }
+
+    const fallback = await supabase
+      .from("profiles")
+      .upsert({
+        id: authUser.id,
+        role: profileRole,
+        full_name: updatePayload.full_name,
+        email: updatePayload.email,
+        phone: updatePayload.phone
+      }, { onConflict: "id" });
+
+    if (fallback.error && !isSchemaError(fallback.error)) {
+      throw new Error(`Signup role intent fallback failed: ${describeSupabaseError(fallback.error)}`);
+    }
+  }
+
+  console.info("[auth] signup role intent persisted", {
+    userId: authUser.id,
+    role
+  });
+  return role;
+}
+
+function getShopNameIntent(authUser: AuthUserLike) {
+  const metadata = authUser.user_metadata ?? {};
+  const value = metadata.shopName ?? metadata.shop_name;
+  return typeof value === "string" && value.trim().length >= 2 ? value.trim() : null;
+}
+
+export async function applySignupRoleIntentForAuthUser(
+  authUser: AuthUserLike,
+  requestedRole?: unknown
+): Promise<{
+  role: SignupRoleIntent | null;
+  provisioned: boolean;
+  deferredReason?: "contact_verification_required" | "shop_setup_required" | "lane_already_exists";
+}> {
+  await syncProfileFromAuth(authUser);
+
+  let profile = await readProfile(authUser.id);
+  const role = isSignupRoleIntent(requestedRole)
+    ? requestedRole
+    : getSignupRoleIntentFromMetadata(authUser.user_metadata)
+      ?? (isSignupRoleIntent(profile?.primary_onboarding_role) ? profile.primary_onboarding_role : null);
+
+  if (!role) {
+    return {
+      role: null,
+      provisioned: false
+    };
+  }
+
+  const persistedRole = await writeSignupRoleIntentToProfile(authUser, role);
+  if (!persistedRole) {
+    return {
+      role: null,
+      provisioned: false
+    };
+  }
+
+  profile = await readProfile(authUser.id);
+  const rows = await readLaneRecordSnapshot(authUser.id);
+  const laneAlreadyExists = Boolean(
+    (persistedRole === "client" && rows.client)
+    || (persistedRole === "barber" && rows.barber)
+    || (persistedRole === "shop_owner" && rows.shop)
+  );
+
+  if (laneAlreadyExists) {
+    return {
+      role: persistedRole,
+      provisioned: false,
+      deferredReason: "lane_already_exists"
+    };
+  }
+
+  const contactState = await readContactState(authUser);
+  if (!contactState.canContinue) {
+    console.info("[auth] signup role intent deferred until contact verification", {
+      userId: authUser.id,
+      role: persistedRole,
+      missingFields: contactState.missingFields
+    });
+    return {
+      role: persistedRole,
+      provisioned: false,
+      deferredReason: "contact_verification_required"
+    };
+  }
+
+  if (persistedRole === "shop_owner") {
+    const shopName = getShopNameIntent(authUser);
+    if (!shopName) {
+      console.info("[auth] shop owner signup role intent deferred until shop setup", {
+        userId: authUser.id,
+        role: persistedRole,
+        profile
+      });
+      return {
+        role: persistedRole,
+        provisioned: false,
+        deferredReason: "shop_setup_required"
+      };
+    }
+
+    await initializeProductionRoleSelection(authUser, { role: persistedRole, shopName });
+    return {
+      role: persistedRole,
+      provisioned: true
+    };
+  }
+
+  await initializeProductionRoleSelection(authUser, { role: persistedRole });
+  return {
+    role: persistedRole,
+    provisioned: true
+  };
 }
 
 async function readProfile(authUserId: string) {

@@ -40,7 +40,7 @@ function getOAuthSearchRedirect() {
   }
 
   const params = new URLSearchParams(window.location.search);
-  if (!params.has("code") && !params.has("error")) {
+  if (!params.has("code")) {
     return null;
   }
 

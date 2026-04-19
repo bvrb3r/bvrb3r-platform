@@ -1,7 +1,12 @@
 import { createServerClient, type SetAllCookies } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { buildRuntimeUserFromProductionAuth, ensureCanonicalProfileForAuthUser } from "@/lib/auth/production-identity";
+import {
+  applySignupRoleIntentForAuthUser,
+  buildRuntimeUserFromProductionAuth,
+  ensureCanonicalProfileForAuthUser
+} from "@/lib/auth/production-identity";
+import { SIGNUP_ROLE_INTENT_COOKIE } from "@/lib/auth/signup-role-intent";
 import { resolvePostAuthDestination } from "@/lib/onboarding/service";
 
 const CALLBACK_REDIRECT_PATH = "/auth/callback";
@@ -31,10 +36,16 @@ function describeAuthError(error: unknown) {
   ].filter(Boolean).join(" | ") || "unknown error";
 }
 
-function redirectWithAuthCookies(url: URL, cookiesToSet: AuthCookie[]) {
+function redirectWithAuthCookies(url: URL, cookiesToSet: AuthCookie[], options?: { clearSignupRoleIntent?: boolean }) {
   const response = NextResponse.redirect(url);
   for (const { name, value, options } of cookiesToSet) {
     response.cookies.set(name, value, options);
+  }
+  if (options?.clearSignupRoleIntent) {
+    response.cookies.set(SIGNUP_ROLE_INTENT_COOKIE, "", {
+      maxAge: 0,
+      path: "/"
+    });
   }
   return response;
 }
@@ -88,6 +99,7 @@ export async function GET(request: Request) {
   }
 
   const cookieStore = await cookies();
+  const signupRoleIntent = cookieStore.get(SIGNUP_ROLE_INTENT_COOKIE)?.value;
   let authCookiesToSet: AuthCookie[] = [];
   const exchangeResponse = NextResponse.redirect(callbackUrl);
   const setAllCookies: SetAllCookies = (cookiesToSet) => {
@@ -156,6 +168,7 @@ export async function GET(request: Request) {
     };
 
     await ensureCanonicalProfileForAuthUser(identityUser);
+    await applySignupRoleIntentForAuthUser(identityUser, signupRoleIntent);
     const runtimeUser = await buildRuntimeUserFromProductionAuth(identityUser);
     const destination = await resolvePostAuthDestination(runtimeUser);
 
@@ -165,13 +178,17 @@ export async function GET(request: Request) {
       destination
     });
 
-    return redirectWithAuthCookies(new URL(destination, requestUrl.origin), authCookiesToSet);
+    return redirectWithAuthCookies(new URL(destination, requestUrl.origin), authCookiesToSet, {
+      clearSignupRoleIntent: Boolean(signupRoleIntent)
+    });
   } catch (routingError) {
     console.error("[auth] OAuth callback post-auth resolution failed; falling back to /post-auth", {
       requestId,
       userId: authUser.id,
       error: describeAuthError(routingError)
     });
-    return redirectWithAuthCookies(new URL("/post-auth", requestUrl.origin), authCookiesToSet);
+    return redirectWithAuthCookies(new URL("/post-auth", requestUrl.origin), authCookiesToSet, {
+      clearSignupRoleIntent: Boolean(signupRoleIntent)
+    });
   }
 }

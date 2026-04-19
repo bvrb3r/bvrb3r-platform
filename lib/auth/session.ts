@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
-import { buildRuntimeUserFromProductionAuth } from "@/lib/auth/production-identity";
+import { buildRuntimeUserFromProductionAuth, applySignupRoleIntentForAuthUser } from "@/lib/auth/production-identity";
 import { DEMO_SESSION_COOKIE, resolveDemoUser } from "@/lib/auth/demo-auth";
+import { SIGNUP_ROLE_INTENT_COOKIE } from "@/lib/auth/signup-role-intent";
 import { isDemoMode, runtimeConfig } from "@/lib/config/runtime";
 import { applyPlatformAdminOverlay } from "@/lib/platform-admin/service";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -41,14 +42,17 @@ export async function getCurrentUserFromServer() {
     };
   }
 
-  const runtimeUser = await buildRuntimeUserFromProductionAuth({
+  const identityUser = {
     id: authUser.id,
     email: authUser.email,
     phone: authUser.phone,
     email_confirmed_at: authUser.email_confirmed_at,
     phone_confirmed_at: authUser.phone_confirmed_at,
     user_metadata: authUser.user_metadata as Record<string, unknown> | undefined
-  });
+  };
+
+  await applySignupRoleIntentForAuthUser(identityUser, cookieStore.get(SIGNUP_ROLE_INTENT_COOKIE)?.value);
+  const runtimeUser = await buildRuntimeUserFromProductionAuth(identityUser);
 
   return {
     mode: "supabase" as const,

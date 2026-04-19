@@ -7,6 +7,7 @@ const {
   getUserMock,
   buildRuntimeUserFromProductionAuthMock,
   ensureCanonicalProfileForAuthUserMock,
+  applySignupRoleIntentForAuthUserMock,
   resolvePostAuthDestinationMock
 } = vi.hoisted(() => ({
   cookiesMock: vi.fn(),
@@ -15,6 +16,7 @@ const {
   getUserMock: vi.fn(),
   buildRuntimeUserFromProductionAuthMock: vi.fn(),
   ensureCanonicalProfileForAuthUserMock: vi.fn(),
+  applySignupRoleIntentForAuthUserMock: vi.fn(),
   resolvePostAuthDestinationMock: vi.fn()
 }));
 
@@ -27,6 +29,7 @@ vi.mock("@supabase/ssr", () => ({
 }));
 
 vi.mock("@/lib/auth/production-identity", () => ({
+  applySignupRoleIntentForAuthUser: applySignupRoleIntentForAuthUserMock,
   buildRuntimeUserFromProductionAuth: buildRuntimeUserFromProductionAuthMock,
   ensureCanonicalProfileForAuthUser: ensureCanonicalProfileForAuthUserMock
 }));
@@ -45,10 +48,12 @@ describe("auth callback exchange route", () => {
     getUserMock.mockReset();
     buildRuntimeUserFromProductionAuthMock.mockReset();
     ensureCanonicalProfileForAuthUserMock.mockReset();
+    applySignupRoleIntentForAuthUserMock.mockReset();
     resolvePostAuthDestinationMock.mockReset();
 
     cookiesMock.mockResolvedValue({
       getAll: vi.fn(() => []),
+      get: vi.fn(() => undefined),
       set: vi.fn()
     });
 
@@ -75,6 +80,7 @@ describe("auth callback exchange route", () => {
       error: null
     });
     ensureCanonicalProfileForAuthUserMock.mockResolvedValue({ id: "auth-user-1" });
+    applySignupRoleIntentForAuthUserMock.mockResolvedValue({ role: null, provisioned: false });
     buildRuntimeUserFromProductionAuthMock.mockResolvedValue({
       id: "auth-user-1",
       role: "client",
@@ -99,7 +105,23 @@ describe("auth callback exchange route", () => {
     expect(exchangeCodeForSessionMock).toHaveBeenCalledWith("oauth-code");
     expect(getUserMock).toHaveBeenCalled();
     expect(ensureCanonicalProfileForAuthUserMock).toHaveBeenCalledWith(expect.objectContaining({ id: "auth-user-1" }));
+    expect(applySignupRoleIntentForAuthUserMock).toHaveBeenCalledWith(expect.objectContaining({ id: "auth-user-1" }), undefined);
     expect(resolvePostAuthDestinationMock).toHaveBeenCalled();
+    expect(response.headers.get("location")).toBe("https://bvrb3r.app/verify-contact");
+  });
+
+  it("applies a preserved signup role intent cookie before post-auth routing", async () => {
+    exchangeCodeForSessionMock.mockResolvedValue({ error: null });
+    cookiesMock.mockResolvedValue({
+      getAll: vi.fn(() => []),
+      get: vi.fn((name: string) => name === "bvrb3r-signup-role-intent" ? { value: "barber" } : undefined),
+      set: vi.fn()
+    });
+
+    const response = await getAuthCallbackExchange(new Request("https://bvrb3r.app/auth/callback/exchange?code=oauth-code"));
+
+    expect(applySignupRoleIntentForAuthUserMock).toHaveBeenCalledWith(expect.objectContaining({ id: "auth-user-1" }), "barber");
+    expect(response.cookies.get("bvrb3r-signup-role-intent")?.value).toBe("");
     expect(response.headers.get("location")).toBe("https://bvrb3r.app/verify-contact");
   });
 

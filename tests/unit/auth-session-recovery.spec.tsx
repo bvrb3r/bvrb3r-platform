@@ -112,4 +112,17 @@ describe("auth session recovery", () => {
     });
     expect(getSessionMock).not.toHaveBeenCalled();
   });
+
+  it("does not recycle legacy error-only query params through auth callback", async () => {
+    getSessionMock.mockResolvedValue({ data: { session: null } });
+    window.history.replaceState({}, "", "/?error=otp_expired&error_description=Email+link+is+invalid");
+
+    render(<AuthSessionRecovery mode="public" />);
+
+    await waitFor(() => {
+      expect(getSessionMock).toHaveBeenCalled();
+      expect(window.location.pathname).toBe("/");
+      expect(window.location.search).toBe("?error=otp_expired&error_description=Email+link+is+invalid");
+    });
+  });
 });

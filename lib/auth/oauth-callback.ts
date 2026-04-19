@@ -30,7 +30,7 @@ export function buildOAuthCallbackRedirectPath(searchParams?: OAuthCallbackSearc
     }
   }
 
-  if (!nextParams.has("code") && !nextParams.has("error")) {
+  if (!nextParams.has("code")) {
     return null;
   }
 

@@ -254,6 +254,7 @@ function createSupabaseAdminMock(state: TableState, options?: SupabaseMockOption
 }
 
 import {
+  applySignupRoleIntentForAuthUser,
   buildRuntimeUserFromProductionAuth,
   getContactVerificationDebugState,
   getContactVerificationState,
@@ -310,6 +311,64 @@ describe("production identity provisioning", () => {
     expect(first.onboardingState).toBe("awaiting_contact_verification");
     expect(first.canonicalFullName).toBe("Fresh User");
     expect(second.email).toBe("fresh@bvrb3r.app");
+  });
+
+  it("persists signup role intent without provisioning before contact verification is complete", async () => {
+    const result = await applySignupRoleIntentForAuthUser({
+      id: "auth-role-pending",
+      email: "pending-barber@bvrb3r.app",
+      phone: null,
+      email_confirmed_at: "2026-04-08T12:00:00.000Z",
+      phone_confirmed_at: null,
+      user_metadata: {
+        full_name: "Pending Barber",
+        signup_role_intent: "barber"
+      }
+    });
+
+    expect(result).toMatchObject({
+      role: "barber",
+      provisioned: false,
+      deferredReason: "contact_verification_required"
+    });
+    expect(state.profiles[0]).toMatchObject({
+      id: "auth-role-pending",
+      role: "booth_rent_barber",
+      primary_onboarding_role: "barber",
+      onboarding_state: "awaiting_contact_verification"
+    });
+    expect(state.barbers).toHaveLength(0);
+  });
+
+  it("auto-provisions a verified barber from preserved signup role intent", async () => {
+    const result = await applySignupRoleIntentForAuthUser({
+      id: "auth-role-ready",
+      email: "ready-barber@bvrb3r.app",
+      phone: "+18135550129",
+      email_confirmed_at: "2026-04-08T12:00:00.000Z",
+      phone_confirmed_at: "2026-04-08T12:00:00.000Z",
+      user_metadata: {
+        full_name: "Ready Barber",
+        phone: "+18135550129",
+        signup_role_intent: "barber"
+      }
+    });
+
+    expect(result).toMatchObject({
+      role: "barber",
+      provisioned: true
+    });
+    expect(state.profiles[0]).toMatchObject({
+      id: "auth-role-ready",
+      role: "booth_rent_barber",
+      primary_onboarding_role: "barber"
+    });
+    expect(state.barbers).toHaveLength(1);
+    expect(state.verification_profiles[0]).toMatchObject({
+      user_id: "auth-role-ready",
+      role: "barber",
+      overall_status: "submitted"
+    });
   });
 
   it("falls back to the authenticated server client when the service role client is unavailable", async () => {

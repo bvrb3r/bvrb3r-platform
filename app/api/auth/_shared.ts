@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Route } from "next";
 import { NextResponse } from "next/server";
 import {
+  applySignupRoleIntentForAuthUser,
   buildRuntimeUserFromProductionAuth,
   getContactVerificationState
 } from "@/lib/auth/production-identity";
@@ -161,6 +162,7 @@ export async function getAuthenticatedAuthUserForRoute(context: AuthRouteContext
 }
 
 export async function resolveAuthenticatedNextPath(authUser: AuthUserLike): Promise<Route> {
+  await applySignupRoleIntentForAuthUser(authUser);
   const contactState = await getContactVerificationState(authUser);
   console.info("[auth] resolve next path contact gate", {
     userId: authUser.id,

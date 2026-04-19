@@ -1,7 +1,11 @@
 import type { Route } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AuthSessionRecovery } from "@/components/auth/auth-session-recovery";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 import {
+  applySignupRoleIntentForAuthUser,
   buildRuntimeUserFromProductionAuth,
   ensureCanonicalProfileForAuthUser
 } from "@/lib/auth/production-identity";
@@ -18,10 +22,6 @@ type CallbackSearchParams = Promise<{
   type?: string;
 }>;
 
-function toLoginErrorPath(message: string): Route {
-  return `/login?error=${encodeURIComponent(message)}` as Route;
-}
-
 function toExchangePath(params: Awaited<CallbackSearchParams>): Route {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
@@ -31,6 +31,31 @@ function toExchangePath(params: Awaited<CallbackSearchParams>): Route {
   }
 
   return `/auth/callback/exchange?${search.toString()}` as Route;
+}
+
+function AuthCallbackError({ message, code }: { message: string; code?: string }) {
+  return (
+    <section className="page-shell safe-top-pad app-safe-bottom flex min-h-[100svh] min-h-[100dvh] items-center py-6 sm:py-10">
+      <Card className="w-full rounded-[34px] p-6 sm:p-8 lg:p-10">
+        <Badge>Sign-in link</Badge>
+        <h1 className="mt-5 text-balance text-4xl font-semibold sm:text-5xl" data-display="true">
+          This sign-in link could not be used.
+        </h1>
+        <p className="mt-5 max-w-3xl text-sm leading-7 text-white/66 sm:text-base">
+          {message || "The link may be invalid or expired. Please request a new link or log in again."}
+        </p>
+        {code ? <p className="mt-3 text-xs uppercase tracking-[0.22em] text-white/42">{code}</p> : null}
+        <div className="mt-6 flex flex-wrap gap-3">
+          <Link href="/login" className="inline-flex min-h-12 items-center rounded-full bg-[#7cff00] px-6 text-sm font-semibold text-black">
+            Back to login
+          </Link>
+          <Link href="/signup" className="inline-flex min-h-12 items-center rounded-full border border-white/12 px-6 text-sm font-semibold text-white/78">
+            Create account
+          </Link>
+        </div>
+      </Card>
+    </section>
+  );
 }
 
 export default async function AuthCallbackPage({
@@ -46,7 +71,12 @@ export default async function AuthCallbackPage({
   });
 
   if (params.error) {
-    redirect(toLoginErrorPath(params.error_description ?? params.error));
+    return (
+      <AuthCallbackError
+        message={params.error_description ?? params.error}
+        code={params.error_code ?? params.error}
+      />
+    );
   }
 
   if (params.code) {
@@ -88,6 +118,7 @@ export default async function AuthCallbackPage({
   };
 
   await ensureCanonicalProfileForAuthUser(identityUser);
+  await applySignupRoleIntentForAuthUser(identityUser);
   const runtimeUser = await buildRuntimeUserFromProductionAuth(identityUser);
 
   const destination = await resolvePostAuthDestination(runtimeUser);

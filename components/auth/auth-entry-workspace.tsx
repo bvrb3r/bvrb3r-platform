@@ -10,6 +10,11 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { getDemoLauncherAccounts } from "@/lib/auth/demo-auth";
 import { clearBrowserAccountState } from "@/lib/auth/session-isolation";
+import {
+  SIGNUP_ROLE_INTENT_METADATA_KEY,
+  SIGNUP_ROLE_OPTIONS,
+  type SignupRoleIntent
+} from "@/lib/auth/signup-role-intent";
 import { isDemoMode } from "@/lib/config/runtime";
 import { clearKioskDeviceState } from "@/lib/kiosk/client";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
@@ -86,6 +91,7 @@ export function AuthEntryWorkspace({ mode }: { mode: AuthMode }) {
   const searchParams = useSearchParams();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [signupRole, setSignupRole] = useState<SignupRoleIntent | null>(null);
   const [isPending, startTransition] = useTransition();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const unlockKiosk = getUnlockShopId(searchParams);
@@ -93,10 +99,10 @@ export function AuthEntryWorkspace({ mode }: { mode: AuthMode }) {
   const isProductionAuth = Boolean(supabase);
   const title = mode === "login"
     ? "Continue into your BVRB3R lane."
-    : "Create your account, then choose how you use BVRB3R.";
+    : "Create your account and choose your BVRB3R lane.";
   const subtitle = mode === "login"
     ? "Google, Apple, and email all route back into the correct lane. New accounts resume verification and role selection automatically."
-    : "Account creation stays fast. Identity, lane selection, approval, and verification happen after auth so production trust stays strict.";
+    : "Choose your lane now so verification can route you into the right setup without an extra generic role step.";
   const searchFeedback = getSearchFeedback(searchParams);
   const visibleError = errorMessage ?? (searchFeedback?.kind === "error" ? searchFeedback.message : null);
   const visibleSuccess = successMessage ?? (searchFeedback?.kind === "success" ? searchFeedback.message : null);
@@ -105,12 +111,42 @@ export function AuthEntryWorkspace({ mode }: { mode: AuthMode }) {
     clearBrowserAccountState();
   }, []);
 
+  async function persistSignupRoleIntent(role: SignupRoleIntent) {
+    const response = await fetch("/api/auth/signup-intent", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json"
+      },
+      body: JSON.stringify({ role })
+    });
+
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({})) as { error?: string };
+      throw new Error(body.error ?? "Choose a valid role before continuing.");
+    }
+  }
+
   async function handleOAuth(provider: "google" | "apple") {
     setErrorMessage(null);
     setSuccessMessage(null);
     if (!supabase) {
       setErrorMessage("Supabase auth is not configured in this runtime. Use local demo mode below.");
       return;
+    }
+
+    if (mode === "signup") {
+      if (!signupRole) {
+        setErrorMessage("Choose your role before continuing.");
+        return;
+      }
+
+      try {
+        await persistSignupRoleIntent(signupRole);
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : "Unable to save your signup role.");
+        return;
+      }
     }
 
     const redirectTo = `${window.location.origin}/auth/callback`;
@@ -137,11 +173,13 @@ export function AuthEntryWorkspace({ mode }: { mode: AuthMode }) {
     event.preventDefault();
     setErrorMessage(null);
     setSuccessMessage(null);
-    const formData = new FormData(event.currentTarget);
+    const form = event.currentTarget;
+    const formData = new FormData(form);
     const email = String(formData.get("email") ?? "").trim();
     const password = String(formData.get("password") ?? "").trim();
     const fullName = String(formData.get("fullName") ?? "").trim();
     const phone = String(formData.get("phone") ?? "").trim();
+    const selectedRole = mode === "signup" ? signupRole : null;
 
     if (!email || !password) {
       setErrorMessage("Email and password are required.");
@@ -150,6 +188,11 @@ export function AuthEntryWorkspace({ mode }: { mode: AuthMode }) {
 
     if (mode === "signup" && (!fullName || !phone)) {
       setErrorMessage("Full name, email, phone number, and password are required.");
+      return;
+    }
+
+    if (mode === "signup" && !selectedRole) {
+      setErrorMessage("Choose your role before creating the account.");
       return;
     }
 
@@ -176,7 +219,9 @@ export function AuthEntryWorkspace({ mode }: { mode: AuthMode }) {
           emailRedirectTo: `${window.location.origin}/auth/callback`,
           data: {
             full_name: fullName,
-            phone
+            phone,
+            [SIGNUP_ROLE_INTENT_METADATA_KEY]: selectedRole,
+            primary_onboarding_role: selectedRole
           }
         }
       });
@@ -196,8 +241,9 @@ export function AuthEntryWorkspace({ mode }: { mode: AuthMode }) {
         return;
       }
 
-      setSuccessMessage("Check your email to verify this account, then log in to finish phone verification and choose your BVRB3R lane.");
-      event.currentTarget.reset();
+      setSuccessMessage("Check your email to verify this account. Your selected lane will resume after verification.");
+      setSignupRole(null);
+      form.reset();
       return;
     }
 
@@ -224,12 +270,16 @@ export function AuthEntryWorkspace({ mode }: { mode: AuthMode }) {
           <p className="mt-5 max-w-2xl text-sm leading-7 text-white/66 sm:text-base">{subtitle}</p>
 
           <div className="mt-8 grid gap-3">
-            <Button type="button" variant="secondary" className="h-12 w-full" onClick={() => void handleOAuth("google")} disabled={isPending}>
-              Continue with Google
-            </Button>
-            <Button type="button" variant="secondary" className="h-12 w-full" onClick={() => void handleOAuth("apple")} disabled={isPending}>
-              Continue with Apple
-            </Button>
+            {mode === "login" ? (
+              <>
+                <Button type="button" variant="secondary" className="h-12 w-full" onClick={() => void handleOAuth("google")} disabled={isPending}>
+                  Continue with Google
+                </Button>
+                <Button type="button" variant="secondary" className="h-12 w-full" onClick={() => void handleOAuth("apple")} disabled={isPending}>
+                  Continue with Apple
+                </Button>
+              </>
+            ) : null}
 
             <form onSubmit={handleEmailSubmit} className="grid gap-3 rounded-[28px] border border-white/8 bg-black/20 p-4">
               {mode === "signup" ? (
@@ -240,15 +290,58 @@ export function AuthEntryWorkspace({ mode }: { mode: AuthMode }) {
               ) : null}
               <Input name="email" placeholder="Email" type="email" autoComplete="email" />
               <Input name="password" placeholder="Password" type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} />
+              {mode === "signup" ? (
+                <fieldset className="grid gap-3 rounded-[22px] border border-white/8 bg-black/20 p-3">
+                  <legend className="px-1 text-sm font-medium text-white/78">Choose your role</legend>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {SIGNUP_ROLE_OPTIONS.map((option) => {
+                      const selected = signupRole === option.value;
+                      return (
+                        <label
+                          key={option.value}
+                          className={`grid cursor-pointer gap-2 rounded-[18px] border p-3 text-left transition focus-within:ring-2 focus-within:ring-[#7cff00] focus-within:ring-offset-2 focus-within:ring-offset-black ${
+                            selected
+                              ? "border-[#7cff00]/40 bg-[#7cff00]/10 text-white"
+                              : "border-white/8 bg-black/20 text-white/66 hover:border-[#7cff00]/24 hover:text-white"
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="signupRole"
+                            value={option.value}
+                            checked={selected}
+                            onChange={() => setSignupRole(option.value)}
+                            className="sr-only"
+                            required
+                          />
+                          <span className="text-sm font-semibold">{option.label}</span>
+                          <span className="text-xs leading-5 text-white/56">{option.description}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </fieldset>
+              ) : null}
               {mode === "login" ? (
                 <Link href="/forgot-password" className="w-fit text-sm text-[#cfff93] underline-offset-4 hover:underline">
                   Forgot password?
                 </Link>
               ) : null}
-              <Button type="submit" className="h-12 w-full" disabled={isPending}>
+              <Button type="submit" className="h-12 w-full" disabled={isPending || (mode === "signup" && !signupRole)}>
                 {mode === "login" ? "Log in" : "Create account"}
               </Button>
             </form>
+
+            {mode === "signup" ? (
+              <>
+                <Button type="button" variant="secondary" className="h-12 w-full" onClick={() => void handleOAuth("google")} disabled={isPending}>
+                  Continue with Google
+                </Button>
+                <Button type="button" variant="secondary" className="h-12 w-full" onClick={() => void handleOAuth("apple")} disabled={isPending}>
+                  Continue with Apple
+                </Button>
+              </>
+            ) : null}
           </div>
 
           {visibleError ? <p className="mt-4 text-sm leading-7 text-[#ff8f8f]">{visibleError}</p> : null}
