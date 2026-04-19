@@ -8,11 +8,17 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { clearBrowserAccountState } from "@/lib/auth/session-isolation";
+import {
+  PASSWORD_RESET_GENERIC_FAILURE,
+  PASSWORD_RESET_GENERIC_SUCCESS,
+  PASSWORD_RESET_INVALID_LINK
+} from "@/lib/auth/password-recovery";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 
 const RECOVERY_SESSION_STORAGE_KEY = "bvrb3r-password-recovery";
 const RESET_PASSWORD_PATH = "/reset-password";
-const RESET_COMPLETE_LOGIN_PATH = "/login?password_reset=1";
+const RESET_COMPLETE_LOGIN_PATH = "/login";
+const RESET_READY_MESSAGE = "Enter a new password to finish the reset.";
 
 type ResetStatus = "checking" | "ready" | "invalid" | "saving" | "success";
 
@@ -74,8 +80,7 @@ function getRecoverySearchParams() {
 }
 
 export function ForgotPasswordWorkspace() {
-  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [isPending, setIsPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -85,29 +90,34 @@ export function ForgotPasswordWorkspace() {
     setErrorMessage(null);
     setSuccessMessage(null);
 
-    const normalizedEmail = email.trim();
-    if (!normalizedEmail) {
-      setErrorMessage("Enter the email for your BVRB3R account.");
-      return;
-    }
-
-    if (!supabase) {
-      setErrorMessage("Password recovery is not configured in this runtime.");
+    const normalizedIdentifier = identifier.trim();
+    if (!normalizedIdentifier) {
+      setErrorMessage("Enter your email, mobile number, or username.");
       return;
     }
 
     setIsPending(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
-      redirectTo: `${window.location.origin}${RESET_PASSWORD_PATH}`
-    });
-    setIsPending(false);
+    try {
+      const response = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json"
+        },
+        body: JSON.stringify({ identifier: normalizedIdentifier })
+      });
+      const body = await response.json().catch(() => ({})) as { message?: string };
+      if (!response.ok) {
+        setErrorMessage(body.message ?? PASSWORD_RESET_GENERIC_FAILURE);
+        return;
+      }
 
-    if (error) {
-      setErrorMessage(error.message);
-      return;
+      setSuccessMessage(body.message ?? PASSWORD_RESET_GENERIC_SUCCESS);
+    } catch {
+      setErrorMessage(PASSWORD_RESET_GENERIC_FAILURE);
+    } finally {
+      setIsPending(false);
     }
-
-    setSuccessMessage("Check your email for a secure password reset link.");
   }
 
   return (
@@ -115,24 +125,27 @@ export function ForgotPasswordWorkspace() {
       <Card className="w-full rounded-[34px] p-6 sm:p-8 lg:p-10">
         <Badge>Password reset</Badge>
         <h1 className="mt-5 text-balance text-4xl font-semibold sm:text-5xl" data-display="true">
-          Reset your BVRB3R password.
+          Reset your password
         </h1>
         <p className="mt-5 max-w-2xl text-sm leading-7 text-white/66 sm:text-base">
-          Enter the email on your account. We&apos;ll send a secure link that opens the password reset screen.
+          Enter your email, mobile number, or username. If an account matches, we&apos;ll send reset instructions.
         </p>
 
         <form onSubmit={handleSubmit} className="mt-8 grid gap-3 rounded-[28px] border border-white/8 bg-black/20 p-4">
+          <label className="text-sm font-medium text-white/74" htmlFor="forgot-password-identifier">
+            Email, mobile number, or username
+          </label>
           <Input
-            aria-label="Account email"
-            autoComplete="email"
-            name="email"
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="Email"
-            type="email"
-            value={email}
+            id="forgot-password-identifier"
+            autoComplete="username"
+            name="identifier"
+            onChange={(event) => setIdentifier(event.target.value)}
+            placeholder="Email, mobile number, or username"
+            type="text"
+            value={identifier}
           />
           <Button type="submit" className="h-12 w-full" disabled={isPending}>
-            {isPending ? "Sending reset link" : "Send reset link"}
+            {isPending ? "Sending reset instructions" : "Send reset instructions"}
           </Button>
         </form>
 
@@ -140,9 +153,8 @@ export function ForgotPasswordWorkspace() {
         {successMessage ? <p className="mt-4 text-sm leading-7 text-[#d7ffab]">{successMessage}</p> : null}
 
         <p className="mt-6 text-sm leading-7 text-white/52">
-          Remembered it?{" "}
           <Link href="/login" className="text-[#cfff93]">
-            Log in
+            Back to login
           </Link>
         </p>
       </Card>
@@ -157,6 +169,7 @@ export function ResetPasswordWorkspace() {
   const [message, setMessage] = useState("Checking your secure reset link.");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPasswords, setShowPasswords] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -164,7 +177,7 @@ export function ResetPasswordWorkspace() {
     async function prepareRecoverySession() {
       if (!supabase) {
         setStatus("invalid");
-        setMessage("Password reset is not configured in this runtime.");
+        setMessage(PASSWORD_RESET_INVALID_LINK);
         return;
       }
 
@@ -172,7 +185,7 @@ export function ResetPasswordWorkspace() {
       if (hash.error) {
         cleanResetPasswordUrl();
         setStatus("invalid");
-        setMessage(hash.errorDescription ?? hash.error);
+        setMessage(PASSWORD_RESET_INVALID_LINK);
         return;
       }
 
@@ -181,7 +194,7 @@ export function ResetPasswordWorkspace() {
         if (type !== "recovery") {
           cleanResetPasswordUrl();
           setStatus("invalid");
-          setMessage("Open the latest password reset link from your email.");
+          setMessage(PASSWORD_RESET_INVALID_LINK);
           return;
         }
 
@@ -193,13 +206,13 @@ export function ResetPasswordWorkspace() {
         cleanResetPasswordUrl();
         if (error) {
           setStatus("invalid");
-          setMessage(error.message);
+          setMessage(PASSWORD_RESET_INVALID_LINK);
           return;
         }
 
         markRecoverySessionVerified();
         setStatus("ready");
-        setMessage("Enter a new password to finish the reset.");
+        setMessage(RESET_READY_MESSAGE);
         return;
       }
 
@@ -207,7 +220,7 @@ export function ResetPasswordWorkspace() {
         if (hash.type !== "recovery") {
           cleanResetPasswordUrl();
           setStatus("invalid");
-          setMessage("Open the latest password reset link from your email.");
+          setMessage(PASSWORD_RESET_INVALID_LINK);
           return;
         }
 
@@ -222,13 +235,13 @@ export function ResetPasswordWorkspace() {
         cleanResetPasswordUrl();
         if (error) {
           setStatus("invalid");
-          setMessage(error.message);
+          setMessage(PASSWORD_RESET_INVALID_LINK);
           return;
         }
 
         markRecoverySessionVerified();
         setStatus("ready");
-        setMessage("Enter a new password to finish the reset.");
+        setMessage(RESET_READY_MESSAGE);
         return;
       }
 
@@ -242,13 +255,13 @@ export function ResetPasswordWorkspace() {
         if (data.session) {
           markRecoverySessionVerified();
           setStatus("ready");
-          setMessage("Enter a new password to finish the reset.");
+          setMessage(RESET_READY_MESSAGE);
           return;
         }
       }
 
       setStatus("invalid");
-      setMessage("Open the latest password reset link from your email.");
+      setMessage(PASSWORD_RESET_INVALID_LINK);
     }
 
     void prepareRecoverySession();
@@ -265,12 +278,12 @@ export function ResetPasswordWorkspace() {
     }
 
     if (newPassword.length < 8) {
-      setMessage("Use at least 8 characters for your new password.");
+      setMessage("Password must be at least 8 characters.");
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      setMessage("The password confirmation does not match.");
+      setMessage("Passwords do not match.");
       return;
     }
 
@@ -287,7 +300,7 @@ export function ResetPasswordWorkspace() {
     await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
     clearBrowserAccountState();
     setStatus("success");
-    setMessage("Password updated. Return to login and sign in with the new password.");
+    setMessage("Password updated. Please log in with your new password.");
     window.setTimeout(() => {
       router.replace(RESET_COMPLETE_LOGIN_PATH);
     }, 1200);
@@ -296,14 +309,15 @@ export function ResetPasswordWorkspace() {
   const canSubmit = status === "ready";
   const isSaving = status === "saving";
   const isSuccess = status === "success";
-  const isError = status === "invalid" || (status === "ready" && message !== "Enter a new password to finish the reset.");
+  const isError = status === "invalid" || (status === "ready" && message !== RESET_READY_MESSAGE);
+  const passwordInputType = showPasswords ? "text" : "password";
 
   return (
     <section className="page-shell safe-top-pad app-safe-bottom flex min-h-[100svh] min-h-[100dvh] items-start py-6 sm:items-center sm:py-10">
       <Card className="w-full rounded-[34px] p-6 sm:p-8 lg:p-10">
         <Badge>Secure reset</Badge>
         <h1 className="mt-5 text-balance text-4xl font-semibold sm:text-5xl" data-display="true">
-          Save a new password.
+          Create a new password
         </h1>
         <p className="mt-5 max-w-2xl text-sm leading-7 text-white/66 sm:text-base">
           This reset session only lets you update your password. After saving, you&apos;ll log in normally.
@@ -316,7 +330,7 @@ export function ResetPasswordWorkspace() {
             disabled={!canSubmit || isSaving || isSuccess}
             onChange={(event) => setNewPassword(event.target.value)}
             placeholder="New password"
-            type="password"
+            type={passwordInputType}
             value={newPassword}
           />
           <Input
@@ -325,9 +339,17 @@ export function ResetPasswordWorkspace() {
             disabled={!canSubmit || isSaving || isSuccess}
             onChange={(event) => setConfirmPassword(event.target.value)}
             placeholder="Confirm new password"
-            type="password"
+            type={passwordInputType}
             value={confirmPassword}
           />
+          <Button
+            type="button"
+            variant="secondary"
+            className="h-12 w-full"
+            onClick={() => setShowPasswords((current) => !current)}
+          >
+            {showPasswords ? "Hide passwords" : "Show passwords"}
+          </Button>
           <Button type="submit" className="h-12 w-full" disabled={!canSubmit || isSaving || isSuccess}>
             {isSaving ? "Saving new password" : "Save new password"}
           </Button>
