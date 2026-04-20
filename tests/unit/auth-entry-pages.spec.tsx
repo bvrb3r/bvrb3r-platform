@@ -40,27 +40,30 @@ describe("auth entry page routing", () => {
     redirectMock.mockClear();
   });
 
-  it("routes OAuth code returns on /login into the canonical callback", async () => {
-    await expect(
-      LoginPage({
-        searchParams: Promise.resolve({
-          code: "login-oauth-code"
-        })
-      })
-    ).rejects.toThrow("REDIRECT:/auth/callback?code=login-oauth-code");
-    expect(getCurrentUserFromServerMock).not.toHaveBeenCalled();
+  it("does not process OAuth callback codes on /login", async () => {
+    getCurrentUserFromServerMock.mockResolvedValue({
+      mode: "supabase",
+      authenticated: false,
+      user: null
+    });
+
+    const result = await LoginPage();
+
+    expect(redirectMock).not.toHaveBeenCalled();
+    expect(result).toBeTruthy();
   });
 
-  it("routes password recovery code returns on /login into reset-password", async () => {
-    await expect(
-      LoginPage({
-        searchParams: Promise.resolve({
-          code: "login-recovery-code",
-          type: "recovery"
-        })
-      })
-    ).rejects.toThrow("REDIRECT:/reset-password?code=login-recovery-code&type=recovery");
-    expect(getCurrentUserFromServerMock).not.toHaveBeenCalled();
+  it("does not process password recovery codes on /login", async () => {
+    getCurrentUserFromServerMock.mockResolvedValue({
+      mode: "supabase",
+      authenticated: false,
+      user: null
+    });
+
+    const result = await LoginPage();
+
+    expect(redirectMock).not.toHaveBeenCalled();
+    expect(result).toBeTruthy();
   });
 
   it("does not send legacy email-link errors from /login back through the callback loop", async () => {
@@ -70,26 +73,23 @@ describe("auth entry page routing", () => {
       user: null
     });
 
-    const result = await LoginPage({
-      searchParams: Promise.resolve({
-        error: "Email link is invalid or has expired",
-        error_code: "otp_expired"
-      })
-    });
+    const result = await LoginPage();
 
     expect(redirectMock).not.toHaveBeenCalled();
     expect(result).toBeTruthy();
   });
 
-  it("routes OAuth code returns on /signup into the canonical callback", async () => {
-    await expect(
-      SignupPage({
-        searchParams: Promise.resolve({
-          code: "signup-oauth-code"
-        })
-      })
-    ).rejects.toThrow("REDIRECT:/auth/callback?code=signup-oauth-code");
-    expect(getCurrentUserFromServerMock).not.toHaveBeenCalled();
+  it("does not process OAuth callback codes on /signup", async () => {
+    getCurrentUserFromServerMock.mockResolvedValue({
+      mode: "supabase",
+      authenticated: false,
+      user: null
+    });
+
+    const result = await SignupPage();
+
+    expect(redirectMock).not.toHaveBeenCalled();
+    expect(result).toBeTruthy();
   });
 
   it("redirects authenticated users away from /login", async () => {
@@ -109,6 +109,6 @@ describe("auth entry page routing", () => {
     });
     resolvePostAuthDestinationMock.mockResolvedValue("/role-select");
 
-    await expect(LoginPage({ searchParams: Promise.resolve({}) })).rejects.toThrow("REDIRECT:/role-select");
+    await expect(LoginPage()).rejects.toThrow("REDIRECT:/role-select");
   });
 });

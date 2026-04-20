@@ -1,4 +1,5 @@
 import type { Route } from "next";
+import { isCanonicalContactComplete } from "@/lib/auth/contact-policy";
 import { isPlatformAdminUser } from "@/lib/auth/demo-auth";
 import { initializeProductionRoleSelection } from "@/lib/auth/production-identity";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -93,11 +94,11 @@ function describeOnboardingError(error: unknown) {
 }
 
 function hasVerifiedContactData(user: UserAccount) {
-  return Boolean(
-    hasRequiredContactData(user)
-    && user.emailVerified !== false
-    && user.phoneVerified !== false
-  );
+  return isCanonicalContactComplete({
+    hasRequiredContactFields: hasRequiredContactData(user),
+    emailVerified: user.emailVerified === true,
+    phoneVerified: user.phoneVerified === true
+  });
 }
 
 function logLaneLaunch(event: string, details: Record<string, unknown>) {
@@ -330,6 +331,18 @@ function inferSelectedRoleFromUser(user: UserAccount): OnboardingRole | null {
   }
 
   return null;
+}
+
+function hasCanonicalLaneForRole(user: UserAccount, role: OnboardingRole) {
+  if (role === "client") {
+    return Boolean(user.clientId);
+  }
+
+  if (role === "barber") {
+    return Boolean(user.barberId);
+  }
+
+  return Boolean(user.ownedShopId);
 }
 
 function hasRequiredContactData(user: UserAccount) {
@@ -723,6 +736,56 @@ export async function initializeSelectedUserLane(
   };
 }
 
+export async function ensureCanonicalOnboardingStateForUser(user: UserAccount) {
+  const role = inferSelectedRoleFromUser(user);
+  if (!role || !hasVerifiedContactData(user)) {
+    return {
+      ensured: false,
+      role,
+      reason: !role ? "missing_role" as const : "contact_incomplete" as const
+    };
+  }
+
+  const { rows, degraded } = await readPersistedStates(user.id);
+  const existing = rows.find((entry) => entry.role === role);
+  if (existing) {
+    return {
+      ensured: false,
+      role,
+      state: existing,
+      degraded,
+      reason: "already_exists" as const
+    };
+  }
+
+  const hasLaneRecord = hasCanonicalLaneForRole(user, role);
+  const state = hasLaneRecord
+    ? createCompletedLaneState(user, role)
+    : createEmptyState(user, role);
+
+  if (role !== "client" && hasLaneRecord) {
+    await ensureCanonicalVerificationProfile(user, role);
+  }
+
+  const persistResult = await persistState(state);
+  logLaneLaunch("canonical onboarding state ensured", {
+    userId: user.id,
+    role,
+    stateStatus: state.status,
+    currentStep: state.currentStep,
+    hasLaneRecord,
+    degraded: degraded || persistResult.degraded
+  });
+
+  return {
+    ensured: true,
+    role,
+    state,
+    degraded: degraded || persistResult.degraded,
+    reason: "created" as const
+  };
+}
+
 export async function getOnboardingStates(user: UserAccount) {
   return readPersistedStates(user.id);
 }
@@ -961,6 +1024,14 @@ export async function resolvePostAuthDestination(
     return "/verify-contact";
   }
 
+  const selectedRole = inferSelectedRoleFromUser(user);
+
+  if (!selectedRole) {
+    return "/role-select";
+  }
+
+  await ensureCanonicalOnboardingStateForUser(user);
+
   const onboardingSummary = preloaded
     ? {
         selectedRole: preloaded.selectedRole,
@@ -990,11 +1061,6 @@ export async function resolvePostAuthDestination(
           : null
       }
     : await getOnboardingSummaryForRuntimeUser(user.id);
-  const selectedRole = inferSelectedRoleFromUser(user);
-
-  if (!selectedRole) {
-    return "/role-select";
-  }
 
   if (selectedRole === "client" && !user.clientId) {
     return getLaneSetupPath("client", onboardingSummary);

@@ -1,4 +1,5 @@
 import { createHash, randomInt, randomUUID } from "node:crypto";
+import { CONTACT_VERIFICATION_POLICY, isCanonicalContactComplete } from "@/lib/auth/contact-policy";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { hasTwilioDeliveryConfig, isSupabaseEnabled, runtimeConfig } from "@/lib/config/runtime";
@@ -117,7 +118,11 @@ type CanonicalContactSnapshot = {
 };
 
 function toContactVerificationState(snapshot: CanonicalContactSnapshot): ContactVerificationState {
-  const contactComplete = snapshot.missingFields.length === 0 && snapshot.emailVerified && snapshot.phoneVerified;
+  const contactComplete = isCanonicalContactComplete({
+    hasRequiredContactFields: snapshot.missingFields.length === 0,
+    emailVerified: snapshot.emailVerified,
+    phoneVerified: snapshot.phoneVerified
+  });
   return {
     fullName: snapshot.fullName,
     firstName: snapshot.firstName,
@@ -565,7 +570,7 @@ function inferOnboardingState(input: {
   hasLaneRecord: boolean;
   persistedState?: IdentityOnboardingState | null;
 }) {
-  if (!input.hasRequiredContactFields || !input.emailVerified || !input.phoneVerified) {
+  if (!isCanonicalContactComplete(input)) {
     return "awaiting_contact_verification" satisfies IdentityOnboardingState;
   }
 
@@ -1329,11 +1334,11 @@ async function readCanonicalContactSnapshot(
     missingFields.push("phone");
   }
 
-  if (email && !emailVerified) {
+  if (email && CONTACT_VERIFICATION_POLICY.requireVerifiedEmail && !emailVerified) {
     missingFields.push("email_verification");
   }
 
-  if (phone && !phoneVerified) {
+  if (phone && CONTACT_VERIFICATION_POLICY.requireVerifiedPhone && !phoneVerified) {
     missingFields.push("phone_verification");
   }
 
@@ -1392,7 +1397,11 @@ async function readCanonicalContactSnapshot(
       hasLaneRecord,
       onboardingState,
       missingFields,
-      contactComplete: missingFields.length === 0 && emailVerified && phoneVerified
+      contactComplete: isCanonicalContactComplete({
+        hasRequiredContactFields: missingFields.length === 0,
+        emailVerified,
+        phoneVerified
+      })
     }
   });
 
@@ -1499,12 +1508,14 @@ export async function buildRuntimeUserFromProductionAuth(authUser: AuthUserLike)
           persistedState: profile?.onboarding_state
         });
     const displayName = getDisplayName(authUser, profile);
+    const contactComplete = isCanonicalContactComplete({
+      hasRequiredContactFields: requiredContact.missingFields.length === 0,
+      emailVerified,
+      phoneVerified
+    });
     const accountStatus = primaryRole === "platform_admin"
       ? "active"
-      : hasLaneRecord
-      && emailVerified
-      && phoneVerified
-      && requiredContact.missingFields.length === 0
+      : hasLaneRecord && contactComplete
         ? "active"
         : "profile_only";
     const canonicalFullName = requiredContact.fullName || displayName;
@@ -1699,7 +1710,11 @@ export async function updateContactVerificationProfile(
     rawProfile: snapshot.profile,
     missingFields: snapshot.missingFields,
     onboardingState: snapshot.onboardingState,
-    contactComplete: snapshot.missingFields.length === 0 && snapshot.emailVerified && snapshot.phoneVerified
+    contactComplete: isCanonicalContactComplete({
+      hasRequiredContactFields: snapshot.missingFields.length === 0,
+      emailVerified: snapshot.emailVerified,
+      phoneVerified: snapshot.phoneVerified
+    })
   });
 
   return toContactVerificationState(snapshot);
@@ -2119,7 +2134,11 @@ export async function verifyPhoneVerificationChallenge(
     rawProfileAfterVerify: snapshot.profile,
     missingFields: snapshot.missingFields,
     onboardingState: snapshot.onboardingState,
-    contactComplete: snapshot.missingFields.length === 0 && snapshot.emailVerified && snapshot.phoneVerified
+    contactComplete: isCanonicalContactComplete({
+      hasRequiredContactFields: snapshot.missingFields.length === 0,
+      emailVerified: snapshot.emailVerified,
+      phoneVerified: snapshot.phoneVerified
+    })
   });
 
   if (!normalizePhoneNumber(snapshot.profile?.phone ?? null) || !snapshot.profile?.phone_verified_at) {
@@ -2131,7 +2150,11 @@ export async function verifyPhoneVerificationChallenge(
 
 export async function getContactVerificationDebugState(authUser: AuthUserLike) {
   const snapshot = await readCanonicalContactSnapshot(authUser);
-  const contactComplete = snapshot.missingFields.length === 0 && snapshot.emailVerified && snapshot.phoneVerified;
+  const contactComplete = isCanonicalContactComplete({
+    hasRequiredContactFields: snapshot.missingFields.length === 0,
+    emailVerified: snapshot.emailVerified,
+    phoneVerified: snapshot.phoneVerified
+  });
   return {
     profile: snapshot.profile,
     computed: {

@@ -21,6 +21,7 @@ vi.mock("@/lib/trust/provider", async () => {
 
 import { CANONICAL_PLATFORM_ADMIN_EMAIL, resolveDemoUser } from "@/lib/auth/demo-auth";
 import {
+  ensureCanonicalOnboardingStateForUser,
   getActivationStatusForUser,
   getOnboardingState,
   initializeUserRole,
@@ -167,6 +168,57 @@ describe("onboarding service", () => {
     const destination = await resolvePostAuthDestination(freshUser);
 
     expect(destination).toBe("/verify-contact");
+  });
+
+  it("treats phone verification as mandatory for launch routing", async () => {
+    const phoneUnverifiedUser: UserAccount = {
+      id: "auth-phone-unverified",
+      role: "client",
+      email: "phone-unverified@bvrb3r.demo",
+      password: "",
+      name: "Phone Unverified",
+      canonicalFullName: "Phone Unverified",
+      title: "Client",
+      phone: "+18135550177",
+      locationIds: [],
+      accountStatus: "active",
+      primaryOnboardingRole: "client",
+      onboardingState: "active",
+      emailVerified: true,
+      phoneVerified: false,
+      clientId: "client-phone-unverified"
+    };
+
+    const destination = await resolvePostAuthDestination(phoneUnverifiedUser);
+
+    expect(destination).toBe("/verify-contact");
+  });
+
+  it("creates a missing canonical onboarding state for a role-provisioned user", async () => {
+    const provisionedClient: UserAccount = {
+      ...resolveDemoUser("client@bvrb3r.demo"),
+      id: "auth-provisioned-client",
+      canonicalFullName: "Provisioned Client",
+      phone: "+18135550178",
+      accountStatus: "active",
+      primaryOnboardingRole: "client",
+      onboardingState: "active",
+      emailVerified: true,
+      phoneVerified: true,
+      clientId: "client-provisioned"
+    };
+
+    const ensured = await ensureCanonicalOnboardingStateForUser(provisionedClient);
+    const payload = await getOnboardingState(provisionedClient);
+
+    expect(ensured).toMatchObject({
+      ensured: true,
+      role: "client",
+      reason: "created"
+    });
+    expect(payload.lanes[0]?.role).toBe("client");
+    expect(payload.lanes[0]?.status).toBe("completed");
+    expect(payload.nextPath).toBe("/dashboard/client");
   });
 
   it("keeps a primary-role-null user on role-select even when stale lane rows exist", async () => {
