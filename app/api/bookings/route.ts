@@ -2,6 +2,7 @@
 import { z } from "zod";
 import { getEngagementProvider } from "@/lib/engagement/provider";
 import { getClientExperienceContext } from "@/lib/client-experience/session";
+import { recordBookingCreatedPlatformEvent } from "@/lib/core/booking-events";
 import { getMarketplaceProvider } from "@/lib/marketplace/provider";
 import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
 import { LiveOperationConflictError, LiveOperationValidationError } from "@/lib/operations/live-state";
@@ -40,6 +41,17 @@ export async function POST(request: NextRequest) {
       actorRole: "client",
       actorEmail: clientContext.activeClient?.email ?? clientContext.viewer.email,
       bookingSource: sourceKind ?? "booking"
+    });
+    await recordBookingCreatedPlatformEvent({
+      appointment: result.appointment,
+      actorId: clientContext.viewer.id,
+      actorRole: "client",
+      source: "api",
+      route: "/api/bookings",
+      context: {
+        sourceKind: sourceKind ?? null,
+        matchedFrom: matchedFrom ?? null
+      }
     });
 
     if (sourceKind) {

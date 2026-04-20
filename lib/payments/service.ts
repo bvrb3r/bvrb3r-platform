@@ -2,6 +2,11 @@ import { randomUUID } from "crypto";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { runtimeConfig } from "@/lib/config/runtime";
 import {
+  buildPlatformEventIdempotencyKey,
+  recordPlatformEvent,
+  type PlatformEventType
+} from "@/lib/core/platform-events";
+import {
   reconcilePaymentPayoutExecutions,
   syncPaymentRoutingRecord,
   syncStripeSettlementForPayment
@@ -481,6 +486,60 @@ function mapPaymentRow(row: PaymentRow): PaymentRecordView {
     paidAt: row.paid_at,
     createdAt: row.created_at
   };
+}
+
+function getPaymentPlatformEventType(status: InternalPaymentStatus): PlatformEventType | null {
+  if (status === "captured" || status === "partially_refunded") {
+    return "payment_succeeded";
+  }
+
+  if (status === "failed") {
+    return "payment_failed";
+  }
+
+  return null;
+}
+
+async function recordPaymentStatusPlatformEvent(
+  supabase: SupabaseClient,
+  payment: PaymentRow,
+  input?: {
+    actorId?: string | null;
+    actorRole?: string | null;
+    source?: "api" | "webhook" | "system";
+  }
+) {
+  const eventType = getPaymentPlatformEventType(payment.payment_status);
+  if (!eventType) {
+    return;
+  }
+
+  await recordPlatformEvent(supabase, {
+    eventType,
+    entityType: "payment",
+    entityId: payment.id,
+    actorId: input?.actorId ?? payment.client_id ?? payment.barber_id ?? payment.shop_id ?? null,
+    actorRole: input?.actorRole ?? null,
+    source: input?.source ?? "api",
+    relatedIds: {
+      paymentId: payment.id,
+      appointmentId: payment.appointment_id,
+      clientId: payment.client_id,
+      barberId: payment.barber_id,
+      shopId: payment.shop_id,
+      paymentMethodId: payment.payment_method_id,
+      providerPaymentIntentId: payment.provider_payment_intent_id
+    },
+    payload: {
+      paymentStatus: payment.payment_status,
+      paymentType: payment.payment_type,
+      provider: payment.provider,
+      amount: numeric(payment.amount),
+      currency: payment.currency,
+      paidAt: payment.paid_at
+    },
+    idempotencyKey: buildPlatformEventIdempotencyKey(["payment", payment.id, eventType, payment.payment_status])
+  });
 }
 
 function normalizeStripeMetadata(metadata?: Record<string, string | number | boolean | null>) {
@@ -1232,6 +1291,9 @@ export async function createPaymentLedgerEntry(
 
   const paymentRow = paymentInsert.data as PaymentRow;
   await syncPaymentRoutingRecord(supabase, paymentRow.id);
+  await recordPaymentStatusPlatformEvent(supabase, paymentRow, {
+    source: input.metadata?.source === "stripe_webhook" ? "webhook" : "api"
+  });
   return mapPaymentRow(paymentRow);
 }
 
@@ -1526,6 +1588,11 @@ export async function capturePayment(user: UserAccount, paymentId: string) {
 
   await syncPaymentRoutingRecord(supabase, payment.id);
   await syncStripeSettlementForPayment(supabase, payment.id);
+  await recordPaymentStatusPlatformEvent(supabase, result.data as PaymentRow, {
+    actorId: actor.profile.id,
+    actorRole: actor.role,
+    source: "api"
+  });
 
   return {
     payment: mapPaymentRow(result.data as PaymentRow),

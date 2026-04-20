@@ -2,6 +2,10 @@ import Stripe from "stripe";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import {
+  buildPlatformEventIdempotencyKey,
+  recordPlatformEvent
+} from "@/lib/core/platform-events";
+import {
   calculatePaymentRouting,
   createPayoutExecutionIdempotencyKey,
   derivePayoutExecutionReconciliationStatus,
@@ -2216,7 +2220,7 @@ async function executeTransferForRoutingTarget(
       idempotencyKey: plannedExecution.idempotency_key
     });
 
-    return persistPayoutExecutionRow(supabase, plannedExecution.id, {
+    const executedExecution = await persistPayoutExecutionRow(supabase, plannedExecution.id, {
       execution_status: "executed",
       blocked_reason: null,
       failure_reason: null,
@@ -2230,6 +2234,36 @@ async function executeTransferForRoutingTarget(
       last_attempted_at: now,
       updated_at: now
     });
+
+    await recordPlatformEvent(supabase, {
+      eventType: "payout_released",
+      entityType: "payout_execution",
+      entityId: executedExecution.id,
+      actorId: initiatedBy,
+      source: "api",
+      relatedIds: {
+        payoutExecutionId: executedExecution.id,
+        routingRecordId: routing.id,
+        paymentId: routing.payment_id,
+        appointmentId: routing.appointment_id,
+        membershipId: routing.membership_id,
+        targetConnectedAccountId: target.connectedAccount?.id,
+        targetSubjectType: target.targetSubjectType,
+        processorTransferId: transfer.id
+      },
+      payload: {
+        amount: payoutMath.grossAmount,
+        netTransferAmount: payoutMath.netTransferAmount,
+        instantPayoutFeeAmount: payoutMath.instantFeeAmount,
+        currency: routing.currency.toLowerCase(),
+        payoutSpeed: payoutMath.speed,
+        routingModel: routing.routing_model,
+        payoutRecipientType: routing.payout_recipient_type
+      },
+      idempotencyKey: buildPlatformEventIdempotencyKey(["payout", executedExecution.id, "released"])
+    });
+
+    return executedExecution;
   } catch (error) {
     return persistPayoutExecutionRow(supabase, plannedExecution.id, {
       execution_status: "failed",

@@ -1,5 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { isSupabaseEnabled } from "@/lib/config/runtime";
+import {
+  buildPlatformEventIdempotencyKey,
+  recordPlatformEvent
+} from "@/lib/core/platform-events";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   createEmptyTrustState,
@@ -545,6 +549,29 @@ function createSupabaseProvider(supabase: SupabaseClient): TrustProvider {
         notes: result.disputeEvent.notes ?? null,
         created_at: result.disputeEvent.createdAt
       }]);
+
+      await recordPlatformEvent(supabase, {
+        eventType: "dispute_created",
+        entityType: "dispute",
+        entityId: result.dispute.id,
+        actorId: result.dispute.submittedById,
+        actorRole: result.dispute.submittedByRole,
+        source: "api",
+        relatedIds: {
+          disputeId: result.dispute.id,
+          appointmentId: result.dispute.appointmentId,
+          locationId: result.dispute.locationId,
+          involvedPartyType: result.dispute.involvedPartyType,
+          involvedPartyId: result.dispute.involvedPartyId
+        },
+        payload: {
+          disputeType: result.dispute.disputeType,
+          disputeStatus: result.dispute.disputeStatus,
+          summary: result.dispute.summary
+        },
+        idempotencyKey: buildPlatformEventIdempotencyKey(["dispute", result.dispute.id, "created"]),
+        occurredAt: result.dispute.createdAt
+      });
 
       return result;
     }

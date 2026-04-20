@@ -1,6 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getEngagementProvider } from "@/lib/engagement/provider";
+import { recordBookingCreatedPlatformEvent } from "@/lib/core/booking-events";
 import { getMarketplaceProvider } from "@/lib/marketplace/provider";
 import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
 import { LiveOperationConflictError, LiveOperationValidationError } from "@/lib/operations/live-state";
@@ -33,6 +34,16 @@ export async function POST(request: NextRequest) {
     const result = await provider.createBooking({
       ...bookingInput,
       actorRole: "client"
+    });
+    await recordBookingCreatedPlatformEvent({
+      appointment: result.appointment,
+      actorRole: "client",
+      source: "api",
+      route: "/api/operations/bookings",
+      context: {
+        sourceKind: sourceKind ?? null,
+        matchedFrom: matchedFrom ?? null
+      }
     });
 
     if (sourceKind) {

@@ -2,6 +2,11 @@ import { randomUUID } from "node:crypto";
 import { isPlatformAdminUser } from "@/lib/auth/demo-auth";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import {
+  buildPlatformEventIdempotencyKey,
+  recordPlatformEvents,
+  type PlatformEventType
+} from "@/lib/core/platform-events";
+import {
   assertPlatformAdminAccess,
   readPlatformAdminAuditLogEntries,
   recordPlatformAdminAuditLog
@@ -1713,6 +1718,64 @@ const auditActionMap: Record<"approve" | "reject" | "request_update" | "suspend"
   reactivate: "verification_reactivated"
 };
 
+async function recordVerificationPlatformEvents(input: {
+  actor: UserAccount;
+  subject: VerificationSubject;
+  action: "approve" | "reject" | "request_update" | "suspend" | "reactivate";
+  before: ArchitectVerificationQueueItem;
+  after: ArchitectVerificationQueueItem;
+  profile: VerificationProfileRecord;
+  review: VerificationReviewRecord;
+  note: string;
+}) {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return;
+  }
+
+  const eventTypes: PlatformEventType[] = ["verification_updated"];
+  if (input.action === "approve") {
+    eventTypes.push("verification_approved");
+  }
+  if (input.action === "reject") {
+    eventTypes.push("verification_rejected");
+  }
+
+  await recordPlatformEvents(supabase, eventTypes.map((eventType) => ({
+    eventType,
+    entityType: "verification_profile",
+    entityId: input.profile.id,
+    actorId: input.actor.id,
+    actorRole: input.actor.role,
+    source: "api",
+    relatedIds: {
+      verificationProfileId: input.profile.id,
+      reviewId: input.review.id,
+      subjectUserId: input.subject.userId,
+      barberId: input.subject.barberId,
+      shopId: input.subject.shopId,
+      role: input.profile.role
+    },
+    payload: {
+      action: input.action,
+      reviewActionType: input.review.actionType,
+      fromStatus: input.before.canonicalOverallStatus,
+      toStatus: input.after.canonicalOverallStatus,
+      canonicalApprovalStatus: getCanonicalApprovalStatusForAction(input.action, input.profile),
+      subjectName: input.after.subjectName,
+      subjectEmail: input.after.subjectEmail,
+      note: input.note
+    },
+    idempotencyKey: buildPlatformEventIdempotencyKey([
+      "verification",
+      input.profile.id,
+      input.review.id,
+      eventType
+    ]),
+    occurredAt: input.review.createdAt
+  })));
+}
+
 async function executeReviewAction(
   actor: UserAccount,
   profileId: string,
@@ -1773,6 +1836,16 @@ async function executeReviewAction(
       canonicalApprovalStatus: getCanonicalApprovalStatusForAction(action, nextProfile),
       internalNotes: input.internalNotes?.trim() || null
     }
+  });
+  await recordVerificationPlatformEvents({
+    actor,
+    subject,
+    action,
+    before,
+    after,
+    profile: nextProfile,
+    review,
+    note: input.reason.trim()
   });
 
   return {

@@ -9,6 +9,7 @@ import {
   readCanonicalClientProfile
 } from "@/lib/booking/canonical-booking";
 import { findCanonicalBookableSlot } from "@/lib/booking/intelligence";
+import { recordPlatformEvent, buildPlatformEventIdempotencyKey } from "@/lib/core/platform-events";
 import { createCapturedStripePaymentRecord } from "@/lib/payments/service";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
@@ -488,6 +489,29 @@ export async function ensureRecurringBooking(supabase: SupabaseClient, input: En
   if (historyInsert.error) {
     throw historyInsert.error;
   }
+  await recordPlatformEvent(supabase, {
+    eventType: "booking_created",
+    entityType: "appointment",
+    entityId: appointmentReference,
+    source: "system",
+    relatedIds: {
+      appointmentId,
+      appointmentReference,
+      clientId: clientUuid,
+      barberId: barberUuid,
+      locationId: canonicalLocationUuid(slotMatch.locationId),
+      serviceId: canonicalServiceUuid(serviceRow.reference_code ?? serviceRow.id)
+    },
+    payload: {
+      status: "booked",
+      trigger: input.trigger,
+      startsAt: slotMatch.slot.startsAt,
+      endsAt: slotMatch.slot.endsAt,
+      source: "recurring_engine"
+    },
+    idempotencyKey: buildPlatformEventIdempotencyKey(["booking", appointmentReference, "booking_created", createdAt]),
+    occurredAt: createdAt
+  });
 
   const serviceSnapshotInsert = await supabase.from("appointment_services").insert({
     appointment_id: appointmentId,

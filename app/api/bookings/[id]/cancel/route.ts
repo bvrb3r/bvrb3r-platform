@@ -1,6 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionUser } from "@/lib/booking/route-auth";
+import { recordBookingUpdatedPlatformEvents } from "@/lib/core/booking-events";
 import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
 import { LiveOperationConflictError } from "@/lib/operations/live-state";
 import { reversePointsForAppointment } from "@/lib/points/engine";
@@ -32,6 +33,17 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       actorRole,
       actorEmail: user.email,
       reason: parsed.data.reason
+    });
+    await recordBookingUpdatedPlatformEvents({
+      appointment: result.appointment,
+      actorId: user.id,
+      actorRole,
+      source: "api",
+      route: "/api/bookings/[id]/cancel",
+      lifecycleEvent: "canceled",
+      context: {
+        reason: parsed.data.reason ?? null
+      }
     });
     try {
       await reversePointsForAppointment({

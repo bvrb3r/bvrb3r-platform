@@ -1,6 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionUser } from "@/lib/booking/route-auth";
+import { recordBookingUpdatedPlatformEvents } from "@/lib/core/booking-events";
 import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
 import { LiveOperationConflictError } from "@/lib/operations/live-state";
 
@@ -30,6 +31,14 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       action: "service_complete",
       actorRole,
       actorEmail: user.email
+    });
+    await recordBookingUpdatedPlatformEvents({
+      appointment: result.appointment,
+      actorId: user.id,
+      actorRole,
+      source: "api",
+      route: "/api/barber/appointments/[id]/complete",
+      lifecycleEvent: "completed"
     });
 
     return NextResponse.json({ appointment: result.appointment });

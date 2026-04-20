@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
+import { recordBookingUpdatedPlatformEvents } from "@/lib/core/booking-events";
 import { getEngagementProvider } from "@/lib/engagement/provider";
 import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
 import { LiveOperationConflictError } from "@/lib/operations/live-state";
@@ -57,6 +58,17 @@ export async function POST(
       action: parsed.data.action,
       actorRole,
       actorEmail: user.email
+    });
+    await recordBookingUpdatedPlatformEvents({
+      appointment: result.appointment,
+      actorId: user.id,
+      actorRole,
+      source: "api",
+      route: "/api/operations/appointments/[appointmentId]/transition",
+      lifecycleEvent: parsed.data.action === "service_complete" ? "completed" : "updated",
+      context: {
+        action: parsed.data.action
+      }
     });
 
     if (parsed.data.action === "service_complete" && (user.role === "commission_barber" || user.role === "booth_rent_barber")) {

@@ -1,4 +1,9 @@
 import { isSupabaseEnabled } from "@/lib/config/runtime";
+import {
+  buildPlatformEventIdempotencyKey,
+  recordPlatformEvents,
+  type PlatformEventInput
+} from "@/lib/core/platform-events";
 import { demoUsers } from "@/lib/data/demo";
 import {
   createInitialPointsState,
@@ -1282,6 +1287,64 @@ async function resolveOwnerUserId(locationReference: string, supabase?: Supabase
   return profilesResult.data?.[0]?.id ?? `owner:${locationReference}`;
 }
 
+function buildPointsTransactionPlatformEvent(transaction: PointsTransactionRecord): PlatformEventInput | null {
+  const eventType = transaction.pointsDelta > 0
+    ? "points_earned"
+    : transaction.pointsDelta < 0 && transaction.status === "redeemed"
+      ? "points_redeemed"
+      : null;
+
+  if (!eventType) {
+    return null;
+  }
+
+  return {
+    eventType,
+    entityType: "points_transaction",
+    entityId: transaction.id,
+    actorId: transaction.userId,
+    actorRole: transaction.role,
+    source: "system",
+    relatedIds: {
+      pointsTransactionId: transaction.id,
+      sourceType: transaction.sourceType,
+      sourceId: transaction.sourceId,
+      appointmentId: transaction.metadata.appointmentId,
+      locationId: transaction.metadata.locationId,
+      referralId: transaction.referralId
+    },
+    payload: {
+      role: transaction.role,
+      pointClass: transaction.pointClass,
+      eventType: transaction.eventType,
+      sourceType: transaction.sourceType,
+      pointsDelta: transaction.pointsDelta,
+      inAppValue: transaction.inAppValue,
+      cashValue: transaction.cashValue,
+      status: transaction.status,
+      metadata: transaction.metadata
+    },
+    idempotencyKey: buildPlatformEventIdempotencyKey(["points", transaction.id, eventType]),
+    occurredAt: transaction.createdAt
+  };
+}
+
+async function recordPointsTransactionPlatformEvents(
+  supabase: SupabaseClient,
+  previousState: PointsState,
+  nextState: PointsState
+) {
+  const previousTransactionIds = new Set(previousState.transactions.map((transaction) => transaction.id));
+  const events = nextState.transactions
+    .filter((transaction) => !previousTransactionIds.has(transaction.id))
+    .map(buildPointsTransactionPlatformEvent)
+    .filter((event): event is PlatformEventInput => Boolean(event));
+
+  if (events.length) {
+    await recordPlatformEvents(supabase, events);
+  }
+}
+
 async function withMutation<T>(mutate: (state: PointsState, supabase?: SupabaseClient | null) => Promise<{ state: PointsState; result: T }>) {
   const storage = await readStorageContext();
   const payload = await mutate(storage.state, storage.kind === "supabase" ? storage.supabase : null);
@@ -1289,6 +1352,9 @@ async function withMutation<T>(mutate: (state: PointsState, supabase?: SupabaseC
     ...storage,
     state: payload.state
   } as StorageContext);
+  if (storage.kind === "supabase") {
+    await recordPointsTransactionPlatformEvents(storage.supabase, storage.state, payload.state);
+  }
   return payload.result;
 }
 
