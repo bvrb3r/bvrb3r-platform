@@ -30,6 +30,7 @@ import {
   buildClientMembershipExecutionSummary,
   buildClientMembershipValueSummary
 } from "@/lib/monetization/service";
+import { readPointsBalanceForClientReference } from "@/lib/points/engine";
 import { buildPublicTrustSignal, computeShopVerificationDecision, createEmptyTrustState, getVerificationGateDecision } from "@/lib/trust/engine";
 import { getTrustProvider } from "@/lib/trust/provider";
 import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
@@ -1389,8 +1390,14 @@ export async function getClientBookingsPayload(clientId: string) {
 
   try {
     const engagementProvider = await getEngagementProvider();
-    const engagementState = await engagementProvider.readState();
-    const engagementSummary = getClientEngagementSummary(engagementState, snapshot, clientId);
+    const [engagementState, pointsBalance] = await Promise.all([
+      engagementProvider.readState(),
+      readPointsBalanceForClientReference(clientId, supabase)
+    ]);
+    const engagementSummary = getClientEngagementSummary(engagementState, snapshot, clientId, {
+      pointsBalance: pointsBalance.unlockedPoints,
+      lifetimePoints: pointsBalance.lifetimeEarned
+    });
     membershipExecution = await buildClientMembershipExecutionSummary({
       clientId,
       clientName: clientProfile?.fullName,

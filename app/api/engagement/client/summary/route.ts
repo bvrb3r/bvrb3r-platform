@@ -6,6 +6,8 @@ import { engagementErrorResponse } from "@/lib/engagement/http";
 import { buildClientIntelligenceSnapshot, syncClientIntelligenceSnapshots } from "@/lib/engagement/intelligence";
 import { getEngagementProvider } from "@/lib/engagement/provider";
 import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { readPointsBalanceForClientReference } from "@/lib/points/engine";
 
 export async function GET() {
   try {
@@ -18,7 +20,8 @@ export async function GET() {
       getEngagementProvider(),
       getLiveOperationsProvider()
     ]);
-    const [state, snapshot] = await Promise.all([
+    const supabase = createSupabaseAdminClient();
+    const [state, snapshot, pointsBalance] = await Promise.all([
       engagementProvider.readState(),
       operationsProvider.readSnapshot({
         role: actor.role,
@@ -26,14 +29,18 @@ export async function GET() {
         barberId: actor.barberId,
         locationIds: actor.locationIds,
         email: actor.userEmail
-      })
+      }),
+      readPointsBalanceForClientReference(actor.clientId, supabase)
     ]);
     const intelligenceSnapshot = buildClientIntelligenceSnapshot(state, snapshot, actor.clientId);
     if (intelligenceSnapshot) {
       await syncClientIntelligenceSnapshots([intelligenceSnapshot]);
     }
 
-    const summary = getClientEngagementSummary(state, snapshot, actor.clientId);
+    const summary = getClientEngagementSummary(state, snapshot, actor.clientId, {
+      pointsBalance: pointsBalance.unlockedPoints,
+      lifetimePoints: pointsBalance.lifetimeEarned
+    });
 
     return NextResponse.json({
       summary: await enrichClientEngagementSummaryWithAutomation(summary, state, snapshot)

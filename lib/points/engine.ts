@@ -1,14 +1,11 @@
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import {
   buildPlatformEventIdempotencyKey,
-  recordPlatformEvents,
+  recordRequiredPlatformEvents,
   type PlatformEventInput
 } from "@/lib/core/platform-events";
-import { demoUsers } from "@/lib/data/demo";
 import {
-  createInitialPointsState,
-  demoPointsProgramRules,
-  demoRewardCampaigns
+  createInitialPointsState
 } from "@/lib/data/points";
 import { getEngagementProvider } from "@/lib/engagement/provider";
 import { previewCashoutRequest, DEFAULT_CASHOUT_MIN_POINTS } from "@/lib/points/cashout";
@@ -291,20 +288,11 @@ function createEmptyLivePointsState(): PointsState {
   return {
     balances: [],
     transactions: [],
-    programRules: clone(demoPointsProgramRules),
-    campaigns: clone(demoRewardCampaigns),
+    programRules: [],
+    campaigns: [],
     eligibilitySnapshots: [],
     cashoutRequests: []
   };
-}
-
-async function hasRows(supabase: SupabaseClient, table: string) {
-  const result = await supabase.from(table).select("*").limit(1);
-  if (result.error) {
-    throw result.error;
-  }
-
-  return (result.data ?? []).length > 0;
 }
 
 function toBalanceInsert(record: UserPointsBalanceRecord) {
@@ -398,37 +386,8 @@ function toCashoutRequestInsert(record: CashoutRequestRecord) {
   };
 }
 
-async function ensureSupabaseSeeded(supabase: SupabaseClient) {
-  const [hasRules, hasCampaigns] = await Promise.all([
-    hasRows(supabase, "points_program_rules"),
-    hasRows(supabase, "reward_campaigns")
-  ]);
-
-  if (!hasRules) {
-    const rulesInsert = await supabase.from("points_program_rules").upsert(
-      demoPointsProgramRules.map(toProgramRuleInsert),
-      { onConflict: "id" }
-    );
-    if (rulesInsert.error) {
-      throw rulesInsert.error;
-    }
-  }
-
-  if (!hasCampaigns) {
-    const campaignsInsert = await supabase.from("reward_campaigns").upsert(
-      demoRewardCampaigns.map(toCampaignInsert),
-      { onConflict: "id" }
-    );
-    if (campaignsInsert.error) {
-      throw campaignsInsert.error;
-    }
-  }
-}
-
 async function readSupabaseState(supabase: SupabaseClient): Promise<PointsState> {
   try {
-    await ensureSupabaseSeeded(supabase);
-
     const [
       balancesResult,
       transactionsResult,
@@ -1217,11 +1176,6 @@ function resolveTipRewardPoints(tipAmount?: number) {
 }
 
 async function resolveClientUserId(clientReference: string, supabase?: SupabaseClient | null) {
-  const demoUser = demoUsers.find((user) => user.clientId === clientReference);
-  if (demoUser) {
-    return demoUser.id;
-  }
-
   if (!supabase) {
     return clientReference;
   }
@@ -1241,11 +1195,6 @@ async function resolveClientUserId(clientReference: string, supabase?: SupabaseC
 }
 
 async function resolveBarberUserId(barberReference: string, supabase?: SupabaseClient | null) {
-  const demoUser = demoUsers.find((user) => user.barberId === barberReference);
-  if (demoUser) {
-    return demoUser.id;
-  }
-
   if (!supabase) {
     return barberReference;
   }
@@ -1265,11 +1214,6 @@ async function resolveBarberUserId(barberReference: string, supabase?: SupabaseC
 }
 
 async function resolveOwnerUserId(locationReference: string, supabase?: SupabaseClient | null) {
-  const demoOwner = demoUsers.find((user) => user.role === "owner" && user.locationIds.includes(locationReference));
-  if (demoOwner) {
-    return demoOwner.id;
-  }
-
   if (!supabase) {
     return `owner:${locationReference}`;
   }
@@ -1341,7 +1285,7 @@ async function recordPointsTransactionPlatformEvents(
     .filter((event): event is PlatformEventInput => Boolean(event));
 
   if (events.length) {
-    await recordPlatformEvents(supabase, events);
+    await recordRequiredPlatformEvents(supabase, events);
   }
 }
 
@@ -1374,6 +1318,24 @@ export async function writePointsStateSnapshot(nextState: PointsState) {
 export async function readPointsBalanceForScope(scope: PointsScope): Promise<PointsBalanceView> {
   const storage = await readStorageContext();
   return buildBalanceView(storage.state, scope);
+}
+
+export async function readPointsBalanceForClientReference(
+  clientReference: string,
+  supabase?: SupabaseClient | null
+): Promise<PointsBalanceView> {
+  if (!supabase) {
+    return buildBalanceView(createEmptyLivePointsState(), {
+      userId: clientReference,
+      role: "client"
+    });
+  }
+
+  const userId = await resolveClientUserId(clientReference, supabase);
+  return readPointsBalanceForScope({
+    userId,
+    role: "client"
+  });
 }
 
 export async function readPointsHistoryForScope(scope: PointsScope): Promise<PointsHistoryView> {

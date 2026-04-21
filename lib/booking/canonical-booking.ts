@@ -1,18 +1,11 @@
 import { createHash } from "node:crypto";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import {
-  demoAppointments,
-  demoBarbers,
-  demoClients,
-  demoLocations,
-  demoReviews,
-  demoServices,
-  demoUsers,
-  demoWaitlist,
-  demoWalkIns
-} from "@/lib/data/demo";
 import type { Client, WalkInEntry } from "@/types/domain";
-import type { CompensationSnapshotRecord, OwnerAnalyticsSnapshotRecord, WorkflowEventRecord } from "@/lib/operations/persistence";
+import type {
+  CompensationSnapshotRecord,
+  OwnerAnalyticsSnapshotRecord,
+  WorkflowEventRecord
+} from "@/lib/operations/persistence";
 import type { LiveAppointmentRecord, LiveOperationsSnapshot } from "@/lib/operations/live-state";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
@@ -48,61 +41,6 @@ export type CanonicalAppointmentServiceSnapshotRow = {
   deposit_amount: number | string;
   full_prepay_required: boolean;
   add_on_references: string[] | null;
-};
-
-
-type LegacyClientSeedRow = {
-  client_reference: string;
-  full_name: string;
-  phone: string;
-  email: string;
-  favorite_barber_reference: string | null;
-  loyalty_points: number | null;
-  retention_tag: string | null;
-  notes: string[] | null;
-};
-
-type LegacyAppointmentSeedRow = {
-  appointment_reference: string;
-  location_reference: string;
-  barber_reference: string;
-  client_reference: string;
-  service_reference: string;
-  status: LiveAppointmentRecord["status"];
-  source: LiveAppointmentRecord["source"];
-  starts_at: string;
-  ends_at: string;
-  chair_label: string;
-  add_on_references: string[] | null;
-  deposit_amount: number | string | null;
-  total_amount: number | string | null;
-  balance_due: number | string | null;
-  tip_amount: number | string | null;
-  client_note: string | null;
-  lifecycle_revision: number | null;
-  last_actor_role: LiveAppointmentRecord["lastActorRole"] | null;
-  last_event_type: LiveAppointmentRecord["lastEventType"] | null;
-  checkout_reference: string | null;
-  updated_at: string | null;
-  created_at: string | null;
-};
-
-type LegacyWalkInSeedRow = {
-  queue_reference: string;
-  location_reference: string;
-  client_name: string;
-  requested_service: string;
-  requested_at: string;
-  status: WalkInEntry["status"];
-  assigned_barber_reference: string | null;
-  wait_minutes: number | null;
-  position: number | null;
-  updated_at: string | null;
-};
-
-type PaymentReferenceRow = {
-  id: string;
-  appointment_reference: string | null;
 };
 
 type CanonicalReferenceRow = {
@@ -308,456 +246,12 @@ export function canonicalAppointmentUuid(reference: string) {
   return stableUuid(`appointment:${reference}`);
 }
 
-function canonicalWaitlistUuid(reference: string) {
-  return stableUuid(`waitlist:${reference}`);
-}
-
-function canonicalWalkInUuid(reference: string) {
-  return stableUuid(`walkin:${reference}`);
-}
-
 function numeric(value: number | string | null | undefined) {
   return Number(value ?? 0);
 }
 
-
 function toRetentionTag(value: string | null | undefined): Client["retentionTag"] {
   return value === "vip" || value === "repeat" || value === "lapsed" ? value : "new";
-}
-
-function defaultServiceLocationId(serviceId: string) {
-  const locationReference = demoAppointments.find((appointment) => appointment.serviceId === serviceId)?.locationId;
-  return canonicalLocationUuid(locationReference ?? "loc-ybor");
-}
-
-
-function barberUser(barberId: string) {
-  return demoUsers.find((entry) => entry.barberId === barberId);
-}
-
-function clientEmailForReference(reference: string) {
-  return demoClients.find((entry) => entry.id === reference)?.email ?? `${reference}@guest.bvrb3r.local`;
-}
-
-function appointmentSourceRows(legacyAppointments: LegacyAppointmentSeedRow[] | null | undefined) {
-  if (legacyAppointments && legacyAppointments.length > 0) {
-    return legacyAppointments.map((row) => ({
-      reference: row.appointment_reference,
-      locationReference: row.location_reference,
-      barberReference: row.barber_reference,
-      clientReference: row.client_reference,
-      serviceReference: row.service_reference,
-      status: row.status,
-      source: row.source,
-      startsAt: row.starts_at,
-      endsAt: row.ends_at,
-      chairLabel: row.chair_label,
-      addOnReferences: row.add_on_references ?? [],
-      depositAmount: numeric(row.deposit_amount),
-      totalAmount: numeric(row.total_amount),
-      balanceDue: numeric(row.balance_due),
-      tipAmount: numeric(row.tip_amount),
-      clientNote: row.client_note ?? "",
-      lifecycleRevision: row.lifecycle_revision ?? 1,
-      lastActorRole: row.last_actor_role ?? null,
-      lastEventType: row.last_event_type ?? null,
-      checkoutReference: row.checkout_reference ?? null,
-      updatedAt: row.updated_at ?? row.starts_at,
-      createdAt: row.created_at ?? row.starts_at
-    }));
-  }
-
-  return demoAppointments.map((appointment) => ({
-    reference: appointment.id,
-    locationReference: appointment.locationId,
-    barberReference: appointment.barberId,
-    clientReference: appointment.clientId,
-    serviceReference: appointment.serviceId,
-    status: appointment.status,
-    source: appointment.source,
-    startsAt: appointment.start,
-    endsAt: appointment.end,
-    chairLabel: appointment.chair,
-    addOnReferences: appointment.addOnIds,
-    depositAmount: appointment.depositAmount,
-    totalAmount: appointment.totalAmount,
-    balanceDue: appointment.balanceDue,
-    tipAmount: appointment.tipAmount,
-    clientNote: appointment.note,
-    lifecycleRevision: appointment.status === "checked_in" ? 2 : appointment.status === "in_service" ? 3 : appointment.status === "completed" ? 4 : 1,
-    lastActorRole: appointment.status === "checked_in" ? "front_desk" : appointment.status === "in_service" ? "barber" : appointment.status === "completed" ? "front_desk" : "client",
-    lastEventType: appointment.status === "checked_in" ? "check_in" : appointment.status === "in_service" ? "service_start" : appointment.status === "completed" ? "checkout" : "booking",
-    checkoutReference: appointment.status === "completed" && appointment.balanceDue === 0 ? `checkout-${appointment.id}` : null,
-    updatedAt: appointment.status === "completed" ? appointment.end : appointment.start,
-    createdAt: appointment.start
-  }));
-}
-
-function mergeLegacyClients(legacyClients: LegacyClientSeedRow[] | null | undefined): CanonicalClientProfile[] {
-  const byReference = new Map<string, CanonicalClientProfile>();
-
-  for (const client of demoClients) {
-    byReference.set(client.id, {
-      clientReference: client.id,
-      fullName: client.name,
-      phone: client.phone,
-      email: client.email,
-      favoriteBarberReference: client.favoriteBarberId,
-      loyaltyPoints: client.loyaltyPoints,
-      retentionTag: client.retentionTag,
-      notes: [...client.notes]
-    });
-  }
-
-  for (const row of legacyClients ?? []) {
-    byReference.set(row.client_reference, {
-      clientReference: row.client_reference,
-      fullName: row.full_name,
-      phone: row.phone,
-      email: row.email,
-      favoriteBarberReference: row.favorite_barber_reference ?? undefined,
-      loyaltyPoints: row.loyalty_points ?? 0,
-      retentionTag: toRetentionTag(row.retention_tag),
-      notes: row.notes ?? []
-    });
-  }
-
-  return [...byReference.values()];
-}
-
-function buildProfileRows(clients: CanonicalClientProfile[]) {
-  const seen = new Map<string, { id: string; role: string; full_name: string; email: string; phone: string | null }>();
-
-  for (const user of demoUsers) {
-    seen.set(user.email, {
-      id: canonicalProfileUuid(user.email),
-      role: user.role,
-      full_name: user.name,
-      email: user.email,
-      phone: demoClients.find((entry) => entry.email === user.email)?.phone ?? null
-    });
-  }
-
-  for (const client of clients) {
-    seen.set(client.email, {
-      id: canonicalProfileUuid(client.email),
-      role: "client",
-      full_name: client.fullName,
-      email: client.email,
-      phone: client.phone
-    });
-  }
-
-  return [...seen.values()];
-}
-
-async function seedCanonicalDataInternal(supabase: SupabaseClient) {
-  const [
-    existingLocationsResult,
-    existingBarbersResult,
-    existingClientsResult,
-    existingServicesResult,
-    existingPaymentsResult,
-    legacyClientsResult,
-    legacyAppointmentsResult,
-    legacyWalkInsResult,
-    legacyHoursResult
-  ] = await Promise.all([
-    supabase.from("locations").select("id").limit(1),
-    supabase.from("barbers").select("id").limit(1),
-    supabase.from("clients").select("id").limit(1),
-    supabase.from("services").select("id").limit(1),
-    supabase.from("payments").select("id, appointment_reference"),
-    supabase.from("live_clients").select("*"),
-    supabase.from("live_appointments").select("*"),
-    supabase.from("live_walk_in_queue").select("*"),
-    supabase.from("barber_working_hours").select("*")
-  ]);
-
-  const paymentUpdates = (existingPaymentsResult.error ? [] : ((existingPaymentsResult.data ?? []) as PaymentReferenceRow[]))
-    .filter((payment): payment is PaymentReferenceRow & { appointment_reference: string } => Boolean(payment.appointment_reference))
-    .map((payment) => ({
-      id: payment.id,
-      appointment_id: canonicalAppointmentUuid(payment.appointment_reference)
-    }));
-
-  const hasCanonicalCore = [existingLocationsResult, existingBarbersResult, existingClientsResult, existingServicesResult]
-    .every((result) => !result.error && (result.data ?? []).length > 0);
-
-  if (hasCanonicalCore) {
-    for (const payment of paymentUpdates) {
-      const result = await supabase.from("payments").update({ appointment_id: payment.appointment_id }).eq("id", payment.id);
-      if (result.error) {
-        throw result.error;
-      }
-    }
-
-    return;
-  }
-
-  const clients = mergeLegacyClients(legacyClientsResult.error ? [] : (legacyClientsResult.data as LegacyClientSeedRow[] | null));
-  const appointments = appointmentSourceRows(legacyAppointmentsResult.error ? [] : (legacyAppointmentsResult.data as LegacyAppointmentSeedRow[] | null));
-  const legacyWalkIns = legacyWalkInsResult.error ? [] : ((legacyWalkInsResult.data ?? []) as LegacyWalkInSeedRow[]);
-  const workingHours = legacyHoursResult.error ? [] : (legacyHoursResult.data ?? []);
-
-  await supabase.from("locations").upsert(
-    demoLocations.map((location) => ({
-      id: canonicalLocationUuid(location.id),
-      reference_code: location.id,
-      name: location.name,
-      neighborhood: location.neighborhood,
-      city: location.city,
-      state: location.state,
-      phone: location.phone,
-      hours: { summary: location.hours },
-      tax_rate: location.taxRate
-    })),
-    { onConflict: "id" }
-  );
-
-  const existingProfilesResult = await supabase.from("profiles").select("id, email");
-  const existingProfileIdsByEmail = new Map(
-    ((existingProfilesResult.error ? [] : (existingProfilesResult.data ?? [])) as Array<{ id: string; email: string }>)
-      .map((row) => [row.email.toLowerCase(), row.id])
-  );
-
-  const resolveProfileId = (email: string) => existingProfileIdsByEmail.get(email.toLowerCase()) ?? canonicalProfileUuid(email);
-
-  await supabase.from("profiles").upsert(
-    buildProfileRows(clients).map((profile) => ({
-      ...profile,
-      id: resolveProfileId(profile.email)
-    })),
-    { onConflict: "id" }
-  );
-
-  await supabase.from("barbers").upsert(
-    demoBarbers.map((barber) => ({
-      id: canonicalBarberUuid(barber.id),
-      reference_code: barber.id,
-      profile_id: resolveProfileId(barberUser(barber.id)?.email ?? `${barber.id}@bvrb3r.demo`),
-      compensation_model: barber.compensationModel,
-      commission_rate: barber.commissionRate ?? null,
-      booth_rent_amount: barber.boothRentAmount ?? null,
-      booth_rent_frequency: barber.boothRentFrequency ?? null,
-      bio: barber.bio,
-      booking_slug: barber.bookingLink.split("/").pop() ?? barber.id
-    })),
-    { onConflict: "id" }
-  );
-
-  await supabase.from("clients").upsert(
-    clients.map((client) => ({
-      id: canonicalClientUuid(client.clientReference),
-      reference_code: client.clientReference,
-      profile_id: resolveProfileId(client.email),
-      favorite_barber_id: client.favoriteBarberReference ? canonicalBarberUuid(client.favoriteBarberReference) : null,
-      loyalty_points: client.loyaltyPoints,
-      retention_tag: client.retentionTag
-    })),
-    { onConflict: "id" }
-  );
-
-  await supabase.from("services").upsert(
-    demoServices.map((service) => ({
-      id: canonicalServiceUuid(service.id),
-      reference_code: service.id,
-      location_id: defaultServiceLocationId(service.id),
-      category: service.category,
-      name: service.name,
-      description: service.description,
-      duration_min: service.durationMin,
-      buffer_min: service.bufferMin,
-      price: service.price,
-      deposit_amount: service.deposit,
-      full_prepay_required: service.fullPrepay,
-      active: true
-    })),
-    { onConflict: "id" }
-  );
-
-  const existingAvailability = await supabase.from("availability_rules").select("id").limit(1);
-  if (!existingAvailability.error && !(existingAvailability.data ?? []).length) {
-    const availabilityRows = (workingHours.length ? workingHours : demoBarbers.flatMap((barber) => {
-      const locationReference = barber.locationIds[0] ?? "loc-ybor";
-      return [1, 2, 3, 4, 5].map((weekday) => ({
-        barber_reference: barber.id,
-        shop_reference: locationReference,
-        weekday,
-        start_time: locationReference === "loc-hyde" ? "10:00" : "09:00",
-        end_time: locationReference === "loc-hyde" ? "18:00" : "19:00"
-      }));
-    })) as CanonicalWorkingHoursRow[];
-
-    await supabase.from("availability_rules").insert(
-      availabilityRows.map((row) => ({
-        id: stableUuid(`availability:${row.barber_reference}:${row.shop_reference}:${row.weekday}:${row.start_time}:${row.end_time}`),
-        barber_id: canonicalBarberUuid(row.barber_reference),
-        location_id: canonicalLocationUuid(row.shop_reference),
-        weekday: row.weekday,
-        start_time: row.start_time,
-        end_time: row.end_time
-      }))
-    );
-  }
-
-  await supabase.from("appointments").upsert(
-    appointments.map((appointment) => ({
-      id: canonicalAppointmentUuid(appointment.reference),
-      reference_code: appointment.reference,
-      location_id: canonicalLocationUuid(appointment.locationReference),
-      barber_id: canonicalBarberUuid(appointment.barberReference),
-      client_id: canonicalClientUuid(appointment.clientReference),
-      service_id: canonicalServiceUuid(appointment.serviceReference),
-      status: appointment.status,
-      source: appointment.source,
-      starts_at: appointment.startsAt,
-      ends_at: appointment.endsAt,
-      chair_label: appointment.chairLabel,
-      add_on_references: appointment.addOnReferences,
-      deposit_amount: appointment.depositAmount,
-      total_amount: appointment.totalAmount,
-      balance_due: appointment.balanceDue,
-      tip_amount: appointment.tipAmount,
-      client_note: appointment.clientNote,
-      lifecycle_revision: appointment.lifecycleRevision,
-      last_actor_role: appointment.lastActorRole,
-      last_event_type: appointment.lastEventType,
-      checkout_reference: appointment.checkoutReference,
-      updated_at: appointment.updatedAt,
-      created_at: appointment.createdAt
-    })),
-    { onConflict: "reference_code" }
-  );
-
-  await supabase.from("appointment_services").upsert(
-    appointments.map((appointment) => {
-      const service = demoServices.find((entry) => entry.id === appointment.serviceReference);
-      return {
-        appointment_id: canonicalAppointmentUuid(appointment.reference),
-        appointment_reference: appointment.reference,
-        service_reference: appointment.serviceReference,
-        service_name: service?.name ?? appointment.serviceReference,
-        category: service?.category ?? "Service",
-        description: service?.description ?? null,
-        duration_min: service?.durationMin ?? Math.max(Math.round((new Date(appointment.endsAt).getTime() - new Date(appointment.startsAt).getTime()) / 60000), 0),
-        buffer_min: service?.bufferMin ?? 0,
-        price: appointment.totalAmount,
-        deposit_amount: appointment.depositAmount,
-        full_prepay_required: service?.fullPrepay ?? false,
-        add_on_references: appointment.addOnReferences,
-        snapshot_payload: {
-          serviceReference: appointment.serviceReference,
-          addOnReferences: appointment.addOnReferences,
-          capturedAt: appointment.updatedAt,
-          totalAmount: appointment.totalAmount,
-          depositAmount: appointment.depositAmount
-        },
-        updated_at: appointment.updatedAt
-      };
-    }),
-    { onConflict: "appointment_id" }
-  );
-
-  const existingWaitlist = await supabase.from("waitlist_entries").select("id").limit(1);
-  if (!existingWaitlist.error && !(existingWaitlist.data ?? []).length) {
-    await supabase.from("waitlist_entries").insert(
-      demoWaitlist.map((entry) => {
-        const requestedDate = entry.requestedDate ?? new Date().toISOString().slice(0, 10);
-        const serviceReference = entry.serviceId ?? "srv-signature";
-        return {
-          id: canonicalWaitlistUuid(entry.id),
-          location_id: canonicalLocationUuid(entry.locationId),
-          shop_id: canonicalLocationUuid(entry.locationId),
-          client_id: canonicalClientUuid(entry.clientId),
-          service_id: canonicalServiceUuid(serviceReference),
-          preferred_window: entry.preferredWindow ?? "open",
-          requested_date: requestedDate,
-          preferred_date: requestedDate,
-          flexibility_minutes: 0,
-          queue_source: "app",
-          notes: "Legacy app waitlist request",
-          barber_preference: entry.barberPreference ? canonicalBarberUuid(entry.barberPreference) : null,
-          status: "active",
-          updated_at: new Date(`${requestedDate}T12:00:00.000Z`).toISOString()
-        };
-      })
-    );
-  }
-
-  await supabase.from("walk_in_queue").upsert(
-    (legacyWalkIns.length ? legacyWalkIns : demoWalkIns.map((entry, index) => ({
-      queue_reference: entry.id,
-      location_reference: entry.locationId,
-      client_name: entry.clientName,
-      requested_service: entry.requestedService,
-      requested_at: entry.requestedAt,
-      status: entry.status,
-      assigned_barber_reference: entry.assignedBarberId ?? null,
-      wait_minutes: entry.waitMinutes,
-      position: index + 1,
-      updated_at: entry.requestedAt
-    }))).map((entry: LegacyWalkInSeedRow, index: number) => ({
-      id: canonicalWalkInUuid(entry.queue_reference),
-      reference_code: entry.queue_reference,
-      location_id: canonicalLocationUuid(entry.location_reference),
-      client_id: clients.find((client) => client.fullName.toLowerCase() === String(entry.client_name).toLowerCase())
-        ? canonicalClientUuid(clients.find((client) => client.fullName.toLowerCase() === String(entry.client_name).toLowerCase())!.clientReference)
-        : null,
-      client_name: entry.client_name,
-      requested_service: entry.requested_service,
-      requested_at: entry.requested_at,
-      status: entry.status,
-      assigned_barber_id: entry.assigned_barber_reference ? canonicalBarberUuid(entry.assigned_barber_reference) : null,
-      position: entry.position ?? index + 1,
-      wait_minutes: entry.wait_minutes ?? 0,
-      updated_at: entry.updated_at ?? entry.requested_at
-    })),
-    { onConflict: "reference_code" }
-  );
-
-  const reviewsExist = await supabase.from("reviews").select("id").limit(1);
-  if (!reviewsExist.error && !(reviewsExist.data ?? []).length) {
-    await supabase.from("reviews").insert(
-      demoReviews.map((review) => ({
-        id: stableUuid(`review:${review.id}`),
-        appointment_id: review.id === "review-2"
-          ? canonicalAppointmentUuid("appt-4")
-          : review.id === "review-3"
-            ? canonicalAppointmentUuid("appt-5")
-            : review.id === "review-4"
-              ? canonicalAppointmentUuid("appt-7")
-              : canonicalAppointmentUuid("appt-1"),
-        barber_id: canonicalBarberUuid(review.barberId),
-        client_id: canonicalClientUuid(review.clientId),
-        location_id: canonicalLocationUuid(review.locationId),
-        rating: review.rating,
-        message: review.message,
-        created_at: review.createdAt
-      }))
-    );
-  }
-
-  const depositExists = await supabase.from("deposits").select("id").limit(1);
-  if (!depositExists.error && !(depositExists.data ?? []).length) {
-    await supabase.from("deposits").insert(
-      appointments
-        .filter((appointment) => appointment.depositAmount > 0)
-        .map((appointment) => ({
-          id: stableUuid(`deposit:${appointment.reference}`),
-          appointment_id: canonicalAppointmentUuid(appointment.reference),
-          amount: appointment.depositAmount,
-          retained: appointment.status === "no_show"
-        }))
-    );
-  }
-
-  for (const payment of paymentUpdates) {
-    const result = await supabase.from("payments").update({ appointment_id: payment.appointment_id }).eq("id", payment.id);
-    if (result.error) {
-      throw result.error;
-    }
-  }
 }
 
 declare global {
@@ -765,13 +259,8 @@ declare global {
 }
 
 export async function ensureCanonicalBookingData(supabase: SupabaseClient) {
-  if (!globalThis.__bvrb3rCanonicalSeedPromise) {
-    globalThis.__bvrb3rCanonicalSeedPromise = seedCanonicalDataInternal(supabase).catch((error) => {
-      globalThis.__bvrb3rCanonicalSeedPromise = undefined;
-      throw error;
-    });
-  }
-
+  void supabase;
+  globalThis.__bvrb3rCanonicalSeedPromise = Promise.resolve();
   return globalThis.__bvrb3rCanonicalSeedPromise;
 }
 
@@ -799,12 +288,12 @@ export async function readCanonicalClientProfile(supabase: SupabaseClient, clien
     clientReference: clientResult.data.reference_code ?? clientReference,
     fullName: profileResult.data.full_name,
     phone: profileResult.data.phone ?? "",
-    email: profileResult.data.email,
+    email: profileResult.data.email ?? "",
     favoriteBarberReference: favoriteResult.data?.reference_code ?? undefined,
     loyaltyPoints: clientResult.data.loyalty_points ?? 0,
     retentionTag: toRetentionTag(clientResult.data.retention_tag),
     notes: []
-  };
+  } satisfies CanonicalClientProfile;
 }
 
 export async function readCanonicalWorkingHours(supabase: SupabaseClient, barberReference: string, shopReference?: string) {
@@ -821,7 +310,7 @@ export async function readCanonicalWorkingHours(supabase: SupabaseClient, barber
 
   return ((result.data ?? []) as Array<{ weekday: number; start_time: string; end_time: string }>).map((row) => ({
     barber_reference: barberReference,
-    shop_reference: shopReference ?? demoBarbers.find((entry) => entry.id === barberReference)?.locationIds[0] ?? "loc-ybor",
+    shop_reference: shopReference ?? "",
     weekday: row.weekday,
     start_time: row.start_time,
     end_time: row.end_time
@@ -848,7 +337,19 @@ export async function readCanonicalAppointmentServiceSnapshots(supabase: Supabas
 export async function readCanonicalOperationsSnapshot(supabase: SupabaseClient): Promise<LiveOperationsSnapshot> {
   await ensureCanonicalBookingData(supabase);
 
-  const [appointmentsResult, clientsResult, barbersResult, locationsResult, servicesResult, profilesResult, queueEntriesResult, walkInsResult, eventsResult, compensationResult, analyticsResult] = await Promise.all([
+  const [
+    appointmentsResult,
+    clientsResult,
+    barbersResult,
+    locationsResult,
+    servicesResult,
+    profilesResult,
+    queueEntriesResult,
+    walkInsResult,
+    eventsResult,
+    compensationResult,
+    analyticsResult
+  ] = await Promise.all([
     supabase.from("appointments").select("*").order("starts_at", { ascending: true }),
     supabase.from("clients").select("*"),
     supabase.from("barbers").select("id, reference_code"),
@@ -867,7 +368,18 @@ export async function readCanonicalOperationsSnapshot(supabase: SupabaseClient):
     supabase.from("owner_daily_analytics").select("*").order("business_date", { ascending: false })
   ]);
 
-  for (const result of [appointmentsResult, clientsResult, barbersResult, locationsResult, servicesResult, profilesResult, walkInsResult, eventsResult, compensationResult, analyticsResult]) {
+  for (const result of [
+    appointmentsResult,
+    clientsResult,
+    barbersResult,
+    locationsResult,
+    servicesResult,
+    profilesResult,
+    walkInsResult,
+    eventsResult,
+    compensationResult,
+    analyticsResult
+  ]) {
     if (result.error) {
       throw result.error;
     }
@@ -888,7 +400,7 @@ export async function readCanonicalOperationsSnapshot(supabase: SupabaseClient):
       id: row.reference_code ?? row.id,
       name: profile?.full_name ?? row.reference_code ?? row.id,
       phone: profile?.phone ?? "",
-      email: profile?.email ?? clientEmailForReference(row.reference_code ?? row.id),
+      email: profile?.email ?? "",
       favoriteBarberId: favoriteBarberReference,
       loyaltyPoints: row.loyalty_points ?? 0,
       retentionTag: toRetentionTag(row.retention_tag),
@@ -940,53 +452,50 @@ export async function readCanonicalOperationsSnapshot(supabase: SupabaseClient):
   const queueRows = !queueEntriesResult.error ? ((queueEntriesResult.data ?? []) as CanonicalQueueRow[]) : [];
   const walkIns = queueRows.length
     ? queueRows.map((row) => {
-      const clientRow = clientsById.get(row.client_id);
-      const clientProfile = clientRow ? profilesById.get(clientRow.profile_id) : undefined;
-      const requestedAt = row.created_at;
-      const waitMinutes = Math.max(
-        0,
-        Math.round((Date.now() - new Date(requestedAt).getTime()) / 60_000)
-      );
+        const clientRow = clientsById.get(row.client_id);
+        const clientProfile = clientRow ? profilesById.get(clientRow.profile_id) : undefined;
+        const requestedAt = row.created_at;
+        const waitMinutes = Math.max(0, Math.round((Date.now() - new Date(requestedAt).getTime()) / 60_000));
 
-      return {
-        id: row.id,
-        locationId: locationsById.get(row.location_id) ?? row.location_id,
-        shopId: row.shop_id ? locationsById.get(row.shop_id) ?? row.shop_id : locationsById.get(row.location_id) ?? row.location_id,
-        clientId: clientRow?.reference_code ?? row.client_id,
-        clientName: clientProfile?.full_name ?? clientEmailForReference(clientRow?.reference_code ?? row.client_id),
-        serviceId: row.service_id ? servicesById.get(row.service_id) ?? row.service_id : undefined,
-        requestedService: row.service_id ? serviceNamesById.get(row.service_id) ?? servicesById.get(row.service_id) ?? "Service to be selected" : "Service to be selected",
-        requestedAt,
-        status: row.status,
-        assignedBarberId: row.barber_id ? barbersById.get(row.barber_id) ?? undefined : undefined,
-        preferredBarberId: row.barber_preference ? barbersById.get(row.barber_preference) ?? undefined : undefined,
-        waitMinutes,
-        flexibilityMinutes: row.flexibility_minutes ?? 0,
-        queueSource: (row.queue_source as WalkInEntry["queueSource"]) ?? "walk_in",
-        calledAt: row.called_at ?? undefined,
-        assignedAt: row.assigned_at ?? undefined,
-        convertedAppointmentId: row.converted_appointment_id ? row.converted_appointment_id : undefined,
-        notes: row.notes ?? undefined
-      } satisfies WalkInEntry;
-    })
+        return {
+          id: row.id,
+          locationId: locationsById.get(row.location_id) ?? row.location_id,
+          shopId: row.shop_id ? locationsById.get(row.shop_id) ?? row.shop_id : locationsById.get(row.location_id) ?? row.location_id,
+          clientId: clientRow?.reference_code ?? row.client_id,
+          clientName: clientProfile?.full_name ?? clientRow?.reference_code ?? row.client_id,
+          serviceId: row.service_id ? servicesById.get(row.service_id) ?? row.service_id : undefined,
+          requestedService: row.service_id ? serviceNamesById.get(row.service_id) ?? servicesById.get(row.service_id) ?? "Service to be selected" : "Service to be selected",
+          requestedAt,
+          status: row.status,
+          assignedBarberId: row.barber_id ? barbersById.get(row.barber_id) ?? undefined : undefined,
+          preferredBarberId: row.barber_preference ? barbersById.get(row.barber_preference) ?? undefined : undefined,
+          waitMinutes,
+          flexibilityMinutes: row.flexibility_minutes ?? 0,
+          queueSource: (row.queue_source as WalkInEntry["queueSource"]) ?? "walk_in",
+          calledAt: row.called_at ?? undefined,
+          assignedAt: row.assigned_at ?? undefined,
+          convertedAppointmentId: row.converted_appointment_id ? row.converted_appointment_id : undefined,
+          notes: row.notes ?? undefined
+        } satisfies WalkInEntry;
+      })
     : ((walkInsResult.data ?? []) as CanonicalWalkInRow[]).map((row) => {
-      const clientRow = row.client_id ? clientsById.get(row.client_id) : undefined;
-      const clientProfile = clientRow ? profilesById.get(clientRow.profile_id) : undefined;
+        const clientRow = row.client_id ? clientsById.get(row.client_id) : undefined;
+        const clientProfile = clientRow ? profilesById.get(clientRow.profile_id) : undefined;
 
-      return {
-        id: row.reference_code ?? row.id,
-        locationId: locationsById.get(row.location_id) ?? row.location_id,
-        shopId: locationsById.get(row.location_id) ?? row.location_id,
-        clientId: clientRow?.reference_code ?? undefined,
-        clientName: clientProfile?.full_name ?? row.client_name,
-        requestedService: row.requested_service,
-        requestedAt: row.requested_at,
-        status: row.status,
-        assignedBarberId: row.assigned_barber_id ? barbersById.get(row.assigned_barber_id) ?? undefined : undefined,
-        waitMinutes: row.wait_minutes ?? 0,
-        queueSource: "walk_in"
-      } satisfies WalkInEntry;
-    });
+        return {
+          id: row.reference_code ?? row.id,
+          locationId: locationsById.get(row.location_id) ?? row.location_id,
+          shopId: locationsById.get(row.location_id) ?? row.location_id,
+          clientId: clientRow?.reference_code ?? undefined,
+          clientName: clientProfile?.full_name ?? row.client_name,
+          requestedService: row.requested_service,
+          requestedAt: row.requested_at,
+          status: row.status,
+          assignedBarberId: row.assigned_barber_id ? barbersById.get(row.assigned_barber_id) ?? undefined : undefined,
+          waitMinutes: row.wait_minutes ?? 0,
+          queueSource: "walk_in"
+        } satisfies WalkInEntry;
+      });
 
   return {
     mode: "supabase",

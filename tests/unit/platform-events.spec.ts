@@ -7,8 +7,10 @@ import {
   PLATFORM_EVENT_TYPES,
   buildPlatformEventIdempotencyKey,
   buildPlatformEventRow,
+  PlatformEventPersistenceError,
   queryPlatformEventsByEntity,
   recordPlatformEvent,
+  recordRequiredPlatformEvent,
   type PlatformEventInput
 } from "@/lib/core/platform-events";
 
@@ -121,6 +123,17 @@ describe("platform events core", () => {
     expect(mock.eqFirst).toHaveBeenCalledWith("entity_type", "appointment");
     expect(mock.eqSecond).toHaveBeenCalledWith("entity_id", "appt-live-1");
     expect(mock.order).toHaveBeenCalledWith("occurred_at", { ascending: false });
+  });
+
+  it("throws for required audit events when persistence fails", async () => {
+    const mock = makeSupabaseMock();
+    mock.upsert.mockResolvedValueOnce({
+      error: {
+        message: "insert failed"
+      }
+    });
+
+    await expect(recordRequiredPlatformEvent(mock.supabase, baseEvent)).rejects.toBeInstanceOf(PlatformEventPersistenceError);
   });
 
   it("builds booking lifecycle events from the canonical appointment mutation result", () => {

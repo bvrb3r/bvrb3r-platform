@@ -4,6 +4,7 @@ const {
   getClientExperienceContextMock,
   getEngagementProviderMock,
   getLiveOperationsProviderMock,
+  readPointsBalanceForClientReferenceMock,
   readStateMock,
   readSnapshotMock,
   getClientEngagementSummaryMock,
@@ -14,6 +15,7 @@ const {
   getClientExperienceContextMock: vi.fn(),
   getEngagementProviderMock: vi.fn(),
   getLiveOperationsProviderMock: vi.fn(),
+  readPointsBalanceForClientReferenceMock: vi.fn(),
   readStateMock: vi.fn(),
   readSnapshotMock: vi.fn(),
   getClientEngagementSummaryMock: vi.fn(),
@@ -32,6 +34,10 @@ vi.mock("@/lib/engagement/provider", () => ({
 
 vi.mock("@/lib/operations/live-provider", () => ({
   getLiveOperationsProvider: getLiveOperationsProviderMock
+}));
+
+vi.mock("@/lib/points/engine", () => ({
+  readPointsBalanceForClientReference: readPointsBalanceForClientReferenceMock
 }));
 
 vi.mock("@/lib/engagement/engine", async () => {
@@ -60,6 +66,7 @@ describe("client membership route", () => {
     getClientExperienceContextMock.mockReset();
     getEngagementProviderMock.mockReset();
     getLiveOperationsProviderMock.mockReset();
+    readPointsBalanceForClientReferenceMock.mockReset();
     readStateMock.mockReset();
     readSnapshotMock.mockReset();
     getClientEngagementSummaryMock.mockReset();
@@ -85,6 +92,10 @@ describe("client membership route", () => {
     });
     getLiveOperationsProviderMock.mockResolvedValue({
       readSnapshot: readSnapshotMock
+    });
+    readPointsBalanceForClientReferenceMock.mockResolvedValue({
+      unlockedPoints: 220,
+      lifetimeEarned: 480
     });
     readStateMock.mockResolvedValue({});
     readSnapshotMock.mockResolvedValue({});
@@ -150,6 +161,15 @@ describe("client membership route", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
+    expect(getClientEngagementSummaryMock).toHaveBeenCalledWith(
+      {},
+      {},
+      "client-jordan",
+      {
+        pointsBalance: 220,
+        lifetimePoints: 480
+      }
+    );
     expect(buildClientMembershipExecutionSummaryMock).toHaveBeenCalledWith({
       clientId: "client-jordan",
       clientName: "Jordan Ellis",

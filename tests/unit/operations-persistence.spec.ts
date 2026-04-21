@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { boothRentLedger, demoAppointments, demoBarbers, demoClients } from "@/lib/data/demo";
+import { demoAppointments, demoBarbers, demoClients } from "@/lib/data/demo";
 import { buildCompensationSnapshot, buildOwnerAnalyticsSnapshot, buildWorkflowPersistenceEnvelope } from "@/lib/operations/persistence";
 
 const appointment = demoAppointments.find((entry) => entry.id === "appt-4")!;
@@ -39,8 +39,7 @@ describe("Milestone 8 persistence builders", () => {
       barber: commissionBarber,
       client: demoClients.find((entry) => entry.id === commissionAppointment.clientId),
       latestActivity,
-      checkout,
-      rentEntries: boothRentLedger
+      checkout
     });
 
     expect(commissionSnapshot?.compensationModel).toBe("commission");
@@ -55,8 +54,7 @@ describe("Milestone 8 persistence builders", () => {
       barber,
       client,
       latestActivity,
-      checkout,
-      rentEntries: boothRentLedger
+      checkout
     });
 
     const analyticsSnapshot = buildOwnerAnalyticsSnapshot("loc-ybor", demoAppointments);
@@ -66,12 +64,12 @@ describe("Milestone 8 persistence builders", () => {
       barber,
       client,
       latestActivity,
-      checkout,
-      rentEntries: boothRentLedger
+      checkout
     });
 
     expect(compensationSnapshot?.compensationModel).toBe("booth_rent");
-    expect(compensationSnapshot?.boothRentAmount).toBeGreaterThan(0);
+    expect(compensationSnapshot?.boothRentAmount).toBe(barber.boothRentAmount);
+    expect(compensationSnapshot?.boothRentPeriodLabel).toBe(barber.boothRentFrequency);
     expect(analyticsSnapshot.locationReference).toBe("loc-ybor");
     expect(analyticsSnapshot.revenueTotal).toBe(70);
     expect(envelope.workflowEvent.eventType).toBe("checkout");

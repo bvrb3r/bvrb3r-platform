@@ -8,6 +8,7 @@ import { getMarketplaceProvider } from "@/lib/marketplace/provider";
 import { readActiveClientMembershipSubscription } from "@/lib/monetization/service";
 import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
 import { LiveOperationConflictError } from "@/lib/operations/live-state";
+import { recordBookingUpdatedPlatformEvents } from "@/lib/core/booking-events";
 import { processCompletedAppointmentPoints } from "@/lib/points/engine";
 
 const checkoutSchema = z.object({
@@ -44,6 +45,39 @@ export async function POST(
       actorRole: user.role,
       actorEmail: user.email
     });
+    await recordBookingUpdatedPlatformEvents({
+      appointment: result.appointment,
+      actorId: user.id,
+      actorRole: user.role,
+      source: "api",
+      route: "/api/operations/appointments/[appointmentId]/checkout"
+    });
+
+    const completedBookingHistory = result.snapshot.appointments
+      .filter((appointment) => appointment.clientId === result.appointment.clientId && appointment.status === "completed")
+      .map((appointment) => ({
+        appointmentId: appointment.id,
+        completedAt: appointment.completedAt ?? appointment.updatedAt
+      }));
+    const activeMembership = await readActiveClientMembershipSubscription(result.appointment.clientId)
+      .then((subscription) => Boolean(subscription && (subscription.subscriptionStatus === "active" || subscription.subscriptionStatus === "trialing") && subscription.entitlementStatus === "enabled"))
+      .catch(() => false);
+    const clientRecord = result.snapshot.clients.find((client) => client.id === result.appointment.clientId);
+
+    await processCompletedAppointmentPoints({
+      appointmentId: result.appointment.id,
+      clientId: result.appointment.clientId,
+      barberId: result.appointment.barberId,
+      locationId: result.appointment.locationId,
+      completedAt: result.appointment.completedAt ?? result.appointment.updatedAt,
+      orderTotal: result.appointment.grandTotal ?? result.appointment.totalAmount,
+      tipAmount: parsed.data.tipAmount,
+      completedBookingCount: completedBookingHistory.length,
+      paymentSettled: true,
+      serviceCompleted: true,
+      refundState: "clean",
+      clientPhoneValidated: Boolean(clientRecord?.phone)
+    });
 
     try {
       const [engagementProvider, marketplaceProvider, activationProvider] = await Promise.all([
@@ -51,15 +85,6 @@ export async function POST(
         getMarketplaceProvider(),
         getMarketplaceActivationProvider()
       ]);
-      const completedBookingHistory = result.snapshot.appointments
-        .filter((appointment) => appointment.clientId === result.appointment.clientId && appointment.status === "completed")
-        .map((appointment) => ({
-          appointmentId: appointment.id,
-          completedAt: appointment.completedAt ?? appointment.updatedAt
-        }));
-      const activeMembership = await readActiveClientMembershipSubscription(result.appointment.clientId)
-        .then((subscription) => Boolean(subscription && (subscription.subscriptionStatus === "active" || subscription.subscriptionStatus === "trialing") && subscription.entitlementStatus === "enabled"))
-        .catch(() => false);
       await Promise.all([
         engagementProvider.rewardCompletedBooking({
           clientId: result.appointment.clientId,
@@ -95,23 +120,8 @@ export async function POST(
           metadata: { paymentMethod: parsed.data.paymentMethod }
         });
       }
-      const clientRecord = result.snapshot.clients.find((client) => client.id === result.appointment.clientId);
-      await processCompletedAppointmentPoints({
-        appointmentId: result.appointment.id,
-        clientId: result.appointment.clientId,
-        barberId: result.appointment.barberId,
-        locationId: result.appointment.locationId,
-        completedAt: result.appointment.completedAt ?? result.appointment.updatedAt,
-        orderTotal: result.appointment.grandTotal ?? result.appointment.totalAmount,
-        tipAmount: parsed.data.tipAmount,
-        completedBookingCount: completedBookingHistory.length,
-        paymentSettled: true,
-        serviceCompleted: true,
-        refundState: "clean",
-        clientPhoneValidated: Boolean(clientRecord?.phone)
-      });
     } catch {
-      // Payment closeout should stay successful even if analytics side effects fail.
+      // Non-financial analytics side effects should not reverse a successful checkout.
     }
 
     return NextResponse.json({ appointment: result.appointment });

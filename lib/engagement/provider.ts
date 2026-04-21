@@ -5,7 +5,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import { demoBarbers, demoClients, demoUsers } from "@/lib/data/demo";
 import {
-  createInitialEngagementState,
+  createEmptyEngagementState,
   createReferralInvite as createReferralInviteInState,
   followBarber as followBarberInState,
   processCompletedBookingGrowth as processCompletedBookingGrowthInState,
@@ -114,15 +114,6 @@ async function syncNotificationDeliveries(previous: EngagementState, next: Engag
   const deliveryProvider = await getNotificationDeliveryProvider();
   await deliveryProvider.syncNotifications(newNotifications);
 }
-async function hasRows(supabase: SupabaseClient, table: string) {
-  const result = await supabase.from(table).select("*").limit(1);
-  if (result.error) {
-    throw result.error;
-  }
-
-  return (result.data ?? []).length > 0;
-}
-
 function toNotification(row: any): EngagementNotificationRecord | null {
   if (!row.notification_type || !row.audience_role || !row.audience_email) {
     return null;
@@ -145,241 +136,8 @@ function toNotification(row: any): EngagementNotificationRecord | null {
   };
 }
 
-async function ensureSupabaseSeeded(supabase: SupabaseClient) {
-  if (await hasRows(supabase, "notification_preferences")) {
-    return;
-  }
-
-  const state = createInitialEngagementState();
-  const writes = await Promise.all([
-    supabase.from("notification_preferences").upsert(
-      state.notificationPreferences.map((record) => ({
-        id: stableUuid(`notification-preference:${record.role}:${record.userEmail}`),
-        role: record.role,
-        user_email: record.userEmail,
-        client_reference: record.clientId ?? null,
-        barber_reference: record.barberId ?? null,
-        in_app_enabled: record.inAppEnabled,
-        sms_enabled: record.smsEnabled,
-        email_enabled: record.emailEnabled,
-        push_enabled: record.pushEnabled,
-        updated_at: record.updatedAt,
-        created_at: record.updatedAt
-      })),
-      { onConflict: "role,user_email" }
-    ),
-    supabase.from("loyalty_accounts").upsert(
-      state.loyaltyAccounts.map((record) => ({
-        id: stableUuid(`loyalty-account:${record.id}`),
-        client_id: stableUuid(`client:${record.clientId}`),
-        client_reference: record.clientId,
-        client_email: getClientEmail(record.clientId),
-        tier: record.tier,
-        points: record.pointsBalance,
-        available_points: record.pointsBalance,
-        lifetime_points: record.lifetimePoints,
-        referral_credits: record.referralCredits,
-        vip_status: record.tier,
-        updated_at: record.updatedAt
-      })),
-      { onConflict: "client_reference" }
-    ),
-    supabase.from("loyalty_transactions").upsert(
-      state.loyaltyTransactions.map((record) => ({
-        client_reference: record.clientId,
-        client_email: getClientEmail(record.clientId),
-        reason: record.reason,
-        points_delta: record.pointsDelta,
-        label: record.label,
-        reference_id: record.referenceId ?? null,
-        metadata: {},
-        created_at: record.createdAt,
-        dedupe_key: record.id
-      })),
-      { onConflict: "dedupe_key" }
-    ),
-    supabase.from("loyalty_reward_rules").upsert(
-      state.loyaltyRewardRules.map((record) => ({
-        rule_code: record.ruleCode,
-        title: record.title,
-        trigger_event: record.triggerEvent,
-        active: record.active,
-        threshold_count: record.thresholdCount,
-        every_nth_count: record.everyNthCount ?? null,
-        min_days_since_last_completion: record.minDaysSinceLastCompletion ?? null,
-        requires_active_membership: record.requiresActiveMembership,
-        points_delta: record.pointsDelta,
-        metadata: record.metadata,
-        updated_at: record.updatedAt,
-        created_at: record.updatedAt
-      })),
-      { onConflict: "rule_code" }
-    ),
-    supabase.from("referral_codes").upsert(
-      state.referralCodes.map((record) => ({
-        id: stableUuid(`referral-code:${record.id}`),
-        client_reference: record.clientId,
-        client_email: getClientEmail(record.clientId),
-        code: record.code,
-        reward_points: record.rewardPoints,
-        active: record.active,
-        created_at: record.createdAt
-      })),
-      { onConflict: "code" }
-    ),
-    supabase.from("referral_events").insert(
-      state.referralEvents.map((record) => ({
-        id: stableUuid(`referral-event:${record.id}`),
-        referral_code_id: stableUuid(`referral-code:${record.referralCodeId}`),
-        referrer_client_reference: record.referrerClientId,
-        referrer_client_email: getClientEmail(record.referrerClientId),
-        referred_client_email: record.referredClientEmail,
-        referred_client_reference: record.referredClientId ?? null,
-        status: record.status,
-        reward_points: record.rewardPoints,
-        metadata: {},
-        created_at: record.createdAt,
-        signed_up_at: record.signedUpAt ?? null,
-        booked_at: record.bookedAt ?? null,
-        completed_at: record.completedAt ?? null,
-        appointment_reference: record.appointmentId ?? null,
-        credited_at: record.creditedAt ?? null,
-        credited_transaction_reference: record.creditedTransactionId ?? null
-      }))
-    ),
-    supabase.from("barber_follows").upsert(
-      state.barberFollows.map((record) => ({
-        client_reference: record.clientId,
-        client_email: getClientEmail(record.clientId),
-        barber_reference: record.barberId,
-        barber_email: getBarberEmail(record.barberId),
-        notify_on_availability: record.notifyOnAvailability,
-        notify_on_portfolio: record.notifyOnPortfolio,
-        created_at: record.createdAt
-      })),
-      { onConflict: "client_reference,barber_reference" }
-    ),
-    supabase.from("engagement_events").upsert(
-      state.engagementEvents.map((record) => ({
-        actor_role: record.actorRole,
-        actor_reference: record.actorId,
-        actor_email: record.actorRole === "client" ? getClientEmail(record.actorId) : record.actorRole === "owner" ? "owner@bvrb3r.demo" : getBarberEmail(record.actorId),
-        target_type: record.targetType,
-        target_reference: record.targetId,
-        target_email: record.targetType === "client" ? getClientEmail(record.targetId) : record.targetType === "barber" ? getBarberEmail(record.targetId) : null,
-        event_type: record.eventType,
-        metadata: record.metadata,
-        created_at: record.createdAt,
-        dedupe_key: record.id
-      })),
-      { onConflict: "dedupe_key" }
-    ),
-    supabase.from("rebooking_cycles").insert(
-      state.rebookingCycles.map((record) => ({
-        id: stableUuid(`rebooking-cycle:${record.id}`),
-        client_reference: record.clientId,
-        client_email: getClientEmail(record.clientId),
-        barber_reference: record.barberId ?? null,
-        service_reference: record.serviceId ?? null,
-        average_cycle_days: record.averageCycleDays,
-        confidence: record.confidence,
-        last_completed_at: record.lastCompletedAt,
-        next_suggested_at: record.nextSuggestedAt,
-        updated_at: record.nextSuggestedAt
-      }))
-    ),
-    supabase.from("rebooking_recommendations").insert(
-      state.rebookingRecommendations.map((record) => ({
-        id: stableUuid(`rebooking-recommendation:${record.id}`),
-        client_reference: record.clientId,
-        client_email: getClientEmail(record.clientId),
-        barber_reference: record.barberId ?? null,
-        service_reference: record.serviceId ?? null,
-        message: record.message,
-        remind_at: record.remindAt,
-        status: record.status,
-        reason: record.reason,
-        metadata: {},
-        created_at: record.remindAt
-      }))
-    ),
-    supabase.from("notifications").upsert(
-      state.notifications.map((record) => ({
-        audience_role: record.role,
-        audience_email: record.userEmail,
-        client_reference: record.clientId ?? null,
-        client_email: record.clientId ? getClientEmail(record.clientId) : null,
-        barber_reference: record.barberId ?? null,
-        barber_email: record.barberId ? getBarberEmail(record.barberId) : null,
-        location_reference: record.locationId ?? null,
-        channel: record.channel,
-        notification_type: record.type,
-        title: record.title,
-        body: record.body,
-        status: record.status,
-        metadata: {},
-        created_at: record.createdAt,
-        scheduled_for: record.scheduledFor ?? null,
-        dedupe_key: record.id
-      })),
-      { onConflict: "dedupe_key" }
-    ),
-    supabase.from("reputation_scores").upsert(
-      state.reputationScores.map((record) => ({
-        barber_reference: record.barberId,
-        barber_email: getBarberEmail(record.barberId),
-        review_score: record.reviewScore,
-        punctuality_score: record.punctualityScore,
-        completion_score: record.completionScore,
-        retention_score: record.retentionScore,
-        overall_score: record.overallScore,
-        reputation_tier: record.tier,
-        updated_at: record.updatedAt
-      })),
-      { onConflict: "barber_reference" }
-    ),
-    supabase.from("ranking_snapshots").insert(
-      state.rankingSnapshots.map((record) => ({
-        id: stableUuid(`ranking-snapshot:${record.id}`),
-        barber_reference: record.barberId,
-        barber_email: getBarberEmail(record.barberId),
-        dimension: record.dimension,
-        rank_position: record.rankPosition,
-        score: record.score,
-        label: record.label,
-        metadata: {},
-        observed_at: record.observedAt,
-        created_at: record.observedAt
-      }))
-    ),
-    supabase.from("growth_recommendations").insert(
-      state.growthRecommendations.map((record) => ({
-        id: stableUuid(`growth-recommendation:${record.id}`),
-        barber_reference: record.barberId,
-        barber_email: getBarberEmail(record.barberId),
-        title: record.title,
-        description: record.description,
-        focus_area: record.focusArea,
-        priority: record.priority,
-        status: record.status,
-        action_label: record.actionLabel,
-        metadata: {},
-        created_at: record.createdAt,
-        updated_at: record.createdAt
-      }))
-    )
-  ]);
-
-  for (const write of writes) {
-    if (write.error) {
-      throw write.error;
-    }
-  }
-}
-
 async function readSupabaseState(supabase: SupabaseClient): Promise<EngagementState> {
-  await ensureSupabaseSeeded(supabase);
-  const base = createInitialEngagementState();
+  const base = createEmptyEngagementState();
   const [
     notificationPreferences,
     accounts,
@@ -749,6 +507,40 @@ function createDemoProvider(): EngagementProvider {
   };
 }
 
+function createEmptyProvider(): EngagementProvider {
+  const unavailable = (): never => {
+    throw new Error("Engagement data is unavailable because Supabase is not configured.");
+  };
+
+  return {
+    kind: "supabase",
+    async readState() {
+      return createEmptyEngagementState();
+    },
+    async followBarber() {
+      return unavailable();
+    },
+    async unfollowBarber() {
+      return unavailable();
+    },
+    async createReferralInvite() {
+      return unavailable();
+    },
+    async syncReferralAttribution() {
+      return unavailable();
+    },
+    async recordReferralBooking() {
+      return unavailable();
+    },
+    async recordEvent() {
+      return unavailable();
+    },
+    async rewardCompletedBooking() {
+      return unavailable();
+    }
+  };
+}
+
 function createSupabaseProvider(supabase: SupabaseClient): EngagementProvider {
   return {
     kind: "supabase",
@@ -810,12 +602,12 @@ function createSupabaseProvider(supabase: SupabaseClient): EngagementProvider {
 
 export async function getEngagementProvider(): Promise<EngagementProvider> {
   if (!isSupabaseEnabled()) {
-    return createDemoProvider();
+    return createEmptyProvider();
   }
 
   const supabase = createSupabaseAdminClient();
   if (!supabase) {
-    return createDemoProvider();
+    return createEmptyProvider();
   }
 
   return createSupabaseProvider(supabase);

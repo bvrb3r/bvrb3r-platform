@@ -3,7 +3,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import {
   buildPlatformEventIdempotencyKey,
-  recordPlatformEvent
+  recordRequiredPlatformEvent
 } from "@/lib/core/platform-events";
 import {
   calculatePaymentRouting,
@@ -2235,7 +2235,7 @@ async function executeTransferForRoutingTarget(
       updated_at: now
     });
 
-    await recordPlatformEvent(supabase, {
+    await recordRequiredPlatformEvent(supabase, {
       eventType: "payout_released",
       entityType: "payout_execution",
       entityId: executedExecution.id,

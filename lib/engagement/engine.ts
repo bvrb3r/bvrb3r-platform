@@ -83,6 +83,12 @@ export interface RecordEngagementEventInput {
   metadata?: Record<string, string | number | boolean | null>;
 }
 
+type ClientEngagementLoyaltyOverride = {
+  pointsBalance: number;
+  lifetimePoints?: number;
+  referralCredits?: number;
+};
+
 export class EngagementPermissionError extends Error {
   readonly status = 403;
 
@@ -567,7 +573,31 @@ export function createInitialEngagementState(): EngagementState {
   });
 }
 
-export function getClientEngagementSummary(state: EngagementState, snapshot: LiveOperationsSnapshot | undefined, clientId: string): ClientEngagementSummary {
+export function createEmptyEngagementState(): EngagementState {
+  return {
+    loyaltyAccounts: [],
+    loyaltyTransactions: [],
+    loyaltyRewardRules: [],
+    referralCodes: [],
+    referralEvents: [],
+    barberFollows: [],
+    engagementEvents: [],
+    rebookingCycles: [],
+    rebookingRecommendations: [],
+    notificationPreferences: [],
+    notifications: [],
+    reputationScores: [],
+    rankingSnapshots: [],
+    growthRecommendations: []
+  };
+}
+
+export function getClientEngagementSummary(
+  state: EngagementState,
+  snapshot: LiveOperationsSnapshot | undefined,
+  clientId: string,
+  loyaltyOverride?: ClientEngagementLoyaltyOverride
+): ClientEngagementSummary {
   const client = getClient(clientId, snapshot);
   if (!client) {
     throw new EngagementNotFoundError("Client engagement profile could not be found.");
@@ -598,13 +628,16 @@ export function getClientEngagementSummary(state: EngagementState, snapshot: Liv
       : null
   );
   const follows = state.barberFollows.filter((follow) => follow.clientId === clientId);
+  const pointsBalance = loyaltyOverride?.pointsBalance ?? loyaltyAccount.pointsBalance;
+  const lifetimePoints = loyaltyOverride?.lifetimePoints ?? loyaltyAccount.lifetimePoints;
+  const referralCredits = loyaltyOverride?.referralCredits ?? loyaltyAccount.referralCredits;
 
   return {
     clientId,
-    pointsBalance: loyaltyAccount.pointsBalance,
-    lifetimePoints: loyaltyAccount.lifetimePoints,
-    tier: loyaltyAccount.tier,
-    referralCredits: loyaltyAccount.referralCredits,
+    pointsBalance,
+    lifetimePoints,
+    tier: getLoyaltyTier(pointsBalance),
+    referralCredits,
     completedBookings: clientAppointments.filter((appointment) => appointment.status === "completed").length,
     favoriteBarberName: client.favoriteBarberId ? getBarber(client.favoriteBarberId)?.name : undefined,
     rebookingRecommendation,
@@ -618,7 +651,7 @@ export function getClientEngagementSummary(state: EngagementState, snapshot: Liv
       notifyOnAvailability: follow.notifyOnAvailability
     })),
     followSuggestions: getFollowSuggestions(state, client),
-    rewards: buildRewards(loyaltyAccount.pointsBalance),
+    rewards: buildRewards(pointsBalance),
     referralCode: state.referralCodes.find((code) => code.clientId === clientId),
     recentTransactions: sortByNewest(state.loyaltyTransactions.filter((transaction) => transaction.clientId === clientId)).slice(0, 4),
     recentNotifications: getRecentNotificationsForRole(state, "client", { clientId, userEmail: client.email }),

@@ -3,7 +3,7 @@ import { isPlatformAdminUser } from "@/lib/auth/demo-auth";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import {
   buildPlatformEventIdempotencyKey,
-  recordPlatformEvents,
+  recordRequiredPlatformEvents,
   type PlatformEventType
 } from "@/lib/core/platform-events";
 import {
@@ -1741,7 +1741,7 @@ async function recordVerificationPlatformEvents(input: {
     eventTypes.push("verification_rejected");
   }
 
-  await recordPlatformEvents(supabase, eventTypes.map((eventType) => ({
+  await recordRequiredPlatformEvents(supabase, eventTypes.map((eventType) => ({
     eventType,
     entityType: "verification_profile",
     entityId: input.profile.id,

@@ -14,9 +14,14 @@ import {
   canonicalLocationUuid,
   canonicalProfileUuid,
   canonicalServiceUuid,
-  ensureCanonicalBookingData,
   readCanonicalOperationsSnapshot
 } from "@/lib/booking/canonical-booking";
+import {
+  buildCompensationSnapshot,
+  buildOwnerAnalyticsSnapshot,
+  buildWorkflowEventRecord,
+  type WorkflowPersistenceBarber
+} from "@/lib/operations/persistence";
 import {
   createCapturedStripePaymentRecord,
   createTipLedgerEntry,
@@ -61,6 +66,7 @@ import { computeShopVerificationDecision, getVerificationGateDecision, buildPubl
 import { getTrustProvider } from "@/lib/trust/provider";
 import { Client } from "@/types/domain";
 import type { TrustState } from "@/types/trust";
+import type { CheckoutRecord, FlowActivity } from "@/lib/utils/operations";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 
@@ -107,6 +113,15 @@ type StaffMembershipRow = {
   id: string;
   location_id: string;
   profile_id: string;
+};
+
+type PersistenceActivityType = FlowActivity["type"];
+
+type ArtifactPersistenceInput = {
+  activityType: PersistenceActivityType;
+  actorRole: string;
+  amountCollected?: number;
+  paymentMethod?: CheckoutRecord["paymentMethod"];
 };
 
 function numeric(value: number | string | null | undefined) {
@@ -463,6 +478,142 @@ function buildBarberStatusInsert(snapshot: LiveOperationsSnapshot, barberId: str
   };
 }
 
+function buildPersistenceActivity(appointment: LiveAppointmentRecord, input: ArtifactPersistenceInput): FlowActivity {
+  const actorRole = input.actorRole;
+
+  switch (input.activityType) {
+    case "booking":
+      return {
+        id: `activity-${appointment.id}-booking-${appointment.revision}`,
+        appointmentId: appointment.id,
+        actorRole,
+        type: "booking",
+        detail: `${appointment.id} reserved ${appointment.serviceId}`,
+        createdAt: appointment.updatedAt,
+        title: "Client booked appointment"
+      };
+    case "check_in":
+      return {
+        id: `activity-${appointment.id}-check-in-${appointment.revision}`,
+        appointmentId: appointment.id,
+        actorRole,
+        type: "check_in",
+        detail: `${appointment.id} moved to checked-in status`,
+        createdAt: appointment.updatedAt,
+        title: "Front desk checked in client"
+      };
+    case "service_start":
+      return {
+        id: `activity-${appointment.id}-service-start-${appointment.revision}`,
+        appointmentId: appointment.id,
+        actorRole,
+        type: "service_start",
+        detail: `${appointment.id} is now in service`,
+        createdAt: appointment.updatedAt,
+        title: "Barber started service"
+      };
+    case "service_complete":
+      return {
+        id: `activity-${appointment.id}-service-complete-${appointment.revision}`,
+        appointmentId: appointment.id,
+        actorRole,
+        type: "service_complete",
+        detail: `${appointment.id} completed and posted to the shop dashboard`,
+        createdAt: appointment.updatedAt,
+        title: "Barber completed service"
+      };
+    case "checkout":
+      return {
+        id: `activity-${appointment.id}-checkout-${appointment.revision}`,
+        appointmentId: appointment.id,
+        actorRole,
+        type: "checkout",
+        detail: `${appointment.id} collected ${input.amountCollected ?? 0} plus ${appointment.tipAmount} tip`,
+        createdAt: appointment.updatedAt,
+        title: "Checkout captured payment and tip"
+      };
+    case "cancel":
+      return {
+        id: `activity-${appointment.id}-cancel-${appointment.revision}`,
+        appointmentId: appointment.id,
+        actorRole,
+        type: "cancel",
+        detail: `${appointment.id} was cancelled before service began`,
+        createdAt: appointment.updatedAt,
+        title: "Appointment cancelled"
+      };
+    default:
+      return {
+        id: `activity-${appointment.id}-${appointment.revision}`,
+        appointmentId: appointment.id,
+        actorRole,
+        type: input.activityType,
+        detail: `${appointment.id} updated`,
+        createdAt: appointment.updatedAt,
+        title: "Workflow updated"
+      };
+  }
+}
+
+function buildCheckoutRecordForPersistence(
+  appointment: LiveAppointmentRecord,
+  input: ArtifactPersistenceInput
+): CheckoutRecord | undefined {
+  if (input.activityType !== "checkout") {
+    return undefined;
+  }
+
+  return {
+    id: appointment.checkoutReference ?? `checkout-${appointment.id}-${appointment.revision}`,
+    appointmentId: appointment.id,
+    locationId: appointment.locationId,
+    barberId: appointment.barberId,
+    clientId: appointment.clientId,
+    amountCollected: Math.max(input.amountCollected ?? 0, 0),
+    tipAmount: appointment.tipAmount,
+    paymentMethod: input.paymentMethod ?? "card_on_file",
+    provider: "stripe",
+    collectedAt: appointment.updatedAt
+  };
+}
+
+async function loadWorkflowPersistenceBarber(
+  supabase: SupabaseClient,
+  barberReference: string
+): Promise<WorkflowPersistenceBarber | null> {
+  const barberResult = await supabase
+    .from("barbers")
+    .select("id, reference_code, profile_id, compensation_model, commission_rate, booth_rent_amount, booth_rent_frequency")
+    .eq("id", canonicalBarberUuid(barberReference))
+    .maybeSingle();
+
+  if (barberResult.error) {
+    throw barberResult.error;
+  }
+  if (!barberResult.data) {
+    return null;
+  }
+
+  const profileResult = await supabase
+    .from("profiles")
+    .select("email")
+    .eq("id", barberResult.data.profile_id)
+    .maybeSingle();
+  if (profileResult.error) {
+    throw profileResult.error;
+  }
+
+  return {
+    id: barberResult.data.reference_code ?? barberReference,
+    userId: barberResult.data.profile_id,
+    compensationModel: barberResult.data.compensation_model,
+    commissionRate: barberResult.data.commission_rate === null ? undefined : numeric(barberResult.data.commission_rate),
+    boothRentAmount: barberResult.data.booth_rent_amount === null ? undefined : numeric(barberResult.data.booth_rent_amount),
+    boothRentFrequency: barberResult.data.booth_rent_frequency ?? null,
+    email: profileResult.data?.email ?? null
+  };
+}
+
 
 async function syncAppointmentStatusHistory(
   supabase: SupabaseClient,
@@ -522,6 +673,15 @@ async function insertAppointmentCheckInEvent(
   }
 }
 
+export function resolveOperationalPaymentRecordAttributes(type: string) {
+  const paymentStage = type === "checkout" ? "checkout" : "booking";
+  return {
+    paymentType: "booking" as const,
+    legacyType: paymentStage,
+    paymentStage
+  };
+}
+
 async function insertPaymentRecord(
   supabase: SupabaseClient,
   appointment: LiveAppointmentRecord,
@@ -531,11 +691,13 @@ async function insertPaymentRecord(
   metadata: Record<string, string | number | boolean | null>,
   createdAt = appointment.updatedAt
 ) {
+  const paymentAttributes = resolveOperationalPaymentRecordAttributes(type);
   const existing = await supabase
     .from("payments")
     .select("id")
     .eq("appointment_id", canonicalAppointmentUuid(appointment.id))
-    .eq("payment_type", "booking")
+    .eq("payment_type", paymentAttributes.paymentType)
+    .eq("type", paymentAttributes.legacyType)
     .eq("payment_status", status)
     .limit(1)
     .maybeSingle();
@@ -553,13 +715,16 @@ async function insertPaymentRecord(
     shopId: canonicalLocationUuid(appointment.shopId ?? appointment.locationId),
     barberId: canonicalBarberUuid(appointment.barberId),
     amount,
-    paymentType: "booking",
-    legacyType: type,
+    paymentType: paymentAttributes.paymentType,
+    legacyType: paymentAttributes.legacyType,
     legacyStatus: "captured",
-    idempotencyKey: `booking:${appointment.id}:${type}:${amount.toFixed(2)}`,
-    description: `BVRB3R booking ${appointment.id}`,
+    idempotencyKey: `booking:${appointment.id}:${paymentAttributes.legacyType}:${amount.toFixed(2)}`,
+    description: paymentAttributes.legacyType === "checkout"
+      ? `BVRB3R checkout ${appointment.id}`
+      : `BVRB3R booking ${appointment.id}`,
     metadata: {
       ...metadata,
+      paymentStage: paymentAttributes.paymentStage,
       appointmentReference: appointment.id,
       clientReference: appointment.clientId,
       barberReference: appointment.barberId,
@@ -673,18 +838,41 @@ function createUnavailableSupabaseProvider(): LiveOperationsProvider {
 }
 
 async function readFullSupabaseSnapshot(supabase: SupabaseClient): Promise<LiveOperationsSnapshot> {
-  await ensureCanonicalBookingData(supabase);
   return readCanonicalOperationsSnapshot(supabase);
 }
 
 async function persistArtifactsForAppointment(
   supabase: SupabaseClient,
   snapshot: LiveOperationsSnapshot,
-  appointment: LiveAppointmentRecord
+  appointment: LiveAppointmentRecord,
+  input: ArtifactPersistenceInput
 ) {
-  const workflowEvent = snapshot.workflowEvents.find((entry) => entry.appointmentReference === appointment.id);
-  const compensationSnapshot = snapshot.compensationSnapshots.find((entry) => entry.appointmentReference === appointment.id);
-  const ownerAnalytics = snapshot.ownerAnalytics.find((entry) => entry.locationReference === appointment.locationId);
+  const barber = await loadWorkflowPersistenceBarber(supabase, appointment.barberId);
+  if (!barber) {
+    await syncBarberStatus(supabase, snapshot, appointment.barberId);
+    return;
+  }
+
+  const client = snapshot.clients.find((entry) => entry.id === appointment.clientId);
+  const latestActivity = buildPersistenceActivity(appointment, input);
+  const checkout = buildCheckoutRecordForPersistence(appointment, input);
+  const workflowEvent = buildWorkflowEventRecord({
+    appointment,
+    appointments: snapshot.appointments,
+    barber,
+    client,
+    latestActivity,
+    checkout
+  });
+  const compensationSnapshot = buildCompensationSnapshot({
+    appointment,
+    appointments: snapshot.appointments,
+    barber,
+    client,
+    latestActivity,
+    checkout
+  });
+  const ownerAnalytics = buildOwnerAnalyticsSnapshot(appointment.locationId, snapshot.appointments);
 
   if (workflowEvent) {
     const workflowResult = await supabase.from("workflow_events").insert({
@@ -755,24 +943,22 @@ async function persistArtifactsForAppointment(
     }
   }
 
-  if (ownerAnalytics) {
-    const analyticsResult = await supabase
-      .from("owner_daily_analytics")
-      .upsert({
-        location_reference: ownerAnalytics.locationReference,
-        business_date: ownerAnalytics.businessDate,
-        booked_count: ownerAnalytics.bookedCount,
-        completed_services_count: ownerAnalytics.completedServicesCount,
-        paid_appointments_count: ownerAnalytics.paidAppointmentsCount,
-        revenue_total: ownerAnalytics.revenueTotal,
-        tip_total: ownerAnalytics.tipTotal,
-        outstanding_balance: ownerAnalytics.outstandingBalance,
-        updated_at: ownerAnalytics.updatedAt
-      }, { onConflict: "location_reference,business_date" });
+  const analyticsResult = await supabase
+    .from("owner_daily_analytics")
+    .upsert({
+      location_reference: ownerAnalytics.locationReference,
+      business_date: ownerAnalytics.businessDate,
+      booked_count: ownerAnalytics.bookedCount,
+      completed_services_count: ownerAnalytics.completedServicesCount,
+      paid_appointments_count: ownerAnalytics.paidAppointmentsCount,
+      revenue_total: ownerAnalytics.revenueTotal,
+      tip_total: ownerAnalytics.tipTotal,
+      outstanding_balance: ownerAnalytics.outstandingBalance,
+      updated_at: ownerAnalytics.updatedAt
+    }, { onConflict: "location_reference,business_date" });
 
-    if (analyticsResult.error) {
-      throw analyticsResult.error;
-    }
+  if (analyticsResult.error) {
+    throw analyticsResult.error;
   }
 
   await syncBarberStatus(supabase, snapshot, appointment.barberId);
@@ -1181,7 +1367,10 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
         });
       }
       await insertNotificationRecords(supabase, appointmentForPayment, "booking");
-      await persistArtifactsForAppointment(supabase, snapshotForPayment, appointmentForPayment);
+      await persistArtifactsForAppointment(supabase, snapshotForPayment, appointmentForPayment, {
+        activityType: "booking",
+        actorRole: input.actorRole ?? "client"
+      });
       return {
         appointment: appointmentForPayment,
         snapshot: snapshotForPayment
@@ -1228,7 +1417,10 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
 
       await insertNotificationRecords(supabase, result.appointment, "cancel");
       await voidPromotionRedemptionsForAppointment(supabase, result.appointment.id, result.appointment.updatedAt);
-      await persistArtifactsForAppointment(supabase, result.snapshot, result.appointment);
+      await persistArtifactsForAppointment(supabase, result.snapshot, result.appointment, {
+        activityType: "cancel",
+        actorRole: input.actorRole
+      });
       return result;
     },
     async transitionAppointment(input) {
@@ -1279,7 +1471,15 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
       if (input.action === "service_complete") {
         await completePromotionRedemptionsForAppointment(supabase, result.appointment.id, result.appointment.updatedAt);
       }
-      await persistArtifactsForAppointment(supabase, result.snapshot, result.appointment);
+      await persistArtifactsForAppointment(supabase, result.snapshot, result.appointment, {
+        activityType:
+          input.action === "check_in"
+            ? "check_in"
+            : input.action === "service_start"
+              ? "service_start"
+              : "service_complete",
+        actorRole: input.actorRole
+      });
       if (input.action === "service_complete") {
         try {
           await ensureRecurringBooking(supabase, {
@@ -1356,7 +1556,12 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
         await syncPaymentRoutingRecord(supabase, paymentRow.id);
       }
       await insertNotificationRecords(supabase, result.appointment, "checkout");
-      await persistArtifactsForAppointment(supabase, result.snapshot, result.appointment);
+      await persistArtifactsForAppointment(supabase, result.snapshot, result.appointment, {
+        activityType: "checkout",
+        actorRole: input.actorRole,
+        amountCollected: remainingBalance,
+        paymentMethod: input.paymentMethod
+      });
       return result;
     }
   };
@@ -1364,7 +1569,8 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
 
 export async function getLiveOperationsProvider(): Promise<LiveOperationsProvider> {
   if (!isSupabaseEnabled()) {
-    return createDemoProvider();
+    console.warn("[live-provider] Supabase is disabled; returning an empty live snapshot instead of demo operations data.");
+    return createUnavailableSupabaseProvider();
   }
 
   const supabase = createSupabaseAdminClient();

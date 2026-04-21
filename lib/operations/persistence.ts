@@ -1,6 +1,13 @@
-﻿import { boothRentLedger, demoUsers } from "@/lib/data/demo";
-import { Appointment, Barber, BoothRentLedgerEntry, Client } from "@/types/domain";
+import type { Appointment, Barber, Client } from "@/types/domain";
 import { CheckoutRecord, FlowActivity, getOwnerFlowMetrics, isAppointmentPaid } from "@/lib/utils/operations";
+
+export type WorkflowPersistenceBarber = Pick<
+  Barber,
+  "id" | "compensationModel" | "commissionRate" | "boothRentAmount" | "boothRentFrequency"
+> & {
+  userId: string;
+  email?: string | null;
+};
 
 export interface WorkflowEventRecord {
   appointmentReference: string;
@@ -62,23 +69,22 @@ export interface WorkflowPersistenceEnvelope {
 interface WorkflowPersistenceInput {
   appointment: Appointment;
   appointments: Appointment[];
-  barber: Barber;
+  barber: WorkflowPersistenceBarber;
   client?: Client;
   latestActivity: FlowActivity;
   checkout?: CheckoutRecord;
-  rentEntries?: BoothRentLedgerEntry[];
 }
 
 function roundCurrency(value: number) {
   return Math.round(value * 100) / 100;
 }
 
-function getBarberEmail(barber: Barber) {
-  return demoUsers.find((entry) => entry.id === barber.userId)?.email ?? `${barber.id}@bvrb3r.local`;
+function getBarberEmail(barber: WorkflowPersistenceBarber) {
+  return barber.email ?? "";
 }
 
 function getClientEmail(client: Client | undefined, fallbackClientId: string) {
-  return client?.email ?? `${fallbackClientId}@guest.bvrb3r.local`;
+  return client?.email ?? fallbackClientId;
 }
 
 export function buildWorkflowEventRecord({ appointment, barber, client, latestActivity }: WorkflowPersistenceInput): WorkflowEventRecord {
@@ -106,26 +112,20 @@ export function buildWorkflowEventRecord({ appointment, barber, client, latestAc
   };
 }
 
-export function buildCompensationSnapshot({ appointment, barber, client, checkout, rentEntries = boothRentLedger }: WorkflowPersistenceInput): CompensationSnapshotRecord | null {
+export function buildCompensationSnapshot({ appointment, barber, client, checkout }: WorkflowPersistenceInput): CompensationSnapshotRecord | null {
   if (!checkout && !isAppointmentPaid(appointment)) {
     return null;
   }
 
   const tipAmount = checkout?.tipAmount ?? appointment.tipAmount;
-  const openRent = rentEntries
-    .filter((entry) => entry.barberId === barber.id && entry.status !== "paid")
-    .sort((left, right) => left.dueDate.localeCompare(right.dueDate))[0];
-
   const commissionAmount = barber.compensationModel === "commission"
     ? roundCurrency(appointment.totalAmount * (barber.commissionRate ?? 0) + tipAmount)
     : 0;
-
   const boothRentAmount = barber.compensationModel === "booth_rent"
-    ? openRent?.amount ?? barber.boothRentAmount ?? null
+    ? barber.boothRentAmount ?? null
     : null;
-
   const rentCoverageAmount = barber.compensationModel === "booth_rent"
-    ? roundCurrency(appointment.totalAmount + tipAmount - (boothRentAmount ?? 0))
+    ? (boothRentAmount === null ? null : roundCurrency(appointment.totalAmount + tipAmount - boothRentAmount))
     : null;
 
   return {
@@ -145,7 +145,7 @@ export function buildCompensationSnapshot({ appointment, barber, client, checkou
     commissionRate: barber.compensationModel === "commission" ? barber.commissionRate ?? null : null,
     commissionAmount,
     boothRentAmount,
-    boothRentPeriodLabel: barber.compensationModel === "booth_rent" ? openRent?.periodLabel ?? null : null,
+    boothRentPeriodLabel: barber.compensationModel === "booth_rent" ? barber.boothRentFrequency ?? null : null,
     rentCoverageAmount,
     checkoutReference: checkout?.id ?? null,
     capturedAt: checkout?.collectedAt ?? new Date().toISOString()
@@ -155,7 +155,9 @@ export function buildCompensationSnapshot({ appointment, barber, client, checkou
 export function buildOwnerAnalyticsSnapshot(locationReference: string, appointments: Appointment[]): OwnerAnalyticsSnapshotRecord {
   const locationAppointments = appointments.filter((appointment) => appointment.locationId === locationReference);
   const metrics = getOwnerFlowMetrics(locationAppointments);
-  const paidAppointmentsCount = locationAppointments.filter((appointment) => isAppointmentPaid(appointment) && appointment.start.slice(0, 10) === metrics.businessDateKey).length;
+  const paidAppointmentsCount = locationAppointments.filter(
+    (appointment) => isAppointmentPaid(appointment) && appointment.start.slice(0, 10) === metrics.businessDateKey
+  ).length;
 
   return {
     locationReference,

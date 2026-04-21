@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getClientExperienceContext } from "@/lib/client-experience/session";
 import { getEngagementProvider } from "@/lib/engagement/provider";
 import { getClientEngagementSummary } from "@/lib/engagement/engine";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   buildClientMembershipExecutionSummary,
   cancelClientMembershipSubscription,
@@ -10,6 +11,7 @@ import {
   MonetizationServiceError
 } from "@/lib/monetization/service";
 import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
+import { readPointsBalanceForClientReference } from "@/lib/points/engine";
 
 const subscribeSchema = z.object({
   planCode: z.string().min(1)
@@ -20,11 +22,16 @@ async function readExecutionSummary(context: Awaited<ReturnType<typeof getClient
     getEngagementProvider(),
     getLiveOperationsProvider()
   ]);
-  const [state, snapshot] = await Promise.all([
+  const supabase = createSupabaseAdminClient();
+  const [state, snapshot, pointsBalance] = await Promise.all([
     engagementProvider.readState(),
-    operationsProvider.readSnapshot({ role: "client", clientId: context.clientId })
+    operationsProvider.readSnapshot({ role: "client", clientId: context.clientId }),
+    readPointsBalanceForClientReference(context.clientId, supabase)
   ]);
-  const summary = getClientEngagementSummary(state, snapshot, context.clientId);
+  const summary = getClientEngagementSummary(state, snapshot, context.clientId, {
+    pointsBalance: pointsBalance.unlockedPoints,
+    lifetimePoints: pointsBalance.lifetimeEarned
+  });
 
   return buildClientMembershipExecutionSummary({
     clientId: context.clientId,

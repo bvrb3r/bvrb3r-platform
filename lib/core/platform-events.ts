@@ -50,6 +50,21 @@ export type PlatformEventRow = {
 
 type PlatformEventSupabaseClient = Pick<SupabaseClient, "from">;
 
+type PlatformEventRecordResult =
+  | { ok: true }
+  | { ok: false; skipped?: true; reason?: string; error?: unknown };
+
+export class PlatformEventPersistenceError extends Error {
+  constructor(
+    readonly event: PlatformEventInput,
+    readonly causeDetail?: unknown,
+    message = `Failed to persist platform event ${event.eventType} for ${event.entityType}:${event.entityId}.`
+  ) {
+    super(message);
+    this.name = "PlatformEventPersistenceError";
+  }
+}
+
 function cleanRecord(record: PlatformEventRelatedIds | PlatformEventPayload | undefined) {
   const next: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(record ?? {})) {
@@ -93,7 +108,7 @@ export function buildPlatformEventIdempotencyKey(parts: Array<string | number | 
 export async function recordPlatformEvent(
   supabase: PlatformEventSupabaseClient | null | undefined,
   input: PlatformEventInput
-) {
+): Promise<PlatformEventRecordResult> {
   if (!supabase) {
     return { ok: false as const, skipped: true as const, reason: "missing_supabase_client" };
   }
@@ -124,6 +139,28 @@ export async function recordPlatformEvents(
   const results = [];
   for (const input of inputs) {
     results.push(await recordPlatformEvent(supabase, input));
+  }
+  return results;
+}
+
+export async function recordRequiredPlatformEvent(
+  supabase: PlatformEventSupabaseClient | null | undefined,
+  input: PlatformEventInput
+) {
+  const result = await recordPlatformEvent(supabase, input);
+  if (!result.ok) {
+    throw new PlatformEventPersistenceError(input, result.error ?? result.reason);
+  }
+  return result;
+}
+
+export async function recordRequiredPlatformEvents(
+  supabase: PlatformEventSupabaseClient | null | undefined,
+  inputs: PlatformEventInput[]
+) {
+  const results = [];
+  for (const input of inputs) {
+    results.push(await recordRequiredPlatformEvent(supabase, input));
   }
   return results;
 }

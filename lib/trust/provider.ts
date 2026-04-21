@@ -2,7 +2,7 @@
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import {
   buildPlatformEventIdempotencyKey,
-  recordPlatformEvent
+  recordRequiredPlatformEvent
 } from "@/lib/core/platform-events";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
@@ -550,7 +550,7 @@ function createSupabaseProvider(supabase: SupabaseClient): TrustProvider {
         created_at: result.disputeEvent.createdAt
       }]);
 
-      await recordPlatformEvent(supabase, {
+      await recordRequiredPlatformEvent(supabase, {
         eventType: "dispute_created",
         entityType: "dispute",
         entityId: result.dispute.id,

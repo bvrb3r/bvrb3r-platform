@@ -128,4 +128,56 @@ describe("pre-open real-only platform state", () => {
       expect(source).not.toContain("barber-wave");
     }
   });
+
+  it("keeps canonical booking and operations production paths free of demo fixture imports", () => {
+    const root = process.cwd();
+    const productionCoreFiles = [
+      "lib/booking/canonical-booking.ts",
+      "lib/operations/live-provider.ts",
+      "lib/operations/persistence.ts",
+      "lib/operations/metrics.ts"
+    ];
+
+    for (const file of productionCoreFiles) {
+      const source = readFileSync(join(root, file), "utf8");
+      expect(source).not.toContain("@/lib/data/demo");
+      expect(source).not.toContain("demoAppointments");
+      expect(source).not.toContain("demoBarbers");
+      expect(source).not.toContain("demoClients");
+      expect(source).not.toContain("boothRentLedger");
+    }
+
+    const liveStateSource = readFileSync(join(root, "lib/operations/live-state.ts"), "utf8");
+    expect(liveStateSource).toContain("if (snapshot.mode === \"supabase\")");
+  });
+
+  it("uses required event writers for audit-critical domain transitions", () => {
+    const root = process.cwd();
+    const auditCriticalFiles = [
+      "lib/payments/service.ts",
+      "lib/fintech/service.ts",
+      "lib/platform-admin/verification-service.ts",
+      "lib/trust/provider.ts",
+      "lib/points/engine.ts"
+    ];
+
+    for (const file of auditCriticalFiles) {
+      const source = readFileSync(join(root, file), "utf8");
+      expect(source).toMatch(/recordRequiredPlatformEvent|recordRequiredPlatformEvents/);
+    }
+  });
+
+  it("routes client loyalty and membership summaries through canonical points readers", () => {
+    const root = process.cwd();
+    const canonicalReaderFiles = [
+      "app/api/client/membership/route.ts",
+      "app/api/engagement/client/summary/route.ts",
+      "lib/booking/platform-service.ts"
+    ];
+
+    for (const file of canonicalReaderFiles) {
+      const source = readFileSync(join(root, file), "utf8");
+      expect(source).toContain("readPointsBalanceForClientReference");
+    }
+  });
 });

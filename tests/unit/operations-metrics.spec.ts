@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sortOwnerDashboardAppointments } from "@/lib/operations/metrics";
+import { getBarberCompensationSummary, sortOwnerDashboardAppointments } from "@/lib/operations/metrics";
 
 describe("owner operations metrics helpers", () => {
   it("orders owner floor appointments by operational urgency before time", () => {
@@ -21,5 +21,54 @@ describe("owner operations metrics helpers", () => {
       "completed-late",
       "cancelled"
     ]);
+  });
+
+  it("derives barber compensation from canonical snapshot rows without a demo rent ledger fallback", () => {
+    const summary = getBarberCompensationSummary(
+      "barber-blaze",
+      [
+        {
+          id: "appt-1",
+          barberId: "barber-blaze",
+          status: "completed",
+          start: "2026-03-26T09:00:00-04:00"
+        },
+        {
+          id: "appt-2",
+          barberId: "barber-blaze",
+          status: "booked",
+          start: "2026-03-26T11:00:00-04:00"
+        }
+      ] as any,
+      [
+        {
+          appointmentReference: "appt-1",
+          locationReference: "loc-ybor",
+          barberReference: "barber-blaze",
+          barberUserReference: "profile-blaze",
+          barberEmail: "blaze@example.com",
+          clientReference: "client-jordan",
+          clientEmail: "jordan@example.com",
+          compensationModel: "booth_rent",
+          businessDate: "2026-03-26",
+          grossServiceAmount: 70,
+          depositAmount: 0,
+          collectedAmount: 70,
+          tipAmount: 10,
+          commissionRate: null,
+          commissionAmount: 0,
+          boothRentAmount: 325,
+          boothRentPeriodLabel: "weekly",
+          rentCoverageAmount: -245,
+          checkoutReference: "checkout-1",
+          capturedAt: "2026-03-26T10:00:00-04:00"
+        }
+      ]
+    );
+
+    expect(summary.serviceRevenueToday).toBe(70);
+    expect(summary.tipsToday).toBe(10);
+    expect(summary.rentCoverageToday).toBe(-245);
+    expect(summary.nextRent).toBeUndefined();
   });
 });

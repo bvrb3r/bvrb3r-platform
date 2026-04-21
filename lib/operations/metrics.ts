@@ -1,4 +1,3 @@
-﻿import { boothRentLedger } from "@/lib/data/demo";
 import { CompensationSnapshotRecord, OwnerAnalyticsSnapshotRecord } from "@/lib/operations/persistence";
 import { LiveAppointmentRecord } from "@/lib/operations/live-state";
 import { RevenuePoint } from "@/types/domain";
@@ -98,9 +97,6 @@ export function getBarberCompensationSummary(barberId: string, appointments: Liv
   const activeCount = appointments.filter(
     (entry) => entry.barberId === barberId && ["booked", "checked_in", "in_service"].includes(entry.status)
   ).length;
-  const nextRent = boothRentLedger
-    .filter((entry) => entry.barberId === barberId && entry.status !== "paid")
-    .sort((left, right) => left.dueDate.localeCompare(right.dueDate))[0];
 
   return {
     businessDate,
@@ -109,7 +105,7 @@ export function getBarberCompensationSummary(barberId: string, appointments: Liv
     tipsToday: todayRows.reduce((sum, entry) => sum + entry.tipAmount, 0),
     commissionToday: todayRows.reduce((sum, entry) => sum + entry.commissionAmount, 0),
     projectedPayout: barberRows.reduce((sum, entry) => sum + entry.commissionAmount, 0),
-    nextRent,
+    nextRent: undefined,
     completedPaidCount: todayRows.length,
     rentCoverageToday: todayRows.reduce((sum, entry) => sum + (entry.rentCoverageAmount ?? 0), 0)
   };

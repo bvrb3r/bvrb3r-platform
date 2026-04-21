@@ -1,4 +1,4 @@
-import { boothRentLedger, demoAppointments, demoBarbers, demoClients, demoUsers, demoWalkIns } from "@/lib/data/demo";
+import { demoAppointments, demoBarbers, demoClients, demoUsers, demoWalkIns } from "@/lib/data/demo";
 import { buildAppointmentLifecycleFields, canTransitionAppointmentStatus, type AppointmentFinancialQuote } from "@/lib/appointments/domain";
 import {
   CompensationSnapshotRecord,
@@ -259,6 +259,10 @@ function applyPersistenceArtifacts(
   latestActivity: FlowActivity,
   checkout?: CheckoutRecord
 ): LiveOperationsSnapshot {
+  if (snapshot.mode === "supabase") {
+    return snapshot;
+  }
+
   const barber = demoBarbers.find((entry) => entry.id === appointment.barberId);
   if (!barber) {
     return snapshot;
@@ -272,8 +276,7 @@ function applyPersistenceArtifacts(
     barber,
     client,
     latestActivity,
-    checkout,
-    rentEntries: boothRentLedger
+    checkout
   });
   const compensationSnapshot = buildCompensationSnapshot({
     appointment,
@@ -281,8 +284,7 @@ function applyPersistenceArtifacts(
     barber,
     client,
     latestActivity,
-    checkout,
-    rentEntries: boothRentLedger
+    checkout
   });
   const ownerAnalyticsSnapshot = buildOwnerAnalyticsSnapshot(appointment.locationId, locationAppointments);
 

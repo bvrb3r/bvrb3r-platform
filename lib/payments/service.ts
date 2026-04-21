@@ -3,7 +3,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { runtimeConfig } from "@/lib/config/runtime";
 import {
   buildPlatformEventIdempotencyKey,
-  recordPlatformEvent,
+  recordRequiredPlatformEvent,
   type PlatformEventType
 } from "@/lib/core/platform-events";
 import {
@@ -514,7 +514,7 @@ async function recordPaymentStatusPlatformEvent(
     return;
   }
 
-  await recordPlatformEvent(supabase, {
+  await recordRequiredPlatformEvent(supabase, {
     eventType,
     entityType: "payment",
     entityId: payment.id,
