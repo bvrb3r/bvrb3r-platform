@@ -64,6 +64,7 @@ describe("platform events core", () => {
       "payment_failed",
       "payout_released",
       "dispute_created",
+      "dispute_resolved",
       "verification_updated",
       "booking_canceled",
       "booking_rescheduled",

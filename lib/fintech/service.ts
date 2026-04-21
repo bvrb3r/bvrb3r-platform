@@ -38,7 +38,7 @@ import {
   type PayoutExecutionType,
   type RoutingModel
 } from "@/lib/fintech/domain";
-import type { InternalPaymentStatus, InternalPaymentType } from "@/lib/payments/domain";
+import { canTransitionPaymentStatus, type InternalPaymentStatus, type InternalPaymentType } from "@/lib/payments/domain";
 import {
   StripeConnectError,
   buildStripeReturnUrl,
@@ -498,6 +498,22 @@ function numeric(value: number | string | null | undefined) {
   return Number(value ?? 0);
 }
 
+function getWebhookEventTimestamp(event: Stripe.Event) {
+  return new Date(event.created * 1000).toISOString();
+}
+
+function getPaymentPlatformEventType(status: InternalPaymentStatus) {
+  if (status === "captured" || status === "partially_refunded") {
+    return "payment_succeeded" as const;
+  }
+
+  if (status === "failed") {
+    return "payment_failed" as const;
+  }
+
+  return null;
+}
+
 function getSupabaseOrThrow() {
   if (!isSupabaseEnabled()) {
     throw new FintechServiceError("Fintech readiness is only available when Supabase is configured.", 503);
@@ -509,6 +525,173 @@ function getSupabaseOrThrow() {
   }
 
   return supabase;
+}
+
+async function resolveStripeWebhookPayment(
+  supabase: SupabaseClient,
+  input: {
+    paymentIntentId?: string | null;
+    chargeId?: string | null;
+  }
+) {
+  if (input.paymentIntentId?.trim()) {
+    const paymentResult = await supabase
+      .from("payments")
+      .select(PAYMENT_SELECT)
+      .eq("provider", "stripe")
+      .eq("provider_payment_intent_id", input.paymentIntentId)
+      .maybeSingle();
+
+    if (paymentResult.error) {
+      throw new FintechServiceError("Unable to map the Stripe payment intent into canonical payment state.", 500);
+    }
+
+    if (paymentResult.data) {
+      return paymentResult.data as PaymentRow;
+    }
+  }
+
+  if (input.chargeId?.trim()) {
+    const routingResult = await supabase
+      .from("payment_routing_records")
+      .select(PAYMENT_ROUTING_SELECT)
+      .eq("processor_charge_id", input.chargeId)
+      .maybeSingle();
+
+    if (routingResult.error) {
+      throw new FintechServiceError("Unable to map the Stripe charge into canonical payment state.", 500);
+    }
+
+    const routing = (routingResult.data as PaymentRoutingRow | null) ?? null;
+    if (!routing?.payment_id) {
+      return null;
+    }
+
+    const paymentResult = await supabase
+      .from("payments")
+      .select(PAYMENT_SELECT)
+      .eq("id", routing.payment_id)
+      .maybeSingle();
+
+    if (paymentResult.error) {
+      throw new FintechServiceError("Unable to load the payment linked to the Stripe charge.", 500);
+    }
+
+    return (paymentResult.data as PaymentRow | null) ?? null;
+  }
+
+  return null;
+}
+
+export async function syncStripeWebhookPaymentStatus(
+  supabase: SupabaseClient,
+  payment: PaymentRow,
+  nextStatus: Extract<InternalPaymentStatus, "captured" | "failed">,
+  input: {
+    event: Stripe.Event;
+    processorChargeId?: string | null;
+    skipRoutingSync?: boolean;
+  }
+) {
+  if (payment.payment_status === nextStatus || !canTransitionPaymentStatus(payment.payment_status, nextStatus)) {
+    return payment;
+  }
+
+  const occurredAt = getWebhookEventTimestamp(input.event);
+  const updateResult = await supabase
+    .from("payments")
+    .update({
+      payment_status: nextStatus,
+      status: nextStatus,
+      paid_at: nextStatus === "captured" ? payment.paid_at ?? occurredAt : payment.paid_at,
+      updated_at: occurredAt
+    })
+    .eq("id", payment.id)
+    .select(PAYMENT_SELECT)
+    .single();
+
+  if (updateResult.error) {
+    throw new FintechServiceError("Unable to persist the Stripe webhook payment status.", 500);
+  }
+
+  const updatedPayment = updateResult.data as PaymentRow;
+  if (!input.skipRoutingSync) {
+    await syncPaymentRoutingRecord(supabase, updatedPayment.id, {
+      processorChargeId: input.processorChargeId ?? undefined
+    });
+  }
+
+  const eventType = getPaymentPlatformEventType(updatedPayment.payment_status);
+  if (eventType) {
+    await recordRequiredPlatformEvent(supabase, {
+      eventType,
+      entityType: "payment",
+      entityId: updatedPayment.id,
+      actorId: updatedPayment.client_id ?? updatedPayment.barber_id ?? updatedPayment.shop_id ?? null,
+      source: "webhook",
+      relatedIds: {
+        paymentId: updatedPayment.id,
+        appointmentId: updatedPayment.appointment_id,
+        clientId: updatedPayment.client_id,
+        barberId: updatedPayment.barber_id,
+        shopId: updatedPayment.shop_id,
+        providerPaymentIntentId: updatedPayment.provider_payment_intent_id,
+        processorChargeId: input.processorChargeId ?? null
+      },
+      payload: {
+        paymentStatus: updatedPayment.payment_status,
+        paymentType: updatedPayment.payment_type,
+        provider: updatedPayment.provider,
+        amount: numeric(updatedPayment.amount),
+        currency: updatedPayment.currency,
+        paidAt: updatedPayment.paid_at,
+        webhookEventId: input.event.id,
+        webhookEventType: input.event.type
+      },
+      idempotencyKey: buildPlatformEventIdempotencyKey(["payment", updatedPayment.id, input.event.id, eventType]),
+      occurredAt
+    });
+  }
+
+  return updatedPayment;
+}
+
+async function recordDisputeLifecyclePlatformEvent(
+  supabase: SupabaseClient,
+  input: {
+    eventType: "dispute_created" | "dispute_resolved";
+    disputeId: string;
+    payment: PaymentRow | null;
+    appointmentReference: string | null;
+    locationReference: string | null;
+    disputeType: string | null;
+    disputeStatus: string;
+    summary: string;
+    occurredAt: string;
+  }
+) {
+  await recordRequiredPlatformEvent(supabase, {
+    eventType: input.eventType,
+    entityType: "dispute",
+    entityId: input.disputeId,
+    actorId: input.payment?.client_id ?? input.payment?.barber_id ?? input.payment?.shop_id ?? null,
+    source: "webhook",
+    relatedIds: {
+      disputeId: input.disputeId,
+      paymentId: input.payment?.id ?? null,
+      appointmentId: input.appointmentReference,
+      locationId: input.locationReference,
+      barberId: input.payment?.barber_id ?? null,
+      shopId: input.payment?.shop_id ?? null
+    },
+    payload: {
+      disputeType: input.disputeType,
+      disputeStatus: input.disputeStatus,
+      summary: input.summary
+    },
+    idempotencyKey: buildPlatformEventIdempotencyKey(["dispute", input.disputeId, input.eventType]),
+    occurredAt: input.occurredAt
+  });
 }
 
 async function readTrustStateSafe() {
@@ -3126,49 +3309,10 @@ async function processStripeMoneyMovementWebhook(
         ? eventObject.payment_intent
         : null;
     const chargeId = typeof dispute.charge === "string" ? dispute.charge : null;
-
-    let payment: PaymentRow | null = null;
-    if (paymentIntentId) {
-      const paymentResult = await supabase
-        .from("payments")
-        .select(PAYMENT_SELECT)
-        .eq("provider", "stripe")
-        .eq("provider_payment_intent_id", paymentIntentId)
-        .maybeSingle();
-
-      if (paymentResult.error) {
-        throw new FintechServiceError("Unable to map the Stripe dispute into payment routing.", 500);
-      }
-
-      payment = (paymentResult.data as PaymentRow | null) ?? null;
-    }
-
-    if (!payment && chargeId) {
-      const routingResult = await supabase
-        .from("payment_routing_records")
-        .select(PAYMENT_ROUTING_SELECT)
-        .eq("processor_charge_id", chargeId)
-        .maybeSingle();
-
-      if (routingResult.error) {
-        throw new FintechServiceError("Unable to map the disputed Stripe charge into payment routing.", 500);
-      }
-
-      const routing = (routingResult.data as PaymentRoutingRow | null) ?? null;
-      if (routing?.payment_id) {
-        const paymentResult = await supabase
-          .from("payments")
-          .select(PAYMENT_SELECT)
-          .eq("id", routing.payment_id)
-          .maybeSingle();
-
-        if (paymentResult.error) {
-          throw new FintechServiceError("Unable to load the payment linked to the disputed Stripe charge.", 500);
-        }
-
-        payment = (paymentResult.data as PaymentRow | null) ?? null;
-      }
-    }
+    const payment = await resolveStripeWebhookPayment(supabase, {
+      paymentIntentId,
+      chargeId
+    });
 
     let appointmentReference: string | null = null;
     let locationReference: string | null = null;
@@ -3245,6 +3389,32 @@ async function processStripeMoneyMovementWebhook(
       await syncPaymentRoutingRecord(supabase, payment.id);
     }
 
+    if (event.type === "charge.dispute.created") {
+      await recordDisputeLifecyclePlatformEvent(supabase, {
+        eventType: "dispute_created",
+        disputeId: `stripe-dispute:${dispute.id}`,
+        payment,
+        appointmentReference,
+        locationReference,
+        disputeType: dispute.reason ?? "payment_dispute",
+        disputeStatus: mappedStatus,
+        summary,
+        occurredAt: now
+      });
+    } else if (mappedStatus === "resolved") {
+      await recordDisputeLifecyclePlatformEvent(supabase, {
+        eventType: "dispute_resolved",
+        disputeId: `stripe-dispute:${dispute.id}`,
+        payment,
+        appointmentReference,
+        locationReference,
+        disputeType: dispute.reason ?? "payment_dispute",
+        disputeStatus: mappedStatus,
+        summary,
+        occurredAt: now
+      });
+    }
+
     return { handled: true, connectedAccountId: null as string | null };
   }
 
@@ -3254,47 +3424,60 @@ async function processStripeMoneyMovementWebhook(
       return { handled: false, connectedAccountId: null as string | null };
     }
 
-    const paymentResult = await supabase
-      .from("payments")
-      .select(PAYMENT_SELECT)
-      .eq("provider", "stripe")
-      .eq("provider_payment_intent_id", paymentIntentId)
-      .maybeSingle();
-
-    if (paymentResult.error) {
-      throw new FintechServiceError("Unable to map the Stripe payment intent into payment routing.", 500);
-    }
-
-    if (!paymentResult.data) {
+    const payment = await resolveStripeWebhookPayment(supabase, { paymentIntentId });
+    if (!payment) {
       return { handled: false, connectedAccountId: null as string | null };
     }
 
-    await syncStripeSettlementForPayment(supabase, (paymentResult.data as PaymentRow).id, { throwOnError: true });
+    await syncStripeWebhookPaymentStatus(supabase, payment, "captured", { event });
+    await syncStripeSettlementForPayment(supabase, payment.id, { throwOnError: true });
+    return { handled: true, connectedAccountId: null as string | null };
+  }
+
+  if (event.type === "payment_intent.payment_failed" || event.type === "charge.failed") {
+    const paymentIntentId =
+      event.type === "payment_intent.payment_failed"
+        ? (typeof eventObject.id === "string" ? eventObject.id : null)
+        : (typeof eventObject.payment_intent === "string" ? eventObject.payment_intent : null);
+    const chargeId = typeof eventObject.id === "string" ? eventObject.id : null;
+    const payment = await resolveStripeWebhookPayment(supabase, {
+      paymentIntentId,
+      chargeId
+    });
+
+    if (!payment) {
+      return { handled: false, connectedAccountId: null as string | null };
+    }
+
+    await syncStripeWebhookPaymentStatus(supabase, payment, "failed", {
+      event,
+      processorChargeId: chargeId
+    });
     return { handled: true, connectedAccountId: null as string | null };
   }
 
   if (event.type === "charge.succeeded" || event.type === "charge.updated") {
     const paymentIntentId = typeof eventObject.payment_intent === "string" ? eventObject.payment_intent : null;
-    if (!paymentIntentId) {
+    const chargeId = typeof eventObject.id === "string" ? eventObject.id : null;
+    if (!paymentIntentId && !chargeId) {
       return { handled: false, connectedAccountId: null as string | null };
     }
 
-    const paymentResult = await supabase
-      .from("payments")
-      .select(PAYMENT_SELECT)
-      .eq("provider", "stripe")
-      .eq("provider_payment_intent_id", paymentIntentId)
-      .maybeSingle();
-
-    if (paymentResult.error) {
-      throw new FintechServiceError("Unable to map the Stripe charge into payment routing.", 500);
-    }
-
-    if (!paymentResult.data) {
+    const payment = await resolveStripeWebhookPayment(supabase, {
+      paymentIntentId,
+      chargeId
+    });
+    if (!payment) {
       return { handled: false, connectedAccountId: null as string | null };
     }
 
-    await syncStripeSettlementForPayment(supabase, (paymentResult.data as PaymentRow).id, { throwOnError: true });
+    if (event.type === "charge.succeeded") {
+      await syncStripeWebhookPaymentStatus(supabase, payment, "captured", {
+        event,
+        processorChargeId: chargeId
+      });
+    }
+    await syncStripeSettlementForPayment(supabase, payment.id, { throwOnError: true });
     return { handled: true, connectedAccountId: null as string | null };
   }
 

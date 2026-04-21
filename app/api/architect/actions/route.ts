@@ -38,6 +38,11 @@ const actionSchema = z.discriminatedUnion("type", [
     note: z.string().trim().max(400).optional()
   }),
   z.object({
+    type: z.literal("resolve_dispute"),
+    disputeId: z.string().trim().min(1),
+    note: z.string().trim().max(400).optional()
+  }),
+  z.object({
     type: z.literal("resolve_financial_anomaly"),
     anomalyId: z.string().trim().min(1),
     note: z.string().trim().max(400).optional()

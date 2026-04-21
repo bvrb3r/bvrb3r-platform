@@ -184,6 +184,30 @@ describe("architect console routes", () => {
     });
   });
 
+  it("accepts canonical dispute resolution actions through the Architect action schema", async () => {
+    const founder = makePlatformAdminUser();
+    getCurrentUserFromServerMock.mockResolvedValue({ authenticated: true, mode: "demo", user: founder });
+    applyPlatformAdminActionMock.mockResolvedValue({ ok: true });
+
+    const response = await POST(new NextRequest("https://bvrb3r.demo/api/architect/actions", {
+      method: "POST",
+      body: JSON.stringify({
+        type: "resolve_dispute",
+        disputeId: "dispute-live-1",
+        note: "Resolved after reconciling Stripe settlement."
+      })
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(applyPlatformAdminActionMock).toHaveBeenCalledWith(founder, {
+      type: "resolve_dispute",
+      disputeId: "dispute-live-1",
+      note: "Resolved after reconciling Stripe settlement."
+    });
+  });
+
   it("rejects non-founder access to the all-account directory API", async () => {
     getCurrentUserFromServerMock.mockResolvedValue({ authenticated: true, mode: "demo", user: resolveDemoUser("owner@bvrb3r.demo") });
 

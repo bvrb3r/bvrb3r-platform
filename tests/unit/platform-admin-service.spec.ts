@@ -1,5 +1,17 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { makePlatformAdminUser } from "@/tests/unit/platform-admin-test-user";
+import { getTrustState, setTrustState } from "@/lib/trust/state";
+
+vi.mock("@/lib/trust/provider", async () => {
+  const state = await vi.importActual<typeof import("@/lib/trust/state")>("@/lib/trust/state");
+  return {
+    getTrustProvider: async () => ({
+      kind: "test",
+      readState: async () => state.getTrustState()
+    })
+  };
+});
+
 import {
   applyPlatformAdminAction,
   getPlatformAdminConsolePayload,
@@ -108,5 +120,43 @@ describe("platform admin service", () => {
     expect(controlState.aiManagerEnabled).toBe(false);
     expect(shopControl?.aiManagerEnabled).toBe(false);
     expect(payload.warnings).toEqual([]);
+  });
+
+  it("lets the architect resolve payment disputes through the canonical admin action path", async () => {
+    const trustState = getTrustState();
+    setTrustState({
+      ...trustState,
+      disputes: [
+        {
+          id: "dispute-live-1",
+          disputeType: "payment_dispute",
+          disputeStatus: "open",
+          submittedByRole: "client",
+          submittedById: "client-1",
+          involvedPartyType: "booking",
+          involvedPartyId: "appt-1",
+          appointmentId: "appt-1",
+          locationId: "location-1",
+          summary: "Client requested review of a payment discrepancy.",
+          createdAt: "2026-04-21T10:00:00.000Z",
+          updatedAt: "2026-04-21T10:00:00.000Z"
+        }
+      ],
+      disputeEvents: []
+    });
+
+    await applyPlatformAdminAction(founder, {
+      type: "resolve_dispute",
+      disputeId: "dispute-live-1",
+      note: "Stripe and booking records reconciled."
+    });
+
+    const resolved = getTrustState().disputes.find((entry) => entry.id === "dispute-live-1");
+    const auditPayload = await getPlatformAdminConsolePayload(founder);
+
+    expect(resolved?.disputeStatus).toBe("resolved");
+    expect(resolved?.resolutionNotes).toMatch(/reconciled/i);
+    expect(auditPayload.auditLog[0]?.actionType).toBe("resolve_dispute");
+    expect(auditPayload.auditLog[0]?.targetId).toBe("dispute-live-1");
   });
 });

@@ -56,6 +56,7 @@ type AppointmentRow = {
   barber_id: string;
   shop_id: string | null;
   location_id: string;
+  service_id: string | null;
   status: AppointmentStatus;
   deposit_amount: number | string;
   balance_due: number | string;
@@ -160,6 +161,7 @@ type CapturedStripePaymentInput = {
   clientId: string;
   shopId: string | null;
   barberId: string | null;
+  serviceId?: string | null;
   amount: number;
   paymentType: InternalPaymentType;
   paymentMethodId?: string | null;
@@ -632,7 +634,7 @@ async function resolvePaymentActor(user: UserAccount, supabase: SupabaseClient):
 async function loadAppointmentOrThrow(supabase: SupabaseClient, appointmentId: string) {
   const result = await supabase
     .from("appointments")
-    .select("id, client_id, barber_id, shop_id, location_id, status, deposit_amount, balance_due, grand_total, tip_amount, lifecycle_revision, completed_at, updated_at")
+    .select("id, client_id, barber_id, shop_id, location_id, service_id, status, deposit_amount, balance_due, grand_total, tip_amount, lifecycle_revision, completed_at, updated_at")
     .eq("id", appointmentId)
     .maybeSingle();
 
@@ -708,10 +710,16 @@ export async function createCapturedStripePaymentRecord(
       error_on_requires_action: true,
       metadata: normalizeStripeMetadata({
         ...(input.metadata ?? {}),
+        appointment_id: input.appointmentId,
+        client_id: input.clientId,
+        barber_id: input.barberId,
+        shop_id: input.shopId,
+        service_id: input.serviceId ?? null,
         appointmentId: input.appointmentId,
         clientId: input.clientId,
         barberId: input.barberId,
         shopId: input.shopId,
+        serviceId: input.serviceId ?? null,
         paymentType: input.paymentType
       }),
       description: input.description ?? undefined
@@ -736,7 +744,10 @@ export async function createCapturedStripePaymentRecord(
       legacyType: input.legacyType,
       legacyStatus: input.legacyStatus ?? "captured",
       paidAt: createdAt,
-      metadata: input.metadata,
+      metadata: {
+        ...(input.metadata ?? {}),
+        ...(input.serviceId ? { serviceId: input.serviceId, service_id: input.serviceId } : {})
+      },
       createdAt
     });
   } catch (error) {
@@ -1530,6 +1541,7 @@ export async function createAppointmentPayment(user: UserAccount, input: {
     clientId: appointment.client_id,
     shopId: appointment.shop_id ?? appointment.location_id,
     barberId: appointment.barber_id,
+    serviceId: appointment.service_id,
     amount: paymentIntent.amount,
     paymentType: "booking",
     paymentMethodId: paymentMethod?.id ?? null,
@@ -1802,6 +1814,7 @@ export async function createAppointmentTip(user: UserAccount, input: {
       clientId: appointment.client_id,
       shopId: appointment.shop_id ?? appointment.location_id,
       barberId: appointment.barber_id,
+      serviceId: appointment.service_id,
       amount: input.amount,
       paymentType: "tip",
       legacyType: "tip",

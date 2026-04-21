@@ -827,6 +827,7 @@ async function insertPaymentRecord(
     clientId: canonicalClientUuid(appointment.clientId),
     shopId: canonicalLocationUuid(appointment.shopId ?? appointment.locationId),
     barberId: canonicalBarberUuid(appointment.barberId),
+    serviceId: canonicalServiceUuid(appointment.serviceId),
     amount,
     paymentType: paymentAttributes.paymentType,
     legacyType: paymentAttributes.legacyType,
@@ -841,7 +842,10 @@ async function insertPaymentRecord(
       appointmentReference: appointment.id,
       clientReference: appointment.clientId,
       barberReference: appointment.barberId,
-      locationReference: appointment.locationId
+      locationReference: appointment.locationId,
+      serviceReference: appointment.serviceId,
+      serviceId: canonicalServiceUuid(appointment.serviceId),
+      service_id: canonicalServiceUuid(appointment.serviceId)
     },
     createdAt
   });

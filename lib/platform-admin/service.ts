@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { isPlatformAdminUser } from "@/lib/auth/demo-auth";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import { isUpcomingAppointmentStatus } from "@/lib/appointments/domain";
+import { buildPlatformEventIdempotencyKey, recordRequiredPlatformEvent } from "@/lib/core/platform-events";
 import { getEngagementProvider } from "@/lib/engagement/provider";
 import { dismissFinancialAnomaly, readFinancialAnomalyQueue, resolveFinancialAnomaly, syncFinancialAnomalies } from "@/lib/fintech/anomalies";
 import { buildOwnerMoneyDashboardSummary } from "@/lib/fintech/tax";
@@ -1560,6 +1561,7 @@ function buildActionClass(action: PlatformAdminActionInput): PlatformAdminAction
     case "update_barber_verification":
     case "update_shop_verification":
       return "sensitive";
+    case "resolve_dispute":
     case "resolve_financial_anomaly":
     case "dismiss_financial_anomaly":
       return "critical";
@@ -1724,6 +1726,111 @@ async function writeShopVerification(input: {
   }
 
   return nextRecord;
+}
+
+async function resolveDisputeRecord(input: {
+  actor: UserAccount;
+  disputeId: string;
+  note?: string;
+}) {
+  const trustState = await readTrustState();
+  const existing = trustState.disputes.find((record) => record.id === input.disputeId);
+  if (!existing) {
+    throw new Error("Dispute not found.");
+  }
+
+  const now = new Date().toISOString();
+  const resolutionNotes = input.note?.trim() || existing.resolutionNotes || "Resolved by Architect.";
+  const nextRecord = {
+    ...existing,
+    disputeStatus: "resolved" as const,
+    resolutionNotes,
+    updatedAt: now
+  };
+  const nextEvent = {
+    id: `dispute-event-${randomUUID().slice(0, 8)}`,
+    disputeId: existing.id,
+    actorRole: input.actor.role,
+    actorId: input.actor.id,
+    actionLabel: "Dispute resolved",
+    notes: resolutionNotes,
+    createdAt: now
+  };
+
+  const applyFallbackState = () => {
+    const nextState = clone(getTrustState());
+    nextState.disputes = [
+      nextRecord,
+      ...nextState.disputes.filter((record) => record.id !== existing.id)
+    ];
+    nextState.disputeEvents = [nextEvent, ...nextState.disputeEvents];
+    setTrustState(nextState);
+  };
+
+  const supabase = getSupabase();
+  if (!supabase) {
+    applyFallbackState();
+    return { previous: existing, next: nextRecord };
+  }
+
+  const disputeResult = await supabase
+    .from("disputes")
+    .update({
+      dispute_status: "resolved",
+      resolution_notes: resolutionNotes,
+      updated_at: now
+    })
+    .eq("id", existing.id);
+
+  if (disputeResult.error && !isMissingTableError(disputeResult.error)) {
+    throw disputeResult.error;
+  }
+
+  const disputeEventResult = await supabase
+    .from("dispute_events")
+    .insert({
+      id: nextEvent.id,
+      dispute_reference: nextEvent.disputeId,
+      actor_role: nextEvent.actorRole,
+      actor_reference: nextEvent.actorId,
+      action_label: nextEvent.actionLabel,
+      notes: nextEvent.notes ?? null,
+      created_at: nextEvent.createdAt
+    });
+
+  if (disputeEventResult.error && !isMissingTableError(disputeEventResult.error)) {
+    throw disputeEventResult.error;
+  }
+
+  if (disputeResult.error || disputeEventResult.error) {
+    applyFallbackState();
+  }
+
+  await recordRequiredPlatformEvent(supabase, {
+    eventType: "dispute_resolved",
+    entityType: "dispute",
+    entityId: existing.id,
+    actorId: input.actor.id,
+    actorRole: input.actor.role,
+    source: "api",
+    relatedIds: {
+      disputeId: existing.id,
+      appointmentId: existing.appointmentId,
+      locationId: existing.locationId,
+      involvedPartyType: existing.involvedPartyType,
+      involvedPartyId: existing.involvedPartyId
+    },
+    payload: {
+      disputeType: existing.disputeType,
+      disputeStatus: "resolved",
+      summary: existing.summary,
+      resolutionNotes
+    },
+    idempotencyKey: buildPlatformEventIdempotencyKey(["dispute", existing.id, "resolved"]),
+    occurredAt: now
+  });
+
+  return { previous: existing, next: nextRecord };
 }
 
 async function writeControlValue(input: {
@@ -2204,6 +2311,18 @@ export async function applyPlatformAdminAction(actor: UserAccount, action: Platf
       targetId = `${action.shopId}:${action.category}`;
       beforeSummary = `${shop.name ?? shop.id} ${normalizeVerificationLabel(action.category).toLowerCase()} was ${existing?.verificationStatus ?? "unverified"}.`;
       afterSummary = `${shop.name ?? shop.id} ${normalizeVerificationLabel(action.category).toLowerCase()} is now ${action.status}.`;
+      break;
+    }
+    case "resolve_dispute": {
+      const result = await resolveDisputeRecord({
+        actor,
+        disputeId: action.disputeId,
+        note: action.note
+      });
+      targetType = "dispute";
+      targetId = action.disputeId;
+      beforeSummary = `${result.previous.summary} was ${result.previous.disputeStatus}.`;
+      afterSummary = `${result.next.summary} is now resolved.`;
       break;
     }
     case "resolve_financial_anomaly": {

@@ -17,6 +17,7 @@ export type PlatformAdminShopStatus = "active" | "inactive";
 export type PlatformAdminTargetType =
   | "user"
   | "shop"
+  | "dispute"
   | "financial_anomaly"
   | "barber_verification"
   | "shop_verification"
@@ -557,6 +558,11 @@ export type PlatformAdminActionInput =
       shopId: string;
       category: ShopVerificationCategory;
       status: VerificationStatus;
+      note?: string;
+    }
+  | {
+      type: "resolve_dispute";
+      disputeId: string;
       note?: string;
     }
   | {

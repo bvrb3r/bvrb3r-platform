@@ -10,6 +10,7 @@ export const PLATFORM_EVENT_TYPES = [
   "payment_failed",
   "payout_released",
   "dispute_created",
+  "dispute_resolved",
   "verification_updated",
   "verification_approved",
   "verification_rejected",
