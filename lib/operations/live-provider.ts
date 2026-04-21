@@ -71,6 +71,7 @@ import type { TrustState } from "@/types/trust";
 import type { CheckoutRecord, FlowActivity } from "@/lib/utils/operations";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
+const APPOINTMENT_OVERLAP_CONSTRAINT = "appointments_no_overlap_active";
 
 type AppointmentConflictRow = {
   reference_code: string;
@@ -766,6 +767,34 @@ export function resolveOperationalPaymentRecordAttributes(type: string) {
   };
 }
 
+export function rethrowAppointmentPersistenceError(
+  error: unknown,
+  latestAppointment: LiveAppointmentRecord
+): never {
+  if (error && typeof error === "object") {
+    const candidate = error as {
+      code?: string | null;
+      message?: string | null;
+      details?: string | null;
+      hint?: string | null;
+    };
+    const combinedMessage = [candidate.message, candidate.details, candidate.hint]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+    if (candidate.code === "23P01" || combinedMessage.includes(APPOINTMENT_OVERLAP_CONSTRAINT)) {
+      throw new LiveOperationConflictError(
+        "The selected time is no longer available with this barber.",
+        latestAppointment,
+        "schedule_conflict"
+      );
+    }
+  }
+
+  throw error;
+}
+
 async function insertPaymentRecord(
   supabase: SupabaseClient,
   appointment: LiveAppointmentRecord,
@@ -1417,9 +1446,9 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
       const appointmentResult = existingAppointment.data
         ? await supabase.from("appointments").update(appointmentRow).eq("id", existingAppointment.data.id)
         : await supabase.from("appointments").insert(appointmentRow);
-      if (appointmentResult.error) {
-        throw appointmentResult.error;
-      }
+        if (appointmentResult.error) {
+          rethrowAppointmentPersistenceError(appointmentResult.error, result.appointment);
+        }
 
       try {
         if (bookingPaymentAmount > 0) {
@@ -1544,9 +1573,9 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
         .select("reference_code")
         .maybeSingle();
 
-      if (updateResult.error) {
-        throw updateResult.error;
-      }
+        if (updateResult.error) {
+          rethrowAppointmentPersistenceError(updateResult.error, result.appointment);
+        }
       if (!updateResult.data) {
         throw new LiveOperationConflictError(
           `Appointment ${input.appointmentId} changed before the reschedule completed.`,
