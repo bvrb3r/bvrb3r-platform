@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveDemoUser } from "@/lib/auth/demo-auth";
 
@@ -32,6 +33,24 @@ vi.mock("@/components/operations/barber-command-workspace", () => ({
 
 vi.mock("@/components/operations/client-workspace", () => ({
   ClientWorkspace: ({ clientId }: { clientId: string }) => <div data-testid="client-workspace-stub">{clientId}</div>
+}));
+
+vi.mock("@/components/client-experience/client-app-shell", () => ({
+  ClientAppShell: ({ children }: { children: ReactNode }) => <div data-testid="client-app-shell-stub">{children}</div>
+}));
+
+vi.mock("@/components/client-experience/client-home-screen", () => ({
+  ClientHomeScreen: ({
+    isSignedInClient,
+    displayName
+  }: {
+    isSignedInClient: boolean;
+    displayName: string;
+  }) => (
+    <div data-testid="client-home-screen-stub">
+      {displayName}|{String(isSignedInClient)}
+    </div>
+  )
 }));
 
 vi.mock("@/components/auth/account-session-workspace", () => ({
@@ -122,8 +141,8 @@ describe("dashboard role pages", () => {
     render(await ClientDashboardPage());
 
     expect(getAuthorizedUserMock).toHaveBeenCalledWith(["client"]);
-    expect(screen.getByText("Your next visit, already in motion")).toBeInTheDocument();
-    expect(screen.getByTestId("client-workspace-stub")).toHaveTextContent("client-jordan");
+    expect(screen.getByTestId("client-app-shell-stub")).toBeInTheDocument();
+    expect(screen.getByTestId("client-home-screen-stub")).toHaveTextContent("Jordan Ellis|true");
     expect(screen.queryByText("Owner control center")).not.toBeInTheDocument();
   });
 

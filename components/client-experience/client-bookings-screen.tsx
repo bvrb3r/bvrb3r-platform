@@ -2,6 +2,7 @@
 
 import type { Route } from "next";
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Clock3, CreditCard, MapPin, Repeat2, Star } from "lucide-react";
 import { ClientActionLink, getClientActionClassName } from "@/components/client-experience/client-action-link";
 import { ClientFavoriteBarberCard } from "@/components/client-experience/client-favorite-barber-card";
@@ -180,6 +181,7 @@ function OptionButton({
   );
 }
 export function ClientBookingsScreen() {
+  const searchParams = useSearchParams();
   const { isOnline } = usePwa();
   const bookingsQuery = useClientBookingsQuery();
   const pointsBalanceQuery = useClientPointsBalanceQuery();
@@ -221,6 +223,13 @@ export function ClientBookingsScreen() {
       setSelectedCadenceId(savedRoutine.cadenceId);
     }
   }, [savedRoutine?.cadenceId]);
+
+  useEffect(() => {
+    if (searchParams.get("intent") === "cancel" && nextAppointment) {
+      setCancelFeedback(null);
+      setCancelStep("offer_reschedule");
+    }
+  }, [nextAppointment, searchParams]);
 
   const selectedCadence = cadenceOptions.find((option) => option.id === selectedCadenceId) ?? cadenceOptions[1];
   const cadenceBaseDate = nextAppointment
@@ -624,44 +633,6 @@ export function ClientBookingsScreen() {
         )}
       </ClientSectionBlock>
 
-      <ClientSectionBlock
-        eyebrow="BVR Points"
-        title="Keep the reward side of the visit clear."
-        subtitle="Rewards never post early. When a completed paid service creates points, the breakdown and your current balance show up here."
-      >
-        <div className="rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.96),rgba(8,8,8,0.99))] p-5 shadow-[0_16px_32px_rgba(0,0,0,0.16)] sm:p-6">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">Latest reward update</p>
-              <p className="mt-3 text-xl font-semibold text-white" data-display="true">
-                {latestRewardTotal > 0
-                  ? `+${latestRewardTotal} pts from your latest completed visit`
-                  : "Points post after the paid service closes"}
-              </p>
-              <p className="mt-3 text-sm leading-7 text-white/62">
-                {latestRewardTransactions.length
-                  ? `Your current rewards balance is ${pointsBalanceQuery.data?.unlockedPoints ?? 0} pts (${currency(pointsBalanceQuery.data?.inAppValue ?? 0)} in booking value).`
-                  : "Booking, tip, and referral rewards only appear here after the appointment is completed, validated, and written to the ledger."}
-              </p>
-            </div>
-            <span className="status-pill text-[#d7ffab]">
-              {pointsBalanceQuery.data ? `${pointsBalanceQuery.data.unlockedPoints} pts ready` : "Rewards ready"}
-            </span>
-          </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            {latestRewardTransactions.length ? latestRewardTransactions.map((transaction) => (
-              <span key={transaction.id} className="status-pill text-[#d7ffab]">
-                {getPointsEventLabel(transaction.eventType)} +{transaction.pointsDelta} {transaction.status}
-              </span>
-            )) : (
-              <span className="status-pill text-white/72">
-                Current value {currency(pointsBalanceQuery.data?.inAppValue ?? 0)}
-              </span>
-            )}
-          </div>
-        </div>
-      </ClientSectionBlock>
-
       {favoriteBarber ? (
         <ClientFavoriteBarberCard
           barberId={favoriteBarber.barber.id}
@@ -691,76 +662,6 @@ export function ClientBookingsScreen() {
           </div>
         </div>
       )}
-
-      <ClientSectionBlock
-        eyebrow="Auto-book"
-        title={`Stay booked with ${favoriteBarberName}.`}
-        subtitle="Choose a simple cadence and keep your cuts on schedule. This is the retention layer of the screen, so it stays easy and honest."
-      >
-        <div className="space-y-5">
-          {routineFeedback ? <FeedbackBanner tone={routineFeedback.tone} message={routineFeedback.message} /> : null}
-          <div className="grid gap-3 sm:grid-cols-3">
-            {cadenceOptions.map((option) => (
-              <OptionButton
-                key={option.id}
-                label={option.label}
-                detail={option.summary}
-                isActive={selectedCadence.id === option.id}
-                onClick={() => {
-                  setSelectedCadenceId(option.id);
-                  if (routineFeedback?.tone === "success") {
-                    setRoutineFeedback(null);
-                  }
-                }}
-              />
-            ))}
-          </div>
-
-          <div className="rounded-[28px] border border-[#a8ff47]/16 bg-[linear-gradient(180deg,rgba(124,255,0,0.1),rgba(8,8,8,0.98))] p-5 shadow-[0_18px_36px_rgba(0,0,0,0.16)]">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">Your standing routine</p>
-                <h3 className="mt-3 text-2xl font-semibold text-white" data-display="true">
-                  {selectedCadence.label} with {favoriteBarberName}
-                </h3>
-                <p className="mt-3 max-w-xl text-sm leading-7 text-white/66">
-                  {savedRoutine?.cadenceId === selectedCadence.id && savedRoutineLabel
-                    ? "Saved and tracking your next comeback window for " + savedRoutineLabel + "."
-                    : "Your next recurring appointment would start " + formatRecurringPreview(recurringPreviewDate, recurringTimeLabel) + "."}
-                </p>
-              </div>
-              <div className="rounded-[22px] border border-white/10 bg-black/20 px-4 py-3 text-white/78 shadow-[0_12px_24px_rgba(0,0,0,0.16)]">
-                <div className="inline-flex items-center gap-2 text-sm">
-                  <Repeat2 className="h-4 w-4 text-[#baff69]" />
-                  Stay locked in
-                </div>
-                <p className="mt-2 text-sm leading-6 text-white/62">{selectedCadence.summary}</p>
-              </div>
-            </div>
-            <div className="mt-5 rounded-[22px] border border-white/10 bg-black/22 p-4 text-sm leading-7 text-white/62">
-              Book on Auto saves this cadence to your client routine so comeback timing stays visible across Bookings and Profile. You still confirm each actual appointment inside the current booking flow.
-            </div>
-            <div className="mt-5 flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={() => void handleSaveRoutine()}
-                disabled={!canSaveRoutine || saveRoutineMutation.isPending}
-                className={getClientActionClassName({
-                  size: "lg",
-                  variant: "primary",
-                  className: "disabled:cursor-not-allowed disabled:opacity-60"
-                })}
-              >
-                {saveRoutineMutation.isPending ? "Saving..." : "Book on Auto"}
-                <Clock3 className="h-4 w-4" />
-              </button>
-              <ClientActionLink href={profileHref} variant="outline" size="lg">
-                Open profile
-              </ClientActionLink>
-            </div>
-          </div>
-        </div>
-      </ClientSectionBlock>
 
       <ClientSectionBlock
         eyebrow="History"

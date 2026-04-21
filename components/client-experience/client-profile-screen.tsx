@@ -1,16 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { BellRing, Heart, MapPinned, Repeat2, UserRound } from "lucide-react";
+import { BellRing, CreditCard, Heart, MapPinned, Repeat2, Receipt, UserRound } from "lucide-react";
 import { ClientPaymentMethodsPanel } from "@/components/client-experience/client-payment-methods-panel";
 import { ClientSectionBlock } from "@/components/client-experience/client-section-block";
 import { ProfilePhotoManagerCard } from "@/components/profile/profile-media-manager";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import type { ClientProfilePayload } from "@/lib/booking/platform-service";
-import { usePointsBalanceQuery } from "@/lib/points/client";
 import { useMutateProfileMediaMutation, useProfileMediaWorkspaceQuery } from "@/lib/profile/client";
 import { uploadMediaAsset } from "@/lib/storage/media";
-import { currency } from "@/lib/utils";
 
 function formatRoutineDate(iso?: string | null) {
   if (!iso) {
@@ -57,13 +55,12 @@ export function ClientProfileScreen({
   const preferredShops = payload.preferredShops;
   const notificationPreference = payload.notificationPreference;
   const routine = payload.routine;
-  const primaryShop = preferredShops[0];
   const paymentMethods = payload.paymentMethods;
+  const defaultPaymentMethod = paymentMethods.find((method) => method.isDefault) ?? null;
+  const primaryShop = preferredShops[0];
   const clientName = client?.fullName ?? (isSignedInClient ? "Client" : "Client profile preview");
   const clientEmail = client?.email ?? "No email on file yet";
   const clientPhone = client?.phone ?? "No phone on file yet";
-  const pointsBalanceQuery = usePointsBalanceQuery(isSignedInClient);
-  const pointsBalance = pointsBalanceQuery.data;
   const routineLabel = routine ? `${routine.label} with ${favoriteBarber?.barber.name ?? "your barber"}` : "No auto-book cadence yet";
   const routineTiming = formatRoutineDate(routine?.nextSuggestedAt);
   const notificationLabel = notificationPreference
@@ -97,7 +94,7 @@ export function ClientProfileScreen({
       <ClientSectionBlock
         eyebrow="Profile"
         title={clientName}
-        subtitle="Account basics, saved preferences, favorite barber context, and your standing routine all stay client-friendly here."
+        subtitle="Account basics, favorite barber context, reminders, and wallet controls all stay in one clean client surface."
       >
         <div className="grid gap-4 lg:grid-cols-[0.92fr_1.08fr]">
           <div className="space-y-4">
@@ -127,17 +124,8 @@ export function ClientProfileScreen({
                   <p className="mt-3 text-sm text-white/78">{clientPhone}</p>
                 </div>
                 <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="surface-label">BVR Points</p>
-                      <p className="mt-3 text-sm text-white/78">
-                        {pointsBalance ? `${pointsBalance.unlockedPoints} pts • ${currency(pointsBalance.inAppValue)} value` : "Rewards ready"}
-                      </p>
-                    </div>
-                    <Link href="/activity" className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#d7ffab] transition hover:text-[#efffd4]">
-                      Rewards
-                    </Link>
-                  </div>
+                  <p className="surface-label">Default payment method</p>
+                  <p className="mt-3 text-sm text-white/78">{defaultPaymentMethod?.label ?? "No default card saved"}</p>
                 </div>
               </div>
             </div>
@@ -158,9 +146,9 @@ export function ClientProfileScreen({
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-              <div className="inline-flex items-center gap-2 text-sm text-white/78"><UserRound className="h-4 w-4 text-[#baff69]" />Preferred barber</div>
+              <div className="inline-flex items-center gap-2 text-sm text-white/78"><Heart className="h-4 w-4 text-[#baff69]" />Preferred barber</div>
               <p className="mt-3 text-lg font-semibold text-white">{favoriteBarber?.barber.name ?? "Choose a favorite"}</p>
-              <p className="mt-2 text-sm text-white/58">{favoriteBarber?.profile.specialties.slice(0, 2).join(" | ") ?? "Your go-to barber will show up here."}</p>
+              <p className="mt-2 text-sm text-white/58">{favoriteBarber?.profile.specialties.slice(0, 2).join(" | ") ?? "Your go-to barber will show up here after you book and save one."}</p>
             </div>
             <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
               <div className="inline-flex items-center gap-2 text-sm text-white/78"><BellRing className="h-4 w-4 text-[#d7ffab]" />Notifications</div>
@@ -168,35 +156,44 @@ export function ClientProfileScreen({
               <p className="mt-2 text-sm text-white/58">
                 {notificationPreference
                   ? `In-app ${notificationPreference.inAppEnabled ? "on" : "off"} | Email ${notificationPreference.emailEnabled ? "on" : "off"}`
-                  : "Booking reminders and comeback prompts stay ready to keep your routine moving."}
+                  : "Booking reminders stay ready here when they exist."}
               </p>
             </div>
             <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
               <div className="inline-flex items-center gap-2 text-sm text-white/78"><MapPinned className="h-4 w-4 text-[#baff69]" />Preferred location</div>
               <p className="mt-3 text-lg font-semibold text-white">{primaryShop?.name ?? "Choose a shop"}</p>
-              <p className="mt-2 text-sm text-white/58">{primaryShop ? `${primaryShop.neighborhood} | ${primaryShop.city}` : "Keep discovery and booking centered on the shop you trust most."}</p>
+              <p className="mt-2 text-sm text-white/58">{primaryShop ? `${primaryShop.neighborhood} | ${primaryShop.city}` : "Discovery and booking will center on your preferred shop when it exists."}</p>
             </div>
             <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
               <div className="inline-flex items-center gap-2 text-sm text-white/78"><Repeat2 className="h-4 w-4 text-[#d7ffab]" />Standing routine</div>
               <p className="mt-3 text-lg font-semibold text-white">{routineLabel}</p>
-              <p className="mt-2 text-sm text-white/58">{routineTiming ? `Next comeback window ${routineTiming}.` : "Save an auto-book cadence in Bookings so your routine stays easy to keep."}</p>
+              <p className="mt-2 text-sm text-white/58">{routineTiming ? `Next comeback window ${routineTiming}.` : "Save a cadence in Bookings if you want your next appointment rhythm to stay visible."}</p>
             </div>
             <div className="rounded-[24px] border border-white/8 bg-black/20 p-4 sm:col-span-2">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <div className="inline-flex items-center gap-2 text-sm text-white/78"><UserRound className="h-4 w-4 text-[#baff69]" />BVR Points</div>
+                  <div className="inline-flex items-center gap-2 text-sm text-white/78"><CreditCard className="h-4 w-4 text-[#baff69]" />Wallet basics</div>
                   <p className="mt-3 text-lg font-semibold text-white">
-                    {pointsBalance ? `${pointsBalance.unlockedPoints} pts ready` : "Rewards ready"}
+                    {paymentMethods.length
+                      ? `${paymentMethods.length} saved payment method${paymentMethods.length === 1 ? "" : "s"}`
+                      : "No saved payment methods yet"}
                   </p>
                   <p className="mt-2 text-sm text-white/58">
-                    {pointsBalance
-                      ? `${currency(pointsBalance.inAppValue)} in booking value. ${pointsBalance.explanation.progressLabel}`
-                      : "Open Rewards to see your balance, milestone progress, and point activity."}
+                    {defaultPaymentMethod
+                      ? `${defaultPaymentMethod.label} is your current default for booking payments.`
+                      : "Add a saved card so booking and rebooking stay fast."}
                   </p>
                 </div>
-                <Link href="/activity" className="inline-flex h-11 items-center gap-2 rounded-full border border-white/10 bg-black/25 px-4 text-[11px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#7CFF00]/24 hover:text-[#d7ffab]">
-                  Open rewards
-                </Link>
+                <div className="flex flex-wrap gap-3">
+                  <Link href="/bookings" className="inline-flex h-11 items-center gap-2 rounded-full border border-white/10 bg-black/25 px-4 text-[11px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#7CFF00]/24 hover:text-[#d7ffab]">
+                    <Receipt className="h-4 w-4" />
+                    Receipts
+                  </Link>
+                  <Link href="/bookings" className="inline-flex h-11 items-center gap-2 rounded-full border border-white/10 bg-black/25 px-4 text-[11px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#7CFF00]/24 hover:text-[#d7ffab]">
+                    <UserRound className="h-4 w-4" />
+                    Booking history
+                  </Link>
+                </div>
               </div>
             </div>
           </div>
@@ -207,7 +204,7 @@ export function ClientProfileScreen({
         <ClientSectionBlock
           eyebrow="Saved"
           title="Favorites and preferences"
-          subtitle="The profile layer keeps the parts of the product that build repeat usage close at hand."
+          subtitle="The profile layer keeps the real pieces of repeat usage close at hand."
         >
           <div className="space-y-3">
             <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
@@ -227,22 +224,22 @@ export function ClientProfileScreen({
         </ClientSectionBlock>
 
         <ClientSectionBlock
-          eyebrow="Routine"
-          title="Rebook without overthinking it"
-          subtitle="Your profile now reflects the same standing-routine logic as Bookings, so your barber relationship stays visible in both places."
+          eyebrow="Wallet"
+          title="Saved payment methods"
+          subtitle="Tokenized payment references live here so booking, receipts, and future payments stay consistent."
         >
           <div className="space-y-3">
             <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-              <div className="inline-flex items-center gap-2 text-sm text-white/78"><Repeat2 className="h-4 w-4 text-[#baff69]" />Auto-book</div>
-              <p className="mt-3 text-lg font-semibold text-white">{routineLabel}</p>
-              <p className="mt-2 text-sm leading-7 text-white/62">
-                {routineTiming
-                  ? `Saved cadence, next comeback window ${routineTiming}.`
-                  : "Head to Bookings to save a weekly, biweekly, or monthly cadence with your barber."}
+              <div className="inline-flex items-center gap-2 text-sm text-white/78"><CreditCard className="h-4 w-4 text-[#baff69]" />Default payment method</div>
+              <p className="mt-3 text-lg font-semibold text-white">{defaultPaymentMethod?.label ?? "No default card saved"}</p>
+              <p className="mt-2 text-sm text-white/58">
+                {defaultPaymentMethod
+                  ? "This method is used when a booking payment is created from the live appointment flow."
+                  : "Add a card below to make booking payments smoother."}
               </p>
             </div>
             <Link href="/bookings" className="inline-flex h-11 items-center gap-2 rounded-full border border-white/10 bg-black/25 px-4 text-[11px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#7CFF00]/24 hover:text-[#d7ffab]">
-              Manage bookings
+              Open bookings and receipts
             </Link>
           </div>
         </ClientSectionBlock>
@@ -250,8 +247,8 @@ export function ClientProfileScreen({
 
       <ClientSectionBlock
         eyebrow="Payments"
-        title="Saved methods stay tokenized."
-        subtitle="Client payment references now live inside the real ledger foundation, so booking, checkout, refunds, and tips can stay explainable later."
+        title="Manage saved methods"
+        subtitle="Payment controls stay grounded in canonical payment truth. No raw card numbers are stored here."
       >
         <ClientPaymentMethodsPanel initialMethods={paymentMethods} isSignedInClient={isSignedInClient} />
       </ClientSectionBlock>

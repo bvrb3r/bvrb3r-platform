@@ -1,9 +1,10 @@
 ﻿"use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
-import { useSearchParams } from "next/navigation";
 import { z } from "zod";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,11 @@ import {
   type BookingApiError
 } from "@/lib/booking/client";
 import { applyMembershipPricingAdjustmentToQuote, buildMembershipPricingAdjustment } from "@/lib/monetization/membership";
+import {
+  useCreateAppointmentPaymentMutation,
+  usePaymentMethodsQuery,
+  type PaymentApiError
+} from "@/lib/payments/client";
 import { applyPointsPreviewToQuote, pointsToInAppValue, previewPointsRedemption } from "@/lib/points/redemption";
 import { useMarketplaceAnalyticsMutation, useMarketplaceWaitlistMutation } from "@/lib/marketplace/client";
 import { useApplyPromotionMutation, useClientPromotionsQuery } from "@/lib/promotions/client";
@@ -182,17 +188,22 @@ export function BookingForm() {
   const { isOnline } = usePwa();
   const { selectedLocationId, selectedBarberId, setLocation, setBarber } = useBookingStore();
   const bookingMutation = useCreateBookingMutation();
+  const paymentMutation = useCreateAppointmentPaymentMutation();
+  const paymentMethodsQuery = usePaymentMethodsQuery();
   const analyticsMutation = useMarketplaceAnalyticsMutation();
   const waitlistMutation = useMarketplaceWaitlistMutation();
   const membershipQuery = useClientMembershipQuery();
   const pointsBalanceQuery = useClientPointsBalanceQuery();
   const ctaTrackedRef = useRef<string | null>(null);
   const [confirmationId, setConfirmationId] = useState("");
+  const [confirmationPaymentStatus, setConfirmationPaymentStatus] = useState<string | null>(null);
+  const [confirmationPaymentLabel, setConfirmationPaymentLabel] = useState<string | null>(null);
   const [statusUpdate, setStatusUpdate] = useState<{ tone: "success" | "info" | "error"; message: string } | null>(null);
   const [promotionCode, setPromotionCode] = useState("");
   const [promotionFeedback, setPromotionFeedback] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(null);
   const [appliedPromotion, setAppliedPromotion] = useState<PromotionPreviewView | null>(null);
   const [requestedPointsToRedeem, setRequestedPointsToRedeem] = useState(0);
+  const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState("");
 
   const sourceKind = toMarketplaceSource(searchParams.get("source"));
   const matchedFrom = toMatchedFrom(searchParams.get("matchedFrom"));
@@ -215,8 +226,8 @@ export function BookingForm() {
       serviceId: preselectedServiceId,
       addOnId: "",
       appointmentTime: preselectedAppointmentTime,
-      clientName: "Jordan Ellis",
-      clientPhone: "8135550190",
+      clientName: "",
+      clientPhone: "",
       acknowledgePolicy: true
     }
   });
@@ -363,6 +374,15 @@ export function BookingForm() {
     locationId: resolvedLocationId || undefined
   });
   const availableSlots = useMemo(() => availabilityQuery.data?.slots ?? [], [availabilityQuery.data?.slots]);
+  const paymentMethods = useMemo(() => paymentMethodsQuery.data?.methods ?? [], [paymentMethodsQuery.data?.methods]);
+  const defaultPaymentMethod = useMemo(
+    () => paymentMethods.find((method) => method.isDefault) ?? paymentMethods[0] ?? null,
+    [paymentMethods]
+  );
+  const selectedPaymentMethod = useMemo(
+    () => paymentMethods.find((method) => method.id === selectedPaymentMethodId) ?? defaultPaymentMethod,
+    [defaultPaymentMethod, paymentMethods, selectedPaymentMethodId]
+  );
 
   useEffect(() => {
     const nextSlot = resolveBookableSlot(
@@ -432,6 +452,13 @@ export function BookingForm() {
   }, [pointsRedemptionPreview.maxRedeemablePoints]);
 
   useEffect(() => {
+    const nextMethodId = defaultPaymentMethod?.id ?? "";
+    if (!selectedPaymentMethodId || !paymentMethods.some((method) => method.id === selectedPaymentMethodId)) {
+      setSelectedPaymentMethodId(nextMethodId);
+    }
+  }, [defaultPaymentMethod?.id, paymentMethods, selectedPaymentMethodId]);
+
+  useEffect(() => {
     writeBookingDraft({
       locationId: watchLocationId,
       barberId: watchBarberId,
@@ -448,6 +475,7 @@ export function BookingForm() {
   const isInitialLoading = (searchQuery.isLoading && !searchQuery.data) || (barberProfileQuery.isLoading && !barberProfileQuery.data);
   const waitlistPending = waitlistMutation.isPending;
   const formError = searchQuery.error || barberProfileQuery.error || availabilityQuery.error;
+  const paymentMethodsError = paymentMethodsQuery.error ? getReadableActionError(paymentMethodsQuery.error as PaymentApiError) : null;
   const offlineMessage = "You’re offline. Review your booking details now, then reconnect to confirm the chair or join the waitlist.";
 
   async function applyPromotion(selection: { promotionId?: string; promotionCode?: string }) {
@@ -493,6 +521,8 @@ export function BookingForm() {
   async function handleCreateBooking(values: BookingValues) {
     setStatusUpdate(null);
     setConfirmationId("");
+    setConfirmationPaymentStatus(null);
+    setConfirmationPaymentLabel(null);
 
     if (!isOnline) {
       setStatusUpdate({
@@ -507,6 +537,14 @@ export function BookingForm() {
       setStatusUpdate({
         tone: "error",
         message: "Review the barber, service, and time before confirming. We refreshed the booking details to keep the chair selection valid."
+      });
+      return;
+    }
+
+    if (!selectedPaymentMethod) {
+      setStatusUpdate({
+        tone: "error",
+        message: "Add a saved payment method in Profile before confirming this booking so we can secure the appointment payment."
       });
       return;
     }
@@ -541,12 +579,34 @@ export function BookingForm() {
 
       setConfirmationId(result.appointment.id);
       clearBookingDraft();
-      setStatusUpdate({
-        tone: "success",
-        message: sourceKind
-          ? "Marketplace booking confirmed. The appointment, service snapshot, payment record, status history, and operational events are now live."
-          : "Appointment confirmed. The booking is now live across client, barber, and shop operations."
-      });
+
+      try {
+        const paymentResult = await paymentMutation.mutateAsync({
+          appointmentId: result.appointment.id,
+          paymentMethodId: selectedPaymentMethod.id
+        });
+        const nextPaymentStatus = paymentResult.payment.paymentStatus;
+        const nextPaymentLabel =
+          paymentResult.summary?.defaultPaymentMethod?.label
+          ?? selectedPaymentMethod.label
+          ?? null;
+
+        setConfirmationPaymentStatus(nextPaymentStatus);
+        setConfirmationPaymentLabel(nextPaymentLabel);
+        setStatusUpdate({
+          tone: "success",
+          message: sourceKind
+            ? "Marketplace booking confirmed and payment secured. The appointment, payment record, status history, and platform events are now live."
+            : "Appointment confirmed and payment secured. The booking is now live across client, barber, and shop operations."
+        });
+      } catch {
+        setConfirmationPaymentStatus("failed");
+        setConfirmationPaymentLabel(selectedPaymentMethod.label);
+        setStatusUpdate({
+          tone: "error",
+          message: "Your appointment was reserved, but the booking payment did not complete. Open Bookings or Profile to update the card and finish payment."
+        });
+      }
     } catch (error) {
       setStatusUpdate({ tone: "error", message: getReadableActionError(error as BookingApiError) });
     }
@@ -693,6 +753,56 @@ export function BookingForm() {
             <label className="surface-label mb-3 block">Phone</label>
             <Input type="tel" inputMode="tel" {...form.register("clientPhone")} />
           </div>
+          <div className="rounded-[28px] border border-white/8 bg-black/20 p-4 md:col-span-2">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <label className="surface-label mb-3 block" htmlFor="booking-payment-method">Saved payment method</label>
+                <p className="text-sm leading-7 text-white/62">
+                  The booking engine creates the appointment first, then secures the payment against the saved card you choose here.
+                </p>
+              </div>
+              {selectedPaymentMethod ? <Badge>{selectedPaymentMethod.isDefault ? "Default card" : "Saved card"}</Badge> : null}
+            </div>
+            {paymentMethodsError ? <div className="mt-4"><FeedbackBanner tone="error" message={paymentMethodsError} /></div> : null}
+            {paymentMethodsQuery.isLoading && !paymentMethods.length ? (
+              <div className="mt-4 rounded-[22px] border border-white/8 bg-black/18 p-4">
+                <Skeleton className="h-11 w-full rounded-[16px]" />
+              </div>
+            ) : paymentMethods.length ? (
+              <div className="mt-4 space-y-3">
+                <Select
+                  id="booking-payment-method"
+                  value={selectedPaymentMethodId}
+                  onChange={(event) => setSelectedPaymentMethodId(event.target.value)}
+                >
+                  {paymentMethods.map((method) => (
+                    <option key={method.id} value={method.id}>
+                      {method.label}{method.isDefault ? " (default)" : ""}
+                    </option>
+                  ))}
+                </Select>
+                <p className="text-sm text-white/52">
+                  {selectedPaymentMethod
+                    ? `${selectedPaymentMethod.label} will be charged ${currency(displayedQuote.grandTotal)} when you confirm this booking.`
+                    : "Choose a saved card to continue."}
+                </p>
+              </div>
+            ) : (
+              <div className="mt-4 rounded-[22px] border border-dashed border-white/10 bg-black/18 p-4">
+                <p className="text-sm leading-7 text-white/62">
+                  No saved payment method is ready for this account yet. Add one in Wallet before confirming the booking.
+                </p>
+                <div className="mt-4">
+                  <Link
+                    href="/profile"
+                    className="inline-flex h-11 items-center justify-center rounded-full border border-white/10 bg-black/25 px-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-white transition hover:border-[#7CFF00]/24 hover:text-[#d7ffab]"
+                  >
+                    Open wallet
+                  </Link>
+                </div>
+              </div>
+            )}
+          </div>
           <label className="md:col-span-2 flex items-start gap-3 rounded-[28px] border border-white/8 bg-[linear-gradient(180deg,rgba(21,21,21,0.95),rgba(10,10,10,0.98))] p-5 text-sm leading-7 text-white/72">
             <input type="checkbox" className="mt-1 accent-[#7CFF00]" defaultChecked {...form.register("acknowledgePolicy")} />
             <span>
@@ -708,6 +818,15 @@ export function BookingForm() {
                 Booking confirmed. Appointment <span className="text-[#d3ffa0]">{confirmationId}</span> is now live in the booking system.
               </p>
               <p className="mt-3 text-white/68">
+                {confirmationPaymentStatus
+                  ? confirmationPaymentStatus === "captured"
+                    ? `${confirmationPaymentLabel ?? "Saved card"} was charged for this booking.`
+                    : confirmationPaymentStatus === "authorized"
+                      ? `${confirmationPaymentLabel ?? "Saved card"} is now authorized for this booking.`
+                      : `${confirmationPaymentLabel ?? "Saved card"} needs attention before this booking is fully paid.`
+                  : "Payment status will update here as soon as the booking payment is secured."}
+              </p>
+              <p className="mt-3 text-white/68">
                 {pointsRedemptionPreview.approvedPoints
                   ? `${pointsRedemptionPreview.approvedPoints} pts applied for ${currency(pointsRedemptionPreview.discountAmount)} off this booking.`
                   : "BVR Points stay ready for checkout and repeat bookings."}
@@ -720,8 +839,8 @@ export function BookingForm() {
             </div>
           ) : null}
           <div className="md:col-span-2 sticky bottom-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] z-10 -mx-1 flex flex-col gap-3 rounded-[28px] border border-white/10 bg-[rgba(7,7,7,0.94)] p-3 backdrop-blur sm:mx-0 sm:flex-row md:static md:border-0 md:bg-transparent md:p-0 md:backdrop-blur-none">
-            <Button className="h-12 px-6" disabled={bookingMutation.isPending || waitlistPending || isInitialLoading || !availableSlots.length || !isOnline}>
-              {bookingMutation.isPending ? "Creating appointment..." : sourceKind ? "Confirm marketplace booking" : "Create appointment"}
+            <Button className="h-12 px-6" disabled={bookingMutation.isPending || paymentMutation.isPending || waitlistPending || isInitialLoading || !availableSlots.length || !isOnline || !selectedPaymentMethod}>
+              {bookingMutation.isPending || paymentMutation.isPending ? "Securing booking..." : "Confirm and pay"}
             </Button>
             <Button type="button" variant="secondary" className="h-12 px-6" disabled={bookingMutation.isPending || waitlistPending || !watchServiceId || !watchLocationId || !isOnline} onClick={() => void handleJoinWaitlist()}>
               {waitlistPending ? "Joining waitlist..." : "Join waitlist"}

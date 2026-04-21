@@ -12,6 +12,8 @@ export default async function SearchPage({
     rating?: string;
     price?: string;
     availability?: "any" | "today" | "now";
+    specialty?: string;
+    verified?: string;
   }>;
 }) {
   const context = await getClientExperienceContext();
@@ -27,6 +29,8 @@ export default async function SearchPage({
         initialMinRating={params.rating ? Number(params.rating) : undefined}
         initialMaxPrice={params.price ? Number(params.price) : undefined}
         initialAvailability={params.availability ?? "any"}
+        initialSpecialty={params.specialty ?? ""}
+        initialVerifiedOnly={params.verified === "1"}
         routeBase="/search"
       />
     </ClientAppShell>

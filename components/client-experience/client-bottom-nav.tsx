@@ -5,10 +5,10 @@ import type { ClientAppMode, ClientAppTab } from "@/components/client-experience
 import { cn } from "@/lib/utils";
 
 const navItems: Array<{ key: ClientAppTab; href: Route; label: string; icon: typeof Home }> = [
-  { key: "home", href: "/home", label: "Home", icon: Home },
+  { key: "home", href: "/dashboard/client", label: "Home", icon: Home },
   { key: "search", href: "/search", label: "Search", icon: Search },
   { key: "bookings", href: "/bookings", label: "Bookings", icon: CalendarDays },
-  { key: "activity", href: "/activity", label: "Rewards", icon: Gift },
+  { key: "activity", href: "/activity", label: "Activity", icon: Gift },
   { key: "profile", href: "/profile", label: "Profile", icon: UserRound }
 ];
 

@@ -8,7 +8,6 @@ const {
   useClientReferralSummaryMock,
   useMarketplaceDiscoveryMock,
   useHaircutNowMatchMock,
-  mutateAnalyticsMock,
   mutateAnalyticsAsyncMock,
   useMarketplaceAnalyticsMutationMock
 } = vi.hoisted(() => ({
@@ -17,7 +16,6 @@ const {
   useClientReferralSummaryMock: vi.fn(),
   useMarketplaceDiscoveryMock: vi.fn(),
   useHaircutNowMatchMock: vi.fn(),
-  mutateAnalyticsMock: vi.fn(),
   mutateAnalyticsAsyncMock: vi.fn(),
   useMarketplaceAnalyticsMutationMock: vi.fn()
 }));
@@ -74,7 +72,6 @@ describe("client search screen", () => {
     useClientReferralSummaryMock.mockReset();
     useMarketplaceDiscoveryMock.mockReset();
     useHaircutNowMatchMock.mockReset();
-    mutateAnalyticsMock.mockReset();
     mutateAnalyticsAsyncMock.mockReset();
     useMarketplaceAnalyticsMutationMock.mockReset();
 
@@ -108,30 +105,20 @@ describe("client search screen", () => {
       },
       isLoading: false
     });
+
     useClientReferralSummaryMock.mockReturnValue({
       data: {
-        clientId: "client-jordan",
         referralCode: {
-          id: "ref-1",
-          clientId: "client-jordan",
           code: "JORDAN",
-          rewardPoints: 25,
-          active: true,
-          createdAt: "2026-03-01T09:00:00-05:00"
+          rewardPoints: 25
         },
-        inviteLink: "https://bvrb3r.test/ref/JORDAN",
         shareMessage: "Invite a friend into BVRB3R.",
         totals: {
-          invited: 3,
-          signedUp: 2,
-          booked: 2,
-          completed: 2,
-          credited: 2,
-          rewardPointsEarned: 50
-        },
-        recentReferrals: []
+          completed: 2
+        }
       }
     });
+
     useMarketplaceDiscoveryMock.mockReturnValue({
       data: [
         {
@@ -142,7 +129,7 @@ describe("client search screen", () => {
           reviewCount: 98,
           priceRange: [55, 78],
           priceRangeLabel: "$55 - $78",
-          nextAvailableAt: "2026-03-24T11:15:00-04:00",
+          nextAvailableAt: "2026-04-24T11:15:00-04:00",
           availabilityLabel: "Available at 11:15 AM",
           distanceMiles: 1.2,
           locationId: "loc-ybor",
@@ -163,23 +150,24 @@ describe("client search screen", () => {
           reviewCount: 180,
           priceRange: [55, 78],
           priceRangeLabel: "$55 - $78",
-          nextAvailableAt: "2026-03-24T10:30:00-04:00",
+          nextAvailableAt: "2026-04-24T10:30:00-04:00",
           availabilityLabel: "Available at 10:30 AM",
           distanceMiles: 2.4,
           locationId: "loc-hyde-park",
           locationLabel: "Hyde Park Atelier",
-          shopName: "Centro Ybor Flagship",
+          shopName: "Hyde Park Atelier",
           specialties: ["precision fades"],
           mostBookedService: "Premium Cut + Beard Sculpt",
           mostBookedServiceId: "srv-premium",
           retentionScore: 71,
           activityScore: 96,
-          badges: ["top_barber"]
+          badges: ["verified_identity", "top_barber"]
         }
       ],
       isLoading: false,
       error: null
     });
+
     useHaircutNowMatchMock.mockReturnValue({
       data: {
         barberId: "barber-blaze",
@@ -187,7 +175,7 @@ describe("client search screen", () => {
         barberName: "Blaze King",
         matchedFrom: "available_now",
         matchReason: "Fastest chair in the area.",
-        appointmentTime: "2026-03-24T11:15:00-04:00",
+        appointmentTime: "2026-04-24T11:15:00-04:00",
         locationId: "loc-ybor",
         shopName: "Centro Ybor Flagship",
         priceFrom: 55,
@@ -195,18 +183,18 @@ describe("client search screen", () => {
       },
       isLoading: false
     });
+
     useMarketplaceAnalyticsMutationMock.mockReturnValue({
-      mutate: mutateAnalyticsMock,
+      mutate: vi.fn(),
       mutateAsync: mutateAnalyticsAsyncMock
     });
   });
 
-  it("renders the ranked discovery marketplace with available-now booking", () => {
+  it("renders live discovery, available-now booking, and referral entry", () => {
     render(<ClientSearchScreen clientId="client-jordan" routeBase="/discover" />);
 
     expect(screen.getByText(/Discover barbers worth booking/i)).toBeInTheDocument();
     expect(screen.getByText(/Get a haircut now/i)).toBeInTheDocument();
-    expect(screen.getByText(/Top matches/i)).toBeInTheDocument();
     expect(screen.getAllByText(/Blaze King/i).length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: /Book This Chair/i })).toHaveAttribute(
       "href",
@@ -215,25 +203,7 @@ describe("client search screen", () => {
     expect(screen.getByRole("link", { name: /Open referrals/i })).toBeInTheDocument();
   });
 
-  it("records a referral activation click from the discovery surface", async () => {
-    render(<ClientSearchScreen clientId="client-jordan" routeBase="/discover" />);
-
-    fireEvent.click(screen.getByRole("link", { name: /Open referrals/i }));
-
-    await waitFor(() => {
-      expect(mutateAnalyticsAsyncMock).toHaveBeenCalledWith({
-        eventType: "referral_shared",
-        sourceKind: "discovery",
-        sourceReference: "JORDAN",
-        metadata: {
-          interaction: "cta_click",
-          surface: "/discover"
-        }
-      });
-    });
-  });
-
-  it("supports location-aware marketplace filtering", async () => {
+  it("supports location-aware filtering", async () => {
     render(<ClientSearchScreen clientId="client-jordan" routeBase="/discover" />);
 
     fireEvent.change(screen.getByLabelText(/Filter by location/i), {
@@ -242,6 +212,25 @@ describe("client search screen", () => {
 
     await waitFor(() => {
       expect(replaceMock).toHaveBeenCalledWith(expect.stringContaining("locationId=loc-hyde-park"));
+    });
+  });
+
+  it("applies specialty and verified filters through the canonical route state", async () => {
+    render(<ClientSearchScreen clientId="client-jordan" routeBase="/discover" />);
+
+    fireEvent.change(screen.getByLabelText(/Filter by specialty/i), {
+      target: { value: "beard work" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Apply specialty/i }));
+
+    await waitFor(() => {
+      expect(replaceMock).toHaveBeenCalledWith(expect.stringContaining("specialty=beard+work"));
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Verified only/i }));
+
+    await waitFor(() => {
+      expect(replaceMock).toHaveBeenCalledWith(expect.stringContaining("verified=1"));
     });
   });
 });

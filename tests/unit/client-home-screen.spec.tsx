@@ -5,16 +5,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   useClientHomeQueryMock,
   useClientBookingsQueryMock,
-  useClientPointsBalanceQueryMock,
   useBarberProfileQueryMock,
-  useClientEngagementSummaryMock,
+  usePaymentMethodsQueryMock,
   useMarketplaceAnalyticsMutationMock
 } = vi.hoisted(() => ({
   useClientHomeQueryMock: vi.fn(),
   useClientBookingsQueryMock: vi.fn(),
-  useClientPointsBalanceQueryMock: vi.fn(),
   useBarberProfileQueryMock: vi.fn(),
-  useClientEngagementSummaryMock: vi.fn(),
+  usePaymentMethodsQueryMock: vi.fn(),
   useMarketplaceAnalyticsMutationMock: vi.fn()
 }));
 
@@ -44,12 +42,11 @@ vi.mock("next/link", () => ({
 vi.mock("@/lib/booking/client", () => ({
   useClientHomeQuery: useClientHomeQueryMock,
   useClientBookingsQuery: useClientBookingsQueryMock,
-  useClientPointsBalanceQuery: useClientPointsBalanceQueryMock,
   useBarberProfileQuery: useBarberProfileQueryMock
 }));
 
-vi.mock("@/lib/engagement/client", () => ({
-  useClientEngagementSummary: useClientEngagementSummaryMock
+vi.mock("@/lib/payments/client", () => ({
+  usePaymentMethodsQuery: usePaymentMethodsQueryMock
 }));
 
 vi.mock("@/lib/marketplace/client", () => ({
@@ -62,9 +59,8 @@ describe("client home screen", () => {
   beforeEach(() => {
     useClientHomeQueryMock.mockReset();
     useClientBookingsQueryMock.mockReset();
-    useClientPointsBalanceQueryMock.mockReset();
     useBarberProfileQueryMock.mockReset();
-    useClientEngagementSummaryMock.mockReset();
+    usePaymentMethodsQueryMock.mockReset();
     useMarketplaceAnalyticsMutationMock.mockReset();
 
     useClientHomeQueryMock.mockReturnValue({
@@ -72,26 +68,9 @@ describe("client home screen", () => {
         client: {
           clientReference: "client-jordan",
           fullName: "Jordan Ellis",
-          phone: "8135550190",
-          email: "client@bvrb3r.demo",
-          favoriteBarberReference: "barber-wave",
-          loyaltyPoints: 0,
-          retentionTag: "repeat",
-          notes: []
+          favoriteBarberReference: "barber-wave"
         },
-        shops: [
-          {
-            id: "loc-ybor",
-            name: "Centro Ybor Flagship",
-            brandLine: "Trusted local shop",
-            neighborhood: "Ybor City",
-            city: "Tampa",
-            state: "FL",
-            phone: "(813) 555-0101",
-            address: "1600 7th Ave",
-            kind: "shop"
-          }
-        ],
+        locationId: "loc-ybor",
         trustedBarbers: [
           {
             barberId: "barber-wave",
@@ -101,7 +80,7 @@ describe("client home screen", () => {
             reviewCount: 120,
             priceRange: [55, 70],
             priceRangeLabel: "$55 - $70",
-            nextAvailableAt: "2026-03-27T15:00:00.000Z",
+            nextAvailableAt: "2026-04-24T15:00:00.000Z",
             availabilityLabel: "Today 3:00 PM",
             distanceMiles: 1.2,
             locationId: "loc-ybor",
@@ -112,7 +91,7 @@ describe("client home screen", () => {
             mostBookedServiceId: "srv-signature",
             retentionScore: 92,
             activityScore: 128,
-            badges: []
+            badges: ["verified_identity"]
           }
         ],
         favoriteBarber: {
@@ -123,7 +102,7 @@ describe("client home screen", () => {
           reviewCount: 120,
           priceRange: [55, 70],
           priceRangeLabel: "$55 - $70",
-          nextAvailableAt: "2026-03-27T15:00:00.000Z",
+          nextAvailableAt: "2026-04-24T15:00:00.000Z",
           availabilityLabel: "Today 3:00 PM",
           distanceMiles: 1.2,
           locationId: "loc-ybor",
@@ -134,7 +113,7 @@ describe("client home screen", () => {
           mostBookedServiceId: "srv-signature",
           retentionScore: 92,
           activityScore: 128,
-          badges: []
+          badges: ["verified_identity"]
         },
         nextAvailableChair: {
           barberId: "barber-wave",
@@ -142,13 +121,12 @@ describe("client home screen", () => {
           barberName: "Wave Carter",
           matchedFrom: "available_now",
           matchReason: "Fastest trusted chair near you.",
-          appointmentTime: "2026-03-27T15:00:00.000Z",
+          appointmentTime: "2026-04-24T15:00:00.000Z",
           locationId: "loc-ybor",
           shopName: "Centro Ybor Flagship",
           priceFrom: 55,
           rating: 4.9
-        },
-        locationId: "loc-ybor"
+        }
       },
       isLoading: false,
       error: null
@@ -161,12 +139,39 @@ describe("client home screen", () => {
           barberId: "barber-wave",
           serviceId: "srv-signature",
           locationId: "loc-ybor",
-          status: "booked",
-          start: "2026-03-28T14:00:00.000Z",
+          status: "confirmed",
+          start: "2026-04-28T14:00:00.000Z",
+          depositAmount: 10,
+          balanceDue: 45,
           view: {
             barber: { name: "Wave Carter" },
             service: { name: "Signature Precision Cut" },
             location: { name: "Centro Ybor Flagship" }
+          }
+        },
+        nextAppointmentPayment: {
+          outstandingBalance: 45,
+          defaultPaymentMethod: {
+            id: "pm-default",
+            provider: "stripe",
+            brand: "Visa",
+            last4: "4242",
+            expMonth: 12,
+            expYear: 2029,
+            isDefault: true,
+            createdAt: "2026-04-01T00:00:00.000Z",
+            label: "Visa ending in 4242"
+          },
+          latestBookingPayment: {
+            id: "pay-1",
+            appointmentId: "appt-next",
+            amount: 55,
+            currency: "usd",
+            provider: "stripe",
+            paymentStatus: "captured",
+            paymentType: "booking",
+            paidAt: "2026-04-20T00:00:00.000Z",
+            createdAt: "2026-04-20T00:00:00.000Z"
           }
         },
         history: [
@@ -175,9 +180,13 @@ describe("client home screen", () => {
             barberId: "barber-wave",
             serviceId: "srv-signature",
             locationId: "loc-ybor",
-            start: "2026-03-20T14:00:00.000Z",
+            start: "2026-04-20T14:00:00.000Z",
+            totalAmount: 55,
+            grandTotal: 55,
             view: {
-              service: { name: "Signature Precision Cut" }
+              barber: { name: "Wave Carter" },
+              service: { name: "Signature Precision Cut" },
+              location: { name: "Centro Ybor Flagship" }
             }
           }
         ]
@@ -186,97 +195,70 @@ describe("client home screen", () => {
       error: null
     });
 
-    useClientPointsBalanceQueryMock.mockReturnValue({
+    usePaymentMethodsQueryMock.mockReturnValue({
       data: {
-        unlockedPoints: 120,
-        pendingPoints: 20,
-        inAppValue: 12,
-        explanation: {
-          pointsToNextMilestone: 80,
-          nextMilestoneInAppValue: 20,
-          progressLabel: "80 pts until $20.00 in-app value."
-        }
+        methods: [
+          {
+            id: "pm-default",
+            provider: "stripe",
+            brand: "Visa",
+            last4: "4242",
+            expMonth: 12,
+            expYear: 2029,
+            isDefault: true,
+            createdAt: "2026-04-01T00:00:00.000Z",
+            label: "Visa ending in 4242"
+          }
+        ]
       },
       isLoading: false
     });
 
-    useClientEngagementSummaryMock.mockReturnValue({
+    useBarberProfileQueryMock.mockReturnValue({
       data: {
-        recentNotifications: []
+        barber: { id: "barber-wave", name: "Wave Carter" },
+        profile: {
+          username: "wave",
+          headline: "Precision fades that hold their shape.",
+          photoAccent: "#7cff00",
+          specialties: ["Precision fades"]
+        },
+        proof: { reviewScore: 4.9 },
+        shopLocations: [{ name: "Centro Ybor Flagship" }],
+        bookingCtaHref: "/booking/new?barberId=barber-wave&serviceId=srv-signature"
       }
     });
-
     useMarketplaceAnalyticsMutationMock.mockReturnValue({
-      mutateAsync: vi.fn()
-    });
-
-    useBarberProfileQueryMock.mockImplementation((barberId?: string) => {
-      if (barberId === "barber-wave") {
-        return {
-          data: {
-            barber: { id: "barber-wave", name: "Wave Carter" },
-            profile: {
-              username: "wave",
-              headline: "Precision fades that hold their shape.",
-              photoAccent: "#7cff00",
-              specialties: ["Precision fades"]
-            },
-            proof: { reviewScore: 4.9 },
-            shopLocations: [{ name: "Centro Ybor Flagship" }],
-            bookingCtaHref: "/booking/new?barberId=barber-wave&serviceId=srv-signature"
-          }
-        };
-      }
-
-      return { data: null };
+      mutateAsync: vi.fn(),
+      mutate: vi.fn()
     });
   });
 
-  it("shows the fast booking loop with points and the active booking card", () => {
+  it("renders the real rebook, upcoming, wallet, and history loop", () => {
     render(<ClientHomeScreen isSignedInClient displayName="Jordan Ellis" />);
 
-    expect(screen.getByRole("link", { name: "Book Again" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Get a Haircut Now" })).toBeInTheDocument();
-    expect(screen.getByText("Best Barber Near You")).toBeInTheDocument();
-    expect(screen.getByText("Fastest, highest-rated match for your next cut.")).toBeInTheDocument();
-    expect(screen.getByText("BVR Points")).toBeInTheDocument();
-    expect(screen.getByText("120 pts")).toBeInTheDocument();
-    expect(screen.getByText("You have $12 ready to use on your next booking.")).toBeInTheDocument();
-    expect(screen.getByText("Active booking")).toBeInTheDocument();
-    expect(screen.getByText("Signature Precision Cut")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open Rewards" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Rebook" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Book the next open chair" })).toBeInTheDocument();
+    expect(screen.getByText("Upcoming appointment")).toBeInTheDocument();
+    expect(screen.getAllByText("Signature Precision Cut").length).toBeGreaterThan(0);
+    expect(screen.getByText("Wallet snapshot")).toBeInTheDocument();
+    expect(screen.getByText("Visa ending in 4242")).toBeInTheDocument();
+    expect(screen.getByText("Recent visits")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open full history" })).toBeInTheDocument();
   });
 
-  it("uses a clearer primary CTA for new clients without repeat history", () => {
+  it("shows clean empty states for a fresh client with no real history", () => {
     useClientHomeQueryMock.mockReturnValue({
       data: {
         client: {
           clientReference: "client-jordan",
           fullName: "Jordan Ellis",
-          phone: "8135550190",
-          email: "client@bvrb3r.demo",
-          favoriteBarberReference: null,
-          loyaltyPoints: 0,
-          retentionTag: "new",
-          notes: []
+          favoriteBarberReference: null
         },
-        shops: [
-          {
-            id: "loc-ybor",
-            name: "Centro Ybor Flagship",
-            brandLine: "Trusted local shop",
-            neighborhood: "Ybor City",
-            city: "Tampa",
-            state: "FL",
-            phone: "(813) 555-0101",
-            address: "1600 7th Ave",
-            kind: "shop"
-          }
-        ],
+        locationId: "loc-ybor",
         trustedBarbers: [],
         favoriteBarber: null,
-        nextAvailableChair: null,
-        locationId: "loc-ybor"
+        nextAvailableChair: null
       },
       isLoading: false,
       error: null
@@ -285,29 +267,26 @@ describe("client home screen", () => {
     useClientBookingsQueryMock.mockReturnValue({
       data: {
         nextAppointment: null,
+        nextAppointmentPayment: null,
         history: []
       },
       isLoading: false,
       error: null
     });
 
-    useClientPointsBalanceQueryMock.mockReturnValue({
-      data: {
-        unlockedPoints: 0,
-        pendingPoints: 0,
-        inAppValue: 0,
-        explanation: {
-          pointsToNextMilestone: 50,
-          nextMilestoneInAppValue: 5,
-          progressLabel: "50 pts until $5.00 in-app value."
-        }
-      },
+    usePaymentMethodsQueryMock.mockReturnValue({
+      data: { methods: [] },
       isLoading: false
     });
 
+    useBarberProfileQueryMock.mockReturnValue({ data: null });
+
     render(<ClientHomeScreen isSignedInClient displayName="Jordan Ellis" />);
 
-    expect(screen.getByRole("link", { name: "Find a Barber" })).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Book Again" })).not.toBeInTheDocument();
+    expect(screen.getByText("Find your first barber, Jordan.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Find a barber" })).toBeInTheDocument();
+    expect(screen.getByText("Nothing booked yet")).toBeInTheDocument();
+    expect(screen.getByText("No barbers are accepting bookings here yet.")).toBeInTheDocument();
+    expect(screen.getByText("No past appointments")).toBeInTheDocument();
   });
 });

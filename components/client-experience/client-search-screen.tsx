@@ -13,6 +13,7 @@ import { ClientShopDiscoveryCard } from "@/components/client-experience/client-s
 import { NextAvailableChairCard } from "@/components/client-experience/next-available-chair-card";
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useClientHomeQuery } from "@/lib/booking/client";
 import { buildClientDiscoverySections } from "@/lib/client-experience/discovery";
@@ -105,6 +106,8 @@ export function ClientSearchScreen({
   initialMinRating,
   initialMaxPrice,
   initialAvailability = "any",
+  initialSpecialty = "",
+  initialVerifiedOnly = false,
   routeBase = "/search"
 }: {
   clientId?: string;
@@ -114,6 +117,8 @@ export function ClientSearchScreen({
   initialMinRating?: number;
   initialMaxPrice?: number;
   initialAvailability?: AvailabilityFilter;
+  initialSpecialty?: string;
+  initialVerifiedOnly?: boolean;
   routeBase?: "/search" | "/discover";
 }) {
   const router = useRouter();
@@ -130,6 +135,8 @@ export function ClientSearchScreen({
   const [minRating, setMinRating] = useState<number | undefined>(initialMinRating);
   const [maxPrice, setMaxPrice] = useState<number | undefined>(initialMaxPrice);
   const [availability, setAvailability] = useState<AvailabilityFilter>(initialAvailability);
+  const [specialty, setSpecialty] = useState(initialSpecialty);
+  const [verifiedOnly, setVerifiedOnly] = useState(initialVerifiedOnly);
 
   useEffect(() => {
     if (!selectedLocationId && defaultLocationId) {
@@ -153,10 +160,17 @@ export function ClientSearchScreen({
     minRating,
     maxPrice,
     availability,
+    specialty: specialty.trim() || undefined,
     maxDistanceMiles: 20
   }, clientId);
   const haircutNowQuery = useHaircutNowMatch(clientId, selectedLocationId || undefined);
-  const barberResults = useMemo(() => discoveryQuery.data ?? [], [discoveryQuery.data]);
+  const canonicalResults = useMemo(() => discoveryQuery.data ?? [], [discoveryQuery.data]);
+  const barberResults = useMemo(
+    () => verifiedOnly
+      ? canonicalResults.filter((result) => result.badges.some((badge) => badge.startsWith("verified_")))
+      : canonicalResults,
+    [canonicalResults, verifiedOnly]
+  );
   const errorMessage = discoveryQuery.error ? getReadableActionError(discoveryQuery.error as MarketplaceApiError) : null;
   const discoverySections = useMemo(() => buildClientDiscoverySections(barberResults), [barberResults]);
   const showClientAccountFeatures = Boolean(clientId);
@@ -227,7 +241,9 @@ export function ClientSearchScreen({
     nextLocationId: string,
     nextMinRating?: number,
     nextMaxPrice?: number,
-    nextAvailability: AvailabilityFilter = "any"
+    nextAvailability: AvailabilityFilter = "any",
+    nextSpecialty = specialty,
+    nextVerifiedOnly = verifiedOnly
   ) {
     const params = new URLSearchParams();
 
@@ -255,37 +271,55 @@ export function ClientSearchScreen({
       params.set("availability", nextAvailability);
     }
 
+    if (nextSpecialty.trim()) {
+      params.set("specialty", nextSpecialty.trim());
+    }
+
+    if (nextVerifiedOnly) {
+      params.set("verified", "1");
+    }
+
     router.replace(params.size ? `${routeBase}?${params.toString()}` : routeBase);
   }
 
   function handleSearchSubmit() {
-    syncRoute(query, serviceFilter, selectedLocationId, minRating, maxPrice, availability);
+    syncRoute(query, serviceFilter, selectedLocationId, minRating, maxPrice, availability, specialty, verifiedOnly);
   }
 
   function handleServiceShortcut(nextCategory: string) {
     const updatedCategory = serviceFilter === nextCategory ? "" : nextCategory;
     setServiceFilter(updatedCategory);
-    syncRoute(query, updatedCategory, selectedLocationId, minRating, maxPrice, availability);
+    syncRoute(query, updatedCategory, selectedLocationId, minRating, maxPrice, availability, specialty, verifiedOnly);
   }
 
   function handleLocationFilter(nextLocationId: string) {
     setSelectedLocationId(nextLocationId);
-    syncRoute(query, serviceFilter, nextLocationId, minRating, maxPrice, availability);
+    syncRoute(query, serviceFilter, nextLocationId, minRating, maxPrice, availability, specialty, verifiedOnly);
   }
 
   function handleRatingFilter(nextRating?: number) {
     setMinRating(nextRating);
-    syncRoute(query, serviceFilter, selectedLocationId, nextRating, maxPrice, availability);
+    syncRoute(query, serviceFilter, selectedLocationId, nextRating, maxPrice, availability, specialty, verifiedOnly);
   }
 
   function handlePriceFilter(nextPrice?: number) {
     setMaxPrice(nextPrice);
-    syncRoute(query, serviceFilter, selectedLocationId, minRating, nextPrice, availability);
+    syncRoute(query, serviceFilter, selectedLocationId, minRating, nextPrice, availability, specialty, verifiedOnly);
   }
 
   function handleAvailabilityFilter(nextAvailability: AvailabilityFilter) {
     setAvailability(nextAvailability);
-    syncRoute(query, serviceFilter, selectedLocationId, minRating, maxPrice, nextAvailability);
+    syncRoute(query, serviceFilter, selectedLocationId, minRating, maxPrice, nextAvailability, specialty, verifiedOnly);
+  }
+
+  function handleSpecialtySubmit() {
+    syncRoute(query, serviceFilter, selectedLocationId, minRating, maxPrice, availability, specialty, verifiedOnly);
+  }
+
+  function handleVerifiedToggle() {
+    const nextValue = !verifiedOnly;
+    setVerifiedOnly(nextValue);
+    syncRoute(query, serviceFilter, selectedLocationId, minRating, maxPrice, availability, specialty, nextValue);
   }
 
   return (
@@ -346,6 +380,32 @@ export function ClientSearchScreen({
             </div>
           </div>
 
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+            <label className="space-y-2">
+              <span className="text-[10px] uppercase tracking-[0.18em] text-white/46">Specialty</span>
+              <Input
+                value={specialty}
+                onChange={(event) => setSpecialty(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    handleSpecialtySubmit();
+                  }
+                }}
+                placeholder="Fades, beard work, kids cuts..."
+                aria-label="Filter by specialty"
+                className="h-12 rounded-[18px] border-white/10 bg-black/25 text-sm"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={handleSpecialtySubmit}
+              className="inline-flex h-12 items-center justify-center rounded-full border border-white/10 bg-black/20 px-5 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/72 transition hover:border-[#7CFF00]/20 hover:text-[#d7ffab]"
+            >
+              Apply specialty
+            </button>
+          </div>
+
           <div className="flex gap-3 overflow-x-auto pb-2 hide-scrollbar">
             {clientServiceCategories.map((category) => {
               const Icon = category.icon;
@@ -400,6 +460,10 @@ export function ClientSearchScreen({
             </FilterChip>
             <FilterChip active={availability === "now"} onClick={() => handleAvailabilityFilter(availability === "now" ? "any" : "now")}>
               Available now
+            </FilterChip>
+            <FilterChip active={verifiedOnly} onClick={handleVerifiedToggle}>
+              <ShieldCheck className="h-3.5 w-3.5" />
+              Verified only
             </FilterChip>
           </div>
         </div>
