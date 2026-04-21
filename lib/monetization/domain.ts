@@ -1,3 +1,5 @@
+import { isUpcomingAppointmentStatus } from "@/lib/appointments/domain";
+import type { AppointmentStatus } from "@/types/domain";
 import type {
   BarberRevenueIntelligenceView,
   BarberRevenueTopClientView,
@@ -32,7 +34,7 @@ type RevenueAppointment = {
   totalAmount: number;
   balanceDue: number;
   tipAmount: number;
-  status: string;
+  status: AppointmentStatus;
 };
 
 export function roundCurrency(value: number) {
@@ -230,7 +232,7 @@ export function buildBarberRevenueIntelligence(
   const completedTips = roundCurrency(completed.reduce((sum, appointment) => sum + appointment.tipAmount, 0));
   const outstandingBalance = roundCurrency(
     appointments
-      .filter((appointment) => ["booked", "checked_in", "in_service", "completed"].includes(appointment.status))
+      .filter((appointment) => isUpcomingAppointmentStatus(appointment.status) || appointment.status === "completed")
       .reduce((sum, appointment) => sum + Math.max(appointment.balanceDue, 0), 0)
   );
   const weekRebookedClients = new Set(
@@ -238,7 +240,7 @@ export function buildBarberRevenueIntelligence(
       .filter((appointment) =>
         appointments.some((candidate) =>
           candidate.clientId === appointment.clientId
-          && ["booked", "checked_in", "in_service"].includes(candidate.status)
+          && isUpcomingAppointmentStatus(candidate.status)
           && new Date(candidate.start).getTime() > new Date(appointment.start).getTime()
         )
       )

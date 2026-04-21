@@ -1,4 +1,5 @@
 import { demoAppointments, demoBarbers, demoClients, demoLocations, demoUsers } from "@/lib/data/demo";
+import { isScheduledAppointmentStatus } from "@/lib/appointments/domain";
 import {
   demoBarberFollows,
   demoEngagementEvents,
@@ -824,7 +825,7 @@ export function getOwnerIntelligenceSummary(
   });
   const locationSignals = scopedLocationIds.map((locationId) => buildLocationIntelligenceSnapshot(snapshot, locationId));
   const totalChairs = demoLocations.filter((location) => scopedLocationIds.includes(location.id)).reduce((sum, location) => sum + location.chairs, 0);
-  const bookingsEventCount = state.engagementEvents.filter((event) => event.eventType === "appointment_booked").length + appointments.filter((appointment) => appointment.status === "booked").length;
+  const bookingsEventCount = state.engagementEvents.filter((event) => event.eventType === "appointment_booked").length + appointments.filter((appointment) => isScheduledAppointmentStatus(appointment.status)).length;
   const rebookEventCount = state.engagementEvents.filter((event) => event.eventType === "appointment_rebooked").length;
   const loyaltyUsageCount = state.loyaltyTransactions.filter((transaction) => clientIds.includes(transaction.clientId) && transaction.pointsDelta < 0).length;
   const referralConversions = state.referralEvents.filter((event) => clientIds.includes(event.referrerClientId) && (event.status === "completed" || event.status === "credited")).length;

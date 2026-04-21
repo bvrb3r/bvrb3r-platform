@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { isPlatformAdminUser } from "@/lib/auth/demo-auth";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
+import { isUpcomingAppointmentStatus } from "@/lib/appointments/domain";
 import { getEngagementProvider } from "@/lib/engagement/provider";
 import { dismissFinancialAnomaly, readFinancialAnomalyQueue, resolveFinancialAnomaly, syncFinancialAnomalies } from "@/lib/fintech/anomalies";
 import { buildOwnerMoneyDashboardSummary } from "@/lib/fintech/tax";
@@ -1147,7 +1148,7 @@ function getBookingSummaryForUser(user: UserAccount, appointments: LiveOperation
 
   return {
     completed: relevantAppointments.filter((appointment) => appointment.status === "completed").length,
-    active: relevantAppointments.filter((appointment) => ["booked", "checked_in", "in_service"].includes(appointment.status)).length,
+    active: relevantAppointments.filter((appointment) => isUpcomingAppointmentStatus(appointment.status)).length,
     cancelled: relevantAppointments.filter((appointment) => appointment.status === "cancelled" || appointment.status === "no_show").length,
     lifetimeValue: roundCurrency(
       relevantAppointments

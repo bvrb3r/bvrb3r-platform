@@ -75,9 +75,14 @@ type CanonicalServiceRow = {
   duration_min: number;
   buffer_min: number;
   price: number | string;
+  currency: string | null;
   deposit_amount: number | string;
   full_prepay_required: boolean;
   active: boolean;
+  is_bookable: boolean;
+  display_order: number;
+  created_at: string | null;
+  updated_at: string | null;
   service_owner_type: "barber" | "shop" | null;
   barber_reference: string | null;
   shop_reference: string | null;
@@ -438,7 +443,7 @@ async function readCanonicalSnapshot(supabase: SupabaseClient): Promise<Canonica
     supabase.from("barbers").select("id, reference_code, profile_id, compensation_model, app_approval_status, shop_approval_status, commission_rate, booth_rent_amount, booth_rent_frequency, bio, booking_slug"),
     supabase.from("barber_profiles").select("barber_reference, username, display_name, bio, years_experience, shop_reference, specialties, badges, service_area_label, next_available_at, visibility_state"),
     supabase.from("profiles").select("id, full_name, email, phone, primary_onboarding_role"),
-    supabase.from("services").select("id, reference_code, location_id, category, name, description, duration_min, buffer_min, price, deposit_amount, full_prepay_required, active, service_owner_type, barber_reference, shop_reference, booking_count, popularity_rank").eq("active", true),
+    supabase.from("services").select("id, reference_code, location_id, category, name, description, duration_min, buffer_min, price, currency, deposit_amount, full_prepay_required, active, is_bookable, display_order, created_at, updated_at, service_owner_type, barber_reference, shop_reference, booking_count, popularity_rank").eq("active", true),
     supabase.from("locations").select("id, reference_code, name, neighborhood, city, state, phone"),
     supabase.from("availability_rules").select("barber_id, location_id, weekday, start_time, end_time"),
     supabase.from("blocked_times").select("barber_id, starts_at, ends_at, reason"),
@@ -528,7 +533,13 @@ function mapService(row: CanonicalServiceRow, locationReference: string): Servic
     addOnIds: [],
     ownerType: row.service_owner_type ?? "shop",
     barberId: row.barber_reference ?? undefined,
-    shopId: row.shop_reference ?? locationReference
+    shopId: row.shop_reference ?? locationReference,
+    currency: row.currency ?? "usd",
+    isActive: row.active,
+    isBookable: row.is_bookable !== false,
+    displayOrder: row.display_order ?? 0,
+    createdAt: row.created_at ?? undefined,
+    updatedAt: row.updated_at ?? undefined
   };
 }
 
@@ -570,7 +581,7 @@ function getServicesForBarber(
       const directBarberMatch = row.barber_reference === barberReference || row.barber_reference === barberUuid;
       const sharedShopMatch = !row.barber_reference && locationReferences.includes(row.shop_reference ?? locationReference);
       const sharedLocationMatch = !row.shop_reference && locationReferences.includes(locationReference);
-      return row.active && (directBarberMatch || sharedShopMatch || sharedLocationMatch);
+      return row.active && row.is_bookable !== false && (directBarberMatch || sharedShopMatch || sharedLocationMatch);
     })
     .map((row) => mapService(row, locationReferenceByUuid.get(row.location_id) ?? row.location_id));
 
@@ -579,7 +590,16 @@ function getServicesForBarber(
     unique.set(service.id, service);
   }
 
-  return [...unique.values()];
+  return [...unique.values()].sort((left, right) => {
+    const displayOrder = (left.displayOrder ?? Number.MAX_SAFE_INTEGER) - (right.displayOrder ?? Number.MAX_SAFE_INTEGER);
+    if (displayOrder !== 0) {
+      return displayOrder;
+    }
+    if ((left.price ?? 0) !== (right.price ?? 0)) {
+      return left.price - right.price;
+    }
+    return left.name.localeCompare(right.name);
+  });
 }
 
 function listAvailabilitySlotsForBarber(params: {
@@ -1201,7 +1221,8 @@ export async function buildCanonicalAvailabilityPayload(
     availabilityRules: snapshot.availabilityRules,
     appointments: snapshot.appointments,
     blockedTimes: snapshot.blockedTimes,
-    days: options.days
+    days: options.days,
+    earliestAt: options.earliestAt
   });
 
   return {

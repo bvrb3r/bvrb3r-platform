@@ -1,8 +1,9 @@
 import { assertPlatformAdminAccess, getPlatformAccountStatus, readPlatformAdminAuditLogEntries, readPlatformShopControlState } from "@/lib/platform-admin/service";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
+import { isUpcomingAppointmentStatus } from "@/lib/appointments/domain";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import type { UserAccount } from "@/types/domain";
+import type { AppointmentStatus, UserAccount } from "@/types/domain";
 import type {
   ArchitectAccountDetailPayload,
   ArchitectAccountDirectoryFilters,
@@ -1107,7 +1108,7 @@ export async function getArchitectAccountDetailPayload(actor: UserAccount, profi
         bookingCounts: {
           total: bookingRows.length,
           completed: bookingRows.filter((row) => row.status === "completed").length,
-          active: bookingRows.filter((row) => ["booked", "checked_in", "in_service"].includes(row.status ?? "")).length,
+          active: bookingRows.filter((row) => row.status && isUpcomingAppointmentStatus(row.status as AppointmentStatus)).length,
           cancelled: bookingRows.filter((row) => row.status === "cancelled" || row.status === "no_show").length
         }
       } : undefined,

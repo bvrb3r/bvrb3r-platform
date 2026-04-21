@@ -1,4 +1,5 @@
 ﻿import { boothRentLedger, demoBarbers, demoClients, demoLocations, demoServices } from "@/lib/data/demo";
+import { isScheduledAppointmentStatus, isUpcomingAppointmentStatus } from "@/lib/appointments/domain";
 import { Appointment, Barber, BoothRentLedgerEntry, Client, Location, RevenuePoint, Service } from "@/types/domain";
 
 export interface CheckoutRecord {
@@ -17,7 +18,7 @@ export interface CheckoutRecord {
 export interface FlowActivity {
   id: string;
   appointmentId: string;
-  type: "booking" | "check_in" | "service_start" | "service_complete" | "checkout" | "cancel";
+  type: "booking" | "reschedule" | "check_in" | "service_start" | "service_complete" | "checkout" | "cancel";
   actorRole: string;
   title: string;
   detail: string;
@@ -95,7 +96,7 @@ export function getOwnerFlowMetrics(appointments: Appointment[]) {
   const businessDateKey = getBusinessDateKey(appointments);
   const paidToday = appointments.filter((appointment) => isAppointmentPaid(appointment) && isOnBusinessDate(appointment.start, businessDateKey));
   const completedToday = appointments.filter((appointment) => appointment.status === "completed" && isOnBusinessDate(appointment.start, businessDateKey));
-  const bookedToday = appointments.filter((appointment) => appointment.status === "booked" && isOnBusinessDate(appointment.start, businessDateKey));
+  const bookedToday = appointments.filter((appointment) => isScheduledAppointmentStatus(appointment.status) && isOnBusinessDate(appointment.start, businessDateKey));
   const outstandingBalance = appointments
     .filter((appointment) => appointment.status !== "cancelled" && appointment.status !== "no_show")
     .reduce((sum, appointment) => sum + Math.max(appointment.balanceDue, 0), 0);
@@ -114,7 +115,7 @@ export function getBarberFlowMetrics(barber: Barber, appointments: Appointment[]
   const businessDateKey = getBusinessDateKey(appointments);
   const barberAppointments = appointments.filter((appointment) => appointment.barberId === barber.id);
   const paidToday = barberAppointments.filter((appointment) => isAppointmentPaid(appointment) && isOnBusinessDate(appointment.start, businessDateKey));
-  const activeCount = barberAppointments.filter((appointment) => appointment.status === "checked_in" || appointment.status === "in_service" || appointment.status === "booked").length;
+  const activeCount = barberAppointments.filter((appointment) => isUpcomingAppointmentStatus(appointment.status)).length;
   const serviceRevenueToday = paidToday.reduce((sum, appointment) => sum + appointment.totalAmount, 0);
   const tipsToday = paidToday.reduce((sum, appointment) => sum + appointment.tipAmount, 0);
   const nextRent = rentEntries

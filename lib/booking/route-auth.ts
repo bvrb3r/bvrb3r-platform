@@ -46,3 +46,23 @@ export function toShopViewer(user: UserAccount): LiveOperationsViewer | null {
     email: user.email
   };
 }
+
+export function toBookingViewer(user: UserAccount): LiveOperationsViewer | null {
+  if (user.role === "client" && user.clientId) {
+    return {
+      role: "client",
+      clientId: user.clientId,
+      email: user.email
+    };
+  }
+
+  if (user.role === "owner" || user.role === "manager" || user.role === "front_desk") {
+    return {
+      role: user.role,
+      locationIds: user.locationIds,
+      email: user.email
+    };
+  }
+
+  return null;
+}

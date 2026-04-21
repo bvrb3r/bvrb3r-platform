@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { isUpcomingAppointmentStatus } from "@/lib/appointments/domain";
 import type { BarberSubtype, Client, WalkInEntry } from "@/types/domain";
 import type { BarberMoneyDashboardView } from "@/types/fintech";
 import type { LiveAppointmentRecord } from "@/lib/operations/live-state";
@@ -335,7 +336,7 @@ function toQueryString(values: Record<string, string | undefined>) {
 
 
 function getNextActiveAppointment<T extends LiveAppointmentRecord>(appointments: T[]) {
-  return appointments.find((appointment) => ["booked", "checked_in", "in_service"].includes(appointment.status)) ?? null;
+  return appointments.find((appointment) => isUpcomingAppointmentStatus(appointment.status)) ?? null;
 }
 
 function getBarberLifecycleDetail(status: string, balanceDue = 0) {

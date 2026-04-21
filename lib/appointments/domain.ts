@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import type { AppointmentStatus } from "@/types/domain";
 
 export type AppointmentCheckInEventType = "arrived" | "checked_in" | "seated" | "started" | "completed";
@@ -58,17 +57,41 @@ const transitionMap: Record<AppointmentTransitionTarget, AppointmentTransitionTa
   refunded: []
 };
 
+const UPCOMING_APPOINTMENT_STATUSES = new Set<AppointmentTransitionTarget>([
+  "confirmed",
+  "booked",
+  "checked_in",
+  "in_service"
+]);
+
+const SCHEDULED_APPOINTMENT_STATUSES = new Set<AppointmentTransitionTarget>([
+  "confirmed",
+  "booked"
+]);
+
 function roundCurrency(value: number) {
   return Number(value.toFixed(2));
 }
 
+function hashSeed(seed: string) {
+  let hash = 2166136261;
+
+  for (let index = 0; index < seed.length; index += 1) {
+    hash ^= seed.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return hash >>> 0;
+}
+
 export function generateAppointmentConfirmationCode(seed: string) {
-  return createHash("sha1")
-    .update(seed)
-    .digest("hex")
-    .replace(/[^A-Z0-9]/gi, "")
-    .slice(0, 10)
-    .toUpperCase();
+  const primary = hashSeed(seed).toString(36).toUpperCase();
+  const secondary = hashSeed(`${seed}:bvrb3r`).toString(36).toUpperCase();
+
+  return `${primary}${secondary}`
+    .replace(/[^A-Z0-9]/g, "")
+    .padEnd(10, "0")
+    .slice(0, 10);
 }
 
 export function calculateAppointmentQuote(
@@ -119,7 +142,7 @@ export function canTransitionAppointmentStatus(
   currentStatus: AppointmentStatus | AppointmentTransitionTarget,
   nextStatus: AppointmentTransitionTarget
 ) {
-  return transitionMap[currentStatus as AppointmentTransitionTarget]?.includes(nextStatus) ?? false;
+  return transitionMap[normalizeAppointmentStatus(currentStatus)]?.includes(nextStatus) ?? false;
 }
 
 export function assertAppointmentTransition(
@@ -129,6 +152,24 @@ export function assertAppointmentTransition(
   if (!canTransitionAppointmentStatus(currentStatus, nextStatus)) {
     throw new Error(`Cannot transition appointment from ${currentStatus} to ${nextStatus}.`);
   }
+}
+
+export function normalizeAppointmentStatus(
+  status: AppointmentStatus | AppointmentTransitionTarget
+): AppointmentTransitionTarget {
+  return status === "booked" ? "confirmed" : (status as AppointmentTransitionTarget);
+}
+
+export function isUpcomingAppointmentStatus(
+  status: AppointmentStatus | AppointmentTransitionTarget
+) {
+  return UPCOMING_APPOINTMENT_STATUSES.has(status as AppointmentTransitionTarget);
+}
+
+export function isScheduledAppointmentStatus(
+  status: AppointmentStatus | AppointmentTransitionTarget
+) {
+  return SCHEDULED_APPOINTMENT_STATUSES.has(status as AppointmentTransitionTarget);
 }
 
 export function buildAppointmentLifecycleFields(

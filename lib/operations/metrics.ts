@@ -1,3 +1,4 @@
+import { isUpcomingAppointmentStatus } from "@/lib/appointments/domain";
 import { CompensationSnapshotRecord, OwnerAnalyticsSnapshotRecord } from "@/lib/operations/persistence";
 import { LiveAppointmentRecord } from "@/lib/operations/live-state";
 import { RevenuePoint } from "@/types/domain";
@@ -16,8 +17,9 @@ function getOwnerAppointmentPriority(status: LiveAppointmentRecord["status"]) {
       return 0;
     case "checked_in":
       return 1;
-    case "booked":
     case "confirmed":
+      return 2;
+    case "booked":
       return 2;
     case "completed":
       return 3;
@@ -95,7 +97,7 @@ export function getBarberCompensationSummary(barberId: string, appointments: Liv
   const barberRows = rows.filter((entry) => entry.barberReference === barberId);
   const todayRows = barberRows.filter((entry) => entry.businessDate === businessDate);
   const activeCount = appointments.filter(
-    (entry) => entry.barberId === barberId && ["booked", "checked_in", "in_service"].includes(entry.status)
+    (entry) => entry.barberId === barberId && isUpcomingAppointmentStatus(entry.status)
   ).length;
 
   return {

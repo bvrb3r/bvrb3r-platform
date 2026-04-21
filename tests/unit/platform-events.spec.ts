@@ -48,7 +48,7 @@ const baseEvent: PlatformEventInput = {
     ignored: undefined
   },
   payload: {
-    status: "booked",
+    status: "confirmed",
     ignored: undefined
   },
   idempotencyKey: "booking:appt-live-1:created",
@@ -92,7 +92,7 @@ describe("platform events core", () => {
       appointmentId: "appt-live-1",
       barberId: "barber-live-1"
     });
-    expect(row.payload).toEqual({ status: "booked" });
+    expect(row.payload).toEqual({ status: "confirmed" });
   });
 
   it("uses idempotent upserts when an idempotency key is present", async () => {

@@ -160,6 +160,12 @@ export interface Service {
   barberId?: string;
   shopId?: string;
   styleTagIds?: string[];
+  currency?: string;
+  isActive?: boolean;
+  isBookable?: boolean;
+  displayOrder?: number;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Barber {

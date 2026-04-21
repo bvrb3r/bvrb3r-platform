@@ -1,4 +1,5 @@
 ﻿import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { isScheduledAppointmentStatus, isUpcomingAppointmentStatus } from "@/lib/appointments/domain";
 import { ensureRecurringBooking } from "@/lib/booking/recurring";
 import {
   canonicalAppointmentUuid,
@@ -1022,22 +1023,6 @@ function resolveBarberUsername(runtime: MarketplaceRuntimeData, barberIdOrUserna
   )?.username;
 }
 
-
-function overlaps(start: Date, end: Date, appointments: LiveAppointmentRecord[], barberId: string) {
-  return appointments.some((appointment) => {
-    if (appointment.barberId !== barberId) {
-      return false;
-    }
-    if (appointment.status === "cancelled" || appointment.status === "no_show") {
-      return false;
-    }
-
-    const appointmentStart = new Date(appointment.start).getTime();
-    const appointmentEnd = new Date(appointment.end).getTime();
-    return start.getTime() < appointmentEnd && end.getTime() > appointmentStart;
-  });
-}
-
 export async function getClientHomePayload(clientId?: string) {
   const supabase = getSupabase();
   const shops = await readShops(supabase);
@@ -1234,111 +1219,12 @@ export async function getBarberAvailabilityPayload(barberId: string, options: { 
     }
   }
 
-  const bundle = await readMarketplaceBundle();
-  const username = resolveBarberUsername(bundle.runtime, barberId) ?? barberId;
-  const publicProfile = buildPublicProfilePayload(bundle.runtime, bundle.engagementState, bundle.trustState, username);
-  if (!publicProfile) {
-    return {
-      barberId,
-      locationId: options.locationId ?? "",
-      service: null,
-      slots: [],
-      gating: getVerificationGateDecision(undefined, "booking")
-    };
-  }
-
-  const provider = await getLiveOperationsProvider();
-  const snapshot = await provider.readSnapshot({ role: "public" } as LiveOperationsViewer);
-  const locationId = options.locationId ?? publicProfile.shopLocations[0]?.id ?? publicProfile.profile.shopId ?? "";
-  const bookingGate = getVerificationGateDecision(
-    bundle.trustState ? buildPublicTrustSignal(bundle.trustState, barberId, locationId).verificationDecision : undefined,
-    "booking"
-  );
-  const locationGate = bundle.trustState
-    ? getVerificationGateDecision(computeShopVerificationDecision(bundle.trustState, locationId), "shop_activation")
-    : null;
-  const workingHours = await readWorkingHours(supabase, barberId, locationId);
-  const service = publicProfile.services.find((entry) => entry.service.id === options.serviceId)?.service
-    ?? publicProfile.services[0]?.service
-    ?? bundle.runtime.state.services.find((entry) => entry.id === options.serviceId)
-    ?? bundle.runtime.state.services.find((entry) => entry.barberId === barberId)
-    ?? null;
-  const durationMinutes = (service?.durationMin ?? 45) + (service?.bufferMin ?? 0);
-  const days = options.days ?? 7;
-  const slots: Array<{ startsAt: string; endsAt: string; label: string; locationId: string; barberId: string; serviceId?: string }> = [];
-  const now = new Date();
-
-  if (!bookingGate.allowed || (locationGate && !locationGate.allowed)) {
-    return {
-      barberId,
-      locationId,
-      service: service ? {
-        id: service.id,
-        name: service.name,
-        durationMin: service.durationMin,
-        bufferMin: service.bufferMin,
-        price: service.price,
-        deposit: service.deposit,
-        fullPrepay: service.fullPrepay
-      } : null,
-      slots: [],
-      gating: !bookingGate.allowed ? bookingGate : locationGate
-    };
-  }
-
-  for (let offset = 0; offset < days; offset += 1) {
-    const day = new Date(now);
-    day.setDate(now.getDate() + offset);
-    const weekday = day.getDay();
-    const dayRules = workingHours.filter((entry) => entry.weekday === weekday);
-
-    for (const rule of dayRules) {
-      const [startHour, startMinute] = rule.start_time.split(":").map(Number);
-      const [endHour, endMinute] = rule.end_time.split(":").map(Number);
-      const cursor = new Date(day);
-      cursor.setHours(startHour, startMinute, 0, 0);
-      const endBoundary = new Date(day);
-      endBoundary.setHours(endHour, endMinute, 0, 0);
-
-      while (cursor.getTime() + durationMinutes * 60000 <= endBoundary.getTime()) {
-        const slotStart = new Date(cursor);
-        const slotEnd = new Date(cursor.getTime() + durationMinutes * 60000);
-        const isFuture = slotStart.getTime() > now.getTime() + 15 * 60000;
-        if (isFuture && !overlaps(slotStart, slotEnd, snapshot.appointments, barberId)) {
-          slots.push({
-            startsAt: slotStart.toISOString(),
-            endsAt: slotEnd.toISOString(),
-            label: new Intl.DateTimeFormat("en-US", {
-              weekday: "short",
-              month: "short",
-              day: "numeric",
-              hour: "numeric",
-              minute: "2-digit"
-            }).format(slotStart),
-            locationId,
-            barberId,
-            serviceId: service?.id
-          });
-        }
-        cursor.setMinutes(cursor.getMinutes() + 30);
-      }
-    }
-  }
-
   return {
     barberId,
-    locationId,
-    service: service ? {
-      id: service.id,
-      name: service.name,
-      durationMin: service.durationMin,
-      bufferMin: service.bufferMin,
-      price: service.price,
-      deposit: service.deposit,
-      fullPrepay: service.fullPrepay
-    } : null,
-    slots: slots.slice(0, 16),
-    gating: null
+    locationId: options.locationId ?? "",
+    service: null,
+    slots: [],
+    gating: getVerificationGateDecision(undefined, "booking")
   };
 }
 export async function getClientBookingsPayload(clientId: string) {
@@ -1349,7 +1235,7 @@ export async function getClientBookingsPayload(clientId: string) {
   const appointments = [...snapshot.appointments].sort((left, right) => new Date(right.start).getTime() - new Date(left.start).getTime());
   const appointmentServices = await readAppointmentServiceSnapshots(supabase, appointments.map((entry) => entry.id));
   const hydratedAppointments = hydrateAppointments(appointments, snapshot.clients, appointmentServices);
-  const nextAppointment = hydratedAppointments.find((appointment) => ["booked", "checked_in", "in_service"].includes(appointment.status));
+  const nextAppointment = hydratedAppointments.find((appointment) => isUpcomingAppointmentStatus(appointment.status));
   const history = hydratedAppointments.filter((appointment) => appointment.status === "completed").slice(0, 6);
   const favoriteBarberProfile = clientProfile?.favoriteBarberReference
     ? await getBarberDetailsPayload(clientProfile.favoriteBarberReference)
@@ -1629,11 +1515,11 @@ export async function getBarberDashboardPayload(viewer: LiveOperationsViewer) {
   const hydratedAppointments = hydrateBarberAppointments(snapshot.appointments, snapshot.clients, appointmentServices, directories);
   const todayAppointments = hydratedAppointments.filter((appointment) => appointment.start.slice(0, 10) === baseSummary.businessDate);
   const upcomingAppointment = [...hydratedAppointments]
-    .filter((appointment) => ["booked", "checked_in", "in_service"].includes(appointment.status))
+      .filter((appointment) => isUpcomingAppointmentStatus(appointment.status))
     .sort((left, right) => new Date(left.start).getTime() - new Date(right.start).getTime())[0] ?? null;
   const summary = {
     ...baseSummary,
-    bookedCount: todayAppointments.filter((appointment) => appointment.status === "booked").length,
+      bookedCount: todayAppointments.filter((appointment) => isScheduledAppointmentStatus(appointment.status)).length,
     checkedInCount: todayAppointments.filter((appointment) => appointment.status === "checked_in").length,
     inServiceCount: todayAppointments.filter((appointment) => appointment.status === "in_service").length,
     completedCount: todayAppointments.filter((appointment) => appointment.status === "completed").length,
@@ -1735,11 +1621,11 @@ export async function getShopDashboardPayload(viewer: LiveOperationsViewer) {
         (appointment) => appointment.barberId === barberId && appointment.start.slice(0, 10) === businessDate
       );
       const liveAppointmentCount = barberAppointments.filter((appointment) => ["checked_in", "in_service"].includes(appointment.status)).length;
-      const activeAppointmentCount = barberAppointments.filter((appointment) => ["booked", "checked_in", "in_service"].includes(appointment.status)).length;
-      const bookedCount = barberAppointments.filter((appointment) => appointment.status === "booked").length;
+  const activeAppointmentCount = barberAppointments.filter((appointment) => isUpcomingAppointmentStatus(appointment.status)).length;
+  const bookedCount = barberAppointments.filter((appointment) => isScheduledAppointmentStatus(appointment.status)).length;
       const completedCount = barberAppointments.filter((appointment) => appointment.status === "completed").length;
       const nextAppointmentStart = barberAppointments
-        .filter((appointment) => ["booked", "checked_in", "in_service"].includes(appointment.status))
+    .filter((appointment) => isUpcomingAppointmentStatus(appointment.status))
         .sort((left, right) => new Date(left.start).getTime() - new Date(right.start).getTime())[0]?.start ?? null;
 
       return {

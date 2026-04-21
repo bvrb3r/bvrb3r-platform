@@ -47,6 +47,7 @@ type CanonicalServiceRow = {
   deposit_amount: number | string;
   full_prepay_required: boolean;
   active: boolean;
+  is_bookable?: boolean;
 };
 
 type CanonicalLocationRow = {
@@ -97,7 +98,7 @@ type EnsureRecurringBookingInput = {
 };
 
 export type RecurringBookingResult = {
-  status: "booked" | "proposal_only" | "skipped";
+  status: "confirmed" | "proposal_only" | "skipped";
   reason:
     | "existing_upcoming_appointment"
     | "missing_routine"
@@ -216,7 +217,7 @@ async function readClientPreference(supabase: SupabaseClient, clientId: string) 
 async function readCanonicalDirectories(supabase: SupabaseClient) {
   const [appointmentsResult, servicesResult, locationsResult, barbersResult, profilesResult] = await Promise.all([
     supabase.from("appointments").select("id, reference_code, client_id, barber_id, location_id, service_id, status, starts_at, ends_at"),
-    supabase.from("services").select("id, reference_code, location_id, barber_reference, name, category, description, duration_min, buffer_min, price, deposit_amount, full_prepay_required, active").eq("active", true),
+    supabase.from("services").select("id, reference_code, location_id, barber_reference, name, category, description, duration_min, buffer_min, price, deposit_amount, full_prepay_required, active, is_bookable").eq("active", true),
     supabase.from("locations").select("id, reference_code, name, neighborhood, city, state"),
     supabase.from("barbers").select("id, reference_code, profile_id"),
     supabase.from("profiles").select("id, full_name, email")
@@ -307,7 +308,7 @@ export async function ensureRecurringBooking(supabase: SupabaseClient, input: En
   const clientUuid = canonicalClientUuid(input.clientId);
   const barberUuid = canonicalBarberUuid(routine.barber_reference);
   const now = new Date();
-  const activeStatuses = new Set(["booked", "checked_in", "in_service"]);
+  const activeStatuses = new Set(["confirmed", "booked", "checked_in", "in_service"]);
   const futureAppointments = directories.appointments
     .filter((row) => row.client_id === clientUuid && activeStatuses.has(row.status) && new Date(row.starts_at).getTime() > now.getTime())
     .sort((left, right) => new Date(left.starts_at).getTime() - new Date(right.starts_at).getTime());
@@ -414,7 +415,7 @@ export async function ensureRecurringBooking(supabase: SupabaseClient, input: En
   }
 
   const serviceRow = directories.services.find((row) => (row.reference_code ?? row.id) === slotMatch.service.id);
-  if (!serviceRow) {
+  if (!serviceRow || serviceRow.is_bookable === false) {
     return {
       status: "skipped",
       reason: "missing_service"
@@ -455,7 +456,7 @@ export async function ensureRecurringBooking(supabase: SupabaseClient, input: En
     barber_id: barberUuid,
     client_id: clientUuid,
     service_id: canonicalServiceUuid(serviceRow.reference_code ?? serviceRow.id),
-    status: "booked",
+    status: "confirmed",
     source: "booking",
     starts_at: slotMatch.slot.startsAt,
     ends_at: slotMatch.slot.endsAt,
@@ -480,9 +481,9 @@ export async function ensureRecurringBooking(supabase: SupabaseClient, input: En
 
   const historyInsert = await supabase.from("appointment_status_history").insert({
     appointment_id: appointmentId,
-    status: "booked",
+    status: "confirmed",
     old_status: null,
-    new_status: "booked",
+    new_status: "confirmed",
     change_reason: "recurring_engine",
     changed_at: createdAt
   });
@@ -503,7 +504,7 @@ export async function ensureRecurringBooking(supabase: SupabaseClient, input: En
       serviceId: canonicalServiceUuid(serviceRow.reference_code ?? serviceRow.id)
     },
     payload: {
-      status: "booked",
+      status: "confirmed",
       trigger: input.trigger,
       startsAt: slotMatch.slot.startsAt,
       endsAt: slotMatch.slot.endsAt,
@@ -613,7 +614,7 @@ export async function ensureRecurringBooking(supabase: SupabaseClient, input: En
     title: "Auto-book reserved next appointment",
     detail: `${appointmentReference} reserved ${serviceRow.name} through the recurring routine engine`,
     event_payload: {
-      appointmentStatus: "booked",
+      appointmentStatus: "confirmed",
       source: "recurring_engine",
       balanceDue,
       totalAmount,
@@ -638,7 +639,7 @@ export async function ensureRecurringBooking(supabase: SupabaseClient, input: En
     title: "Auto-book reserved next appointment",
     detail: `${appointmentReference} reserved ${serviceRow.name} through the recurring routine engine`,
     payload: {
-      appointmentStatus: "booked",
+      appointmentStatus: "confirmed",
       source: "recurring_engine",
       balanceDue,
       totalAmount,
@@ -681,7 +682,7 @@ export async function ensureRecurringBooking(supabase: SupabaseClient, input: En
   });
 
   return {
-    status: "booked",
+    status: "confirmed",
     reason: "scheduled",
     appointmentId: appointmentReference,
     appointmentTime: slotMatch.slot.startsAt,

@@ -54,11 +54,13 @@ import {
   LiveOperationsSnapshot,
   LiveOperationsViewer,
   LiveAppointmentRecord,
+  RescheduleAppointmentMutationInput,
   createEmptyLiveOperationsSnapshot,
   bookAppointmentInSnapshot,
   cancelAppointmentInSnapshot,
   checkoutAppointmentInSnapshot,
   createInitialLiveOperationsSnapshot,
+  rescheduleAppointmentInSnapshot,
   scopeLiveOperationsSnapshot,
   transitionAppointmentInSnapshot
 } from "@/lib/operations/live-state";
@@ -104,9 +106,17 @@ type CanonicalServiceRow = {
   duration_min: number;
   buffer_min: number;
   price: number | string;
+  currency: string | null;
   deposit_amount: number | string;
   full_prepay_required: boolean;
   active: boolean;
+  is_bookable: boolean;
+  display_order: number;
+  created_at: string | null;
+  updated_at: string | null;
+  service_owner_type?: "barber" | "shop" | null;
+  barber_reference?: string | null;
+  shop_reference?: string | null;
 };
 
 type StaffMembershipRow = {
@@ -216,6 +226,7 @@ interface LiveOperationsProvider {
   kind: "demo" | "supabase";
   readSnapshot(viewer: LiveOperationsViewer): Promise<LiveOperationsSnapshot>;
   createBooking(input: BookingMutationInput): Promise<LiveMutationSuccess>;
+  rescheduleAppointment(input: RescheduleAppointmentMutationInput): Promise<LiveMutationSuccess>;
   cancelAppointment(input: CancelAppointmentMutationInput): Promise<LiveMutationSuccess>;
   transitionAppointment(input: AppointmentLifecycleMutationInput): Promise<LiveMutationSuccess>;
   checkoutAppointment(input: CheckoutMutationInput): Promise<LiveMutationSuccess>;
@@ -284,7 +295,7 @@ async function loadCanonicalServicesByReference(
 
   const result = await supabase
     .from("services")
-    .select("id, reference_code, location_id, category, name, description, duration_min, buffer_min, price, deposit_amount, full_prepay_required, active")
+    .select("id, reference_code, location_id, category, name, description, duration_min, buffer_min, price, currency, deposit_amount, full_prepay_required, active, is_bookable, display_order, created_at, updated_at, service_owner_type, barber_reference, shop_reference")
     .in("id", ids);
 
   if (result.error) {
@@ -292,6 +303,50 @@ async function loadCanonicalServicesByReference(
   }
 
   return (result.data ?? []) as CanonicalServiceRow[];
+}
+
+function matchesLocationReference(
+  value: string | null | undefined,
+  row: CanonicalLocationRow
+) {
+  return Boolean(value) && (value === row.id || value === row.reference_code);
+}
+
+function matchesBarberReference(
+  value: string | null | undefined,
+  row: CanonicalBarberRow
+) {
+  return Boolean(value) && (value === row.id || value === row.reference_code);
+}
+
+function isCanonicalServiceBookableForContext(
+  row: CanonicalServiceRow,
+  params: {
+    location: CanonicalLocationRow;
+    barber: CanonicalBarberRow;
+  }
+) {
+  if (!row.active || row.is_bookable === false) {
+    return false;
+  }
+
+  if (row.location_id !== params.location.id) {
+    return false;
+  }
+
+  if (row.barber_reference && !matchesBarberReference(row.barber_reference, params.barber)) {
+    return false;
+  }
+
+  if (row.shop_reference && !matchesLocationReference(row.shop_reference, params.location)) {
+    return false;
+  }
+
+  if (row.service_owner_type === "barber" && !row.barber_reference) {
+    return false;
+  }
+
+  return true;
 }
 
 async function syncAppointmentLineItems(supabase: SupabaseClient, appointment: LiveAppointmentRecord) {
@@ -381,7 +436,7 @@ async function syncAppointmentLineItems(supabase: SupabaseClient, appointment: L
   }
 }
 
-function buildNotificationInserts(appointment: LiveAppointmentRecord, kind: "booking" | "cancel" | "checkout") {
+function buildNotificationInserts(appointment: LiveAppointmentRecord, kind: "booking" | "reschedule" | "cancel" | "checkout") {
   if (kind === "booking") {
     return [
       {
@@ -428,6 +483,25 @@ function buildNotificationInserts(appointment: LiveAppointmentRecord, kind: "boo
         barber_reference: appointment.barberId,
         location_reference: appointment.locationId,
         metadata: { audience: "client", eventType: "cancel" },
+        created_at: appointment.updatedAt,
+        updated_at: appointment.updatedAt
+      }
+    ];
+  }
+
+  if (kind === "reschedule") {
+    return [
+      {
+        channel: "sms",
+        title: "Appointment rescheduled",
+        body: `Your appointment ${appointment.id} was moved to ${appointment.start}.`,
+        status: "scheduled",
+        scheduled_for: appointment.updatedAt,
+        appointment_reference: appointment.id,
+        client_reference: appointment.clientId,
+        barber_reference: appointment.barberId,
+        location_reference: appointment.locationId,
+        metadata: { audience: "client", eventType: "reschedule" },
         created_at: appointment.updatedAt,
         updated_at: appointment.updatedAt
       }
@@ -491,6 +565,16 @@ function buildPersistenceActivity(appointment: LiveAppointmentRecord, input: Art
         detail: `${appointment.id} reserved ${appointment.serviceId}`,
         createdAt: appointment.updatedAt,
         title: "Client booked appointment"
+      };
+    case "reschedule":
+      return {
+        id: `activity-${appointment.id}-reschedule-${appointment.revision}`,
+        appointmentId: appointment.id,
+        actorRole,
+        type: "reschedule",
+        detail: `${appointment.id} moved to ${appointment.start}`,
+        createdAt: appointment.updatedAt,
+        title: "Appointment rescheduled"
       };
     case "check_in":
       return {
@@ -734,7 +818,7 @@ async function insertPaymentRecord(
   });
 }
 
-async function insertNotificationRecords(supabase: SupabaseClient, appointment: LiveAppointmentRecord, kind: "booking" | "cancel" | "checkout") {
+async function insertNotificationRecords(supabase: SupabaseClient, appointment: LiveAppointmentRecord, kind: "booking" | "reschedule" | "cancel" | "checkout") {
   const rows = buildNotificationInserts(appointment, kind);
   if (!rows.length) {
     return;
@@ -789,6 +873,11 @@ function createDemoProvider(): LiveOperationsProvider {
       setDemoSnapshot(result.snapshot);
       return result;
     },
+    async rescheduleAppointment(input) {
+      const result = rescheduleAppointmentInSnapshot(getDemoSnapshot(), input);
+      setDemoSnapshot(result.snapshot);
+      return result;
+    },
     async cancelAppointment(input) {
       const result = cancelAppointmentInSnapshot(getDemoSnapshot(), input);
       setDemoSnapshot(result.snapshot);
@@ -823,6 +912,9 @@ function createUnavailableSupabaseProvider(): LiveOperationsProvider {
       return readEmptySnapshot(viewer);
     },
     async createBooking() {
+      return unavailable();
+    },
+    async rescheduleAppointment() {
       return unavailable();
     },
     async cancelAppointment() {
@@ -974,6 +1066,61 @@ async function getLatestAppointmentOrThrow(supabase: SupabaseClient, appointment
   return appointment;
 }
 
+async function assertCanonicalSlotAvailability(
+  supabase: SupabaseClient,
+  params: {
+    barber: CanonicalBarberRow;
+    appointment: { id?: string; start: string; end: string };
+    latestAppointment: LiveAppointmentRecord;
+  }
+) {
+  const blockedResult = await supabase
+    .from("blocked_times")
+    .select("id")
+    .eq("barber_id", params.barber.id)
+    .lt("starts_at", params.appointment.end)
+    .gt("ends_at", params.appointment.start)
+    .limit(1)
+    .maybeSingle();
+
+  if (blockedResult.error) {
+    throw blockedResult.error;
+  }
+  if (blockedResult.data) {
+    throw new LiveOperationConflictError(
+      "The selected time falls into blocked or unavailable chair time.",
+      params.latestAppointment,
+      "schedule_conflict"
+    );
+  }
+
+  const overlappingResult = await supabase
+    .from("appointments")
+    .select("reference_code, status")
+    .eq("barber_id", params.barber.id)
+    .lt("starts_at", params.appointment.end)
+    .gt("ends_at", params.appointment.start);
+
+  if (overlappingResult.error) {
+    throw overlappingResult.error;
+  }
+
+  const conflictingAppointment = ((overlappingResult.data ?? []) as AppointmentConflictRow[]).find((appointment) => {
+    if (appointment.reference_code === params.appointment.id) {
+      return false;
+    }
+    return appointment.status !== "cancelled" && appointment.status !== "no_show";
+  });
+
+  if (conflictingAppointment) {
+    throw new LiveOperationConflictError(
+      "The selected time is no longer available with this barber.",
+      await getLatestAppointmentOrThrow(supabase, conflictingAppointment.reference_code),
+      "schedule_conflict"
+    );
+  }
+}
+
 async function upsertCanonicalClient(supabase: SupabaseClient, client: Client) {
   const existingProfileResult = await supabase
     .from("profiles")
@@ -1049,20 +1196,14 @@ async function resolveCanonicalBookingContext(
   const barberRow = barberResult.data as CanonicalBarberRow;
 
   const primaryService = serviceRows.find((row) => matchesReference(input.serviceId, row));
-  if (!primaryService || !primaryService.active) {
+  if (!primaryService || !isCanonicalServiceBookableForContext(primaryService, { location: locationRow, barber: barberRow })) {
     throw new LiveOperationValidationError(`Service ${input.serviceId} is not available for booking.`);
-  }
-  if (primaryService.location_id !== locationRow.id) {
-    throw new LiveOperationValidationError(`Service ${input.serviceId} is not bookable at ${input.locationId}.`);
   }
 
   const addOnServices = input.addOnIds.map((addOnId) => {
     const match = serviceRows.find((row) => matchesReference(addOnId, row));
-    if (!match || !match.active) {
+    if (!match || !isCanonicalServiceBookableForContext(match, { location: locationRow, barber: barberRow })) {
       throw new LiveOperationValidationError(`Add-on ${addOnId} is not available for booking.`);
-    }
-    if (match.location_id !== locationRow.id) {
-      throw new LiveOperationValidationError(`Add-on ${addOnId} is not bookable at ${input.locationId}.`);
     }
     return match;
   });
@@ -1239,45 +1380,15 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
       });
       const client = result.snapshot.clients.find((entry) => entry.id === result.appointment.clientId);
 
-      const blockedResult = await supabase
-        .from("blocked_times")
-        .select("id")
-        .eq("barber_id", context.barber.id)
-        .lt("starts_at", result.appointment.end)
-        .gt("ends_at", result.appointment.start)
-        .limit(1)
-        .maybeSingle();
-
-      if (blockedResult.error) {
-        throw blockedResult.error;
-      }
-      if (blockedResult.data) {
-        throw new LiveOperationConflictError(
-          "The selected time falls into blocked or unavailable chair time.",
-          result.appointment,
-          "schedule_conflict"
-        );
-      }
-
-      const overlappingResult = await supabase
-        .from("appointments")
-        .select("reference_code, status")
-        .eq("barber_id", context.barber.id)
-        .lt("starts_at", result.appointment.end)
-        .gt("ends_at", result.appointment.start);
-
-      if (overlappingResult.error) {
-        throw overlappingResult.error;
-      }
-
-      const conflictingAppointment = ((overlappingResult.data ?? []) as AppointmentConflictRow[]).find((appointment) => appointment.status !== "cancelled" && appointment.status !== "no_show");
-      if (conflictingAppointment) {
-        throw new LiveOperationConflictError(
-          "The selected time is no longer available with this barber.",
-          await getLatestAppointmentOrThrow(supabase, conflictingAppointment.reference_code),
-          "schedule_conflict"
-        );
-      }
+      await assertCanonicalSlotAvailability(supabase, {
+        barber: context.barber,
+        appointment: {
+          id: result.appointment.id,
+          start: result.appointment.start,
+          end: result.appointment.end
+        },
+        latestAppointment: result.appointment
+      });
 
       if (!client) {
         throw new Error(`Client ${result.appointment.clientId} was not found.`);
@@ -1375,6 +1486,88 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
         appointment: appointmentForPayment,
         snapshot: snapshotForPayment
       };
+    },
+    async rescheduleAppointment(input) {
+      const fullSnapshot = await readFullSupabaseSnapshot(supabase);
+      const previousAppointment = fullSnapshot.appointments.find((entry) => entry.id === input.appointmentId);
+      if (!previousAppointment) {
+        throw new Error(`Appointment ${input.appointmentId} was not found.`);
+      }
+
+      const [locationResult, barberResult] = await Promise.all([
+        supabase
+          .from("locations")
+          .select("id, reference_code, name, tax_rate")
+          .eq("id", canonicalLocationUuid(previousAppointment.locationId))
+          .maybeSingle(),
+        supabase
+          .from("barbers")
+          .select("id, reference_code, profile_id")
+          .eq("id", canonicalBarberUuid(previousAppointment.barberId))
+          .maybeSingle()
+      ]);
+      if (locationResult.error) {
+        throw locationResult.error;
+      }
+      if (barberResult.error) {
+        throw barberResult.error;
+      }
+      if (!locationResult.data || !barberResult.data) {
+        throw new LiveOperationValidationError("The booking can no longer be rescheduled because its canonical context is incomplete.", "invalid_resource_reference");
+      }
+
+      const serviceRows = await loadCanonicalServicesByReference(supabase, [previousAppointment.serviceId]);
+      const primaryService = serviceRows.find((row) => matchesReference(previousAppointment.serviceId, row));
+      if (!primaryService || !isCanonicalServiceBookableForContext(primaryService, {
+        location: locationResult.data as CanonicalLocationRow,
+        barber: barberResult.data as CanonicalBarberRow
+      })) {
+        throw new LiveOperationValidationError("The service linked to this booking is no longer bookable for this barber.", "invalid_booking_selection");
+      }
+
+      const result = rescheduleAppointmentInSnapshot(fullSnapshot, input);
+      await assertCanonicalSlotAvailability(supabase, {
+        barber: barberResult.data as CanonicalBarberRow,
+        appointment: {
+          id: result.appointment.id,
+          start: result.appointment.start,
+          end: result.appointment.end
+        },
+        latestAppointment: result.appointment
+      });
+
+      const updateResult = await supabase
+        .from("appointments")
+        .update(appointmentUpsertRow(result.appointment))
+        .eq("reference_code", input.appointmentId)
+        .eq("lifecycle_revision", input.expectedRevision)
+        .select("reference_code")
+        .maybeSingle();
+
+      if (updateResult.error) {
+        throw updateResult.error;
+      }
+      if (!updateResult.data) {
+        throw new LiveOperationConflictError(
+          `Appointment ${input.appointmentId} changed before the reschedule completed.`,
+          await getLatestAppointmentOrThrow(supabase, input.appointmentId),
+          "stale_revision"
+        );
+      }
+
+      const actorProfileId = await resolveProfileIdByEmail(supabase, input.actorEmail);
+      await syncAppointmentStatusHistory(supabase, result.appointment, {
+        previousStatus: previousAppointment.status,
+        actorProfileId,
+        reason: input.reason ?? "appointment_rescheduled"
+      });
+      await syncAppointmentLineItems(supabase, result.appointment);
+      await insertNotificationRecords(supabase, result.appointment, "reschedule");
+      await persistArtifactsForAppointment(supabase, result.snapshot, result.appointment, {
+        activityType: "reschedule",
+        actorRole: input.actorRole
+      });
+      return result;
     },
     async cancelAppointment(input) {
       const fullSnapshot = await readFullSupabaseSnapshot(supabase);

@@ -44,7 +44,7 @@ const appointmentFixture: LiveAppointmentRecord = {
   barberId: "barber-blaze",
   clientId: "client-jordan",
   serviceId: "srv-signature",
-  status: "booked",
+  status: "confirmed",
   start: "2026-03-23T14:00:00-04:00",
   end: "2026-03-23T15:10:00-04:00",
   chair: "Chair 6",

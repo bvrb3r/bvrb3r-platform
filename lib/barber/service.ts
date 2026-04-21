@@ -1,4 +1,5 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { isUpcomingAppointmentStatus } from "@/lib/appointments/domain";
 import { findCanonicalBookableSlot } from "@/lib/booking/intelligence";
 import { canonicalAppointmentUuid, canonicalBarberUuid, canonicalLocationUuid, readCanonicalWorkingHours } from "@/lib/booking/canonical-booking";
 import { getBarberAppointmentsPayload, getBarberDashboardPayload } from "@/lib/booking/platform-service";
@@ -554,7 +555,7 @@ async function buildStatusView(
   supabase: SupabaseClient | null
 ) {
   const activeAppointment = appointments.find((appointment) => appointment.status === "checked_in" || appointment.status === "in_service") ?? null;
-  const upcomingAppointment = appointments.find((appointment) => ["booked", "checked_in", "in_service"].includes(appointment.status)) ?? null;
+  const upcomingAppointment = appointments.find((appointment) => isUpcomingAppointmentStatus(appointment.status)) ?? null;
   const defaultShopId = upcomingAppointment?.locationId ?? user.locationIds[0] ?? null;
   const defaultStatus: BarberStatusView = {
     barberId: user.barberId ?? "",
@@ -631,7 +632,7 @@ function buildClientRelationshipView(
     }
 
     const completed = clientAppointments.filter((appointment) => appointment.status === "completed");
-    const active = clientAppointments.filter((appointment) => ["booked", "checked_in", "in_service"].includes(appointment.status));
+    const active = clientAppointments.filter((appointment) => isUpcomingAppointmentStatus(appointment.status));
     const cancelled = clientAppointments.filter((appointment) => appointment.status === "cancelled" || appointment.status === "no_show");
     const lastCompleted = completed[0] ?? null;
     const nextAppointment = [...active].sort((left, right) => new Date(left.start).getTime() - new Date(right.start).getTime())[0] ?? null;
@@ -696,7 +697,7 @@ function buildEarningsSummary(
         appointments.some((candidate) =>
           candidate.id !== appointment.id
           && candidate.clientId === appointment.clientId
-          && ["booked", "checked_in", "in_service"].includes(candidate.status)
+          && isUpcomingAppointmentStatus(candidate.status)
           && new Date(candidate.start).getTime() > new Date(appointment.end).getTime()
         )
       )
@@ -710,7 +711,7 @@ function buildEarningsSummary(
     businessDate,
     todayBookings: todayAppointments.length,
     clientsRebookedToday,
-    upcomingBookings: appointments.filter((appointment) => ["booked", "checked_in", "in_service"].includes(appointment.status)).length,
+    upcomingBookings: appointments.filter((appointment) => isUpcomingAppointmentStatus(appointment.status)).length,
     completedServices,
     grossSales,
     tips,
@@ -730,7 +731,7 @@ export async function getBarberOverviewPayload(user: UserAccount): Promise<Barbe
     .filter((appointment) => appointment.start.slice(0, 10) === dashboard.summary.businessDate)
     .sort((left, right) => new Date(left.start).getTime() - new Date(right.start).getTime());
   const upcomingAppointments = appointments
-    .filter((appointment) => ["booked", "checked_in", "in_service"].includes(appointment.status))
+    .filter((appointment) => isUpcomingAppointmentStatus(appointment.status))
     .sort((left, right) => new Date(left.start).getTime() - new Date(right.start).getTime());
   const locationReferences = Array.from(new Set(todayAppointments.map((appointment) => appointment.locationId)));
   const locationMap = supabase ? await readLocationMap(supabase, locationReferences) : new Map<string, { id: string; label: string }>();
@@ -792,7 +793,7 @@ export async function getBarberSchedulePayload(
       .filter((appointment) => appointment.start.slice(0, 10) === dashboard.summary.businessDate)
       .sort((left, right) => new Date(left.start).getTime() - new Date(right.start).getTime()),
     upcomingAppointments: appointments
-      .filter((appointment) => ["booked", "checked_in", "in_service"].includes(appointment.status))
+      .filter((appointment) => isUpcomingAppointmentStatus(appointment.status))
       .sort((left, right) => new Date(left.start).getTime() - new Date(right.start).getTime()),
     timeline: {
       ...timelineRange,

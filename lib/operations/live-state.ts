@@ -1,5 +1,10 @@
 import { demoAppointments, demoBarbers, demoClients, demoUsers, demoWalkIns } from "@/lib/data/demo";
-import { buildAppointmentLifecycleFields, canTransitionAppointmentStatus, type AppointmentFinancialQuote } from "@/lib/appointments/domain";
+import {
+  buildAppointmentLifecycleFields,
+  canTransitionAppointmentStatus,
+  isScheduledAppointmentStatus,
+  type AppointmentFinancialQuote
+} from "@/lib/appointments/domain";
 import {
   CompensationSnapshotRecord,
   OwnerAnalyticsSnapshotRecord,
@@ -92,6 +97,15 @@ export interface CancelAppointmentMutationInput {
   reason?: string;
 }
 
+export interface RescheduleAppointmentMutationInput {
+  appointmentId: string;
+  expectedRevision: number;
+  appointmentTime: string;
+  actorRole: Extract<LiveActorRole, "owner" | "manager" | "front_desk" | "client">;
+  actorEmail?: string;
+  reason?: string;
+}
+
 export interface LiveMutationSuccess {
   appointment: LiveAppointmentRecord;
   snapshot: LiveOperationsSnapshot;
@@ -103,7 +117,7 @@ export class LiveOperationConflictError extends Error {
   constructor(
     message: string,
     readonly latestAppointment: LiveAppointmentRecord,
-    readonly code: "stale_revision" | "invalid_transition" | "schedule_conflict" | "invalid_cancellation"
+    readonly code: "stale_revision" | "invalid_transition" | "schedule_conflict" | "invalid_cancellation" | "invalid_reschedule"
   ) {
     super(message);
     this.name = "LiveOperationConflictError";
@@ -185,8 +199,9 @@ function createWorkflowActivity(
 
 function createSeedActivity(appointment: Appointment): FlowActivity | null {
   switch (appointment.status) {
+    case "confirmed":
     case "booked":
-      return createWorkflowActivity(appointment, "client", "booking", `${appointment.id} is booked and awaiting check-in`, appointment.start, "Client booked appointment");
+      return createWorkflowActivity(appointment, "client", "booking", `${appointment.id} is confirmed and awaiting check-in`, appointment.start, "Client booked appointment");
     case "checked_in":
       return createWorkflowActivity(appointment, "front_desk", "check_in", `${appointment.id} is checked in and waiting on the chair`, appointment.start, "Front desk checked in client");
     case "in_service":
@@ -338,7 +353,7 @@ function nextStatusForAction(action: AppointmentLifecycleAction): AppointmentSta
     case "service_complete":
       return "completed";
     default:
-      return "booked";
+      return "confirmed";
   }
 }
 
@@ -401,10 +416,20 @@ function assertCancelable(appointment: LiveAppointmentRecord) {
   }
 }
 
+function assertReschedulable(appointment: LiveAppointmentRecord) {
+  if (!isScheduledAppointmentStatus(appointment.status)) {
+    throw new LiveOperationConflictError(
+      `Appointment ${appointment.id} is ${appointment.status.replaceAll("_", " ")} and can no longer be rescheduled.`,
+      appointment,
+      "invalid_reschedule"
+    );
+  }
+}
+
 function createMutationActivity(
   appointment: LiveAppointmentRecord,
   actorRole: LiveActorRole,
-  action: AppointmentLifecycleAction | "booking" | "checkout" | "cancel",
+  action: AppointmentLifecycleAction | "booking" | "reschedule" | "checkout" | "cancel",
   createdAt: string,
   amountCollected = 0,
   tipAmount = 0
@@ -418,6 +443,15 @@ function createMutationActivity(
         `${appointment.id} reserved ${getService(appointment.serviceId)?.name ?? appointment.serviceId}`,
         createdAt,
         "Client booked appointment"
+      );
+    case "reschedule":
+      return createWorkflowActivity(
+        appointment,
+        actorRole,
+        "reschedule",
+        `${appointment.id} moved to ${appointment.start}`,
+        createdAt,
+        "Appointment rescheduled"
       );
     case "check_in":
       return createWorkflowActivity(
@@ -622,7 +656,7 @@ export function bookAppointmentInSnapshot(snapshot: LiveOperationsSnapshot, inpu
     clientId,
     serviceId: input.serviceId,
     confirmationCode: input.confirmationCode,
-    status: "booked",
+    status: "confirmed",
     start: start.toISOString(),
     end: end.toISOString(),
     chair: "Front desk assign",
@@ -637,7 +671,7 @@ export function bookAppointmentInSnapshot(snapshot: LiveOperationsSnapshot, inpu
     grandTotal: quote.grandTotal,
     balanceDue: quote.balanceDue,
     tipAmount: quote.tipTotal,
-    note: "Booked from client flow",
+    note: "Confirmed from client flow",
     internalNotes: input.internalNotes,
     bookingSource: input.bookingSource ?? "booking",
     membershipId: input.membershipId,
@@ -739,6 +773,74 @@ export function transitionAppointmentInSnapshot(
           : "service_complete"
   };
   const activity = createMutationActivity(nextAppointment, input.actorRole, input.action, now);
+  const nextSnapshot = applyPersistenceArtifacts(
+    {
+      ...snapshot,
+      fetchedAt: now,
+      appointments: sortAppointments(
+        snapshot.appointments.map((entry) => (entry.id === nextAppointment.id ? nextAppointment : entry))
+      )
+    },
+    nextAppointment,
+    activity
+  );
+
+  return {
+    appointment: nextAppointment,
+    snapshot: nextSnapshot
+  };
+}
+
+export function rescheduleAppointmentInSnapshot(
+  snapshot: LiveOperationsSnapshot,
+  input: RescheduleAppointmentMutationInput
+): LiveMutationSuccess {
+  const appointment = snapshot.appointments.find((entry) => entry.id === input.appointmentId);
+  if (!appointment) {
+    throw new Error(`Appointment ${input.appointmentId} was not found.`);
+  }
+
+  assertRevision(appointment, input.expectedRevision);
+  assertReschedulable(appointment);
+
+  const start = new Date(input.appointmentTime);
+  if (Number.isNaN(start.getTime())) {
+    throw new LiveOperationConflictError(
+      `Appointment ${appointment.id} could not be rescheduled because the new start time is invalid.`,
+      appointment,
+      "invalid_reschedule"
+    );
+  }
+
+  const durationMs = Math.max(new Date(appointment.end).getTime() - new Date(appointment.start).getTime(), 0);
+  const end = new Date(start.getTime() + durationMs);
+  const conflictingAppointment = hasSchedulingConflict(
+    snapshot.appointments,
+    appointment.barberId,
+    appointment.id,
+    start.toISOString(),
+    end.toISOString()
+  );
+  if (conflictingAppointment) {
+    throw new LiveOperationConflictError(
+      "The selected time is no longer available with this barber.",
+      conflictingAppointment,
+      "schedule_conflict"
+    );
+  }
+
+  const now = new Date().toISOString();
+  const nextAppointment: LiveAppointmentRecord = {
+    ...appointment,
+    start: start.toISOString(),
+    end: end.toISOString(),
+    revision: appointment.revision + 1,
+    updatedAt: now,
+    note: input.reason ? `Appointment rescheduled: ${input.reason}` : "Appointment rescheduled",
+    lastActorRole: input.actorRole,
+    lastEventType: "reschedule"
+  };
+  const activity = createMutationActivity(nextAppointment, input.actorRole, "reschedule", now);
   const nextSnapshot = applyPersistenceArtifacts(
     {
       ...snapshot,

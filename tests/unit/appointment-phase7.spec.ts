@@ -10,6 +10,7 @@ import {
   bookAppointmentInSnapshot,
   cancelAppointmentInSnapshot,
   createInitialLiveOperationsSnapshot,
+  rescheduleAppointmentInSnapshot,
   transitionAppointmentInSnapshot
 } from "@/lib/operations/live-state";
 
@@ -152,6 +153,7 @@ describe("phase 7 appointment lifecycle snapshot rules", () => {
     });
 
     expect(result.appointment.confirmationCode).toBe("ABC123TEST");
+    expect(result.appointment.status).toBe("confirmed");
     expect(result.appointment.shopId).toBe("loc-ybor");
     expect(result.appointment.membershipId).toBe("membership-1");
     expect(result.appointment.createdBy).toBe("profile-1");
@@ -238,5 +240,71 @@ describe("phase 7 appointment lifecycle snapshot rules", () => {
 
     expect(cancelled.appointment.cancelledAt).toBeTruthy();
     expect(cancelled.appointment.cancellationReason).toBe("Client stepped out before service");
+  });
+
+  it("reschedules only confirmed-equivalent appointments into open slots", () => {
+    let snapshot = createInitialLiveOperationsSnapshot();
+    const booking = bookAppointmentInSnapshot(snapshot, {
+      locationId: "loc-ybor",
+      barberId: "barber-blaze",
+      serviceId: "srv-razor",
+      addOnIds: [],
+      appointmentTime: "2026-03-08T18:00:00-05:00",
+      clientName: "Avery Lane",
+      clientPhone: "8135550411"
+    });
+    snapshot = booking.snapshot;
+
+    const rescheduled = rescheduleAppointmentInSnapshot(snapshot, {
+      appointmentId: booking.appointment.id,
+      expectedRevision: booking.appointment.revision,
+      appointmentTime: "2026-03-08T20:00:00-05:00",
+      actorRole: "client",
+      reason: "Needs a later chair"
+    });
+
+    expect(rescheduled.appointment.status).toBe("confirmed");
+    expect(rescheduled.appointment.start).toBe("2026-03-09T01:00:00.000Z");
+    expect(rescheduled.appointment.revision).toBe(booking.appointment.revision + 1);
+    expect(rescheduled.appointment.lastEventType).toBe("reschedule");
+  });
+
+  it("blocks rescheduling into overlapping slots or after check-in", () => {
+    let snapshot = createInitialLiveOperationsSnapshot();
+    const booking = bookAppointmentInSnapshot(snapshot, {
+      locationId: "loc-ybor",
+      barberId: "barber-blaze",
+      serviceId: "srv-razor",
+      addOnIds: [],
+      appointmentTime: "2026-03-08T18:00:00-05:00",
+      clientName: "Avery Lane",
+      clientPhone: "8135550411"
+    });
+    snapshot = booking.snapshot;
+
+    expect(() =>
+      rescheduleAppointmentInSnapshot(snapshot, {
+        appointmentId: booking.appointment.id,
+        expectedRevision: booking.appointment.revision,
+        appointmentTime: "2026-03-08T12:15:00-05:00",
+        actorRole: "client"
+      })
+    ).toThrow(LiveOperationConflictError);
+
+    const checkedIn = transitionAppointmentInSnapshot(snapshot, {
+      appointmentId: booking.appointment.id,
+      expectedRevision: booking.appointment.revision,
+      action: "check_in",
+      actorRole: "front_desk"
+    });
+
+    expect(() =>
+      rescheduleAppointmentInSnapshot(checkedIn.snapshot, {
+        appointmentId: checkedIn.appointment.id,
+        expectedRevision: checkedIn.appointment.revision,
+        appointmentTime: "2026-03-08T20:00:00-05:00",
+        actorRole: "client"
+      })
+    ).toThrow(LiveOperationConflictError);
   });
 });

@@ -17,7 +17,7 @@ import type {
 import type { Appointment, Client } from "@/types/domain";
 
 const DEFAULT_REFERENCE_TIME = "2026-03-09T12:00:00-05:00";
-const ACTIVE_STATUSES = new Set<Appointment["status"]>(["booked", "checked_in", "in_service"]);
+const ACTIVE_STATUSES = new Set<Appointment["status"]>(["confirmed", "booked", "checked_in", "in_service"]);
 
 type ClientHistoryIntelligence = ClientIntelligenceSnapshotRecord & {
   lifetimeValue: number;

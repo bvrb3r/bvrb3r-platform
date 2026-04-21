@@ -48,7 +48,7 @@ import type {
   BillingInvoiceStatus,
   BillingInvoiceView
 } from "@/types/fintech";
-import type { UserAccount } from "@/types/domain";
+import type { AppointmentStatus, UserAccount } from "@/types/domain";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 
@@ -2390,7 +2390,7 @@ export async function buildBarberRevenueIntelligenceSummary(input: {
     totalAmount: appointment.totalAmount,
     balanceDue: appointment.balanceDue,
     tipAmount: appointment.financial.tipAmount,
-    status: appointment.status
+    status: appointment.status as AppointmentStatus
   }));
 
   const summary = buildBarberRevenueIntelligence(mappedAppointments, input.businessDate, subscription);
