@@ -81,6 +81,7 @@ function toQueryString(filters: Record<string, string | number | undefined>) {
 export function useMarketplaceDiscovery(filters: DiscoveryFilters, clientId?: string) {
   const queryString = toQueryString({
     query: filters.query,
+    category: filters.category,
     locationId: filters.locationId,
     styleTagId: filters.styleTagId,
     minRating: filters.minRating,
@@ -101,6 +102,7 @@ export function useMarketplaceDiscovery(filters: DiscoveryFilters, clientId?: st
 export function useMarketplaceMap(filters: DiscoveryFilters) {
   const queryString = toQueryString({
     query: filters.query,
+    category: filters.category,
     locationId: filters.locationId,
     styleTagId: filters.styleTagId,
     minRating: filters.minRating,

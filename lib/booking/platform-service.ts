@@ -960,22 +960,19 @@ function hydrateBarberAppointments(
 }
 
 async function readMarketplaceBundle() {
-  const [marketplaceProvider, engagementProvider, trustProvider, activationProvider] = await Promise.all([
+  const [marketplaceProvider, trustProvider, activationProvider] = await Promise.all([
     getMarketplaceProvider(),
-    getEngagementProvider(),
     getTrustProvider(),
     getMarketplaceActivationProvider()
   ]);
-  const [runtime, engagementState, trustState, activationState] = await Promise.all([
+  const [runtime, trustState, activationState] = await Promise.all([
     marketplaceProvider.readRuntime(),
-    engagementProvider.readState(),
     trustProvider.readState(),
     activationProvider.readState()
   ]);
 
   return {
     runtime,
-    engagementState,
     trustState,
     activationState
   };
@@ -1032,7 +1029,7 @@ export async function getClientHomePayload(clientId?: string) {
   if (!supabase) {
     const bundle = await readMarketplaceBundle();
     const discovery = decorateDiscoveryWithActivation(
-      buildDiscoveryPayload(bundle.runtime, bundle.engagementState, bundle.trustState, {
+      buildDiscoveryPayload(bundle.runtime, bundle.trustState, {
         locationId,
         maxDistanceMiles: 12,
         availability: "any"
@@ -1040,7 +1037,7 @@ export async function getClientHomePayload(clientId?: string) {
       bundle.activationState,
       bundle.trustState
     );
-    const nextAvailable = buildHaircutNowPayload(bundle.runtime, bundle.engagementState, clientId, locationId, bundle.trustState);
+    const nextAvailable = buildHaircutNowPayload(bundle.runtime, clientId, locationId, bundle.trustState);
     const favoriteBarber = clientProfile?.favoriteBarberReference
       ? discovery.find((result) => result.barberId === clientProfile.favoriteBarberReference)
       : undefined;
@@ -1100,7 +1097,7 @@ export async function searchBarbersAndShopsPayload(params: { query?: string; cat
   if (!supabase) {
     const bundle = await readMarketplaceBundle();
     const results = decorateDiscoveryWithActivation(
-      buildDiscoveryPayload(bundle.runtime, bundle.engagementState, bundle.trustState, {
+      buildDiscoveryPayload(bundle.runtime, bundle.trustState, {
         query: effectiveQuery,
         locationId,
         availability: "any",
@@ -1201,7 +1198,7 @@ export async function getBarberDetailsPayload(barberIdOrUsername: string) {
 
   const bundle = await readMarketplaceBundle();
   const username = resolveBarberUsername(bundle.runtime, barberIdOrUsername) ?? barberIdOrUsername;
-  const profile = buildPublicProfilePayload(bundle.runtime, bundle.engagementState, bundle.trustState, username);
+  const profile = buildPublicProfilePayload(bundle.runtime, bundle.trustState, username);
   if (!profile) {
     return null;
   }
@@ -1466,6 +1463,9 @@ export async function submitClientReview(input: ClientReviewInput) {
     .single();
 
   if (insertResult.error) {
+    if (insertResult.error.code === "23505") {
+      throw new ClientReviewError("A review has already been submitted for this appointment.", 409, "review_already_exists");
+    }
     throw new ClientReviewError("Unable to save this review right now.", 500, "review_persist_failed");
   }
 

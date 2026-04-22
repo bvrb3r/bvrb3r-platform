@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
-import { getEngagementProvider } from "@/lib/engagement/provider";
 import { decoratePublicProfileWithActivation } from "@/lib/marketplace/activation";
 import { getMarketplaceActivationProvider } from "@/lib/marketplace/activation-provider";
 import { buildPublicProfilePayload, getMarketplaceProvider } from "@/lib/marketplace/provider";
@@ -9,17 +8,15 @@ import { getTrustProvider } from "@/lib/trust/provider";
 export async function GET(_request: NextRequest, context: { params: Promise<{ username: string }> }) {
   const { username } = await context.params;
   const marketplaceProvider = await getMarketplaceProvider();
-  const engagementProvider = await getEngagementProvider();
   const trustProvider = await getTrustProvider();
   const activationProvider = await getMarketplaceActivationProvider();
-  const [runtime, engagementState, trustState, activationState, session] = await Promise.all([
+  const [runtime, trustState, activationState, session] = await Promise.all([
     marketplaceProvider.readRuntime(),
-    engagementProvider.readState(),
     trustProvider.readState(),
     activationProvider.readState(),
     getCurrentUserFromServer()
   ]);
-  const profile = buildPublicProfilePayload(runtime, engagementState, trustState, username);
+  const profile = buildPublicProfilePayload(runtime, trustState, username);
   if (!profile) return NextResponse.json({ error: "Barber profile not found." }, { status: 404 });
   const decoratedProfile = decoratePublicProfileWithActivation(profile, activationState);
   try {

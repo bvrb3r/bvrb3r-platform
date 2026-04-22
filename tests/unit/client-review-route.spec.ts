@@ -122,4 +122,23 @@ describe("client review route", () => {
     expect(response.status).toBe(409);
     expect(body.code).toBe("review_already_exists");
   });
+
+  it("returns the completed-appointment guard when a visit is reviewed too early", async () => {
+    submitClientReviewMock.mockRejectedValue(
+      new ClientReviewError("Reviews can only be submitted after an appointment is completed.", 409, "appointment_not_completed")
+    );
+
+    const response = await postClientReview(new Request("http://localhost:3000/api/client/reviews", {
+      method: "POST",
+      body: JSON.stringify({
+        appointmentId: "appt-5",
+        rating: 4,
+        message: "Too early."
+      })
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.code).toBe("appointment_not_completed");
+  });
 });

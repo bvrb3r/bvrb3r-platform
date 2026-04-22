@@ -19,7 +19,6 @@ import {
 } from "@/lib/marketplace/engine";
 import { buildBarberProofSignals, enrichPublicProfileWithProof, rankDiscoveryResults, replaceServicePopularity } from "@/lib/marketplace/insights";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import type { EngagementState } from "@/types/engagement";
 import type {
   Barber,
   BarberRankingInput,
@@ -37,6 +36,8 @@ import type {
 import type { TrustState } from "@/types/trust";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
+
+const round = (value: number) => Math.round(value * 100) / 100;
 
 export interface MarketplaceRuntimeData {
   state: MarketplaceState;
@@ -115,7 +116,6 @@ async function refreshDerivedSignals(supabase: SupabaseClient) {
     canonicalClientsResult,
     reviewsResult,
     followsResult,
-    reputationResult,
     visibilityResult,
     profilesResult,
     portfolioResult,
@@ -126,16 +126,15 @@ async function refreshDerivedSignals(supabase: SupabaseClient) {
     supabase.from("services").select("id, reference_code"),
     supabase.from("barbers").select("id, reference_code, app_approval_status, shop_approval_status"),
     supabase.from("clients").select("id, reference_code"),
-    supabase.from("reviews").select("barber_id, client_id, rating"),
+    supabase.from("reviews").select("appointment_id, barber_id, client_id, rating"),
     supabase.from("barber_follows").select("barber_reference"),
-    supabase.from("reputation_scores").select("barber_reference, overall_score, retention_score"),
     supabase.from("marketplace_visibility").select("barber_reference, visibility_state, featured_rank"),
     supabase.from("barber_profiles").select("barber_reference, next_available_at"),
     supabase.from("barber_portfolios").select("barber_reference, featured"),
     supabase.from("marketplace_conversion_events").select("event_type, barber_reference, source_kind")
   ]);
 
-  for (const result of [servicesResult, appointmentsResult, canonicalServicesResult, canonicalBarbersResult, canonicalClientsResult, reviewsResult, followsResult, reputationResult, visibilityResult, profilesResult, portfolioResult, conversionEventsResult]) {
+  for (const result of [servicesResult, appointmentsResult, canonicalServicesResult, canonicalBarbersResult, canonicalClientsResult, reviewsResult, followsResult, visibilityResult, profilesResult, portfolioResult, conversionEventsResult]) {
     if (result.error) throw result.error;
   }
 
@@ -152,6 +151,7 @@ async function refreshDerivedSignals(supabase: SupabaseClient) {
     starts_at: appointment.starts_at
   }));
   const reviewRows = tableRows(reviewsResult.data).map((review: any) => ({
+    appointment_reference: review.appointment_id,
     barber_reference: barberReferenceMap.get(review.barber_id) ?? review.barber_id,
     client_reference: clientReferenceMap.get(review.client_id) ?? review.client_id,
     rating: Number(review.rating ?? 0)
@@ -182,7 +182,6 @@ async function refreshDerivedSignals(supabase: SupabaseClient) {
 
   const followCounts = new Map<string, number>();
   tableRows(followsResult.data).forEach((row: any) => followCounts.set(row.barber_reference, (followCounts.get(row.barber_reference) ?? 0) + 1));
-  const reputationMap = new Map(tableRows(reputationResult.data).map((row: any) => [row.barber_reference, row]));
   const visibilityMap = new Map(tableRows(visibilityResult.data).map((row: any) => [row.barber_reference, row]));
   const profileMap = new Map(tableRows(profilesResult.data).map((row: any) => [row.barber_reference, row]));
   const portfolioMap = new Map<string, { featured: number; total: number }>();
@@ -199,38 +198,100 @@ async function refreshDerivedSignals(supabase: SupabaseClient) {
     )
     .map((row: any) => reference(row))
     .filter(Boolean);
+  const now = Date.now();
   const rankingRows = barberReferences.map((barberReference) => {
+    const barberAppointments = appointmentRows.filter((appointment: any) => appointment.barber_reference === barberReference);
     const barberServices = services.filter((service) => service.barberId === barberReference);
     const barberReviewRows = reviewRows.filter((review) => review.barber_reference === barberReference);
     const reviewCount = barberReviewRows.length;
     const averageRating = barberReviewRows.length ? barberReviewRows.reduce((sum, review) => sum + review.rating, 0) / barberReviewRows.length : 0;
+    const completedAppointments = barberAppointments.filter((appointment: any) => appointment.status === "completed");
+    const cancelledAppointments = barberAppointments.filter((appointment: any) => appointment.status === "cancelled" || appointment.status === "no_show");
+    const closedAppointments = [...completedAppointments, ...cancelledAppointments];
+    const completionRate = closedAppointments.length
+      ? Math.round((completedAppointments.length / closedAppointments.length) * 100)
+      : 0;
+    const cancellationRate = closedAppointments.length
+      ? Math.round((cancelledAppointments.length / closedAppointments.length) * 100)
+      : 0;
+    const uniqueCompletedClients = [...new Set(completedAppointments.map((appointment: any) => appointment.client_reference))];
+    const repeatClients = uniqueCompletedClients.filter((clientReference) =>
+      completedAppointments.filter((appointment: any) => appointment.client_reference === clientReference).length > 1
+    ).length;
+    const rebookingScore = uniqueCompletedClients.length
+      ? Math.round((repeatClients / uniqueCompletedClients.length) * 100)
+      : 0;
     const popularityScore = barberServices.reduce((sum, service) => sum + (servicePopularity.find((row) => row.service_reference === service.id)?.booking_count ?? 0), 0) * 6;
     const followCount = followCounts.get(barberReference) ?? 0;
-    const reputation = reputationMap.get(barberReference);
     const portfolio = portfolioMap.get(barberReference) ?? { featured: 0, total: 0 };
-    const nextAvailableAt = profileMap.get(barberReference)?.next_available_at ? new Date(profileMap.get(barberReference).next_available_at).getTime() : Date.now();
+    const nextAvailableAt = profileMap.get(barberReference)?.next_available_at ? new Date(profileMap.get(barberReference).next_available_at).getTime() : now;
     const availabilityScore = Math.max(0, 18 - Math.min((nextAvailableAt - Date.now()) / 3_600_000, 18));
     const visibility = visibilityMap.get(barberReference);
     const bookingClicks = conversionRows.filter((row: any) => row.barber_reference === barberReference && row.event_type === "booking_cta_clicked").length;
     const bookingsCreated = conversionRows.filter((row: any) => row.barber_reference === barberReference && row.event_type === "booking_created").length;
     const conversionScore = bookingClicks ? (bookingsCreated / bookingClicks) * 100 : bookingsCreated * 10;
-    const rankingScore = averageRating * 22 + reviewCount * 0.18 + followCount * 4 + Number(reputation?.overall_score ?? 0) * 0.6 + popularityScore + availabilityScore + portfolio.featured * 12 + portfolio.total * 4 + conversionScore + (visibility?.visibility_state === "featured" ? 18 - Number(visibility?.featured_rank ?? 0) : 6);
+    const latestActivityTimestamp = barberAppointments
+      .map((appointment: any) => new Date(appointment.starts_at).getTime())
+      .filter((value: number) => Number.isFinite(value))
+      .sort((left: number, right: number) => right - left)[0];
+    const daysSinceLastActivity = Number.isFinite(latestActivityTimestamp)
+      ? Math.max(0, Math.floor((now - latestActivityTimestamp) / 86_400_000))
+      : 999;
+    const activityRecencyScore = Math.max(0, 100 - daysSinceLastActivity * 8);
+    const reputationScore = round(
+      Math.max(
+        0,
+        Math.min(
+          100,
+          averageRating * 16
+          + reviewCount * 0.6
+          + completionRate * 0.28
+          - cancellationRate * 0.24
+        )
+      )
+    );
+    const rankingScore = round(
+      averageRating * 24
+      + reviewCount * 0.45
+      + completionRate * 0.72
+      - cancellationRate * 0.66
+      + activityRecencyScore * 0.55
+      + availabilityScore * 1.3
+      + popularityScore * 0.42
+      + rebookingScore * 0.4
+      + portfolio.featured * 12
+      + portfolio.total * 3
+      + conversionScore * 0.22
+      + followCount * 1.5
+      + (visibility?.visibility_state === "featured" ? 10 : 0)
+    );
     return {
       barber_reference: barberReference,
       distance_score: 0,
       average_rating_score: averageRating * 20,
       review_volume_score: reviewCount,
-      retention_score: Number(reputation?.retention_score ?? 0),
+      completion_rate: completionRate,
+      cancellation_rate: cancellationRate,
+      activity_recency_score: activityRecencyScore,
+      retention_score: rebookingScore,
       availability_score: availabilityScore,
       portfolio_engagement_score: portfolio.featured * 12 + portfolio.total * 4,
       follow_count: followCount,
-      reputation_score: Number(reputation?.overall_score ?? 0),
+      reputation_score: reputationScore,
       service_popularity_score: popularityScore,
-      rebooking_score: 0,
+      rebooking_score: rebookingScore,
       conversion_score: conversionScore,
       visibility_score: visibility?.visibility_state === "featured" ? 16 : 6,
       ranking_score: rankingScore,
-      label: visibility?.visibility_state === "featured" ? "Featured in marketplace" : "Visible in discovery",
+      label: visibility?.visibility_state === "featured"
+        ? "Featured in marketplace"
+        : completionRate >= 92 && reviewCount >= 8
+          ? "Trusted nearby"
+          : availabilityScore >= 14
+            ? "Open soon"
+            : activityRecencyScore >= 48
+              ? "Active this week"
+              : "Visible in discovery",
       updated_at: nowIso()
     };
   });
@@ -390,7 +451,7 @@ async function readSupabaseRuntime(supabase: SupabaseClient): Promise<Marketplac
     supabase.from("appointments").select("barber_id, location_id, status, starts_at, ends_at"),
     supabase.from("appointments").select("id, reference_code"),
     supabase.from("marketplace_service_popularity").select("service_reference, booking_count, revenue_generated, average_rating, repeat_rate, popularity_rank"),
-    supabase.from("barber_rankings").select("barber_reference, distance_score, average_rating_score, review_volume_score, retention_score, availability_score, portfolio_engagement_score, follow_count, reputation_score, service_popularity_score, rebooking_score, conversion_score, visibility_score, ranking_score, label"),
+    supabase.from("barber_rankings").select("barber_reference, distance_score, average_rating_score, review_volume_score, completion_rate, cancellation_rate, activity_recency_score, retention_score, availability_score, portfolio_engagement_score, follow_count, reputation_score, service_popularity_score, rebooking_score, conversion_score, visibility_score, ranking_score, label"),
     supabase.from("marketplace_conversion_events").select("event_type, barber_reference, username, client_reference, client_email, appointment_reference, location_reference, source_kind, source_reference, metadata, created_at"),
     supabase.from("marketplace_booking_attributions").select("appointment_reference, barber_reference, username, client_reference, client_email, location_reference, source_kind, matched_from, discovery_query, metadata, created_at")
   ]);
@@ -556,7 +617,7 @@ async function readSupabaseRuntime(supabase: SupabaseClient): Promise<Marketplac
         barberId: row.barber_reference,
         username: row.username,
         photoAccent: "#7cff00",
-        profilePhotoUrl: row.profile_photo_path ?? undefined,
+        profilePhotoUrl: row.profile_photo_url ?? row.profile_photo_path ?? undefined,
         yearsExperience: row.years_experience,
         shopId: row.shop_reference
           ?? indexRows.find((entry: any) => entry.barber_reference === row.barber_reference)?.shop_reference
@@ -578,7 +639,7 @@ async function readSupabaseRuntime(supabase: SupabaseClient): Promise<Marketplac
       barberPortfolios: tableRows(portfolios.data).map((row: any) => ({
         id: row.id,
         barberId: row.barber_reference,
-        imageUrl: row.storage_path,
+        imageUrl: row.image_url ?? row.storage_path,
         caption: row.caption,
         styleTagIds: row.style_tag_ids ?? [],
         featured: row.featured
@@ -652,6 +713,9 @@ async function readSupabaseRuntime(supabase: SupabaseClient): Promise<Marketplac
       distanceScore: Number(row.distance_score ?? 0),
       averageRatingScore: Number(row.average_rating_score ?? 0),
       reviewVolumeScore: Number(row.review_volume_score ?? 0),
+      completionRate: Number(row.completion_rate ?? 0),
+      cancellationRate: Number(row.cancellation_rate ?? 0),
+      activityRecencyScore: Number(row.activity_recency_score ?? 0),
       retentionScore: Number(row.retention_score ?? 0),
       availabilityScore: Number(row.availability_score ?? 0),
       portfolioEngagementScore: Number(row.portfolio_engagement_score ?? 0),
@@ -751,9 +815,24 @@ function createSupabaseProvider(supabase: SupabaseClient): MarketplaceProvider {
   };
 }
 
-export function enrichMarketplaceRuntime(runtime: MarketplaceRuntimeData, engagementState: EngagementState) {
-  const baseResults = searchMarketplace(runtime.state, {});
-  return buildBarberProofSignals({ discoveryResults: baseResults, engagementState, rankingInputs: runtime.rankingInputs, servicePopularity: runtime.servicePopularity, conversionEvents: runtime.conversionEvents, serviceIdsByBarber: getServiceRowsByBarber(runtime.state.services) });
+function buildMarketplaceProofSignals(
+  runtime: MarketplaceRuntimeData,
+  discoveryResults: DiscoveryResult[],
+  trustState?: TrustState
+) {
+  return buildBarberProofSignals({
+    discoveryResults,
+    rankingInputs: runtime.rankingInputs,
+    servicePopularity: runtime.servicePopularity,
+    conversionEvents: runtime.conversionEvents,
+    serviceIdsByBarber: getServiceRowsByBarber(runtime.state.services),
+    trustState
+  });
+}
+
+export function enrichMarketplaceRuntime(runtime: MarketplaceRuntimeData, trustState?: TrustState) {
+  const baseResults = searchMarketplace(runtime.state, {}, trustState);
+  return buildMarketplaceProofSignals(runtime, baseResults, trustState);
 }
 
 export async function getMarketplaceProvider(): Promise<MarketplaceProvider> {
@@ -766,16 +845,16 @@ export async function getMarketplaceProvider(): Promise<MarketplaceProvider> {
   return createSupabaseProvider(supabase);
 }
 
-export function buildDiscoveryPayload(runtime: MarketplaceRuntimeData, engagementState: EngagementState, trustState: TrustState | undefined, filters: DiscoveryFilters) {
+export function buildDiscoveryPayload(runtime: MarketplaceRuntimeData, trustState: TrustState | undefined, filters: DiscoveryFilters) {
   const discoveryResults = searchMarketplace(runtime.state, filters, trustState);
-  const proofSignals = buildBarberProofSignals({ discoveryResults, engagementState, rankingInputs: runtime.rankingInputs, servicePopularity: runtime.servicePopularity, conversionEvents: runtime.conversionEvents, serviceIdsByBarber: getServiceRowsByBarber(runtime.state.services), trustState });
+  const proofSignals = buildMarketplaceProofSignals(runtime, discoveryResults, trustState);
   return rankDiscoveryResults(discoveryResults, proofSignals);
 }
 
-export function buildPublicProfilePayload(runtime: MarketplaceRuntimeData, engagementState: EngagementState, trustState: TrustState | undefined, username: string): PublicBarberProfileView | null {
+export function buildPublicProfilePayload(runtime: MarketplaceRuntimeData, trustState: TrustState | undefined, username: string): PublicBarberProfileView | null {
   const profile = getPublicBarberProfileByUsername(runtime.state, username, trustState);
   if (!profile) return null;
-  const proofSignals = buildBarberProofSignals({ discoveryResults: searchMarketplace(runtime.state, {}, trustState), engagementState, rankingInputs: runtime.rankingInputs, servicePopularity: runtime.servicePopularity, conversionEvents: runtime.conversionEvents, serviceIdsByBarber: getServiceRowsByBarber(runtime.state.services), trustState });
+  const proofSignals = buildMarketplaceProofSignals(runtime, searchMarketplace(runtime.state, {}, trustState), trustState);
   const nextServices = replaceServicePopularity(profile.services, runtime.servicePopularity);
   const mostBookedService = [...nextServices].sort((left, right) => left.popularity.popularityRank - right.popularity.popularityRank || right.popularity.bookingCount - left.popularity.bookingCount)[0];
   return enrichPublicProfileWithProof({ ...profile, services: nextServices, mostBookedService }, proofSignals);
@@ -790,34 +869,6 @@ export function buildMapPayload(runtime: MarketplaceRuntimeData, filters: Discov
   return getMapDiscoveryMarkers(runtime.state, filters, trustState);
 }
 
-export function buildHaircutNowPayload(runtime: MarketplaceRuntimeData, engagementState: EngagementState, clientId?: string, locationId?: string, trustState?: TrustState) {
-  const baseline = getHaircutNowMatch(runtime.state, clientId, locationId, trustState);
-  if (!clientId || baseline?.matchedFrom === "favorite_shop") {
-    return baseline;
-  }
-
-  const followedBarberIds = engagementState.barberFollows.filter((follow) => follow.clientId === clientId).map((follow) => follow.barberId);
-  if (!followedBarberIds.length) {
-    return baseline;
-  }
-
-  const followedMatch = searchMarketplace(runtime.state, { locationId }, trustState)
-    .filter((result) => followedBarberIds.includes(result.barberId))
-    .sort((left, right) => new Date(left.nextAvailableAt).getTime() - new Date(right.nextAvailableAt).getTime())[0];
-  if (!followedMatch?.locationId) {
-    return baseline;
-  }
-
-  return {
-    barberId: followedMatch.barberId,
-    username: followedMatch.username,
-    barberName: followedMatch.barberName,
-    matchedFrom: "nearby" as const,
-    matchReason: "A barber you follow has the fastest trusted opening in the visible network right now.",
-    appointmentTime: followedMatch.nextAvailableAt,
-    locationId: followedMatch.locationId,
-    shopName: followedMatch.shopName,
-    priceFrom: followedMatch.priceRange[0],
-    rating: followedMatch.rating
-  };
+export function buildHaircutNowPayload(runtime: MarketplaceRuntimeData, clientId?: string, locationId?: string, trustState?: TrustState) {
+  return getHaircutNowMatch(runtime.state, clientId, locationId, trustState);
 }

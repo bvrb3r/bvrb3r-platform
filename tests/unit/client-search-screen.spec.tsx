@@ -233,4 +233,20 @@ describe("client search screen", () => {
       expect(replaceMock).toHaveBeenCalledWith(expect.stringContaining("verified=1"));
     });
   });
+
+  it("passes the selected service category into canonical marketplace discovery", async () => {
+    render(<ClientSearchScreen clientId="client-jordan" routeBase="/discover" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Haircuts/i }));
+
+    await waitFor(() => {
+      expect(useMarketplaceDiscoveryMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          category: "haircuts",
+          query: undefined
+        }),
+        "client-jordan"
+      );
+    });
+  });
 });

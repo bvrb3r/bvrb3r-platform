@@ -151,11 +151,19 @@ export function ClientSearchScreen({
 
   const deferredQuery = useDeferredValue(query);
   const trimmedQuery = deferredQuery.trim();
-  const combinedQuery = [trimmedQuery, serviceFilter].filter(Boolean).join(" ").trim();
-  const hasActiveSearchQuery = Boolean(trimmedQuery || serviceFilter || minRating || maxPrice || availability !== "any");
+  const hasActiveSearchQuery = Boolean(
+    trimmedQuery
+    || serviceFilter
+    || minRating
+    || maxPrice
+    || availability !== "any"
+    || specialty.trim()
+    || verifiedOnly
+  );
 
   const discoveryQuery = useMarketplaceDiscovery({
-    query: combinedQuery || undefined,
+    query: trimmedQuery || undefined,
+    category: serviceFilter || undefined,
     locationId: selectedLocationId || undefined,
     minRating,
     maxPrice,

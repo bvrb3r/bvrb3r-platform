@@ -218,16 +218,27 @@ export function visibleMarketplaceState(): MarketplaceState {
       distanceMiles: 0.2
     }
   );
+  state.barberPortfolios.push({
+    id: "portfolio-real-1",
+    barberId: "barber-real",
+    imageUrl: "https://cdn.bvrb3r.app/barbers/realbarber/look-1.jpg",
+    caption: "Fresh fade with clean lineup.",
+    styleTagIds: [],
+    featured: true
+  });
 
   return state;
 }
 
-export function realBarberRankingInput(): BarberRankingInput {
+export function realBarberRankingInput(overrides: Partial<BarberRankingInput> = {}): BarberRankingInput {
   return {
     barberId: "barber-real",
     distanceScore: 10,
     averageRatingScore: 9,
     reviewVolumeScore: 7,
+    completionRate: 94,
+    cancellationRate: 4,
+    activityRecencyScore: 82,
     retentionScore: 8,
     availabilityScore: 12,
     portfolioEngagementScore: 6,
@@ -238,7 +249,8 @@ export function realBarberRankingInput(): BarberRankingInput {
     conversionScore: 12,
     visibilityScore: 10,
     rankingScore: 85,
-    label: "Verified early supply"
+    label: "Verified early supply",
+    ...overrides
   };
 }
 

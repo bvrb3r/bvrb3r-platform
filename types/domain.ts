@@ -132,6 +132,9 @@ export interface BarberRankingInput {
   distanceScore: number;
   averageRatingScore: number;
   reviewVolumeScore: number;
+  completionRate?: number;
+  cancellationRate?: number;
+  activityRecencyScore?: number;
   retentionScore: number;
   availabilityScore: number;
   portfolioEngagementScore: number;
@@ -459,6 +462,7 @@ export interface LocationSearchIndexEntry {
 
 export interface DiscoveryFilters {
   query?: string;
+  category?: string;
   locationId?: string;
   styleTagId?: string;
   minRating?: number;

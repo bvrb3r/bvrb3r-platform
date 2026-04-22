@@ -125,6 +125,14 @@ describe("marketplace engine", () => {
     expect(results.some((result) => result.username === "realbarber")).toBe(true);
   });
 
+  it("supports canonical service-category filtering", () => {
+    const state = visibleMarketplaceState();
+    const trustState = approvedMarketplaceTrustState();
+
+    expect(searchMarketplace(state, { category: "haircuts" }, trustState).map((result) => result.username)).toContain("realbarber");
+    expect(searchMarketplace(state, { category: "products" }, trustState)).toEqual([]);
+  });
+
   it("hides blocked barbers from discovery and fails closed without trust state", () => {
     const state = visibleMarketplaceState();
     const trustState = approvedMarketplaceTrustState();
@@ -176,5 +184,14 @@ describe("marketplace engine", () => {
     expect(match).not.toBeNull();
     expect(match?.matchedFrom).toBe("favorite_shop");
     expect(match?.username).toBe("realbarber");
+  });
+
+  it("attaches canonical portfolio assets to the public barber profile", () => {
+    const state = visibleMarketplaceState();
+    const profile = getPublicBarberProfileByUsername(state, "realbarber", approvedMarketplaceTrustState());
+
+    expect(profile).not.toBeNull();
+    expect(profile?.portfolio).toHaveLength(1);
+    expect(profile?.portfolio[0]?.imageUrl).toContain("look-1.jpg");
   });
 });

@@ -731,6 +731,7 @@ function getBarberScore(result: DiscoveryResult, state: MarketplaceState) {
 export function searchMarketplace(state: MarketplaceState, filters: DiscoveryFilters, trustState?: TrustState) {
   const styleTagMap = getStyleTagMap(state);
   const normalizedQuery = filters.query?.trim().toLowerCase();
+  const normalizedCategory = filters.category?.trim().toLowerCase();
   const requestedLocationId = filters.locationId;
   const requestedStyleTag = filters.styleTagId;
   const results = filterVisibleMarketplaceBarbers(state, trustState)
@@ -761,6 +762,16 @@ export function searchMarketplace(state: MarketplaceState, filters: DiscoveryFil
       }
 
       if (requestedStyleTag && !services.some((service) => service.styleTagIds?.includes(requestedStyleTag))) {
+        return false;
+      }
+
+      if (
+        normalizedCategory
+        && !services.some((service) =>
+          service.category.toLowerCase().includes(normalizedCategory)
+          || service.name.toLowerCase().includes(normalizedCategory)
+        )
+      ) {
         return false;
       }
 

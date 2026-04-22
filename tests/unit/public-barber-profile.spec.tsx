@@ -85,4 +85,47 @@ describe("public barber profile", () => {
     expect(screen.getByText("No portfolio images yet.")).toBeInTheDocument();
     expect(screen.getByText("Reviews will appear here after completed appointments generate real client feedback.")).toBeInTheDocument();
   });
+
+  it("renders canonical portfolio media when real assets exist", () => {
+    render(
+      <PublicBarberProfile
+        profile={{
+          barber: {
+            id: "barber-wave",
+            name: "Wave Carter",
+            rating: 4.9
+          },
+          profile: {
+            username: "wave",
+            headline: "Precision fades that hold their shape.",
+            profilePhotoUrl: null,
+            photoAccent: "#7cff00",
+            specialties: ["Precision fades"],
+            badges: []
+          },
+          proof: {
+            reviewScore: 4.9,
+            reviewCount: 120,
+            verificationLabels: []
+          },
+          priceRange: [55, 70],
+          nextAvailableAt: "2026-04-28T14:00:00.000Z",
+          shopLocations: [],
+          bookingCtaHref: "/booking/new?barberId=barber-wave",
+          services: [],
+          reviews: [],
+          portfolio: [
+            {
+              id: "asset-1",
+              imageUrl: "https://cdn.bvrb3r.app/barbers/wave/look-1.jpg",
+              caption: "Sharp taper finish."
+            }
+          ]
+        } as any}
+      />
+    );
+
+    expect(screen.getByRole("img", { name: /sharp taper finish/i })).toBeInTheDocument();
+    expect(screen.queryByText("No portfolio images yet.")).not.toBeInTheDocument();
+  });
 });
