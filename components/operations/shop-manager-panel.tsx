@@ -71,7 +71,7 @@ export function ShopManagerPanel({
         <div>
           <p className="surface-label">AI shop manager</p>
           <p className="mt-2 text-sm text-white/58">
-            Suggestions only. Every recommendation is grounded in canonical queue, booking, schedule, and owner intelligence data.
+            Suggestions only. Every recommendation is grounded in canonical queue, booking, schedule, and money data.
           </p>
         </div>
         <div className="flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.22em]">

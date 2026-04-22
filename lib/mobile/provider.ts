@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import { demoDeepLinks, demoDeviceRegistrations, demoNativePushTokens, demoNotificationDeliveryAttempts, demoPushSubscriptions } from "@/lib/data/mobile";
 import {
+  createEmptyMobileState,
   getActiveNativePushTokens,
   getActivePushSubscriptions,
   getMobileActivationSummary,
@@ -424,7 +425,6 @@ async function upsertSupabasePreference(supabase: SupabaseClient, actor: MobileA
 }
 
 async function readSupabaseState(supabase: SupabaseClient): Promise<MobileState> {
-  await ensureSupabaseSeeded(supabase);
   const [devices, subscriptions, nativeTokens, attempts, deepLinks] = await Promise.all([
     supabase.from("device_registrations").select("*").order("updated_at", { ascending: false }),
     supabase.from("push_subscriptions").select("*").order("updated_at", { ascending: false }),
@@ -516,6 +516,49 @@ function createDemoProvider(): MobileProvider {
     },
     async getActiveNativePushTokens(userEmail) {
       return clone(getActiveNativePushTokens(getMobileState(), userEmail));
+    }
+  };
+}
+
+function createEmptyProvider(): MobileProvider {
+  const unavailable = (): never => {
+    throw new Error("Mobile activation data is unavailable because Supabase is not configured.");
+  };
+
+  return {
+    kind: "supabase",
+    async readState() {
+      return createEmptyMobileState();
+    },
+    async readAttempts() {
+      return [];
+    },
+    async readNativeTokens() {
+      return [];
+    },
+    async getSummary(actor) {
+      return getMobileActivationSummary(createEmptyMobileState(), actor);
+    },
+    async syncDeviceActivation() {
+      return unavailable();
+    },
+    async registerNativePushToken() {
+      return unavailable();
+    },
+    async revokeNativePushToken() {
+      return unavailable();
+    },
+    async revokePushSubscription() {
+      return unavailable();
+    },
+    async recordDeepLink() {
+      return unavailable();
+    },
+    async getActivePushSubscriptions() {
+      return [];
+    },
+    async getActiveNativePushTokens() {
+      return [];
     }
   };
 }
@@ -670,12 +713,12 @@ function createSupabaseProvider(supabase: SupabaseClient): MobileProvider {
 
 export async function getMobileProvider(): Promise<MobileProvider> {
   if (!isSupabaseEnabled()) {
-    return createDemoProvider();
+    return createEmptyProvider();
   }
 
   const supabase = createSupabaseAdminClient();
   if (!supabase) {
-    return createDemoProvider();
+    return createEmptyProvider();
   }
 
   return createSupabaseProvider(supabase);

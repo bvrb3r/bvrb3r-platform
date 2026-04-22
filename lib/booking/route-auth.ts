@@ -56,6 +56,15 @@ export function toBookingViewer(user: UserAccount): LiveOperationsViewer | null 
     };
   }
 
+  if (user.role === "commission_barber" || user.role === "booth_rent_barber") {
+    return {
+      role: user.role,
+      barberId: user.barberId,
+      locationIds: user.locationIds,
+      email: user.email
+    };
+  }
+
   if (user.role === "owner" || user.role === "manager" || user.role === "front_desk") {
     return {
       role: user.role,

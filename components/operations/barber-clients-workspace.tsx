@@ -29,6 +29,12 @@ function formatDateLabel(iso: string | null) {
   }).format(new Date(iso));
 }
 
+function formatStatusLabel(status: string) {
+  return status
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (segment) => segment.toUpperCase());
+}
+
 function getClientTags(client: BarberClientRelationshipView) {
   const tags: string[] = [];
   if (client.intelligence.loyaltySegment === "vip") {
@@ -161,6 +167,11 @@ export function BarberClientsWorkspace({ barberName }: { barberName: string }) {
                   <p className="mt-1 truncate text-sm text-white/55">
                     {client.latestServiceName ?? "Service history unavailable"}
                   </p>
+                  {client.lastAppointmentNote ? (
+                    <p className="mt-2 truncate text-sm text-white/46">
+                      Last note: {client.lastAppointmentNote}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {getClientTags(client).map((tag) => (
@@ -287,6 +298,60 @@ export function BarberClientsWorkspace({ barberName }: { barberName: string }) {
               <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
                 <p className="surface-label">Next best action</p>
                 <p className="mt-3 text-sm leading-6 text-white/66">{selectedClient.intelligence.nextBestAction}</p>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
+                <p className="surface-label">Client contact</p>
+                <p className="mt-3 text-sm text-white/74">{selectedClient.email || "No email on file"}</p>
+                <p className="mt-2 text-sm text-white/58">{selectedClient.phone || "No phone on file"}</p>
+              </div>
+              <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
+                <p className="surface-label">Client notes</p>
+                {selectedClient.clientNotes?.length ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {selectedClient.clientNotes.slice(0, 4).map((note) => (
+                      <span key={note} className="status-pill text-white/72">
+                        {note}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-3 text-sm leading-6 text-white/58">
+                    No profile notes are on file for this client yet.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-[22px] border border-white/8 bg-black/20 p-4">
+              <p className="surface-label">Recent visits</p>
+              <div className="mt-3 space-y-3">
+                {selectedClient.recentVisits?.length ? (
+                  selectedClient.recentVisits.map((visit) => (
+                    <div
+                      key={visit.appointmentId}
+                      className="flex flex-wrap items-start justify-between gap-3 rounded-[18px] border border-white/8 bg-black/18 px-3 py-3"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-white">{visit.serviceName ?? "Service unavailable"}</p>
+                        <p className="mt-1 text-sm text-white/58">{formatDateLabel(visit.startsAt)}</p>
+                        <p className="mt-2 text-sm text-white/52">
+                          {visit.note ?? "No appointment note captured for this visit."}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <span className="status-pill text-white/72">{formatStatusLabel(visit.status)}</span>
+                        <p className="mt-2 text-sm font-medium text-white">{currency(visit.totalAmount)}</p>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm leading-6 text-white/58">
+                    Recent appointment-linked history will appear here as this client books and completes services with this barber.
+                  </p>
+                )}
               </div>
             </div>
 

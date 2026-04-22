@@ -1,8 +1,4 @@
 import { getShopDashboardPayload } from "@/lib/booking/platform-service";
-import { demoShops } from "@/lib/data/marketplace";
-import { getOwnerIntelligenceSummary } from "@/lib/engagement/engine";
-import { getEngagementProvider } from "@/lib/engagement/provider";
-import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
 import { readPlatformShopControlState } from "@/lib/platform-admin/service";
 import { getQueueWorkspacePayload } from "@/lib/queue/service";
 import type { LiveOperationsViewer } from "@/lib/operations/live-state";
@@ -59,11 +55,40 @@ function pushSuggestion(list: ShopManagerSuggestion[], suggestion: ShopManagerSu
   list.push(suggestion);
 }
 
+function getTopPerformingBarber(
+  dashboard: ShopDashboardPayload
+): { barberId: string; barberName: string; revenue: number } | null {
+  const totals = new Map<string, { barberName: string; revenue: number }>();
+
+  for (const appointment of dashboard.appointments) {
+    if (appointment.status !== "completed") {
+      continue;
+    }
+
+    const current = totals.get(appointment.barberId) ?? {
+      barberName: appointment.display.barberName,
+      revenue: 0
+    };
+
+    current.revenue += appointment.totalAmount + appointment.tipAmount;
+    totals.set(appointment.barberId, current);
+  }
+
+  const ranked = [...totals.entries()]
+    .map(([barberId, value]) => ({
+      barberId,
+      barberName: value.barberName,
+      revenue: value.revenue
+    }))
+    .sort((left, right) => right.revenue - left.revenue);
+
+  return ranked[0] ?? null;
+}
+
 function buildOperationalSuggestions(input: {
   role: "owner" | "manager" | "front_desk";
   dashboard: ShopDashboardPayload;
   queuePayload: Awaited<ReturnType<typeof getQueueWorkspacePayload>>;
-  ownerIntelligence?: ReturnType<typeof getOwnerIntelligenceSummary> | null;
 }) {
   const suggestions: ShopManagerSuggestion[] = [];
   const hasOperationalBaseline = Boolean(
@@ -87,6 +112,7 @@ function buildOperationalSuggestions(input: {
 
     return appointment.start.slice(0, 10) === businessDate && isWithinNextMinutes(appointment.start, 120);
   });
+  const topBarber = input.role === "front_desk" ? null : getTopPerformingBarber(input.dashboard);
 
   pushSuggestion(suggestions, nextWalkIn && nextWalkIn.bestAvailableBarber ? {
     id: `walk-in-${nextWalkIn.id}`,
@@ -110,8 +136,8 @@ function buildOperationalSuggestions(input: {
     priority: input.queuePayload.entries.length ? "high" : "medium",
     title: `${openChairs[0].name} has an open chair now`,
     detail: input.queuePayload.entries.length
-      ? `Use the open chair to absorb live queue pressure before wait times rise.`
-      : `There is live capacity right now. Use it for a walk-in or quick booking recovery.`,
+      ? "Use the open chair to absorb live queue pressure before wait times rise."
+      : "There is live capacity right now. Use it for a walk-in or quick booking recovery.",
     audience: input.role,
     safeAutomation: false,
     action: {
@@ -131,8 +157,8 @@ function buildOperationalSuggestions(input: {
     safeAutomation: false,
     action: {
       kind: "link",
-      label: input.role === "front_desk" ? "Open schedule" : "Open growth view",
-      href: input.role === "front_desk" ? "/appointments" : "/reports?view=growth"
+      label: input.role === "front_desk" ? "Open schedule" : "Open team",
+      href: input.role === "front_desk" ? "/appointments" : "/team"
     }
   } : null);
 
@@ -151,38 +177,20 @@ function buildOperationalSuggestions(input: {
     }
   } : null);
 
-  if (input.role !== "front_desk" && input.ownerIntelligence) {
-    const topBarber = input.ownerIntelligence.topBarbers[0];
-    pushSuggestion(suggestions, topBarber ? {
-      id: `top-performer-${topBarber.barberId}`,
-      type: "top_performer",
-      priority: "medium",
-      title: `${topBarber.barberName} is leading the shop today`,
-      detail: `${topBarber.barberName} is pacing ${topBarber.revenue.toFixed(0)} in tracked revenue with the strongest live performance signal in scope.`,
-      audience: input.role,
-      safeAutomation: false,
-      action: {
-        kind: "link",
-        label: "Open team",
-        href: "/team"
-      }
-    } : null);
-
-    pushSuggestion(suggestions, input.ownerIntelligence.retention.rebookingOpportunities ? {
-      id: "retention-opportunity",
-      type: "retention_opportunity",
-      priority: "medium",
-      title: `${input.ownerIntelligence.retention.rebookingOpportunities} repeat clients are due back`,
-      detail: "There is a live retention opportunity in the shop right now. Use campaigns or outreach to fill future chair demand before it softens.",
-      audience: input.role,
-      safeAutomation: false,
-      action: {
-        kind: "link",
-        label: "Open growth",
-        href: "/reports?view=growth"
-      }
-    } : null);
-  }
+  pushSuggestion(suggestions, topBarber && topBarber.revenue > 0 ? {
+    id: `top-performer-${topBarber.barberId}`,
+    type: "top_performer",
+    priority: "medium",
+    title: `${topBarber.barberName} is leading the shop today`,
+    detail: `${topBarber.barberName} has the strongest posted revenue signal in the current owner scope at ${topBarber.revenue.toFixed(0)}.`,
+    audience: input.role,
+    safeAutomation: false,
+    action: {
+      kind: "link",
+      label: "Open team",
+      href: "/team"
+    }
+  } : null);
 
   if (!suggestions.length && hasOperationalBaseline) {
     suggestions.push({
@@ -203,7 +211,7 @@ function buildOperationalSuggestions(input: {
 
   return {
     openChairs: openChairs.length,
-    recoveryOpportunities: suggestions.filter((suggestion) => suggestion.type === "fill_slot_recovery" || suggestion.type === "retention_opportunity").length,
+    recoveryOpportunities: suggestions.filter((suggestion) => suggestion.type === "fill_slot_recovery").length,
     suggestions: suggestions.slice(0, 5)
   };
 }
@@ -213,9 +221,16 @@ export async function getShopManagerPayload(user: UserAccount): Promise<ShopMana
     throw new Error("Only owner, manager, or front desk can use the shop manager.");
   }
 
-  const shopIds = demoShops
-    .filter((shop) => shop.locationIds.some((locationId) => user.locationIds.includes(locationId)))
-    .map((shop) => shop.id);
+  const [dashboard, queuePayload] = await Promise.all([
+    getShopDashboardPayload(toViewer(user)),
+    getQueueWorkspacePayload(user)
+  ]);
+
+  const shopIds = [...new Set([
+    user.ownedShopId ?? null,
+    ...user.locationIds,
+    ...dashboard.locations.map((location) => location.id)
+  ].filter((value): value is string => Boolean(value)))];
   const shopControls = await Promise.all(shopIds.map((shopId) => readPlatformShopControlState(shopId).catch(() => null)));
   const aiManagerEnabled = !shopControls.length || shopControls.some((control) => control?.shopStatus === "active" && control.aiManagerEnabled);
 
@@ -234,32 +249,10 @@ export async function getShopManagerPayload(user: UserAccount): Promise<ShopMana
     };
   }
 
-  const [dashboard, queuePayload] = await Promise.all([
-    getShopDashboardPayload(toViewer(user)),
-    getQueueWorkspacePayload(user)
-  ]);
-
-  let ownerIntelligence: ReturnType<typeof getOwnerIntelligenceSummary> | null = null;
-  if (user.role === "owner" || user.role === "manager") {
-    const [engagementProvider, operationsProvider] = await Promise.all([
-      getEngagementProvider(),
-      getLiveOperationsProvider()
-    ]);
-    const [state, snapshot] = await Promise.all([
-      engagementProvider.readState(),
-      operationsProvider.readSnapshot(toViewer(user))
-    ]);
-    ownerIntelligence = getOwnerIntelligenceSummary(state, snapshot, user.locationIds, {
-      role: user.role,
-      userEmail: user.email
-    });
-  }
-
   const operational = buildOperationalSuggestions({
     role: user.role,
     dashboard,
-    queuePayload,
-    ownerIntelligence
+    queuePayload
   });
 
   return {

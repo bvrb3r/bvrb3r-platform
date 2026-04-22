@@ -3,12 +3,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   useProfileMediaWorkspaceQueryMock,
-  useFintechManagementQueryMock,
-  useOwnerEngagementIntelligenceMock
+  useFintechManagementQueryMock
 } = vi.hoisted(() => ({
   useProfileMediaWorkspaceQueryMock: vi.fn(),
-  useFintechManagementQueryMock: vi.fn(),
-  useOwnerEngagementIntelligenceMock: vi.fn()
+  useFintechManagementQueryMock: vi.fn()
 }));
 
 vi.mock("@/lib/profile/client", () => ({
@@ -17,10 +15,6 @@ vi.mock("@/lib/profile/client", () => ({
 
 vi.mock("@/lib/fintech/client", () => ({
   useFintechManagementQuery: useFintechManagementQueryMock
-}));
-
-vi.mock("@/lib/engagement/client", () => ({
-  useOwnerEngagementIntelligence: useOwnerEngagementIntelligenceMock
 }));
 
 vi.mock("@/components/operations/kiosk-control-panel", () => ({
@@ -34,7 +28,6 @@ describe("owner settings workspace", () => {
   beforeEach(() => {
     useProfileMediaWorkspaceQueryMock.mockReset();
     useFintechManagementQueryMock.mockReset();
-    useOwnerEngagementIntelligenceMock.mockReset();
 
     useProfileMediaWorkspaceQueryMock.mockReturnValue({
       isLoading: false,
@@ -57,92 +50,47 @@ describe("owner settings workspace", () => {
       error: null,
       data: {
         summary: {
-          readyAccounts: 1
+          readyAccounts: 1,
+          needsAttentionAccounts: 0,
+          blockedRoutingRecords: 0,
+          readyForPayoutAmount: 95
+        },
+        memberships: []
+      }
+    });
+  });
+
+  it("renders the owner settings lane from canonical profile and fintech posture", () => {
+    render(<OwnerSettingsWorkspace user={resolveDemoUser("owner@bvrb3r.demo")} />);
+
+    expect(screen.getByText("Owner approval still needs attention")).toBeInTheDocument();
+    expect(screen.getByText(/Current status:/i)).toBeInTheDocument();
+    expect(screen.getByText("$95 is currently ready for payout in the owner scope.")).toBeInTheDocument();
+    expect(screen.getByTestId("kiosk-control-panel-stub")).toBeInTheDocument();
+  });
+
+  it("shows a verified posture when owner and shop approvals are clear", () => {
+    useFintechManagementQueryMock.mockReturnValue({
+      isLoading: false,
+      error: null,
+      data: {
+        summary: {
+          readyAccounts: 2,
+          needsAttentionAccounts: 0,
+          blockedRoutingRecords: 0,
+          readyForPayoutAmount: 210
         },
         memberships: []
       }
     });
 
-    useOwnerEngagementIntelligenceMock.mockReturnValue({
-      isLoading: false,
-      error: null,
-      data: {
-        trust: {
-          shopStatuses: [],
-          shopTrustBadges: [],
-          openReports: 0,
-          openDisputes: 0
-        },
-        monetization: {
-          subscriptions: {
-            active: 0,
-            billingAttention: 0,
-            subscriptionRevenue: 0
-          }
-        },
-        recentNotifications: []
-      }
-    });
-  });
+    render(<OwnerSettingsWorkspace user={{
+      ...resolveDemoUser("owner@bvrb3r.demo"),
+      appApprovalStatus: "approved",
+      shopApprovalStatus: "approved"
+    }} />);
 
-  it("does not overstate verification when trust status is missing", () => {
-    render(<OwnerSettingsWorkspace user={resolveDemoUser("owner@bvrb3r.demo")} />);
-
-    expect(screen.getByText("Verification still needs attention")).toBeInTheDocument();
-    expect(screen.getAllByText("Trust badges will appear here as verification clears.").length).toBeGreaterThan(0);
-    expect(screen.getByTestId("kiosk-control-panel-stub")).toBeInTheDocument();
-  });
-
-  it("shows canonical shop activation blockers when the owner lane is not eligible", () => {
-    useOwnerEngagementIntelligenceMock.mockReturnValue({
-      isLoading: false,
-      error: null,
-      data: {
-        trust: {
-          shopStatuses: [{
-            shopId: "shop-bvrb3r",
-            shopName: "BVRB3R Ybor",
-            status: "pending",
-            badgeLabel: "Verification in motion",
-            verifiedCategories: [],
-            verificationDecision: {
-              canonicalOverallStatus: "needs_update",
-              gates: {
-                shop_activation: {
-                  gate: "shop_activation",
-                  allowed: false,
-                  codes: ["business_verification_required"],
-                  reasons: ["Business verification must be approved for this shop lane."],
-                  degraded: false
-                },
-                payout: {
-                  gate: "payout",
-                  allowed: false,
-                  codes: ["payout_verification_required"],
-                  reasons: ["Payout verification must be approved for this shop lane."],
-                  degraded: false
-                }
-              }
-            }
-          }],
-          shopTrustBadges: [],
-          openReports: 0,
-          openDisputes: 0
-        },
-        monetization: {
-          subscriptions: {
-            active: 0,
-            billingAttention: 0,
-            subscriptionRevenue: 0
-          }
-        },
-        recentNotifications: []
-      }
-    });
-
-    render(<OwnerSettingsWorkspace user={resolveDemoUser("owner@bvrb3r.demo")} />);
-
-    expect(screen.getByText("Verification still needs attention")).toBeInTheDocument();
-    expect(screen.getByText("Business verification must be approved for this shop lane.")).toBeInTheDocument();
+    expect(screen.getByText("Verified and payout-ready posture")).toBeInTheDocument();
+    expect(screen.getByText("Current status: Approved • Shop approval Approved")).toBeInTheDocument();
   });
 });

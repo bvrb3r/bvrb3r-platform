@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { getSessionUser, toBookingViewer } from "@/lib/booking/route-auth";
+import { getSessionUser, toBookingViewer, toLifecycleActorRole } from "@/lib/booking/route-auth";
 import { recordBookingUpdatedPlatformEvents } from "@/lib/core/booking-events";
 import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
 import { LiveOperationConflictError, LiveOperationValidationError } from "@/lib/operations/live-state";
@@ -18,11 +18,10 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   }
 
   const user = await getSessionUser();
-  if (!(user.role === "client" || user.role === "front_desk" || user.role === "manager" || user.role === "owner")) {
+  const actorRole = toLifecycleActorRole(user.role);
+  if (!actorRole) {
     return NextResponse.json({ error: "You do not have access to reschedule this booking." }, { status: 403 });
   }
-
-  const actorRole = user.role;
   const viewer = toBookingViewer(user);
   if (!viewer) {
     return NextResponse.json({ error: "You do not have access to reschedule this booking." }, { status: 403 });

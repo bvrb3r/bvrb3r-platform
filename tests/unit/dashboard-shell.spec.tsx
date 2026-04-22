@@ -4,7 +4,7 @@ import { getDefaultRouteForUser, resolveDemoUser } from "@/lib/auth/demo-auth";
 
 describe("dashboard shell identity and navigation", () => {
   it.each([
-    ["owner@bvrb3r.demo", "Brandon Rivers", "Shop Owner", "Active role: Shop owner", ["Dashboard", "Team", "Schedule", "Money", "Growth", "Settings"]],
+    ["owner@bvrb3r.demo", "Brandon Rivers", "Shop Owner", "Active role: Shop owner", ["Dashboard", "Team", "Schedule", "Money", "Settings"]],
     ["manager@bvrb3r.demo", "Mia Torres", "Shop Manager", "Active role: Shop manager", ["Dashboard", "Schedule", "Team", "Queue", "Profile"]],
     ["frontdesk@bvrb3r.demo", "Kayla Brooks", "Front Desk / Kiosk Ops", "Active role: Front desk", ["Check-in", "Waitlist", "Schedule", "Barbers", "Profile"]],
     ["wave@bvrb3r.demo", "Wave Carter", "Barber Manager", "Active role: Barber manager", ["Dashboard", "Schedule", "Team", "Queue", "Profile"]],

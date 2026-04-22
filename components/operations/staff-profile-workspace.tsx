@@ -4,7 +4,7 @@ import { BellRing, Building2, MessageSquareText, ShieldCheck, UserRound, WalletC
 import { GalleryManagerCard, ProfilePhotoManagerCard } from "@/components/profile/profile-media-manager";
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
-import { demoBarbers, demoLocations, permissionMatrix } from "@/lib/data/demo";
+import { permissionMatrix } from "@/lib/config/permissions";
 import { useBarberFintechReadinessQuery } from "@/lib/fintech/client";
 import { useMutateProfileMediaMutation, useProfileMediaWorkspaceQuery } from "@/lib/profile/client";
 import { uploadMediaAsset } from "@/lib/storage/media";
@@ -48,11 +48,15 @@ function readableError(error: unknown, fallback: string) {
 export function StaffProfileWorkspace({ user }: { user: UserAccount; }) {
   const mediaQuery = useProfileMediaWorkspaceQuery(true);
   const mediaMutation = useMutateProfileMediaMutation();
-  const visibleLocations = demoLocations.filter((location) => user.locationIds.includes(location.id));
+  const visibleLocations = user.locationIds.map((locationId) => ({
+    id: locationId,
+    name: locationId
+  }));
   const permissions = permissionMatrix.find((group) => group.role === user.role);
-  const barber = user.barberId ? demoBarbers.find((entry) => entry.id === user.barberId) : undefined;
-  const trustQuery = useBarberTrustSummary(Boolean(barber));
-  const fintechQuery = useBarberFintechReadinessQuery(Boolean(barber));
+  const isBarber = user.role === "commission_barber" || user.role === "booth_rent_barber";
+  const barberCompensationModel = user.role === "booth_rent_barber" ? "booth_rent" : "commission";
+  const trustQuery = useBarberTrustSummary(isBarber);
+  const fintechQuery = useBarberFintechReadinessQuery(isBarber);
   const verificationDecision = trustQuery.data?.verificationDecision;
   const badgeGate = verificationDecision?.gates.badge;
   const payoutGate = verificationDecision?.gates.payout;
@@ -193,7 +197,7 @@ export function StaffProfileWorkspace({ user }: { user: UserAccount; }) {
         </Card>
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1">
-          {barber ? (
+          {isBarber ? (
             <Card className="rounded-[32px] p-6">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -292,12 +296,12 @@ export function StaffProfileWorkspace({ user }: { user: UserAccount; }) {
               <ShieldCheck className="h-5 w-5 text-[#baff69]" />
             </div>
           </Card>
-          {barber ? (
+          {isBarber ? (
             <Card className="rounded-[32px] p-6">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="surface-label">Payout posture</p>
-                  <p className="mt-3 text-lg font-semibold">{barber.compensationModel === "booth_rent" ? "Independent chair revenue" : "Commission split visibility"}</p>
+                  <p className="mt-3 text-lg font-semibold">{barberCompensationModel === "booth_rent" ? "Independent chair revenue" : "Commission split visibility"}</p>
                   <p className="mt-2 text-sm leading-6 text-white/60">Barber-facing revenue settings stay readable without leaking owner-only financial configuration.</p>
                 </div>
                 <WalletCards className="h-5 w-5 text-[#baff69]" />
@@ -306,8 +310,8 @@ export function StaffProfileWorkspace({ user }: { user: UserAccount; }) {
               <div className="mt-4 rounded-[20px] border border-white/8 bg-black/20 p-4">
                 <p className="surface-label">Role posture</p>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <span className={`status-pill ${barber.compensationModel === "commission" ? "text-[#d7ffab]" : "text-white/72"}`}>Commission</span>
-                  <span className={`status-pill ${barber.compensationModel === "booth_rent" ? "text-[#d7ffab]" : "text-white/72"}`}>Booth rent</span>
+                  <span className={`status-pill ${barberCompensationModel === "commission" ? "text-[#d7ffab]" : "text-white/72"}`}>Commission</span>
+                  <span className={`status-pill ${barberCompensationModel === "booth_rent" ? "text-[#d7ffab]" : "text-white/72"}`}>Booth rent</span>
                   <span className="status-pill text-white/52">Freelance</span>
                 </div>
                 <p className="mt-3 text-sm leading-6 text-white/58">
@@ -318,7 +322,7 @@ export function StaffProfileWorkspace({ user }: { user: UserAccount; }) {
               <div className="mt-4 rounded-[20px] border border-white/8 bg-black/20 p-4">
                 <p className="surface-label">Location logic</p>
                 <p className="mt-3 text-sm leading-6 text-white/62">
-                  {barber.compensationModel === "commission" || barber.compensationModel === "booth_rent"
+                  {barberCompensationModel === "commission" || barberCompensationModel === "booth_rent"
                     ? "This barber operates from shop-based chair territory. Location assignment stays attached to the active shop scope."
                     : "Freelance territory can be edited when the payout posture allows independent location control."}
                 </p>

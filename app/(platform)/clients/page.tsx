@@ -2,7 +2,6 @@ import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { BarberClientsWorkspace } from "@/components/operations/barber-clients-workspace";
 import { Card } from "@/components/ui/card";
 import { getAuthorizedUser } from "@/lib/auth/guards";
-import { demoClients } from "@/lib/data/demo";
 
 export default async function ClientsPage() {
   const user = await getAuthorizedUser(["owner", "manager", "front_desk", "commission_barber", "booth_rent_barber"]);
@@ -31,15 +30,8 @@ export default async function ClientsPage() {
           </div>
           <span className="status-pill text-[#d7ffab]">Role-safe records</span>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {demoClients.map((client) => (
-            <div key={client.id} className="min-w-0 rounded-[24px] border border-white/8 bg-black/20 p-4">
-              <p className="font-medium">{client.name}</p>
-              <p className="mt-1 break-words text-sm text-white/50">{client.email}</p>
-              <p className="mt-3 text-[11px] uppercase tracking-[0.18em] text-[#baff69]">{client.retentionTag} | {client.loyaltyPoints} pts</p>
-              <p className="mt-3 text-sm leading-6 text-white/65">{client.notes[0]}</p>
-            </div>
-          ))}
+        <div className="rounded-[28px] border border-dashed border-white/10 bg-black/20 p-6 text-sm leading-6 text-white/58">
+          No client records are linked to this account yet. Real clients, notes, loyalty, and visit history will appear here only after platform activity creates them.
         </div>
       </Card>
     </DashboardShell>

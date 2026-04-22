@@ -37,7 +37,7 @@ export async function GET() {
         ...getBarberEngagementSummary(state, snapshot, actor.barberId),
         marketplace: buildMarketplaceBarberMetrics(runtime, actor.barberId),
         trust: getBarberTrustSummary(trustState, actor.barberId),
-        activation: buildBarberActivationSummary({ activationState, deliveries, trustState, barberId: actor.barberId, shopId: "shop-bvrb3r" })
+        activation: buildBarberActivationSummary({ activationState, deliveries, trustState, barberId: actor.barberId })
       }
     });
   } catch (error) {

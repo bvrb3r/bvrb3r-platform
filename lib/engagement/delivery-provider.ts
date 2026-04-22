@@ -373,11 +373,25 @@ function createDemoProvider(): NotificationDeliveryProvider {
   };
 }
 
+function createEmptyProvider(): NotificationDeliveryProvider {
+  return {
+    kind: "supabase",
+    async readDeliveries() {
+      return [];
+    },
+    async readAttempts() {
+      return [];
+    },
+    async syncNotifications() {
+      return;
+    }
+  };
+}
+
 function createSupabaseProvider(supabase: SupabaseClient): NotificationDeliveryProvider {
   return {
     kind: "supabase",
     async readDeliveries(filters) {
-      await seedSupabase(supabase);
       let query = supabase.from("notification_deliveries").select("*");
       if (filters?.notificationIds?.length) {
         query = query.in("notification_reference", filters.notificationIds);
@@ -390,7 +404,6 @@ function createSupabaseProvider(supabase: SupabaseClient): NotificationDeliveryP
       return (result.data ?? []).map((row: any) => fromRow(row));
     },
     async readAttempts(filters) {
-      await seedSupabase(supabase);
       let query = supabase.from("notification_delivery_attempts").select("*");
       if (filters?.notificationIds?.length) {
         query = query.in("notification_reference", filters.notificationIds);
@@ -406,8 +419,6 @@ function createSupabaseProvider(supabase: SupabaseClient): NotificationDeliveryP
       if (!notifications.length) {
         return;
       }
-
-      await seedSupabase(supabase);
       const [existingDeliveries, existingAttempts] = await Promise.all([
         this.readDeliveries(),
         this.readAttempts()
@@ -429,12 +440,12 @@ function createSupabaseProvider(supabase: SupabaseClient): NotificationDeliveryP
 
 export async function getNotificationDeliveryProvider(): Promise<NotificationDeliveryProvider> {
   if (!isSupabaseEnabled()) {
-    return createDemoProvider();
+    return createEmptyProvider();
   }
 
   const supabase = createSupabaseAdminClient();
   if (!supabase) {
-    return createDemoProvider();
+    return createEmptyProvider();
   }
 
   return createSupabaseProvider(supabase);

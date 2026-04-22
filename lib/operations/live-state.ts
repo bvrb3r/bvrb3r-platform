@@ -92,7 +92,7 @@ export interface CheckoutMutationInput {
 export interface CancelAppointmentMutationInput {
   appointmentId: string;
   expectedRevision: number;
-  actorRole: Extract<LiveActorRole, "owner" | "manager" | "front_desk" | "client">;
+  actorRole: Extract<LiveActorRole, "owner" | "manager" | "front_desk" | "client" | "barber">;
   actorEmail?: string;
   reason?: string;
 }
@@ -101,7 +101,7 @@ export interface RescheduleAppointmentMutationInput {
   appointmentId: string;
   expectedRevision: number;
   appointmentTime: string;
-  actorRole: Extract<LiveActorRole, "owner" | "manager" | "front_desk" | "client">;
+  actorRole: Extract<LiveActorRole, "owner" | "manager" | "front_desk" | "client" | "barber">;
   actorEmail?: string;
   reason?: string;
 }

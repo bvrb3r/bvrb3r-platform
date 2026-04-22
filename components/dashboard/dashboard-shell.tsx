@@ -18,9 +18,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { getDefaultRouteForUser, getUserRoleLabel } from "@/lib/auth/demo-auth";
-import { isDemoMode } from "@/lib/config/runtime";
-import { auditLogs, demoAppointments, demoBarbers, demoClients, demoLocations, demoWalkIns, ownerKpis } from "@/lib/data/demo";
-import { cn, currency, dateLabel } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import type { Role, UserAccount } from "@/types/domain";
 
 type NavItem = {
@@ -54,7 +52,6 @@ function getNavigation(user: UserAccount): NavItem[] {
         { href: "/team", activeHref: "/team", label: "Team", icon: Users },
         { href: "/appointments", activeHref: "/appointments", label: "Schedule", icon: CalendarDays },
         { href: { pathname: "/reports", query: { view: "money" } }, activeHref: "/reports?view=money", label: "Money", icon: WalletCards },
-        { href: { pathname: "/reports", query: { view: "growth" } }, activeHref: "/reports?view=growth", label: "Growth", icon: Sparkles },
         { href: "/settings", activeHref: "/settings", label: "Settings", icon: ShieldCheck }
       ];
     case "manager":
@@ -118,7 +115,7 @@ function getPrimaryFocusLabel(role: Role) {
 function getPrimaryActionTitle(role: Role) {
   switch (role) {
     case "owner":
-      return "See the floor, trust the money, and drive the next growth move from one clean owner lane.";
+      return "See the floor, trust the money, and keep the team aligned from one clean owner lane.";
     case "manager":
       return "Keep schedule, queue, and attendance moving without opening owner-only controls.";
     case "front_desk":
@@ -136,7 +133,7 @@ function getPrimaryActionTitle(role: Role) {
 function getBoundaryCopy(role: Role) {
   switch (role) {
     case "owner":
-      return "Owner mode keeps all-shop visibility, protected money controls, team posture, and growth actions together without exposing raw operator clutter.";
+      return "Owner mode keeps all-shop visibility, protected money controls, team posture, and schedule posture together without exposing raw operator clutter.";
     case "manager":
       return "Manager mode keeps the floor visible while ownership financial controls, payout rules, and transfer rights stay protected.";
     case "front_desk":
@@ -170,131 +167,56 @@ function getLocationScopeLabel(role: Role) {
   }
 }
 
-function getAlertLabel(role: Role, useDemoData: boolean) {
-  if (!useDemoData) {
-    switch (role) {
-      case "owner":
-        return "Owner account ready";
-      case "manager":
-        return "No manager alerts yet";
-      case "front_desk":
-        return "No queue alerts yet";
-      case "commission_barber":
-      case "booth_rent_barber":
-        return "No chair alerts yet";
-      case "client":
-        return "No booking reminders yet";
-      default:
-        return "No alerts yet";
-    }
-  }
-
+function getAlertLabel(role: Role) {
   switch (role) {
     case "owner":
-      return "Owner visibility is live";
+      return "Owner account ready";
     case "manager":
-      return "4 floor alerts pending";
+      return "No manager alerts yet";
     case "front_desk":
-      return "5 queue actions pending";
+      return "No queue alerts yet";
     case "commission_barber":
     case "booth_rent_barber":
-      return "2 chair updates pending";
+      return "No chair alerts yet";
     case "client":
-      return "1 booking reminder pending";
+      return "No booking reminders yet";
     default:
-      return "3 alerts pending";
+      return "No alerts yet";
   }
 }
 
-function getUtilityCards(user: UserAccount, useDemoData: boolean): UtilityCard[] {
-  if (!useDemoData) {
-    switch (user.role) {
-      case "owner":
-        return [
-          { label: "Owner lane", value: user.appApprovalStatus?.replaceAll("_", " ") ?? "ready", detail: "Business approval and verification continue from the owner dashboard.", icon: ShieldCheck },
-          { label: "Shop scope", value: user.ownedShopId ? "1" : "0", detail: user.ownedShopId ? "One shop linked to this account" : "Create or attach a shop lane", icon: MapPinned },
-          { label: "Controls", value: "Live", detail: "Money, growth, and settings stay in the owner-safe lane.", icon: WalletCards }
-        ];
-      case "manager":
-        return [
-          { label: "Manager lane", value: "Live", detail: "Schedule, team, and floor operations stay in one place.", icon: CalendarDays },
-          { label: "Shop scope", value: String(user.locationIds.length), detail: "Assigned locations on this session", icon: MapPinned },
-          { label: "Operator tools", value: "Ready", detail: "Owner-only financial controls stay protected.", icon: Users }
-        ];
-      case "front_desk":
-        return [
-          { label: "Front desk lane", value: "Live", detail: "Queue, arrivals, and handoff tools are ready.", icon: Clock3 },
-          { label: "Shop scope", value: String(user.locationIds.length), detail: "Assigned locations on this session", icon: MapPinned },
-          { label: "Operator tools", value: "Ready", detail: "Public intake and operator tools stay separated.", icon: Bell }
-        ];
-      case "commission_barber":
-      case "booth_rent_barber":
-        return [
-          { label: "Barber lane", value: user.barberSubtype?.replaceAll("_", " ") ?? "ready", detail: "Your chair, earnings, and clients stay tied to this authenticated account.", icon: CalendarDays },
-          { label: "Approval", value: user.appApprovalStatus?.replaceAll("_", " ") ?? "ready", detail: user.shopApprovalStatus && user.shopApprovalStatus !== "not_required" ? `Shop approval ${user.shopApprovalStatus.replaceAll("_", " ")}` : "No extra shop approval required", icon: ShieldCheck },
-          { label: "Chair scope", value: String(user.locationIds.length), detail: "Assigned locations on this session", icon: WalletCards }
-        ];
-      case "client":
-        return [
-          { label: "Client lane", value: "Ready", detail: "This account starts clean with no seeded rewards or booking history.", icon: CalendarDays },
-          { label: "Preferences", value: "Fresh", detail: "Favorites, points, and history will build from real activity.", icon: Sparkles },
-          { label: "Profile", value: "Connected", detail: "Your dashboard now follows the authenticated account only.", icon: UserRound }
-        ];
-      default:
-        return [{ label: "Workspace", value: "Ready", detail: "Role-aware view", icon: Sparkles }];
-    }
-  }
-
+function getUtilityCards(user: UserAccount): UtilityCard[] {
   switch (user.role) {
     case "owner":
       return [
-        { label: "Revenue today", value: ownerKpis[0]?.value ?? "$0", detail: ownerKpis[0]?.delta ?? "Executive pulse", icon: WalletCards },
-        { label: "Assigned barbers", value: String(demoBarbers.filter((barber) => barber.locationIds.some((locationId) => user.locationIds.includes(locationId))).length), detail: "Across active locations", icon: Users },
-        { label: "Open issues", value: String(auditLogs.filter((item) => item.severity !== "info").length), detail: "Needs ownership review", icon: ShieldCheck }
+        { label: "Owner lane", value: user.appApprovalStatus?.replaceAll("_", " ") ?? "ready", detail: "Business approval and verification continue from the owner dashboard.", icon: ShieldCheck },
+        { label: "Shop scope", value: user.ownedShopId ? "1" : "0", detail: user.ownedShopId ? "One shop linked to this account" : "Create or attach a shop lane", icon: MapPinned },
+        { label: "Controls", value: "Live", detail: "Money, team, and settings stay in the owner-safe lane.", icon: WalletCards }
       ];
-    case "manager": {
-      const appointments = demoAppointments.filter((appointment) => user.locationIds.includes(appointment.locationId));
-      const walkIns = demoWalkIns.filter((entry) => user.locationIds.includes(entry.locationId));
-      const activeBarbers = demoBarbers.filter((barber) => barber.locationIds.some((locationId) => user.locationIds.includes(locationId)));
-
+    case "manager":
       return [
-        { label: "Bookings today", value: String(appointments.length), detail: "Scheduled service flow", icon: CalendarDays },
-        { label: "Walk-ins", value: String(walkIns.length), detail: "Queue pressure right now", icon: Clock3 },
-        { label: "Barbers online", value: String(activeBarbers.length), detail: "Coverage across the floor", icon: Users }
+        { label: "Manager lane", value: "Live", detail: "Schedule, team, and floor operations stay in one place.", icon: CalendarDays },
+        { label: "Shop scope", value: String(user.locationIds.length), detail: "Assigned locations on this session", icon: MapPinned },
+        { label: "Operator tools", value: "Ready", detail: "Owner-only financial controls stay protected.", icon: Users }
       ];
-    }
-    case "front_desk": {
-      const waiting = demoWalkIns.filter((entry) => user.locationIds.includes(entry.locationId) && entry.status === "waiting").length;
-      const checkedIn = demoAppointments.filter((appointment) => user.locationIds.includes(appointment.locationId) && appointment.status === "checked_in").length;
-      const nextArrival = demoAppointments
-        .filter((appointment) => user.locationIds.includes(appointment.locationId) && appointment.status === "booked")
-        .sort((left, right) => new Date(left.start).getTime() - new Date(right.start).getTime())[0];
-
+    case "front_desk":
       return [
-        { label: "Waiting guests", value: String(waiting), detail: "Need check-in or assignment", icon: Clock3 },
-        { label: "Checked in", value: String(checkedIn), detail: "Already in the shop", icon: CalendarDays },
-        { label: "Next arrival", value: nextArrival ? dateLabel(nextArrival.start) : "Open", detail: nextArrival ? nextArrival.chair : "No arrival pressure", icon: Sparkles }
+        { label: "Front desk lane", value: "Live", detail: "Queue, arrivals, and handoff tools are ready.", icon: Clock3 },
+        { label: "Shop scope", value: String(user.locationIds.length), detail: "Assigned locations on this session", icon: MapPinned },
+        { label: "Operator tools", value: "Ready", detail: "Public intake and operator tools stay separated.", icon: Bell }
       ];
-    }
     case "commission_barber":
-    case "booth_rent_barber": {
-      const barber = demoBarbers.find((entry) => entry.id === user.barberId);
-      const nextAppointment = demoAppointments
-        .filter((appointment) => appointment.barberId === user.barberId && ["booked", "checked_in", "in_service"].includes(appointment.status))
-        .sort((left, right) => new Date(left.start).getTime() - new Date(right.start).getTime())[0];
-      const nextClient = demoClients.find((client) => client.id === nextAppointment?.clientId);
-
+    case "booth_rent_barber":
       return [
-        { label: "Next guest", value: nextClient?.name ?? "Open chair", detail: nextAppointment ? dateLabel(nextAppointment.start) : "No one waiting yet", icon: CalendarDays },
-        { label: "Today earned", value: currency(barber?.todayEarnings ?? 0), detail: barber?.compensationModel === "booth_rent" ? "Independent chair revenue" : "Commission-ready revenue", icon: WalletCards },
-        { label: "Chair rating", value: barber ? barber.rating.toFixed(1) : "4.8", detail: barber ? `${barber.reviewCount} total reviews` : "Marketplace trust", icon: ShieldCheck }
+        { label: "Barber lane", value: user.barberSubtype?.replaceAll("_", " ") ?? "ready", detail: "Your chair, earnings, and clients stay tied to this authenticated account.", icon: CalendarDays },
+        { label: "Approval", value: user.appApprovalStatus?.replaceAll("_", " ") ?? "ready", detail: user.shopApprovalStatus && user.shopApprovalStatus !== "not_required" ? `Shop approval ${user.shopApprovalStatus.replaceAll("_", " ")}` : "No extra shop approval required", icon: ShieldCheck },
+        { label: "Chair scope", value: String(user.locationIds.length), detail: "Assigned locations on this session", icon: WalletCards }
       ];
-    }
     case "client":
       return [
-        { label: "Upcoming", value: "1", detail: "Next visit saved", icon: CalendarDays },
-        { label: "Favorites", value: "3", detail: "Trusted barbers nearby", icon: Users },
-        { label: "Rewards", value: "220", detail: "Client loyalty points", icon: Sparkles }
+        { label: "Client lane", value: "Ready", detail: "This account starts clean with no seeded rewards or booking history.", icon: CalendarDays },
+        { label: "Preferences", value: "Fresh", detail: "Favorites, points, and history will build from real activity.", icon: Sparkles },
+        { label: "Profile", value: "Connected", detail: "Your dashboard now follows the authenticated account only.", icon: UserRound }
       ];
     default:
       return [{ label: "Workspace", value: "Ready", detail: "Role-aware view", icon: Sparkles }];
@@ -420,26 +342,23 @@ export function DashboardShell({
 }) {
   const nav = getNavigation(user);
   const activeRole = getUserRoleLabel(user);
-  const useDemoData = isDemoMode();
   const ownerShopName = user.role === "owner" ? user.ownedShopName?.trim() || null : null;
   const primaryShellIdentity = ownerShopName ?? "BVRB3R Platform";
   const mobileWorkspaceLabel = ownerShopName ?? `${activeRole} workspace`;
-  const visibleLocations = useDemoData
-    ? demoLocations.filter((location) => user.locationIds.includes(location.id))
-    : user.locationIds.map((locationId) => ({
-        id: locationId,
-        name: user.role === "owner" && user.ownedShopId === locationId && user.ownedShopName
-          ? user.ownedShopName
-          : locationId,
-        city: user.role === "owner" && user.ownedShopId === locationId ? "Owner shop" : "Assigned",
-        neighborhood: "",
-        state: "",
-        phone: "",
-        hours: "",
-        chairs: 0,
-        taxRate: 0
-      }));
-  const utilityCards = getUtilityCards(user, useDemoData);
+  const visibleLocations = user.locationIds.map((locationId) => ({
+    id: locationId,
+    name: user.role === "owner" && user.ownedShopId === locationId && user.ownedShopName
+      ? user.ownedShopName
+      : locationId,
+    city: user.role === "owner" && user.ownedShopId === locationId ? "Owner shop" : "Assigned",
+    neighborhood: "",
+    state: "",
+    phone: "",
+    hours: "",
+    chairs: 0,
+    taxRate: 0
+  }));
+  const utilityCards = getUtilityCards(user);
   const notificationsHref = getNotificationsHref(user.role);
   const messagesHref = getMessagesHref(user.role);
   const profileHref = getProfileHref(user.role);
@@ -626,7 +545,7 @@ export function DashboardShell({
                 <div className="rounded-[24px] border border-white/8 bg-black/25 p-4">
                   <p className="surface-label">Operating as</p>
                   <p className="mt-3 text-lg font-medium">{activeRole}</p>
-                  <p className="mt-2 text-sm text-white/56">{getAlertLabel(user.role, useDemoData)}</p>
+                  <p className="mt-2 text-sm text-white/56">{getAlertLabel(user.role)}</p>
                 </div>
                 <div className="rounded-[24px] border border-white/8 bg-black/25 p-4">
                   <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/35 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-white/68">

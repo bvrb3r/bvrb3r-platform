@@ -166,6 +166,16 @@ export type BarberClientRelationshipView = {
   };
   canMessage: boolean;
   messageAppointmentId: string | null;
+  clientNotes?: string[];
+  lastAppointmentNote?: string | null;
+  recentVisits?: Array<{
+    appointmentId: string;
+    serviceName: string | null;
+    startsAt: string;
+    status: string;
+    note: string | null;
+    totalAmount: number;
+  }>;
 };
 
 export type BarberEarningsSummaryView = {
@@ -639,6 +649,14 @@ function buildClientRelationshipView(
     const latestAppointment = clientAppointments[0] ?? null;
     const lifetimeGrossSales = completed.reduce((sum, appointment) => sum + appointment.totalAmount, 0);
     const completedAppointments = completed.length;
+    const recentVisits = clientAppointments.slice(0, 5).map((appointment) => ({
+      appointmentId: appointment.id,
+      serviceName: appointment.display.serviceName ?? null,
+      startsAt: appointment.start,
+      status: appointment.status,
+      note: appointment.note?.trim() || null,
+      totalAmount: appointment.totalAmount
+    }));
     const intelligence = buildClientHistoryIntelligence({
       client,
       appointments: clientAppointments,
@@ -670,7 +688,10 @@ function buildClientRelationshipView(
         nextBestAction: intelligence.nextBestAction
       },
       canMessage: Boolean(nextAppointment ?? latestAppointment),
-      messageAppointmentId: nextAppointment?.id ?? latestAppointment?.id ?? null
+      messageAppointmentId: nextAppointment?.id ?? latestAppointment?.id ?? null,
+      clientNotes: client.notes ?? [],
+      lastAppointmentNote: latestAppointment?.note?.trim() || null,
+      recentVisits
     });
   }
 

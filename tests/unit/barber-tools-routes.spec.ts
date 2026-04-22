@@ -303,6 +303,74 @@ describe("phase 10 barber tools routes", () => {
     expect(body.error).toMatch(/invalid barber schedule payload/i);
   });
 
+  it("writes blocked time updates through the canonical barber schedule path", async () => {
+    const user = resolveDemoUser("blaze@bvrb3r.demo");
+    getSessionUserMock.mockResolvedValue(user);
+    updateBarberScheduleMock.mockResolvedValue({
+      barberId: "barber-blaze",
+      barberName: "Blaze King",
+      businessDate: "2026-03-20",
+      shops: [],
+      status: {
+        barberId: "barber-blaze",
+        currentShopId: "loc-ybor",
+        currentShopLabel: "BVRB3R Ybor",
+        liveStatus: "available",
+        liveStatusLabel: "Available",
+        isOnline: true,
+        acceptsWalkIns: true,
+        nextAvailableAt: "2026-03-20T14:00:00.000Z",
+        lastSeenAt: null,
+        updatedAt: null,
+        note: "Chair blocked for a personal appointment."
+      },
+      todayAppointments: [],
+      upcomingAppointments: [],
+      timeline: {
+        viewMode: "day",
+        anchorDate: "2026-03-20",
+        rangeStart: "2026-03-20",
+        rangeEnd: "2026-03-20",
+        rangeLabel: "Friday, Mar 20, 2026",
+        appointments: []
+      },
+      workingHours: [],
+      blockedTimes: [{
+        id: "block-1",
+        startsAt: "2026-03-20T13:00:00.000Z",
+        endsAt: "2026-03-20T14:00:00.000Z",
+        reason: "Personal appointment"
+      }]
+    });
+
+    const request = new NextRequest("https://bvrb3r.demo/api/barber/schedule", {
+      method: "POST",
+      body: JSON.stringify({
+        locationId: "loc-ybor",
+        blockedPeriod: {
+          startsAt: "2026-03-20T13:00:00.000Z",
+          endsAt: "2026-03-20T14:00:00.000Z",
+          reason: "Personal appointment"
+        }
+      })
+    });
+
+    const response = await postSchedule(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(updateBarberScheduleMock).toHaveBeenCalledWith(user, {
+      locationId: "loc-ybor",
+      blockedPeriod: {
+        startsAt: "2026-03-20T13:00:00.000Z",
+        endsAt: "2026-03-20T14:00:00.000Z",
+        reason: "Personal appointment"
+      }
+    });
+    expect(body.blockedTimes).toHaveLength(1);
+    expect(body.blockedTimes[0].reason).toBe("Personal appointment");
+  });
+
   it("returns barber clients scoped to the barber relationship set", async () => {
     getSessionUserMock.mockResolvedValue(resolveDemoUser("fade@bvrb3r.demo"));
     getBarberClientsPayloadMock.mockResolvedValue({

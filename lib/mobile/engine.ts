@@ -221,6 +221,16 @@ export function createInitialMobileState(): MobileState {
   }));
 }
 
+export function createEmptyMobileState(): MobileState {
+  return {
+    devices: [],
+    pushSubscriptions: [],
+    nativePushTokens: [],
+    deliveryAttempts: [],
+    deepLinks: []
+  };
+}
+
 export function getActivePushSubscriptions(state: MobileState, userEmail: string) {
   const nextState = syncMobileStateLifecycle(state);
   return nextState.pushSubscriptions.filter((subscription) => subscription.userEmail === userEmail && subscription.status === "active");

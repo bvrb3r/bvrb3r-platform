@@ -68,7 +68,19 @@ describe("barber clients workspace", () => {
               nextBestAction: "Keep the cadence moving."
             },
             canMessage: true,
-            messageAppointmentId: "appt-a"
+            messageAppointmentId: "appt-a",
+            clientNotes: ["Prefers a quiet appointment", "Sensitive scalp around the temple fade"],
+            lastAppointmentNote: "Leave more weight in the crown.",
+            recentVisits: [
+              {
+                appointmentId: "appt-a",
+                serviceName: "Premium Fade",
+                startsAt: "2026-03-24T15:00:00.000Z",
+                status: "completed",
+                note: "Leave more weight in the crown.",
+                totalAmount: 72
+              }
+            ]
           },
           {
             clientId: "client-b",
@@ -95,7 +107,10 @@ describe("barber clients workspace", () => {
               nextBestAction: "Invite the next visit."
             },
             canMessage: false,
-            messageAppointmentId: null
+            messageAppointmentId: null,
+            clientNotes: [],
+            lastAppointmentNote: null,
+            recentVisits: []
           }
         ]
       },
@@ -132,6 +147,11 @@ describe("barber clients workspace", () => {
     const dialog = screen.getByRole("dialog", { name: /Relationship history for Alex Stone/i });
     expect(dialog).toBeInTheDocument();
     expect(screen.getByText("Next best action")).toBeInTheDocument();
+    expect(screen.getByText("Client contact")).toBeInTheDocument();
+    expect(screen.getByText("Client notes")).toBeInTheDocument();
+    expect(screen.getByText("Recent visits")).toBeInTheDocument();
+    expect(screen.getByText("Leave more weight in the crown.")).toBeInTheDocument();
+    expect(screen.getByText("Prefers a quiet appointment")).toBeInTheDocument();
 
     fireEvent.click(screen.getAllByRole("button", { name: "Book again" })[0]);
     expect(pushMock).toHaveBeenCalledWith("/booking/new?barberId=barber-blaze&serviceId=srv-fade");

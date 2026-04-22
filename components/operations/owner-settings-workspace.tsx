@@ -2,13 +2,12 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
-import { BellRing, Building2, Megaphone, ShieldCheck, WalletCards } from "lucide-react";
+import { BellRing, Building2, ShieldCheck, WalletCards } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { KioskControlPanel } from "@/components/operations/kiosk-control-panel";
-import { permissionMatrix, demoLocations } from "@/lib/data/demo";
-import { useOwnerEngagementIntelligence } from "@/lib/engagement/client";
+import { permissionMatrix } from "@/lib/config/permissions";
 import { useFintechManagementQuery } from "@/lib/fintech/client";
 import { useProfileMediaWorkspaceQuery } from "@/lib/profile/client";
 import type { UserAccount } from "@/types/domain";
@@ -38,43 +37,52 @@ function formatRoutingLabel(value: string) {
   }
 }
 
+function formatApprovalStatus(status?: UserAccount["appApprovalStatus"]) {
+  switch (status) {
+    case "approved":
+      return "Approved";
+    case "under_review":
+      return "Under review";
+    case "pending":
+      return "Pending";
+    case "rejected":
+      return "Needs attention";
+    default:
+      return "Needs attention";
+  }
+}
+
+function formatScopedShopLabel(name: string, neighborhood?: string) {
+  return neighborhood?.trim() ? `${name} / ${neighborhood}` : name;
+}
+
 export function OwnerSettingsWorkspace({ user }: { user: UserAccount }) {
   const profileQuery = useProfileMediaWorkspaceQuery(true);
   const fintechQuery = useFintechManagementQuery();
-  const intelligenceQuery = useOwnerEngagementIntelligence();
 
   const isInitialLoading =
     (profileQuery.isLoading && !profileQuery.data)
-    || (fintechQuery.isLoading && !fintechQuery.data)
-    || (intelligenceQuery.isLoading && !intelligenceQuery.data);
+    || (fintechQuery.isLoading && !fintechQuery.data);
 
-  const errorMessage = profileQuery.error ?? fintechQuery.error ?? intelligenceQuery.error;
+  const errorMessage = profileQuery.error ?? fintechQuery.error;
   const shops = profileQuery.data?.shops ?? [];
   const memberships = useMemo(() => fintechQuery.data?.memberships ?? [], [fintechQuery.data?.memberships]);
   const permissions = permissionMatrix;
-  const assignedLocations = demoLocations.filter((location) => user.locationIds.includes(location.id));
-  const trust = intelligenceQuery.data?.trust;
-  const monetization = intelligenceQuery.data?.monetization;
+  const assignedLocations = user.locationIds.map((locationId) => ({
+    id: locationId,
+    name: user.ownedShopId === locationId && user.ownedShopName ? user.ownedShopName : locationId,
+    neighborhood: "",
+    city: "",
+    state: "",
+    hours: ""
+  }));
   const notificationPreference = profileQuery.data?.viewer.notificationPreference;
-  const hasVerifiedShopStatuses = Boolean(trust?.shopStatuses.length);
-  const shopActivationBlocker = trust?.shopStatuses.find(
-    (entry) => entry.verificationDecision?.gates.shop_activation && !entry.verificationDecision.gates.shop_activation.allowed
-  )?.verificationDecision?.gates.shop_activation?.reasons[0] ?? null;
-  const shopPayoutBlocker = trust?.shopStatuses.find(
-    (entry) => entry.verificationDecision?.gates.payout && !entry.verificationDecision.gates.payout.allowed
-  )?.verificationDecision?.gates.payout?.reasons[0] ?? null;
-  const shopTrustSummaryText = shopActivationBlocker
-    ?? shopPayoutBlocker
-    ?? (trust?.shopTrustBadges.length ? trust.shopTrustBadges.join(" • ") : "Trust badges will appear here as verification clears.");
-  const isVerifiedShopPosture = hasVerifiedShopStatuses && trust!.shopStatuses.every((entry) => {
-    const shopActivationGate = entry.verificationDecision?.gates.shop_activation;
-    const payoutGate = entry.verificationDecision?.gates.payout;
-    return Boolean(
-      entry.verificationDecision?.canonicalOverallStatus === "approved"
-      && (!shopActivationGate || shopActivationGate.allowed)
-      && (!payoutGate || payoutGate.allowed)
-    );
-  });
+  const enabledCommunicationCount = [
+    notificationPreference?.inAppEnabled,
+    notificationPreference?.emailEnabled,
+    notificationPreference?.smsEnabled,
+    notificationPreference?.pushEnabled
+  ].filter(Boolean).length;
 
   const compensationSummary = useMemo(() => {
     return memberships.reduce(
@@ -86,21 +94,22 @@ export function OwnerSettingsWorkspace({ user }: { user: UserAccount }) {
     );
   }, [memberships]);
 
-  const enabledCommunicationCount = [
-    notificationPreference?.inAppEnabled,
-    notificationPreference?.emailEnabled,
-    notificationPreference?.smsEnabled,
-    notificationPreference?.pushEnabled
-  ].filter(Boolean).length;
-  const shopBadgeSummaryDisplay = trust?.shopTrustBadges.length
-    ? trust.shopTrustBadges.join(" | ")
-    : "Trust badges will appear here as verification clears.";
-  const shopTrustSummaryDisplay = shopTrustSummaryText && (shopActivationBlocker || shopPayoutBlocker)
-    ? shopTrustSummaryText
-    : shopBadgeSummaryDisplay;
+  const payoutReadyCount = fintechQuery.data?.summary.readyAccounts ?? 0;
+  const needsAttentionCount = fintechQuery.data?.summary.needsAttentionAccounts ?? 0;
+  const blockedRoutingCount = fintechQuery.data?.summary.blockedRoutingRecords ?? 0;
+  const readyForPayoutAmount = fintechQuery.data?.summary.readyForPayoutAmount ?? 0;
+  const approvalStatusLabel = formatApprovalStatus(user.appApprovalStatus);
+  const shopApprovalStatusLabel = user.shopApprovalStatus && user.shopApprovalStatus !== "not_required"
+    ? formatApprovalStatus(user.shopApprovalStatus)
+    : null;
+  const isApprovalClear = user.appApprovalStatus === "approved"
+    && (!user.shopApprovalStatus || user.shopApprovalStatus === "approved" || user.shopApprovalStatus === "not_required");
+  const approvalSummaryText = isApprovalClear
+    ? "Owner approval and public business posture are clear."
+    : "Approval is still gating parts of public activation, compliance, or payout posture.";
   const kioskShops = shops.length
     ? shops.map((shop) => ({ id: shop.shopId, label: shop.label }))
-    : assignedLocations.map((location) => ({ id: location.id, label: `${location.name} / ${location.neighborhood}` }));
+    : assignedLocations.map((location) => ({ id: location.id, label: formatScopedShopLabel(location.name, location.neighborhood) }));
 
   return (
     <div className="space-y-4" data-testid="owner-settings-workspace">
@@ -142,18 +151,18 @@ export function OwnerSettingsWorkspace({ user }: { user: UserAccount }) {
                 </div>
                 <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
                   <p className="surface-label">Payout ready</p>
-                  <p className="mt-3 text-3xl font-semibold" data-display="true">{fintechQuery.data?.summary.readyAccounts ?? 0}</p>
+                  <p className="mt-3 text-3xl font-semibold" data-display="true">{payoutReadyCount}</p>
                   <p className="mt-2 text-sm text-white/58">Accounts clear to move money through canonical payout rails.</p>
                 </div>
                 <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                  <p className="surface-label">Billing attention</p>
-                  <p className="mt-3 text-3xl font-semibold" data-display="true">{monetization?.subscriptions.billingAttention ?? 0}</p>
-                  <p className="mt-2 text-sm text-white/58">Subscriptions or billing rows needing owner review.</p>
+                  <p className="surface-label">Needs attention</p>
+                  <p className="mt-3 text-3xl font-semibold" data-display="true">{needsAttentionCount}</p>
+                  <p className="mt-2 text-sm text-white/58">Accounts still missing readiness steps or review.</p>
                 </div>
                 <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                  <p className="surface-label">Trust issues</p>
-                  <p className="mt-3 text-3xl font-semibold" data-display="true">{(trust?.openReports ?? 0) + (trust?.openDisputes ?? 0)}</p>
-                  <p className="mt-2 text-sm text-white/58">Open reports and disputes still unresolved.</p>
+                  <p className="surface-label">Blocked routing</p>
+                  <p className="mt-3 text-3xl font-semibold" data-display="true">{blockedRoutingCount}</p>
+                  <p className="mt-2 text-sm text-white/58">Payment routing rows still blocked in the canonical money layer.</p>
                 </div>
               </>
             )}
@@ -175,19 +184,20 @@ export function OwnerSettingsWorkspace({ user }: { user: UserAccount }) {
               <div className="rounded-[24px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-4">
                 <p className="surface-label text-[#d7ffab]">Business identity</p>
                 <p className="mt-3 text-lg font-semibold text-white">
-                  {isVerifiedShopPosture ? "Verified and payout-ready posture" : "Verification still needs attention"}
+                  {isApprovalClear ? "Verified and payout-ready posture" : "Owner approval still needs attention"}
                 </p>
-                {!isVerifiedShopPosture ? (
-                  <p className="mt-2 text-sm text-white/52">{shopTrustSummaryDisplay}</p>
-                ) : null}
-                <p className="mt-2 text-sm text-white/62">{trust?.shopTrustBadges.length ? trust.shopTrustBadges.join(" • ") : "Trust badges will appear here as verification clears."}</p>
+                <p className="mt-2 text-sm text-white/62">{approvalSummaryText}</p>
+                <p className="mt-2 text-sm text-white/52">
+                  Current status: {approvalStatusLabel}
+                  {shopApprovalStatusLabel ? ` • Shop approval ${shopApprovalStatusLabel}` : ""}
+                </p>
               </div>
               <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                <p className="surface-label">Subscription health</p>
+                <p className="surface-label">Payout readiness</p>
                 <p className="mt-3 text-lg font-semibold text-white">
-                  {monetization?.subscriptions.active ?? 0} active • {monetization?.subscriptions.billingAttention ?? 0} need review
+                  {payoutReadyCount} ready - {needsAttentionCount} need review
                 </p>
-                <p className="mt-2 text-sm text-white/58">{currency(monetization?.subscriptions.subscriptionRevenue ?? 0)} in tracked subscription revenue.</p>
+                <p className="mt-2 text-sm text-white/58">{currency(readyForPayoutAmount)} is currently ready for payout in the owner scope.</p>
               </div>
               <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
                 <p className="surface-label">Communications</p>
@@ -211,7 +221,7 @@ export function OwnerSettingsWorkspace({ user }: { user: UserAccount }) {
           <div className="mt-4 space-y-3">
             {(shops.length ? shops : assignedLocations.map((location) => ({
               shopId: location.id,
-              label: `${location.name} / ${location.neighborhood}`,
+              label: formatScopedShopLabel(location.name, location.neighborhood),
               profilePhotoUrl: undefined,
               gallery: []
             }))).map((shop) => {
@@ -221,7 +231,7 @@ export function OwnerSettingsWorkspace({ user }: { user: UserAccount }) {
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <p className="font-medium text-white">{shop.label}</p>
-                      <p className="mt-1 text-sm text-white/55">{location ? `${location.city}, ${location.state}` : "Shop location in scope"}</p>
+                      <p className="mt-1 text-sm text-white/55">{location?.city || location?.state ? `${location.city}, ${location.state}` : "Shop location in scope"}</p>
                     </div>
                     <span className="status-pill text-[#d7ffab]">{shop.profilePhotoUrl ? "Branding live" : "Needs media"}</span>
                   </div>
@@ -244,7 +254,7 @@ export function OwnerSettingsWorkspace({ user }: { user: UserAccount }) {
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="surface-label">Financial setup</p>
-              <p className="mt-2 text-sm text-white/58">Compensation posture and billing health stay visible here without exposing unsafe money controls.</p>
+              <p className="mt-2 text-sm text-white/58">Compensation posture and payout readiness stay visible here without exposing unsafe money controls.</p>
             </div>
             <WalletCards className="h-5 w-5 text-[#baff69]" />
           </div>
@@ -265,9 +275,9 @@ export function OwnerSettingsWorkspace({ user }: { user: UserAccount }) {
               <p className="mt-2 text-sm text-white/58">Independent routing posture in scope.</p>
             </div>
             <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-              <p className="surface-label">Billing health</p>
-              <p className="mt-3 text-2xl font-semibold">{monetization?.subscriptions.billingAttention ?? 0}</p>
-              <p className="mt-2 text-sm text-white/58">Rows flagged `past_due` or waiting on billing recovery.</p>
+              <p className="surface-label">Routing blocked</p>
+              <p className="mt-3 text-2xl font-semibold">{blockedRoutingCount}</p>
+              <p className="mt-2 text-sm text-white/58">Rows still waiting on resolution before money can move cleanly.</p>
             </div>
           </div>
           <div className="mt-4 rounded-[24px] border border-white/8 bg-black/20 p-4">
@@ -315,9 +325,9 @@ export function OwnerSettingsWorkspace({ user }: { user: UserAccount }) {
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="surface-label">Communications and account posture</p>
-              <p className="mt-2 text-sm text-white/58">Keep shop broadcasts, campaigns, and owner communication posture visible without creating a second messaging stack.</p>
+              <p className="mt-2 text-sm text-white/58">Keep shop broadcasts and owner communication posture visible without creating a second messaging stack.</p>
             </div>
-            <Megaphone className="h-5 w-5 text-[#baff69]" />
+            <BellRing className="h-5 w-5 text-[#baff69]" />
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
@@ -326,16 +336,16 @@ export function OwnerSettingsWorkspace({ user }: { user: UserAccount }) {
               <p className="mt-2 text-sm text-white/58">In-app, email, SMS, and push posture for the current owner account.</p>
             </div>
             <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-              <p className="surface-label">Recent owner notifications</p>
-              <p className="mt-3 text-2xl font-semibold">{intelligenceQuery.data?.recentNotifications.length ?? 0}</p>
-              <p className="mt-2 text-sm text-white/58">Announcements, growth nudges, and operational alerts in the existing delivery ledger.</p>
+              <p className="surface-label">Protected money issues</p>
+              <p className="mt-3 text-2xl font-semibold">{needsAttentionCount + blockedRoutingCount}</p>
+              <p className="mt-2 text-sm text-white/58">Accounts plus routing rows that still need owner review.</p>
             </div>
           </div>
           <div className="mt-4 rounded-[24px] border border-white/8 bg-black/20 p-4">
             <p className="surface-label">What lives where</p>
             <div className="mt-3 space-y-2 text-sm text-white/62">
               <p>- Shop announcements and direct communication live in Messages.</p>
-              <p>- Campaign controls and promotion performance live in Growth.</p>
+              <p>- Team posture and staffing live in Team.</p>
               <p>- Billing, payout readiness, and compensation posture live in Money.</p>
             </div>
           </div>
@@ -347,10 +357,10 @@ export function OwnerSettingsWorkspace({ user }: { user: UserAccount }) {
               Open messages
             </Link>
             <Link
-              href="/reports?view=growth"
+              href="/team"
               className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#7cff00]/20 hover:text-[#d7ffab] sm:px-5 sm:text-[11px] sm:tracking-[0.22em]"
             >
-              Open growth tab
+              Open team lane
             </Link>
           </div>
         </Card>

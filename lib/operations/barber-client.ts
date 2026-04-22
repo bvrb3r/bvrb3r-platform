@@ -120,6 +120,16 @@ export interface BarberClientRelationshipView {
   };
   canMessage: boolean;
   messageAppointmentId: string | null;
+  clientNotes?: string[];
+  lastAppointmentNote?: string | null;
+  recentVisits?: Array<{
+    appointmentId: string;
+    serviceName: string | null;
+    startsAt: string;
+    status: string;
+    note: string | null;
+    totalAmount: number;
+  }>;
 }
 
 export interface BarberEarningsSummaryView {
@@ -515,6 +525,43 @@ export function useBarberEarningsQuery() {
     queryKey: ["barber-earnings"],
     queryFn: () => requestJson<BarberEarningsResponse>("/api/barber/earnings"),
     staleTime: 5_000
+  });
+}
+
+export function useBarberCancelBookingMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      appointmentId,
+      expectedRevision,
+      reason
+    }: {
+      appointmentId: string;
+      expectedRevision: number;
+      reason?: string;
+    }) =>
+      runGuardedAction(`barber:cancel:${appointmentId}:${expectedRevision}`, () =>
+        requestJson<{ appointment: LiveAppointmentRecord }>(`/api/bookings/${appointmentId}/cancel`, {
+          method: "POST",
+          body: JSON.stringify({ expectedRevision, reason })
+        })
+      ),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["barber-overview"] }),
+        queryClient.invalidateQueries({ queryKey: ["barber-schedule"] }),
+        queryClient.invalidateQueries({ queryKey: ["barber-clients"] }),
+        queryClient.invalidateQueries({ queryKey: ["barber-earnings"] }),
+        queryClient.invalidateQueries({ queryKey: ["barber-status"] }),
+        queryClient.invalidateQueries({ queryKey: ["barber-dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["fintech"] }),
+        queryClient.invalidateQueries({ queryKey: ["points"] }),
+        queryClient.invalidateQueries({ queryKey: ["operations", "barber"] }),
+        queryClient.invalidateQueries({ queryKey: ["operations", "owner"] }),
+        queryClient.invalidateQueries({ queryKey: ["operations", "manager"] })
+      ]);
+    }
   });
 }
 

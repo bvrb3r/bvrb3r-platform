@@ -5,7 +5,6 @@ import { ArrowRight, Landmark, ShieldAlert, WalletCards } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useOwnerEngagementIntelligence } from "@/lib/engagement/client";
 import {
   useFinancialAnomalyQueueQuery,
   useFintechManagementQuery,
@@ -29,32 +28,45 @@ function getMonthKey(date: Date) {
   return `${date.getFullYear()}-${date.getMonth()}`;
 }
 
+function formatDateTime(iso: string) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return iso;
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(date);
+}
+
 export function OwnerMoneyWorkspace() {
   const shopQuery = useShopDashboardQuery();
-  const intelligenceQuery = useOwnerEngagementIntelligence();
   const fintechQuery = useFintechManagementQuery();
   const payoutsQuery = useFintechPayoutsQuery();
   const anomaliesQuery = useFinancialAnomalyQueueQuery();
 
   const isInitialLoading =
     (shopQuery.isLoading && !shopQuery.data)
-    || (intelligenceQuery.isLoading && !intelligenceQuery.data)
     || (fintechQuery.isLoading && !fintechQuery.data)
     || (payoutsQuery.isLoading && !payoutsQuery.data);
 
   const errorMessage =
     shopQuery.error
-    ?? intelligenceQuery.error
     ?? fintechQuery.error
     ?? payoutsQuery.error
     ?? anomaliesQuery.error;
 
   const ownerAnalytics = useMemo(() => shopQuery.data?.ownerAnalytics ?? [], [shopQuery.data?.ownerAnalytics]);
+  const appointments = useMemo(() => shopQuery.data?.appointments ?? [], [shopQuery.data?.appointments]);
+  const barbers = useMemo(() => shopQuery.data?.barbers ?? [], [shopQuery.data?.barbers]);
   const summary = shopQuery.data?.summary;
-  const money = intelligenceQuery.data?.money;
-  const monetization = intelligenceQuery.data?.monetization;
   const anomalies = anomaliesQuery.data?.items ?? [];
+  const blockedPayments = useMemo(() => fintechQuery.data?.blockedPayments ?? [], [fintechQuery.data?.blockedPayments]);
   const payoutSummary = payoutsQuery.data?.summary;
+  const readyRouting = useMemo(() => payoutsQuery.data?.readyRouting ?? [], [payoutsQuery.data?.readyRouting]);
   const recentPayoutExecutions = payoutsQuery.data?.recentExecutions ?? [];
 
   const revenueWindow = useMemo(() => {
@@ -86,7 +98,7 @@ export function OwnerMoneyWorkspace() {
 
   const busiestHour = useMemo(() => {
     const counts = new Map<number, number>();
-    for (const appointment of shopQuery.data?.appointments ?? []) {
+    for (const appointment of appointments) {
       const hour = new Date(appointment.start).getHours();
       counts.set(hour, (counts.get(hour) ?? 0) + 1);
     }
@@ -98,13 +110,36 @@ export function OwnerMoneyWorkspace() {
 
     const label = new Intl.DateTimeFormat("en-US", { hour: "numeric" }).format(new Date(2026, 0, 1, top[0]));
     return `${label} (${top[1]} appt${top[1] === 1 ? "" : "s"})`;
-  }, [shopQuery.data?.appointments]);
+  }, [appointments]);
 
-  const revenuePerBarber = intelligenceQuery.data?.network.activeBarbers
-    ? intelligenceQuery.data.network.revenue / Math.max(intelligenceQuery.data.network.activeBarbers, 1)
-    : 0;
+  const routedVisibility = useMemo(() => {
+    const platformFees = [...blockedPayments, ...readyRouting].reduce((sum, row) => sum + row.platformFeeAmount, 0);
+    const barberShare = [...blockedPayments, ...readyRouting].reduce((sum, row) => sum + row.barberPayoutAmount, 0);
+    const shopShare = [...blockedPayments, ...readyRouting].reduce((sum, row) => sum + row.shopSplitAmount, 0);
+
+    return {
+      platformFees,
+      barberShare,
+      shopShare
+    };
+  }, [blockedPayments, readyRouting]);
+
+  const recentRevenueAppointments = useMemo(() => {
+    return appointments
+      .filter((appointment) => appointment.status === "completed")
+      .sort((left, right) => new Date(right.completedAt ?? right.end).getTime() - new Date(left.completedAt ?? left.end).getTime())
+      .slice(0, 6);
+  }, [appointments]);
+
+  const tipTotal = ownerAnalytics.reduce((sum, row) => sum + row.tipTotal, 0);
   const averageTicket = summary?.completedCount
     ? (summary.revenueToday ?? 0) / Math.max(summary.completedCount, 1)
+    : 0;
+  const averageUtilization = barbers.length
+    ? Math.round(barbers.reduce((sum, barber) => sum + barber.utilization, 0) / barbers.length)
+    : 0;
+  const revenuePerActiveBarber = barbers.length
+    ? revenueWindow.todayRevenue / Math.max(barbers.length, 1)
     : 0;
 
   return (
@@ -115,7 +150,7 @@ export function OwnerMoneyWorkspace() {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="surface-label">Money command</p>
-            <h3 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">Trust every dollar without digging for it.</h3>
+            <h3 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">Trust every dollar without inventing the story around it.</h3>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">
               Revenue, payouts, routing visibility, and anomalies all stay tied to the canonical money layer. This lane is for understanding the business and acting safely.
             </p>
@@ -168,15 +203,41 @@ export function OwnerMoneyWorkspace() {
                 <MetricSkeleton />
                 <MetricSkeleton />
                 <MetricSkeleton />
+                <MetricSkeleton />
+                <MetricSkeleton />
               </>
             ) : (
               <>
-                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Service revenue</p><p className="mt-3 text-2xl font-semibold">{currency(money?.revenueBreakdown.grossRevenue ?? 0)}</p></div>
-                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Tips</p><p className="mt-3 text-2xl font-semibold">{currency(ownerAnalytics.reduce((sum, row) => sum + row.tipTotal, 0))}</p></div>
-                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Platform fees</p><p className="mt-3 text-2xl font-semibold">{currency(money?.revenueBreakdown.platformFeeRevenue ?? 0)}</p></div>
-                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Barber payouts</p><p className="mt-3 text-2xl font-semibold">{currency((money?.payoutFlow.paidAmount ?? 0) + (money?.payoutFlow.pendingAmount ?? 0) + (money?.payoutFlow.queuedAmount ?? 0))}</p></div>
-                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Shop share</p><p className="mt-3 text-2xl font-semibold">{currency(money?.revenueBreakdown.netRevenue ?? 0)}</p></div>
-                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Booth-rent collections</p><p className="mt-3 text-2xl font-semibold">{currency(fintechQuery.data?.memberships.reduce((sum, membership) => sum + (membership.routingModel === "booth_rent" ? (membership.boothRentAmount ?? 0) : 0), 0) ?? 0)}</p></div>
+                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
+                  <p className="surface-label">Service revenue</p>
+                  <p className="mt-3 text-2xl font-semibold">{currency(revenueWindow.monthRevenue)}</p>
+                  <p className="mt-2 text-sm text-white/58">Current-month gross revenue from owner snapshots.</p>
+                </div>
+                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
+                  <p className="surface-label">Tips</p>
+                  <p className="mt-3 text-2xl font-semibold">{currency(tipTotal)}</p>
+                  <p className="mt-2 text-sm text-white/58">Tips visible in owner analytics snapshots.</p>
+                </div>
+                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
+                  <p className="surface-label">Open platform fees</p>
+                  <p className="mt-3 text-2xl font-semibold">{currency(routedVisibility.platformFees)}</p>
+                  <p className="mt-2 text-sm text-white/58">Blocked plus ready routing rows still visible in scope.</p>
+                </div>
+                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
+                  <p className="surface-label">Open barber share</p>
+                  <p className="mt-3 text-2xl font-semibold">{currency(routedVisibility.barberShare)}</p>
+                  <p className="mt-2 text-sm text-white/58">Barber payout share across ready and blocked routing rows.</p>
+                </div>
+                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
+                  <p className="surface-label">Open shop share</p>
+                  <p className="mt-3 text-2xl font-semibold">{currency(routedVisibility.shopShare)}</p>
+                  <p className="mt-2 text-sm text-white/58">Shop-side routed revenue still awaiting settlement flow.</p>
+                </div>
+                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
+                  <p className="surface-label">Ready for payout</p>
+                  <p className="mt-3 text-2xl font-semibold">{currency(fintechQuery.data?.summary.readyForPayoutAmount ?? payoutSummary?.readyForPayoutAmount ?? 0)}</p>
+                  <p className="mt-2 text-sm text-white/58">Funds already clear to advance through payout rails.</p>
+                </div>
               </>
             )}
           </div>
@@ -214,7 +275,7 @@ export function OwnerMoneyWorkspace() {
               </>
             ) : (
               <>
-                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Pending</p><p className="mt-3 text-2xl font-semibold">{currency(money?.payoutFlow.pendingAmount ?? 0)}</p></div>
+                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Pending</p><p className="mt-3 text-2xl font-semibold">{currency((blockedPayments.reduce((sum, row) => sum + row.barberPayoutAmount + row.shopSplitAmount, 0)))}</p></div>
                 <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Executed</p><p className="mt-3 text-2xl font-semibold">{currency(payoutSummary?.executedAmount ?? 0)}</p></div>
                 <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Failed / blocked</p><p className="mt-3 text-2xl font-semibold">{(payoutSummary?.failedExecutionRecords ?? 0) + (payoutSummary?.blockedExecutionRecords ?? 0)}</p></div>
                 <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Instant payout fees</p><p className="mt-3 text-2xl font-semibold">{currency(recentPayoutExecutions.reduce((sum, row) => sum + (row.payoutSpeed === "instant" ? row.providerFeeAmount : 0), 0))}</p></div>
@@ -222,15 +283,19 @@ export function OwnerMoneyWorkspace() {
             )}
           </div>
           <div className="mt-4 space-y-3">
-            {recentPayoutExecutions.slice(0, 4).map((execution) => (
+            {recentPayoutExecutions.length ? recentPayoutExecutions.slice(0, 4).map((execution) => (
               <div key={execution.id} className="rounded-[22px] border border-white/8 bg-black/20 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="font-medium text-white">{execution.targetDisplayName ?? execution.barberName ?? execution.shopLabel ?? "Payout execution"}</p>
                   <span className="status-pill text-[#d7ffab]">{execution.executionStatus.replaceAll("_", " ")}</span>
                 </div>
-                <p className="mt-2 text-sm text-white/58">{currency(execution.amount)} • {execution.executionType.replaceAll("_", " ")} • {execution.blockedReason ?? execution.failureReason ?? "Execution recorded cleanly"}</p>
+                <p className="mt-2 text-sm text-white/58">{currency(execution.amount)} - {execution.executionType.replaceAll("_", " ")} - {execution.blockedReason ?? execution.failureReason ?? "Execution recorded cleanly"}</p>
               </div>
-            ))}
+            )) : (
+              <div className="empty-state-panel rounded-[24px] p-5 text-sm leading-7 text-white/58">
+                No payout executions are recorded yet for this owner scope.
+              </div>
+            )}
           </div>
         </Card>
 
@@ -241,12 +306,12 @@ export function OwnerMoneyWorkspace() {
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Anomalies open</p><p className="mt-3 text-2xl font-semibold">{anomalies.filter((item) => item.status === "open" || item.status === "investigating").length}</p></div>
-            <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Billing issues</p><p className="mt-3 text-2xl font-semibold">{monetization?.subscriptions.billingAttention ?? 0}</p></div>
             <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Needs account attention</p><p className="mt-3 text-2xl font-semibold">{fintechQuery.data?.summary.needsAttentionAccounts ?? 0}</p></div>
             <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Blocked routing</p><p className="mt-3 text-2xl font-semibold">{fintechQuery.data?.summary.blockedRoutingRecords ?? 0}</p></div>
+            <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Ready for payout</p><p className="mt-3 text-2xl font-semibold">{currency(payoutSummary?.readyForPayoutAmount ?? 0)}</p></div>
           </div>
           <div className="mt-4 space-y-3">
-            {anomalies.slice(0, 4).map((anomaly) => (
+            {anomalies.length ? anomalies.slice(0, 4).map((anomaly) => (
               <div key={anomaly.id} className="rounded-[22px] border border-white/8 bg-black/20 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="font-medium text-white">{anomaly.summary}</p>
@@ -254,34 +319,65 @@ export function OwnerMoneyWorkspace() {
                 </div>
                 <p className="mt-2 text-sm text-white/58">{anomaly.description ?? anomaly.anomalyType.replaceAll("_", " ")}</p>
               </div>
-            ))}
+            )) : (
+              <div className="empty-state-panel rounded-[24px] p-5 text-sm leading-7 text-white/58">
+                No financial anomalies are open in this owner scope right now.
+              </div>
+            )}
           </div>
         </Card>
       </section>
 
-      <Card className="rounded-[32px] p-6">
-        <div className="flex items-center justify-between gap-3">
-          <p className="surface-label">Performance indicators</p>
-          <Landmark className="h-5 w-5 text-[#baff69]" />
-        </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {isInitialLoading ? (
-            <>
-              <MetricSkeleton />
-              <MetricSkeleton />
-              <MetricSkeleton />
-              <MetricSkeleton />
-            </>
-          ) : (
-            <>
-              <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Average ticket</p><p className="mt-3 text-2xl font-semibold">{currency(averageTicket)}</p></div>
-              <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Revenue per barber</p><p className="mt-3 text-2xl font-semibold">{currency(revenuePerBarber)}</p></div>
-              <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Busiest hour</p><p className="mt-3 text-2xl font-semibold">{busiestHour}</p></div>
-              <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Chair utilization</p><p className="mt-3 text-2xl font-semibold">{intelligenceQuery.data?.network.chairUtilization ?? 0}%</p></div>
-            </>
-          )}
-        </div>
-      </Card>
+      <section className="grid gap-4 lg:grid-cols-[1fr_1fr]">
+        <Card className="rounded-[32px] p-6">
+          <div className="flex items-center justify-between gap-3">
+            <p className="surface-label">Recent revenue</p>
+            <WalletCards className="h-5 w-5 text-[#baff69]" />
+          </div>
+          <div className="mt-4 space-y-3">
+            {recentRevenueAppointments.length ? recentRevenueAppointments.map((appointment) => (
+              <div key={appointment.id} className="rounded-[22px] border border-white/8 bg-black/20 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="font-medium text-white">{appointment.display.clientName}</p>
+                    <p className="mt-1 text-sm text-white/58">{appointment.display.barberName} - {appointment.display.serviceName}</p>
+                  </div>
+                  <span className="status-pill text-[#d7ffab]">{appointment.balanceDue > 0 ? "open balance" : "posted"}</span>
+                </div>
+                <p className="mt-2 text-sm text-white/58">{formatDateTime(appointment.completedAt ?? appointment.end)} - {currency(appointment.totalAmount)}</p>
+              </div>
+            )) : (
+              <div className="empty-state-panel rounded-[24px] p-5 text-sm leading-7 text-white/58">
+                Revenue activity will appear here once the first completed appointments post.
+              </div>
+            )}
+          </div>
+        </Card>
+
+        <Card className="rounded-[32px] p-6">
+          <div className="flex items-center justify-between gap-3">
+            <p className="surface-label">Performance indicators</p>
+            <Landmark className="h-5 w-5 text-[#baff69]" />
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {isInitialLoading ? (
+              <>
+                <MetricSkeleton />
+                <MetricSkeleton />
+                <MetricSkeleton />
+                <MetricSkeleton />
+              </>
+            ) : (
+              <>
+                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Average ticket</p><p className="mt-3 text-2xl font-semibold">{currency(averageTicket)}</p></div>
+                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Revenue per barber</p><p className="mt-3 text-2xl font-semibold">{currency(revenuePerActiveBarber)}</p></div>
+                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Busiest hour</p><p className="mt-3 text-2xl font-semibold">{busiestHour}</p></div>
+                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Chair utilization</p><p className="mt-3 text-2xl font-semibold">{averageUtilization}%</p></div>
+              </>
+            )}
+          </div>
+        </Card>
+      </section>
     </div>
   );
 }

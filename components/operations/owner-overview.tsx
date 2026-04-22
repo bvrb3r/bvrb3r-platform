@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useMemo, type ComponentProps } from "react";
 import Link from "next/link";
@@ -10,12 +10,11 @@ import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ShopManagerPanel } from "@/components/operations/shop-manager-panel";
-import { useOwnerEngagementIntelligence } from "@/lib/engagement/client";
 import { useFinancialAnomalyQueueQuery, useFintechManagementQuery } from "@/lib/fintech/client";
 import { useShopDashboardQuery, type ShopDashboardAppointment } from "@/lib/operations/barber-client";
 import { buildOwnerRevenueSeriesFromAnalytics, sortOwnerDashboardAppointments } from "@/lib/operations/metrics";
-import { getReadableActionError } from "@/lib/utils/feedback";
 import { currency } from "@/lib/utils";
+import { getReadableActionError } from "@/lib/utils/feedback";
 
 function MetricSkeleton() {
   return (
@@ -64,6 +63,34 @@ function getAppointmentDetail(appointment: ShopDashboardAppointment) {
   return `${appointment.display.statusLabel} at ${appointment.display.locationName}.`;
 }
 
+function getTopProducingBarber(appointments: ShopDashboardAppointment[]) {
+  const totals = new Map<string, { barberName: string; revenue: number; completedCount: number }>();
+
+  for (const appointment of appointments) {
+    if (appointment.status !== "completed") {
+      continue;
+    }
+
+    const current = totals.get(appointment.barberId) ?? {
+      barberName: appointment.display.barberName,
+      revenue: 0,
+      completedCount: 0
+    };
+    current.revenue += appointment.totalAmount + appointment.tipAmount;
+    current.completedCount += 1;
+    totals.set(appointment.barberId, current);
+  }
+
+  return [...totals.entries()]
+    .map(([barberId, value]) => ({
+      barberId,
+      barberName: value.barberName,
+      revenue: value.revenue,
+      completedCount: value.completedCount
+    }))
+    .sort((left, right) => right.revenue - left.revenue)[0] ?? null;
+}
+
 const ownerSetupCards: Array<{
   title: string;
   detail: string;
@@ -98,9 +125,9 @@ const ownerSetupCards: Array<{
 
 export function OwnerOverview() {
   const shopQuery = useShopDashboardQuery();
-  const intelligenceQuery = useOwnerEngagementIntelligence();
   const fintechQuery = useFintechManagementQuery();
   const anomalyQuery = useFinancialAnomalyQueueQuery();
+
   const ownerAnalytics = useMemo(() => shopQuery.data?.ownerAnalytics ?? [], [shopQuery.data?.ownerAnalytics]);
   const workflowEvents = shopQuery.data?.workflowEvents ?? [];
   const appointments = useMemo(() => shopQuery.data?.appointments ?? [], [shopQuery.data?.appointments]);
@@ -114,11 +141,11 @@ export function OwnerOverview() {
     [appointments, businessDate]
   );
   const series = ownerAnalytics.length ? buildOwnerRevenueSeriesFromAnalytics(ownerAnalytics) : [];
-  const bookedCount = summary?.bookedToday ?? todayAppointments.filter((appointment) => appointment.status === "booked").length;
+  const bookedCount = summary?.bookedToday ?? todayAppointments.filter((appointment) => appointment.status === "confirmed" || appointment.status === "booked").length;
   const completedCount = summary?.completedServicesToday ?? summary?.completedCount ?? todayAppointments.filter((appointment) => appointment.status === "completed").length;
   const checkedInCount = summary?.checkedInCount ?? todayAppointments.filter((appointment) => appointment.status === "checked_in").length;
-  const inServiceCount = summary?.inServiceCount ?? todayAppointments.filter((appointment) => appointment.status === "in_service").length;
-  const inMotionCount = todayAppointments.filter((appointment) => ["booked", "checked_in", "in_service"].includes(appointment.status)).length;
+  const inMotionCount = todayAppointments.filter((appointment) => ["confirmed", "booked", "checked_in", "in_service"].includes(appointment.status)).length;
+  const openChairCount = barbers.filter((barber) => barber.activeAppointmentCount === 0).length;
   const averageTicket = completedCount ? (summary?.revenueToday ?? 0) / Math.max(completedCount, 1) : 0;
   const hasOwnerActivity = Boolean(
     appointments.length
@@ -129,8 +156,10 @@ export function OwnerOverview() {
   const visibleSetupCards = barbers.length
     ? ownerSetupCards.filter((card) => card.title !== "Add first barber")
     : ownerSetupCards;
+  const topProducer = useMemo(() => getTopProducingBarber(todayAppointments), [todayAppointments]);
+
   const quickInsights = useMemo(() => {
-    if (!ownerAnalytics.length && !appointments.length) {
+    if (!ownerAnalytics.length && !appointments.length && !barbers.length) {
       return [];
     }
 
@@ -138,36 +167,49 @@ export function OwnerOverview() {
     const latest = sortedAnalytics.at(-1);
     const previous = sortedAnalytics.at(-2);
     const revenueDelta = latest && previous ? latest.revenueTotal - previous.revenueTotal : null;
-    const topBarber = intelligenceQuery.data?.topBarbers[0];
-    const rebookingOpportunities = intelligenceQuery.data?.retention.rebookingOpportunities ?? 0;
 
     return [
       revenueDelta === null
-        ? "Yesterday comparison will appear after two business snapshots are available."
-        : `${revenueDelta >= 0 ? "Up" : "Down"} ${currency(Math.abs(revenueDelta))} vs yesterday.`,
-      topBarber
-        ? `${topBarber.barberName} is leading current revenue at ${currency(topBarber.revenue)}.`
-        : "Top barber insight will appear as the day settles.",
-      rebookingOpportunities
-        ? `${rebookingOpportunities} repeat clients are due back without a future booking.`
-        : "Repeat-client rebooking pressure is under control right now."
+        ? "Day-over-day revenue movement appears after two business snapshots are available."
+        : `${revenueDelta >= 0 ? "Up" : "Down"} ${currency(Math.abs(revenueDelta))} versus the previous business date.`,
+      topProducer
+        ? `${topProducer.barberName} is leading posted revenue at ${currency(topProducer.revenue)} across ${topProducer.completedCount} completed tickets.`
+        : "Top-producing barber signal appears as completed tickets settle.",
+      walkIns.length
+        ? `${walkIns.length} walk-in${walkIns.length === 1 ? "" : "s"} are still waiting while ${openChairCount} chair${openChairCount === 1 ? "" : "s"} look open.`
+        : openChairCount
+          ? `${openChairCount} chair${openChairCount === 1 ? "" : "s"} look open right now, which is usable same-day capacity.`
+          : "Every in-scope chair is already carrying active demand."
     ];
-  }, [appointments.length, intelligenceQuery.data?.retention.rebookingOpportunities, intelligenceQuery.data?.topBarbers, ownerAnalytics]);
+  }, [appointments.length, barbers.length, openChairCount, ownerAnalytics, topProducer, walkIns.length]);
+
   const alerts = useMemo(() => {
     const anomalyCount = (anomalyQuery.data?.items ?? []).filter((item) => item.status === "open" || item.status === "investigating").length;
-    const billingAttention = intelligenceQuery.data?.monetization.subscriptions.billingAttention ?? 0;
+    const needsAttentionAccounts = fintechQuery.data?.summary.needsAttentionAccounts ?? 0;
     const blockedRouting = fintechQuery.data?.summary.blockedRoutingRecords ?? 0;
+    const readyForCheckoutCount = summary?.readyForCheckoutCount ?? todayAppointments.filter((appointment) => appointment.status === "completed" && appointment.balanceDue > 0).length;
 
     if (!hasOwnerActivity) {
       return [];
     }
 
     return [
-      anomalyCount ? `${anomalyCount} unresolved financial anomaly${anomalyCount === 1 ? "" : "ies"} need review.` : "No unresolved financial anomalies are open right now.",
-      billingAttention ? `${billingAttention} subscription or billing row${billingAttention === 1 ? "" : "s"} need attention.` : "Billing health is clear across tracked subscriptions.",
-      blockedRouting ? `${blockedRouting} payout routing record${blockedRouting === 1 ? "" : "s"} are blocked.` : "No payout routing blockers are currently recorded."
+      anomalyCount
+        ? `${anomalyCount} unresolved financial anomaly${anomalyCount === 1 ? "" : "ies"} need review.`
+        : "No unresolved financial anomalies are open right now.",
+      needsAttentionAccounts
+        ? `${needsAttentionAccounts} connected account${needsAttentionAccounts === 1 ? "" : "s"} still need payout or verification attention.`
+        : blockedRouting
+          ? `${blockedRouting} routing record${blockedRouting === 1 ? "" : "s"} are blocked and need owner review.`
+          : "Connected-account readiness is clear across the current scope.",
+      readyForCheckoutCount
+        ? `${readyForCheckoutCount} completed ticket${readyForCheckoutCount === 1 ? "" : "s"} still need checkout handoff.`
+        : (summary?.outstandingBalance ?? 0) > 0
+          ? `${currency(summary?.outstandingBalance ?? 0)} is still open across in-flight tickets.`
+          : "No checkout or open-balance exceptions are waiting right now."
     ];
-  }, [anomalyQuery.data, fintechQuery.data?.summary.blockedRoutingRecords, hasOwnerActivity, intelligenceQuery.data?.monetization.subscriptions.billingAttention]);
+  }, [anomalyQuery.data?.items, fintechQuery.data?.summary.blockedRoutingRecords, fintechQuery.data?.summary.needsAttentionAccounts, hasOwnerActivity, summary?.outstandingBalance, summary?.readyForCheckoutCount, todayAppointments]);
+
   const isInitialLoading = shopQuery.isLoading && !shopQuery.data;
   const errorMessage = shopQuery.error ? getReadableActionError(shopQuery.error) : null;
 
@@ -186,7 +228,7 @@ export function OwnerOverview() {
                 </h3>
               )}
               <p className="mt-3 max-w-2xl text-sm leading-7 text-white/62">
-                Open the app and know what matters fast: revenue, completed work, live chair flow, and the next owner action across the shop.
+                Open the app and know what matters fast: posted revenue, active chairs, open capacity, and the next owner action across the shop.
               </p>
             </div>
             <div className="rounded-[24px] border border-white/8 bg-black/20 px-4 py-4 text-sm text-white/68">
@@ -216,10 +258,10 @@ export function OwnerOverview() {
               Open schedule
             </Link>
             <Link
-              href="/reports?view=growth"
+              href="/team"
               className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-[linear-gradient(180deg,rgba(31,31,31,0.96),rgba(11,11,11,0.98))] px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#7cff00]/30 hover:bg-[linear-gradient(180deg,rgba(34,34,34,0.96),rgba(14,14,14,0.98))] hover:text-[#d8ff9f] sm:px-5 sm:text-[11px] sm:tracking-[0.22em]"
             >
-              Open growth
+              Open team
             </Link>
           </div>
 
@@ -272,7 +314,7 @@ export function OwnerOverview() {
               <Card className="rounded-[32px] p-6">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="surface-label">Who is next</p>
+                    <p className="surface-label">Floor in motion</p>
                     <p className="mt-3 text-3xl font-semibold" data-display="true">{inMotionCount}</p>
                     <p className="mt-2 text-sm leading-6 text-white/60">Booked, checked-in, and in-service tickets still moving through the floor.</p>
                   </div>
@@ -284,7 +326,7 @@ export function OwnerOverview() {
                   <div>
                     <p className="surface-label">Checked in and ready</p>
                     <p className="mt-3 text-3xl font-semibold" data-display="true">{checkedInCount}</p>
-                    <p className="mt-2 text-sm leading-6 text-white/60">Clients are physically in the shop and waiting for the barber to start service.</p>
+                    <p className="mt-2 text-sm leading-6 text-white/60">Clients are physically in the shop and waiting for service to start.</p>
                   </div>
                   <ReceiptText className="h-5 w-5 text-[#baff69]" />
                 </div>
@@ -292,9 +334,9 @@ export function OwnerOverview() {
               <Card className="rounded-[32px] p-6">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="surface-label">Who is cutting now</p>
-                    <p className="mt-3 text-3xl font-semibold" data-display="true">{inServiceCount}</p>
-                    <p className="mt-2 text-sm leading-6 text-white/60">These services should convert to completed activity and updated revenue after completion.</p>
+                    <p className="surface-label">Open chairs now</p>
+                    <p className="mt-3 text-3xl font-semibold" data-display="true">{openChairCount}</p>
+                    <p className="mt-2 text-sm leading-6 text-white/60">Real same-day capacity the owner can fill without inventing demand.</p>
                   </div>
                   <CircleDollarSign className="h-5 w-5 text-[#d7ffab]" />
                 </div>
@@ -317,7 +359,7 @@ export function OwnerOverview() {
             <StatCard label="Paid appointments" value={String(summary?.paidAppointmentsToday ?? 0)} detail="Payments captured from completed services" />
             <StatCard label="Balance still open" value={currency(summary?.outstandingBalance ?? 0)} detail={`${bookedCount} booked appointments still in motion`} />
             <StatCard label="Queue average" value={`${summary?.queueAverageMinutes ?? 0} min`} detail={`${walkIns.length} walk-ins waiting on assignment`} />
-            <StatCard label="Ready for checkout" value={String(summary?.readyForCheckoutCount ?? 0)} detail="Services finished and waiting on handoff or balance collection" />
+            <StatCard label="Open chairs" value={String(openChairCount)} detail="Current barbers without live service pressure" />
           </>
         )}
       </section>
@@ -356,7 +398,7 @@ export function OwnerOverview() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="surface-label">Quick insights</p>
-              <p className="mt-2 text-sm text-white/58">One short set of owner insights grounded in real revenue, retention, and appointment activity.</p>
+              <p className="mt-2 text-sm text-white/58">A short owner read on revenue movement, chair capacity, and which barber is actually producing.</p>
             </div>
             <span className="status-pill text-[#d7ffab]">Shop dashboard live</span>
           </div>
@@ -402,11 +444,11 @@ export function OwnerOverview() {
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="text-lg font-semibold">{appointment.display.clientName}</p>
-                    <p className="mt-1 text-sm text-white/55">{appointment.display.barberName} • {appointment.display.serviceName}</p>
+                    <p className="mt-1 text-sm text-white/55">{appointment.display.barberName} - {appointment.display.serviceName}</p>
                   </div>
                   <StatusBadge status={appointment.status} balanceDue={appointment.balanceDue} />
                 </div>
-                <p className="mt-3 text-sm text-white/58">{appointment.display.locationLabel} • {formatTime(appointment.start)}</p>
+                <p className="mt-3 text-sm text-white/58">{appointment.display.locationLabel} - {formatTime(appointment.start)}</p>
                 <p className="mt-2 text-sm text-white/58">{getAppointmentDetail(appointment)}</p>
               </div>
             )) : (
@@ -433,13 +475,13 @@ export function OwnerOverview() {
             ) : walkIns.length ? walkIns.slice(0, 6).map((entry) => (
               <div key={entry.id} className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#7CFF00]/16 hover:bg-black/30">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="font-medium">#{entry.position} • {entry.clientName}</p>
+                  <p className="font-medium">#{entry.position} - {entry.clientName}</p>
                   <span className="status-pill text-[#d7ffab]">{entry.display.statusLabel}</span>
                 </div>
                 <p className="mt-1 text-sm text-white/55">{entry.requestedService}</p>
                 <p className="mt-3 text-sm text-white/58">{entry.display.locationLabel}</p>
                 <p className="mt-2 text-sm text-white/58">
-                  {entry.display.assignedBarberName ? `Assigned to ${entry.display.assignedBarberName}` : "Front desk routing still needed"} • {entry.waitMinutes} min wait
+                  {entry.display.assignedBarberName ? `Assigned to ${entry.display.assignedBarberName}` : "Front desk routing still needed"} - {entry.waitMinutes} min wait
                 </p>
               </div>
             )) : (
@@ -490,4 +532,3 @@ export function OwnerOverview() {
     </div>
   );
 }
-

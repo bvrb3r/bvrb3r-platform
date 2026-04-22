@@ -30,16 +30,8 @@ vi.mock("@/components/operations/owner-money-workspace", () => ({
   OwnerMoneyWorkspace: () => <div data-testid="owner-money-workspace-stub">Owner money workspace</div>
 }));
 
-vi.mock("@/components/operations/owner-growth-workspace", () => ({
-  OwnerGrowthWorkspace: () => <div data-testid="owner-growth-workspace-stub">Owner growth workspace</div>
-}));
-
 vi.mock("@/components/operations/fintech-workspace", () => ({
   FintechWorkspace: ({ locationIds }: { locationIds: string[] }) => <div data-testid="fintech-workspace-stub">{locationIds.join(",")}</div>
-}));
-
-vi.mock("@/components/operations/promotions-workspace", () => ({
-  PromotionsWorkspace: ({ locationIds }: { locationIds: string[] }) => <div data-testid="promotions-workspace-stub">{locationIds.join(",")}</div>
 }));
 
 import TeamPage from "@/app/(platform)/team/page";
@@ -89,13 +81,14 @@ describe("owner route polish", () => {
     expect(screen.getByTestId("fintech-workspace-stub")).toHaveTextContent("loc-ybor,loc-hyde");
   });
 
-  it("renders the growth view on reports when requested", async () => {
+  it("parks the growth view honestly and keeps the owner on canonical money surfaces", async () => {
     getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("owner@bvrb3r.demo"));
 
     render(await ReportsPage({ searchParams: Promise.resolve({ view: "growth" }) }));
 
-    expect(screen.getByText("Growth command")).toBeInTheDocument();
-    expect(screen.getByTestId("owner-growth-workspace-stub")).toBeInTheDocument();
-    expect(screen.getByTestId("promotions-workspace-stub")).toHaveTextContent("loc-ybor,loc-hyde");
+    expect(screen.getByText("Growth parked")).toBeInTheDocument();
+    expect(screen.getByText(/Growth tools are parked until the canonical growth phase is built/i)).toBeInTheDocument();
+    expect(screen.getByTestId("owner-money-workspace-stub")).toBeInTheDocument();
+    expect(screen.getByTestId("fintech-workspace-stub")).toHaveTextContent("loc-ybor,loc-hyde");
   });
 });
