@@ -134,6 +134,22 @@ describe("authorized user guard", () => {
     expect(redirectMock).not.toHaveBeenCalled();
   });
 
+  it("returns an active canonical platform-admin session without relying on an email shortcut", async () => {
+    getCurrentUserFromServerMock.mockResolvedValue({
+      mode: "supabase",
+      authenticated: true,
+      user: makePlatformAdminUser({
+        email: "ops-admin@bvrb3r.app"
+      })
+    });
+
+    const user = await getPlatformAdminUser();
+
+    expect(user.email).toBe("ops-admin@bvrb3r.app");
+    expect(user.role).toBe("platform_admin");
+    expect(redirectMock).not.toHaveBeenCalled();
+  });
+
   it("redirects the retired demo architect identity away from the architect route", async () => {
     getCurrentUserFromServerMock.mockResolvedValue({ mode: "demo", user: resolveDemoUser("architect@bvrb3r.demo") });
 

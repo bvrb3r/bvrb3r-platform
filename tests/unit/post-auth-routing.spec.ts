@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { CANONICAL_PLATFORM_ADMIN_EMAIL } from "@/lib/auth/demo-auth";
 import type { UserAccount } from "@/types/domain";
 
 const {
@@ -82,7 +81,7 @@ describe("post-auth routing", () => {
   it("routes the platform admin straight to /architect", async () => {
     const destination = await resolvePostAuthDestination(buildUser({
       role: "platform_admin",
-      email: CANONICAL_PLATFORM_ADMIN_EMAIL,
+      email: "ops-admin@bvrb3r.app",
       accountStatus: "active",
       primaryOnboardingRole: "platform_admin"
     }));

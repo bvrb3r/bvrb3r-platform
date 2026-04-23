@@ -19,7 +19,7 @@ vi.mock("@/lib/trust/provider", async () => {
   };
 });
 
-import { CANONICAL_PLATFORM_ADMIN_EMAIL, resolveDemoUser } from "@/lib/auth/demo-auth";
+import { resolveDemoUser } from "@/lib/auth/demo-auth";
 import {
   ensureCanonicalOnboardingStateForUser,
   getActivationStatusForUser,
@@ -123,7 +123,7 @@ describe("onboarding service", () => {
   it("routes only the canonical active platform admin to Architect", async () => {
     const admin = {
       ...resolveDemoUser("architect@bvrb3r.demo"),
-      email: CANONICAL_PLATFORM_ADMIN_EMAIL,
+      email: "ops-admin@bvrb3r.app",
       accountStatus: "active" as const
     };
 
@@ -138,7 +138,7 @@ describe("onboarding service", () => {
       email: "pmcgeefsu@gmail.com",
       canonicalFullName: "Retired Admin",
       phone: "+18135550199",
-      accountStatus: "active" as const,
+      accountStatus: "profile_only" as const,
       emailVerified: true,
       phoneVerified: true
     };

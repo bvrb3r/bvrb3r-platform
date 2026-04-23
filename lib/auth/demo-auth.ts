@@ -96,15 +96,13 @@ export function findDemoUserByRole(role?: Role) {
   return demoUsers.find((user) => user.role === role);
 }
 
-function isCanonicalPlatformAdminEmail(email?: string | null) {
-  return email?.trim().toLowerCase() === CANONICAL_PLATFORM_ADMIN_EMAIL;
-}
-
-export function isPlatformAdminUser(user?: Pick<UserAccount, "role" | "primaryOnboardingRole"> & { email?: string | null } | null) {
+export function isPlatformAdminUser(
+  user?: Pick<UserAccount, "role" | "primaryOnboardingRole" | "accountStatus"> & { email?: string | null } | null
+) {
   return Boolean(
     user?.role === "platform_admin"
     && user.primaryOnboardingRole === "platform_admin"
-    && isCanonicalPlatformAdminEmail(user.email)
+    && user.accountStatus === "active"
   );
 }
 

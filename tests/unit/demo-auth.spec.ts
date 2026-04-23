@@ -64,11 +64,12 @@ describe("demo account mapping", () => {
     expect(accounts.find((account) => account.user.email === "lux@bvrb3r.demo")?.roleLabel).toBe("Freelance barber");
   });
 
-  it("routes only the canonical founder email into the architect console", () => {
+  it("routes only the active canonical platform-admin lane into the architect console", () => {
     const retiredDemoArchitect = resolveDemoUser("architect@bvrb3r.demo");
     const founder = {
       ...retiredDemoArchitect,
-      email: CANONICAL_PLATFORM_ADMIN_EMAIL
+      email: CANONICAL_PLATFORM_ADMIN_EMAIL,
+      accountStatus: "active" as const
     };
     const accounts = getDemoLauncherAccounts();
 
@@ -83,10 +84,28 @@ describe("demo account mapping", () => {
     expect(accounts.some((account) => account.user.email === "architect@bvrb3r.demo")).toBe(false);
   });
 
-  it("requires the canonical platform-admin lane and canonical founder email for founder access", () => {
-    expect(isPlatformAdminUser({ role: "platform_admin", primaryOnboardingRole: "platform_admin", email: CANONICAL_PLATFORM_ADMIN_EMAIL })).toBe(true);
-    expect(isPlatformAdminUser({ role: "platform_admin", primaryOnboardingRole: "platform_admin", email: "pmcgeefsu@gmail.com" })).toBe(false);
-    expect(isPlatformAdminUser({ role: "platform_admin", primaryOnboardingRole: "platform_admin", email: "architect@bvrb3r.demo" })).toBe(false);
-    expect(isPlatformAdminUser({ role: "platform_admin", email: CANONICAL_PLATFORM_ADMIN_EMAIL })).toBe(false);
+  it("requires an active canonical platform-admin lane for architect access", () => {
+    expect(isPlatformAdminUser({
+      role: "platform_admin",
+      primaryOnboardingRole: "platform_admin",
+      email: CANONICAL_PLATFORM_ADMIN_EMAIL,
+      accountStatus: "active"
+    })).toBe(true);
+    expect(isPlatformAdminUser({
+      role: "platform_admin",
+      primaryOnboardingRole: "platform_admin",
+      email: "pmcgeefsu@gmail.com",
+      accountStatus: "active"
+    })).toBe(true);
+    expect(isPlatformAdminUser({
+      role: "platform_admin",
+      primaryOnboardingRole: "platform_admin",
+      email: "architect@bvrb3r.demo"
+    })).toBe(false);
+    expect(isPlatformAdminUser({
+      role: "platform_admin",
+      email: CANONICAL_PLATFORM_ADMIN_EMAIL,
+      accountStatus: "active"
+    })).toBe(false);
   });
 });
