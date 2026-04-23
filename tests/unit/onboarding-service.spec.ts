@@ -221,7 +221,7 @@ describe("onboarding service", () => {
     expect(payload.nextPath).toBe("/dashboard/client");
   });
 
-  it("keeps a primary-role-null user on role-select even when stale lane rows exist", async () => {
+  it("routes a legacy primary-role-null client row safely into the client dashboard when canonical client truth exists", async () => {
     const staleClient: UserAccount = {
       ...resolveDemoUser("client@bvrb3r.demo"),
       id: "fresh-with-stale-lane-row",
@@ -242,7 +242,7 @@ describe("onboarding service", () => {
 
     const destination = await resolvePostAuthDestination(staleClient);
 
-    expect(destination).toBe("/role-select");
+    expect(destination).toBe("/dashboard/client");
   });
 
   it("routes a saved client lane directly to the client dashboard", async () => {

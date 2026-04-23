@@ -44,8 +44,16 @@ const ONBOARDING_STEPS: Record<OnboardingRole, OnboardingStepDefinition[]> = {
   ]
 };
 
-function randomId(prefix: string) {
-  return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+function createUuid() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (character) => {
+    const random = Math.floor(Math.random() * 16);
+    const value = character === "x" ? random : (random & 0x3) | 0x8;
+    return value.toString(16);
+  });
 }
 
 function clone<T>(value: T): T {
@@ -149,8 +157,7 @@ function mapRow(row: Record<string, unknown>): OnboardingStateRecord {
 }
 
 function toRow(state: OnboardingStateRecord) {
-  return {
-    id: state.id,
+  const row = {
     user_id: state.userId,
     role: state.role,
     status: state.status,
@@ -161,6 +168,15 @@ function toRow(state: OnboardingStateRecord) {
     created_at: state.createdAt,
     updated_at: state.updatedAt
   };
+
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(state.id)) {
+    return {
+      id: state.id,
+      ...row
+    };
+  }
+
+  return row;
 }
 
 async function readPersistedStates(userId: string) {
@@ -247,7 +263,7 @@ function createEmptyState(
         : {};
 
   return {
-    id: `onboard-${role}-${randomId("state")}`,
+    id: createUuid(),
     userId: user.id,
     role,
     status: "in_progress",
@@ -333,6 +349,38 @@ function inferSelectedRoleFromUser(user: UserAccount): OnboardingRole | null {
   return null;
 }
 
+function getCanonicalRoleDestination(user: UserAccount): OnboardingRole | null {
+  if (user.primaryOnboardingRole === "client" && user.clientId) {
+    return "client";
+  }
+
+  if (user.primaryOnboardingRole === "barber" && user.barberId) {
+    return "barber";
+  }
+
+  if (user.primaryOnboardingRole === "shop_owner" && user.ownedShopId) {
+    return "shop_owner";
+  }
+
+  if (!user.primaryOnboardingRole && user.role === "client" && user.clientId) {
+    return "client";
+  }
+
+  if (
+    !user.primaryOnboardingRole
+    && (user.role === "commission_barber" || user.role === "booth_rent_barber")
+    && user.barberId
+  ) {
+    return "barber";
+  }
+
+  if (!user.primaryOnboardingRole && user.role === "owner" && user.ownedShopId) {
+    return "shop_owner";
+  }
+
+  return null;
+}
+
 function hasCanonicalLaneForRole(user: UserAccount, role: OnboardingRole) {
   if (role === "client") {
     return Boolean(user.clientId);
@@ -387,6 +435,97 @@ function getDashboardPath(role: OnboardingRole): Route {
   }
 
   return "/dashboard/owner";
+}
+
+function logPostAuthDecision(
+  user: UserAccount,
+  destination: Route,
+  reason: string,
+  details: Record<string, unknown> = {}
+) {
+  console.info("[auth] post-auth destination resolved", {
+    userId: user.id,
+    runtimeRole: user.role,
+    primaryOnboardingRole: user.primaryOnboardingRole ?? null,
+    accountStatus: user.accountStatus ?? null,
+    clientId: user.clientId ?? null,
+    barberId: user.barberId ?? null,
+    ownedShopId: user.ownedShopId ?? null,
+    destination,
+    reason,
+    ...details
+  });
+}
+
+async function readPostAuthOnboardingSummary(
+  user: UserAccount,
+  preloaded?: { lanes: OnboardingLaneView[]; selectedRole: OnboardingRole | null; warnings: string[] }
+) {
+  if (preloaded) {
+    return {
+      selectedRole: preloaded.selectedRole,
+      lanes: preloaded.lanes.map((lane) => ({
+        id: `lane-${lane.role}`,
+        userId: user.id,
+        role: lane.role,
+        status: lane.status,
+        currentStep: lane.currentStep,
+        completedSteps: lane.completedSteps,
+        profileData: lane.profileData,
+        createdAt: "",
+        updatedAt: ""
+      })),
+      current: preloaded.lanes[0]
+        ? {
+            id: `lane-${preloaded.lanes[0].role}`,
+            userId: user.id,
+            role: preloaded.lanes[0].role,
+            status: preloaded.lanes[0].status,
+            currentStep: preloaded.lanes[0].currentStep,
+            completedSteps: preloaded.lanes[0].completedSteps,
+            profileData: preloaded.lanes[0].profileData,
+            createdAt: "",
+            updatedAt: ""
+          }
+        : null
+    };
+  }
+
+  try {
+    return await getOnboardingSummaryForRuntimeUser(user.id);
+  } catch (error) {
+    console.error("[auth] post-auth onboarding summary read failed", {
+      userId: user.id,
+      error: describeOnboardingError(error)
+    });
+    return null;
+  }
+}
+
+export function resolvePostAuthRecoveryDestination(user: UserAccount): Route {
+  if (user.accountStatus === "deactivated" || user.accountStatus === "suspended" || user.accountStatus === "banned") {
+    return "/login?account=disabled";
+  }
+
+  if (user.accountStatus === "active" && isPlatformAdminUser(user)) {
+    return "/architect";
+  }
+
+  if (!hasRequiredContactData(user) || user.emailVerified === false || user.phoneVerified === false) {
+    return "/verify-contact";
+  }
+
+  const canonicalRole = getCanonicalRoleDestination(user);
+  if (canonicalRole) {
+    return getDashboardPath(canonicalRole);
+  }
+
+  const selectedRole = inferSelectedRoleFromUser(user);
+  if (!selectedRole) {
+    return "/role-select";
+  }
+
+  return getLaneSetupPath(selectedRole);
 }
 
 function getVerificationQueueRequirements(role: Exclude<OnboardingRole, "client">) {
@@ -1013,80 +1152,51 @@ export async function resolvePostAuthDestination(
   preloaded?: { lanes: OnboardingLaneView[]; selectedRole: OnboardingRole | null; warnings: string[] }
 ): Promise<Route> {
   if (user.accountStatus === "deactivated" || user.accountStatus === "suspended" || user.accountStatus === "banned") {
-    return "/login?account=disabled";
+    const destination = "/login?account=disabled" as Route;
+    logPostAuthDecision(user, destination, "account_disabled");
+    return destination;
   }
 
   if (user.accountStatus === "active" && isPlatformAdminUser(user)) {
-    return "/architect";
+    const destination = "/architect" as Route;
+    logPostAuthDecision(user, destination, "platform_admin");
+    return destination;
   }
 
   if (!hasRequiredContactData(user) || user.emailVerified === false || user.phoneVerified === false) {
-    return "/verify-contact";
+    const destination = "/verify-contact" as Route;
+    logPostAuthDecision(user, destination, "contact_verification_required", {
+      hasRequiredContactData: hasRequiredContactData(user),
+      emailVerified: user.emailVerified ?? null,
+      phoneVerified: user.phoneVerified ?? null
+    });
+    return destination;
+  }
+
+  const canonicalRole = getCanonicalRoleDestination(user);
+  if (canonicalRole) {
+    const destination = getDashboardPath(canonicalRole);
+    logPostAuthDecision(user, destination, "canonical_role_resolved", {
+      canonicalRole
+    });
+    return destination;
   }
 
   const selectedRole = inferSelectedRoleFromUser(user);
-
   if (!selectedRole) {
-    return "/role-select";
+    const destination = "/role-select" as Route;
+    logPostAuthDecision(user, destination, "missing_canonical_role_truth");
+    return destination;
   }
 
-  await ensureCanonicalOnboardingStateForUser(user);
-
-  const onboardingSummary = preloaded
-    ? {
-        selectedRole: preloaded.selectedRole,
-        lanes: preloaded.lanes.map((lane) => ({
-          id: `lane-${lane.role}`,
-          userId: user.id,
-          role: lane.role,
-          status: lane.status,
-          currentStep: lane.currentStep,
-          completedSteps: lane.completedSteps,
-          profileData: lane.profileData,
-          createdAt: "",
-          updatedAt: ""
-        })),
-        current: preloaded.lanes[0]
-          ? {
-              id: `lane-${preloaded.lanes[0].role}`,
-              userId: user.id,
-              role: preloaded.lanes[0].role,
-              status: preloaded.lanes[0].status,
-              currentStep: preloaded.lanes[0].currentStep,
-              completedSteps: preloaded.lanes[0].completedSteps,
-              profileData: preloaded.lanes[0].profileData,
-              createdAt: "",
-              updatedAt: ""
-            }
-          : null
-      }
-    : await getOnboardingSummaryForRuntimeUser(user.id);
-
-  if (selectedRole === "client" && !user.clientId) {
-    return getLaneSetupPath("client", onboardingSummary);
-  }
-
-  if (selectedRole === "barber" && !user.barberId) {
-    return getLaneSetupPath("barber", onboardingSummary);
-  }
-
-  if (selectedRole === "shop_owner" && !user.ownedShopId) {
-    return getLaneSetupPath("shop_owner", onboardingSummary);
-  }
-
-  if (user.accountStatus === "active" && user.role === "client") {
-    return "/dashboard/client";
-  }
-
-  if (user.accountStatus === "active" && (user.role === "commission_barber" || user.role === "booth_rent_barber")) {
-    return "/dashboard/barber";
-  }
-
-  if (user.accountStatus === "active" && user.role === "owner") {
-    return "/dashboard/owner";
-  }
-
-  return getDashboardPath(selectedRole);
+  const onboardingSummary = await readPostAuthOnboardingSummary(user, preloaded);
+  const destination = getLaneSetupPath(selectedRole, onboardingSummary ?? undefined);
+  logPostAuthDecision(user, destination, "lane_setup_required", {
+    selectedRole,
+    hasOnboardingSummary: Boolean(onboardingSummary),
+    hasLaneRow: onboardingSummary?.lanes?.some((lane) => lane.role === selectedRole) ?? false
+  });
+  return destination;
 }
 
 export async function getActivationStatusForUser(user: UserAccount): Promise<ActivationStatusPayload> {
