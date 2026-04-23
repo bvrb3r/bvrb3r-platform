@@ -230,7 +230,7 @@ describe("architect verification service", () => {
     expect(payload.items.map((item) => item.subjectName)).not.toEqual(expect.arrayContaining(["Wave Carter", "Blaze King"]));
   });
 
-  it("does not fabricate queue entries when production rows lack verification profiles", async () => {
+  it("lists canonical production rows even when verification profiles are missing", async () => {
     setTrustState(createEmptyTrustState());
     resetArchitectVerificationStateForTests();
     stageArchitectProductionVerificationRowsForTests({
@@ -241,7 +241,10 @@ describe("architect verification service", () => {
 
     const payload = await listVerificationProfilesForArchitect(founder, { submittedOnly: true });
 
-    expect(payload.items).toEqual([]);
+    expect(payload.items.map((item) => item.profileId)).toEqual(
+      expect.arrayContaining(["legacy-barber-barber-phillip", "legacy-shop-shop-bvrb3r-real"])
+    );
+    expect(payload.items.map((item) => item.source)).toEqual(expect.arrayContaining(["fallback"]));
   });
 
   it("ignores fake legacy verification subjects that are not backed by production rows", async () => {
@@ -275,17 +278,57 @@ describe("architect verification service", () => {
 
     await approveVerificationProfile(founder, "vprof-barber-phillip", {
       reason: "Identity and license review completed.",
-      internalNotes: "Waiting on payout onboarding before public activation."
+      internalNotes: "Effective platform approval issued for soft-open readiness."
     });
 
     const detail = await getVerificationProfileDetail(founder, "vprof-barber-phillip");
     const auditEntries = await readPlatformAdminAuditLogEntries();
 
     expect(detail.profile?.reviews[0]?.actionType).toBe("approved");
+    expect(detail.profile?.reviews[0]?.toStatus).toBe("approved");
     expect(detail.profile?.auditTrail.some((entry) => entry.actionType === "verification_approved")).toBe(true);
-    expect(detail.profile?.publicVerified).toBe(false);
+    expect(detail.profile?.canonicalOverallStatus).toBe("approved");
+    expect(detail.profile?.publicVerified).toBe(true);
+    expect(detail.profile?.canAcceptBookings).toBe(true);
+    expect(detail.profile?.currentRequirements).toEqual([]);
     expect(detail.profile?.documents[0]).not.toHaveProperty("storagePath");
     expect(auditEntries[0]?.actionType).toBe("verification_approved");
+  });
+
+  it("approves fallback barber and owner subjects into canonical effective verification state", async () => {
+    setTrustState(createEmptyTrustState());
+    resetArchitectVerificationStateForTests();
+    stageArchitectProductionVerificationRowsForTests({
+      profiles: [barberProfile, ownerProfile],
+      barbers: [barberRow],
+      shops: [shopRow]
+    });
+
+    const barberApproval = await approveVerificationProfile(founder, "legacy-barber-barber-phillip", {
+      reason: "Soft-open platform approval.",
+      internalNotes: "Production row has no prior verification records."
+    });
+    const ownerApproval = await approveVerificationProfile(founder, "legacy-shop-shop-bvrb3r-real", {
+      reason: "Soft-open shop approval.",
+      internalNotes: "Production row has no prior verification records."
+    });
+
+    const barberDetail = await getVerificationProfileDetail(founder, barberApproval.profileId);
+    const ownerDetail = await getVerificationProfileDetail(founder, ownerApproval.profileId);
+
+    expect(barberDetail.profile?.canonicalOverallStatus).toBe("approved");
+    expect(barberDetail.profile?.identityStatus).toBe("approved");
+    expect(barberDetail.profile?.licenseStatus).toBe("approved");
+    expect(barberDetail.profile?.payoutStatus).toBe("approved");
+    expect(barberDetail.profile?.complianceStatus).toBe("approved");
+    expect(barberDetail.profile?.canAcceptBookings).toBe(true);
+    expect(barberDetail.profile?.currentRequirements).toEqual([]);
+    expect(ownerDetail.profile?.canonicalOverallStatus).toBe("approved");
+    expect(ownerDetail.profile?.businessStatus).toBe("approved");
+    expect(ownerDetail.profile?.payoutStatus).toBe("approved");
+    expect(ownerDetail.profile?.complianceStatus).toBe("approved");
+    expect(ownerDetail.profile?.canCreateShopListing).toBe(true);
+    expect(ownerDetail.profile?.currentRequirements).toEqual([]);
   });
 
   it("keeps request-update and suspend cases non-live while preserving audit history", async () => {

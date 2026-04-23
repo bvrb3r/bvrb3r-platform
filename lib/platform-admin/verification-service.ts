@@ -42,7 +42,6 @@ import type {
   TrustState,
   VerificationActionType,
   VerificationDocumentRecord,
-  VerificationProfileDecision,
   VerificationProfileRecord,
   VerificationReviewRecord,
   VerificationStatus,
@@ -530,6 +529,51 @@ function collectVerificationSubjects(state: TrustState, production = createEmpty
     seenShops.add(record.shopId);
   }
 
+  for (const productionBarber of production.barbersByReference.values()) {
+    const barberReference = productionReference(productionBarber);
+    if (!barberReference || seenBarbers.has(barberReference)) {
+      continue;
+    }
+
+    const profileRow = getProductionProfileForRole(production, productionBarber.profile_id, "barber");
+    if (!profileRow) {
+      continue;
+    }
+
+    subjects.push({
+      profileId: createSyntheticProfileId("barber", barberReference),
+      source: "fallback",
+      role: "barber",
+      userId: profileRow.id,
+      barberId: barberReference,
+      profileRow,
+      barberRow: productionBarber
+    });
+    seenBarbers.add(barberReference);
+  }
+
+  for (const productionShop of production.shopsById.values()) {
+    if (!productionShop.id || seenShops.has(productionShop.id)) {
+      continue;
+    }
+
+    const profileRow = getProductionProfileForRole(production, productionShop.owner_profile_id ?? undefined, "shop_owner");
+    if (!profileRow) {
+      continue;
+    }
+
+    subjects.push({
+      profileId: createSyntheticProfileId("shop_owner", productionShop.id),
+      source: "fallback",
+      role: "shop_owner",
+      userId: profileRow.id,
+      shopId: productionShop.id,
+      profileRow,
+      shopRow: productionShop
+    });
+    seenShops.add(productionShop.id);
+  }
+
   return subjects;
 }
 
@@ -551,7 +595,7 @@ function getSubjectByProfileId(state: TrustState, profileId: string, production 
 
     return {
       profileId,
-      source: "legacy_records" as const,
+      source: state.barberVerifications.some((entry) => entry.barberId === barberId) ? "legacy_records" as const : "fallback" as const,
       role: "barber" as const,
       userId: profileRow.id,
       barberId,
@@ -565,13 +609,13 @@ function getSubjectByProfileId(state: TrustState, profileId: string, production 
     const record = state.shopVerifications.find((entry) => entry.shopId === shopId);
     const productionShop = production.shopsById.get(shopId);
     const profileRow = getProductionProfileForRole(production, record?.userId ?? productionShop?.owner_profile_id ?? undefined, "shop_owner");
-    if (!record || !productionShop || !profileRow) {
+    if (!productionShop || !profileRow) {
       return null;
     }
 
     return {
       profileId,
-      source: "legacy_records" as const,
+      source: record ? "legacy_records" as const : "fallback" as const,
       role: "shop_owner" as const,
       userId: profileRow.id,
       shopId,
@@ -985,33 +1029,6 @@ async function resolveDetailPayload(profileId: string, warnings: string[]) {
   } satisfies ArchitectVerificationDetailPayload;
 }
 
-function getPayoutProviderReady(subject: VerificationSubject, state: TrustState, decision: VerificationProfileDecision) {
-  if (normalizeVerificationStatus(decision.payoutStatus) === "approved") {
-    return true;
-  }
-
-  const allowUserFallback = allowUserWideVerificationFallback(state, subject);
-
-  return (state.verificationProviderLinks ?? []).some((record) => {
-    if (subject.profile?.id && record.verificationProfileId && record.verificationProfileId !== subject.profile.id) {
-      return false;
-    }
-    if (subject.userId && record.userId && record.userId !== subject.userId) {
-      return false;
-    }
-    if (!allowUserFallback && subject.profile?.id && !record.verificationProfileId) {
-      return false;
-    }
-
-    if (record.providerSubject !== "connect_account") {
-      return false;
-    }
-
-    const payoutsEnabled = record.metadata?.payoutsEnabled;
-    return payoutsEnabled === true || record.providerStatus === "payouts_enabled" || record.providerStatus === "approved";
-  });
-}
-
 function setRelevantBarberStatuses(state: TrustState, barberId: string, status: VerificationStatus, note: string, reviewerId: string) {
   const now = new Date().toISOString();
   state.barberVerifications = state.barberVerifications.map((record) => {
@@ -1299,16 +1316,28 @@ async function persistCanonicalApprovalStatus(
 
   try {
     if (subject.role === "barber" && subject.barberId) {
+      const shouldUpdateShopApproval = subject.barberRow?.shop_approval_status !== "not_required";
+      const updates: Record<string, unknown> = {
+        app_approval_status: nextApprovalStatus,
+        approval_notes: note || null
+      };
+
+      if (shouldUpdateShopApproval) {
+        updates.shop_approval_status = nextApprovalStatus;
+      }
+
       const result = await supabase
         .from("barbers")
-        .update({
-          app_approval_status: nextApprovalStatus,
-          approval_notes: note || null
-        })
-        .or(`reference_code.eq.${subject.barberId},id.eq.${subject.barberRow?.id ?? subject.barberId}`);
+        .update(updates)
+        .eq(subject.barberRow?.id ? "id" : "reference_code", subject.barberRow?.id ?? subject.barberId)
+        .select("id, app_approval_status, shop_approval_status")
+        .maybeSingle();
 
-      if (result.error && !isMissingTableError(result.error)) {
+      if (result.error) {
         throw result.error;
+      }
+      if (!result.data) {
+        throw new Error(`Canonical barber approval row was not updated for ${subject.barberId}.`);
       }
       return;
     }
@@ -1319,10 +1348,15 @@ async function persistCanonicalApprovalStatus(
         .update({
           app_approval_status: nextApprovalStatus
         })
-        .eq("id", subject.shopId);
+        .eq("id", subject.shopId)
+        .select("id, app_approval_status")
+        .maybeSingle();
 
-      if (result.error && !isMissingTableError(result.error)) {
+      if (result.error) {
         throw result.error;
+      }
+      if (!result.data) {
+        throw new Error(`Canonical shop approval row was not updated for ${subject.shopId}.`);
       }
     }
   } catch (error) {
@@ -1589,12 +1623,8 @@ function updateProfileForAction(
 ) {
   ensureReviewStateCollections(state);
   const profile = ensureProfileForSubject(state, subject);
+  ensureSubjectVerificationRecords(state, subject, profile);
   const now = new Date().toISOString();
-  const decision = subject.role === "barber" && subject.barberId
-    ? computeBarberVerificationDecision(state, subject.barberId)
-    : subject.role === "shop_owner" && subject.shopId
-      ? computeShopVerificationDecision(state, subject.shopId)
-      : null;
   const note = input.internalNotes?.trim() || input.reason.trim();
   const documents = getProfileDocuments(state, subject);
 
@@ -1602,26 +1632,27 @@ function updateProfileForAction(
     if (subject.role === "barber") {
       profile.identityStatus = "approved";
       profile.licenseStatus = "approved";
+      profile.payoutStatus = "approved";
       profile.complianceStatus = "approved";
-      if (decision && getPayoutProviderReady(subject, state, decision)) {
-        profile.payoutStatus = "approved";
-      }
       if (subject.barberId) {
         setRelevantBarberStatuses(state, subject.barberId, "approved", note, actor.id);
       }
     } else {
       profile.businessStatus = "approved";
+      profile.payoutStatus = "approved";
       profile.complianceStatus = "approved";
-      if (decision && getPayoutProviderReady(subject, state, decision)) {
-        profile.payoutStatus = "approved";
-      }
       if (subject.shopId) {
         setRelevantShopStatuses(state, subject.shopId, "approved", note, actor.id);
       }
     }
 
     setDocumentReviewState(state, documents, "approved", note, actor.id);
-    profile.overallStatus = "not_started";
+    profile.overallStatus = "approved";
+    profile.publicVerified = true;
+    profile.canAcceptBookings = subject.role === "barber";
+    profile.canReceivePayouts = true;
+    profile.canCreateShopListing = subject.role === "shop_owner";
+    profile.currentRequirements = [];
   }
 
   if (action === "reject") {

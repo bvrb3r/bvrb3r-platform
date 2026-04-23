@@ -947,7 +947,7 @@ export async function recordPlatformAdminAuditLog(
 ) {
   await appendAuditLog({
     ...entry,
-    id: entry.id ?? `platform-audit-${randomUUID().slice(0, 8)}`,
+    id: entry.id ?? randomUUID(),
     createdAt: entry.createdAt ?? new Date().toISOString()
   });
 }
@@ -2412,7 +2412,7 @@ export async function applyPlatformAdminAction(actor: UserAccount, action: Platf
   }
 
   await appendAuditLog({
-    id: `platform-audit-${randomUUID().slice(0, 8)}`,
+    id: randomUUID(),
     actorUserId: actor.id,
     actorRole: actor.role,
     actionClass,
