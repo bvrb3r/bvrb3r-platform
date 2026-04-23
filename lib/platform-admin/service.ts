@@ -3,7 +3,6 @@ import { isPlatformAdminUser } from "@/lib/auth/demo-auth";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import { isUpcomingAppointmentStatus } from "@/lib/appointments/domain";
 import { buildPlatformEventIdempotencyKey, recordRequiredPlatformEvent } from "@/lib/core/platform-events";
-import { getEngagementProvider } from "@/lib/engagement/provider";
 import { dismissFinancialAnomaly, readFinancialAnomalyQueue, resolveFinancialAnomaly, syncFinancialAnomalies } from "@/lib/fintech/anomalies";
 import { buildOwnerMoneyDashboardSummary } from "@/lib/fintech/tax";
 import { buildOwnerMonetizationSummary } from "@/lib/monetization/service";
@@ -23,7 +22,7 @@ import { getBarberTrustSummary, getOwnerTrustSummary } from "@/lib/trust/engine"
 import { getTrustProvider } from "@/lib/trust/provider";
 import { getTrustState, setTrustState } from "@/lib/trust/state";
 import type { ApprovalStatus, IdentityLane, IdentityOnboardingState, Role, UserAccount } from "@/types/domain";
-import type { EngagementState } from "@/types/engagement";
+import type { EngagementState, ReferralStatus } from "@/types/engagement";
 import type { CashoutReviewQueueView, FinancialAnomalyQueueView, OwnerMoneyDashboardView } from "@/types/fintech";
 import type { OwnerMonetizationSummary } from "@/types/monetization";
 import type {
@@ -162,6 +161,21 @@ type ProductionBarberShopMembershipRow = {
   active: boolean | null;
 };
 
+type ProductionReferralEventRow = {
+  id: string;
+  referrer_client_reference: string;
+  referred_client_email: string;
+  status: ReferralStatus;
+  reward_points: number | string | null;
+  created_at: string;
+};
+
+type ReferralSummaryCounts = {
+  invited: number;
+  completed: number;
+  credited: number;
+};
+
 type ProductionAdminDirectory = {
   profiles: ProductionProfileRow[];
   clients: ProductionClientRow[];
@@ -196,6 +210,7 @@ const DEFAULT_SHOP_STATUS: PlatformAdminShopStatus = "active";
 let demoPlatformAdminControls: PlatformAdminControlRecord[] = [];
 let demoPlatformAdminAuditLog: PlatformAdminAuditLogEntry[] = [];
 let productionAdminDirectoryRowsOverlay: ProductionAdminDirectoryRows | null = null;
+let productionReferralEventRowsOverlay: ProductionReferralEventRow[] | null = null;
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
@@ -691,6 +706,59 @@ function isMissingTableError(error: { code?: string | null; message?: string | n
   return error.code === "42P01" || `${error.message ?? ""}`.toLowerCase().includes("does not exist");
 }
 
+function createEmptyReferralSummaryCounts(): ReferralSummaryCounts {
+  return {
+    invited: 0,
+    completed: 0,
+    credited: 0
+  };
+}
+
+async function readProductionReferralEvents(warnings: string[]): Promise<ProductionReferralEventRow[]> {
+  if (productionReferralEventRowsOverlay) {
+    return clone(productionReferralEventRowsOverlay);
+  }
+
+  const supabase = getSupabase();
+  if (!supabase) {
+    return [];
+  }
+
+  const result = await supabase
+    .from("referral_events")
+    .select("id, referrer_client_reference, referred_client_email, status, reward_points, created_at")
+    .order("created_at", { ascending: false });
+
+  if (result.error) {
+    if (isMissingTableError(result.error)) {
+      pushArchitectWarning(warnings, "Referral event storage is unavailable; referral support context may be incomplete.");
+      return [];
+    }
+
+    throw result.error;
+  }
+
+  return (result.data ?? []) as ProductionReferralEventRow[];
+}
+
+function buildReferralSummaryByClientId(referralEvents: ProductionReferralEventRow[]) {
+  const summaryByClientId = new Map<string, ReferralSummaryCounts>();
+
+  for (const event of referralEvents) {
+    const current = summaryByClientId.get(event.referrer_client_reference) ?? createEmptyReferralSummaryCounts();
+    current.invited += 1;
+    if (event.status === "completed" || event.status === "credited") {
+      current.completed += 1;
+    }
+    if (event.status === "credited") {
+      current.credited += 1;
+    }
+    summaryByClientId.set(event.referrer_client_reference, current);
+  }
+
+  return summaryByClientId;
+}
+
 function normalizeVerificationLabel(value: string) {
   return value
     .replaceAll("_", " ")
@@ -1159,26 +1227,12 @@ function getBookingSummaryForUser(user: UserAccount, appointments: LiveOperation
   };
 }
 
-function getReferralSummaryForUser(user: UserAccount, engagementState: Awaited<ReturnType<Awaited<ReturnType<typeof getEngagementProvider>>["readState"]>>) {
-  if (user.clientId) {
-    const referrals = engagementState.referralEvents.filter((event) => event.referrerClientId === user.clientId);
-    return {
-      invited: referrals.length,
-      completed: referrals.filter((event) => event.status === "completed" || event.status === "credited").length,
-      credited: referrals.filter((event) => event.status === "credited").length
-    };
+function getReferralSummaryForUser(user: UserAccount, referralSummaryByClientId: Map<string, ReferralSummaryCounts>) {
+  if (!user.clientId) {
+    return createEmptyReferralSummaryCounts();
   }
 
-  const completedEvents = engagementState.engagementEvents.filter((event) =>
-    event.eventType === "service_completed"
-    && event.actorId === user.id
-  );
-
-  return {
-    invited: 0,
-    completed: completedEvents.length,
-    credited: completedEvents.length
-  };
+  return referralSummaryByClientId.get(user.clientId) ?? createEmptyReferralSummaryCounts();
 }
 
 function getPointsSummaryForUser(
@@ -1304,7 +1358,7 @@ function buildSupportFlags(input: {
 function buildUsersView(input: {
   directory: ProductionAdminDirectory;
   trustState: TrustState;
-  engagementState: Awaited<ReturnType<Awaited<ReturnType<typeof getEngagementProvider>>["readState"]>>;
+  referralSummaryByClientId: Map<string, ReferralSummaryCounts>;
   pointsState: Awaited<ReturnType<typeof readPointsStateSnapshot>>;
   accountControls: PlatformAdminControlSnapshot;
   anomalyQueue: FinancialAnomalyQueueView;
@@ -1340,7 +1394,7 @@ function buildUsersView(input: {
       }),
       bookingSummary: getBookingSummaryForUser(user, input.appointments),
       pointsSummary: getPointsSummaryForUser(user, input.pointsState),
-      referralSummary: getReferralSummaryForUser(user, input.engagementState),
+      referralSummary: getReferralSummaryForUser(user, input.referralSummaryByClientId),
       verificationItems,
       supportFlags: buildSupportFlags({
         user,
@@ -1469,7 +1523,7 @@ function buildSupportItems(input: {
   clients: LiveOperationsSnapshot["clients"];
   cashoutQueue: Awaited<ReturnType<typeof readCashoutReviewQueue>>;
   pointsState: Awaited<ReturnType<typeof readPointsStateSnapshot>>;
-  engagementState: Awaited<ReturnType<Awaited<ReturnType<typeof getEngagementProvider>>["readState"]>>;
+  referralEvents: ProductionReferralEventRow[];
   anomalyQueue: FinancialAnomalyQueueView;
 }): PlatformAdminSupportItem[] {
   const bookingItems = input.appointments.slice(0, 4).map((appointment) => {
@@ -1508,11 +1562,11 @@ function buildSupportItems(input: {
       href: "/activity"
     }));
 
-  const referralItems = input.engagementState.referralEvents.slice(0, 3).map((event) => ({
+  const referralItems = input.referralEvents.slice(0, 3).map((event) => ({
     id: `support-referral-${event.id}`,
     kind: "referral" as const,
     title: `Referral ${event.id}`,
-    detail: `${event.referredClientEmail} • ${event.status.replaceAll("_", " ")} • ${event.rewardPoints} pts`,
+    detail: `${event.referred_client_email} • ${event.status.replaceAll("_", " ")} • ${Number(event.reward_points ?? 0)} pts`,
     statusLabel: event.status.replaceAll("_", " "),
     href: "/referrals"
   }));
@@ -1920,7 +1974,7 @@ export async function getPlatformAdminConsolePayload(actor: UserAccount): Promis
     clientId: actor.clientId
   };
 
-  const [controls, auditLog, liveProvider, engagementProvider, trustState, pointsState, cashoutQueue] = await Promise.all([
+  const [controls, auditLog, liveProvider, trustState, pointsState, cashoutQueue, referralEvents] = await Promise.all([
     safeArchitectRead({
       context: "loading architect control state",
       warning: "Architect control state is unavailable; founder actions are running in fallback mode.",
@@ -1943,13 +1997,6 @@ export async function getPlatformAdminConsolePayload(actor: UserAccount): Promis
       load: async () => getLiveOperationsProvider()
     }),
     safeArchitectRead({
-      context: "loading engagement provider",
-      warning: "Growth and referral data is temporarily unavailable; related architect insights are showing fallback values.",
-      warnings,
-      fallback: null as Awaited<ReturnType<typeof getEngagementProvider>> | null,
-      load: async () => getEngagementProvider()
-    }),
-    safeArchitectRead({
       context: "loading trust state",
       warning: "Trust and verification data is temporarily unavailable; account health is showing safe fallback values.",
       warnings,
@@ -1969,11 +2016,19 @@ export async function getPlatformAdminConsolePayload(actor: UserAccount): Promis
       warnings,
       fallback: createEmptyCashoutQueue(),
       load: () => readCashoutReviewQueue()
+    }),
+    safeArchitectRead({
+      context: "loading canonical referral activity",
+      warning: "Referral activity is temporarily unavailable; referral support context is showing safe fallback values.",
+      warnings,
+      fallback: [] as ProductionReferralEventRow[],
+      load: () => readProductionReferralEvents(warnings)
     })
   ]);
 
   const controlSnapshot = buildControlSnapshot(controls);
-  const [snapshot, engagementState, anomalyQueue] = await Promise.all([
+  const referralSummaryByClientId = buildReferralSummaryByClientId(referralEvents);
+  const [snapshot, anomalyQueue] = await Promise.all([
     liveProvider && locationIds.length
       ? safeArchitectRead({
           context: "reading live operations snapshot",
@@ -1983,15 +2038,6 @@ export async function getPlatformAdminConsolePayload(actor: UserAccount): Promis
           load: () => liveProvider.readSnapshot(viewer)
         })
       : Promise.resolve(createEmptyLiveOperationsSnapshot()),
-    engagementProvider
-      ? safeArchitectRead({
-          context: "reading engagement state",
-          warning: "Engagement and referral state is temporarily unavailable; support and growth views are showing safe fallback values.",
-          warnings,
-          fallback: createEmptyEngagementState(),
-          load: () => engagementProvider.readState()
-        })
-      : Promise.resolve(createEmptyEngagementState()),
     safeArchitectRead({
       context: "reading financial anomaly queue",
       warning: "Money and anomaly monitoring is temporarily unavailable; money-risk review is showing safe fallback values.",
@@ -2020,7 +2066,7 @@ export async function getPlatformAdminConsolePayload(actor: UserAccount): Promis
       fallback: createEmptyMonetizationSummary(),
       load: () => locationIds.length
         ? buildOwnerMonetizationSummary({
-            state: engagementState,
+            state: createEmptyEngagementState(),
             snapshot,
             locationIds
           })
@@ -2090,7 +2136,7 @@ export async function getPlatformAdminConsolePayload(actor: UserAccount): Promis
     load: async () => buildUsersView({
       directory,
       trustState,
-      engagementState,
+      referralSummaryByClientId,
       pointsState,
       accountControls: controlSnapshot,
       anomalyQueue,
@@ -2136,7 +2182,7 @@ export async function getPlatformAdminConsolePayload(actor: UserAccount): Promis
       clients: snapshot.clients,
       cashoutQueue,
       pointsState,
-      engagementState,
+      referralEvents,
       anomalyQueue
     })
   });
@@ -2391,8 +2437,13 @@ export function resetPlatformAdminStateForTests() {
   demoPlatformAdminControls = [];
   demoPlatformAdminAuditLog = [];
   productionAdminDirectoryRowsOverlay = null;
+  productionReferralEventRowsOverlay = null;
 }
 
 export function stagePlatformAdminDirectoryRowsForTests(input: ProductionAdminDirectoryRows) {
   productionAdminDirectoryRowsOverlay = clone(input);
+}
+
+export function stagePlatformAdminReferralRowsForTests(rows: ProductionReferralEventRow[]) {
+  productionReferralEventRowsOverlay = clone(rows);
 }

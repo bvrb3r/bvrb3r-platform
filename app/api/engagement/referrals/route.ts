@@ -1,39 +1,60 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireEngagementActor } from "@/lib/engagement/auth";
-import { EngagementValidationError, getClientReferralSummary } from "@/lib/engagement/engine";
-import { engagementErrorResponse } from "@/lib/engagement/http";
-import { getEngagementProvider } from "@/lib/engagement/provider";
 import { getMarketplaceProvider } from "@/lib/marketplace/provider";
+import {
+  ReferralServiceError,
+  createReferralInvite,
+  readClientReferralSummary
+} from "@/lib/referrals/service";
 
 const inviteSchema = z.object({
   referredClientEmail: z.string().email()
 });
 
+function toErrorResponse(error: unknown) {
+  if (error instanceof ReferralServiceError) {
+    return NextResponse.json({ error: error.message }, { status: error.status });
+  }
+
+  const message = error instanceof Error ? error.message : "Unable to process the referral request.";
+  return NextResponse.json({ error: message }, { status: 500 });
+}
+
 export async function GET() {
   try {
     const actor = await requireEngagementActor(["client"]);
     if (!actor.clientId) {
-      throw new EngagementValidationError("A client profile is required for referrals.");
+      throw new ReferralServiceError("A client profile is required for referrals.", 403);
     }
 
-    const engagementProvider = await getEngagementProvider();
-    const state = await engagementProvider.readState();
-    return NextResponse.json({ summary: getClientReferralSummary(state, actor.clientId) });
+    const summary = await readClientReferralSummary({
+      clientId: actor.clientId,
+      clientEmail: actor.userEmail
+    });
+
+    return NextResponse.json({ summary });
   } catch (error) {
-    return engagementErrorResponse(error);
+    return toErrorResponse(error);
   }
 }
 
 export async function POST(request: Request) {
   try {
     const actor = await requireEngagementActor(["client"]);
+    if (!actor.clientId || !actor.userEmail) {
+      throw new ReferralServiceError("A signed-in client email is required for referrals.", 403);
+    }
+
     const payload = inviteSchema.parse(await request.json());
-    const [engagementProvider, marketplaceProvider] = await Promise.all([
-      getEngagementProvider(),
+    const [result, marketplaceProvider] = await Promise.all([
+      createReferralInvite({
+        clientId: actor.clientId,
+        clientEmail: actor.userEmail,
+        referredClientEmail: payload.referredClientEmail
+      }),
       getMarketplaceProvider()
     ]);
-    const result = await engagementProvider.createReferralInvite(actor, payload);
 
     try {
       await marketplaceProvider.recordShareEvent({
@@ -47,15 +68,20 @@ export async function POST(request: Request) {
         }
       });
     } catch {
-      // Referral invite remains primary even if marketplace analytics are unavailable.
+      // Marketplace attribution should not block the canonical referral invite.
     }
 
-    return NextResponse.json({ referral: { id: result.referralEvent.id, referredClientEmail: result.referralEvent.referredClientEmail } });
+    return NextResponse.json({
+      referral: {
+        id: result.referralEvent.id,
+        referredClientEmail: result.referralEvent.referredClientEmail
+      }
+    });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: "Invalid referral invite request." }, { status: 400 });
     }
 
-    return engagementErrorResponse(error);
+    return toErrorResponse(error);
   }
 }

@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
-import { getEngagementProvider } from "@/lib/engagement/provider";
 import { GUEST_SESSION_COOKIE, isGuestSessionCookieValue } from "@/lib/guest/session";
+import { syncReferralAttribution } from "@/lib/referrals/service";
 import { CLIENT_REFERRAL_COOKIE, normalizeReferralCode } from "@/lib/referrals/session";
 
 export async function getClientExperienceContext() {
@@ -15,8 +15,7 @@ export async function getClientExperienceContext() {
 
   if (isSignedInClient && clientId && referralCode) {
     try {
-      const engagementProvider = await getEngagementProvider();
-      await engagementProvider.syncReferralAttribution({
+      await syncReferralAttribution({
         referralCode,
         referredClientId: clientId,
         referredClientEmail: session.user.email

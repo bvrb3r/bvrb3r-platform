@@ -37,6 +37,7 @@ import type { PromotionPreviewView } from "@/lib/promotions/service";
 import { calculateBookingQuote, resolveBookableAddOn, resolveBookableBarber, resolveBookableService, resolveBookableSlot } from "@/lib/utils/booking";
 import { getReadableActionError } from "@/lib/utils/feedback";
 import { currency, dateLabel } from "@/lib/utils";
+import type { AiRecommendationType } from "@/types/ai";
 import type { HaircutNowMatch, MarketplaceSourceKind, Service } from "@/types/domain";
 
 const BOOKING_DRAFT_STORAGE_KEY = "bvrb3r-booking-draft:v1";
@@ -79,6 +80,14 @@ function toMarketplaceSource(value: string | null): MarketplaceSourceKind | unde
 
 function toMatchedFrom(value: string | null): HaircutNowMatch["matchedFrom"] | undefined {
   if (value === "favorite_barber" || value === "favorite_shop" || value === "nearby" || value === "available_now") {
+    return value;
+  }
+
+  return undefined;
+}
+
+function toAiRecommendationType(value: string | null): AiRecommendationType | undefined {
+  if (value === "rebooking_reminder" || value === "available_now" || value === "barber_gap_alert") {
     return value;
   }
 
@@ -207,6 +216,8 @@ export function BookingForm() {
 
   const sourceKind = toMarketplaceSource(searchParams.get("source"));
   const matchedFrom = toMatchedFrom(searchParams.get("matchedFrom"));
+  const aiRecommendationId = searchParams.get("aiRecommendationId") ?? undefined;
+  const aiRecommendationType = toAiRecommendationType(searchParams.get("aiRecommendationType"));
   const query = searchParams.get("query") ?? undefined;
   const preselectedLocationId = searchParams.get("locationId") ?? selectedLocationId;
   const preselectedBarberId = searchParams.get("barberId") ?? selectedBarberId;
@@ -573,6 +584,8 @@ export function BookingForm() {
         matchedFrom,
         discoveryQuery: query,
         barberUsername: barberProfileQuery.data?.profile.username ?? preselectedUsername,
+        aiRecommendationId,
+        aiRecommendationType,
         promotionId: promotionSelection?.promotion.id,
         promotionCode: promotionSelection?.promotion.code ?? (normalizedPromotionCode || undefined)
       });

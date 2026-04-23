@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import type { ComponentProps, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ArchitectConsole } from "@/components/operations/architect-console";
 import type { PlatformAdminConsolePayload } from "@/types/platform-admin";
@@ -14,6 +15,29 @@ const {
 vi.mock("@/lib/platform-admin/client", () => ({
   usePlatformAdminConsoleQuery: usePlatformAdminConsoleQueryMock,
   usePlatformAdminActionMutation: usePlatformAdminActionMutationMock
+}));
+
+vi.mock("next/link", () => ({
+  default: ({
+    children,
+    onClick,
+    href,
+    ...props
+  }: ComponentProps<"a"> & {
+    children?: ReactNode;
+    onClick?: (event: ReactMouseEvent<HTMLAnchorElement>) => void;
+  }) => (
+    <a
+      {...props}
+      href={typeof href === "string" ? href : "#"}
+      onClick={(event) => {
+        onClick?.(event);
+        event.preventDefault();
+      }}
+    >
+      {children}
+    </a>
+  )
 }));
 
 function createConsolePayload(overrides: Partial<PlatformAdminConsolePayload> = {}): PlatformAdminConsolePayload {
@@ -101,5 +125,131 @@ describe("architect console", () => {
     fireEvent.click(screen.getByRole("button", { name: /audit log/i }));
 
     expect(screen.getByText("No audit entries yet")).toBeInTheDocument();
+  });
+
+  it("surfaces canonical shortcut cards for verification, transactions, and account control", () => {
+    render(<ArchitectConsole initialData={createConsolePayload({
+      overview: {
+        totalUsers: 5,
+        activeClients: 2,
+        activeBarbers: 2,
+        activeShops: 1,
+        bookingsToday: 4,
+        revenueToday: 240,
+        payoutIssues: 1,
+        billingIssues: 0,
+        fraudFlags: 0,
+        kioskActiveCount: 1,
+        aiManagerActiveCount: 1,
+        releaseReadyCount: 3,
+        releaseAttentionCount: 1
+      },
+      users: [
+        {
+          id: "profile-barber",
+          name: "Phillip McGee",
+          email: "phillipmcgee813@gmail.com",
+          primaryRole: "Barber",
+          title: "Barber",
+          accountStatus: "active",
+          verificationStatus: "pending",
+          shopRelationships: ["BVRB3R Studio"],
+          accountHealth: ["Verification pending"],
+          bookingSummary: { completed: 2, active: 1, cancelled: 0, lifetimeValue: 120 },
+          pointsSummary: { totalPoints: 0, unlockedPoints: 0, pendingPoints: 0 },
+          referralSummary: { invited: 0, completed: 0, credited: 0 },
+          verificationItems: [{ category: "identity_verification", label: "Identity", status: "pending" }],
+          supportFlags: [],
+          canManageAccess: true,
+          isPlatformAdmin: false,
+          barberId: "barber-1"
+        },
+        {
+          id: "profile-suspended",
+          name: "Dormant Account",
+          email: "dormant@example.com",
+          primaryRole: "Client",
+          title: "Client",
+          accountStatus: "suspended",
+          verificationStatus: "unverified",
+          shopRelationships: [],
+          accountHealth: ["Suspended"],
+          bookingSummary: { completed: 0, active: 0, cancelled: 0, lifetimeValue: 0 },
+          pointsSummary: { totalPoints: 0, unlockedPoints: 0, pendingPoints: 0 },
+          referralSummary: { invited: 0, completed: 0, credited: 0 },
+          verificationItems: [],
+          supportFlags: [],
+          canManageAccess: true,
+          isPlatformAdmin: false
+        }
+      ],
+      shops: [
+        {
+          id: "shop-1",
+          name: "BVRB3R Studio",
+          ownerLabel: "Owner",
+          status: "active",
+          locationLabels: ["Tampa"],
+          activeBarbers: 2,
+          kioskEnabled: true,
+          aiManagerEnabled: false,
+          billingHealth: "Healthy",
+          verificationStatus: "pending",
+          verificationItems: [{ category: "business_verification", label: "Business", status: "pending" }],
+          revenueToday: 240,
+          growthSummary: "No synthetic growth summary",
+          accountHealth: []
+        }
+      ],
+      moneyRisk: {
+        openAnomalies: 1,
+        criticalAnomalies: 0,
+        billingFailures: 0,
+        disputesOpen: 1,
+        pointsLiabilityValue: 0,
+        fraudReviewRate: 0,
+        reversalRate: 0,
+        overdueBoothRent: 0,
+        recentAnomalies: [],
+        recentCashouts: [],
+        recentDisputes: []
+      }
+    })} />);
+
+    expect(screen.getAllByText("Verification queue").length).toBeGreaterThan(0);
+    expect(screen.getByText("Transaction monitor")).toBeInTheDocument();
+    expect(screen.getByText("User control")).toBeInTheDocument();
+    expect(screen.getByText("Attention items")).toBeInTheDocument();
+  });
+
+  it("treats dispute resolution as a guarded architect action that requires a reason", () => {
+    render(<ArchitectConsole initialData={createConsolePayload({
+      moneyRisk: {
+        openAnomalies: 0,
+        criticalAnomalies: 0,
+        billingFailures: 0,
+        disputesOpen: 1,
+        pointsLiabilityValue: 0,
+        fraudReviewRate: 0,
+        reversalRate: 0,
+        overdueBoothRent: 0,
+        recentAnomalies: [],
+        recentCashouts: [],
+        recentDisputes: [
+          {
+            id: "dispute-live-1",
+            summary: "Stripe dispute for appointment A-100",
+            status: "open",
+            locationId: "location-1"
+          }
+        ]
+      }
+    })} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^transactions$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /resolve dispute/i }));
+    fireEvent.click(screen.getAllByRole("button", { name: /^resolve dispute$/i }).at(-1)!);
+
+    expect(screen.getByText("A reason is required for sensitive and critical Architect Console actions.")).toBeInTheDocument();
   });
 });

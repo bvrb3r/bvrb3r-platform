@@ -6,6 +6,10 @@ export const PLATFORM_EVENT_TYPES = [
   "booking_canceled",
   "booking_rescheduled",
   "booking_completed",
+  "ai_recommendation_shown",
+  "ai_recommendation_clicked",
+  "ai_recommendation_converted",
+  "ai_recommendation_suppressed",
   "payment_succeeded",
   "payment_failed",
   "payout_released",
@@ -15,7 +19,12 @@ export const PLATFORM_EVENT_TYPES = [
   "verification_approved",
   "verification_rejected",
   "points_earned",
-  "points_redeemed"
+  "points_redeemed",
+  "referral_qualified",
+  "referral_rewarded",
+  "membership_started",
+  "membership_canceled",
+  "membership_past_due"
 ] as const;
 
 export type PlatformEventType = (typeof PLATFORM_EVENT_TYPES)[number];

@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getClientExperienceContext } from "@/lib/client-experience/session";
-import { getEngagementProvider } from "@/lib/engagement/provider";
-import { getClientEngagementSummary } from "@/lib/engagement/engine";
+import { readClientReferralSummary } from "@/lib/referrals/service";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   buildClientMembershipExecutionSummary,
@@ -10,7 +9,6 @@ import {
   createClientMembershipSubscriptionSession,
   MonetizationServiceError
 } from "@/lib/monetization/service";
-import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
 import { readPointsBalanceForClientReference } from "@/lib/points/engine";
 
 const subscribeSchema = z.object({
@@ -18,28 +16,23 @@ const subscribeSchema = z.object({
 });
 
 async function readExecutionSummary(context: Awaited<ReturnType<typeof getClientExperienceContext>>) {
-  const [engagementProvider, operationsProvider] = await Promise.all([
-    getEngagementProvider(),
-    getLiveOperationsProvider()
-  ]);
   const supabase = createSupabaseAdminClient();
-  const [state, snapshot, pointsBalance] = await Promise.all([
-    engagementProvider.readState(),
-    operationsProvider.readSnapshot({ role: "client", clientId: context.clientId }),
-    readPointsBalanceForClientReference(context.clientId, supabase)
+  const [pointsBalance, referralSummary] = await Promise.all([
+    readPointsBalanceForClientReference(context.clientId, supabase),
+    readClientReferralSummary({
+      clientId: context.clientId,
+      clientEmail: context.viewer.email
+    }, supabase)
   ]);
-  const summary = getClientEngagementSummary(state, snapshot, context.clientId, {
-    pointsBalance: pointsBalance.unlockedPoints,
-    lifetimePoints: pointsBalance.lifetimeEarned
-  });
 
   return buildClientMembershipExecutionSummary({
     clientId: context.clientId,
     clientName: context.activeClient?.name ?? context.viewer.name,
-    pointsBalance: summary.pointsBalance,
-    referralCredits: summary.referralCredits,
-    unlockedRewardCount: summary.rewards.filter((reward) => reward.unlocked).length,
-    nextDueAt: summary.intelligence.nextDueAt
+    pointsBalance: pointsBalance.unlockedPoints,
+    referralCredits: referralSummary.totals.rewardPointsEarned,
+    unlockedRewardCount: 0,
+    nextDueAt: null,
+    supabaseOverride: supabase
   });
 }
 

@@ -280,6 +280,60 @@ describe("booking form", () => {
     expect(screen.getByText("Visa ending in 4242 was charged for this booking.")).toBeInTheDocument();
   });
 
+  it("passes AI recommendation attribution through the canonical booking payload", async () => {
+    const searchGet = vi.fn((key: string) => {
+      if (key === "aiRecommendationId") {
+        return "rebooking:client-jordan:appt-last:28";
+      }
+      if (key === "aiRecommendationType") {
+        return "rebooking_reminder";
+      }
+      return null;
+    });
+    const mutateBookingMock = vi.fn().mockResolvedValue({
+      appointment: {
+        id: "appt-live-2"
+      }
+    });
+    const mutatePaymentMock = vi.fn().mockResolvedValue({
+      payment: {
+        paymentStatus: "authorized"
+      },
+      summary: {
+        defaultPaymentMethod: {
+          label: "Visa ending in 4242"
+        }
+      }
+    });
+
+    useSearchParamsMock.mockReturnValue({ get: searchGet });
+    useCreateBookingMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: mutateBookingMock
+    });
+    useCreateAppointmentPaymentMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: mutatePaymentMock
+    });
+
+    const { container } = render(<BookingForm />);
+
+    fireEvent.change(container.querySelector('input[name="clientName"]') as HTMLInputElement, {
+      target: { value: "Jordan Ellis" }
+    });
+    fireEvent.change(container.querySelector('input[name="clientPhone"]') as HTMLInputElement, {
+      target: { value: "8135550190" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm and pay" }));
+
+    await waitFor(() => {
+      expect(mutateBookingMock).toHaveBeenCalledWith(expect.objectContaining({
+        aiRecommendationId: "rebooking:client-jordan:appt-last:28",
+        aiRecommendationType: "rebooking_reminder"
+      }));
+    });
+  });
+
   it("blocks confirmation when no saved payment method exists", () => {
     usePaymentMethodsQueryMock.mockReturnValue({
       data: { methods: [] },

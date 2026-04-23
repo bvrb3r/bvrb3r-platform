@@ -6,9 +6,12 @@ const {
   pushMock,
   refreshMock,
   confirmMock,
+  useBarberAiSummaryQueryMock,
+  useTrackAiRecommendationMutationMock,
   useBarberOverviewQueryMock,
   useBarberLifecycleMutationMock,
   useBarberCancelBookingMutationMock,
+  useNotifyBarberOpenSlotMutationMock,
   useSaveBarberSubtypeMutationMock,
   useCreateMessageThreadMutationMock,
   useBarberTrustSummaryMock,
@@ -18,9 +21,12 @@ const {
   pushMock: vi.fn(),
   refreshMock: vi.fn(),
   confirmMock: vi.fn(),
+  useBarberAiSummaryQueryMock: vi.fn(),
+  useTrackAiRecommendationMutationMock: vi.fn(),
   useBarberOverviewQueryMock: vi.fn(),
   useBarberLifecycleMutationMock: vi.fn(),
   useBarberCancelBookingMutationMock: vi.fn(),
+  useNotifyBarberOpenSlotMutationMock: vi.fn(),
   useSaveBarberSubtypeMutationMock: vi.fn(),
   useCreateMessageThreadMutationMock: vi.fn(),
   useBarberTrustSummaryMock: vi.fn(),
@@ -45,7 +51,13 @@ vi.mock("@/lib/operations/barber-client", () => ({
   useBarberOverviewQuery: useBarberOverviewQueryMock,
   useBarberLifecycleMutation: useBarberLifecycleMutationMock,
   useBarberCancelBookingMutation: useBarberCancelBookingMutationMock,
+  useNotifyBarberOpenSlotMutation: useNotifyBarberOpenSlotMutationMock,
   useSaveBarberSubtypeMutation: useSaveBarberSubtypeMutationMock
+}));
+
+vi.mock("@/lib/ai/client", () => ({
+  useBarberAiSummaryQuery: useBarberAiSummaryQueryMock,
+  useTrackAiRecommendationMutation: useTrackAiRecommendationMutationMock
 }));
 
 vi.mock("@/lib/messages/client", () => ({
@@ -323,6 +335,46 @@ describe("barber workspace", () => {
       isLoading: false,
       error: null
     });
+    useBarberAiSummaryQueryMock.mockReturnValue({
+      data: {
+        generatedAt: "2026-04-21T12:00:00.000Z",
+        gapAlerts: [
+          {
+            recommendationId: "gap-alert:barber-blaze:2026-04-21T11:00:00.000Z:2026-04-21T12:30:00.000Z",
+            type: "barber_gap_alert",
+            title: "90 open minutes on your calendar.",
+            reason: "This window is long enough for Premium Fade.",
+            explanation: "Live schedule, blocked time, and working hours show an unbooked window at BVRB3R Ybor.",
+            actionLabel: "Notify follow list",
+            startsAt: "2026-04-21T11:00:00.000Z",
+            endsAt: "2026-04-21T12:30:00.000Z",
+            durationMinutes: 90,
+            locationId: "loc-ybor",
+            locationLabel: "BVRB3R Ybor",
+            suggestedServiceIds: ["srv-fade"],
+            suggestedServiceNames: ["Premium Fade"]
+          }
+        ],
+        nextLayer: {
+          personalization: { status: "scaffolded", signalKeys: [], notes: [] },
+          pricingSuggestions: { status: "scaffolded", signalKeys: [], notes: [] },
+          churnPrediction: { status: "scaffolded", signalKeys: [], notes: [] }
+        }
+      },
+      isLoading: false,
+      error: null
+    });
+    useTrackAiRecommendationMutationMock.mockReturnValue({
+      mutate: vi.fn()
+    });
+    useNotifyBarberOpenSlotMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: vi.fn().mockResolvedValue({
+        notificationsQueued: 1,
+        audienceCount: 1,
+        slotStartsAt: "2026-04-21T11:00:00.000Z"
+      })
+    });
   });
 
   it("renders the Phase 5 today-first barber lane from canonical overview truth", () => {
@@ -333,6 +385,8 @@ describe("barber workspace", () => {
     expect(screen.getAllByText("Jordan Ellis").length).toBeGreaterThan(0);
     expect(screen.getByText("Payout status")).toBeInTheDocument();
     expect(screen.getByText("Approval and payout posture")).toBeInTheDocument();
+    expect(screen.getByText("Gap alerts")).toBeInTheDocument();
+    expect(screen.getByText("This window is long enough for Premium Fade.")).toBeInTheDocument();
     expect(screen.getByText("Today's schedule")).toBeInTheDocument();
     expect(screen.queryByText("Home calendar")).not.toBeInTheDocument();
   });
@@ -374,11 +428,25 @@ describe("barber workspace", () => {
       isLoading: false,
       error: null
     });
+    useBarberAiSummaryQueryMock.mockReturnValue({
+      data: {
+        generatedAt: "2026-04-21T12:00:00.000Z",
+        gapAlerts: [],
+        nextLayer: {
+          personalization: { status: "scaffolded", signalKeys: [], notes: [] },
+          pricingSuggestions: { status: "scaffolded", signalKeys: [], notes: [] },
+          churnPrediction: { status: "scaffolded", signalKeys: [], notes: [] }
+        }
+      },
+      isLoading: false,
+      error: null
+    });
 
     render(<BarberWorkspace barberName="Blaze King" barberTitle="Booth-Rent Barber" barberSubtype="blueprint" />);
 
     expect(screen.getByText(/No appointments are on today's barber calendar yet/i)).toBeInTheDocument();
     expect(screen.getByText(/No appointments are on this barber's live day sheet yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/No meaningful revenue gap is currently derived/i)).toBeInTheDocument();
   });
 
   it("renders booking and payout blockers when trust/compliance gates are not clear", () => {
@@ -437,5 +505,30 @@ describe("barber workspace", () => {
         reason: "Cancelled by barber"
       });
     });
+  });
+
+  it("lets a barber act on a real AI gap alert", async () => {
+    const notifyGap = vi.fn().mockResolvedValue({
+      notificationsQueued: 2,
+      audienceCount: 2,
+      slotStartsAt: "2026-04-21T11:00:00.000Z"
+    });
+    useNotifyBarberOpenSlotMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: notifyGap
+    });
+
+    render(<BarberWorkspace barberName="Blaze King" barberTitle="Booth-Rent Barber" barberSubtype="blueprint" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Notify follow list" }));
+
+    await waitFor(() => {
+      expect(notifyGap).toHaveBeenCalledWith({
+        startsAt: "2026-04-21T11:00:00.000Z",
+        locationId: "loc-ybor",
+        locationLabel: "BVRB3R Ybor"
+      });
+    });
+    expect(await screen.findByText("Queued 2 live availability alerts for this opening.")).toBeInTheDocument();
   });
 });

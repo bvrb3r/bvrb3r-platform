@@ -1,6 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { getEngagementProvider } from "@/lib/engagement/provider";
+import { trackAiRecommendation } from "@/lib/ai/service";
+import { recordReferralBookingProgress } from "@/lib/referrals/service";
 import { recordBookingCreatedPlatformEvent } from "@/lib/core/booking-events";
 import { getMarketplaceProvider } from "@/lib/marketplace/provider";
 import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
@@ -17,7 +18,9 @@ const bookingSchema = z.object({
   sourceKind: z.enum(["direct", "discovery", "public_profile", "haircut_now", "client_dashboard"]).optional(),
   matchedFrom: z.enum(["favorite_barber", "favorite_shop", "nearby", "available_now"]).optional(),
   discoveryQuery: z.string().optional(),
-  barberUsername: z.string().optional()
+  barberUsername: z.string().optional(),
+  aiRecommendationId: z.string().optional(),
+  aiRecommendationType: z.enum(["rebooking_reminder", "available_now", "barber_gap_alert"]).optional()
 });
 
 export async function POST(request: NextRequest) {
@@ -29,7 +32,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid booking payload." }, { status: 400 });
     }
 
-    const { sourceKind, matchedFrom, discoveryQuery, barberUsername, ...bookingInput } = parsed.data;
+    const {
+      sourceKind,
+      matchedFrom,
+      discoveryQuery,
+      barberUsername,
+      aiRecommendationId,
+      aiRecommendationType,
+      ...bookingInput
+    } = parsed.data;
     const provider = await getLiveOperationsProvider();
     const result = await provider.createBooking({
       ...bookingInput,
@@ -66,27 +77,34 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      const engagementProvider = await getEngagementProvider();
-      await engagementProvider.recordEvent(
-        {
-          role: "client",
-          clientId: result.appointment.clientId,
-          userEmail: undefined
-        },
-        {
-          eventType: "appointment_booked",
-          targetType: "client",
-          targetId: result.appointment.clientId,
-          metadata: {
+      await recordReferralBookingProgress({
+        clientId: result.appointment.clientId,
+        appointmentId: result.appointment.id
+      });
+    } catch {
+      // Referral progression should not block booking creation.
+    }
+
+    if (aiRecommendationId && aiRecommendationType) {
+      try {
+        await trackAiRecommendation({
+          recommendationId: aiRecommendationId,
+          recommendationType: aiRecommendationType,
+          action: "converted",
+          surface: "client_home",
+          relatedIds: {
             appointmentId: result.appointment.id,
+            clientId: result.appointment.clientId,
             barberId: result.appointment.barberId,
             serviceId: result.appointment.serviceId,
-            sourceKind: sourceKind ?? null
+            locationId: result.appointment.locationId
+          },
+          payload: {
+            sourceKind: sourceKind ?? null,
+            matchedFrom: matchedFrom ?? null
           }
-        }
-      );
-    } catch {
-      // Engagement events are secondary to booking creation.
+        });
+      } catch {}
     }
 
     return NextResponse.json({ appointment: result.appointment });

@@ -17,7 +17,8 @@ import {
   getPlatformAdminConsolePayload,
   readPlatformShopControlState,
   resetPlatformAdminStateForTests,
-  stagePlatformAdminDirectoryRowsForTests
+  stagePlatformAdminDirectoryRowsForTests,
+  stagePlatformAdminReferralRowsForTests
 } from "@/lib/platform-admin/service";
 
 describe("platform admin service", () => {
@@ -158,5 +159,40 @@ describe("platform admin service", () => {
     expect(resolved?.resolutionNotes).toMatch(/reconciled/i);
     expect(auditPayload.auditLog[0]?.actionType).toBe("resolve_dispute");
     expect(auditPayload.auditLog[0]?.targetId).toBe("dispute-live-1");
+  });
+
+  it("derives referral summaries and support items from canonical referral records", async () => {
+    stagePlatformAdminReferralRowsForTests([
+      {
+        id: "referral-credited",
+        referrer_client_reference: "client-ref",
+        referred_client_email: "friend-one@example.com",
+        status: "credited",
+        reward_points: 10,
+        created_at: "2026-04-20T09:00:00.000Z"
+      },
+      {
+        id: "referral-completed",
+        referrer_client_reference: "client-ref",
+        referred_client_email: "friend-two@example.com",
+        status: "completed",
+        reward_points: 10,
+        created_at: "2026-04-21T09:00:00.000Z"
+      }
+    ]);
+
+    const payload = await getPlatformAdminConsolePayload(founder);
+    const clientUser = payload.users.find((user) => user.clientId === "client-ref");
+    const referralSupport = payload.support.filter((item) => item.kind === "referral");
+
+    expect(clientUser?.referralSummary).toEqual({
+      invited: 2,
+      completed: 2,
+      credited: 1
+    });
+    expect(referralSupport).toHaveLength(2);
+    const referralDetails = referralSupport.map((item) => item.detail);
+    expect(referralDetails.some((detail) => detail.includes("friend-one@example.com"))).toBe(true);
+    expect(referralDetails.some((detail) => detail.includes("friend-two@example.com"))).toBe(true);
   });
 });

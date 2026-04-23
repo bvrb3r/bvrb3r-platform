@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
@@ -45,9 +45,9 @@ type PendingActionState = {
 
 const sections: Array<{ id: ArchitectSectionId; label: string; icon: LucideIcon }> = [
   { id: "overview", label: "Overview", icon: Activity },
-  { id: "users", label: "Users", icon: Users },
+  { id: "users", label: "Accounts", icon: Users },
   { id: "shops", label: "Shops", icon: Store },
-  { id: "money-risk", label: "Money / Risk", icon: WalletCards },
+  { id: "money-risk", label: "Transactions", icon: WalletCards },
   { id: "support", label: "Support Tools", icon: LifeBuoy },
   { id: "controls", label: "Controls", icon: SlidersHorizontal },
   { id: "audit-log", label: "Audit Log", icon: History }
@@ -94,12 +94,18 @@ function getActionClass(action: PlatformAdminActionInput): PlatformAdminActionCl
     case "update_barber_verification":
     case "update_shop_verification":
       return "sensitive";
+    case "resolve_dispute":
     case "resolve_financial_anomaly":
     case "dismiss_financial_anomaly":
       return "critical";
     default:
       return "safe";
   }
+}
+
+function isVerificationQueueStatus(value?: string | null) {
+  const normalized = `${value ?? ""}`.toLowerCase();
+  return normalized.includes("pending") || normalized.includes("submitted") || normalized.includes("review") || normalized.includes("needs");
 }
 
 function badgeClasses(value: string) {
@@ -156,6 +162,27 @@ function MetricCard({
       <p className="mt-3 text-3xl font-semibold" data-display="true">{value}</p>
       <p className="mt-2 text-sm text-white/58">{detail}</p>
     </div>
+  );
+}
+
+function QueueShortcutCard({
+  title,
+  count,
+  detail,
+  action
+}: {
+  title: string;
+  count: string;
+  detail: string;
+  action: ReactNode;
+}) {
+  return (
+    <Card className="rounded-[28px] p-5">
+      <p className="surface-label">{title}</p>
+      <p className="mt-3 text-3xl font-semibold text-white" data-display="true">{count}</p>
+      <p className="mt-2 text-sm leading-7 text-white/58">{detail}</p>
+      <div className="mt-4">{action}</div>
+    </Card>
   );
 }
 
@@ -248,6 +275,28 @@ export function ArchitectConsole({ initialData }: { initialData: PlatformAdminCo
   )), [data.auditLog, deferredAuditSearch]);
 
   const uniqueRoles = useMemo(() => Array.from(new Set(data.users.map((user) => user.primaryRole.toLowerCase()))).sort(), [data.users]);
+  const verificationBacklogCount = useMemo(() => {
+    const barberBacklog = data.users.filter((user) => user.barberId && (
+      isVerificationQueueStatus(user.verificationStatus)
+      || user.verificationItems.some((item) => isVerificationQueueStatus(item.status))
+    )).length;
+    const shopBacklog = data.shops.filter((shop) => (
+      isVerificationQueueStatus(shop.verificationStatus)
+      || shop.verificationItems.some((item) => isVerificationQueueStatus(item.status))
+    )).length;
+
+    return barberBacklog + shopBacklog;
+  }, [data.shops, data.users]);
+  const accountControlBlockers = useMemo(
+    () => data.users.filter((user) => user.accountStatus !== "active").length,
+    [data.users]
+  );
+  const moneyAttentionCount = useMemo(
+    () => data.moneyRisk.openAnomalies + data.moneyRisk.disputesOpen + data.overview.payoutIssues + data.overview.billingIssues,
+    [data.moneyRisk.disputesOpen, data.moneyRisk.openAnomalies, data.overview.billingIssues, data.overview.payoutIssues]
+  );
+  const totalAttentionCount = verificationBacklogCount + moneyAttentionCount + accountControlBlockers;
+  const hasQuietPlatformState = totalAttentionCount === 0 && data.overview.totalUsers === 0 && data.overview.bookingsToday === 0;
 
   const queueAction = (config: PendingActionState) => {
     setActionNote("");
@@ -284,10 +333,10 @@ export function ArchitectConsole({ initialData }: { initialData: PlatformAdminCo
       <Card className="rounded-[32px] p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="surface-label">Users</p>
+            <p className="surface-label">Accounts</p>
             <p className="mt-2 text-sm text-white/58">Search by identity, role, status, phone, or shop relationship.</p>
           </div>
-          <span className="status-pill text-[#d7ffab]">{filteredUsers.length} users in view</span>
+          <span className="status-pill text-[#d7ffab]">{filteredUsers.length} accounts in view</span>
         </div>
         <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_220px_220px]">
           <div>
@@ -353,6 +402,9 @@ export function ArchitectConsole({ initialData }: { initialData: PlatformAdminCo
 
             {user.canManageAccess ? (
               <div className="mt-4 flex flex-wrap gap-2">
+                <Link href={`/architect/accounts/${user.id}`} className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#7cff00]/20 hover:text-[#d7ffab] sm:px-5 sm:text-[11px] sm:tracking-[0.22em]">
+                  Inspect account
+                </Link>
                 {user.accountStatus !== "active" ? (
                   <Button type="button" className="min-w-[10rem]" onClick={() => queueAction({
                     action: { type: "set_user_status", userId: user.id, nextStatus: "active" },
@@ -610,6 +662,19 @@ export function ArchitectConsole({ initialData }: { initialData: PlatformAdminCo
                     <span className={cn("status-pill", badgeClasses(item.status))}>{formatLabel(item.status)}</span>
                   </div>
                   <p className="mt-2 text-sm text-white/58">{item.locationId ? `Location ${item.locationId}` : "No location scope recorded."}</p>
+                  {item.status.toLowerCase() !== "resolved" && item.status.toLowerCase() !== "closed" ? (
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <Button type="button" className="min-w-[10rem]" onClick={() => queueAction({
+                        action: { type: "resolve_dispute", disputeId: item.id },
+                        actionClass: getActionClass({ type: "resolve_dispute", disputeId: item.id }),
+                        title: `Resolve ${item.summary}`,
+                        detail: "Use this only when the canonical dispute record has been reviewed and is ready to close. This action is audit-logged.",
+                        confirmLabel: "Resolve dispute"
+                      })}>
+                        Resolve dispute
+                      </Button>
+                    </div>
+                  ) : null}
                 </div>
               )) : <div className="rounded-[22px] border border-dashed border-white/10 bg-black/20 p-5 text-sm leading-7 text-white/58">No open disputes in platform scope.</div>}
             </div>
@@ -815,6 +880,13 @@ export function ArchitectConsole({ initialData }: { initialData: PlatformAdminCo
         <MetricCard label="Billing issues" value={String(data.overview.billingIssues)} detail="Subscriptions or billing rows needing attention." />
       </section>
 
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <MetricCard label="Verification queue" value={String(verificationBacklogCount)} detail="Live barber and shop reviews still waiting." accent={verificationBacklogCount > 0} />
+        <MetricCard label="Disputes open" value={String(data.moneyRisk.disputesOpen)} detail="Canonical dispute records still open." />
+        <MetricCard label="Account blockers" value={String(accountControlBlockers)} detail="Accounts currently deactivated, suspended, or banned." />
+        <MetricCard label="Attention items" value={String(totalAttentionCount)} detail="Verification, money, and access issues needing review." accent={totalAttentionCount > 0} />
+      </section>
+
       <section className="grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
         <Card className="rounded-[32px] p-6">
           <div className="flex items-center justify-between gap-3">
@@ -859,6 +931,58 @@ export function ArchitectConsole({ initialData }: { initialData: PlatformAdminCo
           </div>
         </Card>
       </section>
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <QueueShortcutCard
+          title="Verification queue"
+          count={String(verificationBacklogCount)}
+          detail="Review pending barber and shop trust records."
+          action={(
+            <Link href="/architect/verifications" className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#7CFF00]/24 bg-[#7CFF00]/10 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#7CFF00]/35 hover:text-[#d7ffab] sm:px-5 sm:text-[11px] sm:tracking-[0.22em]">
+              Open verification queue
+            </Link>
+          )}
+        />
+        <QueueShortcutCard
+          title="Transaction monitor"
+          count={String(moneyAttentionCount)}
+          detail="Inspect payouts, anomalies, and disputes from canonical money truth."
+          action={(
+            <Button type="button" variant="secondary" className="min-w-[11rem]" onClick={() => setActiveSection("money-risk")}>
+              Open transactions
+            </Button>
+          )}
+        />
+        <QueueShortcutCard
+          title="User control"
+          count={String(accountControlBlockers)}
+          detail="Search accounts, inspect identity state, and apply access controls safely."
+          action={(
+            <Link href="/architect/accounts" className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#7cff00]/20 hover:text-[#d7ffab] sm:px-5 sm:text-[11px] sm:tracking-[0.22em]">
+              Open account search
+            </Link>
+          )}
+        />
+        <QueueShortcutCard
+          title="Support queue"
+          count={String(data.support.length)}
+          detail="Follow real booking, payout, kiosk, and queue issues without synthetic filler."
+          action={(
+            <Button type="button" variant="secondary" className="min-w-[11rem]" onClick={() => setActiveSection("support")}>
+              Open support tools
+            </Button>
+          )}
+        />
+      </section>
+
+      {hasQuietPlatformState ? (
+        <Card className="rounded-[32px] border border-dashed border-white/10 p-6">
+          <p className="surface-label">Platform activity is quiet right now</p>
+          <p className="mt-3 text-sm leading-7 text-white/58">
+            There are no live verification, transaction, or account-control blockers in scope yet. As real platform activity arrives, the architect lane will surface it here without synthetic filler.
+          </p>
+        </Card>
+      ) : null}
     </div>
   ) : activeSection === "users" ? usersSection : activeSection === "shops" ? shopsSection : activeSection === "money-risk" ? moneyRiskSection : activeSection === "support" ? supportSection : activeSection === "controls" ? controlsSection : activeSection === "audit-log" ? auditSection : (
     <Card className="rounded-[32px] p-6">
@@ -902,6 +1026,9 @@ export function ArchitectConsole({ initialData }: { initialData: PlatformAdminCo
           <div className="mt-5 flex flex-wrap gap-2">
             <Link href="/architect/verifications" className="inline-flex min-h-12 items-center rounded-full border border-[#7CFF00]/24 bg-[#7CFF00]/10 px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-white transition hover:border-[#7CFF00]/35 hover:text-[#d7ffab] sm:text-[11px] sm:tracking-[0.2em]">
               Open verification queue
+            </Link>
+            <Link href="/architect/accounts" className="inline-flex min-h-12 items-center rounded-full border border-white/8 bg-black/20 px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-white transition hover:border-[#7CFF00]/20 hover:text-white sm:text-[11px] sm:tracking-[0.2em]">
+              Open account search
             </Link>
             {sections.map((item) => (
               <button

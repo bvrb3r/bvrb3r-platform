@@ -1,4 +1,5 @@
 ﻿import type { Route } from "next";
+import type { MouseEventHandler } from "react";
 import { ArrowRight, Clock3, MapPin, ShieldCheck, Star } from "lucide-react";
 import { ClientActionLink } from "@/components/client-experience/client-action-link";
 import { MarketplaceTrackedActionLink } from "@/components/client-experience/marketplace-tracked-action-link";
@@ -30,10 +31,14 @@ function getInitials(name: string) {
 
 export function NextAvailableChairCard({
   fallbackHref,
-  match
+  match,
+  onBookClick,
+  onProfileClick
 }: {
   fallbackHref: Route;
   match: MatchPreview | null;
+  onBookClick?: MouseEventHandler<HTMLAnchorElement>;
+  onProfileClick?: MouseEventHandler<HTMLAnchorElement>;
 }) {
   if (!match) {
     return (
@@ -130,6 +135,7 @@ export function NextAvailableChairCard({
               href={match.bookHref}
               size="lg"
               className="min-w-[12rem]"
+              onClick={onBookClick}
               analytics={{
                 eventType: "booking_cta_clicked",
                 barberId: match.barberId,
@@ -147,7 +153,7 @@ export function NextAvailableChairCard({
               <ArrowRight className="h-4 w-4" />
             </MarketplaceTrackedActionLink>
             {match.profileHref ? (
-              <ClientActionLink href={match.profileHref} size="lg" variant="outline">
+              <ClientActionLink href={match.profileHref} size="lg" variant="outline" onClick={onProfileClick}>
                 Open Profile
               </ClientActionLink>
             ) : null}

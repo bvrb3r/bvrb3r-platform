@@ -4,25 +4,25 @@ import { makePlatformAdminUser } from "@/tests/unit/platform-admin-test-user";
 
 const {
   getPlatformAdminUserMock,
-  getArchitectDashboardPayloadMock
+  getPlatformAdminConsolePayloadMock
 } = vi.hoisted(() => ({
   getPlatformAdminUserMock: vi.fn(),
-  getArchitectDashboardPayloadMock: vi.fn()
+  getPlatformAdminConsolePayloadMock: vi.fn()
 }));
 
 vi.mock("@/lib/auth/guards", () => ({
   getPlatformAdminUser: getPlatformAdminUserMock
 }));
 
-vi.mock("@/lib/platform-admin/accounts-service", () => ({
-  getArchitectDashboardPayload: getArchitectDashboardPayloadMock
+vi.mock("@/lib/platform-admin/service", () => ({
+  getPlatformAdminConsolePayload: getPlatformAdminConsolePayloadMock
 }));
 
-vi.mock("@/components/operations/architect-dashboard", () => ({
-  ArchitectDashboard: ({ initialData }: { initialData: { actorName: string; warnings?: string[]; counts: { totalAccounts: number } } }) => (
-    <div data-testid="architect-dashboard-stub">
+vi.mock("@/components/operations/architect-console", () => ({
+  ArchitectConsole: ({ initialData }: { initialData: { actorName: string; warnings?: string[]; overview: { totalUsers: number } } }) => (
+    <div data-testid="architect-console-stub">
       <span>{initialData.actorName}</span>
-      <span data-testid="architect-total-accounts">{initialData.counts.totalAccounts}</span>
+      <span data-testid="architect-total-users">{initialData.overview.totalUsers}</span>
       <span data-testid="architect-warning-count">{initialData.warnings?.length ?? 0}</span>
     </div>
   )
@@ -33,69 +33,93 @@ import ArchitectPage from "@/app/(platform)/architect/page";
 describe("architect page", () => {
   beforeEach(() => {
     getPlatformAdminUserMock.mockReset();
-    getArchitectDashboardPayloadMock.mockReset();
+    getPlatformAdminConsolePayloadMock.mockReset();
   });
 
-  it("renders the real founder dashboard with server-loaded counts", async () => {
+  it("renders the real architect console with server-loaded platform metrics", async () => {
     getPlatformAdminUserMock.mockResolvedValue(makePlatformAdminUser());
-    getArchitectDashboardPayloadMock.mockResolvedValue({
+    getPlatformAdminConsolePayloadMock.mockResolvedValue({
       actorName: "Architect",
-      counts: {
-        totalAccounts: 3,
-        totalClients: 0,
-        totalBarbers: 1,
-        totalShopOwners: 1,
-        totalPlatformAdmins: 1,
-        pendingBarberApprovals: 1,
-        pendingShopOwnerApprovals: 1,
-        approvedBarbers: 0,
-        approvedShops: 0,
-        suspendedAccounts: 0,
-        bannedAccounts: 0
+      overview: {
+        totalUsers: 3,
+        activeClients: 0,
+        activeBarbers: 1,
+        activeShops: 1,
+        bookingsToday: 2,
+        revenueToday: 125,
+        payoutIssues: 1,
+        billingIssues: 0,
+        fraudFlags: 0,
+        kioskActiveCount: 1,
+        aiManagerActiveCount: 1,
+        releaseReadyCount: 4,
+        releaseAttentionCount: 1
       },
-      recentSignups: [],
-      recentApprovalActions: [],
+      users: [],
+      shops: [],
+      moneyRisk: {
+        openAnomalies: 1,
+        criticalAnomalies: 0,
+        billingFailures: 0,
+        disputesOpen: 0,
+        pointsLiabilityValue: 0,
+        fraudReviewRate: 0,
+        reversalRate: 0,
+        overdueBoothRent: 0,
+        recentAnomalies: [],
+        recentCashouts: [],
+        recentDisputes: []
+      },
+      support: [],
+      controls: {
+        shops: [],
+        release: {
+          readyCount: 4,
+          attentionCount: 1
+        }
+      },
+      auditLog: [],
       warnings: []
     });
 
     render(await ArchitectPage());
 
-    expect(screen.getByTestId("architect-dashboard-stub")).toHaveTextContent("Architect");
-    expect(screen.getByTestId("architect-total-accounts")).toHaveTextContent("3");
+    expect(screen.getByTestId("architect-console-stub")).toHaveTextContent("Architect");
+    expect(screen.getByTestId("architect-total-users")).toHaveTextContent("3");
     expect(screen.getByTestId("architect-warning-count")).toHaveTextContent("0");
   });
 
-  it("falls back to true zero counts when the dashboard payload is invalid", async () => {
+  it("falls back to true zero counts when the console payload is invalid", async () => {
     const founder = makePlatformAdminUser();
     getPlatformAdminUserMock.mockResolvedValue(founder);
-    getArchitectDashboardPayloadMock.mockResolvedValue(null);
+    getPlatformAdminConsolePayloadMock.mockResolvedValue(null);
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     render(await ArchitectPage());
 
-    expect(screen.getByTestId("architect-dashboard-stub")).toHaveTextContent(founder.name);
-    expect(screen.getByTestId("architect-total-accounts")).toHaveTextContent("0");
+    expect(screen.getByTestId("architect-console-stub")).toHaveTextContent(founder.name);
+    expect(screen.getByTestId("architect-total-users")).toHaveTextContent("0");
     expect(screen.getByTestId("architect-warning-count")).toHaveTextContent("0");
     expect(consoleErrorSpy).toHaveBeenCalled();
 
     consoleErrorSpy.mockRestore();
   });
 
-  it("renders a degraded founder payload instead of crashing on account-source errors", async () => {
+  it("renders a degraded architect payload instead of crashing on platform-source errors", async () => {
     const founder = makePlatformAdminUser();
     getPlatformAdminUserMock.mockResolvedValue(founder);
-    getArchitectDashboardPayloadMock.mockRejectedValue({
+    getPlatformAdminConsolePayloadMock.mockRejectedValue({
       code: "42P01",
       details: null,
       hint: null,
-      message: "relation \"profiles\" does not exist"
+      message: "relation \"platform_admin_controls\" does not exist"
     });
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     render(await ArchitectPage());
 
-    expect(screen.getByTestId("architect-dashboard-stub")).toHaveTextContent(founder.name);
-    expect(screen.getByTestId("architect-total-accounts")).toHaveTextContent("0");
+    expect(screen.getByTestId("architect-console-stub")).toHaveTextContent(founder.name);
+    expect(screen.getByTestId("architect-total-users")).toHaveTextContent("0");
     expect(screen.getByTestId("architect-warning-count")).toHaveTextContent("1");
     expect(consoleErrorSpy).toHaveBeenCalled();
 

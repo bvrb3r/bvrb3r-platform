@@ -2,7 +2,11 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import Stripe from "stripe";
 import { canonicalAppointmentUuid, canonicalBarberUuid, canonicalClientUuid, canonicalLocationUuid } from "@/lib/booking/canonical-booking";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
-import { demoBarbers, demoLocations } from "@/lib/data/demo";
+import {
+  buildPlatformEventIdempotencyKey,
+  recordRequiredPlatformEvents,
+  type PlatformEventInput
+} from "@/lib/core/platform-events";
 import { buildClientHistoryIntelligence } from "@/lib/engagement/intelligence";
 import {
   buildBarberContributionViews,
@@ -266,17 +270,11 @@ function mapBillingInvoiceView(row: BillingInvoiceHistoryRow): BillingInvoiceVie
 }
 
 function fallbackShopLabel(locationId: string) {
-  const demoLocation = demoLocations.find((entry) => entry.id === locationId);
-  if (!demoLocation) {
-    return locationId;
-  }
-
-  const area = [demoLocation.neighborhood, demoLocation.city].filter(Boolean).join(" / ");
-  return area ? `${demoLocation.name} / ${area}` : [demoLocation.name, demoLocation.state].filter(Boolean).join(" / ");
+  return locationId;
 }
 
 function fallbackBarberName(barberId: string) {
-  return demoBarbers.find((entry) => entry.id === barberId)?.name ?? barberId;
+  return barberId;
 }
 
 function isPlatformSubscriptionSubjectType(
@@ -291,6 +289,89 @@ function getSupabase() {
   }
 
   return createSupabaseAdminClient();
+}
+
+function buildMembershipLifecycleEvents(input: {
+  previous: BillingSubscriptionRow;
+  next: BillingSubscriptionRow;
+}): PlatformEventInput[] {
+  const events: PlatformEventInput[] = [];
+  const entityId = input.next.id;
+  const relatedIds = {
+    subscriptionId: input.next.id,
+    clientId: input.next.client_id,
+    providerSubscriptionId: input.next.provider_subscription_id,
+    providerCustomerId: input.next.provider_customer_id
+  };
+
+  if (
+    !["active", "trialing"].includes(input.previous.subscription_status)
+    && ["active", "trialing"].includes(input.next.subscription_status)
+  ) {
+    events.push({
+      eventType: "membership_started",
+      entityType: "billing_subscription",
+      entityId,
+      actorId: input.next.client_id,
+      actorRole: "client",
+      source: "system",
+      relatedIds,
+      payload: {
+        planCode: input.next.plan_code,
+        planName: input.next.plan_name,
+        subscriptionStatus: input.next.subscription_status,
+        billingState: input.next.billing_state,
+        entitlementStatus: input.next.entitlement_status
+      },
+      idempotencyKey: buildPlatformEventIdempotencyKey(["membership", entityId, "started", input.next.updated_at]),
+      occurredAt: input.next.updated_at
+    });
+  }
+
+  if (
+    input.previous.subscription_status !== "cancelled"
+    && input.next.subscription_status === "cancelled"
+  ) {
+    events.push({
+      eventType: "membership_canceled",
+      entityType: "billing_subscription",
+      entityId,
+      actorId: input.next.client_id,
+      actorRole: "client",
+      source: "system",
+      relatedIds,
+      payload: {
+        planCode: input.next.plan_code,
+        billingState: input.next.billing_state
+      },
+      idempotencyKey: buildPlatformEventIdempotencyKey(["membership", entityId, "canceled", input.next.updated_at]),
+      occurredAt: input.next.updated_at
+    });
+  }
+
+  if (
+    input.previous.billing_state !== "past_due"
+    && input.next.billing_state === "past_due"
+  ) {
+    events.push({
+      eventType: "membership_past_due",
+      entityType: "billing_subscription",
+      entityId,
+      actorId: input.next.client_id,
+      actorRole: "client",
+      source: "system",
+      relatedIds,
+      payload: {
+        planCode: input.next.plan_code,
+        subscriptionStatus: input.next.subscription_status,
+        entitlementStatus: input.next.entitlement_status
+      },
+      idempotencyKey: buildPlatformEventIdempotencyKey(["membership", entityId, "past_due", input.next.updated_at]),
+      occurredAt: input.next.updated_at
+    });
+  }
+
+  return events;
 }
 
 export class MonetizationServiceError extends Error {
@@ -309,7 +390,7 @@ function getScopeLocationIds(snapshot: LiveOperationsSnapshot, locationIds: stri
   }
 
   const snapshotLocationIds = Array.from(new Set(snapshot.appointments.map((appointment) => appointment.locationId)));
-  return snapshotLocationIds.length ? snapshotLocationIds : demoLocations.map((location) => location.id);
+  return snapshotLocationIds;
 }
 
 async function readLocationsByReference(supabase: SupabaseClient, locationIds: string[]) {
@@ -454,30 +535,11 @@ async function ensureBillingSubscriptions(
     createdBy?: string | null;
   }
 ) {
-  const shopUuids = input.shopIds.map((shopId) => canonicalLocationUuid(shopId));
-  const barberUuids = input.barberIds.map((barberId) => canonicalBarberUuid(barberId));
-  const clientUuids = (input.clientIds ?? []).map((clientId) => canonicalClientUuid(clientId));
-  const existingRows = [
-    ...(shopUuids.length
-      ? (await supabase
-        .from("billing_subscriptions")
-        .select(BILLING_SUBSCRIPTION_SELECT)
-        .in("shop_id", shopUuids)).data ?? []
-      : []),
-    ...(barberUuids.length
-      ? (await supabase
-        .from("billing_subscriptions")
-        .select(BILLING_SUBSCRIPTION_SELECT)
-        .in("barber_id", barberUuids)).data ?? []
-      : []),
-    ...(clientUuids.length
-      ? (await supabase
-        .from("billing_subscriptions")
-        .select(BILLING_SUBSCRIPTION_SELECT)
-        .in("client_id", clientUuids)).data ?? []
-      : [])
-  ] as unknown as BillingSubscriptionRow[];
-
+  const existingRows = await readBillingSubscriptions(supabase, {
+    shopIds: input.shopIds,
+    barberIds: input.barberIds,
+    clientIds: input.clientIds
+  });
   const existingShopIds = new Set(existingRows.filter((row) => row.shop_id).map((row) => row.shop_id as string));
   const existingBarberIds = new Set(existingRows.filter((row) => row.barber_id).map((row) => row.barber_id as string));
   const existingClientIds = new Set(existingRows.filter((row) => row.client_id).map((row) => row.client_id as string));
@@ -494,8 +556,30 @@ async function ensureBillingSubscriptions(
   ];
 
   if (inserts.length) {
-    await supabase.from("billing_subscriptions").insert(inserts);
+    const insertResult = await supabase.from("billing_subscriptions").insert(inserts);
+    if (insertResult.error) {
+      throw new MonetizationServiceError("Unable to create the canonical billing subscription row.", 500);
+    }
   }
+
+  return readBillingSubscriptions(supabase, {
+    shopIds: input.shopIds,
+    barberIds: input.barberIds,
+    clientIds: input.clientIds
+  });
+}
+
+async function readBillingSubscriptions(
+  supabase: SupabaseClient,
+  input: {
+    shopIds: string[];
+    barberIds: string[];
+    clientIds?: string[];
+  }
+) {
+  const shopUuids = input.shopIds.map((shopId) => canonicalLocationUuid(shopId));
+  const barberUuids = input.barberIds.map((barberId) => canonicalBarberUuid(barberId));
+  const clientUuids = (input.clientIds ?? []).map((clientId) => canonicalClientUuid(clientId));
 
   if (!shopUuids.length && !barberUuids.length && !clientUuids.length) {
     return [] as BillingSubscriptionRow[];
@@ -510,6 +594,10 @@ async function ensureBillingSubscriptions(
     .from("billing_subscriptions")
     .select(BILLING_SUBSCRIPTION_SELECT)
     .or(filters);
+
+  if (finalRowsResult.error) {
+    throw new MonetizationServiceError("Unable to load canonical billing subscriptions.", 500);
+  }
 
   return (finalRowsResult.data ?? []) as unknown as BillingSubscriptionRow[];
 }
@@ -699,37 +787,10 @@ function buildFallbackClientMembershipExecution(input: {
 }) {
   const plans = listClientMembershipPlans();
   const activePlan = plans.find((plan) => plan.highlighted) ?? plans[0] ?? null;
-  const draftSubscription = activePlan
-    ? ({
-        id: `client-membership-draft:${input.clientName ?? "client"}`,
-        subjectType: "client",
-        subjectId: input.clientName ?? "client",
-        displayName: input.clientName ?? "Your BVRB3R membership",
-        provider: "stripe_billing",
-        planCode: activePlan.planCode,
-        planName: activePlan.planName,
-        planInterval: activePlan.planInterval,
-        unitAmount: activePlan.unitAmount,
-        currency: activePlan.currency,
-        subscriptionStatus: "draft",
-        billingState: "not_started",
-        entitlementStatus: "locked",
-        updatedAt: new Date().toISOString()
-      } satisfies SubscriptionSummaryView)
-    : null;
 
   return {
-    subscription: draftSubscription,
-    value: draftSubscription
-      ? buildClientMembershipValueFromSubscription({
-          clientName: input.clientName,
-          pointsBalance: input.pointsBalance,
-          referralCredits: input.referralCredits,
-          unlockedRewardCount: input.unlockedRewardCount,
-          nextDueAt: input.nextDueAt,
-          subscription: draftSubscription
-        })
-      : null,
+    subscription: null,
+    value: null,
     plans,
     activePlan,
     pricingAdjustment: null,
@@ -1421,7 +1482,16 @@ async function syncClientSubscriptionRowFromStripe(
     throw new MonetizationServiceError("Unable to sync the client subscription state.", 500);
   }
 
-  return updateResult.data as unknown as BillingSubscriptionRow;
+  const nextRow = updateResult.data as unknown as BillingSubscriptionRow;
+  const lifecycleEvents = buildMembershipLifecycleEvents({
+    previous: existing,
+    next: nextRow
+  });
+  if (lifecycleEvents.length) {
+    await recordRequiredPlatformEvents(supabase, lifecycleEvents);
+  }
+
+  return nextRow;
 }
 
 function buildClientMembershipExecutionFromSubscription(input: {
@@ -1467,7 +1537,7 @@ export async function readActiveClientMembershipSubscription(
     return null;
   }
 
-  const rawSubscriptions = await ensureBillingSubscriptions(supabase, {
+  const rawSubscriptions = await readBillingSubscriptions(supabase, {
     shopIds: [],
     barberIds: [],
     clientIds: [clientId]
@@ -1492,8 +1562,9 @@ export async function buildClientMembershipExecutionSummary(input: {
   referralCredits: number;
   unlockedRewardCount: number;
   nextDueAt?: string | null;
+  supabaseOverride?: SupabaseClient | null;
 }): Promise<ClientMembershipExecutionView> {
-  const supabase = getSupabase();
+  const supabase = input.supabaseOverride ?? getSupabase();
   if (!supabase) {
     return buildFallbackClientMembershipExecution({
       clientName: input.clientName,
@@ -1504,7 +1575,7 @@ export async function buildClientMembershipExecutionSummary(input: {
     });
   }
 
-  const rawSubscriptions = await ensureBillingSubscriptions(supabase, {
+  const rawSubscriptions = await readBillingSubscriptions(supabase, {
     shopIds: [],
     barberIds: [],
     clientIds: [input.clientId]
@@ -1681,7 +1752,7 @@ async function readLatestClientSubscriptionView(clientId: string, clientName?: s
     return null;
   }
 
-  const rawSubscriptions = await ensureBillingSubscriptions(supabase, {
+  const rawSubscriptions = await readBillingSubscriptions(supabase, {
     shopIds: [],
     barberIds: [],
     clientIds: [clientId]

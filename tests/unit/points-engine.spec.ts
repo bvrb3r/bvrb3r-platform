@@ -32,6 +32,27 @@ describe("points engine", () => {
     expect(result.snapshot.validationFlags.paymentSettled).toBe(false);
   });
 
+  it("blocks rewards when the completed appointment is disputed or refunded", () => {
+    const result = awardPointsForEventInState(buildSyntheticPointsState(), {
+      userId: "user-client",
+      role: "client",
+      eventType: "booking",
+      sourceType: "appointment",
+      sourceId: "appt-disputed",
+      basePoints: 8,
+      orderTotal: 60,
+      platformFeeAmount: 8,
+      paymentSettled: true,
+      serviceCompleted: true,
+      refundState: "chargeback",
+      phoneValidated: true
+    });
+
+    expect(result.transaction).toBeNull();
+    expect(result.snapshot.eligibilityStatus).toBe("blocked");
+    expect(result.snapshot.validationFlags.refundClear).toBe(false);
+  });
+
   it("moves pending rewards to unlocked after the delay window", () => {
     const reward = awardPointsForEventInState(buildSyntheticPointsState(), {
       userId: "user-client",

@@ -2,23 +2,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   getClientExperienceContextMock,
-  getEngagementProviderMock,
-  getLiveOperationsProviderMock,
+  createSupabaseAdminClientMock,
   readPointsBalanceForClientReferenceMock,
-  readStateMock,
-  readSnapshotMock,
-  getClientEngagementSummaryMock,
+  readClientReferralSummaryMock,
   buildClientMembershipExecutionSummaryMock,
   createClientMembershipSubscriptionSessionMock,
   cancelClientMembershipSubscriptionMock
 } = vi.hoisted(() => ({
   getClientExperienceContextMock: vi.fn(),
-  getEngagementProviderMock: vi.fn(),
-  getLiveOperationsProviderMock: vi.fn(),
+  createSupabaseAdminClientMock: vi.fn(),
   readPointsBalanceForClientReferenceMock: vi.fn(),
-  readStateMock: vi.fn(),
-  readSnapshotMock: vi.fn(),
-  getClientEngagementSummaryMock: vi.fn(),
+  readClientReferralSummaryMock: vi.fn(),
   buildClientMembershipExecutionSummaryMock: vi.fn(),
   createClientMembershipSubscriptionSessionMock: vi.fn(),
   cancelClientMembershipSubscriptionMock: vi.fn()
@@ -28,25 +22,17 @@ vi.mock("@/lib/client-experience/session", () => ({
   getClientExperienceContext: getClientExperienceContextMock
 }));
 
-vi.mock("@/lib/engagement/provider", () => ({
-  getEngagementProvider: getEngagementProviderMock
-}));
-
-vi.mock("@/lib/operations/live-provider", () => ({
-  getLiveOperationsProvider: getLiveOperationsProviderMock
+vi.mock("@/lib/supabase/admin", () => ({
+  createSupabaseAdminClient: createSupabaseAdminClientMock
 }));
 
 vi.mock("@/lib/points/engine", () => ({
   readPointsBalanceForClientReference: readPointsBalanceForClientReferenceMock
 }));
 
-vi.mock("@/lib/engagement/engine", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/engagement/engine")>("@/lib/engagement/engine");
-  return {
-    ...actual,
-    getClientEngagementSummary: getClientEngagementSummaryMock
-  };
-});
+vi.mock("@/lib/referrals/service", () => ({
+  readClientReferralSummary: readClientReferralSummaryMock
+}));
 
 vi.mock("@/lib/monetization/service", async () => {
   const actual = await vi.importActual<typeof import("@/lib/monetization/service")>("@/lib/monetization/service");
@@ -64,12 +50,9 @@ import { MonetizationServiceError } from "@/lib/monetization/service";
 describe("client membership route", () => {
   beforeEach(() => {
     getClientExperienceContextMock.mockReset();
-    getEngagementProviderMock.mockReset();
-    getLiveOperationsProviderMock.mockReset();
+    createSupabaseAdminClientMock.mockReset();
     readPointsBalanceForClientReferenceMock.mockReset();
-    readStateMock.mockReset();
-    readSnapshotMock.mockReset();
-    getClientEngagementSummaryMock.mockReset();
+    readClientReferralSummaryMock.mockReset();
     buildClientMembershipExecutionSummaryMock.mockReset();
     createClientMembershipSubscriptionSessionMock.mockReset();
     cancelClientMembershipSubscriptionMock.mockReset();
@@ -87,28 +70,24 @@ describe("client membership route", () => {
       },
       isSignedInClient: true
     });
-    getEngagementProviderMock.mockResolvedValue({
-      readState: readStateMock
-    });
-    getLiveOperationsProviderMock.mockResolvedValue({
-      readSnapshot: readSnapshotMock
-    });
+    createSupabaseAdminClientMock.mockReturnValue({ from: vi.fn() });
     readPointsBalanceForClientReferenceMock.mockResolvedValue({
       unlockedPoints: 220,
       lifetimeEarned: 480
     });
-    readStateMock.mockResolvedValue({});
-    readSnapshotMock.mockResolvedValue({});
-    getClientEngagementSummaryMock.mockReturnValue({
-      pointsBalance: 220,
-      referralCredits: 2,
-      rewards: [
-        { unlocked: true },
-        { unlocked: false }
-      ],
-      intelligence: {
-        nextDueAt: "2026-04-02T09:00:00-04:00"
-      }
+    readClientReferralSummaryMock.mockResolvedValue({
+      clientId: "client-jordan",
+      inviteLink: "/referrals",
+      shareMessage: "Share your code.",
+      totals: {
+        invited: 3,
+        signedUp: 2,
+        booked: 2,
+        completed: 1,
+        credited: 1,
+        rewardPointsEarned: 10
+      },
+      recentReferrals: []
     });
     buildClientMembershipExecutionSummaryMock.mockResolvedValue({
       subscription: null,
@@ -157,26 +136,26 @@ describe("client membership route", () => {
   });
 
   it("returns the canonical membership execution summary for the signed-in client", async () => {
+    const supabase = { from: vi.fn() };
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
     const response = await getMembership();
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(getClientEngagementSummaryMock).toHaveBeenCalledWith(
-      {},
-      {},
-      "client-jordan",
-      {
-        pointsBalance: 220,
-        lifetimePoints: 480
-      }
-    );
+    expect(readPointsBalanceForClientReferenceMock).toHaveBeenCalledWith("client-jordan", supabase);
+    expect(readClientReferralSummaryMock).toHaveBeenCalledWith({
+      clientId: "client-jordan",
+      clientEmail: "client@bvrb3r.demo"
+    }, supabase);
     expect(buildClientMembershipExecutionSummaryMock).toHaveBeenCalledWith({
       clientId: "client-jordan",
       clientName: "Jordan Ellis",
       pointsBalance: 220,
-      referralCredits: 2,
-      unlockedRewardCount: 1,
-      nextDueAt: "2026-04-02T09:00:00-04:00"
+      referralCredits: 10,
+      unlockedRewardCount: 0,
+      nextDueAt: null,
+      supabaseOverride: supabase
     });
     expect(body.membership.plans).toHaveLength(1);
   });

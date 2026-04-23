@@ -1,14 +1,13 @@
 ﻿"use client";
 
 import { useMemo } from "react";
-import { ClipboardCheck, PackageSearch, ShieldCheck, TriangleAlert, UsersRound } from "lucide-react";
+import { ClipboardCheck, ShieldCheck, TriangleAlert, UsersRound } from "lucide-react";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Card } from "@/components/ui/card";
 import { ShopManagerPanel } from "@/components/operations/shop-manager-panel";
 import { Skeleton } from "@/components/ui/skeleton";
-import { demoTasks, inventoryItems } from "@/lib/data/demo";
 import { useShopDashboardQuery } from "@/lib/operations/barber-client";
 import { currency, dateLabel } from "@/lib/utils";
 import { getReadableActionError } from "@/lib/utils/feedback";
@@ -123,9 +122,6 @@ export function ManagerOverview({ locationIds }: { locationIds: string[] }) {
   const completedCount = summary?.completedCount ?? dayAppointments.filter((appointment) => appointment.status === "completed").length;
   const availableBarbers = floorBarbers.filter((entry) => entry.activeAppointmentCount === 0);
   const frontDeskEvents = workflowEvents.filter((event) => event.actorRole === "front_desk").slice(0, 4);
-  const operationalTasks = demoTasks.filter((task) => locationIds.includes(task.locationId));
-  const relevantInventory = inventoryItems.filter((item) => locationIds.includes(item.locationId));
-  const inventoryAlerts = relevantInventory.filter((item) => item.stock <= item.reorderAt);
   const isInitialLoading = shopQuery.isLoading && !shopQuery.data;
   const errorMessage = shopQuery.error ? getReadableActionError(shopQuery.error) : null;
 
@@ -361,29 +357,8 @@ export function ManagerOverview({ locationIds }: { locationIds: string[] }) {
               </>
             ) : (
               <>
-                {operationalTasks.map((task) => (
-                  <div key={task.id} className="rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#7CFF00]/16 hover:bg-black/30">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <p className="font-medium">{task.title}</p>
-                      <span className="status-pill text-[#d7ffab]">{task.priority} priority</span>
-                    </div>
-                    <p className="mt-1 text-sm text-white/55">Assignee: {task.assignee}</p>
-                    <p className="mt-3 text-[11px] uppercase tracking-[0.22em] text-white/38">{task.status}</p>
-                  </div>
-                ))}
-                <div className="rounded-[24px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-4 transition hover:border-[#7CFF00]/28 hover:bg-[#7CFF00]/10">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="surface-label text-[#d7ffab]">Inventory watch</p>
-                    <PackageSearch className="h-5 w-5 text-[#d7ffab]" />
-                  </div>
-                  <div className="mt-3 space-y-2 text-sm text-white/72">
-                    {(inventoryAlerts.length ? inventoryAlerts : relevantInventory).map((item) => (
-                      <div key={item.id} className="flex items-center justify-between gap-3 rounded-[18px] border border-white/8 bg-black/20 px-3 py-3">
-                        <span>{item.name}</span>
-                        <span className="status-pill text-[#d7ffab]">{item.stock} on hand</span>
-                      </div>
-                    ))}
-                  </div>
+                <div className="empty-state-panel rounded-[24px] p-5 text-sm leading-7 text-white/58">
+                  Operational approvals and inventory alerts will appear here once real shop tasks are created for this location.
                 </div>
                 <div className="rounded-[24px] border border-white/8 bg-black/20 p-4 text-sm leading-6 text-white/65">
                   Limited approvals stay here for discounts, service adjustments, and floor notes. Owner account settings, billing, and compensation policy controls remain protected.

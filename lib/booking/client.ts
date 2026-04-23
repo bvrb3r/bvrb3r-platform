@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { AiRecommendationType } from "@/types/ai";
 import type { DiscoveryResult, HaircutNowMatch } from "@/types/domain";
 import type { LiveAppointmentRecord } from "@/lib/operations/live-state";
 import type { AppointmentViewModel } from "@/lib/utils/operations";
@@ -228,6 +229,8 @@ export interface CreateBookingPayload {
   matchedFrom?: "favorite_barber" | "favorite_shop" | "nearby" | "available_now";
   discoveryQuery?: string;
   barberUsername?: string;
+  aiRecommendationId?: string;
+  aiRecommendationType?: AiRecommendationType;
   promotionId?: string;
   promotionCode?: string;
 }
@@ -303,11 +306,12 @@ export function useClientBookingsQuery() {
   });
 }
 
-export function useClientMembershipQuery() {
+export function useClientMembershipQuery(enabled = true) {
   return useQuery({
     queryKey: ["client-membership"],
     queryFn: () => requestJson<ClientMembershipResponse>("/api/client/membership"),
-    select: (data) => data.membership
+    select: (data) => data.membership,
+    enabled
   });
 }
 
@@ -379,7 +383,11 @@ export function useCreateBookingMutation() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["client-home"] }),
         queryClient.invalidateQueries({ queryKey: ["client-bookings"] }),
+        queryClient.invalidateQueries({ queryKey: ["client-membership"] }),
         queryClient.invalidateQueries({ queryKey: ["points"] }),
+        queryClient.invalidateQueries({ queryKey: ["engagement", "client", "referrals"] }),
+        queryClient.invalidateQueries({ queryKey: ["ai", "client", "summary"] }),
+        queryClient.invalidateQueries({ queryKey: ["ai", "barber", "summary"] }),
         queryClient.invalidateQueries({ queryKey: ["barber-search"] }),
         queryClient.invalidateQueries({ queryKey: ["barber-availability"] }),
         queryClient.invalidateQueries({ queryKey: ["operations"] })
@@ -405,6 +413,8 @@ export function useCancelBookingMutation() {
         queryClient.invalidateQueries({ queryKey: ["client-bookings"] }),
         queryClient.invalidateQueries({ queryKey: ["client-home"] }),
         queryClient.invalidateQueries({ queryKey: ["points"] }),
+        queryClient.invalidateQueries({ queryKey: ["ai", "client", "summary"] }),
+        queryClient.invalidateQueries({ queryKey: ["ai", "barber", "summary"] }),
         queryClient.invalidateQueries({ queryKey: ["operations"] })
       ]);
     }

@@ -1,7 +1,6 @@
 "use server";
 
 import { isSupabaseEnabled } from "@/lib/config/runtime";
-import { demoClients, demoLocations } from "@/lib/data/demo";
 import { getNotificationDeliveryProvider } from "@/lib/engagement/delivery-provider";
 import { appendEngagementNotification } from "@/lib/engagement/notifications";
 import { getEngagementProvider } from "@/lib/engagement/provider";
@@ -25,12 +24,7 @@ function resolveClientEmail(state: EngagementState, clientId: string) {
     return notificationMatch;
   }
 
-  const demoMatch = demoClients.find((client) => client.id === clientId)?.email;
-  if (demoMatch) {
-    return demoMatch;
-  }
-
-  return `${clientId}@client.bvrb3r.local`;
+  return null;
 }
 
 function formatSlotLabel(startsAt: string) {
@@ -46,11 +40,7 @@ function resolveLocationLabel(locationId?: string | null, locationLabel?: string
     return locationLabel.trim();
   }
 
-  if (!locationId) {
-    return null;
-  }
-
-  return demoLocations.find((location) => location.id === locationId)?.name ?? null;
+  return locationId ?? null;
 }
 
 function toNotificationRows(records: EngagementNotificationRecord[]) {
@@ -99,11 +89,18 @@ export async function queueBarberOpenSlotNotifications(input: {
   const body = `${input.barberName} just opened ${slotLabel}${resolvedLocationLabel ? ` at ${resolvedLocationLabel}` : ""}. Book before the chair fills again.`;
 
   let nextState = state;
+  let deliverableAudienceCount = 0;
   for (const follow of eligibleFollows) {
+    const userEmail = resolveClientEmail(nextState, follow.clientId);
+    if (!userEmail) {
+      continue;
+    }
+
+    deliverableAudienceCount += 1;
     nextState = appendEngagementNotification(nextState, {
       role: "client",
       clientId: follow.clientId,
-      userEmail: resolveClientEmail(nextState, follow.clientId),
+      userEmail,
       barberId: input.barberId,
       locationId: input.locationId ?? undefined,
       type: "instant_booking_alert",
@@ -117,7 +114,7 @@ export async function queueBarberOpenSlotNotifications(input: {
   if (!newNotifications.length) {
     return {
       notificationsQueued: 0,
-      audienceCount: eligibleFollows.length,
+      audienceCount: deliverableAudienceCount,
       slotStartsAt: input.startsAt
     };
   }
@@ -127,7 +124,7 @@ export async function queueBarberOpenSlotNotifications(input: {
     await (await getNotificationDeliveryProvider()).syncNotifications(newNotifications);
     return {
       notificationsQueued: newNotifications.length,
-      audienceCount: eligibleFollows.length,
+      audienceCount: deliverableAudienceCount,
       slotStartsAt: input.startsAt
     };
   }
@@ -138,7 +135,7 @@ export async function queueBarberOpenSlotNotifications(input: {
     await (await getNotificationDeliveryProvider()).syncNotifications(newNotifications);
     return {
       notificationsQueued: newNotifications.length,
-      audienceCount: eligibleFollows.length,
+      audienceCount: deliverableAudienceCount,
       slotStartsAt: input.startsAt
     };
   }
@@ -154,7 +151,7 @@ export async function queueBarberOpenSlotNotifications(input: {
 
   return {
     notificationsQueued: newNotifications.length,
-    audienceCount: eligibleFollows.length,
+    audienceCount: deliverableAudienceCount,
     slotStartsAt: input.startsAt
   };
 }

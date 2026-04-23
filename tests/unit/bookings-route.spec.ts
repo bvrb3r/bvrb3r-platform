@@ -6,18 +6,18 @@ const {
   getClientExperienceContextMock,
   getLiveOperationsProviderMock,
   getMarketplaceProviderMock,
-  getEngagementProviderMock,
+  recordReferralBookingProgressMock,
+  trackAiRecommendationMock,
   createBookingMock,
-  recordBookingCreatedMock,
-  recordEventMock
+  recordBookingCreatedMock
 } = vi.hoisted(() => ({
   getClientExperienceContextMock: vi.fn(),
   getLiveOperationsProviderMock: vi.fn(),
   getMarketplaceProviderMock: vi.fn(),
-  getEngagementProviderMock: vi.fn(),
+  recordReferralBookingProgressMock: vi.fn(),
+  trackAiRecommendationMock: vi.fn(),
   createBookingMock: vi.fn(),
-  recordBookingCreatedMock: vi.fn(),
-  recordEventMock: vi.fn()
+  recordBookingCreatedMock: vi.fn()
 }));
 
 vi.mock("@/lib/client-experience/session", () => ({
@@ -32,8 +32,12 @@ vi.mock("@/lib/marketplace/provider", () => ({
   getMarketplaceProvider: getMarketplaceProviderMock
 }));
 
-vi.mock("@/lib/engagement/provider", () => ({
-  getEngagementProvider: getEngagementProviderMock
+vi.mock("@/lib/referrals/service", () => ({
+  recordReferralBookingProgress: recordReferralBookingProgressMock
+}));
+
+vi.mock("@/lib/ai/service", () => ({
+  trackAiRecommendation: trackAiRecommendationMock
 }));
 
 import { POST as postBooking } from "@/app/api/bookings/route";
@@ -64,10 +68,10 @@ describe("bookings route", () => {
     getClientExperienceContextMock.mockReset();
     getLiveOperationsProviderMock.mockReset();
     getMarketplaceProviderMock.mockReset();
-    getEngagementProviderMock.mockReset();
+    recordReferralBookingProgressMock.mockReset();
+    trackAiRecommendationMock.mockReset();
     createBookingMock.mockReset();
     recordBookingCreatedMock.mockReset();
-    recordEventMock.mockReset();
 
     getClientExperienceContextMock.mockResolvedValue({
       viewer: {
@@ -86,9 +90,8 @@ describe("bookings route", () => {
     getMarketplaceProviderMock.mockResolvedValue({
       recordBookingCreated: recordBookingCreatedMock
     });
-    getEngagementProviderMock.mockResolvedValue({
-      recordEvent: recordEventMock
-    });
+    recordReferralBookingProgressMock.mockResolvedValue({ referralEvent: null });
+    trackAiRecommendationMock.mockResolvedValue({ ok: true });
   });
 
   it("rejects invalid booking payloads", async () => {
@@ -133,6 +136,10 @@ describe("bookings route", () => {
       actorEmail: "client@bvrb3r.demo",
       bookingSource: "booking"
     }));
+    expect(recordReferralBookingProgressMock).toHaveBeenCalledWith({
+      clientId: "client-jordan",
+      appointmentId: "appt-new"
+    });
   });
 
   it("returns a safe validation error when a stale service selection reaches the API", async () => {
@@ -217,5 +224,38 @@ describe("bookings route", () => {
     expect(response.status).toBe(409);
     expect(body.code).toBe("schedule_conflict");
     expect(body.latestAppointment.id).toBe("appt-new");
+  });
+
+  it("records an AI conversion when a booking is created from a recommendation", async () => {
+    createBookingMock.mockResolvedValue({
+      appointment: appointmentFixture
+    });
+
+    const response = await postBooking(new NextRequest("https://bvrb3r.demo/api/bookings", {
+      method: "POST",
+      body: JSON.stringify({
+        locationId: "loc-ybor",
+        barberId: "barber-blaze",
+        serviceId: "srv-signature",
+        addOnIds: [],
+        appointmentTime: "2026-03-23T14:00:00-04:00",
+        clientName: "Jordan Ellis",
+        clientPhone: "(813) 555-0190",
+        aiRecommendationId: "rebooking:client-jordan:appt-last:28",
+        aiRecommendationType: "rebooking_reminder"
+      })
+    }));
+
+    expect(response.status).toBe(200);
+    expect(trackAiRecommendationMock).toHaveBeenCalledWith(expect.objectContaining({
+      recommendationId: "rebooking:client-jordan:appt-last:28",
+      recommendationType: "rebooking_reminder",
+      action: "converted",
+      surface: "client_home",
+      relatedIds: expect.objectContaining({
+        appointmentId: "appt-new",
+        barberId: "barber-blaze"
+      })
+    }));
   });
 });

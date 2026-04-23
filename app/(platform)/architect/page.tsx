@@ -1,45 +1,25 @@
-import { ArchitectDashboard } from "@/components/operations/architect-dashboard";
+import { ArchitectConsole } from "@/components/operations/architect-console";
 import { getPlatformAdminUser } from "@/lib/auth/guards";
-import { getArchitectDashboardPayload } from "@/lib/platform-admin/accounts-service";
-import type { ArchitectDashboardPayload } from "@/types/platform-admin";
-
-function createEmptyDashboardPayload(actorName: string, warnings: string[] = []): ArchitectDashboardPayload {
-  return {
-    actorName,
-    counts: {
-      totalAccounts: 0,
-      totalClients: 0,
-      totalBarbers: 0,
-      totalShopOwners: 0,
-      totalPlatformAdmins: 0,
-      pendingBarberApprovals: 0,
-      pendingShopOwnerApprovals: 0,
-      approvedBarbers: 0,
-      approvedShops: 0,
-      suspendedAccounts: 0,
-      bannedAccounts: 0
-    },
-    recentSignups: [],
-    recentApprovalActions: [],
-    warnings
-  };
-}
+import { ARCHITECT_DEGRADED_WARNING, createEmptyPlatformAdminConsolePayload, normalizePlatformAdminConsolePayload } from "@/lib/platform-admin/payload";
+import { getPlatformAdminConsolePayload } from "@/lib/platform-admin/service";
 
 export default async function ArchitectPage() {
   const user = await getPlatformAdminUser();
-  let initialData = createEmptyDashboardPayload(user.name);
+  let initialData = createEmptyPlatformAdminConsolePayload(user.name);
 
   try {
-    const payload = await getArchitectDashboardPayload(user);
+    const payload = await getPlatformAdminConsolePayload(user);
     if (!payload || typeof payload !== "object") {
-      console.error("[Architect] dashboard page loader received an invalid payload", payload);
+      console.error("[Architect] console page loader received an invalid payload", payload);
     } else {
-      initialData = payload;
+      initialData = normalizePlatformAdminConsolePayload(payload, {
+        actorName: user.name
+      });
     }
   } catch (error) {
-    console.error("[Architect] dashboard page loader failed", error);
-    initialData = createEmptyDashboardPayload(user.name, ["Architect account data is partially unavailable. Live account views will show true empty states where reads failed."]);
+    console.error("[Architect] console page loader failed", error);
+    initialData = createEmptyPlatformAdminConsolePayload(user.name, [ARCHITECT_DEGRADED_WARNING]);
   }
 
-  return <ArchitectDashboard initialData={initialData} />;
+  return <ArchitectConsole initialData={initialData} />;
 }

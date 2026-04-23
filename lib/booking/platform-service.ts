@@ -22,7 +22,6 @@ import { decorateDiscoveryWithActivation, decoratePublicProfileWithActivation } 
 import { getMarketplaceActivationProvider } from "@/lib/marketplace/activation-provider";
 import { buildDiscoveryPayload, buildHaircutNowPayload, buildPublicProfilePayload, getMarketplaceProvider, type MarketplaceRuntimeData } from "@/lib/marketplace/provider";
 import { getMarketplaceState, setMarketplaceState } from "@/lib/marketplace/state";
-import { getClientEngagementSummary } from "@/lib/engagement/engine";
 import { getEngagementProvider } from "@/lib/engagement/provider";
 import { readBookingTransactionBreakdown } from "@/lib/fintech/breakdown";
 import { readBookingReceipt } from "@/lib/fintech/receipt";
@@ -32,6 +31,7 @@ import {
   buildClientMembershipValueSummary
 } from "@/lib/monetization/service";
 import { readPointsBalanceForClientReference } from "@/lib/points/engine";
+import { readClientReferralSummary } from "@/lib/referrals/service";
 import { buildPublicTrustSignal, computeShopVerificationDecision, createEmptyTrustState, getVerificationGateDecision } from "@/lib/trust/engine";
 import { getTrustProvider } from "@/lib/trust/provider";
 import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
@@ -1272,22 +1272,20 @@ export async function getClientBookingsPayload(clientId: string) {
   let membershipExecution = null;
 
   try {
-    const engagementProvider = await getEngagementProvider();
-    const [engagementState, pointsBalance] = await Promise.all([
-      engagementProvider.readState(),
-      readPointsBalanceForClientReference(clientId, supabase)
+    const [pointsBalance, referralSummary] = await Promise.all([
+      readPointsBalanceForClientReference(clientId, supabase),
+      readClientReferralSummary({
+        clientId,
+        clientEmail: clientProfile?.email
+      }, supabase)
     ]);
-    const engagementSummary = getClientEngagementSummary(engagementState, snapshot, clientId, {
-      pointsBalance: pointsBalance.unlockedPoints,
-      lifetimePoints: pointsBalance.lifetimeEarned
-    });
     membershipExecution = await buildClientMembershipExecutionSummary({
       clientId,
       clientName: clientProfile?.fullName,
-      pointsBalance: engagementSummary.pointsBalance,
-      referralCredits: engagementSummary.referralCredits,
-      unlockedRewardCount: engagementSummary.rewards.filter((reward) => reward.unlocked).length,
-      nextDueAt: engagementSummary.intelligence.nextDueAt
+      pointsBalance: pointsBalance.unlockedPoints,
+      referralCredits: referralSummary.totals.rewardPointsEarned,
+      unlockedRewardCount: 0,
+      nextDueAt: routine?.nextSuggestedAt ?? null
     });
     membershipValue = await buildClientMembershipValueSummary({
       clientId,
@@ -1298,10 +1296,10 @@ export async function getClientBookingsPayload(clientId: string) {
       favoriteShopLabel: favoriteBarberProfile?.shopLocations[0]
         ? `${favoriteBarberProfile.shopLocations[0].name} / ${favoriteBarberProfile.shopLocations[0].neighborhood}`
         : undefined,
-      pointsBalance: engagementSummary.pointsBalance,
-      referralCredits: engagementSummary.referralCredits,
-      unlockedRewardCount: engagementSummary.rewards.filter((reward) => reward.unlocked).length,
-      nextDueAt: engagementSummary.intelligence.nextDueAt
+      pointsBalance: pointsBalance.unlockedPoints,
+      referralCredits: referralSummary.totals.rewardPointsEarned,
+      unlockedRewardCount: 0,
+      nextDueAt: routine?.nextSuggestedAt ?? null
     });
   } catch {
     membershipValue = null;

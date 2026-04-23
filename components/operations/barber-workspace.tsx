@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarDays, Clock3, MessageSquareText, ShieldCheck, WalletCards } from "lucide-react";
 import { StatusBadge } from "@/components/dashboard/status-badge";
@@ -8,17 +8,17 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useBarberAiSummaryQuery, useTrackAiRecommendationMutation } from "@/lib/ai/client";
 import { useBarberFintechReadinessQuery, useBarberPayoutsQuery } from "@/lib/fintech/client";
 import { useCreateMessageThreadMutation } from "@/lib/messages/client";
 import {
   useBarberCancelBookingMutation,
   useBarberLifecycleMutation,
+  useNotifyBarberOpenSlotMutation,
   useBarberOverviewQuery,
   useSaveBarberSubtypeMutation,
   type BarberApiError,
-  type BarberBlockedTimeView,
-  type BarberOperationalAppointment,
-  type BarberWorkingHoursView
+  type BarberOperationalAppointment
 } from "@/lib/operations/barber-client";
 import { useBarberTrustSummary } from "@/lib/trust/client";
 import { currency } from "@/lib/utils";
@@ -26,7 +26,6 @@ import { getReadableActionError } from "@/lib/utils/feedback";
 import type { BarberSubtype } from "@/types/domain";
 
 type LifecycleAction = { action: "check_in" | "service_start" | "service_complete"; label: string; pendingLabel: string; successMessage: string };
-type GapView = { startsAt: string; endsAt: string; durationMinutes: number };
 
 const subtypeOptions: Array<{ subtype: BarberSubtype; label: string; description: string }> = [
   { subtype: "freelance", label: "Freelance", description: "Independent chair posture with self-managed availability." },
@@ -71,68 +70,21 @@ function MetricSkeleton() {
   return <div className="rounded-[24px] border border-white/8 bg-black/20 p-4"><Skeleton className="h-4 w-24" /><Skeleton className="mt-4 h-8 w-20" /><Skeleton className="mt-3 h-4 w-32" /></div>;
 }
 
-function buildOpenGaps({
-  businessDate,
-  currentShopId,
-  workingHours,
-  blockedTimes,
-  appointments
-}: {
-  businessDate: string;
-  currentShopId: string | null;
-  workingHours: BarberWorkingHoursView[];
-  blockedTimes: BarberBlockedTimeView[];
-  appointments: BarberOperationalAppointment[];
-}) {
-  const weekday = new Date(`${businessDate}T12:00:00`).getDay();
-  const now = new Date();
-  const isToday = businessDate === now.toISOString().slice(0, 10);
-  const ranges = workingHours
-    .filter((row) => row.weekday === weekday && (!currentShopId || row.locationId === currentShopId))
-    .map((row) => ({
-      start: new Date(`${businessDate}T${row.startTime}:00`).getTime(),
-      end: new Date(`${businessDate}T${row.endTime}:00`).getTime()
-    }));
-  const busy = [
-    ...appointments.filter((row) => !["cancelled", "no_show"].includes(row.status)).map((row) => ({ start: new Date(row.start).getTime(), end: new Date(row.end).getTime() })),
-    ...blockedTimes
-      .filter((row) => row.startsAt.slice(0, 10) === businessDate || row.endsAt.slice(0, 10) === businessDate)
-      .map((row) => ({ start: new Date(row.startsAt).getTime(), end: new Date(row.endsAt).getTime() }))
-  ].sort((left, right) => left.start - right.start);
-
-  const gaps: GapView[] = [];
-  for (const range of ranges) {
-    let cursor = range.start;
-    for (const interval of busy) {
-      if (interval.end <= range.start || interval.start >= range.end) continue;
-      const start = Math.max(interval.start, range.start);
-      if (start > cursor) {
-        gaps.push({ startsAt: new Date(cursor).toISOString(), endsAt: new Date(start).toISOString(), durationMinutes: Math.round((start - cursor) / 60_000) });
-      }
-      cursor = Math.max(cursor, Math.min(interval.end, range.end));
-    }
-    if (cursor < range.end) {
-      gaps.push({ startsAt: new Date(cursor).toISOString(), endsAt: new Date(range.end).toISOString(), durationMinutes: Math.round((range.end - cursor) / 60_000) });
-    }
-  }
-
-  return gaps
-    .filter((gap) => gap.durationMinutes >= 15)
-    .filter((gap) => !isToday || new Date(gap.endsAt).getTime() > now.getTime())
-    .sort((left, right) => new Date(left.startsAt).getTime() - new Date(right.startsAt).getTime());
-}
-
 export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { barberName: string; barberTitle: string; barberSubtype?: BarberSubtype }) {
   const router = useRouter();
   const overviewQuery = useBarberOverviewQuery();
+  const aiSummaryQuery = useBarberAiSummaryQuery();
   const trustQuery = useBarberTrustSummary();
   const readinessQuery = useBarberFintechReadinessQuery();
   const payoutsQuery = useBarberPayoutsQuery();
   const lifecycleMutation = useBarberLifecycleMutation();
   const cancelMutation = useBarberCancelBookingMutation();
+  const notifyGapMutation = useNotifyBarberOpenSlotMutation();
   const saveSubtypeMutation = useSaveBarberSubtypeMutation();
+  const trackAiRecommendationMutation = useTrackAiRecommendationMutation();
   const threadMutation = useCreateMessageThreadMutation();
   const [pendingAppointmentId, setPendingAppointmentId] = useState<string | null>(null);
+  const [pendingGapRecommendationId, setPendingGapRecommendationId] = useState<string | null>(null);
   const [statusUpdate, setStatusUpdate] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [configuredSubtype, setConfiguredSubtype] = useState<BarberSubtype | undefined>(barberSubtype);
   const [selectedSubtype, setSelectedSubtype] = useState<BarberSubtype>(barberSubtype ?? "freelance");
@@ -140,17 +92,11 @@ export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { ba
 
   const payload = overviewQuery.data;
   const businessDate = payload?.summary.businessDate ?? new Date().toISOString().slice(0, 10);
-  const todayAppointments = useMemo(() => [...(payload?.todayAppointments ?? [])].sort((left, right) => new Date(left.start).getTime() - new Date(right.start).getTime()), [payload?.todayAppointments]);
+  const todayAppointments = [...(payload?.todayAppointments ?? [])].sort((left, right) => new Date(left.start).getTime() - new Date(right.start).getTime());
   const nextAppointment = payload?.nextAppointment ?? todayAppointments.find((row) => !["completed", "cancelled", "no_show"].includes(row.status)) ?? null;
   const relationship = nextAppointment ? payload?.quickClients.find((row) => row.clientId === nextAppointment.clientId) ?? null : null;
   const bookedToday = todayAppointments.filter((row) => !["cancelled", "no_show"].includes(row.status)).reduce((sum, row) => sum + row.totalAmount, 0);
-  const openGaps = useMemo(() => buildOpenGaps({
-    businessDate,
-    currentShopId: payload?.status.currentShopId ?? null,
-    workingHours: payload?.workingHours ?? [],
-    blockedTimes: payload?.blockedTimes ?? [],
-    appointments: todayAppointments
-  }), [businessDate, payload?.blockedTimes, payload?.status.currentShopId, payload?.workingHours, todayAppointments]);
+  const gapAlerts = aiSummaryQuery.data?.gapAlerts ?? [];
   const verificationDecision = trustQuery.data?.verificationDecision;
   const bookingGate = verificationDecision?.gates.booking;
   const payoutGate = verificationDecision?.gates.payout;
@@ -199,6 +145,45 @@ export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { ba
       if (payload.thread?.id) router.push(`/workspace/messages/${payload.thread.id}`);
     } catch (error) {
       setStatusUpdate({ tone: "error", message: getReadableActionError(error as BarberApiError) });
+    }
+  }
+
+  async function handleGapAlertAction(alert: NonNullable<typeof aiSummaryQuery.data>["gapAlerts"][number]) {
+    setStatusUpdate(null);
+    setPendingGapRecommendationId(alert.recommendationId);
+
+    try {
+      trackAiRecommendationMutation.mutate({
+        recommendationId: alert.recommendationId,
+        recommendationType: alert.type,
+        action: "clicked",
+        surface: "barber_dashboard",
+        relatedIds: {
+          barberId: payload?.barberId,
+          locationId: alert.locationId ?? null
+        },
+        payload: {
+          startsAt: alert.startsAt,
+          endsAt: alert.endsAt
+        }
+      });
+
+      const result = await notifyGapMutation.mutateAsync({
+        startsAt: alert.startsAt,
+        locationId: alert.locationId ?? null,
+        locationLabel: alert.locationLabel ?? null
+      });
+
+      setStatusUpdate({
+        tone: "success",
+        message: result.notificationsQueued
+          ? `Queued ${result.notificationsQueued} live availability alert${result.notificationsQueued === 1 ? "" : "s"} for this opening.`
+          : "This opening is real, but no followed clients are currently eligible for an alert."
+      });
+    } catch (error) {
+      setStatusUpdate({ tone: "error", message: getReadableActionError(error as BarberApiError) });
+    } finally {
+      setPendingGapRecommendationId(null);
     }
   }
 
@@ -316,11 +301,37 @@ export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { ba
             <div className="rounded-[20px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Payout readiness</p><p className="mt-2 text-lg font-semibold text-white">{readinessQuery.data?.connectedAccount.operationalStatus ? formatStatusLabel(readinessQuery.data.connectedAccount.operationalStatus) : "Loading"}</p><p className="mt-2 text-sm text-white/58">{payoutGate && !payoutGate.allowed ? payoutGate.reasons[0] : readinessQuery.data?.routingSummary.blockedPaymentsCount ? `${readinessQuery.data.routingSummary.blockedPaymentsCount} payout blockers currently on file.` : "No payout blocker is currently stored for this barber."}</p></div>
           </div>
           <div className="mt-4 rounded-[20px] border border-white/8 bg-black/20 p-4">
-            <p className="surface-label">Open gaps</p>
+            <p className="surface-label">Gap alerts</p>
             <div className="mt-3 space-y-3">
-              {openGaps.length ? openGaps.slice(0, 3).map((gap) => (
-                <div key={`${gap.startsAt}-${gap.endsAt}`} className="flex items-center justify-between gap-3 rounded-[18px] border border-white/8 bg-black/18 px-3 py-3"><div><p className="font-medium text-white">{formatTime(gap.startsAt)} - {formatTime(gap.endsAt)}</p><p className="mt-1 text-sm text-white/58">{gap.durationMinutes} open minutes in the live chair calendar.</p></div><Clock3 className="h-4 w-4 text-[#d7ffab]" /></div>
-              )) : <p className="text-sm leading-6 text-white/58">No open working-hours gap is currently derived from this barber&apos;s live availability, blocked times, and appointments.</p>}
+              {gapAlerts.length ? gapAlerts.slice(0, 3).map((alert) => {
+                const isPending = pendingGapRecommendationId === alert.recommendationId;
+                return (
+                  <div key={alert.recommendationId} className="rounded-[18px] border border-white/8 bg-black/18 px-3 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-medium text-white">{formatTime(alert.startsAt)} - {formatTime(alert.endsAt)}</p>
+                        <p className="mt-1 text-sm text-white/58">{alert.reason}</p>
+                        <p className="mt-2 text-sm text-white/48">{alert.explanation}</p>
+                      </div>
+                      <Clock3 className="mt-1 h-4 w-4 shrink-0 text-[#d7ffab]" />
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="h-10 px-3"
+                        disabled={notifyGapMutation.isPending && isPending}
+                        onClick={() => void handleGapAlertAction(alert)}
+                      >
+                        {notifyGapMutation.isPending && isPending ? "Notifying..." : alert.actionLabel}
+                      </Button>
+                      <Button type="button" variant="ghost" className="h-10 px-3" onClick={() => router.push("/appointments")}>
+                        Open calendar
+                      </Button>
+                    </div>
+                  </div>
+                );
+              }) : <p className="text-sm leading-6 text-white/58">No meaningful revenue gap is currently derived from this barber&apos;s live schedule, blocked times, and active services.</p>}
             </div>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">{blockerLabels.length ? blockerLabels.slice(0, 4).map((label) => <span key={label} className="status-pill text-white/72">{label}</span>) : <span className="status-pill text-[#d7ffab]">No active compliance blockers</span>}</div>

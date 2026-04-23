@@ -60,6 +60,10 @@ describe("platform events core", () => {
     expect(PLATFORM_EVENT_TYPES).toEqual(expect.arrayContaining([
       "booking_created",
       "booking_updated",
+      "ai_recommendation_shown",
+      "ai_recommendation_clicked",
+      "ai_recommendation_converted",
+      "ai_recommendation_suppressed",
       "payment_succeeded",
       "payment_failed",
       "payout_released",
@@ -71,6 +75,11 @@ describe("platform events core", () => {
       "booking_completed",
       "points_earned",
       "points_redeemed",
+      "referral_qualified",
+      "referral_rewarded",
+      "membership_started",
+      "membership_canceled",
+      "membership_past_due",
       "verification_approved",
       "verification_rejected"
     ]));

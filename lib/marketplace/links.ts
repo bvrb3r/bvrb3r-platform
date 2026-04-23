@@ -1,4 +1,5 @@
 ﻿import type { Route } from "next";
+import type { AiRecommendationType } from "@/types/ai";
 import type { HaircutNowMatch, MarketplaceSourceKind } from "@/types/domain";
 import { buildDeepLinkPayload } from "@/lib/mobile/links";
 
@@ -11,6 +12,8 @@ interface BookingHrefOptions {
   matchedFrom?: HaircutNowMatch["matchedFrom"];
   query?: string;
   appointmentTime?: string;
+  aiRecommendationId?: string;
+  aiRecommendationType?: AiRecommendationType;
 }
 
 export function buildMarketplaceBookingHref(options: BookingHrefOptions): Route {
@@ -46,6 +49,14 @@ export function buildMarketplaceBookingHref(options: BookingHrefOptions): Route 
 
   if (options.appointmentTime) {
     params.set("appointmentTime", options.appointmentTime);
+  }
+
+  if (options.aiRecommendationId) {
+    params.set("aiRecommendationId", options.aiRecommendationId);
+  }
+
+  if (options.aiRecommendationType) {
+    params.set("aiRecommendationType", options.aiRecommendationType);
   }
 
   const queryString = params.toString();

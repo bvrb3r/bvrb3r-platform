@@ -1,6 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { getEngagementProvider } from "@/lib/engagement/provider";
+import { trackAiRecommendation } from "@/lib/ai/service";
+import { recordReferralBookingProgress } from "@/lib/referrals/service";
 import { getClientExperienceContext } from "@/lib/client-experience/session";
 import { recordBookingCreatedPlatformEvent } from "@/lib/core/booking-events";
 import { getMarketplaceProvider } from "@/lib/marketplace/provider";
@@ -20,6 +21,8 @@ const bookingSchema = z.object({
   matchedFrom: z.enum(["favorite_barber", "favorite_shop", "nearby", "available_now"]).optional(),
   discoveryQuery: z.string().optional(),
   barberUsername: z.string().optional(),
+  aiRecommendationId: z.string().optional(),
+  aiRecommendationType: z.enum(["rebooking_reminder", "available_now", "barber_gap_alert"]).optional(),
   promotionId: z.string().optional(),
   promotionCode: z.string().optional()
 });
@@ -31,7 +34,15 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { sourceKind, matchedFrom, discoveryQuery, barberUsername, ...bookingInput } = parsed.data;
+    const {
+      sourceKind,
+      matchedFrom,
+      discoveryQuery,
+      barberUsername,
+      aiRecommendationId,
+      aiRecommendationType,
+      ...bookingInput
+    } = parsed.data;
     const clientContext = await getClientExperienceContext();
     const provider = await getLiveOperationsProvider();
     const result = await provider.createBooking({
@@ -72,32 +83,35 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      const engagementProvider = await getEngagementProvider();
-      await Promise.all([
-        engagementProvider.recordEvent(
-        {
-          role: "client",
-          clientId: result.appointment.clientId,
-          userEmail: undefined
-        },
-        {
-          eventType: "appointment_booked",
-          targetType: "client",
-          targetId: result.appointment.clientId,
-          metadata: {
+      await recordReferralBookingProgress({
+        clientId: result.appointment.clientId,
+        appointmentId: result.appointment.id
+      });
+    } catch {}
+
+    if (aiRecommendationId && aiRecommendationType) {
+      try {
+        await trackAiRecommendation({
+          recommendationId: aiRecommendationId,
+          recommendationType: aiRecommendationType,
+          action: "converted",
+          surface: "client_home",
+          actorId: clientContext.viewer.id,
+          actorRole: clientContext.viewer.role,
+          relatedIds: {
             appointmentId: result.appointment.id,
+            clientId: result.appointment.clientId,
             barberId: result.appointment.barberId,
             serviceId: result.appointment.serviceId,
-            sourceKind: sourceKind ?? null
+            locationId: result.appointment.locationId
+          },
+          payload: {
+            sourceKind: sourceKind ?? null,
+            matchedFrom: matchedFrom ?? null
           }
-        }
-        ),
-        engagementProvider.recordReferralBooking({
-          clientId: result.appointment.clientId,
-          appointmentId: result.appointment.id
-        })
-      ]);
-    } catch {}
+        });
+      } catch {}
+    }
 
     return NextResponse.json({ appointment: result.appointment });
   } catch (error) {

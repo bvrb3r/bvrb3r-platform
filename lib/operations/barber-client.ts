@@ -462,7 +462,8 @@ export function useUpdateBarberStatusMutation() {
         queryClient.invalidateQueries({ queryKey: ["barber-status"] }),
         queryClient.invalidateQueries({ queryKey: ["barber-overview"] }),
         queryClient.invalidateQueries({ queryKey: ["barber-schedule"] }),
-        queryClient.invalidateQueries({ queryKey: ["barber-dashboard"] })
+        queryClient.invalidateQueries({ queryKey: ["barber-dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["ai", "barber", "summary"] })
       ]);
     }
   });
@@ -506,7 +507,8 @@ export function useUpdateBarberScheduleMutation() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["barber-schedule"] }),
         queryClient.invalidateQueries({ queryKey: ["barber-overview"] }),
-        queryClient.invalidateQueries({ queryKey: ["barber-status"] })
+        queryClient.invalidateQueries({ queryKey: ["barber-status"] }),
+        queryClient.invalidateQueries({ queryKey: ["ai", "barber", "summary"] })
       ]);
     }
   });
@@ -557,6 +559,7 @@ export function useBarberCancelBookingMutation() {
         queryClient.invalidateQueries({ queryKey: ["barber-dashboard"] }),
         queryClient.invalidateQueries({ queryKey: ["fintech"] }),
         queryClient.invalidateQueries({ queryKey: ["points"] }),
+        queryClient.invalidateQueries({ queryKey: ["ai", "barber", "summary"] }),
         queryClient.invalidateQueries({ queryKey: ["operations", "barber"] }),
         queryClient.invalidateQueries({ queryKey: ["operations", "owner"] }),
         queryClient.invalidateQueries({ queryKey: ["operations", "manager"] })
@@ -680,6 +683,7 @@ export function useBarberLifecycleMutation() {
         queryClient.invalidateQueries({ queryKey: ["barber-earnings"] }),
         queryClient.invalidateQueries({ queryKey: ["barber-status"] }),
         queryClient.invalidateQueries({ queryKey: ["shop-dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["ai", "barber", "summary"] }),
         queryClient.invalidateQueries({ queryKey: ["operations", "barber"] }),
         queryClient.invalidateQueries({ queryKey: ["operations", "owner"] }),
         queryClient.invalidateQueries({ queryKey: ["operations", "manager"] })

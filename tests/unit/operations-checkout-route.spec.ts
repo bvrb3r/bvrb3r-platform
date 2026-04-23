@@ -4,23 +4,23 @@ const {
   getCurrentUserFromServerMock,
   getLiveOperationsProviderMock,
   recordBookingUpdatedPlatformEventsMock,
-  createSupabaseAdminClientMock,
-  getEngagementProviderMock,
+  readAppointmentRetentionQualificationMock,
+  readQualifyingReferralEventMock,
+  finalizeReferralRewardMock,
   getMarketplaceProviderMock,
   getMarketplaceActivationProviderMock,
   getMonetizationAttributionMock,
-  readActiveClientMembershipSubscriptionMock,
   processCompletedAppointmentPointsMock
 } = vi.hoisted(() => ({
   getCurrentUserFromServerMock: vi.fn(),
   getLiveOperationsProviderMock: vi.fn(),
   recordBookingUpdatedPlatformEventsMock: vi.fn(),
-  createSupabaseAdminClientMock: vi.fn(),
-  getEngagementProviderMock: vi.fn(),
+  readAppointmentRetentionQualificationMock: vi.fn(),
+  readQualifyingReferralEventMock: vi.fn(),
+  finalizeReferralRewardMock: vi.fn(),
   getMarketplaceProviderMock: vi.fn(),
   getMarketplaceActivationProviderMock: vi.fn(),
   getMonetizationAttributionMock: vi.fn(),
-  readActiveClientMembershipSubscriptionMock: vi.fn(),
   processCompletedAppointmentPointsMock: vi.fn()
 }));
 
@@ -36,12 +36,13 @@ vi.mock("@/lib/core/booking-events", () => ({
   recordBookingUpdatedPlatformEvents: recordBookingUpdatedPlatformEventsMock
 }));
 
-vi.mock("@/lib/supabase/admin", () => ({
-  createSupabaseAdminClient: createSupabaseAdminClientMock
+vi.mock("@/lib/payments/service", () => ({
+  readAppointmentRetentionQualification: readAppointmentRetentionQualificationMock
 }));
 
-vi.mock("@/lib/engagement/provider", () => ({
-  getEngagementProvider: getEngagementProviderMock
+vi.mock("@/lib/referrals/service", () => ({
+  readQualifyingReferralEvent: readQualifyingReferralEventMock,
+  finalizeReferralReward: finalizeReferralRewardMock
 }));
 
 vi.mock("@/lib/marketplace/provider", () => ({
@@ -56,10 +57,6 @@ vi.mock("@/lib/marketplace/activation", () => ({
   getMonetizationAttribution: getMonetizationAttributionMock
 }));
 
-vi.mock("@/lib/monetization/service", () => ({
-  readActiveClientMembershipSubscription: readActiveClientMembershipSubscriptionMock
-}));
-
 vi.mock("@/lib/points/engine", () => ({
   processCompletedAppointmentPoints: processCompletedAppointmentPointsMock
 }));
@@ -71,12 +68,12 @@ describe("operations checkout route", () => {
     getCurrentUserFromServerMock.mockReset();
     getLiveOperationsProviderMock.mockReset();
     recordBookingUpdatedPlatformEventsMock.mockReset();
-    createSupabaseAdminClientMock.mockReset();
-    getEngagementProviderMock.mockReset();
+    readAppointmentRetentionQualificationMock.mockReset();
+    readQualifyingReferralEventMock.mockReset();
+    finalizeReferralRewardMock.mockReset();
     getMarketplaceProviderMock.mockReset();
     getMarketplaceActivationProviderMock.mockReset();
     getMonetizationAttributionMock.mockReset();
-    readActiveClientMembershipSubscriptionMock.mockReset();
     processCompletedAppointmentPointsMock.mockReset();
 
     getCurrentUserFromServerMock.mockResolvedValue({
@@ -104,6 +101,13 @@ describe("operations checkout route", () => {
         snapshot: {
           appointments: [
             {
+              id: "appt-history-1",
+              clientId: "client-jordan",
+              status: "completed",
+              completedAt: "2026-04-10T14:00:00.000Z",
+              updatedAt: "2026-04-10T14:05:00.000Z"
+            },
+            {
               id: "appt-live-1",
               clientId: "client-jordan",
               status: "completed",
@@ -120,11 +124,17 @@ describe("operations checkout route", () => {
         }
       })
     });
-    createSupabaseAdminClientMock.mockReturnValue({ from: vi.fn() });
     recordBookingUpdatedPlatformEventsMock.mockResolvedValue(undefined);
-    getEngagementProviderMock.mockResolvedValue({
-      rewardCompletedBooking: vi.fn().mockResolvedValue(undefined)
+    readAppointmentRetentionQualificationMock.mockResolvedValue({
+      serviceCompleted: true,
+      paymentSettled: true,
+      refundState: "clean",
+      disputeHold: false,
+      latestPaymentStatus: "captured",
+      reason: "Captured booking payment recorded."
     });
+    readQualifyingReferralEventMock.mockResolvedValue(null);
+    finalizeReferralRewardMock.mockResolvedValue({ referralEvent: null });
     getMarketplaceProviderMock.mockResolvedValue({
       recordBookingCompleted: vi.fn().mockResolvedValue(undefined)
     });
@@ -133,11 +143,14 @@ describe("operations checkout route", () => {
       recordMonetizationEvent: vi.fn().mockResolvedValue(undefined)
     });
     getMonetizationAttributionMock.mockReturnValue({});
-    readActiveClientMembershipSubscriptionMock.mockResolvedValue(null);
-    processCompletedAppointmentPointsMock.mockResolvedValue(undefined);
+    processCompletedAppointmentPointsMock.mockResolvedValue({
+      transactions: [],
+      balances: {},
+      referralReward: null
+    });
   });
 
-  it("emits a booking update platform event when checkout succeeds", async () => {
+  it("emits a booking update platform event and passes canonical retention qualification to points", async () => {
     const response = await postCheckout(
       new Request("http://localhost:3000/api/operations/appointments/appt-live-1/checkout", {
         method: "POST",
@@ -163,6 +176,61 @@ describe("operations checkout route", () => {
         source: "api"
       })
     );
+    expect(readAppointmentRetentionQualificationMock).toHaveBeenCalledWith("appt-live-1");
+    expect(processCompletedAppointmentPointsMock).toHaveBeenCalledWith(expect.objectContaining({
+      appointmentId: "appt-live-1",
+      clientId: "client-jordan",
+      completedBookingCount: 2,
+      paymentSettled: true,
+      serviceCompleted: true,
+      refundState: "clean",
+      referralReward: null
+    }));
     expect(body.appointment.id).toBe("appt-live-1");
+  });
+
+  it("finalizes a referral reward only after points issuance links a canonical ledger transaction", async () => {
+    readQualifyingReferralEventMock.mockResolvedValue({
+      id: "referral-event-1",
+      referrerClientId: "client-referrer"
+    });
+    processCompletedAppointmentPointsMock.mockResolvedValue({
+      transactions: [],
+      balances: {},
+      referralReward: {
+        referralId: "referral-event-1",
+        creditedTransactionId: "pts-ledger-1",
+        rewardPointsIssued: 45
+      }
+    });
+
+    const response = await postCheckout(
+      new Request("http://localhost:3000/api/operations/appointments/appt-live-1/checkout", {
+        method: "POST",
+        body: JSON.stringify({
+          expectedRevision: 4,
+          tipAmount: 12,
+          paymentMethod: "tap_to_pay"
+        })
+      }) as any,
+      {
+        params: Promise.resolve({ appointmentId: "appt-live-1" })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(processCompletedAppointmentPointsMock).toHaveBeenCalledWith(expect.objectContaining({
+      referralReward: {
+        referralId: "referral-event-1",
+        referrerClientId: "client-referrer"
+      }
+    }));
+    expect(finalizeReferralRewardMock).toHaveBeenCalledWith({
+      referralEventId: "referral-event-1",
+      appointmentId: "appt-live-1",
+      creditedTransactionId: "pts-ledger-1",
+      rewardPointsIssued: 45,
+      occurredAt: "2026-04-20T14:00:00.000Z"
+    });
   });
 });

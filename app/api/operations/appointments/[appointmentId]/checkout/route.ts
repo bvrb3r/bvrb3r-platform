@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
-import { getEngagementProvider } from "@/lib/engagement/provider";
 import { getMonetizationAttribution } from "@/lib/marketplace/activation";
 import { getMarketplaceActivationProvider } from "@/lib/marketplace/activation-provider";
 import { getMarketplaceProvider } from "@/lib/marketplace/provider";
-import { readActiveClientMembershipSubscription } from "@/lib/monetization/service";
 import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
 import { LiveOperationConflictError } from "@/lib/operations/live-state";
 import { recordBookingUpdatedPlatformEvents } from "@/lib/core/booking-events";
 import { processCompletedAppointmentPoints } from "@/lib/points/engine";
+import { readAppointmentRetentionQualification } from "@/lib/payments/service";
+import { finalizeReferralReward, readQualifyingReferralEvent } from "@/lib/referrals/service";
 
 const checkoutSchema = z.object({
   expectedRevision: z.number().int().positive(),
@@ -59,12 +59,16 @@ export async function POST(
         appointmentId: appointment.id,
         completedAt: appointment.completedAt ?? appointment.updatedAt
       }));
-    const activeMembership = await readActiveClientMembershipSubscription(result.appointment.clientId)
-      .then((subscription) => Boolean(subscription && (subscription.subscriptionStatus === "active" || subscription.subscriptionStatus === "trialing") && subscription.entitlementStatus === "enabled"))
-      .catch(() => false);
     const clientRecord = result.snapshot.clients.find((client) => client.id === result.appointment.clientId);
+    const [retentionQualification, referralCandidate] = await Promise.all([
+      readAppointmentRetentionQualification(result.appointment.id),
+      readQualifyingReferralEvent({
+        clientId: result.appointment.clientId,
+        appointmentId: result.appointment.id
+      })
+    ]);
 
-    await processCompletedAppointmentPoints({
+    const pointsResult = await processCompletedAppointmentPoints({
       appointmentId: result.appointment.id,
       clientId: result.appointment.clientId,
       barberId: result.appointment.barberId,
@@ -73,26 +77,34 @@ export async function POST(
       orderTotal: result.appointment.grandTotal ?? result.appointment.totalAmount,
       tipAmount: parsed.data.tipAmount,
       completedBookingCount: completedBookingHistory.length,
-      paymentSettled: true,
-      serviceCompleted: true,
-      refundState: "clean",
-      clientPhoneValidated: Boolean(clientRecord?.phone)
+      paymentSettled: retentionQualification.paymentSettled,
+      serviceCompleted: retentionQualification.serviceCompleted,
+      refundState: retentionQualification.refundState,
+      clientPhoneValidated: Boolean(clientRecord?.phone),
+      referralReward: referralCandidate
+        ? {
+            referralId: referralCandidate.id,
+            referrerClientId: referralCandidate.referrerClientId
+          }
+        : null
     });
 
+    if (pointsResult.referralReward?.creditedTransactionId) {
+      await finalizeReferralReward({
+        referralEventId: pointsResult.referralReward.referralId,
+        appointmentId: result.appointment.id,
+        creditedTransactionId: pointsResult.referralReward.creditedTransactionId,
+        rewardPointsIssued: pointsResult.referralReward.rewardPointsIssued,
+        occurredAt: result.appointment.completedAt ?? result.appointment.updatedAt
+      });
+    }
+
     try {
-      const [engagementProvider, marketplaceProvider, activationProvider] = await Promise.all([
-        getEngagementProvider(),
+      const [marketplaceProvider, activationProvider] = await Promise.all([
         getMarketplaceProvider(),
         getMarketplaceActivationProvider()
       ]);
       await Promise.all([
-        engagementProvider.rewardCompletedBooking({
-          clientId: result.appointment.clientId,
-          appointmentId: result.appointment.id,
-          completedAt: result.appointment.completedAt ?? result.appointment.updatedAt,
-          completedBookingHistory,
-          activeMembership
-        }),
         marketplaceProvider.recordBookingCompleted({
           appointmentId: result.appointment.id
         })

@@ -156,6 +156,17 @@ type PaymentActorContext = {
   role: UserAccount["role"];
 };
 
+export type AppointmentRetentionQualificationView = {
+  appointmentId: string;
+  appointmentStatus: AppointmentStatus;
+  serviceCompleted: boolean;
+  paymentSettled: boolean;
+  refundState: "clean" | "refunded" | "chargeback";
+  disputeHold: boolean;
+  latestPaymentStatus: InternalPaymentStatus | null;
+  reason: string | null;
+};
+
 type CapturedStripePaymentInput = {
   appointmentId: string | null;
   clientId: string;
@@ -1092,6 +1103,65 @@ async function readDisputeHoldByAppointmentIds(
   return new Map(
     normalizedIds.map((appointmentId) => [appointmentId, heldReferences.has(referenceById.get(appointmentId) ?? "")])
   );
+}
+
+export async function readAppointmentRetentionQualification(
+  appointmentId: string,
+  supabaseInput?: SupabaseClient | null
+): Promise<AppointmentRetentionQualificationView> {
+  const supabase = supabaseInput ?? getSupabaseOrThrow();
+  const appointment = await loadAppointmentOrThrow(supabase, appointmentId);
+  const summary = await readAppointmentPaymentSummary(appointmentId, supabase);
+  const disputeHold = (await readDisputeHoldByAppointmentIds(supabase, [appointmentId])).get(appointmentId) ?? false;
+  const latestPaymentStatus = summary?.latestBookingPayment?.paymentStatus ?? null;
+  const serviceCompleted = appointment.status === "completed";
+
+  let refundState: AppointmentRetentionQualificationView["refundState"] = "clean";
+  if (disputeHold) {
+    refundState = "chargeback";
+  } else if (
+    (summary?.refundedAmount ?? 0) > 0
+    || latestPaymentStatus === "refunded"
+    || latestPaymentStatus === "partially_refunded"
+  ) {
+    refundState = "refunded";
+  }
+
+  const paymentSettled = Boolean(
+    serviceCompleted
+    && (summary?.capturedAmount ?? 0) > 0
+    && (summary?.outstandingBalance ?? Number.POSITIVE_INFINITY) <= 0
+    && refundState === "clean"
+    && !disputeHold
+    && latestPaymentStatus !== "failed"
+    && latestPaymentStatus !== "voided"
+  );
+
+  let reason: string | null = null;
+  if (!serviceCompleted) {
+    reason = "Appointment has not completed yet.";
+  } else if ((summary?.capturedAmount ?? 0) <= 0) {
+    reason = "No captured booking payment exists for this appointment.";
+  } else if ((summary?.outstandingBalance ?? 0) > 0) {
+    reason = "The appointment still has outstanding balance due.";
+  } else if (refundState === "refunded") {
+    reason = "The appointment has already been refunded.";
+  } else if (refundState === "chargeback") {
+    reason = "An active dispute is holding the appointment.";
+  } else if (latestPaymentStatus === "failed" || latestPaymentStatus === "voided") {
+    reason = "The latest booking payment is not in a settled state.";
+  }
+
+  return {
+    appointmentId,
+    appointmentStatus: appointment.status,
+    serviceCompleted,
+    paymentSettled,
+    refundState,
+    disputeHold,
+    latestPaymentStatus,
+    reason
+  };
 }
 
 function buildPayoutQueueEntry(

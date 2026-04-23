@@ -7,7 +7,6 @@ import {
 import {
   createInitialPointsState
 } from "@/lib/data/points";
-import { getEngagementProvider } from "@/lib/engagement/provider";
 import { previewCashoutRequest, DEFAULT_CASHOUT_MIN_POINTS } from "@/lib/points/cashout";
 import {
   buildPointsActivityView,
@@ -174,6 +173,10 @@ type AppointmentPointsInput = {
   serviceCompleted: boolean;
   refundState?: "clean" | "refunded" | "chargeback";
   clientPhoneValidated?: boolean;
+  referralReward?: {
+    referralId: string;
+    referrerClientId: string;
+  } | null;
 };
 
 type RedemptionCommitInput = {
@@ -1440,14 +1443,6 @@ export async function processCompletedAppointmentPoints(input: AppointmentPoints
     const clientUserId = await resolveClientUserId(input.clientId, supabase);
     const barberUserId = await resolveBarberUserId(input.barberId, supabase);
     const ownerUserId = await resolveOwnerUserId(input.locationId, supabase);
-    const referralState = await getEngagementProvider()
-      .then((provider) => provider.readState())
-      .catch(() => null);
-    const matchingReferralEvent = referralState?.referralEvents.find((event) =>
-      event.referredClientId === input.clientId
-      && (event.appointmentId === input.appointmentId || !event.appointmentId)
-      && event.status !== "invited"
-    ) ?? null;
     const platformFeeAmount = estimatePlatformFee(input.orderTotal, input.platformFeeAmount);
     const bookingAward = awardPointsForEventInState(nextState, {
       userId: clientUserId,
@@ -1534,15 +1529,21 @@ export async function processCompletedAppointmentPoints(input: AppointmentPoints
       }
     }
 
-    if (matchingReferralEvent) {
+    let referralReward: {
+      referralId: string;
+      creditedTransactionId: string | null;
+      rewardPointsIssued: number;
+    } | null = null;
+
+    if (input.referralReward) {
       const referralAwards: RewardGuardrailInput[] = [
         {
-          userId: await resolveClientUserId(matchingReferralEvent.referrerClientId, supabase),
+          userId: await resolveClientUserId(input.referralReward.referrerClientId, supabase),
           role: "client",
           eventType: "referral",
           sourceType: "referral_event",
-          sourceId: `${matchingReferralEvent.id}:client`,
-          referralId: matchingReferralEvent.id,
+          sourceId: `${input.referralReward.referralId}:client`,
+          referralId: input.referralReward.referralId,
           basePoints: 10,
           orderTotal: input.orderTotal,
           platformFeeAmount,
@@ -1554,7 +1555,7 @@ export async function processCompletedAppointmentPoints(input: AppointmentPoints
           metadata: {
             appointmentId: input.appointmentId,
             referredClientId: input.clientId,
-            referrerClientId: matchingReferralEvent.referrerClientId,
+            referrerClientId: input.referralReward.referrerClientId,
             barberId: input.barberId,
             locationId: input.locationId,
             completedAt: input.completedAt ?? new Date().toISOString()
@@ -1565,8 +1566,8 @@ export async function processCompletedAppointmentPoints(input: AppointmentPoints
           role: "barber",
           eventType: "referral",
           sourceType: "referral_event",
-          sourceId: `${matchingReferralEvent.id}:barber`,
-          referralId: matchingReferralEvent.id,
+          sourceId: `${input.referralReward.referralId}:barber`,
+          referralId: input.referralReward.referralId,
           basePoints: 15,
           orderTotal: input.orderTotal,
           platformFeeAmount,
@@ -1588,8 +1589,8 @@ export async function processCompletedAppointmentPoints(input: AppointmentPoints
           role: "owner",
           eventType: "referral",
           sourceType: "referral_event",
-          sourceId: `${matchingReferralEvent.id}:owner`,
-          referralId: matchingReferralEvent.id,
+          sourceId: `${input.referralReward.referralId}:owner`,
+          referralId: input.referralReward.referralId,
           basePoints: 20,
           orderTotal: input.orderTotal,
           platformFeeAmount,
@@ -1615,6 +1616,20 @@ export async function processCompletedAppointmentPoints(input: AppointmentPoints
           transactions.push(referralAward.transaction);
         }
       }
+
+      const referralTransactions = transactions.filter((transaction) =>
+        transaction.eventType === "referral"
+        && transaction.referralId === input.referralReward?.referralId
+      );
+      const referrerClientTransaction = referralTransactions.find((transaction) => transaction.role === "client") ?? null;
+
+      if (referralTransactions.length) {
+        referralReward = {
+          referralId: input.referralReward.referralId,
+          creditedTransactionId: referrerClientTransaction?.id ?? referralTransactions[0]?.id ?? null,
+          rewardPointsIssued: referralTransactions.reduce((sum, transaction) => sum + Math.max(transaction.pointsDelta, 0), 0)
+        };
+      }
     }
 
     return {
@@ -1625,7 +1640,8 @@ export async function processCompletedAppointmentPoints(input: AppointmentPoints
           client: buildBalanceView(nextState, { userId: clientUserId, role: "client" }),
           barber: buildBalanceView(nextState, { userId: barberUserId, role: "barber" }),
           owner: buildBalanceView(nextState, { userId: ownerUserId, role: "owner" })
-        }
+        },
+        referralReward
       }
     };
   });
