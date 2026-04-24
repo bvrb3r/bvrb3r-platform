@@ -56,7 +56,7 @@ describe("owner route polish", () => {
   it("renders the owner schedule workspace on the appointments route", async () => {
     getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("owner@bvrb3r.demo"));
 
-    render(await AppointmentsPage());
+    render(await AppointmentsPage({ searchParams: Promise.resolve({}) }));
 
     expect(screen.getByText("Shop schedule")).toBeInTheDocument();
     expect(screen.getByTestId("owner-schedule-workspace-stub")).toBeInTheDocument();

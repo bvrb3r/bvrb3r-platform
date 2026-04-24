@@ -9,7 +9,7 @@ export default async function BarberDashboardPage() {
       user={user}
       activeHref="/dashboard/barber"
       title="Today"
-      subtitle="See the live chair schedule, the next client, open gaps, and payout posture in one barber-first operating lane."
+      subtitle="Run today fast: next client, live chair posture, today&apos;s money snapshot, real gaps, and the next barber action that matters."
     >
       <BarberWorkspace barberName={user.name} barberTitle={user.title} barberSubtype={user.barberSubtype} />
     </DashboardShell>

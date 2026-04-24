@@ -16,6 +16,7 @@ import {
   WalletCards
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { BARBER_PRIMARY_NAV_ITEMS } from "@/components/barber-experience/barber-tab-config";
 import { Card } from "@/components/ui/card";
 import { getDefaultRouteForUser, getUserRoleLabel } from "@/lib/auth/demo-auth";
 import { cn } from "@/lib/utils";
@@ -72,14 +73,7 @@ function getNavigation(user: UserAccount): NavItem[] {
       ];
     case "commission_barber":
     case "booth_rent_barber":
-      return [
-        { href: "/dashboard/barber", activeHref: "/dashboard/barber", label: "Home", icon: CalendarDays },
-        { href: "/command", activeHref: "/command", label: "Command", icon: LayoutDashboard },
-        { href: "/earnings", activeHref: "/earnings", label: "Earnings", icon: WalletCards },
-        { href: "/clients", activeHref: "/clients", label: "Clients", icon: Users },
-        { href: "/workspace/profile", activeHref: "/workspace/profile", label: "Profile", icon: UserRound },
-        { href: "/settings", activeHref: "/settings", label: "Settings", icon: ShieldCheck }
-      ];
+      return BARBER_PRIMARY_NAV_ITEMS;
     case "client":
       return [
         { href: "/dashboard/client", activeHref: "/dashboard/client", label: "Home", mobileLabel: "Home", icon: LayoutDashboard },
@@ -104,7 +98,7 @@ function getPrimaryFocusLabel(role: Role) {
       return "Check-in workflow";
     case "commission_barber":
     case "booth_rent_barber":
-      return "Chair calendar";
+      return "Barber operating lane";
     case "client":
       return "Client home";
     default:
@@ -122,7 +116,7 @@ function getPrimaryActionTitle(role: Role) {
       return "Move arrivals from the door to the right chair without friction.";
     case "commission_barber":
     case "booth_rent_barber":
-      return "Home runs the calendar, Command controls the chair, and Earnings keeps money clear.";
+      return "Home keeps today obvious, Calendar controls time, Checkout keeps service money clear, and Profile plus Settings split public identity from private setup.";
     case "client":
       return "Search, book, and manage visits without stepping into shop ops.";
     default:
@@ -139,9 +133,9 @@ function getBoundaryCopy(role: Role) {
     case "front_desk":
       return "Front desk mode stays focused on queue movement, guest support, check-in flow, and handoff clarity.";
     case "commission_barber":
-      return "Commission barber mode keeps Home on the schedule, Command on chair control, and Earnings on real money only.";
+      return "Commission barber mode keeps Home on today, Calendar on time control, Checkout on real money, Profile on public reputation, and Settings on private setup.";
     case "booth_rent_barber":
-      return "Booth-rent mode keeps Home on the calendar, Command on live chair control, and Earnings on independent money clarity.";
+      return "Booth-rent mode keeps Home on today, Calendar on live availability, Checkout on independent money clarity, Profile on discovery identity, and Settings on compliance.";
     case "client":
       return "Client mode keeps booking, favorites, rewards, and appointment activity visible without any shop-internal clutter.";
     default:
@@ -185,6 +179,22 @@ function getAlertLabel(role: Role) {
   }
 }
 
+function getNavigationCountLabel(role: Role, count: number) {
+  if (role === "commission_barber" || role === "booth_rent_barber") {
+    return `${count} tabs`;
+  }
+
+  return `${count} lanes`;
+}
+
+function getHeroNavigationCountLabel(role: Role, count: number) {
+  if (role === "commission_barber" || role === "booth_rent_barber") {
+    return `${count} barber tabs`;
+  }
+
+  return `${count} launch lanes`;
+}
+
 function getUtilityCards(user: UserAccount): UtilityCard[] {
   switch (user.role) {
     case "owner":
@@ -208,9 +218,9 @@ function getUtilityCards(user: UserAccount): UtilityCard[] {
     case "commission_barber":
     case "booth_rent_barber":
       return [
-        { label: "Barber lane", value: user.barberSubtype?.replaceAll("_", " ") ?? "ready", detail: "Your chair, earnings, and clients stay tied to this authenticated account.", icon: CalendarDays },
+        { label: "Barber lane", value: user.barberSubtype?.replaceAll("_", " ") ?? "ready", detail: "Home, Calendar, Checkout, Profile, and Settings all stay tied to this authenticated barber account.", icon: CalendarDays },
         { label: "Approval", value: user.appApprovalStatus?.replaceAll("_", " ") ?? "ready", detail: user.shopApprovalStatus && user.shopApprovalStatus !== "not_required" ? `Shop approval ${user.shopApprovalStatus.replaceAll("_", " ")}` : "No extra shop approval required", icon: ShieldCheck },
-        { label: "Chair scope", value: String(user.locationIds.length), detail: "Assigned locations on this session", icon: WalletCards }
+        { label: "Chair scope", value: String(user.locationIds.length), detail: "Assigned locations, payout posture, and availability scope on this session", icon: WalletCards }
       ];
     case "client":
       return [
@@ -232,7 +242,7 @@ function getNotificationsHref(role: Role): ComponentProps<typeof Link>["href"] {
       return "/queue";
     case "commission_barber":
     case "booth_rent_barber":
-      return "/appointments";
+      return "/dashboard/barber/calendar";
     case "client":
       return "/activity";
     default:
@@ -256,7 +266,15 @@ function getMessagesHref(role: Role): ComponentProps<typeof Link>["href"] {
 }
 
 function getProfileHref(role: Role): ComponentProps<typeof Link>["href"] {
-  return role === "client" ? "/profile" : "/workspace/profile";
+  if (role === "client") {
+    return "/profile";
+  }
+
+  if (role === "commission_barber" || role === "booth_rent_barber") {
+    return "/dashboard/barber/profile";
+  }
+
+  return "/workspace/profile";
 }
 
 function formatApprovalStatus(status?: UserAccount["appApprovalStatus"]) {
@@ -413,7 +431,7 @@ export function DashboardShell({
             <div className="mb-3 flex items-center justify-between gap-3">
               <p className="surface-label">Navigation</p>
               <span className="rounded-full border border-white/8 bg-black/20 px-3 py-1.5 text-[10px] uppercase tracking-[0.24em] text-white/46">
-                {nav.length} lanes
+                {getNavigationCountLabel(user.role, nav.length)}
               </span>
             </div>
             <div className="space-y-2">
@@ -550,7 +568,7 @@ export function DashboardShell({
                 <div className="rounded-[24px] border border-white/8 bg-black/25 p-4">
                   <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/35 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-white/68">
                     <Bell className="h-4 w-4 text-[#baff69]" />
-                    {nav.length} launch lanes
+                    {getHeroNavigationCountLabel(user.role, nav.length)}
                   </div>
                   <p className="mt-3 text-sm leading-6 text-white/56">{getBoundaryCopy(user.role)}</p>
                 </div>

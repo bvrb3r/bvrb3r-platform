@@ -327,8 +327,8 @@ export function BarberEarningsWorkspace({ barberName }: { barberName: string }) 
         eyebrow: "Opportunity",
         title: `${growth.serviceMix[0].serviceName} is leading the week`,
         detail: `${growth.serviceMix[0].appointments} services produced ${currency(growth.serviceMix[0].revenue)} so far.`,
-        href: "/command" as Route,
-        cta: "Tune services"
+        href: "/dashboard/barber/checkout?section=services" as Route,
+        cta: "Open service library"
       };
     }
 
@@ -422,7 +422,7 @@ export function BarberEarningsWorkspace({ barberName }: { barberName: string }) 
       <Card className="rounded-[32px] p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="surface-label">Earnings</p>
+            <p className="surface-label">Checkout money</p>
             <h3 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">
               {barberName}
             </h3>
@@ -431,7 +431,7 @@ export function BarberEarningsWorkspace({ barberName }: { barberName: string }) 
             </p>
           </div>
           <div className="rounded-[24px] border border-[#7cff00]/16 bg-[#7cff00]/10 px-4 py-3 text-right">
-            <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">Money tab</p>
+            <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">Checkout tab</p>
             <p className="mt-2 text-sm font-medium text-white">{currency(todayEarned)} today</p>
             <p className="mt-1 text-sm text-white/58">
               {money?.wallet.availableBalance
@@ -867,7 +867,7 @@ export function BarberEarningsWorkspace({ barberName }: { barberName: string }) 
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="surface-label">Quiet motivation</p>
-            <p className="mt-2 text-sm text-white/58">Progress stays visible here without turning the money tab into dashboard noise.</p>
+            <p className="mt-2 text-sm text-white/58">Progress stays visible here without turning Checkout into dashboard noise.</p>
           </div>
           <Sparkles className="h-5 w-5 text-[#d7ffab]" />
         </div>

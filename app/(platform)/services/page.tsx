@@ -1,3 +1,5 @@
+import type { Route } from "next";
+import { redirect } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { ServiceCatalogWorkspace } from "@/components/marketplace/service-catalog-workspace";
 import { getAuthorizedUser } from "@/lib/auth/guards";
@@ -29,9 +31,24 @@ function getSubtitle(role: Extract<Role, "owner" | "commission_barber" | "booth_
   }
 }
 
-export default async function ServicesPage() {
+export default async function ServicesPage({
+  searchParams
+}: {
+  searchParams: Promise<Record<string, string | undefined>>;
+}) {
   const user = await getAuthorizedUser(["owner", "commission_barber", "booth_rent_barber"]);
   const marketplaceRole = user.role as Extract<Role, "owner" | "commission_barber" | "booth_rent_barber">;
+
+  if (marketplaceRole === "commission_barber" || marketplaceRole === "booth_rent_barber") {
+    const params = await searchParams;
+    const query = new URLSearchParams({ section: "services" });
+    Object.entries(params).forEach(([key, value]) => {
+      if (value) {
+        query.set(key, value);
+      }
+    });
+    redirect(`/dashboard/barber/checkout?${query.toString()}` as Route);
+  }
 
   return (
     <DashboardShell

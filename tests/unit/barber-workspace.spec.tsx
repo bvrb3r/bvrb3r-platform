@@ -12,7 +12,7 @@ const {
   useBarberLifecycleMutationMock,
   useBarberCancelBookingMutationMock,
   useNotifyBarberOpenSlotMutationMock,
-  useSaveBarberSubtypeMutationMock,
+  useUpdateBarberStatusMutationMock,
   useCreateMessageThreadMutationMock,
   useBarberTrustSummaryMock,
   useBarberFintechReadinessQueryMock,
@@ -27,7 +27,7 @@ const {
   useBarberLifecycleMutationMock: vi.fn(),
   useBarberCancelBookingMutationMock: vi.fn(),
   useNotifyBarberOpenSlotMutationMock: vi.fn(),
-  useSaveBarberSubtypeMutationMock: vi.fn(),
+  useUpdateBarberStatusMutationMock: vi.fn(),
   useCreateMessageThreadMutationMock: vi.fn(),
   useBarberTrustSummaryMock: vi.fn(),
   useBarberFintechReadinessQueryMock: vi.fn(),
@@ -52,7 +52,7 @@ vi.mock("@/lib/operations/barber-client", () => ({
   useBarberLifecycleMutation: useBarberLifecycleMutationMock,
   useBarberCancelBookingMutation: useBarberCancelBookingMutationMock,
   useNotifyBarberOpenSlotMutation: useNotifyBarberOpenSlotMutationMock,
-  useSaveBarberSubtypeMutation: useSaveBarberSubtypeMutationMock
+  useUpdateBarberStatusMutation: useUpdateBarberStatusMutationMock
 }));
 
 vi.mock("@/lib/ai/client", () => ({
@@ -283,10 +283,7 @@ describe("barber workspace", () => {
 
     useBarberLifecycleMutationMock.mockReturnValue({ isPending: false, mutateAsync: vi.fn() });
     useBarberCancelBookingMutationMock.mockReturnValue({ isPending: false, mutateAsync: vi.fn().mockResolvedValue({}) });
-    useSaveBarberSubtypeMutationMock.mockReturnValue({
-      isPending: false,
-      mutateAsync: vi.fn().mockResolvedValue({ lane: { role: "barber" }, degraded: false, nextPath: "/dashboard/barber" })
-    });
+    useUpdateBarberStatusMutationMock.mockReturnValue({ isPending: false, mutateAsync: vi.fn().mockResolvedValue({}) });
     useCreateMessageThreadMutationMock.mockReturnValue({
       isPending: false,
       mutateAsync: vi.fn().mockResolvedValue({ thread: { id: "thread-1" } })
@@ -388,23 +385,30 @@ describe("barber workspace", () => {
     expect(screen.getByText("Gap alerts")).toBeInTheDocument();
     expect(screen.getByText("This window is long enough for Premium Fade.")).toBeInTheDocument();
     expect(screen.getByText("Today's schedule")).toBeInTheDocument();
+    expect(screen.getByText("Chair status")).toBeInTheDocument();
+    expect(screen.getByText("Quick actions")).toBeInTheDocument();
     expect(screen.queryByText("Home calendar")).not.toBeInTheDocument();
   });
 
-  it("shows the barber setup prompt when subtype is missing and saves it", async () => {
-    const saveSubtype = vi.fn().mockResolvedValue({ lane: { role: "barber" }, degraded: false, nextPath: "/dashboard/barber" });
-    useSaveBarberSubtypeMutationMock.mockReturnValue({ isPending: false, mutateAsync: saveSubtype });
+  it("saves live chair status from the barber home lane", async () => {
+    const updateStatus = vi.fn().mockResolvedValue({});
+    useUpdateBarberStatusMutationMock.mockReturnValue({ isPending: false, mutateAsync: updateStatus });
 
     render(<BarberWorkspace barberName="Blaze King" barberTitle="Barber" />);
 
-    expect(screen.getByTestId("barber-subtype-setup")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Commission/i }));
-    fireEvent.click(screen.getByRole("button", { name: "Save business model" }));
+    fireEvent.change(screen.getAllByRole("combobox")[0], { target: { value: "busy" } });
+    fireEvent.click(screen.getByLabelText("Show barber as online"));
+    fireEvent.click(screen.getByRole("button", { name: "Save chair status" }));
 
     await waitFor(() => {
-      expect(saveSubtype).toHaveBeenCalledWith("commission");
+      expect(updateStatus).toHaveBeenCalledWith({
+        liveStatus: "busy",
+        isOnline: false,
+        acceptsWalkIns: true,
+        currentShopId: "loc-ybor"
+      });
     });
-    expect(await screen.findByText("Business model saved. Your barber lane is ready to run on the live rails.")).toBeInTheDocument();
+    expect(await screen.findByText("Chair status updated for discovery, walk-ins, and live barber scheduling.")).toBeInTheDocument();
   });
 
   it("renders a clean empty state when the barber has no appointments today", () => {

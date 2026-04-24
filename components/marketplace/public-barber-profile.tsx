@@ -69,7 +69,7 @@ export function PublicBarberProfile({
   return (
     <div className="space-y-4">
       <section className="grid gap-4 lg:grid-cols-[1.08fr_0.92fr]">
-        <Card className="rounded-[36px] p-6 sm:p-8">
+        <Card id="barber-profile-services" className="rounded-[36px] scroll-mt-6 p-6 sm:p-8">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
             {profile.profile.profilePhotoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -169,7 +169,7 @@ export function PublicBarberProfile({
           </div>
         </Card>
 
-        <Card className="rounded-[36px] p-6 sm:p-8">
+        <Card id="barber-profile-reviews" className="rounded-[36px] scroll-mt-6 p-6 sm:p-8">
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="surface-label">Service menu</p>

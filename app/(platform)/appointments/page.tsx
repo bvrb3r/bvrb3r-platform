@@ -1,24 +1,28 @@
+import type { Route } from "next";
+import { redirect } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
-import { BarberScheduleWorkspace } from "@/components/operations/barber-schedule-workspace";
 import { OwnerScheduleWorkspace } from "@/components/operations/owner-schedule-workspace";
 import { Card } from "@/components/ui/card";
 import { getAuthorizedUser } from "@/lib/auth/guards";
 
-export default async function AppointmentsPage() {
+export default async function AppointmentsPage({
+  searchParams
+}: {
+  searchParams: Promise<{ view?: string; date?: string }>;
+}) {
   const user = await getAuthorizedUser(["owner", "manager", "front_desk", "commission_barber", "booth_rent_barber"]);
   const isBarber = user.role === "commission_barber" || user.role === "booth_rent_barber";
 
   if (isBarber) {
-    return (
-      <DashboardShell
-        user={user}
-        activeHref="/appointments"
-        title="Appointments and availability"
-        subtitle="Run your chair schedule, availability, and same-day appointment actions from one barber-safe timeline."
-      >
-        <BarberScheduleWorkspace barberName={user.name} />
-      </DashboardShell>
-    );
+    const params = await searchParams;
+    const query = new URLSearchParams();
+    if (params.view) {
+      query.set("view", params.view);
+    }
+    if (params.date) {
+      query.set("date", params.date);
+    }
+    redirect(`/dashboard/barber/calendar${query.size ? `?${query.toString()}` : ""}` as Route);
   }
 
   if (user.role === "owner") {

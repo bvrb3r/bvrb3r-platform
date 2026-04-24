@@ -1,0 +1,27 @@
+import { BarberCheckoutScreen } from "@/components/barber-experience/barber-checkout-screen";
+import { DashboardShell } from "@/components/dashboard/dashboard-shell";
+import { getAuthorizedUser } from "@/lib/auth/guards";
+
+export default async function BarberCheckoutPage({
+  searchParams
+}: {
+  searchParams: Promise<{ section?: string }>;
+}) {
+  const user = await getAuthorizedUser(["commission_barber", "booth_rent_barber"]);
+  const params = await searchParams;
+
+  return (
+    <DashboardShell
+      user={user}
+      activeHref="/dashboard/barber/checkout"
+      title="Checkout"
+      subtitle="Keep payment state, service money, paid tickets, and service setup together without turning the barber lane into back-office accounting."
+    >
+      <BarberCheckoutScreen
+        barberName={user.name}
+        barberRole={user.role as "commission_barber" | "booth_rent_barber"}
+        initialSection={params.section}
+      />
+    </DashboardShell>
+  );
+}

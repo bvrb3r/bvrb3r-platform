@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarDays, Clock3, MessageSquareText, ShieldCheck, WalletCards } from "lucide-react";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
+import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useBarberAiSummaryQuery, useTrackAiRecommendationMutation } from "@/lib/ai/client";
 import { useBarberFintechReadinessQuery, useBarberPayoutsQuery } from "@/lib/fintech/client";
@@ -16,22 +17,24 @@ import {
   useBarberLifecycleMutation,
   useNotifyBarberOpenSlotMutation,
   useBarberOverviewQuery,
-  useSaveBarberSubtypeMutation,
+  useUpdateBarberStatusMutation,
   type BarberApiError,
-  type BarberOperationalAppointment
+  type BarberOperationalAppointment,
+  type BarberStatusView
 } from "@/lib/operations/barber-client";
 import { useBarberTrustSummary } from "@/lib/trust/client";
 import { currency } from "@/lib/utils";
 import { getReadableActionError } from "@/lib/utils/feedback";
 import type { BarberSubtype } from "@/types/domain";
 
-type LifecycleAction = { action: "check_in" | "service_start" | "service_complete"; label: string; pendingLabel: string; successMessage: string };
+type StatusFormState = {
+  liveStatus: BarberStatusView["liveStatus"];
+  isOnline: boolean;
+  acceptsWalkIns: boolean;
+  currentShopId: string | null;
+};
 
-const subtypeOptions: Array<{ subtype: BarberSubtype; label: string; description: string }> = [
-  { subtype: "freelance", label: "Freelance", description: "Independent chair posture with self-managed availability." },
-  { subtype: "commission", label: "Commission", description: "Shop commission model with shared schedule and payout rails." },
-  { subtype: "blueprint", label: "Booth rent / Blueprint", description: "Booth-rent model with independent revenue posture." }
-];
+type LifecycleAction = { action: "check_in" | "service_start" | "service_complete"; label: string; pendingLabel: string; successMessage: string };
 
 function formatDateTime(iso: string) {
   return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(iso));
@@ -47,6 +50,35 @@ function formatLongDate(dateKey: string) {
 
 function formatStatusLabel(value: string) {
   return value.replaceAll("_", " ").replace(/\b\w/g, (segment) => segment.toUpperCase());
+}
+
+function buildStatusForm(status: BarberStatusView): StatusFormState {
+  return {
+    liveStatus: status.liveStatus,
+    isOnline: status.isOnline,
+    acceptsWalkIns: status.acceptsWalkIns,
+    currentShopId: status.currentShopId
+  };
+}
+
+function getLiveStatusTone(status: BarberStatusView["liveStatus"]) {
+  if (status === "available") {
+    return "text-[#d7ffab]";
+  }
+
+  if (status === "busy") {
+    return "text-amber-200";
+  }
+
+  if (status === "on_break") {
+    return "text-sky-200";
+  }
+
+  if (status === "away") {
+    return "text-white/72";
+  }
+
+  return "text-white/62";
 }
 
 function getLifecycleAction(appointment: BarberOperationalAppointment): LifecycleAction | null {
@@ -80,15 +112,13 @@ export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { ba
   const lifecycleMutation = useBarberLifecycleMutation();
   const cancelMutation = useBarberCancelBookingMutation();
   const notifyGapMutation = useNotifyBarberOpenSlotMutation();
-  const saveSubtypeMutation = useSaveBarberSubtypeMutation();
+  const statusMutation = useUpdateBarberStatusMutation();
   const trackAiRecommendationMutation = useTrackAiRecommendationMutation();
   const threadMutation = useCreateMessageThreadMutation();
   const [pendingAppointmentId, setPendingAppointmentId] = useState<string | null>(null);
   const [pendingGapRecommendationId, setPendingGapRecommendationId] = useState<string | null>(null);
   const [statusUpdate, setStatusUpdate] = useState<{ tone: "success" | "error"; message: string } | null>(null);
-  const [configuredSubtype, setConfiguredSubtype] = useState<BarberSubtype | undefined>(barberSubtype);
-  const [selectedSubtype, setSelectedSubtype] = useState<BarberSubtype>(barberSubtype ?? "freelance");
-  const [showSubtypeEditor, setShowSubtypeEditor] = useState(!barberSubtype);
+  const [statusForm, setStatusForm] = useState<StatusFormState | null>(null);
 
   const payload = overviewQuery.data;
   const businessDate = payload?.summary.businessDate ?? new Date().toISOString().slice(0, 10);
@@ -109,6 +139,14 @@ export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { ba
   const initialLoading = overviewQuery.isLoading && !payload;
   const overviewError = overviewQuery.error ? getReadableActionError(overviewQuery.error as BarberApiError) : null;
   const latestPayout = payoutsQuery.data?.recentExecutions?.[0] ?? null;
+
+  useEffect(() => {
+    if (!payload?.status) {
+      return;
+    }
+
+    setStatusForm(buildStatusForm(payload.status));
+  }, [payload]);
 
   async function handleLifecycleAction(appointment: BarberOperationalAppointment, action: LifecycleAction) {
     setStatusUpdate(null);
@@ -187,14 +225,15 @@ export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { ba
     }
   }
 
-  async function handleSaveSubtype() {
+  async function handleSaveStatus() {
+    if (!statusForm) {
+      return;
+    }
+
     setStatusUpdate(null);
     try {
-      await saveSubtypeMutation.mutateAsync(selectedSubtype);
-      setConfiguredSubtype(selectedSubtype);
-      setShowSubtypeEditor(false);
-      setStatusUpdate({ tone: "success", message: "Business model saved. Your barber lane is ready to run on the live rails." });
-      (router as { refresh?: () => void }).refresh?.();
+      await statusMutation.mutateAsync(statusForm);
+      setStatusUpdate({ tone: "success", message: "Chair status updated for discovery, walk-ins, and live barber scheduling." });
     } catch (error) {
       setStatusUpdate({ tone: "error", message: getReadableActionError(error as BarberApiError) });
     }
@@ -221,33 +260,113 @@ export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { ba
         </div>
       </Card>
 
-      <Card className="rounded-[32px] p-5" data-testid="barber-subtype-settings">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="surface-label">Business model</p>
-            <p className="mt-3 text-lg font-semibold text-white">{subtypeOptions.find((entry) => entry.subtype === configuredSubtype)?.label ?? "Finish barber setup"}</p>
-            <p className="mt-2 text-sm leading-7 text-white/60">{subtypeOptions.find((entry) => entry.subtype === configuredSubtype)?.description ?? "Choose the right barber operating model so earnings, payout posture, and trust messaging stay aligned."}</p>
+      <section className="grid gap-4 xl:grid-cols-[1.02fr_0.98fr]">
+        <Card className="rounded-[32px] p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="surface-label">Chair status</p>
+              <p className="mt-2 text-sm text-white/58">Keep live chair posture on Home so the next move is obvious the moment the barber opens the app.</p>
+            </div>
+            <span className={`status-pill ${getLiveStatusTone(payload?.status.liveStatus ?? "offline")}`}>
+              {payload?.status.liveStatusLabel ?? "Offline"}
+            </span>
           </div>
-          {!configuredSubtype ? null : <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => setShowSubtypeEditor((current) => !current)}>{showSubtypeEditor ? "Hide setup" : "Update business model"}</Button>}
-        </div>
-        {showSubtypeEditor ? (
-          <div className="mt-4 rounded-[24px] border border-white/8 bg-black/20 p-4" data-testid="barber-subtype-setup">
-            <p className="surface-label">Complete your barber setup</p>
-            <div className="mt-4 grid gap-3 md:grid-cols-3">
-              {subtypeOptions.map((option) => (
-                <button key={option.subtype} type="button" onClick={() => setSelectedSubtype(option.subtype)} className={`rounded-[22px] border p-4 text-left transition ${selectedSubtype === option.subtype ? "border-[#7cff00]/24 bg-[#7cff00]/10 text-white" : "border-white/8 bg-black/18 text-white/72 hover:border-[#7cff00]/18 hover:text-white"}`}>
-                  <p className="text-base font-semibold">{option.label}</p>
-                  <p className="mt-2 text-sm leading-6 text-white/58">{option.description}</p>
-                </button>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <Select
+              value={statusForm?.liveStatus ?? payload?.status.liveStatus ?? "available"}
+              onChange={(event) =>
+                setStatusForm((current) =>
+                  current
+                    ? { ...current, liveStatus: event.target.value as BarberStatusView["liveStatus"] }
+                    : current
+                )
+              }
+            >
+              <option value="offline">Offline</option>
+              <option value="available">Available</option>
+              <option value="busy">Busy</option>
+              <option value="on_break">On break</option>
+              <option value="away">Away</option>
+            </Select>
+
+            <Select
+              value={statusForm?.currentShopId ?? payload?.status.currentShopId ?? ""}
+              onChange={(event) =>
+                setStatusForm((current) =>
+                  current
+                    ? { ...current, currentShopId: event.target.value || null }
+                    : current
+                )
+              }
+            >
+              <option value="">No shop selected</option>
+              {(payload?.shops ?? []).map((shop) => (
+                <option key={shop.id} value={shop.id}>{shop.label}</option>
               ))}
-            </div>
-            <div className="mt-4 flex flex-wrap justify-end gap-3">
-              {!configuredSubtype ? null : <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => setShowSubtypeEditor(false)}>Cancel</Button>}
-              <Button type="button" className="h-11 px-4" disabled={saveSubtypeMutation.isPending} onClick={() => void handleSaveSubtype()}>{saveSubtypeMutation.isPending ? "Saving..." : "Save business model"}</Button>
-            </div>
+            </Select>
           </div>
-        ) : null}
-      </Card>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <label className="flex items-center gap-3 rounded-[18px] border border-white/8 bg-black/18 px-4 py-3 text-sm text-white/72">
+              <input
+                type="checkbox"
+                checked={statusForm?.isOnline ?? payload?.status.isOnline ?? false}
+                onChange={(event) =>
+                  setStatusForm((current) =>
+                    current ? { ...current, isOnline: event.target.checked } : current
+                  )
+                }
+                className="h-4 w-4 rounded border-white/20 bg-black"
+              />
+              Show barber as online
+            </label>
+
+            <label className="flex items-center gap-3 rounded-[18px] border border-white/8 bg-black/18 px-4 py-3 text-sm text-white/72">
+              <input
+                type="checkbox"
+                checked={statusForm?.acceptsWalkIns ?? payload?.status.acceptsWalkIns ?? false}
+                onChange={(event) =>
+                  setStatusForm((current) =>
+                    current ? { ...current, acceptsWalkIns: event.target.checked } : current
+                  )
+                }
+                className="h-4 w-4 rounded border-white/20 bg-black"
+              />
+              Accept walk-ins
+            </label>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm text-white/58">
+              <p>{barberTitle}{barberSubtype ? ` | ${formatStatusLabel(barberSubtype)}` : ""}</p>
+              <p className="mt-1">{payload?.status.note ?? "Chair posture is synced from the canonical barber status rail."}</p>
+            </div>
+            <Button type="button" className="h-11 px-4" disabled={statusMutation.isPending || !statusForm} onClick={() => void handleSaveStatus()}>
+              {statusMutation.isPending ? "Saving..." : "Save chair status"}
+            </Button>
+          </div>
+        </Card>
+
+        <Card className="rounded-[32px] p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="surface-label">Quick actions</p>
+              <p className="mt-2 text-sm text-white/58">Home stays fast: jump straight into the next barber action without making any extra tab feel primary.</p>
+            </div>
+            <WalletCards className="h-5 w-5 text-[#baff69]" />
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <Button type="button" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/calendar")}>Open calendar</Button>
+            <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/checkout")}>Checkout</Button>
+            <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/calendar")}>Block time</Button>
+            <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/profile")}>View profile</Button>
+            <Button type="button" variant="ghost" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/calendar")}>Update availability</Button>
+            <Button type="button" variant="ghost" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/settings")}>Open settings</Button>
+          </div>
+        </Card>
+      </section>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {initialLoading ? (
@@ -285,7 +404,8 @@ export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { ba
                   return action ? <Button type="button" className="h-11 px-4" disabled={lifecycleMutation.isPending && pendingAppointmentId === nextAppointment.id} onClick={() => void handleLifecycleAction(nextAppointment, action)}>{lifecycleMutation.isPending && pendingAppointmentId === nextAppointment.id ? action.pendingLabel : action.label}</Button> : <span className="status-pill text-white/72">{nextAppointment.display.statusLabel}</span>;
                 })()}
                 <Button type="button" variant="secondary" className="h-11 px-4" disabled={threadMutation.isPending} onClick={() => void handleMessage(nextAppointment)}><MessageSquareText className="h-4 w-4" />{threadMutation.isPending ? "Opening..." : "Message client"}</Button>
-                <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => router.push("/appointments")}>Reschedule in calendar</Button>
+                <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/calendar")}>Reschedule in calendar</Button>
+                {nextAppointment.status === "completed" && nextAppointment.financial.outstandingBalance > 0 ? <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/checkout")}>Open checkout</Button> : null}
                 {canCancelAppointment(nextAppointment) ? <Button type="button" variant="ghost" className="h-11 px-4" disabled={cancelMutation.isPending && pendingAppointmentId === nextAppointment.id} onClick={() => void handleCancel(nextAppointment)}>{cancelMutation.isPending && pendingAppointmentId === nextAppointment.id ? "Cancelling..." : "Cancel booking"}</Button> : null}
               </div>
             </div>
@@ -325,7 +445,7 @@ export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { ba
                       >
                         {notifyGapMutation.isPending && isPending ? "Notifying..." : alert.actionLabel}
                       </Button>
-                      <Button type="button" variant="ghost" className="h-10 px-3" onClick={() => router.push("/appointments")}>
+                      <Button type="button" variant="ghost" className="h-10 px-3" onClick={() => router.push("/dashboard/barber/calendar")}>
                         Open calendar
                       </Button>
                     </div>
@@ -336,9 +456,9 @@ export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { ba
           </div>
           <div className="mt-4 flex flex-wrap gap-2">{blockerLabels.length ? blockerLabels.slice(0, 4).map((label) => <span key={label} className="status-pill text-white/72">{label}</span>) : <span className="status-pill text-[#d7ffab]">No active compliance blockers</span>}</div>
           <div className="mt-4 flex flex-wrap gap-3">
-            <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => router.push("/appointments")}>Open calendar</Button>
-            <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => router.push("/earnings")}><WalletCards className="h-4 w-4" />Open earnings</Button>
-            <Button type="button" variant="ghost" className="h-11 px-4" onClick={() => router.push("/settings")}>Review profile</Button>
+            <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/calendar")}>Open calendar</Button>
+            <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/checkout")}><WalletCards className="h-4 w-4" />Open checkout</Button>
+            <Button type="button" variant="ghost" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/settings")}>Review settings</Button>
           </div>
         </Card>
       </section>
@@ -364,7 +484,8 @@ export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { ba
                 <div className="mt-4 flex flex-wrap gap-3">
                   {action ? <Button type="button" className="h-11 px-4" disabled={lifecycleMutation.isPending && isPending} onClick={() => void handleLifecycleAction(appointment, action)}>{lifecycleMutation.isPending && isPending ? action.pendingLabel : action.label}</Button> : <span className="status-pill text-white/72">{appointment.display.statusLabel}</span>}
                   <Button type="button" variant="secondary" className="h-11 px-4" disabled={threadMutation.isPending} onClick={() => void handleMessage(appointment)}><MessageSquareText className="h-4 w-4" />{threadMutation.isPending ? "Opening..." : "Message"}</Button>
-                  <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => router.push("/appointments")}>Reschedule</Button>
+                  <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/calendar")}>Reschedule</Button>
+                  {appointment.status === "completed" && appointment.financial.outstandingBalance > 0 ? <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/checkout")}>Checkout</Button> : null}
                   {canCancelAppointment(appointment) ? <Button type="button" variant="ghost" className="h-11 px-4" disabled={cancelMutation.isPending && isPending} onClick={() => void handleCancel(appointment)}>{cancelMutation.isPending && isPending ? "Cancelling..." : "Cancel"}</Button> : null}
                 </div>
               </div>

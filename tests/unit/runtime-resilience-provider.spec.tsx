@@ -71,7 +71,7 @@ describe("runtime resilience provider", () => {
 
   it.each([
     ["client@bvrb3r.demo", "/dashboard/client", "Home"],
-    ["blaze@bvrb3r.demo", "/dashboard/barber", "Earnings"],
+    ["blaze@bvrb3r.demo", "/dashboard/barber", "Checkout"],
     ["owner@bvrb3r.demo", "/dashboard/owner", "Money"]
   ])("keeps the role shell visible for healthy %s sessions", async (email, pathname, navLabel) => {
     usePathnameMock.mockReturnValue(pathname);

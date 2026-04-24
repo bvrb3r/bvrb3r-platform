@@ -388,7 +388,8 @@ describe("barber earnings workspace", () => {
   it("renders a money-first earnings experience for barbers", () => {
     render(<BarberEarningsWorkspace barberName="Blaze King" />);
 
-    expect(screen.getByText("Money tab")).toBeInTheDocument();
+    expect(screen.getByText("Checkout tab")).toBeInTheDocument();
+    expect(screen.getByText("Checkout money")).toBeInTheDocument();
     expect(screen.getByText("Today earned")).toBeInTheDocument();
     expect(screen.getByText("Today goal")).toBeInTheDocument();
     expect(screen.getByText("Available now")).toBeInTheDocument();
