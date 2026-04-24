@@ -88,8 +88,8 @@ function AccountCard({ account }: { account: ArchitectAccountDirectoryItem }) {
             {account.username ? <span className="status-pill text-white/72">@{account.username}</span> : null}
           </div>
         </div>
-        <Link href={`/architect/accounts/${account.profileId}`}>
-          <Button type="button" className="w-full min-w-[11rem] xl:w-auto">Open account</Button>
+        <Link href={`/architect/users/${account.profileId}`}>
+          <Button type="button" className="w-full min-w-[11rem] xl:w-auto">Open user</Button>
         </Link>
       </div>
 
@@ -199,14 +199,14 @@ export function ArchitectAccountDirectoryWorkspace({
                 <span className="accent-rule" />
                 Live account directory
               </div>
-              <h1 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">Architect Accounts</h1>
+              <h1 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">Architect Users</h1>
               <p className="mt-4 max-w-3xl text-sm leading-7 text-white/62">
                 Search real auth identities, profiles, onboarding state, approval posture, shop ownership, and marketplace readiness.
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 xl:w-[24rem]">
               <div className="rounded-[24px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-4">
-                <p className="surface-label text-[#d7ffab]">Accounts in view</p>
+                <p className="surface-label text-[#d7ffab]">Users in view</p>
                 <p className="mt-3 text-3xl font-semibold text-white">{data.accounts.length}</p>
                 <p className="mt-2 text-sm text-white/62">Filtered from live account truth.</p>
               </div>
@@ -220,12 +220,12 @@ export function ArchitectAccountDirectoryWorkspace({
 
           <div className="mt-5 flex flex-wrap gap-2">
             <Link href="/architect">
-              <Button type="button" variant="secondary" className="min-w-[10rem]">Dashboard</Button>
+              <Button type="button" variant="secondary" className="min-w-[10rem]">Home</Button>
             </Link>
             <Link href="/architect/verifications">
               <Button type="button" variant="secondary" className="min-w-[10rem]">
                 <ShieldCheck className="h-4 w-4" />
-                Review queue
+                Verifications
               </Button>
             </Link>
           </div>

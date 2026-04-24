@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useDeferredValue, useMemo, useState, type ReactNode } from "react";
+import { useDeferredValue, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
@@ -16,6 +16,7 @@ import {
   Users,
   WalletCards
 } from "lucide-react";
+import { ARCHITECT_PRIMARY_NAV_ITEMS } from "@/components/architect-experience/architect-tab-config";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
@@ -34,6 +35,7 @@ import type {
 import type { BarberVerificationCategory, ShopVerificationCategory, VerificationStatus } from "@/types/trust";
 
 type ArchitectSectionId = "overview" | "users" | "shops" | "money-risk" | "support" | "controls" | "audit-log";
+type ArchitectConsoleMode = "legacy" | "home" | "money" | "settings";
 
 type PendingActionState = {
   action: PlatformAdminActionInput;
@@ -45,13 +47,58 @@ type PendingActionState = {
 
 const sections: Array<{ id: ArchitectSectionId; label: string; icon: LucideIcon }> = [
   { id: "overview", label: "Overview", icon: Activity },
-  { id: "users", label: "Accounts", icon: Users },
+  { id: "users", label: "Users", icon: Users },
   { id: "shops", label: "Shops", icon: Store },
   { id: "money-risk", label: "Transactions", icon: WalletCards },
   { id: "support", label: "Support Tools", icon: LifeBuoy },
   { id: "controls", label: "Controls", icon: SlidersHorizontal },
   { id: "audit-log", label: "Audit Log", icon: History }
 ];
+
+function getArchitectFocusTargetId(mode: ArchitectConsoleMode, focusSection?: string | null) {
+  const normalized = focusSection?.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+
+  if (mode === "money") {
+    switch (normalized) {
+      case "transactions":
+      case "revenue":
+        return "architect-money-overview";
+      case "payouts":
+        return "architect-money-payouts";
+      case "disputes":
+        return "architect-money-payouts";
+      case "refunds":
+        return "architect-money-refunds";
+      default:
+        return null;
+    }
+  }
+
+  if (mode === "settings") {
+    switch (normalized) {
+      case "platform":
+      case "platform-settings":
+        return "architect-settings-platform";
+      case "roles":
+        return "architect-settings-roles";
+      case "integrations":
+        return "architect-settings-integrations";
+      case "logs":
+        return "architect-settings-logs";
+      case "audit":
+        return "architect-settings-audit";
+      case "support":
+        return "architect-settings-support";
+      default:
+        return null;
+    }
+  }
+
+  return null;
+}
 
 function formatLabel(value: string) {
   return value.replaceAll("_", " ").replace(/\b\w/g, (segment) => segment.toUpperCase());
@@ -221,7 +268,15 @@ function AuditRow({ entry }: { entry: PlatformAdminAuditLogEntry }) {
   );
 }
 
-export function ArchitectConsole({ initialData }: { initialData: PlatformAdminConsolePayload }) {
+export function ArchitectConsole({
+  initialData,
+  mode = "legacy",
+  focusSection
+}: {
+  initialData: PlatformAdminConsolePayload;
+  mode?: ArchitectConsoleMode;
+  focusSection?: string;
+}) {
   const [activeSection, setActiveSection] = useState<ArchitectSectionId>("overview");
   const [userSearch, setUserSearch] = useState("");
   const [shopSearch, setShopSearch] = useState("");
@@ -242,10 +297,24 @@ export function ArchitectConsole({ initialData }: { initialData: PlatformAdminCo
   const data = useMemo(() => normalizePlatformAdminConsolePayload(consoleQuery.data ?? initialData, {
     actorName: initialData.actorName
   }), [consoleQuery.data, initialData]);
+  const isLegacyMode = mode === "legacy";
   const architectWarnings = useMemo(
     () => data.warnings.filter((warning) => warning !== ARCHITECT_DEGRADED_WARNING),
     [data.warnings]
   );
+
+  useEffect(() => {
+    const targetId = getArchitectFocusTargetId(mode, focusSection);
+    if (!targetId) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [focusSection, mode]);
 
   const filteredUsers = useMemo(() => data.users.filter((user) => {
     const roleMatch = userRoleFilter === "all" || user.primaryRole.toLowerCase() === userRoleFilter;
@@ -327,13 +396,12 @@ export function ArchitectConsole({ initialData }: { initialData: PlatformAdminCo
     }
   };
 
-  const section = sections.find((item) => item.id === activeSection) ?? sections[0];
   const usersSection = (
     <div className="space-y-4">
       <Card className="rounded-[32px] p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="surface-label">Accounts</p>
+            <p className="surface-label">Users</p>
             <p className="mt-2 text-sm text-white/58">Search by identity, role, status, phone, or shop relationship.</p>
           </div>
           <span className="status-pill text-[#d7ffab]">{filteredUsers.length} accounts in view</span>
@@ -402,7 +470,7 @@ export function ArchitectConsole({ initialData }: { initialData: PlatformAdminCo
 
             {user.canManageAccess ? (
               <div className="mt-4 flex flex-wrap gap-2">
-                <Link href={`/architect/accounts/${user.id}`} className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#7cff00]/20 hover:text-[#d7ffab] sm:px-5 sm:text-[11px] sm:tracking-[0.22em]">
+                <Link href={`/architect/users/${user.id}`} className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#7cff00]/20 hover:text-[#d7ffab] sm:px-5 sm:text-[11px] sm:tracking-[0.22em]">
                   Inspect account
                 </Link>
                 {user.accountStatus !== "active" ? (
@@ -864,7 +932,7 @@ export function ArchitectConsole({ initialData }: { initialData: PlatformAdminCo
         </div>
       </div>
     );
-  const sectionContent = activeSection === "overview" ? (
+  const homeSection = (
     <div className="space-y-4">
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Total users" value={String(data.overview.totalUsers)} detail="Accounts inside platform scope." accent />
@@ -948,9 +1016,15 @@ export function ArchitectConsole({ initialData }: { initialData: PlatformAdminCo
           count={String(moneyAttentionCount)}
           detail="Inspect payouts, anomalies, and disputes from canonical money truth."
           action={(
-            <Button type="button" variant="secondary" className="min-w-[11rem]" onClick={() => setActiveSection("money-risk")}>
-              Open transactions
-            </Button>
+            isLegacyMode ? (
+              <Button type="button" variant="secondary" className="min-w-[11rem]" onClick={() => setActiveSection("money-risk")}>
+                Open transactions
+              </Button>
+            ) : (
+              <Link href="/architect/money" className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#7cff00]/20 hover:text-[#d7ffab] sm:px-5 sm:text-[11px] sm:tracking-[0.22em]">
+                Open money
+              </Link>
+            )
           )}
         />
         <QueueShortcutCard
@@ -958,8 +1032,8 @@ export function ArchitectConsole({ initialData }: { initialData: PlatformAdminCo
           count={String(accountControlBlockers)}
           detail="Search accounts, inspect identity state, and apply access controls safely."
           action={(
-            <Link href="/architect/accounts" className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#7cff00]/20 hover:text-[#d7ffab] sm:px-5 sm:text-[11px] sm:tracking-[0.22em]">
-              Open account search
+            <Link href="/architect/users" className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#7cff00]/20 hover:text-[#d7ffab] sm:px-5 sm:text-[11px] sm:tracking-[0.22em]">
+              Open user search
             </Link>
           )}
         />
@@ -968,9 +1042,15 @@ export function ArchitectConsole({ initialData }: { initialData: PlatformAdminCo
           count={String(data.support.length)}
           detail="Follow real booking, payout, kiosk, and queue issues without synthetic filler."
           action={(
-            <Button type="button" variant="secondary" className="min-w-[11rem]" onClick={() => setActiveSection("support")}>
-              Open support tools
-            </Button>
+            isLegacyMode ? (
+              <Button type="button" variant="secondary" className="min-w-[11rem]" onClick={() => setActiveSection("support")}>
+                Open support tools
+              </Button>
+            ) : (
+              <Link href="/architect/settings?section=support" className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#7cff00]/20 hover:text-[#d7ffab] sm:px-5 sm:text-[11px] sm:tracking-[0.22em]">
+                Open settings
+              </Link>
+            )
           )}
         />
       </section>
@@ -984,7 +1064,150 @@ export function ArchitectConsole({ initialData }: { initialData: PlatformAdminCo
         </Card>
       ) : null}
     </div>
-  ) : activeSection === "users" ? usersSection : activeSection === "shops" ? shopsSection : activeSection === "money-risk" ? moneyRiskSection : activeSection === "support" ? supportSection : activeSection === "controls" ? controlsSection : activeSection === "audit-log" ? auditSection : (
+  );
+  const moneyTabSection = (
+    <div className="space-y-4">
+      <section id="architect-money-overview" className="grid scroll-mt-24 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <MetricCard label="Today GMV" value={currency(data.overview.revenueToday)} detail="Canonical platform money in scope today." accent />
+        <MetricCard label="Payment issues" value={String(data.overview.billingIssues)} detail="Billing and transaction failures needing review." />
+        <MetricCard label="Payout blockers" value={String(data.overview.payoutIssues)} detail="Payout routing issues still blocking movement." />
+        <MetricCard label="Disputes open" value={String(data.moneyRisk.disputesOpen)} detail="Live canonical dispute records still open." />
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <MetricCard label="Open anomalies" value={String(data.moneyRisk.openAnomalies)} detail="Financial anomalies currently in review." />
+        <MetricCard label="Critical anomalies" value={String(data.moneyRisk.criticalAnomalies)} detail="Highest-severity money issues." />
+        <MetricCard label="Points liability" value={currency(data.moneyRisk.pointsLiabilityValue)} detail="Outstanding reward liability tracked canonically." />
+        <MetricCard label="Overdue booth rent" value={String(data.moneyRisk.overdueBoothRent)} detail="Booth-rent rows currently overdue." />
+      </section>
+
+      <div id="architect-money-payouts" className="scroll-mt-24">
+        {moneyRiskSection}
+      </div>
+
+      <Card id="architect-money-refunds" className="scroll-mt-24 rounded-[32px] p-6">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="surface-label">Refund status</p>
+            <p className="mt-2 text-sm text-white/58">
+              Refund review remains tied to canonical payment records. This Tier 1 money surface does not fabricate a second refund ledger.
+            </p>
+          </div>
+          <WalletCards className="h-5 w-5 text-[#baff69]" />
+        </div>
+        <div className="mt-4 rounded-[22px] border border-dashed border-white/10 bg-black/20 p-5 text-sm leading-7 text-white/58">
+          No standalone refund feed is exposed in the architect money layer yet. Review disputes, payment failures, and audit history from the canonical money truth above.
+        </div>
+      </Card>
+    </div>
+  );
+  const settingsTabSection = (
+    <div className="space-y-4">
+      <section id="architect-settings-platform" className="grid scroll-mt-24 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <MetricCard label="Kiosk-enabled shops" value={String(data.controls.shops.filter((shop) => shop.kioskEnabled).length)} detail="Canonical kiosk posture still live." accent />
+        <MetricCard label="AI-enabled shops" value={String(data.controls.shops.filter((shop) => shop.aiManagerEnabled).length)} detail="AI operator posture currently active." />
+        <MetricCard label="Release-ready" value={String(data.controls.release.readyCount)} detail="Checks currently clear." />
+        <MetricCard label="Needs attention" value={String(data.controls.release.attentionCount)} detail="Readiness issues still open." />
+      </section>
+
+      <Card id="architect-settings-roles" className="scroll-mt-24 rounded-[32px] p-6">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="surface-label">Roles and permissions</p>
+            <p className="mt-2 text-sm text-white/58">Architect remains protected by canonical platform-admin authorization on top of shared auth/session identity.</p>
+          </div>
+          <ShieldCheck className="h-5 w-5 text-[#baff69]" />
+        </div>
+        <div className="mt-4 rounded-[22px] border border-white/8 bg-black/20 p-4 text-sm leading-7 text-white/62">
+          Platform-admin access, verification actions, account controls, and money interventions continue to flow through canonical architect guards and audit-safe mutation rails.
+        </div>
+      </Card>
+
+      <Card id="architect-settings-integrations" className="scroll-mt-24 rounded-[32px] p-6">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="surface-label">Integrations</p>
+            <p className="mt-2 text-sm text-white/58">Stripe, Supabase, Twilio, and deployment integrations remain part of the canonical platform stack.</p>
+          </div>
+          <ShieldCheck className="h-5 w-5 text-[#baff69]" />
+        </div>
+        <div className="mt-4 rounded-[22px] border border-dashed border-white/10 bg-black/20 p-5 text-sm leading-7 text-white/58">
+          No live integration status panel is available in architect Tier 1 yet. This settings tab stays honest rather than inventing health checks that do not exist.
+        </div>
+      </Card>
+
+      <Card id="architect-settings-logs" className="scroll-mt-24 rounded-[32px] p-6">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="surface-label">System logs</p>
+            <p className="mt-2 text-sm text-white/58">Operational and event logs stay canonical. When explicit log streams are unavailable, this view shows a clean empty state.</p>
+          </div>
+          <History className="h-5 w-5 text-[#baff69]" />
+        </div>
+        <div className="mt-4 rounded-[22px] border border-dashed border-white/10 bg-black/20 p-5 text-sm leading-7 text-white/58">
+          No system log panel is exposed in architect Tier 1 yet. Audit entries and platform support records below remain the live operator truth currently available.
+        </div>
+      </Card>
+
+      <div id="architect-settings-support" className="scroll-mt-24">
+        {supportSection}
+      </div>
+      <div>{controlsSection}</div>
+      <div id="architect-settings-audit" className="scroll-mt-24">
+        {auditSection}
+      </div>
+    </div>
+  );
+  const section = sections.find((item) => item.id === activeSection) ?? sections[0];
+  const currentTabLabel = mode === "home"
+    ? "Home"
+    : mode === "money"
+      ? "Money"
+      : mode === "settings"
+        ? "Settings"
+        : section.label;
+  const CurrentTabIcon = mode === "home"
+    ? Activity
+    : mode === "money"
+      ? WalletCards
+      : mode === "settings"
+        ? SlidersHorizontal
+        : section.icon;
+  const pageTitle = mode === "home"
+    ? "Architect Home"
+    : mode === "money"
+      ? "Architect Money"
+      : mode === "settings"
+        ? "Architect Settings"
+        : "Architect Console";
+  const pageDescription = mode === "home"
+    ? "Platform health, trust posture, user control, and money risk from canonical operator data only."
+    : mode === "money"
+      ? "Financial oversight for transactions, payouts, disputes, fees, and refund posture without inventing a second money truth."
+      : mode === "settings"
+        ? "Platform configuration, roles, logs, integrations, audit history, and support tooling that stay grounded in canonical admin rails."
+        : "Hidden platform oversight for users, shops, risk, support, controls, and auditability. This console sits above all business roles without rewriting canonical money or booking truth directly.";
+  const sectionContent = mode === "home"
+    ? homeSection
+    : mode === "money"
+      ? moneyTabSection
+      : mode === "settings"
+        ? settingsTabSection
+        : activeSection === "overview"
+          ? homeSection
+          : activeSection === "users"
+            ? usersSection
+            : activeSection === "shops"
+              ? shopsSection
+              : activeSection === "money-risk"
+                ? moneyRiskSection
+                : activeSection === "support"
+                  ? supportSection
+                  : activeSection === "controls"
+                    ? controlsSection
+                    : activeSection === "audit-log"
+                      ? auditSection
+                      : (
     <Card className="rounded-[32px] p-6">
       <p className="surface-label">{section.label}</p>
       <p className="mt-3 text-sm leading-7 text-white/62">This Architect Console section is being hydrated from canonical platform data and founder-safe action rails.</p>
@@ -999,11 +1222,11 @@ export function ArchitectConsole({ initialData }: { initialData: PlatformAdminCo
             <div>
               <div className="editorial-kicker">
                 <span className="accent-rule" />
-                Founder-only control plane
+                {mode === "legacy" ? "Founder-only control plane" : "Platform-admin control plane"}
               </div>
-              <h1 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">Architect Console</h1>
+              <h1 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">{pageTitle}</h1>
               <p className="mt-4 max-w-3xl text-sm leading-7 text-white/62">
-                Hidden platform oversight for users, shops, risk, support, controls, and auditability. This console sits above all business roles without rewriting canonical money or booking truth directly.
+                {pageDescription}
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 xl:w-[22rem]">
@@ -1013,10 +1236,10 @@ export function ArchitectConsole({ initialData }: { initialData: PlatformAdminCo
                 <p className="mt-2 text-sm text-white/62">Platform administrator lane</p>
               </div>
               <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                <p className="surface-label">Current section</p>
+                <p className="surface-label">{mode === "legacy" ? "Current section" : "Current tab"}</p>
                 <div className="mt-3 flex items-center gap-2 text-white">
-                  <section.icon className="h-4 w-4 text-[#baff69]" />
-                  <span className="font-medium">{section.label}</span>
+                  <CurrentTabIcon className="h-4 w-4 text-[#baff69]" />
+                  <span className="font-medium">{currentTabLabel}</span>
                 </div>
                 <p className="mt-2 text-sm text-white/58">Sensitive actions always require confirmation.</p>
               </div>
@@ -1027,25 +1250,37 @@ export function ArchitectConsole({ initialData }: { initialData: PlatformAdminCo
             <Link href="/architect/verifications" className="inline-flex min-h-12 items-center rounded-full border border-[#7CFF00]/24 bg-[#7CFF00]/10 px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-white transition hover:border-[#7CFF00]/35 hover:text-[#d7ffab] sm:text-[11px] sm:tracking-[0.2em]">
               Open verification queue
             </Link>
-            <Link href="/architect/accounts" className="inline-flex min-h-12 items-center rounded-full border border-white/8 bg-black/20 px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-white transition hover:border-[#7CFF00]/20 hover:text-white sm:text-[11px] sm:tracking-[0.2em]">
-              Open account search
+            <Link href="/architect/users" className="inline-flex min-h-12 items-center rounded-full border border-white/8 bg-black/20 px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-white transition hover:border-[#7CFF00]/20 hover:text-white sm:text-[11px] sm:tracking-[0.2em]">
+              Open user search
             </Link>
-            {sections.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setActiveSection(item.id)}
-                className={cn(
-                  "inline-flex min-h-12 items-center gap-2 rounded-full border px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] transition sm:text-[11px] sm:tracking-[0.2em]",
-                  activeSection === item.id
-                    ? "border-[#7CFF00]/24 bg-[#7CFF00]/10 text-white"
-                    : "border-white/8 bg-black/20 text-white/68 hover:border-[#7CFF00]/20 hover:text-white"
-                )}
-              >
-                <item.icon className={cn("h-4 w-4", activeSection === item.id ? "text-[#d7ffab]" : "text-[#baff69]")} />
-                {item.label}
-              </button>
-            ))}
+            {isLegacyMode
+              ? sections.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setActiveSection(item.id)}
+                  className={cn(
+                    "inline-flex min-h-12 items-center gap-2 rounded-full border px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] transition sm:text-[11px] sm:tracking-[0.2em]",
+                    activeSection === item.id
+                      ? "border-[#7CFF00]/24 bg-[#7CFF00]/10 text-white"
+                      : "border-white/8 bg-black/20 text-white/68 hover:border-[#7CFF00]/20 hover:text-white"
+                  )}
+                >
+                  <item.icon className={cn("h-4 w-4", activeSection === item.id ? "text-[#d7ffab]" : "text-[#baff69]")} />
+                  {item.label}
+                </button>
+              ))
+              : ARCHITECT_PRIMARY_NAV_ITEMS
+                .filter((item) => item.label !== currentTabLabel)
+                .map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className="inline-flex min-h-12 items-center rounded-full border border-white/8 bg-black/20 px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-white transition hover:border-[#7CFF00]/20 hover:text-white sm:text-[11px] sm:tracking-[0.2em]"
+                  >
+                    {item.label}
+                  </Link>
+                ))}
           </div>
         </Card>
 

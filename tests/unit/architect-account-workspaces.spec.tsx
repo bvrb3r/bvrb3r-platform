@@ -218,11 +218,11 @@ describe("architect account workspaces", () => {
   it("renders only founder-priority dashboard cards with filtered links", () => {
     render(<ArchitectDashboard initialData={dashboardPayload} />);
 
-    expect(screen.getByRole("link", { name: /clients 0 real client accounts/i })).toHaveAttribute("href", "/architect/accounts?role=client");
-    expect(screen.getByRole("link", { name: /barbers 1 real barber accounts/i })).toHaveAttribute("href", "/architect/accounts?role=barber");
-    expect(screen.getByRole("link", { name: /shop owners 1 real owner accounts/i })).toHaveAttribute("href", "/architect/accounts?role=shop_owner");
-    expect(screen.getByRole("link", { name: /pending barbers 1 needs platform review/i })).toHaveAttribute("href", "/architect/accounts?role=barber&status=pending_review");
-    expect(screen.getByRole("link", { name: /pending shops 1 needs platform review/i })).toHaveAttribute("href", "/architect/accounts?role=shop_owner&status=pending_review");
+    expect(screen.getByRole("link", { name: /clients 0 real client accounts/i })).toHaveAttribute("href", "/architect/users?role=client");
+    expect(screen.getByRole("link", { name: /barbers 1 real barber accounts/i })).toHaveAttribute("href", "/architect/users?role=barber");
+    expect(screen.getByRole("link", { name: /shop owners 1 real owner accounts/i })).toHaveAttribute("href", "/architect/users?role=shop_owner");
+    expect(screen.getByRole("link", { name: /pending barbers 1 needs platform review/i })).toHaveAttribute("href", "/architect/users?role=barber&status=pending_review");
+    expect(screen.getByRole("link", { name: /pending shops 1 needs platform review/i })).toHaveAttribute("href", "/architect/users?role=shop_owner&status=pending_review");
     expect(screen.queryByText("Platform admins")).not.toBeInTheDocument();
     expect(screen.queryByText("Approved barbers")).not.toBeInTheDocument();
     expect(screen.queryByText("Total accounts")).not.toBeInTheDocument();
@@ -237,7 +237,7 @@ describe("architect account workspaces", () => {
 
     render(<ArchitectAccountDirectoryWorkspace initialData={directoryPayload} initialFilters={{ role: "all", status: "all" }} />);
 
-    expect(screen.getByText("Architect Accounts")).toBeInTheDocument();
+    expect(screen.getByText("Architect Users")).toBeInTheDocument();
     expect(screen.getByText("Phillip McGee")).toBeInTheDocument();
     expect(screen.getByText("phillipmcgee813@gmail.com")).toBeInTheDocument();
     expect(screen.getByText("BVRB3R Studio")).toBeInTheDocument();

@@ -1,14 +1,9 @@
 import Link from "next/link";
 import { ShieldCheck } from "lucide-react";
 import { LogoutButton } from "@/components/auth/logout-button";
+import { ARCHITECT_PRIMARY_NAV_ITEMS } from "@/components/architect-experience/architect-tab-config";
 import { Card } from "@/components/ui/card";
 import { getPlatformAdminUser } from "@/lib/auth/guards";
-
-const architectNav = [
-  { href: "/architect", label: "Overview" },
-  { href: "/architect/verifications", label: "Verifications" },
-  { href: "/architect/accounts", label: "Accounts" }
-] as const;
 
 export default async function ArchitectLayout({ children }: { children: React.ReactNode }) {
   const user = await getPlatformAdminUser();
@@ -35,7 +30,7 @@ export default async function ArchitectLayout({ children }: { children: React.Re
 
               <div className="flex flex-col gap-3 xl:min-w-[28rem] xl:items-end">
                 <div className="flex flex-wrap gap-2">
-                  {architectNav.map((item) => (
+                  {ARCHITECT_PRIMARY_NAV_ITEMS.map((item) => (
                     <Link
                       key={item.href}
                       href={item.href}

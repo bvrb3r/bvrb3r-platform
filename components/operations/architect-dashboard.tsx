@@ -73,7 +73,7 @@ function Metric({
 function AccountMiniRow({ account }: { account: ArchitectAccountDirectoryItem }) {
   return (
     <Link
-      href={`/architect/accounts/${account.profileId}`}
+      href={`/architect/users/${account.profileId}`}
       className="block rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#7CFF00]/24 hover:bg-white/[0.04]"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -142,10 +142,10 @@ export function ArchitectDashboard({ initialData }: { initialData: ArchitectDash
           </div>
 
           <div className="mt-5 flex flex-wrap gap-2">
-            <Link href="/architect/accounts">
+            <Link href="/architect/users">
               <Button type="button" className="min-w-[12rem]">
                 <Search className="h-4 w-4" />
-                Search accounts
+                Search users
               </Button>
             </Link>
             <Link href="/architect/verifications">
@@ -169,11 +169,11 @@ export function ArchitectDashboard({ initialData }: { initialData: ArchitectDash
         ) : null}
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          <Metric label="Clients" value={data.counts.totalClients} detail="Real client accounts" href="/architect/accounts?role=client" accent />
-          <Metric label="Barbers" value={data.counts.totalBarbers} detail="Real barber accounts" href="/architect/accounts?role=barber" />
-          <Metric label="Shop owners" value={data.counts.totalShopOwners} detail="Real owner accounts" href="/architect/accounts?role=shop_owner" />
-          <Metric label="Pending barbers" value={data.counts.pendingBarberApprovals} detail="Needs platform review" href="/architect/accounts?role=barber&status=pending_review" accent />
-          <Metric label="Pending shops" value={data.counts.pendingShopOwnerApprovals} detail="Needs platform review" href="/architect/accounts?role=shop_owner&status=pending_review" />
+          <Metric label="Clients" value={data.counts.totalClients} detail="Real client accounts" href="/architect/users?role=client" accent />
+          <Metric label="Barbers" value={data.counts.totalBarbers} detail="Real barber accounts" href="/architect/users?role=barber" />
+          <Metric label="Shop owners" value={data.counts.totalShopOwners} detail="Real owner accounts" href="/architect/users?role=shop_owner" />
+          <Metric label="Pending barbers" value={data.counts.pendingBarberApprovals} detail="Needs platform review" href="/architect/users?role=barber&status=pending_review" accent />
+          <Metric label="Pending shops" value={data.counts.pendingShopOwnerApprovals} detail="Needs platform review" href="/architect/users?role=shop_owner&status=pending_review" />
         </section>
 
         {!hasAccounts ? (
@@ -193,7 +193,7 @@ export function ArchitectDashboard({ initialData }: { initialData: ArchitectDash
                 <p className="surface-label">Recent signups</p>
                 <p className="mt-2 text-sm text-white/58">Newest real accounts in the platform.</p>
               </div>
-              <Link href="/architect/accounts" className="text-sm font-semibold text-[#d7ffab] hover:text-white">Open directory</Link>
+              <Link href="/architect/users" className="text-sm font-semibold text-[#d7ffab] hover:text-white">Open users</Link>
             </div>
             <div className="mt-4 grid gap-3">
               {data.recentSignups.length ? data.recentSignups.map((account) => (

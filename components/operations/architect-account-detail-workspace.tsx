@@ -215,8 +215,8 @@ export function ArchitectAccountDetailWorkspace({
               Architect searched live profile data for this account id and found no matching production profile.
             </p>
             <div className="mt-5">
-              <Link href="/architect/accounts">
-                <Button type="button" variant="secondary">Back to accounts</Button>
+              <Link href="/architect/users">
+                <Button type="button" variant="secondary">Back to users</Button>
               </Link>
             </div>
           </Card>
@@ -250,8 +250,8 @@ export function ArchitectAccountDetailWorkspace({
               </div>
             </div>
             <div className="grid gap-2 sm:grid-cols-2 xl:w-[25rem]">
-              <Link href="/architect/accounts">
-                <Button type="button" variant="secondary" className="w-full">Account search</Button>
+              <Link href="/architect/users">
+                <Button type="button" variant="secondary" className="w-full">User search</Button>
               </Link>
               <Link href="/architect/verifications">
                 <Button type="button" variant="secondary" className="w-full">Review queue</Button>

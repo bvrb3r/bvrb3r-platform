@@ -48,9 +48,13 @@ describe("architect layout", () => {
 
     expect(screen.getByText("Architect session")).toBeInTheDocument();
     expect(screen.getByText("ops-admin@bvrb3r.app")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Overview" })).toHaveAttribute("href", "/architect");
+    expect(screen.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/architect");
+    expect(screen.getByRole("link", { name: "Users" })).toHaveAttribute("href", "/architect/users");
     expect(screen.getByRole("link", { name: "Verifications" })).toHaveAttribute("href", "/architect/verifications");
-    expect(screen.getByRole("link", { name: "Accounts" })).toHaveAttribute("href", "/architect/accounts");
+    expect(screen.getByRole("link", { name: "Money" })).toHaveAttribute("href", "/architect/money");
+    expect(screen.getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/architect/settings");
+    expect(screen.queryByRole("link", { name: "Accounts" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Overview" })).not.toBeInTheDocument();
     expect(screen.getByTestId("architect-logout-control")).toHaveTextContent("Log out");
     expect(screen.getByTestId("architect-layout-child")).toBeInTheDocument();
   });
