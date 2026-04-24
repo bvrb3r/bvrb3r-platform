@@ -1,38 +1,19 @@
-import { ClientAppShell } from "@/components/client-experience/client-app-shell";
-import { ClientSearchScreen } from "@/components/client-experience/client-search-screen";
-import { getClientExperienceContext } from "@/lib/client-experience/session";
+import type { Route } from "next";
+import { redirect } from "next/navigation";
 
 export default async function SearchPage({
   searchParams
 }: {
-  searchParams: Promise<{
-    q?: string;
-    category?: string;
-    locationId?: string;
-    rating?: string;
-    price?: string;
-    availability?: "any" | "today" | "now";
-    specialty?: string;
-    verified?: string;
-  }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const context = await getClientExperienceContext();
   const params = await searchParams;
+  const nextParams = new URLSearchParams();
 
-  return (
-    <ClientAppShell activeTab="search" mode={context.isGuest ? "guest" : "client"}>
-      <ClientSearchScreen
-        clientId={context.clientId}
-        initialQuery={params.q ?? ""}
-        initialCategory={params.category ?? ""}
-        initialLocationId={params.locationId ?? ""}
-        initialMinRating={params.rating ? Number(params.rating) : undefined}
-        initialMaxPrice={params.price ? Number(params.price) : undefined}
-        initialAvailability={params.availability ?? "any"}
-        initialSpecialty={params.specialty ?? ""}
-        initialVerifiedOnly={params.verified === "1"}
-        routeBase="/search"
-      />
-    </ClientAppShell>
-  );
+  for (const [key, value] of Object.entries(params)) {
+    if (typeof value === "string" && value.length > 0) {
+      nextParams.set(key, value);
+    }
+  }
+
+  redirect((`/dashboard/client/search${nextParams.size ? `?${nextParams.toString()}` : ""}`) as Route);
 }

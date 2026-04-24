@@ -3,7 +3,7 @@ import { ClientAppShell } from "@/components/client-experience/client-app-shell"
 import { ClientBookingsScreen } from "@/components/client-experience/client-bookings-screen";
 import { getClientExperienceContext } from "@/lib/client-experience/session";
 
-export default async function ActivityPage() {
+export default async function ClientActivityDashboardPage() {
   await getClientExperienceContext();
 
   return (

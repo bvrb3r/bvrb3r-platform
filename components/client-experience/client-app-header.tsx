@@ -1,10 +1,13 @@
 import Link from "next/link";
 import { BellDot, MessageSquareText, UserRound } from "lucide-react";
-import type { ClientAppMode } from "@/components/client-experience/client-app-shell";
+import {
+  CLIENT_PRIMARY_TAB_HREFS,
+  type ClientAppMode
+} from "@/components/client-experience/client-tab-config";
 
 export function ClientAppHeader({ mode = "client" }: { mode?: ClientAppMode }) {
   const isGuest = mode === "guest";
-  const homeHref = isGuest ? "/discover?entry=guest" : "/dashboard/client";
+  const homeHref = isGuest ? "/discover?entry=guest" : CLIENT_PRIMARY_TAB_HREFS.home;
 
   return (
     <header className="rounded-[28px] border border-white/8 bg-[linear-gradient(180deg,rgba(15,15,15,0.96),rgba(8,8,8,0.96))] px-4 py-3.5 shadow-[0_18px_40px_rgba(0,0,0,0.18)] sm:px-5">
@@ -31,13 +34,13 @@ export function ClientAppHeader({ mode = "client" }: { mode?: ClientAppMode }) {
           </div>
         ) : (
           <div className="flex items-center gap-2">
-            <Link href="/activity" aria-label="Open activity" className="relative inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/25 text-white/74 transition hover:border-[#7CFF00]/20 hover:text-white">
+            <Link href={CLIENT_PRIMARY_TAB_HREFS.activity} aria-label="Open activity" className="relative inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/25 text-white/74 transition hover:border-[#7CFF00]/20 hover:text-white">
               <BellDot className="h-5 w-5" />
             </Link>
             <Link href="/messages" aria-label="Open messages" className="relative inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/25 text-white/74 transition hover:border-[#7CFF00]/20 hover:text-white">
               <MessageSquareText className="h-5 w-5" />
             </Link>
-            <Link href="/profile" aria-label="Open profile" className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/25 text-white/74 transition hover:border-[#7CFF00]/20 hover:text-white">
+            <Link href={CLIENT_PRIMARY_TAB_HREFS.profile} aria-label="Open profile" className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/25 text-white/74 transition hover:border-[#7CFF00]/20 hover:text-white">
               <UserRound className="h-5 w-5" />
             </Link>
           </div>

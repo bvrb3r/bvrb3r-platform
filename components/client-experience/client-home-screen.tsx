@@ -2,11 +2,21 @@
 
 import type { Route } from "next";
 import { useMemo } from "react";
-import { ArrowRight, Search, ShieldCheck } from "lucide-react";
+import {
+  ArrowRight,
+  CalendarDays,
+  CreditCard,
+  Repeat2,
+  Search,
+  ShieldCheck,
+  Sparkles,
+  WalletCards
+} from "lucide-react";
 import { ClientActionLink } from "@/components/client-experience/client-action-link";
 import { ClientDiscoveryCard } from "@/components/client-experience/client-discovery-card";
 import { ClientFavoriteBarberCard } from "@/components/client-experience/client-favorite-barber-card";
 import { ClientSectionBlock } from "@/components/client-experience/client-section-block";
+import { CLIENT_PRIMARY_TAB_HREFS } from "@/components/client-experience/client-tab-config";
 import { NextAvailableChairCard } from "@/components/client-experience/next-available-chair-card";
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
@@ -16,11 +26,9 @@ import {
   useBarberProfileQuery,
   useClientBookingsQuery,
   useClientHomeQuery,
-  useClientMembershipQuery,
   useClientPointsBalanceQuery,
   type BookingApiError
 } from "@/lib/booking/client";
-import { useClientReferralSummary } from "@/lib/engagement/client";
 import { buildMarketplaceBookingHref } from "@/lib/marketplace/links";
 import { usePaymentMethodsQuery } from "@/lib/payments/client";
 import { currency } from "@/lib/utils";
@@ -105,8 +113,6 @@ export function ClientHomeScreen({
   const bookingsQuery = useClientBookingsQuery();
   const aiSummaryQuery = useClientAiSummaryQuery(isSignedInClient);
   const pointsBalanceQuery = useClientPointsBalanceQuery(isSignedInClient);
-  const referralSummaryQuery = useClientReferralSummary(isSignedInClient);
-  const membershipQuery = useClientMembershipQuery(isSignedInClient);
   const trackAiRecommendationMutation = useTrackAiRecommendationMutation();
   const paymentMethodsQuery = usePaymentMethodsQuery(undefined, isSignedInClient);
 
@@ -134,10 +140,6 @@ export function ClientHomeScreen({
     ?? bookingsPayload?.nextAppointmentPayment?.defaultPaymentMethod
     ?? null;
   const pointsBalance = pointsBalanceQuery.data ?? null;
-  const referralSummary = referralSummaryQuery.data ?? null;
-  const membership = membershipQuery.data ?? null;
-  const activeMembership = membership?.subscription ?? null;
-  const membershipValue = membership?.value ?? null;
 
   const repeatReference = nextAppointment ?? lastCompletedAppointment;
 
@@ -177,7 +179,7 @@ export function ClientHomeScreen({
             serviceId: favoriteBarber.mostBookedServiceId,
             sourceKind: "client_dashboard"
           })
-        : "/search";
+        : CLIENT_PRIMARY_TAB_HREFS.search;
   const aiRebookHref: Route | null = rebookingReminder
     ? buildMarketplaceBookingHref({
         ...rebookingReminder.booking,
@@ -203,7 +205,7 @@ export function ClientHomeScreen({
     ? (`/barber/${favoriteProfile.profile.username}` as Route)
     : favoriteBarber?.username
       ? (`/barber/${favoriteBarber.username}` as Route)
-      : "/search";
+      : CLIENT_PRIMARY_TAB_HREFS.search;
 
   const bookNowHref: Route = nextAvailableChair
     ? buildMarketplaceBookingHref({
@@ -214,7 +216,7 @@ export function ClientHomeScreen({
         sourceKind: "haircut_now",
         matchedFrom: nextAvailableChair.matchedFrom
       })
-    : "/search";
+    : CLIENT_PRIMARY_TAB_HREFS.search;
   const aiBookNowHref: Route | null = availableNowSuggestion
     ? buildMarketplaceBookingHref({
         ...availableNowSuggestion.booking,
@@ -223,6 +225,9 @@ export function ClientHomeScreen({
       })
     : null;
   const primaryBookNowHref = aiBookNowHref ?? bookNowHref;
+  const walletProfileHref = `${CLIENT_PRIMARY_TAB_HREFS.profile}?section=wallet` as Route;
+  const rewardsProfileHref = `${CLIENT_PRIMARY_TAB_HREFS.profile}?section=rewards` as Route;
+  const activityCancelHref = `${CLIENT_PRIMARY_TAB_HREFS.activity}?intent=cancel` as Route;
 
   const nextAvailablePreview = useMemo(() => {
     if (availableNowSuggestion) {
@@ -283,6 +288,59 @@ export function ClientHomeScreen({
     && !trustedBarbers.length
     && !nextAvailableChair;
 
+  const quickActions: Array<{
+    href: Route;
+    icon: typeof Repeat2;
+    label: string;
+    onClick?: () => void;
+  }> = [
+    {
+      href: repeatReference || favoriteBarber ? primaryRebookHref : CLIENT_PRIMARY_TAB_HREFS.search,
+      icon: Repeat2,
+      label: repeatReference || favoriteBarber ? "Book again" : "Find a barber",
+      onClick: rebookingReminder
+        ? () => {
+            handleAiRecommendationClick({
+              recommendationId: rebookingReminder.recommendationId,
+              recommendationType: rebookingReminder.type,
+              relatedIds: {
+                barberId: rebookingReminder.booking.barberId,
+                serviceId: rebookingReminder.booking.serviceId,
+                locationId: rebookingReminder.booking.locationId
+              }
+            });
+          }
+        : undefined
+    },
+    {
+      href: CLIENT_PRIMARY_TAB_HREFS.search,
+      icon: Search,
+      label: "Find barbers"
+    },
+    {
+      href: `${CLIENT_PRIMARY_TAB_HREFS.search}?category=haircuts` as Route,
+      icon: Sparkles,
+      label: "Explore services"
+    },
+    {
+      href: availableNowSuggestion || nextAvailableChair ? primaryBookNowHref : CLIENT_PRIMARY_TAB_HREFS.activity,
+      icon: availableNowSuggestion || nextAvailableChair ? CalendarDays : WalletCards,
+      label: availableNowSuggestion || nextAvailableChair ? "Book now" : "Open activity",
+      onClick: availableNowSuggestion
+        ? () => {
+            handleAiRecommendationClick({
+              recommendationId: availableNowSuggestion.recommendationId,
+              recommendationType: availableNowSuggestion.type,
+              relatedIds: {
+                barberId: availableNowSuggestion.booking.barberId,
+                locationId: availableNowSuggestion.locationId
+              }
+            });
+          }
+        : undefined
+    }
+  ];
+
   return (
     <div className="space-y-4" data-testid="client-home-screen">
       <Card className="rounded-[38px] border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.96),rgba(6,6,6,0.99))] p-5 shadow-[0_30px_70px_rgba(0,0,0,0.32)] sm:p-6">
@@ -296,11 +354,11 @@ export function ClientHomeScreen({
                 : `Book fast with people you trust, ${firstName}.`}
             </h1>
             <p className="mt-4 max-w-2xl wrap-safe text-sm leading-7 text-white/68">
-              Rebook your regular barber, grab the next open chair, and keep your booking and payment basics close without turning Home into a business dashboard.
+              Home stays focused on fast booking moves: rebook your usual chair, check the next appointment, and jump back into discovery without digging through management screens.
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
               <ClientActionLink
-                href={repeatReference || favoriteBarber ? primaryRebookHref : "/search"}
+                href={repeatReference || favoriteBarber ? primaryRebookHref : CLIENT_PRIMARY_TAB_HREFS.search}
                 size="lg"
                 onClick={() => {
                   if (!rebookingReminder) {
@@ -367,6 +425,25 @@ export function ClientHomeScreen({
                 </span>
               ) : null}
             </div>
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              {quickActions.map((action) => {
+                const Icon = action.icon;
+
+                return (
+                  <ClientActionLink
+                    key={action.label}
+                    href={action.href}
+                    size="md"
+                    variant="secondary"
+                    className="justify-start"
+                    onClick={action.onClick}
+                  >
+                    <Icon className="h-4 w-4 text-[#d7ffab]" />
+                    {action.label}
+                  </ClientActionLink>
+                );
+              })}
+            </div>
           </div>
 
           <div className="space-y-4">
@@ -377,17 +454,17 @@ export function ClientHomeScreen({
                   <p className="mt-3 text-xl font-semibold text-white">
                     {nextAppointment
                       ? (nextAppointment.view?.service?.name ?? "Upcoming appointment")
-                      : "Nothing booked yet"}
+                      : "No upcoming appointment yet"}
                   </p>
                   <p className="mt-2 text-sm text-white/60">
                     {nextAppointment
                       ? formatAppointmentTime(nextAppointment.start)
-                      : "Use Search to compare real barbers, services, and next availability."}
+                      : "Search live barbers and book when you are ready."}
                   </p>
                   <p className="mt-2 text-sm text-white/46">
                     {nextAppointment
                       ? `${nextAppointment.view?.barber?.name ?? favoriteBarber?.barberName ?? "Your barber"} | ${nextAppointment.view?.location?.name ?? "Your regular location"}`
-                      : "Fresh client accounts start clean until a real booking exists."}
+                      : "Full appointment management lives in Activity once a real booking exists."}
                   </p>
                 </div>
                 <span className="rounded-full border border-white/10 bg-black/18 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-white/72">
@@ -404,8 +481,8 @@ export function ClientHomeScreen({
                 ) : null}
               </div>
               <div className="mt-5 flex flex-wrap gap-3">
-                <ClientActionLink href="/bookings" size="md">
-                  Manage
+                <ClientActionLink href={CLIENT_PRIMARY_TAB_HREFS.activity} size="md">
+                  View details
                 </ClientActionLink>
                 {nextAppointment ? (
                   <ClientActionLink href={rescheduleHref} size="md" variant="secondary">
@@ -413,7 +490,7 @@ export function ClientHomeScreen({
                   </ClientActionLink>
                 ) : null}
                 {nextAppointment ? (
-                  <ClientActionLink href="/bookings?intent=cancel" size="md" variant="outline">
+                  <ClientActionLink href={activityCancelHref} size="md" variant="outline">
                     Cancel
                   </ClientActionLink>
                 ) : null}
@@ -423,7 +500,7 @@ export function ClientHomeScreen({
             <div className="rounded-[28px] border border-white/10 bg-black/22 p-5 shadow-[0_18px_40px_rgba(0,0,0,0.2)]">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">Wallet snapshot</p>
+                  <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">Wallet and points snapshot</p>
                   <p className="mt-3 text-xl font-semibold text-white">
                     {defaultPaymentMethod ? defaultPaymentMethod.label : "No saved card yet"}
                   </p>
@@ -432,74 +509,36 @@ export function ClientHomeScreen({
                       ? `${paymentMethods.length} saved payment method${paymentMethods.length === 1 ? "" : "s"} ready for booking.`
                       : "Save a payment method once and reuse it on future bookings."}
                   </p>
+                  <p className="mt-2 text-sm text-white/46">
+                    {pointsBalance?.unlockedPoints
+                      ? `${pointsBalance.unlockedPoints} BVR Points are ready for a future booking discount.`
+                      : "Points show up here after completed paid services close."}
+                  </p>
                 </div>
                 <span className="rounded-full border border-[#d7ffab]/16 bg-[#d7ffab]/10 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-[#e8ffc2]">
-                  {paymentMethods.length ? "Saved" : "Add card"}
+                  {pointsBalance?.unlockedPoints
+                    ? `${pointsBalance.unlockedPoints} pts`
+                    : (paymentMethods.length ? "Saved" : "Add card")}
                 </span>
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <div className="rounded-[20px] border border-white/10 bg-black/20 px-3 py-3 text-sm text-white/72">
+                  <CreditCard className="mr-2 inline h-4 w-4 text-[#d7ffab]" />
                   Default {defaultPaymentMethod ? "ready" : "missing"}
                 </div>
                 <div className="rounded-[20px] border border-white/10 bg-black/20 px-3 py-3 text-sm text-white/72">
-                  Receipts live in past visits
+                  <WalletCards className="mr-2 inline h-4 w-4 text-[#d7ffab]" />
+                  {pointsBalance?.pendingPoints
+                    ? `${pointsBalance.pendingPoints} pts still unlocking`
+                    : "Receipts live in Activity"}
                 </div>
               </div>
               <div className="mt-5 flex flex-wrap gap-3">
-                <ClientActionLink href="/profile" size="md">
-                  Manage wallet
+                <ClientActionLink href={walletProfileHref} size="md">
+                  Open wallet
                 </ClientActionLink>
-                <ClientActionLink href="/bookings" size="md" variant="secondary">
-                  Open receipts
-                </ClientActionLink>
-              </div>
-            </div>
-
-            <div className="rounded-[28px] border border-white/10 bg-black/22 p-5 shadow-[0_18px_40px_rgba(0,0,0,0.2)]">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">BVR Points and retention</p>
-                  <p className="mt-3 text-xl font-semibold text-white">
-                    {pointsBalance?.unlockedPoints
-                      ? `${pointsBalance.unlockedPoints} BVR Points`
-                      : "Retention starts after real visits close"}
-                  </p>
-                  <p className="mt-2 text-sm text-white/60">
-                    {pointsBalance?.unlockedPoints
-                      ? `Redeem up to ${currency(pointsBalance.inAppValue)} on a future booking once you want to use it.`
-                      : "Completed paid services unlock points, referrals, and membership value from canonical booking and payment truth."}
-                  </p>
-                  {membershipValue ? (
-                    <p className="mt-2 text-sm text-white/46">
-                      {membershipValue.valueMessage}
-                    </p>
-                  ) : null}
-                </div>
-                <span className="rounded-full border border-[#d7ffab]/16 bg-[#d7ffab]/10 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-[#e8ffc2]">
-                  {activeMembership ? activeMembership.subscriptionStatus.replaceAll("_", " ") : "No membership"}
-                </span>
-              </div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-[20px] border border-white/10 bg-black/20 px-3 py-3 text-sm text-white/72">
-                  Referrals {referralSummary?.totals.credited ?? 0} credited
-                </div>
-                <div className="rounded-[20px] border border-white/10 bg-black/20 px-3 py-3 text-sm text-white/72">
-                  {referralSummary?.referralCode?.code
-                    ? `Code ${referralSummary.referralCode.code}`
-                    : "Referral code ready when your account is live"}
-                </div>
-                <div className="rounded-[20px] border border-white/10 bg-black/20 px-3 py-3 text-sm text-white/72">
-                  {activeMembership
-                    ? `${activeMembership.planName} | ${activeMembership.billingState.replaceAll("_", " ")}`
-                    : "No active membership yet"}
-                </div>
-              </div>
-              <div className="mt-5 flex flex-wrap gap-3">
-                <ClientActionLink href="/referrals" size="md">
-                  Open referrals
-                </ClientActionLink>
-                <ClientActionLink href="/profile" size="md" variant="secondary">
-                  Manage points and membership
+                <ClientActionLink href={rewardsProfileHref} size="md" variant="secondary">
+                  Open rewards
                 </ClientActionLink>
               </div>
             </div>
@@ -535,7 +574,11 @@ export function ClientHomeScreen({
                 </div>
                 <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
                   <p className="surface-label">Price</p>
-                  <p className="mt-3 text-white">{repeatReference ? currency(repeatReference.grandTotal ?? repeatReference.totalAmount) : favoriteBarber?.priceRangeLabel ?? "Live price on profile"}</p>
+                  <p className="mt-3 text-white">
+                    {repeatReference
+                      ? currency(repeatReference.grandTotal ?? repeatReference.totalAmount)
+                      : favoriteBarber?.priceRangeLabel ?? "Live price on profile"}
+                  </p>
                 </div>
               </div>
               <div className="mt-5 flex flex-wrap gap-3">
@@ -558,9 +601,9 @@ export function ClientHomeScreen({
                     });
                   }}
                 >
-                  Rebook now
+                  Book again
                 </ClientActionLink>
-                <ClientActionLink href="/search" size="lg" variant="secondary">
+                <ClientActionLink href={CLIENT_PRIMARY_TAB_HREFS.search} size="lg" variant="secondary">
                   Search more barbers
                 </ClientActionLink>
               </div>
@@ -575,14 +618,14 @@ export function ClientHomeScreen({
                   favoriteBarber?.shopName
                   ?? favoriteProfile?.shopLocations.map((location) => location.name).join(" | ")
                   ?? "Trusted chair"
-                  }
-                  headline={favoriteProfile?.profile.headline ?? favoriteBarber?.mostBookedService ?? "Keep your repeat booking lane simple."}
-                  specialties={favoriteProfile?.profile.specialties ?? favoriteBarber?.specialties ?? []}
-                  profileHref={favoriteProfileHref}
-                  bookHref={primaryRebookHref}
-                  username={favoriteProfile?.profile.username ?? favoriteBarber?.username}
-                />
-              ) : null}
+                }
+                headline={favoriteProfile?.profile.headline ?? favoriteBarber?.mostBookedService ?? "Keep your repeat booking lane simple."}
+                specialties={favoriteProfile?.profile.specialties ?? favoriteBarber?.specialties ?? []}
+                profileHref={favoriteProfileHref}
+                bookHref={primaryRebookHref}
+                username={favoriteProfile?.profile.username ?? favoriteBarber?.username}
+              />
+            ) : null}
           </div>
         ) : (
           <div className="rounded-[30px] border border-dashed border-white/10 bg-[linear-gradient(180deg,rgba(19,19,19,0.96),rgba(8,8,8,0.98))] p-6 sm:p-7">
@@ -592,8 +635,8 @@ export function ClientHomeScreen({
               Search real barbers, compare services and trust signals, and book your first appointment from live availability. Nothing is fabricated here.
             </p>
             <div className="mt-5">
-              <ClientActionLink href="/search" size="lg">
-                Search barbers
+              <ClientActionLink href={CLIENT_PRIMARY_TAB_HREFS.search} size="lg">
+                Find a barber
                 <Search className="h-4 w-4" />
               </ClientActionLink>
             </div>
@@ -612,7 +655,7 @@ export function ClientHomeScreen({
           {isInitialLoading ? <RailSkeleton /> : (
             <NextAvailableChairCard
               match={nextAvailablePreview}
-              fallbackHref="/search"
+              fallbackHref={CLIENT_PRIMARY_TAB_HREFS.search}
               onBookClick={() => {
                 if (!availableNowSuggestion) {
                   return;
@@ -633,8 +676,8 @@ export function ClientHomeScreen({
       ) : null}
 
       <ClientSectionBlock
-        eyebrow="Discovery"
-        title="Search live barbers around you."
+        eyebrow="Recommended"
+        title="Recommended barbers around you."
         subtitle={trustedBarbers.length
           ? "Only approved, active, bookable barbers appear here. Compare real specialties, trust labels, prices, and next openings."
           : "No real barbers are live in this area yet. Verified, active, bookable supply will appear automatically when it exists."}
@@ -644,7 +687,7 @@ export function ClientHomeScreen({
             <ShieldCheck className="h-4 w-4 text-[#baff69]" />
             Canonical discovery only
           </div>
-          <ClientActionLink href="/search" size="md" variant="secondary">
+          <ClientActionLink href={CLIENT_PRIMARY_TAB_HREFS.search} size="md" variant="secondary">
             Open search
             <ArrowRight className="h-4 w-4" />
           </ClientActionLink>
@@ -667,64 +710,6 @@ export function ClientHomeScreen({
           </div>
         )}
       </ClientSectionBlock>
-
-      <ClientSectionBlock
-        eyebrow="Recent visits"
-        title="Past appointments stay ready for rebook and receipts."
-        subtitle={history.length
-          ? "Completed visits show the real barber, service, date, total, and receipt trail so rebooking stays easy."
-          : "Your completed visits will show up here after the first real appointment closes."}
-      >
-        {isInitialLoading ? (
-          <RailSkeleton />
-        ) : history.length ? (
-          <div className="space-y-3">
-            {history.slice(0, 3).map((appointment) => (
-              <div key={appointment.id} className="rounded-[26px] border border-white/8 bg-black/20 p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-lg font-semibold text-white">
-                      {appointment.view?.service?.name ?? appointment.serviceSnapshot?.service_name ?? "Completed service"}
-                    </p>
-                    <p className="mt-2 text-sm leading-7 text-white/62">
-                      {appointment.view?.barber?.name ?? "Your barber"} | {formatAppointmentTime(appointment.start)}
-                    </p>
-                    <p className="text-sm text-white/50">
-                      {appointment.view?.location?.name ?? "Your regular location"} | {currency(appointment.grandTotal ?? appointment.totalAmount)}
-                    </p>
-                  </div>
-                  <ClientActionLink
-                    href={buildMarketplaceBookingHref({
-                      barberId: appointment.barberId,
-                      locationId: appointment.locationId,
-                      serviceId: appointment.serviceId,
-                      sourceKind: "client_dashboard"
-                    })}
-                    size="md"
-                  >
-                    Book again
-                  </ClientActionLink>
-                </div>
-              </div>
-            ))}
-            <ClientActionLink href="/bookings" size="md" variant="secondary">
-              Open full history
-            </ClientActionLink>
-          </div>
-        ) : (
-          <div className="rounded-[28px] border border-dashed border-white/12 bg-black/18 p-5 sm:p-6">
-            <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">No past appointments</p>
-            <p className="mt-3 text-lg font-semibold text-white">
-              Your first completed visit will show up here.
-            </p>
-            <p className="mt-3 max-w-2xl text-sm leading-7 text-white/62">
-              Once an appointment is completed, this section becomes the fastest way to rebook and open the receipt trail.
-            </p>
-          </div>
-        )}
-      </ClientSectionBlock>
     </div>
   );
 }
-
-

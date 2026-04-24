@@ -8,9 +8,7 @@ const {
   useClientHomeQueryMock,
   useClientBookingsQueryMock,
   useBarberProfileQueryMock,
-  useClientMembershipQueryMock,
   useClientPointsBalanceQueryMock,
-  useClientReferralSummaryMock,
   usePaymentMethodsQueryMock,
   useMarketplaceAnalyticsMutationMock
 } = vi.hoisted(() => ({
@@ -19,9 +17,7 @@ const {
   useClientHomeQueryMock: vi.fn(),
   useClientBookingsQueryMock: vi.fn(),
   useBarberProfileQueryMock: vi.fn(),
-  useClientMembershipQueryMock: vi.fn(),
   useClientPointsBalanceQueryMock: vi.fn(),
-  useClientReferralSummaryMock: vi.fn(),
   usePaymentMethodsQueryMock: vi.fn(),
   useMarketplaceAnalyticsMutationMock: vi.fn()
 }));
@@ -53,12 +49,7 @@ vi.mock("@/lib/booking/client", () => ({
   useClientHomeQuery: useClientHomeQueryMock,
   useClientBookingsQuery: useClientBookingsQueryMock,
   useBarberProfileQuery: useBarberProfileQueryMock,
-  useClientMembershipQuery: useClientMembershipQueryMock,
   useClientPointsBalanceQuery: useClientPointsBalanceQueryMock
-}));
-
-vi.mock("@/lib/engagement/client", () => ({
-  useClientReferralSummary: useClientReferralSummaryMock
 }));
 
 vi.mock("@/lib/ai/client", () => ({
@@ -81,9 +72,7 @@ describe("client home screen", () => {
     useClientHomeQueryMock.mockReset();
     useClientBookingsQueryMock.mockReset();
     useBarberProfileQueryMock.mockReset();
-    useClientMembershipQueryMock.mockReset();
     useClientPointsBalanceQueryMock.mockReset();
-    useClientReferralSummaryMock.mockReset();
     usePaymentMethodsQueryMock.mockReset();
     useMarketplaceAnalyticsMutationMock.mockReset();
     useClientAiSummaryQueryMock.mockReset();
@@ -252,81 +241,6 @@ describe("client home screen", () => {
       error: null
     });
 
-    useClientReferralSummaryMock.mockReturnValue({
-      data: {
-        clientId: "client-jordan",
-        referralCode: {
-          id: "ref-code-1",
-          clientId: "client-jordan",
-          code: "BVRJORDAN",
-          rewardPoints: 10,
-          active: true,
-          createdAt: "2026-04-01T00:00:00.000Z"
-        },
-        inviteLink: "/r/BVRJORDAN",
-        shareMessage: "Share your code.",
-        totals: {
-          invited: 2,
-          signedUp: 1,
-          booked: 1,
-          completed: 1,
-          credited: 1,
-          rewardPointsEarned: 10
-        },
-        recentReferrals: []
-      },
-      isLoading: false,
-      error: null
-    });
-
-    useClientMembershipQueryMock.mockReturnValue({
-      data: {
-        subscription: {
-          id: "sub-client-core",
-          subjectType: "client",
-          subjectId: "client-jordan",
-          displayName: "Jordan Ellis",
-          provider: "stripe_billing",
-          providerSubscriptionId: "sub_123",
-          providerCustomerId: "cus_123",
-          providerPriceId: "price_123",
-          planCode: "client_core",
-          planName: "Client Core",
-          planInterval: "monthly",
-          unitAmount: 19,
-          currency: "usd",
-          subscriptionStatus: "active",
-          billingState: "current",
-          entitlementStatus: "active",
-          updatedAt: "2026-04-20T00:00:00.000Z"
-        },
-        value: {
-          subscriptionId: "sub-client-core",
-          provider: "stripe_billing",
-          providerCustomerId: "cus_123",
-          planCode: "client_core",
-          sourceLabel: "Membership",
-          planName: "Client Core",
-          subscriptionStatus: "active",
-          billingState: "current",
-          entitlementStatus: "active",
-          valueHeadline: "Client Core is active.",
-          valueMessage: "Member pricing and faster repeat booking are live on this account.",
-          savingsMessage: "Use points and member pricing together when it makes sense.",
-          perkLabels: ["10% member pricing", "Priority booking"],
-          canSubscribe: false,
-          canCancel: true
-        },
-        plans: [],
-        activePlan: null,
-        pricingAdjustment: null,
-        canSubscribe: false,
-        canCancel: true
-      },
-      isLoading: false,
-      error: null
-    });
-
     usePaymentMethodsQueryMock.mockReturnValue({
       data: {
         methods: [
@@ -425,30 +339,28 @@ describe("client home screen", () => {
       }
     });
     useMarketplaceAnalyticsMutationMock.mockReturnValue({
-      mutateAsync: vi.fn(),
-      mutate: vi.fn()
+      mutate: vi.fn(),
+      mutateAsync: vi.fn()
     });
   });
 
-  it("renders the real rebook, upcoming, wallet, retention, and history loop", () => {
+  it("renders the real rebook, upcoming, recommended, and wallet snapshots", () => {
     render(<ClientHomeScreen isSignedInClient displayName="Jordan Ellis" />);
 
     expect(screen.getByRole("link", { name: "Rebook" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Book the next open chair" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Find barbers" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Explore services" })).toBeInTheDocument();
     expect(screen.getByText("Rebooking reminder")).toBeInTheDocument();
     expect(screen.getByText("Last cut was 28 days ago. Your typical cadence is about 28 days.")).toBeInTheDocument();
     expect(screen.getByText("Upcoming appointment")).toBeInTheDocument();
     expect(screen.getAllByText("Signature Precision Cut").length).toBeGreaterThan(0);
-    expect(screen.getByText("Wallet snapshot")).toBeInTheDocument();
+    expect(screen.getByText("Wallet and points snapshot")).toBeInTheDocument();
     expect(screen.getByText("Visa ending in 4242")).toBeInTheDocument();
-    expect(screen.getByText("BVR Points and retention")).toBeInTheDocument();
-    expect(screen.getByText(/120 BVR Points/)).toBeInTheDocument();
-    expect(screen.getByText("Referrals 1 credited")).toBeInTheDocument();
-    expect(screen.getByText("Code BVRJORDAN")).toBeInTheDocument();
-    expect(screen.getByText("Client Core | current")).toBeInTheDocument();
-    expect(screen.getByText("Member pricing and faster repeat booking are live on this account.")).toBeInTheDocument();
-    expect(screen.getByText("Recent visits")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open full history" })).toBeInTheDocument();
+    expect(screen.getByText(/120 BVR Points are ready/i)).toBeInTheDocument();
+    expect(screen.getByText("Recommended barbers around you.")).toBeInTheDocument();
+    expect(screen.queryByText("BVR Points and retention")).not.toBeInTheDocument();
+    expect(screen.queryByText("Recent visits")).not.toBeInTheDocument();
   });
 
   it("shows clean empty states for a fresh client with no real history or retention state", () => {
@@ -508,37 +420,6 @@ describe("client home screen", () => {
       isLoading: false,
       error: null
     });
-    useClientReferralSummaryMock.mockReturnValue({
-      data: {
-        clientId: "client-jordan",
-        inviteLink: "/referrals",
-        shareMessage: "Share your code.",
-        totals: {
-          invited: 0,
-          signedUp: 0,
-          booked: 0,
-          completed: 0,
-          credited: 0,
-          rewardPointsEarned: 0
-        },
-        recentReferrals: []
-      },
-      isLoading: false,
-      error: null
-    });
-    useClientMembershipQueryMock.mockReturnValue({
-      data: {
-        subscription: null,
-        value: null,
-        plans: [],
-        activePlan: null,
-        pricingAdjustment: null,
-        canSubscribe: true,
-        canCancel: false
-      },
-      isLoading: false,
-      error: null
-    });
     usePaymentMethodsQueryMock.mockReturnValue({
       data: { methods: [] },
       isLoading: false
@@ -563,12 +444,11 @@ describe("client home screen", () => {
     render(<ClientHomeScreen isSignedInClient displayName="Jordan Ellis" />);
 
     expect(screen.getByText("Find your first barber, Jordan.")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Find a barber" })).toBeInTheDocument();
-    expect(screen.getByText("Nothing booked yet")).toBeInTheDocument();
-    expect(screen.getByText("Retention starts after real visits close")).toBeInTheDocument();
-    expect(screen.getByText("Referrals 0 credited")).toBeInTheDocument();
-    expect(screen.getByText("No active membership yet")).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "Find a barber" }).length).toBeGreaterThan(0);
+    expect(screen.getByText("No upcoming appointment yet")).toBeInTheDocument();
+    expect(screen.getByText("Wallet and points snapshot")).toBeInTheDocument();
+    expect(screen.getByText("Points show up here after completed paid services close.")).toBeInTheDocument();
     expect(screen.getByText("No barbers are accepting bookings here yet.")).toBeInTheDocument();
-    expect(screen.getByText("No past appointments")).toBeInTheDocument();
+    expect(screen.queryByText("Recent visits")).not.toBeInTheDocument();
   });
 });

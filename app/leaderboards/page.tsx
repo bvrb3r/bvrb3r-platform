@@ -21,7 +21,7 @@ export default function LeaderboardsPage() {
             Open discover
           </Link>
           <Link
-            href="/search"
+            href="/dashboard/client/search"
             className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/25 px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-white transition hover:border-[#7CFF00]/24 hover:text-[#d7ffab]"
           >
             <ArrowLeft className="h-4 w-4" />

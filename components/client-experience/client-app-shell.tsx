@@ -1,9 +1,11 @@
 import type { ReactNode } from "react";
 import { ClientAppHeader } from "@/components/client-experience/client-app-header";
 import { ClientBottomNav } from "@/components/client-experience/client-bottom-nav";
-
-export type ClientAppTab = "home" | "search" | "bookings" | "activity" | "profile";
-export type ClientAppMode = "client" | "guest";
+import { ClientSidebar } from "@/components/client-experience/client-sidebar";
+import type {
+  ClientAppMode,
+  ClientAppTab
+} from "@/components/client-experience/client-tab-config";
 
 export function ClientAppShell({
   activeTab,
@@ -24,7 +26,10 @@ export function ClientAppShell({
       </div>
       <div className="relative page-shell safe-top-pad app-safe-bottom pb-[calc(env(safe-area-inset-bottom,0px)+6.5rem)] pt-3 sm:pt-4">
         <ClientAppHeader mode={mode} />
-        <main className="mt-4 space-y-4 sm:space-y-5">{children}</main>
+        <div className="mt-4 lg:grid lg:grid-cols-[17rem_minmax(0,1fr)] lg:gap-5">
+          {mode === "client" ? <ClientSidebar activeTab={activeTab} /> : null}
+          <main className="min-w-0 space-y-4 sm:space-y-5">{children}</main>
+        </div>
       </div>
       <ClientBottomNav activeTab={activeTab} mode={mode} />
     </div>

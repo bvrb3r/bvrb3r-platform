@@ -1,15 +1,19 @@
-import { ClientAppShell } from "@/components/client-experience/client-app-shell";
-import { ClientProfileScreen } from "@/components/client-experience/client-profile-screen";
-import { getClientProfilePayload } from "@/lib/booking/platform-service";
-import { getClientExperienceContext } from "@/lib/client-experience/session";
+import type { Route } from "next";
+import { redirect } from "next/navigation";
 
-export default async function ProfilePage() {
-  const context = await getClientExperienceContext();
-  const payload = await getClientProfilePayload(context.clientId);
+export default async function ProfilePage({
+  searchParams
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = await searchParams;
+  const nextParams = new URLSearchParams();
 
-  return (
-    <ClientAppShell activeTab="profile">
-      <ClientProfileScreen payload={payload} isSignedInClient={context.isSignedInClient} />
-    </ClientAppShell>
-  );
+  for (const [key, value] of Object.entries(params)) {
+    if (typeof value === "string" && value.length > 0) {
+      nextParams.set(key, value);
+    }
+  }
+
+  redirect((`/dashboard/client/profile${nextParams.size ? `?${nextParams.toString()}` : ""}`) as Route);
 }

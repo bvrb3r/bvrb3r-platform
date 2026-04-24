@@ -1,12 +1,28 @@
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ClientProfilePayload } from "@/lib/booking/platform-service";
 
 const {
   useProfileMediaWorkspaceQueryMock,
-  useMutateProfileMediaMutationMock
+  useMutateProfileMediaMutationMock,
+  useClientMembershipQueryMock,
+  usePointsBalanceQueryMock,
+  usePointsHistoryQueryMock
 } = vi.hoisted(() => ({
   useProfileMediaWorkspaceQueryMock: vi.fn(),
-  useMutateProfileMediaMutationMock: vi.fn()
+  useMutateProfileMediaMutationMock: vi.fn(),
+  useClientMembershipQueryMock: vi.fn(),
+  usePointsBalanceQueryMock: vi.fn(),
+  usePointsHistoryQueryMock: vi.fn()
+}));
+
+vi.mock("@/lib/booking/client", () => ({
+  useClientMembershipQuery: useClientMembershipQueryMock
+}));
+
+vi.mock("@/lib/points/client", () => ({
+  usePointsBalanceQuery: usePointsBalanceQueryMock,
+  usePointsHistoryQuery: usePointsHistoryQueryMock
 }));
 
 vi.mock("@/lib/profile/client", () => ({
@@ -28,12 +44,19 @@ vi.mock("@/components/client-experience/client-payment-methods-panel", () => ({
   )
 }));
 
+vi.mock("@/components/engagement/referrals-workspace", () => ({
+  ReferralsWorkspace: () => <div data-testid="referrals-workspace-stub">Referrals workspace</div>
+}));
+
 import { ClientProfileScreen } from "@/components/client-experience/client-profile-screen";
 
 describe("client profile screen", () => {
   beforeEach(() => {
     useProfileMediaWorkspaceQueryMock.mockReset();
     useMutateProfileMediaMutationMock.mockReset();
+    useClientMembershipQueryMock.mockReset();
+    usePointsBalanceQueryMock.mockReset();
+    usePointsHistoryQueryMock.mockReset();
 
     useProfileMediaWorkspaceQueryMock.mockReturnValue({
       data: {
@@ -47,9 +70,46 @@ describe("client profile screen", () => {
       error: null,
       mutateAsync: vi.fn()
     });
+    useClientMembershipQueryMock.mockReturnValue({
+      data: {
+        subscription: {
+          subscriptionStatus: "active",
+          planName: "Client Core"
+        },
+        value: {
+          valueMessage: "Member pricing and faster repeat booking are live on this account.",
+          perkLabels: ["10% member pricing", "Priority booking"]
+        }
+      },
+      error: null
+    });
+    usePointsBalanceQueryMock.mockReturnValue({
+      data: {
+        unlockedPoints: 120,
+        pendingPoints: 10,
+        inAppValue: 12,
+        explanation: {
+          progressLabel: "80 points to the next milestone."
+        }
+      },
+      error: null
+    });
+    usePointsHistoryQueryMock.mockReturnValue({
+      data: {
+        activity: [
+          {
+            id: "points-1",
+            title: "Completed booking",
+            detail: "Points posted from your latest visit.",
+            amountLabel: "+10 pts",
+            occurredAt: "2026-04-20T00:00:00.000Z"
+          }
+        ]
+      }
+    });
   });
 
-  it("renders wallet basics from canonical payment methods", () => {
+  it("renders wallet, rewards, and referrals inside profile", () => {
     render(
       <ClientProfileScreen
         isSignedInClient
@@ -96,17 +156,39 @@ describe("client profile screen", () => {
               isDefault: false
             }
           ]
-        } as any}
+        } as unknown as ClientProfilePayload}
       />
     );
 
-    expect(screen.getByText("Wallet basics")).toBeInTheDocument();
-    expect(screen.getByText("2 saved payment methods")).toBeInTheDocument();
+    expect(screen.getByText("Wallet and payment methods")).toBeInTheDocument();
+    expect(screen.getAllByText("2 saved payment methods").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Visa ending in 4242").length).toBeGreaterThan(0);
+    expect(screen.getByText("BVR Points and membership")).toBeInTheDocument();
+    expect(screen.getAllByText("120 pts").length).toBeGreaterThan(0);
+    expect(screen.getByTestId("referrals-workspace-stub")).toBeInTheDocument();
     expect(screen.getByTestId("payment-methods-panel")).toHaveTextContent("Methods 2");
   });
 
-  it("shows clean empty wallet guidance when no saved methods exist", () => {
+  it("shows clean empty wallet and rewards guidance when canonical data is absent", () => {
+    useClientMembershipQueryMock.mockReturnValue({
+      data: { subscription: null, value: null },
+      error: null
+    });
+    usePointsBalanceQueryMock.mockReturnValue({
+      data: {
+        unlockedPoints: 0,
+        pendingPoints: 0,
+        inAppValue: 0,
+        explanation: {
+          progressLabel: "No milestone yet"
+        }
+      },
+      error: null
+    });
+    usePointsHistoryQueryMock.mockReturnValue({
+      data: { activity: [] }
+    });
+
     render(
       <ClientProfileScreen
         isSignedInClient
@@ -122,11 +204,12 @@ describe("client profile screen", () => {
           notificationPreference: null,
           routine: null,
           paymentMethods: []
-        } as any}
+        } as unknown as ClientProfilePayload}
       />
     );
 
-    expect(screen.getAllByText("No saved payment methods yet").length).toBeGreaterThan(0);
+    expect(screen.getByText("No saved payment methods yet")).toBeInTheDocument();
     expect(screen.getByText("Add a saved card so booking and rebooking stay fast.")).toBeInTheDocument();
+    expect(screen.getByText("No rewards or membership history yet. Completed paid services, qualified referrals, and live subscriptions will show up here when they exist.")).toBeInTheDocument();
   });
 });

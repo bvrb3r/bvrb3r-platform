@@ -1,13 +1,19 @@
-import { Suspense } from "react";
-import { ClientAppShell } from "@/components/client-experience/client-app-shell";
-import { ClientBookingsScreen } from "@/components/client-experience/client-bookings-screen";
+import type { Route } from "next";
+import { redirect } from "next/navigation";
 
-export default async function BookingsPage() {
-  return (
-    <ClientAppShell activeTab="bookings">
-      <Suspense fallback={null}>
-        <ClientBookingsScreen />
-      </Suspense>
-    </ClientAppShell>
-  );
+export default async function BookingsPage({
+  searchParams
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = await searchParams;
+  const nextParams = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(params)) {
+    if (typeof value === "string" && value.length > 0) {
+      nextParams.set(key, value);
+    }
+  }
+
+  redirect((`/dashboard/client/activity${nextParams.size ? `?${nextParams.toString()}` : ""}`) as Route);
 }

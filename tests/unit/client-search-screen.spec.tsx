@@ -5,18 +5,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   replaceMock,
   useClientHomeQueryMock,
-  useClientReferralSummaryMock,
   useMarketplaceDiscoveryMock,
   useHaircutNowMatchMock,
-  mutateAnalyticsAsyncMock,
   useMarketplaceAnalyticsMutationMock
 } = vi.hoisted(() => ({
   replaceMock: vi.fn(),
   useClientHomeQueryMock: vi.fn(),
-  useClientReferralSummaryMock: vi.fn(),
   useMarketplaceDiscoveryMock: vi.fn(),
   useHaircutNowMatchMock: vi.fn(),
-  mutateAnalyticsAsyncMock: vi.fn(),
   useMarketplaceAnalyticsMutationMock: vi.fn()
 }));
 
@@ -53,10 +49,6 @@ vi.mock("@/lib/booking/client", () => ({
   useClientHomeQuery: useClientHomeQueryMock
 }));
 
-vi.mock("@/lib/engagement/client", () => ({
-  useClientReferralSummary: useClientReferralSummaryMock
-}));
-
 vi.mock("@/lib/marketplace/client", () => ({
   useMarketplaceDiscovery: useMarketplaceDiscoveryMock,
   useHaircutNowMatch: useHaircutNowMatchMock,
@@ -69,10 +61,8 @@ describe("client search screen", () => {
   beforeEach(() => {
     replaceMock.mockReset();
     useClientHomeQueryMock.mockReset();
-    useClientReferralSummaryMock.mockReset();
     useMarketplaceDiscoveryMock.mockReset();
     useHaircutNowMatchMock.mockReset();
-    mutateAnalyticsAsyncMock.mockReset();
     useMarketplaceAnalyticsMutationMock.mockReset();
 
     useClientHomeQueryMock.mockReturnValue({
@@ -104,19 +94,6 @@ describe("client search screen", () => {
         ]
       },
       isLoading: false
-    });
-
-    useClientReferralSummaryMock.mockReturnValue({
-      data: {
-        referralCode: {
-          code: "JORDAN",
-          rewardPoints: 25
-        },
-        shareMessage: "Invite a friend into BVRB3R.",
-        totals: {
-          completed: 2
-        }
-      }
     });
 
     useMarketplaceDiscoveryMock.mockReturnValue({
@@ -186,11 +163,11 @@ describe("client search screen", () => {
 
     useMarketplaceAnalyticsMutationMock.mockReturnValue({
       mutate: vi.fn(),
-      mutateAsync: mutateAnalyticsAsyncMock
+      mutateAsync: vi.fn()
     });
   });
 
-  it("renders live discovery, available-now booking, and referral entry", () => {
+  it("renders live discovery and available-now booking without referral clutter", () => {
     render(<ClientSearchScreen clientId="client-jordan" routeBase="/discover" />);
 
     expect(screen.getByText(/Discover barbers worth booking/i)).toBeInTheDocument();
@@ -200,7 +177,7 @@ describe("client search screen", () => {
       "href",
       expect.stringContaining("source=haircut_now")
     );
-    expect(screen.getByRole("link", { name: /Open referrals/i })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Open referrals/i })).not.toBeInTheDocument();
   });
 
   it("supports location-aware filtering", async () => {

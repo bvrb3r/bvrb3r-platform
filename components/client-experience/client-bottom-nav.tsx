@@ -1,28 +1,21 @@
-import type { Route } from "next";
 import Link from "next/link";
-import { CalendarDays, Gift, Home, Search, UserRound } from "lucide-react";
-import type { ClientAppMode, ClientAppTab } from "@/components/client-experience/client-app-shell";
+import type {
+  ClientAppMode,
+  ClientAppTab
+} from "@/components/client-experience/client-tab-config";
+import {
+  CLIENT_PRIMARY_NAV_ITEMS,
+  GUEST_CLIENT_NAV_ITEMS
+} from "@/components/client-experience/client-tab-config";
 import { cn } from "@/lib/utils";
 
-const navItems: Array<{ key: ClientAppTab; href: Route; label: string; icon: typeof Home }> = [
-  { key: "home", href: "/dashboard/client", label: "Home", icon: Home },
-  { key: "search", href: "/search", label: "Search", icon: Search },
-  { key: "bookings", href: "/bookings", label: "Bookings", icon: CalendarDays },
-  { key: "activity", href: "/activity", label: "Activity", icon: Gift },
-  { key: "profile", href: "/profile", label: "Profile", icon: UserRound }
-];
-
-const guestNavItems: Array<{ key: ClientAppTab; href: Route; label: string; icon: typeof Home }> = [
-  { key: "search", href: "/discover?entry=guest" as Route, label: "Explore", icon: Search },
-  { key: "home", href: "/" as Route, label: "Account", icon: UserRound },
-  { key: "bookings", href: "/booking/new?source=guest_discovery" as Route, label: "Book", icon: CalendarDays }
-];
-
 export function ClientBottomNav({ activeTab, mode = "client" }: { activeTab?: ClientAppTab; mode?: ClientAppMode }) {
-  const items = mode === "guest" ? guestNavItems : navItems;
+  const items = mode === "guest"
+    ? GUEST_CLIENT_NAV_ITEMS
+    : CLIENT_PRIMARY_NAV_ITEMS;
 
   return (
-    <div className="fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] z-50">
+    <div className="fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] z-50 lg:hidden">
       <nav className="mx-auto flex max-w-xl items-center gap-2 rounded-[30px] border border-white/10 bg-[rgba(6,6,6,0.9)] px-3 py-3 backdrop-blur-xl shadow-[0_24px_44px_rgba(0,0,0,0.34)]">
         {items.map((item) => {
           const Icon = item.icon;

@@ -39,7 +39,7 @@ export default async function BookingPage() {
   await getClientExperienceContext();
 
   return (
-    <ClientAppShell activeTab="bookings">
+    <ClientAppShell activeTab="search">
       <Suspense fallback={<BookingPageFallback />}>
         <BookingForm />
       </Suspense>

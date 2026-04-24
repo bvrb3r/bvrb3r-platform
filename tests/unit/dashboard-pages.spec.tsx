@@ -146,8 +146,8 @@ describe("dashboard role pages", () => {
     expect(screen.queryByText("Owner control center")).not.toBeInTheDocument();
   });
 
-  it("renders account settings and logout surface for client, barber, and owner lanes", async () => {
-    for (const email of ["client@bvrb3r.demo", "blaze@bvrb3r.demo", "owner@bvrb3r.demo"]) {
+  it("renders account settings and logout surface for barber and owner lanes", async () => {
+    for (const email of ["blaze@bvrb3r.demo", "owner@bvrb3r.demo"]) {
       getAuthorizedUserMock.mockResolvedValue(resolveDemoUser(email));
 
       render(await SettingsPage());

@@ -3,43 +3,25 @@
 import type { Route } from "next";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Clock3, CreditCard, MapPin, Repeat2, Star } from "lucide-react";
+import { CreditCard, MapPin, Star } from "lucide-react";
 import { ClientActionLink, getClientActionClassName } from "@/components/client-experience/client-action-link";
 import { ClientFavoriteBarberCard } from "@/components/client-experience/client-favorite-barber-card";
 import { ClientSectionBlock } from "@/components/client-experience/client-section-block";
+import { CLIENT_PRIMARY_TAB_HREFS } from "@/components/client-experience/client-tab-config";
 import { usePwa } from "@/components/pwa/pwa-provider";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   useClientBookingsQuery,
   useCancelBookingMutation,
-  useClientPointsBalanceQuery,
-  useSaveClientRoutineMutation,
   useSubmitClientReviewMutation,
-  type BookingApiError,
-  type RoutineCadenceId
+  type BookingApiError
 } from "@/lib/booking/client";
 import { buildMarketplaceBookingHref } from "@/lib/marketplace/links";
 import { useCreateAppointmentPaymentMutation, type PaymentApiError } from "@/lib/payments/client";
-import { usePointsHistoryQuery } from "@/lib/points/client";
 import { getReadableActionError } from "@/lib/utils/feedback";
 import { currency } from "@/lib/utils";
-import type { PointsEventType, PointsTransactionRecord } from "@/types/points";
 import type { Location } from "@/types/domain";
-
-const cadenceOptions = [
-  { id: "weekly", label: "Weekly", days: 7, summary: "Keep a fresh chair reserved every week." },
-  { id: "biweekly", label: "Every 2 weeks", days: 14, summary: "The most natural rhythm for staying sharp without thinking about it." },
-  { id: "monthly", label: "Monthly", days: 30, summary: "Set a dependable maintenance visit once a month." }
-] as const;
-
-type CadenceId = RoutineCadenceId;
-
-function addDays(date: Date, days: number) {
-  const next = new Date(date);
-  next.setDate(next.getDate() + days);
-  return next;
-}
 
 function formatAppointmentSummary(iso: string) {
   const date = new Date(iso);
@@ -54,17 +36,6 @@ function formatAppointmentSummary(iso: string) {
   }).format(date);
 
   return `${dayLabel} | ${timeLabel}`;
-}
-
-function formatTimeOnly(iso: string) {
-  return new Intl.DateTimeFormat("en-US", {
-    hour: "numeric",
-    minute: "2-digit"
-  }).format(new Date(iso));
-}
-
-function formatRecurringPreview(date: Date, timeLabel: string) {
-  return `${new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric" }).format(date)} at ${timeLabel}`;
 }
 
 function formatDateTimeLabel(iso?: string | null) {
@@ -100,36 +71,6 @@ function getLocationLabel(location?: Location) {
   return `${location.name} - ${location.neighborhood}`;
 }
 
-function getPointsEventLabel(eventType: PointsEventType) {
-  switch (eventType) {
-    case "booking":
-      return "Booking";
-    case "retention":
-      return "Retention";
-    case "tip":
-      return "Tip";
-    case "referral":
-      return "Referral";
-    case "campaign":
-      return "Campaign";
-    case "cashout":
-    default:
-      return "Points";
-  }
-}
-
-function getAppointmentPointsTransactions(transactions: PointsTransactionRecord[], appointmentId?: string | null) {
-  if (!appointmentId) {
-    return [];
-  }
-
-  return transactions.filter((transaction) =>
-    transaction.pointsDelta > 0
-    && transaction.status !== "reversed"
-    && (transaction.sourceId === appointmentId || transaction.metadata.appointmentId === appointmentId)
-  );
-}
-
 function getMapsHref(location?: Location) {
   if (!location) {
     return undefined;
@@ -153,49 +94,18 @@ function SectionSkeleton() {
   );
 }
 
-function OptionButton({
-  label,
-  detail,
-  isActive,
-  onClick
-}: {
-  label: string;
-  detail?: string;
-  isActive: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={[
-        "min-h-14 rounded-[22px] border px-4 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b7ff58] focus-visible:ring-offset-2 focus-visible:ring-offset-black",
-        isActive
-          ? "border-[#9bff2f]/48 bg-[linear-gradient(180deg,rgba(142,214,44,0.2),rgba(16,16,16,0.96))] shadow-[0_14px_28px_rgba(111,182,27,0.18)]"
-          : "border-white/10 bg-black/20 hover:border-[#9bff2f]/28 hover:bg-black/28"
-      ].join(" ")}
-    >
-      <span className="block text-sm font-semibold text-white">{label}</span>
-      {detail ? <span className="mt-1 block text-xs text-white/58">{detail}</span> : null}
-    </button>
-  );
-}
 export function ClientBookingsScreen() {
   const searchParams = useSearchParams();
   const { isOnline } = usePwa();
   const bookingsQuery = useClientBookingsQuery();
-  const pointsBalanceQuery = useClientPointsBalanceQuery();
-  const pointsHistoryQuery = usePointsHistoryQuery();
-  const saveRoutineMutation = useSaveClientRoutineMutation();
   const cancelBookingMutation = useCancelBookingMutation();
   const submitReviewMutation = useSubmitClientReviewMutation();
   const payload = bookingsQuery.data;
   const favoriteBarber = payload?.favoriteBarber ?? null;
   const nextAppointment = payload?.nextAppointment ?? null;
   const history = payload?.history ?? [];
-  const savedRoutine = payload?.routine ?? null;
   const favoriteLocation = nextAppointment?.view.location ?? favoriteBarber?.shopLocations[0];
-  const profileHref = favoriteBarber ? (`/barber/${favoriteBarber.profile.username}` as Route) : ("/search" as Route);
+  const profileHref = favoriteBarber ? (`/barber/${favoriteBarber.profile.username}` as Route) : CLIENT_PRIMARY_TAB_HREFS.search;
   const bookingHref = favoriteBarber?.bookingCtaHref
     ? (favoriteBarber.bookingCtaHref as Route)
     : favoriteBarber
@@ -205,24 +115,16 @@ export function ClientBookingsScreen() {
           locationId: favoriteBarber.shopLocations[0]?.id,
           sourceKind: "client_dashboard"
         })
-      : ("/search" as Route);
+      : CLIENT_PRIMARY_TAB_HREFS.search;
   const mapsHref = getMapsHref(favoriteLocation);
   const errorMessage = bookingsQuery.error ? getReadableActionError(bookingsQuery.error as BookingApiError) : null;
   const paymentMutation = useCreateAppointmentPaymentMutation();
 
-  const [selectedCadenceId, setSelectedCadenceId] = useState<CadenceId>("biweekly");
-  const [routineFeedback, setRoutineFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [paymentFeedback, setPaymentFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [cancelFeedback, setCancelFeedback] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(null);
   const [reviewFeedback, setReviewFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [reviewDrafts, setReviewDrafts] = useState<Record<string, { rating: number; message: string }>>({});
   const [cancelStep, setCancelStep] = useState<"offer_reschedule" | "confirm_cancel" | null>(null);
-
-  useEffect(() => {
-    if (savedRoutine?.cadenceId) {
-      setSelectedCadenceId(savedRoutine.cadenceId);
-    }
-  }, [savedRoutine?.cadenceId]);
 
   useEffect(() => {
     if (searchParams.get("intent") === "cancel" && nextAppointment) {
@@ -231,22 +133,8 @@ export function ClientBookingsScreen() {
     }
   }, [nextAppointment, searchParams]);
 
-  const selectedCadence = cadenceOptions.find((option) => option.id === selectedCadenceId) ?? cadenceOptions[1];
-  const cadenceBaseDate = nextAppointment
-    ? new Date(Math.max(new Date(nextAppointment.start).getTime(), Date.now()))
-    : new Date();
-  const recurringTimeLabel = nextAppointment ? formatTimeOnly(nextAppointment.start) : "1:30 PM";
-  const recurringPreviewDate = addDays(cadenceBaseDate, selectedCadence.days);
   const isInitialLoading = bookingsQuery.isLoading && !payload;
   const favoriteBarberName = favoriteBarber?.barber.name ?? "your barber";
-  const canSaveRoutine = Boolean(favoriteBarber || payload?.client?.favoriteBarberReference);
-  const savedRoutineLabel = formatDateTimeLabel(savedRoutine?.nextSuggestedAt);
-  const latestCompletedAppointment = history[0] ?? null;
-  const latestRewardTransactions = getAppointmentPointsTransactions(
-    pointsHistoryQuery.data?.transactions ?? [],
-    latestCompletedAppointment?.id
-  );
-  const latestRewardTotal = latestRewardTransactions.reduce((sum, transaction) => sum + transaction.pointsDelta, 0);
   const nextAppointmentPayment = payload?.nextAppointmentPayment ?? null;
   const latestBookingPayment = nextAppointmentPayment?.latestBookingPayment ?? null;
   const defaultPaymentMethod = nextAppointmentPayment?.defaultPaymentMethod ?? null;
@@ -259,39 +147,6 @@ export function ClientBookingsScreen() {
         sourceKind: "client_dashboard"
       })
     : ("/booking/new" as Route);
-
-  async function handleSaveRoutine() {
-    if (!canSaveRoutine) {
-      setRoutineFeedback({
-        tone: "error",
-        message: "Choose a favorite barber first so your auto-book routine has a chair to follow."
-      });
-      return;
-    }
-
-    try {
-      const result = await saveRoutineMutation.mutateAsync({
-        cadenceId: selectedCadence.id,
-        barberReference: favoriteBarber?.barber.id ?? payload?.client?.favoriteBarberReference,
-        serviceReference:
-          nextAppointment?.serviceId
-          ?? latestCompletedAppointment?.serviceId
-          ?? favoriteBarber?.mostBookedService?.service.id,
-        anchorStartAt: nextAppointment?.start,
-        lastCompletedAt: latestCompletedAppointment?.start
-      });
-
-      setRoutineFeedback({
-        tone: "success",
-        message: `${result.routine.label} auto-book is saved with ${favoriteBarberName}.`
-      });
-    } catch (error) {
-      setRoutineFeedback({
-        tone: "error",
-        message: getReadableActionError(error as BookingApiError)
-      });
-    }
-  }
 
   async function handleCreateAppointmentPayment() {
     if (!nextAppointment) {
@@ -393,19 +248,19 @@ export function ClientBookingsScreen() {
   return (
     <div className="space-y-5" data-testid="client-bookings-screen">
       <header className="overflow-hidden rounded-[34px] border border-[#d8ff9d]/16 bg-[linear-gradient(180deg,rgba(18,22,14,0.96),rgba(8,8,8,0.98))] p-5 shadow-[0_24px_48px_rgba(0,0,0,0.22)] sm:p-6">
-        <p className="text-[10px] uppercase tracking-[0.24em] text-[#cfff93]">Bookings</p>
+        <p className="text-[10px] uppercase tracking-[0.24em] text-[#cfff93]">Activity</p>
         <h1 className="mt-3 text-balance text-3xl font-semibold text-white sm:text-4xl" data-display="true">
-          Your next appointment.
+          Appointments, receipts, and history.
         </h1>
         <p className="mt-3 max-w-2xl text-sm leading-7 text-white/66">
-          Keep your next visit, your barber, and your standing routine in one calm place.
+          Activity keeps your upcoming bookings, past visits, receipts, and rebook flow in one calm place.
         </p>
       </header>
 
       <ClientSectionBlock
-        eyebrow="Next appointment"
+        eyebrow="Upcoming appointments"
         title="See the essentials first."
-        subtitle="Date, time, barber, and where to go. Nothing extra."
+        subtitle="Date, time, barber, payment posture, and the next action you might need."
       >
         {errorMessage ? <FeedbackBanner tone="error" message={errorMessage} /> : null}
         {isInitialLoading ? (
@@ -622,12 +477,12 @@ export function ClientBookingsScreen() {
           </div>
         ) : (
           <div className="rounded-[28px] border border-dashed border-white/12 bg-black/18 p-5 sm:p-6">
-            <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">Nothing booked yet</p>
+            <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">No appointments yet</p>
             <p className="mt-3 text-lg font-semibold text-white">
               You do not have a next appointment on the calendar.
             </p>
             <p className="mt-3 max-w-2xl text-sm leading-7 text-white/62">
-              Your favorite barber is right below, and auto-book is ready when you want your routine to stay locked in.
+              Search and book your first visit, then come back here to manage upcoming appointments and receipts.
             </p>
           </div>
         )}
@@ -654,9 +509,9 @@ export function ClientBookingsScreen() {
       ) : (
         <div className="rounded-[32px] border border-dashed border-white/10 bg-[linear-gradient(180deg,rgba(19,19,19,0.96),rgba(8,8,8,0.98))] p-5 sm:p-6">
           <h3 className="text-2xl font-semibold text-white" data-display="true">Choose your go-to barber</h3>
-          <p className="mt-3 max-w-2xl text-sm leading-7 text-white/64">Save a favorite barber so Bookings becomes your personal routine screen instead of a marketplace browse.</p>
+          <p className="mt-3 max-w-2xl text-sm leading-7 text-white/64">Save a favorite barber so repeat booking stays quick when you come back through Home or Activity.</p>
           <div className="mt-5">
-            <ClientActionLink href="/search" size="lg">
+            <ClientActionLink href={CLIENT_PRIMARY_TAB_HREFS.search} size="lg">
               Find a barber
             </ClientActionLink>
           </div>
@@ -664,7 +519,7 @@ export function ClientBookingsScreen() {
       )}
 
       <ClientSectionBlock
-        eyebrow="History"
+        eyebrow="Past appointments"
         title="Your completed visits and reviews."
         subtitle="Keep a clean record of what you booked, what you spent, and which visits still need feedback."
       >
