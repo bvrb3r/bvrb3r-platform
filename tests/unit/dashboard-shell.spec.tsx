@@ -4,7 +4,7 @@ import { getDefaultRouteForUser, resolveDemoUser } from "@/lib/auth/demo-auth";
 
 describe("dashboard shell identity and navigation", () => {
   it.each([
-    ["owner@bvrb3r.demo", "Brandon Rivers", "Shop Owner", "Active role: Shop owner", ["Dashboard", "Team", "Schedule", "Money", "Settings"]],
+    ["owner@bvrb3r.demo", "Brandon Rivers", "Shop Owner", "Active role: Shop owner", ["Home", "Team", "Schedule", "Money", "Settings"]],
     ["manager@bvrb3r.demo", "Mia Torres", "Shop Manager", "Active role: Shop manager", ["Dashboard", "Schedule", "Team", "Queue", "Profile"]],
     ["frontdesk@bvrb3r.demo", "Kayla Brooks", "Front Desk / Kiosk Ops", "Active role: Front desk", ["Check-in", "Waitlist", "Schedule", "Barbers", "Profile"]],
     ["wave@bvrb3r.demo", "Wave Carter", "Barber Manager", "Active role: Barber manager", ["Dashboard", "Schedule", "Team", "Queue", "Profile"]],
@@ -81,6 +81,26 @@ describe("dashboard shell identity and navigation", () => {
     expect(screen.queryByRole("link", { name: /clients/i })).not.toBeInTheDocument();
     expect(screen.getByText("5 tabs")).toBeInTheDocument();
     expect(screen.getByText("5 barber tabs")).toBeInTheDocument();
+  });
+
+  it("locks owner primary navigation to five tabs only", () => {
+    const user = resolveDemoUser("owner@bvrb3r.demo");
+
+    render(
+      <DashboardShell user={user} activeHref="/dashboard/owner" title="Home" subtitle="Testing owner tabs.">
+        <div>Workspace body</div>
+      </DashboardShell>
+    );
+
+    ["Home", "Team", "Schedule", "Money", "Settings"].forEach((label) => {
+      expect(screen.getAllByRole("link", { name: new RegExp(label, "i") }).length).toBeGreaterThan(0);
+    });
+
+    expect(screen.queryByRole("link", { name: /dashboard/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /finance/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /staff/i })).not.toBeInTheDocument();
+    expect(screen.getByText("5 tabs")).toBeInTheDocument();
+    expect(screen.getByText("5 owner tabs")).toBeInTheDocument();
   });
 
 });

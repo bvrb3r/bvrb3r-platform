@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { BARBER_PRIMARY_NAV_ITEMS } from "@/components/barber-experience/barber-tab-config";
+import { OWNER_PRIMARY_NAV_ITEMS } from "@/components/owner-experience/owner-tab-config";
 import { Card } from "@/components/ui/card";
 import { getDefaultRouteForUser, getUserRoleLabel } from "@/lib/auth/demo-auth";
 import { cn } from "@/lib/utils";
@@ -48,13 +49,7 @@ type ApprovalBanner = {
 function getNavigation(user: UserAccount): NavItem[] {
   switch (user.role) {
     case "owner":
-      return [
-        { href: "/dashboard/owner", activeHref: "/dashboard/owner", label: "Dashboard", icon: LayoutDashboard },
-        { href: "/team", activeHref: "/team", label: "Team", icon: Users },
-        { href: "/appointments", activeHref: "/appointments", label: "Schedule", icon: CalendarDays },
-        { href: { pathname: "/reports", query: { view: "money" } }, activeHref: "/reports?view=money", label: "Money", icon: WalletCards },
-        { href: "/settings", activeHref: "/settings", label: "Settings", icon: ShieldCheck }
-      ];
+      return OWNER_PRIMARY_NAV_ITEMS;
     case "manager":
       return [
         { href: "/dashboard/manager", activeHref: "/dashboard/manager", label: "Dashboard", icon: LayoutDashboard },
@@ -91,7 +86,7 @@ function getNavigation(user: UserAccount): NavItem[] {
 function getPrimaryFocusLabel(role: Role) {
   switch (role) {
     case "owner":
-      return "Owner command";
+      return "Owner home";
     case "manager":
       return "Operations overview";
     case "front_desk":
@@ -109,7 +104,7 @@ function getPrimaryFocusLabel(role: Role) {
 function getPrimaryActionTitle(role: Role) {
   switch (role) {
     case "owner":
-      return "See the floor, trust the money, and keep the team aligned from one clean owner lane.";
+      return "Home keeps today revenue, bookings, chair utilization, alerts, and quick actions clear while Team, Schedule, Money, and Settings stay one tap away.";
     case "manager":
       return "Keep schedule, queue, and attendance moving without opening owner-only controls.";
     case "front_desk":
@@ -127,7 +122,7 @@ function getPrimaryActionTitle(role: Role) {
 function getBoundaryCopy(role: Role) {
   switch (role) {
     case "owner":
-      return "Owner mode keeps all-shop visibility, protected money controls, team posture, and schedule posture together without exposing raw operator clutter.";
+      return "The five owner tabs keep Home, Team, Schedule, Money, and Settings separated cleanly so shop control stays simple without inventing parallel systems.";
     case "manager":
       return "Manager mode keeps the floor visible while ownership financial controls, payout rules, and transfer rights stay protected.";
     case "front_desk":
@@ -180,7 +175,7 @@ function getAlertLabel(role: Role) {
 }
 
 function getNavigationCountLabel(role: Role, count: number) {
-  if (role === "commission_barber" || role === "booth_rent_barber") {
+  if (role === "owner" || role === "commission_barber" || role === "booth_rent_barber") {
     return `${count} tabs`;
   }
 
@@ -188,6 +183,10 @@ function getNavigationCountLabel(role: Role, count: number) {
 }
 
 function getHeroNavigationCountLabel(role: Role, count: number) {
+  if (role === "owner") {
+    return `${count} owner tabs`;
+  }
+
   if (role === "commission_barber" || role === "booth_rent_barber") {
     return `${count} barber tabs`;
   }
@@ -199,9 +198,9 @@ function getUtilityCards(user: UserAccount): UtilityCard[] {
   switch (user.role) {
     case "owner":
       return [
-        { label: "Owner lane", value: user.appApprovalStatus?.replaceAll("_", " ") ?? "ready", detail: "Business approval and verification continue from the owner dashboard.", icon: ShieldCheck },
+        { label: "Owner tabs", value: user.appApprovalStatus?.replaceAll("_", " ") ?? "ready", detail: "Home, Team, Schedule, Money, and Settings all stay tied to this authenticated owner account.", icon: ShieldCheck },
         { label: "Shop scope", value: user.ownedShopId ? "1" : "0", detail: user.ownedShopId ? "One shop linked to this account" : "Create or attach a shop lane", icon: MapPinned },
-        { label: "Controls", value: "Live", detail: "Money, team, and settings stay in the owner-safe lane.", icon: WalletCards }
+        { label: "Controls", value: "Live", detail: "Revenue, team, schedule, and private setup stay separated by tab.", icon: WalletCards }
       ];
     case "manager":
       return [
@@ -236,7 +235,7 @@ function getUtilityCards(user: UserAccount): UtilityCard[] {
 function getNotificationsHref(role: Role): ComponentProps<typeof Link>["href"] {
   switch (role) {
     case "owner":
-      return { pathname: "/reports", query: { view: "money" } };
+      return "/dashboard/owner/money";
     case "manager":
     case "front_desk":
       return "/queue";
@@ -266,6 +265,10 @@ function getMessagesHref(role: Role): ComponentProps<typeof Link>["href"] {
 }
 
 function getProfileHref(role: Role): ComponentProps<typeof Link>["href"] {
+  if (role === "owner") {
+    return "/dashboard/owner/settings";
+  }
+
   if (role === "client") {
     return "/profile";
   }

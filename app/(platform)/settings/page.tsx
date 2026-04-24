@@ -13,6 +13,10 @@ export default async function SettingsPage() {
     redirect("/dashboard/client/profile?section=settings" as Route);
   }
 
+  if (user.role === "owner") {
+    redirect("/dashboard/owner/settings" as Route);
+  }
+
   if (user.role === "commission_barber" || user.role === "booth_rent_barber") {
     redirect("/dashboard/barber/settings" as Route);
   }

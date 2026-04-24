@@ -162,7 +162,7 @@ describe("owner money workspace", () => {
   it("renders revenue, routing, payout, and anomaly truth from canonical money systems", () => {
     render(<OwnerMoneyWorkspace />);
 
-    expect(screen.getByText("Money command")).toBeInTheDocument();
+    expect(screen.getByText("Money")).toBeInTheDocument();
     expect(screen.getAllByText("$180").length).toBeGreaterThan(0);
     expect(screen.getByText("Open platform fees")).toBeInTheDocument();
     expect(screen.getByText("Recent revenue")).toBeInTheDocument();

@@ -77,7 +77,7 @@ describe("owner schedule workspace", () => {
   it("renders the shop schedule from canonical appointments and gap truth", () => {
     render(<OwnerScheduleWorkspace />);
 
-    expect(screen.getByText("Schedule board")).toBeInTheDocument();
+    expect(screen.getByText("Schedule")).toBeInTheDocument();
     expect(screen.getByText("2")).toBeInTheDocument();
     expect(screen.getAllByText("Maya Cole").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Jordan Ellis").length).toBeGreaterThan(0);

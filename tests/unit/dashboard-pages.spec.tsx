@@ -87,6 +87,7 @@ vi.mock("@/components/operations/owner-settings-workspace", () => ({
 }));
 
 import OwnerDashboardPage from "@/app/(platform)/dashboard/owner/page";
+import OwnerSettingsPage from "@/app/(platform)/dashboard/owner/settings/page";
 import ManagerDashboardPage from "@/app/(platform)/dashboard/manager/page";
 import FrontDeskDashboardPage from "@/app/(platform)/dashboard/front-desk/page";
 import BarberDashboardPage from "@/app/(platform)/dashboard/barber/page";
@@ -110,7 +111,7 @@ describe("dashboard role pages", () => {
     render(await OwnerDashboardPage());
 
     expect(getAuthorizedUserMock).toHaveBeenCalledWith(["owner"]);
-    expect(screen.getByText("Owner control center")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Home" })).toBeInTheDocument();
     expect(screen.getByTestId("owner-overview-stub")).toBeInTheDocument();
   });
 
@@ -224,13 +225,18 @@ describe("dashboard role pages", () => {
     expect(screen.queryByText("Owner control center")).not.toBeInTheDocument();
   });
 
-  it("renders account settings and logout surface for the owner lane", async () => {
+  it("renders account settings and logout surface for the canonical owner settings tab", async () => {
     getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("owner@bvrb3r.demo"));
 
-    render(await SettingsPage());
+    render(
+      await OwnerSettingsPage({
+        searchParams: Promise.resolve({})
+      })
+    );
 
-    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["owner", "commission_barber", "booth_rent_barber", "client"]);
+    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["owner"]);
     expect(screen.getAllByTestId("account-session-workspace-stub").length).toBeGreaterThan(0);
+    expect(screen.getByTestId("owner-settings-workspace-stub")).toBeInTheDocument();
   });
 
   it("redirects barber settings into the canonical barber settings route", async () => {

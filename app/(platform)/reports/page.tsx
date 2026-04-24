@@ -1,3 +1,5 @@
+import type { Route } from "next";
+import { redirect } from "next/navigation";
 import Link from "next/link";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { FintechWorkspace } from "@/components/operations/fintech-workspace";
@@ -15,9 +17,13 @@ export default async function ReportsPage({
   const user = await getAuthorizedUser(["owner", "manager"]);
   const params = await searchParams;
   const growthRequested = params.view === "growth";
+  if (user.role === "owner") {
+    redirect(`/dashboard/owner/money${growthRequested ? "?view=growth" : ""}` as Route);
+  }
+
   const activeHref = "/reports?view=money";
-  const title = "Money command";
-  const subtitle = "Revenue, payouts, breakdowns, and financial exceptions stay clean, trustworthy, and tied to the locked money system.";
+  const title = "Money";
+  const subtitle = "Revenue, payouts, breakdowns, and financial exceptions stay visible for operator review without stepping outside the canonical money system.";
 
   return (
     <DashboardShell user={user} activeHref={activeHref} title={title} subtitle={subtitle}>
@@ -25,10 +31,10 @@ export default async function ReportsPage({
         <Card className="rounded-[32px] p-5 sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="surface-label">Owner navigation map</p>
+              <p className="surface-label">Money visibility</p>
               <p className="mt-2 text-sm text-white/58">Money stays live here because it runs on canonical payment, routing, payout, and anomaly systems.</p>
             </div>
-            <span className="status-pill text-[#d7ffab]">Canonical owner lane</span>
+            <span className="status-pill text-[#d7ffab]">Canonical money tab</span>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
             <Link

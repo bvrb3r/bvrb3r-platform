@@ -7,6 +7,10 @@ import { getAuthorizedUser } from "@/lib/auth/guards";
 export default async function WorkspaceProfilePage() {
   const user = await getAuthorizedUser(["owner", "manager", "front_desk", "commission_barber", "booth_rent_barber"]);
 
+  if (user.role === "owner") {
+    redirect("/dashboard/owner/settings" as Route);
+  }
+
   if (user.role === "commission_barber" || user.role === "booth_rent_barber") {
     redirect("/dashboard/barber/profile" as Route);
   }

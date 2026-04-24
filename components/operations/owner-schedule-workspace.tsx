@@ -106,10 +106,10 @@ export function OwnerScheduleWorkspace() {
         <Card className="rounded-[32px] p-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="surface-label">Schedule board</p>
+              <p className="surface-label">Schedule</p>
               <h3 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">See every chair, every gap, and every revenue window.</h3>
               <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">
-                The owner schedule stays tied to canonical booking truth. Use it to spot cancellations, no-shows, idle chairs, and who is cutting right now.
+                The owner schedule stays tied to canonical booking truth. Use this tab to spot cancellations, no-shows, idle chairs, and who is cutting right now.
               </p>
             </div>
             <div className="rounded-[24px] border border-white/8 bg-black/20 px-4 py-4 text-sm text-white/66">

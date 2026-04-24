@@ -171,10 +171,10 @@ export function OwnerTeamWorkspace() {
         <Card className="rounded-[32px] p-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="surface-label">Team command</p>
+              <p className="surface-label">Team</p>
               <h3 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">Know who is producing and who needs help right now.</h3>
               <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">
-                Team stays operational here: roster visibility, same-day production, payout readiness, and clean links to the next owner action.
+                Team keeps roster visibility, same-day production, payout readiness, and the next staffing action in one owner-safe tab.
               </p>
             </div>
             <div className="rounded-[24px] border border-white/8 bg-black/20 px-4 py-4 text-sm text-white/66">
@@ -272,22 +272,22 @@ export function OwnerTeamWorkspace() {
 
               <div className="flex flex-wrap gap-2">
                 <Link
-                  href="/appointments"
+                  href="/dashboard/owner/schedule"
                   className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#cfff93]/40 bg-[linear-gradient(135deg,#7cff00_0%,#b7ff58_100%)] px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-black shadow-[0_14px_34px_rgba(124,255,0,0.24)] transition hover:-translate-y-0.5 sm:px-5 sm:text-[11px] sm:tracking-[0.22em]"
                 >
                   Open schedule
                 </Link>
                 <Link
-                  href="/workspace/profile"
+                  href="/dashboard/owner/settings"
                   className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#7cff00]/20 hover:text-[#d7ffab] sm:px-5 sm:text-[11px] sm:tracking-[0.22em]"
                 >
-                  View profile
+                  Open settings
                 </Link>
                 <Link
-                  href="/reports?view=money"
+                  href="/dashboard/owner/money"
                   className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#7cff00]/20 hover:text-[#d7ffab] sm:px-5 sm:text-[11px] sm:tracking-[0.22em]"
                 >
-                  Open money controls
+                  Open money
                 </Link>
               </div>
             </div>

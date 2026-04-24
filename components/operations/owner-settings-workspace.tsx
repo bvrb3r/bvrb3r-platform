@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import Link from "next/link";
 import { BellRing, Building2, ShieldCheck, WalletCards } from "lucide-react";
+import { ServiceCatalogWorkspace } from "@/components/marketplace/service-catalog-workspace";
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -56,7 +57,25 @@ function formatScopedShopLabel(name: string, neighborhood?: string) {
   return neighborhood?.trim() ? `${name} / ${neighborhood}` : name;
 }
 
-export function OwnerSettingsWorkspace({ user }: { user: UserAccount }) {
+const sectionIdMap = {
+  profile: "owner-settings-profile",
+  services: "owner-settings-services",
+  compensation: "owner-settings-compensation",
+  payouts: "owner-settings-compensation",
+  verification: "owner-settings-verification",
+  notifications: "owner-settings-notifications",
+  support: "owner-settings-notifications"
+} as const;
+
+type OwnerSettingsSectionKey = keyof typeof sectionIdMap;
+
+export function OwnerSettingsWorkspace({
+  user,
+  initialSection
+}: {
+  user: UserAccount;
+  initialSection?: string;
+}) {
   const profileQuery = useProfileMediaWorkspaceQuery(true);
   const fintechQuery = useFintechManagementQuery();
 
@@ -77,6 +96,7 @@ export function OwnerSettingsWorkspace({ user }: { user: UserAccount }) {
     hours: ""
   }));
   const notificationPreference = profileQuery.data?.viewer.notificationPreference;
+  const selectedSection = (initialSection && initialSection in sectionIdMap ? initialSection : null) as OwnerSettingsSectionKey | null;
   const enabledCommunicationCount = [
     notificationPreference?.inAppEnabled,
     notificationPreference?.emailEnabled,
@@ -111,6 +131,19 @@ export function OwnerSettingsWorkspace({ user }: { user: UserAccount }) {
     ? shops.map((shop) => ({ id: shop.shopId, label: shop.label }))
     : assignedLocations.map((location) => ({ id: location.id, label: formatScopedShopLabel(location.name, location.neighborhood) }));
 
+  useEffect(() => {
+    if (!selectedSection) {
+      return;
+    }
+
+    const target = document.getElementById(sectionIdMap[selectedSection]);
+    if (!target) {
+      return;
+    }
+
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [selectedSection]);
+
   return (
     <div className="space-y-4" data-testid="owner-settings-workspace">
       {errorMessage ? <FeedbackBanner tone="error" message={getReadableActionError(errorMessage)} /> : null}
@@ -119,10 +152,10 @@ export function OwnerSettingsWorkspace({ user }: { user: UserAccount }) {
         <Card className="rounded-[32px] p-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="surface-label">Owner settings</p>
+              <p className="surface-label">Settings</p>
               <h3 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">Control the shop safely without touching raw rails.</h3>
               <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">
-                Settings stays operational here: shop details, communication posture, payout readiness, permissions, and branding links all live in one clean owner-safe lane.
+                Settings keeps shop profile, services, compensation posture, verification, payout setup, notifications, account posture, and support together in one private owner tab.
               </p>
             </div>
             <div className="rounded-[24px] border border-white/8 bg-black/20 px-4 py-4 text-sm text-white/66">
@@ -132,6 +165,24 @@ export function OwnerSettingsWorkspace({ user }: { user: UserAccount }) {
               </div>
               <p className="mt-4 text-[11px] uppercase tracking-[0.22em] text-white/42">{enabledCommunicationCount} communication channels enabled</p>
             </div>
+          </div>
+
+          <div className="mt-5 flex flex-wrap gap-2">
+            <Link href="#owner-settings-profile" className="rounded-full border border-white/10 bg-black/20 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/74 transition hover:border-[#7cff00]/20 hover:text-[#d7ffab]">
+              Shop profile
+            </Link>
+            <Link href="#owner-settings-services" className="rounded-full border border-white/10 bg-black/20 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/74 transition hover:border-[#7cff00]/20 hover:text-[#d7ffab]">
+              Services
+            </Link>
+            <Link href="#owner-settings-compensation" className="rounded-full border border-white/10 bg-black/20 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/74 transition hover:border-[#7cff00]/20 hover:text-[#d7ffab]">
+              Compensation
+            </Link>
+            <Link href="#owner-settings-verification" className="rounded-full border border-white/10 bg-black/20 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/74 transition hover:border-[#7cff00]/20 hover:text-[#d7ffab]">
+              Verification
+            </Link>
+            <Link href="#owner-settings-notifications" className="rounded-full border border-white/10 bg-black/20 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/74 transition hover:border-[#7cff00]/20 hover:text-[#d7ffab]">
+              Notifications
+            </Link>
           </div>
 
           <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -169,7 +220,7 @@ export function OwnerSettingsWorkspace({ user }: { user: UserAccount }) {
           </div>
         </Card>
 
-        <Card className="rounded-[32px] p-6">
+        <Card id="owner-settings-verification" className="rounded-[32px] scroll-mt-6 p-6">
           <div className="flex items-center justify-between gap-3">
             <p className="surface-label">Account health</p>
             <ShieldCheck className="h-5 w-5 text-[#baff69]" />
@@ -210,7 +261,7 @@ export function OwnerSettingsWorkspace({ user }: { user: UserAccount }) {
       </section>
 
       <section className="grid gap-4 lg:grid-cols-[1fr_1fr]">
-        <Card className="rounded-[32px] p-6">
+        <Card id="owner-settings-profile" className="rounded-[32px] scroll-mt-6 p-6">
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="surface-label">Shop details</p>
@@ -242,15 +293,15 @@ export function OwnerSettingsWorkspace({ user }: { user: UserAccount }) {
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
             <Link
-              href="/workspace/profile"
+              href="#owner-settings-profile"
               className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#cfff93]/40 bg-[linear-gradient(135deg,#7cff00_0%,#b7ff58_100%)] px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-black shadow-[0_14px_34px_rgba(124,255,0,0.24)] transition hover:-translate-y-0.5 sm:px-5 sm:text-[11px] sm:tracking-[0.22em]"
             >
-              Manage branding
+              Shop profile
             </Link>
           </div>
         </Card>
 
-        <Card className="rounded-[32px] p-6">
+        <Card id="owner-settings-compensation" className="rounded-[32px] scroll-mt-6 p-6">
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="surface-label">Financial setup</p>
@@ -288,13 +339,28 @@ export function OwnerSettingsWorkspace({ user }: { user: UserAccount }) {
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
             <Link
-              href="/reports?view=money"
+              href="/dashboard/owner/money"
               className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#7cff00]/20 hover:text-[#d7ffab] sm:px-5 sm:text-[11px] sm:tracking-[0.22em]"
             >
               Open money tab
             </Link>
           </div>
         </Card>
+      </section>
+
+      <section id="owner-settings-services" className="scroll-mt-6 space-y-4">
+        <div className="rounded-[32px] border border-white/8 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(8,8,8,0.98))] p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="surface-label">Services and pricing</p>
+              <p className="mt-3 max-w-2xl text-sm leading-7 text-white/62">
+                Service names, pricing, durations, deposits, and public booking posture stay inside Settings so shop setup is separate from daily operations.
+              </p>
+            </div>
+            <span className="status-pill text-[#d7ffab]">Canonical service catalog</span>
+          </div>
+        </div>
+        <ServiceCatalogWorkspace role="owner" />
       </section>
 
       <KioskControlPanel shops={kioskShops} />
@@ -321,11 +387,11 @@ export function OwnerSettingsWorkspace({ user }: { user: UserAccount }) {
           </div>
         </Card>
 
-        <Card className="rounded-[32px] p-6">
+        <Card id="owner-settings-notifications" className="rounded-[32px] scroll-mt-6 p-6">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="surface-label">Communications and account posture</p>
-              <p className="mt-2 text-sm text-white/58">Keep shop broadcasts and owner communication posture visible without creating a second messaging stack.</p>
+              <p className="surface-label">Notifications and support</p>
+              <p className="mt-2 text-sm text-white/58">Keep shop broadcasts, support links, and owner communication posture visible without creating a second messaging stack.</p>
             </div>
             <BellRing className="h-5 w-5 text-[#baff69]" />
           </div>
@@ -344,9 +410,9 @@ export function OwnerSettingsWorkspace({ user }: { user: UserAccount }) {
           <div className="mt-4 rounded-[24px] border border-white/8 bg-black/20 p-4">
             <p className="surface-label">What lives where</p>
             <div className="mt-3 space-y-2 text-sm text-white/62">
-              <p>- Shop announcements and direct communication live in Messages.</p>
-              <p>- Team posture and staffing live in Team.</p>
-              <p>- Billing, payout readiness, and compensation posture live in Money.</p>
+              <p>- Home keeps today revenue, bookings snapshot, chair utilization, alerts, and quick actions visible.</p>
+              <p>- Team keeps roster, approvals, and staffing posture visible.</p>
+              <p>- Money keeps revenue, payouts, and compensation visibility together.</p>
             </div>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
@@ -357,10 +423,10 @@ export function OwnerSettingsWorkspace({ user }: { user: UserAccount }) {
               Open messages
             </Link>
             <Link
-              href="/team"
+              href="/dashboard/owner/team"
               className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#7cff00]/20 hover:text-[#d7ffab] sm:px-5 sm:text-[11px] sm:tracking-[0.22em]"
             >
-              Open team lane
+              Open team tab
             </Link>
           </div>
         </Card>

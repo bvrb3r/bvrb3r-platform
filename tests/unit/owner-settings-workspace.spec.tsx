@@ -21,6 +21,10 @@ vi.mock("@/components/operations/kiosk-control-panel", () => ({
   KioskControlPanel: () => <div data-testid="kiosk-control-panel-stub">Kiosk control panel</div>
 }));
 
+vi.mock("@/components/marketplace/service-catalog-workspace", () => ({
+  ServiceCatalogWorkspace: () => <div data-testid="service-catalog-workspace-stub">Service catalog</div>
+}));
+
 import { resolveDemoUser } from "@/lib/auth/demo-auth";
 import { OwnerSettingsWorkspace } from "@/components/operations/owner-settings-workspace";
 
@@ -67,6 +71,7 @@ describe("owner settings workspace", () => {
     expect(screen.getByText(/Current status:/i)).toBeInTheDocument();
     expect(screen.getByText("$95 is currently ready for payout in the owner scope.")).toBeInTheDocument();
     expect(screen.getByTestId("kiosk-control-panel-stub")).toBeInTheDocument();
+    expect(screen.getByTestId("service-catalog-workspace-stub")).toBeInTheDocument();
   });
 
   it("shows a verified posture when owner and shop approvals are clear", () => {

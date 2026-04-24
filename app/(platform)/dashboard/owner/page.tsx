@@ -9,10 +9,10 @@ export default async function OwnerDashboardPage() {
     <DashboardShell
       user={user}
       activeHref="/dashboard/owner"
-      title={shopName || "Owner control center"}
+      title="Home"
       subtitle={shopName
-        ? `${shopName} is your owner-safe command view for activation, setup, revenue, chair flow, team performance, and financial health.`
-        : "See revenue, chair flow, team performance, and financial health from one owner-safe command view."}
+        ? `${shopName} home keeps today revenue, bookings, chair utilization, alerts, and quick actions clear without leaving the owner-safe system.`
+        : "Home keeps today revenue, bookings, chair utilization, alerts, and quick actions clear without leaving the owner-safe system."}
     >
       <OwnerOverview />
     </DashboardShell>

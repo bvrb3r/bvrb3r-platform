@@ -1,7 +1,6 @@
 import type { Route } from "next";
 import { redirect } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
-import { OwnerScheduleWorkspace } from "@/components/operations/owner-schedule-workspace";
 import { Card } from "@/components/ui/card";
 import { getAuthorizedUser } from "@/lib/auth/guards";
 
@@ -26,16 +25,15 @@ export default async function AppointmentsPage({
   }
 
   if (user.role === "owner") {
-    return (
-      <DashboardShell
-        user={user}
-        activeHref="/appointments"
-        title="Shop schedule"
-        subtitle="See every chair, every gap, and every live appointment from one owner-safe operations board."
-      >
-        <OwnerScheduleWorkspace />
-      </DashboardShell>
-    );
+    const params = await searchParams;
+    const query = new URLSearchParams();
+    if (params.view) {
+      query.set("view", params.view);
+    }
+    if (params.date) {
+      query.set("date", params.date);
+    }
+    redirect(`/dashboard/owner/schedule${query.size ? `?${query.toString()}` : ""}` as Route);
   }
 
   return (

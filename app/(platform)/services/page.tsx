@@ -39,6 +39,10 @@ export default async function ServicesPage({
   const user = await getAuthorizedUser(["owner", "commission_barber", "booth_rent_barber"]);
   const marketplaceRole = user.role as Extract<Role, "owner" | "commission_barber" | "booth_rent_barber">;
 
+  if (marketplaceRole === "owner") {
+    redirect("/dashboard/owner/settings?section=services" as Route);
+  }
+
   if (marketplaceRole === "commission_barber" || marketplaceRole === "booth_rent_barber") {
     const params = await searchParams;
     const query = new URLSearchParams({ section: "services" });

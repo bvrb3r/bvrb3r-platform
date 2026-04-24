@@ -99,22 +99,22 @@ const ownerSetupCards: Array<{
   {
     title: "Complete shop profile",
     detail: "Add address, hours, photos, and the details clients need before booking.",
-    href: "/settings"
+    href: "/dashboard/owner/settings"
   },
   {
     title: "Add first barber",
     detail: "Invite or create the first team member before opening the floor.",
-    href: "/team"
+    href: "/dashboard/owner/team"
   },
   {
     title: "Set services",
     detail: "Create the service menu, durations, pricing, deposits, and add-ons.",
-    href: "/services"
+    href: "/dashboard/owner/settings?section=services"
   },
   {
     title: "Connect payouts",
     detail: "Finish money readiness before live bookings and settlement.",
-    href: { pathname: "/reports", query: { view: "money" } }
+    href: "/dashboard/owner/settings"
   },
   {
     title: "Open booking",
@@ -246,19 +246,19 @@ export function OwnerOverview() {
 
           <div className="mt-5 flex flex-wrap gap-3">
             <Link
-              href="/reports?view=money"
+              href="/dashboard/owner/money"
               className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#cfff93]/40 bg-[linear-gradient(135deg,#7cff00_0%,#b7ff58_100%)] px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-black shadow-[0_14px_34px_rgba(124,255,0,0.24)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_40px_rgba(124,255,0,0.32)] sm:px-5 sm:text-[11px] sm:tracking-[0.22em]"
             >
               Open money
             </Link>
             <Link
-              href="/appointments"
+              href="/dashboard/owner/schedule"
               className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-[linear-gradient(180deg,rgba(31,31,31,0.96),rgba(11,11,11,0.98))] px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#7cff00]/30 hover:bg-[linear-gradient(180deg,rgba(34,34,34,0.96),rgba(14,14,14,0.98))] hover:text-[#d8ff9f] sm:px-5 sm:text-[11px] sm:tracking-[0.22em]"
             >
               Open schedule
             </Link>
             <Link
-              href="/team"
+              href="/dashboard/owner/team"
               className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-[linear-gradient(180deg,rgba(31,31,31,0.96),rgba(11,11,11,0.98))] px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#7cff00]/30 hover:bg-[linear-gradient(180deg,rgba(34,34,34,0.96),rgba(14,14,14,0.98))] hover:text-[#d8ff9f] sm:px-5 sm:text-[11px] sm:tracking-[0.22em]"
             >
               Open team

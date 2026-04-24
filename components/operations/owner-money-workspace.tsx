@@ -149,10 +149,10 @@ export function OwnerMoneyWorkspace() {
       <Card className="rounded-[32px] p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="surface-label">Money command</p>
+            <p className="surface-label">Money</p>
             <h3 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">Trust every dollar without inventing the story around it.</h3>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">
-              Revenue, payouts, routing visibility, and anomalies all stay tied to the canonical money layer. This lane is for understanding the business and acting safely.
+              Revenue, payouts, routing visibility, and anomalies all stay tied to the canonical money layer. This tab is for understanding the business and acting safely.
             </p>
           </div>
           <div className="rounded-[24px] border border-white/8 bg-black/20 px-4 py-4 text-sm text-white/66">

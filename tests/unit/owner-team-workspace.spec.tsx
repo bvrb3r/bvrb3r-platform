@@ -146,7 +146,7 @@ describe("owner team workspace", () => {
   it("renders the owner team lane from scoped canonical barber and payout truth", () => {
     render(<OwnerTeamWorkspace />);
 
-    expect(screen.getByText("Team command")).toBeInTheDocument();
+    expect(screen.getByText("Team")).toBeInTheDocument();
     expect(screen.getAllByText("Maya Cole").length).toBeGreaterThan(0);
     expect(screen.getByText("2 barbers in scope")).toBeInTheDocument();
     expect(screen.getAllByText("$105").length).toBeGreaterThan(0);

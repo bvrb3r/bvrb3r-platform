@@ -19,7 +19,9 @@ vi.mock("@/components/operations/owner-schedule-workspace", () => ({
 }));
 
 vi.mock("@/components/operations/owner-settings-workspace", () => ({
-  OwnerSettingsWorkspace: () => <div data-testid="owner-settings-workspace-stub">Owner settings workspace</div>
+  OwnerSettingsWorkspace: ({ initialSection }: { initialSection?: string }) => (
+    <div data-testid="owner-settings-workspace-stub">{initialSection ?? "none"}</div>
+  )
 }));
 
 vi.mock("@/components/auth/account-session-workspace", () => ({
@@ -34,61 +36,72 @@ vi.mock("@/components/operations/fintech-workspace", () => ({
   FintechWorkspace: ({ locationIds }: { locationIds: string[] }) => <div data-testid="fintech-workspace-stub">{locationIds.join(",")}</div>
 }));
 
-import TeamPage from "@/app/(platform)/team/page";
-import AppointmentsPage from "@/app/(platform)/appointments/page";
-import SettingsPage from "@/app/(platform)/settings/page";
-import ReportsPage from "@/app/(platform)/reports/page";
+import OwnerTeamPage from "@/app/(platform)/dashboard/owner/team/page";
+import OwnerSchedulePage from "@/app/(platform)/dashboard/owner/schedule/page";
+import OwnerMoneyPage from "@/app/(platform)/dashboard/owner/money/page";
+import OwnerSettingsPage from "@/app/(platform)/dashboard/owner/settings/page";
 
-describe("owner route polish", () => {
+describe("owner dashboard tab pages", () => {
   beforeEach(() => {
     getAuthorizedUserMock.mockReset();
   });
 
-  it("renders the owner team workspace on the team route", async () => {
+  it("renders the owner team workspace on the canonical team tab", async () => {
     getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("owner@bvrb3r.demo"));
 
-    render(await TeamPage());
+    render(await OwnerTeamPage());
 
-    expect(screen.getByText("Team performance and staffing")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Team" })).toBeInTheDocument();
     expect(screen.getByTestId("owner-team-workspace-stub")).toBeInTheDocument();
   });
 
-  it("renders the owner schedule workspace on the appointments route", async () => {
+  it("renders the owner schedule workspace on the canonical schedule tab", async () => {
     getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("owner@bvrb3r.demo"));
 
-    render(await AppointmentsPage({ searchParams: Promise.resolve({}) }));
+    render(await OwnerSchedulePage());
 
-    expect(screen.getByText("Shop schedule")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Schedule" })).toBeInTheDocument();
     expect(screen.getByTestId("owner-schedule-workspace-stub")).toBeInTheDocument();
   });
 
-  it("renders the owner settings workspace on the settings route", async () => {
+  it("renders the owner money workspace on the canonical money tab", async () => {
     getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("owner@bvrb3r.demo"));
 
-    render(await SettingsPage());
+    render(
+      await OwnerMoneyPage({
+        searchParams: Promise.resolve({ view: "money" })
+      })
+    );
 
-    expect(screen.getByText("Settings and shop posture")).toBeInTheDocument();
-    expect(screen.getByTestId("owner-settings-workspace-stub")).toBeInTheDocument();
-  });
-
-  it("renders the money view on reports when requested", async () => {
-    getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("owner@bvrb3r.demo"));
-
-    render(await ReportsPage({ searchParams: Promise.resolve({ view: "money" }) }));
-
-    expect(screen.getByText("Money command")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Money" })).toBeInTheDocument();
     expect(screen.getByTestId("owner-money-workspace-stub")).toBeInTheDocument();
     expect(screen.getByTestId("fintech-workspace-stub")).toHaveTextContent("loc-ybor,loc-hyde");
   });
 
-  it("parks the growth view honestly and keeps the owner on canonical money surfaces", async () => {
+  it("keeps the growth placeholder available on the owner money tab when requested", async () => {
     getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("owner@bvrb3r.demo"));
 
-    render(await ReportsPage({ searchParams: Promise.resolve({ view: "growth" }) }));
+    render(
+      await OwnerMoneyPage({
+        searchParams: Promise.resolve({ view: "growth" })
+      })
+    );
 
     expect(screen.getByText("Growth parked")).toBeInTheDocument();
-    expect(screen.getByText(/Growth tools are parked until the canonical growth phase is built/i)).toBeInTheDocument();
     expect(screen.getByTestId("owner-money-workspace-stub")).toBeInTheDocument();
-    expect(screen.getByTestId("fintech-workspace-stub")).toHaveTextContent("loc-ybor,loc-hyde");
+  });
+
+  it("renders the owner settings workspace on the canonical settings tab", async () => {
+    getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("owner@bvrb3r.demo"));
+
+    render(
+      await OwnerSettingsPage({
+        searchParams: Promise.resolve({ section: "services" })
+      })
+    );
+
+    expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
+    expect(screen.getAllByTestId("account-session-workspace-stub").length).toBeGreaterThan(0);
+    expect(screen.getByTestId("owner-settings-workspace-stub")).toHaveTextContent("services");
   });
 });

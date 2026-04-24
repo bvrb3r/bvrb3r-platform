@@ -204,6 +204,9 @@ describe("owner overview", () => {
     expect(screen.getByText("Maya Cole is leading posted revenue at $120 across 1 completed tickets.")).toBeInTheDocument();
     expect(screen.getByText(/unresolved financial anomal/i)).toBeInTheDocument();
     expect(screen.getByTestId("shop-manager-panel-stub")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Open money/i })).toHaveAttribute("href", "/dashboard/owner/money");
+    expect(screen.getByRole("link", { name: /Open schedule/i })).toHaveAttribute("href", "/dashboard/owner/schedule");
+    expect(screen.getByRole("link", { name: /Open team/i })).toHaveAttribute("href", "/dashboard/owner/team");
   });
 
   it("shows a clean no-demo empty state for a fresh owner lane", () => {
@@ -251,5 +254,6 @@ describe("owner overview", () => {
     expect(screen.getByText("Fresh owner setup")).toBeInTheDocument();
     expect(screen.getByText("No demo activity")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Add first barber/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Set services/i })).toHaveAttribute("href", "/dashboard/owner/settings?section=services");
   });
 });
