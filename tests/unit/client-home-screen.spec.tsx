@@ -3,23 +3,11 @@ import type { ComponentProps, MouseEvent as ReactMouseEvent, ReactNode } from "r
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
-  useClientAiSummaryQueryMock,
-  useTrackAiRecommendationMutationMock,
   useClientHomeQueryMock,
-  useClientBookingsQueryMock,
-  useBarberProfileQueryMock,
-  useClientPointsBalanceQueryMock,
-  usePaymentMethodsQueryMock,
-  useMarketplaceAnalyticsMutationMock
+  useClientBookingsQueryMock
 } = vi.hoisted(() => ({
-  useClientAiSummaryQueryMock: vi.fn(),
-  useTrackAiRecommendationMutationMock: vi.fn(),
   useClientHomeQueryMock: vi.fn(),
-  useClientBookingsQueryMock: vi.fn(),
-  useBarberProfileQueryMock: vi.fn(),
-  useClientPointsBalanceQueryMock: vi.fn(),
-  usePaymentMethodsQueryMock: vi.fn(),
-  useMarketplaceAnalyticsMutationMock: vi.fn()
+  useClientBookingsQueryMock: vi.fn()
 }));
 
 vi.mock("next/link", () => ({
@@ -47,22 +35,17 @@ vi.mock("next/link", () => ({
 
 vi.mock("@/lib/booking/client", () => ({
   useClientHomeQuery: useClientHomeQueryMock,
-  useClientBookingsQuery: useClientBookingsQueryMock,
-  useBarberProfileQuery: useBarberProfileQueryMock,
-  useClientPointsBalanceQuery: useClientPointsBalanceQueryMock
+  useClientBookingsQuery: useClientBookingsQueryMock
 }));
 
-vi.mock("@/lib/ai/client", () => ({
-  useClientAiSummaryQuery: useClientAiSummaryQueryMock,
-  useTrackAiRecommendationMutation: useTrackAiRecommendationMutationMock
-}));
-
-vi.mock("@/lib/payments/client", () => ({
-  usePaymentMethodsQuery: usePaymentMethodsQueryMock
-}));
-
-vi.mock("@/lib/marketplace/client", () => ({
-  useMarketplaceAnalyticsMutation: useMarketplaceAnalyticsMutationMock
+vi.mock("@/components/client-experience/marketplace-tracked-action-link", () => ({
+  MarketplaceTrackedActionLink: ({
+    children,
+    href
+  }: {
+    children?: ReactNode;
+    href: string;
+  }) => <a href={href}>{children}</a>
 }));
 
 import { ClientHomeScreen } from "@/components/client-experience/client-home-screen";
@@ -71,12 +54,6 @@ describe("client home screen", () => {
   beforeEach(() => {
     useClientHomeQueryMock.mockReset();
     useClientBookingsQueryMock.mockReset();
-    useBarberProfileQueryMock.mockReset();
-    useClientPointsBalanceQueryMock.mockReset();
-    usePaymentMethodsQueryMock.mockReset();
-    useMarketplaceAnalyticsMutationMock.mockReset();
-    useClientAiSummaryQueryMock.mockReset();
-    useTrackAiRecommendationMutationMock.mockReset();
 
     useClientHomeQueryMock.mockReturnValue({
       data: {
@@ -86,7 +63,22 @@ describe("client home screen", () => {
           favoriteBarberReference: "barber-wave"
         },
         locationId: "loc-ybor",
-        trustedBarbers: [
+        hasResolvedLocation: true,
+        shops: [
+          {
+            id: "loc-ybor",
+            name: "Centro Ybor Flagship",
+            brandLine: "Trusted local shop",
+            neighborhood: "Ybor City",
+            city: "Tampa",
+            state: "FL",
+            phone: "(813) 555-0101",
+            address: "Centro Ybor Flagship, Ybor City, Tampa, FL",
+            kind: "shop"
+          }
+        ],
+        trustedBarbers: [],
+        recommendedBarbers: [
           {
             barberId: "barber-wave",
             username: "wave",
@@ -109,27 +101,23 @@ describe("client home screen", () => {
             badges: ["verified_identity"]
           }
         ],
-        favoriteBarber: {
-          barberId: "barber-wave",
-          username: "wave",
-          barberName: "Wave Carter",
-          rating: 4.9,
-          reviewCount: 120,
-          priceRange: [55, 70],
-          priceRangeLabel: "$55 - $70",
-          nextAvailableAt: "2026-04-24T15:00:00.000Z",
-          availabilityLabel: "Today 3:00 PM",
-          distanceMiles: 1.2,
-          locationId: "loc-ybor",
-          locationLabel: "Centro Ybor Flagship",
-          shopName: "Centro Ybor Flagship",
-          specialties: ["Precision fades"],
-          mostBookedService: "Signature Precision Cut",
-          mostBookedServiceId: "srv-signature",
-          retentionScore: 92,
-          activityScore: 128,
-          badges: ["verified_identity"]
-        },
+        recommendedShops: [
+          {
+            id: "loc-ybor",
+            name: "Centro Ybor Flagship",
+            brandLine: "Trusted local studio",
+            neighborhood: "Ybor City",
+            city: "Tampa",
+            state: "FL",
+            address: "Centro Ybor Flagship, Ybor City, Tampa, FL",
+            kind: "shop",
+            activeBarbersCount: 3,
+            nextAvailableAt: "2026-04-24T15:00:00.000Z",
+            nextAvailableLabel: "Today 3:00 PM",
+            bookHref: "/booking/new?barberId=barber-wave&locationId=loc-ybor"
+          }
+        ],
+        favoriteBarber: null,
         nextAvailableChair: {
           barberId: "barber-wave",
           username: "wave",
@@ -166,27 +154,8 @@ describe("client home screen", () => {
         },
         nextAppointmentPayment: {
           outstandingBalance: 45,
-          defaultPaymentMethod: {
-            id: "pm-default",
-            provider: "stripe",
-            brand: "Visa",
-            last4: "4242",
-            expMonth: 12,
-            expYear: 2029,
-            isDefault: true,
-            createdAt: "2026-04-01T00:00:00.000Z",
-            label: "Visa ending in 4242"
-          },
           latestBookingPayment: {
-            id: "pay-1",
-            appointmentId: "appt-next",
-            amount: 55,
-            currency: "usd",
-            provider: "stripe",
-            paymentStatus: "captured",
-            paymentType: "booking",
-            paidAt: "2026-04-20T00:00:00.000Z",
-            createdAt: "2026-04-20T00:00:00.000Z"
+            paymentStatus: "captured"
           }
         },
         history: [
@@ -195,6 +164,7 @@ describe("client home screen", () => {
             barberId: "barber-wave",
             serviceId: "srv-signature",
             locationId: "loc-ybor",
+            status: "completed",
             start: "2026-04-20T14:00:00.000Z",
             totalAmount: 55,
             grandTotal: 55,
@@ -209,177 +179,46 @@ describe("client home screen", () => {
       isLoading: false,
       error: null
     });
-
-    useClientPointsBalanceQueryMock.mockReturnValue({
-      data: {
-        unlockedPoints: 120,
-        pendingPoints: 10,
-        promoUnlockedPoints: 40,
-        earnedUnlockedPoints: 80,
-        lifetimeEarned: 220,
-        lifetimeRedeemed: 40,
-        totalPoints: 130,
-        inAppValue: 12,
-        cashoutValue: 0,
-        referralPendingPoints: 0,
-        reservedCashoutPoints: 0,
-        cashoutEligiblePoints: 0,
-        updatedAt: "2026-04-20T00:00:00.000Z",
-        explanation: {
-          nextMilestonePoints: 200,
-          pointsToNextMilestone: 80,
-          progressPercent: 60,
-          nextMilestoneInAppValue: 20,
-          nextMilestoneCashValue: 0,
-          progressLabel: "80 points to the next milestone.",
-          valueAdvantageLabel: "Ready for a real booking discount.",
-          unlockHint: "Complete services unlock points.",
-          cashoutHint: "Cashout is not enabled for clients."
-        }
-      },
-      isLoading: false,
-      error: null
-    });
-
-    usePaymentMethodsQueryMock.mockReturnValue({
-      data: {
-        methods: [
-          {
-            id: "pm-default",
-            provider: "stripe",
-            brand: "Visa",
-            last4: "4242",
-            expMonth: 12,
-            expYear: 2029,
-            isDefault: true,
-            createdAt: "2026-04-01T00:00:00.000Z",
-            label: "Visa ending in 4242"
-          }
-        ]
-      },
-      isLoading: false
-    });
-    useClientAiSummaryQueryMock.mockReturnValue({
-      data: {
-        generatedAt: "2026-04-20T00:00:00.000Z",
-        rebookingReminder: {
-          recommendationId: "rebooking:client-jordan:appt-last:28",
-          type: "rebooking_reminder",
-          title: "Time to line up your next cut.",
-          reason: "Last cut was 28 days ago. Your typical cadence is about 28 days.",
-          explanation: "This reminder is based on your completed visit history with Wave Carter.",
-          actionLabel: "Rebook now",
-          cadenceSource: "routine",
-          confidence: "strong",
-          lastCompletedAt: "2026-04-20T14:00:00.000Z",
-          daysSinceLastService: 28,
-          typicalCadenceDays: 28,
-          barberName: "Wave Carter",
-          serviceName: "Signature Precision Cut",
-          booking: {
-            barberId: "barber-wave",
-            locationId: "loc-ybor",
-            serviceId: "srv-signature",
-            sourceKind: "client_dashboard"
-          }
-        },
-        availableNowSuggestions: [
-          {
-            recommendationId: "available-now:barber-wave:loc-ybor:2026-04-24T15:00:00.000Z",
-            type: "available_now",
-            title: "Open chair with Wave Carter.",
-            reason: "Next real opening is in 2 hours.",
-            explanation: "Fastest trusted chair near you.",
-            actionLabel: "Book this chair",
-            barberName: "Wave Carter",
-            username: "wave",
-            appointmentTime: "2026-04-24T15:00:00.000Z",
-            locationId: "loc-ybor",
-            shopName: "Centro Ybor Flagship",
-            priceFrom: 55,
-            rating: 4.9,
-            distanceMiles: 1.2,
-            specialties: ["Precision fades"],
-            matchedFrom: "available_now",
-            booking: {
-              barberId: "barber-wave",
-              username: "wave",
-              locationId: "loc-ybor",
-              appointmentTime: "2026-04-24T15:00:00.000Z",
-              sourceKind: "haircut_now",
-              matchedFrom: "available_now"
-            }
-          }
-        ],
-        nextLayer: {
-          personalization: { status: "scaffolded", signalKeys: [], notes: [] },
-          pricingSuggestions: { status: "scaffolded", signalKeys: [], notes: [] },
-          churnPrediction: { status: "scaffolded", signalKeys: [], notes: [] }
-        }
-      },
-      isLoading: false,
-      error: null
-    });
-    useTrackAiRecommendationMutationMock.mockReturnValue({
-      mutate: vi.fn()
-    });
-
-    useBarberProfileQueryMock.mockReturnValue({
-      data: {
-        barber: { id: "barber-wave", name: "Wave Carter" },
-        profile: {
-          username: "wave",
-          headline: "Precision fades that hold their shape.",
-          photoAccent: "#7cff00",
-          specialties: ["Precision fades"]
-        },
-        proof: { reviewScore: 4.9 },
-        shopLocations: [{ name: "Centro Ybor Flagship" }],
-        bookingCtaHref: "/booking/new?barberId=barber-wave&serviceId=srv-signature"
-      }
-    });
-    useMarketplaceAnalyticsMutationMock.mockReturnValue({
-      mutate: vi.fn(),
-      mutateAsync: vi.fn()
-    });
   });
 
-  it("renders the real rebook, upcoming, recommended, and wallet snapshots", () => {
+  it("renders the refined hero, upcoming appointment, barber recommendations, and shop recommendations", () => {
     render(<ClientHomeScreen isSignedInClient displayName="Jordan Ellis" />);
 
-    expect(screen.getByRole("link", { name: "Rebook" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Book the next open chair" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Find barbers" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Explore services" })).toBeInTheDocument();
-    expect(screen.getByText("Rebooking reminder")).toBeInTheDocument();
-    expect(screen.getByText("Last cut was 28 days ago. Your typical cadence is about 28 days.")).toBeInTheDocument();
-    expect(screen.getByText("Upcoming appointment")).toBeInTheDocument();
-    expect(screen.getAllByText("Signature Precision Cut").length).toBeGreaterThan(0);
-    expect(screen.getByText("Wallet and points snapshot")).toBeInTheDocument();
-    expect(screen.getByText("Visa ending in 4242")).toBeInTheDocument();
-    expect(screen.getByText(/120 BVR Points are ready/i)).toBeInTheDocument();
-    expect(screen.getByText("Recommended barbers around you.")).toBeInTheDocument();
-    expect(screen.queryByText("BVR Points and retention")).not.toBeInTheDocument();
-    expect(screen.queryByText("Recent visits")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Find a Barber" })).toBeInTheDocument();
+    expect(screen.getAllByText("Book Next Available").length).toBeGreaterThan(0);
+    expect(screen.getByRole("link", { name: "Find a Barber Shop" })).toBeInTheDocument();
+    expect(screen.getByText("Upcoming Appointment")).toBeInTheDocument();
+    expect(screen.getByText("Recommended Barbers")).toBeInTheDocument();
+    expect(screen.getByText("Recommended Barber Shops")).toBeInTheDocument();
+    expect(screen.queryByText("Search Availability")).not.toBeInTheDocument();
+    expect(screen.queryByText("Explore Services")).not.toBeInTheDocument();
+    expect(screen.queryByText("Open Activity")).not.toBeInTheDocument();
+    expect(screen.queryByText("Wallet and points snapshot")).not.toBeInTheDocument();
+    expect(screen.queryByText("Open Wallet")).not.toBeInTheDocument();
+    expect(screen.queryByText("Open Rewards")).not.toBeInTheDocument();
+    expect(screen.queryByText("Add Card")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "Find a Barber" })).toHaveLength(1);
   });
 
-  it("shows clean empty states for a fresh client with no real history or retention state", () => {
+  it("guards next available booking with add-location guidance when no saved location exists", () => {
     useClientHomeQueryMock.mockReturnValue({
       data: {
         client: {
           clientReference: "client-jordan",
-          fullName: "Jordan Ellis",
-          favoriteBarberReference: null
+          fullName: "Jordan Ellis"
         },
-        locationId: "loc-ybor",
+        locationId: "",
+        hasResolvedLocation: false,
+        shops: [],
         trustedBarbers: [],
+        recommendedBarbers: [],
+        recommendedShops: [],
         favoriteBarber: null,
         nextAvailableChair: null
       },
       isLoading: false,
       error: null
     });
-
     useClientBookingsQueryMock.mockReturnValue({
       data: {
         nextAppointment: null,
@@ -390,65 +229,48 @@ describe("client home screen", () => {
       error: null
     });
 
-    useClientPointsBalanceQueryMock.mockReturnValue({
-      data: {
-        unlockedPoints: 0,
-        pendingPoints: 0,
-        promoUnlockedPoints: 0,
-        earnedUnlockedPoints: 0,
-        lifetimeEarned: 0,
-        lifetimeRedeemed: 0,
-        totalPoints: 0,
-        inAppValue: 0,
-        cashoutValue: 0,
-        referralPendingPoints: 0,
-        reservedCashoutPoints: 0,
-        cashoutEligiblePoints: 0,
-        updatedAt: "2026-04-20T00:00:00.000Z",
-        explanation: {
-          nextMilestonePoints: 100,
-          pointsToNextMilestone: 100,
-          progressPercent: 0,
-          nextMilestoneInAppValue: 10,
-          nextMilestoneCashValue: 0,
-          progressLabel: "Complete a service to begin earning.",
-          valueAdvantageLabel: "No rewards yet.",
-          unlockHint: "Complete services unlock points.",
-          cashoutHint: "Cashout is not enabled for clients."
-        }
-      },
-      isLoading: false,
-      error: null
-    });
-    usePaymentMethodsQueryMock.mockReturnValue({
-      data: { methods: [] },
-      isLoading: false
-    });
-    useClientAiSummaryQueryMock.mockReturnValue({
-      data: {
-        generatedAt: "2026-04-20T00:00:00.000Z",
-        rebookingReminder: null,
-        availableNowSuggestions: [],
-        nextLayer: {
-          personalization: { status: "scaffolded", signalKeys: [], notes: [] },
-          pricingSuggestions: { status: "scaffolded", signalKeys: [], notes: [] },
-          churnPrediction: { status: "scaffolded", signalKeys: [], notes: [] }
-        }
-      },
-      isLoading: false,
-      error: null
-    });
+    render(<ClientHomeScreen isSignedInClient displayName="Jordan Ellis" />);
 
-    useBarberProfileQueryMock.mockReturnValue({ data: null });
+    expect(screen.getByText("Add your location to book the next available barber near you.")).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "Add Location" }).length).toBeGreaterThan(0);
+    expect(screen.getByText("No upcoming appointment yet.")).toBeInTheDocument();
+  });
+
+  it("falls back to search barbers when location exists but no next-available candidate is live", () => {
+    useClientHomeQueryMock.mockReturnValue({
+      data: {
+        client: {
+          clientReference: "client-jordan",
+          fullName: "Jordan Ellis",
+          favoriteShopReference: "loc-ybor"
+        },
+        locationId: "loc-ybor",
+        hasResolvedLocation: true,
+        shops: [],
+        trustedBarbers: [],
+        recommendedBarbers: [],
+        recommendedShops: [],
+        favoriteBarber: null,
+        nextAvailableChair: null
+      },
+      isLoading: false,
+      error: null
+    });
+    useClientBookingsQueryMock.mockReturnValue({
+      data: {
+        nextAppointment: null,
+        nextAppointmentPayment: null,
+        history: []
+      },
+      isLoading: false,
+      error: null
+    });
 
     render(<ClientHomeScreen isSignedInClient displayName="Jordan Ellis" />);
 
-    expect(screen.getByText("Find your first barber, Jordan.")).toBeInTheDocument();
-    expect(screen.getAllByRole("link", { name: "Find a barber" }).length).toBeGreaterThan(0);
-    expect(screen.getByText("No upcoming appointment yet")).toBeInTheDocument();
-    expect(screen.getByText("Wallet and points snapshot")).toBeInTheDocument();
-    expect(screen.getByText("Points show up here after completed paid services close.")).toBeInTheDocument();
+    expect(screen.getByText("No available barbers near you right now.")).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "Search Barbers" }).length).toBeGreaterThan(0);
     expect(screen.getByText("No barbers are accepting bookings here yet.")).toBeInTheDocument();
-    expect(screen.queryByText("Recent visits")).not.toBeInTheDocument();
+    expect(screen.getByText("No barber shops are accepting bookings here yet.")).toBeInTheDocument();
   });
 });

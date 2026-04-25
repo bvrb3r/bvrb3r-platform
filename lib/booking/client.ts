@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AiRecommendationType } from "@/types/ai";
-import type { DiscoveryResult, HaircutNowMatch } from "@/types/domain";
+import type { DiscoveryResult, HaircutNowMatch, RecommendedShopView } from "@/types/domain";
 import type { LiveAppointmentRecord } from "@/lib/operations/live-state";
 import type { AppointmentViewModel } from "@/lib/utils/operations";
 import type { PublicBarberProfileView } from "@/lib/marketplace/engine";
@@ -43,9 +43,12 @@ export interface ClientHomeResponse {
     longitude?: number;
   }>;
   trustedBarbers: DiscoveryResult[];
+  recommendedBarbers: DiscoveryResult[];
+  recommendedShops: RecommendedShopView[];
   favoriteBarber: DiscoveryResult | null;
   nextAvailableChair: HaircutNowMatch | null;
   locationId: string;
+  hasResolvedLocation: boolean;
 }
 
 export interface BarberSearchResponse {

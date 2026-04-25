@@ -80,6 +80,7 @@ function readableError(error: unknown, fallback: string) {
 
 const sectionIdMap = {
   preferences: "profile-preferences",
+  location: "profile-preferences",
   wallet: "profile-wallet",
   rewards: "profile-rewards",
   referrals: "profile-referrals",

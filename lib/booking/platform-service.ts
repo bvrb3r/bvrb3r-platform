@@ -8,7 +8,6 @@ import {
   canonicalLocationUuid,
   readCanonicalAppointmentServiceSnapshots,
   readCanonicalClientProfile,
-  readCanonicalWorkingHours,
   type CanonicalAppointmentServiceSnapshotRow
 } from "@/lib/booking/canonical-booking";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
@@ -32,7 +31,7 @@ import {
 } from "@/lib/monetization/service";
 import { readPointsBalanceForClientReference } from "@/lib/points/engine";
 import { readClientReferralSummary } from "@/lib/referrals/service";
-import { buildPublicTrustSignal, computeShopVerificationDecision, createEmptyTrustState, getVerificationGateDecision } from "@/lib/trust/engine";
+import { computeShopVerificationDecision, createEmptyTrustState, getVerificationGateDecision } from "@/lib/trust/engine";
 import { getTrustProvider } from "@/lib/trust/provider";
 import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
 import { readAppointmentPaymentSummary, readClientPaymentMethodsByClientId, type ClientPaymentMethodView } from "@/lib/payments/service";
@@ -40,7 +39,7 @@ import { readBarberProfileMedia, readShopProfileMedia } from "@/lib/profile/serv
 import type { LiveAppointmentRecord, LiveOperationsViewer } from "@/lib/operations/live-state";
 import { getBarberCompensationSummary, getManagerOperationsSummary, getOwnerAnalyticsSummary } from "@/lib/operations/metrics";
 import { getAppointmentViewModel } from "@/lib/utils/operations";
-import type { Client, ReviewSentiment } from "@/types/domain";
+import type { Client, DiscoveryResult, RecommendedShopView, ReviewSentiment } from "@/types/domain";
 import type { TrustState } from "@/types/trust";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
@@ -883,14 +882,6 @@ export async function saveClientFavoriteBarber(input: ClientFavoriteBarberInput)
   };
 }
 
-async function readWorkingHours(supabase: SupabaseClient | null, barberId: string, shopId?: string) {
-  if (!supabase) {
-    return [] as Array<{ barber_reference: string; shop_reference: string; weekday: number; start_time: string; end_time: string }>;
-  }
-
-  return readCanonicalWorkingHours(supabase, barberId, shopId);
-}
-
 async function readAppointmentServiceSnapshots(supabase: SupabaseClient | null, appointmentIds: string[]) {
   if (!supabase || !appointmentIds.length) {
     return new Map<string, AppointmentServiceRecord>();
@@ -1020,11 +1011,270 @@ function resolveBarberUsername(runtime: MarketplaceRuntimeData, barberIdOrUserna
   )?.username;
 }
 
+type VisitStats = {
+  count: number;
+  lastCompletedAt: string;
+};
+
+type ShopDiscoveryMetrics = {
+  activeBarbersCount: number;
+  minDistanceMiles?: number;
+  nextAvailableAt?: string;
+  nextAvailableLabel?: string;
+  bookHref?: string;
+  sortRating?: number;
+  sortReviewCount?: number;
+};
+
+function toTimestamp(value?: string | null) {
+  if (!value) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const time = new Date(value).getTime();
+  return Number.isNaN(time) ? Number.POSITIVE_INFINITY : time;
+}
+
+function formatDiscoveryTime(value?: string) {
+  if (!value) {
+    return undefined;
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return undefined;
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(date);
+}
+
+function normalizeLabel(value?: string | null) {
+  return value?.trim().toLowerCase() ?? "";
+}
+
+function buildVisitStats(
+  appointments: LiveAppointmentRecord[],
+  getKey: (appointment: LiveAppointmentRecord) => string | undefined
+) {
+  const stats = new Map<string, VisitStats>();
+
+  for (const appointment of appointments) {
+    const key = getKey(appointment);
+    if (!key) {
+      continue;
+    }
+
+    const existing = stats.get(key);
+    if (existing) {
+      existing.count += 1;
+      if (toTimestamp(appointment.start) < Number.POSITIVE_INFINITY && toTimestamp(appointment.start) > toTimestamp(existing.lastCompletedAt)) {
+        existing.lastCompletedAt = appointment.start;
+      }
+      continue;
+    }
+
+    stats.set(key, {
+      count: 1,
+      lastCompletedAt: appointment.start
+    });
+  }
+
+  return stats;
+}
+
+function mergeUniqueByKey<T>(sources: T[][], getKey: (item: T) => string) {
+  const merged: T[] = [];
+  const seen = new Set<string>();
+
+  for (const source of sources) {
+    for (const item of source) {
+      const key = getKey(item);
+      if (!key || seen.has(key)) {
+        continue;
+      }
+
+      seen.add(key);
+      merged.push(item);
+    }
+  }
+
+  return merged;
+}
+
+function buildRecommendedBarbers(
+  discovery: DiscoveryResult[],
+  completedAppointments: LiveAppointmentRecord[],
+  hasResolvedLocation: boolean
+) {
+  const visitStats = buildVisitStats(completedAppointments, (appointment) => appointment.barberId);
+  const mostBooked = discovery
+    .filter((result) => visitStats.has(result.barberId))
+    .sort((left, right) => {
+      const leftStats = visitStats.get(left.barberId)!;
+      const rightStats = visitStats.get(right.barberId)!;
+
+      return rightStats.count - leftStats.count
+        || toTimestamp(rightStats.lastCompletedAt) - toTimestamp(leftStats.lastCompletedAt)
+        || toTimestamp(left.nextAvailableAt) - toTimestamp(right.nextAvailableAt);
+    });
+  const nearby = hasResolvedLocation
+    ? [...discovery].sort((left, right) =>
+        left.distanceMiles - right.distanceMiles
+        || toTimestamp(left.nextAvailableAt) - toTimestamp(right.nextAvailableAt)
+        || right.rating - left.rating
+        || right.reviewCount - left.reviewCount
+      )
+    : [];
+
+  return mergeUniqueByKey(
+    [mostBooked, discovery, nearby],
+    (result) => result.barberId
+  ).slice(0, 6);
+}
+
+function getShopMetrics(
+  shop: {
+    id: string;
+    name: string;
+  },
+  discovery: DiscoveryResult[]
+) {
+  const matchingResults = discovery.filter((result) =>
+    result.locationId === shop.id
+    || normalizeLabel(result.shopName) === normalizeLabel(shop.name)
+  );
+
+  if (!matchingResults.length) {
+    return null;
+  }
+
+  const candidate = [...matchingResults].sort((left, right) =>
+    toTimestamp(left.nextAvailableAt) - toTimestamp(right.nextAvailableAt)
+    || right.rating - left.rating
+    || right.reviewCount - left.reviewCount
+  )[0];
+  const uniqueBarbers = new Set(matchingResults.map((result) => result.barberId));
+  const minDistance = matchingResults.reduce<number | undefined>((current, result) => {
+    if (typeof result.distanceMiles !== "number" || Number.isNaN(result.distanceMiles)) {
+      return current;
+    }
+
+    if (typeof current !== "number") {
+      return result.distanceMiles;
+    }
+
+    return Math.min(current, result.distanceMiles);
+  }, undefined);
+
+  return {
+    activeBarbersCount: uniqueBarbers.size,
+    minDistanceMiles: minDistance,
+    nextAvailableAt: candidate.nextAvailableAt,
+    nextAvailableLabel: candidate.availabilityLabel ?? formatDiscoveryTime(candidate.nextAvailableAt),
+    bookHref: candidate.bookingHref,
+    sortRating: candidate.rating,
+    sortReviewCount: candidate.reviewCount
+  } satisfies ShopDiscoveryMetrics;
+}
+
+function buildRecommendedShops(
+  shops: Awaited<ReturnType<typeof readShops>>,
+  discovery: DiscoveryResult[],
+  completedAppointments: LiveAppointmentRecord[],
+  hasResolvedLocation: boolean,
+  locationId?: string
+) {
+  const locationVisitStats = buildVisitStats(completedAppointments, (appointment) => appointment.locationId);
+  const preferredShop = hasResolvedLocation ? shops.find((shop) => shop.id === locationId) : undefined;
+  const metricsByShopId = new Map<string, ShopDiscoveryMetrics>();
+
+  for (const shop of shops) {
+    const metrics = getShopMetrics(shop, discovery);
+    if (metrics) {
+      metricsByShopId.set(shop.id, metrics);
+    }
+  }
+
+  const mostVisited = shops
+    .filter((shop) => locationVisitStats.has(shop.id))
+    .sort((left, right) => {
+      const leftStats = locationVisitStats.get(left.id)!;
+      const rightStats = locationVisitStats.get(right.id)!;
+
+      return rightStats.count - leftStats.count
+        || toTimestamp(rightStats.lastCompletedAt) - toTimestamp(leftStats.lastCompletedAt);
+    });
+  const topPlatform = [...shops].sort((left, right) => {
+    const leftMetrics = metricsByShopId.get(left.id);
+    const rightMetrics = metricsByShopId.get(right.id);
+
+    return (rightMetrics?.activeBarbersCount ?? 0) - (leftMetrics?.activeBarbersCount ?? 0)
+      || toTimestamp(leftMetrics?.nextAvailableAt) - toTimestamp(rightMetrics?.nextAvailableAt)
+      || (rightMetrics?.sortRating ?? 0) - (leftMetrics?.sortRating ?? 0)
+      || (rightMetrics?.sortReviewCount ?? 0) - (leftMetrics?.sortReviewCount ?? 0)
+      || left.name.localeCompare(right.name);
+  });
+  const nearby = hasResolvedLocation
+    ? [...shops].sort((left, right) => {
+        const leftMetrics = metricsByShopId.get(left.id);
+        const rightMetrics = metricsByShopId.get(right.id);
+        const leftSameCity = preferredShop && left.city === preferredShop.city ? 1 : 0;
+        const rightSameCity = preferredShop && right.city === preferredShop.city ? 1 : 0;
+
+        return rightSameCity - leftSameCity
+          || (leftMetrics?.minDistanceMiles ?? Number.POSITIVE_INFINITY) - (rightMetrics?.minDistanceMiles ?? Number.POSITIVE_INFINITY)
+          || toTimestamp(leftMetrics?.nextAvailableAt) - toTimestamp(rightMetrics?.nextAvailableAt)
+          || (rightMetrics?.activeBarbersCount ?? 0) - (leftMetrics?.activeBarbersCount ?? 0);
+      })
+    : [];
+  const merged = mergeUniqueByKey([mostVisited, topPlatform, nearby, shops], (shop) => shop.id).slice(0, 6);
+
+  return merged.map((shop) => {
+    const metrics = metricsByShopId.get(shop.id);
+
+    return {
+      id: shop.id,
+      name: shop.name,
+      brandLine: shop.brandLine,
+      neighborhood: shop.neighborhood,
+      city: shop.city,
+      state: shop.state,
+      address: shop.address,
+      kind: shop.kind,
+      activeBarbersCount: metrics?.activeBarbersCount,
+      nextAvailableAt: metrics?.nextAvailableAt,
+      nextAvailableLabel: metrics?.nextAvailableLabel,
+      bookHref: metrics?.bookHref
+    } satisfies RecommendedShopView;
+  });
+}
+
+async function readCompletedClientAppointments(clientId?: string) {
+  if (!clientId) {
+    return [];
+  }
+
+  const provider = await getLiveOperationsProvider();
+  const snapshot = await provider.readSnapshot({ role: "client", clientId } as LiveOperationsViewer);
+
+  return snapshot.appointments
+    .filter((appointment) => appointment.status === "completed")
+    .sort((left, right) => toTimestamp(right.start) - toTimestamp(left.start));
+}
+
 export async function getClientHomePayload(clientId?: string) {
   const supabase = getSupabase();
   const shops = await readShops(supabase);
   const clientProfile = await readClientProfile(supabase, clientId);
+  const hasResolvedLocation = Boolean(clientProfile?.favoriteShopReference);
   const locationId = resolveLocationId(shops, clientProfile?.favoriteShopReference);
+  const completedAppointments = await readCompletedClientAppointments(clientId);
 
   if (!supabase) {
     const bundle = await readMarketplaceBundle();
@@ -1041,14 +1291,26 @@ export async function getClientHomePayload(clientId?: string) {
     const favoriteBarber = clientProfile?.favoriteBarberReference
       ? discovery.find((result) => result.barberId === clientProfile.favoriteBarberReference)
       : undefined;
+    const visibleShops = filterBookableMarketplaceShops(shops, bundle.trustState, discovery);
+    const recommendedBarbers = buildRecommendedBarbers(discovery, completedAppointments, hasResolvedLocation);
+    const recommendedShops = buildRecommendedShops(
+      visibleShops,
+      discovery,
+      completedAppointments,
+      hasResolvedLocation,
+      locationId
+    );
 
     return {
       client: clientProfile ?? null,
-      shops: filterBookableMarketplaceShops(shops, bundle.trustState, discovery),
+      shops: visibleShops,
       trustedBarbers: discovery.filter((result) => result.barberId !== clientProfile?.favoriteBarberReference).slice(0, 6),
+      recommendedBarbers,
+      recommendedShops,
       favoriteBarber: favoriteBarber ?? null,
       nextAvailableChair: nextAvailable,
-      locationId
+      locationId,
+      hasResolvedLocation
     };
   }
 
@@ -1075,14 +1337,26 @@ export async function getClientHomePayload(clientId?: string) {
   const favoriteBarber = clientProfile?.favoriteBarberReference
     ? discovery.find((result) => result.barberId === clientProfile.favoriteBarberReference) ?? null
     : null;
+  const visibleShops = filterBookableMarketplaceShops(shops, trustState, discovery);
+  const recommendedBarbers = buildRecommendedBarbers(discovery, completedAppointments, hasResolvedLocation);
+  const recommendedShops = buildRecommendedShops(
+    visibleShops,
+    discovery,
+    completedAppointments,
+    hasResolvedLocation,
+    locationId
+  );
 
   return {
     client: clientProfile ?? null,
-    shops: filterBookableMarketplaceShops(shops, trustState, discovery),
+    shops: visibleShops,
     trustedBarbers: discovery.filter((result) => result.barberId !== clientProfile?.favoriteBarberReference).slice(0, 6),
+    recommendedBarbers,
+    recommendedShops,
     favoriteBarber,
     nextAvailableChair: nextAvailable,
-    locationId
+    locationId,
+    hasResolvedLocation
   };
 }
 

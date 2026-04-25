@@ -7,6 +7,7 @@ export default async function ClientSearchDashboardPage({
 }: {
   searchParams: Promise<{
     q?: string;
+    type?: "barbers" | "shops";
     category?: string;
     locationId?: string;
     rating?: string;
@@ -23,6 +24,7 @@ export default async function ClientSearchDashboardPage({
     <ClientAppShell activeTab="search" mode={context.isGuest ? "guest" : "client"}>
       <ClientSearchScreen
         clientId={context.clientId}
+        initialType={params.type === "shops" ? "shops" : "barbers"}
         initialQuery={params.q ?? ""}
         initialCategory={params.category ?? ""}
         initialLocationId={params.locationId ?? ""}

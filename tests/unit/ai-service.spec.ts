@@ -149,6 +149,7 @@ describe("phase 8 ai service", () => {
         client: null,
         shops: [],
         locationId: "loc-ybor",
+        hasResolvedLocation: true,
         favoriteBarber: null,
         trustedBarbers: [
           {
@@ -165,6 +166,8 @@ describe("phase 8 ai service", () => {
             badges: ["verified_identity"]
           }
         ],
+        recommendedBarbers: [],
+        recommendedShops: [],
         nextAvailableChair: {
           barberId: "barber-wave",
           username: "wave",
@@ -192,8 +195,11 @@ describe("phase 8 ai service", () => {
         client: null,
         shops: [],
         locationId: "loc-ybor",
+        hasResolvedLocation: true,
         favoriteBarber: null,
         trustedBarbers: [],
+        recommendedBarbers: [],
+        recommendedShops: [],
         nextAvailableChair: {
           barberId: "barber-hidden",
           username: "hidden",
@@ -288,6 +294,7 @@ describe("phase 8 ai service", () => {
       client: null,
       shops: [],
       locationId: "loc-ybor",
+      hasResolvedLocation: true,
       favoriteBarber: {
         barberId: "barber-wave",
         username: "wave",
@@ -302,6 +309,8 @@ describe("phase 8 ai service", () => {
         badges: ["verified_identity"]
       },
       trustedBarbers: [],
+      recommendedBarbers: [],
+      recommendedShops: [],
       nextAvailableChair: {
         barberId: "barber-wave",
         username: "wave",

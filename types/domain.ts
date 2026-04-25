@@ -511,6 +511,24 @@ export interface DiscoveryResult {
   bookingHref?: string;
 }
 
+export interface RecommendedShopView {
+  id: string;
+  name: string;
+  brandLine?: string;
+  neighborhood: string;
+  city: string;
+  state: string;
+  address?: string;
+  kind?: string;
+  activeBarbersCount?: number;
+  nextAvailableAt?: string;
+  nextAvailableLabel?: string;
+  rating?: number;
+  reviewCount?: number;
+  verifiedLabel?: string;
+  bookHref?: string;
+}
+
 export interface MapDiscoveryMarker {
   id: string;
   kind: "barber" | "shop" | "mobile_barber";

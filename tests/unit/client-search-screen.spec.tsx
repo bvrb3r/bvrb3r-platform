@@ -188,6 +188,23 @@ describe("client search screen", () => {
     });
 
     await waitFor(() => {
+      expect(replaceMock).toHaveBeenCalledWith(expect.stringContaining("type=barbers"));
+      expect(replaceMock).toHaveBeenCalledWith(expect.stringContaining("locationId=loc-hyde-park"));
+    });
+  });
+
+  it("supports shop-led discovery and preserves the shop type in route updates", async () => {
+    render(<ClientSearchScreen clientId="client-jordan" initialType="shops" routeBase="/dashboard/client/search" />);
+
+    expect(screen.getByText(/Discover barber shops worth booking/i)).toBeInTheDocument();
+    expect(screen.getByText(/Browse barber shops worth booking/i)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/Filter by location/i), {
+      target: { value: "loc-hyde-park" }
+    });
+
+    await waitFor(() => {
+      expect(replaceMock).toHaveBeenCalledWith(expect.stringContaining("type=shops"));
       expect(replaceMock).toHaveBeenCalledWith(expect.stringContaining("locationId=loc-hyde-park"));
     });
   });

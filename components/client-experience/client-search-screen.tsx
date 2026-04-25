@@ -26,6 +26,7 @@ import { cn } from "@/lib/utils";
 import { getReadableActionError } from "@/lib/utils/feedback";
 
 type AvailabilityFilter = "any" | "today" | "now";
+type ClientSearchType = "barbers" | "shops";
 
 function ResultSkeleton() {
   return (
@@ -97,6 +98,7 @@ function FilterChip({
 
 export function ClientSearchScreen({
   clientId,
+  initialType = "barbers",
   initialQuery = "",
   initialCategory = "",
   initialLocationId = "",
@@ -108,6 +110,7 @@ export function ClientSearchScreen({
   routeBase = "/search"
 }: {
   clientId?: string;
+  initialType?: ClientSearchType;
   initialQuery?: string;
   initialCategory?: string;
   initialLocationId?: string;
@@ -122,6 +125,7 @@ export function ClientSearchScreen({
   const homeQuery = useClientHomeQuery();
   const homePayload = homeQuery.data;
   const shops = homePayload?.shops ?? [];
+  const prefersShopDiscovery = initialType === "shops";
   const defaultLocationId = initialLocationId || homePayload?.locationId || shops[0]?.id || "";
 
   const [query, setQuery] = useState(initialQuery);
@@ -214,11 +218,15 @@ export function ClientSearchScreen({
 
   const resultsTitle = categoryLabel && !trimmedQuery
     ? `${categoryLabel} around ${activeAreaLabel}`
-    : `Barber discovery around ${activeAreaLabel}`;
+    : prefersShopDiscovery
+      ? `Barbers inside the ${activeAreaLabel} shop layer`
+      : `Barber discovery around ${activeAreaLabel}`;
   const resultsSubtitle = barberResults.length
     ? (hasActiveSearchQuery
       ? "Use the ranked list below to compare reviews, price, retention, and next availability without leaving the booking lane."
-      : "The marketplace ranks real nearby barbers by trust, service readiness, and live booking availability.")
+      : prefersShopDiscovery
+        ? "Start with the shop layer, then compare the real barbers working inside it without leaving booking context."
+        : "The marketplace ranks real nearby barbers by trust, service readiness, and live booking availability.")
     : "No barbers are live on BVRB3R in this area yet. Verified, active, bookable barbers will appear here as soon as they are ready.";
 
   function syncRoute(
@@ -232,6 +240,8 @@ export function ClientSearchScreen({
     nextVerifiedOnly = verifiedOnly
   ) {
     const params = new URLSearchParams();
+
+    params.set("type", initialType);
 
     if (nextQuery.trim()) {
       params.set("q", nextQuery.trim());
@@ -308,6 +318,40 @@ export function ClientSearchScreen({
     syncRoute(query, serviceFilter, selectedLocationId, minRating, maxPrice, availability, specialty, nextValue);
   }
 
+  const shopSection = (
+    <ClientSectionBlock
+      eyebrow={prefersShopDiscovery ? "Shop discovery" : "Shops near you"}
+      title={prefersShopDiscovery ? "Browse barber shops worth booking." : "Browse the nearby shop layer."}
+      subtitle={prefersShopDiscovery
+        ? "Start with the shop, then move into the active barbers working there."
+        : "Discovery stays grounded in real places so clients can evaluate where they want to book."}
+    >
+      {homeQuery.isLoading && !homePayload ? (
+        <RailSkeleton />
+      ) : shops.length ? (
+        <div className="flex gap-4 overflow-x-auto pb-2 hide-scrollbar">
+          {shops.map((shop) => (
+            <ClientShopDiscoveryCard
+              key={shop.id}
+              location={{
+                ...shop,
+                viewHref: `/dashboard/client/search?type=shops&q=${encodeURIComponent(shop.name)}&locationId=${encodeURIComponent(shop.id)}` as Route
+              }}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-[30px] border border-dashed border-white/10 bg-[linear-gradient(180deg,rgba(19,19,19,0.96),rgba(8,8,8,0.98))] p-6 sm:p-7">
+          <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">No live shops</p>
+          <h3 className="mt-3 text-2xl font-semibold text-white" data-display="true">No shops are accepting bookings in this area yet.</h3>
+          <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">
+            Real shop cards appear only after a shop has active, approved, bookable barbers on the platform.
+          </p>
+        </div>
+      )}
+    </ClientSectionBlock>
+  );
+
   return (
     <div className="space-y-4" data-testid="client-search-screen">
       <Card className="rounded-[34px] border-white/10 bg-[linear-gradient(180deg,rgba(17,17,17,0.96),rgba(6,6,6,0.98))] p-5 shadow-[0_26px_60px_rgba(0,0,0,0.24)] sm:p-6">
@@ -316,10 +360,12 @@ export function ClientSearchScreen({
           <div className="max-w-3xl">
             <p className="text-[10px] uppercase tracking-[0.24em] text-[#d7ffab]">Marketplace discovery</p>
             <h1 className="mt-3 text-balance text-3xl font-semibold text-white sm:text-4xl" data-display="true">
-              Discover barbers worth booking.
+              {prefersShopDiscovery ? "Discover barber shops worth booking." : "Discover barbers worth booking."}
             </h1>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-white/68">
-              Browse ranked barbers, compare real review proof, jump on the next open chair, and move straight into booking without losing context.
+              {prefersShopDiscovery
+                ? "Browse real barbershops first, compare the active talent inside each one, and move into booking without losing context."
+                : "Browse ranked barbers, compare real review proof, jump on the next open chair, and move straight into booking without losing context."}
             </p>
           </div>
           <div className="rounded-[22px] border border-white/10 bg-black/22 px-4 py-3 shadow-[0_14px_28px_rgba(0,0,0,0.18)]">
@@ -334,7 +380,7 @@ export function ClientSearchScreen({
         value={query}
         onValueChange={setQuery}
         onSubmit={handleSearchSubmit}
-        placeholder="Find a barber, service, or style"
+        placeholder={prefersShopDiscovery ? "Find a barber shop, barber, or city" : "Find a barber, service, or style"}
         className="bg-[rgba(10,10,10,0.95)] backdrop-blur-xl"
       />
 
@@ -454,6 +500,7 @@ export function ClientSearchScreen({
           </div>
         </div>
       </ClientSectionBlock>
+      {prefersShopDiscovery ? shopSection : null}
 
       <ClientSectionBlock
         eyebrow="Available now"
@@ -467,33 +514,13 @@ export function ClientSearchScreen({
             <Skeleton className="mt-5 h-40 w-full rounded-[28px]" />
           </div>
         ) : (
-          <NextAvailableChairCard match={nextAvailablePreview} fallbackHref={routeBase as Route} />
+          <NextAvailableChairCard
+            match={nextAvailablePreview}
+            fallbackHref={(initialType === "shops" ? `${routeBase}?type=shops` : routeBase) as Route}
+          />
         )}
       </ClientSectionBlock>
-
-      <ClientSectionBlock
-        eyebrow="Shops near you"
-        title="Browse the nearby shop layer."
-        subtitle="Discovery stays grounded in real places so clients can evaluate where they want to book."
-      >
-        {homeQuery.isLoading && !homePayload ? (
-          <RailSkeleton />
-        ) : shops.length ? (
-          <div className="flex gap-4 overflow-x-auto pb-2 hide-scrollbar">
-            {shops.map((shop) => (
-              <ClientShopDiscoveryCard key={shop.id} location={shop} />
-            ))}
-          </div>
-        ) : (
-          <div className="rounded-[30px] border border-dashed border-white/10 bg-[linear-gradient(180deg,rgba(19,19,19,0.96),rgba(8,8,8,0.98))] p-6 sm:p-7">
-            <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">No live shops</p>
-            <h3 className="mt-3 text-2xl font-semibold text-white" data-display="true">No shops are accepting bookings in this area yet.</h3>
-            <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">
-              Real shop cards appear only after a shop has active, approved, bookable barbers on the platform.
-            </p>
-          </div>
-        )}
-      </ClientSectionBlock>
+      {!prefersShopDiscovery ? shopSection : null}
 
       <ClientSectionBlock
         eyebrow={hasActiveSearchQuery ? "Search results" : "Marketplace feed"}

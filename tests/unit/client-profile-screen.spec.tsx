@@ -52,6 +52,7 @@ import { ClientProfileScreen } from "@/components/client-experience/client-profi
 
 describe("client profile screen", () => {
   beforeEach(() => {
+    Element.prototype.scrollIntoView = vi.fn();
     useProfileMediaWorkspaceQueryMock.mockReset();
     useMutateProfileMediaMutationMock.mockReset();
     useClientMembershipQueryMock.mockReset();
@@ -211,5 +212,37 @@ describe("client profile screen", () => {
     expect(screen.getByText("No saved payment methods yet")).toBeInTheDocument();
     expect(screen.getByText("Add a saved card so booking and rebooking stay fast.")).toBeInTheDocument();
     expect(screen.getByText("No rewards or membership history yet. Completed paid services, qualified referrals, and live subscriptions will show up here when they exist.")).toBeInTheDocument();
+  });
+
+  it("treats the location section alias as profile preferences", () => {
+    render(
+      <ClientProfileScreen
+        isSignedInClient
+        initialSection="location"
+        payload={({
+          client: {
+            clientReference: "client-jordan",
+            fullName: "Jordan Ellis",
+            email: "jordan@bvrb3r.app",
+            phone: "8135550190"
+          },
+          favoriteBarber: null,
+          preferredShops: [
+            {
+              id: "loc-ybor",
+              name: "Centro Ybor Flagship",
+              neighborhood: "Ybor City",
+              city: "Tampa"
+            }
+          ],
+          notificationPreference: null,
+          routine: null,
+          paymentMethods: []
+        } as unknown as ClientProfilePayload)}
+      />
+    );
+
+    expect(screen.getByText("Preferred setup")).toBeInTheDocument();
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
   });
 });

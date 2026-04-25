@@ -11,8 +11,13 @@ type ClientShopCardData = {
   address?: string;
   hours?: string;
   chairs?: number;
+  activeBarbersCount?: number;
   brandLine?: string;
   kind?: string;
+  nextAvailableLabel?: string;
+  verifiedLabel?: string;
+  viewHref?: string;
+  bookHref?: string;
 };
 
 function getDescriptor(location: ClientShopCardData) {
@@ -28,12 +33,15 @@ function getDescriptor(location: ClientShopCardData) {
 }
 
 function getHoursLabel(location: ClientShopCardData) {
-  return location.hours ?? "Accepting bookings";
+  return location.nextAvailableLabel ?? location.hours ?? "Accepting bookings";
 }
 
 export function ClientShopDiscoveryCard({ location }: { location: ClientShopCardData; }) {
   const descriptor = getDescriptor(location);
-  const searchHref = `/search?q=${encodeURIComponent(location.name)}` as Route;
+  const searchHref = (location.viewHref
+    ?? `/dashboard/client/search?type=shops&q=${encodeURIComponent(location.name)}&locationId=${encodeURIComponent(location.id)}`) as Route;
+  const primaryCtaHref = (location.bookHref ?? searchHref) as Route;
+  const primaryCtaLabel = location.bookHref ? "Book" : "Find barbers";
 
   return (
     <article className="relative w-[18.5rem] shrink-0 overflow-hidden rounded-[32px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(8,8,8,0.99))] shadow-[0_24px_48px_rgba(0,0,0,0.22)]">
@@ -43,10 +51,14 @@ export function ClientShopDiscoveryCard({ location }: { location: ClientShopCard
         <div className="absolute inset-x-0 bottom-0 h-24 bg-[linear-gradient(180deg,transparent,rgba(0,0,0,0.28))]" />
         <div className="absolute left-4 top-4 inline-flex items-center gap-2 rounded-full border border-black/10 bg-black/12 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-black/82">
           <Compass className="h-3.5 w-3.5" />
-          {descriptor}
+          {location.verifiedLabel ?? descriptor}
         </div>
         <div className="absolute right-4 top-4 rounded-full border border-black/10 bg-black/12 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-black/82">
-          {typeof location.chairs === "number" ? `${location.chairs} chairs` : "Trusted shop"}
+          {typeof location.activeBarbersCount === "number"
+            ? `${location.activeBarbersCount} active barber${location.activeBarbersCount === 1 ? "" : "s"}`
+            : typeof location.chairs === "number"
+              ? `${location.chairs} chairs`
+              : "Trusted shop"}
         </div>
         <div className="absolute bottom-5 left-4 flex h-16 w-16 items-center justify-center rounded-[22px] border border-black/10 bg-black/12 text-black/84 shadow-[0_18px_34px_rgba(0,0,0,0.18)]">
           <Store className="h-8 w-8" />
@@ -89,11 +101,11 @@ export function ClientShopDiscoveryCard({ location }: { location: ClientShopCard
         </div>
 
         <div className="mt-5 flex flex-wrap gap-3">
-          <ClientActionLink href={searchHref} variant="secondary">
-            Browse
+          <ClientActionLink href={primaryCtaHref} variant="secondary">
+            {primaryCtaLabel}
           </ClientActionLink>
           <ClientActionLink href={searchHref} variant="outline">
-            View shop
+            View Shop
             <ArrowRight className="h-4 w-4 text-[#baff69]" />
           </ClientActionLink>
         </div>
