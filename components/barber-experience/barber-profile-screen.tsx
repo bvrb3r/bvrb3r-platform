@@ -6,9 +6,11 @@ import {
   CalendarDays,
   Camera,
   ImagePlus,
+  Settings2,
   ShieldCheck,
   Star
 } from "lucide-react";
+import { BarberSettingsScreen } from "@/components/barber-experience/barber-settings-screen";
 import { PublicBarberProfile } from "@/components/marketplace/public-barber-profile";
 import { GalleryManagerCard, ProfilePhotoManagerCard } from "@/components/profile/profile-media-manager";
 import { Card } from "@/components/ui/card";
@@ -18,15 +20,20 @@ import { useMutateProfileMediaMutation, useProfileMediaWorkspaceQuery } from "@/
 import { uploadMediaAsset } from "@/lib/storage/media";
 import { useBarberTrustSummary } from "@/lib/trust/client";
 import { currency } from "@/lib/utils";
+import type { UserAccount } from "@/types/domain";
 
 const sectionIdMap = {
   preview: "barber-profile-preview",
   portfolio: "barber-profile-portfolio",
   services: "barber-profile-services",
-  reviews: "barber-profile-reviews"
+  reviews: "barber-profile-reviews",
+  settings: "barber-profile-settings",
+  payouts: "barber-profile-settings"
 } as const;
 
 type ProfileSectionKey = keyof typeof sectionIdMap;
+
+type ProfileSettingsSection = "account" | "business" | "verification" | "payouts" | "support";
 
 function initialsForName(name: string) {
   return name
@@ -46,21 +53,23 @@ function readableError(error: unknown, fallback: string) {
 }
 
 export function BarberProfileScreen({
-  barberId,
-  barberName,
-  userEmail,
+  user,
   initialSection
 }: {
-  barberId?: string;
-  barberName: string;
-  userEmail: string;
+  user: UserAccount;
   initialSection?: string;
 }) {
+  const barberId = user.barberId;
+  const barberName = user.name;
+  const userEmail = user.email;
   const profileQuery = useBarberProfileQuery(barberId);
   const mediaQuery = useProfileMediaWorkspaceQuery(true);
   const mediaMutation = useMutateProfileMediaMutation();
   const trustQuery = useBarberTrustSummary(true);
   const selectedSection = (initialSection && initialSection in sectionIdMap ? initialSection : null) as ProfileSectionKey | null;
+  const settingsSection = (initialSection && ["account", "business", "verification", "payouts", "support"].includes(initialSection)
+    ? initialSection
+    : undefined) as ProfileSettingsSection | undefined;
   const barberMedia = mediaQuery.data?.barberProfile ?? null;
   const profile = profileQuery.data ?? null;
   const verificationDecision = trustQuery.data?.verificationDecision;
@@ -135,7 +144,7 @@ export function BarberProfileScreen({
               {barberName}
             </h3>
             <p className="mt-3 max-w-3xl text-sm leading-7 text-white/62">
-              This is the public identity clients trust: photo, bio, services, reviews, and portfolio all stay together here.
+              This is where the barber controls the full profile story: public trust on top, private setup and payout posture underneath.
             </p>
           </div>
           <div className="rounded-[24px] border border-[#7cff00]/16 bg-[#7cff00]/10 px-4 py-3 text-right">
@@ -161,6 +170,9 @@ export function BarberProfileScreen({
           </Link>
           <Link href="#barber-profile-reviews" className="rounded-full border border-white/10 bg-black/20 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/74 transition hover:border-[#7cff00]/20 hover:text-[#d7ffab]">
             Reviews
+          </Link>
+          <Link href="#barber-profile-settings" className="rounded-full border border-white/10 bg-black/20 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/74 transition hover:border-[#7cff00]/20 hover:text-[#d7ffab]">
+            Settings
           </Link>
         </div>
       </Card>
@@ -276,6 +288,16 @@ export function BarberProfileScreen({
                 {trustQuery.data?.publicBadgePreview?.join(" | ") || "Trust badges will appear here as verification clears."}
               </p>
             </div>
+            <div className="rounded-[22px] border border-white/8 bg-black/20 p-4 sm:col-span-2">
+              <div className="inline-flex items-center gap-2 text-sm text-white/78">
+                <Settings2 className="h-4 w-4 text-[#baff69]" />
+                Profile settings
+              </div>
+              <p className="mt-3 text-lg font-semibold text-white">Verification, payouts, and account controls live here too.</p>
+              <p className="mt-2 text-sm text-white/58">
+                Business model, shop association, Stripe Connect readiness, notifications, and support now live under this Profile tab instead of a separate barber settings tab.
+              </p>
+            </div>
           </div>
         </Card>
       </section>
@@ -335,6 +357,26 @@ export function BarberProfileScreen({
           </Card>
         )}
       </div>
+
+      <section id="barber-profile-settings" className="scroll-mt-6 space-y-4">
+        <Card className="rounded-[32px] p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="surface-label">Settings</p>
+              <p className="mt-3 text-2xl font-semibold text-white">Private setup now lives inside Profile.</p>
+              <p className="mt-3 max-w-3xl text-sm leading-7 text-white/62">
+                Keep public identity and private setup connected: verification, payout setup, business model, notifications, security, and support all stay one tab away from the client-facing profile.
+              </p>
+            </div>
+            <div className="rounded-[24px] border border-[#7cff00]/16 bg-[#7cff00]/10 px-4 py-3 text-right">
+              <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">Profile settings</p>
+              <p className="mt-2 text-sm font-medium text-white">{user.appApprovalStatus?.replaceAll("_", " ") ?? "ready"}</p>
+              <p className="mt-1 text-sm text-white/58">Private setup stays in Profile, not a separate tab.</p>
+            </div>
+          </div>
+        </Card>
+        <BarberSettingsScreen user={user} initialSection={settingsSection} embedded />
+      </section>
     </div>
   );
 }

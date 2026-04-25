@@ -361,9 +361,9 @@ export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { ba
             <Button type="button" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/calendar")}>Open calendar</Button>
             <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/checkout")}>Checkout</Button>
             <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/calendar")}>Block time</Button>
-            <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/profile")}>View profile</Button>
+            <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/profile")}>Edit profile</Button>
             <Button type="button" variant="ghost" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/calendar")}>Update availability</Button>
-            <Button type="button" variant="ghost" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/settings")}>Open settings</Button>
+            <Button type="button" variant="ghost" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/profile?section=settings")}>Profile settings</Button>
           </div>
         </Card>
       </section>
@@ -458,7 +458,7 @@ export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { ba
           <div className="mt-4 flex flex-wrap gap-3">
             <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/calendar")}>Open calendar</Button>
             <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/checkout")}><WalletCards className="h-4 w-4" />Open checkout</Button>
-            <Button type="button" variant="ghost" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/settings")}>Review settings</Button>
+            <Button type="button" variant="ghost" className="h-11 px-4" onClick={() => router.push("/dashboard/barber/profile?section=payouts")}>Review payout setup</Button>
           </div>
         </Card>
       </section>

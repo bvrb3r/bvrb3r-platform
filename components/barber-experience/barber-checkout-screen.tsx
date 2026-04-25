@@ -20,11 +20,19 @@ import type { Role } from "@/types/domain";
 
 const sectionIdMap = {
   appointments: "barber-checkout-appointments",
-  money: "barber-checkout-money",
+  earnings: "barber-checkout-earnings",
   services: "barber-checkout-services"
 } as const;
 
 type CheckoutSectionKey = keyof typeof sectionIdMap;
+
+function normalizeCheckoutSection(section?: string): CheckoutSectionKey | null {
+  if (section === "money") {
+    return "earnings";
+  }
+
+  return section && section in sectionIdMap ? (section as CheckoutSectionKey) : null;
+}
 
 function formatDateTime(iso: string) {
   return new Intl.DateTimeFormat("en-US", {
@@ -53,7 +61,7 @@ export function BarberCheckoutScreen({
   const todayAppointments = payload?.todayAppointments ?? [];
   const readyForCheckout = todayAppointments.filter((appointment) => appointment.status === "completed" && appointment.financial.outstandingBalance > 0);
   const paidAppointments = todayAppointments.filter((appointment) => appointment.financial.capturedAmount > 0 || appointment.financial.tipAmount > 0);
-  const selectedSection = (initialSection && initialSection in sectionIdMap ? initialSection : null) as CheckoutSectionKey | null;
+  const selectedSection = normalizeCheckoutSection(initialSection);
 
   useEffect(() => {
     if (!selectedSection) {
@@ -103,8 +111,8 @@ export function BarberCheckoutScreen({
           <Link href="#barber-checkout-appointments" className="rounded-full border border-white/10 bg-black/20 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/74 transition hover:border-[#7cff00]/20 hover:text-[#d7ffab]">
             Appointment checkout
           </Link>
-          <Link href="#barber-checkout-money" className="rounded-full border border-white/10 bg-black/20 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/74 transition hover:border-[#7cff00]/20 hover:text-[#d7ffab]">
-            Money summary
+          <Link href="#barber-checkout-earnings" className="rounded-full border border-white/10 bg-black/20 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/74 transition hover:border-[#7cff00]/20 hover:text-[#d7ffab]">
+            Earnings
           </Link>
           <Link href="#barber-checkout-services" className="rounded-full border border-white/10 bg-black/20 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/74 transition hover:border-[#7cff00]/20 hover:text-[#d7ffab]">
             Service library
@@ -228,7 +236,7 @@ export function BarberCheckoutScreen({
         </div>
       </Card>
 
-      <div id="barber-checkout-money" className="scroll-mt-6">
+      <div id="barber-checkout-earnings" className="scroll-mt-6">
         <BarberEarningsWorkspace barberName={barberName} />
       </div>
 
@@ -264,9 +272,9 @@ export function BarberCheckoutScreen({
           <div className="rounded-[20px] border border-white/8 bg-black/20 p-4 text-sm leading-6 text-white/66">
             <div className="inline-flex items-center gap-2 text-white/78">
               <WalletCards className="h-4 w-4 text-[#d7ffab]" />
-              Settings
+              Profile settings
             </div>
-            <p className="mt-3">Payout setup, verification, business model, and private account controls.</p>
+            <p className="mt-3">Payout setup, verification, business model, and private account controls live under Profile.</p>
           </div>
           <div className="rounded-[20px] border border-white/8 bg-black/20 p-4 text-sm leading-6 text-white/66">
             <div className="inline-flex items-center gap-2 text-white/78">

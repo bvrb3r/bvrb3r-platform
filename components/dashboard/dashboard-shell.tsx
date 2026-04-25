@@ -128,9 +128,9 @@ function getBoundaryCopy(role: Role) {
     case "front_desk":
       return "Front desk mode stays focused on queue movement, guest support, check-in flow, and handoff clarity.";
     case "commission_barber":
-      return "Commission barber mode keeps Home on today, Calendar on time control, Checkout on real money, Profile on public reputation, and Settings on private setup.";
+      return "Commission barber mode keeps Home on today, Calendar on time control, Checkout on real money, and Profile on both public reputation and private setup.";
     case "booth_rent_barber":
-      return "Booth-rent mode keeps Home on today, Calendar on live availability, Checkout on independent money clarity, Profile on discovery identity, and Settings on compliance.";
+      return "Booth-rent mode keeps Home on today, Calendar on live availability, Checkout on independent money clarity, and Profile on discovery identity plus compliance.";
     case "client":
       return "Client mode keeps booking, favorites, rewards, and appointment activity visible without any shop-internal clutter.";
     default:
@@ -217,7 +217,7 @@ function getUtilityCards(user: UserAccount): UtilityCard[] {
     case "commission_barber":
     case "booth_rent_barber":
       return [
-        { label: "Barber lane", value: user.barberSubtype?.replaceAll("_", " ") ?? "ready", detail: "Home, Calendar, Checkout, Profile, and Settings all stay tied to this authenticated barber account.", icon: CalendarDays },
+        { label: "Barber lane", value: user.barberSubtype?.replaceAll("_", " ") ?? "ready", detail: "Home, Calendar, Checkout, and Profile all stay tied to this authenticated barber account.", icon: CalendarDays },
         { label: "Approval", value: user.appApprovalStatus?.replaceAll("_", " ") ?? "ready", detail: user.shopApprovalStatus && user.shopApprovalStatus !== "not_required" ? `Shop approval ${user.shopApprovalStatus.replaceAll("_", " ")}` : "No extra shop approval required", icon: ShieldCheck },
         { label: "Chair scope", value: String(user.locationIds.length), detail: "Assigned locations, payout posture, and availability scope on this session", icon: WalletCards }
       ];

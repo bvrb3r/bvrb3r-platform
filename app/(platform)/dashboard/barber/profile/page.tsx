@@ -15,12 +15,10 @@ export default async function BarberProfilePage({
       user={user}
       activeHref="/dashboard/barber/profile"
       title="Profile"
-      subtitle="Preview the public barber identity clients trust: photo, bio, portfolio, services, reviews, and discovery-facing proof."
+      subtitle="Control the full barber identity here: public profile, discovery media, reviews, and the private setup that keeps the chair live."
     >
       <BarberProfileScreen
-        barberId={user.barberId}
-        barberName={user.name}
-        userEmail={user.email}
+        user={user}
         initialSection={params.section}
       />
     </DashboardShell>

@@ -45,14 +45,8 @@ vi.mock("@/components/barber-experience/barber-checkout-screen", () => ({
 }));
 
 vi.mock("@/components/barber-experience/barber-profile-screen", () => ({
-  BarberProfileScreen: ({ barberName, initialSection }: { barberName: string; initialSection?: string }) => (
-    <div data-testid="barber-profile-screen-stub">{barberName}|{initialSection ?? "none"}</div>
-  )
-}));
-
-vi.mock("@/components/barber-experience/barber-settings-screen", () => ({
-  BarberSettingsScreen: ({ user, initialSection }: { user: { name: string }; initialSection?: string }) => (
-    <div data-testid="barber-settings-screen-stub">{user.name}|{initialSection ?? "none"}</div>
+  BarberProfileScreen: ({ user, initialSection }: { user: { name: string }; initialSection?: string }) => (
+    <div data-testid="barber-profile-screen-stub">{user.name}|{initialSection ?? "none"}</div>
   )
 }));
 
@@ -194,18 +188,12 @@ describe("dashboard role pages", () => {
     expect(screen.getByTestId("barber-profile-screen-stub")).toHaveTextContent("Blaze King|reviews");
   });
 
-  it("renders the barber settings route", async () => {
-    getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("blaze@bvrb3r.demo"));
-
-    render(
-      await BarberSettingsPage({
+  it("redirects the barber settings route into profile settings", async () => {
+    await expect(
+      BarberSettingsPage({
         searchParams: Promise.resolve({ section: "payouts" })
       })
-    );
-
-    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["commission_barber", "booth_rent_barber"]);
-    expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
-    expect(screen.getByTestId("barber-settings-screen-stub")).toHaveTextContent("Blaze King|payouts");
+    ).rejects.toThrow("REDIRECT:/dashboard/barber/profile?section=payouts");
   });
 
   it("redirects the legacy barber command entry into the barber calendar", async () => {
@@ -239,9 +227,9 @@ describe("dashboard role pages", () => {
     expect(screen.getByTestId("owner-settings-workspace-stub")).toBeInTheDocument();
   });
 
-  it("redirects barber settings into the canonical barber settings route", async () => {
+  it("redirects barber settings into the canonical barber profile settings route", async () => {
     getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("blaze@bvrb3r.demo"));
 
-    await expect(SettingsPage()).rejects.toThrow("REDIRECT:/dashboard/barber/settings");
+    await expect(SettingsPage()).rejects.toThrow("REDIRECT:/dashboard/barber/profile?section=settings");
   });
 });

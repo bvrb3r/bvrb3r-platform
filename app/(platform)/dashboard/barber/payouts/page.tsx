@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function BarberPayoutsRedirectPage() {
-  redirect("/dashboard/barber/settings?section=payouts");
+  redirect("/dashboard/barber/profile?section=payouts");
 }

@@ -27,6 +27,7 @@ import BarberEarningsRedirectPage from "@/app/(platform)/dashboard/barber/earnin
 import BarberServicesRedirectPage from "@/app/(platform)/dashboard/barber/services/page";
 import BarberPayoutsRedirectPage from "@/app/(platform)/dashboard/barber/payouts/page";
 import BarberReviewsRedirectPage from "@/app/(platform)/dashboard/barber/reviews/page";
+import BarberSettingsRedirectPage from "@/app/(platform)/dashboard/barber/settings/page";
 
 describe("barber legacy route redirects", () => {
   beforeEach(() => {
@@ -36,7 +37,7 @@ describe("barber legacy route redirects", () => {
 
   it("redirects the old barber command and earnings entries into the new barber tabs", async () => {
     await expect(CommandPage()).rejects.toThrow("REDIRECT:/dashboard/barber/calendar");
-    await expect(EarningsPage()).rejects.toThrow("REDIRECT:/dashboard/barber/checkout?section=money");
+    await expect(EarningsPage()).rejects.toThrow("REDIRECT:/dashboard/barber/checkout?section=earnings");
   });
 
   it("redirects shared barber appointments into the barber calendar and keeps query state", async () => {
@@ -70,12 +71,13 @@ describe("barber legacy route redirects", () => {
     await expect(WorkspaceProfilePage()).rejects.toThrow("REDIRECT:/dashboard/barber/profile");
   });
 
-  it("redirects old dashboard barber routes into the new canonical barber tabs", () => {
+  it("redirects old dashboard barber routes into the new canonical barber tabs", async () => {
     expect(() => BarberAppointmentsRedirectPage()).toThrow("REDIRECT:/dashboard/barber/calendar");
     expect(() => BarberAvailabilityRedirectPage()).toThrow("REDIRECT:/dashboard/barber/calendar");
-    expect(() => BarberEarningsRedirectPage()).toThrow("REDIRECT:/dashboard/barber/checkout?section=money");
+    expect(() => BarberEarningsRedirectPage()).toThrow("REDIRECT:/dashboard/barber/checkout?section=earnings");
     expect(() => BarberServicesRedirectPage()).toThrow("REDIRECT:/dashboard/barber/checkout?section=services");
-    expect(() => BarberPayoutsRedirectPage()).toThrow("REDIRECT:/dashboard/barber/settings?section=payouts");
+    expect(() => BarberPayoutsRedirectPage()).toThrow("REDIRECT:/dashboard/barber/profile?section=payouts");
     expect(() => BarberReviewsRedirectPage()).toThrow("REDIRECT:/dashboard/barber/profile?section=reviews");
+    await expect(BarberSettingsRedirectPage({ searchParams: Promise.resolve({}) })).rejects.toThrow("REDIRECT:/dashboard/barber/profile?section=settings");
   });
 });

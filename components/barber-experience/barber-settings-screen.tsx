@@ -61,10 +61,12 @@ function readableError(error: unknown, fallback: string) {
 
 export function BarberSettingsScreen({
   user,
-  initialSection
+  initialSection,
+  embedded = false
 }: {
   user: UserAccount;
   initialSection?: string;
+  embedded?: boolean;
 }) {
   const mediaQuery = useProfileMediaWorkspaceQuery(true);
   const mediaMutation = useMutateProfileMediaMutation();
@@ -105,7 +107,7 @@ export function BarberSettingsScreen({
     setFeedback(null);
     try {
       await saveSubtypeMutation.mutateAsync(selectedSubtype);
-      setFeedback({ tone: "success", message: "Business model saved. Home, Calendar, Checkout, Profile, and Settings now reflect the same canonical barber subtype." });
+      setFeedback({ tone: "success", message: "Business model saved. Home, Calendar, Checkout, and Profile now reflect the same canonical barber subtype." });
     } catch (error) {
       setFeedback({ tone: "error", message: getReadableActionError(error as BarberApiError) });
     }
@@ -179,46 +181,48 @@ export function BarberSettingsScreen({
       {trustQuery.error ? <FeedbackBanner tone="error" message={readableError(trustQuery.error, "Unable to load barber verification status right now.")} /> : null}
       {readinessQuery.error ? <FeedbackBanner tone="error" message={readableError(readinessQuery.error, "Unable to load payout readiness right now.")} /> : null}
 
-      <Card className="rounded-[32px] p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="surface-label">Settings</p>
-            <h3 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">
-              {user.name}
-            </h3>
-            <p className="mt-3 max-w-3xl text-sm leading-7 text-white/62">
-              Private account setup lives here: business model, verification, payout onboarding, notifications, support, and session controls.
-            </p>
+      {!embedded ? (
+        <Card className="rounded-[32px] p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="surface-label">Settings</p>
+              <h3 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">
+                {user.name}
+              </h3>
+              <p className="mt-3 max-w-3xl text-sm leading-7 text-white/62">
+                Private account setup lives here: business model, verification, payout onboarding, notifications, support, and session controls.
+              </p>
+            </div>
+            <div className="rounded-[24px] border border-[#7cff00]/16 bg-[#7cff00]/10 px-4 py-3 text-right">
+              <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">Private setup</p>
+              <p className="mt-2 text-sm font-medium text-white">
+                {formatStatusLabel(user.appApprovalStatus)}
+              </p>
+              <p className="mt-1 text-sm text-white/58">
+                {formatStatusLabel(readinessQuery.data?.connectedAccount.operationalStatus)}
+              </p>
+            </div>
           </div>
-          <div className="rounded-[24px] border border-[#7cff00]/16 bg-[#7cff00]/10 px-4 py-3 text-right">
-            <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">Private setup</p>
-            <p className="mt-2 text-sm font-medium text-white">
-              {formatStatusLabel(user.appApprovalStatus)}
-            </p>
-            <p className="mt-1 text-sm text-white/58">
-              {formatStatusLabel(readinessQuery.data?.connectedAccount.operationalStatus)}
-            </p>
-          </div>
-        </div>
 
-        <div className="mt-5 flex flex-wrap gap-2">
-          <Link href="#barber-settings-account" className="rounded-full border border-white/10 bg-black/20 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/74 transition hover:border-[#7cff00]/20 hover:text-[#d7ffab]">
-            Account
-          </Link>
-          <Link href="#barber-settings-business" className="rounded-full border border-white/10 bg-black/20 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/74 transition hover:border-[#7cff00]/20 hover:text-[#d7ffab]">
-            Business model
-          </Link>
-          <Link href="#barber-settings-verification" className="rounded-full border border-white/10 bg-black/20 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/74 transition hover:border-[#7cff00]/20 hover:text-[#d7ffab]">
-            Verification
-          </Link>
-          <Link href="#barber-settings-payouts" className="rounded-full border border-white/10 bg-black/20 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/74 transition hover:border-[#7cff00]/20 hover:text-[#d7ffab]">
-            Payouts
-          </Link>
-          <Link href="#barber-settings-support" className="rounded-full border border-white/10 bg-black/20 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/74 transition hover:border-[#7cff00]/20 hover:text-[#d7ffab]">
-            Support
-          </Link>
-        </div>
-      </Card>
+          <div className="mt-5 flex flex-wrap gap-2">
+            <Link href="#barber-settings-account" className="rounded-full border border-white/10 bg-black/20 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/74 transition hover:border-[#7cff00]/20 hover:text-[#d7ffab]">
+              Account
+            </Link>
+            <Link href="#barber-settings-business" className="rounded-full border border-white/10 bg-black/20 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/74 transition hover:border-[#7cff00]/20 hover:text-[#d7ffab]">
+              Business model
+            </Link>
+            <Link href="#barber-settings-verification" className="rounded-full border border-white/10 bg-black/20 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/74 transition hover:border-[#7cff00]/20 hover:text-[#d7ffab]">
+              Verification
+            </Link>
+            <Link href="#barber-settings-payouts" className="rounded-full border border-white/10 bg-black/20 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/74 transition hover:border-[#7cff00]/20 hover:text-[#d7ffab]">
+              Payouts
+            </Link>
+            <Link href="#barber-settings-support" className="rounded-full border border-white/10 bg-black/20 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/74 transition hover:border-[#7cff00]/20 hover:text-[#d7ffab]">
+              Support
+            </Link>
+          </div>
+        </Card>
+      ) : null}
 
       <section id="barber-settings-account" className="grid scroll-mt-6 gap-4 lg:grid-cols-[1.02fr_0.98fr]">
         <Card className="rounded-[32px] p-6">

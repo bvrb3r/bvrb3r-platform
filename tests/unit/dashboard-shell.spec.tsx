@@ -8,8 +8,8 @@ describe("dashboard shell identity and navigation", () => {
     ["manager@bvrb3r.demo", "Mia Torres", "Shop Manager", "Active role: Shop manager", ["Dashboard", "Schedule", "Team", "Queue", "Profile"]],
     ["frontdesk@bvrb3r.demo", "Kayla Brooks", "Front Desk / Kiosk Ops", "Active role: Front desk", ["Check-in", "Waitlist", "Schedule", "Barbers", "Profile"]],
     ["wave@bvrb3r.demo", "Wave Carter", "Barber Manager", "Active role: Barber manager", ["Dashboard", "Schedule", "Team", "Queue", "Profile"]],
-    ["blaze@bvrb3r.demo", "Blaze King", "Booth-Rent Barber", "Active role: Booth-rent barber", ["Home", "Calendar", "Checkout", "Profile", "Settings"]],
-    ["lux@bvrb3r.demo", "Luxe Reed", "Freelance Barber", "Active role: Freelance barber", ["Home", "Calendar", "Checkout", "Profile", "Settings"]],
+    ["blaze@bvrb3r.demo", "Blaze King", "Booth-Rent Barber", "Active role: Booth-rent barber", ["Home", "Calendar", "Checkout", "Profile"]],
+    ["lux@bvrb3r.demo", "Luxe Reed", "Freelance Barber", "Active role: Freelance barber", ["Home", "Calendar", "Checkout", "Profile"]],
     ["client@bvrb3r.demo", "Jordan Ellis", "Client", "Active role: Client", ["Home", "Search", "Bookings", "Rewards", "Profile", "Settings"]]
   ])("renders the selected identity for %s", (email, name, title, roleLabel, navLabels) => {
     const user = resolveDemoUser(email);
@@ -63,7 +63,7 @@ describe("dashboard shell identity and navigation", () => {
     expect(screen.queryByTestId("shell-business-name")).not.toHaveTextContent("BVRB3R Platform");
   });
 
-  it("locks barber primary navigation to five tabs only", () => {
+  it("locks barber primary navigation to four tabs only", () => {
     const user = resolveDemoUser("blaze@bvrb3r.demo");
 
     render(
@@ -72,15 +72,16 @@ describe("dashboard shell identity and navigation", () => {
       </DashboardShell>
     );
 
-    ["Home", "Calendar", "Checkout", "Profile", "Settings"].forEach((label) => {
+    ["Home", "Calendar", "Checkout", "Profile"].forEach((label) => {
       expect(screen.getAllByRole("link", { name: new RegExp(label, "i") }).length).toBeGreaterThan(0);
     });
 
     expect(screen.queryByRole("link", { name: /command/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /earnings/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /clients/i })).not.toBeInTheDocument();
-    expect(screen.getByText("5 tabs")).toBeInTheDocument();
-    expect(screen.getByText("5 barber tabs")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /settings/i })).not.toBeInTheDocument();
+    expect(screen.getByText("4 tabs")).toBeInTheDocument();
+    expect(screen.getByText("4 barber tabs")).toBeInTheDocument();
   });
 
   it("locks owner primary navigation to five tabs only", () => {
