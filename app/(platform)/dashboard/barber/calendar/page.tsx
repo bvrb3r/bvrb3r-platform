@@ -1,5 +1,5 @@
+import { BarberCalendarScreen } from "@/components/barber-experience/barber-calendar-screen";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
-import { BarberScheduleWorkspace } from "@/components/operations/barber-schedule-workspace";
 import { getAuthorizedUser } from "@/lib/auth/guards";
 
 export default async function BarberCalendarPage() {
@@ -8,11 +8,11 @@ export default async function BarberCalendarPage() {
   return (
     <DashboardShell
       user={user}
-      activeHref="/dashboard/barber/calendar"
+      activeHref="/dashboard/barber"
       title="Calendar"
-      subtitle="Control working hours, blocked time, live appointments, and schedule posture from one barber-safe time surface."
+      subtitle="Open straight into today&apos;s chair schedule, then keep appointments, availability, gaps, next client, and live chair posture moving from the same barber-safe lane."
     >
-      <BarberScheduleWorkspace barberName={user.name} />
+      <BarberCalendarScreen barberName={user.name} barberTitle={user.title} barberSubtype={user.barberSubtype} />
     </DashboardShell>
   );
 }

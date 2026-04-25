@@ -23,7 +23,10 @@ import ServicesPage from "@/app/(platform)/services/page";
 import WorkspaceProfilePage from "@/app/(platform)/workspace/profile/page";
 import BarberAppointmentsRedirectPage from "@/app/(platform)/dashboard/barber/appointments/page";
 import BarberAvailabilityRedirectPage from "@/app/(platform)/dashboard/barber/availability/page";
+import BarberClientsRedirectPage from "@/app/(platform)/dashboard/barber/clients/page";
+import BarberCommandRedirectPage from "@/app/(platform)/dashboard/barber/command/page";
 import BarberEarningsRedirectPage from "@/app/(platform)/dashboard/barber/earnings/page";
+import BarberHomeRedirectPage from "@/app/(platform)/dashboard/barber/home/page";
 import BarberServicesRedirectPage from "@/app/(platform)/dashboard/barber/services/page";
 import BarberPayoutsRedirectPage from "@/app/(platform)/dashboard/barber/payouts/page";
 import BarberReviewsRedirectPage from "@/app/(platform)/dashboard/barber/reviews/page";
@@ -36,7 +39,7 @@ describe("barber legacy route redirects", () => {
   });
 
   it("redirects the old barber command and earnings entries into the new barber tabs", async () => {
-    await expect(CommandPage()).rejects.toThrow("REDIRECT:/dashboard/barber/calendar");
+    await expect(CommandPage()).rejects.toThrow("REDIRECT:/dashboard/barber");
     await expect(EarningsPage()).rejects.toThrow("REDIRECT:/dashboard/barber/checkout?section=earnings");
   });
 
@@ -50,7 +53,7 @@ describe("barber legacy route redirects", () => {
           date: "2026-04-24"
         })
       })
-    ).rejects.toThrow("REDIRECT:/dashboard/barber/calendar?view=week&date=2026-04-24");
+    ).rejects.toThrow("REDIRECT:/dashboard/barber?view=week&date=2026-04-24");
   });
 
   it("redirects shared barber services into Checkout and preserves extra query state", async () => {
@@ -72,12 +75,15 @@ describe("barber legacy route redirects", () => {
   });
 
   it("redirects old dashboard barber routes into the new canonical barber tabs", async () => {
-    expect(() => BarberAppointmentsRedirectPage()).toThrow("REDIRECT:/dashboard/barber/calendar");
-    expect(() => BarberAvailabilityRedirectPage()).toThrow("REDIRECT:/dashboard/barber/calendar");
+    expect(() => BarberAppointmentsRedirectPage()).toThrow("REDIRECT:/dashboard/barber");
+    expect(() => BarberAvailabilityRedirectPage()).toThrow("REDIRECT:/dashboard/barber");
+    expect(() => BarberHomeRedirectPage()).toThrow("REDIRECT:/dashboard/barber");
+    expect(() => BarberCommandRedirectPage()).toThrow("REDIRECT:/dashboard/barber");
+    expect(() => BarberClientsRedirectPage()).toThrow("REDIRECT:/dashboard/barber/messages");
     expect(() => BarberEarningsRedirectPage()).toThrow("REDIRECT:/dashboard/barber/checkout?section=earnings");
     expect(() => BarberServicesRedirectPage()).toThrow("REDIRECT:/dashboard/barber/checkout?section=services");
-    expect(() => BarberPayoutsRedirectPage()).toThrow("REDIRECT:/dashboard/barber/profile?section=payouts");
+    expect(() => BarberPayoutsRedirectPage()).toThrow("REDIRECT:/dashboard/barber/more?section=payouts");
     expect(() => BarberReviewsRedirectPage()).toThrow("REDIRECT:/dashboard/barber/profile?section=reviews");
-    await expect(BarberSettingsRedirectPage({ searchParams: Promise.resolve({}) })).rejects.toThrow("REDIRECT:/dashboard/barber/profile?section=settings");
+    await expect(BarberSettingsRedirectPage({ searchParams: Promise.resolve({}) })).rejects.toThrow("REDIRECT:/dashboard/barber/more?section=settings");
   });
 });

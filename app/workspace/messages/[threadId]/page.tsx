@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { MessagingInboxScreen } from "@/components/messages/messaging-inbox-screen";
 import { getAuthorizedUser } from "@/lib/auth/guards";
@@ -7,9 +8,14 @@ export default async function BarberMessageThreadPage({ params }: { params: Prom
   const { threadId } = await params;
   const isShopSurface = user.role === "owner" || user.role === "manager" || user.role === "front_desk";
 
+  if (!isShopSurface) {
+    redirect(`/dashboard/barber/messages/${threadId}`);
+  }
+
   return (
     <DashboardShell
       user={user}
+      activeHref="/workspace/messages"
       title={isShopSurface ? "Shop conversations" : "Client conversations"}
       subtitle={
         isShopSurface

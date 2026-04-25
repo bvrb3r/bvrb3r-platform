@@ -107,7 +107,7 @@ export function BarberSettingsScreen({
     setFeedback(null);
     try {
       await saveSubtypeMutation.mutateAsync(selectedSubtype);
-      setFeedback({ tone: "success", message: "Business model saved. Home, Calendar, Checkout, and Profile now reflect the same canonical barber subtype." });
+      setFeedback({ tone: "success", message: "Business model saved. The barber lane still resolves from the same canonical subtype and payout posture." });
     } catch (error) {
       setFeedback({ tone: "error", message: getReadableActionError(error as BarberApiError) });
     }
@@ -185,16 +185,16 @@ export function BarberSettingsScreen({
         <Card className="rounded-[32px] p-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="surface-label">Settings</p>
+              <p className="surface-label">More</p>
               <h3 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">
                 {user.name}
               </h3>
               <p className="mt-3 max-w-3xl text-sm leading-7 text-white/62">
-                Private account setup lives here: business model, verification, payout onboarding, notifications, support, and session controls.
+                Private barber setup lives here: account controls, business model, verification, payout onboarding, notifications, support, and app preferences.
               </p>
             </div>
             <div className="rounded-[24px] border border-[#7cff00]/16 bg-[#7cff00]/10 px-4 py-3 text-right">
-              <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">Private setup</p>
+              <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">More tab</p>
               <p className="mt-2 text-sm font-medium text-white">
                 {formatStatusLabel(user.appApprovalStatus)}
               </p>
@@ -435,18 +435,18 @@ export function BarberSettingsScreen({
       <Card id="barber-settings-support" className="rounded-[32px] scroll-mt-6 p-6">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="surface-label">Support</p>
-            <p className="mt-2 text-sm text-white/58">
-              Keep verification, payout, and booking help easy to find without burying it in the operational tabs.
-            </p>
+              <p className="surface-label">Support</p>
+              <p className="mt-2 text-sm text-white/58">
+              Keep verification, payout, booking, and account help easy to find without burying it in the operational tabs.
+              </p>
+            </div>
+            <LifeBuoy className="h-5 w-5 text-[#baff69]" />
           </div>
-          <LifeBuoy className="h-5 w-5 text-[#baff69]" />
-        </div>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Link href="/workspace/messages" className="rounded-[22px] border border-white/8 bg-black/20 p-4 text-sm text-white/72 transition hover:border-[#7cff00]/20 hover:text-white">
+          <Link href="/dashboard/barber/messages" className="rounded-[22px] border border-white/8 bg-black/20 p-4 text-sm text-white/72 transition hover:border-[#7cff00]/20 hover:text-white">
             <p className="font-semibold text-white">Contact support</p>
-            <p className="mt-2 leading-6 text-white/58">Open the shared support and messaging lane.</p>
+            <p className="mt-2 leading-6 text-white/58">Open the barber message center for support and active threads.</p>
           </Link>
           <Link href="/activation-status" className="rounded-[22px] border border-white/8 bg-black/20 p-4 text-sm text-white/72 transition hover:border-[#7cff00]/20 hover:text-white">
             <p className="font-semibold text-white">Approval help</p>

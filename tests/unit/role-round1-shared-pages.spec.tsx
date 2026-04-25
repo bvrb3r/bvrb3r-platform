@@ -77,7 +77,7 @@ describe("role completion round 1 shared role pages", () => {
   it("keeps the appointments route barber-scoped for barber roles", async () => {
     getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("blaze@bvrb3r.demo"));
 
-    await expect(AppointmentsPage({ searchParams: Promise.resolve({}) })).rejects.toThrow("REDIRECT:/dashboard/barber/calendar");
+    await expect(AppointmentsPage({ searchParams: Promise.resolve({}) })).rejects.toThrow("REDIRECT:/dashboard/barber");
 
     expect(getAuthorizedUserMock).toHaveBeenCalledWith(["owner", "manager", "front_desk", "commission_barber", "booth_rent_barber"]);
   });

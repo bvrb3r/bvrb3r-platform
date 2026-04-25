@@ -21,7 +21,7 @@ export default async function AppointmentsPage({
     if (params.date) {
       query.set("date", params.date);
     }
-    redirect(`/dashboard/barber/calendar${query.size ? `?${query.toString()}` : ""}` as Route);
+    redirect(`/dashboard/barber${query.size ? `?${query.toString()}` : ""}` as Route);
   }
 
   if (user.role === "owner") {

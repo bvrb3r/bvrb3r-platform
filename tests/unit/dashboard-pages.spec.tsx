@@ -50,6 +50,18 @@ vi.mock("@/components/barber-experience/barber-profile-screen", () => ({
   )
 }));
 
+vi.mock("@/components/barber-experience/barber-settings-screen", () => ({
+  BarberSettingsScreen: ({ user, initialSection }: { user: { name: string }; initialSection?: string }) => (
+    <div data-testid="barber-more-screen-stub">{user.name}|{initialSection ?? "none"}</div>
+  )
+}));
+
+vi.mock("@/components/messages/messaging-inbox-screen", () => ({
+  MessagingInboxScreen: ({ basePath, selectedThreadId }: { basePath: string; selectedThreadId?: string }) => (
+    <div data-testid="barber-messages-screen-stub">{basePath}|{selectedThreadId ?? "none"}</div>
+  )
+}));
+
 vi.mock("@/components/operations/client-workspace", () => ({
   ClientWorkspace: ({ clientId }: { clientId: string }) => <div data-testid="client-workspace-stub">{clientId}</div>
 }));
@@ -87,6 +99,8 @@ import FrontDeskDashboardPage from "@/app/(platform)/dashboard/front-desk/page";
 import BarberDashboardPage from "@/app/(platform)/dashboard/barber/page";
 import BarberCalendarPage from "@/app/(platform)/dashboard/barber/calendar/page";
 import BarberCheckoutPage from "@/app/(platform)/dashboard/barber/checkout/page";
+import BarberMessagesPage from "@/app/(platform)/dashboard/barber/messages/page";
+import BarberMorePage from "@/app/(platform)/dashboard/barber/more/page";
 import BarberProfilePage from "@/app/(platform)/dashboard/barber/profile/page";
 import BarberSettingsPage from "@/app/(platform)/dashboard/barber/settings/page";
 import BarberCommandPage from "@/app/(platform)/command/page";
@@ -145,7 +159,8 @@ describe("dashboard role pages", () => {
     render(await BarberDashboardPage());
 
     expect(getAuthorizedUserMock).toHaveBeenCalledWith(["commission_barber", "booth_rent_barber"]);
-    expect(screen.getByRole("heading", { name: "Today" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Calendar" })).toBeInTheDocument();
+    expect(screen.getByTestId("barber-schedule-workspace-stub")).toHaveTextContent("Blaze King");
     expect(screen.getByTestId("barber-workspace-stub")).toHaveTextContent("Blaze King");
     expect(screen.queryByText("Owner control center")).not.toBeInTheDocument();
   });
@@ -158,6 +173,7 @@ describe("dashboard role pages", () => {
     expect(getAuthorizedUserMock).toHaveBeenCalledWith(["commission_barber", "booth_rent_barber"]);
     expect(screen.getByRole("heading", { name: "Calendar" })).toBeInTheDocument();
     expect(screen.getByTestId("barber-schedule-workspace-stub")).toHaveTextContent("Blaze King");
+    expect(screen.getByTestId("barber-workspace-stub")).toHaveTextContent("Blaze King");
   });
 
   it("renders the barber checkout route", async () => {
@@ -188,18 +204,42 @@ describe("dashboard role pages", () => {
     expect(screen.getByTestId("barber-profile-screen-stub")).toHaveTextContent("Blaze King|reviews");
   });
 
-  it("redirects the barber settings route into profile settings", async () => {
+  it("renders the barber messages route", async () => {
+    getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("blaze@bvrb3r.demo"));
+
+    render(await BarberMessagesPage());
+
+    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["commission_barber", "booth_rent_barber"]);
+    expect(screen.getByRole("heading", { name: "Messages" })).toBeInTheDocument();
+    expect(screen.getByTestId("barber-messages-screen-stub")).toHaveTextContent("/dashboard/barber/messages|none");
+  });
+
+  it("renders the barber more route", async () => {
+    getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("blaze@bvrb3r.demo"));
+
+    render(
+      await BarberMorePage({
+        searchParams: Promise.resolve({ section: "payouts" })
+      })
+    );
+
+    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["commission_barber", "booth_rent_barber"]);
+    expect(screen.getByRole("heading", { name: "More" })).toBeInTheDocument();
+    expect(screen.getByTestId("barber-more-screen-stub")).toHaveTextContent("Blaze King|payouts");
+  });
+
+  it("redirects the barber settings route into More", async () => {
     await expect(
       BarberSettingsPage({
         searchParams: Promise.resolve({ section: "payouts" })
       })
-    ).rejects.toThrow("REDIRECT:/dashboard/barber/profile?section=payouts");
+    ).rejects.toThrow("REDIRECT:/dashboard/barber/more?section=payouts");
   });
 
   it("redirects the legacy barber command entry into the barber calendar", async () => {
     getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("blaze@bvrb3r.demo"));
 
-    await expect(BarberCommandPage()).rejects.toThrow("REDIRECT:/dashboard/barber/calendar");
+    await expect(BarberCommandPage()).rejects.toThrow("REDIRECT:/dashboard/barber");
   });
 
   it("renders the dedicated client workspace for client routes", async () => {
@@ -230,6 +270,6 @@ describe("dashboard role pages", () => {
   it("redirects barber settings into the canonical barber profile settings route", async () => {
     getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("blaze@bvrb3r.demo"));
 
-    await expect(SettingsPage()).rejects.toThrow("REDIRECT:/dashboard/barber/profile?section=settings");
+    await expect(SettingsPage()).rejects.toThrow("REDIRECT:/dashboard/barber/more?section=settings");
   });
 });

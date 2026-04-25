@@ -7,5 +7,5 @@ export default async function BarberSettingsPage({
 }) {
   const params = await searchParams;
   const section = params.section ?? "settings";
-  redirect(`/dashboard/barber/profile?section=${encodeURIComponent(section)}`);
+  redirect(`/dashboard/barber/more?section=${encodeURIComponent(section)}`);
 }

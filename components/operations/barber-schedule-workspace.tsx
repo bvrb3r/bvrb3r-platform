@@ -312,7 +312,7 @@ export function BarberScheduleWorkspace({ barberName }: { barberName: string }) 
     try {
       const thread = await createThreadMutation.mutateAsync({ appointmentId: appointment.id });
       if (thread.thread?.id) {
-        router.push(`/workspace/messages/${thread.thread.id}`);
+        router.push(`/dashboard/barber/messages/${thread.thread.id}`);
       }
     } catch (error) {
       setStatusUpdate({ tone: "error", message: getReadableActionError(error as BarberApiError) });

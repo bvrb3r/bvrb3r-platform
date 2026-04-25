@@ -89,7 +89,7 @@ export function BarberClientsWorkspace({ barberName }: { barberName: string }) {
     try {
       const payload = await createThreadMutation.mutateAsync({ appointmentId: client.messageAppointmentId });
       if (payload.thread?.id) {
-        router.push(`/workspace/messages/${payload.thread.id}`);
+        router.push(`/dashboard/barber/messages/${payload.thread.id}`);
       }
     } catch (error) {
       setStatusUpdate({

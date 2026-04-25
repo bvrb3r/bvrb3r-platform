@@ -1,5 +1,5 @@
+import { BarberCalendarScreen } from "@/components/barber-experience/barber-calendar-screen";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
-import { BarberWorkspace } from "@/components/operations/barber-workspace";
 import { getAuthorizedUser } from "@/lib/auth/guards";
 
 export default async function BarberDashboardPage() {
@@ -8,10 +8,10 @@ export default async function BarberDashboardPage() {
     <DashboardShell
       user={user}
       activeHref="/dashboard/barber"
-      title="Today"
-      subtitle="Run today fast: next client, live chair posture, today&apos;s money snapshot, real gaps, and the next barber action that matters."
+      title="Calendar"
+      subtitle="Open straight into today&apos;s chair schedule, then keep appointments, availability, gaps, next client, and live chair posture moving from the same barber-safe lane."
     >
-      <BarberWorkspace barberName={user.name} barberTitle={user.title} barberSubtype={user.barberSubtype} />
+      <BarberCalendarScreen barberName={user.name} barberTitle={user.title} barberSubtype={user.barberSubtype} />
     </DashboardShell>
   );
 }

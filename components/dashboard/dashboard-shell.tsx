@@ -111,7 +111,7 @@ function getPrimaryActionTitle(role: Role) {
       return "Move arrivals from the door to the right chair without friction.";
     case "commission_barber":
     case "booth_rent_barber":
-      return "Home keeps today obvious, Calendar controls time, Checkout keeps service money clear, and Profile plus Settings split public identity from private setup.";
+      return "Calendar opens straight into the chair schedule, Checkout keeps money moving, Profile controls the public barber story, Messages keeps conversations organized, and More holds private setup.";
     case "client":
       return "Search, book, and manage visits without stepping into shop ops.";
     default:
@@ -128,9 +128,9 @@ function getBoundaryCopy(role: Role) {
     case "front_desk":
       return "Front desk mode stays focused on queue movement, guest support, check-in flow, and handoff clarity.";
     case "commission_barber":
-      return "Commission barber mode keeps Home on today, Calendar on time control, Checkout on real money, and Profile on both public reputation and private setup.";
+      return "Commission barber mode keeps Calendar on chair control, Checkout on real money, Profile on public reputation, Messages on appointment communication, and More on private setup.";
     case "booth_rent_barber":
-      return "Booth-rent mode keeps Home on today, Calendar on live availability, Checkout on independent money clarity, and Profile on discovery identity plus compliance.";
+      return "Booth-rent mode keeps Calendar on live availability, Checkout on independent money clarity, Profile on discovery identity, Messages on client communication, and More on compliance plus payout setup.";
     case "client":
       return "Client mode keeps booking, favorites, rewards, and appointment activity visible without any shop-internal clutter.";
     default:
@@ -217,7 +217,7 @@ function getUtilityCards(user: UserAccount): UtilityCard[] {
     case "commission_barber":
     case "booth_rent_barber":
       return [
-        { label: "Barber lane", value: user.barberSubtype?.replaceAll("_", " ") ?? "ready", detail: "Home, Calendar, Checkout, and Profile all stay tied to this authenticated barber account.", icon: CalendarDays },
+        { label: "Barber lane", value: user.barberSubtype?.replaceAll("_", " ") ?? "ready", detail: "Calendar, Checkout, Profile, Messages, and More all stay tied to this authenticated barber account.", icon: CalendarDays },
         { label: "Approval", value: user.appApprovalStatus?.replaceAll("_", " ") ?? "ready", detail: user.shopApprovalStatus && user.shopApprovalStatus !== "not_required" ? `Shop approval ${user.shopApprovalStatus.replaceAll("_", " ")}` : "No extra shop approval required", icon: ShieldCheck },
         { label: "Chair scope", value: String(user.locationIds.length), detail: "Assigned locations, payout posture, and availability scope on this session", icon: WalletCards }
       ];
@@ -241,7 +241,7 @@ function getNotificationsHref(role: Role): ComponentProps<typeof Link>["href"] {
       return "/queue";
     case "commission_barber":
     case "booth_rent_barber":
-      return "/dashboard/barber/calendar";
+      return "/dashboard/barber";
     case "client":
       return "/activity";
     default:
@@ -253,11 +253,12 @@ function getMessagesHref(role: Role): ComponentProps<typeof Link>["href"] {
   switch (role) {
     case "client":
       return "/messages";
+    case "commission_barber":
+    case "booth_rent_barber":
+      return "/dashboard/barber/messages";
     case "owner":
     case "manager":
     case "front_desk":
-    case "commission_barber":
-    case "booth_rent_barber":
       return "/workspace/messages";
     default:
       return "/workspace/profile";

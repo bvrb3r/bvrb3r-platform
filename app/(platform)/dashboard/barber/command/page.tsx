@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
-export default async function BarberCommandPage() {
+export default function BarberCommandRedirectPage() {
   redirect("/dashboard/barber");
 }
