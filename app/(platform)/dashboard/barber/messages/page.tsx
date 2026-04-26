@@ -10,13 +10,13 @@ export default async function BarberMessagesPage() {
       user={user}
       activeHref="/dashboard/barber/messages"
       title="Messages"
-      subtitle="Keep client, appointment, and support conversations in one barber-safe inbox without leaving the chair workflow."
+      subtitle="Client conversations, appointment threads, and support."
     >
       <MessagingInboxScreen
         surface="barber"
         basePath="/dashboard/barber/messages"
         title="Messages"
-        subtitle="Message clients from real appointment threads only, with shop and support contact still grounded in the same canonical conversation system."
+        subtitle="Client conversations, appointment threads, and support."
       />
     </DashboardShell>
   );

@@ -131,6 +131,13 @@ const threadFilters: { key: ThreadFilter; label: string }[] = [
   { key: "other", label: "Other" }
 ];
 
+const barberThreadFilters: { key: ThreadFilter; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "other", label: "Clients" },
+  { key: "shops", label: "Shops" },
+  { key: "support", label: "Support" }
+];
+
 function getThreadFilter(role?: string | null, threadType?: string): ThreadFilter {
   if (threadType === "support" || role === "platform_admin") {
     return "support";
@@ -221,6 +228,7 @@ export function MessagingInboxScreen({
       return matchesFilter && (!query || searchable.includes(query));
     });
   }, [threadFilter, threadSearch, threads]);
+  const activeThreadFilters = surface === "barber" ? barberThreadFilters : threadFilters;
   const participantSummary = useMemo(
     () =>
       activeThread?.participants
@@ -380,7 +388,7 @@ export function MessagingInboxScreen({
                   onChange={(event) => setThreadSearch(event.target.value)}
                 />
                 <div className="flex gap-2 overflow-x-auto pb-1">
-                  {threadFilters.map((filter) => (
+                  {activeThreadFilters.map((filter) => (
                     <FilterChip
                       key={filter.key}
                       type="button"

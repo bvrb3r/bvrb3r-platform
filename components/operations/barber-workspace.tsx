@@ -3,12 +3,13 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarDays, Clock3, MessageSquareText, ShieldCheck, WalletCards } from "lucide-react";
-import { StatusBadge } from "@/components/dashboard/status-badge";
+import { StatusBadge as AppointmentStatusBadge } from "@/components/dashboard/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DataStatCard, PageHeader, StatusBadge } from "@/design/components";
 import { useBarberAiSummaryQuery, useTrackAiRecommendationMutation } from "@/lib/ai/client";
 import { useBarberFintechReadinessQuery, useBarberPayoutsQuery } from "@/lib/fintech/client";
 import { useCreateMessageThreadMutation } from "@/lib/messages/client";
@@ -242,18 +243,18 @@ export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { ba
   return (
     <div className="space-y-4" data-testid="barber-workspace">
       <Card className="rounded-[32px] p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="surface-label">Today</p>
-            <h3 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">{barberName}</h3>
-            <p className="mt-3 max-w-3xl text-sm leading-7 text-white/62">See the chair, the next client, today&apos;s money pulse, and the real gaps you can still fill without leaving Calendar.</p>
-          </div>
-          <div className="rounded-[24px] border border-white/8 bg-black/20 px-4 py-4 text-right">
-            <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">{formatLongDate(businessDate)}</p>
-            <p className="mt-2 text-sm text-white/78">{payload?.status.currentShopLabel ?? "Assigned chair territory"}</p>
-            <p className="mt-1 text-sm text-white/56">{payload?.status.liveStatusLabel ?? barberTitle}</p>
-          </div>
-        </div>
+        <PageHeader
+          label="Today"
+          title={barberName}
+          subtitle="Chair status, next client, money pulse, and open gaps."
+          action={
+            <div className="rounded-[24px] border border-white/8 bg-black/20 px-4 py-4 text-right">
+              <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">{formatLongDate(businessDate)}</p>
+              <p className="mt-2 text-sm text-white/78">{payload?.status.currentShopLabel ?? "Assigned chair territory"}</p>
+              <StatusBadge className="mt-2 inline-flex">{payload?.status.liveStatusLabel ?? barberTitle}</StatusBadge>
+            </div>
+          }
+        />
         <div className="mt-5 space-y-3">
           {statusUpdate ? <FeedbackBanner tone={statusUpdate.tone} message={statusUpdate.message} /> : null}
           {overviewError ? <FeedbackBanner tone="error" message={overviewError} /> : null}
@@ -373,10 +374,27 @@ export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { ba
           <><MetricSkeleton /><MetricSkeleton /><MetricSkeleton /><MetricSkeleton /></>
         ) : (
           <>
-            <Card className="rounded-[28px] border-[#7cff00]/16 bg-[linear-gradient(180deg,rgba(124,255,0,0.14),rgba(8,8,8,0.98))] p-5"><p className="surface-label text-[#d7ffab]">Today&apos;s bookings</p><p className="mt-4 text-[2.4rem] font-semibold tracking-[-0.05em]" data-display="true">{payload?.earnings.todayBookings ?? 0}</p><p className="mt-3 text-sm text-white/62">{payload?.earnings.completedServices ?? 0} completed and {payload?.earnings.upcomingBookings ?? 0} still active.</p></Card>
-            <Card className="rounded-[28px] border-white/8 bg-black/20 p-5"><p className="surface-label">Earned today</p><p className="mt-4 text-[2.1rem] font-semibold tracking-[-0.05em]" data-display="true">{currency(payload?.earnings.grossSales ?? 0)}</p><p className="mt-3 text-sm text-white/62">Tips {currency(payload?.earnings.tips ?? 0)} | Avg ticket {currency(payload?.earnings.averageTicket ?? 0)}</p></Card>
-            <Card className="rounded-[28px] border-white/8 bg-black/20 p-5"><p className="surface-label">Booked on calendar</p><p className="mt-4 text-[2.1rem] font-semibold tracking-[-0.05em]" data-display="true">{currency(bookedToday)}</p><p className="mt-3 text-sm text-white/62">{payload?.earnings.outstandingCheckoutCount ? `${payload.earnings.outstandingCheckoutCount} appointments still need checkout follow-up.` : "All active chair value is already reflected in the live schedule."}</p></Card>
-            <Card className="rounded-[28px] border-white/8 bg-black/20 p-5"><p className="surface-label">Payout status</p><p className="mt-4 text-[2.1rem] font-semibold tracking-[-0.05em]" data-display="true">{currency(readinessQuery.data?.routingSummary.readyForPayoutAmount ?? 0)}</p><p className="mt-3 text-sm text-white/62">{latestPayout ? `Latest payout ${formatStatusLabel(latestPayout.executionStatus)}.` : `${readinessQuery.data?.routingSummary.blockedPaymentsCount ?? 0} payout blockers currently on file.`}</p></Card>
+            <DataStatCard
+              className="border-[#7cff00]/16 bg-[linear-gradient(180deg,rgba(124,255,0,0.14),rgba(8,8,8,0.98))]"
+              label="Today's bookings"
+              value={payload?.earnings.todayBookings ?? 0}
+              detail={`${payload?.earnings.completedServices ?? 0} completed and ${payload?.earnings.upcomingBookings ?? 0} active.`}
+            />
+            <DataStatCard
+              label="Earned today"
+              value={currency(payload?.earnings.grossSales ?? 0)}
+              detail={`Tips ${currency(payload?.earnings.tips ?? 0)} | Avg ticket ${currency(payload?.earnings.averageTicket ?? 0)}`}
+            />
+            <DataStatCard
+              label="Booked on calendar"
+              value={currency(bookedToday)}
+              detail={payload?.earnings.outstandingCheckoutCount ? `${payload.earnings.outstandingCheckoutCount} appointments need checkout.` : "Active chair value is reflected in schedule."}
+            />
+            <DataStatCard
+              label="Payout status"
+              value={currency(readinessQuery.data?.routingSummary.readyForPayoutAmount ?? 0)}
+              detail={latestPayout ? `Latest payout ${formatStatusLabel(latestPayout.executionStatus)}.` : `${readinessQuery.data?.routingSummary.blockedPaymentsCount ?? 0} payout blockers on file.`}
+            />
           </>
         )}
       </section>
@@ -388,7 +406,7 @@ export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { ba
             <div className="mt-4 rounded-[24px] border border-white/8 bg-black/20 p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <div className="flex flex-wrap items-center gap-2"><p className="text-2xl font-semibold text-white">{nextAppointment.display.clientName}</p><StatusBadge status={nextAppointment.status} balanceDue={nextAppointment.balanceDue} /></div>
+                  <div className="flex flex-wrap items-center gap-2"><p className="text-2xl font-semibold text-white">{nextAppointment.display.clientName}</p><AppointmentStatusBadge status={nextAppointment.status} balanceDue={nextAppointment.balanceDue} /></div>
                   <p className="mt-2 text-sm text-white/58">{nextAppointment.display.serviceName}</p>
                   <p className="mt-2 text-sm text-white/58">{formatDateTime(nextAppointment.start)} | {nextAppointment.display.locationLabel}</p>
                 </div>
@@ -475,7 +493,7 @@ export function BarberWorkspace({ barberName, barberTitle, barberSubtype }: { ba
               <div key={appointment.id} className="rounded-[24px] border border-white/8 bg-black/20 p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2"><p className="text-lg font-semibold text-white">{appointment.display.clientName}</p><StatusBadge status={appointment.status} balanceDue={appointment.balanceDue} /></div>
+                    <div className="flex flex-wrap items-center gap-2"><p className="text-lg font-semibold text-white">{appointment.display.clientName}</p><AppointmentStatusBadge status={appointment.status} balanceDue={appointment.balanceDue} /></div>
                     <p className="mt-2 text-sm text-white/58">{formatTime(appointment.start)} | {appointment.display.serviceName} | {appointment.display.locationLabel}</p>
                     <p className="mt-2 text-sm text-white/52">{appointment.note?.trim() || appointment.display.lifecycleDetail}</p>
                   </div>

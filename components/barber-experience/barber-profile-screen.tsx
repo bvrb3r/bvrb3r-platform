@@ -13,6 +13,7 @@ import { PublicBarberProfile } from "@/components/marketplace/public-barber-prof
 import { GalleryManagerCard, ProfilePhotoManagerCard } from "@/components/profile/profile-media-manager";
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
+import { Avatar, DataStatCard, PageHeader, StatusBadge } from "@/design/components";
 import { useBarberProfileQuery } from "@/lib/booking/client";
 import { useMutateProfileMediaMutation, useProfileMediaWorkspaceQuery } from "@/lib/profile/client";
 import { uploadMediaAsset } from "@/lib/storage/media";
@@ -128,26 +129,27 @@ export function BarberProfileScreen({
       {profileQuery.error ? <FeedbackBanner tone="error" message={readableError(profileQuery.error, "Unable to load the public barber profile preview right now.")} /> : null}
 
       <Card className="rounded-[32px] p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="surface-label">Profile</p>
-            <h3 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">
-              {barberName}
-            </h3>
-            <p className="mt-3 max-w-3xl text-sm leading-7 text-white/62">
-              This is the public barber storefront: photo, bio, specialties, services, review proof, and real haircut work clients can trust before they book.
-            </p>
-          </div>
-          <div className="rounded-[24px] border border-[#7cff00]/16 bg-[#7cff00]/10 px-4 py-3 text-right">
-            <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">Client-facing profile</p>
-            <p className="mt-2 text-sm font-medium text-white">
-              {profile?.reviews.length ?? 0} review{(profile?.reviews.length ?? 0) === 1 ? "" : "s"}
-            </p>
-            <p className="mt-1 text-sm text-white/58">
-              {profile?.services.length ?? 0} visible service{(profile?.services.length ?? 0) === 1 ? "" : "s"}
-            </p>
-          </div>
-        </div>
+        <PageHeader
+          label="Profile"
+          title="Profile"
+          subtitle="Manage how clients see and book you."
+          action={
+            <div className="flex items-center gap-3 rounded-[24px] border border-[#7cff00]/16 bg-[#7cff00]/10 px-4 py-3">
+              <Avatar
+                src={profile?.profile.profilePhotoUrl ?? barberMedia?.profilePhotoUrl}
+                alt={`${barberName} profile photo`}
+                initials={initialsForName(barberName)}
+                className="h-14 w-14"
+              />
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">{barberName}</p>
+                <p className="mt-1 text-sm text-white/58">
+                  {profile?.services.length ?? 0} service{(profile?.services.length ?? 0) === 1 ? "" : "s"} visible
+                </p>
+              </div>
+            </div>
+          }
+        />
 
         <div className="mt-5 flex flex-wrap gap-2">
           <Link href="#barber-profile-preview" className="rounded-full border border-white/10 bg-black/20 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/74 transition hover:border-[#7cff00]/20 hover:text-[#d7ffab]">
@@ -178,25 +180,22 @@ export function BarberProfileScreen({
           </div>
 
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-[22px] border border-[#7cff00]/18 bg-[#7cff00]/8 p-4">
-              <p className="surface-label text-[#d7ffab]">Trust preview</p>
-              <p className="mt-3 text-2xl font-semibold text-white">{trustQuery.data?.trustScore ?? 0}</p>
-              <p className="mt-2 text-sm text-white/62">{trustQuery.data?.publicBadgePreview?.[0] ?? "Verification still building"}</p>
-            </div>
-            <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-              <p className="surface-label">Starting price</p>
-              <p className="mt-3 text-2xl font-semibold text-white">
-                {profile?.priceRange?.length ? currency(profile.priceRange[0]) : "--"}
-              </p>
-              <p className="mt-2 text-sm text-white/58">Visible to clients on discovery and booking entry.</p>
-            </div>
-            <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-              <p className="surface-label">Next opening</p>
-              <p className="mt-3 text-lg font-semibold text-white">{profile?.nextAvailableAt ? "Live" : "Pending"}</p>
-              <p className="mt-2 text-sm text-white/58">
-                {profile?.nextAvailableAt ? "Availability is visible from the canonical booking engine." : "Next availability appears once the schedule is set."}
-              </p>
-            </div>
+            <DataStatCard
+              className="border-[#7cff00]/18 bg-[#7cff00]/8"
+              label="Trust preview"
+              value={trustQuery.data?.trustScore ?? 0}
+              detail={trustQuery.data?.publicBadgePreview?.[0] ?? "Verification still building"}
+            />
+            <DataStatCard
+              label="Starting price"
+              value={profile?.priceRange?.length ? currency(profile.priceRange[0]) : "--"}
+              detail="Visible on discovery and booking."
+            />
+            <DataStatCard
+              label="Next opening"
+              value={profile?.nextAvailableAt ? "Live" : "Pending"}
+              detail={profile?.nextAvailableAt ? "Availability is visible." : "Set schedule to publish openings."}
+            />
           </div>
 
           <div className="mt-4 rounded-[24px] border border-white/8 bg-black/20 p-4">
@@ -282,7 +281,10 @@ export function BarberProfileScreen({
               <p className="mt-2 text-sm text-white/58">
                 Keep the client-facing barber profile clean here, then handle private account controls and Stripe Connect readiness inside More.
               </p>
-              <div className="mt-4">
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <StatusBadge tone={verificationDecision?.gates.badge?.allowed ? "green" : "neutral"}>
+                  {verificationDecision?.gates.badge?.allowed ? "Trust badge ready" : "Setup lives in More"}
+                </StatusBadge>
                 <Link href="/dashboard/barber/more?section=settings" className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/18 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#7cff00]/20 hover:text-[#d7ffab] sm:px-5 sm:text-[11px] sm:tracking-[0.22em]">
                   Open More
                 </Link>

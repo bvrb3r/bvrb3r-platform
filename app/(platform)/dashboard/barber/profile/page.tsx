@@ -15,7 +15,7 @@ export default async function BarberProfilePage({
       user={user}
       activeHref="/dashboard/barber/profile"
       title="Profile"
-      subtitle="Control the public barber identity here: profile picture, discovery portfolio, specialties, services, and review proof clients see before they book."
+      subtitle="Manage how clients see and book you."
     >
       <BarberProfileScreen
         user={user}

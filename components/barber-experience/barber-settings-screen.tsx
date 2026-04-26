@@ -15,6 +15,7 @@ import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { DataStatCard, PageHeader, StatusBadge } from "@/design/components";
 import { useBarberFintechReadinessQuery } from "@/lib/fintech/client";
 import { useMutateProfileMediaMutation, useProfileMediaWorkspaceQuery } from "@/lib/profile/client";
 import {
@@ -183,26 +184,24 @@ export function BarberSettingsScreen({
 
       {!embedded ? (
         <Card className="rounded-[32px] p-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="surface-label">More</p>
-              <h3 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">
-                {user.name}
-              </h3>
-              <p className="mt-3 max-w-3xl text-sm leading-7 text-white/62">
-                Private barber setup lives here: account controls, business model, verification, payout onboarding, notifications, support, and app preferences.
-              </p>
-            </div>
-            <div className="rounded-[24px] border border-[#7cff00]/16 bg-[#7cff00]/10 px-4 py-3 text-right">
-              <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">More tab</p>
-              <p className="mt-2 text-sm font-medium text-white">
-                {formatStatusLabel(user.appApprovalStatus)}
-              </p>
-              <p className="mt-1 text-sm text-white/58">
-                {formatStatusLabel(readinessQuery.data?.connectedAccount.operationalStatus)}
-              </p>
-            </div>
-          </div>
+          <PageHeader
+            label="More"
+            title="More"
+            subtitle="Settings, payouts, verification, and support."
+            action={
+              <div className="rounded-[24px] border border-[#7cff00]/16 bg-[#7cff00]/10 px-4 py-3 text-right">
+                <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">{user.name}</p>
+                <div className="mt-2">
+                  <StatusBadge tone={user.appApprovalStatus === "approved" ? "green" : "neutral"}>
+                    {formatStatusLabel(user.appApprovalStatus)}
+                  </StatusBadge>
+                </div>
+                <p className="mt-2 text-sm text-white/58">
+                  {formatStatusLabel(readinessQuery.data?.connectedAccount.operationalStatus)}
+                </p>
+              </div>
+            }
+          />
 
           <div className="mt-5 flex flex-wrap gap-2">
             <Link href="#barber-settings-account" className="rounded-full border border-white/10 bg-black/20 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/74 transition hover:border-[#7cff00]/20 hover:text-[#d7ffab]">
@@ -222,6 +221,33 @@ export function BarberSettingsScreen({
             </Link>
           </div>
         </Card>
+      ) : null}
+
+      {!embedded ? (
+        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <DataStatCard
+            label="Account"
+            value={formatStatusLabel(user.appApprovalStatus)}
+            detail={user.email}
+            icon={<Building2 className="h-4 w-4" />}
+          />
+          <DataStatCard
+            label="Business setup"
+            value={subtypeOptions.find((option) => option.subtype === selectedSubtype)?.label ?? "Freelance"}
+            detail="Saved through barber subtype"
+            icon={<ShieldCheck className="h-4 w-4" />}
+          />
+          <DataStatCard
+            label="Verification"
+            value={formatStatusLabel(verificationProfile?.overallStatus ?? trustQuery.data?.canonicalOverallStatus)}
+            detail={verificationDecision?.gates.badge?.allowed ? "Trust badge ready" : "Needs review"}
+          />
+          <DataStatCard
+            label="Payouts"
+            value={formatStatusLabel(readinessQuery.data?.connectedAccount.operationalStatus)}
+            detail="Stripe Connect readiness"
+          />
+        </section>
       ) : null}
 
       <section id="barber-settings-account" className="grid scroll-mt-6 gap-4 lg:grid-cols-[1.02fr_0.98fr]">

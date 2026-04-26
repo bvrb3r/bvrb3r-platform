@@ -15,14 +15,14 @@ export default async function BarberMessageThreadPage({
       user={user}
       activeHref="/dashboard/barber/messages"
       title="Messages"
-      subtitle="Stay inside the active appointment or support conversation without losing the barber-safe messaging scope."
+      subtitle="Client conversations, appointment threads, and support."
     >
       <MessagingInboxScreen
         surface="barber"
         basePath="/dashboard/barber/messages"
         selectedThreadId={threadId}
         title="Messages"
-        subtitle="Every thread stays tied to the real appointment, shop, or support relationship that created it."
+        subtitle="Client conversations, appointment threads, and support."
       />
     </DashboardShell>
   );

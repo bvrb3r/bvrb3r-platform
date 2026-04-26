@@ -15,7 +15,7 @@ export default async function BarberMorePage({
       user={user}
       activeHref="/dashboard/barber/more"
       title="More"
-      subtitle="Keep verification, payouts, business setup, notifications, support, and account controls together without cluttering the public barber profile."
+      subtitle="Settings, payouts, verification, and support."
     >
       <BarberSettingsScreen user={user} initialSection={params.section} />
     </DashboardShell>

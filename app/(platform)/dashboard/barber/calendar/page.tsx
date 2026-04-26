@@ -10,7 +10,7 @@ export default async function BarberCalendarPage() {
       user={user}
       activeHref="/dashboard/barber"
       title="Calendar"
-      subtitle="Open straight into today&apos;s chair schedule, then keep appointments, availability, gaps, next client, and live chair posture moving from the same barber-safe lane."
+      subtitle="Manage your day, availability, and appointments."
     >
       <BarberCalendarScreen barberName={user.name} barberTitle={user.title} barberSubtype={user.barberSubtype} />
     </DashboardShell>

@@ -3,11 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarDays, Clock3, MessageSquareText } from "lucide-react";
-import { StatusBadge } from "@/components/dashboard/status-badge";
+import { StatusBadge as AppointmentStatusBadge } from "@/components/dashboard/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DataStatCard, FilterChip, PageHeader, StatusBadge } from "@/design/components";
 import { shiftBarberScheduleAnchorDate } from "@/lib/barber/domain";
 import { useCreateMessageThreadMutation } from "@/lib/messages/client";
 import {
@@ -124,7 +125,7 @@ function AppointmentCard({
             {appointment.display.serviceName} - {viewMode === "day" ? formatTime(appointment.start) : formatDateTime(appointment.start)}
           </p>
         </div>
-        <StatusBadge status={appointment.status} balanceDue={appointment.balanceDue} />
+        <AppointmentStatusBadge status={appointment.status} balanceDue={appointment.balanceDue} />
       </div>
 
       <p className="mt-3 text-sm text-white/60">{appointment.display.locationLabel}</p>
@@ -322,30 +323,48 @@ export function BarberScheduleWorkspace({ barberName }: { barberName: string }) 
   return (
     <div className="space-y-4" data-testid="barber-schedule-workspace">
       <Card className="rounded-[32px] p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="surface-label">Chair schedule</p>
-            <h3 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">{barberName}</h3>
-            <p className="mt-4 max-w-3xl text-sm leading-7 text-white/62">
-              Manage your working hours, time-off blocks, and same-day appointment flow without stepping outside the real booking lifecycle.
-            </p>
-          </div>
-          <div className="rounded-[24px] border border-white/8 bg-black/20 p-4 text-sm text-white/68">
-            <div className="inline-flex items-center gap-2 rounded-full border border-[#7CFF00]/18 bg-[#7CFF00]/10 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">
-              <CalendarDays className="h-4 w-4" />
-              Timeline and availability
-            </div>
-            <p className="mt-4 text-sm text-white/58">
-              Current live status: {payload?.status.liveStatusLabel ?? "Loading"}{payload?.status.currentShopLabel ? ` at ${payload.status.currentShopLabel}` : ""}
-            </p>
-          </div>
-        </div>
+        <PageHeader
+          label="Chair schedule"
+          title={barberName}
+          subtitle="Manage working hours, blocked time, and same-day appointment flow."
+          action={
+            <StatusBadge>
+              <CalendarDays className="h-3.5 w-3.5" />
+              {payload?.status.liveStatusLabel ?? "Loading"}
+            </StatusBadge>
+          }
+        />
 
         <div className="mt-5 space-y-3">
           {statusUpdate ? <FeedbackBanner tone={statusUpdate.tone} message={statusUpdate.message} /> : null}
           {errorMessage ? <FeedbackBanner tone="error" message={errorMessage} /> : null}
         </div>
       </Card>
+
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <DataStatCard
+          label="Appointments"
+          value={timelineAppointments.length}
+          detail={`Visible in ${scheduleView} view`}
+          icon={<CalendarDays className="h-4 w-4" />}
+        />
+        <DataStatCard
+          label="Blocked time"
+          value={payload?.blockedTimes.length ?? 0}
+          detail="Real blackout windows"
+          icon={<Clock3 className="h-4 w-4" />}
+        />
+        <DataStatCard
+          label="Availability"
+          value={payload?.workingHours.length ?? 0}
+          detail="Saved working-hour rows"
+        />
+        <DataStatCard
+          label="Chair scope"
+          value={payload?.status.currentShopLabel ?? "Not set"}
+          detail={payload?.businessDate ?? "Live schedule"}
+        />
+      </section>
 
       <section className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
         <Card className="rounded-[32px] p-6">
@@ -477,15 +496,14 @@ export function BarberScheduleWorkspace({ barberName }: { barberName: string }) 
 
         <div className="mt-5 flex flex-wrap gap-2">
           {(["day", "week", "month"] as const).map((viewMode) => (
-            <Button
+            <FilterChip
               key={viewMode}
               type="button"
-              variant={scheduleView === viewMode ? "primary" : "secondary"}
-              className="h-10 px-4"
+              active={scheduleView === viewMode}
               onClick={() => setScheduleView(viewMode)}
             >
               {viewMode.charAt(0).toUpperCase() + viewMode.slice(1)}
-            </Button>
+            </FilterChip>
           ))}
         </div>
 

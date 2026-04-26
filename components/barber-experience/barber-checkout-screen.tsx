@@ -14,6 +14,7 @@ import { BarberEarningsWorkspace } from "@/components/operations/barber-earnings
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
+import { DataStatCard, FilterChip, PageHeader, StatusBadge } from "@/design/components";
 import { useMarketplaceServiceCatalog } from "@/lib/marketplace/client";
 import { useBarberOverviewQuery } from "@/lib/operations/barber-client";
 import { currency } from "@/lib/utils";
@@ -174,29 +175,22 @@ export function BarberCheckoutScreen({
       ) : null}
 
       <Card className="rounded-[32px] p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="surface-label">Checkout</p>
-            <h3 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">
-              {barberName}
-            </h3>
-            <p className="mt-3 max-w-3xl text-sm leading-7 text-white/62">
-              Keep payment state, paid tickets, services, and payout-visible money in one barber-safe lane.
-              {barberRole === "booth_rent_barber"
-                ? " Booth-rent service ownership stays editable here without splitting money truth away from the live checkout rail."
-                : " Commission pricing stays owner-controlled, but the live payment state still stays readable here."}
-            </p>
-          </div>
-          <div className="rounded-[24px] border border-[#7cff00]/16 bg-[#7cff00]/10 px-4 py-3 text-right">
-            <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">Checkout lane</p>
-            <p className="mt-2 text-sm font-medium text-white">
-              {payload?.earnings.outstandingCheckoutCount ?? readyForCheckout.length} ticket{(payload?.earnings.outstandingCheckoutCount ?? readyForCheckout.length) === 1 ? "" : "s"} need follow-up
-            </p>
-            <p className="mt-1 text-sm text-white/58">
-              {currency(payload?.earnings.grossSales ?? 0)} posted today
-            </p>
-          </div>
-        </div>
+        <PageHeader
+          label="Checkout"
+          title="Checkout"
+          subtitle="Charge clients, close appointments, and track payments."
+          action={
+            <div className="rounded-[24px] border border-[#7cff00]/16 bg-[#7cff00]/10 px-4 py-3 text-right">
+              <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">{barberName}</p>
+              <p className="mt-2 text-sm font-medium text-white">
+                {payload?.earnings.outstandingCheckoutCount ?? readyForCheckout.length} ticket{(payload?.earnings.outstandingCheckoutCount ?? readyForCheckout.length) === 1 ? "" : "s"} need follow-up
+              </p>
+              <p className="mt-1 text-sm text-white/58">
+                {currency(payload?.earnings.grossSales ?? 0)} posted today
+              </p>
+            </div>
+          }
+        />
 
         <div className="mt-5 flex flex-wrap gap-2">
           <Link href="#barber-checkout-appointments" className="rounded-full border border-white/10 bg-black/20 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/74 transition hover:border-[#7cff00]/20 hover:text-[#d7ffab]">
@@ -210,6 +204,27 @@ export function BarberCheckoutScreen({
           </Link>
         </div>
       </Card>
+
+      <section className="grid gap-3 sm:grid-cols-3">
+        <DataStatCard
+          label="Ready now"
+          value={readyForCheckout.length}
+          detail="Completed tickets awaiting closeout"
+          icon={<CircleDollarSign className="h-4 w-4" />}
+        />
+        <DataStatCard
+          label="Paid today"
+          value={paidAppointments.length}
+          detail="Captured appointments and receipts"
+          icon={<ReceiptText className="h-4 w-4" />}
+        />
+        <DataStatCard
+          label="Service rail"
+          value={serviceShortcuts.length}
+          detail={barberRole === "booth_rent_barber" ? "Editable barber services" : "Readable service pricing"}
+          icon={<Scissors className="h-4 w-4" />}
+        />
+      </section>
 
       <Card className="rounded-[32px] p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -233,19 +248,14 @@ export function BarberCheckoutScreen({
             { key: "appointments", label: "Appointment payments" },
             { key: "services", label: "Services" }
           ] as const).map((panel) => (
-            <button
+            <FilterChip
               key={panel.key}
               type="button"
+              active={activePanel === panel.key}
               onClick={() => setActivePanel(panel.key)}
-              className={[
-                "rounded-full border px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] transition",
-                activePanel === panel.key
-                  ? "border-[#7cff00]/24 bg-[#7cff00]/10 text-[#d7ffab]"
-                  : "border-white/10 bg-black/20 text-white/74 hover:border-[#7cff00]/20 hover:text-white"
-              ].join(" ")}
             >
               {panel.label}
-            </button>
+            </FilterChip>
           ))}
         </div>
 
@@ -320,7 +330,9 @@ export function BarberCheckoutScreen({
               </div>
               <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
                 <p className="surface-label">Capture rail</p>
-                <p className="mt-3 text-lg font-semibold text-white">Shared canonical flow</p>
+                <div className="mt-3">
+                  <StatusBadge tone="neutral">Shared canonical flow</StatusBadge>
+                </div>
                 <p className="mt-2 text-sm text-white/58">Barber-side Quick Charge stays visible, but live capture still hands off to the protected operations checkout rail.</p>
               </div>
             </div>
