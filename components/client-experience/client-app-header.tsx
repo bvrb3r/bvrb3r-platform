@@ -37,7 +37,7 @@ export function ClientAppHeader({ mode = "client" }: { mode?: ClientAppMode }) {
             <Link href={CLIENT_PRIMARY_TAB_HREFS.activity} aria-label="Open activity" className="relative inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/25 text-white/74 transition hover:border-[#7CFF00]/20 hover:text-white">
               <BellDot className="h-5 w-5" />
             </Link>
-            <Link href="/messages" aria-label="Open messages" className="relative inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/25 text-white/74 transition hover:border-[#7CFF00]/20 hover:text-white">
+            <Link href={CLIENT_PRIMARY_TAB_HREFS.messages} aria-label="Open messages" className="relative inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/25 text-white/74 transition hover:border-[#7CFF00]/20 hover:text-white">
               <MessageSquareText className="h-5 w-5" />
             </Link>
             <Link href={CLIENT_PRIMARY_TAB_HREFS.profile} aria-label="Open profile" className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/25 text-white/74 transition hover:border-[#7CFF00]/20 hover:text-white">

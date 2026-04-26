@@ -168,6 +168,7 @@ describe("phase 8 ai service", () => {
         ],
         recommendedBarbers: [],
         recommendedShops: [],
+        defaultPaymentMethod: null,
         nextAvailableChair: {
           barberId: "barber-wave",
           username: "wave",
@@ -200,6 +201,7 @@ describe("phase 8 ai service", () => {
         trustedBarbers: [],
         recommendedBarbers: [],
         recommendedShops: [],
+        defaultPaymentMethod: null,
         nextAvailableChair: {
           barberId: "barber-hidden",
           username: "hidden",
@@ -311,6 +313,7 @@ describe("phase 8 ai service", () => {
       trustedBarbers: [],
       recommendedBarbers: [],
       recommendedShops: [],
+      defaultPaymentMethod: null,
       nextAvailableChair: {
         barberId: "barber-wave",
         username: "wave",

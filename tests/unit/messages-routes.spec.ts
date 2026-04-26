@@ -146,6 +146,47 @@ describe("phase 8 messaging routes", () => {
     expect(body.thread.threadType).toBe("client_barber");
   });
 
+  it("creates or resumes a support thread through the canonical route", async () => {
+    getSessionUserMock.mockResolvedValue(resolveDemoUser("client@bvrb3r.demo"));
+    createMessagingThreadMock.mockResolvedValue({
+      available: true,
+      viewer: {
+        profileId: "profile-client",
+        fullName: "Jordan Ellis",
+        role: "client"
+      },
+      thread: {
+        id: "thread-support-1",
+        threadType: "support",
+        appointmentId: null,
+        locationId: null,
+        locationContext: null,
+        createdAt: "2026-03-20T12:00:00.000Z",
+        updatedAt: "2026-03-20T12:00:00.000Z",
+        counterpart: {
+          profileId: "profile-support",
+          fullName: "BVRB3R Support",
+          role: "platform_admin"
+        },
+        appointmentContext: null,
+        lastMessage: null,
+        participants: []
+      },
+      messages: []
+    });
+    const request = new NextRequest("https://bvrb3r.demo/api/messages/threads", {
+      method: "POST",
+      body: JSON.stringify({ threadType: "support" })
+    });
+
+    const response = await postThreads(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(body.thread.threadType).toBe("support");
+    expect(createMessagingThreadMock).toHaveBeenCalledWith(expect.anything(), { threadType: "support" });
+  });
+
   it("creates a shop conversation thread from a location starter", async () => {
     getSessionUserMock.mockResolvedValue(resolveDemoUser("manager@bvrb3r.demo"));
     createMessagingThreadMock.mockResolvedValue({

@@ -1,9 +1,11 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { CANONICAL_PLATFORM_ADMIN_EMAIL } from "@/lib/auth/demo-auth";
 import {
   assertActorCanCreateClientBarberThread,
   assertActorCanCreateShopThread,
   buildAppointmentThreadSystemMessage,
   buildShopThreadSystemMessage,
+  buildSupportThreadSystemMessage,
   isBarberRole,
   isShopRole,
   normalizeMessageBody,
@@ -226,6 +228,9 @@ export type MessagingThreadPayload = {
 export type MessagingCreateThreadInput =
   | {
       appointmentId: string;
+    }
+  | {
+      threadType: "support";
     }
   | {
       threadType: Extract<MessagingThreadType, "client_shop" | "barber_shop">;
@@ -992,6 +997,41 @@ async function readProfileById(supabase: SupabaseClient, profileId: string) {
   return result.data as ProfileRow;
 }
 
+async function readPrimarySupportProfile(supabase: SupabaseClient) {
+  const canonicalResult = await supabase
+    .from("profiles")
+    .select("id, full_name, email, role")
+    .eq("role", "platform_admin")
+    .eq("email", CANONICAL_PLATFORM_ADMIN_EMAIL)
+    .maybeSingle();
+
+  if (canonicalResult.error) {
+    throw new MessagingServiceError("Unable to resolve the support profile.", 500);
+  }
+
+  if (canonicalResult.data) {
+    return canonicalResult.data as ProfileRow;
+  }
+
+  const fallbackResult = await supabase
+    .from("profiles")
+    .select("id, full_name, email, role")
+    .eq("role", "platform_admin")
+    .order("full_name")
+    .limit(1)
+    .maybeSingle();
+
+  if (fallbackResult.error) {
+    throw new MessagingServiceError("Unable to resolve the support profile.", 500);
+  }
+
+  if (!fallbackResult.data) {
+    throw new MessagingServiceError("No support profile is available for messaging.", 404);
+  }
+
+  return fallbackResult.data as ProfileRow;
+}
+
 async function assertActorCanReachLocation(
   supabase: SupabaseClient,
   actor: MessagingActorContext,
@@ -1136,6 +1176,84 @@ async function createOrGetShopThread(input: {
 
   if (systemMessageInsert.error) {
     throw new MessagingServiceError("Unable to write the shop conversation system message.", 500);
+  }
+
+  return threadId;
+}
+
+async function createOrGetSupportThread(input: {
+  supabase: SupabaseClient;
+  actorProfile: ProfileRow;
+  supportProfile: ProfileRow;
+}) {
+  const threadLookupResult = await input.supabase
+    .from("message_threads")
+    .select("id, thread_type, appointment_id, location_id, created_at, updated_at, created_by_profile_id")
+    .eq("thread_type", "support")
+    .order("updated_at", { ascending: false });
+
+  if (threadLookupResult.error) {
+    throw new MessagingServiceError("Unable to look up the support conversation.", 500);
+  }
+
+  const candidateThreads = (threadLookupResult.data ?? []) as MessageThreadRow[];
+  const candidateThreadIds = candidateThreads.map((thread) => thread.id);
+  const participantsResult = candidateThreadIds.length
+    ? await input.supabase
+        .from("thread_participants")
+        .select("id, thread_id, profile_id, thread_role, created_at")
+        .in("thread_id", candidateThreadIds)
+    : { data: [], error: null };
+
+  if (participantsResult.error) {
+    throw new MessagingServiceError("Unable to resolve existing support participants.", 500);
+  }
+
+  const participantRows = (participantsResult.data ?? []) as ThreadParticipantRow[];
+  const matchedThread = candidateThreads.find((thread) => {
+    const threadParticipants = participantRows.filter((participant) => participant.thread_id === thread.id);
+    return threadParticipants.some((participant) => participant.profile_id === input.actorProfile.id)
+      && threadParticipants.some((participant) => participant.profile_id === input.supportProfile.id);
+  });
+
+  if (matchedThread) {
+    const threadParticipants = participantRows.filter((participant) => participant.thread_id === matchedThread.id);
+    await ensureThreadParticipants(input.supabase, matchedThread.id, threadParticipants, [
+      input.actorProfile,
+      input.supportProfile
+    ]);
+    return matchedThread.id;
+  }
+
+  const createdAt = new Date().toISOString();
+  const threadInsert = await input.supabase
+    .from("message_threads")
+    .insert({
+      thread_type: "support",
+      created_by_profile_id: input.actorProfile.id,
+      updated_at: createdAt
+    })
+    .select("id")
+    .single();
+
+  if (threadInsert.error) {
+    throw new MessagingServiceError("Unable to create the support conversation.", 500);
+  }
+
+  const threadId = threadInsert.data.id as string;
+  await ensureThreadParticipants(input.supabase, threadId, [], [input.actorProfile, input.supportProfile]);
+
+  const systemMessageInsert = await input.supabase
+    .from("messages")
+    .insert({
+      thread_id: threadId,
+      sender_profile_id: null,
+      body: buildSupportThreadSystemMessage(input.supportProfile.full_name ?? input.supportProfile.email),
+      message_type: "system"
+    });
+
+  if (systemMessageInsert.error) {
+    throw new MessagingServiceError("Unable to write the support conversation system message.", 500);
   }
 
   return threadId;
@@ -1288,6 +1406,17 @@ export async function createMessagingThread(user: UserAccount, input: MessagingC
   }
 
   const actor = await resolveMessagingActor(user, supabase);
+
+  if ("threadType" in input && input.threadType === "support") {
+    const supportProfile = await readPrimarySupportProfile(supabase);
+    const threadId = await createOrGetSupportThread({
+      supabase,
+      actorProfile: actor.profile,
+      supportProfile
+    });
+
+    return getMessagingThreadPayload(user, threadId);
+  }
 
   if ("appointmentId" in input) {
     const appointmentResult = await supabase

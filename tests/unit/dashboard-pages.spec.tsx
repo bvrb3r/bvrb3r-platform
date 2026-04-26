@@ -57,8 +57,21 @@ vi.mock("@/components/barber-experience/barber-settings-screen", () => ({
 }));
 
 vi.mock("@/components/messages/messaging-inbox-screen", () => ({
-  MessagingInboxScreen: ({ basePath, selectedThreadId }: { basePath: string; selectedThreadId?: string }) => (
-    <div data-testid="barber-messages-screen-stub">{basePath}|{selectedThreadId ?? "none"}</div>
+  MessagingInboxScreen: ({
+    basePath,
+    selectedThreadId,
+    startSupportIntent,
+    title
+  }: {
+    basePath: string;
+    selectedThreadId?: string;
+    startSupportIntent?: boolean;
+    title?: string;
+  }) => (
+    <div data-testid="messages-screen-stub">
+      <h1>{title}</h1>
+      {basePath}|{selectedThreadId ?? "none"}|{String(Boolean(startSupportIntent))}
+    </div>
   )
 }));
 
@@ -105,6 +118,8 @@ import BarberProfilePage from "@/app/(platform)/dashboard/barber/profile/page";
 import BarberSettingsPage from "@/app/(platform)/dashboard/barber/settings/page";
 import BarberCommandPage from "@/app/(platform)/command/page";
 import ClientDashboardPage from "@/app/(platform)/dashboard/client/page";
+import ClientMessagesDashboardPage from "@/app/(platform)/dashboard/client/messages/page";
+import ClientMessageThreadDashboardPage from "@/app/(platform)/dashboard/client/messages/[threadId]/page";
 import SettingsPage from "@/app/(platform)/settings/page";
 
 describe("dashboard role pages", () => {
@@ -210,8 +225,8 @@ describe("dashboard role pages", () => {
     render(await BarberMessagesPage());
 
     expect(getAuthorizedUserMock).toHaveBeenCalledWith(["commission_barber", "booth_rent_barber"]);
-    expect(screen.getByRole("heading", { name: "Messages" })).toBeInTheDocument();
-    expect(screen.getByTestId("barber-messages-screen-stub")).toHaveTextContent("/dashboard/barber/messages|none");
+    expect(screen.getAllByRole("heading", { name: "Messages" }).length).toBeGreaterThan(0);
+    expect(screen.getByTestId("messages-screen-stub")).toHaveTextContent("/dashboard/barber/messages|none|false");
   });
 
   it("renders the barber more route", async () => {
@@ -251,6 +266,34 @@ describe("dashboard role pages", () => {
     expect(screen.getByTestId("client-app-shell-stub")).toBeInTheDocument();
     expect(screen.getByTestId("client-home-screen-stub")).toHaveTextContent("Jordan Ellis|true");
     expect(screen.queryByText("Owner control center")).not.toBeInTheDocument();
+  });
+
+  it("renders the client messages route and support intent", async () => {
+    getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("client@bvrb3r.demo"));
+
+    render(
+      await ClientMessagesDashboardPage({
+        searchParams: Promise.resolve({ thread: "support" })
+      })
+    );
+
+    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["client"]);
+    expect(screen.getAllByRole("heading", { name: "Messages" }).length).toBeGreaterThan(0);
+    expect(screen.getByTestId("messages-screen-stub")).toHaveTextContent("/dashboard/client/messages|none|true");
+  });
+
+  it("renders the client message thread route", async () => {
+    getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("client@bvrb3r.demo"));
+
+    render(
+      await ClientMessageThreadDashboardPage({
+        params: Promise.resolve({ threadId: "thread-support-1" })
+      })
+    );
+
+    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["client"]);
+    expect(screen.getAllByRole("heading", { name: "Messages" }).length).toBeGreaterThan(0);
+    expect(screen.getByTestId("messages-screen-stub")).toHaveTextContent("/dashboard/client/messages|thread-support-1|false");
   });
 
   it("renders account settings and logout surface for the canonical owner settings tab", async () => {

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { CreditCard, MessageSquareText, Star } from "lucide-react";
 import { ClientActionLink, getClientActionClassName } from "@/components/client-experience/client-action-link";
+import { ClientGetCutNowAction } from "@/components/client-experience/client-get-cut-now-action";
 import { ClientSectionBlock } from "@/components/client-experience/client-section-block";
 import { CLIENT_PRIMARY_TAB_HREFS } from "@/components/client-experience/client-tab-config";
 import { usePwa } from "@/components/pwa/pwa-provider";
@@ -159,23 +160,7 @@ export function ClientBookingsScreen() {
   const homePayload = homeQuery.data;
   const hasResolvedLocation = homePayload?.hasResolvedLocation ?? false;
   const barberSearchHref = `${CLIENT_PRIMARY_TAB_HREFS.search}?type=barbers` as Route;
-  const nextAvailableHref: Route = hasResolvedLocation && homePayload?.nextAvailableChair
-    ? buildMarketplaceBookingHref({
-        barberId: homePayload.nextAvailableChair.barberId,
-        username: homePayload.nextAvailableChair.username,
-        locationId: homePayload.nextAvailableChair.locationId,
-        appointmentTime: homePayload.nextAvailableChair.appointmentTime,
-        sourceKind: "haircut_now",
-        matchedFrom: homePayload.nextAvailableChair.matchedFrom
-      })
-    : hasResolvedLocation
-      ? barberSearchHref
-      : (`${CLIENT_PRIMARY_TAB_HREFS.profile}?section=location` as Route);
-  const nextAvailableLabel = !hasResolvedLocation
-    ? "Add Location"
-    : homePayload?.nextAvailableChair
-      ? "Book Next Available"
-      : "Search Barbers";
+  const getCutNowDefaultPaymentMethod = homePayload?.defaultPaymentMethod ?? defaultPaymentMethod ?? null;
 
   const [paymentFeedback, setPaymentFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [cancelFeedback, setCancelFeedback] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(null);
@@ -395,7 +380,7 @@ export function ClientBookingsScreen() {
                         >
                           Cancel
                         </button>
-                        <ClientActionLink href="/messages" size="md" variant="outline">
+                        <ClientActionLink href={CLIENT_PRIMARY_TAB_HREFS.messages} size="md" variant="outline">
                           <MessageSquareText className="h-4 w-4" />
                           Message Barber
                         </ClientActionLink>
@@ -460,9 +445,13 @@ export function ClientBookingsScreen() {
               <ClientActionLink href={barberSearchHref} size="lg">
                 Find a Barber
               </ClientActionLink>
-              <ClientActionLink href={nextAvailableHref} size="lg" variant="secondary">
-                {nextAvailableLabel}
-              </ClientActionLink>
+              <ClientGetCutNowAction
+                hasResolvedLocation={hasResolvedLocation}
+                nextAvailableChair={homePayload?.nextAvailableChair ?? null}
+                defaultPaymentMethod={getCutNowDefaultPaymentMethod}
+                size="lg"
+                variant="secondary"
+              />
             </div>
           </div>
         )}

@@ -18,6 +18,10 @@ export default async function ClientProfileDashboardPage({
         payload={payload}
         isSignedInClient={context.isSignedInClient}
         initialSection={params.section}
+        authEmail={context.viewer.email}
+        authPhone={context.viewer.phone}
+        emailVerified={context.viewer.emailVerified}
+        phoneVerified={context.viewer.phoneVerified}
       />
     </ClientAppShell>
   );

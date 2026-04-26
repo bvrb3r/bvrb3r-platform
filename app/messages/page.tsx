@@ -1,18 +1,19 @@
+import type { Route } from "next";
+import { redirect } from "next/navigation";
 import { getAuthorizedUser } from "@/lib/auth/guards";
-import { ClientAppShell } from "@/components/client-experience/client-app-shell";
-import { MessagingInboxScreen } from "@/components/messages/messaging-inbox-screen";
 
-export default async function ClientMessagesPage() {
+export default async function ClientMessagesPage({
+  searchParams
+}: {
+  searchParams: Promise<{ thread?: string }>;
+}) {
   await getAuthorizedUser(["client"]);
+  const params = await searchParams;
+  const nextPath = (
+    params.thread
+      ? `/dashboard/client/messages?thread=${encodeURIComponent(params.thread)}`
+      : "/dashboard/client/messages"
+  ) as Route;
 
-  return (
-    <ClientAppShell>
-      <MessagingInboxScreen
-        surface="client"
-        basePath="/messages"
-        title="Messages"
-        subtitle="Keep appointment questions, barber updates, and shop support in one clean place tied to the visits you already have."
-      />
-    </ClientAppShell>
-  );
+  redirect(nextPath);
 }

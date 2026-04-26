@@ -13,11 +13,9 @@ import {
   LifeBuoy,
   MailPlus,
   MapPinned,
-  Settings2,
   ShieldCheck,
   Store,
   Trash2,
-  UserRound
 } from "lucide-react";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { ClientActionLink } from "@/components/client-experience/client-action-link";
@@ -41,7 +39,7 @@ type PickerInput = HTMLInputElement & {
 
 const sectionIdMap = {
   preferences: "profile-preferences",
-  location: "profile-preferences",
+  location: "profile-account",
   wallet: "profile-wallet",
   rewards: "profile-rewards",
   referrals: "profile-referrals",
@@ -118,11 +116,19 @@ function readableError(error: unknown, fallback: string) {
 export function ClientProfileScreen({
   payload,
   isSignedInClient,
-  initialSection
+  initialSection,
+  authEmail,
+  authPhone,
+  emailVerified = false,
+  phoneVerified = false
 }: {
   payload: ClientProfilePayload;
   isSignedInClient: boolean;
   initialSection?: string;
+  authEmail?: string;
+  authPhone?: string;
+  emailVerified?: boolean;
+  phoneVerified?: boolean;
 }) {
   const mediaQuery = useProfileMediaWorkspaceQuery(isSignedInClient);
   const mediaMutation = useMutateProfileMediaMutation();
@@ -143,8 +149,8 @@ export function ClientProfileScreen({
   const paymentMethods = payload.paymentMethods;
   const defaultPaymentMethod = paymentMethods.find((method) => method.isDefault) ?? null;
   const clientName = client?.fullName ?? (isSignedInClient ? "Client" : "Client preview");
-  const clientEmail = client?.email ?? "No email on file yet";
-  const clientPhone = client?.phone ?? "No phone on file yet";
+  const clientEmail = client?.email?.trim() || authEmail?.trim() || "No email on file yet";
+  const clientPhone = client?.phone?.trim() || authPhone?.trim() || "";
   const clientPhotoUrl = mediaQuery.data?.viewer.profilePhotoUrl;
   const pointsBalance = pointsBalanceQuery.data ?? null;
   const pointsHistory = pointsHistoryQuery.data ?? null;
@@ -155,6 +161,8 @@ export function ClientProfileScreen({
   const referralSummary = referralSummaryQuery.data ?? null;
   const primaryShop = preferredShops[0] ?? null;
   const selectedSection = (initialSection && initialSection in sectionIdMap ? initialSection : null) as ProfileSectionKey | null;
+  const notificationPreference = mediaQuery.data?.viewer.notificationPreference ?? payload.notificationPreference;
+  const hasPhone = clientPhone.length > 0;
 
   useEffect(() => {
     if (!selectedSection) {
@@ -168,6 +176,32 @@ export function ClientProfileScreen({
 
     target.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [selectedSection]);
+
+  async function handleNotificationToggle(
+    field: "inAppEnabled" | "smsEnabled" | "emailEnabled" | "pushEnabled",
+    value: boolean
+  ) {
+    setMediaFeedback(null);
+
+    try {
+      await mediaMutation.mutateAsync({
+        action: "update_viewer_notification_preference",
+        inAppEnabled: field === "inAppEnabled" ? value : notificationPreference?.inAppEnabled ?? true,
+        smsEnabled: field === "smsEnabled" ? value : notificationPreference?.smsEnabled ?? false,
+        emailEnabled: field === "emailEnabled" ? value : notificationPreference?.emailEnabled ?? true,
+        pushEnabled: field === "pushEnabled" ? value : notificationPreference?.pushEnabled ?? true
+      });
+      setMediaFeedback({
+        tone: "success",
+        message: "Notification preferences updated."
+      });
+    } catch (error) {
+      setMediaFeedback({
+        tone: "error",
+        message: readableError(error, "Unable to update notification preferences right now.")
+      });
+    }
+  }
 
   async function handleProfileUpload(file: File) {
     setMediaFeedback(null);
@@ -275,7 +309,7 @@ export function ClientProfileScreen({
         title="Account"
         subtitle="Your identity, contact details, and payment default."
       >
-        <div className="rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(7,7,7,0.99))] p-5 shadow-[0_22px_44px_rgba(0,0,0,0.2)] sm:p-6">
+        <div id="profile-account" className="scroll-mt-6 rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(7,7,7,0.99))] p-5 shadow-[0_22px_44px_rgba(0,0,0,0.2)] sm:p-6">
           <input
             ref={profileInputRef}
             type="file"
@@ -324,8 +358,6 @@ export function ClientProfileScreen({
 
               <div className="min-w-0">
                 <p className="text-2xl font-semibold text-white" data-display="true">{clientName}</p>
-                <p className="mt-2 text-sm text-white/70">{clientEmail}</p>
-                <p className="mt-2 text-sm text-white/58">{clientPhone}</p>
                 <div className="mt-4 flex flex-wrap gap-2">
                   <span className="rounded-full border border-white/10 bg-black/18 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-white/76">
                     {defaultPaymentMethod?.label ?? "No default payment method"}
@@ -338,12 +370,6 @@ export function ClientProfileScreen({
             </div>
 
             <div className="flex flex-wrap gap-3">
-              <Link
-                href="#profile-wallet"
-                className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[13px] font-semibold text-white/86 transition hover:border-[#d7ffab]/18 hover:text-[#d7ffab]"
-              >
-                Manage in Wallet
-              </Link>
               {isSignedInClient && clientPhotoUrl ? (
                 <Button
                   type="button"
@@ -358,15 +384,72 @@ export function ClientProfileScreen({
               ) : null}
             </div>
           </div>
+
+          <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-[24px] border border-white/8 bg-black/18 p-4">
+              <p className="surface-label">Email</p>
+              <p className="mt-3 text-lg font-semibold text-white break-all">{clientEmail}</p>
+              <p className="mt-2 text-sm text-white/58">
+                {emailVerified ? "Verified email" : "Email verification status is still pending."}
+              </p>
+            </div>
+            <div className="rounded-[24px] border border-white/8 bg-black/18 p-4">
+              <p className="surface-label">Phone</p>
+              <p className="mt-3 text-lg font-semibold text-white">{hasPhone ? clientPhone : "Phone required"}</p>
+              <p className="mt-2 text-sm text-white/58">
+                {hasPhone
+                  ? phoneVerified
+                    ? "Verified phone"
+                    : "Phone verification is still pending."
+                  : "Add and verify your phone before booking flows that require contact confirmation."}
+              </p>
+              {!hasPhone ? (
+                <div className="mt-4">
+                  <ClientActionLink href="/verify-contact" size="md" variant="secondary">
+                    Add Phone
+                  </ClientActionLink>
+                </div>
+              ) : null}
+            </div>
+            <div className="rounded-[24px] border border-white/8 bg-black/18 p-4">
+              <p className="surface-label">Default payment</p>
+              <p className="mt-3 text-lg font-semibold text-white">{defaultPaymentMethod?.label ?? "No default payment method"}</p>
+              <p className="mt-2 text-sm text-white/58">
+                Manage saved cards in Wallet when booking requires payment confirmation.
+              </p>
+              <div className="mt-4">
+                <Link
+                  href="#profile-wallet"
+                  className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[13px] font-semibold text-white/86 transition hover:border-[#d7ffab]/18 hover:text-[#d7ffab]"
+                >
+                  Manage in Wallet
+                </Link>
+              </div>
+            </div>
+            <div className="rounded-[24px] border border-white/8 bg-black/18 p-4">
+              <p className="surface-label">Local booking area</p>
+              <p className="mt-3 text-lg font-semibold text-white">{primaryShop?.name ?? "No local booking area saved yet"}</p>
+              <p className="mt-2 text-sm text-white/58">
+                {primaryShop
+                  ? [primaryShop.neighborhood, primaryShop.city, primaryShop.state].filter(Boolean).join(", ")
+                  : "Save a preferred shop so Get a Cut Now can keep matching close to your usual area."}
+              </p>
+              <div className="mt-4">
+                <ClientActionLink href={`${CLIENT_PRIMARY_TAB_HREFS.search}?type=shops` as Route} size="md" variant="secondary">
+                  {primaryShop ? "Find Barber Shops" : "Add Location"}
+                </ClientActionLink>
+              </div>
+            </div>
+          </div>
         </div>
       </ClientSectionBlock>
 
       <ClientSectionBlock
         eyebrow="Preferences"
         title="Preferences"
-        subtitle="Saved barbers, shops, and location stay together here."
+        subtitle="Keep the barbers and shops you want to get back to quickly."
       >
-        <div id="profile-preferences" className="grid scroll-mt-6 gap-4 xl:grid-cols-[1fr_1fr_0.9fr]">
+        <div id="profile-preferences" className="grid scroll-mt-6 gap-4 xl:grid-cols-2">
           <div className="rounded-[28px] border border-white/10 bg-black/20 p-5">
             <div className="inline-flex items-center gap-2 text-sm text-white/78">
               <Heart className="h-4 w-4 text-[#d7ffab]" />
@@ -398,7 +481,7 @@ export function ClientProfileScreen({
                       </p>
                     </div>
                   </div>
-                    <div className="mt-4">
+                  <div className="mt-4">
                     <ClientActionLink href={(favoriteBarber.bookingCtaHref ?? `${CLIENT_PRIMARY_TAB_HREFS.search}?type=barbers`) as Route} size="md">
                       Book
                     </ClientActionLink>
@@ -446,27 +529,6 @@ export function ClientProfileScreen({
                   </div>
                 </div>
               )}
-            </div>
-          </div>
-
-          <div className="rounded-[28px] border border-white/10 bg-black/20 p-5">
-            <div className="inline-flex items-center gap-2 text-sm text-white/78">
-              <MapPinned className="h-4 w-4 text-[#d7ffab]" />
-              Preferred Location
-            </div>
-            <p className="mt-4 text-lg font-semibold text-white">{primaryShop?.name ?? "No location saved yet"}</p>
-            <p className="mt-2 text-sm text-white/58">
-              {primaryShop
-                ? [primaryShop.neighborhood, primaryShop.city, primaryShop.state].filter(Boolean).join(", ")
-                : "Add a location so next-available booking and recommendations stay local."}
-            </p>
-            <div className="mt-4">
-              <Link
-                href="/settings"
-                className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[13px] font-semibold text-white/84 transition hover:border-[#d7ffab]/18 hover:text-[#d7ffab]"
-              >
-                {primaryShop ? "Update Location" : "Add Location"}
-              </Link>
             </div>
           </div>
         </div>
@@ -676,25 +738,64 @@ export function ClientProfileScreen({
         <div id="profile-settings" className="grid scroll-mt-6 gap-4 md:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
             <div className="inline-flex items-center gap-2 text-sm text-white/78">
-              <Settings2 className="h-4 w-4 text-[#d7ffab]" />
-              Account settings
+              <BellRing className="h-4 w-4 text-[#baff69]" />
+              Notification preferences
             </div>
-            <p className="mt-3 text-lg font-semibold text-white">Profile and security</p>
-            <p className="mt-2 text-sm text-white/58">Manage contact details, password, and privacy controls.</p>
-            <div className="mt-4">
-              <Link href="/settings" className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[13px] font-semibold text-white/84 transition hover:border-[#d7ffab]/18 hover:text-[#d7ffab]">
-                Open settings
-              </Link>
+            <p className="mt-3 text-sm text-white/58">Adjust the real notification channels already supported on your account.</p>
+            <div className="mt-4 space-y-3">
+              {[
+                { key: "inAppEnabled", label: "In-app alerts" },
+                { key: "smsEnabled", label: "Text updates" },
+                { key: "emailEnabled", label: "Email updates" },
+                { key: "pushEnabled", label: "Push alerts" }
+              ].map((item) => {
+                const checked = notificationPreference?.[item.key as keyof NonNullable<typeof notificationPreference>] ?? false;
+                return (
+                  <label key={item.key} className="flex items-center justify-between gap-3 rounded-[18px] border border-white/8 bg-black/18 px-4 py-3 text-sm text-white/72">
+                    <span>{item.label}</span>
+                    <input
+                      type="checkbox"
+                      checked={checked as boolean}
+                      disabled={mediaMutation.isPending}
+                      onChange={(event) => void handleNotificationToggle(item.key as "inAppEnabled" | "smsEnabled" | "emailEnabled" | "pushEnabled", event.target.checked)}
+                      className="h-4 w-4 rounded border-white/20 bg-black"
+                    />
+                  </label>
+                );
+              })}
             </div>
           </div>
 
           <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
             <div className="inline-flex items-center gap-2 text-sm text-white/78">
-              <BellRing className="h-4 w-4 text-[#baff69]" />
-              Notification preferences
+              <MapPinned className="h-4 w-4 text-[#d7ffab]" />
+              Location preference
             </div>
-            <p className="mt-3 text-lg font-semibold text-white">Stay in the loop</p>
-            <p className="mt-2 text-sm text-white/58">Update reminder and communication preferences without cluttering the rest of the app.</p>
+            <p className="mt-3 text-lg font-semibold text-white">{primaryShop?.name ?? "No local booking area saved yet"}</p>
+            <p className="mt-2 text-sm text-white/58">
+              Browser-level location permission is controlled by your device. In BVRB3R, nearby matching follows your saved booking area and preferred shop.
+            </p>
+            <div className="mt-4">
+              <ClientActionLink href={`${CLIENT_PRIMARY_TAB_HREFS.search}?type=shops` as Route} size="md" variant="secondary">
+                {primaryShop ? "Update Booking Area" : "Add Location"}
+              </ClientActionLink>
+            </div>
+          </div>
+
+          <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
+            <div className="inline-flex items-center gap-2 text-sm text-white/78">
+              <ShieldCheck className="h-4 w-4 text-[#d7ffab]" />
+              Privacy & Security
+            </div>
+            <p className="mt-3 text-lg font-semibold text-white">Secure your contact details</p>
+            <p className="mt-2 text-sm text-white/58">
+              Keep your email and phone verification current through the shared contact verification flow.
+            </p>
+            <div className="mt-4">
+              <ClientActionLink href="/verify-contact" size="md" variant="secondary">
+                Open Contact Settings
+              </ClientActionLink>
+            </div>
           </div>
 
           <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
@@ -703,24 +804,15 @@ export function ClientProfileScreen({
               Support
             </div>
             <p className="mt-3 text-lg font-semibold text-white">Need help?</p>
-            <p className="mt-2 text-sm text-white/58">Message support or jump into Activity when a booking or receipt needs attention.</p>
+            <p className="mt-2 text-sm text-white/58">Support messages now live in Messages so account, booking, and payment questions stay in one thread.</p>
             <div className="mt-4 flex flex-wrap gap-3">
-              <Link href="/messages" className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[13px] font-semibold text-white/84 transition hover:border-[#d7ffab]/18 hover:text-[#d7ffab]">
+              <Link href={`${CLIENT_PRIMARY_TAB_HREFS.messages}?thread=support`} className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[13px] font-semibold text-white/84 transition hover:border-[#d7ffab]/18 hover:text-[#d7ffab]">
                 Message Support
               </Link>
               <Link href={CLIENT_PRIMARY_TAB_HREFS.activity} className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[13px] font-semibold text-white/84 transition hover:border-[#d7ffab]/18 hover:text-[#d7ffab]">
                 Open Activity
               </Link>
             </div>
-          </div>
-
-          <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-            <div className="inline-flex items-center gap-2 text-sm text-white/78">
-              <UserRound className="h-4 w-4 text-[#baff69]" />
-              Account status
-            </div>
-            <p className="mt-3 text-lg font-semibold text-white">{clientEmail}</p>
-            <p className="mt-2 text-sm text-white/58">{clientPhone}</p>
           </div>
         </div>
       </ClientSectionBlock>

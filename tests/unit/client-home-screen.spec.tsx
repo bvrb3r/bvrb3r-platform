@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import type { ComponentProps, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -129,6 +129,11 @@ describe("client home screen", () => {
           shopName: "Centro Ybor Flagship",
           priceFrom: 55,
           rating: 4.9
+        },
+        defaultPaymentMethod: {
+          id: "pm-default",
+          label: "Visa ending in 4242",
+          isDefault: true
         }
       },
       isLoading: false,
@@ -185,7 +190,7 @@ describe("client home screen", () => {
     render(<ClientHomeScreen isSignedInClient displayName="Jordan Ellis" />);
 
     expect(screen.getByRole("link", { name: "Find a Barber" })).toBeInTheDocument();
-    expect(screen.getAllByText("Book Next Available").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Get a Cut Now" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Find a Barber Shop" })).toBeInTheDocument();
     expect(screen.getByText("Upcoming Appointment")).toBeInTheDocument();
     expect(screen.getByText("Recommended Barbers")).toBeInTheDocument();
@@ -198,9 +203,10 @@ describe("client home screen", () => {
     expect(screen.queryByText("Open Rewards")).not.toBeInTheDocument();
     expect(screen.queryByText("Add Card")).not.toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: "Find a Barber" })).toHaveLength(1);
+    expect(screen.queryByRole("link", { name: "Add Location" })).not.toBeInTheDocument();
   });
 
-  it("guards next available booking with add-location guidance when no saved location exists", () => {
+  it("guards get a cut now with add-location guidance when no saved location exists", () => {
     useClientHomeQueryMock.mockReturnValue({
       data: {
         client: {
@@ -214,7 +220,8 @@ describe("client home screen", () => {
         recommendedBarbers: [],
         recommendedShops: [],
         favoriteBarber: null,
-        nextAvailableChair: null
+        nextAvailableChair: null,
+        defaultPaymentMethod: null
       },
       isLoading: false,
       error: null
@@ -231,9 +238,12 @@ describe("client home screen", () => {
 
     render(<ClientHomeScreen isSignedInClient displayName="Jordan Ellis" />);
 
-    expect(screen.getByText("Add your location to book the next available barber near you.")).toBeInTheDocument();
-    expect(screen.getAllByRole("link", { name: "Add Location" }).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "Get a Cut Now" }));
+
+    expect(screen.getByText("Add your location to find the next available barber near you.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Add Location" })).toBeInTheDocument();
     expect(screen.getByText("No upcoming appointment yet.")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Find a Barber" })).toBeInTheDocument();
   });
 
   it("falls back to search barbers when location exists but no next-available candidate is live", () => {
@@ -251,7 +261,8 @@ describe("client home screen", () => {
         recommendedBarbers: [],
         recommendedShops: [],
         favoriteBarber: null,
-        nextAvailableChair: null
+        nextAvailableChair: null,
+        defaultPaymentMethod: null
       },
       isLoading: false,
       error: null
@@ -268,9 +279,61 @@ describe("client home screen", () => {
 
     render(<ClientHomeScreen isSignedInClient displayName="Jordan Ellis" />);
 
-    expect(screen.getByText("No available barbers near you right now.")).toBeInTheDocument();
-    expect(screen.getAllByRole("link", { name: "Search Barbers" }).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "Get a Cut Now" }));
+
+    expect(screen.getByText("No available barber near you right now.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Search Barbers" })).toBeInTheDocument();
     expect(screen.getAllByText("Explore top barbers on BVRB3R.").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Explore barber shops on BVRB3R.").length).toBeGreaterThan(0);
+  });
+
+  it("shows payment setup guidance before continuing a get-a-cut-now booking", () => {
+    useClientHomeQueryMock.mockReturnValue({
+      data: {
+        client: {
+          clientReference: "client-jordan",
+          fullName: "Jordan Ellis",
+          favoriteShopReference: "loc-ybor"
+        },
+        locationId: "loc-ybor",
+        hasResolvedLocation: true,
+        shops: [],
+        trustedBarbers: [],
+        recommendedBarbers: [],
+        recommendedShops: [],
+        favoriteBarber: null,
+        nextAvailableChair: {
+          barberId: "barber-wave",
+          username: "wave",
+          barberName: "Wave Carter",
+          matchedFrom: "available_now",
+          matchReason: "Fastest trusted chair near you.",
+          appointmentTime: "2026-04-24T15:00:00.000Z",
+          locationId: "loc-ybor",
+          shopName: "Centro Ybor Flagship",
+          priceFrom: 55,
+          rating: 4.9
+        },
+        defaultPaymentMethod: null
+      },
+      isLoading: false,
+      error: null
+    });
+    useClientBookingsQueryMock.mockReturnValue({
+      data: {
+        nextAppointment: null,
+        nextAppointmentPayment: null,
+        history: []
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(<ClientHomeScreen isSignedInClient displayName="Jordan Ellis" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Get a Cut Now" }));
+
+    expect(screen.getByText("Add a payment method to confirm this booking.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Add Payment Method" })).toHaveAttribute("href", "/dashboard/client/profile?section=wallet");
   });
 });

@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { ClientActionLink } from "@/components/client-experience/client-action-link";
 import { ClientDiscoveryCard } from "@/components/client-experience/client-discovery-card";
+import { ClientGetCutNowAction } from "@/components/client-experience/client-get-cut-now-action";
 import { ClientSectionBlock } from "@/components/client-experience/client-section-block";
 import { ClientShopDiscoveryCard } from "@/components/client-experience/client-shop-discovery-card";
 import { CLIENT_PRIMARY_TAB_HREFS } from "@/components/client-experience/client-tab-config";
@@ -22,7 +23,6 @@ import {
   useClientHomeQuery,
   type BookingApiError
 } from "@/lib/booking/client";
-import { buildMarketplaceBookingHref } from "@/lib/marketplace/links";
 import { currency } from "@/lib/utils";
 import { getReadableActionError } from "@/lib/utils/feedback";
 
@@ -141,33 +141,11 @@ export function ClientHomeScreen({
   const errorMessage = homeQuery.error || bookingsQuery.error
     ? getReadableActionError((homeQuery.error ?? bookingsQuery.error) as BookingApiError)
     : null;
+  const defaultPaymentMethod = payload?.defaultPaymentMethod ?? bookingsPayload?.nextAppointmentPayment?.defaultPaymentMethod ?? null;
 
   const barberSearchHref = `${CLIENT_PRIMARY_TAB_HREFS.search}?type=barbers` as Route;
   const shopSearchHref = `${CLIENT_PRIMARY_TAB_HREFS.search}?type=shops` as Route;
-  const profileLocationHref = `${CLIENT_PRIMARY_TAB_HREFS.profile}?section=location` as Route;
   const viewDetailsHref = CLIENT_PRIMARY_TAB_HREFS.activity;
-  const nextAvailableHref: Route = hasResolvedLocation && payload?.nextAvailableChair
-    ? buildMarketplaceBookingHref({
-        barberId: payload.nextAvailableChair.barberId,
-        username: payload.nextAvailableChair.username,
-        locationId: payload.nextAvailableChair.locationId,
-        appointmentTime: payload.nextAvailableChair.appointmentTime,
-        sourceKind: "haircut_now",
-        matchedFrom: payload.nextAvailableChair.matchedFrom
-      })
-    : hasResolvedLocation
-      ? barberSearchHref
-      : profileLocationHref;
-  const nextAvailableCtaLabel = !hasResolvedLocation
-    ? "Add Location"
-    : payload?.nextAvailableChair
-      ? "Book Next Available"
-      : "Search Barbers";
-  const nextAvailableSupportCopy = !hasResolvedLocation
-    ? "Add your location to book the next available barber near you."
-    : payload?.nextAvailableChair
-      ? `${payload.nextAvailableChair.barberName} has the fastest real opening near you.`
-      : "No available barbers near you right now.";
   const heroTitle = nextAppointment || hasBookingHistory
     ? `Welcome back, ${firstName}.`
     : `Find your first barber, ${firstName}.`;
@@ -222,15 +200,18 @@ export function ClientHomeScreen({
             <div className="rounded-[28px] border border-[#d7ffab]/14 bg-[linear-gradient(180deg,rgba(124,255,0,0.12),rgba(8,8,8,0.98))] p-4">
               <div className="inline-flex items-center gap-2 text-sm text-white/92">
                 <CalendarDays className="h-4 w-4 text-[#d7ffab]" />
-                Book Next Available
+                Get a Cut Now
               </div>
               <p className="mt-3 text-sm leading-7 text-white/68">
-                {nextAvailableSupportCopy}
+                Find the next available eligible barber near you, confirm the chair, and stay inside the existing booking and payment flow.
               </p>
               <div className="mt-4">
-                <ClientActionLink href={nextAvailableHref} size="lg">
-                  {nextAvailableCtaLabel}
-                </ClientActionLink>
+                <ClientGetCutNowAction
+                  hasResolvedLocation={hasResolvedLocation}
+                  nextAvailableChair={payload?.nextAvailableChair ?? null}
+                  defaultPaymentMethod={defaultPaymentMethod}
+                  size="lg"
+                />
               </div>
             </div>
 
@@ -309,16 +290,8 @@ export function ClientHomeScreen({
           <div className="rounded-[30px] border border-dashed border-white/10 bg-[linear-gradient(180deg,rgba(19,19,19,0.96),rgba(8,8,8,0.98))] p-6 sm:p-7">
             <h3 className="text-2xl font-semibold text-white" data-display="true">No upcoming appointment yet.</h3>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">
-              Find a barber or book the next available barber near you.
+              Find a barber or get a cut now when you are ready.
             </p>
-            <div className="mt-5 flex flex-wrap gap-3">
-              <ClientActionLink href={barberSearchHref} size="lg" variant="secondary">
-                Find a Barber
-              </ClientActionLink>
-              <ClientActionLink href={nextAvailableHref} size="lg">
-                {nextAvailableCtaLabel}
-              </ClientActionLink>
-            </div>
           </div>
         )}
       </ClientSectionBlock>

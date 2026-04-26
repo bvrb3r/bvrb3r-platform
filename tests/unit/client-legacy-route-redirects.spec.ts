@@ -24,6 +24,8 @@ import SettingsPage from "@/app/(platform)/settings/page";
 import WalletPage from "@/app/wallet/page";
 import RewardsPage from "@/app/rewards/page";
 import ClientBookingsRedirectPage from "@/app/(platform)/dashboard/client/bookings/page";
+import ClientMessagesPage from "@/app/messages/page";
+import ClientMessageThreadPage from "@/app/messages/[threadId]/page";
 
 describe("client legacy route redirects", () => {
   beforeEach(() => {
@@ -71,6 +73,20 @@ describe("client legacy route redirects", () => {
 
   it("redirects legacy dashboard bookings into activity", () => {
     expect(() => ClientBookingsRedirectPage()).toThrow("REDIRECT:/dashboard/client/activity");
+  });
+
+  it("redirects legacy messages into the canonical client messages route", async () => {
+    await expect(
+      ClientMessagesPage({
+        searchParams: Promise.resolve({ thread: "support" })
+      })
+    ).rejects.toThrow("REDIRECT:/dashboard/client/messages?thread=support");
+
+    await expect(
+      ClientMessageThreadPage({
+        params: Promise.resolve({ threadId: "thread-support-1" })
+      })
+    ).rejects.toThrow("REDIRECT:/dashboard/client/messages/thread-support-1");
   });
 
   it("redirects client settings into the profile settings section", async () => {

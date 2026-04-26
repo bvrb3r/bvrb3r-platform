@@ -10,7 +10,7 @@ describe("dashboard shell identity and navigation", () => {
     ["wave@bvrb3r.demo", "Wave Carter", "Barber Manager", "Active role: Barber manager", ["Dashboard", "Schedule", "Team", "Queue", "Profile"]],
     ["blaze@bvrb3r.demo", "Blaze King", "Booth-Rent Barber", "Active role: Booth-rent barber", ["Calendar", "Checkout", "Profile", "Messages", "More"]],
     ["lux@bvrb3r.demo", "Luxe Reed", "Freelance Barber", "Active role: Freelance barber", ["Calendar", "Checkout", "Profile", "Messages", "More"]],
-    ["client@bvrb3r.demo", "Jordan Ellis", "Client", "Active role: Client", ["Home", "Search", "Bookings", "Rewards", "Profile", "Settings"]]
+    ["client@bvrb3r.demo", "Jordan Ellis", "Client", "Active role: Client", ["Home", "Search", "Activity", "Messages", "Profile"]]
   ])("renders the selected identity for %s", (email, name, title, roleLabel, navLabels) => {
     const user = resolveDemoUser(email);
     const activeHref = getDefaultRouteForUser(user);
@@ -108,6 +108,28 @@ describe("dashboard shell identity and navigation", () => {
     expect(screen.queryByRole("link", { name: /staff/i })).not.toBeInTheDocument();
     expect(screen.getByText("5 tabs")).toBeInTheDocument();
     expect(screen.getByText("5 owner tabs")).toBeInTheDocument();
+  });
+
+  it("locks client primary navigation to five tabs only", () => {
+    const user = resolveDemoUser("client@bvrb3r.demo");
+
+    render(
+      <DashboardShell user={user} activeHref="/dashboard/client" title="Home" subtitle="Testing client tabs.">
+        <div>Workspace body</div>
+      </DashboardShell>
+    );
+
+    ["Home", "Search", "Activity", "Messages", "Profile"].forEach((label) => {
+      expect(screen.getAllByRole("link", { name: new RegExp(label, "i") }).length).toBeGreaterThan(0);
+    });
+
+    expect(screen.queryByRole("link", { name: /wallet/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /rewards/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /referrals/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /settings/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /bookings/i })).not.toBeInTheDocument();
+    expect(screen.getByText("5 tabs")).toBeInTheDocument();
+    expect(screen.getByText("5 client tabs")).toBeInTheDocument();
   });
 
 });

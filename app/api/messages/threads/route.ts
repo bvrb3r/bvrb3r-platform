@@ -9,6 +9,9 @@ const createThreadSchema = z.union([
     appointmentId: z.string().trim().min(1)
   }),
   z.object({
+    threadType: z.literal("support")
+  }),
+  z.object({
     threadType: z.enum(["client_shop", "barber_shop"]),
     profileId: z.string().trim().min(1),
     locationId: z.string().trim().min(1)

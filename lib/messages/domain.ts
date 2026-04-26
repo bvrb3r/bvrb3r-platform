@@ -134,6 +134,10 @@ export function buildShopThreadSystemMessage(input: {
   return `Conversation opened between the shop and ${input.counterpartName} (${relationshipLabel}) for ${input.locationLabel}.`;
 }
 
+export function buildSupportThreadSystemMessage(counterpartName: string) {
+  return `Support conversation opened with ${counterpartName}.`;
+}
+
 export function listThreadsForParticipant(snapshot: MessagingSnapshot, profileId: string) {
   const visibleThreadIds = new Set(
     snapshot.participants

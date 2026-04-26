@@ -93,7 +93,13 @@ describe("client profile screen", () => {
     useProfileMediaWorkspaceQueryMock.mockReturnValue({
       data: {
         viewer: {
-          profilePhotoUrl: null
+          profilePhotoUrl: null,
+          notificationPreference: {
+            inAppEnabled: true,
+            smsEnabled: false,
+            emailEnabled: true,
+            pushEnabled: true
+          }
         }
       }
     });
@@ -175,7 +181,11 @@ describe("client profile screen", () => {
     render(
       <ClientProfileScreen
         isSignedInClient
-        payload={({
+        authEmail="jordan@bvrb3r.app"
+        authPhone="8135550190"
+        emailVerified
+        phoneVerified
+        payload={({ 
           client: {
             clientReference: "client-jordan",
             fullName: "Jordan Ellis",
@@ -246,6 +256,7 @@ describe("client profile screen", () => {
     expect(screen.queryByText("Standing routine")).not.toBeInTheDocument();
     expect(screen.getByText("Preferred Barbers")).toBeInTheDocument();
     expect(screen.getByText("Preferred Shops")).toBeInTheDocument();
+    expect(screen.queryByText("Preferred Location")).not.toBeInTheDocument();
     expect(screen.getByTestId("payment-methods-panel")).toHaveTextContent("Methods 2");
     expect(screen.getByText("BVR Points")).toBeInTheDocument();
     expect(screen.getByText("Shared")).toBeInTheDocument();
@@ -253,6 +264,13 @@ describe("client profile screen", () => {
     expect(screen.getByText("Booked")).toBeInTheDocument();
     expect(screen.getByText("Completed")).toBeInTheDocument();
     expect(screen.getByText("Credited")).toBeInTheDocument();
+    expect(screen.getByText("In-app alerts")).toBeInTheDocument();
+    expect(screen.getByText("Text updates")).toBeInTheDocument();
+    expect(screen.getByText("Email updates")).toBeInTheDocument();
+    expect(screen.getByText("Push alerts")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Message Support" })).toHaveAttribute("href", "/dashboard/client/messages?thread=support");
+    expect(screen.queryByText("Account settings")).not.toBeInTheDocument();
+    expect(screen.queryByText("Account status")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Log out" })).toBeInTheDocument();
   });
 
@@ -295,6 +313,8 @@ describe("client profile screen", () => {
     render(
       <ClientProfileScreen
         isSignedInClient
+        authEmail="jordan@bvrb3r.app"
+        authPhone="8135550190"
         payload={({
           client: {
             clientReference: "client-jordan",
@@ -316,11 +336,40 @@ describe("client profile screen", () => {
     expect(screen.getByText("No rewards activity yet.")).toBeInTheDocument();
   });
 
-  it("treats the location section alias as profile preferences", () => {
+  it("shows the auth email when the client payload email is missing", () => {
+    render(
+      <ClientProfileScreen
+        isSignedInClient
+        authEmail="jordan@bvrb3r.app"
+        authPhone=""
+        payload={({
+          client: {
+            clientReference: "client-jordan",
+            fullName: "Jordan Ellis",
+            email: "",
+            phone: ""
+          },
+          favoriteBarber: null,
+          preferredShops: [],
+          notificationPreference: null,
+          routine: null,
+          paymentMethods: []
+        } as unknown as ClientProfilePayload)}
+      />
+    );
+
+    expect(screen.getByText("jordan@bvrb3r.app")).toBeInTheDocument();
+    expect(screen.getByText("Phone required")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Add Phone" })).toHaveAttribute("href", "/verify-contact");
+  });
+
+  it("treats the location section alias as profile account", () => {
     render(
       <ClientProfileScreen
         isSignedInClient
         initialSection="location"
+        authEmail="jordan@bvrb3r.app"
+        authPhone="8135550190"
         payload={({
           client: {
             clientReference: "client-jordan",
@@ -337,7 +386,7 @@ describe("client profile screen", () => {
       />
     );
 
-    expect(screen.getAllByText("Preferences")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Account")[0]).toBeInTheDocument();
     expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
   });
 });

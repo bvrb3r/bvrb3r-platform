@@ -11,9 +11,9 @@ export function ClientSidebar({ activeTab }: { activeTab?: ClientAppTab }) {
       <div className="sticky top-5 space-y-4">
         <div className="rounded-[28px] border border-white/8 bg-[linear-gradient(180deg,rgba(15,15,15,0.96),rgba(8,8,8,0.98))] p-5 shadow-[0_18px_40px_rgba(0,0,0,0.18)]">
           <p className="text-[10px] uppercase tracking-[0.24em] text-[#d7ffab]">Client navigation</p>
-          <p className="mt-3 text-xl font-semibold text-white">Find, book, manage, repeat.</p>
+          <p className="mt-3 text-xl font-semibold text-white">Book, track, message, repeat.</p>
           <p className="mt-3 text-sm leading-7 text-white/58">
-            Keep the client lane simple: Home for action, Search for discovery, Activity for appointments, Profile for account control.
+            Keep the client lane simple: Home for action, Search for discovery, Activity for appointments, Messages for support, Profile for account control.
           </p>
         </div>
 
@@ -55,6 +55,8 @@ export function ClientSidebar({ activeTab }: { activeTab?: ClientAppTab }) {
                           ? "Discover"
                           : item.key === "activity"
                             ? "Manage visits"
+                            : item.key === "messages"
+                              ? "DMs & support"
                             : "Account controls"}
                     </p>
                   </div>

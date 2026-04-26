@@ -47,6 +47,7 @@ export interface ClientHomeResponse {
   recommendedShops: RecommendedShopView[];
   favoriteBarber: DiscoveryResult | null;
   nextAvailableChair: HaircutNowMatch | null;
+  defaultPaymentMethod?: ClientPaymentMethodSummary | null;
   locationId: string;
   hasResolvedLocation: boolean;
 }

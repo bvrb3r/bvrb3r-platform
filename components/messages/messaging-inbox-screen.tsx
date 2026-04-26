@@ -3,7 +3,7 @@
 import type { Route } from "next";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, MessageSquareText, RadioTower, Send, ShieldCheck } from "lucide-react";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Button } from "@/components/ui/button";
@@ -81,31 +81,66 @@ function getSurfaceCopy(surface: "client" | "barber" | "shop") {
 
   return {
     shellLabel: "Messages",
-    participantCopy: "Client messaging stays tied to your barber and shop relationships only.",
-    inboxCopy: "Appointment-linked conversations first, with direct shop contact available when you need help from the location.",
+    participantCopy: "Client messaging stays tied to real barber, shop, and support relationships only.",
+    inboxCopy: "Appointment-linked conversations stay first, with shop contact and support available when you need help.",
     starterTitle: "Thread starters",
-    starterCopy: "Only appointment or shop relationships you already share can open a new thread.",
-    composerPlaceholder: "Ask your barber or the shop about the appointment, timing, or visit details.",
-    emptyThreadCopy: "Select a conversation to read the appointment or shop context and send a message, or start a new thread below.",
+    starterCopy: "Open a real appointment or shop thread, or start a support conversation when you need help from BVRB3R.",
+    composerPlaceholder: "Ask your barber, the shop, or support about the appointment, timing, payment, or visit details.",
+    emptyThreadCopy: "Select a conversation to read the appointment or support context and send a message, or start one below.",
     broadcastTitle: "",
     broadcastCopy: ""
   };
 }
 
 function getThreadStatusLabel(threadType: string) {
+  if (threadType === "support") {
+    return "support";
+  }
+
   return threadType.replaceAll("_", " ");
+}
+
+function getRoleBadgeLabel(role?: string | null, threadType?: string) {
+  if (threadType === "support" || role === "platform_admin") {
+    return "Support";
+  }
+
+  if (role === "owner" || role === "manager" || role === "front_desk") {
+    return "Shop";
+  }
+
+  if (role === "commission_barber" || role === "booth_rent_barber") {
+    return "Barber";
+  }
+
+  if (role === "client") {
+    return "Client";
+  }
+
+  return null;
+}
+
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 }
 
 export function MessagingInboxScreen({
   surface,
   basePath,
   selectedThreadId,
+  startSupportIntent = false,
   title,
   subtitle
 }: {
   surface: "client" | "barber" | "shop";
   basePath: string;
   selectedThreadId?: string;
+  startSupportIntent?: boolean;
   title: string;
   subtitle: string;
 }) {
@@ -123,14 +158,19 @@ export function MessagingInboxScreen({
   const [broadcastLocationId, setBroadcastLocationId] = useState("");
   const [broadcastAudience, setBroadcastAudience] = useState<MessagingBroadcastAudience>("all");
   const [broadcastBody, setBroadcastBody] = useState("");
+  const hasTriggeredSupportIntentRef = useRef(false);
 
   const available = threadsQuery.data?.available ?? false;
-  const threads = threadsQuery.data?.threads ?? [];
+  const threads = useMemo(() => threadsQuery.data?.threads ?? [], [threadsQuery.data?.threads]);
   const appointmentStarters = threadsQuery.data?.eligibleAppointments ?? [];
   const contactStarters = threadsQuery.data?.eligibleContacts ?? [];
   const broadcastTargets = useMemo(() => threadsQuery.data?.broadcastTargets ?? [], [threadsQuery.data?.broadcastTargets]);
   const activeThread = threadQuery.data?.thread ?? null;
   const messages = threadQuery.data?.messages ?? [];
+  const supportThread = useMemo(
+    () => threads.find((thread) => thread.threadType === "support") ?? null,
+    [threads]
+  );
   const participantSummary = useMemo(
     () =>
       activeThread?.participants
@@ -146,7 +186,7 @@ export function MessagingInboxScreen({
     }
   }, [broadcastLocationId, broadcastTargets]);
 
-  async function handleStartThread(payload: MessagingCreateThreadInput, successMessage: string) {
+  const handleStartThread = useCallback(async (payload: MessagingCreateThreadInput, successMessage: string) => {
     setStatusUpdate(null);
     try {
       const threadPayload = await createThreadMutation.mutateAsync(payload);
@@ -157,7 +197,39 @@ export function MessagingInboxScreen({
     } catch (error) {
       setStatusUpdate({ tone: "error", message: readableError(error, "Unable to open the conversation.") });
     }
-  }
+  }, [basePath, createThreadMutation, router]);
+
+  useEffect(() => {
+    if (
+      surface !== "client"
+      || !startSupportIntent
+      || selectedThreadId
+      || hasTriggeredSupportIntentRef.current
+      || threadsQuery.isLoading
+      || !available
+    ) {
+      return;
+    }
+
+    if (supportThread?.id) {
+      hasTriggeredSupportIntentRef.current = true;
+      router.replace(`${basePath}/${supportThread.id}` as Route);
+      return;
+    }
+
+    hasTriggeredSupportIntentRef.current = true;
+    void handleStartThread({ threadType: "support" }, "Support conversation ready.");
+  }, [
+    available,
+    basePath,
+    router,
+    selectedThreadId,
+    startSupportIntent,
+    supportThread?.id,
+    surface,
+    handleStartThread,
+    threadsQuery.isLoading
+  ]);
 
   async function handleSendMessage() {
     if (!activeThreadId) {
@@ -194,6 +266,10 @@ export function MessagingInboxScreen({
     } catch (error) {
       setStatusUpdate({ tone: "error", message: readableError(error, "Unable to send the shop broadcast.") });
     }
+  }
+
+  async function handleSupportThread() {
+    await handleStartThread({ threadType: "support" }, "Support conversation ready.");
   }
 
   return (
@@ -247,9 +323,11 @@ export function MessagingInboxScreen({
                   </>
                 ) : threads.length ? threads.map((thread) => {
                   const isActive = thread.id === activeThreadId;
+                  const roleBadgeLabel = getRoleBadgeLabel(thread.counterpart?.role, thread.threadType);
                   const contextDetail = thread.appointmentContext?.serviceName
                     ? `${thread.appointmentContext.serviceName} | ${thread.appointmentContext.statusLabel}`
                     : getThreadStatusLabel(thread.threadType);
+                  const displayName = thread.counterpart?.fullName ?? "Conversation";
 
                   return (
                     <Link
@@ -263,9 +341,21 @@ export function MessagingInboxScreen({
                       ].join(" ")}
                     >
                       <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-lg font-semibold text-white">{thread.counterpart?.fullName ?? "Conversation"}</p>
-                          <p className="mt-1 text-sm text-white/55">{contextDetail}</p>
+                        <div className="flex min-w-0 items-start gap-3">
+                          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-[linear-gradient(135deg,rgba(124,255,0,0.18),rgba(12,12,12,0.96))] text-sm font-semibold text-[#d7ffab]">
+                            {getInitials(displayName)}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="text-lg font-semibold text-white">{displayName}</p>
+                              {roleBadgeLabel ? (
+                                <span className="rounded-full border border-white/10 bg-black/22 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-[#d7ffab]">
+                                  {roleBadgeLabel}
+                                </span>
+                              ) : null}
+                            </div>
+                            <p className="mt-1 text-sm text-white/55">{contextDetail}</p>
+                          </div>
                         </div>
                         <p className="text-[11px] uppercase tracking-[0.18em] text-white/42">
                           {formatThreadTime(thread.lastMessage?.createdAt ?? thread.updatedAt)}
@@ -281,7 +371,18 @@ export function MessagingInboxScreen({
                   );
                 }) : (
                   <div className="empty-state-panel rounded-[24px] p-6 text-sm leading-7 text-white/58">
-                    No conversations yet. Open a thread from a real appointment or shop relationship below when you need clarity around the visit.
+                    <p>No messages yet.</p>
+                    {surface === "client" ? (
+                      <div className="mt-4">
+                        <Button
+                          className="h-10 px-4"
+                          disabled={createThreadMutation.isPending}
+                          onClick={() => void handleSupportThread()}
+                        >
+                          {createThreadMutation.isPending ? "Opening..." : "Start a support message"}
+                        </Button>
+                      </div>
+                    ) : null}
                   </div>
                 )}
               </div>
@@ -296,6 +397,26 @@ export function MessagingInboxScreen({
                 <MessageSquareText className="h-5 w-5 text-[#baff69]" />
               </div>
               <div className="mt-5 space-y-3">
+                {surface === "client" ? (
+                  <div className="rounded-[24px] border border-[#7CFF00]/18 bg-[linear-gradient(180deg,rgba(124,255,0,0.12),rgba(10,10,10,0.94))] p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-lg font-semibold text-white">BVRB3R Support</p>
+                        <p className="mt-2 text-sm leading-7 text-white/60">
+                          Start a support message for booking, payment, or account help without leaving the client lane.
+                        </p>
+                      </div>
+                      <Button
+                        className="h-10 px-4"
+                        disabled={createThreadMutation.isPending}
+                        onClick={() => void handleSupportThread()}
+                      >
+                        {createThreadMutation.isPending ? "Opening..." : "Message Support"}
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+
                 {appointmentStarters.map((starter) => (
                   <div key={starter.appointmentId} className="rounded-[24px] border border-white/8 bg-black/20 p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -358,7 +479,9 @@ export function MessagingInboxScreen({
 
                 {!appointmentStarters.length && !contactStarters.length ? (
                   <div className="rounded-[24px] border border-dashed border-white/10 bg-black/20 p-5 text-sm leading-7 text-white/58">
-                    No additional thread starters are available right now.
+                    {surface === "client"
+                      ? "No additional thread starters are available right now."
+                      : "No additional thread starters are available right now."}
                   </div>
                 ) : null}
               </div>
@@ -444,11 +567,27 @@ export function MessagingInboxScreen({
               <div className="space-y-4">
                 <div className="rounded-[24px] border border-[#7CFF00]/18 bg-[linear-gradient(180deg,rgba(124,255,0,0.12),rgba(10,10,10,0.94))] p-5">
                   <p className="surface-label text-[#d7ffab]">Conversation</p>
-                  <h3 className="mt-3 text-2xl font-semibold text-white">{participantSummary || activeThread.counterpart?.fullName || "Conversation"}</h3>
+                  <div className="mt-3 flex flex-wrap items-center gap-3">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/10 bg-[linear-gradient(135deg,rgba(124,255,0,0.18),rgba(12,12,12,0.96))] text-sm font-semibold text-[#d7ffab]">
+                      {getInitials(participantSummary || activeThread.counterpart?.fullName || "Conversation")}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-2xl font-semibold text-white">{participantSummary || activeThread.counterpart?.fullName || "Conversation"}</h3>
+                        {getRoleBadgeLabel(activeThread.counterpart?.role, activeThread.threadType) ? (
+                          <span className="rounded-full border border-white/10 bg-black/22 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-[#d7ffab]">
+                            {getRoleBadgeLabel(activeThread.counterpart?.role, activeThread.threadType)}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
                   <p className="mt-2 text-sm text-white/60">
                     {activeThread.appointmentContext
                       ? `${activeThread.appointmentContext.serviceName} | ${activeThread.appointmentContext.locationLabel}`
-                      : activeThread.locationContext?.locationLabel ?? "Thread stays limited to its participants only."}
+                      : activeThread.threadType === "support"
+                        ? "Support conversation for account, booking, or payment help."
+                        : activeThread.locationContext?.locationLabel ?? "Thread stays limited to its participants only."}
                   </p>
                   {activeThread.appointmentContext ? (
                     <p className="mt-3 text-sm text-white/58">
@@ -479,7 +618,7 @@ export function MessagingInboxScreen({
                     </div>
                   )) : (
                     <div className="rounded-[24px] border border-dashed border-white/10 bg-black/20 p-5 text-sm leading-7 text-white/58">
-                      No messages yet. Start with a clear appointment or shop question so the next action is obvious.
+                      No messages yet.
                     </div>
                   )}
                 </div>

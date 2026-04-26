@@ -88,6 +88,11 @@ describe("client bookings screen", () => {
           matchedFrom: "available_now",
           appointmentTime: "2026-04-28T15:00:00.000Z",
           locationId: "loc-ybor"
+        },
+        defaultPaymentMethod: {
+          id: "pm-default",
+          label: "Visa ending in 4242",
+          isDefault: true
         }
       }
     });
@@ -230,7 +235,7 @@ describe("client bookings screen", () => {
     expect(screen.getByText("Past Appointments / Receipts")).toBeInTheDocument();
     expect(screen.getAllByText("Wave Carter").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Message Barber" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Message Barber" })).toHaveAttribute("href", "/dashboard/client/messages");
     expect(screen.getByRole("button", { name: "View Receipt" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Book Again" })).toBeInTheDocument();
     expect(screen.queryByText("Choose your go-to barber")).not.toBeInTheDocument();
@@ -240,7 +245,8 @@ describe("client bookings screen", () => {
     useClientHomeQueryMock.mockReturnValue({
       data: {
         hasResolvedLocation: false,
-        nextAvailableChair: null
+        nextAvailableChair: null,
+        defaultPaymentMethod: null
       }
     });
     useClientBookingsQueryMock.mockReturnValue({
@@ -260,7 +266,8 @@ describe("client bookings screen", () => {
     expect(screen.getByText("No upcoming appointments")).toBeInTheDocument();
     expect(screen.getByText("Book your next cut.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Find a Barber" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Add Location" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Get a Cut Now" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Add Location" })).not.toBeInTheDocument();
     expect(screen.getByText("No past visits yet.")).toBeInTheDocument();
   });
 });

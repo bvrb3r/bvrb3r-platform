@@ -1281,6 +1281,19 @@ export async function getClientHomePayload(clientId?: string) {
   const hasResolvedLocation = Boolean(clientProfile?.favoriteShopReference);
   const locationId = resolveLocationId(shops, clientProfile?.favoriteShopReference);
   const completedAppointments = await readCompletedClientAppointments(clientId);
+  let defaultPaymentMethod: ClientPaymentMethodView | null = null;
+
+  if (supabase && clientId) {
+    try {
+      const paymentMethods = await readClientPaymentMethodsByClientId(clientId, supabase);
+      defaultPaymentMethod = paymentMethods.find((method) => method.isDefault) ?? null;
+    } catch (error) {
+      console.error("[platform-service] client home payment methods unavailable", {
+        clientId,
+        message: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
 
   if (!supabase) {
     const bundle = await readMarketplaceBundle();
@@ -1315,6 +1328,7 @@ export async function getClientHomePayload(clientId?: string) {
       recommendedShops,
       favoriteBarber: favoriteBarber ?? null,
       nextAvailableChair: nextAvailable,
+      defaultPaymentMethod,
       locationId,
       hasResolvedLocation
     };
@@ -1361,6 +1375,7 @@ export async function getClientHomePayload(clientId?: string) {
     recommendedShops,
     favoriteBarber,
     nextAvailableChair: nextAvailable,
+    defaultPaymentMethod,
     locationId,
     hasResolvedLocation
   };

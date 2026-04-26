@@ -4,7 +4,6 @@ import {
   ArrowUpRight,
   Bell,
   CalendarDays,
-  ClipboardList,
   Clock3,
   LayoutDashboard,
   MapPinned,
@@ -17,6 +16,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { BARBER_PRIMARY_NAV_ITEMS } from "@/components/barber-experience/barber-tab-config";
+import { CLIENT_PRIMARY_NAV_ITEMS, CLIENT_PRIMARY_TAB_HREFS } from "@/components/client-experience/client-tab-config";
 import { OWNER_PRIMARY_NAV_ITEMS } from "@/components/owner-experience/owner-tab-config";
 import { Card } from "@/components/ui/card";
 import { getDefaultRouteForUser, getUserRoleLabel } from "@/lib/auth/demo-auth";
@@ -70,14 +70,13 @@ function getNavigation(user: UserAccount): NavItem[] {
     case "booth_rent_barber":
       return BARBER_PRIMARY_NAV_ITEMS;
     case "client":
-      return [
-        { href: "/dashboard/client", activeHref: "/dashboard/client", label: "Home", mobileLabel: "Home", icon: LayoutDashboard },
-        { href: "/search", activeHref: "/search", label: "Search", icon: Sparkles },
-        { href: "/bookings", activeHref: "/bookings", label: "Bookings", icon: CalendarDays },
-        { href: "/activity", activeHref: "/activity", label: "Rewards", icon: ClipboardList },
-        { href: "/profile", activeHref: "/profile", label: "Profile", icon: UserRound },
-        { href: "/settings", activeHref: "/settings", label: "Settings", icon: ShieldCheck }
-      ];
+      return CLIENT_PRIMARY_NAV_ITEMS.map((item) => ({
+        href: item.href,
+        activeHref: item.href,
+        label: item.label,
+        mobileLabel: item.label,
+        icon: item.icon
+      }));
     default:
       return [{ href: getDefaultRouteForUser(user), activeHref: getDefaultRouteForUser(user), label: "Dashboard", icon: LayoutDashboard }];
   }
@@ -113,7 +112,7 @@ function getPrimaryActionTitle(role: Role) {
     case "booth_rent_barber":
       return "Calendar opens straight into the chair schedule, Checkout keeps money moving, Profile controls the public barber story, Messages keeps conversations organized, and More holds private setup.";
     case "client":
-      return "Search, book, and manage visits without stepping into shop ops.";
+      return "Home keeps fast booking close, Search keeps discovery precise, Activity owns appointments and receipts, Messages keeps support visible, and Profile holds account controls.";
     default:
       return "Stay oriented and move on the next action fast.";
   }
@@ -132,7 +131,7 @@ function getBoundaryCopy(role: Role) {
     case "booth_rent_barber":
       return "Booth-rent mode keeps Calendar on live availability, Checkout on independent money clarity, Profile on discovery identity, Messages on client communication, and More on compliance plus payout setup.";
     case "client":
-      return "Client mode keeps booking, favorites, rewards, and appointment activity visible without any shop-internal clutter.";
+      return "Client mode keeps Home, Search, Activity, Messages, and Profile separated cleanly so booking, communication, and account controls stay obvious.";
     default:
       return "Relevant tools only.";
   }
@@ -175,7 +174,7 @@ function getAlertLabel(role: Role) {
 }
 
 function getNavigationCountLabel(role: Role, count: number) {
-  if (role === "owner" || role === "commission_barber" || role === "booth_rent_barber") {
+  if (role === "owner" || role === "commission_barber" || role === "booth_rent_barber" || role === "client") {
     return `${count} tabs`;
   }
 
@@ -189,6 +188,10 @@ function getHeroNavigationCountLabel(role: Role, count: number) {
 
   if (role === "commission_barber" || role === "booth_rent_barber") {
     return `${count} barber tabs`;
+  }
+
+  if (role === "client") {
+    return `${count} client tabs`;
   }
 
   return `${count} launch lanes`;
@@ -223,9 +226,9 @@ function getUtilityCards(user: UserAccount): UtilityCard[] {
       ];
     case "client":
       return [
-        { label: "Client lane", value: "Ready", detail: "This account starts clean with no seeded rewards or booking history.", icon: CalendarDays },
-        { label: "Preferences", value: "Fresh", detail: "Favorites, points, and history will build from real activity.", icon: Sparkles },
-        { label: "Profile", value: "Connected", detail: "Your dashboard now follows the authenticated account only.", icon: UserRound }
+        { label: "Client tabs", value: "5", detail: "Home, Search, Activity, Messages, and Profile stay tied to this authenticated client account only.", icon: CalendarDays },
+        { label: "Discovery", value: "Live", detail: "Barber and shop recommendations build from real activity, not seeded client data.", icon: Sparkles },
+        { label: "Profile", value: "Connected", detail: "Wallet, rewards, referrals, and settings stay inside Profile instead of the primary nav.", icon: UserRound }
       ];
     default:
       return [{ label: "Workspace", value: "Ready", detail: "Role-aware view", icon: Sparkles }];
@@ -243,7 +246,7 @@ function getNotificationsHref(role: Role): ComponentProps<typeof Link>["href"] {
     case "booth_rent_barber":
       return "/dashboard/barber";
     case "client":
-      return "/activity";
+      return CLIENT_PRIMARY_TAB_HREFS.activity;
     default:
       return "/dashboard";
   }
@@ -252,7 +255,7 @@ function getNotificationsHref(role: Role): ComponentProps<typeof Link>["href"] {
 function getMessagesHref(role: Role): ComponentProps<typeof Link>["href"] {
   switch (role) {
     case "client":
-      return "/messages";
+      return CLIENT_PRIMARY_TAB_HREFS.messages;
     case "commission_barber":
     case "booth_rent_barber":
       return "/dashboard/barber/messages";
@@ -271,7 +274,7 @@ function getProfileHref(role: Role): ComponentProps<typeof Link>["href"] {
   }
 
   if (role === "client") {
-    return "/profile";
+    return CLIENT_PRIMARY_TAB_HREFS.profile;
   }
 
   if (role === "commission_barber" || role === "booth_rent_barber") {
