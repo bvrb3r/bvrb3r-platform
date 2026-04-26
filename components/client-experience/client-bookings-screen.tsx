@@ -9,8 +9,10 @@ import { ClientGetCutNowAction } from "@/components/client-experience/client-get
 import { ClientSectionBlock } from "@/components/client-experience/client-section-block";
 import { CLIENT_PRIMARY_TAB_HREFS } from "@/components/client-experience/client-tab-config";
 import { usePwa } from "@/components/pwa/pwa-provider";
+import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Avatar, PageHeader, StatusBadge } from "@/design/components";
 import {
   useClientBookingsQuery,
   useClientHomeQuery,
@@ -122,14 +124,12 @@ function AppointmentAvatar({
   imageUrl?: string | null;
 }) {
   return (
-    <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(135deg,rgba(124,255,0,0.18),rgba(12,12,12,0.96))] text-xl font-semibold text-[#d7ffab] shadow-[0_18px_34px_rgba(0,0,0,0.22)]">
-      {imageUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={imageUrl} alt={name} className="h-full w-full object-cover" />
-      ) : (
-        getInitials(name)
-      )}
-    </div>
+    <Avatar
+      src={imageUrl}
+      alt={name}
+      initials={getInitials(name)}
+      className="h-20 w-20 rounded-[24px] text-xl shadow-[0_18px_34px_rgba(0,0,0,0.22)]"
+    />
   );
 }
 
@@ -288,20 +288,20 @@ export function ClientBookingsScreen() {
 
   return (
     <div className="space-y-5" data-testid="client-bookings-screen">
-      <header className="overflow-hidden rounded-[34px] border border-[#d8ff9d]/16 bg-[linear-gradient(180deg,rgba(18,22,14,0.96),rgba(8,8,8,0.98))] p-5 shadow-[0_24px_48px_rgba(0,0,0,0.22)] sm:p-6">
-        <p className="text-[10px] uppercase tracking-[0.24em] text-[#cfff93]">Activity</p>
-        <h1 className="mt-3 text-balance text-3xl font-semibold text-white sm:text-4xl" data-display="true">
-          Activity
-        </h1>
-        <p className="mt-3 text-sm leading-7 text-white/66">
-          Your appointments, receipts, and history.
-        </p>
-      </header>
+      <Card className="rounded-[34px] border-[#d8ff9d]/16 bg-[linear-gradient(180deg,rgba(18,22,14,0.96),rgba(8,8,8,0.98))] p-5 shadow-[0_24px_48px_rgba(0,0,0,0.22)] sm:p-6">
+        <div className="relative">
+          <PageHeader
+            label="Activity"
+            title="Activity"
+            subtitle="Your appointments, receipts, and history."
+          />
+        </div>
+      </Card>
 
       <ClientSectionBlock
         eyebrow="Upcoming"
         title="Upcoming Appointments"
-        subtitle="Booked future appointments and the next actions that matter."
+        subtitle="Booked visits and next actions."
       >
         {errorMessage ? <FeedbackBanner tone="error" message={errorMessage} /> : null}
         {cancelFeedback ? <FeedbackBanner tone={cancelFeedback.tone} message={cancelFeedback.message} /> : null}
@@ -342,9 +342,9 @@ export function ClientBookingsScreen() {
                           </p>
                           <p className="mt-1 text-sm leading-6 text-white/58">{getLocationLabel(location)}</p>
                         </div>
-                        <span className="rounded-full border border-white/10 bg-black/18 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-[#d7ffab]">
+                        <StatusBadge tone="green" className="uppercase tracking-[0.16em]">
                           {formatStatusLabel(appointment.status)}
-                        </span>
+                        </StatusBadge>
                       </div>
 
                       <div className="mt-4 grid gap-3 md:grid-cols-3">
@@ -460,7 +460,7 @@ export function ClientBookingsScreen() {
       <ClientSectionBlock
         eyebrow="Past visits"
         title="Past Appointments / Receipts"
-        subtitle="Completed visits, payment truth, and review status stay here."
+        subtitle="Receipts, rebook, and reviews."
       >
         {reviewFeedback ? <FeedbackBanner tone={reviewFeedback.tone} message={reviewFeedback.message} /> : null}
 
@@ -502,9 +502,9 @@ export function ClientBookingsScreen() {
                           </p>
                           <p className="mt-1 text-sm leading-6 text-white/58">{getLocationLabel(location)}</p>
                         </div>
-                        <span className="rounded-full border border-white/10 bg-black/18 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-[#d7ffab]">
+                        <StatusBadge tone="green" className="uppercase tracking-[0.16em]">
                           {formatStatusLabel(appointment.status)}
-                        </span>
+                        </StatusBadge>
                       </div>
 
                       <div className="mt-4 grid gap-3 md:grid-cols-4">

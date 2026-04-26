@@ -16,7 +16,7 @@ export function ClientBottomNav({ activeTab, mode = "client" }: { activeTab?: Cl
 
   return (
     <div className="fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] z-50 lg:hidden">
-      <nav className="mx-auto flex max-w-xl items-center gap-2 rounded-[30px] border border-white/10 bg-[rgba(6,6,6,0.9)] px-3 py-3 backdrop-blur-xl shadow-[0_24px_44px_rgba(0,0,0,0.34)]">
+      <nav className="mx-auto flex max-w-xl items-center gap-2 rounded-[30px] border border-white/10 bg-[rgba(10,10,10,0.86)] px-3 py-3 backdrop-blur-2xl shadow-[0_24px_44px_rgba(0,0,0,0.34)]">
         {items.map((item) => {
           const Icon = item.icon;
           const isActive = item.key === activeTab;

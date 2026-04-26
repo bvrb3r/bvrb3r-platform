@@ -23,8 +23,10 @@ import { ClientPaymentMethodsPanel } from "@/components/client-experience/client
 import { ClientSectionBlock } from "@/components/client-experience/client-section-block";
 import { CLIENT_PRIMARY_TAB_HREFS } from "@/components/client-experience/client-tab-config";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Input } from "@/components/ui/input";
+import { Avatar, DataStatCard, PageHeader, StatusBadge } from "@/design/components";
 import { useClientMembershipQuery } from "@/lib/booking/client";
 import type { ClientProfilePayload } from "@/lib/booking/platform-service";
 import { useCreateReferralInviteMutation, useClientReferralSummary } from "@/lib/engagement/client";
@@ -298,6 +300,16 @@ export function ClientProfileScreen({
 
   return (
     <div className="space-y-4" data-testid="client-profile-screen">
+      <Card className="rounded-[34px] border-white/10 bg-[linear-gradient(180deg,rgba(17,17,17,0.96),rgba(6,6,6,0.98))] p-5 shadow-[0_26px_60px_rgba(0,0,0,0.24)] sm:p-6">
+        <div className="relative">
+          <PageHeader
+            label="Profile"
+            title="Profile"
+            subtitle="Manage your account, preferences, payments, rewards, and more."
+          />
+        </div>
+      </Card>
+
       {mediaFeedback ? <FeedbackBanner tone={mediaFeedback.tone} message={mediaFeedback.message} /> : null}
       {referralFeedback ? <FeedbackBanner tone={referralFeedback.tone} message={referralFeedback.message} /> : null}
       {pointsBalanceQuery.error ? <FeedbackBanner tone="error" message="Rewards are unavailable right now. The rest of your profile is still ready." /> : null}
@@ -331,18 +343,12 @@ export function ClientProfileScreen({
           <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
             <div className="flex items-start gap-4">
               <div className="relative">
-                {clientPhotoUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={clientPhotoUrl}
-                    alt={clientName}
-                    className="h-24 w-24 rounded-[28px] border border-white/10 object-cover shadow-[0_18px_34px_rgba(0,0,0,0.22)]"
-                  />
-                ) : (
-                  <div className="flex h-24 w-24 items-center justify-center rounded-[28px] border border-white/10 bg-[linear-gradient(135deg,rgba(124,255,0,0.18),rgba(12,12,12,0.96))] text-2xl font-semibold text-[#d7ffab] shadow-[0_18px_34px_rgba(0,0,0,0.22)]">
-                    {initialsForName(clientName)}
-                  </div>
-                )}
+                <Avatar
+                  src={clientPhotoUrl}
+                  alt={clientName}
+                  initials={initialsForName(clientName)}
+                  className="h-24 w-24 rounded-[28px] text-2xl shadow-[0_18px_34px_rgba(0,0,0,0.22)]"
+                />
 
                 {isSignedInClient ? (
                   <button
@@ -365,6 +371,7 @@ export function ClientProfileScreen({
                   <span className="rounded-full border border-white/10 bg-black/18 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-white/76">
                     {paymentMethods.length} saved payment method{paymentMethods.length === 1 ? "" : "s"}
                   </span>
+                  {emailVerified ? <StatusBadge tone="green">Verified</StatusBadge> : <StatusBadge tone="neutral">Email pending</StatusBadge>}
                 </div>
               </div>
             </div>
@@ -459,18 +466,12 @@ export function ClientProfileScreen({
               {favoriteBarber ? (
                 <div className="rounded-[24px] border border-white/8 bg-black/18 p-4">
                   <div className="flex items-start gap-3">
-                    {favoriteBarber.profile.profilePhotoUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={favoriteBarber.profile.profilePhotoUrl}
-                        alt={favoriteBarber.barber.name}
-                        className="h-16 w-16 rounded-[20px] border border-white/10 object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-16 w-16 items-center justify-center rounded-[20px] border border-white/10 bg-[linear-gradient(135deg,rgba(124,255,0,0.18),rgba(12,12,12,0.96))] text-sm font-semibold text-[#d7ffab]">
-                        {initialsForName(favoriteBarber.barber.name)}
-                      </div>
-                    )}
+                    <Avatar
+                      src={favoriteBarber.profile.profilePhotoUrl}
+                      alt={favoriteBarber.barber.name}
+                      initials={initialsForName(favoriteBarber.barber.name)}
+                      className="h-16 w-16 rounded-[20px]"
+                    />
                     <div className="min-w-0 flex-1">
                       <p className="text-lg font-semibold text-white">{favoriteBarber.barber.name}</p>
                       <p className="mt-1 text-sm text-white/58">
@@ -563,27 +564,20 @@ export function ClientProfileScreen({
       >
         <div id="profile-rewards" className="scroll-mt-6 space-y-4">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-            <div className="rounded-[24px] border border-[#a8ff47]/16 bg-[linear-gradient(180deg,rgba(124,255,0,0.12),rgba(8,8,8,0.98))] p-4">
-              <p className="surface-label text-[#d7ffab]">BVR Points</p>
-              <p className="mt-3 text-2xl font-semibold text-white">{pointsBalance?.unlockedPoints ?? 0} pts</p>
-            </div>
-            <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-              <p className="surface-label">Pending</p>
-              <p className="mt-3 text-2xl font-semibold text-white">{pointsBalance?.pendingPoints ?? 0} pts</p>
-            </div>
-            <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-              <p className="surface-label">Value</p>
-              <p className="mt-3 text-2xl font-semibold text-white">{currency(pointsBalance?.inAppValue ?? 0)}</p>
-            </div>
-            <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-              <p className="surface-label">Progress</p>
-              <p className="mt-3 text-sm font-semibold text-white">{pointsBalance?.explanation.progressLabel ?? "No milestone yet"}</p>
-            </div>
-            <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-              <p className="surface-label">Membership</p>
-              <p className="mt-3 text-lg font-semibold text-white">{activeMembership?.planName ?? "No membership"}</p>
-              <p className="mt-2 text-sm text-white/58">{membershipValue?.valueMessage ?? "Membership updates appear here when active."}</p>
-            </div>
+            <DataStatCard
+              label="BVR Points"
+              value={`${pointsBalance?.unlockedPoints ?? 0} pts`}
+              icon={<Gift className="h-4 w-4" />}
+              className="border-[#a8ff47]/16 bg-[linear-gradient(180deg,rgba(124,255,0,0.12),rgba(8,8,8,0.98))]"
+            />
+            <DataStatCard label="Pending" value={`${pointsBalance?.pendingPoints ?? 0} pts`} />
+            <DataStatCard label="Value" value={currency(pointsBalance?.inAppValue ?? 0)} />
+            <DataStatCard label="Progress" value={pointsBalance?.explanation.progressLabel ?? "No milestone yet"} />
+            <DataStatCard
+              label="Membership"
+              value={activeMembership?.planName ?? "No membership"}
+              detail={membershipValue?.valueMessage ?? "Membership updates appear here when active."}
+            />
           </div>
 
           <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">

@@ -9,7 +9,7 @@ export function ClientSidebar({ activeTab }: { activeTab?: ClientAppTab }) {
   return (
     <aside className="hidden lg:block">
       <div className="sticky top-5 space-y-4">
-        <div className="rounded-[28px] border border-white/8 bg-[linear-gradient(180deg,rgba(15,15,15,0.96),rgba(8,8,8,0.98))] p-5 shadow-[0_18px_40px_rgba(0,0,0,0.18)]">
+        <div className="bvr-glass-card rounded-[28px] p-5">
           <p className="text-[10px] uppercase tracking-[0.24em] text-[#d7ffab]">Client navigation</p>
           <p className="mt-3 text-xl font-semibold text-white">Book, track, message, repeat.</p>
           <p className="mt-3 text-sm leading-7 text-white/58">
@@ -19,7 +19,7 @@ export function ClientSidebar({ activeTab }: { activeTab?: ClientAppTab }) {
 
         <nav
           aria-label="Client primary navigation"
-          className="rounded-[28px] border border-white/8 bg-[linear-gradient(180deg,rgba(15,15,15,0.96),rgba(8,8,8,0.98))] p-3 shadow-[0_18px_40px_rgba(0,0,0,0.18)]"
+          className="bvr-glass-card rounded-[28px] p-3"
         >
           <div className="space-y-2">
             {CLIENT_PRIMARY_NAV_ITEMS.map((item) => {

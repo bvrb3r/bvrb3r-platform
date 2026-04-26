@@ -1,18 +1,19 @@
 @import "tailwindcss";
+@import "../design/theme.css";
 
 :root {
   --bg: #050505;
-  --bg-soft: #0b0b0b;
-  --panel: #151515;
-  --panel-strong: #202020;
+  --bg-soft: #080808;
+  --panel: #0d0d0d;
+  --panel-strong: #151515;
   --panel-edge: rgba(255, 255, 255, 0.08);
-  --text: #f5f1e8;
-  --muted: rgba(245, 241, 232, 0.68);
-  --accent: #7cff00;
-  --accent-bright: #cfff93;
-  --accent-soft: rgba(124, 255, 0, 0.14);
-  --font-display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
-  --font-body: "Avenir Next", "Segoe UI Variable Text", "Helvetica Neue", "Franklin Gothic Medium", sans-serif;
+  --text: #ffffff;
+  --muted: rgba(199, 199, 199, 0.72);
+  --accent: #9bff18;
+  --accent-bright: #a3ff12;
+  --accent-soft: rgba(163, 255, 18, 0.14);
+  --font-display: Inter, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+  --font-body: Inter, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
 }
 
 * {
@@ -76,13 +77,12 @@ body {
   min-height: 100svh;
   min-height: 100dvh;
   background:
-    radial-gradient(circle at 12% 0%, rgba(124, 255, 0, 0.16), transparent 24%),
-    radial-gradient(circle at 100% 8%, rgba(255, 255, 255, 0.08), transparent 18%),
-    radial-gradient(circle at 90% 90%, rgba(124, 255, 0, 0.08), transparent 20%),
-    linear-gradient(180deg, #040404 0%, #090909 42%, #050505 100%);
+    radial-gradient(circle at top right, rgba(163, 255, 18, 0.1), transparent 28%),
+    radial-gradient(circle at bottom left, rgba(163, 255, 18, 0.06), transparent 22%),
+    linear-gradient(180deg, #040404 0%, #080808 42%, #050505 100%);
   color: var(--text);
   font-family: var(--font-body);
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   overscroll-behavior-y: none;
@@ -97,7 +97,7 @@ body::before {
   background-image:
     linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-    repeating-linear-gradient(135deg, rgba(124, 255, 0, 0.025) 0 2px, transparent 2px 18px);
+    repeating-linear-gradient(135deg, rgba(163, 255, 18, 0.025) 0 2px, transparent 2px 18px);
   background-size: 72px 72px, 72px 72px, 100% 100%;
   mask-image: radial-gradient(circle at center, black, transparent 82%);
   opacity: 0.75;
@@ -111,7 +111,7 @@ body::after {
   width: 30rem;
   height: 30rem;
   border-radius: 999px;
-  background: radial-gradient(circle, rgba(124, 255, 0, 0.18), transparent 70%);
+  background: radial-gradient(circle, rgba(163, 255, 18, 0.18), transparent 70%);
   filter: blur(48px);
   opacity: 0.55;
   pointer-events: none;
@@ -119,7 +119,7 @@ body::after {
 }
 
 ::selection {
-  background: rgba(124, 255, 0, 0.32);
+  background: rgba(163, 255, 18, 0.32);
   color: #050505;
 }
 
@@ -207,7 +207,7 @@ span {
 .accent-rule {
   width: 5.5rem;
   height: 1px;
-  background: linear-gradient(90deg, rgba(124, 255, 0, 0.85), rgba(124, 255, 0, 0));
+  background: linear-gradient(90deg, rgba(163, 255, 18, 0.85), rgba(163, 255, 18, 0));
 }
 
 .fade-rise {

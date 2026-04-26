@@ -12,13 +12,13 @@ import { MarketplaceTrackedActionLink } from "@/components/client-experience/mar
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Skeleton } from "@/components/ui/skeleton";
+import { FilterChip, PageHeader } from "@/design/components";
 import { useClientHomeQuery } from "@/lib/booking/client";
 import {
   useMarketplaceDiscovery,
   type MarketplaceApiError
 } from "@/lib/marketplace/client";
 import { buildMarketplaceBookingHref } from "@/lib/marketplace/links";
-import { cn } from "@/lib/utils";
 import { getReadableActionError } from "@/lib/utils/feedback";
 import type { DiscoveryResult, RecommendedShopView } from "@/types/domain";
 
@@ -44,31 +44,6 @@ function RailSkeleton() {
         </div>
       ))}
     </div>
-  );
-}
-
-function FilterChip({
-  active,
-  children,
-  onClick
-}: {
-  active: boolean;
-  children: React.ReactNode;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "inline-flex items-center gap-2 rounded-full border px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] transition",
-        active
-          ? "border-[#d7ffab]/30 bg-[#d7ffab]/10 text-[#e8ffc2]"
-          : "border-white/10 bg-black/18 text-white/68 hover:border-[#d7ffab]/18 hover:text-[#d7ffab]"
-      )}
-    >
-      {children}
-    </button>
   );
 }
 
@@ -424,7 +399,7 @@ export function ClientSearchScreen({
     <ClientSectionBlock
       eyebrow="Barbers"
       title="Barbers near you"
-      subtitle="Compare real barbers, trust signals, and next openings without leaving booking context."
+      subtitle="Real profiles, ratings, and next openings."
     >
       {errorMessage ? <FeedbackBanner tone="error" message={errorMessage} /> : null}
       {discoveryQuery.isLoading && !visibleBarbers.length ? (
@@ -447,7 +422,7 @@ export function ClientSearchScreen({
     <ClientSectionBlock
       eyebrow="Shops"
       title="Shops near you"
-      subtitle="Start with the shop when you want to choose the place first, then move into the active barbers working there."
+      subtitle="Choose the shop first, then pick the chair."
     >
       {homeQuery.isLoading && !homePayload ? (
         <RailSkeleton />
@@ -478,12 +453,10 @@ export function ClientSearchScreen({
       <Card className="rounded-[34px] border-white/10 bg-[linear-gradient(180deg,rgba(17,17,17,0.96),rgba(6,6,6,0.98))] p-5 shadow-[0_26px_60px_rgba(0,0,0,0.24)] sm:p-6">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(124,255,0,0.12),transparent_40%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.06),transparent_26%)]" />
         <div className="relative">
-          <h1 className="text-balance text-3xl font-semibold text-white sm:text-5xl" data-display="true">
-            Find the right barber.
-          </h1>
-          <p className="mt-3 max-w-2xl text-sm leading-7 text-white/66">
-            Search barbers and shops, then book from a real profile.
-          </p>
+          <PageHeader
+            title="Find the right barber."
+            subtitle="Search barbers and shops, then book from a real profile."
+          />
         </div>
       </Card>
 
@@ -497,8 +470,8 @@ export function ClientSearchScreen({
 
       <ClientSectionBlock
         eyebrow="Filters"
-        title="Filter Chips"
-        subtitle="Tap a service, rating, price, or timing filter to tighten the search."
+        title="Filters"
+        subtitle="Tap once to tighten the search."
       >
         <div className="flex flex-wrap gap-2">
           {serviceFilters.map((filter) => (
@@ -510,11 +483,11 @@ export function ClientSearchScreen({
               {filter.label}
             </FilterChip>
           ))}
-          <FilterChip active={minRating === 4.5} onClick={() => handleRatingFilter(minRating === 4.5 ? undefined : 4.5)}>
+          <FilterChip active={minRating === 4.5} onClick={() => handleRatingFilter(minRating === 4.5 ? undefined : 4.5)} className="gap-2">
             <Star className="h-3.5 w-3.5" />
             4.5+
           </FilterChip>
-          <FilterChip active={minRating === 4.8} onClick={() => handleRatingFilter(minRating === 4.8 ? undefined : 4.8)}>
+          <FilterChip active={minRating === 4.8} onClick={() => handleRatingFilter(minRating === 4.8 ? undefined : 4.8)} className="gap-2">
             <Star className="h-3.5 w-3.5" />
             4.8+
           </FilterChip>
@@ -530,7 +503,7 @@ export function ClientSearchScreen({
           <FilterChip active={availability === "today"} onClick={() => handleAvailabilityFilter(availability === "today" ? "any" : "today")}>
             Today
           </FilterChip>
-          <FilterChip active={verifiedOnly} onClick={handleVerifiedToggle}>
+          <FilterChip active={verifiedOnly} onClick={handleVerifiedToggle} className="gap-2">
             <ShieldCheck className="h-3.5 w-3.5" />
             Verified only
           </FilterChip>
@@ -543,7 +516,7 @@ export function ClientSearchScreen({
       <ClientSectionBlock
         eyebrow="Feed"
         title="Marketplace Feed"
-        subtitle="Browse real work, then tap into the barber profile when something looks right."
+        subtitle="Browse real work from active barber profiles."
       >
         {marketplaceFeed.length ? (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">

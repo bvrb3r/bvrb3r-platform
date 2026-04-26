@@ -18,6 +18,7 @@ import { CLIENT_PRIMARY_TAB_HREFS } from "@/components/client-experience/client-
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageHeader } from "@/design/components";
 import {
   useClientBookingsQuery,
   useClientHomeQuery,
@@ -173,13 +174,11 @@ export function ClientHomeScreen({
       <Card className="rounded-[38px] border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.96),rgba(6,6,6,0.99))] p-5 shadow-[0_30px_70px_rgba(0,0,0,0.32)] sm:p-6">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(124,255,0,0.12),transparent_38%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.08),transparent_26%)]" />
         <div className="relative">
-          <p className="text-[10px] uppercase tracking-[0.24em] text-[#d7ffab]">Client home</p>
-          <h1 className="mt-3 max-w-3xl text-balance text-3xl font-semibold sm:text-5xl" data-display="true">
-            {heroTitle}
-          </h1>
-          <p className="mt-4 max-w-2xl text-sm leading-7 text-white/68">
-            {heroSubtitle}
-          </p>
+          <PageHeader
+            label="Book fast"
+            title={heroTitle}
+            subtitle={heroSubtitle}
+          />
 
           <div className="mt-6 grid gap-3 lg:grid-cols-3">
             <div className="rounded-[28px] border border-white/10 bg-black/20 p-4">
@@ -188,7 +187,7 @@ export function ClientHomeScreen({
                 Find a Barber
               </div>
               <p className="mt-3 text-sm leading-7 text-white/62">
-                Browse verified barbers, compare specialties, and choose the right chair yourself.
+                Browse verified barbers and choose the right chair.
               </p>
               <div className="mt-4">
                 <ClientActionLink href={barberSearchHref} size="lg">
@@ -203,7 +202,7 @@ export function ClientHomeScreen({
                 Get a Cut Now
               </div>
               <p className="mt-3 text-sm leading-7 text-white/68">
-                Find the next available eligible barber near you, confirm the chair, and stay inside the existing booking and payment flow.
+                See the next eligible chair, confirm details, and pay safely.
               </p>
               <div className="mt-4">
                 <ClientGetCutNowAction
@@ -221,7 +220,7 @@ export function ClientHomeScreen({
                 Find a Barber Shop
               </div>
               <p className="mt-3 text-sm leading-7 text-white/62">
-                Start with the shop, then move into the barbers working there.
+                Start with the shop, then pick the barber.
               </p>
               <div className="mt-4">
                 <ClientActionLink href={shopSearchHref} size="lg" variant="secondary">

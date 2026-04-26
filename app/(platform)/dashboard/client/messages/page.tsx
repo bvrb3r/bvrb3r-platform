@@ -17,7 +17,7 @@ export default async function ClientMessagesDashboardPage({
         basePath="/dashboard/client/messages"
         startSupportIntent={params.thread === "support"}
         title="Messages"
-        subtitle="Keep barber replies, shop updates, and support conversations in one client-safe inbox."
+        subtitle="Your conversations, appointments, and support."
       />
     </ClientAppShell>
   );

@@ -17,7 +17,7 @@ export default async function ClientMessageThreadDashboardPage({
         basePath="/dashboard/client/messages"
         selectedThreadId={threadId}
         title="Messages"
-        subtitle="Stay inside the real appointment, shop, or support thread without losing the client-safe conversation context."
+        subtitle="Your conversations, appointments, and support."
       />
     </ClientAppShell>
   );

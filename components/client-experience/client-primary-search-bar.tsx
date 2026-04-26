@@ -1,8 +1,8 @@
 ﻿"use client";
 
 import type { FormEvent } from "react";
-import { ArrowRight, Search } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { ArrowRight } from "lucide-react";
+import { SearchBar } from "@/design/components";
 import { cn } from "@/lib/utils";
 
 export function ClientPrimarySearchBar({
@@ -30,18 +30,13 @@ export function ClientPrimarySearchBar({
   return (
     <div className={cn("rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.96),rgba(8,8,8,0.99))] p-4 shadow-[0_24px_50px_rgba(0,0,0,0.2)] sm:p-5", className)}>
       <form className="flex flex-col gap-3 sm:flex-row" onSubmit={handleSubmit}>
-        <label className="relative flex-1">
-          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#baff69]" />
-          <Input
-            value={value}
-            onChange={(event) => onValueChange(event.target.value)}
-            placeholder={placeholder}
-            className={cn(
-              "rounded-[24px] border-white/10 bg-black/24 pl-11 pr-4 text-base text-white placeholder:text-white/30",
-              compact ? "h-12" : "h-14"
-            )}
-          />
-        </label>
+        <SearchBar
+          value={value}
+          onChange={(event) => onValueChange(event.target.value)}
+          placeholder={placeholder}
+          aria-label={placeholder}
+          className={cn("flex-1", compact ? "min-h-12" : "min-h-14")}
+        />
         <button
           type="submit"
           className={cn(

@@ -9,6 +9,7 @@ import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { FilterChip, PageHeader, SearchBar, StatusBadge } from "@/design/components";
 import {
   useCreateMessageThreadMutation,
   useMessageThreadQuery,
@@ -120,6 +121,32 @@ function getRoleBadgeLabel(role?: string | null, threadType?: string) {
   return null;
 }
 
+type ThreadFilter = "all" | "barbers" | "shops" | "support" | "other";
+
+const threadFilters: { key: ThreadFilter; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "barbers", label: "Barbers" },
+  { key: "shops", label: "Shops" },
+  { key: "support", label: "Support" },
+  { key: "other", label: "Other" }
+];
+
+function getThreadFilter(role?: string | null, threadType?: string): ThreadFilter {
+  if (threadType === "support" || role === "platform_admin") {
+    return "support";
+  }
+
+  if (role === "owner" || role === "manager" || role === "front_desk") {
+    return "shops";
+  }
+
+  if (role === "commission_barber" || role === "booth_rent_barber") {
+    return "barbers";
+  }
+
+  return "other";
+}
+
 function getInitials(name: string) {
   return name
     .split(" ")
@@ -158,6 +185,8 @@ export function MessagingInboxScreen({
   const [broadcastLocationId, setBroadcastLocationId] = useState("");
   const [broadcastAudience, setBroadcastAudience] = useState<MessagingBroadcastAudience>("all");
   const [broadcastBody, setBroadcastBody] = useState("");
+  const [threadSearch, setThreadSearch] = useState("");
+  const [threadFilter, setThreadFilter] = useState<ThreadFilter>("all");
   const hasTriggeredSupportIntentRef = useRef(false);
 
   const available = threadsQuery.data?.available ?? false;
@@ -171,6 +200,27 @@ export function MessagingInboxScreen({
     () => threads.find((thread) => thread.threadType === "support") ?? null,
     [threads]
   );
+  const displayedThreads = useMemo(() => {
+    const query = threadSearch.trim().toLowerCase();
+
+    return threads.filter((thread) => {
+      const filterKey = getThreadFilter(thread.counterpart?.role, thread.threadType);
+      const matchesFilter = threadFilter === "all" || filterKey === threadFilter;
+      const searchable = [
+        thread.counterpart?.fullName,
+        getRoleBadgeLabel(thread.counterpart?.role, thread.threadType),
+        thread.appointmentContext?.serviceName,
+        thread.appointmentContext?.locationLabel,
+        thread.locationContext?.locationLabel,
+        thread.lastMessage?.body
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return matchesFilter && (!query || searchable.includes(query));
+    });
+  }, [threadFilter, threadSearch, threads]);
   const participantSummary = useMemo(
     () =>
       activeThread?.participants
@@ -275,20 +325,28 @@ export function MessagingInboxScreen({
   return (
     <div className="space-y-4" data-testid={`messaging-inbox-${surface}`}>
       <Card className="rounded-[32px] p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="surface-label">{copy.shellLabel}</p>
-            <h2 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">{title}</h2>
-            <p className="mt-4 max-w-3xl text-sm leading-7 text-white/62">{subtitle}</p>
-          </div>
-          <div className="rounded-[24px] border border-white/8 bg-black/20 p-4 text-sm text-white/68">
-            <div className="inline-flex items-center gap-2 rounded-full border border-[#7CFF00]/18 bg-[#7CFF00]/10 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">
-              <ShieldCheck className="h-4 w-4" />
-              Participant-only access
-            </div>
-            <p className="mt-4 text-sm leading-6 text-white/58">{copy.participantCopy}</p>
-          </div>
-        </div>
+        <PageHeader
+          label={copy.shellLabel}
+          title={title}
+          subtitle={subtitle}
+          action={
+            surface === "client" ? (
+              <Button
+                className="h-12 px-5"
+                disabled={createThreadMutation.isPending}
+                onClick={() => void handleSupportThread()}
+              >
+                <MessageSquareText className="h-4 w-4" />
+                {createThreadMutation.isPending ? "Opening..." : "New message"}
+              </Button>
+            ) : (
+              <StatusBadge>
+                <ShieldCheck className="h-3.5 w-3.5" />
+                Participant-only
+              </StatusBadge>
+            )
+          }
+        />
         <div className="mt-5 space-y-3">
           {statusUpdate ? <FeedbackBanner tone={statusUpdate.tone} message={statusUpdate.message} /> : null}
           {threadsQuery.error ? <FeedbackBanner tone="error" message={readableError(threadsQuery.error, "Unable to load the messaging inbox.")} /> : null}
@@ -314,6 +372,26 @@ export function MessagingInboxScreen({
                 </div>
                 <span className="status-pill text-[#d7ffab]">{threads.length} threads</span>
               </div>
+              <div className="mt-5 space-y-4">
+                <SearchBar
+                  aria-label="Search messages"
+                  placeholder="Search messages"
+                  value={threadSearch}
+                  onChange={(event) => setThreadSearch(event.target.value)}
+                />
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {threadFilters.map((filter) => (
+                    <FilterChip
+                      key={filter.key}
+                      type="button"
+                      active={threadFilter === filter.key}
+                      onClick={() => setThreadFilter(filter.key)}
+                    >
+                      {filter.label}
+                    </FilterChip>
+                  ))}
+                </div>
+              </div>
               <div className="mt-5 space-y-3">
                 {threadsQuery.isLoading && !threadsQuery.data ? (
                   <>
@@ -321,7 +399,7 @@ export function MessagingInboxScreen({
                     <ThreadSkeleton />
                     <ThreadSkeleton />
                   </>
-                ) : threads.length ? threads.map((thread) => {
+                ) : displayedThreads.length ? displayedThreads.map((thread) => {
                   const isActive = thread.id === activeThreadId;
                   const roleBadgeLabel = getRoleBadgeLabel(thread.counterpart?.role, thread.threadType);
                   const contextDetail = thread.appointmentContext?.serviceName
@@ -371,7 +449,7 @@ export function MessagingInboxScreen({
                   );
                 }) : (
                   <div className="empty-state-panel rounded-[24px] p-6 text-sm leading-7 text-white/58">
-                    <p>No messages yet.</p>
+                    <p>{threads.length ? "No matching messages." : "No messages yet."}</p>
                     {surface === "client" ? (
                       <div className="mt-4">
                         <Button

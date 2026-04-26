@@ -17,7 +17,7 @@ export function ClientAppShell({
   mode?: ClientAppMode;
 }) {
   return (
-    <div className="app-screen relative overflow-x-clip bg-[#050505] text-[#f5f1e8]">
+    <div className="bvr-screen app-screen relative overflow-x-clip text-[var(--text-primary)]">
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute inset-x-0 top-0 h-56 bg-[radial-gradient(circle_at_top,rgba(124,255,0,0.12),transparent_62%)]" />
         <div className="absolute -left-20 top-32 h-48 w-48 rounded-full bg-white/[0.03] blur-3xl" />
