@@ -5,25 +5,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   useSearchParamsMock,
   usePwaMock,
+  useClientHomeQueryMock,
   useClientBookingsQueryMock,
   useCancelBookingMutationMock,
-  useClientPointsBalanceQueryMock,
-  useSaveClientRoutineMutationMock,
   useSubmitClientReviewMutationMock,
-  useCreateAppointmentPaymentMutationMock,
-  usePointsHistoryQueryMock,
-  useMarketplaceAnalyticsMutationMock
+  useCreateAppointmentPaymentMutationMock
 } = vi.hoisted(() => ({
   useSearchParamsMock: vi.fn(),
   usePwaMock: vi.fn(),
+  useClientHomeQueryMock: vi.fn(),
   useClientBookingsQueryMock: vi.fn(),
   useCancelBookingMutationMock: vi.fn(),
-  useClientPointsBalanceQueryMock: vi.fn(),
-  useSaveClientRoutineMutationMock: vi.fn(),
   useSubmitClientReviewMutationMock: vi.fn(),
-  useCreateAppointmentPaymentMutationMock: vi.fn(),
-  usePointsHistoryQueryMock: vi.fn(),
-  useMarketplaceAnalyticsMutationMock: vi.fn()
+  useCreateAppointmentPaymentMutationMock: vi.fn()
 }));
 
 vi.mock("next/navigation", () => ({
@@ -58,23 +52,14 @@ vi.mock("@/components/pwa/pwa-provider", () => ({
 }));
 
 vi.mock("@/lib/booking/client", () => ({
+  useClientHomeQuery: useClientHomeQueryMock,
   useClientBookingsQuery: useClientBookingsQueryMock,
   useCancelBookingMutation: useCancelBookingMutationMock,
-  useClientPointsBalanceQuery: useClientPointsBalanceQueryMock,
-  useSaveClientRoutineMutation: useSaveClientRoutineMutationMock,
   useSubmitClientReviewMutation: useSubmitClientReviewMutationMock
 }));
 
 vi.mock("@/lib/payments/client", () => ({
   useCreateAppointmentPaymentMutation: useCreateAppointmentPaymentMutationMock
-}));
-
-vi.mock("@/lib/points/client", () => ({
-  usePointsHistoryQuery: usePointsHistoryQueryMock
-}));
-
-vi.mock("@/lib/marketplace/client", () => ({
-  useMarketplaceAnalyticsMutation: useMarketplaceAnalyticsMutationMock
 }));
 
 import { ClientBookingsScreen } from "@/components/client-experience/client-bookings-screen";
@@ -83,57 +68,74 @@ describe("client bookings screen", () => {
   beforeEach(() => {
     useSearchParamsMock.mockReset();
     usePwaMock.mockReset();
+    useClientHomeQueryMock.mockReset();
     useClientBookingsQueryMock.mockReset();
     useCancelBookingMutationMock.mockReset();
-    useClientPointsBalanceQueryMock.mockReset();
-    useSaveClientRoutineMutationMock.mockReset();
     useSubmitClientReviewMutationMock.mockReset();
     useCreateAppointmentPaymentMutationMock.mockReset();
-    usePointsHistoryQueryMock.mockReset();
-    useMarketplaceAnalyticsMutationMock.mockReset();
 
     useSearchParamsMock.mockReturnValue({
-      get: vi.fn((key: string) => (key === "intent" ? "cancel" : null))
+      get: vi.fn().mockReturnValue(null)
     });
     usePwaMock.mockReturnValue({ isOnline: true });
+    useClientHomeQueryMock.mockReturnValue({
+      data: {
+        hasResolvedLocation: true,
+        nextAvailableChair: {
+          barberId: "barber-wave",
+          username: "wave",
+          barberName: "Wave Carter",
+          matchedFrom: "available_now",
+          appointmentTime: "2026-04-28T15:00:00.000Z",
+          locationId: "loc-ybor"
+        }
+      }
+    });
     useClientBookingsQueryMock.mockReturnValue({
       data: {
-        client: {
-          favoriteBarberReference: "barber-wave"
-        },
         favoriteBarber: {
           barber: { id: "barber-wave", name: "Wave Carter" },
           profile: {
             username: "wave",
-            headline: "Precision fades that hold their shape.",
-            specialties: ["Precision fades"]
-          },
-          proof: { reviewScore: 4.9 },
-          shopLocations: [
-            {
-              id: "loc-ybor",
-              name: "Centro Ybor Flagship",
-              neighborhood: "Ybor City",
-              city: "Tampa",
-              state: "FL",
-              address: "1600 7th Ave"
-            }
-          ],
-          bookingCtaHref: "/booking/new?barberId=barber-wave&serviceId=srv-signature",
-          mostBookedService: {
-            service: { id: "srv-signature" }
+            profilePhotoUrl: "https://example.com/wave.jpg"
           }
         },
+        upcoming: [
+          {
+            id: "appt-next",
+            barberId: "barber-wave",
+            serviceId: "srv-signature",
+            locationId: "loc-ybor",
+            revision: 3,
+            status: "confirmed",
+            start: "2026-04-28T14:00:00.000Z",
+            totalAmount: 55,
+            grandTotal: 55,
+            balanceDue: 45,
+            view: {
+              barber: { name: "Wave Carter" },
+              service: { name: "Signature Precision Cut" },
+              location: {
+                name: "Centro Ybor Flagship",
+                neighborhood: "Ybor City",
+                city: "Tampa",
+                state: "FL",
+                address: "1600 7th Ave"
+              }
+            }
+          }
+        ],
         nextAppointment: {
           id: "appt-next",
           barberId: "barber-wave",
           serviceId: "srv-signature",
           locationId: "loc-ybor",
           revision: 3,
+          status: "confirmed",
           start: "2026-04-28T14:00:00.000Z",
           totalAmount: 55,
+          grandTotal: 55,
           balanceDue: 45,
-          depositAmount: 10,
           view: {
             barber: { name: "Wave Carter" },
             service: { name: "Signature Precision Cut" },
@@ -147,6 +149,7 @@ describe("client bookings screen", () => {
           }
         },
         nextAppointmentPayment: {
+          outstandingBalance: 45,
           latestBookingPayment: {
             paymentStatus: "captured"
           },
@@ -161,33 +164,50 @@ describe("client bookings screen", () => {
             barberId: "barber-wave",
             serviceId: "srv-signature",
             locationId: "loc-ybor",
+            status: "completed",
             start: "2026-04-18T14:00:00.000Z",
             totalAmount: 55,
-            grandTotal: 55,
+            grandTotal: 65,
             balanceDue: 0,
-            canReview: false,
+            canReview: true,
+            review: null,
             view: {
               barber: { name: "Wave Carter" },
               service: { name: "Signature Precision Cut" },
-              location: { name: "Centro Ybor Flagship" }
+              location: {
+                name: "Centro Ybor Flagship",
+                neighborhood: "Ybor City",
+                city: "Tampa",
+                state: "FL",
+                address: "1600 7th Ave"
+              }
+            },
+            receipt: {
+              paymentMethodLabel: "Visa ending in 4242",
+              lines: [],
+              totals: {
+                gross: 55,
+                tax: 5,
+                tip: 5,
+                total: 65
+              }
+            },
+            breakdown: {
+              gross: 55,
+              tax: 5,
+              tip: 5,
+              total: 65,
+              platformFee: 3,
+              payoutStatus: "released"
+            },
+            moneyTimeline: {
+              paymentStatus: "captured"
             }
           }
-        ],
-        routine: null
+        ]
       },
       isLoading: false,
       error: null
-    });
-    useClientPointsBalanceQueryMock.mockReturnValue({
-      data: {
-        unlockedPoints: 120,
-        pendingPoints: 20,
-        inAppValue: 12
-      }
-    });
-    useSaveClientRoutineMutationMock.mockReturnValue({
-      isPending: false,
-      mutateAsync: vi.fn()
     });
     useCancelBookingMutationMock.mockReturnValue({
       isPending: false,
@@ -195,47 +215,41 @@ describe("client bookings screen", () => {
     });
     useSubmitClientReviewMutationMock.mockReturnValue({
       isPending: false,
-      variables: null,
       mutateAsync: vi.fn()
     });
     useCreateAppointmentPaymentMutationMock.mockReturnValue({
       isPending: false,
       mutateAsync: vi.fn()
     });
-    usePointsHistoryQueryMock.mockReturnValue({
-      data: {
-        transactions: []
-      }
-    });
-    useMarketplaceAnalyticsMutationMock.mockReturnValue({
-      mutateAsync: vi.fn(),
-      mutate: vi.fn()
-    });
   });
 
-  it("renders the canonical upcoming booking and opens the reschedule-first cancel state", () => {
+  it("renders upcoming appointments and past appointments with receipt actions", () => {
     render(<ClientBookingsScreen />);
 
-    expect(screen.getByText("Your next appointment")).toBeInTheDocument();
-    expect(screen.getAllByText("Signature Precision Cut").length).toBeGreaterThan(0);
-    expect(screen.getByText("Would you like to reschedule instead?")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Find a new slot" })).toBeInTheDocument();
+    expect(screen.getByText("Upcoming Appointments")).toBeInTheDocument();
+    expect(screen.getByText("Past Appointments / Receipts")).toBeInTheDocument();
+    expect(screen.getAllByText("Wave Carter").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Message Barber" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "View Receipt" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Book Again" })).toBeInTheDocument();
+    expect(screen.queryByText("Choose your go-to barber")).not.toBeInTheDocument();
   });
 
   it("shows clean empty states when no upcoming or past appointments exist", () => {
-    useSearchParamsMock.mockReturnValue({
-      get: vi.fn().mockReturnValue(null)
+    useClientHomeQueryMock.mockReturnValue({
+      data: {
+        hasResolvedLocation: false,
+        nextAvailableChair: null
+      }
     });
     useClientBookingsQueryMock.mockReturnValue({
       data: {
-        client: {
-          favoriteBarberReference: null
-        },
         favoriteBarber: null,
+        upcoming: [],
         nextAppointment: null,
         nextAppointmentPayment: null,
-        history: [],
-        routine: null
+        history: []
       },
       isLoading: false,
       error: null
@@ -243,8 +257,10 @@ describe("client bookings screen", () => {
 
     render(<ClientBookingsScreen />);
 
-    expect(screen.getByText("You do not have a next appointment on the calendar.")).toBeInTheDocument();
-    expect(screen.getByText("No completed visits yet")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Find a barber" })).toBeInTheDocument();
+    expect(screen.getByText("No upcoming appointments")).toBeInTheDocument();
+    expect(screen.getByText("Book your next cut.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Find a Barber" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Add Location" })).toBeInTheDocument();
+    expect(screen.getByText("No past visits yet.")).toBeInTheDocument();
   });
 });

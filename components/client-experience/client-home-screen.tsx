@@ -173,7 +173,7 @@ export function ClientHomeScreen({
     : `Find your first barber, ${firstName}.`;
   const heroSubtitle = nextAppointment || hasBookingHistory
     ? "Book again, find the next available barber, or discover someone new."
-    : "Book a real barber near you or browse verified barbers and shops on BVRB3R.";
+    : "Book a real barber near you or browse verified barbers and shops.";
   const paymentStatusCopy = describeUpcomingPayment({
     outstandingBalance: bookingsPayload?.nextAppointmentPayment?.outstandingBalance ?? nextAppointment?.balanceDue ?? 0,
     paymentStatus: bookingsPayload?.nextAppointmentPayment?.latestBookingPayment?.paymentStatus ?? null
@@ -257,7 +257,7 @@ export function ClientHomeScreen({
       <ClientSectionBlock
         eyebrow="Upcoming"
         title="Upcoming Appointment"
-        subtitle="See the next real booking without turning Home into a management dashboard."
+        subtitle="Keep your next real appointment in view."
       >
         {nextAppointment ? (
           <div className="rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(8,8,8,0.99))] p-5 shadow-[0_20px_42px_rgba(0,0,0,0.18)]">
@@ -313,7 +313,7 @@ export function ClientHomeScreen({
             </p>
             <div className="mt-5 flex flex-wrap gap-3">
               <ClientActionLink href={barberSearchHref} size="lg" variant="secondary">
-                Open Search
+                Find a Barber
               </ClientActionLink>
               <ClientActionLink href={nextAvailableHref} size="lg">
                 {nextAvailableCtaLabel}
@@ -327,14 +327,14 @@ export function ClientHomeScreen({
         eyebrow="Barbers"
         title="Recommended Barbers"
         subtitle={recommendedBarbers.length
-          ? "Real recommendations get smarter as your booking history grows."
-          : "Verified, active, bookable barbers will appear here automatically."}
-        action={(
+          ? "Book again or discover someone new."
+          : "Explore top barbers on BVRB3R."}
+        action={recommendedBarbers.length ? (
           <ClientActionLink href={barberSearchHref} size="md" variant="secondary">
             Open Search
             <ArrowRight className="h-4 w-4" />
           </ClientActionLink>
-        )}
+        ) : undefined}
       >
         {recommendedBarbers.length ? (
           <div className="flex gap-4 overflow-x-auto pb-2 hide-scrollbar">
@@ -344,9 +344,9 @@ export function ClientHomeScreen({
           </div>
         ) : (
           <div className="rounded-[30px] border border-dashed border-white/10 bg-[linear-gradient(180deg,rgba(19,19,19,0.96),rgba(8,8,8,0.98))] p-6 sm:p-7">
-            <h3 className="text-2xl font-semibold text-white" data-display="true">No barbers are accepting bookings here yet.</h3>
+            <h3 className="text-2xl font-semibold text-white" data-display="true">Explore top barbers on BVRB3R.</h3>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">
-              Verified, active, bookable barbers will appear here automatically.
+              Verified, active, bookable barbers will surface here automatically as your market grows.
             </p>
             <div className="mt-5">
               <ClientActionLink href={barberSearchHref} size="lg" variant="secondary">
@@ -361,14 +361,14 @@ export function ClientHomeScreen({
         eyebrow="Shops"
         title="Recommended Barber Shops"
         subtitle={recommendedShops.length
-          ? "Start with a trusted shop, then choose the chair that fits."
-          : "Verified shops will appear here once they are active."}
-        action={(
+          ? "Choose the shop first, then the chair."
+          : "Explore barber shops on BVRB3R."}
+        action={recommendedShops.length ? (
           <ClientActionLink href={shopSearchHref} size="md" variant="secondary">
             Find Barber Shops
             <ArrowRight className="h-4 w-4" />
           </ClientActionLink>
-        )}
+        ) : undefined}
       >
         {recommendedShops.length ? (
           <div className="flex gap-4 overflow-x-auto pb-2 hide-scrollbar">
@@ -384,9 +384,9 @@ export function ClientHomeScreen({
           </div>
         ) : (
           <div className="rounded-[30px] border border-dashed border-white/10 bg-[linear-gradient(180deg,rgba(19,19,19,0.96),rgba(8,8,8,0.98))] p-6 sm:p-7">
-            <h3 className="text-2xl font-semibold text-white" data-display="true">No barber shops are accepting bookings here yet.</h3>
+            <h3 className="text-2xl font-semibold text-white" data-display="true">Explore barber shops on BVRB3R.</h3>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">
-              Verified shops will appear here once active.
+              Verified shops will surface here automatically as active booking supply expands.
             </p>
             <div className="mt-5">
               <ClientActionLink href={shopSearchHref} size="lg" variant="secondary">

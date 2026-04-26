@@ -1,74 +1,50 @@
 "use client";
 
 import type { Route } from "next";
+import Link from "next/link";
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { MapPin, ShieldCheck, SlidersHorizontal, Sparkles, Star } from "lucide-react";
-import { ClientDiscoveryCard } from "@/components/client-experience/client-discovery-card";
+import { Clock3, MapPin, ShieldCheck, Star } from "lucide-react";
 import { ClientPrimarySearchBar } from "@/components/client-experience/client-primary-search-bar";
 import { ClientSectionBlock } from "@/components/client-experience/client-section-block";
-import { clientServiceCategories } from "@/components/client-experience/client-service-grid";
 import { ClientShopDiscoveryCard } from "@/components/client-experience/client-shop-discovery-card";
-import { NextAvailableChairCard } from "@/components/client-experience/next-available-chair-card";
+import { MarketplaceTrackedActionLink } from "@/components/client-experience/marketplace-tracked-action-link";
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useClientHomeQuery } from "@/lib/booking/client";
-import { buildClientDiscoverySections } from "@/lib/client-experience/discovery";
 import {
-  useHaircutNowMatch,
   useMarketplaceDiscovery,
   type MarketplaceApiError
 } from "@/lib/marketplace/client";
 import { buildMarketplaceBookingHref } from "@/lib/marketplace/links";
 import { cn } from "@/lib/utils";
 import { getReadableActionError } from "@/lib/utils/feedback";
+import type { DiscoveryResult, RecommendedShopView } from "@/types/domain";
 
 type AvailabilityFilter = "any" | "today" | "now";
 type ClientSearchType = "barbers" | "shops";
 
-function ResultSkeleton() {
-  return (
-    <div className="rounded-[30px] border border-white/8 bg-black/20 p-4">
-      <Skeleton className="h-40 rounded-[24px] md:h-32" />
-      <Skeleton className="mt-4 h-5 w-40" />
-      <Skeleton className="mt-3 h-4 w-28" />
-      <Skeleton className="mt-4 h-4 w-full" />
-    </div>
-  );
-}
+const serviceFilters = [
+  { label: "Haircuts", query: "haircuts" },
+  { label: "Beard", query: "beard" },
+  { label: "Kids", query: "kids cuts" },
+  { label: "Designs", query: "hair designs" }
+] as const;
 
 function RailSkeleton() {
   return (
-    <div className="flex gap-4 overflow-x-auto pb-2 hide-scrollbar">
-      {[0, 1].map((index) => (
-        <div key={index} className="w-[18.5rem] shrink-0 rounded-[32px] border border-white/8 bg-black/20 p-4">
-          <Skeleton className="h-44 rounded-[24px]" />
-          <Skeleton className="mt-4 h-5 w-32" />
-          <Skeleton className="mt-3 h-4 w-40" />
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      {[0, 1, 2].map((index) => (
+        <div key={index} className="rounded-[28px] border border-white/8 bg-black/20 p-4">
+          <Skeleton className="h-44 rounded-[22px]" />
+          <Skeleton className="mt-4 h-6 w-40" />
+          <Skeleton className="mt-3 h-4 w-28" />
+          <Skeleton className="mt-4 h-11 w-full rounded-full" />
         </div>
       ))}
     </div>
   );
-}
-
-function formatSlotTime(iso: string) {
-  return new Intl.DateTimeFormat("en-US", {
-    hour: "numeric",
-    minute: "2-digit"
-  }).format(new Date(iso));
-}
-
-function getEstimatedWaitLabel(matchedFrom: "favorite_barber" | "favorite_shop" | "nearby" | "available_now", distanceMiles?: number) {
-  const baseMinutes = {
-    favorite_barber: 12,
-    favorite_shop: 16,
-    nearby: 18,
-    available_now: 10
-  }[matchedFrom];
-  const distanceAdjustment = distanceMiles ? Math.max(0, Math.round(distanceMiles * 4) - 3) : 0;
-  return `${baseMinutes + distanceAdjustment} min`;
 }
 
 function FilterChip({
@@ -93,6 +69,182 @@ function FilterChip({
     >
       {children}
     </button>
+  );
+}
+
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
+
+function getBarberVerifiedLabel(result: DiscoveryResult) {
+  if (result.badges.some((badge) => badge.startsWith("verified_"))) {
+    return "Verified";
+  }
+
+  return result.trustLabel ?? null;
+}
+
+function getBarberLocationLabel(result: DiscoveryResult) {
+  return result.cityLabel ?? result.locationLabel ?? `${result.distanceMiles.toFixed(1)} mi away`;
+}
+
+function getFeedCaption(result: DiscoveryResult) {
+  return result.mostBookedService ?? result.specialties[0] ?? "Fresh work";
+}
+
+function BarberResultCard({
+  result
+}: {
+  result: DiscoveryResult;
+}) {
+  const verifiedLabel = getBarberVerifiedLabel(result);
+  const bookHref: Route = (result.bookingHref as Route | undefined) ?? buildMarketplaceBookingHref({
+    barberId: result.barberId,
+    username: result.username,
+    locationId: result.locationId,
+    serviceId: result.mostBookedServiceId,
+    sourceKind: "discovery",
+    query: result.mostBookedService ?? undefined
+  });
+  const profileHref = `/barber/${result.username}` as Route;
+  const heroImage = result.galleryPreviewUrls?.[0] ?? result.profilePhotoUrl;
+
+  return (
+    <article className="overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(8,8,8,0.99))] shadow-[0_22px_44px_rgba(0,0,0,0.2)]">
+      <div className="relative h-48 overflow-hidden">
+        {heroImage ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={heroImage}
+            alt={`${result.barberName} preview`}
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        ) : (
+          <div className="absolute inset-0 bg-[linear-gradient(145deg,rgba(124,255,0,0.3),rgba(255,255,255,0.08),rgba(8,8,8,0.96))]" />
+        )}
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.08),rgba(0,0,0,0.72))]" />
+        <div className="absolute left-4 top-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/35 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/88">
+          <Clock3 className="h-3.5 w-3.5 text-[#d7ffab]" />
+          {result.availabilityLabel ?? "Bookable"}
+        </div>
+        {verifiedLabel ? (
+          <div className="absolute right-4 top-4 inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/35 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/88">
+            <ShieldCheck className="h-3.5 w-3.5 text-[#baff69]" />
+            {verifiedLabel}
+          </div>
+        ) : null}
+        <div className="absolute bottom-4 left-4 flex h-14 w-14 items-center justify-center overflow-hidden rounded-[20px] border border-white/10 bg-black/28 text-lg font-semibold text-white/92 shadow-[0_16px_30px_rgba(0,0,0,0.24)]">
+          {result.profilePhotoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={result.profilePhotoUrl} alt={result.barberName} className="h-full w-full object-cover" />
+          ) : (
+            getInitials(result.barberName)
+          )}
+        </div>
+      </div>
+
+      <div className="p-4 sm:p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <Link href={profileHref} className="line-clamp-2-safe text-xl font-semibold text-white transition hover:text-[#d7ffab]">
+              {result.barberName}
+            </Link>
+            <p className="mt-1 text-sm text-white/58">{result.specialties[0] ?? result.mostBookedService ?? "Trusted barber"}</p>
+          </div>
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/88">
+            <Star className="h-3.5 w-3.5 fill-current text-[#d7ffab]" />
+            {result.rating.toFixed(1)}
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2 text-sm text-white/72">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-white/8 bg-black/18 px-3 py-2">
+            <MapPin className="h-4 w-4 text-[#baff69]" />
+            {getBarberLocationLabel(result)}
+          </span>
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-white/8 bg-black/18 px-3 py-2">
+            <Star className="h-4 w-4 text-[#d7ffab]" />
+            {result.reviewCount} review{result.reviewCount === 1 ? "" : "s"}
+          </span>
+        </div>
+
+        <div className="mt-5 flex gap-3">
+          <MarketplaceTrackedActionLink
+            href={bookHref}
+            className="flex-1"
+            analytics={{
+              eventType: "booking_cta_clicked",
+              barberId: result.barberId,
+              username: result.username,
+              locationId: result.locationId,
+              sourceKind: "discovery",
+              sourceReference: "search_barbers_near_you",
+              metadata: {
+                rating: result.rating,
+                reviewCount: result.reviewCount
+              }
+            }}
+          >
+            Book
+          </MarketplaceTrackedActionLink>
+          <Link
+            href={profileHref}
+            className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/18 px-4 text-[13px] font-semibold text-white/82 transition hover:border-[#d7ffab]/18 hover:text-[#d7ffab]"
+          >
+            View Barber
+          </Link>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function MarketplaceFeedCard({
+  result
+}: {
+  result: DiscoveryResult;
+}) {
+  const imageUrl = result.galleryPreviewUrls?.[0] ?? result.profilePhotoUrl;
+  const profileHref = `/barber/${result.username}` as Route;
+  const verifiedLabel = getBarberVerifiedLabel(result);
+
+  return (
+    <Link
+      href={profileHref}
+      className="overflow-hidden rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(8,8,8,0.99))] shadow-[0_18px_38px_rgba(0,0,0,0.18)] transition hover:border-[#d7ffab]/18"
+    >
+      <div className="relative h-56 overflow-hidden">
+        {imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={imageUrl} alt={`${result.barberName} feed post`} className="absolute inset-0 h-full w-full object-cover" />
+        ) : (
+          <div className="absolute inset-0 bg-[linear-gradient(145deg,rgba(124,255,0,0.3),rgba(255,255,255,0.08),rgba(8,8,8,0.96))]" />
+        )}
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.12),transparent_42%,rgba(0,0,0,0.78))]" />
+        <div className="absolute left-4 top-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/35 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/88">
+          {verifiedLabel ? (
+            <>
+              <ShieldCheck className="h-3.5 w-3.5 text-[#baff69]" />
+              {verifiedLabel}
+            </>
+          ) : (
+            <>
+              <Clock3 className="h-3.5 w-3.5 text-[#d7ffab]" />
+              Latest work
+            </>
+          )}
+        </div>
+        <div className="absolute bottom-4 left-4 right-4">
+          <p className="text-lg font-semibold text-white">{result.barberName}</p>
+          <p className="mt-1 line-clamp-2-safe text-sm text-white/74">{getFeedCaption(result)}</p>
+        </div>
+      </div>
+    </Link>
   );
 }
 
@@ -124,17 +276,20 @@ export function ClientSearchScreen({
   const router = useRouter();
   const homeQuery = useClientHomeQuery();
   const homePayload = homeQuery.data;
-  const shops = homePayload?.shops ?? [];
   const prefersShopDiscovery = initialType === "shops";
-  const defaultLocationId = initialLocationId || homePayload?.locationId || shops[0]?.id || "";
+  const recommendedBarbers = homePayload?.recommendedBarbers ?? [];
+  const allShops = useMemo(
+    () => ((homePayload?.recommendedShops?.length ? homePayload.recommendedShops : homePayload?.shops ?? []) as RecommendedShopView[]),
+    [homePayload]
+  );
+  const defaultLocationId = initialLocationId || homePayload?.locationId || homePayload?.shops?.[0]?.id || "";
 
   const [query, setQuery] = useState(initialQuery);
-  const [serviceFilter, setServiceFilter] = useState(initialCategory);
+  const [serviceFilter, setServiceFilter] = useState(initialCategory || initialSpecialty);
   const [selectedLocationId, setSelectedLocationId] = useState(defaultLocationId);
   const [minRating, setMinRating] = useState<number | undefined>(initialMinRating);
   const [maxPrice, setMaxPrice] = useState<number | undefined>(initialMaxPrice);
   const [availability, setAvailability] = useState<AvailabilityFilter>(initialAvailability);
-  const [specialty, setSpecialty] = useState(initialSpecialty);
   const [verifiedOnly, setVerifiedOnly] = useState(initialVerifiedOnly);
 
   useEffect(() => {
@@ -142,11 +297,6 @@ export function ClientSearchScreen({
       setSelectedLocationId(defaultLocationId);
     }
   }, [defaultLocationId, selectedLocationId]);
-
-  const activeShop = shops.find((shop) => shop.id === selectedLocationId) ?? shops[0];
-  const activeAreaLabel = activeShop?.neighborhood ?? "your area";
-  const marketplaceZoneName = activeShop?.name ?? "No live shops yet";
-  const marketplaceZoneLocation = activeShop ? `${activeShop.neighborhood}, ${activeShop.city}` : "Check back soon";
 
   const deferredQuery = useDeferredValue(query);
   const trimmedQuery = deferredQuery.trim();
@@ -156,7 +306,6 @@ export function ClientSearchScreen({
     || minRating
     || maxPrice
     || availability !== "any"
-    || specialty.trim()
     || verifiedOnly
   );
 
@@ -167,10 +316,8 @@ export function ClientSearchScreen({
     minRating,
     maxPrice,
     availability,
-    specialty: specialty.trim() || undefined,
     maxDistanceMiles: 20
   }, clientId);
-  const haircutNowQuery = useHaircutNowMatch(clientId, selectedLocationId || undefined);
   const canonicalResults = useMemo(() => discoveryQuery.data ?? [], [discoveryQuery.data]);
   const barberResults = useMemo(
     () => verifiedOnly
@@ -178,56 +325,26 @@ export function ClientSearchScreen({
       : canonicalResults,
     [canonicalResults, verifiedOnly]
   );
-  const errorMessage = discoveryQuery.error ? getReadableActionError(discoveryQuery.error as MarketplaceApiError) : null;
-  const discoverySections = useMemo(() => buildClientDiscoverySections(barberResults), [barberResults]);
-  const categoryLabel = useMemo(
-    () => clientServiceCategories.find((category) => category.query === serviceFilter)?.label,
-    [serviceFilter]
-  );
-
-  const nextAvailableChair = haircutNowQuery.data ?? null;
-  const nextAvailablePreview = useMemo(() => {
-    if (!nextAvailableChair) {
-      return null;
+  const visibleBarbers = hasActiveSearchQuery
+    ? barberResults
+    : (recommendedBarbers.length ? recommendedBarbers : barberResults);
+  const visibleShops = useMemo(() => {
+    const normalizedQuery = trimmedQuery.toLowerCase();
+    const ordered = [...allShops];
+    if (selectedLocationId) {
+      ordered.sort((left, right) => Number(right.id === selectedLocationId) - Number(left.id === selectedLocationId));
+    }
+    if (!normalizedQuery) {
+      return ordered;
     }
 
-    const matchedResult = barberResults.find((result) => result.barberId === nextAvailableChair.barberId);
-    return {
-      accent: matchedResult?.badges.includes("top_barber") ? "#d7ffab" : "#7cff00",
-      barberId: nextAvailableChair.barberId,
-      barberName: nextAvailableChair.barberName,
-      bookHref: buildMarketplaceBookingHref({
-        barberId: nextAvailableChair.barberId,
-        username: nextAvailableChair.username,
-        locationId: nextAvailableChair.locationId,
-        appointmentTime: nextAvailableChair.appointmentTime,
-        sourceKind: "haircut_now",
-        matchedFrom: nextAvailableChair.matchedFrom
-      }),
-      distanceLabel: matchedResult ? `${matchedResult.distanceMiles.toFixed(1)} mi away` : (activeShop?.neighborhood ?? "Nearby"),
-      headline: nextAvailableChair.matchReason,
-      locationId: nextAvailableChair.locationId,
-      nextSlotLabel: formatSlotTime(nextAvailableChair.appointmentTime),
-      profileHref: `/barber/${nextAvailableChair.username}` as Route,
-      rating: nextAvailableChair.rating,
-      shopName: nextAvailableChair.shopName ?? activeShop?.name ?? "BVRB3R marketplace",
-      username: nextAvailableChair.username,
-      waitLabel: getEstimatedWaitLabel(nextAvailableChair.matchedFrom, matchedResult?.distanceMiles)
-    };
-  }, [activeShop?.name, activeShop?.neighborhood, barberResults, nextAvailableChair]);
-
-  const resultsTitle = categoryLabel && !trimmedQuery
-    ? `${categoryLabel} around ${activeAreaLabel}`
-    : prefersShopDiscovery
-      ? `Barbers inside the ${activeAreaLabel} shop layer`
-      : `Barber discovery around ${activeAreaLabel}`;
-  const resultsSubtitle = barberResults.length
-    ? (hasActiveSearchQuery
-      ? "Use the ranked list below to compare reviews, price, retention, and next availability without leaving the booking lane."
-      : prefersShopDiscovery
-        ? "Start with the shop layer, then compare the real barbers working inside it without leaving booking context."
-        : "The marketplace ranks real nearby barbers by trust, service readiness, and live booking availability.")
-    : "No barbers are live on BVRB3R in this area yet. Verified, active, bookable barbers will appear here as soon as they are ready.";
+    return ordered.filter((shop) => `${shop.name} ${shop.address ?? ""} ${shop.neighborhood} ${shop.city} ${shop.state}`.toLowerCase().includes(normalizedQuery));
+  }, [allShops, selectedLocationId, trimmedQuery]);
+  const marketplaceFeed = useMemo(() => {
+    const source = visibleBarbers.length ? visibleBarbers : barberResults;
+    return source.filter((result) => (result.galleryPreviewUrls?.length ?? 0) > 0 || Boolean(result.profilePhotoUrl)).slice(0, 8);
+  }, [barberResults, visibleBarbers]);
+  const errorMessage = discoveryQuery.error ? getReadableActionError(discoveryQuery.error as MarketplaceApiError) : null;
 
   function syncRoute(
     nextQuery: string,
@@ -236,11 +353,9 @@ export function ClientSearchScreen({
     nextMinRating?: number,
     nextMaxPrice?: number,
     nextAvailability: AvailabilityFilter = "any",
-    nextSpecialty = specialty,
     nextVerifiedOnly = verifiedOnly
   ) {
     const params = new URLSearchParams();
-
     params.set("type", initialType);
 
     if (nextQuery.trim()) {
@@ -267,10 +382,6 @@ export function ClientSearchScreen({
       params.set("availability", nextAvailability);
     }
 
-    if (nextSpecialty.trim()) {
-      params.set("specialty", nextSpecialty.trim());
-    }
-
     if (nextVerifiedOnly) {
       params.set("verified", "1");
     }
@@ -279,58 +390,70 @@ export function ClientSearchScreen({
   }
 
   function handleSearchSubmit() {
-    syncRoute(query, serviceFilter, selectedLocationId, minRating, maxPrice, availability, specialty, verifiedOnly);
+    syncRoute(query, serviceFilter, selectedLocationId, minRating, maxPrice, availability, verifiedOnly);
   }
 
   function handleServiceShortcut(nextCategory: string) {
     const updatedCategory = serviceFilter === nextCategory ? "" : nextCategory;
     setServiceFilter(updatedCategory);
-    syncRoute(query, updatedCategory, selectedLocationId, minRating, maxPrice, availability, specialty, verifiedOnly);
-  }
-
-  function handleLocationFilter(nextLocationId: string) {
-    setSelectedLocationId(nextLocationId);
-    syncRoute(query, serviceFilter, nextLocationId, minRating, maxPrice, availability, specialty, verifiedOnly);
+    syncRoute(query, updatedCategory, selectedLocationId, minRating, maxPrice, availability, verifiedOnly);
   }
 
   function handleRatingFilter(nextRating?: number) {
     setMinRating(nextRating);
-    syncRoute(query, serviceFilter, selectedLocationId, nextRating, maxPrice, availability, specialty, verifiedOnly);
+    syncRoute(query, serviceFilter, selectedLocationId, nextRating, maxPrice, availability, verifiedOnly);
   }
 
   function handlePriceFilter(nextPrice?: number) {
     setMaxPrice(nextPrice);
-    syncRoute(query, serviceFilter, selectedLocationId, minRating, nextPrice, availability, specialty, verifiedOnly);
+    syncRoute(query, serviceFilter, selectedLocationId, minRating, nextPrice, availability, verifiedOnly);
   }
 
   function handleAvailabilityFilter(nextAvailability: AvailabilityFilter) {
     setAvailability(nextAvailability);
-    syncRoute(query, serviceFilter, selectedLocationId, minRating, maxPrice, nextAvailability, specialty, verifiedOnly);
-  }
-
-  function handleSpecialtySubmit() {
-    syncRoute(query, serviceFilter, selectedLocationId, minRating, maxPrice, availability, specialty, verifiedOnly);
+    syncRoute(query, serviceFilter, selectedLocationId, minRating, maxPrice, nextAvailability, verifiedOnly);
   }
 
   function handleVerifiedToggle() {
     const nextValue = !verifiedOnly;
     setVerifiedOnly(nextValue);
-    syncRoute(query, serviceFilter, selectedLocationId, minRating, maxPrice, availability, specialty, nextValue);
+    syncRoute(query, serviceFilter, selectedLocationId, minRating, maxPrice, availability, nextValue);
   }
 
-  const shopSection = (
+  const barbersSection = (
     <ClientSectionBlock
-      eyebrow={prefersShopDiscovery ? "Shop discovery" : "Shops near you"}
-      title={prefersShopDiscovery ? "Browse barber shops worth booking." : "Browse the nearby shop layer."}
-      subtitle={prefersShopDiscovery
-        ? "Start with the shop, then move into the active barbers working there."
-        : "Discovery stays grounded in real places so clients can evaluate where they want to book."}
+      eyebrow="Barbers"
+      title="Barbers near you"
+      subtitle="Compare real barbers, trust signals, and next openings without leaving booking context."
+    >
+      {errorMessage ? <FeedbackBanner tone="error" message={errorMessage} /> : null}
+      {discoveryQuery.isLoading && !visibleBarbers.length ? (
+        <RailSkeleton />
+      ) : visibleBarbers.length ? (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {visibleBarbers.slice(0, hasActiveSearchQuery ? 9 : 6).map((result) => (
+            <BarberResultCard key={result.barberId} result={result} />
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-[28px] border border-dashed border-white/10 bg-black/18 p-5 text-sm leading-7 text-white/62">
+          We&apos;re expanding in your area. Explore top barbers on BVRB3R.
+        </div>
+      )}
+    </ClientSectionBlock>
+  );
+
+  const shopsSection = (
+    <ClientSectionBlock
+      eyebrow="Shops"
+      title="Shops near you"
+      subtitle="Start with the shop when you want to choose the place first, then move into the active barbers working there."
     >
       {homeQuery.isLoading && !homePayload ? (
         <RailSkeleton />
-      ) : shops.length ? (
-        <div className="flex gap-4 overflow-x-auto pb-2 hide-scrollbar">
-          {shops.map((shop) => (
+      ) : visibleShops.length ? (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {visibleShops.slice(0, 6).map((shop) => (
             <ClientShopDiscoveryCard
               key={shop.id}
               location={{
@@ -341,12 +464,10 @@ export function ClientSearchScreen({
           ))}
         </div>
       ) : (
-        <div className="rounded-[30px] border border-dashed border-white/10 bg-[linear-gradient(180deg,rgba(19,19,19,0.96),rgba(8,8,8,0.98))] p-6 sm:p-7">
-          <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">No live shops</p>
-          <h3 className="mt-3 text-2xl font-semibold text-white" data-display="true">No shops are accepting bookings in this area yet.</h3>
-          <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">
-            Real shop cards appear only after a shop has active, approved, bookable barbers on the platform.
-          </p>
+        <div className="rounded-[28px] border border-dashed border-white/10 bg-black/18 p-5 text-sm leading-7 text-white/62">
+          {allShops.length
+            ? "Explore barber shops on BVRB3R."
+            : "Verified barbers and shops will appear here as they become bookable."}
         </div>
       )}
     </ClientSectionBlock>
@@ -356,23 +477,13 @@ export function ClientSearchScreen({
     <div className="space-y-4" data-testid="client-search-screen">
       <Card className="rounded-[34px] border-white/10 bg-[linear-gradient(180deg,rgba(17,17,17,0.96),rgba(6,6,6,0.98))] p-5 shadow-[0_26px_60px_rgba(0,0,0,0.24)] sm:p-6">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(124,255,0,0.12),transparent_40%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.06),transparent_26%)]" />
-        <div className="relative flex flex-wrap items-start justify-between gap-4">
-          <div className="max-w-3xl">
-            <p className="text-[10px] uppercase tracking-[0.24em] text-[#d7ffab]">Marketplace discovery</p>
-            <h1 className="mt-3 text-balance text-3xl font-semibold text-white sm:text-4xl" data-display="true">
-              {prefersShopDiscovery ? "Discover barber shops worth booking." : "Discover barbers worth booking."}
-            </h1>
-            <p className="mt-4 max-w-2xl text-sm leading-7 text-white/68">
-              {prefersShopDiscovery
-                ? "Browse real barbershops first, compare the active talent inside each one, and move into booking without losing context."
-                : "Browse ranked barbers, compare real review proof, jump on the next open chair, and move straight into booking without losing context."}
-            </p>
-          </div>
-          <div className="rounded-[22px] border border-white/10 bg-black/22 px-4 py-3 shadow-[0_14px_28px_rgba(0,0,0,0.18)]">
-            <p className="text-[10px] uppercase tracking-[0.2em] text-white/46">Marketplace zone</p>
-            <p className="mt-2 text-sm font-medium text-white">{marketplaceZoneName}</p>
-            <p className="mt-1 text-sm text-white/58">{marketplaceZoneLocation}</p>
-          </div>
+        <div className="relative">
+          <h1 className="text-balance text-3xl font-semibold text-white sm:text-5xl" data-display="true">
+            Find the right barber.
+          </h1>
+          <p className="mt-3 max-w-2xl text-sm leading-7 text-white/66">
+            Search barbers and shops, then book from a real profile.
+          </p>
         </div>
       </Card>
 
@@ -380,210 +491,69 @@ export function ClientSearchScreen({
         value={query}
         onValueChange={setQuery}
         onSubmit={handleSearchSubmit}
-        placeholder={prefersShopDiscovery ? "Find a barber shop, barber, or city" : "Find a barber, service, or style"}
+        placeholder="Search barber or shop name"
         className="bg-[rgba(10,10,10,0.95)] backdrop-blur-xl"
       />
 
       <ClientSectionBlock
         eyebrow="Filters"
-        title="Dial in the marketplace."
-        subtitle="Filter by location, service, rating, price, and live availability without breaking the ranked discovery flow."
-        action={<span className="inline-flex items-center gap-2"><SlidersHorizontal className="h-4 w-4 text-[#baff69]" />Smart ranking stays on</span>}
+        title="Filter Chips"
+        subtitle="Tap a service, rating, price, or timing filter to tighten the search."
       >
-        <div className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-            <label className="space-y-2">
-              <span className="text-[10px] uppercase tracking-[0.18em] text-white/46">Location</span>
-              <select
-                value={selectedLocationId}
-                onChange={(event) => handleLocationFilter(event.target.value)}
-                className="h-12 w-full rounded-[18px] border border-white/10 bg-black/25 px-4 text-sm text-white outline-none transition focus:border-[#7cff00]/30"
-                aria-label="Filter by location"
-              >
-                {shops.map((shop) => (
-                  <option key={shop.id} value={shop.id}>
-                    {shop.name} | {shop.neighborhood}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="rounded-[20px] border border-white/10 bg-black/18 px-4 py-3 text-sm leading-6 text-white/66">
-              Ranking blends retention, review proof, and booking activity so the strongest working chairs rise first.
-            </div>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-            <label className="space-y-2">
-              <span className="text-[10px] uppercase tracking-[0.18em] text-white/46">Specialty</span>
-              <Input
-                value={specialty}
-                onChange={(event) => setSpecialty(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    handleSpecialtySubmit();
-                  }
-                }}
-                placeholder="Fades, beard work, kids cuts..."
-                aria-label="Filter by specialty"
-                className="h-12 rounded-[18px] border-white/10 bg-black/25 text-sm"
-              />
-            </label>
-            <button
-              type="button"
-              onClick={handleSpecialtySubmit}
-              className="inline-flex h-12 items-center justify-center rounded-full border border-white/10 bg-black/20 px-5 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/72 transition hover:border-[#7CFF00]/20 hover:text-[#d7ffab]"
+        <div className="flex flex-wrap gap-2">
+          {serviceFilters.map((filter) => (
+            <FilterChip
+              key={filter.query}
+              active={serviceFilter === filter.query}
+              onClick={() => handleServiceShortcut(filter.query)}
             >
-              Apply specialty
-            </button>
-          </div>
-
-          <div className="flex gap-3 overflow-x-auto pb-2 hide-scrollbar">
-            {clientServiceCategories.map((category) => {
-              const Icon = category.icon;
-              const active = serviceFilter === category.query;
-
-              return (
-                <button
-                  key={category.label}
-                  type="button"
-                  onClick={() => handleServiceShortcut(category.query)}
-                  className={cn(
-                    "group flex min-h-[7rem] w-[9.5rem] shrink-0 flex-col items-center justify-center rounded-[26px] border px-3 py-4 text-center shadow-[0_14px_34px_rgba(0,0,0,0.16)] transition",
-                    active
-                      ? "border-[#d7ffab]/24 bg-[linear-gradient(180deg,rgba(124,255,0,0.16),rgba(8,8,8,0.96))]"
-                      : "border-white/8 bg-[linear-gradient(180deg,rgba(20,20,20,0.96),rgba(9,9,9,0.98))] hover:-translate-y-0.5 hover:border-[#7CFF00]/18 hover:bg-black/30"
-                  )}
-                >
-                  <div className={cn(
-                    "flex h-14 w-14 items-center justify-center rounded-[20px] border text-[#d7ffab] shadow-[0_12px_28px_rgba(124,255,0,0.1)] transition",
-                    active
-                      ? "border-[#d7ffab]/22 bg-[linear-gradient(135deg,rgba(124,255,0,0.28),rgba(18,18,18,0.96))]"
-                      : "border-[#7CFF00]/16 bg-[linear-gradient(135deg,rgba(124,255,0,0.18),rgba(18,18,18,0.96))] group-hover:scale-[1.03]"
-                  )}>
-                    <Icon className="h-6 w-6" />
-                  </div>
-                  <span className="mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/82 sm:tracking-[0.18em]">{category.label}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <FilterChip active={!minRating} onClick={() => handleRatingFilter(undefined)}>Any rating</FilterChip>
-            <FilterChip active={minRating === 4.5} onClick={() => handleRatingFilter(minRating === 4.5 ? undefined : 4.5)}>
-              <Star className="h-3.5 w-3.5" />
-              4.5+
+              {filter.label}
             </FilterChip>
-            <FilterChip active={minRating === 4.8} onClick={() => handleRatingFilter(minRating === 4.8 ? undefined : 4.8)}>
-              <Star className="h-3.5 w-3.5" />
-              4.8+
-            </FilterChip>
-            <FilterChip active={!maxPrice} onClick={() => handlePriceFilter(undefined)}>Any price</FilterChip>
-            <FilterChip active={maxPrice === 60} onClick={() => handlePriceFilter(maxPrice === 60 ? undefined : 60)}>
-              Under $60
-            </FilterChip>
-            <FilterChip active={maxPrice === 80} onClick={() => handlePriceFilter(maxPrice === 80 ? undefined : 80)}>
-              Under $80
-            </FilterChip>
-            <FilterChip active={availability === "any"} onClick={() => handleAvailabilityFilter("any")}>Any time</FilterChip>
-            <FilterChip active={availability === "today"} onClick={() => handleAvailabilityFilter(availability === "today" ? "any" : "today")}>
-              Today
-            </FilterChip>
-            <FilterChip active={availability === "now"} onClick={() => handleAvailabilityFilter(availability === "now" ? "any" : "now")}>
-              Available now
-            </FilterChip>
-            <FilterChip active={verifiedOnly} onClick={handleVerifiedToggle}>
-              <ShieldCheck className="h-3.5 w-3.5" />
-              Verified only
-            </FilterChip>
-          </div>
+          ))}
+          <FilterChip active={minRating === 4.5} onClick={() => handleRatingFilter(minRating === 4.5 ? undefined : 4.5)}>
+            <Star className="h-3.5 w-3.5" />
+            4.5+
+          </FilterChip>
+          <FilterChip active={minRating === 4.8} onClick={() => handleRatingFilter(minRating === 4.8 ? undefined : 4.8)}>
+            <Star className="h-3.5 w-3.5" />
+            4.8+
+          </FilterChip>
+          <FilterChip active={maxPrice === 60} onClick={() => handlePriceFilter(maxPrice === 60 ? undefined : 60)}>
+            Under $60
+          </FilterChip>
+          <FilterChip active={maxPrice === 80} onClick={() => handlePriceFilter(maxPrice === 80 ? undefined : 80)}>
+            Under $80
+          </FilterChip>
+          <FilterChip active={availability === "now"} onClick={() => handleAvailabilityFilter(availability === "now" ? "any" : "now")}>
+            Available Now
+          </FilterChip>
+          <FilterChip active={availability === "today"} onClick={() => handleAvailabilityFilter(availability === "today" ? "any" : "today")}>
+            Today
+          </FilterChip>
+          <FilterChip active={verifiedOnly} onClick={handleVerifiedToggle}>
+            <ShieldCheck className="h-3.5 w-3.5" />
+            Verified only
+          </FilterChip>
         </div>
       </ClientSectionBlock>
-      {prefersShopDiscovery ? shopSection : null}
+
+      {prefersShopDiscovery ? shopsSection : barbersSection}
+      {prefersShopDiscovery ? barbersSection : shopsSection}
 
       <ClientSectionBlock
-        eyebrow="Available now"
-        title="Get a haircut now."
-        subtitle="Jump straight into the fastest viable chair without leaving the marketplace."
+        eyebrow="Feed"
+        title="Marketplace Feed"
+        subtitle="Browse real work, then tap into the barber profile when something looks right."
       >
-        {haircutNowQuery.isLoading && !nextAvailableChair ? (
-          <div className="rounded-[34px] border border-white/10 bg-black/18 p-5 sm:p-6">
-            <Skeleton className="h-5 w-44" />
-            <Skeleton className="mt-4 h-10 w-64" />
-            <Skeleton className="mt-5 h-40 w-full rounded-[28px]" />
+        {marketplaceFeed.length ? (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {marketplaceFeed.map((result) => (
+              <MarketplaceFeedCard key={`${result.barberId}-feed`} result={result} />
+            ))}
           </div>
         ) : (
-          <NextAvailableChairCard
-            match={nextAvailablePreview}
-            fallbackHref={(initialType === "shops" ? `${routeBase}?type=shops` : routeBase) as Route}
-          />
-        )}
-      </ClientSectionBlock>
-      {!prefersShopDiscovery ? shopSection : null}
-
-      <ClientSectionBlock
-        eyebrow={hasActiveSearchQuery ? "Search results" : "Marketplace feed"}
-        title={hasActiveSearchQuery
-          ? (barberResults.length ? `Results for ${trimmedQuery || categoryLabel || "your filters"}` : "No live barbers matched")
-          : resultsTitle}
-        subtitle={resultsSubtitle}
-        action={<span className="inline-flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-[#baff69]" />Deterministic ranking</span>}
-      >
-        {errorMessage ? <FeedbackBanner tone="error" message={errorMessage} /> : null}
-        {discoveryQuery.isLoading && !barberResults.length ? (
-          <div className="space-y-4">
-            <RailSkeleton />
-            <ResultSkeleton />
-            <ResultSkeleton />
-          </div>
-        ) : barberResults.length ? (
-          hasActiveSearchQuery ? (
-            <div className="space-y-3">
-              {barberResults.map((result) => (
-                <ClientDiscoveryCard key={result.barberId} result={result} layout="list" />
-              ))}
-            </div>
-          ) : (
-            <div className="space-y-5">
-              {discoverySections.map((section) => (
-                <div key={section.id} className="space-y-3">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">
-                        <Sparkles className="h-3.5 w-3.5" />
-                        {section.badge}
-                      </div>
-                      <h3 className="mt-2 text-2xl font-semibold text-white" data-display="true">{section.title}</h3>
-                      <p className="mt-2 max-w-2xl text-sm leading-7 text-white/62">{section.description}</p>
-                    </div>
-                  </div>
-                  <div className="flex gap-4 overflow-x-auto pb-2 hide-scrollbar">
-                    {section.items.map((result) => (
-                      <ClientDiscoveryCard key={`${section.id}-${result.barberId}`} result={result} />
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )
-        ) : (
-          <div className="rounded-[30px] border border-dashed border-white/10 bg-[linear-gradient(180deg,rgba(19,19,19,0.96),rgba(8,8,8,0.98))] p-6 sm:p-7">
-            <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">No matching barbers</p>
-            <h3 className="mt-3 text-2xl font-semibold text-white" data-display="true">
-              {hasActiveSearchQuery ? "No live barbers matched those filters." : "No barbers are live on BVRB3R yet."}
-            </h3>
-            <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">
-              {hasActiveSearchQuery
-                ? "Only active, approved barbers with real services and bookable availability can appear here. Try clearing a filter or checking back soon."
-                : "When a verified barber has real services and open booking time, they will appear here automatically."}
-            </p>
-            <div className="mt-5 flex flex-wrap gap-2 text-sm text-white/72">
-              <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/18 px-3 py-2">
-                <MapPin className="h-4 w-4 text-[#baff69]" />
-                {marketplaceZoneName}
-              </span>
-            </div>
+          <div className="rounded-[28px] border border-dashed border-white/10 bg-black/18 p-5 text-sm leading-7 text-white/62">
+            Verified barbers and shops will appear here as they become bookable.
           </div>
         )}
       </ClientSectionBlock>

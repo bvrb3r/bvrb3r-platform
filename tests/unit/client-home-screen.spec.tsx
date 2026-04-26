@@ -270,7 +270,7 @@ describe("client home screen", () => {
 
     expect(screen.getByText("No available barbers near you right now.")).toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: "Search Barbers" }).length).toBeGreaterThan(0);
-    expect(screen.getByText("No barbers are accepting bookings here yet.")).toBeInTheDocument();
-    expect(screen.getByText("No barber shops are accepting bookings here yet.")).toBeInTheDocument();
+    expect(screen.getAllByText("Explore top barbers on BVRB3R.").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Explore barber shops on BVRB3R.").length).toBeGreaterThan(0);
   });
 });

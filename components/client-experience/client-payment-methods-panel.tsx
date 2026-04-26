@@ -103,9 +103,9 @@ export function ClientPaymentMethodsPanel({
             <CreditCard className="h-4 w-4 text-[#baff69]" />
             Payment methods
           </div>
-          <p className="mt-3 text-lg font-semibold text-white">Store tokenized payment references only.</p>
+          <p className="mt-3 text-lg font-semibold text-white">Saved payment methods</p>
           <p className="mt-2 text-sm leading-7 text-white/58">
-            This profile surface never stores raw card numbers. Save only provider references and card metadata so appointments can attach to a real payment method safely.
+            Cards are securely stored through the payment provider. BVRB3R does not store raw card numbers.
           </p>
         </div>
         <div className="rounded-[20px] border border-[#7CFF00]/16 bg-[#7CFF00]/8 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">
@@ -144,7 +144,7 @@ export function ClientPaymentMethodsPanel({
           </div>
         )) : (
           <div className="rounded-[22px] border border-dashed border-white/10 bg-black/18 p-4 text-sm leading-7 text-white/58">
-            No saved payment method references yet. Add one below so upcoming appointments can attach to a default method without storing raw card details.
+            No saved payment method yet. Add one below to keep booking and rebooking fast.
           </div>
         )}
       </div>
@@ -203,7 +203,7 @@ export function ClientPaymentMethodsPanel({
         disabled={!isSignedInClient || addMethodMutation.isPending || !draft.providerPaymentMethodId.trim()}
         onClick={() => void handleAddMethod()}
       >
-        {addMethodMutation.isPending ? "Saving..." : "Save payment method"}
+        {addMethodMutation.isPending ? "Saving..." : "Add payment method"}
       </Button>
     </div>
   );

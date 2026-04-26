@@ -777,7 +777,7 @@ function resolvePreferredShops(
     preferred.set(shops[0].id, shops[0]);
   }
 
-  return [...preferred.values()].slice(0, 3);
+  return [...preferred.values()].slice(0, 4);
 }
 
 export async function saveClientFavoriteBarber(input: ClientFavoriteBarberInput) {
@@ -1024,6 +1024,8 @@ type ShopDiscoveryMetrics = {
   bookHref?: string;
   sortRating?: number;
   sortReviewCount?: number;
+  rating?: number;
+  reviewCount?: number;
 };
 
 function toTimestamp(value?: string | null) {
@@ -1179,7 +1181,9 @@ function getShopMetrics(
     nextAvailableLabel: candidate.availabilityLabel ?? formatDiscoveryTime(candidate.nextAvailableAt),
     bookHref: candidate.bookingHref,
     sortRating: candidate.rating,
-    sortReviewCount: candidate.reviewCount
+    sortReviewCount: candidate.reviewCount,
+    rating: candidate.rating,
+    reviewCount: candidate.reviewCount
   } satisfies ShopDiscoveryMetrics;
 }
 
@@ -1250,6 +1254,8 @@ function buildRecommendedShops(
       activeBarbersCount: metrics?.activeBarbersCount,
       nextAvailableAt: metrics?.nextAvailableAt,
       nextAvailableLabel: metrics?.nextAvailableLabel,
+      rating: metrics?.rating,
+      reviewCount: metrics?.reviewCount,
       bookHref: metrics?.bookHref
     } satisfies RecommendedShopView;
   });
@@ -1503,11 +1509,17 @@ export async function getClientBookingsPayload(clientId: string) {
   const provider = await getLiveOperationsProvider();
   const snapshot = await provider.readSnapshot({ role: "client", clientId } as LiveOperationsViewer);
   const clientProfile = await readClientProfile(supabase, clientId);
-  const appointments = [...snapshot.appointments].sort((left, right) => new Date(right.start).getTime() - new Date(left.start).getTime());
+  const appointments = [...snapshot.appointments];
   const appointmentServices = await readAppointmentServiceSnapshots(supabase, appointments.map((entry) => entry.id));
   const hydratedAppointments = hydrateAppointments(appointments, snapshot.clients, appointmentServices);
-  const nextAppointment = hydratedAppointments.find((appointment) => isUpcomingAppointmentStatus(appointment.status));
-  const history = hydratedAppointments.filter((appointment) => appointment.status === "completed").slice(0, 6);
+  const upcomingAppointments = hydratedAppointments
+    .filter((appointment) => isUpcomingAppointmentStatus(appointment.status))
+    .sort((left, right) => new Date(left.start).getTime() - new Date(right.start).getTime());
+  const nextAppointment = upcomingAppointments[0] ?? null;
+  const history = hydratedAppointments
+    .filter((appointment) => appointment.status === "completed")
+    .sort((left, right) => new Date(right.start).getTime() - new Date(left.start).getTime())
+    .slice(0, 6);
   const favoriteBarberProfile = clientProfile?.favoriteBarberReference
     ? await getBarberDetailsPayload(clientProfile.favoriteBarberReference)
     : null;
@@ -1524,7 +1536,7 @@ export async function getClientBookingsPayload(clientId: string) {
     clientId,
     history.map((appointment) => appointment.id)
   );
-  const receiptTargets = [nextAppointment?.id, ...history.map((appointment) => appointment.id)].filter(Boolean) as string[];
+  const receiptTargets = [...new Set([...upcomingAppointments.map((appointment) => appointment.id), ...history.map((appointment) => appointment.id)])];
   const receiptEntries = await Promise.all(receiptTargets.map(async (appointmentId) => [
     appointmentId,
     {
@@ -1542,6 +1554,13 @@ export async function getClientBookingsPayload(clientId: string) {
     breakdown: receiptMap.get(appointment.id)?.breakdown ?? null,
     moneyTimeline: receiptMap.get(appointment.id)?.moneyTimeline ?? null
   }));
+  const hydratedUpcomingAppointments = upcomingAppointments.map((appointment) => ({
+    ...appointment,
+    receipt: receiptMap.get(appointment.id)?.receipt ?? null,
+    breakdown: receiptMap.get(appointment.id)?.breakdown ?? null,
+    moneyTimeline: receiptMap.get(appointment.id)?.moneyTimeline ?? null
+  }));
+  const nextHydratedAppointment = hydratedUpcomingAppointments[0] as (typeof hydratedUpcomingAppointments)[number] | undefined;
   let membershipValue = null;
   let membershipExecution = null;
 
@@ -1583,14 +1602,8 @@ export async function getClientBookingsPayload(clientId: string) {
   return {
     client: clientProfile ?? null,
     favoriteBarber: favoriteBarberProfile,
-    nextAppointment: nextAppointment
-      ? {
-        ...nextAppointment,
-        receipt: receiptMap.get(nextAppointment.id)?.receipt ?? null,
-        breakdown: receiptMap.get(nextAppointment.id)?.breakdown ?? null,
-        moneyTimeline: receiptMap.get(nextAppointment.id)?.moneyTimeline ?? null
-      }
-      : null,
+    upcoming: hydratedUpcomingAppointments,
+    nextAppointment: nextHydratedAppointment ?? null,
     history: reviewHistory,
     routine,
     membershipValue,

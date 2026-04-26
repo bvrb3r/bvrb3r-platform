@@ -5,15 +5,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   replaceMock,
   useClientHomeQueryMock,
-  useMarketplaceDiscoveryMock,
-  useHaircutNowMatchMock,
-  useMarketplaceAnalyticsMutationMock
+  useMarketplaceDiscoveryMock
 } = vi.hoisted(() => ({
   replaceMock: vi.fn(),
   useClientHomeQueryMock: vi.fn(),
-  useMarketplaceDiscoveryMock: vi.fn(),
-  useHaircutNowMatchMock: vi.fn(),
-  useMarketplaceAnalyticsMutationMock: vi.fn()
+  useMarketplaceDiscoveryMock: vi.fn()
 }));
 
 vi.mock("next/navigation", () => ({
@@ -50,9 +46,17 @@ vi.mock("@/lib/booking/client", () => ({
 }));
 
 vi.mock("@/lib/marketplace/client", () => ({
-  useMarketplaceDiscovery: useMarketplaceDiscoveryMock,
-  useHaircutNowMatch: useHaircutNowMatchMock,
-  useMarketplaceAnalyticsMutation: useMarketplaceAnalyticsMutationMock
+  useMarketplaceDiscovery: useMarketplaceDiscoveryMock
+}));
+
+vi.mock("@/components/client-experience/marketplace-tracked-action-link", () => ({
+  MarketplaceTrackedActionLink: ({
+    children,
+    href
+  }: {
+    children?: ReactNode;
+    href: string;
+  }) => <a href={href}>{children}</a>
 }));
 
 import { ClientSearchScreen } from "@/components/client-experience/client-search-screen";
@@ -62,12 +66,53 @@ describe("client search screen", () => {
     replaceMock.mockReset();
     useClientHomeQueryMock.mockReset();
     useMarketplaceDiscoveryMock.mockReset();
-    useHaircutNowMatchMock.mockReset();
-    useMarketplaceAnalyticsMutationMock.mockReset();
 
     useClientHomeQueryMock.mockReturnValue({
       data: {
         locationId: "loc-ybor",
+        recommendedBarbers: [
+          {
+            barberId: "barber-wave",
+            username: "wave",
+            barberName: "Wave Carter",
+            rating: 4.9,
+            reviewCount: 180,
+            priceRange: [55, 78],
+            priceRangeLabel: "$55 - $78",
+            nextAvailableAt: "2026-04-24T10:30:00-04:00",
+            availabilityLabel: "Today 10:30 AM",
+            distanceMiles: 2.4,
+            locationId: "loc-ybor",
+            locationLabel: "Centro Ybor Flagship",
+            cityLabel: "Tampa",
+            shopName: "Centro Ybor Flagship",
+            specialties: ["precision fades"],
+            mostBookedService: "Premium Cut + Beard Sculpt",
+            mostBookedServiceId: "srv-premium",
+            retentionScore: 71,
+            activityScore: 96,
+            badges: ["verified_identity"],
+            galleryPreviewUrls: ["https://example.com/wave.jpg"]
+          }
+        ],
+        recommendedShops: [
+          {
+            id: "loc-ybor",
+            name: "Centro Ybor Flagship",
+            brandLine: "Trusted local shop",
+            neighborhood: "Ybor City",
+            city: "Tampa",
+            state: "FL",
+            address: "1600 7th Ave, Tampa, FL",
+            kind: "shop",
+            activeBarbersCount: 6,
+            rating: 4.8,
+            reviewCount: 44,
+            verifiedLabel: "Verified",
+            nextAvailableLabel: "Today 11:15 AM",
+            viewHref: "/dashboard/client/search?type=shops&q=Centro%20Ybor%20Flagship&locationId=loc-ybor"
+          }
+        ],
         shops: [
           {
             id: "loc-ybor",
@@ -77,23 +122,13 @@ describe("client search screen", () => {
             city: "Tampa",
             state: "FL",
             phone: "(813) 555-0101",
-            address: "Ybor City",
-            kind: "shop"
-          },
-          {
-            id: "loc-hyde-park",
-            name: "Hyde Park Atelier",
-            brandLine: "Luxury studio",
-            neighborhood: "Hyde Park",
-            city: "Tampa",
-            state: "FL",
-            phone: "(813) 555-0111",
-            address: "Hyde Park",
+            address: "1600 7th Ave, Tampa, FL",
             kind: "shop"
           }
         ]
       },
-      isLoading: false
+      isLoading: false,
+      error: null
     });
 
     useMarketplaceDiscoveryMock.mockReturnValue({
@@ -111,127 +146,53 @@ describe("client search screen", () => {
           distanceMiles: 1.2,
           locationId: "loc-ybor",
           locationLabel: "Centro Ybor Flagship",
+          cityLabel: "Tampa",
           shopName: "Centro Ybor Flagship",
           specialties: ["executive grooming"],
           mostBookedService: "Signature Precision Cut",
           mostBookedServiceId: "srv-signature",
           retentionScore: 92,
           activityScore: 128,
-          badges: []
-        },
-        {
-          barberId: "barber-wave",
-          username: "wave",
-          barberName: "Wave Carter",
-          rating: 4.9,
-          reviewCount: 180,
-          priceRange: [55, 78],
-          priceRangeLabel: "$55 - $78",
-          nextAvailableAt: "2026-04-24T10:30:00-04:00",
-          availabilityLabel: "Available at 10:30 AM",
-          distanceMiles: 2.4,
-          locationId: "loc-hyde-park",
-          locationLabel: "Hyde Park Atelier",
-          shopName: "Hyde Park Atelier",
-          specialties: ["precision fades"],
-          mostBookedService: "Premium Cut + Beard Sculpt",
-          mostBookedServiceId: "srv-premium",
-          retentionScore: 71,
-          activityScore: 96,
-          badges: ["verified_identity", "top_barber"]
+          badges: [],
+          galleryPreviewUrls: ["https://example.com/blaze.jpg"]
         }
       ],
       isLoading: false,
       error: null
     });
-
-    useHaircutNowMatchMock.mockReturnValue({
-      data: {
-        barberId: "barber-blaze",
-        username: "blaze",
-        barberName: "Blaze King",
-        matchedFrom: "available_now",
-        matchReason: "Fastest chair in the area.",
-        appointmentTime: "2026-04-24T11:15:00-04:00",
-        locationId: "loc-ybor",
-        shopName: "Centro Ybor Flagship",
-        priceFrom: 55,
-        rating: 5
-      },
-      isLoading: false
-    });
-
-    useMarketplaceAnalyticsMutationMock.mockReturnValue({
-      mutate: vi.fn(),
-      mutateAsync: vi.fn()
-    });
   });
 
-  it("renders live discovery and available-now booking without referral clutter", () => {
-    render(<ClientSearchScreen clientId="client-jordan" routeBase="/discover" />);
+  it("renders the refined search header, compact filters, and discovery sections", () => {
+    render(<ClientSearchScreen clientId="client-jordan" routeBase="/dashboard/client/search" />);
 
-    expect(screen.getByText(/Discover barbers worth booking/i)).toBeInTheDocument();
-    expect(screen.getByText(/Get a haircut now/i)).toBeInTheDocument();
-    expect(screen.getAllByText(/Blaze King/i).length).toBeGreaterThan(0);
-    expect(screen.getByRole("link", { name: /Book This Chair/i })).toHaveAttribute(
-      "href",
-      expect.stringContaining("source=haircut_now")
-    );
-    expect(screen.queryByRole("link", { name: /Open referrals/i })).not.toBeInTheDocument();
+    expect(screen.getByText("Find the right barber.")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Search barber or shop name")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Haircuts" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Available Now" })).toBeInTheDocument();
+    expect(screen.getByText("Barbers near you")).toBeInTheDocument();
+    expect(screen.getByText("Shops near you")).toBeInTheDocument();
+    expect(screen.getByText("Marketplace Feed")).toBeInTheDocument();
+    expect(screen.queryByText(/Marketplace Zone Status/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Smart ranking/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Get a Haircut Now/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/No Instant Chair/i)).not.toBeInTheDocument();
   });
 
-  it("supports location-aware filtering", async () => {
-    render(<ClientSearchScreen clientId="client-jordan" routeBase="/discover" />);
-
-    fireEvent.change(screen.getByLabelText(/Filter by location/i), {
-      target: { value: "loc-hyde-park" }
-    });
-
-    await waitFor(() => {
-      expect(replaceMock).toHaveBeenCalledWith(expect.stringContaining("type=barbers"));
-      expect(replaceMock).toHaveBeenCalledWith(expect.stringContaining("locationId=loc-hyde-park"));
-    });
-  });
-
-  it("supports shop-led discovery and preserves the shop type in route updates", async () => {
+  it("keeps the shop type in route updates when shop-led discovery is active", async () => {
     render(<ClientSearchScreen clientId="client-jordan" initialType="shops" routeBase="/dashboard/client/search" />);
 
-    expect(screen.getByText(/Discover barber shops worth booking/i)).toBeInTheDocument();
-    expect(screen.getByText(/Browse barber shops worth booking/i)).toBeInTheDocument();
-
-    fireEvent.change(screen.getByLabelText(/Filter by location/i), {
-      target: { value: "loc-hyde-park" }
-    });
+    fireEvent.click(screen.getByRole("button", { name: "Today" }));
 
     await waitFor(() => {
       expect(replaceMock).toHaveBeenCalledWith(expect.stringContaining("type=shops"));
-      expect(replaceMock).toHaveBeenCalledWith(expect.stringContaining("locationId=loc-hyde-park"));
-    });
-  });
-
-  it("applies specialty and verified filters through the canonical route state", async () => {
-    render(<ClientSearchScreen clientId="client-jordan" routeBase="/discover" />);
-
-    fireEvent.change(screen.getByLabelText(/Filter by specialty/i), {
-      target: { value: "beard work" }
-    });
-    fireEvent.click(screen.getByRole("button", { name: /Apply specialty/i }));
-
-    await waitFor(() => {
-      expect(replaceMock).toHaveBeenCalledWith(expect.stringContaining("specialty=beard+work"));
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: /Verified only/i }));
-
-    await waitFor(() => {
-      expect(replaceMock).toHaveBeenCalledWith(expect.stringContaining("verified=1"));
+      expect(replaceMock).toHaveBeenCalledWith(expect.stringContaining("availability=today"));
     });
   });
 
   it("passes the selected service category into canonical marketplace discovery", async () => {
-    render(<ClientSearchScreen clientId="client-jordan" routeBase="/discover" />);
+    render(<ClientSearchScreen clientId="client-jordan" routeBase="/dashboard/client/search" />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Haircuts/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Haircuts" }));
 
     await waitFor(() => {
       expect(useMarketplaceDiscoveryMock).toHaveBeenLastCalledWith(

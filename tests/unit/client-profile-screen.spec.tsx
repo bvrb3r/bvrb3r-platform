@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import type { ComponentProps, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ClientProfilePayload } from "@/lib/booking/platform-service";
 
@@ -7,17 +8,44 @@ const {
   useMutateProfileMediaMutationMock,
   useClientMembershipQueryMock,
   usePointsBalanceQueryMock,
-  usePointsHistoryQueryMock
+  usePointsHistoryQueryMock,
+  useClientReferralSummaryMock,
+  useCreateReferralInviteMutationMock
 } = vi.hoisted(() => ({
   useProfileMediaWorkspaceQueryMock: vi.fn(),
   useMutateProfileMediaMutationMock: vi.fn(),
   useClientMembershipQueryMock: vi.fn(),
   usePointsBalanceQueryMock: vi.fn(),
-  usePointsHistoryQueryMock: vi.fn()
+  usePointsHistoryQueryMock: vi.fn(),
+  useClientReferralSummaryMock: vi.fn(),
+  useCreateReferralInviteMutationMock: vi.fn()
 }));
 
 vi.mock("@/lib/booking/client", () => ({
   useClientMembershipQuery: useClientMembershipQueryMock
+}));
+
+vi.mock("next/link", () => ({
+  default: ({
+    children,
+    onClick,
+    href,
+    ...props
+  }: ComponentProps<"a"> & {
+    children?: ReactNode;
+    onClick?: (event: ReactMouseEvent<HTMLAnchorElement>) => void;
+  }) => (
+    <a
+      {...props}
+      href={typeof href === "string" ? href : "#"}
+      onClick={(event) => {
+        onClick?.(event);
+        event.preventDefault();
+      }}
+    >
+      {children}
+    </a>
+  )
 }));
 
 vi.mock("@/lib/points/client", () => ({
@@ -30,12 +58,13 @@ vi.mock("@/lib/profile/client", () => ({
   useMutateProfileMediaMutation: useMutateProfileMediaMutationMock
 }));
 
-vi.mock("@/lib/storage/media", () => ({
-  uploadMediaAsset: vi.fn()
+vi.mock("@/lib/engagement/client", () => ({
+  useClientReferralSummary: useClientReferralSummaryMock,
+  useCreateReferralInviteMutation: useCreateReferralInviteMutationMock
 }));
 
-vi.mock("@/components/profile/profile-media-manager", () => ({
-  ProfilePhotoManagerCard: ({ title }: { title: string }) => <div>{title}</div>
+vi.mock("@/lib/storage/media", () => ({
+  uploadMediaAsset: vi.fn()
 }));
 
 vi.mock("@/components/client-experience/client-payment-methods-panel", () => ({
@@ -44,8 +73,8 @@ vi.mock("@/components/client-experience/client-payment-methods-panel", () => ({
   )
 }));
 
-vi.mock("@/components/engagement/referrals-workspace", () => ({
-  ReferralsWorkspace: () => <div data-testid="referrals-workspace-stub">Referrals workspace</div>
+vi.mock("@/components/auth/logout-button", () => ({
+  LogoutButton: () => <button type="button">Log out</button>
 }));
 
 import { ClientProfileScreen } from "@/components/client-experience/client-profile-screen";
@@ -58,6 +87,8 @@ describe("client profile screen", () => {
     useClientMembershipQueryMock.mockReset();
     usePointsBalanceQueryMock.mockReset();
     usePointsHistoryQueryMock.mockReset();
+    useClientReferralSummaryMock.mockReset();
+    useCreateReferralInviteMutationMock.mockReset();
 
     useProfileMediaWorkspaceQueryMock.mockReturnValue({
       data: {
@@ -68,7 +99,6 @@ describe("client profile screen", () => {
     });
     useMutateProfileMediaMutationMock.mockReturnValue({
       isPending: false,
-      error: null,
       mutateAsync: vi.fn()
     });
     useClientMembershipQueryMock.mockReturnValue({
@@ -78,8 +108,8 @@ describe("client profile screen", () => {
           planName: "Client Core"
         },
         value: {
-          valueMessage: "Member pricing and faster repeat booking are live on this account.",
-          perkLabels: ["10% member pricing", "Priority booking"]
+          valueMessage: "Member pricing is active.",
+          perkLabels: ["Priority booking"]
         }
       },
       error: null
@@ -108,13 +138,44 @@ describe("client profile screen", () => {
         ]
       }
     });
+    useClientReferralSummaryMock.mockReturnValue({
+      data: {
+        referralCode: {
+          code: "BVRB3R-ALEX",
+          rewardPoints: 250
+        },
+        inviteLink: "https://bvrb3r.app/invite/BVRB3R-ALEX",
+        totals: {
+          invited: 12,
+          signedUp: 4,
+          booked: 2,
+          completed: 1,
+          credited: 1,
+          rewardPointsEarned: 250
+        },
+        recentReferrals: [
+          {
+            id: "ref-1",
+            referredClientEmail: "friend@example.com",
+            status: "booked",
+            createdAt: "2026-04-21T00:00:00.000Z",
+            rewardPoints: 250
+          }
+        ]
+      },
+      error: null
+    });
+    useCreateReferralInviteMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: vi.fn()
+    });
   });
 
-  it("renders wallet, rewards, and referrals inside profile", () => {
+  it("renders the refined profile sections in order with wallet, rewards, referrals, and logout", () => {
     render(
       <ClientProfileScreen
         isSignedInClient
-        payload={{
+        payload={({
           client: {
             clientReference: "client-jordan",
             fullName: "Jordan Ellis",
@@ -124,27 +185,31 @@ describe("client profile screen", () => {
           favoriteBarber: {
             barber: { name: "Wave Carter" },
             profile: {
-              headline: "Precision fades that hold their shape.",
-              specialties: ["Precision fades"]
-            }
+              profilePhotoUrl: null,
+              headline: "Precision fades that hold their shape."
+            },
+            proof: {
+              reviewScore: 4.9
+            },
+            shopLocations: [
+              {
+                id: "loc-ybor",
+                name: "Centro Ybor Flagship"
+              }
+            ],
+            bookingCtaHref: "/booking/new?barberId=barber-wave"
           },
           preferredShops: [
             {
               id: "loc-ybor",
               name: "Centro Ybor Flagship",
               neighborhood: "Ybor City",
-              city: "Tampa"
+              city: "Tampa",
+              state: "FL"
             }
           ],
-          notificationPreference: {
-            inAppEnabled: true,
-            emailEnabled: true,
-            smsEnabled: true
-          },
-          routine: {
-            label: "Every 2 weeks",
-            nextSuggestedAt: "2026-04-30T14:00:00.000Z"
-          },
+          notificationPreference: null,
+          routine: null,
           paymentMethods: [
             {
               id: "pm-default",
@@ -157,20 +222,41 @@ describe("client profile screen", () => {
               isDefault: false
             }
           ]
-        } as unknown as ClientProfilePayload}
+        } as unknown as ClientProfilePayload)}
       />
     );
 
-    expect(screen.getByText("Wallet and payment methods")).toBeInTheDocument();
-    expect(screen.getAllByText("2 saved payment methods").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Visa ending in 4242").length).toBeGreaterThan(0);
-    expect(screen.getByText("BVR Points and membership")).toBeInTheDocument();
-    expect(screen.getAllByText("120 pts").length).toBeGreaterThan(0);
-    expect(screen.getByTestId("referrals-workspace-stub")).toBeInTheDocument();
+    const headings = [
+      screen.getAllByText("Account")[0],
+      screen.getAllByText("Preferences")[0],
+      screen.getAllByText("Wallet")[0],
+      screen.getAllByText("Rewards")[0],
+      screen.getAllByText("Invite & Earn")[0],
+      screen.getAllByText("Settings & Support")[0],
+      screen.getAllByText("Logout")[0]
+    ];
+
+    for (let index = 1; index < headings.length; index += 1) {
+      expect(headings[index - 1].compareDocumentPosition(headings[index]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+
+    expect(screen.getByLabelText("Edit profile photo")).toBeInTheDocument();
+    expect(screen.queryByText("Quick profile sections")).not.toBeInTheDocument();
+    expect(screen.queryByText("Preferred barber")).not.toBeInTheDocument();
+    expect(screen.queryByText("Standing routine")).not.toBeInTheDocument();
+    expect(screen.getByText("Preferred Barbers")).toBeInTheDocument();
+    expect(screen.getByText("Preferred Shops")).toBeInTheDocument();
     expect(screen.getByTestId("payment-methods-panel")).toHaveTextContent("Methods 2");
+    expect(screen.getByText("BVR Points")).toBeInTheDocument();
+    expect(screen.getByText("Shared")).toBeInTheDocument();
+    expect(screen.getByText("Signed up")).toBeInTheDocument();
+    expect(screen.getByText("Booked")).toBeInTheDocument();
+    expect(screen.getByText("Completed")).toBeInTheDocument();
+    expect(screen.getByText("Credited")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Log out" })).toBeInTheDocument();
   });
 
-  it("shows clean empty wallet and rewards guidance when canonical data is absent", () => {
+  it("shows clean empty states for preferences and rewards when canonical data is absent", () => {
     useClientMembershipQueryMock.mockReturnValue({
       data: { subscription: null, value: null },
       error: null
@@ -189,11 +275,27 @@ describe("client profile screen", () => {
     usePointsHistoryQueryMock.mockReturnValue({
       data: { activity: [] }
     });
+    useClientReferralSummaryMock.mockReturnValue({
+      data: {
+        referralCode: undefined,
+        inviteLink: "",
+        totals: {
+          invited: 0,
+          signedUp: 0,
+          booked: 0,
+          completed: 0,
+          credited: 0,
+          rewardPointsEarned: 0
+        },
+        recentReferrals: []
+      },
+      error: null
+    });
 
     render(
       <ClientProfileScreen
         isSignedInClient
-        payload={{
+        payload={({
           client: {
             clientReference: "client-jordan",
             fullName: "Jordan Ellis",
@@ -205,13 +307,13 @@ describe("client profile screen", () => {
           notificationPreference: null,
           routine: null,
           paymentMethods: []
-        } as unknown as ClientProfilePayload}
+        } as unknown as ClientProfilePayload)}
       />
     );
 
-    expect(screen.getByText("No saved payment methods yet")).toBeInTheDocument();
-    expect(screen.getByText("Add a saved card so booking and rebooking stay fast.")).toBeInTheDocument();
-    expect(screen.getByText("No rewards or membership history yet. Completed paid services, qualified referrals, and live subscriptions will show up here when they exist.")).toBeInTheDocument();
+    expect(screen.getByText("No preferred barbers yet")).toBeInTheDocument();
+    expect(screen.getByText("No preferred shops yet")).toBeInTheDocument();
+    expect(screen.getByText("No rewards activity yet.")).toBeInTheDocument();
   });
 
   it("treats the location section alias as profile preferences", () => {
@@ -227,14 +329,7 @@ describe("client profile screen", () => {
             phone: "8135550190"
           },
           favoriteBarber: null,
-          preferredShops: [
-            {
-              id: "loc-ybor",
-              name: "Centro Ybor Flagship",
-              neighborhood: "Ybor City",
-              city: "Tampa"
-            }
-          ],
+          preferredShops: [],
           notificationPreference: null,
           routine: null,
           paymentMethods: []
@@ -242,7 +337,7 @@ describe("client profile screen", () => {
       />
     );
 
-    expect(screen.getByText("Preferred setup")).toBeInTheDocument();
+    expect(screen.getAllByText("Preferences")[0]).toBeInTheDocument();
     expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
   });
 });

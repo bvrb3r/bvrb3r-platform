@@ -151,6 +151,13 @@ export interface AppointmentPaymentSummaryResponse {
 export interface ClientBookingsResponse {
   client: ClientHomeResponse["client"];
   favoriteBarber: PublicBarberProfileView | null;
+  upcoming: Array<LiveAppointmentRecord & {
+    serviceSnapshot: AppointmentServiceSnapshot | null;
+    view: AppointmentViewModel;
+    receipt?: BookingReceiptView | null;
+    breakdown?: BookingTransactionBreakdownView | null;
+    moneyTimeline?: BookingMoneyTimelineView | null;
+  }>;
   nextAppointment: (LiveAppointmentRecord & {
     serviceSnapshot: AppointmentServiceSnapshot | null;
     view: AppointmentViewModel;
