@@ -11,8 +11,8 @@ export default async function OwnerDashboardPage() {
       activeHref="/dashboard/owner"
       title="Home"
       subtitle={shopName
-        ? `${shopName} home keeps today revenue, bookings, chair utilization, alerts, and quick actions clear without leaving the owner-safe system.`
-        : "Home keeps today revenue, bookings, chair utilization, alerts, and quick actions clear without leaving the owner-safe system."}
+        ? `${shopName} live performance and next actions.`
+        : "Your shop's live performance and next actions."}
     >
       <OwnerOverview />
     </DashboardShell>

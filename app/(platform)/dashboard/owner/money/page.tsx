@@ -18,7 +18,7 @@ export default async function OwnerMoneyPage({
       user={user}
       activeHref="/dashboard/owner/money"
       title="Money"
-      subtitle="Track revenue, transactions, payouts, commission, booth rent, and earnings breakdown from the canonical money tab."
+      subtitle="Revenue, payouts, transactions, and shop financial activity."
     >
       {growthRequested ? (
         <Card className="rounded-[32px] border border-white/8 p-5 sm:p-6">

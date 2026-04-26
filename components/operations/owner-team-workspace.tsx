@@ -6,6 +6,7 @@ import { ArrowUpRight, ShieldCheck, Users } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Avatar, DataStatCard } from "@/design/components";
 import { useFintechManagementQuery } from "@/lib/fintech/client";
 import { useShopDashboardQuery, type ShopDashboardBarberSummary } from "@/lib/operations/barber-client";
 import { currency } from "@/lib/utils";
@@ -61,6 +62,15 @@ function formatRoutingLabel(value: string) {
 
 function formatStatusLabel(value: string) {
   return value.replaceAll("_", " ");
+}
+
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "BV";
 }
 
 function getBarberStatus(barber: ShopDashboardBarberSummary) {
@@ -174,7 +184,7 @@ export function OwnerTeamWorkspace() {
               <p className="surface-label">Team</p>
               <h3 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">Know who is producing and who needs help right now.</h3>
               <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">
-                Team keeps roster visibility, same-day production, payout readiness, and the next staffing action in one owner-safe tab.
+                Roster visibility, same-day production, payout readiness, and staffing action.
               </p>
             </div>
             <div className="rounded-[24px] border border-white/8 bg-black/20 px-4 py-4 text-sm text-white/66">
@@ -198,26 +208,15 @@ export function OwnerTeamWorkspace() {
               </>
             ) : (
               <>
-                <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                  <p className="surface-label">Active barbers</p>
-                  <p className="mt-3 text-3xl font-semibold" data-display="true">{team.length}</p>
-                  <p className="mt-2 text-sm text-white/58">Current team members attached to this owner scope.</p>
-                </div>
-                <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                  <p className="surface-label">Cutting now</p>
-                  <p className="mt-3 text-3xl font-semibold" data-display="true">{cuttingNowCount}</p>
-                  <p className="mt-2 text-sm text-white/58">Barbers currently in live service.</p>
-                </div>
-                <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                  <p className="surface-label">Open chairs</p>
-                  <p className="mt-3 text-3xl font-semibold" data-display="true">{openChairCount}</p>
-                  <p className="mt-2 text-sm text-white/58">Barbers without active chair pressure right now.</p>
-                </div>
-                <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                  <p className="surface-label">Payout blockers</p>
-                  <p className="mt-3 text-3xl font-semibold" data-display="true">{attentionCount}</p>
-                  <p className="mt-2 text-sm text-white/58">Accounts needing owner attention before money moves.</p>
-                </div>
+                <DataStatCard label="Active barbers" value={team.length} detail="Current team members attached to this owner scope." />
+                <DataStatCard label="Cutting now" value={cuttingNowCount} detail="Barbers currently in live service." />
+                <DataStatCard label="Open chairs" value={openChairCount} detail="Barbers without active chair pressure right now." />
+                <DataStatCard
+                  label="Payout blockers"
+                  value={attentionCount}
+                  detail="Accounts needing owner attention before money moves."
+                  className={attentionCount ? "border-amber-300/20 bg-amber-300/[0.06]" : undefined}
+                />
               </>
             )}
           </div>
@@ -238,9 +237,12 @@ export function OwnerTeamWorkspace() {
             <div className="mt-4 space-y-4">
               <div className="rounded-[24px] border border-[#7CFF00]/16 bg-[#7CFF00]/8 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-lg font-semibold text-white">{selectedBarber.name}</p>
-                    <p className="mt-1 text-sm text-white/60">{selectedBarber.roleLabel} - {selectedBarber.currentShopLabel ?? "No shop label yet"}</p>
+                  <div className="flex min-w-0 items-center gap-3">
+                    <Avatar alt={selectedBarber.name} initials={getInitials(selectedBarber.name)} className="h-14 w-14" />
+                    <div className="min-w-0">
+                      <p className="text-lg font-semibold text-white">{selectedBarber.name}</p>
+                      <p className="mt-1 text-sm text-white/60">{selectedBarber.roleLabel} - {selectedBarber.currentShopLabel ?? "No shop label yet"}</p>
+                    </div>
                   </div>
                   <span className="status-pill text-[#d7ffab]">{selectedBarber.statusLabel}</span>
                 </div>
@@ -328,9 +330,12 @@ export function OwnerTeamWorkspace() {
                 }`}
               >
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-lg font-semibold text-white">{barber.name}</p>
-                    <p className="mt-1 text-sm text-white/55">{barber.roleLabel} - {barber.currentShopLabel ?? "No active shop label"}</p>
+                  <div className="flex min-w-0 items-center gap-3">
+                    <Avatar alt={barber.name} initials={getInitials(barber.name)} className="h-12 w-12" />
+                    <div className="min-w-0">
+                      <p className="text-lg font-semibold text-white">{barber.name}</p>
+                      <p className="mt-1 text-sm text-white/55">{barber.roleLabel} - {barber.currentShopLabel ?? "No active shop label"}</p>
+                    </div>
                   </div>
                   <span className="status-pill text-[#d7ffab]">{barber.statusLabel}</span>
                 </div>

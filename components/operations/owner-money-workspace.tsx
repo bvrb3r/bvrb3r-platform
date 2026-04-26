@@ -5,6 +5,7 @@ import { ArrowRight, Landmark, ShieldAlert, WalletCards } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DataStatCard } from "@/design/components";
 import {
   useFinancialAnomalyQueueQuery,
   useFintechManagementQuery,
@@ -152,7 +153,7 @@ export function OwnerMoneyWorkspace() {
             <p className="surface-label">Money</p>
             <h3 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">Trust every dollar without inventing the story around it.</h3>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">
-              Revenue, payouts, routing visibility, and anomalies all stay tied to the canonical money layer. This tab is for understanding the business and acting safely.
+              Revenue, payouts, routing visibility, and anomalies from the canonical money layer.
             </p>
           </div>
           <div className="rounded-[24px] border border-white/8 bg-black/20 px-4 py-4 text-sm text-white/66">
@@ -173,21 +174,14 @@ export function OwnerMoneyWorkspace() {
             </>
           ) : (
             <>
-              <div className="rounded-[24px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-4">
-                <p className="surface-label text-[#d7ffab]">Today</p>
-                <p className="mt-3 text-3xl font-semibold" data-display="true">{currency(revenueWindow.todayRevenue)}</p>
-                <p className="mt-2 text-sm text-white/62">Revenue posted today.</p>
-              </div>
-              <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                <p className="surface-label">This week</p>
-                <p className="mt-3 text-3xl font-semibold" data-display="true">{currency(revenueWindow.weekRevenue)}</p>
-                <p className="mt-2 text-sm text-white/58">Last 7 business days in scope.</p>
-              </div>
-              <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                <p className="surface-label">This month</p>
-                <p className="mt-3 text-3xl font-semibold" data-display="true">{currency(revenueWindow.monthRevenue)}</p>
-                <p className="mt-2 text-sm text-white/58">Current month from owner analytics snapshots.</p>
-              </div>
+              <DataStatCard
+                label="Today"
+                value={currency(revenueWindow.todayRevenue)}
+                detail="Revenue posted today."
+                className="border-[#A3FF12]/20 bg-[#A3FF12]/[0.06]"
+              />
+              <DataStatCard label="This week" value={currency(revenueWindow.weekRevenue)} detail="Last 7 business days in scope." />
+              <DataStatCard label="This month" value={currency(revenueWindow.monthRevenue)} detail="Current month from owner analytics snapshots." />
             </>
           )}
         </div>

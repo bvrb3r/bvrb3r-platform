@@ -103,7 +103,7 @@ function getPrimaryFocusLabel(role: Role) {
 function getPrimaryActionTitle(role: Role) {
   switch (role) {
     case "owner":
-      return "Home keeps today revenue, bookings, chair utilization, alerts, and quick actions clear while Team, Schedule, Money, and Settings stay one tap away.";
+      return "Home shows live revenue, bookings, chair capacity, alerts, and the next owner action.";
     case "manager":
       return "Keep schedule, queue, and attendance moving without opening owner-only controls.";
     case "front_desk":
@@ -121,7 +121,7 @@ function getPrimaryActionTitle(role: Role) {
 function getBoundaryCopy(role: Role) {
   switch (role) {
     case "owner":
-      return "The five owner tabs keep Home, Team, Schedule, Money, and Settings separated cleanly so shop control stays simple without inventing parallel systems.";
+      return "Home, Team, Schedule, Money, and Settings keep shop control clean.";
     case "manager":
       return "Manager mode keeps the floor visible while ownership financial controls, payout rules, and transfer rights stay protected.";
     case "front_desk":
@@ -201,9 +201,9 @@ function getUtilityCards(user: UserAccount): UtilityCard[] {
   switch (user.role) {
     case "owner":
       return [
-        { label: "Owner tabs", value: user.appApprovalStatus?.replaceAll("_", " ") ?? "ready", detail: "Home, Team, Schedule, Money, and Settings all stay tied to this authenticated owner account.", icon: ShieldCheck },
+        { label: "Owner tabs", value: user.appApprovalStatus?.replaceAll("_", " ") ?? "ready", detail: "Five owner tabs tied to this authenticated shop account.", icon: ShieldCheck },
         { label: "Shop scope", value: user.ownedShopId ? "1" : "0", detail: user.ownedShopId ? "One shop linked to this account" : "Create or attach a shop lane", icon: MapPinned },
-        { label: "Controls", value: "Live", detail: "Revenue, team, schedule, and private setup stay separated by tab.", icon: WalletCards }
+        { label: "Controls", value: "Live", detail: "Revenue, team, schedule, and setup stay separated by tab.", icon: WalletCards }
       ];
     case "manager":
       return [

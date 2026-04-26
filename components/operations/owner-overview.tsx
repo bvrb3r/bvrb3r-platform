@@ -9,6 +9,7 @@ import { StatCard } from "@/components/dashboard/stat-card";
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DataStatCard } from "@/design/components";
 import { ShopManagerPanel } from "@/components/operations/shop-manager-panel";
 import { useFinancialAnomalyQueueQuery, useFintechManagementQuery } from "@/lib/fintech/client";
 import { useShopDashboardQuery, type ShopDashboardAppointment } from "@/lib/operations/barber-client";
@@ -228,7 +229,7 @@ export function OwnerOverview() {
                 </h3>
               )}
               <p className="mt-3 max-w-2xl text-sm leading-7 text-white/62">
-                Open the app and know what matters fast: posted revenue, active chairs, open capacity, and the next owner action across the shop.
+                Posted revenue, active chairs, open capacity, and the next owner action.
               </p>
             </div>
             <div className="rounded-[24px] border border-white/8 bg-black/20 px-4 py-4 text-sm text-white/68">
@@ -275,28 +276,27 @@ export function OwnerOverview() {
               </>
             ) : (
               <>
-                <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                  <p className="surface-label">Revenue today</p>
-                  <p className="mt-3 text-3xl font-semibold" data-display="true">{currency(summary?.revenueToday ?? 0)}</p>
-                  <p className="mt-2 text-sm text-white/58">Live posted revenue in owner scope.</p>
-                </div>
-                <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                  <p className="surface-label">Appointments completed</p>
-                  <p className="mt-3 text-3xl font-semibold" data-display="true">{completedCount}</p>
-                  <p className="mt-2 text-sm text-white/58">Paid tickets {summary?.paidAppointmentsToday ?? 0}</p>
-                </div>
-                <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                  <p className="surface-label">Active barbers</p>
-                  <p className="mt-3 text-3xl font-semibold" data-display="true">{activeBarbers.length}</p>
-                  <p className="mt-2 text-sm text-white/58">
-                    {activeBarbers.slice(0, 2).map((entry) => entry.name).join(", ") || "No chair activity yet"}
-                  </p>
-                </div>
-                <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                  <p className="surface-label">Average ticket</p>
-                  <p className="mt-3 text-3xl font-semibold" data-display="true">{currency(averageTicket)}</p>
-                  <p className="mt-2 text-sm text-white/58">Average completed ticket today.</p>
-                </div>
+                <DataStatCard
+                  label="Revenue today"
+                  value={currency(summary?.revenueToday ?? 0)}
+                  detail="Live posted revenue in owner scope."
+                  className="border-[#A3FF12]/20 bg-[#A3FF12]/[0.06]"
+                />
+                <DataStatCard
+                  label="Appointments completed"
+                  value={completedCount}
+                  detail={`Paid tickets ${summary?.paidAppointmentsToday ?? 0}`}
+                />
+                <DataStatCard
+                  label="Active barbers"
+                  value={activeBarbers.length}
+                  detail={activeBarbers.slice(0, 2).map((entry) => entry.name).join(", ") || "No chair activity yet"}
+                />
+                <DataStatCard
+                  label="Average ticket"
+                  value={currency(averageTicket)}
+                  detail="Average completed ticket today."
+                />
               </>
             )}
           </div>
@@ -316,7 +316,7 @@ export function OwnerOverview() {
                   <div>
                     <p className="surface-label">Floor in motion</p>
                     <p className="mt-3 text-3xl font-semibold" data-display="true">{inMotionCount}</p>
-                    <p className="mt-2 text-sm leading-6 text-white/60">Booked, checked-in, and in-service tickets still moving through the floor.</p>
+                    <p className="mt-2 text-sm leading-6 text-white/60">Booked, checked-in, and in-service tickets moving through the floor.</p>
                   </div>
                   <Activity className="h-5 w-5 text-[#baff69]" />
                 </div>
@@ -326,7 +326,7 @@ export function OwnerOverview() {
                   <div>
                     <p className="surface-label">Checked in and ready</p>
                     <p className="mt-3 text-3xl font-semibold" data-display="true">{checkedInCount}</p>
-                    <p className="mt-2 text-sm leading-6 text-white/60">Clients are physically in the shop and waiting for service to start.</p>
+                    <p className="mt-2 text-sm leading-6 text-white/60">Clients in the shop and waiting for service.</p>
                   </div>
                   <ReceiptText className="h-5 w-5 text-[#baff69]" />
                 </div>
@@ -336,7 +336,7 @@ export function OwnerOverview() {
                   <div>
                     <p className="surface-label">Open chairs now</p>
                     <p className="mt-3 text-3xl font-semibold" data-display="true">{openChairCount}</p>
-                    <p className="mt-2 text-sm leading-6 text-white/60">Real same-day capacity the owner can fill without inventing demand.</p>
+                    <p className="mt-2 text-sm leading-6 text-white/60">Same-day capacity the owner can fill.</p>
                   </div>
                   <CircleDollarSign className="h-5 w-5 text-[#d7ffab]" />
                 </div>

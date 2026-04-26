@@ -16,7 +16,7 @@ export default async function OwnerSettingsPage({
       user={user}
       activeHref="/dashboard/owner/settings"
       title="Settings"
-      subtitle="Keep shop profile, services, compensation, verification, payout setup, account controls, and support together in one private owner tab."
+      subtitle="Shop profile, setup, verification, services, and support."
     >
       <AccountSessionWorkspace user={user} />
       <OwnerSettingsWorkspace user={user} initialSection={params.section} />

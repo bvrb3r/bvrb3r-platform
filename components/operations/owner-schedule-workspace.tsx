@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/dashboard/status-badge";
+import { Avatar, DataStatCard } from "@/design/components";
 import {
   useShopDashboardQuery,
   type ShopDashboardAppointment,
@@ -36,6 +37,15 @@ function formatTime(iso: string) {
     hour: "numeric",
     minute: "2-digit"
   }).format(new Date(iso));
+}
+
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "BV";
 }
 
 function buildOpenWindows(barbers: ShopDashboardBarberSummary[], appointments: ShopDashboardAppointment[]) {
@@ -109,7 +119,7 @@ export function OwnerScheduleWorkspace() {
               <p className="surface-label">Schedule</p>
               <h3 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">See every chair, every gap, and every revenue window.</h3>
               <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">
-                The owner schedule stays tied to canonical booking truth. Use this tab to spot cancellations, no-shows, idle chairs, and who is cutting right now.
+                Spot cancellations, no-shows, idle chairs, and who is cutting right now.
               </p>
             </div>
             <div className="rounded-[24px] border border-white/8 bg-black/20 px-4 py-4 text-sm text-white/66">
@@ -131,26 +141,20 @@ export function OwnerScheduleWorkspace() {
               </>
             ) : (
               <>
-                <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                  <p className="surface-label">Booked today</p>
-                  <p className="mt-3 text-3xl font-semibold" data-display="true">{todayAppointments.length}</p>
-                  <p className="mt-2 text-sm text-white/58">Appointments visible across the shop schedule.</p>
-                </div>
-                <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                  <p className="surface-label">Cutting now</p>
-                  <p className="mt-3 text-3xl font-semibold" data-display="true">{cuttingNowCount}</p>
-                  <p className="mt-2 text-sm text-white/58">Services already in motion on the floor.</p>
-                </div>
-                <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                  <p className="surface-label">Open windows</p>
-                  <p className="mt-3 text-3xl font-semibold" data-display="true">{openWindows.length}</p>
-                  <p className="mt-2 text-sm text-white/58">Gaps wide enough to capture additional revenue.</p>
-                </div>
-                <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                  <p className="surface-label">Cancelled / no-show</p>
-                  <p className="mt-3 text-3xl font-semibold" data-display="true">{cancelledCount}</p>
-                  <p className="mt-2 text-sm text-white/58">Lost demand the owner can react to quickly.</p>
-                </div>
+                <DataStatCard label="Booked today" value={todayAppointments.length} detail="Appointments visible across the shop schedule." />
+                <DataStatCard label="Cutting now" value={cuttingNowCount} detail="Services already in motion on the floor." />
+                <DataStatCard
+                  label="Open windows"
+                  value={openWindows.length}
+                  detail="Gaps wide enough to capture additional revenue."
+                  className="border-[#A3FF12]/20 bg-[#A3FF12]/[0.06]"
+                />
+                <DataStatCard
+                  label="Cancelled / no-show"
+                  value={cancelledCount}
+                  detail="Lost demand the owner can react to quickly."
+                  className={cancelledCount ? "border-red-400/20 bg-red-500/[0.06]" : undefined}
+                />
               </>
             )}
           </div>
@@ -171,9 +175,12 @@ export function OwnerScheduleWorkspace() {
               <div className="mt-4 space-y-4">
                 <div className="rounded-[24px] border border-[#7CFF00]/16 bg-[#7CFF00]/8 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="text-lg font-semibold text-white">{selectedAppointment.display.clientName}</p>
-                      <p className="mt-1 text-sm text-white/60">{selectedAppointment.display.barberName} • {selectedAppointment.display.serviceName}</p>
+                    <div className="flex min-w-0 items-center gap-3">
+                      <Avatar alt={selectedAppointment.display.clientName} initials={getInitials(selectedAppointment.display.clientName)} className="h-14 w-14" />
+                      <div className="min-w-0">
+                        <p className="text-lg font-semibold text-white">{selectedAppointment.display.clientName}</p>
+                        <p className="mt-1 text-sm text-white/60">{selectedAppointment.display.barberName} - {selectedAppointment.display.serviceName}</p>
+                      </div>
                     </div>
                     <StatusBadge status={selectedAppointment.status} balanceDue={selectedAppointment.balanceDue} />
                   </div>
@@ -187,7 +194,7 @@ export function OwnerScheduleWorkspace() {
                   <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
                     <p className="surface-label">Ticket</p>
                     <p className="mt-3 text-2xl font-semibold">{currency(selectedAppointment.totalAmount)}</p>
-                    <p className="mt-2 text-sm text-white/58">{currency(selectedAppointment.balanceDue)} still open • {currency(selectedAppointment.tipAmount)} tip</p>
+                    <p className="mt-2 text-sm text-white/58">{currency(selectedAppointment.balanceDue)} still open - {currency(selectedAppointment.tipAmount)} tip</p>
                   </div>
                 </div>
                 <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
@@ -254,9 +261,12 @@ export function OwnerScheduleWorkspace() {
               return (
                 <div key={barber.id} className="rounded-[28px] border border-white/8 bg-black/20 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="text-lg font-semibold text-white">{barber.name}</p>
-                      <p className="mt-1 text-sm text-white/55">{barber.completedCount} completed • {barber.bookedCount} booked • {barber.utilization}% utilization</p>
+                    <div className="flex min-w-0 items-center gap-3">
+                      <Avatar alt={barber.name} initials={getInitials(barber.name)} className="h-12 w-12" />
+                      <div className="min-w-0">
+                        <p className="text-lg font-semibold text-white">{barber.name}</p>
+                        <p className="mt-1 text-sm text-white/55">{barber.completedCount} completed - {barber.bookedCount} booked - {barber.utilization}% utilization</p>
+                      </div>
                     </div>
                     <span className="status-pill text-[#d7ffab]">
                       {barber.liveAppointmentCount > 0 ? "Cutting now" : barber.nextAppointmentStart ? `Next ${formatTime(barber.nextAppointmentStart)}` : "Open chair"}

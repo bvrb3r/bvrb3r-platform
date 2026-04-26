@@ -7,6 +7,7 @@ import { ServiceCatalogWorkspace } from "@/components/marketplace/service-catalo
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DataStatCard } from "@/design/components";
 import { KioskControlPanel } from "@/components/operations/kiosk-control-panel";
 import { permissionMatrix } from "@/lib/config/permissions";
 import { useFintechManagementQuery } from "@/lib/fintech/client";
@@ -155,7 +156,7 @@ export function OwnerSettingsWorkspace({
               <p className="surface-label">Settings</p>
               <h3 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">Control the shop safely without touching raw rails.</h3>
               <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">
-                Settings keeps shop profile, services, compensation posture, verification, payout setup, notifications, account posture, and support together in one private owner tab.
+                Shop profile, services, verification, payout setup, notifications, and support.
               </p>
             </div>
             <div className="rounded-[24px] border border-white/8 bg-black/20 px-4 py-4 text-sm text-white/66">
@@ -195,26 +196,25 @@ export function OwnerSettingsWorkspace({
               </>
             ) : (
               <>
-                <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                  <p className="surface-label">Shop details</p>
-                  <p className="mt-3 text-3xl font-semibold" data-display="true">{assignedLocations.length}</p>
-                  <p className="mt-2 text-sm text-white/58">Locations tied to this owner scope.</p>
-                </div>
-                <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                  <p className="surface-label">Payout ready</p>
-                  <p className="mt-3 text-3xl font-semibold" data-display="true">{payoutReadyCount}</p>
-                  <p className="mt-2 text-sm text-white/58">Accounts clear to move money through canonical payout rails.</p>
-                </div>
-                <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                  <p className="surface-label">Needs attention</p>
-                  <p className="mt-3 text-3xl font-semibold" data-display="true">{needsAttentionCount}</p>
-                  <p className="mt-2 text-sm text-white/58">Accounts still missing readiness steps or review.</p>
-                </div>
-                <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                  <p className="surface-label">Blocked routing</p>
-                  <p className="mt-3 text-3xl font-semibold" data-display="true">{blockedRoutingCount}</p>
-                  <p className="mt-2 text-sm text-white/58">Payment routing rows still blocked in the canonical money layer.</p>
-                </div>
+                <DataStatCard label="Shop details" value={assignedLocations.length} detail="Locations tied to this owner scope." />
+                <DataStatCard
+                  label="Payout ready"
+                  value={payoutReadyCount}
+                  detail="Accounts clear to move money through canonical payout rails."
+                  className="border-[#A3FF12]/20 bg-[#A3FF12]/[0.06]"
+                />
+                <DataStatCard
+                  label="Needs attention"
+                  value={needsAttentionCount}
+                  detail="Accounts still missing readiness steps or review."
+                  className={needsAttentionCount ? "border-amber-300/20 bg-amber-300/[0.06]" : undefined}
+                />
+                <DataStatCard
+                  label="Blocked routing"
+                  value={blockedRoutingCount}
+                  detail="Payment routing rows still blocked in the canonical money layer."
+                  className={blockedRoutingCount ? "border-red-400/20 bg-red-500/[0.06]" : undefined}
+                />
               </>
             )}
           </div>
