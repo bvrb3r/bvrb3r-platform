@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ShieldCheck } from "lucide-react";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { ARCHITECT_PRIMARY_NAV_ITEMS } from "@/components/architect-experience/architect-tab-config";
-import { Card } from "@/components/ui/card";
+import { GlassCard } from "@/design/components";
 import { getPlatformAdminUser } from "@/lib/auth/guards";
 
 export default async function ArchitectLayout({ children }: { children: React.ReactNode }) {
@@ -12,7 +12,7 @@ export default async function ArchitectLayout({ children }: { children: React.Re
     <>
       <div className="px-2 pt-2 sm:px-3 sm:pt-3 lg:px-5 lg:pt-5">
         <div className="mx-auto max-w-7xl">
-          <Card className="rounded-[30px] border border-white/8 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(8,8,8,0.98))] p-4 sm:p-5">
+          <GlassCard className="p-4 sm:p-5">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
               <div className="min-w-0">
                 <div className="inline-flex items-center gap-2 rounded-full border border-[#7CFF00]/18 bg-[#7CFF00]/8 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">
@@ -23,9 +23,7 @@ export default async function ArchitectLayout({ children }: { children: React.Re
                   <p className="text-lg font-semibold text-white">{user.name}</p>
                   <p className="mt-1 truncate text-sm text-white/60">{user.email}</p>
                 </div>
-                <p className="mt-3 max-w-3xl text-sm leading-6 text-white/58">
-                  Shared BVRB3R auth session with platform-admin authorization enforced on top of canonical identity.
-                </p>
+                <p className="mt-3 max-w-3xl text-sm leading-6 text-white/58">Platform control room access.</p>
               </div>
 
               <div className="flex flex-col gap-3 xl:min-w-[28rem] xl:items-end">
@@ -45,7 +43,7 @@ export default async function ArchitectLayout({ children }: { children: React.Re
                 </div>
               </div>
             </div>
-          </Card>
+          </GlassCard>
         </div>
       </div>
       {children}

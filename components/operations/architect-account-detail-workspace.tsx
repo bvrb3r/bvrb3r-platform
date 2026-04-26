@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Select } from "@/components/ui/select";
+import { DataStatCard, GlassCard } from "@/design/components";
 import {
   useArchitectAccountActionMutation,
   useArchitectAccountDetailQuery,
@@ -88,20 +89,16 @@ function actionToneClasses(actionClass: PlatformAdminActionClass) {
 
 function DetailMetric({ label, value, detail }: { label: string; value: string | number; detail?: string }) {
   return (
-    <div className="rounded-[20px] border border-white/8 bg-black/20 p-4">
-      <p className="surface-label">{label}</p>
-      <p className="mt-3 text-2xl font-semibold text-white">{value}</p>
-      {detail ? <p className="mt-2 text-sm text-white/58">{detail}</p> : null}
-    </div>
+    <DataStatCard label={label} value={value} detail={detail} className="p-4" />
   );
 }
 
 function Field({ label, value }: { label: string; value?: string | number | boolean | null }) {
   return (
-    <div className="rounded-[20px] border border-white/8 bg-black/20 p-4">
+    <GlassCard className="p-4">
       <p className="surface-label">{label}</p>
       <p className="mt-3 break-words text-sm leading-6 text-white/68">{value === undefined || value === null || value === "" ? "Not recorded" : String(value)}</p>
-    </div>
+    </GlassCard>
   );
 }
 

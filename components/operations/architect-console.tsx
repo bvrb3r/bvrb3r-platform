@@ -22,6 +22,7 @@ import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { DataStatCard, GlassCard } from "@/design/components";
 import { usePlatformAdminActionMutation, usePlatformAdminConsoleQuery } from "@/lib/platform-admin/client";
 import { ARCHITECT_DEGRADED_WARNING, normalizePlatformAdminConsolePayload } from "@/lib/platform-admin/payload";
 import { cn, currency } from "@/lib/utils";
@@ -204,11 +205,12 @@ function MetricCard({
   accent?: boolean;
 }) {
   return (
-    <div className={cn("rounded-[24px] border p-4", accent ? "border-[#7CFF00]/18 bg-[#7CFF00]/8" : "border-white/8 bg-black/20")}>
-      <p className={cn("surface-label", accent ? "text-[#d7ffab]" : undefined)}>{label}</p>
-      <p className="mt-3 text-3xl font-semibold" data-display="true">{value}</p>
-      <p className="mt-2 text-sm text-white/58">{detail}</p>
-    </div>
+    <DataStatCard
+      label={label}
+      value={value}
+      detail={detail}
+      className={accent ? "border-[#7CFF00]/28 bg-[#7CFF00]/8" : undefined}
+    />
   );
 }
 
@@ -224,18 +226,18 @@ function QueueShortcutCard({
   action: ReactNode;
 }) {
   return (
-    <Card className="rounded-[28px] p-5">
+    <GlassCard className="p-5">
       <p className="surface-label">{title}</p>
       <p className="mt-3 text-3xl font-semibold text-white" data-display="true">{count}</p>
       <p className="mt-2 text-sm leading-7 text-white/58">{detail}</p>
       <div className="mt-4">{action}</div>
-    </Card>
+    </GlassCard>
   );
 }
 
 function AuditRow({ entry }: { entry: PlatformAdminAuditLogEntry }) {
   return (
-    <Card className="rounded-[30px] p-6">
+    <GlassCard className="p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -264,7 +266,7 @@ function AuditRow({ entry }: { entry: PlatformAdminAuditLogEntry }) {
           <p className="mt-3 text-sm leading-7 text-white/62">{entry.afterSummary ?? "No after summary recorded."}</p>
         </div>
       </div>
-    </Card>
+    </GlassCard>
   );
 }
 

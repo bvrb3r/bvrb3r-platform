@@ -2,12 +2,11 @@
 
 import Link from "next/link";
 import { useDeferredValue, useState } from "react";
-import { AlertTriangle, Search, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
-import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { Avatar, DataStatCard, GlassCard, SearchBar } from "@/design/components";
 import { useArchitectVerificationQueueQuery } from "@/lib/platform-admin/client";
 import { cn } from "@/lib/utils";
 import type { ArchitectVerificationQueueFilters, ArchitectVerificationQueuePayload } from "@/types/platform-admin";
@@ -52,6 +51,15 @@ function badgeClasses(value: string) {
   return "border-white/10 bg-black/20 text-white/72";
 }
 
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
+
 const statusOptions = [
   "all",
   "submitted",
@@ -91,7 +99,7 @@ export function ArchitectVerificationQueueWorkspace({
   return (
     <div className="app-screen safe-top-pad px-2 py-2 pb-[calc(env(safe-area-inset-bottom,0px)+2rem)] sm:px-3 sm:py-3 lg:px-5 lg:py-5">
       <div className="mx-auto max-w-7xl space-y-4">
-        <Card className="rounded-[34px] p-6">
+        <GlassCard className="p-6">
           <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
             <div>
               <div className="editorial-kicker">
@@ -104,19 +112,8 @@ export function ArchitectVerificationQueueWorkspace({
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 xl:w-[24rem]">
-              <div className="rounded-[24px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-4">
-                <p className="surface-label text-[#d7ffab]">Cases in view</p>
-                <p className="mt-3 text-3xl font-semibold text-white">{data.items.length}</p>
-                <p className="mt-2 text-sm text-white/62">Filtered queue rows ready for review.</p>
-              </div>
-              <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                <p className="surface-label">Current lane</p>
-                <div className="mt-3 flex items-center gap-2 text-white">
-                  <ShieldCheck className="h-4 w-4 text-[#baff69]" />
-                  <span className="font-medium">Verification control</span>
-                </div>
-                <p className="mt-2 text-sm text-white/58">Actions here always write review history and founder audit entries.</p>
-              </div>
+              <DataStatCard label="Cases in view" value={data.items.length} detail="Filtered queue rows ready for review." className="border-[#7CFF00]/28 bg-[#7CFF00]/8" />
+              <DataStatCard label="Current lane" value="Verification control" detail="Actions always write review and audit history." icon={<ShieldCheck className="h-4 w-4" />} />
             </div>
           </div>
           <div className="mt-5 flex flex-wrap gap-2">
@@ -127,33 +124,29 @@ export function ArchitectVerificationQueueWorkspace({
               <Button type="button" variant="secondary" className="min-w-[10rem]">User search</Button>
             </Link>
           </div>
-        </Card>
+        </GlassCard>
 
         {query.error ? <FeedbackBanner tone="error" message={query.error.message} /> : null}
         {data.warnings.length ? (
-          <Card className="rounded-[28px] border border-amber-300/18 bg-amber-300/8 p-5">
+          <GlassCard className="border-amber-300/18 bg-amber-300/8 p-5">
             <div className="flex items-start gap-3">
               <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-100" />
               <div className="space-y-1 text-sm leading-6 text-white/72">
                 {data.warnings.map((warning) => <p key={warning}>{warning}</p>)}
               </div>
             </div>
-          </Card>
+          </GlassCard>
         ) : null}
 
-        <Card className="rounded-[32px] p-6">
+        <GlassCard className="p-6">
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1.8fr)_200px_200px_200px]">
             <div>
               <label className="mb-2 block surface-label">Search verification queue</label>
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/32" />
-                <Input
-                  value={filters.search ?? ""}
-                  onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))}
-                  className="pl-11"
-                  placeholder="Name, email, barber, shop, license, business"
-                />
-              </div>
+              <SearchBar
+                value={filters.search ?? ""}
+                onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))}
+                placeholder="Name, email, barber, shop, license, business"
+              />
             </div>
             <div>
               <label className="mb-2 block surface-label">Role</label>
@@ -213,23 +206,26 @@ export function ArchitectVerificationQueueWorkspace({
               </Select>
             </div>
           </div>
-        </Card>
+        </GlassCard>
 
         <div className="grid gap-4">
           {data.items.length ? data.items.map((item) => (
-            <Card key={item.profileId} className="rounded-[30px] p-6">
+            <GlassCard key={item.profileId} className="p-6">
               <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-xl font-semibold text-white">{item.subjectName}</p>
-                    <span className="status-pill text-white/72">{formatLabel(item.role)}</span>
-                    <span className={cn("status-pill", badgeClasses(item.canonicalOverallStatus))}>{formatLabel(item.canonicalOverallStatus)}</span>
+                <div className="flex min-w-0 items-start gap-4">
+                  <Avatar alt={item.subjectName} initials={getInitials(item.subjectName)} className="h-14 w-14" />
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-xl font-semibold text-white">{item.subjectName}</p>
+                      <span className="status-pill text-white/72">{formatLabel(item.role)}</span>
+                      <span className={cn("status-pill", badgeClasses(item.canonicalOverallStatus))}>{formatLabel(item.canonicalOverallStatus)}</span>
+                    </div>
+                    <p className="mt-2 text-sm text-white/58">
+                      {item.subjectEmail ?? "No email on file"}
+                      {item.barberId ? ` - ${item.barberId}` : ""}
+                      {item.shopId ? ` - ${item.shopId}` : ""}
+                    </p>
                   </div>
-                  <p className="mt-2 text-sm text-white/58">
-                    {item.subjectEmail ?? "No email on file"}
-                    {item.barberId ? ` - ${item.barberId}` : ""}
-                    {item.shopId ? ` - ${item.shopId}` : ""}
-                  </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {item.userId ? (
@@ -267,14 +263,14 @@ export function ArchitectVerificationQueueWorkspace({
                   <p className="mt-3 text-sm text-white/62">{formatDateTime(item.updatedAt)}</p>
                 </div>
               </div>
-            </Card>
+            </GlassCard>
           )) : (
-            <Card className="rounded-[30px] p-6">
+            <GlassCard className="p-6">
               <p className="surface-label">Everything is caught up</p>
               <p className="mt-3 text-sm leading-7 text-white/58">
                 No real barber or shop-owner reviews are pending in this view. When a real submission reaches platform review, it will appear here with its canonical account and business records.
               </p>
-            </Card>
+            </GlassCard>
           )}
         </div>
       </div>

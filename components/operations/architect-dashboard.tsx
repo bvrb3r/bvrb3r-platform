@@ -5,6 +5,7 @@ import type { ComponentProps } from "react";
 import { AlertTriangle, ClipboardCheck, Search, ShieldCheck, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Avatar, DataStatCard, GlassCard } from "@/design/components";
 import { cn } from "@/lib/utils";
 import type { ArchitectAccountDirectoryItem, ArchitectDashboardPayload, PlatformAdminAuditLogEntry } from "@/types/platform-admin";
 
@@ -59,43 +60,53 @@ function Metric({
     <Link
       href={href}
       className={cn(
-        "block rounded-[24px] border p-4 transition hover:border-[#7CFF00]/30 hover:bg-white/[0.04]",
-        accent ? "border-[#7CFF00]/18 bg-[#7CFF00]/8" : "border-white/8 bg-black/20"
+        "block rounded-[22px] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/45",
+        accent ? "[&_.bvr-glass-card]:border-[#7CFF00]/28 [&_.bvr-glass-card]:bg-[#7CFF00]/8" : undefined
       )}
     >
-      <p className={cn("surface-label", accent ? "text-[#d7ffab]" : undefined)}>{label}</p>
-      <p className="mt-3 text-3xl font-semibold text-white" data-display="true">{value}</p>
-      <p className="mt-2 text-sm text-white/58">{detail}</p>
+      <DataStatCard label={label} value={value} detail={detail} />
     </Link>
   );
 }
 
 function AccountMiniRow({ account }: { account: ArchitectAccountDirectoryItem }) {
+  const initials = account.fullName
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
   return (
     <Link
       href={`/architect/users/${account.profileId}`}
-      className="block rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#7CFF00]/24 hover:bg-white/[0.04]"
+      className="block rounded-[24px] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/45"
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate text-base font-semibold text-white">{account.fullName}</p>
-          <p className="mt-1 truncate text-sm text-white/56">{account.email || "No email on file"}</p>
+      <GlassCard className="p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-3">
+            <Avatar alt={account.fullName} initials={initials} className="h-11 w-11" />
+            <div className="min-w-0">
+              <p className="truncate text-base font-semibold text-white">{account.fullName}</p>
+              <p className="mt-1 truncate text-sm text-white/56">{account.email || "No email on file"}</p>
+            </div>
+          </div>
+          <span className={cn("status-pill", badgeClasses(account.accountStatus))}>{formatLabel(account.accountStatus)}</span>
         </div>
-        <span className={cn("status-pill", badgeClasses(account.accountStatus))}>{formatLabel(account.accountStatus)}</span>
-      </div>
-      <div className="mt-3 flex flex-wrap gap-2">
-        <span className="status-pill text-white/72">{account.roleLabel}</span>
-        <span className={cn("status-pill", badgeClasses(account.approvalStatus))}>{formatLabel(account.approvalStatus)}</span>
-        <span className={cn("status-pill", badgeClasses(account.verificationStatus))}>{formatLabel(account.verificationStatus)}</span>
-      </div>
-      <p className="mt-3 text-xs text-white/44">{formatDateTime(account.createdAt)}</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <span className="status-pill text-white/72">{account.roleLabel}</span>
+          <span className={cn("status-pill", badgeClasses(account.approvalStatus))}>{formatLabel(account.approvalStatus)}</span>
+          <span className={cn("status-pill", badgeClasses(account.verificationStatus))}>{formatLabel(account.verificationStatus)}</span>
+        </div>
+        <p className="mt-3 text-xs text-white/44">{formatDateTime(account.createdAt)}</p>
+      </GlassCard>
     </Link>
   );
 }
 
 function AuditMiniRow({ entry }: { entry: PlatformAdminAuditLogEntry }) {
   return (
-    <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
+    <GlassCard className="p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="font-semibold text-white">{formatLabel(entry.actionType)}</p>
         <span className={cn("status-pill", badgeClasses(entry.actionClass))}>{formatLabel(entry.actionClass)}</span>
@@ -103,7 +114,7 @@ function AuditMiniRow({ entry }: { entry: PlatformAdminAuditLogEntry }) {
       <p className="mt-2 text-sm text-white/58">Target {entry.targetId}</p>
       <p className="mt-2 text-xs text-white/44">{formatDateTime(entry.createdAt)}</p>
       {entry.note ? <p className="mt-3 text-sm leading-6 text-white/62">{entry.note}</p> : null}
-    </div>
+    </GlassCard>
   );
 }
 

@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { type FormEvent, useMemo, useState } from "react";
-import { AlertTriangle, Loader2, Search, ShieldCheck, X } from "lucide-react";
+import { AlertTriangle, Loader2, ShieldCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
-import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { Avatar, DataStatCard, GlassCard, SearchBar } from "@/design/components";
 import { useArchitectAccountDirectoryQuery } from "@/lib/platform-admin/client";
 import { cn } from "@/lib/utils";
 import type {
@@ -68,11 +68,22 @@ function badgeClasses(value: string) {
   return "border-white/10 bg-black/20 text-white/72";
 }
 
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
+
 function AccountCard({ account }: { account: ArchitectAccountDirectoryItem }) {
   return (
-    <Card className="rounded-[30px] p-6">
+    <GlassCard className="p-6">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-        <div className="min-w-0">
+        <div className="flex min-w-0 items-start gap-4">
+          <Avatar alt={account.fullName} initials={getInitials(account.fullName)} className="h-14 w-14" />
+          <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-xl font-semibold text-white">{account.fullName}</p>
             <span className="status-pill text-white/72">{account.roleLabel}</span>
@@ -87,6 +98,7 @@ function AccountCard({ account }: { account: ArchitectAccountDirectoryItem }) {
             {account.shopName ? <span className="status-pill text-white/72">{account.shopName}</span> : null}
             {account.username ? <span className="status-pill text-white/72">@{account.username}</span> : null}
           </div>
+          </div>
         </div>
         <Link href={`/architect/users/${account.profileId}`}>
           <Button type="button" className="w-full min-w-[11rem] xl:w-auto">Open user</Button>
@@ -94,26 +106,11 @@ function AccountCard({ account }: { account: ArchitectAccountDirectoryItem }) {
       </div>
 
       <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-        <div className="rounded-[20px] border border-white/8 bg-black/20 p-4">
-          <p className="surface-label">Services</p>
-          <p className="mt-3 text-2xl font-semibold text-white">{account.serviceCount}</p>
-        </div>
-        <div className="rounded-[20px] border border-white/8 bg-black/20 p-4">
-          <p className="surface-label">Availability</p>
-          <p className="mt-3 text-2xl font-semibold text-white">{account.availabilityCount}</p>
-        </div>
-        <div className="rounded-[20px] border border-white/8 bg-black/20 p-4">
-          <p className="surface-label">Documents</p>
-          <p className="mt-3 text-2xl font-semibold text-white">{account.documentCount}</p>
-        </div>
-        <div className="rounded-[20px] border border-white/8 bg-black/20 p-4">
-          <p className="surface-label">Reviews</p>
-          <p className="mt-3 text-2xl font-semibold text-white">{account.reviewCount}</p>
-        </div>
-        <div className="rounded-[20px] border border-white/8 bg-black/20 p-4">
-          <p className="surface-label">Blockers</p>
-          <p className="mt-3 text-2xl font-semibold text-white">{account.marketplaceBlockers.length}</p>
-        </div>
+        <DataStatCard label="Services" value={account.serviceCount} />
+        <DataStatCard label="Availability" value={account.availabilityCount} />
+        <DataStatCard label="Documents" value={account.documentCount} />
+        <DataStatCard label="Reviews" value={account.reviewCount} />
+        <DataStatCard label="Blockers" value={account.marketplaceBlockers.length} />
       </div>
 
       {account.marketplaceBlockers.length ? (
@@ -122,7 +119,7 @@ function AccountCard({ account }: { account: ArchitectAccountDirectoryItem }) {
           <p className="mt-2 text-sm leading-7 text-white/68">{account.marketplaceBlockers.join(" - ")}</p>
         </div>
       ) : null}
-    </Card>
+    </GlassCard>
   );
 }
 
@@ -192,7 +189,7 @@ export function ArchitectAccountDirectoryWorkspace({
   return (
     <div className="app-screen safe-top-pad px-2 py-2 pb-[calc(env(safe-area-inset-bottom,0px)+2rem)] sm:px-3 sm:py-3 lg:px-5 lg:py-5">
       <div className="mx-auto max-w-7xl space-y-4">
-        <Card className="rounded-[34px] p-6">
+        <GlassCard className="p-6">
           <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
             <div>
               <div className="editorial-kicker">
@@ -205,16 +202,8 @@ export function ArchitectAccountDirectoryWorkspace({
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 xl:w-[24rem]">
-              <div className="rounded-[24px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-4">
-                <p className="surface-label text-[#d7ffab]">Users in view</p>
-                <p className="mt-3 text-3xl font-semibold text-white">{data.accounts.length}</p>
-                <p className="mt-2 text-sm text-white/62">Filtered from live account truth.</p>
-              </div>
-              <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                <p className="surface-label">Total accounts</p>
-                <p className="mt-3 text-3xl font-semibold text-white">{data.counts.totalAccounts}</p>
-                <p className="mt-2 text-sm text-white/58">No sample rows.</p>
-              </div>
+              <DataStatCard label="Users in view" value={data.accounts.length} detail="Filtered from live account truth." className="border-[#7CFF00]/28 bg-[#7CFF00]/8" />
+              <DataStatCard label="Total accounts" value={data.counts.totalAccounts} detail="No sample rows." />
             </div>
           </div>
 
@@ -229,35 +218,31 @@ export function ArchitectAccountDirectoryWorkspace({
               </Button>
             </Link>
           </div>
-        </Card>
+        </GlassCard>
 
         {query.error ? <FeedbackBanner tone="error" message={query.error.message} /> : null}
         {data.warnings.length ? (
-          <Card className="rounded-[28px] border border-amber-300/18 bg-amber-300/8 p-5">
+          <GlassCard className="border-amber-300/18 bg-amber-300/8 p-5">
             <div className="flex items-start gap-3">
               <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-100" />
               <div className="space-y-1 text-sm leading-6 text-white/72">
                 {data.warnings.map((warning) => <p key={warning}>{warning}</p>)}
               </div>
             </div>
-          </Card>
+          </GlassCard>
         ) : null}
 
-        <Card className="rounded-[32px] p-6">
+        <GlassCard className="p-6">
           <form onSubmit={applyFilters} className="space-y-4">
             <div className="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_200px_200px_220px]">
               <div>
                 <label className="mb-2 block surface-label">Search accounts</label>
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/32" />
-                  <Input
-                    value={draftFilters.search}
-                    onChange={(event) => setDraftFilters((current) => ({ ...current, search: event.target.value }))}
-                    className="pl-11"
-                    placeholder="Email, phone, name, role, shop, username, provider"
-                    enterKeyHint="search"
-                  />
-                </div>
+                <SearchBar
+                  value={draftFilters.search}
+                  onChange={(event) => setDraftFilters((current) => ({ ...current, search: event.target.value }))}
+                  placeholder="Email, phone, name, role, shop, username, provider"
+                  enterKeyHint="search"
+                />
               </div>
               <div>
                 <label className="mb-2 block surface-label">Role</label>
@@ -303,7 +288,7 @@ export function ArchitectAccountDirectoryWorkspace({
               </div>
             </div>
           </form>
-        </Card>
+        </GlassCard>
 
         <div className="grid gap-4" aria-busy={isSearching}>
           {isSearching && !query.data ? (

@@ -6,6 +6,7 @@ import { AlertTriangle, ArrowLeft, FileLock2, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
+import { DataStatCard, GlassCard } from "@/design/components";
 import {
   useArchitectVerificationActionMutation,
   useArchitectVerificationDetailQuery,
@@ -119,7 +120,7 @@ export function ArchitectVerificationDetailWorkspace({
   return (
     <div className="app-screen safe-top-pad px-2 py-2 pb-[calc(env(safe-area-inset-bottom,0px)+2rem)] sm:px-3 sm:py-3 lg:px-5 lg:py-5">
       <div className="mx-auto max-w-7xl space-y-4">
-        <Card className="rounded-[34px] p-6">
+        <GlassCard className="p-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <Link href="/architect/verifications" className="inline-flex items-center gap-2 text-sm text-white/62 transition hover:text-white">
@@ -132,37 +133,40 @@ export function ArchitectVerificationDetailWorkspace({
               </p>
             </div>
             {profile ? (
-              <div className="rounded-[24px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-4">
-                <p className="surface-label text-[#d7ffab]">Current status</p>
-                <div className="mt-3 flex flex-wrap gap-2">
+              <DataStatCard
+                label="Current status"
+                value={(
+                  <div className="flex flex-wrap gap-2">
                   <span className={cn("status-pill", badgeClasses(profile.canonicalOverallStatus))}>{formatLabel(profile.canonicalOverallStatus)}</span>
                   <span className="status-pill text-white/72">{formatLabel(profile.role)}</span>
-                </div>
-              </div>
+                  </div>
+                )}
+                className="border-[#7CFF00]/28 bg-[#7CFF00]/8"
+              />
             ) : null}
           </div>
-        </Card>
+        </GlassCard>
 
         {feedback ? <FeedbackBanner tone={feedback.tone} message={feedback.message} /> : null}
         {query.error ? <FeedbackBanner tone="error" message={query.error.message} /> : null}
         {data.warnings.length ? (
-          <Card className="rounded-[28px] border border-amber-300/18 bg-amber-300/8 p-5">
+          <GlassCard className="border-amber-300/18 bg-amber-300/8 p-5">
             <div className="flex items-start gap-3">
               <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-100" />
               <div className="space-y-1 text-sm leading-6 text-white/72">
                 {data.warnings.map((warning) => <p key={warning}>{warning}</p>)}
               </div>
             </div>
-          </Card>
+          </GlassCard>
         ) : null}
 
         {!profile ? (
-          <Card className="rounded-[30px] p-6">
+          <GlassCard className="p-6">
             <p className="surface-label">Verification profile unavailable</p>
             <p className="mt-3 text-sm leading-7 text-white/58">
               This verification detail view could not be resolved. If the verification tables are still being rolled out, the queue may be operating in a fallback mode until upstream data becomes available again.
             </p>
-          </Card>
+          </GlassCard>
         ) : (
           <>
             <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
