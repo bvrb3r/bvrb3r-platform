@@ -1,14 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarDays, Clock3, MessageSquareText } from "lucide-react";
-import { StatusBadge as AppointmentStatusBadge } from "@/components/dashboard/status-badge";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import {
+  CalendarCheck2,
+  CalendarDays,
+  ChevronDown,
+  CircleDollarSign,
+  Clock3,
+  MessageSquareText,
+  Plus,
+  Search,
+  SlidersHorizontal,
+  UsersRound
+} from "lucide-react";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DataStatCard, FilterChip, PageHeader, StatusBadge } from "@/design/components";
+import { ActionButton, Avatar, DataStatCard, GlassCard, StatusBadge } from "@/design/components";
 import { shiftBarberScheduleAnchorDate } from "@/lib/barber/domain";
 import { useCreateMessageThreadMutation } from "@/lib/messages/client";
 import {
@@ -16,19 +24,76 @@ import {
   useBarberScheduleQuery,
   useUpdateBarberScheduleMutation,
   type BarberApiError,
+  type BarberBlockedTimeView,
   type BarberOperationalAppointment,
   type BarberScheduleViewMode,
   type BarberWorkingHoursView
 } from "@/lib/operations/barber-client";
+import { cn } from "@/lib/utils";
 import { getReadableActionError } from "@/lib/utils/feedback";
 
 const weekdayLabels = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const shortWeekdayLabels = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+const inputClassName =
+  "h-12 rounded-[18px] border border-white/10 bg-black/30 px-4 text-sm text-white outline-none transition focus:border-[#a3ff12]/50 focus:ring-2 focus:ring-[#a3ff12]/15";
 
 type WorkingHoursFormRow = {
   weekday: number;
   startTime: string;
   endTime: string;
 };
+
+type OpenSlotView = {
+  id: string;
+  startsAt: Date;
+  endsAt: Date;
+  durationMinutes: number;
+};
+
+type TimelineEntry =
+  | {
+      type: "appointment";
+      id: string;
+      startsAt: Date;
+      endsAt: Date;
+      appointment: BarberOperationalAppointment;
+    }
+  | {
+      type: "open-slot";
+      id: string;
+      startsAt: Date;
+      endsAt: Date;
+      slot: OpenSlotView;
+    };
+
+const currencyFormatter = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  maximumFractionDigits: 0
+});
+
+function getDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getTodayDateKey() {
+  return getDateKey(new Date());
+}
+
+function parseDateKey(dateKey: string) {
+  return new Date(`${dateKey}T12:00:00`);
+}
+
+function getDateKeyFromIso(iso: string) {
+  return getDateKey(new Date(iso));
+}
+
+function buildDateTime(dateKey: string, time: string) {
+  return new Date(`${dateKey}T${time.length === 5 ? `${time}:00` : time}`);
+}
 
 function formatDateTime(iso: string) {
   return new Intl.DateTimeFormat("en-US", {
@@ -39,11 +104,75 @@ function formatDateTime(iso: string) {
   }).format(new Date(iso));
 }
 
-function formatTime(iso: string) {
+function formatTime(iso: string | Date) {
   return new Intl.DateTimeFormat("en-US", {
     hour: "numeric",
     minute: "2-digit"
-  }).format(new Date(iso));
+  }).format(typeof iso === "string" ? new Date(iso) : iso);
+}
+
+function formatHour(iso: string | Date) {
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "numeric"
+  }).format(typeof iso === "string" ? new Date(iso) : iso);
+}
+
+function formatMonthYear(dateKey: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    year: "numeric"
+  }).format(parseDateKey(dateKey));
+}
+
+function formatShortDate(iso: string | Date) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric"
+  }).format(typeof iso === "string" ? new Date(iso) : iso);
+}
+
+function formatTimeRange(start: string | Date, end: string | Date) {
+  return `${formatTime(start)} - ${formatTime(end)}`;
+}
+
+function formatMoney(amount: number) {
+  return currencyFormatter.format(amount);
+}
+
+function formatDuration(minutes: number) {
+  if (minutes < 60) {
+    return `${minutes} min`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return remainder ? `${hours}h ${remainder}m` : `${hours}h`;
+}
+
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .map((part) => part.trim()[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+}
+
+function buildWeekStrip(anchorDateKey: string) {
+  const anchor = parseDateKey(anchorDateKey);
+  const start = new Date(anchor);
+  start.setDate(anchor.getDate() - anchor.getDay());
+
+  return Array.from({ length: 7 }, (_, index) => {
+    const day = new Date(start);
+    day.setDate(start.getDate() + index);
+    return {
+      key: getDateKey(day),
+      label: shortWeekdayLabels[day.getDay()],
+      dayNumber: day.getDate()
+    };
+  });
 }
 
 function buildWorkingHoursForm(rows: BarberWorkingHoursView[], locationId: string | null) {
@@ -58,11 +187,181 @@ function buildWorkingHoursForm(rows: BarberWorkingHoursView[], locationId: strin
   });
 }
 
+function getWorkingWindow(
+  dateKey: string,
+  workingHours: BarberWorkingHoursView[],
+  selectedLocationId: string | null
+) {
+  const weekday = parseDateKey(dateKey).getDay();
+  const row = workingHours.find((entry) => entry.weekday === weekday && entry.locationId === selectedLocationId)
+    ?? workingHours.find((entry) => entry.weekday === weekday);
+
+  if (!row?.startTime || !row.endTime) {
+    return null;
+  }
+
+  const startsAt = buildDateTime(dateKey, row.startTime);
+  const endsAt = buildDateTime(dateKey, row.endTime);
+
+  if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime()) || endsAt <= startsAt) {
+    return null;
+  }
+
+  return { startsAt, endsAt, locationLabel: row.locationLabel };
+}
+
+function getOverlapWindow(
+  startsAt: Date,
+  endsAt: Date,
+  windowStartsAt: Date,
+  windowEndsAt: Date
+) {
+  const start = new Date(Math.max(startsAt.getTime(), windowStartsAt.getTime()));
+  const end = new Date(Math.min(endsAt.getTime(), windowEndsAt.getTime()));
+
+  if (end <= start) {
+    return null;
+  }
+
+  return { startsAt: start, endsAt: end };
+}
+
+function getAppointmentMinutes(appointment: BarberOperationalAppointment) {
+  const startsAt = new Date(appointment.start);
+  const endsAt = new Date(appointment.end);
+  return Math.max(0, Math.round((endsAt.getTime() - startsAt.getTime()) / 60000));
+}
+
+function buildOpenSlots({
+  anchorDateKey,
+  appointments,
+  blockedTimes,
+  workingHours,
+  selectedLocationId
+}: {
+  anchorDateKey: string;
+  appointments: BarberOperationalAppointment[];
+  blockedTimes: BarberBlockedTimeView[];
+  workingHours: BarberWorkingHoursView[];
+  selectedLocationId: string | null;
+}) {
+  const workingWindow = getWorkingWindow(anchorDateKey, workingHours, selectedLocationId);
+
+  if (!workingWindow) {
+    return [];
+  }
+
+  const busyWindows = [
+    ...appointments
+      .filter((appointment) => getDateKeyFromIso(appointment.start) === anchorDateKey)
+      .map((appointment) => ({
+        startsAt: new Date(appointment.start),
+        endsAt: new Date(appointment.end)
+      })),
+    ...blockedTimes
+      .filter((blockedTime) => getDateKeyFromIso(blockedTime.startsAt) === anchorDateKey)
+      .map((blockedTime) => ({
+        startsAt: new Date(blockedTime.startsAt),
+        endsAt: new Date(blockedTime.endsAt)
+      }))
+  ]
+    .map((window) => getOverlapWindow(window.startsAt, window.endsAt, workingWindow.startsAt, workingWindow.endsAt))
+    .filter((window): window is { startsAt: Date; endsAt: Date } => Boolean(window))
+    .sort((left, right) => left.startsAt.getTime() - right.startsAt.getTime());
+
+  const slots: OpenSlotView[] = [];
+  let cursor = workingWindow.startsAt;
+
+  for (const busyWindow of busyWindows) {
+    if (busyWindow.startsAt > cursor) {
+      const durationMinutes = Math.round((busyWindow.startsAt.getTime() - cursor.getTime()) / 60000);
+      if (durationMinutes >= 15) {
+        slots.push({
+          id: `${anchorDateKey}-${cursor.toISOString()}-${busyWindow.startsAt.toISOString()}`,
+          startsAt: cursor,
+          endsAt: busyWindow.startsAt,
+          durationMinutes
+        });
+      }
+    }
+
+    if (busyWindow.endsAt > cursor) {
+      cursor = busyWindow.endsAt;
+    }
+  }
+
+  if (workingWindow.endsAt > cursor) {
+    const durationMinutes = Math.round((workingWindow.endsAt.getTime() - cursor.getTime()) / 60000);
+    if (durationMinutes >= 15) {
+      slots.push({
+        id: `${anchorDateKey}-${cursor.toISOString()}-${workingWindow.endsAt.toISOString()}`,
+        startsAt: cursor,
+        endsAt: workingWindow.endsAt,
+        durationMinutes
+      });
+    }
+  }
+
+  return slots;
+}
+
+function getUtilization({
+  anchorDateKey,
+  appointments,
+  blockedTimes,
+  workingHours,
+  selectedLocationId
+}: {
+  anchorDateKey: string;
+  appointments: BarberOperationalAppointment[];
+  blockedTimes: BarberBlockedTimeView[];
+  workingHours: BarberWorkingHoursView[];
+  selectedLocationId: string | null;
+}) {
+  const workingWindow = getWorkingWindow(anchorDateKey, workingHours, selectedLocationId);
+
+  if (!workingWindow) {
+    return null;
+  }
+
+  const workingMinutes = Math.round((workingWindow.endsAt.getTime() - workingWindow.startsAt.getTime()) / 60000);
+  const appointmentMinutes = appointments
+    .filter((appointment) => getDateKeyFromIso(appointment.start) === anchorDateKey)
+    .reduce((sum, appointment) => sum + getAppointmentMinutes(appointment), 0);
+  const blockedMinutes = blockedTimes
+    .filter((blockedTime) => getDateKeyFromIso(blockedTime.startsAt) === anchorDateKey)
+    .reduce((sum, blockedTime) => {
+      const overlap = getOverlapWindow(
+        new Date(blockedTime.startsAt),
+        new Date(blockedTime.endsAt),
+        workingWindow.startsAt,
+        workingWindow.endsAt
+      );
+      if (!overlap) {
+        return sum;
+      }
+
+      return sum + Math.round((overlap.endsAt.getTime() - overlap.startsAt.getTime()) / 60000);
+    }, 0);
+
+  if (workingMinutes <= 0) {
+    return null;
+  }
+
+  const usedMinutes = Math.min(workingMinutes, appointmentMinutes + blockedMinutes);
+  const percent = Math.round((usedMinutes / workingMinutes) * 100);
+
+  return {
+    percent,
+    openMinutes: Math.max(workingMinutes - usedMinutes, 0)
+  };
+}
+
 function getLifecycleAction(appointment: BarberOperationalAppointment) {
   if (appointment.status === "booked" || appointment.status === "confirmed") {
     return {
       action: "check_in" as const,
-      label: "Check In",
+      label: "Check in",
       pendingLabel: "Checking in...",
       successMessage: "Client checked in and moved into the live chair flow."
     };
@@ -71,7 +370,7 @@ function getLifecycleAction(appointment: BarberOperationalAppointment) {
   if (appointment.status === "checked_in") {
     return {
       action: "service_start" as const,
-      label: "Start Service",
+      label: "Start service",
       pendingLabel: "Starting...",
       successMessage: "Service is now marked in progress."
     };
@@ -80,7 +379,7 @@ function getLifecycleAction(appointment: BarberOperationalAppointment) {
   if (appointment.status === "in_service") {
     return {
       action: "service_complete" as const,
-      label: "Complete Service",
+      label: "Complete",
       pendingLabel: "Completing...",
       successMessage: "Service completed and posted to earnings and shop reporting."
     };
@@ -89,19 +388,32 @@ function getLifecycleAction(appointment: BarberOperationalAppointment) {
   return null;
 }
 
+function getStatusTone(status: string): "green" | "neutral" | "danger" {
+  if (status === "cancelled" || status === "no_show" || status === "refunded") {
+    return "danger";
+  }
+
+  if (status === "completed") {
+    return "neutral";
+  }
+
+  return "green";
+}
+
 function ScheduleSkeleton() {
   return (
-    <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
+    <GlassCard className="p-4">
       <Skeleton className="h-5 w-32" />
       <Skeleton className="mt-3 h-4 w-48" />
       <Skeleton className="mt-4 h-11 w-full rounded-2xl" />
-    </div>
+    </GlassCard>
   );
 }
 
 function AppointmentCard({
   appointment,
   viewMode,
+  highlighted,
   onLifecycleAction,
   onMessage,
   isLifecyclePending,
@@ -109,6 +421,7 @@ function AppointmentCard({
 }: {
   appointment: BarberOperationalAppointment;
   viewMode: BarberScheduleViewMode;
+  highlighted: boolean;
   onLifecycleAction: (appointment: BarberOperationalAppointment) => Promise<void>;
   onMessage: (appointment: BarberOperationalAppointment) => Promise<void>;
   isLifecyclePending: boolean;
@@ -117,47 +430,87 @@ function AppointmentCard({
   const lifecycleAction = getLifecycleAction(appointment);
 
   return (
-    <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-lg font-semibold text-white">{appointment.display.clientName}</p>
-          <p className="mt-1 text-sm text-white/55">
-            {appointment.display.serviceName} - {viewMode === "day" ? formatTime(appointment.start) : formatDateTime(appointment.start)}
-          </p>
+    <GlassCard
+      active={highlighted}
+      className={cn(
+        "p-4",
+        highlighted && "border-l-4 border-l-[#a3ff12] shadow-[0_18px_55px_rgba(163,255,18,0.10)]"
+      )}
+    >
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
+          <Avatar
+            src={appointment.display.clientProfilePhotoUrl}
+            alt={appointment.display.clientName}
+            initials={getInitials(appointment.display.clientName)}
+            className="h-[54px] w-[54px]"
+          />
+          <div className="min-w-0">
+            <p className="truncate text-lg font-extrabold tracking-[-0.02em] text-white">{appointment.display.clientName}</p>
+            <p className="mt-1 truncate text-base font-semibold text-white/90">{appointment.display.serviceName}</p>
+            <p className="mt-1 text-sm font-medium text-white/58">
+              {viewMode === "day" ? formatTimeRange(appointment.start, appointment.end) : `${formatShortDate(appointment.start)} - ${formatTimeRange(appointment.start, appointment.end)}`}
+            </p>
+          </div>
         </div>
-        <AppointmentStatusBadge status={appointment.status} balanceDue={appointment.balanceDue} />
+
+        <div className="flex items-center justify-between gap-3 sm:block sm:text-right">
+          <StatusBadge tone={getStatusTone(appointment.status)}>{appointment.display.statusLabel}</StatusBadge>
+          <p className="mt-0 text-base font-extrabold text-white sm:mt-3">{formatMoney(appointment.totalAmount)}</p>
+        </div>
       </div>
 
-      <p className="mt-3 text-sm text-white/60">{appointment.display.locationLabel}</p>
-      <p className="mt-2 text-sm text-white/56">{appointment.display.lifecycleDetail}</p>
-
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <div className="rounded-[18px] border border-white/8 bg-black/18 p-3">
-          <p className="surface-label">Payment state</p>
-          <p className="mt-2 text-sm font-medium">{appointment.financial.latestStatusLabel}</p>
-          <p className="mt-1 text-sm text-white/55">Tip {appointment.financial.tipAmount > 0 ? `$${appointment.financial.tipAmount.toFixed(2)}` : "not recorded yet"}</p>
-        </div>
-        <div className="rounded-[18px] border border-white/8 bg-black/18 p-3">
-          <p className="surface-label">Balance</p>
-          <p className="mt-2 text-sm font-medium">${appointment.financial.outstandingBalance.toFixed(2)}</p>
-          <p className="mt-1 text-sm text-white/55">
-            {appointment.financial.outstandingBalance > 0 ? "Still needs checkout follow-up" : "No remaining balance"}
-          </p>
-        </div>
+      <div className="mt-3 flex flex-wrap gap-2 text-sm text-white/58">
+        <span className="status-pill text-white/68">{appointment.display.locationLabel}</span>
+        <span className="status-pill text-white/68">{appointment.financial.latestStatusLabel}</span>
+        {appointment.note?.trim() ? <span className="status-pill text-[#d7ffab]">Notes</span> : null}
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-3">
+      <div className="mt-4 flex flex-wrap gap-2 border-t border-white/8 pt-4">
         {lifecycleAction ? (
-          <Button className="h-11 px-4" disabled={isLifecyclePending} onClick={() => void onLifecycleAction(appointment)}>
+          <ActionButton
+            type="button"
+            className="min-h-10 px-4"
+            disabled={isLifecyclePending}
+            onClick={() => void onLifecycleAction(appointment)}
+          >
             {isLifecyclePending ? lifecycleAction.pendingLabel : lifecycleAction.label}
-          </Button>
+          </ActionButton>
         ) : (
           <span className="status-pill text-white/62">{appointment.display.lifecycleDetail}</span>
         )}
-        <Button className="h-11 px-4" variant="secondary" disabled={isMessagePending} onClick={() => void onMessage(appointment)}>
+        <ActionButton
+          type="button"
+          className="min-h-10 px-4"
+          variant="secondary"
+          disabled={isMessagePending}
+          onClick={() => void onMessage(appointment)}
+        >
           <MessageSquareText className="h-4 w-4" />
-          {isMessagePending ? "Opening..." : "Message client"}
-        </Button>
+          {isMessagePending ? "Opening..." : "Message"}
+        </ActionButton>
+      </div>
+    </GlassCard>
+  );
+}
+
+function OpenSlotCard({ slot }: { slot: OpenSlotView }) {
+  return (
+    <div className="rounded-[18px] border border-dashed border-[#a3ff12]/45 bg-[#a3ff12]/[0.025] p-4 shadow-[0_16px_45px_rgba(0,0,0,0.36)]">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-[14px] bg-[rgba(163,255,18,0.14)] text-[#a3ff12] shadow-[0_0_22px_rgba(163,255,18,0.20)]">
+            <Plus className="h-6 w-6" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-lg font-extrabold text-white">Open Slot</p>
+            <p className="mt-1 text-sm font-medium text-white/60">{formatTimeRange(slot.startsAt, slot.endsAt)}</p>
+          </div>
+        </div>
+        <div className="text-right">
+          <p className="text-sm font-semibold text-white/70">{formatDuration(slot.durationMinutes)}</p>
+          <p className="mt-1 text-base font-extrabold text-[#a3ff12]">Available</p>
+        </div>
       </div>
     </div>
   );
@@ -165,6 +518,8 @@ function AppointmentCard({
 
 export function BarberScheduleWorkspace({ barberName }: { barberName: string }) {
   const router = useRouter();
+  const availabilityRef = useRef<HTMLDivElement>(null);
+  const dateInputRef = useRef<HTMLInputElement>(null);
   const [scheduleView, setScheduleView] = useState<BarberScheduleViewMode>("day");
   const [anchorDate, setAnchorDate] = useState("");
   const scheduleQuery = useBarberScheduleQuery({
@@ -185,7 +540,67 @@ export function BarberScheduleWorkspace({ barberName }: { barberName: string }) 
   const payload = scheduleQuery.data;
   const locationOptions = useMemo(() => payload?.shops ?? [], [payload?.shops]);
   const timeline = payload?.timeline;
-  const timelineAppointments = timeline?.appointments ?? payload?.todayAppointments ?? [];
+  const selectedDateKey = anchorDate || timeline?.anchorDate || payload?.businessDate || getTodayDateKey();
+  const timelineAppointments = useMemo(
+    () => [...(timeline?.appointments ?? payload?.todayAppointments ?? [])].sort((left, right) => new Date(left.start).getTime() - new Date(right.start).getTime()),
+    [payload?.todayAppointments, timeline?.appointments]
+  );
+  const visibleAppointments = useMemo(
+    () => scheduleView === "day"
+      ? timelineAppointments.filter((appointment) => getDateKeyFromIso(appointment.start) === selectedDateKey)
+      : timelineAppointments,
+    [scheduleView, selectedDateKey, timelineAppointments]
+  );
+  const selectedDayAppointments = useMemo(
+    () => timelineAppointments.filter((appointment) => getDateKeyFromIso(appointment.start) === selectedDateKey),
+    [selectedDateKey, timelineAppointments]
+  );
+  const openSlots = useMemo(
+    () => scheduleView === "day"
+      ? buildOpenSlots({
+          anchorDateKey: selectedDateKey,
+          appointments: timelineAppointments,
+          blockedTimes: payload?.blockedTimes ?? [],
+          workingHours: payload?.workingHours ?? [],
+          selectedLocationId
+        })
+      : [],
+    [payload?.blockedTimes, payload?.workingHours, scheduleView, selectedDateKey, selectedLocationId, timelineAppointments]
+  );
+  const utilization = useMemo(
+    () => getUtilization({
+      anchorDateKey: selectedDateKey,
+      appointments: timelineAppointments,
+      blockedTimes: payload?.blockedTimes ?? [],
+      workingHours: payload?.workingHours ?? [],
+      selectedLocationId
+    }),
+    [payload?.blockedTimes, payload?.workingHours, selectedDateKey, selectedLocationId, timelineAppointments]
+  );
+  const timelineEntries = useMemo<TimelineEntry[]>(() => {
+    const appointmentEntries = visibleAppointments.map((appointment) => ({
+      type: "appointment" as const,
+      id: appointment.id,
+      startsAt: new Date(appointment.start),
+      endsAt: new Date(appointment.end),
+      appointment
+    }));
+    const slotEntries = openSlots.map((slot) => ({
+      type: "open-slot" as const,
+      id: slot.id,
+      startsAt: slot.startsAt,
+      endsAt: slot.endsAt,
+      slot
+    }));
+
+    return [...appointmentEntries, ...slotEntries].sort((left, right) => left.startsAt.getTime() - right.startsAt.getTime());
+  }, [openSlots, visibleAppointments]);
+  const weekStrip = useMemo(() => buildWeekStrip(selectedDateKey), [selectedDateKey]);
+  const estimatedEarnings = selectedDayAppointments.reduce((sum, appointment) => sum + appointment.totalAmount, 0);
+  const currentOrNextAppointmentId = visibleAppointments.find((appointment) => appointment.status === "checked_in" || appointment.status === "in_service")?.id
+    ?? visibleAppointments.find((appointment) => new Date(appointment.start).getTime() >= Date.now())?.id
+    ?? visibleAppointments[0]?.id
+    ?? null;
   const errorMessage = scheduleQuery.error ? getReadableActionError(scheduleQuery.error as BarberApiError) : null;
 
   useEffect(() => {
@@ -223,7 +638,11 @@ export function BarberScheduleWorkspace({ barberName }: { barberName: string }) 
   }
 
   function jumpToToday() {
-    setAnchorDate(payload?.businessDate ?? new Date().toISOString().slice(0, 10));
+    setAnchorDate(payload?.businessDate ?? getTodayDateKey());
+  }
+
+  function openAvailabilityControls() {
+    availabilityRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   async function handleSaveWorkingHours() {
@@ -321,239 +740,400 @@ export function BarberScheduleWorkspace({ barberName }: { barberName: string }) 
   }
 
   return (
-    <div className="space-y-4" data-testid="barber-schedule-workspace">
-      <Card className="rounded-[32px] p-6">
-        <PageHeader
-          label="Chair schedule"
-          title={barberName}
-          subtitle="Manage working hours, blocked time, and same-day appointment flow."
-          action={
-            <StatusBadge>
-              <CalendarDays className="h-3.5 w-3.5" />
-              {payload?.status.liveStatusLabel ?? "Loading"}
-            </StatusBadge>
-          }
-        />
-
-        <div className="mt-5 space-y-3">
-          {statusUpdate ? <FeedbackBanner tone={statusUpdate.tone} message={statusUpdate.message} /> : null}
-          {errorMessage ? <FeedbackBanner tone="error" message={errorMessage} /> : null}
-        </div>
-      </Card>
-
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <DataStatCard
-          label="Appointments"
-          value={timelineAppointments.length}
-          detail={`Visible in ${scheduleView} view`}
-          icon={<CalendarDays className="h-4 w-4" />}
-        />
-        <DataStatCard
-          label="Blocked time"
-          value={payload?.blockedTimes.length ?? 0}
-          detail="Real blackout windows"
-          icon={<Clock3 className="h-4 w-4" />}
-        />
-        <DataStatCard
-          label="Availability"
-          value={payload?.workingHours.length ?? 0}
-          detail="Saved working-hour rows"
-        />
-        <DataStatCard
-          label="Chair scope"
-          value={payload?.status.currentShopLabel ?? "Not set"}
-          detail={payload?.businessDate ?? "Live schedule"}
-        />
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
-        <Card className="rounded-[32px] p-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="space-y-6" data-testid="barber-schedule-workspace">
+      <GlassCard className="relative overflow-hidden rounded-[32px] p-5 sm:p-6">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(163,255,18,0.10),transparent_30%),radial-gradient(circle_at_bottom_center,rgba(163,255,18,0.06),transparent_28%)]" />
+        <div className="relative space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <p className="surface-label">Working hours</p>
-              <p className="mt-2 text-sm text-white/58">Save the weekly schedule for one assigned shop at a time.</p>
+              <p className="bvr-section-label">Chair command calendar</p>
+              <p className="mt-3 text-sm leading-6 text-white/62">
+                {barberName}&apos;s day sheet is built from real appointments, working hours, and blocked time.
+              </p>
             </div>
-            <span className="status-pill text-[#d7ffab]">{payload?.businessDate ?? "Live date"}</span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                aria-label="Focus calendar date"
+                className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-white transition hover:border-[#a3ff12]/35 hover:shadow-[0_0_24px_rgba(163,255,18,0.12)]"
+                onClick={() => dateInputRef.current?.focus()}
+              >
+                <Search className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                aria-label="Open availability controls"
+                className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-white transition hover:border-[#a3ff12]/35 hover:shadow-[0_0_24px_rgba(163,255,18,0.12)]"
+                onClick={openAvailabilityControls}
+              >
+                <SlidersHorizontal className="h-5 w-5" />
+              </button>
+            </div>
           </div>
 
-          <div className="mt-4">
-            <label className="text-[11px] uppercase tracking-[0.18em] text-white/42" htmlFor="barber-schedule-location">Shop</label>
-            <select
-              id="barber-schedule-location"
-              className="mt-2 h-12 w-full rounded-[18px] border border-white/10 bg-black/25 px-4 text-sm text-white outline-none transition focus:border-[#7cff00]/30"
-              value={selectedLocationId ?? ""}
-              onChange={(event) => setSelectedLocationId(event.target.value || null)}
+          <div className="flex items-center justify-between gap-4">
+            <button
+              type="button"
+              aria-label="Jump to today"
+              className="inline-flex h-[54px] w-[54px] shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-white transition hover:border-[#a3ff12]/35 hover:text-[#a3ff12]"
+              onClick={jumpToToday}
             >
-              <option value="" disabled>Select a shop</option>
-              {locationOptions.map((location) => (
-                <option key={location.id} value={location.id}>{location.label}</option>
-              ))}
-            </select>
+              <CalendarDays className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              className="inline-flex min-w-0 items-center justify-center gap-1 text-center text-[25px] font-extrabold tracking-[-0.02em] text-white"
+              onClick={() => dateInputRef.current?.showPicker?.()}
+            >
+              <span className="truncate">{formatMonthYear(selectedDateKey)}</span>
+              <ChevronDown className="h-5 w-5 shrink-0" />
+            </button>
+            <button
+              type="button"
+              className="inline-flex h-12 shrink-0 items-center justify-center rounded-full border border-[#a3ff12]/24 bg-[#a3ff12]/10 px-5 text-sm font-extrabold text-[#a3ff12] transition hover:border-[#a3ff12]/40 hover:bg-[rgba(163,255,18,0.14)]"
+              onClick={jumpToToday}
+            >
+              Today
+            </button>
           </div>
 
-          <div className="mt-4 space-y-3">
-            {scheduleQuery.isLoading && !payload ? (
-              <>
-                <ScheduleSkeleton />
-                <ScheduleSkeleton />
-              </>
-            ) : workingHoursForm.map((row) => (
-              <div key={row.weekday} className="rounded-[20px] border border-white/8 bg-black/20 p-4">
-                <p className="text-sm font-medium text-white">{weekdayLabels[row.weekday]}</p>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                  <input
-                    type="time"
-                    value={row.startTime}
-                    onChange={(event) => {
-                      const next = [...workingHoursForm];
-                      next[row.weekday] = { ...next[row.weekday], startTime: event.target.value };
-                      setWorkingHoursForm(next);
-                    }}
-                    className="h-11 rounded-[18px] border border-white/10 bg-black/25 px-4 text-sm text-white outline-none transition focus:border-[#7cff00]/30"
-                  />
-                  <input
-                    type="time"
-                    value={row.endTime}
-                    onChange={(event) => {
-                      const next = [...workingHoursForm];
-                      next[row.weekday] = { ...next[row.weekday], endTime: event.target.value };
-                      setWorkingHoursForm(next);
-                    }}
-                    className="h-11 rounded-[18px] border border-white/10 bg-black/25 px-4 text-sm text-white outline-none transition focus:border-[#7cff00]/30"
-                  />
-                </div>
-              </div>
+          <input
+            ref={dateInputRef}
+            type="date"
+            value={selectedDateKey}
+            onChange={(event) => setAnchorDate(event.target.value)}
+            className="sr-only"
+            aria-label="Select calendar date"
+          />
+
+          <div className="grid grid-cols-7 gap-2">
+            {weekStrip.map((day) => {
+              const isSelected = day.key === selectedDateKey;
+              return (
+                <button
+                  key={day.key}
+                  type="button"
+                  className={cn(
+                    "flex min-h-[76px] flex-col items-center justify-center rounded-[20px] border border-transparent px-2 transition",
+                    isSelected
+                      ? "border-[#a3ff12] bg-[rgba(163,255,18,0.06)] text-[#a3ff12] shadow-[0_0_24px_rgba(163,255,18,0.12)]"
+                      : "text-white hover:border-white/10 hover:bg-white/[0.03]"
+                  )}
+                  onClick={() => setAnchorDate(day.key)}
+                >
+                  <span className={cn("text-xs font-bold tracking-[0.05em]", isSelected ? "text-[#a3ff12]" : "text-white/48")}>{day.label}</span>
+                  <span className={cn("mt-2 text-2xl font-bold leading-none", isSelected && "text-3xl font-black")}>{day.dayNumber}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <DataStatCard
+              className="min-h-[140px] rounded-[22px]"
+              label="Appointments"
+              value={selectedDayAppointments.length}
+              detail="Today"
+              icon={<CalendarCheck2 className="h-4 w-4" />}
+            />
+            <DataStatCard
+              className="min-h-[140px] rounded-[22px]"
+              label="Est. Earnings"
+              value={formatMoney(estimatedEarnings)}
+              detail="Today"
+              icon={<CircleDollarSign className="h-4 w-4" />}
+            />
+            <DataStatCard
+              className="min-h-[140px] rounded-[22px]"
+              label="Open Slots"
+              value={scheduleView === "day" ? openSlots.length : "--"}
+              detail={scheduleView === "day" ? "Remaining" : "Day view"}
+              icon={<Clock3 className="h-4 w-4" />}
+            />
+            <DataStatCard
+              className="min-h-[140px] rounded-[22px]"
+              label="Day Utilization"
+              value={utilization ? `${utilization.percent}%` : "--"}
+              detail={<span className={utilization && utilization.percent >= 80 ? "font-bold text-[#a3ff12]" : undefined}>{utilization ? (utilization.percent >= 80 ? "Great" : `${formatDuration(utilization.openMinutes)} open`) : "Set hours"}</span>}
+              icon={<UsersRound className="h-4 w-4" />}
+            />
+          </div>
+
+          <div className="grid h-14 grid-cols-3 rounded-[18px] border border-white/8 bg-white/[0.025] p-1">
+            {([
+              ["day", "Day"],
+              ["week", "Week"],
+              ["month", "Availability"]
+            ] as const).map(([viewMode, label]) => (
+              <button
+                key={viewMode}
+                type="button"
+                className={cn(
+                  "rounded-[14px] text-sm font-extrabold transition",
+                  scheduleView === viewMode
+                    ? "bg-[linear-gradient(135deg,#a3ff12,#7dce00)] text-[#050505] shadow-[0_0_30px_rgba(163,255,18,0.24)]"
+                    : "text-white/72 hover:text-white"
+                )}
+                onClick={() => setScheduleView(viewMode)}
+              >
+                {label}
+              </button>
             ))}
           </div>
 
-          <div className="mt-4 flex flex-wrap gap-3">
-            <Button className="h-11 px-4" disabled={scheduleMutation.isPending || !selectedLocationId} onClick={() => void handleSaveWorkingHours()}>
-              {scheduleMutation.isPending ? "Saving..." : "Save working hours"}
-            </Button>
-          </div>
-        </Card>
-
-        <Card className="rounded-[32px] p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="surface-label">Blocked time</p>
-              <p className="mt-2 text-sm text-white/58">Add real time-off or blackout windows without touching existing appointment truth.</p>
+              <p className="text-sm font-semibold text-white/82">{timeline?.rangeLabel ?? formatShortDate(parseDateKey(selectedDateKey))}</p>
+              <p className="mt-1 text-sm text-white/50">{payload?.status.currentShopLabel ?? "Assigned chair territory"}</p>
             </div>
-            <Clock3 className="h-5 w-5 text-[#baff69]" />
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusBadge>{payload?.status.liveStatusLabel ?? "Loading"}</StatusBadge>
+              <button
+                type="button"
+                className="status-pill min-h-10 text-white/72 transition hover:border-[#a3ff12]/24 hover:text-white"
+                onClick={() => shiftTimeline(-1)}
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                className="status-pill min-h-10 text-white/72 transition hover:border-[#a3ff12]/24 hover:text-white"
+                onClick={() => shiftTimeline(1)}
+              >
+                Next
+              </button>
+            </div>
           </div>
 
-          <div className="mt-4 grid gap-3">
-            <input
-              type="datetime-local"
-              value={blockedStartsAt}
-              onChange={(event) => setBlockedStartsAt(event.target.value)}
-              className="h-12 rounded-[18px] border border-white/10 bg-black/25 px-4 text-sm text-white outline-none transition focus:border-[#7cff00]/30"
-            />
-            <input
-              type="datetime-local"
-              value={blockedEndsAt}
-              onChange={(event) => setBlockedEndsAt(event.target.value)}
-              className="h-12 rounded-[18px] border border-white/10 bg-black/25 px-4 text-sm text-white outline-none transition focus:border-[#7cff00]/30"
-            />
-            <input
-              type="text"
-              value={blockedReason}
-              onChange={(event) => setBlockedReason(event.target.value)}
-              placeholder="Reason (optional)"
-              className="h-12 rounded-[18px] border border-white/10 bg-black/25 px-4 text-sm text-white outline-none transition focus:border-[#7cff00]/30"
-            />
-          </div>
+          {statusUpdate ? <FeedbackBanner tone={statusUpdate.tone} message={statusUpdate.message} /> : null}
+          {errorMessage ? <FeedbackBanner tone="error" message={errorMessage} /> : null}
+        </div>
+      </GlassCard>
 
-          <div className="mt-4 flex flex-wrap gap-3">
-            <Button className="h-11 px-4" variant="secondary" disabled={scheduleMutation.isPending || !selectedLocationId} onClick={() => void handleAddBlockedPeriod()}>
-              {scheduleMutation.isPending ? "Saving..." : "Add blocked time"}
-            </Button>
-          </div>
-
-          <div className="mt-5 space-y-3">
-            {(payload?.blockedTimes ?? []).length ? payload!.blockedTimes.map((entry) => (
-              <div key={entry.id} className="rounded-[20px] border border-white/8 bg-black/20 p-4">
-                <p className="text-sm font-medium text-white">{formatDateTime(entry.startsAt)} - {formatDateTime(entry.endsAt)}</p>
-                <p className="mt-2 text-sm text-white/58">{entry.reason ?? "Time blocked from new bookings."}</p>
-              </div>
-            )) : (
-              <div className="rounded-[20px] border border-dashed border-white/10 bg-black/20 p-4 text-sm text-white/58">
-                No blocked periods are active yet.
-              </div>
-            )}
-          </div>
-        </Card>
-      </section>
-
-      <Card className="rounded-[32px] p-6">
+      <GlassCard className="rounded-[32px] p-5 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="surface-label">Schedule timeline</p>
-            <p className="mt-2 text-sm text-white/58">Switch between day, week, and month ranges so future bookings stay visible without leaving the barber schedule.</p>
+            <p className="bvr-section-label">Daily timeline</p>
+            <h3 className="mt-3 text-2xl font-extrabold tracking-[-0.03em] text-white">Hour-by-hour chair control</h3>
           </div>
-          <span className="status-pill text-[#d7ffab]">{timelineAppointments.length} appointment{timelineAppointments.length === 1 ? "" : "s"} in range</span>
+          <span className="status-pill text-[#d7ffab]">
+            {visibleAppointments.length} appointment{visibleAppointments.length === 1 ? "" : "s"}
+          </span>
         </div>
 
-        <div className="mt-5 flex flex-wrap gap-2">
-          {(["day", "week", "month"] as const).map((viewMode) => (
-            <FilterChip
-              key={viewMode}
-              type="button"
-              active={scheduleView === viewMode}
-              onClick={() => setScheduleView(viewMode)}
-            >
-              {viewMode.charAt(0).toUpperCase() + viewMode.slice(1)}
-            </FilterChip>
-          ))}
-        </div>
+        <div className="relative mt-6 space-y-3">
+          <div className="absolute bottom-4 left-[4.45rem] top-4 hidden w-px bg-[linear-gradient(to_bottom,rgba(163,255,18,0.80),rgba(163,255,18,0.18))] sm:block" />
 
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <Button type="button" variant="secondary" className="h-10 px-4" onClick={() => shiftTimeline(-1)}>
-            Previous
-          </Button>
-          <Button type="button" variant="secondary" className="h-10 px-4" onClick={() => jumpToToday()}>
-            Today
-          </Button>
-          <Button type="button" variant="secondary" className="h-10 px-4" onClick={() => shiftTimeline(1)}>
-            Next
-          </Button>
-          <input
-            type="date"
-            value={anchorDate || timeline?.anchorDate || payload?.businessDate || ""}
-            onChange={(event) => setAnchorDate(event.target.value)}
-            className="h-10 rounded-[18px] border border-white/10 bg-black/25 px-4 text-sm text-white outline-none transition focus:border-[#7cff00]/30"
-          />
-        </div>
+          {selectedDateKey === getTodayDateKey() && scheduleView === "day" ? (
+            <div className="relative grid grid-cols-[4.5rem_minmax(0,1fr)] gap-4">
+              <div className="flex justify-end">
+                <span className="rounded-full bg-[#a3ff12] px-3 py-1.5 text-xs font-black text-[#050505] shadow-[0_0_24px_rgba(163,255,18,0.30)]">{formatTime(new Date())}</span>
+              </div>
+              <div className="min-h-1" />
+              <span className="absolute left-[4.22rem] top-2 hidden h-2 w-2 rounded-full bg-[#a3ff12] shadow-[0_0_18px_rgba(163,255,18,0.48)] sm:block" />
+            </div>
+          ) : null}
 
-        <div className="mt-4 rounded-[20px] border border-white/8 bg-black/20 p-4 text-sm text-white/68">
-          <p className="surface-label">Showing</p>
-          <p className="mt-2 text-white/82">{timeline?.rangeLabel ?? "Loading schedule range..."}</p>
-        </div>
-
-        <div className="mt-5 space-y-3">
           {scheduleQuery.isLoading && !payload ? (
             <>
               <ScheduleSkeleton />
               <ScheduleSkeleton />
               <ScheduleSkeleton />
             </>
-          ) : timelineAppointments.length ? timelineAppointments.map((appointment) => (
-            <AppointmentCard
-              key={appointment.id}
-              appointment={appointment}
-              viewMode={scheduleView}
-              onLifecycleAction={handleLifecycleAction}
-              onMessage={handleMessage}
-              isLifecyclePending={lifecycleMutation.isPending && pendingAppointmentId === appointment.id}
-              isMessagePending={createThreadMutation.isPending}
-            />
+          ) : timelineEntries.length ? timelineEntries.map((entry) => (
+            <div key={`${entry.type}-${entry.id}`} className="relative grid gap-3 sm:grid-cols-[4.5rem_minmax(0,1fr)] sm:gap-4">
+              <div className="hidden justify-end pt-4 text-base font-semibold text-white/82 sm:flex">
+                {scheduleView === "day" ? formatHour(entry.startsAt) : formatShortDate(entry.startsAt)}
+              </div>
+              <span className="absolute left-[4.22rem] top-7 hidden h-2 w-2 rounded-full bg-white/55 sm:block" />
+              {entry.type === "appointment" ? (
+                <AppointmentCard
+                  appointment={entry.appointment}
+                  viewMode={scheduleView}
+                  highlighted={entry.appointment.id === currentOrNextAppointmentId}
+                  onLifecycleAction={handleLifecycleAction}
+                  onMessage={handleMessage}
+                  isLifecyclePending={lifecycleMutation.isPending && pendingAppointmentId === entry.appointment.id}
+                  isMessagePending={createThreadMutation.isPending}
+                />
+              ) : (
+                <OpenSlotCard slot={entry.slot} />
+              )}
+            </div>
           )) : (
-            <div className="empty-state-panel rounded-[24px] p-6 text-sm leading-7 text-white/58">
-              No barber appointments are assigned in this {scheduleView} range yet.
+            <div className="empty-state-panel rounded-[24px] p-6">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xl font-extrabold text-white">No appointments today</p>
+                  <p className="mt-2 text-sm leading-6 text-white/58">Your schedule is clear.</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <ActionButton type="button" variant="secondary" onClick={openAvailabilityControls}>
+                    Edit availability
+                  </ActionButton>
+                  <ActionButton type="button" variant="secondary" onClick={() => router.push("/dashboard/barber/checkout")}>
+                    Quick Charge
+                  </ActionButton>
+                </div>
+              </div>
             </div>
           )}
+
+          <div className="relative grid gap-3 sm:grid-cols-[4.5rem_minmax(0,1fr)] sm:gap-4">
+            <div className="hidden justify-end pt-5 text-base font-semibold text-white/82 sm:flex">Break</div>
+            <span className="absolute left-[4.22rem] top-7 hidden h-2 w-2 rounded-full bg-white/55 sm:block" />
+            <button
+              type="button"
+              className="flex min-h-[68px] items-center justify-center gap-3 rounded-[18px] border border-white/10 bg-white/[0.025] px-5 text-base font-extrabold text-[#a3ff12] transition hover:border-[#a3ff12]/32 hover:bg-[rgba(163,255,18,0.07)]"
+              onClick={openAvailabilityControls}
+            >
+              <Plus className="h-5 w-5" />
+              Add Block Time / Break
+            </button>
+          </div>
         </div>
-      </Card>
+      </GlassCard>
+
+      <div ref={availabilityRef}>
+        <GlassCard className="rounded-[32px] p-5 sm:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="bvr-section-label">Availability control</p>
+              <h3 className="mt-3 text-2xl font-extrabold tracking-[-0.03em] text-white">Working hours and blocked time</h3>
+              <p className="mt-2 text-sm leading-6 text-white/58">Use canonical schedule controls. No appointment truth is overwritten here.</p>
+            </div>
+            <Clock3 className="h-5 w-5 text-[#a3ff12]" />
+          </div>
+
+          <div className="mt-5 grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+            <div className="rounded-[26px] border border-white/8 bg-black/20 p-4 sm:p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="surface-label text-[#d7ffab]">Working hours</p>
+                  <p className="mt-2 text-sm text-white/58">Save one assigned shop schedule at a time.</p>
+                </div>
+                <span className="status-pill text-white/62">{payload?.businessDate ?? "Live date"}</span>
+              </div>
+
+              <div className="mt-4">
+                <label className="text-[11px] uppercase tracking-[0.18em] text-white/42" htmlFor="barber-schedule-location">Shop</label>
+                <select
+                  id="barber-schedule-location"
+                  className={cn(inputClassName, "mt-2 w-full")}
+                  value={selectedLocationId ?? ""}
+                  onChange={(event) => setSelectedLocationId(event.target.value || null)}
+                >
+                  <option value="" disabled>Select a shop</option>
+                  {locationOptions.map((location) => (
+                    <option key={location.id} value={location.id}>{location.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                {scheduleQuery.isLoading && !payload ? (
+                  <>
+                    <ScheduleSkeleton />
+                    <ScheduleSkeleton />
+                  </>
+                ) : workingHoursForm.map((row) => (
+                  <div key={row.weekday} className="rounded-[20px] border border-white/8 bg-black/24 p-4">
+                    <p className="text-sm font-semibold text-white">{weekdayLabels[row.weekday]}</p>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      <input
+                        type="time"
+                        aria-label={`${weekdayLabels[row.weekday]} start time`}
+                        value={row.startTime}
+                        onChange={(event) => {
+                          const next = [...workingHoursForm];
+                          next[row.weekday] = { ...next[row.weekday], startTime: event.target.value };
+                          setWorkingHoursForm(next);
+                        }}
+                        className={inputClassName}
+                      />
+                      <input
+                        type="time"
+                        aria-label={`${weekdayLabels[row.weekday]} end time`}
+                        value={row.endTime}
+                        onChange={(event) => {
+                          const next = [...workingHoursForm];
+                          next[row.weekday] = { ...next[row.weekday], endTime: event.target.value };
+                          setWorkingHoursForm(next);
+                        }}
+                        className={inputClassName}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-3">
+                <ActionButton type="button" disabled={scheduleMutation.isPending || !selectedLocationId} onClick={() => void handleSaveWorkingHours()}>
+                  {scheduleMutation.isPending ? "Saving..." : "Save working hours"}
+                </ActionButton>
+              </div>
+            </div>
+
+            <div className="rounded-[26px] border border-white/8 bg-black/20 p-4 sm:p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="surface-label text-[#d7ffab]">Blocked time</p>
+                  <p className="mt-2 text-sm text-white/58">Add time-off, breaks, or blackout windows.</p>
+                </div>
+                <Plus className="h-5 w-5 text-[#a3ff12]" />
+              </div>
+
+              <div className="mt-4 grid gap-3">
+                <input
+                  type="datetime-local"
+                  aria-label="Blocked time start"
+                  value={blockedStartsAt}
+                  onChange={(event) => setBlockedStartsAt(event.target.value)}
+                  className={inputClassName}
+                />
+                <input
+                  type="datetime-local"
+                  aria-label="Blocked time end"
+                  value={blockedEndsAt}
+                  onChange={(event) => setBlockedEndsAt(event.target.value)}
+                  className={inputClassName}
+                />
+                <input
+                  type="text"
+                  value={blockedReason}
+                  onChange={(event) => setBlockedReason(event.target.value)}
+                  placeholder="Reason (optional)"
+                  className={inputClassName}
+                />
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-3">
+                <ActionButton
+                  type="button"
+                  variant="secondary"
+                  disabled={scheduleMutation.isPending || !selectedLocationId}
+                  onClick={() => void handleAddBlockedPeriod()}
+                >
+                  {scheduleMutation.isPending ? "Saving..." : "Add blocked time"}
+                </ActionButton>
+              </div>
+
+              <div className="mt-5 space-y-3">
+                {(payload?.blockedTimes ?? []).length ? (payload?.blockedTimes ?? []).map((entry) => (
+                  <div key={entry.id} className="rounded-[20px] border border-white/8 bg-black/24 p-4">
+                    <p className="text-sm font-semibold text-white">{formatDateTime(entry.startsAt)} - {formatDateTime(entry.endsAt)}</p>
+                    <p className="mt-2 text-sm text-white/58">{entry.reason ?? "Time blocked from new bookings."}</p>
+                  </div>
+                )) : (
+                  <div className="rounded-[20px] border border-dashed border-white/10 bg-black/24 p-4 text-sm text-white/58">
+                    No blocked periods are active yet.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </GlassCard>
+      </div>
     </div>
   );
 }
