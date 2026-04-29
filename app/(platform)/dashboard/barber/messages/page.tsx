@@ -10,13 +10,13 @@ export default async function BarberMessagesPage() {
       user={user}
       activeHref="/dashboard/barber/messages"
       title="Messages"
-      subtitle="Client conversations, appointment threads, and support."
+      subtitle="Connect with clients & manage conversations."
     >
       <MessagingInboxScreen
         surface="barber"
         basePath="/dashboard/barber/messages"
         title="Messages"
-        subtitle="Client conversations, appointment threads, and support."
+        subtitle="Connect with clients & manage conversations."
       />
     </DashboardShell>
   );
