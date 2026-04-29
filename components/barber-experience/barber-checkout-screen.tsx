@@ -1,23 +1,24 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
-  CalendarDays,
+  ArrowRight,
+  BadgePercent,
   CircleDollarSign,
+  CreditCard,
+  History,
+  Plus,
   ReceiptText,
   Scissors,
   WalletCards
 } from "lucide-react";
 import { ServiceCatalogWorkspace } from "@/components/marketplace/service-catalog-workspace";
 import { BarberEarningsWorkspace } from "@/components/operations/barber-earnings-workspace";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
-import { DataStatCard, FilterChip, PageHeader, StatusBadge } from "@/design/components";
+import { ActionButton, GlassCard, StatusBadge } from "@/design/components";
 import { useMarketplaceServiceCatalog } from "@/lib/marketplace/client";
 import { useBarberOverviewQuery } from "@/lib/operations/barber-client";
-import { currency } from "@/lib/utils";
+import { cn, currency } from "@/lib/utils";
 import { getReadableActionError } from "@/lib/utils/feedback";
 import type { Role } from "@/types/domain";
 
@@ -27,8 +28,30 @@ const sectionIdMap = {
   services: "barber-checkout-services"
 } as const;
 
+const checkoutPanels = [
+  { key: "appointments", label: "Appointments" },
+  { key: "keypad", label: "Keypad" },
+  { key: "services", label: "Library" }
+] as const;
+
+const quickAmounts = [25, 35, 40] as const;
+const keypadButtons = [
+  { key: "1", label: "1" },
+  { key: "2", label: "2", sublabel: "ABC" },
+  { key: "3", label: "3", sublabel: "DEF" },
+  { key: "4", label: "4", sublabel: "GHI" },
+  { key: "5", label: "5", sublabel: "JKL" },
+  { key: "6", label: "6", sublabel: "MNO" },
+  { key: "7", label: "7", sublabel: "PQRS" },
+  { key: "8", label: "8", sublabel: "TUV" },
+  { key: "9", label: "9", sublabel: "WXYZ" },
+  { key: "clear", label: "C" },
+  { key: "0", label: "0" },
+  { key: "plus", label: "+" }
+] as const;
+
 type CheckoutSectionKey = keyof typeof sectionIdMap;
-type CheckoutPanelKey = "keypad" | "appointments" | "services";
+type CheckoutPanelKey = (typeof checkoutPanels)[number]["key"];
 
 function normalizeCheckoutSection(section?: string): CheckoutSectionKey | null {
   if (section === "money") {
@@ -52,6 +75,10 @@ function normalizeCheckoutPanel(section?: string): CheckoutPanelKey {
 
 function digitsToAmount(digits: string) {
   return Number(digits || "0") / 100;
+}
+
+function amountToDigits(amount: number) {
+  return String(Math.round(amount * 100));
 }
 
 function formatDateTime(iso: string) {
@@ -120,16 +147,6 @@ export function BarberCheckoutScreen({
     });
   }
 
-  function backspaceDigit() {
-    setChargeDigits((current) => {
-      if (current.length <= 1) {
-        return "0";
-      }
-
-      return current.slice(0, -1);
-    });
-  }
-
   function clearQuickCharge() {
     setChargeDigits("0");
     setSelectedServiceLabel(null);
@@ -142,7 +159,12 @@ export function BarberCheckoutScreen({
     target?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  function handleQuickCharge() {
+  function handleQuickAmount(amount: number) {
+    setChargeDigits(amountToDigits(amount));
+    setPanelFeedback(null);
+  }
+
+  function handleReviewSale() {
     if (keypadAmount <= 0) {
       setPanelFeedback({ tone: "error", message: "Enter an amount or load a service before opening checkout." });
       return;
@@ -150,307 +172,328 @@ export function BarberCheckoutScreen({
 
     setPanelFeedback({
       tone: "info",
-      message: "Barber self-capture is not a separate canonical rail yet. Use the shared checkout flow for live payment capture."
+      message: "Review is ready. Live payment capture still uses the shared canonical checkout rail."
     });
     openDetailSection("appointments");
   }
 
   function handleLoadService(service: (typeof serviceShortcuts)[number]["service"]) {
-    setChargeDigits(String(Math.round(Number(service.price) * 100)));
+    setChargeDigits(amountToDigits(Number(service.price)));
     setSelectedServiceLabel(service.name);
     setPanelFeedback({
       tone: "info",
-      message: `${service.name} loaded into Quick Charge. Live capture still follows the shared canonical checkout rail.`
+      message: `${service.name} loaded into Keypad. Live capture still follows the protected checkout rail.`
     });
     setActivePanel("keypad");
   }
 
+  function handleNoteAction() {
+    setPanelFeedback({
+      tone: "info",
+      message: "Notes stay attached during the protected review and appointment checkout flow."
+    });
+  }
+
+  function handleSecondaryMoneyAction(label: string) {
+    setPanelFeedback({
+      tone: "info",
+      message: `${label} is handled during payment review so discounts, tips, and receipts stay auditable.`
+    });
+  }
+
   return (
-    <div className="space-y-4" data-testid="barber-checkout-screen">
-      {panelFeedback ? (
-        <FeedbackBanner tone={panelFeedback.tone} message={panelFeedback.message} />
-      ) : null}
-      {overviewQuery.error ? (
-        <FeedbackBanner tone="error" message={getReadableActionError(overviewQuery.error)} />
-      ) : null}
+    <div className="space-y-6" data-testid="barber-checkout-screen">
+      {panelFeedback ? <FeedbackBanner tone={panelFeedback.tone} message={panelFeedback.message} /> : null}
+      {overviewQuery.error ? <FeedbackBanner tone="error" message={getReadableActionError(overviewQuery.error)} /> : null}
 
-      <Card className="rounded-[32px] p-6">
-        <PageHeader
-          label="Checkout"
-          title="Checkout"
-          subtitle="Charge clients, close appointments, and track payments."
-          action={
-            <div className="rounded-[24px] border border-[#7cff00]/16 bg-[#7cff00]/10 px-4 py-3 text-right">
-              <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">{barberName}</p>
-              <p className="mt-2 text-sm font-medium text-white">
-                {payload?.earnings.outstandingCheckoutCount ?? readyForCheckout.length} ticket{(payload?.earnings.outstandingCheckoutCount ?? readyForCheckout.length) === 1 ? "" : "s"} need follow-up
-              </p>
-              <p className="mt-1 text-sm text-white/58">
-                {currency(payload?.earnings.grossSales ?? 0)} posted today
-              </p>
+      <GlassCard className="relative overflow-hidden rounded-[32px] p-5 sm:p-6">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(163,255,18,0.10),transparent_30%),radial-gradient(circle_at_bottom_center,rgba(163,255,18,0.06),transparent_28%)]" />
+        <div className="relative">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="bvr-section-label">Money terminal</p>
+              <h2 className="mt-3 text-[2.65rem] font-black leading-none tracking-[-0.045em] text-white sm:text-6xl">
+                Checkout
+              </h2>
+              <p className="mt-2 text-base font-medium text-white/60 sm:text-[17px]">Process payments & close out sales</p>
             </div>
-          }
-        />
-
-        <div className="mt-5 flex flex-wrap gap-2">
-          <Link href="#barber-checkout-appointments" className="rounded-full border border-white/10 bg-black/20 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/74 transition hover:border-[#7cff00]/20 hover:text-[#d7ffab]">
-            Appointment checkout
-          </Link>
-          <Link href="#barber-checkout-earnings" className="rounded-full border border-white/10 bg-black/20 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/74 transition hover:border-[#7cff00]/20 hover:text-[#d7ffab]">
-            Earnings
-          </Link>
-          <Link href="#barber-checkout-services" className="rounded-full border border-white/10 bg-black/20 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/74 transition hover:border-[#7cff00]/20 hover:text-[#d7ffab]">
-            Service library
-          </Link>
-        </div>
-      </Card>
-
-      <section className="grid gap-3 sm:grid-cols-3">
-        <DataStatCard
-          label="Ready now"
-          value={readyForCheckout.length}
-          detail="Completed tickets awaiting closeout"
-          icon={<CircleDollarSign className="h-4 w-4" />}
-        />
-        <DataStatCard
-          label="Paid today"
-          value={paidAppointments.length}
-          detail="Captured appointments and receipts"
-          icon={<ReceiptText className="h-4 w-4" />}
-        />
-        <DataStatCard
-          label="Service rail"
-          value={serviceShortcuts.length}
-          detail={barberRole === "booth_rent_barber" ? "Editable barber services" : "Readable service pricing"}
-          icon={<Scissors className="h-4 w-4" />}
-        />
-      </section>
-
-      <Card className="rounded-[32px] p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="surface-label">POS flow</p>
-            <p className="mt-3 text-2xl font-semibold text-white">Keypad first, then appointment payments and service picks one swipe away.</p>
-            <p className="mt-3 max-w-3xl text-sm leading-7 text-white/62">
-              Quick Charge stays visible here without inventing a fake barber-only capture rail. Manual totals, appointment payment state, and service loading all stay in one place.
-            </p>
-          </div>
-          <div className="rounded-[24px] border border-white/8 bg-black/20 px-4 py-3 text-right">
-            <p className="text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">Default panel</p>
-            <p className="mt-2 text-sm font-medium text-white">Keypad</p>
-            <p className="mt-1 text-sm text-white/58">Swipe to appointment payments or services.</p>
-          </div>
-        </div>
-
-        <div className="mt-5 flex flex-wrap gap-2">
-          {([
-            { key: "keypad", label: "Keypad" },
-            { key: "appointments", label: "Appointment payments" },
-            { key: "services", label: "Services" }
-          ] as const).map((panel) => (
-            <FilterChip
-              key={panel.key}
+            <button
               type="button"
-              active={activePanel === panel.key}
-              onClick={() => setActivePanel(panel.key)}
+              aria-label="Open recent checkout history"
+              className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-white transition hover:border-[#a3ff12]/35 hover:shadow-[0_0_24px_rgba(163,255,18,0.12)]"
+              onClick={() => openDetailSection("appointments")}
             >
-              {panel.label}
-            </FilterChip>
-          ))}
-        </div>
+              <History className="h-6 w-6" />
+            </button>
+          </div>
 
-        {activePanel === "keypad" ? (
-          <div className="mt-5 grid gap-4 xl:grid-cols-[0.94fr_1.06fr]">
-            <div className="rounded-[28px] border border-[#7cff00]/16 bg-[linear-gradient(180deg,rgba(124,255,0,0.1),rgba(8,8,8,0.96))] p-5">
-              <p className="surface-label text-[#d7ffab]">Quick Charge</p>
-              <p className="mt-4 text-[2.8rem] font-semibold tracking-[-0.05em] text-white" data-display="true">
-                {currency(keypadAmount)}
-              </p>
-              <p className="mt-3 text-sm text-white/62">
-                {selectedServiceLabel ? `${selectedServiceLabel} loaded into the check.` : "Enter an amount or load a service into the check."}
-              </p>
+          <div className="mt-[30px] grid h-[72px] grid-cols-3 rounded-[14px] border border-white/10 bg-white/[0.025] p-1.5">
+            {checkoutPanels.map((panel) => (
+              <button
+                key={panel.key}
+                type="button"
+                className={cn(
+                  "rounded-[10px] text-sm font-extrabold transition sm:text-base",
+                  activePanel === panel.key
+                    ? "bg-[linear-gradient(135deg,#a3ff12,#7dce00)] text-[#050505] shadow-[0_0_28px_rgba(163,255,18,0.25)]"
+                    : "text-white/70 hover:text-white"
+                )}
+                onClick={() => setActivePanel(panel.key)}
+              >
+                {panel.label}
+              </button>
+            ))}
+          </div>
 
-              <div className="mt-5 grid grid-cols-3 gap-3">
-                {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((digit) => (
+          {activePanel === "keypad" ? (
+            <div>
+              <section className="mt-[38px]">
+                <p className="text-lg font-medium text-white/60">Total Amount</p>
+                <p className="mt-2 text-[5.3rem] font-black leading-[0.95] tracking-[-0.07em] text-[#a3ff12] [text-shadow:0_0_34px_rgba(163,255,18,0.24)] sm:text-[6rem]">
+                  {currency(keypadAmount)}
+                </p>
+                {selectedServiceLabel ? <p className="mt-3 text-sm font-semibold text-white/60">{selectedServiceLabel} loaded into the sale.</p> : null}
+              </section>
+
+              <section className="mt-7 grid grid-cols-4 gap-2 sm:gap-3">
+                <button
+                  type="button"
+                  className="flex h-[88px] items-center justify-center gap-2 rounded-[12px] border border-white/10 bg-white/[0.035] text-base font-extrabold text-white transition hover:border-[#a3ff12]/25 hover:bg-[#a3ff12]/[0.04] sm:gap-3 sm:text-xl"
+                  onClick={handleNoteAction}
+                >
+                  <Plus className="h-7 w-7 text-[#a3ff12] sm:h-8 sm:w-8" />
+                  Note
+                </button>
+                {quickAmounts.map((amount) => (
                   <button
-                    key={digit}
+                    key={amount}
                     type="button"
-                    onClick={() => appendDigit(digit)}
-                    className="flex h-14 items-center justify-center rounded-[20px] border border-white/8 bg-black/20 text-lg font-semibold text-white transition hover:border-[#7cff00]/18 hover:text-[#d7ffab]"
+                    className="h-[88px] rounded-[12px] border border-white/10 bg-white/[0.035] text-base font-extrabold text-white transition hover:border-[#a3ff12]/25 hover:bg-[#a3ff12]/[0.04] sm:text-2xl"
+                    onClick={() => handleQuickAmount(amount)}
                   >
-                    {digit}
+                    {currency(amount)}
                   </button>
                 ))}
+              </section>
+
+              <section className="mt-7 overflow-hidden rounded-[18px] border-[1.5px] border-[#a3ff12]/60 bg-white/[0.018] shadow-[0_0_32px_rgba(163,255,18,0.16),inset_0_1px_0_rgba(255,255,255,0.045)]">
+                <div className="grid grid-cols-3">
+                  {keypadButtons.map((button, index) => (
+                    <button
+                      key={button.key}
+                      type="button"
+                      className={cn(
+                        "flex h-[150px] flex-col items-center justify-center border-[rgba(163,255,18,0.14)] transition hover:bg-[#a3ff12]/[0.06]",
+                        index % 3 !== 2 && "border-r",
+                        index < 9 && "border-b"
+                      )}
+                      onClick={() => {
+                        if (button.key === "clear") {
+                          clearQuickCharge();
+                          return;
+                        }
+
+                        if (button.key === "plus") {
+                          setActivePanel("services");
+                          return;
+                        }
+
+                        appendDigit(button.key);
+                      }}
+                    >
+                      <span
+                        className={cn(
+                          "text-[42px] font-black leading-none tracking-[-0.03em]",
+                          button.key === "clear" ? "text-[#ff2d2d]" : button.key === "plus" ? "text-[#a3ff12]" : "text-white"
+                        )}
+                      >
+                        {button.label}
+                      </span>
+                      {"sublabel" in button ? <span className="mt-2 text-sm font-semibold tracking-[0.22em] text-white/40">{button.sublabel}</span> : null}
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              <section className="mt-6 grid gap-3 sm:grid-cols-2">
                 <button
                   type="button"
-                  onClick={clearQuickCharge}
-                  className="flex h-14 items-center justify-center rounded-[20px] border border-white/8 bg-black/20 text-sm font-semibold uppercase tracking-[0.18em] text-white/74 transition hover:border-[#7cff00]/18 hover:text-white"
+                  className="flex min-h-[112px] items-center gap-4 rounded-[16px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.018))] p-4 text-left shadow-[0_14px_42px_rgba(0,0,0,0.38),inset_0_1px_0_rgba(255,255,255,0.04)] transition hover:border-[#a3ff12]/25"
+                  onClick={() => handleSecondaryMoneyAction("Discount")}
                 >
-                  Clear
+                  <span className="flex h-[58px] w-[58px] shrink-0 items-center justify-center rounded-full border border-[#a3ff12]/65 bg-[rgba(163,255,18,0.08)] text-[#a3ff12] shadow-[0_0_22px_rgba(163,255,18,0.18)]">
+                    <BadgePercent className="h-6 w-6" />
+                  </span>
+                  <span>
+                    <span className="block text-xl font-black text-white">Apply Discount</span>
+                    <span className="mt-1 block text-[15px] font-medium text-white/60">Add or apply discount</span>
+                  </span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => appendDigit("0")}
-                  className="flex h-14 items-center justify-center rounded-[20px] border border-white/8 bg-black/20 text-lg font-semibold text-white transition hover:border-[#7cff00]/18 hover:text-[#d7ffab]"
+                  className="flex min-h-[112px] items-center gap-4 rounded-[16px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.018))] p-4 text-left shadow-[0_14px_42px_rgba(0,0,0,0.38),inset_0_1px_0_rgba(255,255,255,0.04)] transition hover:border-[#a3ff12]/25"
+                  onClick={() => handleSecondaryMoneyAction("Tip")}
                 >
-                  0
+                  <span className="flex h-[58px] w-[58px] shrink-0 items-center justify-center rounded-full border border-[#a3ff12]/65 bg-[rgba(163,255,18,0.08)] text-[#a3ff12] shadow-[0_0_22px_rgba(163,255,18,0.18)]">
+                    <ReceiptText className="h-6 w-6" />
+                  </span>
+                  <span>
+                    <span className="block text-xl font-black text-white">Add Tip</span>
+                    <span className="mt-1 block text-[15px] font-medium text-white/60">Add gratuity for service</span>
+                  </span>
                 </button>
+              </section>
+
+              <button
+                type="button"
+                className="mt-[22px] flex min-h-[86px] w-full items-center justify-center rounded-[14px] bg-[linear-gradient(135deg,#a3ff12,#7dce00)] px-6 text-[22px] font-black text-[#050505] shadow-[0_16px_46px_rgba(163,255,18,0.30),inset_0_1px_0_rgba(255,255,255,0.28)] transition active:scale-[0.98]"
+                onClick={handleReviewSale}
+              >
+                <span>Review Sale</span>
+                <ArrowRight className="ml-auto h-8 w-8" />
+              </button>
+
+              <GlassCard className="mt-[22px] flex min-h-24 items-center justify-between gap-4 rounded-[16px] p-[18px]">
+                <div className="flex min-w-0 items-center gap-4">
+                  <span className="flex h-[54px] w-[54px] shrink-0 items-center justify-center rounded-full border border-[rgba(163,255,18,0.22)] bg-[rgba(163,255,18,0.08)] text-[#a3ff12]">
+                    <CreditCard className="h-6 w-6" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-white/40">Default Payment</p>
+                    <p className="mt-1 truncate text-lg font-semibold text-white/75">Selected during review</p>
+                  </div>
+                </div>
                 <button
                   type="button"
-                  onClick={backspaceDigit}
-                  className="flex h-14 items-center justify-center rounded-[20px] border border-white/8 bg-black/20 text-sm font-semibold uppercase tracking-[0.18em] text-white/74 transition hover:border-[#7cff00]/18 hover:text-white"
+                  className="inline-flex shrink-0 items-center gap-2 text-base font-extrabold text-[#a3ff12]"
+                  onClick={() => openDetailSection("appointments")}
                 >
-                  Del
+                  Change
+                  <ArrowRight className="h-5 w-5" />
                 </button>
-              </div>
+              </GlassCard>
+            </div>
+          ) : null}
 
-              <div className="mt-5 flex flex-wrap gap-3">
-                <Button type="button" className="h-11 px-5" onClick={handleQuickCharge}>
-                  Charge
-                </Button>
-                <Button type="button" variant="secondary" className="h-11 px-5" onClick={() => openDetailSection("appointments")}>
-                  Appointment payments
-                </Button>
-                <Button type="button" variant="ghost" className="h-11 px-5" onClick={() => setActivePanel("services")}>
-                  Load service
-                </Button>
-              </div>
-            </div>
+          {activePanel === "appointments" ? (
+            <section className="mt-7 grid gap-4 xl:grid-cols-2">
+              <GlassCard className="p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="bvr-section-label">Appointment checkout</p>
+                    <h3 className="mt-3 text-2xl font-black tracking-[-0.03em] text-white">Ready to close</h3>
+                  </div>
+                  <CircleDollarSign className="h-5 w-5 text-[#a3ff12]" />
+                </div>
+                <div className="mt-4 space-y-3">
+                  {readyForCheckout.length ? readyForCheckout.slice(0, 4).map((appointment) => (
+                    <div key={`panel-ready-${appointment.id}`} className="rounded-[22px] border border-white/8 bg-black/20 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-semibold text-white">{appointment.display.clientName}</p>
+                          <p className="mt-2 text-sm text-white/58">{appointment.display.serviceName}</p>
+                          <p className="mt-2 text-sm text-white/48">{formatDateTime(appointment.start)}</p>
+                        </div>
+                        <StatusBadge>{currency(appointment.financial.outstandingBalance)} due</StatusBadge>
+                      </div>
+                    </div>
+                  )) : (
+                    <div className="rounded-[22px] border border-dashed border-white/10 bg-black/20 p-4 text-sm text-white/58">
+                      No unpaid completed tickets are waiting right now.
+                    </div>
+                  )}
+                </div>
+              </GlassCard>
 
-            <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
-              <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                <p className="surface-label">Ready now</p>
-                <p className="mt-3 text-2xl font-semibold text-white">{readyForCheckout.length}</p>
-                <p className="mt-2 text-sm text-white/58">Completed tickets still waiting on payment closeout.</p>
-              </div>
-              <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                <p className="surface-label">Paid today</p>
-                <p className="mt-3 text-2xl font-semibold text-white">{paidAppointments.length}</p>
-                <p className="mt-2 text-sm text-white/58">Paid tickets and receipts stay connected to real appointments.</p>
-              </div>
-              <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                <p className="surface-label">Capture rail</p>
-                <div className="mt-3">
-                  <StatusBadge tone="neutral">Shared canonical flow</StatusBadge>
+              <GlassCard className="p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="bvr-section-label">Receipts</p>
+                    <h3 className="mt-3 text-2xl font-black tracking-[-0.03em] text-white">Paid today</h3>
+                  </div>
+                  <ReceiptText className="h-5 w-5 text-[#a3ff12]" />
                 </div>
-                <p className="mt-2 text-sm text-white/58">Barber-side Quick Charge stays visible, but live capture still hands off to the protected operations checkout rail.</p>
-              </div>
-            </div>
-          </div>
-        ) : null}
+                <div className="mt-4 space-y-3">
+                  {paidAppointments.length ? paidAppointments.slice(0, 4).map((appointment) => (
+                    <div key={`panel-paid-${appointment.id}`} className="rounded-[22px] border border-white/8 bg-black/20 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-semibold text-white">{appointment.display.clientName}</p>
+                          <p className="mt-2 text-sm text-white/58">{appointment.display.serviceName}</p>
+                          <p className="mt-2 text-sm text-white/48">Tip {currency(appointment.financial.tipAmount)}</p>
+                        </div>
+                        <StatusBadge tone="neutral">{currency(appointment.financial.capturedAmount || appointment.totalAmount)}</StatusBadge>
+                      </div>
+                    </div>
+                  )) : (
+                    <div className="rounded-[22px] border border-dashed border-white/10 bg-black/20 p-4 text-sm text-white/58">
+                      Paid tickets will appear here once checkout closes them.
+                    </div>
+                  )}
+                </div>
+              </GlassCard>
+            </section>
+          ) : null}
 
-        {activePanel === "appointments" ? (
-          <div className="mt-5 grid gap-4 xl:grid-cols-2">
-            <div className="rounded-[28px] border border-white/8 bg-black/20 p-5">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="surface-label">Appointment payments</p>
-                  <p className="mt-2 text-sm text-white/58">Unpaid and paid appointment tickets stay visible before you jump into the detailed checkout lists below.</p>
+          {activePanel === "services" ? (
+            <section className="mt-7 grid gap-4 xl:grid-cols-[0.96fr_1.04fr]">
+              <GlassCard className="p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="bvr-section-label">Service library</p>
+                    <h3 className="mt-3 text-2xl font-black tracking-[-0.03em] text-white">Load a real price</h3>
+                  </div>
+                  <Scissors className="h-5 w-5 text-[#a3ff12]" />
                 </div>
-                <CircleDollarSign className="h-5 w-5 text-[#d7ffab]" />
-              </div>
-              <div className="mt-4 space-y-3">
-                {readyForCheckout.length ? readyForCheckout.slice(0, 3).map((appointment) => (
-                  <div key={`panel-ready-${appointment.id}`} className="rounded-[22px] border border-white/8 bg-black/18 p-4">
-                    <p className="font-semibold text-white">{appointment.display.clientName}</p>
-                    <p className="mt-2 text-sm text-white/58">{appointment.display.serviceName} | {currency(appointment.financial.outstandingBalance)} due</p>
-                    <p className="mt-2 text-sm text-white/52">{formatDateTime(appointment.start)}</p>
-                  </div>
-                )) : (
-                  <div className="rounded-[22px] border border-dashed border-white/10 bg-black/18 p-4 text-sm text-white/58">
-                    No unpaid completed tickets are waiting right now.
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="rounded-[28px] border border-white/8 bg-black/20 p-5">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="surface-label">Receipts and paid tickets</p>
-                  <p className="mt-2 text-sm text-white/58">Paid appointment history, receipts, and tips stay tied to the real appointment closeout record.</p>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  {serviceShortcuts.length ? serviceShortcuts.map((item) => (
+                    <button
+                      key={item.service.id}
+                      type="button"
+                      onClick={() => handleLoadService(item.service)}
+                      className="rounded-[22px] border border-white/8 bg-black/20 p-4 text-left transition hover:border-[#a3ff12]/24 hover:bg-black/30"
+                    >
+                      <p className="font-semibold text-white">{item.service.name}</p>
+                      <p className="mt-2 text-sm text-white/58">{currency(item.service.price)} | {item.service.durationMin} min</p>
+                      <p className="mt-2 text-sm text-white/48">{item.ownerLabel}</p>
+                    </button>
+                  )) : (
+                    <div className="rounded-[22px] border border-dashed border-white/10 bg-black/20 p-4 text-sm text-white/58 sm:col-span-2">
+                      Real services appear here once the service library has active pricing.
+                    </div>
+                  )}
                 </div>
-                <ReceiptText className="h-5 w-5 text-[#baff69]" />
-              </div>
-              <div className="mt-4 space-y-3">
-                {paidAppointments.length ? paidAppointments.slice(0, 3).map((appointment) => (
-                  <div key={`panel-paid-${appointment.id}`} className="rounded-[22px] border border-white/8 bg-black/18 p-4">
-                    <p className="font-semibold text-white">{appointment.display.clientName}</p>
-                    <p className="mt-2 text-sm text-white/58">{appointment.display.serviceName} | {currency(appointment.financial.capturedAmount || appointment.totalAmount)} collected</p>
-                    <p className="mt-2 text-sm text-white/52">Tip {currency(appointment.financial.tipAmount)} | {appointment.financial.latestStatusLabel}</p>
-                  </div>
-                )) : (
-                  <div className="rounded-[22px] border border-dashed border-white/10 bg-black/18 p-4 text-sm text-white/58">
-                    No paid appointments have landed yet today.
-                  </div>
-                )}
-              </div>
-              <div className="mt-4">
-                <Button type="button" variant="secondary" className="h-11 px-5" onClick={() => openDetailSection("appointments")}>
-                  Open detailed appointment payments
-                </Button>
-              </div>
-            </div>
-          </div>
-        ) : null}
+              </GlassCard>
 
-        {activePanel === "services" ? (
-          <div className="mt-5 grid gap-4 xl:grid-cols-[0.96fr_1.04fr]">
-            <div className="rounded-[28px] border border-white/8 bg-black/20 p-5">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="surface-label">Service selection</p>
-                  <p className="mt-2 text-sm text-white/58">Tap a real service to load its price into Quick Charge, then keep the full library and pricing controls one section below.</p>
+              <GlassCard className="p-5">
+                <p className="bvr-section-label">Loaded sale</p>
+                <p className="mt-4 text-5xl font-black tracking-[-0.06em] text-[#a3ff12]">{currency(keypadAmount)}</p>
+                <p className="mt-3 text-sm text-white/58">
+                  {selectedServiceLabel ? `${selectedServiceLabel} is ready in Keypad.` : "Choose a service to load its live price into Keypad."}
+                </p>
+                <div className="mt-5 flex flex-wrap gap-3">
+                  <ActionButton type="button" onClick={() => setActivePanel("keypad")}>
+                    Back to Keypad
+                  </ActionButton>
+                  <ActionButton type="button" variant="secondary" onClick={() => openDetailSection("services")}>
+                    Open full service library
+                  </ActionButton>
                 </div>
-                <Scissors className="h-5 w-5 text-[#d7ffab]" />
-              </div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                {serviceShortcuts.length ? serviceShortcuts.map((item) => (
-                  <button
-                    key={item.service.id}
-                    type="button"
-                    onClick={() => handleLoadService(item.service)}
-                    className="rounded-[22px] border border-white/8 bg-black/18 p-4 text-left transition hover:border-[#7cff00]/18 hover:bg-black/25"
-                  >
-                    <p className="font-semibold text-white">{item.service.name}</p>
-                    <p className="mt-2 text-sm text-white/58">{currency(item.service.price)} | {item.service.durationMin} min</p>
-                    <p className="mt-2 text-sm text-white/52">{item.ownerLabel}</p>
-                  </button>
-                )) : (
-                  <div className="rounded-[22px] border border-dashed border-white/10 bg-black/18 p-4 text-sm text-white/58 sm:col-span-2">
-                    No services are visible yet. The canonical service library below will populate as soon as this barber lane has real services attached.
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="rounded-[28px] border border-white/8 bg-black/20 p-5">
-              <p className="surface-label">Loaded into Quick Charge</p>
-              <p className="mt-3 text-2xl font-semibold text-white">{currency(keypadAmount)}</p>
-              <p className="mt-2 text-sm text-white/58">
-                {selectedServiceLabel ? `${selectedServiceLabel} is ready in Keypad.` : "Choose a service to load its live price into Keypad."}
-              </p>
-              <div className="mt-5 flex flex-wrap gap-3">
-                <Button type="button" className="h-11 px-5" onClick={() => setActivePanel("keypad")}>
-                  Back to Keypad
-                </Button>
-                <Button type="button" variant="secondary" className="h-11 px-5" onClick={() => openDetailSection("services")}>
-                  Open full service library
-                </Button>
-              </div>
-            </div>
-          </div>
-        ) : null}
-      </Card>
+              </GlassCard>
+            </section>
+          ) : null}
+        </div>
+      </GlassCard>
 
       <section id="barber-checkout-appointments" className="grid scroll-mt-6 gap-4 xl:grid-cols-[1.05fr_0.95fr]">
-        <Card className="rounded-[32px] p-6">
+        <GlassCard className="p-5 sm:p-6">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="surface-label">Appointment checkout</p>
-              <p className="mt-2 text-sm text-white/58">
-                Completed services that still need payment attention stay visible here with no fake closeout state.
-              </p>
+              <p className="bvr-section-label">Appointment payments</p>
+              <h3 className="mt-3 text-2xl font-black tracking-[-0.03em] text-white">Completed tickets</h3>
+              <p className="mt-2 text-sm text-white/58">Real appointment balances only.</p>
             </div>
-            <CircleDollarSign className="h-5 w-5 text-[#d7ffab]" />
+            <CircleDollarSign className="h-5 w-5 text-[#a3ff12]" />
           </div>
 
           <div className="mt-4 space-y-3">
@@ -459,12 +502,10 @@ export function BarberCheckoutScreen({
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="text-lg font-semibold text-white">{appointment.display.clientName}</p>
-                    <p className="mt-2 text-sm text-white/58">
-                      {appointment.display.serviceName} | {formatDateTime(appointment.start)}
-                    </p>
+                    <p className="mt-2 text-sm text-white/58">{appointment.display.serviceName} | {formatDateTime(appointment.start)}</p>
                     <p className="mt-2 text-sm text-white/52">{appointment.display.locationLabel}</p>
                   </div>
-                  <div className="rounded-[18px] border border-white/8 bg-black/18 px-4 py-3 text-right">
+                  <div className="rounded-[18px] border border-white/8 bg-black/24 px-4 py-3 text-right">
                     <p className="surface-label">Balance due</p>
                     <p className="mt-2 text-lg font-semibold text-white">{currency(appointment.financial.outstandingBalance)}</p>
                     <p className="mt-1 text-sm text-white/52">{appointment.financial.latestStatusLabel}</p>
@@ -472,61 +513,51 @@ export function BarberCheckoutScreen({
                 </div>
               </div>
             )) : (
-              <div className="rounded-[24px] border border-dashed border-white/10 bg-black/18 p-5 text-sm leading-7 text-white/58">
+              <div className="rounded-[24px] border border-dashed border-white/10 bg-black/20 p-5 text-sm leading-7 text-white/58">
                 No completed tickets are waiting on checkout right now.
               </div>
             )}
           </div>
-        </Card>
+        </GlassCard>
 
-        <Card className="rounded-[32px] p-6">
+        <GlassCard className="p-5 sm:p-6">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="surface-label">Quick charge posture</p>
-              <p className="mt-2 text-sm text-white/58">
-                Barber self-serve charging is not exposed here unless the live operations rail explicitly supports it.
-              </p>
+              <p className="bvr-section-label">Money posture</p>
+              <h3 className="mt-3 text-2xl font-black tracking-[-0.03em] text-white">Today at a glance</h3>
+              <p className="mt-2 text-sm text-white/58">Fast payment context without a second source of truth.</p>
             </div>
-            <WalletCards className="h-5 w-5 text-[#baff69]" />
-          </div>
-
-          <div className="mt-4 rounded-[24px] border border-white/8 bg-black/20 p-4">
-            <p className="text-lg font-semibold text-white">Use the current canonical closeout path.</p>
-            <p className="mt-3 text-sm leading-7 text-white/60">
-              Today&apos;s live payment capture still runs through the shared checkout rail used by front desk, manager, and owner.
-              This barber lane keeps the money state visible without inventing a second charge path.
-            </p>
+            <WalletCards className="h-5 w-5 text-[#a3ff12]" />
           </div>
 
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
             <div className="rounded-[20px] border border-white/8 bg-black/20 p-4">
               <p className="surface-label">Ready now</p>
               <p className="mt-3 text-2xl font-semibold text-white">{readyForCheckout.length}</p>
-              <p className="mt-2 text-sm text-white/58">Tickets still waiting on payment closeout.</p>
+              <p className="mt-2 text-sm text-white/58">Waiting closeout.</p>
             </div>
             <div className="rounded-[20px] border border-white/8 bg-black/20 p-4">
               <p className="surface-label">Paid today</p>
               <p className="mt-3 text-2xl font-semibold text-white">{paidAppointments.length}</p>
-              <p className="mt-2 text-sm text-white/58">Completed tickets with captured payment or tip history.</p>
+              <p className="mt-2 text-sm text-white/58">Captured or tipped.</p>
             </div>
             <div className="rounded-[20px] border border-white/8 bg-black/20 p-4">
-              <p className="surface-label">Service library</p>
-              <p className="mt-3 text-2xl font-semibold text-white">{payload?.todayAppointments.length ?? 0}</p>
-              <p className="mt-2 text-sm text-white/58">Appointments today tied back to live services and pricing.</p>
+              <p className="surface-label">Gross today</p>
+              <p className="mt-3 text-2xl font-semibold text-white">{currency(payload?.earnings.grossSales ?? 0)}</p>
+              <p className="mt-2 text-sm text-white/58">Posted earnings.</p>
             </div>
           </div>
-        </Card>
+        </GlassCard>
       </section>
 
-      <Card className="rounded-[32px] p-6">
+      <GlassCard className="p-5 sm:p-6">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="surface-label">Paid appointments</p>
-            <p className="mt-2 text-sm text-white/58">
-              Receipts and paid ticket context stay connected to the appointment record instead of floating as separate fake money rows.
-            </p>
+            <p className="bvr-section-label">Paid appointments</p>
+            <h3 className="mt-3 text-2xl font-black tracking-[-0.03em] text-white">Receipts, tips, and closed tickets</h3>
+            <p className="mt-2 text-sm text-white/58">Receipts stay connected to the appointment record.</p>
           </div>
-          <ReceiptText className="h-5 w-5 text-[#baff69]" />
+          <ReceiptText className="h-5 w-5 text-[#a3ff12]" />
         </div>
 
         <div className="mt-4 space-y-3">
@@ -535,14 +566,10 @@ export function BarberCheckoutScreen({
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="text-lg font-semibold text-white">{appointment.display.clientName}</p>
-                  <p className="mt-2 text-sm text-white/58">
-                    {appointment.display.serviceName} | {formatDateTime(appointment.start)}
-                  </p>
-                  <p className="mt-2 text-sm text-white/52">
-                    {appointment.financial.latestStatusLabel} | Tip {currency(appointment.financial.tipAmount)}
-                  </p>
+                  <p className="mt-2 text-sm text-white/58">{appointment.display.serviceName} | {formatDateTime(appointment.start)}</p>
+                  <p className="mt-2 text-sm text-white/52">{appointment.financial.latestStatusLabel} | Tip {currency(appointment.financial.tipAmount)}</p>
                 </div>
-                <div className="rounded-[18px] border border-white/8 bg-black/18 px-4 py-3 text-right">
+                <div className="rounded-[18px] border border-white/8 bg-black/24 px-4 py-3 text-right">
                   <p className="surface-label">Collected</p>
                   <p className="mt-2 text-lg font-semibold text-white">{currency(appointment.financial.capturedAmount || appointment.totalAmount)}</p>
                   <p className="mt-1 text-sm text-white/52">{formatStatusLabel(appointment.status)}</p>
@@ -550,12 +577,12 @@ export function BarberCheckoutScreen({
               </div>
             </div>
           )) : (
-            <div className="rounded-[24px] border border-dashed border-white/10 bg-black/18 p-5 text-sm leading-7 text-white/58">
-              No paid appointments have landed yet today. Completed paid tickets will appear here once the live checkout rail closes them.
+            <div className="rounded-[24px] border border-dashed border-white/10 bg-black/20 p-5 text-sm leading-7 text-white/58">
+              Paid tickets will appear here once the live checkout rail closes them.
             </div>
           )}
         </div>
-      </Card>
+      </GlassCard>
 
       <div id="barber-checkout-earnings" className="scroll-mt-6">
         <BarberEarningsWorkspace barberName={barberName} />
@@ -564,48 +591,6 @@ export function BarberCheckoutScreen({
       <div id="barber-checkout-services" className="scroll-mt-6">
         <ServiceCatalogWorkspace role={barberRole} />
       </div>
-
-      <Card className="rounded-[32px] p-6">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="surface-label">What lives here</p>
-            <p className="mt-2 text-sm text-white/58">
-              Checkout keeps payment state, paid tickets, services, and money clarity together without turning Profile or Calendar into finance surfaces.
-            </p>
-          </div>
-          <Scissors className="h-5 w-5 text-[#d7ffab]" />
-        </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-[20px] border border-white/8 bg-black/20 p-4 text-sm leading-6 text-white/66">
-            <div className="inline-flex items-center gap-2 text-white/78">
-              <CircleDollarSign className="h-4 w-4 text-[#d7ffab]" />
-              Checkout
-            </div>
-            <p className="mt-3">Payment state, paid tickets, receipts, and service-money posture.</p>
-          </div>
-          <div className="rounded-[20px] border border-white/8 bg-black/20 p-4 text-sm leading-6 text-white/66">
-            <div className="inline-flex items-center gap-2 text-white/78">
-              <CalendarDays className="h-4 w-4 text-[#baff69]" />
-              Calendar
-            </div>
-            <p className="mt-3">Schedule control, blocked time, weekly hours, and appointment timing.</p>
-          </div>
-          <div className="rounded-[20px] border border-white/8 bg-black/20 p-4 text-sm leading-6 text-white/66">
-            <div className="inline-flex items-center gap-2 text-white/78">
-              <WalletCards className="h-4 w-4 text-[#d7ffab]" />
-              More
-            </div>
-            <p className="mt-3">Payout setup, verification, business model, and private account controls live under More.</p>
-          </div>
-          <div className="rounded-[20px] border border-white/8 bg-black/20 p-4 text-sm leading-6 text-white/66">
-            <div className="inline-flex items-center gap-2 text-white/78">
-              <Scissors className="h-4 w-4 text-[#baff69]" />
-              Profile
-            </div>
-            <p className="mt-3">Public barber identity, discovery media, review proof, and client-facing trust.</p>
-          </div>
-        </div>
-      </Card>
     </div>
   );
 }

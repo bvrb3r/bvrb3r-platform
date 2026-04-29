@@ -15,7 +15,7 @@ export default async function BarberCheckoutPage({
       user={user}
       activeHref="/dashboard/barber/checkout"
       title="Checkout"
-      subtitle="Charge clients, close appointments, and track payments."
+      subtitle="Process payments & close out sales"
     >
       <BarberCheckoutScreen
         barberName={user.name}

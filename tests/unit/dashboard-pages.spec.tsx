@@ -176,7 +176,7 @@ describe("dashboard role pages", () => {
     expect(getAuthorizedUserMock).toHaveBeenCalledWith(["commission_barber", "booth_rent_barber"]);
     expect(screen.getByRole("heading", { name: "Calendar" })).toBeInTheDocument();
     expect(screen.getByTestId("barber-schedule-workspace-stub")).toHaveTextContent("Blaze King");
-    expect(screen.getByTestId("barber-workspace-stub")).toHaveTextContent("Blaze King");
+    expect(screen.getByTestId("shell-identity-name")).toHaveTextContent("Blaze King");
     expect(screen.queryByText("Owner control center")).not.toBeInTheDocument();
   });
 
@@ -188,7 +188,7 @@ describe("dashboard role pages", () => {
     expect(getAuthorizedUserMock).toHaveBeenCalledWith(["commission_barber", "booth_rent_barber"]);
     expect(screen.getByRole("heading", { name: "Calendar" })).toBeInTheDocument();
     expect(screen.getByTestId("barber-schedule-workspace-stub")).toHaveTextContent("Blaze King");
-    expect(screen.getByTestId("barber-workspace-stub")).toHaveTextContent("Blaze King");
+    expect(screen.getByTestId("shell-identity-name")).toHaveTextContent("Blaze King");
   });
 
   it("renders the barber checkout route", async () => {
