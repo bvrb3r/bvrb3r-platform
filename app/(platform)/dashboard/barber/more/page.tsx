@@ -15,7 +15,7 @@ export default async function BarberMorePage({
       user={user}
       activeHref="/dashboard/barber/more"
       title="More"
-      subtitle="Settings, payouts, verification, and support."
+      subtitle="Manage your account, payouts & settings"
     >
       <BarberSettingsScreen user={user} initialSection={params.section} />
     </DashboardShell>
