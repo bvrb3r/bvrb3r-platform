@@ -10,7 +10,7 @@ export function BarberCalendarScreen({
 }) {
   return (
     <div className="space-y-4" data-testid="barber-calendar-screen">
-      <BarberScheduleWorkspace barberName={barberName} />
+      <BarberScheduleWorkspace barberName={barberName} surface="calendar" />
     </div>
   );
 }

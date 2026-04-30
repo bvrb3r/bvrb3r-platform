@@ -8,8 +8,8 @@ describe("dashboard shell identity and navigation", () => {
     ["manager@bvrb3r.demo", "Mia Torres", "Shop Manager", "Active role: Shop manager", ["Dashboard", "Schedule", "Team", "Queue", "Profile"]],
     ["frontdesk@bvrb3r.demo", "Kayla Brooks", "Front Desk / Kiosk Ops", "Active role: Front desk", ["Check-in", "Waitlist", "Schedule", "Barbers", "Profile"]],
     ["wave@bvrb3r.demo", "Wave Carter", "Barber Manager", "Active role: Barber manager", ["Dashboard", "Schedule", "Team", "Queue", "Profile"]],
-    ["blaze@bvrb3r.demo", "Blaze King", "Booth-Rent Barber", "Active role: Booth-rent barber", ["Calendar", "Checkout", "Profile", "Messages", "More"]],
-    ["lux@bvrb3r.demo", "Luxe Reed", "Freelance Barber", "Active role: Freelance barber", ["Calendar", "Checkout", "Profile", "Messages", "More"]],
+    ["blaze@bvrb3r.demo", "Blaze King", "Booth-Rent Barber", null, ["Calendar", "Checkout", "Profile", "Messages", "More"]],
+    ["lux@bvrb3r.demo", "Luxe Reed", "Freelance Barber", null, ["Calendar", "Checkout", "Profile", "Messages", "More"]],
     ["client@bvrb3r.demo", "Jordan Ellis", "Client", "Active role: Client", ["Home", "Search", "Activity", "Messages", "Profile"]]
   ])("renders the selected identity for %s", (email, name, title, roleLabel, navLabels) => {
     const user = resolveDemoUser(email);
@@ -23,7 +23,11 @@ describe("dashboard shell identity and navigation", () => {
 
     expect(screen.getByTestId("shell-identity-name")).toHaveTextContent(name);
     expect(screen.getByTestId("shell-identity-title")).toHaveTextContent(title);
-    expect(screen.getByTestId("shell-identity-role")).toHaveTextContent(roleLabel);
+    if (roleLabel) {
+      expect(screen.getByTestId("shell-identity-role")).toHaveTextContent(roleLabel);
+    } else {
+      expect(screen.queryByTestId("shell-identity-role")).not.toBeInTheDocument();
+    }
 
     navLabels.forEach((label, index) => {
       const links = screen.getAllByRole("link", { name: new RegExp(label, "i") });
@@ -87,7 +91,10 @@ describe("dashboard shell identity and navigation", () => {
     expect(screen.queryByRole("link", { name: /payouts/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /reviews/i })).not.toBeInTheDocument();
     expect(screen.getByText("5 tabs")).toBeInTheDocument();
-    expect(screen.getByText("5 barber tabs")).toBeInTheDocument();
+    expect(screen.queryByText("5 barber tabs")).not.toBeInTheDocument();
+    expect(screen.queryByText("Operating as")).not.toBeInTheDocument();
+    expect(screen.queryByText("Barber operating lane")).not.toBeInTheDocument();
+    expect(screen.queryByText("Chair territory")).not.toBeInTheDocument();
   });
 
   it("locks owner primary navigation to five tabs only", () => {

@@ -19,6 +19,7 @@ import {
   MapPin,
   Pencil,
   Plus,
+  ReceiptText,
   Scissors,
   Settings2,
   ShieldCheck,
@@ -28,6 +29,8 @@ import {
   type LucideIcon
 } from "lucide-react";
 import { LogoutButton } from "@/components/auth/logout-button";
+import { BarberEarningsWorkspace } from "@/components/operations/barber-earnings-workspace";
+import { BarberScheduleWorkspace } from "@/components/operations/barber-schedule-workspace";
 import { Button } from "@/components/ui/button";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Input } from "@/components/ui/input";
@@ -51,6 +54,7 @@ import {
   useBarberTrustSummary
 } from "@/lib/trust/client";
 import {
+  useBarberOverviewQuery,
   useSaveBarberSubtypeMutation,
   type BarberApiError
 } from "@/lib/operations/barber-client";
@@ -66,9 +70,13 @@ const subtypeOptions: Array<{ subtype: BarberSubtype; label: string; description
 
 const sectionIdMap = {
   account: "barber-settings-account",
+  availability: "barber-settings-availability",
   business: "barber-settings-business",
+  money: "barber-settings-money",
   verification: "barber-settings-verification",
   payouts: "barber-settings-payouts",
+  system: "barber-settings-system",
+  transactions: "barber-settings-transactions",
   support: "barber-settings-support"
 } as const;
 
@@ -96,6 +104,15 @@ function getInitials(name: string) {
     .slice(0, 2)
     .join("")
     .toUpperCase();
+}
+
+function formatDateTime(iso: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(new Date(iso));
 }
 
 function getStatusTone(value?: string | null): Tone {
@@ -218,6 +235,7 @@ export function BarberSettingsScreen({
   const verificationMeQuery = useVerificationMe(true);
   const readinessQuery = useBarberFintechReadinessQuery(true);
   const payoutsQuery = useBarberPayoutsQuery(true);
+  const overviewQuery = useBarberOverviewQuery();
   const onboardingMutation = useCreateStripeOnboardingLinkMutation();
   const dashboardMutation = useCreateStripeDashboardLinkMutation();
   const refreshMutation = useRefreshStripeConnectedAccountMutation();
@@ -241,6 +259,7 @@ export function BarberSettingsScreen({
   const readinessPayload = readinessQuery.data;
   const connectedAccount = readinessPayload?.connectedAccount;
   const payoutsPayload = payoutsQuery.data;
+  const overviewPayload = overviewQuery.data;
   const selectedSection = (initialSection && initialSection in sectionIdMap ? initialSection : null) as SettingsSectionKey | null;
   const barberPhotoUrl = mediaQuery.data?.barberProfile?.profilePhotoUrl ?? mediaQuery.data?.viewer.profilePhotoUrl ?? null;
   const shopName = readinessPayload?.memberships[0]?.shopLabel ?? user.ownedShopName ?? "Shop not set";
@@ -251,6 +270,11 @@ export function BarberSettingsScreen({
   const hasPayoutAmount = typeof readyForPayoutAmount === "number";
   const subtypeLabel = subtypeOptions.find((option) => option.subtype === selectedSubtype)?.label ?? "Freelance";
   const showOnboardingAction = Boolean(connectedAccount && connectedAccount.operationalStatus !== "payout_ready");
+  const readyForCheckout = overviewPayload?.todayAppointments.filter((appointment) => appointment.status === "completed" && appointment.financial.outstandingBalance > 0) ?? [];
+  const paidAppointments = overviewPayload?.todayAppointments.filter((appointment) => appointment.financial.capturedAmount > 0 || appointment.financial.tipAmount > 0) ?? [];
+  const assignedLocationLabels = overviewPayload?.shops.length
+    ? overviewPayload.shops.map((shop) => shop.label).join(", ")
+    : locationLabel;
 
   const statusItems = [
     {
@@ -287,11 +311,11 @@ export function BarberSettingsScreen({
 
   const businessControls = [
     { title: "Services", subtitle: "Manage pricing & offerings", href: "/dashboard/barber/checkout?section=services", icon: Scissors },
-    { title: "Availability", subtitle: "Working hours & blocked time", href: "/dashboard/barber/calendar?section=availability", icon: Clock3 },
+    { title: "Availability", subtitle: "Working hours & blocked time", href: "#barber-settings-availability", icon: Clock3 },
     { title: "Booking Settings", subtitle: "Online booking preferences", href: "/dashboard/barber/calendar", icon: CalendarDays },
     { title: "Notifications", subtitle: "Alerts & reminders", href: "#barber-settings-account", icon: BellRing },
-    { title: "Transactions", subtitle: "Sales & receipts", href: "/dashboard/barber/checkout?section=appointments", icon: ArrowLeftRight },
-    { title: "Reports", subtitle: "Performance overview", href: "/dashboard/barber/checkout?section=earnings", icon: BarChart3 },
+    { title: "Transactions", subtitle: "Sales & receipts", href: "#barber-settings-transactions", icon: ArrowLeftRight },
+    { title: "Reports", subtitle: "Performance overview", href: "#barber-settings-money", icon: BarChart3 },
     { title: "Verification", subtitle: "Identity & license status", href: "#barber-settings-verification", icon: ShieldCheck },
     { title: "Legal", subtitle: "Agreements & policies", href: "#barber-settings-legal", icon: FileText },
     { title: "Account Settings", subtitle: "Password, profile & security", href: "#barber-settings-account", icon: Settings2 }
@@ -423,6 +447,7 @@ export function BarberSettingsScreen({
         {trustQuery.error ? <FeedbackBanner tone="error" message={readableError(trustQuery.error, "Unable to load barber verification status right now.")} /> : null}
         {readinessQuery.error ? <FeedbackBanner tone="error" message={readableError(readinessQuery.error, "Unable to load payout readiness right now.")} /> : null}
         {payoutsQuery.error ? <FeedbackBanner tone="error" message={readableError(payoutsQuery.error, "Unable to load payout ledger right now.")} /> : null}
+        {overviewQuery.error ? <FeedbackBanner tone="error" message={readableError(overviewQuery.error, "Unable to load barber operating details right now.")} /> : null}
 
         {!embedded ? (
           <header className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
@@ -757,13 +782,108 @@ export function BarberSettingsScreen({
               </div>
             </GlassCard>
           </div>
+
+          <GlassCard id="barber-settings-system" className="scroll-mt-6 p-5 sm:p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <SectionLabel>System / Account Info</SectionLabel>
+                <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-white">Private barber setup</h2>
+                <p className="mt-2 text-sm leading-6 text-white/56">Operational account details live here instead of the main tabs.</p>
+              </div>
+              <CircleIcon icon={SlidersHorizontal} className="h-11 w-11 rounded-2xl" />
+            </div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {[
+                ["Operating Mode", subtypeLabel],
+                ["Role", "Barber"],
+                ["Approval Status", formatStatusLabel(user.appApprovalStatus)],
+                ["Chair Scope", user.locationIds.length ? `${user.locationIds.length} assigned` : "Not set"],
+                ["Assigned Locations", assignedLocationLabels],
+                ["Payout Mode", connectedAccount?.payoutsEnabled ? "Ready" : formatStatusLabel(payoutStatus)]
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-[20px] border border-white/8 bg-black/24 p-4">
+                  <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-white/40">{label}</p>
+                  <p className="mt-2 text-sm font-bold text-white">{value}</p>
+                </div>
+              ))}
+            </div>
+          </GlassCard>
+
+          <div id="barber-settings-availability" className="scroll-mt-6">
+            <BarberScheduleWorkspace barberName={user.name} surface="availability" />
+          </div>
+
+          <GlassCard id="barber-settings-money" className="scroll-mt-6 p-5 sm:p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <SectionLabel>Money Posture</SectionLabel>
+                <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-white">Earnings and payout readiness</h2>
+                <p className="mt-2 text-sm leading-6 text-white/56">Financial summaries live in More so Checkout can stay focused on sale entry.</p>
+              </div>
+              <CircleIcon icon={WalletCards} className="h-11 w-11 rounded-2xl" />
+            </div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
+                <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-white/40">Ready now</p>
+                <p className="mt-3 text-2xl font-black text-white">{readyForCheckout.length}</p>
+                <p className="mt-2 text-sm text-white/56">Waiting closeout.</p>
+              </div>
+              <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
+                <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-white/40">Paid today</p>
+                <p className="mt-3 text-2xl font-black text-white">{paidAppointments.length}</p>
+                <p className="mt-2 text-sm text-white/56">Captured or tipped.</p>
+              </div>
+              <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
+                <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-white/40">Gross today</p>
+                <p className="mt-3 text-2xl font-black text-[#a3ff12]">{currency(overviewPayload?.earnings.grossSales ?? 0)}</p>
+                <p className="mt-2 text-sm text-white/56">{connectedAccount?.payoutsEnabled ? "Payouts ready." : "Review payout status."}</p>
+              </div>
+            </div>
+          </GlassCard>
+
+          <GlassCard id="barber-settings-transactions" className="scroll-mt-6 p-5 sm:p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <SectionLabel>Transactions</SectionLabel>
+                <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-white">Paid appointments and receipts</h2>
+                <p className="mt-2 text-sm leading-6 text-white/56">Completed bookings and payment status stay connected to appointment records.</p>
+              </div>
+              <CircleIcon icon={ReceiptText} className="h-11 w-11 rounded-2xl" />
+            </div>
+            <div className="mt-5 space-y-3">
+              {paidAppointments.length ? paidAppointments.map((appointment) => (
+                <div key={`more-paid-${appointment.id}`} className="rounded-[24px] border border-white/8 bg-black/24 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-lg font-bold text-white">{appointment.display.clientName}</p>
+                      <p className="mt-2 text-sm text-white/58">{appointment.display.serviceName} | {formatDateTime(appointment.start)}</p>
+                      <p className="mt-2 text-sm text-white/52">{appointment.financial.latestStatusLabel} | Tip {currency(appointment.financial.tipAmount)}</p>
+                    </div>
+                    <div className="rounded-[18px] border border-white/8 bg-black/30 px-4 py-3 text-right">
+                      <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-white/40">Collected</p>
+                      <p className="mt-2 text-lg font-black text-white">{currency(appointment.financial.capturedAmount || appointment.totalAmount)}</p>
+                      <p className="mt-1 text-sm text-white/52">{formatStatusLabel(appointment.status)}</p>
+                    </div>
+                  </div>
+                </div>
+              )) : (
+                <div className="rounded-[24px] border border-dashed border-white/10 bg-black/24 p-5 text-sm leading-7 text-white/58">
+                  Paid tickets will appear here once checkout closes them.
+                </div>
+              )}
+            </div>
+          </GlassCard>
+
+          <div className="scroll-mt-6">
+            <BarberEarningsWorkspace barberName={user.name} />
+          </div>
         </section>
 
         <section className="space-y-4">
           <SectionLabel>Quick Actions</SectionLabel>
           <div className="flex flex-wrap gap-3">
             <QuickActionLink href="/dashboard/barber/checkout?section=services" icon={Plus}>Add Service</QuickActionLink>
-            <QuickActionLink href="/dashboard/barber/calendar?section=availability" icon={Clock3}>Update Availability</QuickActionLink>
+            <QuickActionLink href="#barber-settings-availability" icon={Clock3}>Update Availability</QuickActionLink>
             <QuickActionLink href="/dashboard/barber/messages" icon={LifeBuoy}>Contact Support</QuickActionLink>
           </div>
         </section>

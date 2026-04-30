@@ -82,6 +82,10 @@ function getNavigation(user: UserAccount): NavItem[] {
   }
 }
 
+function isBarberRole(role: Role) {
+  return role === "commission_barber" || role === "booth_rent_barber";
+}
+
 function getPrimaryFocusLabel(role: Role) {
   switch (role) {
     case "owner":
@@ -92,7 +96,7 @@ function getPrimaryFocusLabel(role: Role) {
       return "Check-in workflow";
     case "commission_barber":
     case "booth_rent_barber":
-      return "Barber operating lane";
+      return "Barber tools";
     case "client":
       return "Client home";
     default:
@@ -110,7 +114,7 @@ function getPrimaryActionTitle(role: Role) {
       return "Move arrivals from the door to the right chair without friction.";
     case "commission_barber":
     case "booth_rent_barber":
-      return "Calendar opens straight into the chair schedule, Checkout keeps money moving, Profile controls the public barber story, Messages keeps conversations organized, and More holds private setup.";
+      return "Calendar, Checkout, Profile, Messages, and More stay focused by job.";
     case "client":
       return "Home keeps fast booking close, Search keeps discovery precise, Activity owns appointments and receipts, Messages keeps support visible, and Profile holds account controls.";
     default:
@@ -127,9 +131,9 @@ function getBoundaryCopy(role: Role) {
     case "front_desk":
       return "Front desk mode stays focused on queue movement, guest support, check-in flow, and handoff clarity.";
     case "commission_barber":
-      return "Commission barber mode keeps Calendar on chair control, Checkout on real money, Profile on public reputation, Messages on appointment communication, and More on private setup.";
+      return "Barber tools stay separated so schedule, payment, profile, messages, and setup stay easy to scan.";
     case "booth_rent_barber":
-      return "Booth-rent mode keeps Calendar on live availability, Checkout on independent money clarity, Profile on discovery identity, Messages on client communication, and More on compliance plus payout setup.";
+      return "Barber tools stay separated so schedule, payment, profile, messages, and setup stay easy to scan.";
     case "client":
       return "Client mode keeps Home, Search, Activity, Messages, and Profile separated cleanly so booking, communication, and account controls stay obvious.";
     default:
@@ -147,7 +151,7 @@ function getLocationScopeLabel(role: Role) {
       return "Desk coverage";
     case "commission_barber":
     case "booth_rent_barber":
-      return "Chair territory";
+      return "Assigned locations";
     case "client":
       return "Preferred shop";
     default:
@@ -165,7 +169,7 @@ function getAlertLabel(role: Role) {
       return "No queue alerts yet";
     case "commission_barber":
     case "booth_rent_barber":
-      return "No chair alerts yet";
+      return "No alerts yet";
     case "client":
       return "No booking reminders yet";
     default:
@@ -220,9 +224,9 @@ function getUtilityCards(user: UserAccount): UtilityCard[] {
     case "commission_barber":
     case "booth_rent_barber":
       return [
-        { label: "Barber lane", value: user.barberSubtype?.replaceAll("_", " ") ?? "ready", detail: "Calendar, Checkout, Profile, Messages, and More all stay tied to this authenticated barber account.", icon: CalendarDays },
-        { label: "Approval", value: user.appApprovalStatus?.replaceAll("_", " ") ?? "ready", detail: user.shopApprovalStatus && user.shopApprovalStatus !== "not_required" ? `Shop approval ${user.shopApprovalStatus.replaceAll("_", " ")}` : "No extra shop approval required", icon: ShieldCheck },
-        { label: "Chair scope", value: String(user.locationIds.length), detail: "Assigned locations, payout posture, and availability scope on this session", icon: WalletCards }
+        { label: "Barber account", value: user.barberSubtype?.replaceAll("_", " ") ?? "ready", detail: "Private account details stay in More.", icon: CalendarDays },
+        { label: "Approval status", value: user.appApprovalStatus?.replaceAll("_", " ") ?? "ready", detail: user.shopApprovalStatus && user.shopApprovalStatus !== "not_required" ? `Shop approval ${user.shopApprovalStatus.replaceAll("_", " ")}` : "No extra shop approval required", icon: ShieldCheck },
+        { label: "Assigned locations", value: String(user.locationIds.length), detail: "Location and payout setup stay in More.", icon: WalletCards }
       ];
     case "client":
       return [
@@ -388,6 +392,8 @@ export function DashboardShell({
   const messagesHref = getMessagesHref(user.role);
   const profileHref = getProfileHref(user.role);
   const approvalBanner = getApprovalBanner(user);
+  const isBarberDashboard = isBarberRole(user.role);
+  const showShellContext = !isBarberDashboard;
 
   return (
     <div className="app-screen safe-top-pad px-2 py-2 pb-[calc(env(safe-area-inset-bottom,0px)+6.5rem)] sm:px-3 sm:py-3 lg:px-5 lg:py-5 lg:pb-5">
@@ -398,41 +404,47 @@ export function DashboardShell({
             <h1 className="mt-3 text-3xl font-semibold" data-display="true" data-testid="shell-business-name">{primaryShellIdentity}</h1>
             <p className="mt-4 text-sm text-white/60" data-testid="shell-identity-name">{user.name}</p>
             <p className="mt-1 text-[11px] uppercase tracking-[0.22em] text-white/40" data-testid="shell-identity-title">{user.title}</p>
-            <div className="mt-4 inline-flex items-center rounded-full border border-white/10 bg-black/35 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-[#cfff93]" data-testid="shell-identity-role">
-              Active role: {activeRole}
-            </div>
+            {showShellContext ? (
+              <div className="mt-4 inline-flex items-center rounded-full border border-white/10 bg-black/35 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-[#cfff93]" data-testid="shell-identity-role">
+                Active role: {activeRole}
+              </div>
+            ) : null}
           </div>
 
-          <div className="mt-5 rounded-[28px] border border-white/8 bg-[linear-gradient(180deg,rgba(20,20,20,0.92),rgba(8,8,8,0.96))] p-4">
-            <div className="flex items-start gap-3">
-              <div className="mt-1 rounded-full border border-[#7CFF00]/18 bg-[#7CFF00]/10 p-2 text-[#d7ffab]">
-                <ShieldCheck className="h-4 w-4" />
-              </div>
-              <div>
-                <p className="surface-label">{getPrimaryFocusLabel(user.role)}</p>
-                <p className="mt-3 text-sm leading-6 text-white/82">{getPrimaryActionTitle(user.role)}</p>
-                <p className="mt-3 text-sm leading-6 text-white/54">{getBoundaryCopy(user.role)}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-5 grid gap-3">
-            {utilityCards.map((card) => {
-              const Icon = card.icon;
-              return (
-                <div key={card.label} className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="surface-label">{card.label}</p>
-                      <p className="mt-3 text-2xl font-semibold" data-display="true">{card.value}</p>
-                      <p className="mt-2 text-sm leading-6 text-white/58">{card.detail}</p>
-                    </div>
-                    <Icon className="mt-1 h-5 w-5 text-[#baff69]" />
-                  </div>
+          {showShellContext ? (
+            <div className="mt-5 rounded-[28px] border border-white/8 bg-[linear-gradient(180deg,rgba(20,20,20,0.92),rgba(8,8,8,0.96))] p-4">
+              <div className="flex items-start gap-3">
+                <div className="mt-1 rounded-full border border-[#7CFF00]/18 bg-[#7CFF00]/10 p-2 text-[#d7ffab]">
+                  <ShieldCheck className="h-4 w-4" />
                 </div>
-              );
-            })}
-          </div>
+                <div>
+                  <p className="surface-label">{getPrimaryFocusLabel(user.role)}</p>
+                  <p className="mt-3 text-sm leading-6 text-white/82">{getPrimaryActionTitle(user.role)}</p>
+                  <p className="mt-3 text-sm leading-6 text-white/54">{getBoundaryCopy(user.role)}</p>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {showShellContext ? (
+            <div className="mt-5 grid gap-3">
+              {utilityCards.map((card) => {
+                const Icon = card.icon;
+                return (
+                  <div key={card.label} className="rounded-[24px] border border-white/8 bg-black/20 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="surface-label">{card.label}</p>
+                        <p className="mt-3 text-2xl font-semibold" data-display="true">{card.value}</p>
+                        <p className="mt-2 text-sm leading-6 text-white/58">{card.detail}</p>
+                      </div>
+                      <Icon className="mt-1 h-5 w-5 text-[#baff69]" />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
 
           <div className="mt-6">
             <div className="mb-3 flex items-center justify-between gap-3">
@@ -469,24 +481,26 @@ export function DashboardShell({
             </div>
           </div>
 
-          <div className="mt-6 rounded-[28px] border border-white/8 bg-[linear-gradient(180deg,rgba(26,26,26,0.9),rgba(10,10,10,0.96))] p-4">
-            <div className="flex items-center justify-between gap-3">
-              <p className="surface-label">{getLocationScopeLabel(user.role)}</p>
-              <MapPinned className="h-4 w-4 text-[#baff69]" />
+          {showShellContext ? (
+            <div className="mt-6 rounded-[28px] border border-white/8 bg-[linear-gradient(180deg,rgba(26,26,26,0.9),rgba(10,10,10,0.96))] p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="surface-label">{getLocationScopeLabel(user.role)}</p>
+                <MapPinned className="h-4 w-4 text-[#baff69]" />
+              </div>
+              <div className="mt-4 space-y-3 text-sm text-white/78">
+                {visibleLocations.length ? visibleLocations.map((location) => (
+                  <div key={location.id} className="flex items-center justify-between gap-3 rounded-[20px] border border-white/6 bg-black/25 px-3 py-3">
+                    <span>{location.name}</span>
+                    <span className="text-[10px] uppercase tracking-[0.22em] text-[#cfff93]">{location.city}</span>
+                  </div>
+                )) : (
+                  <div className="rounded-[20px] border border-dashed border-white/10 bg-black/25 px-3 py-3 text-white/52">
+                    No assigned locations yet.
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="mt-4 space-y-3 text-sm text-white/78">
-              {visibleLocations.length ? visibleLocations.map((location) => (
-                <div key={location.id} className="flex items-center justify-between gap-3 rounded-[20px] border border-white/6 bg-black/25 px-3 py-3">
-                  <span>{location.name}</span>
-                  <span className="text-[10px] uppercase tracking-[0.22em] text-[#cfff93]">{location.city}</span>
-                </div>
-              )) : (
-                <div className="rounded-[20px] border border-dashed border-white/10 bg-black/25 px-3 py-3 text-white/52">
-                  No assigned locations yet.
-                </div>
-              )}
-            </div>
-          </div>
+          ) : null}
         </Card>
 
         <div className="min-w-0 space-y-4">
@@ -514,75 +528,83 @@ export function DashboardShell({
               </div>
             </div>
 
-            <div className="mt-4 flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="text-sm text-white/68" data-testid="shell-mobile-identity-name">{user.name}</p>
-                <p className="mt-1 text-[11px] uppercase tracking-[0.22em] text-white/40" data-testid="shell-mobile-identity-title">{user.title}</p>
-              </div>
-              <div className="rounded-[20px] border border-[#7CFF00]/16 bg-[#7CFF00]/8 px-3 py-3 text-right">
-                <p className="surface-label text-[#d7ffab]">Active role</p>
-                <p className="mt-2 text-sm font-medium text-white" data-testid="shell-mobile-identity-role">{activeRole}</p>
-              </div>
-            </div>
-
-            <div className="mt-4 rounded-[24px] border border-white/8 bg-black/20 p-4">
-              <p className="surface-label">{getPrimaryFocusLabel(user.role)}</p>
-              <p className="mt-3 text-lg font-semibold leading-7 text-white">{getPrimaryActionTitle(user.role)}</p>
-              <p className="mt-3 text-sm leading-6 text-white/62">{getBoundaryCopy(user.role)}</p>
-            </div>
-
-            <div className="mt-4 grid gap-3 sm:grid-cols-3">
-              {utilityCards.map((card) => {
-                const Icon = card.icon;
-                return (
-                  <div key={`mobile-${card.label}`} className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="surface-label">{card.label}</p>
-                        <p className="mt-3 text-xl font-semibold text-white">{card.value}</p>
-                        <p className="mt-2 text-sm leading-6 text-white/56">{card.detail}</p>
-                      </div>
-                      <Icon className="mt-1 h-4 w-4 text-[#baff69]" />
-                    </div>
+            {showShellContext ? (
+              <>
+                <div className="mt-4 flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm text-white/68" data-testid="shell-mobile-identity-name">{user.name}</p>
+                    <p className="mt-1 text-[11px] uppercase tracking-[0.22em] text-white/40" data-testid="shell-mobile-identity-title">{user.title}</p>
                   </div>
-                );
-              })}
-            </div>
+                  <div className="rounded-[20px] border border-[#7CFF00]/16 bg-[#7CFF00]/8 px-3 py-3 text-right">
+                    <p className="surface-label text-[#d7ffab]">Active role</p>
+                    <p className="mt-2 text-sm font-medium text-white" data-testid="shell-mobile-identity-role">{activeRole}</p>
+                  </div>
+                </div>
 
-            <div className="mt-3 flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.22em] text-white/48">
-              {visibleLocations.length ? visibleLocations.map((location) => (
-                <span key={`mobile-location-${location.id}`} className="status-pill text-white/72">{location.name}</span>
-              )) : <span className="status-pill text-white/52">No assigned locations yet</span>}
-            </div>
+                <div className="mt-4 rounded-[24px] border border-white/8 bg-black/20 p-4">
+                  <p className="surface-label">{getPrimaryFocusLabel(user.role)}</p>
+                  <p className="mt-3 text-lg font-semibold leading-7 text-white">{getPrimaryActionTitle(user.role)}</p>
+                  <p className="mt-3 text-sm leading-6 text-white/62">{getBoundaryCopy(user.role)}</p>
+                </div>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  {utilityCards.map((card) => {
+                    const Icon = card.icon;
+                    return (
+                      <div key={`mobile-${card.label}`} className="rounded-[22px] border border-white/8 bg-black/20 p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="surface-label">{card.label}</p>
+                            <p className="mt-3 text-xl font-semibold text-white">{card.value}</p>
+                            <p className="mt-2 text-sm leading-6 text-white/56">{card.detail}</p>
+                          </div>
+                          <Icon className="mt-1 h-4 w-4 text-[#baff69]" />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.22em] text-white/48">
+                  {visibleLocations.length ? visibleLocations.map((location) => (
+                    <span key={`mobile-location-${location.id}`} className="status-pill text-white/72">{location.name}</span>
+                  )) : <span className="status-pill text-white/52">No assigned locations yet</span>}
+                </div>
+              </>
+            ) : null}
           </Card>
 
           <Card className="rounded-[34px] bg-[linear-gradient(180deg,rgba(16,16,16,0.98),rgba(8,8,8,0.98))] p-5 sm:p-6">
             <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
               <div>
-                <div className="editorial-kicker">
-                  <span className="accent-rule" />
-                  {getPrimaryFocusLabel(user.role)}
-                </div>
+                {showShellContext ? (
+                  <div className="editorial-kicker">
+                    <span className="accent-rule" />
+                    {getPrimaryFocusLabel(user.role)}
+                  </div>
+                ) : null}
                 <h2 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">{title}</h2>
                 <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">{subtitle}</p>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2 lg:max-w-[30rem] lg:self-start xl:w-auto">
-                <div className="rounded-[24px] border border-white/8 bg-black/25 p-4">
-                  <p className="surface-label">Operating as</p>
-                  <p className="mt-3 text-lg font-medium">{activeRole}</p>
-                  <p className="mt-2 text-sm text-white/56">{getAlertLabel(user.role)}</p>
-                </div>
-                <div className="rounded-[24px] border border-white/8 bg-black/25 p-4">
-                  <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/35 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-white/68">
-                    <Bell className="h-4 w-4 text-[#baff69]" />
-                    {getHeroNavigationCountLabel(user.role, nav.length)}
+              {showShellContext ? (
+                <div className="grid gap-3 sm:grid-cols-2 lg:max-w-[30rem] lg:self-start xl:w-auto">
+                  <div className="rounded-[24px] border border-white/8 bg-black/25 p-4">
+                    <p className="surface-label">Operating as</p>
+                    <p className="mt-3 text-lg font-medium">{activeRole}</p>
+                    <p className="mt-2 text-sm text-white/56">{getAlertLabel(user.role)}</p>
                   </div>
-                  <p className="mt-3 text-sm leading-6 text-white/56">{getBoundaryCopy(user.role)}</p>
+                  <div className="rounded-[24px] border border-white/8 bg-black/25 p-4">
+                    <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/35 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-white/68">
+                      <Bell className="h-4 w-4 text-[#baff69]" />
+                      {getHeroNavigationCountLabel(user.role, nav.length)}
+                    </div>
+                    <p className="mt-3 text-sm leading-6 text-white/56">{getBoundaryCopy(user.role)}</p>
+                  </div>
                 </div>
-              </div>
+              ) : null}
             </div>
           </Card>
-          {approvalBanner ? (
+          {showShellContext && approvalBanner ? (
             <Card className="rounded-[30px] border border-[#cfff93]/18 bg-[linear-gradient(180deg,rgba(124,255,0,0.08),rgba(10,10,10,0.98))] p-5 sm:p-6">
               <p className="surface-label text-[#d7ffab]">{approvalBanner.eyebrow}</p>
               <div className="mt-3 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">

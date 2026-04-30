@@ -9,22 +9,18 @@ import {
   History,
   Plus,
   ReceiptText,
-  Scissors,
-  WalletCards
+  Scissors
 } from "lucide-react";
-import { ServiceCatalogWorkspace } from "@/components/marketplace/service-catalog-workspace";
-import { BarberEarningsWorkspace } from "@/components/operations/barber-earnings-workspace";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { ActionButton, GlassCard, StatusBadge } from "@/design/components";
 import { useMarketplaceServiceCatalog } from "@/lib/marketplace/client";
 import { useBarberOverviewQuery } from "@/lib/operations/barber-client";
-import { cn, currency } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { getReadableActionError } from "@/lib/utils/feedback";
 import type { Role } from "@/types/domain";
 
 const sectionIdMap = {
   appointments: "barber-checkout-appointments",
-  earnings: "barber-checkout-earnings",
   services: "barber-checkout-services"
 } as const;
 
@@ -35,6 +31,12 @@ const checkoutPanels = [
 ] as const;
 
 const quickAmounts = [25, 35, 40] as const;
+const checkoutCurrencyFormatter = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2
+});
 const keypadButtons = [
   { key: "1", label: "1" },
   { key: "2", label: "2", sublabel: "ABC" },
@@ -54,10 +56,6 @@ type CheckoutSectionKey = keyof typeof sectionIdMap;
 type CheckoutPanelKey = (typeof checkoutPanels)[number]["key"];
 
 function normalizeCheckoutSection(section?: string): CheckoutSectionKey | null {
-  if (section === "money") {
-    return "earnings";
-  }
-
   return section && section in sectionIdMap ? (section as CheckoutSectionKey) : null;
 }
 
@@ -74,11 +72,15 @@ function normalizeCheckoutPanel(section?: string): CheckoutPanelKey {
 }
 
 function digitsToAmount(digits: string) {
-  return Number(digits || "0") / 100;
+  return Number(digits || "0");
 }
 
 function amountToDigits(amount: number) {
-  return String(Math.round(amount * 100));
+  return String(Math.round(amount));
+}
+
+function formatCheckoutAmount(amount: number) {
+  return checkoutCurrencyFormatter.format(amount);
 }
 
 function formatDateTime(iso: string) {
@@ -90,13 +92,7 @@ function formatDateTime(iso: string) {
   }).format(new Date(iso));
 }
 
-function formatStatusLabel(value: string) {
-  return value.replaceAll("_", " ").replace(/\b\w/g, (segment) => segment.toUpperCase());
-}
-
 export function BarberCheckoutScreen({
-  barberName,
-  barberRole,
   initialSection
 }: {
   barberName: string;
@@ -108,7 +104,6 @@ export function BarberCheckoutScreen({
   const payload = overviewQuery.data;
   const todayAppointments = payload?.todayAppointments ?? [];
   const readyForCheckout = todayAppointments.filter((appointment) => appointment.status === "completed" && appointment.financial.outstandingBalance > 0);
-  const paidAppointments = todayAppointments.filter((appointment) => appointment.financial.capturedAmount > 0 || appointment.financial.tipAmount > 0);
   const selectedSection = normalizeCheckoutSection(initialSection);
   const [activePanel, setActivePanel] = useState<CheckoutPanelKey>(() => normalizeCheckoutPanel(initialSection));
   const [chargeDigits, setChargeDigits] = useState("0");
@@ -172,7 +167,7 @@ export function BarberCheckoutScreen({
 
     setPanelFeedback({
       tone: "info",
-      message: "Review is ready. Live payment capture still uses the shared canonical checkout rail."
+      message: "Review is ready."
     });
     openDetailSection("appointments");
   }
@@ -182,7 +177,7 @@ export function BarberCheckoutScreen({
     setSelectedServiceLabel(service.name);
     setPanelFeedback({
       tone: "info",
-      message: `${service.name} loaded into Keypad. Live capture still follows the protected checkout rail.`
+      message: `${service.name} loaded into Keypad.`
     });
     setActivePanel("keypad");
   }
@@ -190,14 +185,14 @@ export function BarberCheckoutScreen({
   function handleNoteAction() {
     setPanelFeedback({
       tone: "info",
-      message: "Notes stay attached during the protected review and appointment checkout flow."
+      message: "Add a sale note during review."
     });
   }
 
   function handleSecondaryMoneyAction(label: string) {
     setPanelFeedback({
       tone: "info",
-      message: `${label} is handled during payment review so discounts, tips, and receipts stay auditable.`
+      message: `${label} opens during payment review.`
     });
   }
 
@@ -250,7 +245,7 @@ export function BarberCheckoutScreen({
               <section className="mt-[38px]">
                 <p className="text-lg font-medium text-white/60">Total Amount</p>
                 <p className="mt-2 text-[5.3rem] font-black leading-[0.95] tracking-[-0.07em] text-[#a3ff12] [text-shadow:0_0_34px_rgba(163,255,18,0.24)] sm:text-[6rem]">
-                  {currency(keypadAmount)}
+                  {formatCheckoutAmount(keypadAmount)}
                 </p>
                 {selectedServiceLabel ? <p className="mt-3 text-sm font-semibold text-white/60">{selectedServiceLabel} loaded into the sale.</p> : null}
               </section>
@@ -271,7 +266,7 @@ export function BarberCheckoutScreen({
                     className="h-[88px] rounded-[12px] border border-white/10 bg-white/[0.035] text-base font-extrabold text-white transition hover:border-[#a3ff12]/25 hover:bg-[#a3ff12]/[0.04] sm:text-2xl"
                     onClick={() => handleQuickAmount(amount)}
                   >
-                    {currency(amount)}
+                    {formatCheckoutAmount(amount)}
                   </button>
                 ))}
               </section>
@@ -376,7 +371,7 @@ export function BarberCheckoutScreen({
           ) : null}
 
           {activePanel === "appointments" ? (
-            <section className="mt-7 grid gap-4 xl:grid-cols-2">
+            <section id="barber-checkout-appointments" className="mt-7 scroll-mt-6">
               <GlassCard className="p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -394,40 +389,12 @@ export function BarberCheckoutScreen({
                           <p className="mt-2 text-sm text-white/58">{appointment.display.serviceName}</p>
                           <p className="mt-2 text-sm text-white/48">{formatDateTime(appointment.start)}</p>
                         </div>
-                        <StatusBadge>{currency(appointment.financial.outstandingBalance)} due</StatusBadge>
+                        <StatusBadge>{formatCheckoutAmount(appointment.financial.outstandingBalance)} due</StatusBadge>
                       </div>
                     </div>
                   )) : (
                     <div className="rounded-[22px] border border-dashed border-white/10 bg-black/20 p-4 text-sm text-white/58">
                       No unpaid completed tickets are waiting right now.
-                    </div>
-                  )}
-                </div>
-              </GlassCard>
-
-              <GlassCard className="p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="bvr-section-label">Receipts</p>
-                    <h3 className="mt-3 text-2xl font-black tracking-[-0.03em] text-white">Paid today</h3>
-                  </div>
-                  <ReceiptText className="h-5 w-5 text-[#a3ff12]" />
-                </div>
-                <div className="mt-4 space-y-3">
-                  {paidAppointments.length ? paidAppointments.slice(0, 4).map((appointment) => (
-                    <div key={`panel-paid-${appointment.id}`} className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-semibold text-white">{appointment.display.clientName}</p>
-                          <p className="mt-2 text-sm text-white/58">{appointment.display.serviceName}</p>
-                          <p className="mt-2 text-sm text-white/48">Tip {currency(appointment.financial.tipAmount)}</p>
-                        </div>
-                        <StatusBadge tone="neutral">{currency(appointment.financial.capturedAmount || appointment.totalAmount)}</StatusBadge>
-                      </div>
-                    </div>
-                  )) : (
-                    <div className="rounded-[22px] border border-dashed border-white/10 bg-black/20 p-4 text-sm text-white/58">
-                      Paid tickets will appear here once checkout closes them.
                     </div>
                   )}
                 </div>
@@ -454,7 +421,7 @@ export function BarberCheckoutScreen({
                       className="rounded-[22px] border border-white/8 bg-black/20 p-4 text-left transition hover:border-[#a3ff12]/24 hover:bg-black/30"
                     >
                       <p className="font-semibold text-white">{item.service.name}</p>
-                      <p className="mt-2 text-sm text-white/58">{currency(item.service.price)} | {item.service.durationMin} min</p>
+                      <p className="mt-2 text-sm text-white/58">{formatCheckoutAmount(item.service.price)} | {item.service.durationMin} min</p>
                       <p className="mt-2 text-sm text-white/48">{item.ownerLabel}</p>
                     </button>
                   )) : (
@@ -465,9 +432,9 @@ export function BarberCheckoutScreen({
                 </div>
               </GlassCard>
 
-              <GlassCard className="p-5">
+              <GlassCard id="barber-checkout-services" className="scroll-mt-6 p-5">
                 <p className="bvr-section-label">Loaded sale</p>
-                <p className="mt-4 text-5xl font-black tracking-[-0.06em] text-[#a3ff12]">{currency(keypadAmount)}</p>
+                <p className="mt-4 text-5xl font-black tracking-[-0.06em] text-[#a3ff12]">{formatCheckoutAmount(keypadAmount)}</p>
                 <p className="mt-3 text-sm text-white/58">
                   {selectedServiceLabel ? `${selectedServiceLabel} is ready in Keypad.` : "Choose a service to load its live price into Keypad."}
                 </p>
@@ -475,122 +442,12 @@ export function BarberCheckoutScreen({
                   <ActionButton type="button" onClick={() => setActivePanel("keypad")}>
                     Back to Keypad
                   </ActionButton>
-                  <ActionButton type="button" variant="secondary" onClick={() => openDetailSection("services")}>
-                    Open full service library
-                  </ActionButton>
                 </div>
               </GlassCard>
             </section>
           ) : null}
         </div>
       </GlassCard>
-
-      <section id="barber-checkout-appointments" className="grid scroll-mt-6 gap-4 xl:grid-cols-[1.05fr_0.95fr]">
-        <GlassCard className="p-5 sm:p-6">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="bvr-section-label">Appointment payments</p>
-              <h3 className="mt-3 text-2xl font-black tracking-[-0.03em] text-white">Completed tickets</h3>
-              <p className="mt-2 text-sm text-white/58">Real appointment balances only.</p>
-            </div>
-            <CircleDollarSign className="h-5 w-5 text-[#a3ff12]" />
-          </div>
-
-          <div className="mt-4 space-y-3">
-            {readyForCheckout.length ? readyForCheckout.map((appointment) => (
-              <div key={appointment.id} className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-lg font-semibold text-white">{appointment.display.clientName}</p>
-                    <p className="mt-2 text-sm text-white/58">{appointment.display.serviceName} | {formatDateTime(appointment.start)}</p>
-                    <p className="mt-2 text-sm text-white/52">{appointment.display.locationLabel}</p>
-                  </div>
-                  <div className="rounded-[18px] border border-white/8 bg-black/24 px-4 py-3 text-right">
-                    <p className="surface-label">Balance due</p>
-                    <p className="mt-2 text-lg font-semibold text-white">{currency(appointment.financial.outstandingBalance)}</p>
-                    <p className="mt-1 text-sm text-white/52">{appointment.financial.latestStatusLabel}</p>
-                  </div>
-                </div>
-              </div>
-            )) : (
-              <div className="rounded-[24px] border border-dashed border-white/10 bg-black/20 p-5 text-sm leading-7 text-white/58">
-                No completed tickets are waiting on checkout right now.
-              </div>
-            )}
-          </div>
-        </GlassCard>
-
-        <GlassCard className="p-5 sm:p-6">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="bvr-section-label">Money posture</p>
-              <h3 className="mt-3 text-2xl font-black tracking-[-0.03em] text-white">Today at a glance</h3>
-              <p className="mt-2 text-sm text-white/58">Fast payment context without a second source of truth.</p>
-            </div>
-            <WalletCards className="h-5 w-5 text-[#a3ff12]" />
-          </div>
-
-          <div className="mt-4 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-[20px] border border-white/8 bg-black/20 p-4">
-              <p className="surface-label">Ready now</p>
-              <p className="mt-3 text-2xl font-semibold text-white">{readyForCheckout.length}</p>
-              <p className="mt-2 text-sm text-white/58">Waiting closeout.</p>
-            </div>
-            <div className="rounded-[20px] border border-white/8 bg-black/20 p-4">
-              <p className="surface-label">Paid today</p>
-              <p className="mt-3 text-2xl font-semibold text-white">{paidAppointments.length}</p>
-              <p className="mt-2 text-sm text-white/58">Captured or tipped.</p>
-            </div>
-            <div className="rounded-[20px] border border-white/8 bg-black/20 p-4">
-              <p className="surface-label">Gross today</p>
-              <p className="mt-3 text-2xl font-semibold text-white">{currency(payload?.earnings.grossSales ?? 0)}</p>
-              <p className="mt-2 text-sm text-white/58">Posted earnings.</p>
-            </div>
-          </div>
-        </GlassCard>
-      </section>
-
-      <GlassCard className="p-5 sm:p-6">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="bvr-section-label">Paid appointments</p>
-            <h3 className="mt-3 text-2xl font-black tracking-[-0.03em] text-white">Receipts, tips, and closed tickets</h3>
-            <p className="mt-2 text-sm text-white/58">Receipts stay connected to the appointment record.</p>
-          </div>
-          <ReceiptText className="h-5 w-5 text-[#a3ff12]" />
-        </div>
-
-        <div className="mt-4 space-y-3">
-          {paidAppointments.length ? paidAppointments.map((appointment) => (
-            <div key={`paid-${appointment.id}`} className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="text-lg font-semibold text-white">{appointment.display.clientName}</p>
-                  <p className="mt-2 text-sm text-white/58">{appointment.display.serviceName} | {formatDateTime(appointment.start)}</p>
-                  <p className="mt-2 text-sm text-white/52">{appointment.financial.latestStatusLabel} | Tip {currency(appointment.financial.tipAmount)}</p>
-                </div>
-                <div className="rounded-[18px] border border-white/8 bg-black/24 px-4 py-3 text-right">
-                  <p className="surface-label">Collected</p>
-                  <p className="mt-2 text-lg font-semibold text-white">{currency(appointment.financial.capturedAmount || appointment.totalAmount)}</p>
-                  <p className="mt-1 text-sm text-white/52">{formatStatusLabel(appointment.status)}</p>
-                </div>
-              </div>
-            </div>
-          )) : (
-            <div className="rounded-[24px] border border-dashed border-white/10 bg-black/20 p-5 text-sm leading-7 text-white/58">
-              Paid tickets will appear here once the live checkout rail closes them.
-            </div>
-          )}
-        </div>
-      </GlassCard>
-
-      <div id="barber-checkout-earnings" className="scroll-mt-6">
-        <BarberEarningsWorkspace barberName={barberName} />
-      </div>
-
-      <div id="barber-checkout-services" className="scroll-mt-6">
-        <ServiceCatalogWorkspace role={barberRole} />
-      </div>
     </div>
   );
 }

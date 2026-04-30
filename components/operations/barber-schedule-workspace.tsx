@@ -175,6 +175,13 @@ function buildWeekStrip(anchorDateKey: string) {
   });
 }
 
+function buildDayHours(anchorDateKey: string) {
+  return Array.from({ length: 24 }, (_, hour) => {
+    const hourLabel = `${hour}`.padStart(2, "0");
+    return new Date(`${anchorDateKey}T${hourLabel}:00:00`);
+  });
+}
+
 function buildWorkingHoursForm(rows: BarberWorkingHoursView[], locationId: string | null) {
   const map = new Map(rows.filter((row) => row.locationId === locationId).map((row) => [row.weekday, row]));
   return weekdayLabels.map((_, weekday) => {
@@ -516,7 +523,14 @@ function OpenSlotCard({ slot }: { slot: OpenSlotView }) {
   );
 }
 
-export function BarberScheduleWorkspace({ barberName }: { barberName: string }) {
+export type BarberScheduleWorkspaceSurface = "full" | "calendar" | "availability";
+
+export function BarberScheduleWorkspace({
+  surface = "full"
+}: {
+  barberName: string;
+  surface?: BarberScheduleWorkspaceSurface;
+}) {
   const router = useRouter();
   const availabilityRef = useRef<HTMLDivElement>(null);
   const dateInputRef = useRef<HTMLInputElement>(null);
@@ -536,6 +550,8 @@ export function BarberScheduleWorkspace({ barberName }: { barberName: string }) 
   const [blockedReason, setBlockedReason] = useState("");
   const [pendingAppointmentId, setPendingAppointmentId] = useState<string | null>(null);
   const [statusUpdate, setStatusUpdate] = useState<{ tone: "success" | "error"; message: string } | null>(null);
+  const showCalendar = surface !== "availability";
+  const showAvailability = surface !== "calendar";
 
   const payload = scheduleQuery.data;
   const locationOptions = useMemo(() => payload?.shops ?? [], [payload?.shops]);
@@ -595,6 +611,18 @@ export function BarberScheduleWorkspace({ barberName }: { barberName: string }) 
 
     return [...appointmentEntries, ...slotEntries].sort((left, right) => left.startsAt.getTime() - right.startsAt.getTime());
   }, [openSlots, visibleAppointments]);
+  const dayHourRows = useMemo(() => buildDayHours(selectedDateKey), [selectedDateKey]);
+  const timelineEntriesByHour = useMemo(() => {
+    const grouped = new Map<number, TimelineEntry[]>();
+    for (const entry of timelineEntries) {
+      const hour = entry.startsAt.getHours();
+      const existing = grouped.get(hour) ?? [];
+      existing.push(entry);
+      grouped.set(hour, existing);
+    }
+
+    return grouped;
+  }, [timelineEntries]);
   const weekStrip = useMemo(() => buildWeekStrip(selectedDateKey), [selectedDateKey]);
   const estimatedEarnings = selectedDayAppointments.reduce((sum, appointment) => sum + appointment.totalAmount, 0);
   const currentOrNextAppointmentId = visibleAppointments.find((appointment) => appointment.status === "checked_in" || appointment.status === "in_service")?.id
@@ -642,6 +670,11 @@ export function BarberScheduleWorkspace({ barberName }: { barberName: string }) 
   }
 
   function openAvailabilityControls() {
+    if (!showAvailability) {
+      router.push("/dashboard/barber/more?section=availability");
+      return;
+    }
+
     availabilityRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
@@ -741,6 +774,11 @@ export function BarberScheduleWorkspace({ barberName }: { barberName: string }) 
 
   return (
     <div className="space-y-6" data-testid="barber-schedule-workspace">
+      {!showCalendar && statusUpdate ? <FeedbackBanner tone={statusUpdate.tone} message={statusUpdate.message} /> : null}
+      {!showCalendar && errorMessage ? <FeedbackBanner tone="error" message={errorMessage} /> : null}
+
+      {showCalendar ? (
+        <>
       <GlassCard className="relative overflow-hidden rounded-[32px] p-5 sm:p-6">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(163,255,18,0.10),transparent_30%),radial-gradient(circle_at_bottom_center,rgba(163,255,18,0.06),transparent_28%)]" />
         <div className="relative space-y-6">
@@ -748,7 +786,7 @@ export function BarberScheduleWorkspace({ barberName }: { barberName: string }) 
             <div>
               <p className="bvr-section-label">Chair command calendar</p>
               <p className="mt-3 text-sm leading-6 text-white/62">
-                {barberName}&apos;s day sheet is built from real appointments, working hours, and blocked time.
+                Your day, clients, and open money slots.
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -859,11 +897,10 @@ export function BarberScheduleWorkspace({ barberName }: { barberName: string }) 
             />
           </div>
 
-          <div className="grid h-14 grid-cols-3 rounded-[18px] border border-white/8 bg-white/[0.025] p-1">
+          <div className="grid h-14 grid-cols-2 rounded-[18px] border border-white/8 bg-white/[0.025] p-1">
             {([
               ["day", "Day"],
-              ["week", "Week"],
-              ["month", "Availability"]
+              ["week", "Week"]
             ] as const).map(([viewMode, label]) => (
               <button
                 key={viewMode}
@@ -884,7 +921,7 @@ export function BarberScheduleWorkspace({ barberName }: { barberName: string }) 
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-sm font-semibold text-white/82">{timeline?.rangeLabel ?? formatShortDate(parseDateKey(selectedDateKey))}</p>
-              <p className="mt-1 text-sm text-white/50">{payload?.status.currentShopLabel ?? "Assigned chair territory"}</p>
+              <p className="mt-1 text-sm text-white/50">{payload?.status.currentShopLabel ?? "Assigned location"}</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <StatusBadge>{payload?.status.liveStatusLabel ?? "Loading"}</StatusBadge>
@@ -924,26 +961,59 @@ export function BarberScheduleWorkspace({ barberName }: { barberName: string }) 
         <div className="relative mt-6 space-y-3">
           <div className="absolute bottom-4 left-[4.45rem] top-4 hidden w-px bg-[linear-gradient(to_bottom,rgba(163,255,18,0.80),rgba(163,255,18,0.18))] sm:block" />
 
-          {selectedDateKey === getTodayDateKey() && scheduleView === "day" ? (
-            <div className="relative grid grid-cols-[4.5rem_minmax(0,1fr)] gap-4">
-              <div className="flex justify-end">
-                <span className="rounded-full bg-[#a3ff12] px-3 py-1.5 text-xs font-black text-[#050505] shadow-[0_0_24px_rgba(163,255,18,0.30)]">{formatTime(new Date())}</span>
-              </div>
-              <div className="min-h-1" />
-              <span className="absolute left-[4.22rem] top-2 hidden h-2 w-2 rounded-full bg-[#a3ff12] shadow-[0_0_18px_rgba(163,255,18,0.48)] sm:block" />
-            </div>
-          ) : null}
-
           {scheduleQuery.isLoading && !payload ? (
             <>
               <ScheduleSkeleton />
               <ScheduleSkeleton />
               <ScheduleSkeleton />
             </>
-          ) : timelineEntries.length ? timelineEntries.map((entry) => (
+          ) : scheduleView === "day" ? dayHourRows.map((hourDate) => {
+            const hourEntries = timelineEntriesByHour.get(hourDate.getHours()) ?? [];
+            const isCurrentHour = selectedDateKey === getTodayDateKey() && hourDate.getHours() === new Date().getHours();
+            return (
+              <div key={hourDate.toISOString()} className="relative grid gap-3 sm:grid-cols-[4.5rem_minmax(0,1fr)] sm:gap-4">
+                <div className="hidden justify-end pt-4 text-base font-semibold text-white/82 sm:flex">
+                  {isCurrentHour ? (
+                    <span className="rounded-full bg-[#a3ff12] px-3 py-1.5 text-xs font-black text-[#050505] shadow-[0_0_24px_rgba(163,255,18,0.30)]">
+                      {formatTime(new Date())}
+                    </span>
+                  ) : formatHour(hourDate)}
+                </div>
+                <span
+                  className={cn(
+                    "absolute left-[4.22rem] top-7 hidden h-2 w-2 rounded-full sm:block",
+                    isCurrentHour ? "bg-[#a3ff12] shadow-[0_0_18px_rgba(163,255,18,0.48)]" : "bg-white/55"
+                  )}
+                />
+                <div className="min-h-[72px] space-y-3">
+                  {hourEntries.length ? hourEntries.map((entry) => (
+                    entry.type === "appointment" ? (
+                      <AppointmentCard
+                        key={`${entry.type}-${entry.id}`}
+                        appointment={entry.appointment}
+                        viewMode={scheduleView}
+                        highlighted={entry.appointment.id === currentOrNextAppointmentId}
+                        onLifecycleAction={handleLifecycleAction}
+                        onMessage={handleMessage}
+                        isLifecyclePending={lifecycleMutation.isPending && pendingAppointmentId === entry.appointment.id}
+                        isMessagePending={createThreadMutation.isPending}
+                      />
+                    ) : (
+                      <OpenSlotCard key={`${entry.type}-${entry.id}`} slot={entry.slot} />
+                    )
+                  )) : (
+                    <div
+                      aria-label={`No appointments at ${formatHour(hourDate)}`}
+                      className="min-h-[72px] rounded-[18px] border border-white/[0.045] bg-white/[0.012]"
+                    />
+                  )}
+                </div>
+              </div>
+            );
+          }) : timelineEntries.length ? timelineEntries.map((entry) => (
             <div key={`${entry.type}-${entry.id}`} className="relative grid gap-3 sm:grid-cols-[4.5rem_minmax(0,1fr)] sm:gap-4">
               <div className="hidden justify-end pt-4 text-base font-semibold text-white/82 sm:flex">
-                {scheduleView === "day" ? formatHour(entry.startsAt) : formatShortDate(entry.startsAt)}
+                {formatShortDate(entry.startsAt)}
               </div>
               <span className="absolute left-[4.22rem] top-7 hidden h-2 w-2 rounded-full bg-white/55 sm:block" />
               {entry.type === "appointment" ? (
@@ -993,7 +1063,10 @@ export function BarberScheduleWorkspace({ barberName }: { barberName: string }) 
           </div>
         </div>
       </GlassCard>
+        </>
+      ) : null}
 
+      {showAvailability ? (
       <div ref={availabilityRef}>
         <GlassCard className="rounded-[32px] p-5 sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1134,6 +1207,7 @@ export function BarberScheduleWorkspace({ barberName }: { barberName: string }) 
           </div>
         </GlassCard>
       </div>
+      ) : null}
     </div>
   );
 }
