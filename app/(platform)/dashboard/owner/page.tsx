@@ -4,15 +4,13 @@ import { getAuthorizedUser } from "@/lib/auth/guards";
 
 export default async function OwnerDashboardPage() {
   const user = await getAuthorizedUser(["owner"]);
-  const shopName = user.ownedShopName?.trim();
   return (
     <DashboardShell
       user={user}
       activeHref="/dashboard/owner"
-      title="Home"
-      subtitle={shopName
-        ? `${shopName} live performance and next actions.`
-        : "Your shop's live performance and next actions."}
+      title="Overview"
+      subtitle="Live performance & insights"
+      hidePageHeader
     >
       <OwnerOverview />
     </DashboardShell>

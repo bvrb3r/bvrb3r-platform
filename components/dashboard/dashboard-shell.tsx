@@ -361,12 +361,14 @@ export function DashboardShell({
   title,
   subtitle,
   activeHref,
+  hidePageHeader = false,
   children
 }: {
   user: UserAccount;
   title: string;
   subtitle: string;
   activeHref?: string;
+  hidePageHeader?: boolean;
   children: React.ReactNode;
 }) {
   const nav = getNavigation(user);
@@ -574,36 +576,38 @@ export function DashboardShell({
             ) : null}
           </Card>
 
-          <Card className="rounded-[34px] bg-[linear-gradient(180deg,rgba(16,16,16,0.98),rgba(8,8,8,0.98))] p-5 sm:p-6">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-              <div>
+          {!hidePageHeader ? (
+            <Card className="rounded-[34px] bg-[linear-gradient(180deg,rgba(16,16,16,0.98),rgba(8,8,8,0.98))] p-5 sm:p-6">
+              <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                  {showShellContext ? (
+                    <div className="editorial-kicker">
+                      <span className="accent-rule" />
+                      {getPrimaryFocusLabel(user.role)}
+                    </div>
+                  ) : null}
+                  <h2 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">{title}</h2>
+                  <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">{subtitle}</p>
+                </div>
                 {showShellContext ? (
-                  <div className="editorial-kicker">
-                    <span className="accent-rule" />
-                    {getPrimaryFocusLabel(user.role)}
+                  <div className="grid gap-3 sm:grid-cols-2 lg:max-w-[30rem] lg:self-start xl:w-auto">
+                    <div className="rounded-[24px] border border-white/8 bg-black/25 p-4">
+                      <p className="surface-label">Operating as</p>
+                      <p className="mt-3 text-lg font-medium">{activeRole}</p>
+                      <p className="mt-2 text-sm text-white/56">{getAlertLabel(user.role)}</p>
+                    </div>
+                    <div className="rounded-[24px] border border-white/8 bg-black/25 p-4">
+                      <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/35 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-white/68">
+                        <Bell className="h-4 w-4 text-[#baff69]" />
+                        {getHeroNavigationCountLabel(user.role, nav.length)}
+                      </div>
+                      <p className="mt-3 text-sm leading-6 text-white/56">{getBoundaryCopy(user.role)}</p>
+                    </div>
                   </div>
                 ) : null}
-                <h2 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">{title}</h2>
-                <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">{subtitle}</p>
               </div>
-              {showShellContext ? (
-                <div className="grid gap-3 sm:grid-cols-2 lg:max-w-[30rem] lg:self-start xl:w-auto">
-                  <div className="rounded-[24px] border border-white/8 bg-black/25 p-4">
-                    <p className="surface-label">Operating as</p>
-                    <p className="mt-3 text-lg font-medium">{activeRole}</p>
-                    <p className="mt-2 text-sm text-white/56">{getAlertLabel(user.role)}</p>
-                  </div>
-                  <div className="rounded-[24px] border border-white/8 bg-black/25 p-4">
-                    <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/35 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-white/68">
-                      <Bell className="h-4 w-4 text-[#baff69]" />
-                      {getHeroNavigationCountLabel(user.role, nav.length)}
-                    </div>
-                    <p className="mt-3 text-sm leading-6 text-white/56">{getBoundaryCopy(user.role)}</p>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          </Card>
+            </Card>
+          ) : null}
           {showShellContext && approvalBanner ? (
             <Card className="rounded-[30px] border border-[#cfff93]/18 bg-[linear-gradient(180deg,rgba(124,255,0,0.08),rgba(10,10,10,0.98))] p-5 sm:p-6">
               <p className="surface-label text-[#d7ffab]">{approvalBanner.eyebrow}</p>

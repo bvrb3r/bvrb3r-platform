@@ -198,15 +198,23 @@ describe("owner overview", () => {
   it("renders the owner overview from canonical revenue, booking, and team truth", () => {
     render(<OwnerOverview />);
 
-    expect(screen.getByText("Today snapshot")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    expect(screen.getByText("Live performance & insights")).toBeInTheDocument();
+    expect(screen.getByText("Today Revenue")).toBeInTheDocument();
     expect(screen.getAllByText("$180").length).toBeGreaterThan(0);
-    expect(screen.getByText("Appointments completed")).toBeInTheDocument();
-    expect(screen.getByText("Maya Cole is leading posted revenue at $120 across 1 completed tickets.")).toBeInTheDocument();
-    expect(screen.getByText(/unresolved financial anomal/i)).toBeInTheDocument();
-    expect(screen.getByTestId("shop-manager-panel-stub")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Open money/i })).toHaveAttribute("href", "/dashboard/owner/money");
-    expect(screen.getByRole("link", { name: /Open schedule/i })).toHaveAttribute("href", "/dashboard/owner/schedule");
-    expect(screen.getByRole("link", { name: /Open team/i })).toHaveAttribute("href", "/dashboard/owner/team");
+    expect(screen.getByText("Projected unavailable")).toBeInTheDocument();
+    expect(screen.getByText("Shop Share")).toBeInTheDocument();
+    expect(screen.getAllByText("Utilization").length).toBeGreaterThan(0);
+    expect(screen.getByText("Chairs Used")).toBeInTheDocument();
+    expect(screen.getByText("Team Snapshot")).toBeInTheDocument();
+    expect(screen.getByText("Maya")).toBeInTheDocument();
+    expect(screen.getByText("$120")).toBeInTheDocument();
+    expect(screen.getByText(/financial anomal/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^View all$/i })).toHaveAttribute("href", "/dashboard/owner/team");
+    expect(screen.getByRole("link", { name: /Assign Walk-in/i })).toHaveAttribute("href", "/dashboard/owner/schedule?action=assign-walkin");
+    expect(screen.queryByTestId("shop-manager-panel-stub")).not.toBeInTheDocument();
+    expect(screen.queryByText("Quick insights")).not.toBeInTheDocument();
+    expect(screen.queryByText("Walk-in queue")).not.toBeInTheDocument();
   });
 
   it("shows a clean no-demo empty state for a fresh owner lane", () => {
@@ -251,9 +259,11 @@ describe("owner overview", () => {
 
     render(<OwnerOverview />);
 
-    expect(screen.getByText("Fresh owner setup")).toBeInTheDocument();
-    expect(screen.getByText("No demo activity")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Add first barber/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Set services/i })).toHaveAttribute("href", "/dashboard/owner/settings?section=services");
+    expect(screen.getByText("No active team members yet.")).toBeInTheDocument();
+    expect(screen.getByText("Invite barbers to start tracking performance.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Invite Barber/i })).toHaveAttribute("href", "/dashboard/owner/team");
+    expect(screen.getByText("No urgent alerts right now.")).toBeInTheDocument();
+    expect(screen.getByText("Your shop is operating normally.")).toBeInTheDocument();
+    expect(screen.queryByText("Fresh owner setup")).not.toBeInTheDocument();
   });
 });

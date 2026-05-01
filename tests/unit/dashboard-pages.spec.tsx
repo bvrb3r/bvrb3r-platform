@@ -19,7 +19,12 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("@/components/operations/owner-overview", () => ({
-  OwnerOverview: () => <div data-testid="owner-overview-stub">Owner overview</div>
+  OwnerOverview: () => (
+    <div data-testid="owner-overview-stub">
+      <h1>Overview</h1>
+      Owner overview
+    </div>
+  )
 }));
 
 vi.mock("@/components/operations/manager-overview", () => ({
@@ -134,7 +139,7 @@ describe("dashboard role pages", () => {
     render(await OwnerDashboardPage());
 
     expect(getAuthorizedUserMock).toHaveBeenCalledWith(["owner"]);
-    expect(screen.getByRole("heading", { name: "Home" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Overview" })).toBeInTheDocument();
     expect(screen.getByTestId("owner-overview-stub")).toBeInTheDocument();
   });
 
