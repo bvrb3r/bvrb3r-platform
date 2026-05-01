@@ -1,35 +1,149 @@
 "use client";
 
-import { useMemo } from "react";
-import { ArrowRight, Landmark, ShieldAlert, WalletCards } from "lucide-react";
-import { Card } from "@/components/ui/card";
+import { useMemo, useState, type ComponentProps, type ReactNode } from "react";
+import Link from "next/link";
+import {
+  Building2,
+  CalendarDays,
+  ChevronDown,
+  ChevronRight,
+  CircleDollarSign,
+  SlidersHorizontal,
+  TrendingDown,
+  TrendingUp,
+  Users,
+  XCircle
+} from "lucide-react";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DataStatCard } from "@/design/components";
+import { Avatar, GlassCard } from "@/design/components";
 import {
   useFinancialAnomalyQueueQuery,
   useFintechManagementQuery,
   useFintechPayoutsQuery
 } from "@/lib/fintech/client";
-import { useShopDashboardQuery } from "@/lib/operations/barber-client";
-import { currency } from "@/lib/utils";
+import { useShopDashboardQuery, type ShopDashboardAppointment } from "@/lib/operations/barber-client";
+import { cn, currency } from "@/lib/utils";
 import { getReadableActionError } from "@/lib/utils/feedback";
 
-function MetricSkeleton() {
-  return (
-    <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-      <Skeleton className="h-3 w-24" />
-      <Skeleton className="mt-4 h-10 w-20" />
-      <Skeleton className="mt-4 h-4 w-32" />
-    </div>
-  );
+type MoneyRange = "day" | "week" | "month" | "year";
+type BreakdownTone = "green" | "blue" | "amber" | "neutral";
+type TransactionStatus = "completed" | "pending" | "failed" | "refunded" | "fee" | "disputed";
+
+type ChartPoint = {
+  label: string;
+  value: number;
+  date: string;
+};
+
+type BreakdownItem = {
+  label: string;
+  amount: number | null;
+  percent: number | null;
+  tone: BreakdownTone;
+};
+
+type TransactionRow = {
+  id: string;
+  name: string;
+  initials: string;
+  service: string;
+  source: string;
+  timestamp: string;
+  method: string;
+  amount: number;
+  status: TransactionStatus;
+  href: ComponentProps<typeof Link>["href"];
+};
+
+const rangeOptions: Array<{ key: MoneyRange; label: string; shortLabel: string }> = [
+  { key: "day", label: "Today", shortLabel: "Day" },
+  { key: "week", label: "This Week", shortLabel: "Week" },
+  { key: "month", label: "This Month", shortLabel: "Month" },
+  { key: "year", label: "This Year", shortLabel: "Year" }
+];
+
+function getInitials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "BV";
 }
 
-function getMonthKey(date: Date) {
-  return `${date.getFullYear()}-${date.getMonth()}`;
+function getAnchorDate(value?: string) {
+  const date = value ? new Date(`${value}T00:00:00`) : new Date();
+  if (Number.isNaN(date.getTime())) {
+    const fallback = new Date();
+    fallback.setHours(0, 0, 0, 0);
+    return fallback;
+  }
+
+  date.setHours(0, 0, 0, 0);
+  return date;
 }
 
-function formatDateTime(iso: string) {
+function getRangeStart(anchorDate: Date, range: MoneyRange) {
+  const start = new Date(anchorDate);
+
+  if (range === "day") {
+    return start;
+  }
+
+  if (range === "week") {
+    start.setDate(start.getDate() - 6);
+    return start;
+  }
+
+  if (range === "month") {
+    start.setDate(1);
+    return start;
+  }
+
+  start.setMonth(0, 1);
+  return start;
+}
+
+function getPreviousRange(anchorDate: Date, range: MoneyRange) {
+  const currentStart = getRangeStart(anchorDate, range);
+  const previousEnd = new Date(currentStart);
+  previousEnd.setDate(previousEnd.getDate() - 1);
+  const previousStart = getRangeStart(previousEnd, range);
+
+  return { previousStart, previousEnd };
+}
+
+function dateFromKey(value: string) {
+  const date = new Date(`${value}T00:00:00`);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function isDateInRange(value: string, start: Date, end: Date) {
+  const date = dateFromKey(value);
+  return date >= start && date <= end;
+}
+
+function isIsoInRange(value: string | null | undefined, start: Date, end: Date) {
+  if (!value) {
+    return false;
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return false;
+  }
+
+  date.setHours(0, 0, 0, 0);
+  return date >= start && date <= end;
+}
+
+function formatDateTime(iso: string | null | undefined) {
+  if (!iso) {
+    return "Time unavailable";
+  }
+
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) {
     return iso;
@@ -43,7 +157,291 @@ function formatDateTime(iso: string) {
   }).format(date);
 }
 
+function getChartLabel(dateKey: string, range: MoneyRange) {
+  const date = dateFromKey(dateKey);
+  if (range === "year") {
+    return new Intl.DateTimeFormat("en-US", { month: "short" }).format(date);
+  }
+
+  if (range === "month") {
+    return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(date);
+  }
+
+  return new Intl.DateTimeFormat("en-US", { weekday: "short" }).format(date).toUpperCase();
+}
+
+function formatPercent(value: number | null) {
+  if (value === null || !Number.isFinite(value)) {
+    return "-";
+  }
+
+  return `${Math.round(value)}%`;
+}
+
+function getTrendCopy(current: number, previous: number, label: string) {
+  if (previous <= 0) {
+    return {
+      available: false,
+      positive: null as boolean | null,
+      text: "Previous period unavailable"
+    };
+  }
+
+  const delta = ((current - previous) / previous) * 100;
+  const positive = delta >= 0;
+
+  return {
+    available: true,
+    positive,
+    text: `${positive ? "up" : "down"} ${Math.abs(delta).toFixed(1)}% vs ${label} ${currency(previous)}`
+  };
+}
+
+function statusLabel(status: TransactionStatus) {
+  switch (status) {
+    case "completed":
+      return "Completed";
+    case "pending":
+      return "Pending";
+    case "failed":
+      return "Failed";
+    case "refunded":
+      return "Refunded";
+    case "fee":
+      return "Fee";
+    case "disputed":
+      return "Disputed";
+  }
+}
+
+function statusClass(status: TransactionStatus) {
+  switch (status) {
+    case "completed":
+      return "text-[#A3FF12]";
+    case "pending":
+      return "text-amber-300";
+    case "failed":
+    case "disputed":
+      return "text-red-300";
+    case "refunded":
+    case "fee":
+      return "text-amber-200";
+  }
+}
+
+function payoutStatusCopy(readyAccounts: number, readyAmount: number, blockedCount: number): {
+  label: string;
+  detail: string;
+  tone: "green" | "amber";
+  href: ComponentProps<typeof Link>["href"];
+} {
+  if (blockedCount > 0) {
+    return {
+      label: "Needs review",
+      detail: "Review payout setup",
+      tone: "amber" as const,
+      href: "/dashboard/owner/money?view=fintech&section=payouts"
+    };
+  }
+
+  if (readyAccounts > 0 || readyAmount > 0) {
+    return {
+      label: "Active",
+      detail: "View Payouts",
+      tone: "green" as const,
+      href: "/dashboard/owner/money?view=fintech&section=payouts"
+    };
+  }
+
+  return {
+    label: "Setup incomplete",
+    detail: "Complete setup",
+    tone: "amber" as const,
+    href: "/dashboard/owner/settings?section=payouts"
+  };
+}
+
+function sumCompletedAppointmentRevenue(appointment: ShopDashboardAppointment) {
+  if (appointment.status !== "completed") {
+    return 0;
+  }
+
+  return appointment.totalAmount + appointment.tipAmount;
+}
+
+function CommandIconButton({
+  label,
+  children
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <summary
+      aria-label={label}
+      className="inline-flex h-12 w-12 cursor-pointer list-none items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-white/76 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition hover:border-[#A3FF12]/35 hover:text-white hover:shadow-[0_0_24px_rgba(163,255,18,0.12)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/70 sm:h-14 sm:w-14"
+    >
+      {children}
+    </summary>
+  );
+}
+
+function MetricSkeleton() {
+  return (
+    <div className="rounded-[22px] border border-white/8 bg-white/[0.025] p-5">
+      <Skeleton className="h-10 w-10 rounded-full" />
+      <Skeleton className="mt-6 h-7 w-24" />
+      <Skeleton className="mt-3 h-4 w-32" />
+    </div>
+  );
+}
+
+function SectionHeader({
+  title,
+  action
+}: {
+  title: string;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <h2 className="text-2xl font-extrabold tracking-[-0.04em] text-white">{title}</h2>
+      {action}
+    </div>
+  );
+}
+
+function EmptyPanel({ title, detail }: { title: string; detail: string }) {
+  return (
+    <div className="rounded-[22px] border border-dashed border-white/12 bg-black/24 p-5">
+      <p className="text-lg font-extrabold text-white">{title}</p>
+      <p className="mt-2 text-sm leading-6 text-white/58">{detail}</p>
+    </div>
+  );
+}
+
+function ChartLine({ points }: { points: ChartPoint[] }) {
+  if (!points.length) {
+    return (
+      <EmptyPanel
+        title="Revenue chart unavailable"
+        detail="Completed payments will appear here."
+      />
+    );
+  }
+
+  const width = 680;
+  const height = 210;
+  const paddingX = 28;
+  const paddingY = 18;
+  const maxValue = Math.max(...points.map((point) => point.value), 1);
+  const coordinates = points.map((point, index) => {
+    const x = points.length === 1
+      ? width / 2
+      : paddingX + (index / (points.length - 1)) * (width - paddingX * 2);
+    const y = height - paddingY - (point.value / maxValue) * (height - paddingY * 2);
+    return { x, y };
+  });
+  const linePoints = coordinates.map((point) => `${point.x},${point.y}`).join(" ");
+  const areaPoints = [
+    `${coordinates[0]?.x ?? paddingX},${height - paddingY}`,
+    linePoints,
+    `${coordinates[coordinates.length - 1]?.x ?? width - paddingX},${height - paddingY}`
+  ].join(" ");
+  const axisValues = [maxValue, maxValue * 0.66, maxValue * 0.33, 0];
+
+  return (
+    <div className="mt-7 grid gap-5 lg:grid-cols-[1fr_auto]">
+      <div className="min-w-0">
+        <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Revenue trend chart" className="h-56 w-full overflow-visible">
+          <defs>
+            <linearGradient id="owner-money-chart-fill" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor="#A3FF12" stopOpacity="0.24" />
+              <stop offset="100%" stopColor="#A3FF12" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          <polygon points={areaPoints} fill="url(#owner-money-chart-fill)" />
+          <polyline
+            fill="none"
+            points={linePoints}
+            stroke="#A3FF12"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="6"
+            filter="drop-shadow(0 0 12px rgba(163,255,18,0.35))"
+          />
+          {coordinates.map((point, index) => (
+            <circle key={`${points[index]?.date}-${index}`} cx={point.x} cy={point.y} r={index === coordinates.length - 1 ? 7 : 0} fill="#A3FF12" />
+          ))}
+        </svg>
+        <div className="mt-2 grid" style={{ gridTemplateColumns: `repeat(${Math.min(points.length, 7)}, minmax(0, 1fr))` }}>
+          {points.slice(-7).map((point) => (
+            <span key={point.date} className="text-center text-sm font-bold uppercase tracking-[0.08em] text-white/58">{point.label}</span>
+          ))}
+        </div>
+      </div>
+      <div className="hidden min-w-16 flex-col justify-between py-4 text-right text-sm font-semibold text-white/56 lg:flex">
+        {axisValues.map((value, index) => (
+          <span key={`${value}-${index}`}>{currency(value).replace(".00", "")}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BreakdownDot({ tone }: { tone: BreakdownTone }) {
+  return (
+    <span
+      className={cn(
+        "h-3.5 w-3.5 rounded-full",
+        tone === "green" && "bg-[#A3FF12]",
+        tone === "blue" && "bg-sky-400",
+        tone === "amber" && "bg-amber-300",
+        tone === "neutral" && "bg-white/45"
+      )}
+    />
+  );
+}
+
+function PerformanceMetric({
+  icon,
+  label,
+  value,
+  trend,
+  href
+}: {
+  icon: ReactNode;
+  label: string;
+  value: ReactNode;
+  trend?: string;
+  href?: ComponentProps<typeof Link>["href"];
+}) {
+  const content = (
+    <>
+      <span className="flex h-11 w-11 items-center justify-center rounded-[14px] border border-[#A3FF12]/22 bg-[#A3FF12]/10 text-[#A3FF12] shadow-[0_0_18px_rgba(163,255,18,0.14)]">
+        {icon}
+      </span>
+      <span className="min-w-0">
+        <span className="block text-sm font-semibold text-white/68">{label}</span>
+        <span className="mt-2 block text-2xl font-black tracking-[-0.04em] text-white">{value}</span>
+        {trend ? <span className="mt-2 block text-sm font-extrabold text-[#A3FF12]">{trend}</span> : null}
+      </span>
+    </>
+  );
+
+  if (href) {
+    return (
+      <Link href={href} className="grid gap-3 rounded-[18px] p-4 transition hover:bg-white/[0.035] sm:grid-cols-[auto_1fr]">
+        {content}
+      </Link>
+    );
+  }
+
+  return <div className="grid gap-3 rounded-[18px] p-4 sm:grid-cols-[auto_1fr]">{content}</div>;
+}
+
 export function OwnerMoneyWorkspace() {
+  const [selectedRange, setSelectedRange] = useState<MoneyRange>("week");
   const shopQuery = useShopDashboardQuery();
   const fintechQuery = useFintechManagementQuery();
   const payoutsQuery = useFintechPayoutsQuery();
@@ -60,318 +458,408 @@ export function OwnerMoneyWorkspace() {
     ?? payoutsQuery.error
     ?? anomaliesQuery.error;
 
+  const selectedRangeOption = rangeOptions.find((option) => option.key === selectedRange) ?? rangeOptions[1];
   const ownerAnalytics = useMemo(() => shopQuery.data?.ownerAnalytics ?? [], [shopQuery.data?.ownerAnalytics]);
   const appointments = useMemo(() => shopQuery.data?.appointments ?? [], [shopQuery.data?.appointments]);
-  const barbers = useMemo(() => shopQuery.data?.barbers ?? [], [shopQuery.data?.barbers]);
   const summary = shopQuery.data?.summary;
-  const anomalies = anomaliesQuery.data?.items ?? [];
   const blockedPayments = useMemo(() => fintechQuery.data?.blockedPayments ?? [], [fintechQuery.data?.blockedPayments]);
-  const payoutSummary = payoutsQuery.data?.summary;
   const readyRouting = useMemo(() => payoutsQuery.data?.readyRouting ?? [], [payoutsQuery.data?.readyRouting]);
+  const payoutSummary = payoutsQuery.data?.summary;
   const recentPayoutExecutions = payoutsQuery.data?.recentExecutions ?? [];
+  const anomalies = anomaliesQuery.data?.items ?? [];
+  const rangeEnd = getAnchorDate(summary?.businessDate ?? summary?.latestDate);
+  const rangeStart = getRangeStart(rangeEnd, selectedRange);
+  const previousRange = getPreviousRange(rangeEnd, selectedRange);
 
-  const revenueWindow = useMemo(() => {
-    const businessDate = summary?.businessDate ?? summary?.latestDate ?? new Date().toISOString().slice(0, 10);
-    const businessDateValue = new Date(`${businessDate}T00:00:00`);
-    const weekStart = new Date(businessDateValue);
-    weekStart.setDate(weekStart.getDate() - 6);
-    const monthKey = getMonthKey(businessDateValue);
+  const analyticsInRange = useMemo(
+    () => ownerAnalytics.filter((row) => isDateInRange(row.businessDate, rangeStart, rangeEnd)),
+    [ownerAnalytics, rangeEnd, rangeStart]
+  );
+  const previousAnalytics = useMemo(
+    () => ownerAnalytics.filter((row) => isDateInRange(row.businessDate, previousRange.previousStart, previousRange.previousEnd)),
+    [ownerAnalytics, previousRange.previousEnd, previousRange.previousStart]
+  );
+  const appointmentsInRange = useMemo(
+    () => appointments.filter((appointment) => isIsoInRange(appointment.completedAt ?? appointment.end ?? appointment.start, rangeStart, rangeEnd)),
+    [appointments, rangeEnd, rangeStart]
+  );
 
-    let weekRevenue = 0;
-    let monthRevenue = 0;
+  const completedAppointments = useMemo(
+    () => appointmentsInRange.filter((appointment) => appointment.status === "completed"),
+    [appointmentsInRange]
+  );
 
-    ownerAnalytics.forEach((row) => {
-      const rowDate = new Date(`${row.businessDate}T00:00:00`);
-      if (rowDate >= weekStart && rowDate <= businessDateValue) {
-        weekRevenue += row.revenueTotal;
-      }
-      if (getMonthKey(rowDate) === monthKey) {
-        monthRevenue += row.revenueTotal;
-      }
-    });
+  const analyticsRevenue = analyticsInRange.reduce((sum, row) => sum + row.revenueTotal, 0);
+  const hasAnalyticsRevenue = analyticsInRange.length > 0;
+  const totalRevenue = hasAnalyticsRevenue
+    ? analyticsRevenue
+    : selectedRange === "day"
+      ? summary?.revenueToday ?? 0
+      : 0;
+  const previousRevenue = previousAnalytics.reduce((sum, row) => sum + row.revenueTotal, 0);
+  const previousLabel = selectedRange === "week"
+    ? "last week"
+    : selectedRange === "month"
+      ? "last month"
+      : selectedRange === "year"
+        ? "last year"
+        : "yesterday";
+  const trend = getTrendCopy(totalRevenue, previousRevenue, previousLabel);
 
-    return {
-      todayRevenue: summary?.revenueToday ?? 0,
-      weekRevenue,
-      monthRevenue
-    };
-  }, [ownerAnalytics, summary?.businessDate, summary?.latestDate, summary?.revenueToday]);
-
-  const busiestHour = useMemo(() => {
-    const counts = new Map<number, number>();
-    for (const appointment of appointments) {
-      const hour = new Date(appointment.start).getHours();
-      counts.set(hour, (counts.get(hour) ?? 0) + 1);
+  const chartPoints = useMemo<ChartPoint[]>(() => {
+    if (!analyticsInRange.length) {
+      return [];
     }
 
-    const top = [...counts.entries()].sort((left, right) => right[1] - left[1])[0];
-    if (!top) {
-      return "No peak yet";
+    return analyticsInRange
+      .slice()
+      .sort((left, right) => left.businessDate.localeCompare(right.businessDate))
+      .map((row) => ({
+        date: row.businessDate,
+        label: getChartLabel(row.businessDate, selectedRange),
+        value: row.revenueTotal
+      }));
+  }, [analyticsInRange, selectedRange]);
+
+  const routingRows = useMemo(() => [...blockedPayments, ...readyRouting], [blockedPayments, readyRouting]);
+  const splitTotals = useMemo(() => {
+    const total = routingRows.reduce((sum, row) => sum + row.providerGrossAmount, 0);
+    const shop = routingRows.reduce((sum, row) => sum + row.shopSplitAmount, 0);
+    const barber = routingRows.reduce((sum, row) => sum + row.barberPayoutAmount, 0);
+    const platform = routingRows.reduce((sum, row) => sum + row.platformFeeAmount, 0);
+
+    return { total, shop, barber, platform };
+  }, [routingRows]);
+  const hasSplitData = routingRows.length > 0 && splitTotals.total > 0;
+  const breakdownItems: BreakdownItem[] = [
+    {
+      label: "Shop Earnings",
+      amount: hasSplitData ? splitTotals.shop : null,
+      percent: hasSplitData ? (splitTotals.shop / splitTotals.total) * 100 : null,
+      tone: "green"
+    },
+    {
+      label: "Barber Payouts",
+      amount: hasSplitData ? splitTotals.barber : null,
+      percent: hasSplitData ? (splitTotals.barber / splitTotals.total) * 100 : null,
+      tone: "blue"
+    },
+    {
+      label: "Platform Fees",
+      amount: hasSplitData ? splitTotals.platform : null,
+      percent: hasSplitData ? (splitTotals.platform / splitTotals.total) * 100 : null,
+      tone: "amber"
+    },
+    {
+      label: "Total Revenue",
+      amount: hasSplitData ? splitTotals.total : null,
+      percent: hasSplitData ? 100 : null,
+      tone: "neutral"
     }
+  ];
 
-    const label = new Intl.DateTimeFormat("en-US", { hour: "numeric" }).format(new Date(2026, 0, 1, top[0]));
-    return `${label} (${top[1]} appt${top[1] === 1 ? "" : "s"})`;
-  }, [appointments]);
+  const appointmentCount = analyticsInRange.length
+    ? analyticsInRange.reduce((sum, row) => sum + row.completedServicesCount, 0)
+    : completedAppointments.length;
+  const previousAppointmentCount = previousAnalytics.reduce((sum, row) => sum + row.completedServicesCount, 0);
+  const appointmentTrend = previousAppointmentCount > 0
+    ? `${appointmentCount >= previousAppointmentCount ? "up" : "down"} ${Math.abs(((appointmentCount - previousAppointmentCount) / previousAppointmentCount) * 100).toFixed(1)}%`
+    : undefined;
+  const avgTicket = appointmentCount > 0 ? totalRevenue / appointmentCount : null;
+  const noShowCount = appointmentsInRange.filter((appointment) => appointment.status === "no_show").length;
+  const noShowRate = appointmentsInRange.length ? (noShowCount / appointmentsInRange.length) * 100 : null;
 
-  const routedVisibility = useMemo(() => {
-    const platformFees = [...blockedPayments, ...readyRouting].reduce((sum, row) => sum + row.platformFeeAmount, 0);
-    const barberShare = [...blockedPayments, ...readyRouting].reduce((sum, row) => sum + row.barberPayoutAmount, 0);
-    const shopShare = [...blockedPayments, ...readyRouting].reduce((sum, row) => sum + row.shopSplitAmount, 0);
-
-    return {
-      platformFees,
-      barberShare,
-      shopShare
-    };
-  }, [blockedPayments, readyRouting]);
-
-  const recentRevenueAppointments = useMemo(() => {
-    return appointments
-      .filter((appointment) => appointment.status === "completed")
+  const transactions = useMemo<TransactionRow[]>(() => {
+    return completedAppointments
+      .slice()
       .sort((left, right) => new Date(right.completedAt ?? right.end).getTime() - new Date(left.completedAt ?? left.end).getTime())
-      .slice(0, 6);
-  }, [appointments]);
+      .slice(0, 6)
+      .map((appointment) => ({
+        id: appointment.id,
+        name: appointment.display.barberName || appointment.display.clientName,
+        initials: getInitials(appointment.display.barberName || appointment.display.clientName),
+        service: appointment.display.serviceName,
+        source: appointment.balanceDue > 0 ? "Balance due" : "Paid by client",
+        timestamp: formatDateTime(appointment.completedAt ?? appointment.end),
+        method: "Payment method unavailable",
+        amount: sumCompletedAppointmentRevenue(appointment),
+        status: appointment.balanceDue > 0 ? "pending" : "completed",
+        href: `/dashboard/owner/money?section=transactions&appointment=${encodeURIComponent(appointment.id)}`
+      }));
+  }, [completedAppointments]);
 
-  const tipTotal = ownerAnalytics.reduce((sum, row) => sum + row.tipTotal, 0);
-  const averageTicket = summary?.completedCount
-    ? (summary.revenueToday ?? 0) / Math.max(summary.completedCount, 1)
-    : 0;
-  const averageUtilization = barbers.length
-    ? Math.round(barbers.reduce((sum, barber) => sum + barber.utilization, 0) / barbers.length)
-    : 0;
-  const revenuePerActiveBarber = barbers.length
-    ? revenueWindow.todayRevenue / Math.max(barbers.length, 1)
-    : 0;
+  const payoutReadyAmount = payoutSummary?.readyForPayoutAmount ?? fintechQuery.data?.summary.readyForPayoutAmount ?? 0;
+  const payoutStatus = payoutStatusCopy(
+    fintechQuery.data?.summary.readyAccounts ?? 0,
+    payoutReadyAmount,
+    (payoutSummary?.blockedExecutionRecords ?? 0) + (payoutSummary?.failedExecutionRecords ?? 0) + (fintechQuery.data?.summary.blockedRoutingRecords ?? 0)
+  );
+  const latestExecution = recentPayoutExecutions.find((execution) => execution.executedAt) ?? null;
+  const nextPayoutLabel = latestExecution?.executedAt ? formatDateTime(latestExecution.executedAt) : "Unavailable";
 
   return (
-    <div className="space-y-4" data-testid="owner-money-workspace">
+    <div className="space-y-7" data-testid="owner-money-workspace">
+      <header className="flex items-start justify-between gap-5">
+        <div>
+          <h1 className="text-5xl font-black leading-none tracking-[-0.055em] text-white sm:text-6xl" data-display="true">
+            Money
+          </h1>
+          <p className="mt-3 text-lg font-medium text-white/68">Revenue & payouts</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
+          <details className="group relative">
+            <summary className="inline-flex min-h-12 cursor-pointer list-none items-center gap-2 rounded-full border border-white/10 bg-white/[0.035] px-5 text-sm font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition hover:border-[#A3FF12]/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/70 sm:min-h-14 sm:px-6 sm:text-base">
+              {selectedRangeOption.label}
+              <ChevronDown className="h-5 w-5" />
+            </summary>
+            <GlassCard className="absolute right-0 z-20 mt-3 w-56 p-3">
+              <p className="px-3 py-2 text-xs font-extrabold uppercase tracking-[0.18em] text-[#A3FF12]">Timeframe</p>
+              {rangeOptions.map((option) => (
+                <button
+                  key={`header-range-${option.key}`}
+                  type="button"
+                  onClick={() => setSelectedRange(option.key)}
+                  className="flex w-full items-center justify-between rounded-[14px] px-3 py-3 text-left text-sm font-bold text-white/74 transition hover:bg-white/[0.05] hover:text-white"
+                >
+                  {option.label}
+                  {selectedRange === option.key ? <span className="h-2 w-2 rounded-full bg-[#A3FF12]" /> : null}
+                </button>
+              ))}
+            </GlassCard>
+          </details>
+          <details className="group relative">
+            <CommandIconButton label="Open money filters">
+              <SlidersHorizontal className="h-5 w-5" />
+            </CommandIconButton>
+            <GlassCard className="absolute right-0 z-20 mt-3 w-72 p-4">
+              <p className="px-2 text-xs font-extrabold uppercase tracking-[0.18em] text-[#A3FF12]">Money filters</p>
+              <div className="mt-3 grid gap-2">
+                <Link href="/dashboard/owner/money?section=transactions" className="rounded-[14px] px-3 py-3 text-sm font-bold text-white/74 transition hover:bg-white/[0.05] hover:text-white">Transactions</Link>
+                <Link href="/dashboard/owner/money?view=fintech&section=payouts" className="rounded-[14px] px-3 py-3 text-sm font-bold text-white/74 transition hover:bg-white/[0.05] hover:text-white">Payout operations</Link>
+                <Link href="/dashboard/owner/money?section=breakdown" className="rounded-[14px] px-3 py-3 text-sm font-bold text-white/74 transition hover:bg-white/[0.05] hover:text-white">Revenue breakdown</Link>
+                {anomalies.length ? (
+                  <Link href="/dashboard/owner/money?section=anomalies" className="rounded-[14px] px-3 py-3 text-sm font-bold text-amber-200 transition hover:bg-white/[0.05] hover:text-white">Refunds, disputes, and anomalies</Link>
+                ) : null}
+              </div>
+            </GlassCard>
+          </details>
+        </div>
+      </header>
+
       {errorMessage ? <FeedbackBanner tone="error" message={getReadableActionError(errorMessage)} /> : null}
 
-      <Card className="rounded-[32px] p-6">
+      <GlassCard className="p-6 sm:p-7">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="surface-label">Money</p>
-            <h3 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">Trust every dollar without inventing the story around it.</h3>
-            <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">
-              Revenue, payouts, routing visibility, and anomalies from the canonical money layer.
+            <p className="text-xl font-extrabold tracking-[-0.035em] text-white">Total Revenue ({selectedRangeOption.label})</p>
+            {isInitialLoading ? (
+              <Skeleton className="mt-6 h-16 w-72" />
+            ) : (
+              <p className="mt-6 text-6xl font-black leading-none tracking-[-0.08em] text-[#A3FF12] drop-shadow-[0_0_28px_rgba(163,255,18,0.26)] sm:text-7xl" data-display="true">
+                {currency(totalRevenue)}
+              </p>
+            )}
+            <p className={cn("mt-5 inline-flex items-center gap-2 text-lg font-extrabold", trend.positive === false ? "text-red-300" : trend.available ? "text-[#A3FF12]" : "text-white/54")}>
+              {trend.available ? (
+                trend.positive ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />
+              ) : null}
+              {trend.text}
             </p>
           </div>
-          <div className="rounded-[24px] border border-white/8 bg-black/20 px-4 py-4 text-sm text-white/66">
-            <div className="inline-flex items-center gap-2 rounded-full border border-[#7CFF00]/20 bg-[#7CFF00]/10 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">
-              <WalletCards className="h-4 w-4" />
-              Canonical flow live
-            </div>
-            <p className="mt-4 text-[11px] uppercase tracking-[0.22em] text-white/42">{anomalies.length} active anomaly records</p>
-          </div>
+          <Link href="/dashboard/owner/money?section=revenue" className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/10 bg-black/25 px-4 text-sm font-extrabold text-white/72 transition hover:border-[#A3FF12]/35 hover:text-[#A3FF12]">
+            Revenue detail
+            <ChevronRight className="h-4 w-4" />
+          </Link>
         </div>
+        {isInitialLoading ? <Skeleton className="mt-7 h-56 rounded-[24px]" /> : <ChartLine points={chartPoints} />}
+      </GlassCard>
 
-        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+      <GlassCard className="p-6">
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="text-2xl font-extrabold tracking-[-0.04em] text-white">Revenue Breakdown</h2>
+          <Link href="/dashboard/owner/money?section=breakdown" className="inline-flex items-center gap-2 text-base font-extrabold text-[#A3FF12]">
+            View details
+            <ChevronRight className="h-5 w-5" />
+          </Link>
+        </div>
+        {isInitialLoading ? (
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <MetricSkeleton />
+            <MetricSkeleton />
+            <MetricSkeleton />
+            <MetricSkeleton />
+          </div>
+        ) : hasSplitData ? (
+          <div className="mt-5 grid gap-0 overflow-hidden rounded-[22px] border border-white/8 sm:grid-cols-2 xl:grid-cols-4">
+            {breakdownItems.map((item, index) => (
+              <div key={item.label} className={cn("p-5", index > 0 && "border-white/8 sm:border-l")}>
+                <div className="flex items-center gap-3">
+                  <BreakdownDot tone={item.tone} />
+                  <p className="text-base font-semibold text-white/72">{item.label}</p>
+                </div>
+                <p className="mt-5 text-2xl font-black tracking-[-0.035em] text-white">{item.amount === null ? "-" : currency(item.amount)}</p>
+                <p className="mt-3 text-xl font-semibold text-white/62">{formatPercent(item.percent)}</p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-5">
+            <EmptyPanel
+              title="Split breakdown unavailable."
+              detail="Canonical split records will appear here once payments are processed."
+            />
+          </div>
+        )}
+      </GlassCard>
+
+      <section className="grid grid-cols-4 overflow-hidden rounded-full border border-white/10 bg-white/[0.025] p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+        {rangeOptions.map((option, index) => (
+          <button
+            key={`segmented-${option.key}`}
+            type="button"
+            onClick={() => setSelectedRange(option.key)}
+            className={cn(
+              "min-h-12 rounded-full text-base font-extrabold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/70",
+              selectedRange === option.key
+                ? "bg-[linear-gradient(135deg,#A3FF12_0%,#7DCE00_100%)] text-black shadow-[0_0_28px_rgba(163,255,18,0.24)]"
+                : "text-white/72 hover:bg-white/[0.035] hover:text-white",
+              index > 0 && selectedRange !== option.key && "border-l border-white/8"
+            )}
+          >
+            {option.shortLabel}
+          </button>
+        ))}
+      </section>
+
+      <GlassCard className="grid gap-0 overflow-hidden p-0 sm:grid-cols-2 xl:grid-cols-4">
+        {isInitialLoading ? (
+          <>
+            <MetricSkeleton />
+            <MetricSkeleton />
+            <MetricSkeleton />
+            <MetricSkeleton />
+          </>
+        ) : (
+          <>
+            <PerformanceMetric
+              icon={<CalendarDays className="h-5 w-5" />}
+              label="Appointments"
+              value={appointmentCount || "-"}
+              trend={appointmentTrend}
+              href={`/dashboard/owner/schedule?range=${selectedRange}`}
+            />
+            <PerformanceMetric
+              icon={<CircleDollarSign className="h-5 w-5" />}
+              label="Avg. Ticket Size"
+              value={avgTicket === null ? "-" : currency(avgTicket)}
+              href="/dashboard/owner/money?section=tickets"
+            />
+            <PerformanceMetric
+              icon={<Users className="h-5 w-5" />}
+              label="Returning Clients"
+              value="-"
+              href="/dashboard/owner/money?section=clients"
+            />
+            <PerformanceMetric
+              icon={<XCircle className="h-5 w-5" />}
+              label="No-Show Rate"
+              value={noShowRate === null ? "-" : `${noShowRate.toFixed(1)}%`}
+              href="/dashboard/owner/schedule?filter=no-shows"
+            />
+          </>
+        )}
+      </GlassCard>
+
+      <section className="space-y-4" id="owner-money-transactions">
+        <SectionHeader
+          title="Recent Transactions"
+          action={
+            <Link href="/dashboard/owner/money?section=transactions" className="text-base font-extrabold text-[#A3FF12]">
+              View all
+            </Link>
+          }
+        />
+        <GlassCard className="overflow-hidden p-0">
           {isInitialLoading ? (
-            <>
-              <MetricSkeleton />
-              <MetricSkeleton />
-              <MetricSkeleton />
-            </>
-          ) : (
-            <>
-              <DataStatCard
-                label="Today"
-                value={currency(revenueWindow.todayRevenue)}
-                detail="Revenue posted today."
-                className="border-[#A3FF12]/20 bg-[#A3FF12]/[0.06]"
-              />
-              <DataStatCard label="This week" value={currency(revenueWindow.weekRevenue)} detail="Last 7 business days in scope." />
-              <DataStatCard label="This month" value={currency(revenueWindow.monthRevenue)} detail="Current month from owner analytics snapshots." />
-            </>
-          )}
-        </div>
-      </Card>
-
-      <section className="grid gap-4 lg:grid-cols-[1fr_1fr]">
-        <Card className="rounded-[32px] p-6">
-          <p className="surface-label">Breakdown</p>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            {isInitialLoading ? (
-              <>
-                <MetricSkeleton />
-                <MetricSkeleton />
-                <MetricSkeleton />
-                <MetricSkeleton />
-                <MetricSkeleton />
-                <MetricSkeleton />
-              </>
-            ) : (
-              <>
-                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-                  <p className="surface-label">Service revenue</p>
-                  <p className="mt-3 text-2xl font-semibold">{currency(revenueWindow.monthRevenue)}</p>
-                  <p className="mt-2 text-sm text-white/58">Current-month gross revenue from owner snapshots.</p>
-                </div>
-                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-                  <p className="surface-label">Tips</p>
-                  <p className="mt-3 text-2xl font-semibold">{currency(tipTotal)}</p>
-                  <p className="mt-2 text-sm text-white/58">Tips visible in owner analytics snapshots.</p>
-                </div>
-                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-                  <p className="surface-label">Open platform fees</p>
-                  <p className="mt-3 text-2xl font-semibold">{currency(routedVisibility.platformFees)}</p>
-                  <p className="mt-2 text-sm text-white/58">Blocked plus ready routing rows still visible in scope.</p>
-                </div>
-                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-                  <p className="surface-label">Open barber share</p>
-                  <p className="mt-3 text-2xl font-semibold">{currency(routedVisibility.barberShare)}</p>
-                  <p className="mt-2 text-sm text-white/58">Barber payout share across ready and blocked routing rows.</p>
-                </div>
-                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-                  <p className="surface-label">Open shop share</p>
-                  <p className="mt-3 text-2xl font-semibold">{currency(routedVisibility.shopShare)}</p>
-                  <p className="mt-2 text-sm text-white/58">Shop-side routed revenue still awaiting settlement flow.</p>
-                </div>
-                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-                  <p className="surface-label">Ready for payout</p>
-                  <p className="mt-3 text-2xl font-semibold">{currency(fintechQuery.data?.summary.readyForPayoutAmount ?? payoutSummary?.readyForPayoutAmount ?? 0)}</p>
-                  <p className="mt-2 text-sm text-white/58">Funds already clear to advance through payout rails.</p>
-                </div>
-              </>
-            )}
-          </div>
-        </Card>
-
-        <Card className="rounded-[32px] p-6">
-          <p className="surface-label">Money flow</p>
-          <div className="mt-4 rounded-[26px] border border-white/8 bg-black/20 p-5">
-            <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr_auto_1fr_auto_1fr]">
-              <div className="rounded-[20px] border border-white/8 bg-black/20 px-3 py-4 text-center text-sm text-white/72">Client</div>
-              <ArrowRight className="mx-auto h-4 w-4 self-center text-[#baff69]" />
-              <div className="rounded-[20px] border border-white/8 bg-black/20 px-3 py-4 text-center text-sm text-white/72">Platform</div>
-              <ArrowRight className="mx-auto h-4 w-4 self-center text-[#baff69]" />
-              <div className="rounded-[20px] border border-white/8 bg-black/20 px-3 py-4 text-center text-sm text-white/72">Barber / Shop</div>
-              <ArrowRight className="mx-auto h-4 w-4 self-center text-[#baff69]" />
-              <div className="rounded-[20px] border border-white/8 bg-black/20 px-3 py-4 text-center text-sm text-white/72">Payout</div>
+            <div className="space-y-3 p-5">
+              <Skeleton className="h-20 rounded-[18px]" />
+              <Skeleton className="h-20 rounded-[18px]" />
+              <Skeleton className="h-20 rounded-[18px]" />
             </div>
-            <p className="mt-4 text-sm leading-7 text-white/58">
-              Client payments route into the platform first, split against the canonical routing model, and only advance to payout when service, capture, and dispute status all allow it.
-            </p>
-          </div>
-        </Card>
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-[1fr_1fr]">
-        <Card className="rounded-[32px] p-6">
-          <p className="surface-label">Payout status</p>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            {isInitialLoading ? (
-              <>
-                <MetricSkeleton />
-                <MetricSkeleton />
-                <MetricSkeleton />
-                <MetricSkeleton />
-              </>
-            ) : (
-              <>
-                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Pending</p><p className="mt-3 text-2xl font-semibold">{currency((blockedPayments.reduce((sum, row) => sum + row.barberPayoutAmount + row.shopSplitAmount, 0)))}</p></div>
-                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Executed</p><p className="mt-3 text-2xl font-semibold">{currency(payoutSummary?.executedAmount ?? 0)}</p></div>
-                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Failed / blocked</p><p className="mt-3 text-2xl font-semibold">{(payoutSummary?.failedExecutionRecords ?? 0) + (payoutSummary?.blockedExecutionRecords ?? 0)}</p></div>
-                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Instant payout fees</p><p className="mt-3 text-2xl font-semibold">{currency(recentPayoutExecutions.reduce((sum, row) => sum + (row.payoutSpeed === "instant" ? row.providerFeeAmount : 0), 0))}</p></div>
-              </>
-            )}
-          </div>
-          <div className="mt-4 space-y-3">
-            {recentPayoutExecutions.length ? recentPayoutExecutions.slice(0, 4).map((execution) => (
-              <div key={execution.id} className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="font-medium text-white">{execution.targetDisplayName ?? execution.barberName ?? execution.shopLabel ?? "Payout execution"}</p>
-                  <span className="status-pill text-[#d7ffab]">{execution.executionStatus.replaceAll("_", " ")}</span>
-                </div>
-                <p className="mt-2 text-sm text-white/58">{currency(execution.amount)} - {execution.executionType.replaceAll("_", " ")} - {execution.blockedReason ?? execution.failureReason ?? "Execution recorded cleanly"}</p>
-              </div>
-            )) : (
-              <div className="empty-state-panel rounded-[24px] p-5 text-sm leading-7 text-white/58">
-                No payout executions are recorded yet for this owner scope.
-              </div>
-            )}
-          </div>
-        </Card>
-
-        <Card className="rounded-[32px] p-6">
-          <div className="flex items-center justify-between gap-3">
-            <p className="surface-label">Alerts and exceptions</p>
-            <ShieldAlert className="h-5 w-5 text-[#baff69]" />
-          </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Anomalies open</p><p className="mt-3 text-2xl font-semibold">{anomalies.filter((item) => item.status === "open" || item.status === "investigating").length}</p></div>
-            <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Needs account attention</p><p className="mt-3 text-2xl font-semibold">{fintechQuery.data?.summary.needsAttentionAccounts ?? 0}</p></div>
-            <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Blocked routing</p><p className="mt-3 text-2xl font-semibold">{fintechQuery.data?.summary.blockedRoutingRecords ?? 0}</p></div>
-            <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Ready for payout</p><p className="mt-3 text-2xl font-semibold">{currency(payoutSummary?.readyForPayoutAmount ?? 0)}</p></div>
-          </div>
-          <div className="mt-4 space-y-3">
-            {anomalies.length ? anomalies.slice(0, 4).map((anomaly) => (
-              <div key={anomaly.id} className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="font-medium text-white">{anomaly.summary}</p>
-                  <span className="status-pill text-[#d7ffab]">{anomaly.status}</span>
-                </div>
-                <p className="mt-2 text-sm text-white/58">{anomaly.description ?? anomaly.anomalyType.replaceAll("_", " ")}</p>
-              </div>
-            )) : (
-              <div className="empty-state-panel rounded-[24px] p-5 text-sm leading-7 text-white/58">
-                No financial anomalies are open in this owner scope right now.
-              </div>
-            )}
-          </div>
-        </Card>
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-[1fr_1fr]">
-        <Card className="rounded-[32px] p-6">
-          <div className="flex items-center justify-between gap-3">
-            <p className="surface-label">Recent revenue</p>
-            <WalletCards className="h-5 w-5 text-[#baff69]" />
-          </div>
-          <div className="mt-4 space-y-3">
-            {recentRevenueAppointments.length ? recentRevenueAppointments.map((appointment) => (
-              <div key={appointment.id} className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="font-medium text-white">{appointment.display.clientName}</p>
-                    <p className="mt-1 text-sm text-white/58">{appointment.display.barberName} - {appointment.display.serviceName}</p>
+          ) : transactions.length ? (
+            transactions.map((transaction, index) => (
+              <Link
+                key={transaction.id}
+                href={transaction.href}
+                className={cn(
+                  "grid gap-4 px-5 py-5 transition hover:bg-white/[0.03] md:grid-cols-[minmax(0,1.4fr)_minmax(10rem,0.9fr)_minmax(7rem,0.45fr)_auto] md:items-center",
+                  index > 0 && "border-t border-white/8"
+                )}
+              >
+                <div className="flex min-w-0 items-center gap-4">
+                  <Avatar alt={transaction.name} initials={transaction.initials} className="h-16 w-16 border border-white/12" />
+                  <div className="min-w-0">
+                    <p className="truncate text-xl font-extrabold tracking-[-0.035em] text-white">{transaction.name}</p>
+                    <p className="mt-1 truncate text-base font-medium text-white/64">{transaction.service}</p>
+                    <p className="mt-1 text-sm font-semibold text-white/48">{transaction.source}</p>
                   </div>
-                  <span className="status-pill text-[#d7ffab]">{appointment.balanceDue > 0 ? "open balance" : "posted"}</span>
                 </div>
-                <p className="mt-2 text-sm text-white/58">{formatDateTime(appointment.completedAt ?? appointment.end)} - {currency(appointment.totalAmount)}</p>
-              </div>
-            )) : (
-              <div className="empty-state-panel rounded-[24px] p-5 text-sm leading-7 text-white/58">
-                Revenue activity will appear here once the first completed appointments post.
-              </div>
-            )}
-          </div>
-        </Card>
-
-        <Card className="rounded-[32px] p-6">
-          <div className="flex items-center justify-between gap-3">
-            <p className="surface-label">Performance indicators</p>
-            <Landmark className="h-5 w-5 text-[#baff69]" />
-          </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {isInitialLoading ? (
-              <>
-                <MetricSkeleton />
-                <MetricSkeleton />
-                <MetricSkeleton />
-                <MetricSkeleton />
-              </>
-            ) : (
-              <>
-                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Average ticket</p><p className="mt-3 text-2xl font-semibold">{currency(averageTicket)}</p></div>
-                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Revenue per barber</p><p className="mt-3 text-2xl font-semibold">{currency(revenuePerActiveBarber)}</p></div>
-                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Busiest hour</p><p className="mt-3 text-2xl font-semibold">{busiestHour}</p></div>
-                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4"><p className="surface-label">Chair utilization</p><p className="mt-3 text-2xl font-semibold">{averageUtilization}%</p></div>
-              </>
-            )}
-          </div>
-        </Card>
+                <div className="text-sm font-semibold text-white/58">
+                  <p>{transaction.timestamp}</p>
+                  <p className="mt-2 inline-flex rounded-[9px] bg-white/[0.055] px-2 py-1 text-white/62">{transaction.method}</p>
+                </div>
+                <div className="text-left md:text-right">
+                  <p className="text-xl font-black text-white">{currency(transaction.amount)}</p>
+                  <p className={cn("mt-2 text-sm font-extrabold", statusClass(transaction.status))}>{statusLabel(transaction.status)}</p>
+                </div>
+                <ChevronRight className="hidden h-6 w-6 justify-self-end text-white/72 md:block" />
+              </Link>
+            ))
+          ) : (
+            <div className="p-6">
+              <EmptyPanel
+                title="No transactions yet."
+                detail="Payments, tips, fees, refunds, and adjustments will appear here."
+              />
+            </div>
+          )}
+        </GlassCard>
       </section>
+
+      <GlassCard className="p-6" id="owner-money-payouts">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <h2 className="text-2xl font-extrabold tracking-[-0.04em] text-white">Payout Status</h2>
+          <Link href="/dashboard/owner/money?view=fintech&section=payouts" className="inline-flex items-center gap-2 text-base font-extrabold text-[#A3FF12]">
+            View all payouts
+            <ChevronRight className="h-5 w-5" />
+          </Link>
+        </div>
+        {isInitialLoading ? (
+          <Skeleton className="mt-5 h-32 rounded-[24px]" />
+        ) : (
+          <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_1fr_1fr_auto] lg:items-center">
+            <div className="lg:border-r lg:border-white/10 lg:pr-6">
+              <p className="text-base font-semibold text-white/62">Available Balance</p>
+              <p className="mt-4 text-4xl font-black tracking-[-0.055em] text-[#A3FF12]">{currency(payoutReadyAmount)}</p>
+            </div>
+            <div className="lg:border-r lg:border-white/10 lg:pr-6">
+              <p className="text-base font-semibold text-white/62">Next Payout</p>
+              <p className="mt-4 text-2xl font-black text-white">{nextPayoutLabel}</p>
+            </div>
+            <div>
+              <p className="text-base font-semibold text-white/62">Status</p>
+              <p className={cn("mt-4 text-2xl font-black", payoutStatus.tone === "green" ? "text-[#A3FF12]" : "text-amber-300")}>{payoutStatus.label}</p>
+            </div>
+            <Link
+              href={payoutStatus.href}
+              className="inline-flex min-h-16 items-center justify-center gap-3 rounded-[18px] border border-[#A3FF12]/44 bg-black/25 px-6 text-base font-black text-[#A3FF12] transition hover:-translate-y-0.5 hover:bg-[#A3FF12]/10"
+            >
+              <Building2 className="h-5 w-5" />
+              {payoutStatus.detail}
+            </Link>
+          </div>
+        )}
+      </GlassCard>
     </div>
   );
 }

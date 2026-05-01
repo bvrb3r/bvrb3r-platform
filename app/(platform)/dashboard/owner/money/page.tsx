@@ -7,18 +7,20 @@ import { getAuthorizedUser } from "@/lib/auth/guards";
 export default async function OwnerMoneyPage({
   searchParams
 }: {
-  searchParams: Promise<{ view?: string }>;
+  searchParams: Promise<{ view?: string; section?: string }>;
 }) {
   const user = await getAuthorizedUser(["owner"]);
   const params = await searchParams;
   const growthRequested = params.view === "growth";
+  const fintechRequested = params.view === "fintech";
 
   return (
     <DashboardShell
       user={user}
       activeHref="/dashboard/owner/money"
       title="Money"
-      subtitle="Revenue, payouts, transactions, and shop financial activity."
+      subtitle="Revenue & payouts"
+      hidePageHeader
     >
       {growthRequested ? (
         <Card className="rounded-[32px] border border-white/8 p-5 sm:p-6">
@@ -30,9 +32,11 @@ export default async function OwnerMoneyPage({
         </Card>
       ) : null}
       <OwnerMoneyWorkspace />
-      <section className="mt-4">
-        <FintechWorkspace viewerRole="owner" locationIds={user.locationIds} />
-      </section>
+      {fintechRequested ? (
+        <section className="mt-4">
+          <FintechWorkspace viewerRole="owner" locationIds={user.locationIds} />
+        </section>
+      ) : null}
     </DashboardShell>
   );
 }

@@ -71,9 +71,8 @@ describe("owner dashboard tab pages", () => {
       })
     );
 
-    expect(screen.getByRole("heading", { name: "Money" })).toBeInTheDocument();
     expect(screen.getByTestId("owner-money-workspace-stub")).toBeInTheDocument();
-    expect(screen.getByTestId("fintech-workspace-stub")).toHaveTextContent("loc-ybor,loc-hyde");
+    expect(screen.queryByTestId("fintech-workspace-stub")).not.toBeInTheDocument();
   });
 
   it("keeps the growth placeholder available on the owner money tab when requested", async () => {
@@ -87,6 +86,19 @@ describe("owner dashboard tab pages", () => {
 
     expect(screen.getByText("Growth parked")).toBeInTheDocument();
     expect(screen.getByTestId("owner-money-workspace-stub")).toBeInTheDocument();
+  });
+
+  it("keeps fintech operations reachable from the owner money tab when requested", async () => {
+    getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("owner@bvrb3r.demo"));
+
+    render(
+      await OwnerMoneyPage({
+        searchParams: Promise.resolve({ view: "fintech" })
+      })
+    );
+
+    expect(screen.getByTestId("owner-money-workspace-stub")).toBeInTheDocument();
+    expect(screen.getByTestId("fintech-workspace-stub")).toHaveTextContent("loc-ybor,loc-hyde");
   });
 
   it("renders the owner settings workspace on the canonical settings tab", async () => {

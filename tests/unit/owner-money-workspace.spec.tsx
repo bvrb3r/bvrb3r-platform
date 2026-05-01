@@ -93,6 +93,7 @@ describe("owner money workspace", () => {
         blockedPayments: [
           {
             id: "routing-1",
+            providerGrossAmount: 100,
             platformFeeAmount: 9,
             barberPayoutAmount: 60,
             shopSplitAmount: 31
@@ -119,6 +120,7 @@ describe("owner money workspace", () => {
         readyRouting: [
           {
             id: "routing-2",
+            providerGrossAmount: 75,
             platformFeeAmount: 6,
             barberPayoutAmount: 45,
             shopSplitAmount: 24
@@ -163,11 +165,15 @@ describe("owner money workspace", () => {
     render(<OwnerMoneyWorkspace />);
 
     expect(screen.getByText("Money")).toBeInTheDocument();
-    expect(screen.getAllByText("$180").length).toBeGreaterThan(0);
-    expect(screen.getByText("Open platform fees")).toBeInTheDocument();
-    expect(screen.getByText("Recent revenue")).toBeInTheDocument();
+    expect(screen.getByText("Revenue & payouts")).toBeInTheDocument();
+    expect(screen.getByText("Total Revenue (This Week)")).toBeInTheDocument();
+    expect(screen.getByText("$380")).toBeInTheDocument();
+    expect(screen.getByText("Revenue Breakdown")).toBeInTheDocument();
+    expect(screen.getByText("Recent Transactions")).toBeInTheDocument();
     expect(screen.getByText("Maya Cole")).toBeInTheDocument();
-    expect(screen.getByText("Routing blocked on one payment")).toBeInTheDocument();
+    expect(screen.getByText("Signature Cut")).toBeInTheDocument();
+    expect(screen.getByText("Payout Status")).toBeInTheDocument();
+    expect(screen.getByText("Needs review")).toBeInTheDocument();
   });
 
   it("shows clean empty states when no revenue or payouts exist yet", () => {
@@ -231,8 +237,10 @@ describe("owner money workspace", () => {
 
     render(<OwnerMoneyWorkspace />);
 
-    expect(screen.getByText("No payout executions are recorded yet for this owner scope.")).toBeInTheDocument();
-    expect(screen.getByText("No financial anomalies are open in this owner scope right now.")).toBeInTheDocument();
-    expect(screen.getByText("Revenue activity will appear here once the first completed appointments post.")).toBeInTheDocument();
+    expect(screen.getByText("Revenue chart unavailable")).toBeInTheDocument();
+    expect(screen.getByText("Split breakdown unavailable.")).toBeInTheDocument();
+    expect(screen.getByText("No transactions yet.")).toBeInTheDocument();
+    expect(screen.getByText("Setup incomplete")).toBeInTheDocument();
+    expect(screen.getByText("Complete setup")).toBeInTheDocument();
   });
 });
