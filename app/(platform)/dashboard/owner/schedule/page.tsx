@@ -10,7 +10,8 @@ export default async function OwnerSchedulePage() {
       user={user}
       activeHref="/dashboard/owner/schedule"
       title="Schedule"
-      subtitle="View shop-wide appointments, hours, and capacity."
+      subtitle="All chairs & bookings"
+      hidePageHeader
     >
       <OwnerScheduleWorkspace />
     </DashboardShell>

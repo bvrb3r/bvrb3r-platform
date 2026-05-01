@@ -78,10 +78,12 @@ describe("owner schedule workspace", () => {
     render(<OwnerScheduleWorkspace />);
 
     expect(screen.getByText("Schedule")).toBeInTheDocument();
-    expect(screen.getByText("2")).toBeInTheDocument();
-    expect(screen.getAllByText("Maya Cole").length).toBeGreaterThan(0);
+    expect(screen.getByText("All chairs & bookings")).toBeInTheDocument();
+    expect(screen.getByText("Bookings")).toBeInTheDocument();
+    expect(screen.getByText("Open Slots")).toBeInTheDocument();
+    expect(screen.getAllByText("Maya").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Jordan Ellis").length).toBeGreaterThan(0);
-    expect(screen.getByText("75 min open")).toBeInTheDocument();
+    expect(screen.getByText(/75 minutes/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Jordan Ellis/i }));
     expect(screen.getByText("Leave more texture on top.")).toBeInTheDocument();
@@ -99,7 +101,7 @@ describe("owner schedule workspace", () => {
 
     render(<OwnerScheduleWorkspace />);
 
-    expect(screen.getByText("Appointment details appear here once bookings exist in the current shop scope.")).toBeInTheDocument();
-    expect(screen.getByText("The shop schedule will appear here once the first bookings are attached to this owner scope.")).toBeInTheDocument();
+    expect(screen.getByText("No chairs or barbers assigned yet.")).toBeInTheDocument();
+    expect(screen.getByText("Add barbers or configure shop chairs to build the shop schedule.")).toBeInTheDocument();
   });
 });

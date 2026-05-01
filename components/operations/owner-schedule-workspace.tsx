@@ -1,18 +1,27 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { CalendarDays, Clock3, Scissors, UserRound } from "lucide-react";
-import { Card } from "@/components/ui/card";
+import { useMemo, useState, type ComponentProps, type ReactNode } from "react";
+import Link from "next/link";
+import {
+  BarChart3,
+  CalendarDays,
+  ChevronRight,
+  Clock3,
+  DollarSign,
+  SlidersHorizontal,
+  Store,
+  Users
+} from "lucide-react";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Skeleton } from "@/components/ui/skeleton";
-import { StatusBadge } from "@/components/dashboard/status-badge";
-import { Avatar, DataStatCard } from "@/design/components";
+import { Avatar, FilterChip, GlassCard } from "@/design/components";
 import {
   useShopDashboardQuery,
   type ShopDashboardAppointment,
   type ShopDashboardBarberSummary
 } from "@/lib/operations/barber-client";
-import { currency } from "@/lib/utils";
+import { sortOwnerDashboardAppointments } from "@/lib/operations/metrics";
+import { cn, currency } from "@/lib/utils";
 import { getReadableActionError } from "@/lib/utils/feedback";
 
 type OpenWindowView = {
@@ -23,13 +32,76 @@ type OpenWindowView = {
   minutes: number;
 };
 
-function formatTimeRange(startIso: string, endIso: string) {
-  const formatter = new Intl.DateTimeFormat("en-US", {
-    hour: "numeric",
-    minute: "2-digit"
-  });
+type SlotFilter = "all" | "booked" | "walk-in" | "blocked" | "open";
+type ViewMode = "day" | "chair";
 
-  return `${formatter.format(new Date(startIso))} - ${formatter.format(new Date(endIso))}`;
+type BarberColumn = {
+  id: string;
+  name: string;
+  firstName: string;
+  initials: string;
+  chairLabel: string | null;
+  active: boolean;
+};
+
+type ScheduleCell =
+  | { kind: "booked" | "walk-in" | "blocked"; appointment: ShopDashboardAppointment; title: string; subtitle: string }
+  | { kind: "available"; window: OpenWindowView; title: string; subtitle: string }
+  | { kind: "empty"; title: string; subtitle: string };
+
+const legendItems: Array<{ label: string; tone: "booked" | "walk-in" | "blocked" | "available" }> = [
+  { label: "Booked", tone: "booked" },
+  { label: "Walk-in", tone: "walk-in" },
+  { label: "Blocked", tone: "blocked" },
+  { label: "Available", tone: "available" }
+];
+
+function dateKey(iso: string) {
+  return iso.slice(0, 10);
+}
+
+function getTodayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function getInitials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "BV";
+}
+
+function getFirstName(name: string) {
+  return name.split(/\s+/).filter(Boolean)[0] ?? name;
+}
+
+function getDefaultDate(data?: ReturnType<typeof useShopDashboardQuery>["data"]) {
+  const summaryDate = data?.summary?.businessDate ?? data?.summary?.latestDate;
+  if (summaryDate) {
+    return summaryDate;
+  }
+
+  const latestAppointment = [...(data?.appointments ?? [])].sort((left, right) => right.start.localeCompare(left.start))[0];
+  return latestAppointment ? dateKey(latestAppointment.start) : getTodayKey();
+}
+
+function buildWeekStrip(selectedDate: string) {
+  const selected = new Date(`${selectedDate}T12:00:00.000Z`);
+  const start = new Date(selected);
+  start.setUTCDate(selected.getUTCDate() - selected.getUTCDay());
+
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(start);
+    date.setUTCDate(start.getUTCDate() + index);
+    const key = date.toISOString().slice(0, 10);
+    return {
+      key,
+      weekday: new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "UTC" }).format(date).toUpperCase(),
+      day: new Intl.DateTimeFormat("en-US", { day: "numeric", timeZone: "UTC" }).format(date)
+    };
+  });
 }
 
 function formatTime(iso: string) {
@@ -39,13 +111,40 @@ function formatTime(iso: string) {
   }).format(new Date(iso));
 }
 
-function getInitials(name: string) {
-  return name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join("") || "BV";
+function formatTimeRange(startIso: string, endIso: string) {
+  return `${formatTime(startIso)} - ${formatTime(endIso)}`;
+}
+
+function formatHourLabel(hour: number) {
+  const date = new Date();
+  date.setHours(hour, 0, 0, 0);
+  return new Intl.DateTimeFormat("en-US", { hour: "numeric" }).format(date);
+}
+
+function getHour(iso: string) {
+  return new Date(iso).getHours();
+}
+
+function appointmentOverlapsHour(appointment: ShopDashboardAppointment, hour: number) {
+  const start = new Date(appointment.start);
+  const end = new Date(appointment.end);
+  const hourStart = new Date(start);
+  hourStart.setHours(hour, 0, 0, 0);
+  const hourEnd = new Date(hourStart);
+  hourEnd.setHours(hour + 1);
+
+  return start < hourEnd && end > hourStart;
+}
+
+function windowOverlapsHour(window: OpenWindowView, hour: number) {
+  const start = new Date(window.startsAt);
+  const end = new Date(window.endsAt);
+  const hourStart = new Date(start);
+  hourStart.setHours(hour, 0, 0, 0);
+  const hourEnd = new Date(hourStart);
+  hourEnd.setHours(hour + 1);
+
+  return start < hourEnd && end > hourStart;
 }
 
 function buildOpenWindows(barbers: ShopDashboardBarberSummary[], appointments: ShopDashboardAppointment[]) {
@@ -53,12 +152,8 @@ function buildOpenWindows(barbers: ShopDashboardBarberSummary[], appointments: S
 
   for (const barber of barbers) {
     const barberAppointments = appointments
-      .filter((appointment) => appointment.barberId === barber.id && appointment.status !== "cancelled")
+      .filter((appointment) => appointment.barberId === barber.id && appointment.status !== "cancelled" && appointment.status !== "no_show")
       .sort((left, right) => new Date(left.start).getTime() - new Date(right.start).getTime());
-
-    if (!barberAppointments.length) {
-      continue;
-    }
 
     for (let index = 0; index < barberAppointments.length - 1; index += 1) {
       const current = barberAppointments[index];
@@ -80,242 +175,585 @@ function buildOpenWindows(barbers: ShopDashboardBarberSummary[], appointments: S
   return windows.sort((left, right) => new Date(left.startsAt).getTime() - new Date(right.startsAt).getTime());
 }
 
+function getScheduleHours(appointments: ShopDashboardAppointment[], windows: OpenWindowView[]) {
+  const starts = [
+    ...appointments.map((appointment) => getHour(appointment.start)),
+    ...windows.map((window) => getHour(window.startsAt))
+  ];
+  const ends = [
+    ...appointments.map((appointment) => {
+      const end = new Date(appointment.end);
+      return end.getMinutes() > 0 ? end.getHours() + 1 : end.getHours();
+    }),
+    ...windows.map((window) => {
+      const end = new Date(window.endsAt);
+      return end.getMinutes() > 0 ? end.getHours() + 1 : end.getHours();
+    })
+  ];
+
+  if (!starts.length || !ends.length) {
+    return [];
+  }
+
+  const startHour = Math.max(0, Math.min(...starts));
+  const endHour = Math.min(24, Math.max(...ends, startHour + 1));
+
+  return Array.from({ length: Math.max(endHour - startHour, 1) }, (_, index) => startHour + index);
+}
+
+function getAppointmentKind(appointment: ShopDashboardAppointment): "booked" | "walk-in" | "blocked" {
+  if (appointment.status === "cancelled" || appointment.status === "no_show") {
+    return "blocked";
+  }
+
+  return appointment.source === "walk_in" || appointment.bookingSource === "walk_in" ? "walk-in" : "booked";
+}
+
+function getCellForHour({
+  barber,
+  hour,
+  appointments,
+  openWindows
+}: {
+  barber: BarberColumn;
+  hour: number;
+  appointments: ShopDashboardAppointment[];
+  openWindows: OpenWindowView[];
+}): ScheduleCell {
+  const appointment = appointments
+    .filter((entry) => entry.barberId === barber.id)
+    .find((entry) => appointmentOverlapsHour(entry, hour) && getHour(entry.start) === hour);
+
+  if (appointment) {
+    const kind = getAppointmentKind(appointment);
+    const title = kind === "walk-in"
+      ? "Walk-in"
+      : kind === "blocked"
+        ? appointment.status === "no_show" ? "No-show" : "Cancelled"
+        : appointment.display.clientName || appointment.display.serviceName;
+
+    return {
+      kind,
+      appointment,
+      title,
+      subtitle: kind === "booked"
+        ? `${appointment.display.serviceName} - ${formatTimeRange(appointment.start, appointment.end)}`
+        : formatTimeRange(appointment.start, appointment.end)
+    };
+  }
+
+  const openWindow = openWindows.find((window) => window.barberId === barber.id && windowOverlapsHour(window, hour));
+  if (openWindow) {
+    return {
+      kind: "available",
+      window: openWindow,
+      title: "Available",
+      subtitle: formatTimeRange(openWindow.startsAt, openWindow.endsAt)
+    };
+  }
+
+  return {
+    kind: "empty",
+    title: "-",
+    subtitle: "No schedule data"
+  };
+}
+
+function isCellVisible(cell: ScheduleCell, filter: SlotFilter) {
+  if (filter === "all") {
+    return true;
+  }
+
+  if (filter === "open") {
+    return cell.kind === "available";
+  }
+
+  return cell.kind === filter;
+}
+
 function MetricSkeleton() {
   return (
-    <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-      <Skeleton className="h-3 w-24" />
-      <Skeleton className="mt-4 h-10 w-20" />
-      <Skeleton className="mt-4 h-4 w-32" />
+    <GlassCard className="min-h-[8.75rem] p-5">
+      <Skeleton className="h-8 w-8 rounded-full" />
+      <Skeleton className="mt-6 h-8 w-20" />
+      <Skeleton className="mt-3 h-4 w-24" />
+    </GlassCard>
+  );
+}
+
+function MetricCard({
+  icon,
+  label,
+  value,
+  detail,
+  href,
+  onClick
+}: {
+  icon: ReactNode;
+  label: string;
+  value: ReactNode;
+  detail: string;
+  href?: ComponentProps<typeof Link>["href"];
+  onClick?: () => void;
+}) {
+  const content = (
+    <>
+      <span className="flex items-center gap-2 text-sm font-extrabold text-[#A3FF12]">
+        {icon}
+        {label}
+      </span>
+      <span className="mt-5 block text-3xl font-black tracking-[-0.055em] text-white">{value}</span>
+      <span className="mt-2 block text-base font-semibold text-white/60">{detail}</span>
+    </>
+  );
+
+  const className = "min-h-[8.75rem] rounded-[22px] border border-white/9 bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.018))] p-5 text-left shadow-[0_18px_50px_rgba(0,0,0,0.42),inset_0_1px_0_rgba(255,255,255,0.045)] transition hover:-translate-y-0.5 hover:border-[#A3FF12]/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/70";
+
+  if (href) {
+    return (
+      <Link href={href} className={className}>
+        {content}
+      </Link>
+    );
+  }
+
+  return (
+    <button type="button" onClick={onClick} className={className}>
+      {content}
+    </button>
+  );
+}
+
+function EmptyState({
+  title,
+  detail,
+  children
+}: {
+  title: string;
+  detail: string;
+  children?: ReactNode;
+}) {
+  return (
+    <GlassCard className="p-6">
+      <p className="text-xl font-extrabold text-white">{title}</p>
+      <p className="mt-2 text-sm text-white/58">{detail}</p>
+      {children ? <div className="mt-5 flex flex-wrap gap-3">{children}</div> : null}
+    </GlassCard>
+  );
+}
+
+function StatusLegend() {
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-5 text-base font-semibold text-white/62">
+      {legendItems.map((item) => (
+        <span key={item.label} className="inline-flex items-center gap-2">
+          <span
+            className={cn(
+              "h-3 w-3 rounded-full",
+              item.tone === "booked" && "bg-[#A3FF12]",
+              item.tone === "walk-in" && "bg-blue-400",
+              item.tone === "blocked" && "bg-amber-300",
+              item.tone === "available" && "bg-white/42"
+            )}
+          />
+          {item.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function ScheduleCellButton({
+  cell,
+  filter,
+  onSelectAppointment
+}: {
+  cell: ScheduleCell;
+  filter: SlotFilter;
+  onSelectAppointment: (appointmentId: string) => void;
+}) {
+  const visible = isCellVisible(cell, filter);
+  const className = cn(
+    "flex min-h-[4.75rem] w-36 flex-col justify-center rounded-[12px] border px-3 py-2 text-left text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/70",
+    !visible && "opacity-25",
+    cell.kind === "booked" && "border-[#A3FF12]/30 bg-[#A3FF12]/35 text-white shadow-[0_0_20px_rgba(163,255,18,0.08)]",
+    cell.kind === "walk-in" && "border-blue-300/35 bg-blue-500/35 text-white",
+    cell.kind === "blocked" && "border-amber-300/35 bg-amber-400/42 text-white",
+    cell.kind === "available" && "border-white/8 bg-white/[0.11] text-white/74 hover:border-[#A3FF12]/25 hover:text-white",
+    cell.kind === "empty" && "border-white/6 bg-white/[0.035] text-white/32"
+  );
+
+  if (cell.kind === "booked" || cell.kind === "walk-in" || cell.kind === "blocked") {
+    return (
+      <button type="button" onClick={() => onSelectAppointment(cell.appointment.id)} className={className}>
+        <span className="font-extrabold">{cell.title}</span>
+        <span className="mt-1 text-xs font-semibold opacity-75">{cell.subtitle}</span>
+      </button>
+    );
+  }
+
+  if (cell.kind === "available") {
+    return (
+      <Link href="/dashboard/owner/schedule?filter=open-slots" className={className}>
+        <span className="font-extrabold">{cell.title}</span>
+        <span className="mt-1 text-xs font-semibold opacity-75">{cell.subtitle}</span>
+      </Link>
+    );
+  }
+
+  return (
+    <div className={className} aria-label="No schedule data for this chair and hour">
+      <span className="font-extrabold">{cell.title}</span>
+      <span className="mt-1 text-xs font-semibold opacity-65">{cell.subtitle}</span>
     </div>
   );
 }
 
 export function OwnerScheduleWorkspace() {
   const shopQuery = useShopDashboardQuery();
+  const defaultDate = getDefaultDate(shopQuery.data);
+  const [selectedDate, setSelectedDate] = useState(defaultDate);
+  const [viewMode, setViewMode] = useState<ViewMode>("day");
+  const [slotFilter, setSlotFilter] = useState<SlotFilter>("all");
   const [selectedAppointmentId, setSelectedAppointmentId] = useState<string | null>(null);
 
   const isInitialLoading = shopQuery.isLoading && !shopQuery.data;
   const errorMessage = shopQuery.error ? getReadableActionError(shopQuery.error) : null;
   const appointments = useMemo(() => shopQuery.data?.appointments ?? [], [shopQuery.data?.appointments]);
   const barbers = useMemo(() => shopQuery.data?.barbers ?? [], [shopQuery.data?.barbers]);
+  const activeBarbers = useMemo(() => shopQuery.data?.activeBarbers ?? [], [shopQuery.data?.activeBarbers]);
+  const summaryDate = shopQuery.data?.summary?.businessDate ?? shopQuery.data?.summary?.latestDate;
+  const weekDays = useMemo(() => buildWeekStrip(selectedDate), [selectedDate]);
 
-  const todayAppointments = useMemo(
-    () => [...appointments].sort((left, right) => new Date(left.start).getTime() - new Date(right.start).getTime()),
-    [appointments]
+  const dayAppointments = useMemo(
+    () => sortOwnerDashboardAppointments(appointments, selectedDate),
+    [appointments, selectedDate]
   );
-  const openWindows = useMemo(() => buildOpenWindows(barbers, todayAppointments), [barbers, todayAppointments]);
-  const selectedAppointment = todayAppointments.find((appointment) => appointment.id === selectedAppointmentId) ?? todayAppointments[0] ?? null;
-  const cuttingNowCount = todayAppointments.filter((appointment) => appointment.status === "in_service").length;
-  const cancelledCount = todayAppointments.filter((appointment) => appointment.status === "cancelled" || appointment.status === "no_show").length;
+  const openWindows = useMemo(() => buildOpenWindows(barbers, dayAppointments), [barbers, dayAppointments]);
+  const scheduleHours = useMemo(() => getScheduleHours(dayAppointments, openWindows), [dayAppointments, openWindows]);
+  const activeBarberIds = useMemo(() => new Set(activeBarbers.map((barber) => barber.id)), [activeBarbers]);
+  const selectedAppointment = dayAppointments.find((appointment) => appointment.id === selectedAppointmentId) ?? null;
+
+  const barberColumns = useMemo<BarberColumn[]>(() => {
+    return barbers.map((barber) => {
+      const barberAppointments = dayAppointments.filter((appointment) => appointment.barberId === barber.id);
+      const chairLabel = barberAppointments.find((appointment) => appointment.chair)?.chair ?? null;
+
+      return {
+        id: barber.id,
+        name: barber.name,
+        firstName: getFirstName(barber.name),
+        initials: getInitials(barber.name),
+        chairLabel,
+        active: activeBarberIds.has(barber.id) || barberAppointments.some((appointment) => appointment.status === "checked_in" || appointment.status === "in_service")
+      };
+    });
+  }, [activeBarberIds, barbers, dayAppointments]);
+
+  const bookingCount = dayAppointments.filter((appointment) => appointment.status !== "cancelled" && appointment.status !== "no_show").length;
+  const dayRevenue = summaryDate === selectedDate ? shopQuery.data?.summary.revenueToday ?? null : null;
+  const averageUtilization = barbers.length
+    ? Math.round(barbers.reduce((total, barber) => total + barber.utilization, 0) / barbers.length)
+    : null;
+  const openSlotCount = openWindows.length;
+  const totalOpenMinutes = openWindows.reduce((total, window) => total + window.minutes, 0);
+  const hasScheduleData = Boolean(scheduleHours.length && barberColumns.length);
 
   return (
-    <div className="space-y-4" data-testid="owner-schedule-workspace">
-      {errorMessage ? <FeedbackBanner tone="error" message={errorMessage} /> : null}
-
-      <section className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-        <Card className="rounded-[32px] p-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="surface-label">Schedule</p>
-              <h3 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">See every chair, every gap, and every revenue window.</h3>
-              <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">
-                Spot cancellations, no-shows, idle chairs, and who is cutting right now.
-              </p>
-            </div>
-            <div className="rounded-[24px] border border-white/8 bg-black/20 px-4 py-4 text-sm text-white/66">
-              <div className="inline-flex items-center gap-2 rounded-full border border-[#7CFF00]/20 bg-[#7CFF00]/10 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">
-                <CalendarDays className="h-4 w-4" />
-                {barbers.length} barbers scheduled
-              </div>
-              <p className="mt-4 text-[11px] uppercase tracking-[0.22em] text-white/42">{openWindows.length} open windows detected</p>
-            </div>
-          </div>
-
-          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {isInitialLoading ? (
-              <>
-                <MetricSkeleton />
-                <MetricSkeleton />
-                <MetricSkeleton />
-                <MetricSkeleton />
-              </>
-            ) : (
-              <>
-                <DataStatCard label="Booked today" value={todayAppointments.length} detail="Appointments visible across the shop schedule." />
-                <DataStatCard label="Cutting now" value={cuttingNowCount} detail="Services already in motion on the floor." />
-                <DataStatCard
-                  label="Open windows"
-                  value={openWindows.length}
-                  detail="Gaps wide enough to capture additional revenue."
-                  className="border-[#A3FF12]/20 bg-[#A3FF12]/[0.06]"
-                />
-                <DataStatCard
-                  label="Cancelled / no-show"
-                  value={cancelledCount}
-                  detail="Lost demand the owner can react to quickly."
-                  className={cancelledCount ? "border-red-400/20 bg-red-500/[0.06]" : undefined}
-                />
-              </>
-            )}
-          </div>
-        </Card>
-
-        <div className="grid gap-4">
-          <Card className="rounded-[32px] p-6">
-            <div className="flex items-center justify-between gap-3">
-              <p className="surface-label">Selected appointment</p>
-              <UserRound className="h-5 w-5 text-[#baff69]" />
-            </div>
-            {isInitialLoading ? (
-              <div className="mt-4 space-y-3">
-                <MetricSkeleton />
-                <MetricSkeleton />
-              </div>
-            ) : selectedAppointment ? (
-              <div className="mt-4 space-y-4">
-                <div className="rounded-[24px] border border-[#7CFF00]/16 bg-[#7CFF00]/8 p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <Avatar alt={selectedAppointment.display.clientName} initials={getInitials(selectedAppointment.display.clientName)} className="h-14 w-14" />
-                      <div className="min-w-0">
-                        <p className="text-lg font-semibold text-white">{selectedAppointment.display.clientName}</p>
-                        <p className="mt-1 text-sm text-white/60">{selectedAppointment.display.barberName} - {selectedAppointment.display.serviceName}</p>
-                      </div>
-                    </div>
-                    <StatusBadge status={selectedAppointment.status} balanceDue={selectedAppointment.balanceDue} />
-                  </div>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-                    <p className="surface-label">Time</p>
-                    <p className="mt-3 text-2xl font-semibold">{formatTimeRange(selectedAppointment.start, selectedAppointment.end)}</p>
-                    <p className="mt-2 text-sm text-white/58">{selectedAppointment.display.locationLabel}</p>
-                  </div>
-                  <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-                    <p className="surface-label">Ticket</p>
-                    <p className="mt-3 text-2xl font-semibold">{currency(selectedAppointment.totalAmount)}</p>
-                    <p className="mt-2 text-sm text-white/58">{currency(selectedAppointment.balanceDue)} still open - {currency(selectedAppointment.tipAmount)} tip</p>
-                  </div>
-                </div>
-                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-                  <p className="surface-label">Notes</p>
-                  <p className="mt-3 text-sm leading-7 text-white/62">{selectedAppointment.note || "No client notes were attached to this appointment."}</p>
-                </div>
-              </div>
-            ) : (
-              <div className="empty-state-panel mt-4 rounded-[24px] p-5 text-sm leading-7 text-white/58">
-                Appointment details appear here once bookings exist in the current shop scope.
-              </div>
-            )}
-          </Card>
-
-          <Card className="rounded-[32px] p-6">
-            <div className="flex items-center justify-between gap-3">
-              <p className="surface-label">Open revenue windows</p>
-              <Clock3 className="h-5 w-5 text-[#baff69]" />
-            </div>
-            <div className="mt-4 space-y-3">
-              {isInitialLoading ? (
-                <>
-                  <MetricSkeleton />
-                  <MetricSkeleton />
-                </>
-              ) : openWindows.length ? (
-                openWindows.slice(0, 6).map((window) => (
-                  <div key={`${window.barberId}-${window.startsAt}`} className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <p className="font-medium text-white">{window.barberName}</p>
-                      <span className="status-pill text-[#d7ffab]">{window.minutes} min open</span>
-                    </div>
-                    <p className="mt-2 text-sm text-white/58">{formatTimeRange(window.startsAt, window.endsAt)}</p>
-                  </div>
-                ))
-              ) : (
-                <div className="empty-state-panel rounded-[24px] p-5 text-sm leading-7 text-white/58">
-                  No major open windows are visible right now. The floor looks tightly booked.
-                </div>
-              )}
-            </div>
-          </Card>
+    <div className="space-y-7" data-testid="owner-schedule-workspace">
+      <header className="flex flex-wrap items-start justify-between gap-5">
+        <div>
+          <h1 className="text-5xl font-black leading-none tracking-[-0.055em] text-white sm:text-6xl" data-display="true">
+            Schedule
+          </h1>
+          <p className="mt-3 text-lg font-medium text-white/68">All chairs & bookings</p>
         </div>
+
+        <div className="flex items-center gap-3">
+          <details className="group relative">
+            <summary
+              aria-label="Open schedule filters"
+              className="inline-flex h-14 w-14 cursor-pointer list-none items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-white/74 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition hover:border-[#A3FF12]/35 hover:text-[#A3FF12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/70"
+            >
+              <SlidersHorizontal className="h-6 w-6" />
+            </summary>
+            <GlassCard className="absolute right-0 z-20 mt-3 w-72 p-4">
+              <p className="px-2 text-xs font-extrabold uppercase tracking-[0.18em] text-[#A3FF12]">Schedule filters</p>
+              <div className="mt-3 grid gap-2">
+                {[
+                  ["All", "all"],
+                  ["Booked", "booked"],
+                  ["Walk-ins", "walk-in"],
+                  ["Blocked", "blocked"],
+                  ["Available slots", "open"]
+                ].map(([label, value]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setSlotFilter(value as SlotFilter)}
+                    className={cn(
+                      "flex min-h-11 items-center justify-between rounded-[14px] border px-3 py-2 text-sm font-bold transition",
+                      slotFilter === value
+                        ? "border-[#A3FF12]/45 bg-[#A3FF12] text-black"
+                        : "border-white/10 bg-black/20 text-white/72 hover:border-[#A3FF12]/25 hover:text-white"
+                    )}
+                  >
+                    {label}
+                    {slotFilter === value ? <span className="h-2 w-2 rounded-full bg-black" /> : null}
+                  </button>
+                ))}
+              </div>
+            </GlassCard>
+          </details>
+
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedDate(getTodayKey());
+              setSlotFilter("all");
+            }}
+            className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] px-6 text-base font-extrabold text-white transition hover:border-[#A3FF12]/35 hover:text-[#A3FF12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/70"
+          >
+            Today
+          </button>
+        </div>
+      </header>
+
+      {errorMessage ? (
+        <GlassCard className="border-red-400/20 bg-red-500/8 p-5 text-sm font-semibold text-red-100">
+          <FeedbackBanner tone="error" message={errorMessage} />
+        </GlassCard>
+      ) : null}
+
+      <section className="grid grid-cols-7 gap-2 sm:gap-4" aria-label="Schedule date strip">
+        {weekDays.map((day) => {
+          const selected = day.key === selectedDate;
+          return (
+            <button
+              key={day.key}
+              type="button"
+              onClick={() => {
+                setSelectedDate(day.key);
+                setSelectedAppointmentId(null);
+              }}
+              className={cn(
+                "min-h-[5.875rem] rounded-[20px] border px-2 py-3 text-center transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/70",
+                selected
+                  ? "border-[#A3FF12]/80 bg-[#A3FF12]/8 text-[#A3FF12] shadow-[0_0_24px_rgba(163,255,18,0.12)]"
+                  : "border-transparent text-white/70 hover:border-white/10 hover:bg-white/[0.025]"
+              )}
+            >
+              <span className="block text-xs font-extrabold tracking-[0.08em] text-white/52 sm:text-sm">{day.weekday}</span>
+              <span className={cn("mt-2 block text-2xl font-black tracking-[-0.04em] sm:text-3xl", selected ? "text-[#A3FF12]" : "text-white")}>
+                {day.day}
+              </span>
+            </button>
+          );
+        })}
       </section>
 
-      <Card className="rounded-[32px] p-6">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="surface-label">Shop calendar by barber</p>
-            <p className="mt-2 text-sm text-white/58">Scan each chair lane by barber, tap any appointment to inspect it, and spot idle periods without opening a second schedule tool.</p>
-          </div>
-          <Scissors className="h-5 w-5 text-[#baff69]" />
-        </div>
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        {isInitialLoading ? (
+          <>
+            <MetricSkeleton />
+            <MetricSkeleton />
+            <MetricSkeleton />
+            <MetricSkeleton />
+            <MetricSkeleton />
+          </>
+        ) : (
+          <>
+            <MetricCard
+              icon={<CalendarDays className="h-5 w-5" />}
+              label="Bookings"
+              value={bookingCount}
+              detail="Today"
+              onClick={() => setSlotFilter("booked")}
+            />
+            <MetricCard
+              icon={<DollarSign className="h-5 w-5" />}
+              label="Revenue"
+              value={dayRevenue === null ? "-" : currency(dayRevenue)}
+              detail="Today"
+              href={`/dashboard/owner/money?date=${selectedDate}`}
+            />
+            <MetricCard
+              icon={<Clock3 className="h-5 w-5" />}
+              label="Open Slots"
+              value={openSlotCount}
+              detail="Today"
+              onClick={() => setSlotFilter("open")}
+            />
+            <MetricCard
+              icon={<BarChart3 className="h-5 w-5" />}
+              label="Utilization"
+              value={averageUtilization === null ? "-" : `${averageUtilization}%`}
+              detail="Today"
+              onClick={() => setViewMode("chair")}
+            />
+            <MetricCard
+              icon={<Store className="h-5 w-5" />}
+              label="Shop Hours"
+              value="-"
+              detail="Unavailable"
+              href="/dashboard/owner/settings?section=shop-hours"
+            />
+          </>
+        )}
+      </section>
 
-        <div className="mt-4 grid gap-4 xl:grid-cols-2">
-          {isInitialLoading ? (
-            <>
-              <div className="rounded-[24px] border border-white/8 bg-black/20 p-4"><Skeleton className="h-56 w-full rounded-[24px]" /></div>
-              <div className="rounded-[24px] border border-white/8 bg-black/20 p-4"><Skeleton className="h-56 w-full rounded-[24px]" /></div>
-            </>
-          ) : barbers.length ? (
-            barbers.map((barber) => {
-              const barberAppointments = todayAppointments.filter((appointment) => appointment.barberId === barber.id);
-              return (
-                <div key={barber.id} className="rounded-[28px] border border-white/8 bg-black/20 p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <Avatar alt={barber.name} initials={getInitials(barber.name)} className="h-12 w-12" />
-                      <div className="min-w-0">
-                        <p className="text-lg font-semibold text-white">{barber.name}</p>
-                        <p className="mt-1 text-sm text-white/55">{barber.completedCount} completed - {barber.bookedCount} booked - {barber.utilization}% utilization</p>
-                      </div>
-                    </div>
-                    <span className="status-pill text-[#d7ffab]">
-                      {barber.liveAppointmentCount > 0 ? "Cutting now" : barber.nextAppointmentStart ? `Next ${formatTime(barber.nextAppointmentStart)}` : "Open chair"}
-                    </span>
+      <section className="grid min-h-14 grid-cols-2 rounded-[18px] border border-white/10 bg-white/[0.025] p-1">
+        <FilterChip active={viewMode === "day"} onClick={() => setViewMode("day")} className="h-12 rounded-[14px] text-base">
+          Day
+        </FilterChip>
+        <FilterChip active={viewMode === "chair"} onClick={() => setViewMode("chair")} className="h-12 rounded-[14px] text-base">
+          Chair View
+        </FilterChip>
+      </section>
+
+      <StatusLegend />
+
+      <section className="space-y-4">
+        {isInitialLoading ? (
+          <GlassCard className="p-5">
+            <Skeleton className="h-[32rem] w-full rounded-[24px]" />
+          </GlassCard>
+        ) : !barberColumns.length ? (
+          <EmptyState
+            title="No chairs or barbers assigned yet."
+            detail="Add barbers or configure shop chairs to build the shop schedule."
+          >
+            <Link href="/onboarding/owner/team" className="inline-flex min-h-12 items-center justify-center rounded-full border border-[#A3FF12]/40 px-5 text-sm font-extrabold text-[#A3FF12] transition hover:bg-[#A3FF12]/10">
+              Invite Barber
+            </Link>
+            <Link href="/dashboard/owner/settings?section=shop-hours" className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/12 px-5 text-sm font-extrabold text-white/74 transition hover:border-[#A3FF12]/30 hover:text-[#A3FF12]">
+              Configure Shop Hours
+            </Link>
+          </EmptyState>
+        ) : !hasScheduleData ? (
+          <EmptyState
+            title="No schedule data for this day."
+            detail="Set shop hours and barber availability to track chair usage."
+          >
+            <Link href="/dashboard/owner/settings?section=shop-hours" className="inline-flex min-h-12 items-center justify-center rounded-full border border-[#A3FF12]/40 px-5 text-sm font-extrabold text-[#A3FF12] transition hover:bg-[#A3FF12]/10">
+              Set Shop Hours
+            </Link>
+            <Link href="/dashboard/owner/settings?section=availability" className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/12 px-5 text-sm font-extrabold text-white/74 transition hover:border-[#A3FF12]/30 hover:text-[#A3FF12]">
+              Add Availability
+            </Link>
+          </EmptyState>
+        ) : (
+          <GlassCard className="overflow-hidden p-0">
+            <div className="overflow-x-auto">
+              <div className="min-w-max p-4">
+                <div className="grid gap-1" style={{ gridTemplateColumns: `4.5rem 7rem repeat(${barberColumns.length}, 9rem)` }}>
+                  <div />
+                  <div />
+                  <div className="pb-3 text-sm font-extrabold uppercase tracking-[0.14em] text-white/52" style={{ gridColumn: `span ${barberColumns.length}` }}>
+                    Barbers / Chairs
                   </div>
 
-                  <div className="mt-4 space-y-3">
-                    {barberAppointments.length ? (
-                      barberAppointments.map((appointment) => (
+                  <div />
+                  <div className="flex min-h-[8.5rem] flex-col items-center justify-center rounded-[16px] border border-white/10 bg-white/[0.035] px-3 text-center">
+                    <Users className="h-8 w-8 text-[#A3FF12]" />
+                    <span className="mt-3 text-lg font-extrabold text-white">All Chairs</span>
+                  </div>
+                  {barberColumns.map((barber) => (
+                    <Link
+                      key={barber.id}
+                      href={`/dashboard/owner/schedule?barberId=${encodeURIComponent(barber.id)}`}
+                      className="flex min-h-[8.5rem] flex-col items-center justify-center rounded-[16px] border border-white/10 bg-white/[0.035] px-3 text-center transition hover:border-[#A3FF12]/30"
+                    >
+                      <Avatar
+                        alt={barber.name}
+                        initials={barber.initials}
+                        className={cn(
+                          "h-14 w-14 border-2",
+                          barber.active ? "border-[#A3FF12]/80 shadow-[0_0_18px_rgba(163,255,18,0.18)]" : "border-white/15"
+                        )}
+                      />
+                      <span className="mt-3 text-lg font-extrabold text-white">{barber.firstName}</span>
+                      <span className="text-base font-medium text-white/58">{barber.chairLabel ?? "Chair not set"}</span>
+                    </Link>
+                  ))}
+
+                  {scheduleHours.map((hour) => {
+                    const hourCells = barberColumns.map((barber) => getCellForHour({
+                      barber,
+                      hour,
+                      appointments: dayAppointments,
+                      openWindows
+                    }));
+                    const activeChairCount = hourCells.filter((cell) => cell.kind === "booked" || cell.kind === "walk-in" || cell.kind === "blocked").length;
+
+                    return (
+                      <div key={hour} className="contents">
+                        <div className="flex min-h-[4.75rem] items-start pt-3 text-lg font-semibold text-white/74">
+                          {formatHourLabel(hour)}
+                        </div>
                         <button
-                          key={appointment.id}
                           type="button"
-                          onClick={() => setSelectedAppointmentId(appointment.id)}
-                          className={`w-full rounded-[22px] border p-4 text-left transition ${
-                            appointment.id === selectedAppointment?.id
-                              ? "border-[#7CFF00]/18 bg-[#7CFF00]/8"
-                              : "border-white/8 bg-black/18 hover:border-[#7CFF00]/16 hover:bg-black/26"
-                          }`}
+                          onClick={() => setSlotFilter("all")}
+                          className="flex min-h-[4.75rem] items-center justify-center rounded-[12px] border border-white/8 bg-black/26 text-xl font-black text-[#A3FF12] transition hover:border-[#A3FF12]/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/70"
+                          aria-label={`${activeChairCount} of ${barberColumns.length} chairs active at ${formatHourLabel(hour)}`}
                         >
-                          <div className="flex flex-wrap items-center justify-between gap-3">
-                            <div>
-                              <p className="font-medium text-white">{appointment.display.clientName}</p>
-                              <p className="mt-1 text-sm text-white/55">{appointment.display.serviceName}</p>
-                            </div>
-                            <StatusBadge status={appointment.status} balanceDue={appointment.balanceDue} />
-                          </div>
-                          <div className="mt-3 grid gap-2 text-sm text-white/58 sm:grid-cols-3">
-                            <div className="rounded-[18px] border border-white/8 bg-black/20 px-3 py-2">{formatTimeRange(appointment.start, appointment.end)}</div>
-                            <div className="rounded-[18px] border border-white/8 bg-black/20 px-3 py-2">{appointment.chair}</div>
-                            <div className="rounded-[18px] border border-white/8 bg-black/20 px-3 py-2">{currency(appointment.totalAmount)}</div>
-                          </div>
+                          {activeChairCount}/{barberColumns.length}
                         </button>
-                      ))
-                    ) : (
-                      <div className="rounded-[22px] border border-dashed border-white/10 bg-black/15 p-5 text-sm leading-7 text-white/58">
-                        No appointments on this barber&apos;s lane right now.
+                        {hourCells.map((cell, index) => (
+                          <ScheduleCellButton
+                            key={`${hour}-${barberColumns[index].id}`}
+                            cell={cell}
+                            filter={slotFilter}
+                            onSelectAppointment={setSelectedAppointmentId}
+                          />
+                        ))}
                       </div>
-                    )}
-                  </div>
+                    );
+                  })}
                 </div>
-              );
-            })
-          ) : (
-            <div className="empty-state-panel rounded-[24px] p-6 text-sm leading-7 text-white/58">
-              The shop schedule will appear here once the first bookings are attached to this owner scope.
+              </div>
             </div>
-          )}
-        </div>
-      </Card>
+          </GlassCard>
+        )}
+
+        {selectedAppointment ? (
+          <GlassCard active className="grid gap-4 p-5 md:grid-cols-[1fr_auto] md:items-center">
+            <div className="flex min-w-0 items-center gap-4">
+              <Avatar alt={selectedAppointment.display.clientName} initials={getInitials(selectedAppointment.display.clientName)} className="h-14 w-14 border-2 border-[#A3FF12]/70" />
+              <div className="min-w-0">
+                <p className="text-xl font-extrabold text-white">{selectedAppointment.display.clientName}</p>
+                <p className="mt-1 text-sm font-semibold text-white/62">
+                  {selectedAppointment.display.barberName} - {selectedAppointment.display.serviceName} - {formatTimeRange(selectedAppointment.start, selectedAppointment.end)}
+                </p>
+                <p className="mt-2 text-sm text-white/52">{selectedAppointment.note || "No client notes were attached to this appointment."}</p>
+              </div>
+            </div>
+            <Link href={`/dashboard/owner/money?appointmentId=${encodeURIComponent(selectedAppointment.id)}`} className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#A3FF12]/40 px-5 text-sm font-extrabold text-[#A3FF12] transition hover:bg-[#A3FF12]/10">
+              View Ticket
+            </Link>
+          </GlassCard>
+        ) : null}
+      </section>
+
+      <Link href="/dashboard/owner/schedule?filter=open-slots" className="group block pb-4" onClick={() => setSlotFilter("open")}>
+        <GlassCard className="grid gap-4 p-5 sm:grid-cols-[auto_1fr_auto] sm:items-center sm:p-6">
+          <span className="flex h-16 w-16 items-center justify-center rounded-full border border-[#A3FF12]/22 bg-[#A3FF12]/10 text-[#A3FF12] shadow-[0_0_24px_rgba(163,255,18,0.16)]">
+            <Clock3 className="h-8 w-8" />
+          </span>
+          <span>
+            <span className="block text-2xl font-extrabold tracking-[-0.04em] text-white">Open Slots Summary</span>
+            <span className="mt-1 block text-base font-medium text-white/58">
+              {openSlotCount > 0
+                ? `${openSlotCount} open slots across all chairs today${totalOpenMinutes ? ` - ${totalOpenMinutes} minutes` : ""}`
+                : "No open slots today. Your available chair time is fully used."}
+            </span>
+          </span>
+          <span className="inline-flex items-center gap-2 text-lg font-extrabold text-[#A3FF12]">
+            View Open Slots
+            <ChevronRight className="h-5 w-5 transition group-hover:translate-x-1" />
+          </span>
+        </GlassCard>
+      </Link>
     </div>
   );
 }

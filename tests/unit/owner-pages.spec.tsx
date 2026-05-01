@@ -59,7 +59,6 @@ describe("owner dashboard tab pages", () => {
 
     render(await OwnerSchedulePage());
 
-    expect(screen.getByRole("heading", { name: "Schedule" })).toBeInTheDocument();
     expect(screen.getByTestId("owner-schedule-workspace-stub")).toBeInTheDocument();
   });
 
