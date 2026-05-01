@@ -147,13 +147,20 @@ describe("owner team workspace", () => {
     render(<OwnerTeamWorkspace />);
 
     expect(screen.getByText("Team")).toBeInTheDocument();
+    expect(screen.getByText("Manage your barbers & team performance")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Invite Barber/i })).toHaveAttribute("href", "/onboarding/owner/team");
+    expect(screen.getByPlaceholderText("Search barbers...")).toBeInTheDocument();
     expect(screen.getAllByText("Maya Cole").length).toBeGreaterThan(0);
-    expect(screen.getByText("2 barbers in scope")).toBeInTheDocument();
+    expect(screen.getByText("Total Barbers")).toBeInTheDocument();
+    expect(screen.getAllByText("Active").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Idle").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Offline").length).toBeGreaterThan(0);
     expect(screen.getAllByText("$105").length).toBeGreaterThan(0);
+    expect(screen.getByText("Pending Verification")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Ren Hale/i }));
-    expect(screen.getByText("Submit payout verification")).toBeInTheDocument();
-    expect(screen.getAllByText("Booth rent - BVRB3R Ybor").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Submit payout verification").length).toBeGreaterThan(0);
+    expect(screen.getByText("Account health: needs attention")).toBeInTheDocument();
   });
 
   it("shows a clean empty state when no barbers are attached to the owner scope", () => {
@@ -187,7 +194,7 @@ describe("owner team workspace", () => {
 
     render(<OwnerTeamWorkspace />);
 
-    expect(screen.getByText("Team detail will appear here when a barber is in scope for this owner.")).toBeInTheDocument();
-    expect(screen.getByText("No barber roster is attached to this owner scope yet.")).toBeInTheDocument();
+    expect(screen.getByText("No barbers assigned yet.")).toBeInTheDocument();
+    expect(screen.getByText("Invite your first barber to start managing your shop team.")).toBeInTheDocument();
   });
 });

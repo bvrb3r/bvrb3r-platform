@@ -51,7 +51,6 @@ describe("owner dashboard tab pages", () => {
 
     render(await OwnerTeamPage());
 
-    expect(screen.getByRole("heading", { name: "Team" })).toBeInTheDocument();
     expect(screen.getByTestId("owner-team-workspace-stub")).toBeInTheDocument();
   });
 
