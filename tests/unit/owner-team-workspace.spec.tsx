@@ -1,11 +1,17 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
+  createOwnerTeamInviteMock,
+  useCreateOwnerTeamInviteMutationMock,
+  useOwnerTeamInviteDirectoryQueryMock,
   useShopDashboardQueryMock,
   useFintechManagementQueryMock
 } = vi.hoisted(() => ({
+  createOwnerTeamInviteMock: vi.fn(),
+  useCreateOwnerTeamInviteMutationMock: vi.fn(),
+  useOwnerTeamInviteDirectoryQueryMock: vi.fn(),
   useShopDashboardQueryMock: vi.fn(),
   useFintechManagementQueryMock: vi.fn()
 }));
@@ -17,6 +23,8 @@ vi.mock("next/link", () => ({
 }));
 
 vi.mock("@/lib/operations/barber-client", () => ({
+  useCreateOwnerTeamInviteMutation: useCreateOwnerTeamInviteMutationMock,
+  useOwnerTeamInviteDirectoryQuery: useOwnerTeamInviteDirectoryQueryMock,
   useShopDashboardQuery: useShopDashboardQueryMock
 }));
 
@@ -30,6 +38,9 @@ describe("owner team workspace", () => {
   beforeEach(() => {
     useShopDashboardQueryMock.mockReset();
     useFintechManagementQueryMock.mockReset();
+    useOwnerTeamInviteDirectoryQueryMock.mockReset();
+    useCreateOwnerTeamInviteMutationMock.mockReset();
+    createOwnerTeamInviteMock.mockReset();
 
     useShopDashboardQueryMock.mockReturnValue({
       isLoading: false,
@@ -141,6 +152,54 @@ describe("owner team workspace", () => {
         blockedPayments: []
       }
     });
+
+    useOwnerTeamInviteDirectoryQueryMock.mockReturnValue({
+      isLoading: false,
+      error: null,
+      data: {
+        shop: {
+          id: "shop-ybor",
+          label: "BVRB3R Ybor"
+        },
+        barbers: [
+          {
+            barberId: "barber-jordan",
+            barberReference: "barber-jordan",
+            profileId: "profile-jordan",
+            name: "Jordan Fade",
+            email: "jordan@example.com",
+            username: "jordanfade",
+            serviceAreaLabel: "Ybor City",
+            compensationModel: "commission",
+            appApprovalStatus: "approved",
+            shopApprovalStatus: "approved",
+            visibilityState: "public",
+            acceptsInstantBookings: true,
+            alreadyAssigned: false,
+            inviteStatus: null,
+            canInvite: true
+          }
+        ]
+      }
+    });
+    createOwnerTeamInviteMock.mockResolvedValue({
+      invite: {
+        id: "invite-1",
+        shopId: "shop-ybor",
+        shopLabel: "BVRB3R Ybor",
+        barberId: "barber-jordan",
+        barberName: "Jordan Fade",
+        barberEmail: "jordan@example.com",
+        status: "pending",
+        message: null,
+        createdAt: "2026-04-27T09:00:00.000Z",
+        respondedAt: null
+      }
+    });
+    useCreateOwnerTeamInviteMutationMock.mockReturnValue({
+      mutateAsync: createOwnerTeamInviteMock,
+      isPending: false
+    });
   });
 
   it("renders the owner team lane from scoped canonical barber and payout truth", () => {
@@ -148,7 +207,7 @@ describe("owner team workspace", () => {
 
     expect(screen.getByText("Team")).toBeInTheDocument();
     expect(screen.getByText("Manage your barbers & team performance")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Invite Barber/i })).toHaveAttribute("href", "/onboarding/owner/team");
+    expect(screen.getByRole("button", { name: /Invite Barber/i })).toBeInTheDocument();
     expect(screen.getByPlaceholderText("Search barbers...")).toBeInTheDocument();
     expect(screen.getAllByText("Maya Cole").length).toBeGreaterThan(0);
     expect(screen.getByText("Total Barbers")).toBeInTheDocument();
@@ -196,5 +255,26 @@ describe("owner team workspace", () => {
 
     expect(screen.getByText("No barbers assigned yet.")).toBeInTheDocument();
     expect(screen.getByText("Invite your first barber to start managing your shop team.")).toBeInTheDocument();
+  });
+
+  it("opens the real invite directory and sends a canonical shop invite", async () => {
+    render(<OwnerTeamWorkspace />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Invite Barber/i }));
+
+    expect(screen.getByRole("dialog", { name: /Invite a barber/i })).toBeInTheDocument();
+    expect(screen.getByText("Jordan Fade")).toBeInTheDocument();
+    expect(screen.getByText("jordan@example.com")).toBeInTheDocument();
+    expect(screen.getByText("Instant booking on")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Send Invite/i }));
+
+    await waitFor(() => {
+      expect(createOwnerTeamInviteMock).toHaveBeenCalledWith({
+        barberId: "barber-jordan",
+        shopId: "shop-ybor"
+      });
+    });
+    expect(await screen.findByText(/Invite sent to Jordan Fade/i)).toBeInTheDocument();
   });
 });

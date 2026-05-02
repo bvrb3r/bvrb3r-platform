@@ -8,16 +8,26 @@ import {
   ChevronRight,
   Clock3,
   Filter,
+  Mail,
   MoreVertical,
   Plus,
+  Send,
+  ShieldCheck,
   Star,
-  Users
+  Users,
+  X
 } from "lucide-react";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, FilterChip, GlassCard, SearchBar } from "@/design/components";
 import { useFintechManagementQuery } from "@/lib/fintech/client";
-import { useShopDashboardQuery, type ShopDashboardAppointment, type ShopDashboardBarberSummary } from "@/lib/operations/barber-client";
+import {
+  useCreateOwnerTeamInviteMutation,
+  useOwnerTeamInviteDirectoryQuery,
+  useShopDashboardQuery,
+  type ShopDashboardAppointment,
+  type ShopDashboardBarberSummary
+} from "@/lib/operations/barber-client";
 import { cn, currency } from "@/lib/utils";
 import { getReadableActionError } from "@/lib/utils/feedback";
 
@@ -311,15 +321,21 @@ export function OwnerTeamWorkspace() {
   const shopQuery = useShopDashboardQuery();
   const fintechQuery = useFintechManagementQuery();
   const [searchValue, setSearchValue] = useState("");
+  const [inviteSearch, setInviteSearch] = useState("");
+  const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [activeFilter, setActiveFilter] = useState<TeamFilter>("all");
   const [sortKey, setSortKey] = useState<SortKey>("top");
   const [selectedBarberId, setSelectedBarberId] = useState<string | null>(null);
+  const [inviteFeedback, setInviteFeedback] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(null);
+  const inviteDirectoryQuery = useOwnerTeamInviteDirectoryQuery(inviteSearch, inviteModalOpen);
+  const createInviteMutation = useCreateOwnerTeamInviteMutation();
 
   const isInitialLoading =
     (shopQuery.isLoading && !shopQuery.data)
     || (fintechQuery.isLoading && !fintechQuery.data);
 
   const errorMessage = shopQuery.error ?? fintechQuery.error;
+  const inviteErrorMessage = inviteDirectoryQuery.error ? getReadableActionError(inviteDirectoryQuery.error) : null;
 
   const barbers = useMemo(() => shopQuery.data?.barbers ?? [], [shopQuery.data?.barbers]);
   const activeBarbers = useMemo(() => shopQuery.data?.activeBarbers ?? [], [shopQuery.data?.activeBarbers]);
@@ -406,6 +422,22 @@ export function OwnerTeamWorkspace() {
   const offlineCount = team.filter((barber) => barber.statusKind === "offline").length;
   const activeSortLabel = sortOptions.find((option) => option.key === sortKey)?.label ?? "Top Performers";
 
+  async function handleCreateInvite(barberId: string) {
+    setInviteFeedback(null);
+    try {
+      const response = await createInviteMutation.mutateAsync({
+        barberId,
+        shopId: inviteDirectoryQuery.data?.shop.id
+      });
+      setInviteFeedback({
+        tone: "success",
+        message: `Invite sent to ${response.invite.barberName}. They can accept or decline it from their Barber More tab.`
+      });
+    } catch (error) {
+      setInviteFeedback({ tone: "error", message: getReadableActionError(error as { message?: string; status?: number; code?: string }) });
+    }
+  }
+
   return (
     <div className="space-y-7" data-testid="owner-team-workspace">
       <header className="flex items-start justify-between gap-5">
@@ -415,16 +447,18 @@ export function OwnerTeamWorkspace() {
           </h1>
           <p className="mt-3 text-lg font-medium text-white/68">Manage your barbers & team performance</p>
         </div>
-        <Link
-          href="/onboarding/owner/team"
+        <button
+          type="button"
+          onClick={() => setInviteModalOpen(true)}
           className="inline-flex min-h-14 shrink-0 items-center justify-center gap-3 rounded-full border border-[#A3FF12]/45 bg-[linear-gradient(135deg,#A3FF12_0%,#7DCE00_100%)] px-5 text-sm font-black text-black shadow-[0_16px_42px_rgba(163,255,18,0.3)] transition hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/70 sm:px-7 sm:text-base"
         >
           <Plus className="h-5 w-5" />
           Invite Barber
-        </Link>
+        </button>
       </header>
 
       {errorMessage ? <FeedbackBanner tone="error" message={getReadableActionError(errorMessage)} /> : null}
+      {inviteFeedback && !inviteModalOpen ? <FeedbackBanner tone={inviteFeedback.tone} message={inviteFeedback.message} /> : null}
 
       <section className="grid gap-3 sm:grid-cols-[1fr_auto]">
         <SearchBar
@@ -549,12 +583,13 @@ export function OwnerTeamWorkspace() {
             title="No barbers assigned yet."
             detail="Invite your first barber to start managing your shop team."
             action={
-              <Link
-                href="/onboarding/owner/team"
+              <button
+                type="button"
+                onClick={() => setInviteModalOpen(true)}
                 className="inline-flex min-h-12 items-center justify-center rounded-full border border-[#A3FF12]/40 px-5 text-sm font-extrabold text-[#A3FF12] transition hover:bg-[#A3FF12]/10"
               >
                 Invite Barber
-              </Link>
+              </button>
             }
           />
         ) : !filteredTeam.length ? (
@@ -691,6 +726,127 @@ export function OwnerTeamWorkspace() {
           </span>
         </GlassCard>
       </Link>
+
+      {inviteModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/78 px-4 py-5 backdrop-blur-xl sm:items-center sm:justify-center" role="dialog" aria-modal="true" aria-labelledby="owner-team-invite-title">
+          <GlassCard className="max-h-[88vh] w-full max-w-3xl overflow-hidden p-0">
+            <div className="flex items-start justify-between gap-4 border-b border-white/8 p-5 sm:p-6">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-[#A3FF12]">Team invite</p>
+                <h2 id="owner-team-invite-title" className="mt-2 text-3xl font-black tracking-[-0.045em] text-white">Invite a barber</h2>
+                <p className="mt-2 text-sm leading-6 text-white/58">
+                  Search real barber accounts and send a canonical shop invite. Barbers join the team only after accepting.
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close invite barber dialog"
+                onClick={() => setInviteModalOpen(false)}
+                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-white/70 transition hover:border-[#A3FF12]/35 hover:text-[#A3FF12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/70"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="max-h-[calc(88vh-9rem)] overflow-y-auto p-5 sm:p-6">
+              {inviteFeedback ? <FeedbackBanner tone={inviteFeedback.tone} message={inviteFeedback.message} /> : null}
+              {inviteErrorMessage ? <FeedbackBanner tone="error" message={inviteErrorMessage} /> : null}
+
+              <SearchBar
+                aria-label="Search app barbers to invite"
+                placeholder="Search by name, email, username, or city"
+                value={inviteSearch}
+                onChange={(event) => setInviteSearch(event.target.value)}
+                className="min-h-[4rem] rounded-[22px] px-5 text-base"
+              />
+
+              {inviteDirectoryQuery.data?.shop ? (
+                <div className="mt-4 rounded-[20px] border border-[#A3FF12]/18 bg-[#A3FF12]/8 p-4 text-sm text-white/70">
+                  Invites will be sent for <span className="font-extrabold text-white">{inviteDirectoryQuery.data.shop.label}</span>.
+                </div>
+              ) : null}
+
+              <div className="mt-5 space-y-3">
+                {inviteDirectoryQuery.isLoading ? (
+                  <>
+                    <Skeleton className="h-24 rounded-[22px]" />
+                    <Skeleton className="h-24 rounded-[22px]" />
+                    <Skeleton className="h-24 rounded-[22px]" />
+                  </>
+                ) : inviteDirectoryQuery.data?.barbers.length ? inviteDirectoryQuery.data.barbers.map((barber) => {
+                  const statusText = barber.alreadyAssigned
+                    ? "Assigned"
+                    : barber.inviteStatus === "pending"
+                      ? "Invite pending"
+                      : barber.canInvite
+                        ? "Ready to invite"
+                        : formatStatusLabel(barber.inviteStatus ?? "Unavailable");
+                  const statusTone = barber.alreadyAssigned || barber.inviteStatus === "accepted" ? "text-[#A3FF12]" : barber.inviteStatus === "pending" ? "text-amber-200" : "text-white/58";
+
+                  return (
+                    <div key={barber.barberId} className="grid gap-4 rounded-[24px] border border-white/8 bg-black/28 p-4 sm:grid-cols-[1fr_auto] sm:items-center">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <p className="truncate text-xl font-extrabold tracking-[-0.03em] text-white">{barber.name}</p>
+                          <span className={cn("inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-extrabold", statusTone)}>
+                            <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                            {statusText}
+                          </span>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-2 text-sm text-white/56">
+                          {barber.email ? (
+                            <span className="inline-flex items-center gap-1.5">
+                              <Mail className="h-3.5 w-3.5 text-[#A3FF12]" aria-hidden="true" />
+                              {barber.email}
+                            </span>
+                          ) : null}
+                          {barber.username ? <span>@{barber.username}</span> : null}
+                          {barber.serviceAreaLabel ? <span>{barber.serviceAreaLabel}</span> : null}
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold uppercase tracking-[0.13em] text-white/42">
+                          <span>App {formatStatusLabel(barber.appApprovalStatus)}</span>
+                          <span>Shop {formatStatusLabel(barber.shopApprovalStatus)}</span>
+                          <span>{formatStatusLabel(barber.compensationModel)}</span>
+                          <span>{barber.acceptsInstantBookings ? "Instant booking on" : "Instant booking off"}</span>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2 sm:justify-end">
+                        {barber.username ? (
+                          <Link
+                            href={`/barber/${encodeURIComponent(barber.username)}`}
+                            className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 px-4 text-sm font-extrabold text-white/72 transition hover:border-[#A3FF12]/28 hover:text-[#A3FF12]"
+                          >
+                            View Profile
+                          </Link>
+                        ) : null}
+                        <button
+                          type="button"
+                          disabled={!barber.canInvite || createInviteMutation.isPending}
+                          onClick={() => void handleCreateInvite(barber.barberId)}
+                          className={cn(
+                            "inline-flex min-h-11 items-center justify-center gap-2 rounded-full px-4 text-sm font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/70",
+                            barber.canInvite
+                              ? "border border-[#A3FF12]/42 bg-[#A3FF12] text-black shadow-[0_14px_32px_rgba(163,255,18,0.22)] hover:-translate-y-0.5"
+                              : "cursor-not-allowed border border-white/8 bg-white/[0.035] text-white/38"
+                          )}
+                        >
+                          <Send className="h-4 w-4" />
+                          {barber.inviteStatus === "pending" ? "Pending" : barber.alreadyAssigned ? "Assigned" : "Send Invite"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }) : (
+                  <div className="rounded-[24px] border border-dashed border-white/10 bg-black/28 p-6">
+                    <p className="text-xl font-extrabold text-white">No matching barbers found.</p>
+                    <p className="mt-2 text-sm leading-6 text-white/58">Try a different name, email, username, or service area.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </GlassCard>
+        </div>
+      ) : null}
     </div>
   );
 }

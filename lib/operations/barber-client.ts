@@ -12,6 +12,10 @@ import type {
   OwnerAnalyticsSnapshotRecord,
   WorkflowEventRecord
 } from "@/lib/operations/persistence";
+import type {
+  ShopTeamInviteDirectoryPayload,
+  ShopTeamInviteView
+} from "@/lib/operations/shop-team-invites";
 
 export interface BarberApiError extends Error {
   status?: number;
@@ -204,6 +208,14 @@ interface BarberSubtypeSelectionResponse {
   lane: unknown;
   degraded: boolean;
   nextPath: string;
+}
+
+interface CreateShopTeamInviteResponse {
+  invite: ShopTeamInviteView;
+}
+
+interface BarberTeamInvitesResponse {
+  invites: ShopTeamInviteView[];
 }
 
 export interface BarberDashboardResponse {
@@ -610,6 +622,68 @@ export function useShopDashboardQuery() {
     queryKey: ["shop-dashboard"],
     queryFn: () => requestJson<ShopDashboardResponse>("/api/shop/dashboard"),
     staleTime: 5_000
+  });
+}
+
+export function useOwnerTeamInviteDirectoryQuery(search?: string, enabled = true) {
+  const queryString = toQueryString({
+    q: search?.trim() || undefined
+  });
+
+  return useQuery({
+    queryKey: ["shop-team-invite-directory", search?.trim() ?? ""],
+    queryFn: () => requestJson<ShopTeamInviteDirectoryPayload>(`/api/owner/team/invites${queryString ? `?${queryString}` : ""}`),
+    staleTime: 5_000,
+    enabled
+  });
+}
+
+export function useCreateOwnerTeamInviteMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: { barberId: string; shopId?: string; message?: string }) =>
+      requestJson<CreateShopTeamInviteResponse>("/api/owner/team/invites", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["shop-team-invite-directory"] }),
+        queryClient.invalidateQueries({ queryKey: ["shop-dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["fintech"] })
+      ]);
+    }
+  });
+}
+
+export function useBarberTeamInvitesQuery() {
+  return useQuery({
+    queryKey: ["barber-team-invites"],
+    queryFn: () => requestJson<BarberTeamInvitesResponse>("/api/barber/team-invites"),
+    staleTime: 5_000
+  });
+}
+
+export function useRespondBarberTeamInviteMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: { inviteId: string; status: "accepted" | "declined" }) =>
+      requestJson<{ invite: ShopTeamInviteView }>("/api/barber/team-invites", {
+        method: "PATCH",
+        body: JSON.stringify(payload)
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["barber-team-invites"] }),
+        queryClient.invalidateQueries({ queryKey: ["barber-overview"] }),
+        queryClient.invalidateQueries({ queryKey: ["barber-schedule"] }),
+        queryClient.invalidateQueries({ queryKey: ["shop-dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["fintech"] }),
+        queryClient.invalidateQueries({ queryKey: ["activation-status"] })
+      ]);
+    }
   });
 }
 

@@ -1,0 +1,137 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const {
+  createOwnerTeamInviteMock,
+  getSessionUserMock,
+  listBarberTeamInvitesMock,
+  listOwnerTeamInviteDirectoryMock,
+  respondToBarberTeamInviteMock
+} = vi.hoisted(() => ({
+  createOwnerTeamInviteMock: vi.fn(),
+  getSessionUserMock: vi.fn(),
+  listBarberTeamInvitesMock: vi.fn(),
+  listOwnerTeamInviteDirectoryMock: vi.fn(),
+  respondToBarberTeamInviteMock: vi.fn()
+}));
+
+vi.mock("@/lib/booking/route-auth", () => ({
+  getSessionUser: getSessionUserMock
+}));
+
+vi.mock("@/lib/operations/shop-team-invites", () => ({
+  ShopTeamInviteServiceError: class ShopTeamInviteServiceError extends Error {
+    status: number;
+
+    constructor(message: string, status = 400) {
+      super(message);
+      this.status = status;
+    }
+  },
+  createOwnerTeamInvite: createOwnerTeamInviteMock,
+  listBarberTeamInvites: listBarberTeamInvitesMock,
+  listOwnerTeamInviteDirectory: listOwnerTeamInviteDirectoryMock,
+  respondToBarberTeamInvite: respondToBarberTeamInviteMock
+}));
+
+describe("shop team invite routes", () => {
+  beforeEach(() => {
+    createOwnerTeamInviteMock.mockReset();
+    getSessionUserMock.mockReset();
+    listBarberTeamInvitesMock.mockReset();
+    listOwnerTeamInviteDirectoryMock.mockReset();
+    respondToBarberTeamInviteMock.mockReset();
+
+    getSessionUserMock.mockResolvedValue({
+      id: "profile-owner",
+      role: "owner",
+      email: "owner@example.com"
+    });
+  });
+
+  it("loads the owner searchable barber directory through the canonical service", async () => {
+    listOwnerTeamInviteDirectoryMock.mockResolvedValue({
+      shop: { id: "shop-ybor", label: "BVRB3R Ybor" },
+      barbers: []
+    });
+    const { GET } = await import("@/app/api/owner/team/invites/route");
+
+    const response = await GET({ nextUrl: new URL("https://bvrb3r.test/api/owner/team/invites?q=fade") } as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.shop.id).toBe("shop-ybor");
+    expect(listOwnerTeamInviteDirectoryMock).toHaveBeenCalledWith(
+      expect.objectContaining({ role: "owner" }),
+      "fade"
+    );
+  });
+
+  it("creates owner invites without assigning the barber immediately", async () => {
+    createOwnerTeamInviteMock.mockResolvedValue({
+      id: "invite-1",
+      shopId: "shop-ybor",
+      barberId: "barber-real",
+      barberName: "Real Barber",
+      status: "pending"
+    });
+    const { POST } = await import("@/app/api/owner/team/invites/route");
+
+    const response = await POST(new Request("https://bvrb3r.test/api/owner/team/invites", {
+      method: "POST",
+      body: JSON.stringify({
+        shopId: "shop-ybor",
+        barberId: "barber-real"
+      })
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.invite.status).toBe("pending");
+    expect(createOwnerTeamInviteMock).toHaveBeenCalledWith(
+      expect.objectContaining({ role: "owner" }),
+      {
+        shopId: "shop-ybor",
+        barberId: "barber-real"
+      }
+    );
+  });
+
+  it("lets a barber accept a shop invitation through the canonical response service", async () => {
+    getSessionUserMock.mockResolvedValue({
+      id: "profile-barber",
+      role: "commission_barber",
+      barberId: "barber-real",
+      email: "barber@example.com"
+    });
+    respondToBarberTeamInviteMock.mockResolvedValue({
+      invite: {
+        id: "invite-1",
+        shopId: "shop-ybor",
+        shopLabel: "BVRB3R Ybor",
+        barberId: "barber-real",
+        barberName: "Real Barber",
+        status: "accepted"
+      }
+    });
+    const { PATCH } = await import("@/app/api/barber/team-invites/route");
+
+    const response = await PATCH(new Request("https://bvrb3r.test/api/barber/team-invites", {
+      method: "PATCH",
+      body: JSON.stringify({
+        inviteId: "invite-1",
+        status: "accepted"
+      })
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.invite.status).toBe("accepted");
+    expect(respondToBarberTeamInviteMock).toHaveBeenCalledWith(
+      expect.objectContaining({ role: "commission_barber", barberId: "barber-real" }),
+      {
+        inviteId: "invite-1",
+        status: "accepted"
+      }
+    );
+  });
+});

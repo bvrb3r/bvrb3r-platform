@@ -152,7 +152,7 @@ export function PublicBarberProfile({
                 >
                   Book this barber
                 </MarketplaceTrackedActionLink>
-                <Link href={`/booking/new?barberId=${profile.barber.id}&locationId=${profile.shopLocations[0]?.id ?? ""}`} className="inline-flex h-12 items-center justify-center rounded-full border border-white/10 bg-black/25 px-5 text-[11px] font-semibold uppercase tracking-[0.22em] text-white transition hover:border-[#7CFF00]/24 hover:text-[#d7ffab]">
+                <Link href={(profile.bookingCtaHref ?? `/booking/new?barberId=${profile.barber.id}&locationId=${profile.shopLocations[0]?.id ?? ""}`) as Route} className="inline-flex h-12 items-center justify-center rounded-full border border-white/10 bg-black/25 px-5 text-[11px] font-semibold uppercase tracking-[0.22em] text-white transition hover:border-[#7CFF00]/24 hover:text-[#d7ffab]">
                   View booking flow
                 </Link>
               </div>

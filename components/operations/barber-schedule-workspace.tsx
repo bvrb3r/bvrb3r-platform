@@ -501,10 +501,10 @@ function AppointmentCard({
   );
 }
 
-function OpenSlotCard({ slot }: { slot: OpenSlotView }) {
+function OpenSlotCard({ slot, onBookSlot }: { slot: OpenSlotView; onBookSlot: (slot: OpenSlotView) => void }) {
   return (
     <div className="rounded-[18px] border border-dashed border-[#a3ff12]/45 bg-[#a3ff12]/[0.025] p-4 shadow-[0_16px_45px_rgba(0,0,0,0.36)]">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-[14px] bg-[rgba(163,255,18,0.14)] text-[#a3ff12] shadow-[0_0_22px_rgba(163,255,18,0.20)]">
             <Plus className="h-6 w-6" />
@@ -514,10 +514,19 @@ function OpenSlotCard({ slot }: { slot: OpenSlotView }) {
             <p className="mt-1 text-sm font-medium text-white/60">{formatTimeRange(slot.startsAt, slot.endsAt)}</p>
           </div>
         </div>
-        <div className="text-right">
+        <div className="flex items-center justify-between gap-3 sm:block sm:text-right">
           <p className="text-sm font-semibold text-white/70">{formatDuration(slot.durationMinutes)}</p>
           <p className="mt-1 text-base font-extrabold text-[#a3ff12]">Available</p>
         </div>
+      </div>
+      <div className="mt-4 flex justify-end border-t border-[#a3ff12]/12 pt-4">
+        <ActionButton
+          type="button"
+          className="min-h-10 px-4"
+          onClick={() => onBookSlot(slot)}
+        >
+          Book this slot
+        </ActionButton>
       </div>
     </div>
   );
@@ -772,6 +781,23 @@ export function BarberScheduleWorkspace({
     }
   }
 
+  function handleBookOpenSlot(slot: OpenSlotView) {
+    if (!payload?.barberId) {
+      setStatusUpdate({ tone: "error", message: "Barber account is still loading. Try again in a moment." });
+      return;
+    }
+
+    const params = new URLSearchParams({
+      barberId: payload.barberId,
+      appointmentTime: slot.startsAt.toISOString()
+    });
+    if (selectedLocationId) {
+      params.set("locationId", selectedLocationId);
+    }
+
+    router.push(`/booking/new?${params.toString()}`);
+  }
+
   return (
     <div className="space-y-6" data-testid="barber-schedule-workspace">
       {!showCalendar && statusUpdate ? <FeedbackBanner tone={statusUpdate.tone} message={statusUpdate.message} /> : null}
@@ -999,7 +1025,7 @@ export function BarberScheduleWorkspace({
                         isMessagePending={createThreadMutation.isPending}
                       />
                     ) : (
-                      <OpenSlotCard key={`${entry.type}-${entry.id}`} slot={entry.slot} />
+                      <OpenSlotCard key={`${entry.type}-${entry.id}`} slot={entry.slot} onBookSlot={handleBookOpenSlot} />
                     )
                   )) : (
                     <div
@@ -1027,7 +1053,7 @@ export function BarberScheduleWorkspace({
                   isMessagePending={createThreadMutation.isPending}
                 />
               ) : (
-                <OpenSlotCard slot={entry.slot} />
+                <OpenSlotCard slot={entry.slot} onBookSlot={handleBookOpenSlot} />
               )}
             </div>
           )) : (

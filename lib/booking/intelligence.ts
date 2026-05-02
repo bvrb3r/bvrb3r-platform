@@ -964,6 +964,8 @@ export async function buildCanonicalDiscoveryResults(
     barberId: candidate.barberId,
     username: candidate.username,
     barberName: candidate.barberName,
+    locationId: candidate.locationId,
+    locationLabel: candidate.location.name,
     rating: candidate.rating,
     reviewCount: candidate.reviewCount,
     priceRange: candidate.priceRange,
@@ -972,12 +974,14 @@ export async function buildCanonicalDiscoveryResults(
     shopName: candidate.shopName,
     specialties: candidate.specialties,
     mostBookedService: candidate.mostBookedService,
+    mostBookedServiceId: candidate.primaryService?.id,
     badges: candidate.badges,
     rankingLabel: candidate.rankingLabel,
     bookingHref: buildMarketplaceBookingHref({
       barberId: candidate.barberId,
       username: candidate.username,
       locationId: candidate.locationId,
+      serviceId: candidate.primaryService?.id,
       sourceKind: options.query || options.category ? "discovery" : "client_dashboard",
       matchedFrom: candidate.matchedFrom,
       query: options.query || options.category || candidate.mostBookedService,
@@ -1365,6 +1369,7 @@ export async function buildCanonicalBarberProfile(
     barberReference,
     primaryLocation.id
   );
+  const mostBookedService = serviceCatalog[0];
   const barber: Barber = {
     id: barberReference,
     userId: barberRow.profile_id,
@@ -1386,6 +1391,7 @@ export async function buildCanonicalBarberProfile(
       barberId: barberReference,
       username,
       locationId: primaryLocation.id,
+      serviceId: mostBookedService?.service.id,
       sourceKind: "public_profile",
       appointmentTime: nextAvailableAt
     })
@@ -1405,7 +1411,6 @@ export async function buildCanonicalBarberProfile(
     visibilityState: (profileRow?.visibility_state as "public" | "featured" | "hidden" | undefined) ?? "public"
   };
   const shop = toShop(primaryLocation);
-  const mostBookedService = serviceCatalog[0];
 
   return {
     barber,
@@ -1443,6 +1448,7 @@ export async function buildCanonicalBarberProfile(
       barberId: barberReference,
       username,
       locationId: primaryLocation.id,
+      serviceId: mostBookedService?.service.id,
       sourceKind: "public_profile",
       appointmentTime: nextAvailableAt
     })

@@ -176,6 +176,7 @@ describe("client search screen", () => {
     expect(screen.queryByText(/Smart ranking/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Get a Haircut Now/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/No Instant Chair/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /View Shop/i })).toHaveAttribute("href", "/shop/loc-ybor");
   });
 
   it("keeps the shop type in route updates when shop-led discovery is active", async () => {

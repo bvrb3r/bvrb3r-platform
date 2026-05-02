@@ -433,7 +433,7 @@ export function ClientSearchScreen({
               key={shop.id}
               location={{
                 ...shop,
-                viewHref: `/dashboard/client/search?type=shops&q=${encodeURIComponent(shop.name)}&locationId=${encodeURIComponent(shop.id)}` as Route
+                viewHref: `/shop/${encodeURIComponent(shop.id)}` as Route
               }}
             />
           ))}

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BarberScheduleWorkspace } from "@/components/operations/barber-schedule-workspace";
 
@@ -41,10 +41,15 @@ function buildSchedulePayload() {
     barberId: "barber-1",
     barberName: "Blaze King",
     businessDate: "2026-04-27",
-    shops: [],
+    shops: [
+      {
+        id: "loc-ybor",
+        label: "The BVRB3R Shop"
+      }
+    ],
     status: {
       barberId: "barber-1",
-      currentShopId: null,
+      currentShopId: "loc-ybor",
       currentShopLabel: "The BVRB3R Shop",
       liveStatus: "available",
       liveStatusLabel: "Available",
@@ -115,5 +120,38 @@ describe("BarberScheduleWorkspace", () => {
 
     expect(screen.getByText("Working hours and blocked time")).toBeInTheDocument();
     expect(screen.queryByText("Hour-by-hour chair control")).not.toBeInTheDocument();
+  });
+
+  it("routes open slot booking through the canonical booking flow", () => {
+    useBarberScheduleQueryMock.mockReturnValue({
+      data: {
+        ...buildSchedulePayload(),
+        workingHours: [
+          {
+            locationId: "loc-ybor",
+            locationLabel: "The BVRB3R Shop",
+            weekday: 1,
+            startTime: "09:00",
+            endTime: "10:00"
+          }
+        ]
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(
+      <BarberScheduleWorkspace
+        barberName="Blaze King"
+        surface="calendar"
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Book this slot/i }));
+
+    expect(pushMock).toHaveBeenCalledWith(expect.stringContaining("/booking/new?"));
+    expect(pushMock).toHaveBeenCalledWith(expect.stringContaining("barberId=barber-1"));
+    expect(pushMock).toHaveBeenCalledWith(expect.stringContaining("locationId=loc-ybor"));
+    expect(pushMock).toHaveBeenCalledWith(expect.stringContaining("appointmentTime="));
   });
 });

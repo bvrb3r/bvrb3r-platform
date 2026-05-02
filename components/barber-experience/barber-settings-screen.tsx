@@ -8,6 +8,7 @@ import {
   BellRing,
   CalendarCheck,
   CalendarDays,
+  CheckCircle2,
   ChevronRight,
   CircleDollarSign,
   CircleHelp,
@@ -24,8 +25,10 @@ import {
   Settings2,
   ShieldCheck,
   SlidersHorizontal,
+  Store,
   UserCheck,
   WalletCards,
+  XCircle,
   type LucideIcon
 } from "lucide-react";
 import { LogoutButton } from "@/components/auth/logout-button";
@@ -54,7 +57,9 @@ import {
   useBarberTrustSummary
 } from "@/lib/trust/client";
 import {
+  useBarberTeamInvitesQuery,
   useBarberOverviewQuery,
+  useRespondBarberTeamInviteMutation,
   useSaveBarberSubtypeMutation,
   type BarberApiError
 } from "@/lib/operations/barber-client";
@@ -236,11 +241,13 @@ export function BarberSettingsScreen({
   const readinessQuery = useBarberFintechReadinessQuery(true);
   const payoutsQuery = useBarberPayoutsQuery(true);
   const overviewQuery = useBarberOverviewQuery();
+  const teamInvitesQuery = useBarberTeamInvitesQuery();
   const onboardingMutation = useCreateStripeOnboardingLinkMutation();
   const dashboardMutation = useCreateStripeDashboardLinkMutation();
   const refreshMutation = useRefreshStripeConnectedAccountMutation();
   const recordAcceptanceMutation = useRecordLegalAcceptanceMutation();
   const saveSubtypeMutation = useSaveBarberSubtypeMutation();
+  const respondTeamInviteMutation = useRespondBarberTeamInviteMutation();
   const uploadMutation = useCreateVerificationUploadMutation();
   const submitVerificationMutation = useSubmitBarberVerificationMutation();
   const identitySessionMutation = useStartBarberIdentitySessionMutation();
@@ -272,6 +279,7 @@ export function BarberSettingsScreen({
   const showOnboardingAction = Boolean(connectedAccount && connectedAccount.operationalStatus !== "payout_ready");
   const readyForCheckout = overviewPayload?.todayAppointments.filter((appointment) => appointment.status === "completed" && appointment.financial.outstandingBalance > 0) ?? [];
   const paidAppointments = overviewPayload?.todayAppointments.filter((appointment) => appointment.financial.capturedAmount > 0 || appointment.financial.tipAmount > 0) ?? [];
+  const pendingShopInvites = teamInvitesQuery.data?.invites ?? [];
   const assignedLocationLabels = overviewPayload?.shops.length
     ? overviewPayload.shops.map((shop) => shop.label).join(", ")
     : locationLabel;
@@ -375,6 +383,21 @@ export function BarberSettingsScreen({
     }
   }
 
+  async function handleTeamInviteResponse(inviteId: string, status: "accepted" | "declined") {
+    setFeedback(null);
+    try {
+      const result = await respondTeamInviteMutation.mutateAsync({ inviteId, status });
+      setFeedback({
+        tone: status === "accepted" ? "success" : "info",
+        message: status === "accepted"
+          ? `You joined ${result.invite.shopLabel}. Owner team, schedule, and shop profile surfaces will update from the canonical team membership.`
+          : `Invite from ${result.invite.shopLabel} declined.`
+      });
+    } catch (error) {
+      setFeedback({ tone: "error", message: getReadableActionError(error as BarberApiError) });
+    }
+  }
+
   async function handleNotificationToggle(
     field: "inAppEnabled" | "smsEnabled" | "emailEnabled" | "pushEnabled",
     value: boolean
@@ -448,6 +471,7 @@ export function BarberSettingsScreen({
         {readinessQuery.error ? <FeedbackBanner tone="error" message={readableError(readinessQuery.error, "Unable to load payout readiness right now.")} /> : null}
         {payoutsQuery.error ? <FeedbackBanner tone="error" message={readableError(payoutsQuery.error, "Unable to load payout ledger right now.")} /> : null}
         {overviewQuery.error ? <FeedbackBanner tone="error" message={readableError(overviewQuery.error, "Unable to load barber operating details right now.")} /> : null}
+        {teamInvitesQuery.error ? <FeedbackBanner tone="error" message={readableError(teamInvitesQuery.error, "Unable to load shop invitations right now.")} /> : null}
 
         {!embedded ? (
           <header className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
@@ -531,6 +555,69 @@ export function BarberSettingsScreen({
                 </div>
               );
             })}
+          </div>
+        </GlassCard>
+
+        <GlassCard id="barber-settings-shop-invites" className="scroll-mt-6 p-5 sm:p-6">
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex items-start gap-4">
+              <CircleIcon icon={Store} />
+              <div>
+                <SectionLabel>Shop Invitations</SectionLabel>
+                <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-white">Team requests</h2>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-white/56">
+                  Accepting links your barber account to the shop through the existing team membership system.
+                </p>
+              </div>
+            </div>
+            <StatusPill tone={pendingShopInvites.length ? "amber" : "green"}>
+              {pendingShopInvites.length ? `${pendingShopInvites.length} pending` : "No pending invites"}
+            </StatusPill>
+          </div>
+
+          <div className="mt-5 space-y-3">
+            {teamInvitesQuery.isLoading ? (
+              <div className="rounded-[24px] border border-white/8 bg-black/24 p-5 text-sm font-bold text-white/58">
+                Loading shop invitations...
+              </div>
+            ) : pendingShopInvites.length ? pendingShopInvites.map((invite) => (
+              <div key={invite.id} className="rounded-[24px] border border-white/8 bg-black/24 p-4">
+                <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-center">
+                  <div>
+                    <p className="text-xl font-extrabold tracking-[-0.03em] text-white">{invite.shopLabel}</p>
+                    <p className="mt-2 text-sm text-white/54">
+                      Invited {formatDateTime(invite.createdAt)}
+                    </p>
+                    {invite.message ? <p className="mt-3 text-sm leading-6 text-white/68">{invite.message}</p> : null}
+                  </div>
+                  <div className="flex flex-wrap gap-2 lg:justify-end">
+                    <ActionButton
+                      type="button"
+                      className="min-h-11 px-4 text-xs"
+                      disabled={respondTeamInviteMutation.isPending}
+                      onClick={() => void handleTeamInviteResponse(invite.id, "accepted")}
+                    >
+                      <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                      Accept
+                    </ActionButton>
+                    <ActionButton
+                      type="button"
+                      variant="secondary"
+                      className="min-h-11 px-4 text-xs border-red-400/30 text-red-200 hover:border-red-300/50 hover:text-red-100"
+                      disabled={respondTeamInviteMutation.isPending}
+                      onClick={() => void handleTeamInviteResponse(invite.id, "declined")}
+                    >
+                      <XCircle className="h-4 w-4" aria-hidden="true" />
+                      Decline
+                    </ActionButton>
+                  </div>
+                </div>
+              </div>
+            )) : (
+              <div className="rounded-[24px] border border-dashed border-white/10 bg-black/24 p-5 text-sm leading-7 text-white/58">
+                No shop invitations are waiting right now.
+              </div>
+            )}
           </div>
         </GlassCard>
 

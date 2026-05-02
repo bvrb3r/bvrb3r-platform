@@ -24,6 +24,7 @@ import type {
 } from "@/types/domain";
 import type { TrustState } from "@/types/trust";
 import { buildPublicTrustSignal } from "@/lib/trust/engine";
+import { buildMarketplaceBookingHref } from "@/lib/marketplace/links";
 import {
   filterVisibleMarketplaceBarbers,
   isBarberMarketplaceVisible,
@@ -636,6 +637,7 @@ export function getPublicBarberProfileByUsername(
   const mostBookedService = [...services].sort((left, right) => left.popularity.popularityRank - right.popularity.popularityRank || right.popularity.bookingCount - left.popularity.bookingCount)[0];
   const prices = services.map((entry) => entry.service.price);
   const shopLocations = state.locations.filter((location) => visibleShop?.locationIds.includes(location.id));
+  const primaryLocationId = shopLocations[0]?.id ?? visibleShop?.locationIds[0] ?? profile.shopId;
 
   return {
     barber: {
@@ -655,7 +657,15 @@ export function getPublicBarberProfileByUsername(
     mostBookedService,
     nextAvailableAt: profile.nextAvailableAt,
     shopLocations,
-    priceRange: prices.length ? [Math.min(...prices), Math.max(...prices)] : [0, 0]
+    priceRange: prices.length ? [Math.min(...prices), Math.max(...prices)] : [0, 0],
+    bookingCtaHref: buildMarketplaceBookingHref({
+      barberId: barber.id,
+      username: profile.username,
+      locationId: primaryLocationId,
+      serviceId: mostBookedService?.service.id,
+      sourceKind: "public_profile",
+      appointmentTime: profile.nextAvailableAt
+    })
   };
 }
 

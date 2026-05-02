@@ -121,7 +121,7 @@ type ServiceDirectoryRecord = {
 };
 
 type LocationAssignmentRecord = {
-  barber_id: string;
+  profile_id: string;
   location_id: string;
 };
 
@@ -318,7 +318,7 @@ async function readOperationalDirectories(supabase: SupabaseClient | null): Prom
     supabase.from("profiles").select("id, full_name"),
     supabase.from("services").select("id, reference_code, name, category"),
     supabase.from("locations").select("id, reference_code, name, neighborhood, city, state"),
-    supabase.from("availability_rules").select("barber_id, location_id")
+    supabase.from("staff_locations").select("profile_id, location_id")
   ]);
 
   if (barbersResult.error || profilesResult.error || servicesResult.error || locationsResult.error || assignmentsResult.error) {
@@ -340,7 +340,7 @@ async function readOperationalDirectories(supabase: SupabaseClient | null): Prom
   const locationRows = (locationsResult.data ?? []) as LocationRecord[];
   const assignmentRows = (assignmentsResult.data ?? []) as LocationAssignmentRecord[];
 
-  const barberReferenceByUuid = new Map(barberRows.map((row) => [row.id, row.reference_code ?? row.id]));
+  const barberReferenceByProfileId = new Map(barberRows.map((row) => [row.profile_id, row.reference_code ?? row.id]));
   const locationReferenceByUuid = new Map(locationRows.map((row) => [row.id, row.reference_code ?? row.id]));
   const barbersByReference = new Map(
     barberRows.map((row) => {
@@ -388,7 +388,10 @@ async function readOperationalDirectories(supabase: SupabaseClient | null): Prom
 
   for (const row of assignmentRows) {
     const locationReference = locationReferenceByUuid.get(row.location_id) ?? row.location_id;
-    const barberReference = barberReferenceByUuid.get(row.barber_id) ?? row.barber_id;
+    const barberReference = barberReferenceByProfileId.get(row.profile_id);
+    if (!barberReference) {
+      continue;
+    }
     const existing = barberAssignmentsByLocation.get(locationReference) ?? new Set<string>();
     existing.add(barberReference);
     barberAssignmentsByLocation.set(locationReference, existing);
@@ -1499,6 +1502,111 @@ export async function getBarberDetailsPayload(barberIdOrUsername: string) {
   }
 
   return mergeProfileMedia(decoratePublicProfileWithActivation(profile, bundle.activationState));
+}
+
+export type PublicShopProfilePayload = {
+  shop: RecommendedShopView & {
+    phone?: string;
+    profilePhotoUrl?: string | null;
+    gallery?: Array<{
+      id: string;
+      shopId: string;
+      imageUrl: string;
+      caption: string;
+      featured?: boolean;
+    }>;
+  };
+  barbers: NonNullable<Awaited<ReturnType<typeof getBarberDetailsPayload>>>[];
+  services: NonNullable<Awaited<ReturnType<typeof getBarberDetailsPayload>>>["services"];
+};
+
+function findPublicShop<T extends { id: string; name: string }>(shops: T[], shopIdOrSlug: string) {
+  const decoded = decodeURIComponent(shopIdOrSlug);
+  const normalized = normalizeLabel(decoded);
+  const slugged = decoded.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+  return shops.find((shop) =>
+    shop.id === decoded
+    || normalizeLabel(shop.name) === normalized
+    || shop.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") === slugged
+  );
+}
+
+export async function getPublicShopProfilePayload(shopIdOrSlug: string): Promise<PublicShopProfilePayload | null> {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return null;
+  }
+
+  const shops = await readShops(supabase);
+  const candidateShop = findPublicShop(shops, shopIdOrSlug);
+  if (!candidateShop) {
+    return null;
+  }
+
+  const trustState = await readTrustStateSafe();
+  const discovery = await buildCanonicalDiscoveryResults(supabase, {
+    locationId: candidateShop.id,
+    trustState
+  });
+  const visibleShops = filterBookableMarketplaceShops(shops, trustState, discovery);
+  const visibleShop = findPublicShop(visibleShops, candidateShop.id);
+  if (!visibleShop) {
+    return null;
+  }
+
+  const recommendedShop = buildRecommendedShops(visibleShops, discovery, [], true, visibleShop.id)
+    .find((shop) => shop.id === visibleShop.id) ?? {
+      ...visibleShop,
+      activeBarbersCount: discovery.filter((result) => result.locationId === visibleShop.id).length
+    };
+  const linkedResults = discovery.filter((result) =>
+    result.locationId === visibleShop.id
+    || normalizeLabel(result.shopName) === normalizeLabel(visibleShop.name)
+  );
+  const seenBarbers = new Set<string>();
+  const barbers = (await Promise.all(linkedResults.map((result) =>
+    getBarberDetailsPayload(result.username ?? result.barberId)
+  )))
+    .filter((profile): profile is NonNullable<Awaited<ReturnType<typeof getBarberDetailsPayload>>> => Boolean(profile))
+    .filter((profile) => {
+      if (seenBarbers.has(profile.barber.id)) {
+        return false;
+      }
+      seenBarbers.add(profile.barber.id);
+      return true;
+    });
+
+  if (!barbers.length) {
+    return null;
+  }
+
+  const shopMedia = await readShopProfileMedia(visibleShop.id).catch(() => null);
+  const serviceMap = new Map<string, PublicShopProfilePayload["services"][number]>();
+  for (const profile of barbers) {
+    for (const service of profile.services) {
+      if (service.ownerLabel === "Shop service" || service.service.shopId === visibleShop.id) {
+        serviceMap.set(service.service.id, service);
+      }
+    }
+  }
+
+  return {
+    shop: {
+      ...recommendedShop,
+      phone: visibleShop.phone,
+      profilePhotoUrl: shopMedia?.profilePhotoUrl ?? null,
+      gallery: shopMedia?.gallery.map((asset) => ({
+        id: asset.id,
+        shopId: visibleShop.id,
+        imageUrl: asset.imageUrl,
+        caption: asset.caption,
+        featured: asset.featured
+      })) ?? []
+    },
+    barbers,
+    services: [...serviceMap.values()]
+  };
 }
 
 export async function getBarberAvailabilityPayload(barberId: string, options: { serviceId?: string; locationId?: string; days?: number; }) {
