@@ -802,8 +802,12 @@ async function insertPaymentRecord(
   type: string,
   status: string,
   metadata: Record<string, string | number | boolean | null>,
-  createdAt = appointment.updatedAt
+  options: {
+    createdAt?: string;
+    paymentMethodId?: string | null;
+  } = {}
 ) {
+  const createdAt = options.createdAt ?? appointment.updatedAt;
   const paymentAttributes = resolveOperationalPaymentRecordAttributes(type);
   const existing = await supabase
     .from("payments")
@@ -830,6 +834,7 @@ async function insertPaymentRecord(
     serviceId: canonicalServiceUuid(appointment.serviceId),
     amount,
     paymentType: paymentAttributes.paymentType,
+    paymentMethodId: options.paymentMethodId ?? null,
     legacyType: paymentAttributes.legacyType,
     legacyStatus: "captured",
     idempotencyKey: `booking:${appointment.id}:${paymentAttributes.legacyType}:${amount.toFixed(2)}`,
@@ -893,6 +898,8 @@ export function resetDemoLiveOperationsSnapshot() {
   setDemoSnapshot(createInitialLiveOperationsSnapshot("demo"));
 }
 
+// Kept for legacy local fixtures; production routing stays Supabase/unavailable to avoid fake operations data.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function createDemoProvider(): LiveOperationsProvider {
   return {
     kind: "demo",
@@ -1466,6 +1473,9 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
               source: appointmentForPayment.source,
               serviceReference: appointmentForPayment.serviceId,
               fullPrepay: true
+            },
+            {
+              paymentMethodId: input.paymentMethodId ?? null
             }
           );
         }
@@ -1758,7 +1768,9 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
             tipAmount: result.appointment.tipAmount,
             checkoutReference: result.appointment.checkoutReference ?? null
           },
-          result.appointment.updatedAt
+          {
+            createdAt: result.appointment.updatedAt
+          }
         )
         : null;
       if (result.appointment.tipAmount > 0) {

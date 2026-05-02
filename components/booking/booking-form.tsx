@@ -26,9 +26,7 @@ import {
 } from "@/lib/booking/client";
 import { applyMembershipPricingAdjustmentToQuote, buildMembershipPricingAdjustment } from "@/lib/monetization/membership";
 import {
-  useCreateAppointmentPaymentMutation,
-  usePaymentMethodsQuery,
-  type PaymentApiError
+  usePaymentMethodsQuery
 } from "@/lib/payments/client";
 import { applyPointsPreviewToQuote, pointsToInAppValue, previewPointsRedemption } from "@/lib/points/redemption";
 import { useMarketplaceAnalyticsMutation, useMarketplaceWaitlistMutation } from "@/lib/marketplace/client";
@@ -197,7 +195,6 @@ export function BookingForm() {
   const { isOnline } = usePwa();
   const { selectedLocationId, selectedBarberId, setLocation, setBarber } = useBookingStore();
   const bookingMutation = useCreateBookingMutation();
-  const paymentMutation = useCreateAppointmentPaymentMutation();
   const paymentMethodsQuery = usePaymentMethodsQuery();
   const analyticsMutation = useMarketplaceAnalyticsMutation();
   const waitlistMutation = useMarketplaceWaitlistMutation();
@@ -486,7 +483,7 @@ export function BookingForm() {
   const isInitialLoading = (searchQuery.isLoading && !searchQuery.data) || (barberProfileQuery.isLoading && !barberProfileQuery.data);
   const waitlistPending = waitlistMutation.isPending;
   const formError = searchQuery.error || barberProfileQuery.error || availabilityQuery.error;
-  const paymentMethodsError = paymentMethodsQuery.error ? getReadableActionError(paymentMethodsQuery.error as PaymentApiError) : null;
+  const paymentMethodsError = paymentMethodsQuery.error ? getReadableActionError(paymentMethodsQuery.error as Error) : null;
   const offlineMessage = "You’re offline. Review your booking details now, then reconnect to confirm the chair or join the waitlist.";
 
   async function applyPromotion(selection: { promotionId?: string; promotionCode?: string }) {
@@ -579,6 +576,7 @@ export function BookingForm() {
         appointmentTime: resolvedSlot.startsAt,
         clientName: values.clientName,
         clientPhone: values.clientPhone,
+        paymentMethodId: selectedPaymentMethod.id,
         pointsToRedeem: pointsRedemptionPreview.approvedPoints || undefined,
         sourceKind,
         matchedFrom,
@@ -591,35 +589,15 @@ export function BookingForm() {
       });
 
       setConfirmationId(result.appointment.id);
+      setConfirmationPaymentStatus("captured");
+      setConfirmationPaymentLabel(selectedPaymentMethod.label);
       clearBookingDraft();
-
-      try {
-        const paymentResult = await paymentMutation.mutateAsync({
-          appointmentId: result.appointment.id,
-          paymentMethodId: selectedPaymentMethod.id
-        });
-        const nextPaymentStatus = paymentResult.payment.paymentStatus;
-        const nextPaymentLabel =
-          paymentResult.summary?.defaultPaymentMethod?.label
-          ?? selectedPaymentMethod.label
-          ?? null;
-
-        setConfirmationPaymentStatus(nextPaymentStatus);
-        setConfirmationPaymentLabel(nextPaymentLabel);
-        setStatusUpdate({
-          tone: "success",
-          message: sourceKind
-            ? "Marketplace booking confirmed and payment secured. The appointment, payment record, status history, and platform events are now live."
-            : "Appointment confirmed and payment secured. The booking is now live across client, barber, and shop operations."
-        });
-      } catch {
-        setConfirmationPaymentStatus("failed");
-        setConfirmationPaymentLabel(selectedPaymentMethod.label);
-        setStatusUpdate({
-          tone: "error",
-          message: "Your appointment was reserved, but the booking payment did not complete. Open Bookings or Profile to update the card and finish payment."
-        });
-      }
+      setStatusUpdate({
+        tone: "success",
+        message: sourceKind
+          ? "Marketplace booking confirmed and payment secured. The appointment, canonical payment record, status history, and platform events are now live."
+          : "Appointment confirmed and payment secured. The booking is now live across client, barber, and shop operations."
+      });
     } catch (error) {
       setStatusUpdate({ tone: "error", message: getReadableActionError(error as BookingApiError) });
     }
@@ -771,7 +749,7 @@ export function BookingForm() {
               <div>
                 <label className="surface-label mb-3 block" htmlFor="booking-payment-method">Saved payment method</label>
                 <p className="text-sm leading-7 text-white/62">
-                  The booking engine creates the appointment first, then secures the payment against the saved card you choose here.
+                  The booking engine creates the appointment and secures the canonical payment against the saved card you choose here.
                 </p>
               </div>
               {selectedPaymentMethod ? <Badge>{selectedPaymentMethod.isDefault ? "Default card" : "Saved card"}</Badge> : null}
@@ -852,8 +830,8 @@ export function BookingForm() {
             </div>
           ) : null}
           <div className="md:col-span-2 sticky bottom-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] z-10 -mx-1 flex flex-col gap-3 rounded-[28px] border border-white/10 bg-[rgba(7,7,7,0.94)] p-3 backdrop-blur sm:mx-0 sm:flex-row md:static md:border-0 md:bg-transparent md:p-0 md:backdrop-blur-none">
-            <Button className="h-12 px-6" disabled={bookingMutation.isPending || paymentMutation.isPending || waitlistPending || isInitialLoading || !availableSlots.length || !isOnline || !selectedPaymentMethod}>
-              {bookingMutation.isPending || paymentMutation.isPending ? "Securing booking..." : "Confirm and pay"}
+            <Button className="h-12 px-6" disabled={bookingMutation.isPending || waitlistPending || isInitialLoading || !availableSlots.length || !isOnline || !selectedPaymentMethod}>
+              {bookingMutation.isPending ? "Securing booking..." : "Confirm and pay"}
             </Button>
             <Button type="button" variant="secondary" className="h-12 px-6" disabled={bookingMutation.isPending || waitlistPending || !watchServiceId || !watchLocationId || !isOnline} onClick={() => void handleJoinWaitlist()}>
               {waitlistPending ? "Joining waitlist..." : "Join waitlist"}

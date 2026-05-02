@@ -134,4 +134,43 @@ describe("shop team invite routes", () => {
       }
     );
   });
+
+  it("lets a barber decline a shop invitation without creating an assignment", async () => {
+    getSessionUserMock.mockResolvedValue({
+      id: "profile-barber",
+      role: "booth_rent_barber",
+      barberId: "barber-real",
+      email: "barber@example.com"
+    });
+    respondToBarberTeamInviteMock.mockResolvedValue({
+      invite: {
+        id: "invite-1",
+        shopId: "shop-ybor",
+        shopLabel: "BVRB3R Ybor",
+        barberId: "barber-real",
+        barberName: "Real Barber",
+        status: "declined"
+      }
+    });
+    const { PATCH } = await import("@/app/api/barber/team-invites/route");
+
+    const response = await PATCH(new Request("https://bvrb3r.test/api/barber/team-invites", {
+      method: "PATCH",
+      body: JSON.stringify({
+        inviteId: "invite-1",
+        status: "declined"
+      })
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.invite.status).toBe("declined");
+    expect(respondToBarberTeamInviteMock).toHaveBeenCalledWith(
+      expect.objectContaining({ role: "booth_rent_barber", barberId: "barber-real" }),
+      {
+        inviteId: "invite-1",
+        status: "declined"
+      }
+    );
+  });
 });

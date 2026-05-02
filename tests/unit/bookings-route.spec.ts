@@ -118,6 +118,7 @@ describe("bookings route", () => {
         appointmentTime: "2026-03-23T14:00:00-04:00",
         clientName: "Jordan Ellis",
         clientPhone: "(813) 555-0190",
+        paymentMethodId: "pm-default",
         pointsToRedeem: 24
       })
     }));
@@ -131,6 +132,7 @@ describe("bookings route", () => {
       serviceId: "srv-signature",
       clientId: "client-jordan",
       pointsUserId: "user-client",
+      paymentMethodId: "pm-default",
       pointsToRedeem: 24,
       actorRole: "client",
       actorEmail: "client@bvrb3r.demo",

@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Route } from "next";
 import { CalendarDays, Clock3, MapPin, Scissors, ShieldCheck, Star, UsersRound } from "lucide-react";
 import { MarketplaceTrackedActionLink } from "@/components/client-experience/marketplace-tracked-action-link";
+import { PublicShopFavoriteAction } from "@/components/marketplace/public-shop-favorite-action";
 import { Card } from "@/components/ui/card";
 import { Avatar } from "@/design/components";
 import { currency, dateLabel } from "@/lib/utils";
@@ -16,7 +17,13 @@ function getInitials(name: string) {
     .join("") || "BV";
 }
 
-export function PublicShopProfile({ payload }: { payload: PublicShopProfilePayload }) {
+export function PublicShopProfile({
+  payload,
+  viewerCanFavorite = false
+}: {
+  payload: PublicShopProfilePayload;
+  viewerCanFavorite?: boolean;
+}) {
   const { shop, barbers, services } = payload;
   const gallery = shop.gallery ?? [];
   const address = shop.address ?? `${shop.neighborhood}, ${shop.city}, ${shop.state}`;
@@ -69,12 +76,15 @@ export function PublicShopProfile({ payload }: { payload: PublicShopProfilePaylo
             </div>
           </div>
 
-          <Link
-            href="/dashboard/client/search?type=shops"
-            className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/10 bg-black/24 px-5 text-sm font-extrabold text-white transition hover:border-[#7CFF00]/35 hover:text-[#d7ffab]"
-          >
-            Back to shops
-          </Link>
+          <div className="flex flex-col gap-3">
+            <PublicShopFavoriteAction shopId={shop.id} canFavorite={viewerCanFavorite} />
+            <Link
+              href="/dashboard/client/search?type=shops"
+              className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/10 bg-black/24 px-5 text-sm font-extrabold text-white transition hover:border-[#7CFF00]/35 hover:text-[#d7ffab]"
+            >
+              Back to shops
+            </Link>
+          </div>
         </div>
       </Card>
 

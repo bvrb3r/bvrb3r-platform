@@ -16,6 +16,7 @@ const bookingSchema = z.object({
   appointmentTime: z.string().min(1),
   clientName: z.string().min(2),
   clientPhone: z.string().min(7),
+  paymentMethodId: z.string().min(1).optional(),
   pointsToRedeem: z.number().int().min(0).optional(),
   sourceKind: z.enum(["direct", "discovery", "public_profile", "haircut_now", "client_dashboard"]).optional(),
   matchedFrom: z.enum(["favorite_barber", "favorite_shop", "nearby", "available_now"]).optional(),

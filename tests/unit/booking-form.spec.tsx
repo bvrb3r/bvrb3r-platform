@@ -222,22 +222,13 @@ describe("booking form", () => {
     expect(screen.getByRole("button", { name: "Confirm and pay" })).toBeEnabled();
   });
 
-  it("creates the appointment first and then secures the canonical appointment payment", async () => {
+  it("creates the appointment and payment through the canonical booking path", async () => {
     const mutateBookingMock = vi.fn().mockResolvedValue({
       appointment: {
         id: "appt-live-1"
       }
     });
-    const mutatePaymentMock = vi.fn().mockResolvedValue({
-      payment: {
-        paymentStatus: "captured"
-      },
-      summary: {
-        defaultPaymentMethod: {
-          label: "Visa ending in 4242"
-        }
-      }
-    });
+    const mutatePaymentMock = vi.fn();
 
     useCreateBookingMutationMock.mockReturnValue({
       isPending: false,
@@ -265,19 +256,14 @@ describe("booking form", () => {
         serviceId: "srv-cut",
         appointmentTime: "2026-04-28T14:00:00.000Z",
         clientName: "Jordan Ellis",
-        clientPhone: "8135550190"
-      }));
-    });
-
-    await waitFor(() => {
-      expect(mutatePaymentMock).toHaveBeenCalledWith({
-        appointmentId: "appt-live-1",
+        clientPhone: "8135550190",
         paymentMethodId: "pm-default"
-      });
+      }));
     });
 
     expect(await screen.findByText(/Booking confirmed\. Appointment/i)).toBeInTheDocument();
     expect(screen.getByText("Visa ending in 4242 was charged for this booking.")).toBeInTheDocument();
+    expect(mutatePaymentMock).not.toHaveBeenCalled();
   });
 
   it("passes AI recommendation attribution through the canonical booking payload", async () => {
@@ -295,25 +281,11 @@ describe("booking form", () => {
         id: "appt-live-2"
       }
     });
-    const mutatePaymentMock = vi.fn().mockResolvedValue({
-      payment: {
-        paymentStatus: "authorized"
-      },
-      summary: {
-        defaultPaymentMethod: {
-          label: "Visa ending in 4242"
-        }
-      }
-    });
 
     useSearchParamsMock.mockReturnValue({ get: searchGet });
     useCreateBookingMutationMock.mockReturnValue({
       isPending: false,
       mutateAsync: mutateBookingMock
-    });
-    useCreateAppointmentPaymentMutationMock.mockReturnValue({
-      isPending: false,
-      mutateAsync: mutatePaymentMock
     });
 
     const { container } = render(<BookingForm />);

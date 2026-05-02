@@ -226,6 +226,11 @@ type ClientFavoriteBarberInput = {
   barberReference: string;
 };
 
+type ClientFavoriteShopInput = {
+  clientId: string;
+  shopReference: string;
+};
+
 type ClientReviewInput = {
   clientId: string;
   appointmentId: string;
@@ -882,6 +887,90 @@ export async function saveClientFavoriteBarber(input: ClientFavoriteBarberInput)
       notes: clientProfile.notes
     },
     favoriteBarber: barberProfile
+  };
+}
+
+export async function saveClientFavoriteShop(input: ClientFavoriteShopInput) {
+  const supabase = getSupabase();
+  const shopProfile = await getPublicShopProfilePayload(input.shopReference);
+  if (!shopProfile) {
+    throw new Error("Shop could not be found.");
+  }
+
+  if (!supabase) {
+    const clientProfile = await readClientProfile(supabase, input.clientId);
+    return {
+      client: clientProfile
+        ? {
+            ...clientProfile,
+            favoriteShopReference: shopProfile.shop.id
+          }
+        : null,
+      favoriteShop: shopProfile
+    };
+  }
+
+  const clientProfile = await readCanonicalClientProfile(supabase, input.clientId);
+  if (!clientProfile) {
+    throw new Error("Client profile could not be found.");
+  }
+
+  const updatedAt = new Date().toISOString();
+  const preferenceResult = await supabase
+    .from("client_preferences")
+    .select("client_reference, client_email, favorite_shop_reference, preferred_location_reference, prefers_instant_booking")
+    .eq("client_reference", input.clientId)
+    .order("updated_at", { ascending: false })
+    .limit(1);
+
+  if (preferenceResult.error) {
+    throw preferenceResult.error;
+  }
+
+  const existingPreference = (preferenceResult.data?.[0] as ClientPreferenceRecord | undefined) ?? null;
+  const preferenceRow = {
+    client_reference: input.clientId,
+    client_email: clientProfile.email,
+    favorite_shop_reference: shopProfile.shop.id,
+    preferred_location_reference: shopProfile.shop.id,
+    prefers_instant_booking: existingPreference?.prefers_instant_booking ?? true,
+    updated_at: updatedAt
+  };
+  const preferenceWrite = existingPreference
+    ? await supabase
+        .from("client_preferences")
+        .update({
+          client_email: preferenceRow.client_email,
+          favorite_shop_reference: preferenceRow.favorite_shop_reference,
+          preferred_location_reference: preferenceRow.preferred_location_reference,
+          prefers_instant_booking: preferenceRow.prefers_instant_booking,
+          updated_at: preferenceRow.updated_at
+        })
+        .eq("client_reference", input.clientId)
+    : await supabase.from("client_preferences").insert({
+        ...preferenceRow,
+        created_at: updatedAt
+      });
+
+  if (preferenceWrite.error) {
+    throw preferenceWrite.error;
+  }
+
+  const savedProfile = await readClientProfile(supabase, input.clientId);
+
+  return {
+    client: savedProfile ?? {
+      clientReference: input.clientId,
+      fullName: clientProfile.fullName,
+      phone: clientProfile.phone,
+      email: clientProfile.email,
+      favoriteBarberReference: clientProfile.favoriteBarberReference,
+      favoriteShopReference: shopProfile.shop.id,
+      loyaltyPoints: clientProfile.loyaltyPoints,
+      retentionTag: clientProfile.retentionTag,
+      notes: clientProfile.notes
+    },
+    favoriteShop: shopProfile
   };
 }
 

@@ -209,6 +209,10 @@ export interface SaveFavoriteBarberPayload {
   barberReference: string;
 }
 
+export interface SaveFavoriteShopPayload {
+  shopReference: string;
+}
+
 export interface SaveClientRoutinePayload {
   cadenceId: RoutineCadenceId;
   barberReference?: string;
@@ -235,6 +239,7 @@ export interface CreateBookingPayload {
   appointmentTime: string;
   clientName: string;
   clientPhone: string;
+  paymentMethodId?: string;
   pointsToRedeem?: number;
   sourceKind?: "direct" | "discovery" | "public_profile" | "haircut_now" | "client_dashboard";
   matchedFrom?: "favorite_barber" | "favorite_shop" | "nearby" | "available_now";
@@ -450,6 +455,29 @@ export function useSaveFavoriteBarberMutation() {
         queryClient.invalidateQueries({ queryKey: ["client-bookings"] }),
         queryClient.invalidateQueries({ queryKey: ["barber-search"] }),
         queryClient.invalidateQueries({ queryKey: ["engagement", "client", "summary"] }),
+        queryClient.invalidateQueries({ queryKey: ["marketplace"] })
+      ]);
+    }
+  });
+}
+
+export function useSaveFavoriteShopMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: SaveFavoriteShopPayload) =>
+      requestJson<{
+        client: ClientHomeResponse["client"];
+        favoriteShop: unknown;
+      }>("/api/client/favorite-shop", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["client-home"] }),
+        queryClient.invalidateQueries({ queryKey: ["client-bookings"] }),
+        queryClient.invalidateQueries({ queryKey: ["barber-search"] }),
         queryClient.invalidateQueries({ queryKey: ["marketplace"] })
       ]);
     }

@@ -310,6 +310,21 @@ describe("marketplace visibility", () => {
     expect(filterVisibleMarketplaceBarbers(state, approvedTrustState())).toEqual([]);
   });
 
+  it("hides suspended barbers from discovery and public profile routes", () => {
+    const state = visibleMarketplaceState();
+    const trustState = approvedTrustState();
+    trustState.verificationProfiles![0] = {
+      ...trustState.verificationProfiles![0],
+      overallStatus: "suspended",
+      publicVerified: false,
+      canAcceptBookings: false
+    };
+
+    expect(searchMarketplace(state, {}, trustState)).toEqual([]);
+    expect(filterVisibleMarketplaceBarbers(state, trustState)).toEqual([]);
+    expect(getPublicBarberProfileByUsername(state, "realbarber", trustState)).toBeNull();
+  });
+
   it("hides shops until the canonical shop approval status is approved", () => {
     const state = visibleMarketplaceState();
     state.shops[0] = {
@@ -320,6 +335,21 @@ describe("marketplace visibility", () => {
     expect(searchMarketplace(state, {}, approvedTrustState())).toEqual([]);
     expect(filterVisibleMarketplaceShops(state, approvedTrustState())).toEqual([]);
     expect(getMapDiscoveryMarkers(state, {}, approvedTrustState())).toEqual([]);
+  });
+
+  it("hides suspended shops from discovery and map markers", () => {
+    const state = visibleMarketplaceState();
+    const trustState = approvedTrustState();
+    trustState.verificationProfiles![1] = {
+      ...trustState.verificationProfiles![1],
+      overallStatus: "suspended",
+      publicVerified: false,
+      canCreateShopListing: false
+    };
+
+    expect(searchMarketplace(state, {}, trustState)).toEqual([]);
+    expect(filterVisibleMarketplaceShops(state, trustState)).toEqual([]);
+    expect(getMapDiscoveryMarkers(state, {}, trustState)).toEqual([]);
   });
 
   it("does not allow known demo or seeded barber references into production discovery", () => {

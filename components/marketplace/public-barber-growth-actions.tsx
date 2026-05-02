@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Heart, Link2, ShieldAlert, Sparkles } from "lucide-react";
+import { BookmarkCheck, Heart, Link2, ShieldAlert, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Select } from "@/components/ui/select";
+import { useSaveFavoriteBarberMutation, type BookingApiError } from "@/lib/booking/client";
 import { useRecordDeepLinkMutation } from "@/lib/mobile/client";
 import { buildDeepLinkPayload } from "@/lib/mobile/links";
 import { useBarberFollowState, useFollowBarberMutation, useUnfollowBarberMutation, type EngagementApiError } from "@/lib/engagement/client";
@@ -19,13 +20,14 @@ export function PublicBarberGrowthActions({ barberId, username, canFollow, canRe
   const analyticsMutation = useMarketplaceAnalyticsMutation();
   const reportMutation = useSubmitSafetyReportMutation();
   const deepLinkMutation = useRecordDeepLinkMutation();
+  const favoriteMutation = useSaveFavoriteBarberMutation();
   const [feedback, setFeedback] = useState<{ tone: "success" | "info" | "error"; message: string } | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
   const [reportCategory, setReportCategory] = useState("fake_profile");
   const [reportDetails, setReportDetails] = useState("This trust signal needs a closer review.");
   const isFollowing = followStateQuery.data?.isFollowing ?? false;
   const followerCount = followStateQuery.data?.followerCount ?? initialFollowerCount;
-  const isPending = followMutation.isPending || unfollowMutation.isPending || analyticsMutation.isPending || reportMutation.isPending || deepLinkMutation.isPending;
+  const isPending = followMutation.isPending || unfollowMutation.isPending || analyticsMutation.isPending || reportMutation.isPending || deepLinkMutation.isPending || favoriteMutation.isPending;
 
   async function handleFollowToggle() {
     setFeedback(null);
@@ -40,6 +42,16 @@ export function PublicBarberGrowthActions({ barberId, username, canFollow, canRe
       setFeedback({ tone: "success", message: "You are now following this barber. Availability and profile momentum can feed your client experience." });
     } catch (error) {
       setFeedback({ tone: "error", message: getReadableActionError(error as EngagementApiError) });
+    }
+  }
+
+  async function handleFavorite() {
+    setFeedback(null);
+    try {
+      await favoriteMutation.mutateAsync({ barberReference: barberId });
+      setFeedback({ tone: "success", message: "This barber is now your favorite. Client discovery and repeat booking surfaces will prioritize this real profile." });
+    } catch (error) {
+      setFeedback({ tone: "error", message: getReadableActionError(error as BookingApiError) });
     }
   }
 
@@ -118,6 +130,12 @@ export function PublicBarberGrowthActions({ barberId, username, canFollow, canRe
           <Link2 className="h-4 w-4" />
           Share profile
         </Button>
+        {canFollow ? (
+          <Button type="button" variant="secondary" className="h-11 rounded-full px-5" disabled={isPending} onClick={() => void handleFavorite()}>
+            <BookmarkCheck className="h-4 w-4" />
+            {favoriteMutation.isPending ? "Saving..." : "Favorite barber"}
+          </Button>
+        ) : null}
         {canReport ? (
           <Button type="button" variant="secondary" className="h-11 rounded-full px-5" disabled={isPending} onClick={() => setReportOpen((open) => !open)}>
             <ShieldAlert className="h-4 w-4" />
