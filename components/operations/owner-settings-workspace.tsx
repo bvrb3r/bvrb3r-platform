@@ -1,74 +1,230 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, type ComponentProps, type ReactNode } from "react";
 import Link from "next/link";
-import { BellRing, Building2, ShieldCheck, WalletCards } from "lucide-react";
-import { ServiceCatalogWorkspace } from "@/components/marketplace/service-catalog-workspace";
-import { Card } from "@/components/ui/card";
+import {
+  BadgeCheck,
+  CalendarDays,
+  ChevronRight,
+  CircleDollarSign,
+  Clock3,
+  CreditCard,
+  Eye,
+  FileCheck2,
+  FileText,
+  HelpCircle,
+  KeyRound,
+  LogOut,
+  MapPin,
+  MessageCircle,
+  Paintbrush,
+  ReceiptText,
+  Scissors,
+  ShieldCheck,
+  Store,
+  Users,
+  WalletCards
+} from "lucide-react";
+import { LogoutButton } from "@/components/auth/logout-button";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DataStatCard } from "@/design/components";
-import { KioskControlPanel } from "@/components/operations/kiosk-control-panel";
-import { permissionMatrix } from "@/lib/config/permissions";
+import { ServiceCatalogWorkspace } from "@/components/marketplace/service-catalog-workspace";
+import { GalleryManagerCard, ProfilePhotoManagerCard } from "@/components/profile/profile-media-manager";
+import { GlassCard } from "@/design/components";
 import { useFintechManagementQuery } from "@/lib/fintech/client";
-import { useProfileMediaWorkspaceQuery } from "@/lib/profile/client";
-import type { UserAccount } from "@/types/domain";
-import { currency } from "@/lib/utils";
+import { useMutateProfileMediaMutation, useProfileMediaWorkspaceQuery } from "@/lib/profile/client";
+import { uploadMediaAsset } from "@/lib/storage/media";
+import { cn, currency } from "@/lib/utils";
 import { getReadableActionError } from "@/lib/utils/feedback";
+import type { UserAccount } from "@/types/domain";
 
-function MetricSkeleton() {
-  return (
-    <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-      <Skeleton className="h-3 w-24" />
-      <Skeleton className="mt-4 h-10 w-20" />
-      <Skeleton className="mt-4 h-4 w-28" />
-    </div>
-  );
+type SettingTone = "green" | "amber" | "red" | "neutral";
+
+type SettingRow = {
+  title: string;
+  subtitle: string;
+  href: ComponentProps<typeof Link>["href"];
+  icon: ReactNode;
+  status?: string;
+  tone?: SettingTone;
+};
+
+const sectionIdMap = {
+  profile: "owner-settings-shop-profile",
+  branding: "owner-settings-shop-profile",
+  hours: "owner-settings-shop-profile",
+  policies: "owner-settings-shop-profile",
+  services: "owner-settings-business-setup",
+  payouts: "owner-settings-payments",
+  stripe: "owner-settings-payments",
+  taxes: "owner-settings-payments",
+  compensation: "owner-settings-business-setup",
+  roles: "owner-settings-business-setup",
+  verification: "owner-settings-compliance",
+  documents: "owner-settings-compliance",
+  security: "owner-settings-compliance",
+  support: "owner-settings-support",
+  logout: "owner-settings-logout"
+} as const;
+
+type OwnerSettingsSectionKey = keyof typeof sectionIdMap;
+
+function getInitials(value: string) {
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "BV";
 }
 
-function formatRoutingLabel(value: string) {
-  switch (value) {
-    case "commission":
-      return "Commission";
-    case "booth_rent":
-      return "Booth rent";
-    case "freelance":
-      return "Freelance";
-    default:
-      return value.replaceAll("_", " ");
-  }
+function toStorageSafeSegment(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "shop";
 }
 
 function formatApprovalStatus(status?: UserAccount["appApprovalStatus"]) {
   switch (status) {
     case "approved":
-      return "Approved";
+      return "Verified";
     case "under_review":
-      return "Under review";
+      return "Needs Review";
     case "pending":
       return "Pending";
     case "rejected":
-      return "Needs attention";
+      return "Rejected";
+    case "not_required":
+      return "Not required";
     default:
-      return "Needs attention";
+      return "Pending";
   }
 }
 
-function formatScopedShopLabel(name: string, neighborhood?: string) {
-  return neighborhood?.trim() ? `${name} / ${neighborhood}` : name;
+function getStatusTone(status?: UserAccount["appApprovalStatus"]): SettingTone {
+  switch (status) {
+    case "approved":
+      return "green";
+    case "rejected":
+      return "red";
+    case "under_review":
+    case "pending":
+      return "amber";
+    default:
+      return "neutral";
+  }
 }
 
-const sectionIdMap = {
-  profile: "owner-settings-profile",
-  services: "owner-settings-services",
-  compensation: "owner-settings-compensation",
-  payouts: "owner-settings-compensation",
-  verification: "owner-settings-verification",
-  notifications: "owner-settings-notifications",
-  support: "owner-settings-notifications"
-} as const;
+function formatConnectedStatus(status?: string) {
+  return status?.replaceAll("_", " ") || "Not connected";
+}
 
-type OwnerSettingsSectionKey = keyof typeof sectionIdMap;
+function getStripeStatus({
+  operationalStatus,
+  payoutsEnabled,
+  chargesEnabled,
+  disabledReason,
+  requirementsCurrentlyDue
+}: {
+  operationalStatus?: string;
+  payoutsEnabled?: boolean;
+  chargesEnabled?: boolean;
+  disabledReason?: string | null;
+  requirementsCurrentlyDue?: string[];
+}) {
+  if (disabledReason || requirementsCurrentlyDue?.length || operationalStatus === "restricted") {
+    return { label: "Restricted", tone: "red" as const };
+  }
+
+  if (payoutsEnabled && chargesEnabled) {
+    return { label: "Connected", tone: "green" as const };
+  }
+
+  if (operationalStatus && operationalStatus !== "not_ready") {
+    return { label: formatConnectedStatus(operationalStatus), tone: "amber" as const };
+  }
+
+  return { label: "Not connected", tone: "neutral" as const };
+}
+
+function getTaxStatus(status?: string) {
+  switch (status) {
+    case "verified":
+      return { label: "Verified", tone: "green" as const };
+    case "submitted":
+      return { label: "Submitted", tone: "amber" as const };
+    case "pending":
+      return { label: "Pending", tone: "amber" as const };
+    default:
+      return { label: "Not connected", tone: "neutral" as const };
+  }
+}
+
+function statusClasses(tone: SettingTone = "neutral") {
+  switch (tone) {
+    case "green":
+      return "border-[#A3FF12]/25 bg-[#A3FF12]/10 text-[#A3FF12]";
+    case "amber":
+      return "border-amber-300/25 bg-amber-300/10 text-amber-300";
+    case "red":
+      return "border-red-400/25 bg-red-500/10 text-red-300";
+    case "neutral":
+      return "border-white/10 bg-white/[0.04] text-white/58";
+  }
+}
+
+function SectionTitle({ children, id }: { children: ReactNode; id: string }) {
+  return (
+    <div id={id} className="scroll-mt-6">
+      <h2 className="text-2xl font-extrabold tracking-[-0.04em] text-white">{children}</h2>
+    </div>
+  );
+}
+
+function SettingsGroup({ rows }: { rows: SettingRow[] }) {
+  return (
+    <GlassCard className="overflow-hidden p-0">
+      <div className="divide-y divide-white/8">
+        {rows.map((row) => (
+          <Link
+            key={row.title}
+            href={row.href}
+            className="group grid min-h-[76px] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 px-5 py-4 transition hover:bg-[#A3FF12]/[0.035] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/70 sm:px-6"
+          >
+            <span className="flex h-12 w-12 items-center justify-center rounded-[16px] border border-[#A3FF12]/22 bg-[#A3FF12]/10 text-[#A3FF12] shadow-[0_0_22px_rgba(163,255,18,0.12)]">
+              {row.icon}
+            </span>
+            <span className="min-w-0">
+              <span className="block text-lg font-extrabold tracking-[-0.03em] text-white">{row.title}</span>
+              <span className="mt-1 block text-sm leading-5 text-white/56">{row.subtitle}</span>
+            </span>
+            <span className="flex items-center gap-3">
+              {row.status ? (
+                <span className={cn("hidden rounded-full border px-3 py-1.5 text-xs font-extrabold sm:inline-flex", statusClasses(row.tone))}>
+                  {row.status}
+                </span>
+              ) : null}
+              <ChevronRight className="h-5 w-5 text-white/42 transition group-hover:translate-x-0.5 group-hover:text-[#A3FF12]" />
+            </span>
+          </Link>
+        ))}
+      </div>
+    </GlassCard>
+  );
+}
+
+function IdentitySkeleton() {
+  return (
+    <GlassCard className="p-6">
+      <div className="flex gap-4">
+        <Skeleton className="h-20 w-20 rounded-full" />
+        <div className="flex-1">
+          <Skeleton className="h-8 w-56" />
+          <Skeleton className="mt-3 h-4 w-72" />
+          <Skeleton className="mt-4 h-7 w-36 rounded-full" />
+        </div>
+      </div>
+    </GlassCard>
+  );
+}
 
 export function OwnerSettingsWorkspace({
   user,
@@ -78,59 +234,78 @@ export function OwnerSettingsWorkspace({
   initialSection?: string;
 }) {
   const profileQuery = useProfileMediaWorkspaceQuery(true);
+  const mediaMutation = useMutateProfileMediaMutation();
   const fintechQuery = useFintechManagementQuery();
 
+  const shops = profileQuery.data?.shops ?? [];
+  const primaryShop = shops[0] ?? null;
+  const ownerShopId = primaryShop?.shopId ?? user.ownedShopId ?? user.locationIds[0] ?? null;
+  const shopName = primaryShop?.label ?? user.ownedShopName ?? "Shop profile incomplete";
+  const shopAddress = "Address not added yet";
+  const shopInitials = getInitials(shopName);
+  const selectedSection = (initialSection && initialSection in sectionIdMap ? initialSection : null) as OwnerSettingsSectionKey | null;
+  const selectedServiceManager = initialSection === "services";
+  const selectedBrandingManager = initialSection === "branding";
+  const fintechShopAccount = useMemo(() => {
+    const accounts = fintechQuery.data?.shops ?? [];
+    if (!accounts.length) {
+      return null;
+    }
+
+    if (ownerShopId) {
+      return accounts.find((account) => account.shopId === ownerShopId) ?? accounts[0];
+    }
+
+    return accounts[0];
+  }, [fintechQuery.data?.shops, ownerShopId]);
+  const membershipCount = fintechQuery.data?.memberships.length ?? 0;
+  const readyForPayoutAmount = fintechQuery.data?.summary.readyForPayoutAmount ?? 0;
+  const needsAttentionCount = fintechQuery.data?.summary.needsAttentionAccounts ?? 0;
+  const blockedRoutingCount = fintechQuery.data?.summary.blockedRoutingRecords ?? 0;
+  const verificationStatus = user.shopApprovalStatus && user.shopApprovalStatus !== "not_required"
+    ? user.shopApprovalStatus
+    : user.appApprovalStatus;
+  const verificationLabel = formatApprovalStatus(verificationStatus);
+  const verificationTone = getStatusTone(verificationStatus);
+  const stripeStatus = getStripeStatus({
+    operationalStatus: fintechShopAccount?.operationalStatus,
+    payoutsEnabled: fintechShopAccount?.payoutsEnabled,
+    chargesEnabled: fintechShopAccount?.chargesEnabled,
+    disabledReason: fintechShopAccount?.disabledReason,
+    requirementsCurrentlyDue: fintechShopAccount?.requirementsCurrentlyDue
+  });
+  const taxStatus = getTaxStatus(fintechShopAccount?.taxReadinessStatus);
+  const errorMessage = profileQuery.error ?? fintechQuery.error;
   const isInitialLoading =
     (profileQuery.isLoading && !profileQuery.data)
     || (fintechQuery.isLoading && !fintechQuery.data);
 
-  const errorMessage = profileQuery.error ?? fintechQuery.error;
-  const shops = profileQuery.data?.shops ?? [];
-  const memberships = useMemo(() => fintechQuery.data?.memberships ?? [], [fintechQuery.data?.memberships]);
-  const permissions = permissionMatrix;
-  const assignedLocations = user.locationIds.map((locationId) => ({
-    id: locationId,
-    name: user.ownedShopId === locationId && user.ownedShopName ? user.ownedShopName : locationId,
-    neighborhood: "",
-    city: "",
-    state: "",
-    hours: ""
-  }));
-  const notificationPreference = profileQuery.data?.viewer.notificationPreference;
-  const selectedSection = (initialSection && initialSection in sectionIdMap ? initialSection : null) as OwnerSettingsSectionKey | null;
-  const enabledCommunicationCount = [
-    notificationPreference?.inAppEnabled,
-    notificationPreference?.emailEnabled,
-    notificationPreference?.smsEnabled,
-    notificationPreference?.pushEnabled
-  ].filter(Boolean).length;
+  async function uploadWithPath(path: string, file: File) {
+    const extension = file.name.split(".").pop()?.toLowerCase() || "jpg";
+    return uploadMediaAsset(`${path}/${Date.now()}.${extension}`, file);
+  }
 
-  const compensationSummary = useMemo(() => {
-    return memberships.reduce(
-      (summary, membership) => {
-        summary[membership.routingModel] += 1;
-        return summary;
-      },
-      { commission: 0, booth_rent: 0, freelance: 0 }
-    );
-  }, [memberships]);
+  async function handleShopPhotoUpload(shopId: string, file: File) {
+    const uploaded = await uploadWithPath(`profiles/shops/${toStorageSafeSegment(shopId)}/profile`, file);
+    await mediaMutation.mutateAsync({
+      action: "set_shop_photo",
+      shopId,
+      storagePath: uploaded.path,
+      imageUrl: uploaded.publicUrl
+    });
+  }
 
-  const payoutReadyCount = fintechQuery.data?.summary.readyAccounts ?? 0;
-  const needsAttentionCount = fintechQuery.data?.summary.needsAttentionAccounts ?? 0;
-  const blockedRoutingCount = fintechQuery.data?.summary.blockedRoutingRecords ?? 0;
-  const readyForPayoutAmount = fintechQuery.data?.summary.readyForPayoutAmount ?? 0;
-  const approvalStatusLabel = formatApprovalStatus(user.appApprovalStatus);
-  const shopApprovalStatusLabel = user.shopApprovalStatus && user.shopApprovalStatus !== "not_required"
-    ? formatApprovalStatus(user.shopApprovalStatus)
-    : null;
-  const isApprovalClear = user.appApprovalStatus === "approved"
-    && (!user.shopApprovalStatus || user.shopApprovalStatus === "approved" || user.shopApprovalStatus === "not_required");
-  const approvalSummaryText = isApprovalClear
-    ? "Owner approval and public business posture are clear."
-    : "Approval is still gating parts of public activation, compliance, or payout posture.";
-  const kioskShops = shops.length
-    ? shops.map((shop) => ({ id: shop.shopId, label: shop.label }))
-    : assignedLocations.map((location) => ({ id: location.id, label: formatScopedShopLabel(location.name, location.neighborhood) }));
+  async function handleShopGalleryUpload(shopId: string, file: File, options: { caption: string; featured: boolean }) {
+    const uploaded = await uploadWithPath(`profiles/shops/${toStorageSafeSegment(shopId)}/gallery`, file);
+    await mediaMutation.mutateAsync({
+      action: "add_shop_gallery_image",
+      shopId,
+      storagePath: uploaded.path,
+      imageUrl: uploaded.publicUrl,
+      caption: options.caption,
+      featured: options.featured
+    });
+  }
 
   useEffect(() => {
     if (!selectedSection) {
@@ -138,327 +313,305 @@ export function OwnerSettingsWorkspace({
     }
 
     const target = document.getElementById(sectionIdMap[selectedSection]);
-    if (!target) {
-      return;
+    if (typeof target?.scrollIntoView === "function") {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
     }
-
-    target.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [selectedSection]);
 
+  const shopProfileRows: SettingRow[] = [
+    {
+      title: "Shop Information",
+      subtitle: "Name, address, contact & business details",
+      href: "/onboarding/owner/shop",
+      icon: <Store className="h-5 w-5" />
+    },
+    {
+      title: "Branding",
+      subtitle: "Logo, cover photo & shop theme",
+      href: "/dashboard/owner/settings?section=branding",
+      icon: <Paintbrush className="h-5 w-5" />
+    },
+    {
+      title: "Shop Hours",
+      subtitle: "Operating hours & holidays",
+      href: "/onboarding/owner/structure",
+      icon: <Clock3 className="h-5 w-5" />
+    },
+    {
+      title: "Shop Policies",
+      subtitle: "Cancellation, no-show & reschedule rules",
+      href: "/onboarding/owner/structure",
+      icon: <FileText className="h-5 w-5" />
+    }
+  ];
+
+  const businessSetupRows: SettingRow[] = [
+    {
+      title: "Services",
+      subtitle: "Manage services & pricing",
+      href: "/dashboard/owner/settings?section=services",
+      icon: <Scissors className="h-5 w-5" />
+    },
+    {
+      title: "Payout Setup",
+      subtitle: "Stripe Connect & payouts",
+      href: "/dashboard/owner/money?view=fintech",
+      icon: <WalletCards className="h-5 w-5" />,
+      status: stripeStatus.label,
+      tone: stripeStatus.tone
+    },
+    {
+      title: "Team & Roles",
+      subtitle: "Manage team roles & permissions",
+      href: "/onboarding/owner/team",
+      icon: <Users className="h-5 w-5" />,
+      status: membershipCount ? `${membershipCount} linked` : "Not set",
+      tone: membershipCount ? "green" : "neutral"
+    },
+    {
+      title: "Commission & Fees",
+      subtitle: "Set shop commission & platform fees",
+      href: "/dashboard/owner/money?view=fintech",
+      icon: <CircleDollarSign className="h-5 w-5" />,
+      status: blockedRoutingCount ? "Needs review" : "Protected",
+      tone: blockedRoutingCount ? "amber" : "green"
+    }
+  ];
+
+  const paymentsRows: SettingRow[] = [
+    {
+      title: "Stripe Connect",
+      subtitle: "Manage bank accounts & payouts",
+      href: "/dashboard/owner/money?view=fintech",
+      icon: <CreditCard className="h-5 w-5" />,
+      status: stripeStatus.label,
+      tone: stripeStatus.tone
+    },
+    {
+      title: "Payout Schedule",
+      subtitle: "Review payout schedule in Money",
+      href: "/dashboard/owner/money?section=payouts",
+      icon: <CalendarDays className="h-5 w-5" />,
+      status: "View schedule",
+      tone: "neutral"
+    },
+    {
+      title: "Tax Information",
+      subtitle: "Manage tax forms & documents",
+      href: "/dashboard/owner/money?view=fintech",
+      icon: <ReceiptText className="h-5 w-5" />,
+      status: taxStatus.label,
+      tone: taxStatus.tone
+    }
+  ];
+
+  const complianceRows: SettingRow[] = [
+    {
+      title: "Verification Status",
+      subtitle: "Shop verification & compliance",
+      href: verificationStatus === "approved" ? "/activation-status" : "/onboarding/owner/verification",
+      icon: <ShieldCheck className="h-5 w-5" />,
+      status: verificationLabel,
+      tone: verificationTone
+    },
+    {
+      title: "Business Documents",
+      subtitle: "Manage licenses & documents",
+      href: "/onboarding/owner/verification",
+      icon: <FileCheck2 className="h-5 w-5" />,
+      status: verificationStatus === "approved" ? "View documents" : "Needs setup",
+      tone: verificationStatus === "approved" ? "green" : "amber"
+    },
+    {
+      title: "Security & Access",
+      subtitle: "Password, 2FA & login settings",
+      href: "/dashboard/owner/settings?section=logout",
+      icon: <KeyRound className="h-5 w-5" />
+    }
+  ];
+
+  const supportRows: SettingRow[] = [
+    {
+      title: "Help Center",
+      subtitle: "Guides, FAQs & resources",
+      href: "/contact",
+      icon: <HelpCircle className="h-5 w-5" />
+    },
+    {
+      title: "Contact Support",
+      subtitle: "Get help from our team",
+      href: "/workspace/messages",
+      icon: <MessageCircle className="h-5 w-5" />
+    }
+  ];
+
   return (
-    <div className="space-y-4" data-testid="owner-settings-workspace">
+    <div className="space-y-7" data-testid="owner-settings-workspace">
       {errorMessage ? <FeedbackBanner tone="error" message={getReadableActionError(errorMessage)} /> : null}
 
-      <section className="grid gap-4 lg:grid-cols-[1.08fr_0.92fr]">
-        <Card className="rounded-[32px] p-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="surface-label">Settings</p>
-              <h3 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">Control the shop safely without touching raw rails.</h3>
-              <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">
-                Shop profile, services, verification, payout setup, notifications, and support.
-              </p>
-            </div>
-            <div className="rounded-[24px] border border-white/8 bg-black/20 px-4 py-4 text-sm text-white/66">
-              <div className="inline-flex items-center gap-2 rounded-full border border-[#7CFF00]/20 bg-[#7CFF00]/10 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">
-                <ShieldCheck className="h-4 w-4" />
-                {shops.length || assignedLocations.length} shops in scope
-              </div>
-              <p className="mt-4 text-[11px] uppercase tracking-[0.22em] text-white/42">{enabledCommunicationCount} communication channels enabled</p>
-            </div>
-          </div>
-
-          <div className="mt-5 flex flex-wrap gap-2">
-            <Link href="#owner-settings-profile" className="rounded-full border border-white/10 bg-black/20 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/74 transition hover:border-[#7cff00]/20 hover:text-[#d7ffab]">
-              Shop profile
-            </Link>
-            <Link href="#owner-settings-services" className="rounded-full border border-white/10 bg-black/20 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/74 transition hover:border-[#7cff00]/20 hover:text-[#d7ffab]">
-              Services
-            </Link>
-            <Link href="#owner-settings-compensation" className="rounded-full border border-white/10 bg-black/20 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/74 transition hover:border-[#7cff00]/20 hover:text-[#d7ffab]">
-              Compensation
-            </Link>
-            <Link href="#owner-settings-verification" className="rounded-full border border-white/10 bg-black/20 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/74 transition hover:border-[#7cff00]/20 hover:text-[#d7ffab]">
-              Verification
-            </Link>
-            <Link href="#owner-settings-notifications" className="rounded-full border border-white/10 bg-black/20 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/74 transition hover:border-[#7cff00]/20 hover:text-[#d7ffab]">
-              Notifications
-            </Link>
-          </div>
-
-          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {isInitialLoading ? (
-              <>
-                <MetricSkeleton />
-                <MetricSkeleton />
-                <MetricSkeleton />
-                <MetricSkeleton />
-              </>
-            ) : (
-              <>
-                <DataStatCard label="Shop details" value={assignedLocations.length} detail="Locations tied to this owner scope." />
-                <DataStatCard
-                  label="Payout ready"
-                  value={payoutReadyCount}
-                  detail="Accounts clear to move money through canonical payout rails."
-                  className="border-[#A3FF12]/20 bg-[#A3FF12]/[0.06]"
-                />
-                <DataStatCard
-                  label="Needs attention"
-                  value={needsAttentionCount}
-                  detail="Accounts still missing readiness steps or review."
-                  className={needsAttentionCount ? "border-amber-300/20 bg-amber-300/[0.06]" : undefined}
-                />
-                <DataStatCard
-                  label="Blocked routing"
-                  value={blockedRoutingCount}
-                  detail="Payment routing rows still blocked in the canonical money layer."
-                  className={blockedRoutingCount ? "border-red-400/20 bg-red-500/[0.06]" : undefined}
-                />
-              </>
-            )}
-          </div>
-        </Card>
-
-        <Card id="owner-settings-verification" className="rounded-[32px] scroll-mt-6 p-6">
-          <div className="flex items-center justify-between gap-3">
-            <p className="surface-label">Account health</p>
-            <ShieldCheck className="h-5 w-5 text-[#baff69]" />
-          </div>
-          {isInitialLoading ? (
-            <div className="mt-4 space-y-3">
-              <MetricSkeleton />
-              <MetricSkeleton />
-            </div>
-          ) : (
-            <div className="mt-4 space-y-3">
-              <div className="rounded-[24px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-4">
-                <p className="surface-label text-[#d7ffab]">Business identity</p>
-                <p className="mt-3 text-lg font-semibold text-white">
-                  {isApprovalClear ? "Verified and payout-ready posture" : "Owner approval still needs attention"}
-                </p>
-                <p className="mt-2 text-sm text-white/62">{approvalSummaryText}</p>
-                <p className="mt-2 text-sm text-white/52">
-                  Current status: {approvalStatusLabel}
-                  {shopApprovalStatusLabel ? ` • Shop approval ${shopApprovalStatusLabel}` : ""}
-                </p>
-              </div>
-              <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                <p className="surface-label">Payout readiness</p>
-                <p className="mt-3 text-lg font-semibold text-white">
-                  {payoutReadyCount} ready - {needsAttentionCount} need review
-                </p>
-                <p className="mt-2 text-sm text-white/58">{currency(readyForPayoutAmount)} is currently ready for payout in the owner scope.</p>
-              </div>
-              <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                <p className="surface-label">Communications</p>
-                <p className="mt-3 text-lg font-semibold text-white">{enabledCommunicationCount} live channels</p>
-                <p className="mt-2 text-sm text-white/58">Broadcasts and announcements stay on the existing shop messaging rails.</p>
-              </div>
-            </div>
-          )}
-        </Card>
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-[1fr_1fr]">
-        <Card id="owner-settings-profile" className="rounded-[32px] scroll-mt-6 p-6">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="surface-label">Shop details</p>
-              <p className="mt-2 text-sm text-white/58">Branding, location identity, and customer-facing posture stay tied to the existing profile/media system.</p>
-            </div>
-            <Building2 className="h-5 w-5 text-[#baff69]" />
-          </div>
-          <div className="mt-4 space-y-3">
-            {(shops.length ? shops : assignedLocations.map((location) => ({
-              shopId: location.id,
-              label: formatScopedShopLabel(location.name, location.neighborhood),
-              profilePhotoUrl: undefined,
-              gallery: []
-            }))).map((shop) => {
-              const location = assignedLocations.find((entry) => entry.id === shop.shopId);
-              return (
-                <div key={shop.shopId} className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="font-medium text-white">{shop.label}</p>
-                      <p className="mt-1 text-sm text-white/55">{location?.city || location?.state ? `${location.city}, ${location.state}` : "Shop location in scope"}</p>
-                    </div>
-                    <span className="status-pill text-[#d7ffab]">{shop.profilePhotoUrl ? "Branding live" : "Needs media"}</span>
-                  </div>
-                  <p className="mt-3 text-sm text-white/58">{location?.hours ?? "Hours are reflected through the active schedule and booking availability."}</p>
-                </div>
-              );
-            })}
-          </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Link
-              href="#owner-settings-profile"
-              className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#cfff93]/40 bg-[linear-gradient(135deg,#7cff00_0%,#b7ff58_100%)] px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-black shadow-[0_14px_34px_rgba(124,255,0,0.24)] transition hover:-translate-y-0.5 sm:px-5 sm:text-[11px] sm:tracking-[0.22em]"
-            >
-              Shop profile
-            </Link>
-          </div>
-        </Card>
-
-        <Card id="owner-settings-compensation" className="rounded-[32px] scroll-mt-6 p-6">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="surface-label">Financial setup</p>
-              <p className="mt-2 text-sm text-white/58">Compensation posture and payout readiness stay visible here without exposing unsafe money controls.</p>
-            </div>
-            <WalletCards className="h-5 w-5 text-[#baff69]" />
-          </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-              <p className="surface-label">Commission barbers</p>
-              <p className="mt-3 text-2xl font-semibold">{compensationSummary.commission}</p>
-              <p className="mt-2 text-sm text-white/58">Barbers attached to shop split revenue.</p>
-            </div>
-            <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-              <p className="surface-label">Booth rent</p>
-              <p className="mt-3 text-2xl font-semibold">{compensationSummary.booth_rent}</p>
-              <p className="mt-2 text-sm text-white/58">Independent chairs paying rent separately from service revenue.</p>
-            </div>
-            <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-              <p className="surface-label">Freelance</p>
-              <p className="mt-3 text-2xl font-semibold">{compensationSummary.freelance}</p>
-              <p className="mt-2 text-sm text-white/58">Independent routing posture in scope.</p>
-            </div>
-            <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-              <p className="surface-label">Routing blocked</p>
-              <p className="mt-3 text-2xl font-semibold">{blockedRoutingCount}</p>
-              <p className="mt-2 text-sm text-white/58">Rows still waiting on resolution before money can move cleanly.</p>
-            </div>
-          </div>
-          <div className="mt-4 rounded-[24px] border border-white/8 bg-black/20 p-4">
-            <p className="surface-label">Compensation posture summary</p>
-            <p className="mt-3 text-sm leading-7 text-white/62">
-              Commission, booth rent, and freelance routing stay inside the canonical payout layer. Update posture from the protected money lane when a real business change is approved.
-            </p>
-          </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Link
-              href="/dashboard/owner/money"
-              className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#7cff00]/20 hover:text-[#d7ffab] sm:px-5 sm:text-[11px] sm:tracking-[0.22em]"
-            >
-              Open money tab
-            </Link>
-          </div>
-        </Card>
-      </section>
-
-      <section id="owner-settings-services" className="scroll-mt-6 space-y-4">
-        <div className="rounded-[32px] border border-white/8 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(8,8,8,0.98))] p-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="surface-label">Services and pricing</p>
-              <p className="mt-3 max-w-2xl text-sm leading-7 text-white/62">
-                Service names, pricing, durations, deposits, and public booking posture stay inside Settings so shop setup is separate from daily operations.
-              </p>
-            </div>
-            <span className="status-pill text-[#d7ffab]">Canonical service catalog</span>
-          </div>
+      <header className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-5xl font-black leading-none tracking-[-0.055em] text-white sm:text-6xl">Settings</h1>
+          <p className="mt-3 text-lg font-medium text-white/62">Manage your shop & business controls</p>
         </div>
-        <ServiceCatalogWorkspace role="owner" />
-      </section>
+      </header>
 
-      <KioskControlPanel shops={kioskShops} />
-
-      <section className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
-        <Card className="rounded-[32px] p-6">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="surface-label">Permissions</p>
-              <p className="mt-2 text-sm text-white/58">Make it obvious who can run the floor, who can message clients, and what stays owner-protected.</p>
+      {isInitialLoading ? (
+        <IdentitySkeleton />
+      ) : (
+        <GlassCard className="p-5 sm:p-6">
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-center gap-4">
+              {primaryShop?.profilePhotoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={primaryShop.profilePhotoUrl}
+                  alt={shopName}
+                  className="h-20 w-20 rounded-full border-2 border-[#A3FF12]/70 object-cover shadow-[0_0_30px_rgba(163,255,18,0.18)]"
+                />
+              ) : (
+                <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full border-2 border-[#A3FF12]/70 bg-[#A3FF12]/10 text-2xl font-black tracking-[-0.03em] text-[#A3FF12] shadow-[0_0_30px_rgba(163,255,18,0.18)]">
+                  {shopInitials}
+                </div>
+              )}
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-3">
+                  <h2 className="text-2xl font-black tracking-[-0.04em] text-white sm:text-3xl">{shopName}</h2>
+                  <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-extrabold", statusClasses(verificationTone))}>
+                    <BadgeCheck className="h-4 w-4" />
+                    {verificationLabel}
+                  </span>
+                </div>
+                <p className="mt-2 flex items-center gap-2 text-sm text-white/55">
+                  <MapPin className="h-4 w-4 text-[#A3FF12]" />
+                  {shopAddress}
+                </p>
+              </div>
             </div>
-            <ShieldCheck className="h-5 w-5 text-[#baff69]" />
+
+            {ownerShopId ? (
+              <Link
+                href={`/kiosk/${ownerShopId}`}
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-white/10 bg-white/[0.035] px-5 text-sm font-extrabold text-white transition hover:border-[#A3FF12]/35 hover:text-[#A3FF12]"
+              >
+                <Eye className="h-4 w-4" />
+                View Shop
+              </Link>
+            ) : null}
           </div>
-          <div className="mt-4 space-y-3">
-            {permissions
-              .filter((group) => ["manager", "front_desk", "owner"].includes(group.role))
-              .map((group) => (
-                <div key={group.role} className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                  <p className="font-medium uppercase tracking-[0.18em] text-[#baff69]">{group.role.replaceAll("_", " ")}</p>
-                  <p className="mt-3 text-sm leading-6 text-white/65">Allowed: {group.allows.join(", ")}</p>
-                  <p className="mt-2 text-sm leading-6 text-white/48">Restricted: {group.restricted.join(", ") || "None recorded"}</p>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-[20px] border border-white/8 bg-black/25 p-4">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-white/42">Payout readiness</p>
+              <p className="mt-3 text-lg font-extrabold text-white">{stripeStatus.label}</p>
+            </div>
+            <div className="rounded-[20px] border border-white/8 bg-black/25 p-4">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-white/42">Ready amount</p>
+              <p className="mt-3 text-lg font-extrabold text-[#A3FF12]">{currency(readyForPayoutAmount)}</p>
+            </div>
+            <div className="rounded-[20px] border border-white/8 bg-black/25 p-4">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-white/42">Attention</p>
+              <p className={cn("mt-3 text-lg font-extrabold", needsAttentionCount ? "text-amber-300" : "text-[#A3FF12]")}>
+                {needsAttentionCount ? `${needsAttentionCount} needs review` : "Clear"}
+              </p>
+            </div>
+          </div>
+        </GlassCard>
+      )}
+
+      <section className="space-y-3">
+        <SectionTitle id="owner-settings-shop-profile">Shop Profile</SectionTitle>
+        <SettingsGroup rows={shopProfileRows} />
+        {selectedBrandingManager ? (
+          shops.length ? (
+            <div className="grid gap-4 pt-1 xl:grid-cols-[0.88fr_1.12fr]">
+              {shops.map((shop) => (
+                <div key={shop.shopId} className="contents">
+                  <ProfilePhotoManagerCard
+                    title={`${shop.label} branding`}
+                    subtitle="Logo and profile media stay on the existing shop media rail."
+                    imageUrl={shop.profilePhotoUrl}
+                    fallbackLabel={getInitials(shop.label)}
+                    uploadLabel="Upload logo"
+                    onUpload={(file) => handleShopPhotoUpload(shop.shopId, file)}
+                    onRemove={async () => {
+                      await mediaMutation.mutateAsync({
+                        action: "remove_shop_photo",
+                        shopId: shop.shopId
+                      });
+                    }}
+                    isBusy={mediaMutation.isPending}
+                  />
+                  <GalleryManagerCard
+                    title={`${shop.label} gallery`}
+                    subtitle="Cover and interior images feed the client-facing shop presentation."
+                    assets={shop.gallery}
+                    uploadLabel="Add shop image"
+                    emptyCopy="No shop gallery images uploaded yet."
+                    onUpload={(file, options) => handleShopGalleryUpload(shop.shopId, file, options)}
+                    onRemove={async (assetId) => {
+                      await mediaMutation.mutateAsync({
+                        action: "remove_shop_gallery_image",
+                        shopId: shop.shopId,
+                        assetId
+                      });
+                    }}
+                    isBusy={mediaMutation.isPending}
+                  />
                 </div>
               ))}
-          </div>
-        </Card>
-
-        <Card id="owner-settings-notifications" className="rounded-[32px] scroll-mt-6 p-6">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="surface-label">Notifications and support</p>
-              <p className="mt-2 text-sm text-white/58">Keep shop broadcasts, support links, and owner communication posture visible without creating a second messaging stack.</p>
             </div>
-            <BellRing className="h-5 w-5 text-[#baff69]" />
-          </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-              <div className="inline-flex items-center gap-2 text-sm text-white/78"><BellRing className="h-4 w-4 text-[#baff69]" />Owner channels</div>
-              <p className="mt-3 text-2xl font-semibold">{enabledCommunicationCount}</p>
-              <p className="mt-2 text-sm text-white/58">In-app, email, SMS, and push posture for the current owner account.</p>
-            </div>
-            <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-              <p className="surface-label">Protected money issues</p>
-              <p className="mt-3 text-2xl font-semibold">{needsAttentionCount + blockedRoutingCount}</p>
-              <p className="mt-2 text-sm text-white/58">Accounts plus routing rows that still need owner review.</p>
-            </div>
-          </div>
-          <div className="mt-4 rounded-[24px] border border-white/8 bg-black/20 p-4">
-            <p className="surface-label">What lives where</p>
-            <div className="mt-3 space-y-2 text-sm text-white/62">
-              <p>- Home keeps today revenue, bookings snapshot, chair utilization, alerts, and quick actions visible.</p>
-              <p>- Team keeps roster, approvals, and staffing posture visible.</p>
-              <p>- Money keeps revenue, payouts, and compensation visibility together.</p>
-            </div>
-          </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Link
-              href="/workspace/messages"
-              className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#7cff00]/20 hover:text-[#d7ffab] sm:px-5 sm:text-[11px] sm:tracking-[0.22em]"
-            >
-              Open messages
-            </Link>
-            <Link
-              href="/dashboard/owner/team"
-              className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#7cff00]/20 hover:text-[#d7ffab] sm:px-5 sm:text-[11px] sm:tracking-[0.22em]"
-            >
-              Open team tab
-            </Link>
-          </div>
-        </Card>
+          ) : (
+            <GlassCard className="p-5">
+              <p className="text-lg font-extrabold text-white">Shop profile incomplete.</p>
+              <p className="mt-2 text-sm text-white/58">Add your shop name, address, and contact details before branding media can be attached.</p>
+              <Link
+                href="/onboarding/owner/shop"
+                className="mt-4 inline-flex min-h-11 items-center justify-center rounded-full border border-[#A3FF12]/30 bg-[#A3FF12]/10 px-5 text-sm font-extrabold text-[#A3FF12] transition hover:bg-[#A3FF12]/15"
+              >
+                Add shop details
+              </Link>
+            </GlassCard>
+          )
+        ) : null}
       </section>
 
-      <Card className="rounded-[32px] p-6">
-        <p className="surface-label">Compensation posture by membership</p>
-        <div className="mt-4 space-y-3">
-          {memberships.length ? memberships.slice(0, 8).map((membership) => (
-            <div key={membership.id} className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="font-medium text-white">{membership.barberName}</p>
-                  <p className="mt-1 text-sm text-white/55">{membership.shopLabel}</p>
-                </div>
-                <span className="status-pill text-[#d7ffab]">{formatRoutingLabel(membership.routingModel)}</span>
-              </div>
-              <p className="mt-3 text-sm text-white/58">
-                {membership.routingModel === "commission"
-                  ? `Commission ${membership.commissionRate ? `${Math.round(membership.commissionRate * 100)}%` : "set on payout routing"}.`
-                  : membership.routingModel === "booth_rent"
-                    ? `Booth rent ${membership.boothRentAmount ? currency(membership.boothRentAmount) : "configured"} ${membership.boothRentFrequency ?? ""}`.trim()
-                    : "Freelance routing stays outside shop share."}
-              </p>
-            </div>
-          )) : (
-            <div className="empty-state-panel rounded-[24px] p-6 text-sm leading-7 text-white/58">
-              Compensation memberships will appear here once barbers are attached to the owner&apos;s shop scope.
-            </div>
-          )}
-        </div>
-      </Card>
+      <section className="space-y-3">
+        <SectionTitle id="owner-settings-business-setup">Business Setup</SectionTitle>
+        <SettingsGroup rows={businessSetupRows} />
+        {selectedServiceManager ? (
+          <div className="pt-1">
+            <ServiceCatalogWorkspace role="owner" />
+          </div>
+        ) : null}
+      </section>
+
+      <section className="space-y-3">
+        <SectionTitle id="owner-settings-payments">Payments & Banking</SectionTitle>
+        <SettingsGroup rows={paymentsRows} />
+      </section>
+
+      <section className="space-y-3">
+        <SectionTitle id="owner-settings-compliance">Compliance & Security</SectionTitle>
+        <SettingsGroup rows={complianceRows} />
+      </section>
+
+      <section className="space-y-3">
+        <SectionTitle id="owner-settings-support">Support</SectionTitle>
+        <SettingsGroup rows={supportRows} />
+      </section>
+
+      <section id="owner-settings-logout" className="scroll-mt-6">
+        <GlassCard className="border-red-500/20 bg-red-500/[0.025] p-4">
+          <div className="mb-3 flex items-center justify-center gap-2 text-sm font-extrabold uppercase tracking-[0.18em] text-red-300">
+            <LogOut className="h-5 w-5" />
+            Account session
+          </div>
+          <LogoutButton className="[&_button]:min-h-[60px] [&_button]:justify-center [&_button]:rounded-[18px] [&_button]:border [&_button]:border-red-500/35 [&_button]:bg-red-500/[0.04] [&_button]:text-lg [&_button]:font-black [&_button]:text-red-300 [&_button]:shadow-none [&_button]:hover:bg-red-500/10 [&_button_svg]:text-red-300" />
+        </GlassCard>
+      </section>
+
+      <div className="h-3" />
     </div>
   );
 }

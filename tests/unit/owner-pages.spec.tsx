@@ -110,8 +110,7 @@ describe("owner dashboard tab pages", () => {
       })
     );
 
-    expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
-    expect(screen.getAllByTestId("account-session-workspace-stub").length).toBeGreaterThan(0);
     expect(screen.getByTestId("owner-settings-workspace-stub")).toHaveTextContent("services");
+    expect(screen.queryByTestId("account-session-workspace-stub")).not.toBeInTheDocument();
   });
 });

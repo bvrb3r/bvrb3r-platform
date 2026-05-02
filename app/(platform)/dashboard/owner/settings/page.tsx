@@ -1,4 +1,3 @@
-import { AccountSessionWorkspace } from "@/components/auth/account-session-workspace";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { OwnerSettingsWorkspace } from "@/components/operations/owner-settings-workspace";
 import { getAuthorizedUser } from "@/lib/auth/guards";
@@ -16,9 +15,9 @@ export default async function OwnerSettingsPage({
       user={user}
       activeHref="/dashboard/owner/settings"
       title="Settings"
-      subtitle="Shop profile, setup, verification, services, and support."
+      subtitle="Manage your shop & business controls"
+      hidePageHeader
     >
-      <AccountSessionWorkspace user={user} />
       <OwnerSettingsWorkspace user={user} initialSection={params.section} />
     </DashboardShell>
   );
