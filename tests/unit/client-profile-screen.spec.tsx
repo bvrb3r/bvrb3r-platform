@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ComponentProps, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ClientProfilePayload } from "@/lib/booking/platform-service";
@@ -89,6 +89,10 @@ describe("client profile screen", () => {
     usePointsHistoryQueryMock.mockReset();
     useClientReferralSummaryMock.mockReset();
     useCreateReferralInviteMutationMock.mockReset();
+    global.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ state: { status: "completed" } })
+    })) as unknown as typeof fetch;
 
     useProfileMediaWorkspaceQueryMock.mockReturnValue({
       data: {
@@ -388,5 +392,40 @@ describe("client profile screen", () => {
 
     expect(screen.getAllByText("Account")[0]).toBeInTheDocument();
     expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+  });
+
+  it("opens quick location setup from the client activation gate and saves through the existing profile flow", async () => {
+    render(
+      <ClientProfileScreen
+        isSignedInClient
+        authEmail="jordan@bvrb3r.app"
+        authPhone="8135550190"
+        payload={({
+          client: {
+            clientReference: "client-jordan",
+            fullName: "Jordan Ellis",
+            email: "jordan@bvrb3r.app",
+            phone: "8135550190"
+          },
+          favoriteBarber: null,
+          preferredShops: [],
+          notificationPreference: null,
+          routine: null,
+          paymentMethods: []
+        } as unknown as ClientProfilePayload)}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Set location/i }));
+    expect(screen.getByRole("heading", { name: "Set location" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/City/i), { target: { value: "Charlotte" } });
+    fireEvent.change(screen.getByLabelText(/State/i), { target: { value: "NC" } });
+    fireEvent.click(screen.getByRole("button", { name: /Save location/i }));
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith("/api/onboarding/client/profile", expect.objectContaining({
+        method: "POST"
+      }));
+    });
   });
 });

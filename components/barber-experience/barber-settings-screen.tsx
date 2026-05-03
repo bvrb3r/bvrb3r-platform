@@ -62,9 +62,12 @@ import {
   useBarberOverviewQuery,
   useRespondBarberTeamInviteMutation,
   useSaveBarberSubtypeMutation,
+  useUpdateBarberActivationMutation,
+  useUpdateBarberScheduleMutation,
+  useUpdateBarberStatusMutation,
   type BarberApiError
 } from "@/lib/operations/barber-client";
-import { useMarketplaceServiceCatalog } from "@/lib/marketplace/client";
+import { useCreateMarketplaceServiceMutation, useMarketplaceServiceCatalog } from "@/lib/marketplace/client";
 import { cn, currency } from "@/lib/utils";
 import { getReadableActionError } from "@/lib/utils/feedback";
 import type { BarberSubtype, UserAccount } from "@/types/domain";
@@ -90,6 +93,18 @@ const sectionIdMap = {
 type SettingsSectionKey = keyof typeof sectionIdMap;
 type Tone = "green" | "amber" | "danger" | "neutral";
 type LinkHref = ComponentProps<typeof Link>["href"];
+type BarberQuickSetupModal = "service" | "availability" | "visibility" | "booking" | "invites" | null;
+
+const defaultActivationWorkingDays = [1, 2, 3, 4, 5, 6];
+const dayOptions = [
+  { value: 0, label: "Sun" },
+  { value: 1, label: "Mon" },
+  { value: 2, label: "Tue" },
+  { value: 3, label: "Wed" },
+  { value: 4, label: "Thu" },
+  { value: 5, label: "Fri" },
+  { value: 6, label: "Sat" }
+];
 
 function formatStatusLabel(value?: string | null) {
   if (!value) {
@@ -250,6 +265,10 @@ export function BarberSettingsScreen({
   const recordAcceptanceMutation = useRecordLegalAcceptanceMutation();
   const saveSubtypeMutation = useSaveBarberSubtypeMutation();
   const respondTeamInviteMutation = useRespondBarberTeamInviteMutation();
+  const createServiceMutation = useCreateMarketplaceServiceMutation();
+  const scheduleMutation = useUpdateBarberScheduleMutation();
+  const statusMutation = useUpdateBarberStatusMutation();
+  const activationMutation = useUpdateBarberActivationMutation();
   const uploadMutation = useCreateVerificationUploadMutation();
   const submitVerificationMutation = useSubmitBarberVerificationMutation();
   const identitySessionMutation = useStartBarberIdentitySessionMutation();
@@ -262,6 +281,18 @@ export function BarberSettingsScreen({
   const [issuingState, setIssuingState] = useState("");
   const [expirationDate, setExpirationDate] = useState("");
   const [feedback, setFeedback] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(null);
+  const [quickSetupModal, setQuickSetupModal] = useState<BarberQuickSetupModal>(null);
+  const [serviceDraft, setServiceDraft] = useState({
+    name: "Haircut",
+    price: "35",
+    duration: "45",
+    active: true
+  });
+  const [availabilityDraft, setAvailabilityDraft] = useState({
+    days: defaultActivationWorkingDays,
+    startTime: "12:00",
+    endTime: "19:00"
+  });
 
   const notificationPreference = mediaQuery.data?.viewer.notificationPreference;
   const verificationProfile = verificationMeQuery.data?.profiles.find((profile) => profile.role === "barber") ?? null;
@@ -370,6 +401,135 @@ export function BarberSettingsScreen({
       setFeedback({ tone: "error", message: getReadableActionError(error as FintechApiError) });
     }
   }
+
+  function closeQuickSetupModal() {
+    setQuickSetupModal(null);
+  }
+
+  function toggleActivationDay(day: number) {
+    setAvailabilityDraft((current) => ({
+      ...current,
+      days: current.days.includes(day)
+        ? current.days.filter((entry) => entry !== day)
+        : [...current.days, day].sort((left, right) => left - right)
+    }));
+  }
+
+  async function handleQuickAddService() {
+    setFeedback(null);
+    const price = Number(serviceDraft.price);
+    const durationMin = Number(serviceDraft.duration);
+    if (!serviceDraft.name.trim() || !Number.isFinite(price) || price <= 0 || !Number.isFinite(durationMin) || durationMin < 15) {
+      setFeedback({ tone: "error", message: "Enter a service name, price, and duration of at least 15 minutes." });
+      return;
+    }
+
+    if (!serviceDraft.active) {
+      setFeedback({ tone: "error", message: "Your first activation service must be active so clients can book it." });
+      return;
+    }
+
+    try {
+      await createServiceMutation.mutateAsync({
+        category: "Haircuts",
+        name: serviceDraft.name.trim(),
+        description: "",
+        durationMin,
+        bufferMin: 0,
+        price,
+        deposit: 0,
+        fullPrepay: false,
+        styleTagIds: []
+      });
+      await Promise.all([serviceCatalogQuery.refetch(), overviewQuery.refetch()]);
+      closeQuickSetupModal();
+      setFeedback({ tone: "success", message: "Service added through the canonical marketplace service library." });
+    } catch (error) {
+      setFeedback({ tone: "error", message: readableError(error, "Unable to add service right now.") });
+    }
+  }
+
+  async function handleQuickSetAvailability() {
+    setFeedback(null);
+    const locationId = overviewPayload?.status.currentShopId ?? overviewPayload?.shops[0]?.id ?? user.locationIds[0];
+    if (!locationId) {
+      setFeedback({ tone: "error", message: "Connect a shop or assigned location before saving working hours." });
+      return;
+    }
+
+    if (!availabilityDraft.days.length) {
+      setFeedback({ tone: "error", message: "Turn on at least one working day." });
+      return;
+    }
+
+    try {
+      await scheduleMutation.mutateAsync({
+        locationId,
+        workingHours: availabilityDraft.days.map((weekday) => ({
+          weekday,
+          startTime: availabilityDraft.startTime,
+          endTime: availabilityDraft.endTime
+        }))
+      });
+      await overviewQuery.refetch();
+      closeQuickSetupModal();
+      setFeedback({ tone: "success", message: "Working hours saved to the canonical barber availability records." });
+    } catch (error) {
+      setFeedback({ tone: "error", message: getReadableActionError(error as BarberApiError) });
+    }
+  }
+
+  async function handleQuickTurnPublic() {
+    setFeedback(null);
+    try {
+      await activationMutation.mutateAsync({
+        action: "set_visibility",
+        visibilityState: "public",
+        acceptsInstantBookings: true
+      });
+      await Promise.all([mediaQuery.refetch(), serviceCatalogQuery.refetch()]);
+      closeQuickSetupModal();
+      setFeedback({ tone: "success", message: "Profile visibility is public. Services and availability still decide bookability." });
+    } catch (error) {
+      setFeedback({ tone: "error", message: readableError(error, "Unable to update profile visibility right now.") });
+    }
+  }
+
+  async function handleQuickGoActive() {
+    setFeedback(null);
+    try {
+      await statusMutation.mutateAsync({
+        liveStatus: "available",
+        isOnline: true,
+        acceptsWalkIns: overviewPayload?.status.acceptsWalkIns ?? true,
+        currentShopId: overviewPayload?.status.currentShopId ?? overviewPayload?.shops[0]?.id ?? null
+      });
+      await overviewQuery.refetch();
+      closeQuickSetupModal();
+      setFeedback({ tone: "success", message: "Booking status is active through the live barber status rail." });
+    } catch (error) {
+      setFeedback({ tone: "error", message: getReadableActionError(error as BarberApiError) });
+    }
+  }
+
+  const activationActionHandlers = {
+    "barber-services": () => setQuickSetupModal("service"),
+    "barber-availability": () => setQuickSetupModal("availability"),
+    "barber-visibility": () => setQuickSetupModal("visibility"),
+    "barber-booking-status": () => setQuickSetupModal("booking"),
+    "barber-payouts": () => void navigateToStripeUrl(
+      async () => (await onboardingMutation.mutateAsync({})).url,
+      connectedAccount?.providerAccountId ? "Stripe onboarding link refreshed." : "Stripe onboarding started."
+    ),
+    "barber-shop-link": () => {
+      if (pendingShopInvites.length) {
+        setQuickSetupModal("invites");
+        return;
+      }
+
+      window.location.assign("/dashboard/barber/more?section=system");
+    }
+  };
 
   async function handleRefreshPayoutStatus() {
     setFeedback(null);
@@ -521,6 +681,7 @@ export function BarberSettingsScreen({
             shopLinkRequired: selectedSubtype !== "freelance",
             hasPendingShopInvite: pendingShopInvites.length > 0
           }}
+          actionHandlers={activationActionHandlers}
         />
 
         <GlassCard active className="p-5 sm:p-6">
@@ -1039,6 +1200,164 @@ export function BarberSettingsScreen({
           />
         </GlassCard>
       </div>
+
+      {quickSetupModal ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/72 px-4 py-5 backdrop-blur-sm sm:items-center" role="dialog" aria-modal="true">
+          <div className="w-full max-w-xl rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(4,4,4,0.98))] p-5 shadow-[0_24px_70px_rgba(0,0,0,0.58),0_0_34px_rgba(163,255,18,0.12)]">
+            {quickSetupModal === "service" ? (
+              <div className="space-y-4">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Quick setup</p>
+                  <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-white">Add your first service</h2>
+                  <p className="mt-2 text-sm text-white/58">This creates a real marketplace service that can appear in booking, checkout, and your public profile.</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {["Haircut", "Haircut + Beard", "Beard Trim", "Kids Cut"].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setServiceDraft((current) => ({ ...current, name: preset }))}
+                      className="rounded-full border border-[#A3FF12]/30 bg-[#A3FF12]/8 px-3 py-2 text-xs font-extrabold text-[#A3FF12]"
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+                <label className="block text-sm font-bold text-white/72">
+                  Service name
+                  <Input value={serviceDraft.name} onChange={(event) => setServiceDraft((current) => ({ ...current, name: event.target.value }))} className="mt-2" />
+                </label>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block text-sm font-bold text-white/72">
+                    Price
+                    <Input inputMode="decimal" value={serviceDraft.price} onChange={(event) => setServiceDraft((current) => ({ ...current, price: event.target.value }))} className="mt-2" />
+                  </label>
+                  <label className="block text-sm font-bold text-white/72">
+                    Duration
+                    <Input inputMode="numeric" value={serviceDraft.duration} onChange={(event) => setServiceDraft((current) => ({ ...current, duration: event.target.value }))} className="mt-2" />
+                  </label>
+                </div>
+                <label className="flex min-h-12 items-center justify-between rounded-2xl border border-white/10 bg-white/[0.035] px-4 text-sm font-bold text-white">
+                  Active
+                  <input
+                    type="checkbox"
+                    checked={serviceDraft.active}
+                    onChange={(event) => setServiceDraft((current) => ({ ...current, active: event.target.checked }))}
+                    className="h-5 w-5 accent-[#A3FF12]"
+                  />
+                </label>
+                <div className="flex gap-3">
+                  <Button type="button" variant="secondary" className="min-h-12 flex-1 rounded-2xl" onClick={closeQuickSetupModal}>Cancel</Button>
+                  <Button type="button" className="min-h-12 flex-1 rounded-2xl bg-[#A3FF12] text-black hover:bg-[#8de300]" disabled={createServiceMutation.isPending} onClick={() => void handleQuickAddService()}>
+                    Save service
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
+            {quickSetupModal === "availability" ? (
+              <div className="space-y-4">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Quick setup</p>
+                  <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-white">Set your working hours</h2>
+                  <p className="mt-2 text-sm text-white/58">These hours save to the same availability records used by booking.</p>
+                </div>
+                <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
+                  {dayOptions.map((day) => (
+                    <button
+                      key={day.value}
+                      type="button"
+                      onClick={() => toggleActivationDay(day.value)}
+                      className={cn(
+                        "min-h-11 rounded-2xl border text-xs font-black",
+                        availabilityDraft.days.includes(day.value)
+                          ? "border-[#A3FF12]/55 bg-[#A3FF12] text-black"
+                          : "border-white/10 bg-white/[0.035] text-white/62"
+                      )}
+                    >
+                      {day.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block text-sm font-bold text-white/72">
+                    Start time
+                    <Input type="time" value={availabilityDraft.startTime} onChange={(event) => setAvailabilityDraft((current) => ({ ...current, startTime: event.target.value }))} className="mt-2" />
+                  </label>
+                  <label className="block text-sm font-bold text-white/72">
+                    End time
+                    <Input type="time" value={availabilityDraft.endTime} onChange={(event) => setAvailabilityDraft((current) => ({ ...current, endTime: event.target.value }))} className="mt-2" />
+                  </label>
+                </div>
+                <div className="flex gap-3">
+                  <Button type="button" variant="secondary" className="min-h-12 flex-1 rounded-2xl" onClick={closeQuickSetupModal}>Cancel</Button>
+                  <Button type="button" className="min-h-12 flex-1 rounded-2xl bg-[#A3FF12] text-black hover:bg-[#8de300]" disabled={scheduleMutation.isPending} onClick={() => void handleQuickSetAvailability()}>
+                    Save hours
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
+            {quickSetupModal === "visibility" ? (
+              <div className="space-y-5">
+                <div>
+                  <h2 className="text-2xl font-black tracking-[-0.04em] text-white">Make your profile visible to clients?</h2>
+                  <p className="mt-2 text-sm leading-6 text-white/58">Clients will be able to find your profile once your services and availability are ready.</p>
+                </div>
+                <div className="flex gap-3">
+                  <Button type="button" variant="secondary" className="min-h-12 flex-1 rounded-2xl" onClick={closeQuickSetupModal}>Cancel</Button>
+                  <Button type="button" className="min-h-12 flex-1 rounded-2xl bg-[#A3FF12] text-black hover:bg-[#8de300]" disabled={activationMutation.isPending} onClick={() => void handleQuickTurnPublic()}>
+                    Turn Public
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
+            {quickSetupModal === "booking" ? (
+              <div className="space-y-5">
+                <div>
+                  <h2 className="text-2xl font-black tracking-[-0.04em] text-white">Accept bookings</h2>
+                  <p className="mt-2 text-sm leading-6 text-white/58">This moves your live status to Active and lets the booking engine consider you once setup is complete.</p>
+                </div>
+                <div className="rounded-2xl border border-[#A3FF12]/22 bg-[#A3FF12]/8 p-4">
+                  <p className="text-sm font-black text-white">Status preview</p>
+                  <p className="mt-1 text-lg font-black text-[#A3FF12]">Active / accepting bookings</p>
+                </div>
+                <div className="flex gap-3">
+                  <Button type="button" variant="secondary" className="min-h-12 flex-1 rounded-2xl" onClick={closeQuickSetupModal}>Cancel</Button>
+                  <Button type="button" className="min-h-12 flex-1 rounded-2xl bg-[#A3FF12] text-black hover:bg-[#8de300]" disabled={statusMutation.isPending} onClick={() => void handleQuickGoActive()}>
+                    Go active
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
+            {quickSetupModal === "invites" ? (
+              <div className="space-y-4">
+                <div>
+                  <h2 className="text-2xl font-black tracking-[-0.04em] text-white">Shop invitations</h2>
+                  <p className="mt-2 text-sm leading-6 text-white/58">Accepting uses the existing team invite API and links you to the shop only after you confirm.</p>
+                </div>
+                <div className="space-y-3">
+                  {pendingShopInvites.length ? pendingShopInvites.map((invite) => (
+                    <div key={invite.id} className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+                      <p className="text-lg font-black text-white">{invite.shopLabel}</p>
+                      <p className="mt-1 text-sm text-white/58">Pending team invitation</p>
+                      <div className="mt-4 flex gap-3">
+                        <Button type="button" variant="secondary" className="min-h-11 flex-1 rounded-2xl" disabled={respondTeamInviteMutation.isPending} onClick={() => void handleTeamInviteResponse(invite.id, "declined")}>Decline</Button>
+                        <Button type="button" className="min-h-11 flex-1 rounded-2xl bg-[#A3FF12] text-black hover:bg-[#8de300]" disabled={respondTeamInviteMutation.isPending} onClick={() => void handleTeamInviteResponse(invite.id, "accepted")}>Accept</Button>
+                      </div>
+                    </div>
+                  )) : (
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4 text-sm text-white/62">No pending shop invitations yet.</div>
+                  )}
+                </div>
+                <Button type="button" variant="secondary" className="min-h-12 w-full rounded-2xl" onClick={closeQuickSetupModal}>Close</Button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import type { ComponentProps, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -54,8 +54,33 @@ describe("tier 1 activation gates", () => {
     expect(screen.getByText("You're approved. Finish setup to go live.")).toBeInTheDocument();
     expect(screen.getByText("Services missing")).toBeInTheDocument();
     expect(screen.getByText("Availability missing")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Add services/i })).toHaveAttribute("href", "/dashboard/barber/services");
+    expect(screen.getByRole("link", { name: /Add service/i })).toHaveAttribute("href", "/dashboard/barber/services");
     expect(screen.getByRole("link", { name: /Set availability/i })).toHaveAttribute("href", "/dashboard/barber/availability");
+  });
+
+  it("lets gates render quick action buttons when a handler is supplied", () => {
+    const onAddService = vi.fn();
+
+    render(
+      <BarberActivationGate
+        input={{
+          approvalStatus: "approved",
+          accountStatus: "active",
+          hasActiveService: false,
+          hasAvailability: true,
+          isProfilePublic: true,
+          isAcceptingBookings: true,
+          payoutsReady: true,
+          hasShopLink: true
+        }}
+        actionHandlers={{
+          "barber-services": onAddService
+        }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Add service/i }));
+    expect(onAddService).toHaveBeenCalledTimes(1);
   });
 
   it("does not show a blocking barber gate when canonical live requirements pass", () => {
@@ -113,6 +138,27 @@ describe("tier 1 activation gates", () => {
     expect(screen.getByText("No accepted barber")).toBeInTheDocument();
     expect(screen.getByText("No bookable barber")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Invite barber/i })).toHaveAttribute("href", "/dashboard/owner/team?invite=1");
+  });
+
+  it("shows waiting invite copy for owners after an invite has been sent", () => {
+    render(
+      <OwnerActivationGate
+        input={{
+          approvalStatus: "approved",
+          accountStatus: "active",
+          hasShopProfile: true,
+          hasAddress: true,
+          hasShopHours: true,
+          payoutsReady: true,
+          hasInvitedBarber: true,
+          hasAcceptedBarber: false,
+          hasBookableBarber: false
+        }}
+      />
+    );
+
+    expect(screen.getByText("Waiting for barber to accept")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /View invites/i })).toHaveAttribute("href", "/dashboard/owner/team");
   });
 
   it("clears owner team blockers when an accepted bookable barber is present", () => {

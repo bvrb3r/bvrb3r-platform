@@ -218,6 +218,11 @@ interface BarberTeamInvitesResponse {
   invites: ShopTeamInviteView[];
 }
 
+interface BarberActivationResponse {
+  visibilityState: "public" | "featured" | "hidden";
+  acceptsInstantBookings: boolean;
+}
+
 export interface BarberDashboardResponse {
   barberId: string;
   summary: {
@@ -521,6 +526,32 @@ export function useUpdateBarberScheduleMutation() {
         queryClient.invalidateQueries({ queryKey: ["barber-overview"] }),
         queryClient.invalidateQueries({ queryKey: ["barber-status"] }),
         queryClient.invalidateQueries({ queryKey: ["ai", "barber", "summary"] })
+      ]);
+    }
+  });
+}
+
+export function useUpdateBarberActivationMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: {
+      action: "set_visibility";
+      visibilityState: "public" | "hidden";
+      acceptsInstantBookings?: boolean;
+    }) =>
+      requestJson<BarberActivationResponse>("/api/barber/activation", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["activation-status"] }),
+        queryClient.invalidateQueries({ queryKey: ["barber-overview"] }),
+        queryClient.invalidateQueries({ queryKey: ["marketplace", "discover"] }),
+        queryClient.invalidateQueries({ queryKey: ["marketplace", "map"] }),
+        queryClient.invalidateQueries({ queryKey: ["marketplace", "haircut-now"] }),
+        queryClient.invalidateQueries({ queryKey: ["profile-media"] })
       ]);
     }
   });

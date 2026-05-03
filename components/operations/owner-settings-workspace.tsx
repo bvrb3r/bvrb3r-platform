@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, type ComponentProps, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ComponentProps, type ReactNode } from "react";
 import Link from "next/link";
 import {
   BadgeCheck,
@@ -19,6 +19,7 @@ import {
   MessageCircle,
   Paintbrush,
   ReceiptText,
+  Search,
   Scissors,
   ShieldCheck,
   Store,
@@ -27,12 +28,15 @@ import {
 } from "lucide-react";
 import { OwnerActivationGate } from "@/components/activation/tier1-activation-gates";
 import { LogoutButton } from "@/components/auth/logout-button";
+import { Button } from "@/components/ui/button";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ServiceCatalogWorkspace } from "@/components/marketplace/service-catalog-workspace";
 import { GalleryManagerCard, ProfilePhotoManagerCard } from "@/components/profile/profile-media-manager";
 import { GlassCard } from "@/design/components";
 import { useFintechManagementQuery } from "@/lib/fintech/client";
+import { useCreateOwnerTeamInviteMutation, useOwnerTeamInviteDirectoryQuery } from "@/lib/operations/barber-client";
 import { useMutateProfileMediaMutation, useProfileMediaWorkspaceQuery } from "@/lib/profile/client";
 import { uploadMediaAsset } from "@/lib/storage/media";
 import { cn, currency } from "@/lib/utils";
@@ -69,6 +73,18 @@ const sectionIdMap = {
 } as const;
 
 type OwnerSettingsSectionKey = keyof typeof sectionIdMap;
+type OwnerQuickSetupModal = "profile" | "hours" | "invite" | "visibility" | null;
+
+const defaultOwnerWorkingDays = [1, 2, 3, 4, 5, 6];
+const ownerDayOptions = [
+  { value: 0, label: "Sun" },
+  { value: 1, label: "Mon" },
+  { value: 2, label: "Tue" },
+  { value: 3, label: "Wed" },
+  { value: 4, label: "Thu" },
+  { value: 5, label: "Fri" },
+  { value: 6, label: "Sat" }
+];
 
 function getInitials(value: string) {
   return value
@@ -237,6 +253,22 @@ export function OwnerSettingsWorkspace({
   const profileQuery = useProfileMediaWorkspaceQuery(true);
   const mediaMutation = useMutateProfileMediaMutation();
   const fintechQuery = useFintechManagementQuery();
+  const [quickSetupModal, setQuickSetupModal] = useState<OwnerQuickSetupModal>(null);
+  const [quickSetupFeedback, setQuickSetupFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
+  const [shopProfileDraft, setShopProfileDraft] = useState({
+    shopName: user.ownedShopName ?? "",
+    city: "",
+    phone: user.phone ?? "",
+    publicDescription: ""
+  });
+  const [shopHoursDraft, setShopHoursDraft] = useState({
+    days: defaultOwnerWorkingDays,
+    startTime: "12:00",
+    endTime: "19:00"
+  });
+  const [inviteSearch, setInviteSearch] = useState("");
+  const inviteDirectoryQuery = useOwnerTeamInviteDirectoryQuery(inviteSearch, quickSetupModal === "invite");
+  const createInviteMutation = useCreateOwnerTeamInviteMutation();
 
   const shops = profileQuery.data?.shops ?? [];
   const primaryShop = shops[0] ?? null;
@@ -307,6 +339,97 @@ export function OwnerSettingsWorkspace({
       caption: options.caption,
       featured: options.featured
     });
+  }
+
+  function closeQuickSetupModal() {
+    setQuickSetupModal(null);
+  }
+
+  function toggleOwnerActivationDay(day: number) {
+    setShopHoursDraft((current) => ({
+      ...current,
+      days: current.days.includes(day)
+        ? current.days.filter((entry) => entry !== day)
+        : [...current.days, day].sort((left, right) => left - right)
+    }));
+  }
+
+  async function postOwnerActivation(payload: Record<string, unknown>) {
+    const response = await fetch("/api/owner/activation", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    if (!response.ok) {
+      throw new Error(body.error ?? "Unable to save shop activation details.");
+    }
+  }
+
+  async function handleQuickShopProfileSave() {
+    setQuickSetupFeedback(null);
+    try {
+      await postOwnerActivation({
+        action: "update_shop_profile",
+        shopId: ownerShopId,
+        ...shopProfileDraft
+      });
+      await Promise.all([profileQuery.refetch(), fintechQuery.refetch()]);
+      closeQuickSetupModal();
+      setQuickSetupFeedback({ tone: "success", message: "Shop profile saved through the existing shop profile records." });
+    } catch (error) {
+      setQuickSetupFeedback({ tone: "error", message: error instanceof Error ? error.message : "Unable to save shop profile." });
+    }
+  }
+
+  async function handleQuickShopHoursSave() {
+    setQuickSetupFeedback(null);
+    try {
+      await postOwnerActivation({
+        action: "update_shop_hours",
+        shopId: ownerShopId,
+        hours: shopHoursDraft.days.map((weekday) => ({
+          weekday,
+          startTime: shopHoursDraft.startTime,
+          endTime: shopHoursDraft.endTime
+        }))
+      });
+      await Promise.all([profileQuery.refetch(), fintechQuery.refetch()]);
+      closeQuickSetupModal();
+      setQuickSetupFeedback({ tone: "success", message: "Shop hours saved to the canonical shop schedule source." });
+    } catch (error) {
+      setQuickSetupFeedback({ tone: "error", message: error instanceof Error ? error.message : "Unable to save shop hours." });
+    }
+  }
+
+  async function handleQuickInviteBarber(barberId: string) {
+    setQuickSetupFeedback(null);
+    try {
+      await createInviteMutation.mutateAsync({
+        barberId,
+        shopId: ownerShopId ?? undefined,
+        message: "Join my BVRB3R shop team."
+      });
+      await fintechQuery.refetch();
+      setQuickSetupFeedback({ tone: "success", message: "Team invite sent through the canonical shop invite system." });
+    } catch (error) {
+      setQuickSetupFeedback({ tone: "error", message: error instanceof Error ? error.message : "Unable to send barber invite." });
+    }
+  }
+
+  async function handleQuickTurnShopPublic() {
+    setQuickSetupFeedback(null);
+    try {
+      await postOwnerActivation({
+        action: "set_shop_visibility",
+        shopId: ownerShopId,
+        publicProfileEnabled: true
+      });
+      closeQuickSetupModal();
+      setQuickSetupFeedback({ tone: "success", message: "Shop public visibility confirmed. Approval, team, and bookable barber readiness still decide marketplace live state." });
+    } catch (error) {
+      setQuickSetupFeedback({ tone: "error", message: error instanceof Error ? error.message : "Unable to update shop visibility." });
+    }
   }
 
   useEffect(() => {
@@ -447,9 +570,28 @@ export function OwnerSettingsWorkspace({
     }
   ];
 
+  const ownerGateActionHandlers = {
+    "owner-profile": () => setQuickSetupModal("profile"),
+    "owner-address": () => setQuickSetupModal("profile"),
+    "owner-hours": () => setQuickSetupModal("hours"),
+    "owner-payouts": () => window.location.assign("/dashboard/owner/money?view=fintech"),
+    "owner-invite": () => setQuickSetupModal("invite"),
+    "owner-accepted-barber": () => {
+      if (membershipCount > 0) {
+        setQuickSetupModal("invite");
+        return;
+      }
+
+      window.location.assign("/dashboard/owner/team");
+    },
+    "owner-bookable-barber": () => window.location.assign("/dashboard/owner/team"),
+    "owner-public-profile": () => setQuickSetupModal("visibility")
+  };
+
   return (
     <div className="space-y-7" data-testid="owner-settings-workspace">
       {errorMessage ? <FeedbackBanner tone="error" message={getReadableActionError(errorMessage)} /> : null}
+      {quickSetupFeedback ? <FeedbackBanner tone={quickSetupFeedback.tone} message={quickSetupFeedback.message} /> : null}
 
       <header className="flex items-start justify-between gap-4">
         <div>
@@ -534,6 +676,7 @@ export function OwnerSettingsWorkspace({
           hasBookableBarber: hasBookableLinkedBarber,
           publicProfileEnabled: true
         }}
+        actionHandlers={ownerGateActionHandlers}
       />
 
       <section className="space-y-3">
@@ -629,6 +772,151 @@ export function OwnerSettingsWorkspace({
       </section>
 
       <div className="h-3" />
+
+      {quickSetupModal ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/72 px-4 py-5 backdrop-blur-sm sm:items-center" role="dialog" aria-modal="true">
+          <div className="w-full max-w-2xl rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(4,4,4,0.98))] p-5 text-white shadow-[0_24px_70px_rgba(0,0,0,0.58),0_0_34px_rgba(163,255,18,0.12)]">
+            {quickSetupModal === "profile" ? (
+              <div className="space-y-4">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Quick setup</p>
+                  <h2 className="mt-2 text-2xl font-black tracking-[-0.04em]">Edit shop profile</h2>
+                  <p className="mt-2 text-sm text-white/58">This updates the same shop profile source used by public shop surfaces.</p>
+                </div>
+                <label className="block text-sm font-bold text-white/72">
+                  Shop name
+                  <Input value={shopProfileDraft.shopName} onChange={(event) => setShopProfileDraft((current) => ({ ...current, shopName: event.target.value }))} className="mt-2" />
+                </label>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block text-sm font-bold text-white/72">
+                    City
+                    <Input value={shopProfileDraft.city} onChange={(event) => setShopProfileDraft((current) => ({ ...current, city: event.target.value }))} className="mt-2" />
+                  </label>
+                  <label className="block text-sm font-bold text-white/72">
+                    Phone
+                    <Input value={shopProfileDraft.phone} onChange={(event) => setShopProfileDraft((current) => ({ ...current, phone: event.target.value }))} className="mt-2" />
+                  </label>
+                </div>
+                <label className="block text-sm font-bold text-white/72">
+                  Public description
+                  <Input value={shopProfileDraft.publicDescription} onChange={(event) => setShopProfileDraft((current) => ({ ...current, publicDescription: event.target.value }))} className="mt-2" />
+                </label>
+                <div className="flex gap-3">
+                  <Button type="button" variant="secondary" className="min-h-12 flex-1 rounded-2xl" onClick={closeQuickSetupModal}>Cancel</Button>
+                  <Button type="button" className="min-h-12 flex-1 rounded-2xl bg-[#A3FF12] text-black hover:bg-[#8de300]" onClick={() => void handleQuickShopProfileSave()}>
+                    Save profile
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
+            {quickSetupModal === "hours" ? (
+              <div className="space-y-4">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Quick setup</p>
+                  <h2 className="mt-2 text-2xl font-black tracking-[-0.04em]">Set shop hours</h2>
+                  <p className="mt-2 text-sm text-white/58">These hours feed the owner schedule and public shop readiness.</p>
+                </div>
+                <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
+                  {ownerDayOptions.map((day) => (
+                    <button
+                      key={day.value}
+                      type="button"
+                      onClick={() => toggleOwnerActivationDay(day.value)}
+                      className={cn(
+                        "min-h-11 rounded-2xl border text-xs font-black",
+                        shopHoursDraft.days.includes(day.value)
+                          ? "border-[#A3FF12]/55 bg-[#A3FF12] text-black"
+                          : "border-white/10 bg-white/[0.035] text-white/62"
+                      )}
+                    >
+                      {day.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block text-sm font-bold text-white/72">
+                    Start time
+                    <Input type="time" value={shopHoursDraft.startTime} onChange={(event) => setShopHoursDraft((current) => ({ ...current, startTime: event.target.value }))} className="mt-2" />
+                  </label>
+                  <label className="block text-sm font-bold text-white/72">
+                    End time
+                    <Input type="time" value={shopHoursDraft.endTime} onChange={(event) => setShopHoursDraft((current) => ({ ...current, endTime: event.target.value }))} className="mt-2" />
+                  </label>
+                </div>
+                <div className="flex gap-3">
+                  <Button type="button" variant="secondary" className="min-h-12 flex-1 rounded-2xl" onClick={closeQuickSetupModal}>Cancel</Button>
+                  <Button type="button" className="min-h-12 flex-1 rounded-2xl bg-[#A3FF12] text-black hover:bg-[#8de300]" onClick={() => void handleQuickShopHoursSave()}>
+                    Save hours
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
+            {quickSetupModal === "invite" ? (
+              <div className="space-y-4">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Team setup</p>
+                  <h2 className="mt-2 text-2xl font-black tracking-[-0.04em]">Invite barber</h2>
+                  <p className="mt-2 text-sm text-white/58">Search real barber accounts and send a canonical team invite.</p>
+                </div>
+                <label className="flex min-h-12 items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.035] px-4 text-white">
+                  <Search className="h-5 w-5 text-white/52" />
+                  <input
+                    value={inviteSearch}
+                    onChange={(event) => setInviteSearch(event.target.value)}
+                    placeholder="Search by name, email, username, or city"
+                    className="min-w-0 flex-1 bg-transparent text-sm font-semibold outline-none placeholder:text-white/38"
+                  />
+                </label>
+                <div className="max-h-[340px] space-y-3 overflow-y-auto pr-1">
+                  {inviteDirectoryQuery.isLoading ? (
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4 text-sm text-white/58">Searching barbers...</div>
+                  ) : null}
+                  {inviteDirectoryQuery.data?.barbers.map((barber) => (
+                    <div key={barber.barberId} className="grid gap-3 rounded-2xl border border-white/10 bg-white/[0.035] p-4 sm:grid-cols-[1fr_auto] sm:items-center">
+                      <div>
+                        <p className="text-lg font-black text-white">{barber.name}</p>
+                        <p className="mt-1 text-sm text-white/56">{barber.email || barber.username || "No public contact"}</p>
+                        <p className="mt-2 text-xs font-bold uppercase tracking-[0.14em] text-white/42">
+                          {barber.appApprovalStatus} / {barber.visibilityState ?? "hidden"}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        className="min-h-11 rounded-2xl bg-[#A3FF12] text-black hover:bg-[#8de300]"
+                        disabled={!barber.canInvite || createInviteMutation.isPending}
+                        onClick={() => void handleQuickInviteBarber(barber.barberId)}
+                      >
+                        {barber.inviteStatus === "pending" ? "Pending" : barber.alreadyAssigned ? "Assigned" : "Send invite"}
+                      </Button>
+                    </div>
+                  ))}
+                  {!inviteDirectoryQuery.isLoading && !inviteDirectoryQuery.data?.barbers.length ? (
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4 text-sm text-white/58">No barbers match this search.</div>
+                  ) : null}
+                </div>
+                <Button type="button" variant="secondary" className="min-h-12 w-full rounded-2xl" onClick={closeQuickSetupModal}>Close</Button>
+              </div>
+            ) : null}
+
+            {quickSetupModal === "visibility" ? (
+              <div className="space-y-5">
+                <div>
+                  <h2 className="text-2xl font-black tracking-[-0.04em]">Turn shop public?</h2>
+                  <p className="mt-2 text-sm leading-6 text-white/58">This confirms public intent only. Approval, profile data, team, and bookable barber readiness still control marketplace visibility.</p>
+                </div>
+                <div className="flex gap-3">
+                  <Button type="button" variant="secondary" className="min-h-12 flex-1 rounded-2xl" onClick={closeQuickSetupModal}>Cancel</Button>
+                  <Button type="button" className="min-h-12 flex-1 rounded-2xl bg-[#A3FF12] text-black hover:bg-[#8de300]" onClick={() => void handleQuickTurnShopPublic()}>
+                    Turn shop public
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

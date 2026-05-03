@@ -16,6 +16,8 @@ export type ActivationChecklistItem = {
   optional?: boolean;
 };
 
+export type ActivationActionHandlers = Partial<Record<string, () => void>>;
+
 export type BarberActivationInput = {
   approvalStatus?: string | null;
   accountStatus?: string | null;
@@ -88,7 +90,7 @@ export function getBarberActivationItems(input: BarberActivationInput): Activati
       complete: input.hasActiveService,
       completeLabel: "Service ready",
       missingLabel: "Services missing",
-      actionLabel: "Add services",
+      actionLabel: "Add service",
       href: "/dashboard/barber/services"
     },
     {
@@ -106,7 +108,7 @@ export function getBarberActivationItems(input: BarberActivationInput): Activati
       complete: input.isProfilePublic,
       completeLabel: "Public profile ready",
       missingLabel: "Profile not public",
-      actionLabel: "Edit profile",
+      actionLabel: "Turn public",
       href: "/dashboard/barber/profile"
     },
     {
@@ -158,7 +160,7 @@ export function getOwnerActivationItems(input: OwnerActivationInput): Activation
       complete: input.hasShopProfile,
       completeLabel: "Profile started",
       missingLabel: "Shop profile incomplete",
-      actionLabel: "Edit shop info",
+      actionLabel: "Edit shop profile",
       href: "/onboarding/owner/shop"
     },
     {
@@ -202,8 +204,8 @@ export function getOwnerActivationItems(input: OwnerActivationInput): Activation
       label: "At least 1 barber accepted team invite",
       complete: input.hasAcceptedBarber,
       completeLabel: "Accepted barber linked",
-      missingLabel: "No accepted barber",
-      actionLabel: "Review team",
+      missingLabel: input.hasInvitedBarber ? "Waiting for barber to accept" : "No accepted barber",
+      actionLabel: input.hasInvitedBarber ? "View invites" : "Review team",
       href: "/dashboard/owner/team"
     },
     {
@@ -211,7 +213,7 @@ export function getOwnerActivationItems(input: OwnerActivationInput): Activation
       label: "At least 1 assigned barber is approved/bookable",
       complete: input.hasBookableBarber,
       completeLabel: "Bookable barber ready",
-      missingLabel: "No bookable barber",
+      missingLabel: input.hasAcceptedBarber ? "Barber setup incomplete" : "No bookable barber",
       actionLabel: "Review team",
       href: "/dashboard/owner/team"
     },
@@ -221,7 +223,7 @@ export function getOwnerActivationItems(input: OwnerActivationInput): Activation
       complete: input.publicProfileEnabled !== false,
       completeLabel: "Public profile allowed",
       missingLabel: "Shop profile hidden",
-      actionLabel: "Edit shop info",
+      actionLabel: "Turn shop public",
       href: "/onboarding/owner/shop"
     }
   ];
@@ -253,7 +255,7 @@ export function getClientActivationItems(input: ClientActivationInput): Activati
       complete: input.hasDefaultPaymentMethod,
       completeLabel: "Payment method ready",
       missingLabel: "Payment method missing",
-      actionLabel: "Add payment",
+      actionLabel: "Add card",
       href: "/dashboard/client/profile?section=wallet"
     },
     {
@@ -262,7 +264,7 @@ export function getClientActivationItems(input: ClientActivationInput): Activati
       complete: input.hasLocation,
       completeLabel: "Location saved",
       missingLabel: "Location missing",
-      actionLabel: "Add location",
+      actionLabel: "Set location",
       href: "/dashboard/client/profile?section=location"
     },
     {
@@ -282,12 +284,14 @@ function ActivationChecklistCard({
   title,
   subtitle,
   items,
-  testId
+  testId,
+  actionHandlers
 }: {
   title: string;
   subtitle: string;
   items: ActivationChecklistItem[];
   testId: string;
+  actionHandlers?: ActivationActionHandlers;
 }) {
   const completedCount = items.filter((item) => item.complete).length;
 
@@ -310,53 +314,68 @@ function ActivationChecklistCard({
       </div>
 
       <div className="mt-5 grid gap-3 lg:grid-cols-2">
-        {items.map((item) => (
-          <div
-            key={item.id}
-            className={cn(
-              "grid min-h-[86px] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-[20px] border px-4 py-3",
-              item.complete
-                ? "border-[#A3FF12]/16 bg-[#A3FF12]/[0.055]"
-                : item.optional
-                  ? "border-white/8 bg-black/24"
-                  : "border-amber-300/18 bg-amber-300/[0.065]"
-            )}
-          >
-            <span
+        {items.map((item) => {
+          const actionHandler = actionHandlers?.[item.id];
+
+          return (
+            <div
+              key={item.id}
               className={cn(
-                "flex h-10 w-10 items-center justify-center rounded-full border",
+                "grid min-h-[86px] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-[20px] border px-4 py-3",
                 item.complete
-                  ? "border-[#A3FF12]/25 bg-[#A3FF12]/12 text-[#A3FF12]"
+                  ? "border-[#A3FF12]/16 bg-[#A3FF12]/[0.055]"
                   : item.optional
-                    ? "border-white/10 bg-white/[0.04] text-white/56"
-                    : "border-amber-300/25 bg-amber-300/10 text-amber-200"
+                    ? "border-white/8 bg-black/24"
+                    : "border-amber-300/18 bg-amber-300/[0.065]"
               )}
             >
-              {item.complete ? <CheckCircle2 className="h-5 w-5" /> : <CircleAlert className="h-5 w-5" />}
-            </span>
-            <span className="min-w-0">
-              <span className="block text-sm font-extrabold text-white">{item.label}</span>
-              <span className={cn("mt-1 block text-sm", item.complete ? "text-[#A3FF12]" : "text-white/58")}>
-                {item.complete ? item.completeLabel : item.missingLabel}
-              </span>
-            </span>
-            {!item.complete ? (
-              <Link
-                href={item.href as Route}
-                className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full border border-white/10 bg-black/30 px-3 text-xs font-black text-white transition hover:border-[#A3FF12]/35 hover:text-[#A3FF12]"
+              <span
+                className={cn(
+                  "flex h-10 w-10 items-center justify-center rounded-full border",
+                  item.complete
+                    ? "border-[#A3FF12]/25 bg-[#A3FF12]/12 text-[#A3FF12]"
+                    : item.optional
+                      ? "border-white/10 bg-white/[0.04] text-white/56"
+                      : "border-amber-300/25 bg-amber-300/10 text-amber-200"
+                )}
               >
-                {item.actionLabel}
-                <ArrowRight className="h-3.5 w-3.5" />
-              </Link>
-            ) : null}
-          </div>
-        ))}
+                {item.complete ? <CheckCircle2 className="h-5 w-5" /> : <CircleAlert className="h-5 w-5" />}
+              </span>
+              <span className="min-w-0">
+                <span className="block text-sm font-extrabold text-white">{item.label}</span>
+                <span className={cn("mt-1 block text-sm", item.complete ? "text-[#A3FF12]" : "text-white/58")}>
+                  {item.complete ? item.completeLabel : item.missingLabel}
+                </span>
+              </span>
+              {!item.complete ? (
+                actionHandler ? (
+                  <button
+                    type="button"
+                    onClick={actionHandler}
+                    className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full border border-white/10 bg-black/30 px-3 text-xs font-black text-white transition hover:border-[#A3FF12]/35 hover:text-[#A3FF12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/60"
+                  >
+                    {item.actionLabel}
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </button>
+                ) : (
+                  <Link
+                    href={item.href as Route}
+                    className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full border border-white/10 bg-black/30 px-3 text-xs font-black text-white transition hover:border-[#A3FF12]/35 hover:text-[#A3FF12]"
+                  >
+                    {item.actionLabel}
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Link>
+                )
+              ) : null}
+            </div>
+          );
+        })}
       </div>
     </section>
   );
 }
 
-export function BarberActivationGate({ input }: { input: BarberActivationInput }) {
+export function BarberActivationGate({ input, actionHandlers }: { input: BarberActivationInput; actionHandlers?: ActivationActionHandlers }) {
   const items = getBarberActivationItems(input);
   const hasBlockingGap = items.some((item) => !item.complete && !item.optional);
   if (!hasBlockingGap) {
@@ -369,11 +388,12 @@ export function BarberActivationGate({ input }: { input: BarberActivationInput }
       title={isApproved(input.approvalStatus) ? "You're approved. Finish setup to go live." : "Finish setup before your profile can go live."}
       subtitle="Approval unlocks eligibility. Setup unlocks visibility. Availability unlocks booking."
       items={items}
+      actionHandlers={actionHandlers}
     />
   );
 }
 
-export function OwnerActivationGate({ input }: { input: OwnerActivationInput }) {
+export function OwnerActivationGate({ input, actionHandlers }: { input: OwnerActivationInput; actionHandlers?: ActivationActionHandlers }) {
   const items = getOwnerActivationItems(input);
   const hasBlockingGap = items.some((item) => !item.complete && !item.optional);
   if (!hasBlockingGap) {
@@ -386,11 +406,12 @@ export function OwnerActivationGate({ input }: { input: OwnerActivationInput }) 
       title={isApproved(input.approvalStatus) ? "Your shop is approved. Finish setup to go live." : "Finish shop setup before clients can book through it."}
       subtitle="Approval unlocks eligibility. Team, hours, payouts, and bookable barbers unlock public shop booking."
       items={items}
+      actionHandlers={actionHandlers}
     />
   );
 }
 
-export function ClientActivationGate({ input }: { input: ClientActivationInput }) {
+export function ClientActivationGate({ input, actionHandlers }: { input: ClientActivationInput; actionHandlers?: ActivationActionHandlers }) {
   const items = getClientActivationItems(input);
   const requiredItems = items.filter((item) => !item.optional);
   const hasRequiredGap = requiredItems.some((item) => !item.complete);
@@ -404,6 +425,7 @@ export function ClientActivationGate({ input }: { input: ClientActivationInput }
       title="Finish setup for faster booking."
       subtitle="You can still search BVRB3R while contact, payment, and location details get completed."
       items={items}
+      actionHandlers={actionHandlers}
     />
   );
 }

@@ -1,14 +1,18 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   useProfileMediaWorkspaceQueryMock,
   useMutateProfileMediaMutationMock,
-  useFintechManagementQueryMock
+  useFintechManagementQueryMock,
+  useOwnerTeamInviteDirectoryQueryMock,
+  useCreateOwnerTeamInviteMutationMock
 } = vi.hoisted(() => ({
   useProfileMediaWorkspaceQueryMock: vi.fn(),
   useMutateProfileMediaMutationMock: vi.fn(),
-  useFintechManagementQueryMock: vi.fn()
+  useFintechManagementQueryMock: vi.fn(),
+  useOwnerTeamInviteDirectoryQueryMock: vi.fn(),
+  useCreateOwnerTeamInviteMutationMock: vi.fn()
 }));
 
 vi.mock("@/lib/profile/client", () => ({
@@ -18,6 +22,11 @@ vi.mock("@/lib/profile/client", () => ({
 
 vi.mock("@/lib/fintech/client", () => ({
   useFintechManagementQuery: useFintechManagementQueryMock
+}));
+
+vi.mock("@/lib/operations/barber-client", () => ({
+  useOwnerTeamInviteDirectoryQuery: useOwnerTeamInviteDirectoryQueryMock,
+  useCreateOwnerTeamInviteMutation: useCreateOwnerTeamInviteMutationMock
 }));
 
 vi.mock("@/components/auth/logout-button", () => ({
@@ -74,6 +83,12 @@ describe("owner settings workspace", () => {
     useProfileMediaWorkspaceQueryMock.mockReset();
     useMutateProfileMediaMutationMock.mockReset();
     useFintechManagementQueryMock.mockReset();
+    useOwnerTeamInviteDirectoryQueryMock.mockReset();
+    useCreateOwnerTeamInviteMutationMock.mockReset();
+    global.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ ok: true })
+    })) as unknown as typeof fetch;
 
     useMutateProfileMediaMutationMock.mockReturnValue({
       isPending: false,
@@ -100,6 +115,7 @@ describe("owner settings workspace", () => {
     useFintechManagementQueryMock.mockReturnValue({
       isLoading: false,
       error: null,
+      refetch: vi.fn(),
       data: {
         summary: {
           totalAccounts: 1,
@@ -114,6 +130,17 @@ describe("owner settings workspace", () => {
         barbers: [],
         memberships: []
       }
+    });
+    useOwnerTeamInviteDirectoryQueryMock.mockReturnValue({
+      isLoading: false,
+      data: {
+        shop: { id: "loc-ybor", label: "The BVRB3R Shop & Co" },
+        barbers: []
+      }
+    });
+    useCreateOwnerTeamInviteMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: vi.fn()
     });
   });
 
@@ -141,6 +168,7 @@ describe("owner settings workspace", () => {
     useFintechManagementQueryMock.mockReturnValue({
       isLoading: false,
       error: null,
+      refetch: vi.fn(),
       data: {
         summary: {
           totalAccounts: 2,
@@ -165,5 +193,72 @@ describe("owner settings workspace", () => {
 
     expect(screen.getAllByText("Verified").length).toBeGreaterThan(0);
     expect(screen.getByText("$210")).toBeInTheDocument();
+  });
+
+  it("opens quick shop profile setup and saves through the owner activation API", async () => {
+    useProfileMediaWorkspaceQueryMock.mockReturnValue({
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+      data: {
+        viewer: {
+          notificationPreference: {
+            inAppEnabled: true,
+            emailEnabled: true,
+            smsEnabled: false,
+            pushEnabled: true
+          }
+        },
+        shops: []
+      }
+    });
+
+    render(<OwnerSettingsWorkspace user={{ ...resolveDemoUser("owner@bvrb3r.demo"), appApprovalStatus: "approved", shopApprovalStatus: "approved" }} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Edit shop profile/i }));
+    expect(screen.getByRole("heading", { name: "Edit shop profile" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/Shop name/i), { target: { value: "BVRB3R North" } });
+    fireEvent.click(screen.getByRole("button", { name: /Save profile/i }));
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith("/api/owner/activation", expect.objectContaining({
+        method: "POST"
+      }));
+    });
+  });
+
+  it("opens the invite barber directory from the activation gate without routing back to overview", () => {
+    useOwnerTeamInviteDirectoryQueryMock.mockReturnValue({
+      isLoading: false,
+      data: {
+        shop: { id: "loc-ybor", label: "The BVRB3R Shop & Co" },
+        barbers: [
+          {
+            barberId: "barber-wave",
+            barberReference: "barber-wave",
+            profileId: "profile-wave",
+            name: "Wave Carter",
+            email: "wave@bvrb3r.app",
+            username: "wavecarter",
+            serviceAreaLabel: "Tampa",
+            compensationModel: "booth_rent",
+            appApprovalStatus: "approved",
+            shopApprovalStatus: "approved",
+            visibilityState: "public",
+            acceptsInstantBookings: true,
+            alreadyAssigned: false,
+            inviteStatus: null,
+            canInvite: true
+          }
+        ]
+      }
+    });
+
+    render(<OwnerSettingsWorkspace user={{ ...resolveDemoUser("owner@bvrb3r.demo"), appApprovalStatus: "approved", shopApprovalStatus: "approved" }} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Invite barber/i }));
+
+    expect(screen.getByRole("heading", { name: "Invite barber" })).toBeInTheDocument();
+    expect(screen.getByText("Wave Carter")).toBeInTheDocument();
   });
 });

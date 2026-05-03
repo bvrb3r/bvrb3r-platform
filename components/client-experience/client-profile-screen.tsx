@@ -143,7 +143,11 @@ export function ClientProfileScreen({
 
   const [mediaFeedback, setMediaFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [referralFeedback, setReferralFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
+  const [locationFeedback, setLocationFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
+  const [locationModalOpen, setLocationModalOpen] = useState(false);
+  const [locationDraft, setLocationDraft] = useState({ city: "", state: "" });
+  const [isSavingLocation, setIsSavingLocation] = useState(false);
   const profileInputRef = useRef<HTMLInputElement | null>(null);
 
   const client = payload.client;
@@ -299,6 +303,45 @@ export function ClientProfileScreen({
     }
   }
 
+  function scrollToSection(sectionKey: ProfileSectionKey) {
+    const target = document.getElementById(sectionIdMap[sectionKey]);
+    if (typeof target?.scrollIntoView === "function") {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }
+
+  async function handleLocationSave() {
+    setLocationFeedback(null);
+    if (!locationDraft.city.trim()) {
+      setLocationFeedback({ tone: "error", message: "Enter a city to save your booking location." });
+      return;
+    }
+
+    setIsSavingLocation(true);
+    try {
+      const response = await fetch("/api/onboarding/client/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fullName: clientName,
+          phone: clientPhone || authPhone || "0000000000",
+          city: [locationDraft.city.trim(), locationDraft.state.trim()].filter(Boolean).join(", ")
+        })
+      });
+      const body = (await response.json().catch(() => ({}))) as { error?: string };
+      if (!response.ok) {
+        throw new Error(body.error ?? "Unable to save location.");
+      }
+
+      setLocationModalOpen(false);
+      setLocationFeedback({ tone: "success", message: "Location saved for faster booking." });
+    } catch (error) {
+      setLocationFeedback({ tone: "error", message: readableError(error, "Unable to save location right now.") });
+    } finally {
+      setIsSavingLocation(false);
+    }
+  }
+
   return (
     <div className="space-y-4" data-testid="client-profile-screen">
       <Card className="rounded-[34px] border-white/10 bg-[linear-gradient(180deg,rgba(17,17,17,0.96),rgba(6,6,6,0.98))] p-5 shadow-[0_26px_60px_rgba(0,0,0,0.24)] sm:p-6">
@@ -313,6 +356,7 @@ export function ClientProfileScreen({
 
       {mediaFeedback ? <FeedbackBanner tone={mediaFeedback.tone} message={mediaFeedback.message} /> : null}
       {referralFeedback ? <FeedbackBanner tone={referralFeedback.tone} message={referralFeedback.message} /> : null}
+      {locationFeedback ? <FeedbackBanner tone={locationFeedback.tone} message={locationFeedback.message} /> : null}
       {pointsBalanceQuery.error ? <FeedbackBanner tone="error" message="Rewards are unavailable right now. The rest of your profile is still ready." /> : null}
       {membershipQuery.error ? <FeedbackBanner tone="error" message="Membership status could not be loaded right now." /> : null}
       {referralSummaryQuery.error ? <FeedbackBanner tone="error" message="Invite progress is unavailable right now." /> : null}
@@ -324,6 +368,13 @@ export function ClientProfileScreen({
           hasDefaultPaymentMethod: Boolean(defaultPaymentMethod),
           hasLocation: Boolean(primaryShop ?? client?.favoriteShopReference),
           hasPreferredSupply: Boolean(favoriteBarber ?? preferredShops.length)
+        }}
+        actionHandlers={{
+          "client-payment": () => scrollToSection("wallet"),
+          "client-location": () => setLocationModalOpen(true),
+          "client-email": () => window.location.assign("/verify-contact"),
+          "client-phone": () => window.location.assign("/verify-contact"),
+          "client-preferred-supply": () => window.location.assign("/dashboard/client/search")
         }}
       />
 
@@ -831,6 +882,34 @@ export function ClientProfileScreen({
           <LogoutButton compact className="max-w-sm" />
         </div>
       </ClientSectionBlock>
+
+      {locationModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/72 px-4 py-5 backdrop-blur-sm sm:items-center" role="dialog" aria-modal="true">
+          <div className="w-full max-w-lg rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(4,4,4,0.98))] p-5 text-white shadow-[0_24px_70px_rgba(0,0,0,0.58),0_0_34px_rgba(163,255,18,0.12)]">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Quick setup</p>
+              <h2 className="mt-2 text-2xl font-black tracking-[-0.04em]">Set location</h2>
+              <p className="mt-2 text-sm text-white/58">Search still works without this. Saving a city helps booking flows move faster.</p>
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <label className="block text-sm font-bold text-white/72">
+                City
+                <Input value={locationDraft.city} onChange={(event) => setLocationDraft((current) => ({ ...current, city: event.target.value }))} className="mt-2" />
+              </label>
+              <label className="block text-sm font-bold text-white/72">
+                State
+                <Input value={locationDraft.state} onChange={(event) => setLocationDraft((current) => ({ ...current, state: event.target.value }))} className="mt-2" />
+              </label>
+            </div>
+            <div className="mt-5 flex gap-3">
+              <Button type="button" variant="secondary" className="min-h-12 flex-1 rounded-2xl" onClick={() => setLocationModalOpen(false)}>Cancel</Button>
+              <Button type="button" className="min-h-12 flex-1 rounded-2xl bg-[#A3FF12] text-black hover:bg-[#8de300]" disabled={isSavingLocation} onClick={() => void handleLocationSave()}>
+                Save location
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
