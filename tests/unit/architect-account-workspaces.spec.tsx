@@ -306,6 +306,45 @@ describe("architect account workspaces", () => {
     expect(screen.getByText("Barber state")).toBeInTheDocument();
     expect(screen.getByText("Verification actions")).toBeInTheDocument();
     expect(screen.getByText("Barber approval pending")).toBeInTheDocument();
+    expect(screen.getByText("Approved means eligible. Live means clients can discover and book.")).toBeInTheDocument();
+    expect(screen.getAllByText("Marketplace Not live").length).toBeGreaterThan(0);
     expect(screen.getByText("No real verification documents are linked to this account.")).toBeInTheDocument();
+  });
+
+  it("shows marketplace live separately from approval when no blockers remain", () => {
+    const livePayload: ArchitectAccountDetailPayload = {
+      ...detailPayload,
+      account: detailPayload.account
+        ? {
+            ...detailPayload.account,
+            approvalStatus: "approved",
+            verificationStatus: "approved",
+            marketplaceBlockers: [],
+            barber: detailPayload.account.barber
+              ? {
+                  ...detailPayload.account.barber,
+                  appApprovalStatus: "approved",
+                  status: "active",
+                  acceptingBookings: true,
+                  visibilityState: "public",
+                  acceptsInstantBookings: true,
+                  servicesCount: 1,
+                  availabilityRulesCount: 1,
+                  workingHoursCount: 1
+                }
+              : undefined
+          }
+        : null
+    };
+    useArchitectAccountDetailQueryMock.mockReturnValue({
+      data: livePayload,
+      error: null
+    });
+
+    render(<ArchitectAccountDetailWorkspace profileId="profile-barber" initialData={livePayload} />);
+
+    expect(screen.getAllByText("Approval Approved").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Marketplace Live").length).toBeGreaterThan(0);
+    expect(screen.getByText("No marketplace blockers are currently detected from live account data.")).toBeInTheDocument();
   });
 });

@@ -25,6 +25,7 @@ import {
   Users,
   WalletCards
 } from "lucide-react";
+import { OwnerActivationGate } from "@/components/activation/tier1-activation-gates";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -259,6 +260,7 @@ export function OwnerSettingsWorkspace({
     return accounts[0];
   }, [fintechQuery.data?.shops, ownerShopId]);
   const membershipCount = fintechQuery.data?.memberships.length ?? 0;
+  const hasBookableLinkedBarber = (fintechQuery.data?.barbers ?? []).some((account) => account.chargesEnabled && account.payoutsEnabled);
   const readyForPayoutAmount = fintechQuery.data?.summary.readyForPayoutAmount ?? 0;
   const needsAttentionCount = fintechQuery.data?.summary.needsAttentionAccounts ?? 0;
   const blockedRoutingCount = fintechQuery.data?.summary.blockedRoutingRecords ?? 0;
@@ -518,6 +520,21 @@ export function OwnerSettingsWorkspace({
           </div>
         </GlassCard>
       )}
+
+      <OwnerActivationGate
+        input={{
+          approvalStatus: verificationStatus,
+          accountStatus: user.accountStatus,
+          hasShopProfile: Boolean(ownerShopId && shopName !== "Shop profile incomplete"),
+          hasAddress: user.locationIds.length > 0,
+          hasShopHours: user.locationIds.length > 0,
+          payoutsReady: Boolean(fintechShopAccount?.chargesEnabled && fintechShopAccount.payoutsEnabled),
+          hasInvitedBarber: membershipCount > 0,
+          hasAcceptedBarber: membershipCount > 0,
+          hasBookableBarber: hasBookableLinkedBarber,
+          publicProfileEnabled: true
+        }}
+      />
 
       <section className="space-y-3">
         <SectionTitle id="owner-settings-shop-profile">Shop Profile</SectionTitle>

@@ -128,7 +128,8 @@ describe("client search screen", () => {
         ]
       },
       isLoading: false,
-      error: null
+      error: null,
+      refetch: vi.fn()
     });
 
     useMarketplaceDiscoveryMock.mockReturnValue({
@@ -158,7 +159,8 @@ describe("client search screen", () => {
         }
       ],
       isLoading: false,
-      error: null
+      error: null,
+      refetch: vi.fn()
     });
   });
 
@@ -204,5 +206,33 @@ describe("client search screen", () => {
         "client-jordan"
       );
     });
+  });
+
+  it("uses accurate live-supply empty states when no bookable barbers or shops exist", () => {
+    useClientHomeQueryMock.mockReturnValue({
+      data: {
+        locationId: "",
+        recommendedBarbers: [],
+        recommendedShops: [],
+        shops: []
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn()
+    });
+    useMarketplaceDiscoveryMock.mockReturnValue({
+      data: [],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn()
+    });
+
+    render(<ClientSearchScreen clientId="client-jordan" routeBase="/dashboard/client/search" />);
+
+    expect(screen.getByText("No live barbers yet.")).toBeInTheDocument();
+    expect(screen.getByText("Approved barbers appear here after they add services, set availability, and turn booking on.")).toBeInTheDocument();
+    expect(screen.getByText("No live shops yet.")).toBeInTheDocument();
+    expect(screen.getByText("Approved shops appear here after the shop is set up and at least one approved barber is bookable.")).toBeInTheDocument();
+    expect(screen.queryByText(/We're expanding in your area/i)).not.toBeInTheDocument();
   });
 });

@@ -18,6 +18,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { LogoutButton } from "@/components/auth/logout-button";
+import { ClientActivationGate } from "@/components/activation/tier1-activation-gates";
 import { ClientActionLink } from "@/components/client-experience/client-action-link";
 import { ClientPaymentMethodsPanel } from "@/components/client-experience/client-payment-methods-panel";
 import { ClientSectionBlock } from "@/components/client-experience/client-section-block";
@@ -315,6 +316,16 @@ export function ClientProfileScreen({
       {pointsBalanceQuery.error ? <FeedbackBanner tone="error" message="Rewards are unavailable right now. The rest of your profile is still ready." /> : null}
       {membershipQuery.error ? <FeedbackBanner tone="error" message="Membership status could not be loaded right now." /> : null}
       {referralSummaryQuery.error ? <FeedbackBanner tone="error" message="Invite progress is unavailable right now." /> : null}
+
+      <ClientActivationGate
+        input={{
+          emailVerified,
+          phoneVerified: hasPhone && phoneVerified,
+          hasDefaultPaymentMethod: Boolean(defaultPaymentMethod),
+          hasLocation: Boolean(primaryShop ?? client?.favoriteShopReference),
+          hasPreferredSupply: Boolean(favoriteBarber ?? preferredShops.length)
+        }}
+      />
 
       <ClientSectionBlock
         eyebrow="Account"

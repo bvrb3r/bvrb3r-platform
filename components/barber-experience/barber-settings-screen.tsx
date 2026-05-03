@@ -31,6 +31,7 @@ import {
   XCircle,
   type LucideIcon
 } from "lucide-react";
+import { BarberActivationGate } from "@/components/activation/tier1-activation-gates";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { BarberEarningsWorkspace } from "@/components/operations/barber-earnings-workspace";
 import { BarberScheduleWorkspace } from "@/components/operations/barber-schedule-workspace";
@@ -63,6 +64,7 @@ import {
   useSaveBarberSubtypeMutation,
   type BarberApiError
 } from "@/lib/operations/barber-client";
+import { useMarketplaceServiceCatalog } from "@/lib/marketplace/client";
 import { cn, currency } from "@/lib/utils";
 import { getReadableActionError } from "@/lib/utils/feedback";
 import type { BarberSubtype, UserAccount } from "@/types/domain";
@@ -251,6 +253,7 @@ export function BarberSettingsScreen({
   const uploadMutation = useCreateVerificationUploadMutation();
   const submitVerificationMutation = useSubmitBarberVerificationMutation();
   const identitySessionMutation = useStartBarberIdentitySessionMutation();
+  const serviceCatalogQuery = useMarketplaceServiceCatalog();
   const [selectedSubtype, setSelectedSubtype] = useState<BarberSubtype>(user.barberSubtype ?? "freelance");
   const [verificationCategory, setVerificationCategory] = useState<"identity_verification" | "license_verification" | "payout_verification" | "shop_affiliation_verification">("license_verification");
   const [legalName, setLegalName] = useState(user.name);
@@ -283,6 +286,21 @@ export function BarberSettingsScreen({
   const assignedLocationLabels = overviewPayload?.shops.length
     ? overviewPayload.shops.map((shop) => shop.label).join(", ")
     : locationLabel;
+  const hasActiveService = [
+    ...(serviceCatalogQuery.data?.editableServices ?? []),
+    ...(serviceCatalogQuery.data?.readOnlyServices ?? [])
+  ].some((item) => item.service.isActive !== false && item.service.isBookable !== false);
+  const hasAvailability = (overviewPayload?.workingHours.length ?? 0) > 0;
+  const hasShopLink = Boolean((readinessPayload?.memberships.length ?? 0) > 0 || (overviewPayload?.shops.length ?? 0) > 0);
+  const isProfilePublic = Boolean(mediaQuery.data?.barberProfile?.barberId);
+  const isBookingActive = Boolean(overviewPayload?.status.isOnline && overviewPayload.status.liveStatus === "available");
+  const isBarberMarketplaceLive =
+    canonicalVerificationStatus === "approved"
+    && !["suspended", "banned", "deactivated"].includes(user.accountStatus ?? "")
+    && hasActiveService
+    && hasAvailability
+    && isProfilePublic
+    && isBookingActive;
 
   const statusItems = [
     {
@@ -305,15 +323,15 @@ export function BarberSettingsScreen({
     },
     {
       label: "Profile",
-      value: user.appApprovalStatus === "approved" ? "Live" : formatStatusLabel(user.appApprovalStatus),
+      value: isBarberMarketplaceLive ? "Live" : "Not live",
       icon: UserCheck,
-      tone: user.appApprovalStatus === "approved" ? "green" : getStatusTone(user.appApprovalStatus)
+      tone: isBarberMarketplaceLive ? "green" : "amber"
     },
     {
       label: "Booking",
-      value: user.appApprovalStatus === "approved" ? "Active" : "Pending",
+      value: isBookingActive ? "Active" : "Not active",
       icon: CalendarCheck,
-      tone: user.appApprovalStatus === "approved" ? "green" : "amber"
+      tone: isBookingActive ? "green" : "amber"
     }
   ] satisfies Array<{ label: string; value: string; icon: LucideIcon; tone: Tone }>;
 
@@ -472,6 +490,7 @@ export function BarberSettingsScreen({
         {payoutsQuery.error ? <FeedbackBanner tone="error" message={readableError(payoutsQuery.error, "Unable to load payout ledger right now.")} /> : null}
         {overviewQuery.error ? <FeedbackBanner tone="error" message={readableError(overviewQuery.error, "Unable to load barber operating details right now.")} /> : null}
         {teamInvitesQuery.error ? <FeedbackBanner tone="error" message={readableError(teamInvitesQuery.error, "Unable to load shop invitations right now.")} /> : null}
+        {serviceCatalogQuery.error ? <FeedbackBanner tone="error" message={readableError(serviceCatalogQuery.error, "Unable to load service activation status right now.")} /> : null}
 
         {!embedded ? (
           <header className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
@@ -487,6 +506,22 @@ export function BarberSettingsScreen({
             </div>
           </header>
         ) : null}
+
+        <BarberActivationGate
+          input={{
+            approvalStatus: canonicalVerificationStatus,
+            accountStatus: user.accountStatus,
+            hasActiveService,
+            hasAvailability,
+            isProfilePublic,
+            isAcceptingBookings: isBookingActive,
+            payoutsReady: Boolean(connectedAccount?.payoutsEnabled && connectedAccount.chargesEnabled),
+            payoutsRequired: true,
+            hasShopLink,
+            shopLinkRequired: selectedSubtype !== "freelance",
+            hasPendingShopInvite: pendingShopInvites.length > 0
+          }}
+        />
 
         <GlassCard active className="p-5 sm:p-6">
           <div className="grid gap-6 lg:grid-cols-[auto_1fr_auto] lg:items-center">

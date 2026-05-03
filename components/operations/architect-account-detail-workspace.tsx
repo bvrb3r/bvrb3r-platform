@@ -23,6 +23,7 @@ import type {
 } from "@/types/platform-admin";
 
 type VerificationAction = "approve" | "reject" | "request-update" | "suspend" | "reactivate";
+type ArchitectAccountDetailAccount = NonNullable<ArchitectAccountDetailPayload["account"]>;
 
 type PendingAction =
   | {
@@ -108,6 +109,20 @@ function accountActionClass(nextStatus: PlatformAdminAccountStatus): PlatformAdm
 
 function verificationActionClass(action: VerificationAction): PlatformAdminActionClass {
   return action === "approve" || action === "reactivate" ? "sensitive" : "critical";
+}
+
+function getMarketplaceStatus(account: ArchitectAccountDetailAccount) {
+  if (account.marketplaceBlockers.length) {
+    return {
+      label: "Not live",
+      tone: "pending" as const
+    };
+  }
+
+  return {
+    label: "Live",
+    tone: "approved" as const
+  };
 }
 
 export function ArchitectAccountDetailWorkspace({
@@ -225,6 +240,7 @@ export function ArchitectAccountDetailWorkspace({
   const isPlatformAdmin = account.role === "platform_admin";
   const canManageAccountAccess = !isPlatformAdmin && account.profileExists;
   const canUseVerificationActions = Boolean(selectedVerificationProfile);
+  const marketplaceStatus = getMarketplaceStatus(account);
 
   return (
     <div className="app-screen safe-top-pad px-2 py-2 pb-[calc(env(safe-area-inset-bottom,0px)+2rem)] sm:px-3 sm:py-3 lg:px-5 lg:py-5">
@@ -243,6 +259,7 @@ export function ArchitectAccountDetailWorkspace({
               <div className="mt-4 flex flex-wrap gap-2">
                 <span className={cn("status-pill", badgeClasses(account.accountStatus))}>{formatLabel(account.accountStatus)}</span>
                 <span className={cn("status-pill", badgeClasses(account.approvalStatus))}>Approval {formatLabel(account.approvalStatus)}</span>
+                <span className={cn("status-pill", marketplaceStatus.tone === "approved" ? badgeClasses("approved") : badgeClasses("pending"))}>Marketplace {marketplaceStatus.label}</span>
                 <span className={cn("status-pill", badgeClasses(account.verificationStatus))}>Verification {formatLabel(account.verificationStatus)}</span>
               </div>
             </div>
@@ -393,7 +410,19 @@ export function ArchitectAccountDetailWorkspace({
 
         <section className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
           <Card className="rounded-[32px] p-6">
-            <p className="surface-label">Marketplace blockers</p>
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="surface-label">Marketplace blockers</p>
+                <h2 className="mt-3 text-2xl font-semibold text-white">Approval vs marketplace live</h2>
+                <p className="mt-3 text-sm leading-7 text-white/62">
+                  Approved means eligible. Live means clients can discover and book.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <span className={cn("status-pill", badgeClasses(account.approvalStatus))}>Approval {formatLabel(account.approvalStatus)}</span>
+                <span className={cn("status-pill", marketplaceStatus.tone === "approved" ? badgeClasses("approved") : badgeClasses("pending"))}>Marketplace {marketplaceStatus.label}</span>
+              </div>
+            </div>
             {account.marketplaceBlockers.length ? (
               <div className="mt-4 grid gap-2">
                 {account.marketplaceBlockers.map((blocker) => (

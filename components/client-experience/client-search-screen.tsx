@@ -4,7 +4,7 @@ import type { Route } from "next";
 import Link from "next/link";
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Clock3, MapPin, ShieldCheck, Star } from "lucide-react";
+import { Clock3, MapPin, RefreshCw, ShieldCheck, Star } from "lucide-react";
 import { ClientPrimarySearchBar } from "@/components/client-experience/client-primary-search-bar";
 import { ClientSectionBlock } from "@/components/client-experience/client-section-block";
 import { ClientShopDiscoveryCard } from "@/components/client-experience/client-shop-discovery-card";
@@ -43,6 +43,39 @@ function RailSkeleton() {
           <Skeleton className="mt-4 h-11 w-full rounded-full" />
         </div>
       ))}
+    </div>
+  );
+}
+
+function SearchEmptyState({
+  title,
+  body,
+  actionLabel,
+  href,
+  onAction
+}: {
+  title: string;
+  body: string;
+  actionLabel: string;
+  href?: string;
+  onAction?: () => void;
+}) {
+  const actionClassName = "mt-5 inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-[#A3FF12]/28 bg-[#A3FF12]/10 px-5 text-sm font-extrabold text-[#A3FF12] transition hover:border-[#A3FF12]/48 hover:bg-[#A3FF12]/15";
+
+  return (
+    <div className="rounded-[28px] border border-dashed border-white/10 bg-black/18 p-5">
+      <h3 className="text-2xl font-semibold tracking-[-0.03em] text-white" data-display="true">{title}</h3>
+      <p className="mt-3 max-w-2xl text-sm leading-7 text-white/62">{body}</p>
+      {href ? (
+        <Link href={href as Route} className={actionClassName}>
+          {actionLabel}
+        </Link>
+      ) : (
+        <button type="button" className={actionClassName} onClick={onAction}>
+          <RefreshCw className="h-4 w-4" />
+          {actionLabel}
+        </button>
+      )}
     </div>
   );
 }
@@ -320,6 +353,31 @@ export function ClientSearchScreen({
     return source.filter((result) => (result.galleryPreviewUrls?.length ?? 0) > 0 || Boolean(result.profilePhotoUrl)).slice(0, 8);
   }, [barberResults, visibleBarbers]);
   const errorMessage = discoveryQuery.error ? getReadableActionError(discoveryQuery.error as MarketplaceApiError) : null;
+  const hasKnownBookableBarbers = Boolean(barberResults.length || recommendedBarbers.length);
+  const barberEmptyState = hasKnownBookableBarbers && hasActiveSearchQuery
+    ? {
+        title: "No nearby matches yet.",
+        body: "Try searching by name or expanding your city.",
+        actionLabel: "Search all BVRB3R",
+        href: `${routeBase}?type=barbers`
+      }
+    : {
+        title: "No live barbers yet.",
+        body: "Approved barbers appear here after they add services, set availability, and turn booking on.",
+        actionLabel: "Refresh Search"
+      };
+  const shopEmptyState = allShops.length && hasActiveSearchQuery
+    ? {
+        title: "No nearby matches yet.",
+        body: "Try searching by name or expanding your city.",
+        actionLabel: "Search all BVRB3R",
+        href: `${routeBase}?type=shops`
+      }
+    : {
+        title: "No live shops yet.",
+        body: "Approved shops appear here after the shop is set up and at least one approved barber is bookable.",
+        actionLabel: "Refresh Search"
+      };
 
   function syncRoute(
     nextQuery: string,
@@ -411,9 +469,10 @@ export function ClientSearchScreen({
           ))}
         </div>
       ) : (
-        <div className="rounded-[28px] border border-dashed border-white/10 bg-black/18 p-5 text-sm leading-7 text-white/62">
-          We&apos;re expanding in your area. Explore top barbers on BVRB3R.
-        </div>
+        <SearchEmptyState
+          {...barberEmptyState}
+          onAction={() => void discoveryQuery.refetch()}
+        />
       )}
     </ClientSectionBlock>
   );
@@ -439,11 +498,10 @@ export function ClientSearchScreen({
           ))}
         </div>
       ) : (
-        <div className="rounded-[28px] border border-dashed border-white/10 bg-black/18 p-5 text-sm leading-7 text-white/62">
-          {allShops.length
-            ? "Explore barber shops on BVRB3R."
-            : "Verified barbers and shops will appear here as they become bookable."}
-        </div>
+        <SearchEmptyState
+          {...shopEmptyState}
+          onAction={() => void homeQuery.refetch()}
+        />
       )}
     </ClientSectionBlock>
   );
