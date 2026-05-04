@@ -881,6 +881,19 @@ export function OwnerSettingsWorkspace({
                         <p className="mt-2 text-xs font-bold uppercase tracking-[0.14em] text-white/42">
                           {barber.appApprovalStatus} / {barber.visibilityState ?? "hidden"}
                         </p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {barber.readinessLabels.map((label) => (
+                            <span
+                              key={label}
+                              className={cn(
+                                "inline-flex min-h-7 items-center rounded-full border px-3 py-1 text-xs font-extrabold",
+                                statusClasses(label.includes("Approved") || label.includes("Bookable") || label.includes("team") ? "green" : label.includes("incomplete") || label.includes("invited") || label.includes("Not approved") ? "amber" : "neutral")
+                              )}
+                            >
+                              {label}
+                            </span>
+                          ))}
+                        </div>
                       </div>
                       <Button
                         type="button"

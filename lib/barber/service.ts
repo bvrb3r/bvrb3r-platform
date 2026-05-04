@@ -6,6 +6,7 @@ import { getBarberAppointmentsPayload, getBarberDashboardPayload } from "@/lib/b
 import { buildClientHistoryIntelligence } from "@/lib/engagement/intelligence";
 import { buildBarberMoneyDashboardSummary } from "@/lib/fintech/tax";
 import { buildBarberRevenueIntelligenceSummary } from "@/lib/monetization/service";
+import { getOnboardingState } from "@/lib/onboarding/service";
 import { toBarberViewer } from "@/lib/booking/route-auth";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import {
@@ -140,6 +141,14 @@ export type BarberBlockedTimeView = {
   reason: string | null;
 };
 
+export type BarberActivationSetupView = {
+  hasAvailabilityDraft: boolean;
+  hasServiceLocation: boolean;
+  locationMode: "custom" | "shop" | "later" | null;
+  serviceLocationLabel: string | null;
+  requestedShopId: string | null;
+};
+
 export type BarberClientRelationshipView = {
   clientId: string;
   clientName: string;
@@ -201,6 +210,7 @@ export type BarberOverviewPayload = {
   upcomingAppointments: BarberOperationalAppointmentView[];
   workingHours: BarberWorkingHoursView[];
   blockedTimes: BarberBlockedTimeView[];
+  activationSetup: BarberActivationSetupView;
   quickClients: BarberClientRelationshipView[];
   earnings: BarberEarningsSummaryView;
 };
@@ -559,6 +569,106 @@ async function readWorkingHoursView(
   }));
 }
 
+function isMissingRelationError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const candidate = error as { code?: string | null; message?: string | null };
+  const message = `${candidate.message ?? ""}`.toLowerCase();
+  return candidate.code === "42P01"
+    || candidate.code === "PGRST205"
+    || message.includes("does not exist")
+    || message.includes("could not find the table");
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function parseActivationAvailability(profileData: unknown) {
+  const profile = asRecord(profileData);
+  const activation = asRecord(profile?.activationAvailability);
+  if (!activation) {
+    return null;
+  }
+
+  const locationMode: BarberActivationSetupView["locationMode"] = activation.locationMode === "custom"
+    || activation.locationMode === "shop"
+    || activation.locationMode === "later"
+      ? activation.locationMode
+      : null;
+  const serviceLocation = asRecord(activation.serviceLocation);
+  const workingHours = Array.isArray(activation.workingHours) ? activation.workingHours : [];
+  const requestedShopId = typeof activation.requestedShopId === "string"
+    ? activation.requestedShopId
+    : typeof activation.shopId === "string"
+      ? activation.shopId
+      : null;
+
+  return {
+    locationMode,
+    workingHours,
+    serviceLocation,
+    requestedShopId
+  };
+}
+
+function formatServiceLocationLabel(serviceLocation: Record<string, unknown> | null) {
+  if (!serviceLocation) {
+    return null;
+  }
+
+  const name = typeof serviceLocation.name === "string" ? serviceLocation.name.trim() : "";
+  const city = typeof serviceLocation.city === "string" ? serviceLocation.city.trim() : "";
+  const state = typeof serviceLocation.state === "string" ? serviceLocation.state.trim() : "";
+  const address = typeof serviceLocation.address === "string" ? serviceLocation.address.trim() : "";
+  return [name, [city, state].filter(Boolean).join(", ") || address].filter(Boolean).join(" | ") || null;
+}
+
+async function readActivationSetupView(
+  supabase: SupabaseClient | null,
+  user: UserAccount,
+  workingHours: BarberWorkingHoursView[],
+  locations: LocationRow[]
+): Promise<BarberActivationSetupView> {
+  let activation = null as ReturnType<typeof parseActivationAvailability> | null;
+
+  if (supabase) {
+    const result = await supabase
+      .from("user_onboarding_states")
+      .select("profile_data")
+      .eq("user_id", user.id)
+      .eq("role", "barber")
+      .maybeSingle();
+
+    if (result.error && !isMissingRelationError(result.error)) {
+      throw new BarberToolsServiceError("Unable to read barber activation setup.", 500);
+    }
+
+    activation = result.data ? parseActivationAvailability((result.data as { profile_data?: unknown }).profile_data) : null;
+  } else {
+    const onboarding = await getOnboardingState(user).catch(() => null);
+    const barberLane = onboarding?.lanes.find((lane) => lane.role === "barber");
+    activation = barberLane ? parseActivationAvailability(barberLane.profileData) : null;
+  }
+
+  const hasAvailabilityDraft = workingHours.length > 0 || Boolean(activation?.workingHours.length);
+  const customLocationLabel = formatServiceLocationLabel(activation?.serviceLocation ?? null);
+  const hasCustomLocation = activation?.locationMode === "custom" && Boolean(customLocationLabel);
+  const hasAssignedLocation = locations.length > 0;
+
+  return {
+    hasAvailabilityDraft,
+    hasServiceLocation: hasAssignedLocation || hasCustomLocation,
+    locationMode: activation?.locationMode ?? (hasAssignedLocation ? "shop" : null),
+    serviceLocationLabel: customLocationLabel ?? (hasAssignedLocation ? formatLocationLabel(locations[0]) : null),
+    requestedShopId: activation?.requestedShopId ?? null
+  };
+}
+
 async function buildStatusView(
   user: UserAccount,
   appointments: BaseBarberAppointment[],
@@ -761,6 +871,7 @@ export async function getBarberOverviewPayload(user: UserAccount): Promise<Barbe
     readWorkingHoursView(supabase, viewer.barberId!, locationMap),
     supabase ? readBlockedTimes(supabase, viewer.barberId!) : Promise.resolve([])
   ]);
+  const activationSetup = await readActivationSetupView(supabase, user, workingHours, context?.locations ?? []);
   const clients = buildClientRelationshipView(appointments, dashboard.clients, viewer.barberId!);
   const earnings = buildEarningsSummary(dashboard.summary.businessDate, appointments);
 
@@ -775,6 +886,7 @@ export async function getBarberOverviewPayload(user: UserAccount): Promise<Barbe
     upcomingAppointments,
     workingHours,
     blockedTimes,
+    activationSetup,
     quickClients: clients.slice(0, 4),
     earnings
   };

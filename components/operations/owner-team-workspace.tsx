@@ -809,6 +809,23 @@ export function OwnerTeamWorkspace() {
                           <span>{formatStatusLabel(barber.compensationModel)}</span>
                           <span>{barber.acceptsInstantBookings ? "Instant booking on" : "Instant booking off"}</span>
                         </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {barber.readinessLabels.map((label) => (
+                            <span
+                              key={label}
+                              className={cn(
+                                "inline-flex min-h-7 items-center rounded-full border px-3 py-1 text-xs font-extrabold",
+                                label.includes("Bookable") || label.includes("Approved") || label.includes("team")
+                                  ? "border-[#A3FF12]/25 bg-[#A3FF12]/10 text-[#A3FF12]"
+                                  : label.includes("incomplete") || label.includes("invited") || label.includes("Not approved")
+                                    ? "border-amber-300/25 bg-amber-300/10 text-amber-100"
+                                    : "border-white/10 bg-white/[0.05] text-white/62"
+                              )}
+                            >
+                              {label}
+                            </span>
+                          ))}
+                        </div>
                       </div>
                       <div className="flex flex-wrap gap-2 sm:justify-end">
                         {barber.username ? (

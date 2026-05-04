@@ -159,8 +159,17 @@ export interface BarberOverviewResponse {
   upcomingAppointments: BarberOperationalAppointment[];
   workingHours: BarberWorkingHoursView[];
   blockedTimes: BarberBlockedTimeView[];
+  activationSetup?: BarberActivationSetupView;
   quickClients: BarberClientRelationshipView[];
   earnings: BarberEarningsSummaryView;
+}
+
+export interface BarberActivationSetupView {
+  hasAvailabilityDraft: boolean;
+  hasServiceLocation: boolean;
+  locationMode: "custom" | "shop" | "later" | null;
+  serviceLocationLabel: string | null;
+  requestedShopId: string | null;
 }
 
 export interface BarberScheduleResponse {
@@ -221,6 +230,32 @@ interface BarberTeamInvitesResponse {
 interface BarberActivationResponse {
   visibilityState: "public" | "featured" | "hidden";
   acceptsInstantBookings: boolean;
+}
+
+interface BarberActivationAvailabilityResponse {
+  hasAvailabilityDraft: boolean;
+  hasServiceLocation: boolean;
+  locationMode: "custom" | "shop" | "later";
+  serviceLocationLabel: string | null;
+  requestedShopId: string | null;
+}
+
+export interface BarberJoinableShopView {
+  shopId: string;
+  shopReference: string | null;
+  shopLabel: string;
+  city: string | null;
+  state: string | null;
+  approvalStatus: string;
+  liveStatusLabel: string;
+  alreadyAssigned: boolean;
+  inviteStatus: string | null;
+  canRequest: boolean;
+  readinessLabels: string[];
+}
+
+interface BarberJoinableShopDirectoryResponse {
+  shops: BarberJoinableShopView[];
 }
 
 export interface BarberDashboardResponse {
@@ -557,6 +592,48 @@ export function useUpdateBarberActivationMutation() {
   });
 }
 
+export function useUpdateBarberActivationAvailabilityMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: {
+      workingHours: Array<{
+        weekday: number;
+        startTime: string;
+        endTime: string;
+      }>;
+      locationMode: "custom" | "shop" | "later";
+      serviceLocation?: {
+        name: string;
+        address: string;
+        city: string;
+        state: string;
+        postalCode?: string;
+      };
+      shopId?: string;
+    }) =>
+      requestJson<BarberActivationAvailabilityResponse>("/api/barber/activation", {
+        method: "POST",
+        body: JSON.stringify({
+          action: "save_availability",
+          ...payload
+        })
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["activation-status"] }),
+        queryClient.invalidateQueries({ queryKey: ["activation", "status"] }),
+        queryClient.invalidateQueries({ queryKey: ["barber-overview"] }),
+        queryClient.invalidateQueries({ queryKey: ["barber-schedule"] }),
+        queryClient.invalidateQueries({ queryKey: ["barber-status"] }),
+        queryClient.invalidateQueries({ queryKey: ["marketplace", "discover"] }),
+        queryClient.invalidateQueries({ queryKey: ["marketplace", "map"] }),
+        queryClient.invalidateQueries({ queryKey: ["marketplace", "haircut-now"] })
+      ]);
+    }
+  });
+}
+
 export function useBarberClientsQuery() {
   return useQuery({
     queryKey: ["barber-clients"],
@@ -713,6 +790,39 @@ export function useRespondBarberTeamInviteMutation() {
         queryClient.invalidateQueries({ queryKey: ["shop-dashboard"] }),
         queryClient.invalidateQueries({ queryKey: ["fintech"] }),
         queryClient.invalidateQueries({ queryKey: ["activation-status"] })
+      ]);
+    }
+  });
+}
+
+export function useBarberJoinableShopsQuery(search?: string, enabled = true) {
+  const queryString = toQueryString({
+    q: search?.trim() || undefined
+  });
+
+  return useQuery({
+    queryKey: ["barber-joinable-shops", search?.trim() ?? ""],
+    queryFn: () => requestJson<BarberJoinableShopDirectoryResponse>(`/api/barber/shop-requests${queryString ? `?${queryString}` : ""}`),
+    staleTime: 5_000,
+    enabled
+  });
+}
+
+export function useCreateBarberShopJoinRequestMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: { shopId: string; message?: string }) =>
+      requestJson<{ invite: ShopTeamInviteView }>("/api/barber/shop-requests", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["barber-joinable-shops"] }),
+        queryClient.invalidateQueries({ queryKey: ["barber-team-invites"] }),
+        queryClient.invalidateQueries({ queryKey: ["activation-status"] }),
+        queryClient.invalidateQueries({ queryKey: ["barber-overview"] })
       ]);
     }
   });

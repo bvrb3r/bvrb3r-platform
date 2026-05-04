@@ -1,14 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
+  createBarberShopJoinRequestMock,
   createOwnerTeamInviteMock,
   getSessionUserMock,
+  listBarberJoinableShopsMock,
   listBarberTeamInvitesMock,
   listOwnerTeamInviteDirectoryMock,
   respondToBarberTeamInviteMock
 } = vi.hoisted(() => ({
+  createBarberShopJoinRequestMock: vi.fn(),
   createOwnerTeamInviteMock: vi.fn(),
   getSessionUserMock: vi.fn(),
+  listBarberJoinableShopsMock: vi.fn(),
   listBarberTeamInvitesMock: vi.fn(),
   listOwnerTeamInviteDirectoryMock: vi.fn(),
   respondToBarberTeamInviteMock: vi.fn()
@@ -27,7 +31,9 @@ vi.mock("@/lib/operations/shop-team-invites", () => ({
       this.status = status;
     }
   },
+  createBarberShopJoinRequest: createBarberShopJoinRequestMock,
   createOwnerTeamInvite: createOwnerTeamInviteMock,
+  listBarberJoinableShops: listBarberJoinableShopsMock,
   listBarberTeamInvites: listBarberTeamInvitesMock,
   listOwnerTeamInviteDirectory: listOwnerTeamInviteDirectoryMock,
   respondToBarberTeamInvite: respondToBarberTeamInviteMock
@@ -35,8 +41,10 @@ vi.mock("@/lib/operations/shop-team-invites", () => ({
 
 describe("shop team invite routes", () => {
   beforeEach(() => {
+    createBarberShopJoinRequestMock.mockReset();
     createOwnerTeamInviteMock.mockReset();
     getSessionUserMock.mockReset();
+    listBarberJoinableShopsMock.mockReset();
     listBarberTeamInvitesMock.mockReset();
     listOwnerTeamInviteDirectoryMock.mockReset();
     respondToBarberTeamInviteMock.mockReset();
@@ -93,6 +101,70 @@ describe("shop team invite routes", () => {
         shopId: "shop-ybor",
         barberId: "barber-real"
       }
+    );
+  });
+
+  it("lets barbers search approved shops that can receive team requests", async () => {
+    getSessionUserMock.mockResolvedValue({
+      id: "profile-barber",
+      role: "commission_barber",
+      barberId: "barber-real",
+      email: "barber@example.com"
+    });
+    listBarberJoinableShopsMock.mockResolvedValue({
+      shops: [{
+        shopId: "shop-location-uuid",
+        shopReference: "shop-ybor",
+        shopLabel: "BVRB3R Ybor",
+        approvalStatus: "approved",
+        liveStatusLabel: "Not live yet",
+        alreadyAssigned: false,
+        inviteStatus: null,
+        canRequest: true,
+        readinessLabels: ["Approved shop", "Setup incomplete"]
+      }]
+    });
+    const { GET } = await import("@/app/api/barber/shop-requests/route");
+
+    const response = await GET({ nextUrl: new URL("https://bvrb3r.test/api/barber/shop-requests?q=ybor") } as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.shops[0].readinessLabels).toContain("Setup incomplete");
+    expect(listBarberJoinableShopsMock).toHaveBeenCalledWith(
+      expect.objectContaining({ role: "commission_barber", barberId: "barber-real" }),
+      "ybor"
+    );
+  });
+
+  it("lets a barber request to join a shop without auto-assigning", async () => {
+    getSessionUserMock.mockResolvedValue({
+      id: "profile-barber",
+      role: "booth_rent_barber",
+      barberId: "barber-real",
+      email: "barber@example.com"
+    });
+    createBarberShopJoinRequestMock.mockResolvedValue({
+      id: "invite-join-1",
+      shopId: "shop-ybor",
+      shopLabel: "BVRB3R Ybor",
+      barberId: "barber-real",
+      barberName: "Real Barber",
+      status: "pending"
+    });
+    const { POST } = await import("@/app/api/barber/shop-requests/route");
+
+    const response = await POST(new Request("https://bvrb3r.test/api/barber/shop-requests", {
+      method: "POST",
+      body: JSON.stringify({ shopId: "shop-location-uuid" })
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.invite.status).toBe("pending");
+    expect(createBarberShopJoinRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({ role: "booth_rent_barber", barberId: "barber-real" }),
+      { shopId: "shop-location-uuid" }
     );
   });
 

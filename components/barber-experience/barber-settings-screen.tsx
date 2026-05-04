@@ -22,6 +22,8 @@ import {
   Plus,
   ReceiptText,
   Scissors,
+  Search,
+  Send,
   Settings2,
   ShieldCheck,
   SlidersHorizontal,
@@ -59,11 +61,12 @@ import {
 } from "@/lib/trust/client";
 import {
   useBarberTeamInvitesQuery,
+  useBarberJoinableShopsQuery,
   useBarberOverviewQuery,
   useRespondBarberTeamInviteMutation,
   useSaveBarberSubtypeMutation,
+  useUpdateBarberActivationAvailabilityMutation,
   useUpdateBarberActivationMutation,
-  useUpdateBarberScheduleMutation,
   useUpdateBarberStatusMutation,
   type BarberApiError
 } from "@/lib/operations/barber-client";
@@ -94,6 +97,7 @@ type SettingsSectionKey = keyof typeof sectionIdMap;
 type Tone = "green" | "amber" | "danger" | "neutral";
 type LinkHref = ComponentProps<typeof Link>["href"];
 type BarberQuickSetupModal = "service" | "availability" | "visibility" | "booking" | "invites" | null;
+type AvailabilityLocationMode = "custom" | "shop" | "later";
 
 const defaultActivationWorkingDays = [1, 2, 3, 4, 5, 6];
 const dayOptions = [
@@ -266,9 +270,9 @@ export function BarberSettingsScreen({
   const saveSubtypeMutation = useSaveBarberSubtypeMutation();
   const respondTeamInviteMutation = useRespondBarberTeamInviteMutation();
   const createServiceMutation = useCreateMarketplaceServiceMutation();
-  const scheduleMutation = useUpdateBarberScheduleMutation();
   const statusMutation = useUpdateBarberStatusMutation();
   const activationMutation = useUpdateBarberActivationMutation();
+  const activationAvailabilityMutation = useUpdateBarberActivationAvailabilityMutation();
   const uploadMutation = useCreateVerificationUploadMutation();
   const submitVerificationMutation = useSubmitBarberVerificationMutation();
   const identitySessionMutation = useStartBarberIdentitySessionMutation();
@@ -293,6 +297,20 @@ export function BarberSettingsScreen({
     startTime: "12:00",
     endTime: "19:00"
   });
+  const [availabilityLocationMode, setAvailabilityLocationMode] = useState<AvailabilityLocationMode>("custom");
+  const [serviceLocationDraft, setServiceLocationDraft] = useState({
+    name: "",
+    address: "",
+    city: "",
+    state: "",
+    postalCode: ""
+  });
+  const [shopSearch, setShopSearch] = useState("");
+  const [selectedJoinShopId, setSelectedJoinShopId] = useState<string | null>(null);
+  const shopDirectoryQuery = useBarberJoinableShopsQuery(
+    shopSearch,
+    quickSetupModal === "availability" && availabilityLocationMode === "shop"
+  );
 
   const notificationPreference = mediaQuery.data?.viewer.notificationPreference;
   const verificationProfile = verificationMeQuery.data?.profiles.find((profile) => profile.role === "barber") ?? null;
@@ -314,6 +332,7 @@ export function BarberSettingsScreen({
   const readyForCheckout = overviewPayload?.todayAppointments.filter((appointment) => appointment.status === "completed" && appointment.financial.outstandingBalance > 0) ?? [];
   const paidAppointments = overviewPayload?.todayAppointments.filter((appointment) => appointment.financial.capturedAmount > 0 || appointment.financial.tipAmount > 0) ?? [];
   const pendingShopInvites = teamInvitesQuery.data?.invites ?? [];
+  const activationSetup = overviewPayload?.activationSetup;
   const assignedLocationLabels = overviewPayload?.shops.length
     ? overviewPayload.shops.map((shop) => shop.label).join(", ")
     : locationLabel;
@@ -321,8 +340,13 @@ export function BarberSettingsScreen({
     ...(serviceCatalogQuery.data?.editableServices ?? []),
     ...(serviceCatalogQuery.data?.readOnlyServices ?? [])
   ].some((item) => item.service.isActive !== false && item.service.isBookable !== false);
-  const hasAvailability = (overviewPayload?.workingHours.length ?? 0) > 0;
-  const hasShopLink = Boolean((readinessPayload?.memberships.length ?? 0) > 0 || (overviewPayload?.shops.length ?? 0) > 0);
+  const hasAvailability = Boolean((overviewPayload?.workingHours.length ?? 0) > 0 || activationSetup?.hasAvailabilityDraft);
+  const hasServiceLocation = Boolean(activationSetup?.hasServiceLocation);
+  const hasAcceptedShopLink = Boolean(
+    (readinessPayload?.memberships.length ?? 0) > 0
+    || ((overviewPayload?.shops.length ?? 0) > 0 && activationSetup?.locationMode !== "custom")
+  );
+  const shopLinkRequired = selectedSubtype === "commission";
   const isProfilePublic = Boolean(mediaQuery.data?.barberProfile?.barberId);
   const isBookingActive = Boolean(overviewPayload?.status.isOnline && overviewPayload.status.liveStatus === "available");
   const isBarberMarketplaceLive =
@@ -330,6 +354,7 @@ export function BarberSettingsScreen({
     && !["suspended", "banned", "deactivated"].includes(user.accountStatus ?? "")
     && hasActiveService
     && hasAvailability
+    && (hasServiceLocation || hasAcceptedShopLink)
     && isProfilePublic
     && isBookingActive;
 
@@ -451,29 +476,54 @@ export function BarberSettingsScreen({
 
   async function handleQuickSetAvailability() {
     setFeedback(null);
-    const locationId = overviewPayload?.status.currentShopId ?? overviewPayload?.shops[0]?.id ?? user.locationIds[0];
-    if (!locationId) {
-      setFeedback({ tone: "error", message: "Connect a shop or assigned location before saving working hours." });
-      return;
-    }
-
     if (!availabilityDraft.days.length) {
       setFeedback({ tone: "error", message: "Turn on at least one working day." });
       return;
     }
 
+    if (availabilityLocationMode === "custom") {
+      const missingLocation = !serviceLocationDraft.name.trim()
+        || !serviceLocationDraft.address.trim()
+        || !serviceLocationDraft.city.trim()
+        || !serviceLocationDraft.state.trim();
+      if (missingLocation) {
+        setFeedback({ tone: "error", message: "Add your service location name, address, city, and state." });
+        return;
+      }
+    }
+
+    if (availabilityLocationMode === "shop" && !selectedJoinShopId) {
+      setFeedback({ tone: "error", message: "Select a shop or choose another location option before saving." });
+      return;
+    }
+
     try {
-      await scheduleMutation.mutateAsync({
-        locationId,
+      await activationAvailabilityMutation.mutateAsync({
+        locationMode: availabilityLocationMode,
+        shopId: availabilityLocationMode === "shop" ? selectedJoinShopId ?? undefined : undefined,
+        serviceLocation: availabilityLocationMode === "custom"
+          ? {
+              name: serviceLocationDraft.name.trim(),
+              address: serviceLocationDraft.address.trim(),
+              city: serviceLocationDraft.city.trim(),
+              state: serviceLocationDraft.state.trim(),
+              postalCode: serviceLocationDraft.postalCode.trim() || undefined
+            }
+          : undefined,
         workingHours: availabilityDraft.days.map((weekday) => ({
           weekday,
           startTime: availabilityDraft.startTime,
           endTime: availabilityDraft.endTime
         }))
       });
-      await overviewQuery.refetch();
+      await Promise.all([overviewQuery.refetch(), shopDirectoryQuery.refetch()]);
       closeQuickSetupModal();
-      setFeedback({ tone: "success", message: "Working hours saved to the canonical barber availability records." });
+      const message = availabilityLocationMode === "custom"
+        ? "Working hours and your independent service location are saved."
+        : availabilityLocationMode === "shop"
+          ? "Working hours saved and the shop connection request is ready for owner review."
+          : "Working hours saved. Add a service location or connect a shop before clients can book.";
+      setFeedback({ tone: "success", message });
     } catch (error) {
       setFeedback({ tone: "error", message: getReadableActionError(error as BarberApiError) });
     }
@@ -515,6 +565,7 @@ export function BarberSettingsScreen({
   const activationActionHandlers = {
     "barber-services": () => setQuickSetupModal("service"),
     "barber-availability": () => setQuickSetupModal("availability"),
+    "barber-service-location": () => setQuickSetupModal("availability"),
     "barber-visibility": () => setQuickSetupModal("visibility"),
     "barber-booking-status": () => setQuickSetupModal("booking"),
     "barber-payouts": () => void navigateToStripeUrl(
@@ -527,7 +578,8 @@ export function BarberSettingsScreen({
         return;
       }
 
-      window.location.assign("/dashboard/barber/more?section=system");
+      setAvailabilityLocationMode("shop");
+      setQuickSetupModal("availability");
     }
   };
 
@@ -677,8 +729,10 @@ export function BarberSettingsScreen({
             isAcceptingBookings: isBookingActive,
             payoutsReady: Boolean(connectedAccount?.payoutsEnabled && connectedAccount.chargesEnabled),
             payoutsRequired: true,
-            hasShopLink,
-            shopLinkRequired: selectedSubtype !== "freelance",
+            hasServiceLocation,
+            serviceLocationRequired: true,
+            hasShopLink: hasAcceptedShopLink,
+            shopLinkRequired,
             hasPendingShopInvite: pendingShopInvites.length > 0
           }}
           actionHandlers={activationActionHandlers}
@@ -1203,7 +1257,7 @@ export function BarberSettingsScreen({
 
       {quickSetupModal ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/72 px-4 py-5 backdrop-blur-sm sm:items-center" role="dialog" aria-modal="true">
-          <div className="w-full max-w-xl rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(4,4,4,0.98))] p-5 shadow-[0_24px_70px_rgba(0,0,0,0.58),0_0_34px_rgba(163,255,18,0.12)]">
+          <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(4,4,4,0.98))] p-5 shadow-[0_24px_70px_rgba(0,0,0,0.58),0_0_34px_rgba(163,255,18,0.12)]">
             {quickSetupModal === "service" ? (
               <div className="space-y-4">
                 <div>
@@ -1260,8 +1314,9 @@ export function BarberSettingsScreen({
                 <div>
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Quick setup</p>
                   <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-white">Set your working hours</h2>
-                  <p className="mt-2 text-sm text-white/58">These hours save to the same availability records used by booking.</p>
+                  <p className="mt-2 text-sm text-white/58">Set your hours first. Then choose where clients can book you.</p>
                 </div>
+                <SectionLabel>Working days + hours</SectionLabel>
                 <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
                   {dayOptions.map((day) => (
                     <button
@@ -1289,9 +1344,122 @@ export function BarberSettingsScreen({
                     <Input type="time" value={availabilityDraft.endTime} onChange={(event) => setAvailabilityDraft((current) => ({ ...current, endTime: event.target.value }))} className="mt-2" />
                   </label>
                 </div>
+                <div className="space-y-3">
+                  <SectionLabel>Where do you take appointments?</SectionLabel>
+                  <div className="grid gap-2">
+                    {[
+                      { value: "custom", label: "Use my own service location", detail: "Suite, private studio, house-call base, or a shop not on BVRB3R yet.", icon: MapPin },
+                      { value: "shop", label: "Join a shop on BVRB3R", detail: "Search approved shop accounts and request to join their team.", icon: Store },
+                      { value: "later", label: "I'll add a location later", detail: "Save hours now. Location remains a separate marketplace blocker.", icon: Clock3 }
+                    ].map((option) => {
+                      const Icon = option.icon;
+                      const active = availabilityLocationMode === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setAvailabilityLocationMode(option.value as AvailabilityLocationMode)}
+                          className={cn(
+                            "flex min-h-16 items-center gap-3 rounded-2xl border p-3 text-left transition",
+                            active
+                              ? "border-[#A3FF12]/55 bg-[#A3FF12]/10 text-white shadow-[0_0_24px_rgba(163,255,18,0.12)]"
+                              : "border-white/10 bg-white/[0.035] text-white/70 hover:border-[#A3FF12]/25"
+                          )}
+                        >
+                          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#A3FF12]/10 text-[#A3FF12]">
+                            <Icon className="h-4 w-4" aria-hidden="true" />
+                          </span>
+                          <span>
+                            <span className="block text-sm font-black text-white">{option.label}</span>
+                            <span className="mt-1 block text-xs leading-5 text-white/52">{option.detail}</span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {availabilityLocationMode === "custom" ? (
+                    <div className="grid gap-3 rounded-2xl border border-white/10 bg-white/[0.025] p-3 sm:grid-cols-2">
+                      <label className="block text-xs font-bold text-white/66">
+                        Location name
+                        <Input value={serviceLocationDraft.name} onChange={(event) => setServiceLocationDraft((current) => ({ ...current, name: event.target.value }))} className="mt-2" placeholder="Phil's Studio" />
+                      </label>
+                      <label className="block text-xs font-bold text-white/66">
+                        Address
+                        <Input value={serviceLocationDraft.address} onChange={(event) => setServiceLocationDraft((current) => ({ ...current, address: event.target.value }))} className="mt-2" placeholder="123 Main St" />
+                      </label>
+                      <label className="block text-xs font-bold text-white/66">
+                        City
+                        <Input value={serviceLocationDraft.city} onChange={(event) => setServiceLocationDraft((current) => ({ ...current, city: event.target.value }))} className="mt-2" placeholder="Charlotte" />
+                      </label>
+                      <div className="grid grid-cols-[1fr_1fr] gap-3">
+                        <label className="block text-xs font-bold text-white/66">
+                          State
+                          <Input value={serviceLocationDraft.state} onChange={(event) => setServiceLocationDraft((current) => ({ ...current, state: event.target.value }))} className="mt-2" placeholder="NC" />
+                        </label>
+                        <label className="block text-xs font-bold text-white/66">
+                          ZIP
+                          <Input value={serviceLocationDraft.postalCode} onChange={(event) => setServiceLocationDraft((current) => ({ ...current, postalCode: event.target.value }))} className="mt-2" placeholder="28202" />
+                        </label>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {availabilityLocationMode === "shop" ? (
+                    <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.025] p-3">
+                      <label className="block text-xs font-bold text-white/66">
+                        Search shops
+                        <span className="mt-2 flex items-center gap-2 rounded-2xl border border-white/10 bg-black/30 px-3">
+                          <Search className="h-4 w-4 text-white/45" aria-hidden="true" />
+                          <Input value={shopSearch} onChange={(event) => setShopSearch(event.target.value)} className="border-0 bg-transparent px-0" placeholder="Shop name, city, or neighborhood" />
+                        </span>
+                      </label>
+                      <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+                        {shopDirectoryQuery.data?.shops.map((shop) => (
+                          <button
+                            key={shop.shopId}
+                            type="button"
+                            disabled={!shop.canRequest && !shop.alreadyAssigned}
+                            onClick={() => setSelectedJoinShopId(shop.shopId)}
+                            className={cn(
+                              "w-full rounded-2xl border p-3 text-left transition",
+                              selectedJoinShopId === shop.shopId
+                                ? "border-[#A3FF12]/55 bg-[#A3FF12]/10"
+                                : "border-white/10 bg-white/[0.035] hover:border-[#A3FF12]/25",
+                              !shop.canRequest && !shop.alreadyAssigned && "opacity-60"
+                            )}
+                          >
+                            <span className="flex items-start justify-between gap-3">
+                              <span>
+                                <span className="block text-sm font-black text-white">{shop.shopLabel}</span>
+                                <span className="mt-1 block text-xs text-white/52">{[shop.city, shop.state].filter(Boolean).join(", ") || "Location details pending"}</span>
+                              </span>
+                              {selectedJoinShopId === shop.shopId ? <CheckCircle2 className="h-5 w-5 text-[#A3FF12]" aria-hidden="true" /> : <Send className="h-4 w-4 text-white/35" aria-hidden="true" />}
+                            </span>
+                            <span className="mt-3 flex flex-wrap gap-2">
+                              {shop.readinessLabels.map((label) => (
+                                <StatusPill key={label} tone={label.includes("Approved") || label.includes("Live") ? "green" : label.includes("pending") || label.includes("incomplete") ? "amber" : "neutral"}>
+                                  {label}
+                                </StatusPill>
+                              ))}
+                            </span>
+                          </button>
+                        ))}
+                        {shopDirectoryQuery.isLoading ? <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-3 text-sm text-white/56">Searching shops...</div> : null}
+                        {!shopDirectoryQuery.isLoading && !shopDirectoryQuery.data?.shops.length ? <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-3 text-sm text-white/56">No approved shops found for that search.</div> : null}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {availabilityLocationMode === "later" ? (
+                    <div className="rounded-2xl border border-amber-300/25 bg-amber-300/10 p-3 text-sm leading-6 text-amber-100">
+                      Hours will save now, but your activation checklist will keep showing Service location missing until you add a custom location or connect a shop.
+                    </div>
+                  ) : null}
+                </div>
                 <div className="flex gap-3">
                   <Button type="button" variant="secondary" className="min-h-12 flex-1 rounded-2xl" onClick={closeQuickSetupModal}>Cancel</Button>
-                  <Button type="button" className="min-h-12 flex-1 rounded-2xl bg-[#A3FF12] text-black hover:bg-[#8de300]" disabled={scheduleMutation.isPending} onClick={() => void handleQuickSetAvailability()}>
+                  <Button type="button" className="min-h-12 flex-1 rounded-2xl bg-[#A3FF12] text-black hover:bg-[#8de300]" disabled={activationAvailabilityMutation.isPending} onClick={() => void handleQuickSetAvailability()}>
                     Save hours
                   </Button>
                 </div>

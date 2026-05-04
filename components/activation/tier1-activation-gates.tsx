@@ -27,6 +27,8 @@ export type BarberActivationInput = {
   isAcceptingBookings: boolean;
   payoutsReady: boolean;
   payoutsRequired?: boolean;
+  hasServiceLocation?: boolean;
+  serviceLocationRequired?: boolean;
   hasShopLink: boolean;
   shopLinkRequired?: boolean;
   hasPendingShopInvite?: boolean;
@@ -73,6 +75,8 @@ export function getBarberActivationItems(input: BarberActivationInput): Activati
   const approvalComplete = isApproved(input.approvalStatus) && !isSuspended(input.accountStatus);
   const payoutsComplete = input.payoutsRequired === false || input.payoutsReady;
   const shopComplete = input.shopLinkRequired === false || input.hasShopLink;
+  const serviceLocationRequired = input.serviceLocationRequired !== false;
+  const serviceLocationComplete = !serviceLocationRequired || Boolean(input.hasServiceLocation || input.hasShopLink);
 
   return [
     {
@@ -101,6 +105,15 @@ export function getBarberActivationItems(input: BarberActivationInput): Activati
       missingLabel: "Availability missing",
       actionLabel: "Set availability",
       href: "/dashboard/barber/availability"
+    },
+    {
+      id: "barber-service-location",
+      label: "Add service location or connect shop",
+      complete: serviceLocationComplete,
+      completeLabel: input.hasShopLink ? "Shop location ready" : "Service location ready",
+      missingLabel: "Service location missing",
+      actionLabel: "Add location",
+      href: "/dashboard/barber/more?section=system"
     },
     {
       id: "barber-visibility",
@@ -133,7 +146,7 @@ export function getBarberActivationItems(input: BarberActivationInput): Activati
       id: "barber-shop-link",
       label: "Join or connect to a shop if applicable",
       complete: shopComplete,
-      completeLabel: input.shopLinkRequired === false ? "Independent lane" : "Shop connected",
+      completeLabel: input.shopLinkRequired === false ? "Independent lane ready." : "Shop connected",
       missingLabel: input.hasPendingShopInvite ? "Shop invite waiting" : "No shop link",
       actionLabel: input.hasPendingShopInvite ? "View invites" : "Join shop",
       href: "/dashboard/barber/more?section=system"
@@ -386,7 +399,7 @@ export function BarberActivationGate({ input, actionHandlers }: { input: BarberA
     <ActivationChecklistCard
       testId="barber-activation-gate"
       title={isApproved(input.approvalStatus) ? "You're approved. Finish setup to go live." : "Finish setup before your profile can go live."}
-      subtitle="Approval unlocks eligibility. Setup unlocks visibility. Availability unlocks booking."
+      subtitle="Set your hours first. Then choose where clients can book you."
       items={items}
       actionHandlers={actionHandlers}
     />

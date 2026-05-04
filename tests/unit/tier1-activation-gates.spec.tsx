@@ -83,6 +83,45 @@ describe("tier 1 activation gates", () => {
     expect(onAddService).toHaveBeenCalledTimes(1);
   });
 
+  it("splits saved availability from the service location blocker", () => {
+    const items = getBarberActivationItems({
+      approvalStatus: "approved",
+      accountStatus: "active",
+      hasActiveService: true,
+      hasAvailability: true,
+      hasServiceLocation: false,
+      serviceLocationRequired: true,
+      isProfilePublic: true,
+      isAcceptingBookings: true,
+      payoutsReady: true,
+      hasShopLink: false,
+      shopLinkRequired: false
+    });
+
+    expect(items.find((item) => item.id === "barber-availability")?.complete).toBe(true);
+    expect(items.find((item) => item.id === "barber-service-location")?.complete).toBe(false);
+    expect(items.find((item) => item.id === "barber-service-location")?.missingLabel).toBe("Service location missing");
+    expect(items.find((item) => item.id === "barber-shop-link")?.completeLabel).toBe("Independent lane ready.");
+  });
+
+  it("clears the independent lane blocker when a service location exists without a shop", () => {
+    const items = getBarberActivationItems({
+      approvalStatus: "approved",
+      accountStatus: "active",
+      hasActiveService: true,
+      hasAvailability: true,
+      hasServiceLocation: true,
+      serviceLocationRequired: true,
+      isProfilePublic: true,
+      isAcceptingBookings: true,
+      payoutsReady: true,
+      hasShopLink: false,
+      shopLinkRequired: false
+    });
+
+    expect(items.every((item) => item.complete)).toBe(true);
+  });
+
   it("does not show a blocking barber gate when canonical live requirements pass", () => {
     const items = getBarberActivationItems({
       approvalStatus: "approved",
