@@ -143,4 +143,89 @@ describe("trust verification service", () => {
     expect(barberProfile?.providerStatuses).toHaveLength(1);
     expect(ownerProfile?.providerStatuses).toHaveLength(1);
   });
+
+  it("aligns stale barber verification rows with canonical Architect approval without faking payouts", async () => {
+    const barber = {
+      ...resolveDemoUser("fade@bvrb3r.demo"),
+      appApprovalStatus: "approved" as const
+    };
+    const current = getTrustState();
+
+    setTrustState({
+      ...current,
+      verificationProfiles: [
+        ...(current.verificationProfiles ?? []).filter((profile) => profile.userId !== barber.id),
+        {
+          id: "vprof-stale-approved-barber",
+          userId: barber.id,
+          role: "barber",
+          overallStatus: "pending",
+          identityStatus: "pending",
+          licenseStatus: "pending",
+          businessStatus: "not_started",
+          payoutStatus: "not_started",
+          complianceStatus: "pending",
+          publicVerified: false,
+          canAcceptBookings: false,
+          canReceivePayouts: false,
+          canCreateShopListing: false,
+          currentRequirements: ["Identity review", "License review", "Connect payouts"],
+          createdAt: "2026-03-10T09:00:00-05:00",
+          updatedAt: "2026-03-10T09:00:00-05:00"
+        }
+      ]
+    });
+
+    const payload = await getVerificationMePayload(barber);
+    const profile = payload.profiles.find((item) => item.role === "barber");
+
+    expect(profile?.overallStatus).toBe("approved");
+    expect(profile?.identityStatus).toBe("approved");
+    expect(profile?.licenseStatus).toBe("approved");
+    expect(profile?.canAcceptBookings).toBe(true);
+    expect(profile?.canReceivePayouts).toBe(false);
+    expect(profile?.payoutStatus).toBe("not_started");
+    expect(profile?.currentRequirements).toEqual(["Connect payouts"]);
+  });
+
+  it("keeps rejected canonical barber approvals out of public/bookable state", async () => {
+    const barber = {
+      ...resolveDemoUser("fade@bvrb3r.demo"),
+      appApprovalStatus: "rejected" as const
+    };
+    const current = getTrustState();
+
+    setTrustState({
+      ...current,
+      verificationProfiles: [
+        ...(current.verificationProfiles ?? []).filter((profile) => profile.userId !== barber.id),
+        {
+          id: "vprof-suspended-barber",
+          userId: barber.id,
+          role: "barber",
+          overallStatus: "approved",
+          identityStatus: "approved",
+          licenseStatus: "approved",
+          businessStatus: "not_started",
+          payoutStatus: "approved",
+          complianceStatus: "approved",
+          publicVerified: true,
+          canAcceptBookings: true,
+          canReceivePayouts: true,
+          canCreateShopListing: false,
+          currentRequirements: [],
+          createdAt: "2026-03-10T09:00:00-05:00",
+          updatedAt: "2026-03-10T09:00:00-05:00"
+        }
+      ]
+    });
+
+    const payload = await getVerificationMePayload(barber);
+    const profile = payload.profiles.find((item) => item.role === "barber");
+
+    expect(profile?.overallStatus).toBe("rejected");
+    expect(profile?.publicVerified).toBe(false);
+    expect(profile?.canAcceptBookings).toBe(false);
+    expect(profile?.canReceivePayouts).toBe(false);
+  });
 });

@@ -620,6 +620,7 @@ function getMarketplaceBlockers(input: {
   barberStatus?: BarberStatusRow;
   serviceCount: number;
   availabilityCount: number;
+  linkedShopCount: number;
   activeLinkedBarbers: number;
 }) {
   const blockers: string[] = [];
@@ -628,11 +629,16 @@ function getMarketplaceBlockers(input: {
   if (input.accountStatus !== "active") blockers.push(`Account ${input.accountStatus}`);
 
   if (input.role === "barber") {
+    const barberApproval = input.barber?.app_approval_status ?? null;
+    const barberApproved = barberApproval === "approved";
+    const verificationApproved = Boolean(input.verification && APPROVED_STATUSES.has(input.verification.overall_status));
     if (!input.barber) blockers.push("Missing barber row");
-    if (input.barber?.app_approval_status !== "approved") blockers.push(`Barber approval ${input.barber?.app_approval_status ?? "missing"}`);
-    if (!input.verification || !APPROVED_STATUSES.has(input.verification.overall_status)) blockers.push(`Verification ${input.verification?.overall_status ?? "missing"}`);
+    if (!barberApproved) blockers.push(`Barber approval ${barberApproval ?? "missing"}`);
+    if (!barberApproved && !verificationApproved) blockers.push(`Verification ${input.verification?.overall_status ?? "missing"}`);
+    if (input.verification && input.verification.can_receive_payouts !== true) blockers.push("Payout setup incomplete");
     if (input.serviceCount <= 0) blockers.push("No active real services");
     if (input.availabilityCount <= 0) blockers.push("No real availability");
+    if (input.linkedShopCount <= 0) blockers.push("No service location or shop connection");
     if (!input.barberProfile?.username) blockers.push("Missing public username");
     if (input.barberProfile?.visibility_state === "hidden" || input.visibility?.visibility_state === "hidden") blockers.push("Marketplace visibility hidden");
     if (input.visibility && input.visibility.accepts_instant_bookings === false) blockers.push("Not accepting instant bookings");
@@ -641,9 +647,13 @@ function getMarketplaceBlockers(input: {
   }
 
   if (input.role === "shop_owner") {
+    const shopApproval = input.shop?.app_approval_status ?? null;
+    const shopApproved = shopApproval === "approved";
+    const verificationApproved = Boolean(input.verification && APPROVED_STATUSES.has(input.verification.overall_status));
     if (!input.shop) blockers.push("Missing shop row");
-    if (input.shop?.app_approval_status !== "approved") blockers.push(`Shop approval ${input.shop?.app_approval_status ?? "missing"}`);
-    if (!input.verification || !APPROVED_STATUSES.has(input.verification.overall_status)) blockers.push(`Verification ${input.verification?.overall_status ?? "missing"}`);
+    if (!shopApproved) blockers.push(`Shop approval ${shopApproval ?? "missing"}`);
+    if (!shopApproved && !verificationApproved) blockers.push(`Verification ${input.verification?.overall_status ?? "missing"}`);
+    if (input.verification && input.verification.can_receive_payouts !== true) blockers.push("Payout setup incomplete");
     if (!input.shop?.name) blockers.push("Missing shop name");
     if (!input.shop?.city || !input.shop?.state) blockers.push("Missing shop location context");
     if (input.activeLinkedBarbers <= 0) blockers.push("No active linked bookable barbers");
@@ -745,6 +755,7 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
       barberStatus,
       serviceCount,
       availabilityCount,
+      linkedShopCount: linkedShopIds.length,
       activeLinkedBarbers
     });
 

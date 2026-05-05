@@ -364,6 +364,30 @@ function isShopPubliclyActivatable(trustState: TrustState | undefined, shopId?: 
   return isMarketplaceShopTrustApproved(trustState, shopId);
 }
 
+function isIndependentServiceLocationReference(locationReference?: string | null) {
+  return Boolean(locationReference?.startsWith("independent-"));
+}
+
+function isLocationPubliclyBookable(trustState: TrustState | undefined, locationReference?: string | null) {
+  if (!locationReference) {
+    return false;
+  }
+
+  if (!trustState || isIndependentServiceLocationReference(locationReference)) {
+    return true;
+  }
+
+  return isShopPubliclyActivatable(trustState, locationReference);
+}
+
+function getLocationActivationGate(trustState: TrustState | undefined, locationReference?: string | null) {
+  if (!trustState || !locationReference || isLocationPubliclyBookable(trustState, locationReference)) {
+    return null;
+  }
+
+  return getVerificationGateDecision(computeShopVerificationDecision(trustState, locationReference), "shop_activation");
+}
+
 function getMarketplaceVisibilityRow(snapshot: CanonicalSnapshot, barberReference: string) {
   return snapshot.marketplaceVisibility.find((row) => row.barber_reference === barberReference);
 }
@@ -444,7 +468,7 @@ async function readCanonicalSnapshot(supabase: SupabaseClient): Promise<Canonica
     supabase.from("barber_profiles").select("barber_reference, username, display_name, bio, years_experience, shop_reference, specialties, badges, service_area_label, next_available_at, visibility_state"),
     supabase.from("profiles").select("id, full_name, email, phone, primary_onboarding_role"),
     supabase.from("services").select("id, reference_code, location_id, category, name, description, duration_min, buffer_min, price, currency, deposit_amount, full_prepay_required, active, is_bookable, display_order, created_at, updated_at, service_owner_type, barber_reference, shop_reference, booking_count, popularity_rank").eq("active", true),
-    supabase.from("locations").select("id, reference_code, name, neighborhood, city, state, phone"),
+    supabase.from("locations").select("id, reference_code, name, neighborhood, city, state, phone, address, latitude, longitude"),
     supabase.from("availability_rules").select("barber_id, location_id, weekday, start_time, end_time"),
     supabase.from("blocked_times").select("barber_id, starts_at, ends_at, reason"),
     supabase.from("appointments").select("id, reference_code, barber_id, client_id, service_id, location_id, status, starts_at, ends_at, total_amount"),
@@ -789,8 +813,6 @@ function buildCandidateRecords(
       || !isCanonicalMarketplaceVisibilityReady(snapshot, barberReference, profileRow)
       || !hasRealMarketplaceText(profileRow.username)
       || !hasRealMarketplaceText(profile?.full_name ?? profileRow.display_name)
-      || !hasRealMarketplaceText(profileRow.bio)
-      || !hasRealMarketplaceText(profileRow.service_area_label)
       || !isBarberDiscoverable(options.trustState, barberReference)
     ) {
       return [];
@@ -803,9 +825,9 @@ function buildCandidateRecords(
       snapshot.appointments,
       locationReferenceByUuid
     );
-    const locationReferences = options.trustState
-      ? rawLocationReferences.filter((locationReference) => isShopPubliclyActivatable(options.trustState, locationReference))
-      : rawLocationReferences;
+    const locationReferences = rawLocationReferences.filter((locationReference) =>
+      isLocationPubliclyBookable(options.trustState, locationReference)
+    );
     const services = getServicesForBarber(barberReference, barberRow.id, locationReferences, snapshot.services, locationReferenceByUuid);
     if (!services.length || !locationReferences.length) {
       return [];
@@ -1070,9 +1092,9 @@ export async function findCanonicalBookableSlot(
     snapshot.appointments,
     locationReferenceByUuid
   );
-  const locationReferences = options.trustState
-    ? rawLocationReferences.filter((locationReference) => isShopPubliclyActivatable(options.trustState, locationReference))
-    : rawLocationReferences;
+  const locationReferences = rawLocationReferences.filter((locationReference) =>
+    isLocationPubliclyBookable(options.trustState, locationReference)
+  );
   const services = getServicesForBarber(barberReference, barberRow.id, locationReferences, snapshot.services, locationReferenceByUuid);
   const bookableServices = services.filter((service) =>
     isMarketplaceBookableService(service)
@@ -1087,7 +1109,7 @@ export async function findCanonicalBookableSlot(
     options.preferredLocationId
       ? [options.preferredLocationId, ...locationReferences.filter((entry) => entry !== options.preferredLocationId)]
       : locationReferences
-  ).filter((locationReference) => isShopPubliclyActivatable(options.trustState, locationReference));
+  ).filter((locationReference) => isLocationPubliclyBookable(options.trustState, locationReference));
   const slots = candidateLocations.flatMap((locationReference) =>
     listAvailabilitySlotsForBarber({
       barberReference,
@@ -1175,9 +1197,9 @@ export async function buildCanonicalAvailabilityPayload(
     snapshot.appointments,
     locationReferenceByUuid
   );
-  const locationReferences = options.trustState
-    ? rawLocationReferences.filter((locationReference) => isShopPubliclyActivatable(options.trustState, locationReference))
-    : rawLocationReferences;
+  const locationReferences = rawLocationReferences.filter((locationReference) =>
+    isLocationPubliclyBookable(options.trustState, locationReference)
+  );
   const services = getServicesForBarber(barberReference, barberRow.id, locationReferences, snapshot.services, locationReferenceByUuid);
   const bookableServices = services.filter((service) =>
     isMarketplaceBookableService(service)
@@ -1185,9 +1207,7 @@ export async function buildCanonicalAvailabilityPayload(
   );
   const selectedService = bookableServices.find((entry) => entry.id === options.serviceId) ?? bookableServices[0] ?? null;
   const locationId = options.locationId ?? locationReferences[0] ?? rawLocationReferences[0];
-  const locationGate = options.trustState && locationId && !isShopPubliclyActivatable(options.trustState, locationId)
-    ? getVerificationGateDecision(computeShopVerificationDecision(options.trustState, locationId), "shop_activation")
-    : null;
+  const locationGate = getLocationActivationGate(options.trustState, locationId);
   if (!selectedService || !locationId) {
     return {
       barberId: barberReference,
@@ -1278,8 +1298,6 @@ export async function buildCanonicalBarberProfile(
     || !isCanonicalMarketplaceVisibilityReady(snapshot, barberReference, profileRow)
     || !hasRealMarketplaceText(profileRow.username)
     || !hasRealMarketplaceText(profile?.full_name ?? profileRow.display_name)
-    || !hasRealMarketplaceText(profileRow.bio)
-    || !hasRealMarketplaceText(profileRow.service_area_label)
   ) {
     return null;
   }
@@ -1293,9 +1311,9 @@ export async function buildCanonicalBarberProfile(
     snapshot.appointments,
     locationReferenceByUuid
   );
-  const locationReferences = trustState
-    ? rawLocationReferences.filter((locationReference) => isShopPubliclyActivatable(trustState, locationReference))
-    : rawLocationReferences;
+  const locationReferences = rawLocationReferences.filter((locationReference) =>
+    isLocationPubliclyBookable(trustState, locationReference)
+  );
   const locations = snapshot.locations
     .map(mapLocation)
     .filter((location) => locationReferences.includes(location.id))

@@ -138,7 +138,7 @@ export function getBarberActivationItems(input: BarberActivationInput): Activati
       label: "Connect payouts if required for paid bookings",
       complete: payoutsComplete,
       completeLabel: input.payoutsRequired === false ? "Not required" : "Payouts ready",
-      missingLabel: "Payouts need setup",
+      missingLabel: "Finish Stripe payouts to accept paid bookings",
       actionLabel: "Finish payouts",
       href: "/dashboard/barber/payouts"
     },
@@ -199,7 +199,7 @@ export function getOwnerActivationItems(input: OwnerActivationInput): Activation
       label: "Stripe Connect / payout setup ready",
       complete: input.payoutsReady,
       completeLabel: "Payouts ready",
-      missingLabel: "Payouts need setup",
+      missingLabel: "Stripe payouts need setup",
       actionLabel: "Finish payouts",
       href: "/dashboard/owner/money?view=fintech"
     },

@@ -305,7 +305,7 @@ describe("architect account workspaces", () => {
     expect(screen.getByText("Phillip McGee")).toBeInTheDocument();
     expect(screen.getByText("Barber state")).toBeInTheDocument();
     expect(screen.getByText("Verification actions")).toBeInTheDocument();
-    expect(screen.getByText("Barber approval pending")).toBeInTheDocument();
+    expect(screen.getAllByText("Barber approval pending").length).toBeGreaterThan(0);
     expect(screen.getByText("Approved means eligible. Live means clients can discover and book.")).toBeInTheDocument();
     expect(screen.getAllByText("Marketplace Not live").length).toBeGreaterThan(0);
     expect(screen.getByText("No real verification documents are linked to this account.")).toBeInTheDocument();

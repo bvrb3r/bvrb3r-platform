@@ -155,6 +155,20 @@ function getStatusTone(value?: string | null): Tone {
   return "neutral";
 }
 
+function resolveCanonicalActivationStatus(...statuses: Array<string | null | undefined>) {
+  const normalized = statuses.map((status) => status?.trim().toLowerCase()).filter((status): status is string => Boolean(status));
+  if (normalized.some((status) => ["suspended", "banned", "deactivated"].includes(status))) {
+    return "suspended";
+  }
+  if (normalized.some((status) => status === "rejected")) {
+    return "rejected";
+  }
+  if (normalized.some((status) => status === "approved" || status === "verified" || status === "active")) {
+    return "approved";
+  }
+  return normalized[0] ?? null;
+}
+
 function StatusPill({ children, tone = "green" }: { children: ReactNode; tone?: Tone }) {
   return (
     <span
@@ -323,8 +337,15 @@ export function BarberSettingsScreen({
   const barberPhotoUrl = mediaQuery.data?.barberProfile?.profilePhotoUrl ?? mediaQuery.data?.viewer.profilePhotoUrl ?? null;
   const shopName = readinessPayload?.memberships[0]?.shopLabel ?? user.ownedShopName ?? "Shop not set";
   const locationLabel = user.locationIds.length ? user.locationIds.join(", ") : "No location assigned";
-  const canonicalVerificationStatus = verificationProfile?.overallStatus ?? trustQuery.data?.canonicalOverallStatus ?? user.appApprovalStatus ?? null;
+  const canonicalVerificationStatus = resolveCanonicalActivationStatus(
+    user.appApprovalStatus,
+    trustQuery.data?.canonicalOverallStatus,
+    verificationProfile?.overallStatus
+  );
   const payoutStatus = connectedAccount?.operationalStatus ?? null;
+  const stripeEnvironment = readinessPayload?.stripeEnvironment;
+  const stripeLiveReady = stripeEnvironment?.mode === "live";
+  const payoutsReady = Boolean(stripeLiveReady && connectedAccount?.payoutsEnabled && connectedAccount.chargesEnabled);
   const readyForPayoutAmount = payoutsPayload?.summary.readyForPayoutAmount ?? readinessPayload?.routingSummary.readyForPayoutAmount;
   const hasPayoutAmount = typeof readyForPayoutAmount === "number";
   const subtypeLabel = subtypeOptions.find((option) => option.subtype === selectedSubtype)?.label ?? "Freelance";
@@ -347,7 +368,8 @@ export function BarberSettingsScreen({
     || ((overviewPayload?.shops.length ?? 0) > 0 && activationSetup?.locationMode !== "custom")
   );
   const shopLinkRequired = selectedSubtype === "commission";
-  const isProfilePublic = Boolean(mediaQuery.data?.barberProfile?.barberId);
+  const profileVisibilityState = mediaQuery.data?.barberProfile?.visibilityState ?? null;
+  const isProfilePublic = profileVisibilityState === "public" || profileVisibilityState === "featured";
   const isBookingActive = Boolean(overviewPayload?.status.isOnline && overviewPayload.status.liveStatus === "available");
   const isBarberMarketplaceLive =
     canonicalVerificationStatus === "approved"
@@ -356,7 +378,8 @@ export function BarberSettingsScreen({
     && hasAvailability
     && (hasServiceLocation || hasAcceptedShopLink)
     && isProfilePublic
-    && isBookingActive;
+    && isBookingActive
+    && payoutsReady;
 
   const statusItems = [
     {
@@ -373,9 +396,9 @@ export function BarberSettingsScreen({
     },
     {
       label: "Payouts",
-      value: connectedAccount?.payoutsEnabled ? "Ready" : formatStatusLabel(payoutStatus),
+      value: payoutsReady ? "Ready" : stripeEnvironment?.mode === "test" ? "Test mode" : formatStatusLabel(payoutStatus),
       icon: WalletCards,
-      tone: connectedAccount?.payoutsEnabled ? "green" : getStatusTone(payoutStatus)
+      tone: payoutsReady ? "green" : getStatusTone(payoutStatus)
     },
     {
       label: "Profile",
@@ -703,6 +726,9 @@ export function BarberSettingsScreen({
         {overviewQuery.error ? <FeedbackBanner tone="error" message={readableError(overviewQuery.error, "Unable to load barber operating details right now.")} /> : null}
         {teamInvitesQuery.error ? <FeedbackBanner tone="error" message={readableError(teamInvitesQuery.error, "Unable to load shop invitations right now.")} /> : null}
         {serviceCatalogQuery.error ? <FeedbackBanner tone="error" message={readableError(serviceCatalogQuery.error, "Unable to load service activation status right now.")} /> : null}
+        {stripeEnvironment?.blocksLivePayouts ? (
+          <FeedbackBanner tone="info" message={stripeEnvironment.label} />
+        ) : null}
 
         {!embedded ? (
           <header className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
@@ -727,7 +753,7 @@ export function BarberSettingsScreen({
             hasAvailability,
             isProfilePublic,
             isAcceptingBookings: isBookingActive,
-            payoutsReady: Boolean(connectedAccount?.payoutsEnabled && connectedAccount.chargesEnabled),
+            payoutsReady,
             payoutsRequired: true,
             hasServiceLocation,
             serviceLocationRequired: true,
@@ -891,7 +917,7 @@ export function BarberSettingsScreen({
                   <>
                     <h2 className="mt-4 text-2xl font-black tracking-[-0.03em] text-white">Set up or review payout status.</h2>
                     <p className="mt-2 max-w-xl text-sm leading-6 text-white/56">
-                      Connect and review payout readiness through the existing Stripe-backed flow.
+                      Connect and review payout readiness through the existing Stripe-backed flow. {stripeEnvironment?.label ?? ""}
                     </p>
                   </>
                 )}

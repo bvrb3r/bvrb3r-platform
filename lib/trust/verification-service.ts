@@ -256,7 +256,7 @@ function getSubjectProfiles(state: TrustState, user: UserAccount) {
   );
 
   if (profiles.length) {
-    return profiles;
+    return profiles.map((profile) => alignProfileWithCanonicalApproval(profile, user));
   }
 
   const fallbackProfiles: VerificationProfileRecord[] = [];
@@ -267,6 +267,90 @@ function getSubjectProfiles(state: TrustState, user: UserAccount) {
 
   fallbackProfiles.push(...createFallbackShopProfiles(state, user));
   return fallbackProfiles;
+}
+
+function normalizeApprovalStatus(status?: string | null) {
+  const normalized = status?.trim().toLowerCase();
+  if (normalized === "approved" || normalized === "active" || normalized === "verified") {
+    return "approved" as const;
+  }
+  if (normalized === "rejected" || normalized === "suspended" || normalized === "banned" || normalized === "deactivated") {
+    return normalized === "rejected" ? "rejected" as const : "suspended" as const;
+  }
+  if (normalized === "needs_update") {
+    return "needs_update" as const;
+  }
+  if (normalized === "pending" || normalized === "submitted" || normalized === "under_review" || normalized === "in_progress") {
+    return normalized as "pending" | "submitted" | "under_review" | "in_progress";
+  }
+  return null;
+}
+
+function getCanonicalApprovalForProfile(profile: VerificationProfileRecord, user: UserAccount) {
+  if (profile.role === "barber") {
+    return normalizeApprovalStatus(user.appApprovalStatus);
+  }
+
+  if (profile.role === "shop_owner") {
+    const shopApproval = user.shopApprovalStatus && user.shopApprovalStatus !== "not_required"
+      ? user.shopApprovalStatus
+      : user.appApprovalStatus;
+    return normalizeApprovalStatus(shopApproval);
+  }
+
+  return null;
+}
+
+function alignProfileWithCanonicalApproval(profile: VerificationProfileRecord, user: UserAccount): VerificationProfileRecord {
+  const canonicalApproval = getCanonicalApprovalForProfile(profile, user);
+  if (!canonicalApproval) {
+    return profile;
+  }
+
+  if (canonicalApproval === "rejected" || canonicalApproval === "suspended" || canonicalApproval === "needs_update") {
+    return {
+      ...profile,
+      overallStatus: canonicalApproval,
+      publicVerified: false,
+      canAcceptBookings: false,
+      canReceivePayouts: false,
+      canCreateShopListing: false
+    };
+  }
+
+  if (canonicalApproval !== "approved") {
+    return profile;
+  }
+
+  if (profile.role === "barber") {
+    return {
+      ...profile,
+      overallStatus: "approved",
+      identityStatus: "approved",
+      licenseStatus: "approved",
+      complianceStatus: "approved",
+      publicVerified: true,
+      canAcceptBookings: true,
+      canCreateShopListing: false,
+      currentRequirements: profile.currentRequirements.filter((requirement) => !/approval|identity|license|compliance/i.test(requirement))
+    };
+  }
+
+  if (profile.role === "shop_owner") {
+    return {
+      ...profile,
+      overallStatus: "approved",
+      businessStatus: "approved",
+      complianceStatus: "approved",
+      identityStatus: profile.identityStatus === "not_started" ? profile.identityStatus : "approved",
+      publicVerified: true,
+      canAcceptBookings: false,
+      canCreateShopListing: true,
+      currentRequirements: profile.currentRequirements.filter((requirement) => !/approval|business|compliance/i.test(requirement))
+    };
+  }
+
+  return profile;
 }
 
 async function readVerificationState(warnings: string[]) {

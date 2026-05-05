@@ -103,6 +103,20 @@ function Field({ label, value }: { label: string; value?: string | number | bool
   );
 }
 
+function ReadinessItem({ label, complete, detail }: { label: string; complete: boolean; detail: string }) {
+  return (
+    <div className="rounded-[20px] border border-white/10 bg-black/24 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-semibold text-white">{label}</p>
+        <span className={cn("status-pill", complete ? badgeClasses("approved") : badgeClasses("pending"))}>
+          {complete ? "Ready" : "Blocked"}
+        </span>
+      </div>
+      <p className="mt-3 text-xs leading-5 text-white/52">{detail}</p>
+    </div>
+  );
+}
+
 function accountActionClass(nextStatus: PlatformAdminAccountStatus): PlatformAdminActionClass {
   return nextStatus === "suspended" || nextStatus === "banned" ? "critical" : "sensitive";
 }
@@ -241,6 +255,40 @@ export function ArchitectAccountDetailWorkspace({
   const canManageAccountAccess = !isPlatformAdmin && account.profileExists;
   const canUseVerificationActions = Boolean(selectedVerificationProfile);
   const marketplaceStatus = getMarketplaceStatus(account);
+  const readinessItems = account.barber
+    ? [
+        { label: "Approval", complete: account.approvalStatus === "approved", detail: `Approval: ${formatLabel(account.approvalStatus)}` },
+        { label: "Services", complete: account.barber.servicesCount > 0, detail: `${account.barber.servicesCount} active service${account.barber.servicesCount === 1 ? "" : "s"}` },
+        {
+          label: "Availability",
+          complete: account.barber.availabilityRulesCount + account.barber.workingHoursCount > 0,
+          detail: `${account.barber.availabilityRulesCount} availability rules, ${account.barber.workingHoursCount} working-hour rows`
+        },
+        {
+          label: "Location / shop",
+          complete: account.barber.linkedShopIds.length > 0,
+          detail: account.barber.linkedShopIds.length ? account.barber.linkedShopIds.join(", ") : "No service location or shop connection detected"
+        },
+        { label: "Visibility", complete: account.barber.visibilityState === "public" || account.barber.visibilityState === "featured", detail: `Visibility: ${formatLabel(account.barber.visibilityState)}` },
+        { label: "Booking active", complete: account.barber.acceptingBookings === true || account.barber.acceptsInstantBookings === true, detail: `Status: ${formatLabel(account.barber.status)}` },
+        { label: "Payout ready", complete: selectedVerificationProfile?.canReceivePayouts === true, detail: `Verification payout lane: ${selectedVerificationProfile?.canReceivePayouts ? "ready" : "not ready"}` },
+        { label: "Marketplace", complete: account.marketplaceBlockers.length === 0, detail: account.marketplaceBlockers.length ? account.marketplaceBlockers.join(" | ") : "Marketplace visible from account data" }
+      ]
+    : account.shopOwner?.shopExists
+      ? [
+          { label: "Approval", complete: account.approvalStatus === "approved", detail: `Approval: ${formatLabel(account.approvalStatus)}` },
+          { label: "Shop info", complete: Boolean(account.shopOwner.name && account.shopOwner.phone), detail: `${account.shopOwner.name ?? "No name"}${account.shopOwner.phone ? " with phone" : " without phone"}` },
+          {
+            label: "Location",
+            complete: Boolean(account.shopOwner.city && account.shopOwner.state && account.shopOwner.address),
+            detail: [account.shopOwner.address, account.shopOwner.city, account.shopOwner.state].filter(Boolean).join(", ") || "Missing address/city/state"
+          },
+          { label: "Team", complete: account.shopOwner.activeLinkedBarbers > 0, detail: `${account.shopOwner.activeLinkedBarbers} linked barber${account.shopOwner.activeLinkedBarbers === 1 ? "" : "s"}` },
+          { label: "Booking active", complete: account.shopOwner.shopStatus === "active", detail: `Shop status: ${formatLabel(account.shopOwner.shopStatus)}` },
+          { label: "Payout ready", complete: selectedVerificationProfile?.canReceivePayouts === true, detail: `Verification payout lane: ${selectedVerificationProfile?.canReceivePayouts ? "ready" : "not ready"}` },
+          { label: "Marketplace", complete: account.marketplaceBlockers.length === 0, detail: account.marketplaceBlockers.length ? account.marketplaceBlockers.join(" | ") : "Marketplace visible from account data" }
+        ]
+      : [];
 
   return (
     <div className="app-screen safe-top-pad px-2 py-2 pb-[calc(env(safe-area-inset-bottom,0px)+2rem)] sm:px-3 sm:py-3 lg:px-5 lg:py-5">
@@ -404,6 +452,28 @@ export function ArchitectAccountDetailWorkspace({
               <Field label="Client id" value={account.client.id} />
               <Field label="Client reference" value={account.client.referenceCode} />
               <Field label="Retention tag" value={account.client.retentionTag} />
+            </div>
+          </Card>
+        ) : null}
+
+        {readinessItems.length ? (
+          <Card className="rounded-[32px] p-6">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="surface-label">Marketplace readiness</p>
+                <h2 className="mt-3 text-2xl font-semibold text-white">Real account activation summary</h2>
+                <p className="mt-3 text-sm leading-7 text-white/62">
+                  Approval unlocks eligibility. Setup and payout readiness decide whether clients can discover and book.
+                </p>
+              </div>
+              <span className={cn("status-pill", marketplaceStatus.tone === "approved" ? badgeClasses("approved") : badgeClasses("pending"))}>
+                Marketplace {marketplaceStatus.label}
+              </span>
+            </div>
+            <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              {readinessItems.map((item) => (
+                <ReadinessItem key={item.label} {...item} />
+              ))}
             </div>
           </Card>
         ) : null}

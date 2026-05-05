@@ -71,6 +71,7 @@ type InviteRow = {
 type ShopRow = {
   id: string;
   name: string;
+  owner_profile_id: string | null;
   neighborhood: string;
   city: string;
   state: string;
@@ -188,6 +189,19 @@ function isApprovedStatus(value?: string | null) {
   return ["approved", "active", "verified"].includes(normalize(value));
 }
 
+function isMissingRelationError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const candidate = error as { code?: string | null; message?: string | null };
+  const message = `${candidate.message ?? ""}`.toLowerCase();
+  return candidate.code === "42P01"
+    || candidate.code === "PGRST205"
+    || message.includes("does not exist")
+    || message.includes("could not find the table");
+}
+
 function buildBarberReadinessLabels(input: {
   appApprovalStatus?: string | null;
   visibilityState?: string | null;
@@ -225,34 +239,52 @@ function buildShopReadinessLabels(input: {
 async function readOwnerLocations(user: UserAccount, supabase: SupabaseClient) {
   requireOwner(user);
   const identifiers = [...new Set([user.ownedShopId, ...user.locationIds].filter((value): value is string => Boolean(value)))];
-  if (!identifiers.length) {
+  const shopIds = new Set<string>();
+  const shopResult = await supabase
+    .from("shops")
+    .select("id, name, owner_profile_id, neighborhood, city, state, address, app_approval_status")
+    .or(`owner_profile_id.eq.${user.id}${user.ownedShopId ? `,id.eq.${user.ownedShopId}` : ""}`);
+
+  if (shopResult.error) {
+    throw new ShopTeamInviteServiceError("Unable to load the owner's shop scope.", 500);
+  }
+
+  for (const shop of (shopResult.data ?? []) as ShopRow[]) {
+    shopIds.add(shop.id);
+  }
+
+  const allIdentifiers = [...new Set([...identifiers, ...shopIds])];
+  if (!allIdentifiers.length) {
     return [];
   }
 
-  const uuidValues = identifiers.filter(isUuid);
-  const referenceValues = identifiers.filter((value) => !isUuid(value));
-  const [uuidResult, referenceResult] = await Promise.all([
+  const uuidValues = allIdentifiers.filter(isUuid);
+  const referenceValues = allIdentifiers.filter((value) => !isUuid(value));
+  const [uuidResult, referenceResult, shopReferenceResult] = await Promise.all([
     uuidValues.length
       ? supabase.from("locations").select("id, reference_code, name, neighborhood, city, state").in("id", uuidValues)
       : Promise.resolve({ data: [], error: null }),
     referenceValues.length
       ? supabase.from("locations").select("id, reference_code, name, neighborhood, city, state").in("reference_code", referenceValues)
+      : Promise.resolve({ data: [], error: null }),
+    shopIds.size
+      ? supabase.from("locations").select("id, reference_code, name, neighborhood, city, state").in("reference_code", [...shopIds])
       : Promise.resolve({ data: [], error: null })
   ]);
 
-  if (uuidResult.error || referenceResult.error) {
+  if (uuidResult.error || referenceResult.error || shopReferenceResult.error) {
     throw new ShopTeamInviteServiceError("Unable to load the owner's shop scope.", 500);
   }
 
   const byId = new Map<string, LocationRow>();
-  for (const location of [...(uuidResult.data ?? []), ...(referenceResult.data ?? [])] as LocationRow[]) {
+  for (const location of [...(uuidResult.data ?? []), ...(referenceResult.data ?? []), ...(shopReferenceResult.data ?? [])] as LocationRow[]) {
     byId.set(location.id, location);
   }
 
   return [...byId.values()];
 }
 
-async function resolveBarber(supabase: SupabaseClient, barberIdOrReference: string) {
+async function resolveBarber(supabase: SupabaseClient, barberIdOrReference: string, profileId?: string | null) {
   const referenceResult = await supabase
     .from("barbers")
     .select("id, reference_code, profile_id, compensation_model, commission_rate, booth_rent_amount, booth_rent_frequency, app_approval_status, shop_approval_status, barber_subtype")
@@ -268,7 +300,21 @@ async function resolveBarber(supabase: SupabaseClient, barberIdOrReference: stri
   }
 
   if (!isUuid(barberIdOrReference)) {
-    return null;
+    if (!profileId) {
+      return null;
+    }
+
+    const profileResult = await supabase
+      .from("barbers")
+      .select("id, reference_code, profile_id, compensation_model, commission_rate, booth_rent_amount, booth_rent_frequency, app_approval_status, shop_approval_status, barber_subtype")
+      .eq("profile_id", profileId)
+      .maybeSingle();
+
+    if (profileResult.error) {
+      throw new ShopTeamInviteServiceError("Unable to resolve the barber account.", 500);
+    }
+
+    return (profileResult.data as BarberRow | null) ?? null;
   }
 
   const uuidResult = await supabase
@@ -281,7 +327,25 @@ async function resolveBarber(supabase: SupabaseClient, barberIdOrReference: stri
     throw new ShopTeamInviteServiceError("Unable to resolve the barber account.", 500);
   }
 
-  return (uuidResult.data as BarberRow | null) ?? null;
+  if (uuidResult.data) {
+    return uuidResult.data as BarberRow;
+  }
+
+  if (!profileId) {
+    return null;
+  }
+
+  const profileResult = await supabase
+    .from("barbers")
+    .select("id, reference_code, profile_id, compensation_model, commission_rate, booth_rent_amount, booth_rent_frequency, app_approval_status, shop_approval_status, barber_subtype")
+    .eq("profile_id", profileId)
+    .maybeSingle();
+
+  if (profileResult.error) {
+    throw new ShopTeamInviteServiceError("Unable to resolve the barber account.", 500);
+  }
+
+  return (profileResult.data as BarberRow | null) ?? null;
 }
 
 function mapInvite(row: InviteRow, locationsById: Map<string, LocationRow>, profilesById: Map<string, ProfileRow>, barber: BarberRow): ShopTeamInviteView {
@@ -328,7 +392,7 @@ export async function listOwnerTeamInviteDirectory(user: UserAccount, search?: s
   const profileIds = [...new Set(visibleBarbers.map((barber) => barber.profile_id))];
   const barberReferences = barbers.map(toReference);
   const barberIds = visibleBarbers.map((barber) => barber.id);
-  const [profilesResult, barberProfilesResult, visibilityResult, membershipsResult, invitesResult, servicesResult, availabilityResult] = await Promise.all([
+  const [profilesResult, barberProfilesResult, visibilityResult, membershipsResult, invitesResult, marketplaceServicesResult, servicesResult, availabilityResult] = await Promise.all([
     profileIds.length
       ? supabase.from("profiles").select("id, full_name, email, phone, role, primary_onboarding_role").in("id", profileIds)
       : Promise.resolve({ data: [], error: null }),
@@ -347,13 +411,19 @@ export async function listOwnerTeamInviteDirectory(user: UserAccount, search?: s
     barberReferences.length
       ? supabase.from("marketplace_services").select("barber_reference, price, duration_min, name").in("barber_reference", barberReferences)
       : Promise.resolve({ data: [], error: null }),
+    barberReferences.length
+      ? supabase.from("services").select("barber_reference, price, duration_min, name, active").in("barber_reference", barberReferences).eq("active", true)
+      : Promise.resolve({ data: [], error: null }),
     barberIds.length
       ? supabase.from("availability_rules").select("barber_id").in("barber_id", barberIds)
       : Promise.resolve({ data: [], error: null })
   ]);
 
-  for (const result of [profilesResult, barberProfilesResult, visibilityResult, membershipsResult, invitesResult, servicesResult, availabilityResult]) {
+  for (const result of [profilesResult, barberProfilesResult, visibilityResult, membershipsResult, invitesResult, marketplaceServicesResult, servicesResult, availabilityResult]) {
     if (result.error) {
+      if (result === invitesResult && isMissingRelationError(result.error)) {
+        continue;
+      }
       throw new ShopTeamInviteServiceError("Unable to load barber invitation details.", 500);
     }
   }
@@ -363,7 +433,7 @@ export async function listOwnerTeamInviteDirectory(user: UserAccount, search?: s
   const visibilityByReference = new Map(((visibilityResult.data ?? []) as MarketplaceVisibilityRow[]).map((visibility) => [visibility.barber_reference, visibility]));
   const assignedProfileIds = new Set(((membershipsResult.data ?? []) as StaffLocationRow[]).map((row) => row.profile_id));
   const serviceReferences = new Set(
-    ((servicesResult.data ?? []) as Array<{ barber_reference: string | null; price: number | string | null; duration_min: number | null; name: string | null }>)
+    ([...((marketplaceServicesResult.data ?? []) as Array<{ barber_reference: string | null; price: number | string | null; duration_min: number | null; name: string | null }>), ...((servicesResult.data ?? []) as Array<{ barber_reference: string | null; price: number | string | null; duration_min: number | null; name: string | null }>)])
       .filter((service) => service.barber_reference && Number(service.price ?? 0) > 0 && Number(service.duration_min ?? 0) >= 15 && Boolean(service.name?.trim()))
       .map((service) => service.barber_reference as string)
   );
@@ -401,7 +471,10 @@ export async function listOwnerTeamInviteDirectory(user: UserAccount, search?: s
       const searchText = [
         name,
         profile.email,
+        profile.phone,
         barberProfile?.username,
+        reference,
+        barber.id,
         barberProfile?.service_area_label,
         barber.compensation_model,
         barber.app_approval_status,
@@ -535,14 +608,14 @@ export async function createOwnerTeamInvite(user: UserAccount, input: { barberId
 export async function listBarberJoinableShops(user: UserAccount, search?: string): Promise<{ shops: BarberJoinableShopView[] }> {
   requireBarber(user);
   const supabase = getSupabaseOrThrow();
-  const barber = await resolveBarber(supabase, user.barberId!);
+  const barber = await resolveBarber(supabase, user.barberId!, user.id);
   if (!barber) {
     throw new ShopTeamInviteServiceError("Barber account not found.", 404);
   }
 
   const shopsResult = await supabase
     .from("shops")
-    .select("id, name, neighborhood, city, state, address, app_approval_status")
+    .select("id, name, owner_profile_id, neighborhood, city, state, address, app_approval_status")
     .order("name", { ascending: true })
     .limit(200);
 
@@ -550,19 +623,44 @@ export async function listBarberJoinableShops(user: UserAccount, search?: string
     throw new ShopTeamInviteServiceError("Unable to search shop accounts.", 500);
   }
 
-  const query = normalize(search);
-  const shops = ((shopsResult.data ?? []) as ShopRow[])
-    .filter((shop) => !isRejectedOrSuspendedStatus(shop.app_approval_status))
-    .filter((shop) => {
-      if (!query) {
-        return true;
-      }
+  const rawShops = ((shopsResult.data ?? []) as ShopRow[])
+    .filter((shop) => !isRejectedOrSuspendedStatus(shop.app_approval_status));
+  const ownerIds = [...new Set(rawShops.map((shop) => shop.owner_profile_id).filter((value): value is string => Boolean(value)))];
+  const ownerProfilesResult = ownerIds.length
+    ? await supabase
+      .from("profiles")
+      .select("id, full_name, email, phone, role, primary_onboarding_role")
+      .in("id", ownerIds)
+    : { data: [], error: null };
 
-      return [shop.name, shop.neighborhood, shop.city, shop.state, shop.address, shop.app_approval_status]
-        .map((value) => normalize(value))
-        .join(" ")
-        .includes(query);
-    });
+  if (ownerProfilesResult.error) {
+    throw new ShopTeamInviteServiceError("Unable to hydrate shop owners.", 500);
+  }
+
+  const ownerProfilesById = new Map(((ownerProfilesResult.data ?? []) as ProfileRow[]).map((profile) => [profile.id, profile]));
+  const query = normalize(search);
+  const shops = rawShops.filter((shop) => {
+    if (!query) {
+      return true;
+    }
+
+    const owner = shop.owner_profile_id ? ownerProfilesById.get(shop.owner_profile_id) : undefined;
+    return [
+      shop.id,
+      shop.name,
+      shop.neighborhood,
+      shop.city,
+      shop.state,
+      shop.address,
+      shop.app_approval_status,
+      owner?.full_name,
+      owner?.email,
+      owner?.phone
+    ]
+      .map((value) => normalize(value))
+      .join(" ")
+      .includes(query);
+  });
 
   const shopReferences = shops.map((shop) => shop.id);
   const locationsResult = shopReferences.length
@@ -592,6 +690,9 @@ export async function listBarberJoinableShops(user: UserAccount, search?: string
 
   for (const result of [membershipsResult, invitesResult, teamResult]) {
     if (result.error) {
+      if (result === invitesResult && isMissingRelationError(result.error)) {
+        continue;
+      }
       throw new ShopTeamInviteServiceError("Unable to load shop request details.", 500);
     }
   }
@@ -607,31 +708,28 @@ export async function listBarberJoinableShops(user: UserAccount, search?: string
   return {
     shops: shops.flatMap((shop): BarberJoinableShopView[] => {
       const location = locationsByReference.get(shop.id);
-      if (!location) {
-        return [];
-      }
-
-      const invite = invitesByShopId.get(location.id);
-      const alreadyAssigned = assignedLocationIds.has(location.id);
+      const invite = location ? invitesByShopId.get(location.id) : undefined;
+      const alreadyAssigned = location ? assignedLocationIds.has(location.id) : false;
       const readinessLabels = buildShopReadinessLabels({
         approvalStatus: shop.app_approval_status,
         alreadyAssigned,
         inviteStatus: alreadyAssigned ? "accepted" : invite?.status ?? null,
-        hasTeam: teamLocationIds.has(location.id)
+        hasTeam: location ? teamLocationIds.has(location.id) : false
       });
+      const labels = location ? readinessLabels : [...readinessLabels, "Shop location missing"];
 
       return [{
-        shopId: location.id,
+        shopId: location?.id ?? shop.id,
         shopReference: shop.id,
-        shopLabel: formatLocationLabel(location),
-        city: shop.city || location.city || null,
-        state: shop.state || location.state || null,
+        shopLabel: location ? formatLocationLabel(location) : [shop.name, shop.city, shop.state].filter(Boolean).join(" | "),
+        city: shop.city || location?.city || null,
+        state: shop.state || location?.state || null,
         approvalStatus: shop.app_approval_status ?? "pending",
-        liveStatusLabel: readinessLabels.includes("Live shop") ? "Live shop" : "Not live yet",
+        liveStatusLabel: labels.includes("Live shop") ? "Live shop" : "Not live yet",
         alreadyAssigned,
         inviteStatus: alreadyAssigned ? "accepted" : invite?.status ?? null,
-        canRequest: isApprovedStatus(shop.app_approval_status) && !alreadyAssigned && invite?.status !== "pending",
-        readinessLabels
+        canRequest: Boolean(location && isApprovedStatus(shop.app_approval_status) && !alreadyAssigned && invite?.status !== "pending"),
+        readinessLabels: labels
       }];
     }).slice(0, 80)
   };
@@ -640,7 +738,7 @@ export async function listBarberJoinableShops(user: UserAccount, search?: string
 export async function createBarberShopJoinRequest(user: UserAccount, input: { shopId: string; message?: string | null }): Promise<ShopTeamInviteView> {
   requireBarber(user);
   const supabase = getSupabaseOrThrow();
-  const barber = await resolveBarber(supabase, user.barberId!);
+  const barber = await resolveBarber(supabase, user.barberId!, user.id);
   if (!barber) {
     throw new ShopTeamInviteServiceError("Barber account not found.", 404);
   }
@@ -649,7 +747,7 @@ export async function createBarberShopJoinRequest(user: UserAccount, input: { sh
     .from("locations")
     .select("id, reference_code, name, neighborhood, city, state");
   const locationResult = isUuid(input.shopId)
-    ? await locationQuery.eq("id", input.shopId).maybeSingle()
+    ? await locationQuery.or(`id.eq.${input.shopId},reference_code.eq.${input.shopId}`).maybeSingle()
     : await locationQuery.eq("reference_code", input.shopId).maybeSingle();
 
   if (locationResult.error) {
@@ -658,12 +756,12 @@ export async function createBarberShopJoinRequest(user: UserAccount, input: { sh
 
   const location = locationResult.data as LocationRow | null;
   if (!location) {
-    throw new ShopTeamInviteServiceError("Shop not found.", 404);
+    throw new ShopTeamInviteServiceError("This shop has no service location configured yet.", 409);
   }
 
   const shopResult = await supabase
     .from("shops")
-    .select("id, name, neighborhood, city, state, address, app_approval_status")
+    .select("id, name, owner_profile_id, neighborhood, city, state, address, app_approval_status")
     .eq("id", location.reference_code ?? input.shopId)
     .maybeSingle();
 
@@ -750,7 +848,7 @@ export async function createBarberShopJoinRequest(user: UserAccount, input: { sh
 export async function listBarberTeamInvites(user: UserAccount): Promise<{ invites: ShopTeamInviteView[] }> {
   requireBarber(user);
   const supabase = getSupabaseOrThrow();
-  const barber = await resolveBarber(supabase, user.barberId!);
+  const barber = await resolveBarber(supabase, user.barberId!, user.id);
   if (!barber) {
     throw new ShopTeamInviteServiceError("Barber account not found.", 404);
   }
@@ -764,6 +862,9 @@ export async function listBarberTeamInvites(user: UserAccount): Promise<{ invite
     .limit(12);
 
   if (invitesResult.error) {
+    if (isMissingRelationError(invitesResult.error)) {
+      return { invites: [] };
+    }
     throw new ShopTeamInviteServiceError("Unable to load shop invitations.", 500);
   }
 
@@ -775,6 +876,10 @@ export async function listBarberTeamInvites(user: UserAccount): Promise<{ invite
       : Promise.resolve({ data: [], error: null }),
     supabase.from("profiles").select("id, full_name, email, phone, role, primary_onboarding_role").eq("id", barber.profile_id).maybeSingle()
   ]);
+
+  if (locationsResult.error && isMissingRelationError(locationsResult.error)) {
+    return { invites: [] };
+  }
 
   if (locationsResult.error || profileResult.error) {
     throw new ShopTeamInviteServiceError("Unable to hydrate shop invitations.", 500);
@@ -792,7 +897,7 @@ export async function listBarberTeamInvites(user: UserAccount): Promise<{ invite
 export async function respondToBarberTeamInvite(user: UserAccount, input: { inviteId: string; status: "accepted" | "declined" }): Promise<{ invite: ShopTeamInviteView }> {
   requireBarber(user);
   const supabase = getSupabaseOrThrow();
-  const barber = await resolveBarber(supabase, user.barberId!);
+  const barber = await resolveBarber(supabase, user.barberId!, user.id);
   if (!barber) {
     throw new ShopTeamInviteServiceError("Barber account not found.", 404);
   }

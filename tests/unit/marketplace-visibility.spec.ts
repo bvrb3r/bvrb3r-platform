@@ -240,6 +240,21 @@ describe("marketplace visibility", () => {
     expect(filterVisibleMarketplaceBarbers(state, trustState).map(({ barber }) => barber.id)).toEqual(["barber-real"]);
   });
 
+  it("allows complete independent barbers to become discoverable without a shop assignment", () => {
+    const state = visibleMarketplaceState();
+    state.barberProfiles[0] = {
+      ...state.barberProfiles[0],
+      shopId: undefined,
+      headline: "",
+      serviceAreaLabel: ""
+    };
+
+    const results = filterVisibleMarketplaceBarbers(state, approvedTrustState());
+
+    expect(results.map(({ barber }) => barber.id)).toEqual(["barber-real"]);
+    expect(getPublicBarberProfileByUsername(state, "realbarber", approvedTrustState())?.barber.id).toBe("barber-real");
+  });
+
   it("hides incomplete barbers with no real services", () => {
     const state = visibleMarketplaceState();
     state.services = [];

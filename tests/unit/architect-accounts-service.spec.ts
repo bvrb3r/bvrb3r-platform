@@ -460,6 +460,197 @@ describe("architect account service", () => {
     expect(payload.account?.verificationProfiles[0]?.id).toBe("verification-barber");
   });
 
+  it("does not keep a stale barber verification blocker after Architect approval", async () => {
+    stageArchitectAccountRowsForTests({
+      authUsers: [
+        {
+          id: "profile-approved-barber",
+          email: "approved-barber@example.com",
+          phone: "+18135550505",
+          created_at: "2026-04-06T12:00:00.000Z",
+          updated_at: "2026-04-06T12:00:00.000Z",
+          email_confirmed_at: "2026-04-06T12:05:00.000Z",
+          phone_confirmed_at: "2026-04-06T12:10:00.000Z",
+          app_metadata: { provider: "email", providers: ["email"] },
+          user_metadata: { full_name: "Approved Barber" },
+          identities: [{ provider: "email" }]
+        }
+      ],
+      profiles: [
+        {
+          id: "profile-approved-barber",
+          role: "barber",
+          primary_onboarding_role: "barber",
+          onboarding_state: "complete",
+          full_name: "Approved Barber",
+          email: "approved-barber@example.com",
+          phone: "8135550505",
+          created_at: "2026-04-06T12:00:00.000Z"
+        }
+      ],
+      barbers: [
+        {
+          id: "barber-approved",
+          reference_code: "barber-approved-ref",
+          profile_id: "profile-approved-barber",
+          compensation_model: "commission",
+          barber_subtype: "solo",
+          app_approval_status: "approved",
+          shop_approval_status: "not_required",
+          created_at: "2026-04-06T12:00:00.000Z"
+        }
+      ],
+      memberships: [
+        {
+          barber_reference: "barber-approved-ref",
+          shop_reference: "shop-approved",
+          active: true
+        }
+      ],
+      barberProfiles: [
+        {
+          barber_reference: "barber-approved-ref",
+          username: "approvedbarber",
+          display_name: "Approved Barber",
+          shop_reference: "shop-approved",
+          visibility_state: "public",
+          next_available_at: "2026-04-07T12:00:00.000Z"
+        }
+      ],
+      marketplaceVisibilities: [
+        {
+          barber_reference: "barber-approved-ref",
+          visibility_state: "public",
+          accepts_instant_bookings: true
+        }
+      ],
+      barberStatuses: [
+        {
+          barber_reference: "barber-approved-ref",
+          shop_reference: "shop-approved",
+          status: "active",
+          accepting_bookings: true,
+          next_available_at: "2026-04-07T12:00:00.000Z"
+        }
+      ],
+      services: [
+        {
+          id: "service-approved",
+          service_owner_type: "barber",
+          barber_reference: "barber-approved-ref",
+          shop_reference: null,
+          active: true
+        }
+      ],
+      availabilityRules: [
+        {
+          id: "availability-approved",
+          barber_id: "barber-approved",
+          location_id: "shop-approved"
+        }
+      ],
+      verificationProfiles: [
+        {
+          id: "verification-approved-barber",
+          user_id: "profile-approved-barber",
+          role: "barber",
+          overall_status: "pending",
+          identity_status: "pending",
+          license_status: "pending",
+          business_status: "not_started",
+          payout_status: "not_started",
+          compliance_status: "pending",
+          public_verified: false,
+          can_accept_bookings: false,
+          can_receive_payouts: false,
+          can_create_shop_listing: false,
+          current_requirements: ["Identity review", "Connect payouts"],
+          created_at: "2026-04-06T13:00:00.000Z",
+          updated_at: "2026-04-06T13:00:00.000Z"
+        }
+      ]
+    });
+
+    const payload = await getArchitectAccountDetailPayload(founder, "profile-approved-barber");
+
+    expect(payload.account?.approvalStatus).toBe("approved");
+    expect(payload.account?.marketplaceBlockers).not.toContain("Barber approval pending");
+    expect(payload.account?.marketplaceBlockers).not.toContain("Verification pending");
+    expect(payload.account?.marketplaceBlockers).toContain("Payout setup incomplete");
+  });
+
+  it("does not keep a stale shop verification blocker after Architect approval", async () => {
+    stageArchitectAccountRowsForTests({
+      authUsers: [
+        {
+          id: "profile-approved-owner",
+          email: "approved-owner@example.com",
+          phone: "+18135550606",
+          created_at: "2026-04-07T12:00:00.000Z",
+          updated_at: "2026-04-07T12:00:00.000Z",
+          email_confirmed_at: "2026-04-07T12:05:00.000Z",
+          phone_confirmed_at: "2026-04-07T12:10:00.000Z",
+          app_metadata: { provider: "email", providers: ["email"] },
+          user_metadata: { full_name: "Approved Owner" },
+          identities: [{ provider: "email" }]
+        }
+      ],
+      profiles: [
+        {
+          id: "profile-approved-owner",
+          role: "shop_owner",
+          primary_onboarding_role: "shop_owner",
+          onboarding_state: "complete",
+          full_name: "Approved Owner",
+          email: "approved-owner@example.com",
+          phone: "8135550606",
+          created_at: "2026-04-07T12:00:00.000Z"
+        }
+      ],
+      shops: [
+        {
+          id: "shop-approved",
+          name: "Approved Studio",
+          owner_profile_id: "profile-approved-owner",
+          app_approval_status: "approved",
+          neighborhood: "Downtown",
+          city: "Tampa",
+          state: "FL",
+          phone: "8135550606",
+          address: "200 Main St",
+          created_at: "2026-04-07T12:00:00.000Z"
+        }
+      ],
+      verificationProfiles: [
+        {
+          id: "verification-approved-owner",
+          user_id: "profile-approved-owner",
+          role: "shop_owner",
+          overall_status: "pending",
+          identity_status: "pending",
+          license_status: "not_started",
+          business_status: "pending",
+          payout_status: "not_started",
+          compliance_status: "pending",
+          public_verified: false,
+          can_accept_bookings: false,
+          can_receive_payouts: false,
+          can_create_shop_listing: false,
+          current_requirements: ["Business review", "Connect payouts"],
+          created_at: "2026-04-07T13:00:00.000Z",
+          updated_at: "2026-04-07T13:00:00.000Z"
+        }
+      ]
+    });
+
+    const payload = await getArchitectAccountDetailPayload(founder, "profile-approved-owner");
+
+    expect(payload.account?.approvalStatus).toBe("approved");
+    expect(payload.account?.marketplaceBlockers).not.toContain("Shop approval pending");
+    expect(payload.account?.marketplaceBlockers).not.toContain("Shop verification pending");
+    expect(payload.account?.marketplaceBlockers).toContain("Payout setup incomplete");
+  });
+
   it("does not fabricate known demo marketplace names in architect account payloads", async () => {
     stageRealAccountRows();
 

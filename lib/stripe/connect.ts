@@ -13,6 +13,47 @@ export class StripeConnectError extends Error {
 
 let stripeClient: Stripe | null = null;
 
+export type StripeConnectEnvironmentMode = "live" | "test" | "missing";
+
+export type StripeConnectEnvironmentView = {
+  mode: StripeConnectEnvironmentMode;
+  label: string;
+  blocksLivePayouts: boolean;
+};
+
+export function getStripeConnectEnvironment(): StripeConnectEnvironmentView {
+  const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
+  if (!secretKey) {
+    return {
+      mode: "missing",
+      label: "Stripe live keys missing - payouts are not ready.",
+      blocksLivePayouts: true
+    };
+  }
+
+  if (secretKey.startsWith("sk_live_")) {
+    return {
+      mode: "live",
+      label: "Stripe live mode.",
+      blocksLivePayouts: false
+    };
+  }
+
+  if (secretKey.startsWith("sk_test_")) {
+    return {
+      mode: "test",
+      label: "Stripe test mode - not live payouts.",
+      blocksLivePayouts: true
+    };
+  }
+
+  return {
+    mode: "missing",
+    label: "Stripe key mode could not be verified - payouts are not ready.",
+    blocksLivePayouts: true
+  };
+}
+
 function getStripeSecretKey() {
   const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
   if (!secretKey) {

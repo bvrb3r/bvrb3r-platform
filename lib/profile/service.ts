@@ -19,6 +19,13 @@ type BarberProfileMediaRow = {
   barber_reference: string;
   profile_photo_path: string | null;
   profile_photo_url: string | null;
+  visibility_state: string | null;
+};
+
+type BarberMarketplaceVisibilityMediaRow = {
+  barber_reference: string;
+  visibility_state: string | null;
+  accepts_instant_bookings: boolean | null;
 };
 
 type BarberPortfolioRow = {
@@ -88,6 +95,8 @@ export type ProfileMediaWorkspacePayload = {
     barberId: string;
     profilePhotoUrl?: string;
     profilePhotoPath?: string;
+    visibilityState?: string | null;
+    acceptsInstantBookings?: boolean;
     gallery: ManagedMediaAsset[];
   } | null;
   shops: ShopMediaWorkspaceView[];
@@ -331,10 +340,15 @@ async function readSupabaseNotificationPreference(user: UserAccount, supabase: S
 }
 
 async function readSupabaseBarberMedia(supabase: SupabaseClient, barberId: string) {
-  const [profileResult, galleryResult] = await Promise.all([
+  const [profileResult, visibilityResult, galleryResult] = await Promise.all([
     supabase
       .from("barber_profiles")
-      .select("barber_reference, profile_photo_path, profile_photo_url")
+      .select("barber_reference, profile_photo_path, profile_photo_url, visibility_state")
+      .eq("barber_reference", barberId)
+      .maybeSingle(),
+    supabase
+      .from("marketplace_visibility")
+      .select("barber_reference, visibility_state, accepts_instant_bookings")
       .eq("barber_reference", barberId)
       .maybeSingle(),
     supabase
@@ -345,11 +359,12 @@ async function readSupabaseBarberMedia(supabase: SupabaseClient, barberId: strin
       .order("created_at", { ascending: false })
   ]);
 
-  if (profileResult.error || galleryResult.error) {
+  if (profileResult.error || visibilityResult.error || galleryResult.error) {
     throw new ProfileMediaServiceError("Unable to load barber profile media.", 500);
   }
 
   const profile = (profileResult.data ?? null) as BarberProfileMediaRow | null;
+  const visibility = (visibilityResult.data ?? null) as BarberMarketplaceVisibilityMediaRow | null;
   const gallery = ((galleryResult.data ?? []) as BarberPortfolioRow[]).map((row) => ({
     ...mapBarberGalleryAsset(row),
     imageUrl: toPublicMediaUrl(supabase, row.storage_path, row.image_url) ?? row.storage_path
@@ -358,6 +373,8 @@ async function readSupabaseBarberMedia(supabase: SupabaseClient, barberId: strin
   return {
     profilePhotoPath: profile?.profile_photo_path ?? undefined,
     profilePhotoUrl: toPublicMediaUrl(supabase, profile?.profile_photo_path, profile?.profile_photo_url),
+    visibilityState: visibility?.visibility_state ?? profile?.visibility_state ?? "hidden",
+    acceptsInstantBookings: Boolean(visibility?.accepts_instant_bookings),
     gallery
   };
 }
@@ -401,6 +418,7 @@ async function readSupabaseShopMedia(supabase: SupabaseClient, shopId: string): 
 function readDemoBarberMedia(barberId: string) {
   const state = getMarketplaceState();
   const profile = state.barberProfiles.find((entry) => entry.barberId === barberId);
+  const visibility = state.visibilities.find((entry) => entry.barberId === barberId);
   const gallery = state.barberPortfolios
     .filter((entry) => entry.barberId === barberId)
     .map((entry) => mapBarberGalleryAsset({
@@ -416,6 +434,8 @@ function readDemoBarberMedia(barberId: string) {
   return {
     profilePhotoPath: profile?.profilePhotoUrl,
     profilePhotoUrl: profile?.profilePhotoUrl,
+    visibilityState: visibility?.visibilityState ?? profile?.visibilityState ?? "hidden",
+    acceptsInstantBookings: Boolean(visibility?.acceptsInstantBookings),
     gallery
   };
 }

@@ -342,22 +342,49 @@ async function resolveBarberContext(user: UserAccount, supabase: SupabaseClient)
 
   const barber = barberResult.data as BarberRow;
   const referenceIds = viewer.locationIds ?? [];
-  const fallbackLocationsResult = referenceIds.length
-    ? await supabase
-      .from("locations")
-      .select("id, reference_code, name, neighborhood, city, state")
-      .in("reference_code", referenceIds)
-    : { data: [], error: null };
+  const membershipResult = await supabase
+    .from("staff_locations")
+    .select("location_id")
+    .eq("profile_id", barber.profile_id);
 
-  if (fallbackLocationsResult.error) {
+  if (membershipResult.error && !isMissingRelationError(membershipResult.error)) {
     throw new BarberToolsServiceError("Unable to resolve barber shop assignments.", 500);
+  }
+
+  const membershipLocationIds = ((membershipResult.data ?? []) as Array<{ location_id: string }>)
+    .map((row) => row.location_id)
+    .filter(Boolean);
+  const uuidIds = [...new Set([...referenceIds.filter(isUuidLike), ...membershipLocationIds])];
+  const referenceCodes = [...new Set(referenceIds.filter((value) => !isUuidLike(value)))];
+  const [uuidLocationsResult, referenceLocationsResult] = await Promise.all([
+    uuidIds.length
+      ? supabase
+        .from("locations")
+        .select("id, reference_code, name, neighborhood, city, state")
+        .in("id", uuidIds)
+      : Promise.resolve({ data: [], error: null }),
+    referenceCodes.length
+      ? supabase
+        .from("locations")
+        .select("id, reference_code, name, neighborhood, city, state")
+        .in("reference_code", referenceCodes)
+      : Promise.resolve({ data: [], error: null })
+  ]);
+
+  if (uuidLocationsResult.error || referenceLocationsResult.error) {
+    throw new BarberToolsServiceError("Unable to resolve barber shop assignments.", 500);
+  }
+
+  const locationsById = new Map<string, LocationRow>();
+  for (const location of [...(uuidLocationsResult.data ?? []), ...(referenceLocationsResult.data ?? [])] as LocationRow[]) {
+    locationsById.set(location.id, location);
   }
 
   return {
     viewer,
     barber,
     barberReference: barber.reference_code ?? barberReference,
-    locations: (fallbackLocationsResult.data ?? []) as LocationRow[]
+    locations: [...locationsById.values()]
   };
 }
 

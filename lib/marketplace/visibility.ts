@@ -179,8 +179,8 @@ function getServicesForMarketplaceBarber(state: MarketplaceState, barber: Barber
     return services.filter((service) => service.ownerType === "barber" && service.barberId === barber.id);
   }
 
-  if (!profile.shopId) {
-    return [];
+  if (!profile.shopId || !getShop(state, profile.shopId)) {
+    return services.filter((service) => service.ownerType === "barber" && service.barberId === barber.id);
   }
 
   return services.filter((service) => service.ownerType === "shop" && service.shopId === profile.shopId);
@@ -234,8 +234,6 @@ export function isBarberMarketplaceVisible(
     || !hasRealMarketplaceText(barber.name)
     || !hasRealMarketplaceText(profile.id)
     || !hasRealMarketplaceText(profile.username)
-    || !hasRealMarketplaceText(profile.headline || barber.bio)
-    || !hasRealMarketplaceText(profile.serviceAreaLabel)
   ) {
     return false;
   }
@@ -248,9 +246,7 @@ export function isBarberMarketplaceVisible(
     profile.id,
     profile.barberId,
     profile.username,
-    profile.shopId,
-    profile.headline,
-    profile.serviceAreaLabel
+    profile.shopId
   ].some(isKnownNonProductionMarketplaceValue)) {
     return false;
   }
@@ -287,11 +283,12 @@ export function isBarberMarketplaceVisible(
     return false;
   }
 
-  if (!isMarketplaceBarberTrustApproved(trustState, barber.id, profile.shopId)) {
+  const trustShopId = shop ? profile.shopId : undefined;
+  if (!isMarketplaceBarberTrustApproved(trustState, barber.id, trustShopId)) {
     return false;
   }
 
-  if (profile.shopId && !isMarketplaceShopTrustApproved(trustState, profile.shopId)) {
+  if (shop && profile.shopId && !isMarketplaceShopTrustApproved(trustState, profile.shopId)) {
     return false;
   }
 

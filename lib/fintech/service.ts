@@ -45,11 +45,13 @@ import {
   createStripeConnectedAccount,
   createStripeDashboardLoginLink,
   createStripeOnboardingLink,
+  getStripeConnectEnvironment,
   createStripeTransfer,
   createStripeTransferReversal,
   retrieveStripeConnectedAccount,
   retrieveStripePaymentIntentSettlement,
-  verifyStripeWebhookEvent
+  verifyStripeWebhookEvent,
+  type StripeConnectEnvironmentView
 } from "@/lib/stripe/connect";
 import { processStripeBillingWebhookEvent } from "@/lib/monetization/service";
 import { syncStripeConnectVerificationLane } from "@/lib/trust/provider-sync";
@@ -385,6 +387,7 @@ export type BarberFintechReadinessPayload = {
   barberId: string;
   barberName: string;
   connectedAccount: ConnectedAccountReadinessView;
+  stripeEnvironment: StripeConnectEnvironmentView;
   agreements: LegalAcceptanceView[];
   memberships: BarberFintechMembershipView[];
   routingSummary: {
@@ -2997,6 +3000,7 @@ export async function getBarberFintechReadiness(user: UserAccount): Promise<Barb
     barberId: barber.id,
     barberName: actor.profile.full_name ?? actor.profile.email,
     connectedAccount: mapConnectedAccountView(connectedAccountState),
+    stripeEnvironment: getStripeConnectEnvironment(),
     agreements: latestBarberAcceptances,
     memberships: membershipsView,
     routingSummary: {

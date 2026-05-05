@@ -230,7 +230,11 @@ describe("client search screen", () => {
     render(<ClientSearchScreen clientId="client-jordan" routeBase="/dashboard/client/search" />);
 
     expect(screen.getByText("No live barbers yet.")).toBeInTheDocument();
-    expect(screen.getByText("Approved barbers appear here after they add services, set availability, and turn booking on.")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Approved barbers appear here after services, hours, location/shop, booking, and payout setup are complete."
+      )
+    ).toBeInTheDocument();
     expect(screen.getByText("No live shops yet.")).toBeInTheDocument();
     expect(screen.getByText("Approved shops appear here after the shop is set up and at least one approved barber is bookable.")).toBeInTheDocument();
     expect(screen.queryByText(/We're expanding in your area/i)).not.toBeInTheDocument();
