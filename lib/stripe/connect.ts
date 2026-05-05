@@ -108,6 +108,17 @@ export function buildStripeReturnUrl(pathname: string) {
   return new URL(pathname, getStripeAppUrl()).toString();
 }
 
+export function getStripeConnectOnboardingPath(
+  subjectType: "barber" | "shop",
+  outcome: "return" | "refresh"
+) {
+  if (subjectType === "barber") {
+    return `/dashboard/barber/more?stripe=${outcome}`;
+  }
+
+  return outcome === "return" ? "/reports" : "/reports";
+}
+
 export type StripeConnectedAccountInput = {
   subjectType: "barber" | "shop";
   email: string;

@@ -5,10 +5,11 @@ import { getAuthorizedUser } from "@/lib/auth/guards";
 export default async function BarberMorePage({
   searchParams
 }: {
-  searchParams: Promise<{ section?: string }>;
+  searchParams: Promise<{ section?: string; stripe?: string }>;
 }) {
   const user = await getAuthorizedUser(["commission_barber", "booth_rent_barber"]);
   const params = await searchParams;
+  const stripeReturnState = params.stripe === "return" || params.stripe === "refresh" ? params.stripe : null;
 
   return (
     <DashboardShell
@@ -17,7 +18,7 @@ export default async function BarberMorePage({
       title="More"
       subtitle="Manage your account, payouts & settings"
     >
-      <BarberSettingsScreen user={user} initialSection={params.section} />
+      <BarberSettingsScreen user={user} initialSection={params.section} stripeReturnState={stripeReturnState} />
     </DashboardShell>
   );
 }

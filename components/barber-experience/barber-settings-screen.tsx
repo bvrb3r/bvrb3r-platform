@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import {
   ArrowLeftRight,
   BarChart3,
@@ -51,6 +51,7 @@ import {
   useRecordLegalAcceptanceMutation,
   type FintechApiError
 } from "@/lib/fintech/client";
+import { getStripePayoutReadinessLabel, isStripeConnectReadyForActivation } from "@/lib/fintech/payout-readiness";
 import { useMutateProfileMediaMutation, useProfileMediaWorkspaceQuery } from "@/lib/profile/client";
 import {
   useCreateVerificationUploadMutation,
@@ -263,10 +264,12 @@ function QuickActionLink({ href, icon: Icon, children }: { href: LinkHref; icon:
 export function BarberSettingsScreen({
   user,
   initialSection,
+  stripeReturnState = null,
   embedded = false
 }: {
   user: UserAccount;
   initialSection?: string;
+  stripeReturnState?: "return" | "refresh" | null;
   embedded?: boolean;
 }) {
   const mediaQuery = useProfileMediaWorkspaceQuery(true);
@@ -299,6 +302,7 @@ export function BarberSettingsScreen({
   const [issuingState, setIssuingState] = useState("");
   const [expirationDate, setExpirationDate] = useState("");
   const [feedback, setFeedback] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(null);
+  const stripeReturnSyncRef = useRef(false);
   const [quickSetupModal, setQuickSetupModal] = useState<BarberQuickSetupModal>(null);
   const [serviceDraft, setServiceDraft] = useState({
     name: "Haircut",
@@ -344,8 +348,8 @@ export function BarberSettingsScreen({
   );
   const payoutStatus = connectedAccount?.operationalStatus ?? null;
   const stripeEnvironment = readinessPayload?.stripeEnvironment;
-  const stripeLiveReady = stripeEnvironment?.mode === "live";
-  const payoutsReady = Boolean(stripeLiveReady && connectedAccount?.payoutsEnabled && connectedAccount.chargesEnabled);
+  const payoutsReady = isStripeConnectReadyForActivation(connectedAccount, stripeEnvironment);
+  const payoutReadinessLabel = getStripePayoutReadinessLabel(payoutsReady, stripeEnvironment);
   const readyForPayoutAmount = payoutsPayload?.summary.readyForPayoutAmount ?? readinessPayload?.routingSummary.readyForPayoutAmount;
   const hasPayoutAmount = typeof readyForPayoutAmount === "number";
   const subtypeLabel = subtypeOptions.find((option) => option.subtype === selectedSubtype)?.label ?? "Freelance";
@@ -396,7 +400,7 @@ export function BarberSettingsScreen({
     },
     {
       label: "Payouts",
-      value: payoutsReady ? "Ready" : stripeEnvironment?.mode === "test" ? "Test mode" : formatStatusLabel(payoutStatus),
+      value: payoutsReady ? (stripeEnvironment?.mode === "test" ? "Test connected" : "Connected") : stripeEnvironment?.mode === "test" ? "Test mode" : formatStatusLabel(payoutStatus),
       icon: WalletCards,
       tone: payoutsReady ? "green" : getStatusTone(payoutStatus)
     },
@@ -585,6 +589,45 @@ export function BarberSettingsScreen({
     }
   }
 
+  const refreshPayoutQueries = useCallback(async () => {
+    await Promise.allSettled([
+      readinessQuery.refetch(),
+      payoutsQuery.refetch(),
+      overviewQuery.refetch(),
+      trustQuery.refetch(),
+      verificationMeQuery.refetch()
+    ]);
+  }, [overviewQuery, payoutsQuery, readinessQuery, trustQuery, verificationMeQuery]);
+
+  const handleRefreshPayoutStatus = useCallback(async (successMessage = "Payout readiness refreshed from the connected account.") => {
+    setFeedback(null);
+    try {
+      await refreshMutation.mutateAsync({});
+      await refreshPayoutQueries();
+      setFeedback({ tone: "success", message: successMessage });
+    } catch (error) {
+      setFeedback({ tone: "error", message: getReadableActionError(error as FintechApiError) });
+    }
+  }, [refreshMutation, refreshPayoutQueries]);
+
+  useEffect(() => {
+    if (!stripeReturnState || stripeReturnSyncRef.current) {
+      return;
+    }
+
+    stripeReturnSyncRef.current = true;
+
+    if (stripeReturnState === "refresh") {
+      setFeedback({
+        tone: "info",
+        message: "Stripe asked for a refreshed onboarding link. Resume payouts when you are ready."
+      });
+      return;
+    }
+
+    void handleRefreshPayoutStatus("Stripe onboarding returned. Payout readiness synced from Stripe.");
+  }, [handleRefreshPayoutStatus, stripeReturnState]);
+
   const activationActionHandlers = {
     "barber-services": () => setQuickSetupModal("service"),
     "barber-availability": () => setQuickSetupModal("availability"),
@@ -605,16 +648,6 @@ export function BarberSettingsScreen({
       setQuickSetupModal("availability");
     }
   };
-
-  async function handleRefreshPayoutStatus() {
-    setFeedback(null);
-    try {
-      await refreshMutation.mutateAsync({});
-      setFeedback({ tone: "success", message: "Payout readiness refreshed from the connected account." });
-    } catch (error) {
-      setFeedback({ tone: "error", message: getReadableActionError(error as FintechApiError) });
-    }
-  }
 
   async function handleAcceptance(agreementType: "platform_terms" | "barber_agreement" | "payout_tax_acknowledgment") {
     setFeedback(null);
@@ -763,6 +796,34 @@ export function BarberSettingsScreen({
           }}
           actionHandlers={activationActionHandlers}
         />
+
+        {!payoutsReady ? (
+          <GlassCard id="barber-settings-payout-refresh" className="scroll-mt-6 p-5 sm:p-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-4">
+                <CircleIcon icon={WalletCards} className="h-11 w-11 rounded-2xl" />
+                <div>
+                  <SectionLabel>Payout readiness</SectionLabel>
+                  <h2 className="mt-2 text-xl font-black tracking-[-0.03em] text-white">
+                    {payoutReadinessLabel}
+                  </h2>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-white/56">
+                    Stripe readiness only updates after the connected account confirms charges, payouts, submitted details, and no current requirements.
+                  </p>
+                </div>
+              </div>
+              <ActionButton
+                type="button"
+                variant="secondary"
+                className="min-h-11 px-4 text-xs"
+                disabled={refreshMutation.isPending}
+                onClick={() => void handleRefreshPayoutStatus()}
+              >
+                {refreshMutation.isPending ? "Refreshing..." : "Refresh payout status"}
+              </ActionButton>
+            </div>
+          </GlassCard>
+        ) : null}
 
         <GlassCard active className="p-5 sm:p-6">
           <div className="grid gap-6 lg:grid-cols-[auto_1fr_auto] lg:items-center">
@@ -917,7 +978,7 @@ export function BarberSettingsScreen({
                   <>
                     <h2 className="mt-4 text-2xl font-black tracking-[-0.03em] text-white">Set up or review payout status.</h2>
                     <p className="mt-2 max-w-xl text-sm leading-6 text-white/56">
-                      Connect and review payout readiness through the existing Stripe-backed flow. {stripeEnvironment?.label ?? ""}
+                      Connect and review payout readiness through the existing Stripe-backed flow. {payoutReadinessLabel}
                     </p>
                   </>
                 )}
@@ -928,8 +989,8 @@ export function BarberSettingsScreen({
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-white/42">Payout Status</p>
                 <div className="mt-3">
-                  <StatusPill tone={connectedAccount?.payoutsEnabled ? "green" : getStatusTone(payoutStatus)}>
-                    {connectedAccount?.payoutsEnabled ? "Ready" : formatStatusLabel(payoutStatus)}
+                  <StatusPill tone={payoutsReady ? "green" : getStatusTone(payoutStatus)}>
+                    {payoutsReady ? payoutReadinessLabel : formatStatusLabel(payoutStatus)}
                   </StatusPill>
                 </div>
               </div>
@@ -969,7 +1030,7 @@ export function BarberSettingsScreen({
                       disabled={refreshMutation.isPending}
                       onClick={() => void handleRefreshPayoutStatus()}
                     >
-                      Refresh
+                      {refreshMutation.isPending ? "Refreshing..." : "Refresh payout status"}
                     </ActionButton>
                   </>
                 ) : null}

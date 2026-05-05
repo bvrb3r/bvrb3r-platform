@@ -46,6 +46,7 @@ import {
   createStripeDashboardLoginLink,
   createStripeOnboardingLink,
   getStripeConnectEnvironment,
+  getStripeConnectOnboardingPath,
   createStripeTransfer,
   createStripeTransferReversal,
   retrieveStripeConnectedAccount,
@@ -3177,7 +3178,11 @@ export async function listFintechManagementPayload(user: UserAccount): Promise<F
 }
 
 function getStripeReturnPath(subject: StripeConnectSubjectResolution) {
-  return subject.subjectType === "barber" ? "/earnings" : "/reports";
+  return getStripeConnectOnboardingPath(subject.subjectType, "return");
+}
+
+function getStripeRefreshPath(subject: StripeConnectSubjectResolution) {
+  return getStripeConnectOnboardingPath(subject.subjectType, "refresh");
 }
 
 export async function ensureStripeConnectSubjectAccount(
@@ -3216,23 +3221,23 @@ export async function createStripeConnectOnboardingSession(
     throw new FintechServiceError("Stripe onboarding could not be started for this account.", 500);
   }
 
-    try {
-      const link = await createStripeOnboardingLink({
+  try {
+    const link = await createStripeOnboardingLink({
       accountId: providerAccountId,
-      refreshUrl: buildStripeReturnUrl(getStripeReturnPath(subject)),
+      refreshUrl: buildStripeReturnUrl(getStripeRefreshPath(subject)),
       returnUrl: buildStripeReturnUrl(getStripeReturnPath(subject))
     });
     const stripeAccount = await retrieveStripeConnectedAccount(providerAccountId);
-      const syncedState = await syncConnectedAccountFromStripe(supabase, provisionedState.row, stripeAccount, {
-        markOnboardingStarted: true
-      });
-      const account = mapConnectedAccountView(syncedState);
-      await syncVerificationLaneFromConnectedAccount(syncedState.row, account, user.id);
+    const syncedState = await syncConnectedAccountFromStripe(supabase, provisionedState.row, stripeAccount, {
+      markOnboardingStarted: true
+    });
+    const account = mapConnectedAccountView(syncedState);
+    await syncVerificationLaneFromConnectedAccount(syncedState.row, account, user.id);
 
-      return {
-        account,
-        url: link.url
-      };
+    return {
+      account,
+      url: link.url
+    };
   } catch (error) {
     throw toFintechServiceError(error, "Unable to create the Stripe onboarding link.");
   }
@@ -3287,14 +3292,14 @@ export async function refreshStripeConnectSubjectAccount(
     throw new FintechServiceError("Stripe onboarding has not started for this account yet.", 409);
   }
 
-    try {
-      const stripeAccount = await retrieveStripeConnectedAccount(account.provider_account_id);
-      const state = await syncConnectedAccountFromStripe(supabase, account, stripeAccount);
-      const accountView = mapConnectedAccountView(state);
-      await syncVerificationLaneFromConnectedAccount(state.row, accountView, user.id);
-      return {
-        account: accountView
-      };
+  try {
+    const stripeAccount = await retrieveStripeConnectedAccount(account.provider_account_id);
+    const state = await syncConnectedAccountFromStripe(supabase, account, stripeAccount);
+    const accountView = mapConnectedAccountView(state);
+    await syncVerificationLaneFromConnectedAccount(state.row, accountView, user.id);
+    return {
+      account: accountView
+    };
   } catch (error) {
     throw toFintechServiceError(error, "Unable to refresh the Stripe readiness state.");
   }
