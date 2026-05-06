@@ -526,6 +526,10 @@ export function ClientSearchScreen({
         className="bg-[rgba(10,10,10,0.95)] backdrop-blur-xl"
       />
 
+      {homePayload && !homePayload.hasResolvedLocation ? (
+        <FeedbackBanner tone="info" message="Set your city to find barbers near you. Search still shows live BVRB3R barbers across the platform." />
+      ) : null}
+
       <ClientSectionBlock
         eyebrow="Filters"
         title="Filters"

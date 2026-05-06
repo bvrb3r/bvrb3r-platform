@@ -56,6 +56,7 @@ type ShopRecord = {
   kind: string;
   latitude: number | null;
   longitude: number | null;
+  app_approval_status?: string | null;
 };
 
 type LocationRecord = {
@@ -428,7 +429,8 @@ async function readShops(supabase: SupabaseClient | null) {
       address: row.address ?? `${row.name}, ${row.neighborhood}, ${row.city}, ${row.state}`,
       kind: row.kind,
       latitude: row.latitude ?? undefined,
-      longitude: row.longitude ?? undefined
+      longitude: row.longitude ?? undefined,
+      appApprovalStatus: row.app_approval_status ?? undefined
     }));
   }
 
@@ -1073,15 +1075,31 @@ async function readTrustStateSafe() {
   }
 }
 
-function filterBookableMarketplaceShops<T extends { id: string; name?: string }>(
+const TRUST_BLOCKING_STATUSES = new Set(["suspended", "expired", "rejected", "needs_update"]);
+
+function isTrustDecisionBlocked(status?: string | null) {
+  return TRUST_BLOCKING_STATUSES.has(status ?? "");
+}
+
+function isShopRecordApprovedForMarketplace(shop: { appApprovalStatus?: string | null; app_approval_status?: string | null }) {
+  const status = shop.appApprovalStatus ?? shop.app_approval_status;
+  return !status || status === "approved";
+}
+
+function isShopTrustBlockedForMarketplace(trustState: TrustState | undefined, shopId: string) {
+  if (!trustState) {
+    return false;
+  }
+
+  const decision = computeShopVerificationDecision(trustState, shopId);
+  return isTrustDecisionBlocked(decision.canonicalOverallStatus);
+}
+
+function filterBookableMarketplaceShops<T extends { id: string; name?: string; appApprovalStatus?: string | null; app_approval_status?: string | null }>(
   shops: T[],
   trustState: TrustState | undefined,
   visibleResults: Array<{ locationId?: string; shopName?: string }>
 ) {
-  if (!trustState) {
-    return [];
-  }
-
   const activeLocationIds = new Set(visibleResults.map((result) => result.locationId).filter(Boolean));
   const activeShopNames = new Set(
     visibleResults.map((result) => result.shopName?.trim().toLowerCase()).filter(Boolean)
@@ -1089,7 +1107,8 @@ function filterBookableMarketplaceShops<T extends { id: string; name?: string }>
 
   return shops.filter((shop) =>
     (activeLocationIds.has(shop.id) || activeShopNames.has(shop.name?.trim().toLowerCase() ?? ""))
-    && getVerificationGateDecision(computeShopVerificationDecision(trustState, shop.id), "shop_activation").allowed
+    && isShopRecordApprovedForMarketplace(shop)
+    && !isShopTrustBlockedForMarketplace(trustState, shop.id)
   );
 }
 

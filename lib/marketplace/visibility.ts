@@ -1,7 +1,6 @@
 import {
   buildPublicTrustSignal,
-  computeShopVerificationDecision,
-  getVerificationGateDecision
+  computeShopVerificationDecision
 } from "@/lib/trust/engine";
 import type { MarketplaceState } from "@/lib/marketplace/engine";
 import type { Barber, BarberProfile, Location, Service, Shop } from "@/types/domain";
@@ -102,25 +101,25 @@ export function isMarketplaceBarberTrustApproved(
   shopId?: string
 ) {
   if (!trustState) {
-    return false;
+    return true;
   }
 
   const trustSignal = buildPublicTrustSignal(trustState, barberId, shopId);
-  const discoveryGate = getVerificationGateDecision(trustSignal.verificationDecision, "discovery");
-  const bookingGate = getVerificationGateDecision(trustSignal.verificationDecision, "booking");
-  return discoveryGate.allowed && bookingGate.allowed;
+  return !trustSignal.verificationDecision
+    || !["suspended", "expired", "rejected", "needs_update"].includes(trustSignal.verificationDecision.canonicalOverallStatus);
 }
 
 export function isMarketplaceShopTrustApproved(trustState: TrustState | undefined, shopId?: string) {
-  if (!trustState) {
-    return false;
-  }
-
   if (!shopId) {
     return false;
   }
 
-  return getVerificationGateDecision(computeShopVerificationDecision(trustState, shopId), "shop_activation").allowed;
+  if (!trustState) {
+    return true;
+  }
+
+  const decision = computeShopVerificationDecision(trustState, shopId);
+  return !["suspended", "expired", "rejected", "needs_update"].includes(decision.canonicalOverallStatus);
 }
 
 function getBarber(state: MarketplaceState, barberId?: string) {
@@ -233,7 +232,6 @@ export function isBarberMarketplaceVisible(
     || !hasRealMarketplaceText(barber.userId)
     || !hasRealMarketplaceText(barber.name)
     || !hasRealMarketplaceText(profile.id)
-    || !hasRealMarketplaceText(profile.username)
   ) {
     return false;
   }

@@ -9,7 +9,7 @@ vi.mock("@/lib/marketplace/visibility", async () => {
   };
 });
 
-import { buildCanonicalAvailabilityPayload, buildCanonicalDiscoveryResults } from "@/lib/booking/intelligence";
+import { buildCanonicalAvailabilityPayload, buildCanonicalBarberProfile, buildCanonicalDiscoveryResults } from "@/lib/booking/intelligence";
 
 type QueryResult<T> = Promise<{ data: T[]; error: null }>;
 
@@ -453,5 +453,114 @@ describe("canonical availability intelligence", () => {
     expect(results).toHaveLength(1);
     expect(results[0].mostBookedService).toBe("Marketplace Precision Cut");
     expect(results[0].mostBookedServiceId).toBe("market-srv-cut");
+  });
+
+  it("uses a stable fallback public slug when an activated barber has not set a username", async () => {
+    const targetDay = new Date();
+    targetDay.setDate(targetDay.getDate() + 1);
+    targetDay.setHours(10, 0, 0, 0);
+    const targetEnd = new Date(targetDay);
+    targetEnd.setHours(14, 0, 0, 0);
+    const tables = {
+      barbers: [{
+        id: "barber-uuid",
+        reference_code: "live-123",
+        profile_id: "profile-uuid",
+        compensation_model: "commission",
+        app_approval_status: "approved",
+        shop_approval_status: "approved",
+        commission_rate: 0.5,
+        booth_rent_amount: null,
+        booth_rent_frequency: null,
+        bio: "Independent cuts.",
+        booking_slug: null
+      }],
+      barber_profiles: [{
+        barber_reference: "live-123",
+        username: null,
+        display_name: "No Username Barber",
+        bio: "Independent cuts.",
+        years_experience: 4,
+        shop_reference: "independent-live-123",
+        profile_photo_path: null,
+        profile_photo_url: null,
+        specialties: ["Fade"],
+        badges: [],
+        service_area_label: "Charlotte",
+        next_available_at: null,
+        visibility_state: "public"
+      }],
+      profiles: [{
+        id: "profile-uuid",
+        full_name: "No Username Barber",
+        email: "nobarber@example.test",
+        phone: "7045550101",
+        primary_onboarding_role: "barber"
+      }],
+      services: [{
+        id: "service-uuid",
+        reference_code: "srv-cut",
+        location_id: "location-uuid",
+        category: "Haircut",
+        name: "Independent Cut",
+        description: "Cut and finish",
+        duration_min: 45,
+        buffer_min: 0,
+        price: 55,
+        currency: "usd",
+        deposit_amount: 0,
+        full_prepay_required: false,
+        active: true,
+        is_bookable: true,
+        display_order: 1,
+        created_at: targetDay.toISOString(),
+        updated_at: targetDay.toISOString(),
+        service_owner_type: "barber",
+        barber_reference: "live-123",
+        shop_reference: "independent-live-123",
+        booking_count: 0,
+        popularity_rank: 1
+      }],
+      locations: [{
+        id: "location-uuid",
+        reference_code: "independent-live-123",
+        name: "Private Studio",
+        neighborhood: "South End",
+        city: "Charlotte",
+        state: "NC",
+        phone: "7045550101",
+        address: "10 Studio Way",
+        latitude: 35.227,
+        longitude: -80.843
+      }],
+      availability_rules: [{
+        barber_id: "barber-uuid",
+        location_id: "location-uuid",
+        weekday: targetDay.getDay(),
+        start_time: formatTime(targetDay),
+        end_time: formatTime(targetEnd)
+      }],
+      blocked_times: [],
+      appointments: [],
+      reviews: [],
+      barber_portfolios: [],
+      marketplace_visibility: [{
+        barber_reference: "live-123",
+        visibility_state: "public",
+        accepts_instant_bookings: true,
+        featured_rank: null
+      }]
+    };
+    const supabase = createSupabaseMock(tables);
+
+    const results = await buildCanonicalDiscoveryResults(supabase as never, {
+      locationId: "independent-live-123"
+    });
+    const publicProfile = await buildCanonicalBarberProfile(supabase as never, "barber-live-123");
+
+    expect(results).toHaveLength(1);
+    expect(results[0].username).toBe("barber-live-123");
+    expect(results[0].bookingHref).toContain("barber=barber-live-123");
+    expect(publicProfile?.profile.username).toBe("barber-live-123");
   });
 });

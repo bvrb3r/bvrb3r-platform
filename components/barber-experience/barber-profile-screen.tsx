@@ -135,6 +135,8 @@ export function BarberProfileScreen({
   const mediaMutation = useMutateProfileMediaMutation();
   const trustQuery = useBarberTrustSummary(true);
   const [localFeedback, setLocalFeedback] = useState<{ tone: "info" | "error"; message: string } | null>(null);
+  const [usernameDraft, setUsernameDraft] = useState("");
+  const [isSavingUsername, setIsSavingUsername] = useState(false);
   const selectedSection = (initialSection && initialSection in sectionIdMap ? initialSection : null) as ProfileSectionKey | null;
   const barberMedia = mediaQuery.data?.barberProfile ?? null;
   const profile = profileQuery.data ?? null;
@@ -235,6 +237,12 @@ export function BarberProfileScreen({
     target.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [selectedSection, barberMedia, profile]);
 
+  useEffect(() => {
+    if (profile?.profile.username && !isSavingUsername) {
+      setUsernameDraft(profile.profile.username);
+    }
+  }, [isSavingUsername, profile?.profile.username]);
+
   async function uploadWithPath(path: string, file: File) {
     const extension = file.name.split(".").pop()?.toLowerCase() || "jpg";
     return uploadMediaAsset(`${path}/${Date.now()}.${extension}`, file);
@@ -288,6 +296,29 @@ export function BarberProfileScreen({
 
     await navigator.clipboard?.writeText(shareUrl);
     setLocalFeedback({ tone: "info", message: "Public profile link copied." });
+  }
+
+  async function handleUsernameSave() {
+    const username = usernameDraft.trim().toLowerCase();
+    setLocalFeedback(null);
+    setIsSavingUsername(true);
+    try {
+      const response = await fetch("/api/barber/public-username", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username })
+      });
+      const body = (await response.json().catch(() => ({}))) as { error?: string };
+      if (!response.ok) {
+        throw new Error(body.error ?? "Unable to save public username.");
+      }
+      await profileQuery.refetch();
+      setLocalFeedback({ tone: "info", message: "Public username saved. Client profile links refresh right away." });
+    } catch (error) {
+      setLocalFeedback({ tone: "error", message: readableError(error, "Unable to save public username.") });
+    } finally {
+      setIsSavingUsername(false);
+    }
   }
 
   return (
@@ -409,6 +440,32 @@ export function BarberProfileScreen({
                   {profileLinkLabel}
                 </a>
               ) : null}
+
+              <div className="mt-4 max-w-lg rounded-[22px] border border-white/10 bg-black/24 p-3">
+                <label className="text-xs font-black uppercase tracking-[0.16em] text-white/48" htmlFor="barber-public-username">
+                  Public username
+                </label>
+                <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                  <input
+                    id="barber-public-username"
+                    value={usernameDraft}
+                    onChange={(event) => setUsernameDraft(event.target.value.toLowerCase())}
+                    placeholder="your-name"
+                    className="min-h-11 flex-1 rounded-2xl border border-white/10 bg-black/34 px-4 text-sm font-bold text-white outline-none transition placeholder:text-white/34 focus:border-[#a3ff12]/42"
+                  />
+                  <button
+                    type="button"
+                    disabled={isSavingUsername || !usernameDraft.trim()}
+                    className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-[#a3ff12]/28 bg-[#a3ff12]/10 px-4 text-sm font-black text-[#a3ff12] transition hover:border-[#a3ff12]/46 hover:bg-[#a3ff12]/16 disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={() => void handleUsernameSave()}
+                  >
+                    {isSavingUsername ? "Saving..." : "Save"}
+                  </button>
+                </div>
+                <p className="mt-2 text-xs leading-5 text-white/48">
+                  Lowercase letters, numbers, hyphens, or underscores. If you leave it alone, BVRB3R keeps a stable fallback link.
+                </p>
+              </div>
 
               <div className="mt-6 grid max-w-xl grid-cols-3 gap-4">
                 {socialStats.map((stat) => (

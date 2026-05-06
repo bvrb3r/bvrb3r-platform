@@ -504,9 +504,21 @@ export function ClientProfileScreen({
                   : "Save a preferred shop so Get a Cut Now can keep matching close to your usual area."}
               </p>
               <div className="mt-4">
-                <ClientActionLink href={`${CLIENT_PRIMARY_TAB_HREFS.search}?type=shops` as Route} size="md" variant="secondary">
-                  {primaryShop ? "Find Barber Shops" : "Add Location"}
-                </ClientActionLink>
+                <button
+                  type="button"
+                  className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[13px] font-semibold text-white/86 transition hover:border-[#d7ffab]/18 hover:text-[#d7ffab]"
+                  onClick={() => {
+                    const [city = "", state = ""] = primaryShop
+                      ? [primaryShop.city, primaryShop.state]
+                      : locationDraft.city || locationDraft.state
+                        ? [locationDraft.city, locationDraft.state]
+                        : ["", ""];
+                    setLocationDraft({ city, state });
+                    setLocationModalOpen(true);
+                  }}
+                >
+                  Edit Location
+                </button>
               </div>
             </div>
           </div>

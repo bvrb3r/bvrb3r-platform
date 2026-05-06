@@ -6,6 +6,7 @@ vi.mock("next/cache", () => ({
 }));
 
 import { publishBarberMarketplaceReadiness } from "@/lib/marketplace/publishing";
+import { revalidatePath } from "next/cache";
 
 type Row = Record<string, unknown>;
 
@@ -158,5 +159,19 @@ describe("marketplace publishing", () => {
       barber_reference: "barber-live",
       accepts_instant_bookings: false
     }));
+  });
+
+  it("revalidates a fallback public barber route when username is missing", async () => {
+    const supabase = createSupabaseMock(createReadyTables({
+      barber_profiles: [{
+        barber_reference: "barber-live",
+        username: null,
+        visibility_state: "public"
+      }]
+    }));
+
+    await publishBarberMarketplaceReadiness(supabase as never, "barber-live");
+
+    expect(revalidatePath).toHaveBeenCalledWith("/barber/barber-live");
   });
 });

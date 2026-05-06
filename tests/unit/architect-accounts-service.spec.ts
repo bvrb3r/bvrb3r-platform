@@ -510,7 +510,7 @@ describe("architect account service", () => {
       barberProfiles: [
         {
           barber_reference: "barber-approved-ref",
-          username: "approvedbarber",
+          username: null,
           display_name: "Approved Barber",
           shop_reference: "shop-approved",
           visibility_state: "public",
@@ -574,8 +574,10 @@ describe("architect account service", () => {
     const payload = await getArchitectAccountDetailPayload(founder, "profile-approved-barber");
 
     expect(payload.account?.approvalStatus).toBe("approved");
+    expect(payload.account?.username).toBe("barber-approved-ref");
     expect(payload.account?.marketplaceBlockers).not.toContain("Barber approval pending");
     expect(payload.account?.marketplaceBlockers).not.toContain("Verification pending");
+    expect(payload.account?.marketplaceBlockers).not.toContain("Missing public username");
     expect(payload.account?.marketplaceBlockers).toContain("Payout setup incomplete");
   });
 

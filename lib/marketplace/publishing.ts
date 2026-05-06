@@ -52,6 +52,28 @@ function isPublicVisibilityState(value?: string | null) {
   return value === "public" || value === "featured";
 }
 
+function slugify(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "barber";
+}
+
+function fallbackBarberSlug(barberReference: string) {
+  const shortReference = barberReference
+    .replace(/^barber[-_]?/i, "")
+    .replace(/[^a-z0-9_-]+/gi, "")
+    .slice(0, 18)
+    .toLowerCase();
+  return `barber-${shortReference || "profile"}`;
+}
+
+function publicBarberSlug(username: string | null | undefined, barberReference: string) {
+  if (!username?.trim()) {
+    return fallbackBarberSlug(barberReference);
+  }
+
+  const normalized = slugify(username ?? "");
+  return normalized !== "barber" ? normalized : fallbackBarberSlug(barberReference);
+}
+
 function requirementList(value: unknown) {
   return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0) : [];
 }
@@ -282,7 +304,7 @@ export async function publishBarberMarketplaceReadiness(supabase: SupabaseClient
     throw visibilityUpdate.error;
   }
 
-  revalidateMarketplaceSurfaces({ barberUsername: profile?.username, shopId: undefined });
+  revalidateMarketplaceSurfaces({ barberUsername: publicBarberSlug(profile?.username, barberReference), shopId: undefined });
   return { published, blockers };
 }
 

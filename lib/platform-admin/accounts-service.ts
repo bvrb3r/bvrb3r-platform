@@ -651,7 +651,6 @@ function getMarketplaceBlockers(input: {
     if (input.serviceCount <= 0) blockers.push("No active real services");
     if (input.availabilityCount <= 0) blockers.push("No real availability");
     if (input.linkedShopCount <= 0) blockers.push("No service location or shop connection");
-    if (!input.barberProfile?.username) blockers.push("Missing public username");
     if (input.barberProfile?.visibility_state === "hidden" || input.visibility?.visibility_state === "hidden") blockers.push("Marketplace visibility hidden");
     if (input.visibility && input.visibility.accepts_instant_bookings === false) blockers.push("Not accepting instant bookings");
     if (input.barberStatus?.accepting_bookings === false) blockers.push("Not accepting bookings");
@@ -680,6 +679,15 @@ function normalizeSearchToken(value?: string | null) {
 
 function digitsOnly(value?: string | null) {
   return `${value ?? ""}`.replace(/\D+/g, "");
+}
+
+function fallbackBarberSlug(barberReference: string) {
+  const shortReference = barberReference
+    .replace(/^barber[-_]?/i, "")
+    .replace(/[^a-z0-9_-]+/gi, "")
+    .slice(0, 18)
+    .toLowerCase();
+  return `barber-${shortReference || "profile"}`;
 }
 
 function buildSearchText(values: Array<string | number | boolean | null | undefined>) {
@@ -804,7 +812,7 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
       shopId: shop?.id,
       shopName: shop?.name ?? undefined,
       clientId: client?.reference_code ?? client?.id,
-      username: barberProfile?.username ?? undefined,
+      username: barberProfile?.username ?? (reference ? fallbackBarberSlug(reference) : undefined),
       createdAt: profile.created_at,
       updatedAt: profile.last_onboarded_at ?? profile.created_at,
       serviceCount,
