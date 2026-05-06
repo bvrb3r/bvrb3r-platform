@@ -32,10 +32,11 @@ export async function POST(request: Request) {
     return NextResponse.json(result);
   } catch (error) {
     console.error("[client-location] save failed", {
+      reference: "client_location_save_failed",
       clientId: context.clientId,
       message: error instanceof Error ? error.message : String(error)
     });
     const message = error instanceof Error && error.message ? error.message : "Unable to save client location.";
-    return NextResponse.json({ error: message }, { status: 400 });
+    return NextResponse.json({ error: message, code: "client_location_save_failed" }, { status: 400 });
   }
 }

@@ -2,6 +2,7 @@
 
 import type { Route } from "next";
 import Link from "next/link";
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import {
   BellRing,
@@ -141,6 +142,7 @@ export function ClientProfileScreen({
   emailVerified?: boolean;
   phoneVerified?: boolean;
 }) {
+  const queryClient = useQueryClient();
   const mediaQuery = useProfileMediaWorkspaceQuery(isSignedInClient);
   const mediaMutation = useMutateProfileMediaMutation();
   const membershipQuery = useClientMembershipQuery(isSignedInClient);
@@ -376,6 +378,11 @@ export function ClientProfileScreen({
           state: body.location.state
         });
       }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["client-home"] }),
+        queryClient.invalidateQueries({ queryKey: ["marketplace"] }),
+        queryClient.invalidateQueries({ queryKey: ["barber-search"] })
+      ]);
       setLocationModalOpen(false);
       setLocationFeedback({ tone: "success", message: "Location saved for faster booking." });
     } catch (error) {

@@ -74,5 +74,6 @@ describe("client location route", () => {
 
     expect(response.status).toBe(400);
     expect(body.error).toBe("client_preferences preferred_city write failed");
+    expect(body.code).toBe("client_location_save_failed");
   });
 });

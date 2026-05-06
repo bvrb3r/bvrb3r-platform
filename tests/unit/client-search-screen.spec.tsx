@@ -281,7 +281,7 @@ describe("client search screen", () => {
       }),
       "client-jordan"
     );
-    expect(screen.getByText("Set your city to find barbers near you. Search still shows live BVRB3R barbers across the platform.")).toBeInTheDocument();
+    expect(screen.getByText("Set your city to prioritize nearby barbers. Search still shows live BVRB3R barbers across the platform.")).toBeInTheDocument();
     expect(screen.getByTestId("client-search-debug")).toHaveTextContent("Barber count");
   });
 
@@ -289,13 +289,60 @@ describe("client search screen", () => {
     useMarketplaceDiscoveryMock.mockReturnValue({
       data: undefined,
       isLoading: false,
-      error: new Error("Marketplace discovery failed. Reference client_discovery_failed."),
+      error: new Error("Marketplace discovery failed. Reference client_search_load_failed."),
       refetch: vi.fn()
     });
 
     render(<ClientSearchScreen clientId="client-jordan" routeBase="/dashboard/client/search" />);
 
-    expect(screen.getAllByText("Marketplace discovery failed. Reference client_discovery_failed.").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Marketplace discovery failed. Reference client_search_load_failed.").length).toBeGreaterThan(0);
     expect(screen.queryByText("Something went wrong while processing this action. Please try again.")).not.toBeInTheDocument();
+  });
+
+  it("keeps search usable when client home has a stale marketplace failure", () => {
+    useClientHomeQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error("Client home could not load marketplace data. Reference client_home_load_failed."),
+      refetch: vi.fn()
+    });
+    useMarketplaceDiscoveryMock.mockReturnValue({
+      data: [
+        {
+          barberId: "barber-phillip",
+          username: "independent-barber-43b3cda2",
+          barberName: "Phillip McGee",
+          rating: 5,
+          reviewCount: 1,
+          priceRange: [55, 55],
+          priceRangeLabel: "$55",
+          nextAvailableAt: "2026-05-06T16:00:00.000Z",
+          availabilityLabel: "Today 4:00 PM",
+          distanceMiles: 0,
+          locationId: "independent-barber-43b3cda2",
+          locationLabel: "Phils chair",
+          cityLabel: "Tampa",
+          shopName: undefined,
+          specialties: ["Haircut"],
+          mostBookedService: "Haircut",
+          mostBookedServiceId: "srv-haircut",
+          retentionScore: 0,
+          activityScore: 0,
+          badges: ["verified_identity"],
+          galleryPreviewUrls: []
+        }
+      ],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn()
+    });
+
+    render(<ClientSearchScreen clientId="client-jordan" initialQuery="Phillip" routeBase="/dashboard/client/search" />);
+
+    expect(screen.getByText("Phillip McGee")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View Barber" })).toHaveAttribute("href", "/barber/independent-barber-43b3cda2");
+    expect(screen.queryByText(/client_home_load_failed/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("Something went wrong while processing this action. Please try again.")).not.toBeInTheDocument();
+    expect(screen.getByTestId("client-search-debug")).toHaveTextContent("Phillip McGee (barber-phillip)");
   });
 });

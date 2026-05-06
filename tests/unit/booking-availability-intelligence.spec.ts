@@ -495,7 +495,8 @@ describe("canonical availability intelligence", () => {
         full_name: "No Username Barber",
         email: "nobarber@example.test",
         phone: "7045550101",
-        primary_onboarding_role: "barber"
+        primary_onboarding_role: null,
+        role: "booth_rent_barber"
       }],
       services: [{
         id: "service-uuid",
@@ -544,11 +545,21 @@ describe("canonical availability intelligence", () => {
       appointments: [],
       reviews: [],
       barber_portfolios: [],
-      marketplace_visibility: [{
+      barber_status: [{
         barber_reference: "live-123",
-        visibility_state: "public",
-        accepts_instant_bookings: true,
-        featured_rank: null
+        status: "active",
+        live_status: "live",
+        accepting_bookings: true
+      }],
+      connected_accounts: [{
+        subject_type: "barber",
+        barber_id: "barber-uuid",
+        payout_readiness_status: "ready",
+        charges_enabled: true,
+        payouts_enabled: true,
+        requirements_currently_due: [],
+        requirements_past_due: [],
+        disabled_reason: null
       }]
     };
     const supabase = createSupabaseMock(tables);

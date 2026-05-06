@@ -105,8 +105,13 @@ export function isMarketplaceBarberTrustApproved(
   }
 
   const trustSignal = buildPublicTrustSignal(trustState, barberId, shopId);
-  return !trustSignal.verificationDecision
-    || !["suspended", "expired", "rejected", "needs_update"].includes(trustSignal.verificationDecision.canonicalOverallStatus);
+  const decision = trustSignal.verificationDecision;
+  return Boolean(
+    decision
+    && decision.canonicalOverallStatus === "approved"
+    && decision.publicVerified
+    && decision.canAcceptBookings
+  );
 }
 
 export function isMarketplaceShopTrustApproved(trustState: TrustState | undefined, shopId?: string) {
@@ -119,7 +124,9 @@ export function isMarketplaceShopTrustApproved(trustState: TrustState | undefine
   }
 
   const decision = computeShopVerificationDecision(trustState, shopId);
-  return !["suspended", "expired", "rejected", "needs_update"].includes(decision.canonicalOverallStatus);
+  return decision.canonicalOverallStatus === "approved"
+    && decision.publicVerified
+    && decision.canCreateShopListing;
 }
 
 function getBarber(state: MarketplaceState, barberId?: string) {

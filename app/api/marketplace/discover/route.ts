@@ -61,12 +61,13 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("[marketplace/discover] discovery failed", {
+      reference: "client_search_load_failed",
       message,
       url: request.nextUrl.pathname,
       search: request.nextUrl.search
     });
     return NextResponse.json(
-      { error: "Marketplace discovery failed. Reference client_discovery_failed.", code: "client_discovery_failed" },
+      { error: "Marketplace discovery failed. Reference client_search_load_failed.", code: "client_search_load_failed" },
       { status: 500 }
     );
   }

@@ -84,7 +84,7 @@ describe("marketplace discover route", () => {
     const body = await response.json();
 
     expect(response.status).toBe(500);
-    expect(body.error).toBe("Marketplace discovery failed. Reference client_discovery_failed.");
-    expect(body.code).toBe("client_discovery_failed");
+    expect(body.error).toBe("Marketplace discovery failed. Reference client_search_load_failed.");
+    expect(body.code).toBe("client_search_load_failed");
   });
 });

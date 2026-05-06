@@ -8,11 +8,13 @@ export async function GET() {
     const payload = await getClientHomePayload(context.clientId || undefined);
     return NextResponse.json(payload);
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     console.error("[client-home] load failed", {
-      message: error instanceof Error ? error.message : String(error)
+      reference: "client_home_payload_load_failed",
+      message
     });
     return NextResponse.json(
-      { error: "Client home could not load marketplace data. Reference client_home_load_failed." },
+      { error: "Client home could not load profile data. Reference client_home_payload_load_failed.", code: "client_home_payload_load_failed" },
       { status: 500 }
     );
   }

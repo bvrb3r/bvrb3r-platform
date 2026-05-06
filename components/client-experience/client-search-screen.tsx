@@ -531,7 +531,7 @@ export function ClientSearchScreen({
       />
 
       {homePayload && !homePayload.hasResolvedLocation ? (
-        <FeedbackBanner tone="info" message="Set your city to find barbers near you. Search still shows live BVRB3R barbers across the platform." />
+        <FeedbackBanner tone="info" message="Set your city to prioritize nearby barbers. Search still shows live BVRB3R barbers across the platform." />
       ) : null}
 
       <ClientSectionBlock
@@ -607,6 +607,7 @@ export function ClientSearchScreen({
             <div><dt className="text-white/40">Feed count</dt><dd>{marketplaceFeed.length}</dd></div>
             <div><dt className="text-white/40">Last error</dt><dd>{discoveryQuery.error instanceof Error ? discoveryQuery.error.message : "none"}</dd></div>
             <div><dt className="text-white/40">Client location</dt><dd>{clientLocationLabel || "not set"}</dd></div>
+            <div className="sm:col-span-2"><dt className="text-white/40">First barber results</dt><dd>{barberResults.slice(0, 5).map((result) => `${result.barberName} (${result.barberId})`).join(", ") || "none"}</dd></div>
             <div className="sm:col-span-2"><dt className="text-white/40">Filters</dt><dd>{JSON.stringify({ query: trimmedQuery, serviceFilter, selectedLocationId, minRating, maxPrice, availability, verifiedOnly })}</dd></div>
           </dl>
         </details>

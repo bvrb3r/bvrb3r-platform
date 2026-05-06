@@ -10,7 +10,8 @@ const {
   usePointsBalanceQueryMock,
   usePointsHistoryQueryMock,
   useClientReferralSummaryMock,
-  useCreateReferralInviteMutationMock
+  useCreateReferralInviteMutationMock,
+  invalidateQueriesMock
 } = vi.hoisted(() => ({
   useProfileMediaWorkspaceQueryMock: vi.fn(),
   useMutateProfileMediaMutationMock: vi.fn(),
@@ -18,8 +19,19 @@ const {
   usePointsBalanceQueryMock: vi.fn(),
   usePointsHistoryQueryMock: vi.fn(),
   useClientReferralSummaryMock: vi.fn(),
-  useCreateReferralInviteMutationMock: vi.fn()
+  useCreateReferralInviteMutationMock: vi.fn(),
+  invalidateQueriesMock: vi.fn()
 }));
+
+vi.mock("@tanstack/react-query", async () => {
+  const actual = await vi.importActual<typeof import("@tanstack/react-query")>("@tanstack/react-query");
+  return {
+    ...actual,
+    useQueryClient: () => ({
+      invalidateQueries: invalidateQueriesMock
+    })
+  };
+});
 
 vi.mock("@/lib/booking/client", () => ({
   useClientMembershipQuery: useClientMembershipQueryMock
@@ -89,6 +101,7 @@ describe("client profile screen", () => {
     usePointsHistoryQueryMock.mockReset();
     useClientReferralSummaryMock.mockReset();
     useCreateReferralInviteMutationMock.mockReset();
+    invalidateQueriesMock.mockReset();
     global.fetch = vi.fn(async () => ({
       ok: true,
       json: async () => ({ state: { status: "completed" } })
@@ -438,6 +451,9 @@ describe("client profile screen", () => {
       }));
     });
     expect(screen.getAllByText("Charlotte, NC").length).toBeGreaterThan(0);
+    expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ["client-home"] });
+    expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ["marketplace"] });
+    expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ["barber-search"] });
   });
 
   it("displays saved client booking city instead of a pending placeholder", () => {
