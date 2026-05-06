@@ -126,7 +126,7 @@ function verificationActionClass(action: VerificationAction): PlatformAdminActio
 }
 
 function getMarketplaceStatus(account: ArchitectAccountDetailAccount) {
-  if (account.marketplaceBlockers.length) {
+  if (!account.marketplaceLive) {
     return {
       label: "Not live",
       tone: "pending" as const
@@ -272,7 +272,9 @@ export function ArchitectAccountDetailWorkspace({
         { label: "Visibility", complete: account.barber.visibilityState === "public" || account.barber.visibilityState === "featured", detail: `Visibility: ${formatLabel(account.barber.visibilityState)}` },
         { label: "Booking active", complete: account.barber.acceptingBookings === true || account.barber.acceptsInstantBookings === true, detail: `Status: ${formatLabel(account.barber.status)}` },
         { label: "Payout ready", complete: selectedVerificationProfile?.canReceivePayouts === true, detail: `Verification payout lane: ${selectedVerificationProfile?.canReceivePayouts ? "ready" : "not ready"}` },
-        { label: "Marketplace", complete: account.marketplaceBlockers.length === 0, detail: account.marketplaceBlockers.length ? account.marketplaceBlockers.join(" | ") : "Marketplace visible from account data" }
+        { label: "Marketplace", complete: account.marketplaceLive, detail: account.marketplaceBlockers.length ? account.marketplaceBlockers.join(" | ") : "Marketplace visible from account data" },
+        { label: "Client search", complete: account.searchIncluded, detail: account.searchIncluded ? "Included in client search" : "Not included in client search" },
+        { label: "Feed content", complete: account.feedEligible, detail: account.feedAssetCount > 0 ? `${account.feedAssetCount} public feed asset${account.feedAssetCount === 1 ? "" : "s"}` : "No public feed content yet" }
       ]
     : account.shopOwner?.shopExists
       ? [
@@ -286,7 +288,9 @@ export function ArchitectAccountDetailWorkspace({
           { label: "Team", complete: account.shopOwner.activeLinkedBarbers > 0, detail: `${account.shopOwner.activeLinkedBarbers} linked barber${account.shopOwner.activeLinkedBarbers === 1 ? "" : "s"}` },
           { label: "Booking active", complete: account.shopOwner.shopStatus === "active", detail: `Shop status: ${formatLabel(account.shopOwner.shopStatus)}` },
           { label: "Payout ready", complete: selectedVerificationProfile?.canReceivePayouts === true, detail: `Verification payout lane: ${selectedVerificationProfile?.canReceivePayouts ? "ready" : "not ready"}` },
-          { label: "Marketplace", complete: account.marketplaceBlockers.length === 0, detail: account.marketplaceBlockers.length ? account.marketplaceBlockers.join(" | ") : "Marketplace visible from account data" }
+          { label: "Marketplace", complete: account.marketplaceLive, detail: account.marketplaceBlockers.length ? account.marketplaceBlockers.join(" | ") : "Marketplace visible from account data" },
+          { label: "Client search", complete: account.searchIncluded, detail: account.searchIncluded ? "Included in client search" : "Not included in client search" },
+          { label: "Feed content", complete: account.feedEligible, detail: account.feedAssetCount > 0 ? `${account.feedAssetCount} public feed asset${account.feedAssetCount === 1 ? "" : "s"}` : "No public feed content yet" }
         ]
       : [];
 
@@ -308,6 +312,8 @@ export function ArchitectAccountDetailWorkspace({
                 <span className={cn("status-pill", badgeClasses(account.accountStatus))}>{formatLabel(account.accountStatus)}</span>
                 <span className={cn("status-pill", badgeClasses(account.approvalStatus))}>Approval {formatLabel(account.approvalStatus)}</span>
                 <span className={cn("status-pill", marketplaceStatus.tone === "approved" ? badgeClasses("approved") : badgeClasses("pending"))}>Marketplace {marketplaceStatus.label}</span>
+                <span className={cn("status-pill", account.searchIncluded ? badgeClasses("approved") : badgeClasses("pending"))}>Search {account.searchIncluded ? "Included" : "Excluded"}</span>
+                <span className={cn("status-pill", account.feedEligible ? badgeClasses("approved") : badgeClasses("pending"))}>Feed {account.feedEligible ? "Eligible" : "No content"}</span>
                 <span className={cn("status-pill", badgeClasses(account.verificationStatus))}>Verification {formatLabel(account.verificationStatus)}</span>
               </div>
             </div>

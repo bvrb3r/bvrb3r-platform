@@ -136,11 +136,24 @@ type CanonicalBarberProfileRow = {
   bio: string;
   years_experience: number;
   shop_reference: string | null;
+  profile_photo_path?: string | null;
+  profile_photo_url?: string | null;
   specialties: string[] | null;
   badges: string[] | null;
   service_area_label: string | null;
   next_available_at: string | null;
   visibility_state: string;
+};
+
+type CanonicalPortfolioRow = {
+  id: string;
+  barber_reference: string;
+  storage_path: string | null;
+  image_url: string | null;
+  caption: string | null;
+  style_tag_ids: string[] | null;
+  featured: boolean | null;
+  created_at: string | null;
 };
 
 type CanonicalMarketplaceVisibilityRow = {
@@ -203,6 +216,7 @@ type CandidateRecord = {
 type CanonicalSnapshot = {
   barbers: CanonicalBarberRow[];
   barberProfiles: CanonicalBarberProfileRow[];
+  portfolios: CanonicalPortfolioRow[];
   profiles: CanonicalProfileRow[];
   services: CanonicalServiceRow[];
   locations: CanonicalLocationRow[];
@@ -223,6 +237,10 @@ const knownBadges = new Set<MarketplaceBadge>([
 
 function numeric(value: number | string | null | undefined) {
   return Number(value ?? 0);
+}
+
+function canonicalMediaUrl(imageUrl?: string | null, storagePath?: string | null) {
+  return imageUrl?.trim() || storagePath?.trim() || undefined;
 }
 
 function slugify(value: string) {
@@ -457,23 +475,27 @@ async function readCanonicalSnapshot(supabase: SupabaseClient): Promise<Canonica
     barberProfilesResult,
     profilesResult,
     servicesResult,
+    marketplaceServicesResult,
     locationsResult,
     availabilityResult,
     blockedTimesResult,
     appointmentsResult,
     reviewsResult,
-    marketplaceVisibilityResult
+    marketplaceVisibilityResult,
+    portfoliosResult
   ] = await Promise.all([
     supabase.from("barbers").select("id, reference_code, profile_id, compensation_model, app_approval_status, shop_approval_status, commission_rate, booth_rent_amount, booth_rent_frequency, bio, booking_slug"),
-    supabase.from("barber_profiles").select("barber_reference, username, display_name, bio, years_experience, shop_reference, specialties, badges, service_area_label, next_available_at, visibility_state"),
+    supabase.from("barber_profiles").select("barber_reference, username, display_name, bio, years_experience, shop_reference, profile_photo_path, profile_photo_url, specialties, badges, service_area_label, next_available_at, visibility_state"),
     supabase.from("profiles").select("id, full_name, email, phone, primary_onboarding_role"),
     supabase.from("services").select("id, reference_code, location_id, category, name, description, duration_min, buffer_min, price, currency, deposit_amount, full_prepay_required, active, is_bookable, display_order, created_at, updated_at, service_owner_type, barber_reference, shop_reference, booking_count, popularity_rank").eq("active", true),
+    supabase.from("marketplace_services").select("service_reference, category, name, description, duration_min, buffer_min, price, deposit_amount, full_prepay_required, owner_type, barber_reference, shop_reference, style_tag_ids, created_at, updated_at"),
     supabase.from("locations").select("id, reference_code, name, neighborhood, city, state, phone, address, latitude, longitude"),
     supabase.from("availability_rules").select("barber_id, location_id, weekday, start_time, end_time"),
     supabase.from("blocked_times").select("barber_id, starts_at, ends_at, reason"),
     supabase.from("appointments").select("id, reference_code, barber_id, client_id, service_id, location_id, status, starts_at, ends_at, total_amount"),
     supabase.from("reviews").select("id, appointment_id, barber_id, client_id, location_id, rating, message, created_at"),
-    supabase.from("marketplace_visibility").select("barber_reference, visibility_state, accepts_instant_bookings, featured_rank")
+    supabase.from("marketplace_visibility").select("barber_reference, visibility_state, accepts_instant_bookings, featured_rank"),
+    supabase.from("barber_portfolios").select("id, barber_reference, storage_path, image_url, caption, style_tag_ids, featured, created_at").order("featured", { ascending: false }).order("created_at", { ascending: false })
   ]);
 
   for (const result of [
@@ -481,12 +503,14 @@ async function readCanonicalSnapshot(supabase: SupabaseClient): Promise<Canonica
     barberProfilesResult,
     profilesResult,
     servicesResult,
+    marketplaceServicesResult,
     locationsResult,
     availabilityResult,
     blockedTimesResult,
     appointmentsResult,
     reviewsResult,
-    marketplaceVisibilityResult
+    marketplaceVisibilityResult,
+    portfoliosResult
   ]) {
     if (result.error) {
       throw result.error;
@@ -496,8 +520,51 @@ async function readCanonicalSnapshot(supabase: SupabaseClient): Promise<Canonica
   return {
     barbers: (barbersResult.data ?? []) as CanonicalBarberRow[],
     barberProfiles: (barberProfilesResult.data ?? []) as CanonicalBarberProfileRow[],
+    portfolios: (portfoliosResult.data ?? []) as CanonicalPortfolioRow[],
     profiles: (profilesResult.data ?? []) as CanonicalProfileRow[],
-    services: (servicesResult.data ?? []) as CanonicalServiceRow[],
+    services: [
+      ...((servicesResult.data ?? []) as CanonicalServiceRow[]),
+      ...((marketplaceServicesResult.data ?? []) as Array<{
+        service_reference: string;
+        category: string;
+        name: string;
+        description: string | null;
+        duration_min: number;
+        buffer_min: number;
+        price: number | string;
+        deposit_amount: number | string;
+        full_prepay_required: boolean;
+        owner_type: "barber" | "shop" | null;
+        barber_reference: string | null;
+        shop_reference: string | null;
+        style_tag_ids: string[] | null;
+        created_at: string | null;
+        updated_at: string | null;
+      }>).map((row) => ({
+        id: row.service_reference,
+        reference_code: row.service_reference,
+        location_id: row.shop_reference ?? "",
+        category: row.category,
+        name: row.name,
+        description: row.description,
+        duration_min: row.duration_min,
+        buffer_min: row.buffer_min,
+        price: row.price,
+        currency: "usd",
+        deposit_amount: row.deposit_amount,
+        full_prepay_required: row.full_prepay_required,
+        active: true,
+        is_bookable: true,
+        display_order: 0,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        service_owner_type: row.owner_type,
+        barber_reference: row.barber_reference,
+        shop_reference: row.shop_reference,
+        booking_count: null,
+        popularity_rank: null
+      } satisfies CanonicalServiceRow))
+    ],
     locations: (locationsResult.data ?? []) as CanonicalLocationRow[],
     availabilityRules: (availabilityResult.data ?? []) as CanonicalAvailabilityRuleRow[],
     blockedTimes: (blockedTimesResult.data ?? []) as CanonicalBlockedTimeRow[],
@@ -981,6 +1048,20 @@ export async function buildCanonicalDiscoveryResults(
 ) {
   const snapshot = await readCanonicalSnapshot(supabase);
   const candidates = buildCandidateRecords(snapshot, options);
+  const profileByBarberReference = new Map(snapshot.barberProfiles.map((profile) => [profile.barber_reference, profile]));
+  const portfolioPreviewByBarberReference = new Map<string, string[]>();
+
+  for (const asset of snapshot.portfolios) {
+    const imageUrl = canonicalMediaUrl(asset.image_url, asset.storage_path);
+    if (!imageUrl) {
+      continue;
+    }
+
+    portfolioPreviewByBarberReference.set(asset.barber_reference, [
+      ...(portfolioPreviewByBarberReference.get(asset.barber_reference) ?? []),
+      imageUrl
+    ].slice(0, 4));
+  }
 
   return candidates.map((candidate) => ({
     barberId: candidate.barberId,
@@ -988,6 +1069,11 @@ export async function buildCanonicalDiscoveryResults(
     barberName: candidate.barberName,
     locationId: candidate.locationId,
     locationLabel: candidate.location.name,
+    profilePhotoUrl: canonicalMediaUrl(
+      profileByBarberReference.get(candidate.barberId)?.profile_photo_url,
+      profileByBarberReference.get(candidate.barberId)?.profile_photo_path
+    ),
+    galleryPreviewUrls: portfolioPreviewByBarberReference.get(candidate.barberId) ?? [],
     rating: candidate.rating,
     reviewCount: candidate.reviewCount,
     priceRange: candidate.priceRange,
@@ -1419,6 +1505,7 @@ export async function buildCanonicalBarberProfile(
     barberId: barberReference,
     username,
     photoAccent: "#7cff00",
+    profilePhotoUrl: canonicalMediaUrl(profileRow?.profile_photo_url, profileRow?.profile_photo_path),
     yearsExperience: profileRow?.years_experience ?? 0,
     shopId: primaryLocation.id,
     headline: profileRow?.bio || barberRow.bio || `${name} on the BVRB3R network.`,

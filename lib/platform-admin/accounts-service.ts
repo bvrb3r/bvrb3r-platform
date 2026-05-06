@@ -96,6 +96,8 @@ type ServiceRow = { id: string; service_owner_type?: "barber" | "shop" | string 
 type AvailabilityRuleRow = { id: string; barber_id: string; location_id?: string | null };
 type BarberWorkingHoursRow = { id: string; barber_reference: string; shop_reference?: string | null };
 type AppointmentRow = { id: string; barber_id?: string | null; client_id?: string | null; status?: string | null };
+type BarberPortfolioRow = { barber_reference: string };
+type ShopMediaAssetRow = { shop_reference: string };
 
 type VerificationProfileRow = {
   id: string;
@@ -167,6 +169,8 @@ type AccountData = {
   availabilityRules: AvailabilityRuleRow[];
   workingHours: BarberWorkingHoursRow[];
   appointments: AppointmentRow[];
+  barberPortfolios: BarberPortfolioRow[];
+  shopMediaAssets: ShopMediaAssetRow[];
   verificationProfiles: VerificationProfileRow[];
   verificationDocuments: VerificationDocumentRow[];
   verificationReviews: VerificationReviewRow[];
@@ -204,6 +208,8 @@ function emptyData(): AccountData {
     availabilityRules: [],
     workingHours: [],
     appointments: [],
+    barberPortfolios: [],
+    shopMediaAssets: [],
     verificationProfiles: [],
     verificationDocuments: [],
     verificationReviews: []
@@ -340,6 +346,8 @@ async function readAccountData(warnings: string[]): Promise<AccountData> {
     availabilityRules,
     workingHours,
     appointments,
+    barberPortfolios,
+    shopMediaAssets,
     verificationProfiles,
     verificationDocuments,
     verificationReviews
@@ -359,6 +367,8 @@ async function readAccountData(warnings: string[]): Promise<AccountData> {
     safeRows<AvailabilityRuleRow>(warnings, "Availability rules", () => supabase.from("availability_rules").select("id, barber_id, location_id")),
     safeRows<BarberWorkingHoursRow>(warnings, "Working hours", () => supabase.from("barber_working_hours").select("id, barber_reference, shop_reference")),
     safeRows<AppointmentRow>(warnings, "Appointments", () => supabase.from("appointments").select("id, barber_id, client_id, status")),
+    safeRows<BarberPortfolioRow>(warnings, "Barber portfolios", () => supabase.from("barber_portfolios").select("barber_reference")),
+    safeRows<ShopMediaAssetRow>(warnings, "Shop media assets", () => supabase.from("shop_media_assets").select("shop_reference")),
     safeRows<VerificationProfileRow>(warnings, "Verification profiles", () => supabase.from("verification_profiles").select("id, user_id, role, overall_status, identity_status, license_status, business_status, payout_status, compliance_status, public_verified, can_accept_bookings, can_receive_payouts, can_create_shop_listing, current_requirements, review_notes, last_reviewed_at, created_at, updated_at")),
     safeRows<VerificationDocumentRow>(warnings, "Verification documents", () => supabase.from("verification_documents").select("id, verification_profile_id, user_id, shop_id, owner_type, owner_reference, category, document_type, file_name, storage_path, mime_type, content_type, file_size_bytes, uploaded_at, expires_at, status, review_notes")),
     safeRows<VerificationReviewRow>(warnings, "Verification reviews", () => supabase.from("verification_reviews").select("id, verification_profile_id, review_type, action_type, from_status, to_status, reviewed_by, reason, internal_notes, created_at"))
@@ -380,6 +390,8 @@ async function readAccountData(warnings: string[]): Promise<AccountData> {
     availabilityRules,
     workingHours,
     appointments,
+    barberPortfolios,
+    shopMediaAssets,
     verificationProfiles,
     verificationDocuments,
     verificationReviews
@@ -758,6 +770,12 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
       linkedShopCount: linkedShopIds.length,
       activeLinkedBarbers
     });
+    const marketplaceLive = marketplaceBlockers.length === 0;
+    const feedAssetCount = role === "barber" && reference
+      ? data.barberPortfolios.filter((asset) => asset.barber_reference === reference).length
+      : role === "shop_owner" && shop
+        ? data.shopMediaAssets.filter((asset) => asset.shop_reference === shop.id).length
+        : 0;
 
     items.push({
       profileId: profile.id,
@@ -793,6 +811,10 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
       availabilityCount,
       documentCount,
       reviewCount,
+      marketplaceLive,
+      searchIncluded: marketplaceLive,
+      feedEligible: marketplaceLive && feedAssetCount > 0,
+      feedAssetCount,
       marketplaceBlockers,
       searchText: buildSearchText([
         profile.full_name,

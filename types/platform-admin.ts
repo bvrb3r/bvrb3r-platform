@@ -411,6 +411,10 @@ export interface ArchitectAccountDirectoryItem {
   availabilityCount: number;
   documentCount: number;
   reviewCount: number;
+  marketplaceLive: boolean;
+  searchIncluded: boolean;
+  feedEligible: boolean;
+  feedAssetCount: number;
   marketplaceBlockers: string[];
   searchText: string;
 }

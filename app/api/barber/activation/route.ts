@@ -4,6 +4,7 @@ import { getSessionUser } from "@/lib/booking/route-auth";
 import { normalizeWorkingHoursRows } from "@/lib/barber/domain";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import { getMarketplaceState, setMarketplaceState } from "@/lib/marketplace/state";
+import { publishBarberMarketplaceReadiness } from "@/lib/marketplace/publishing";
 import { markOnboardingStepComplete } from "@/lib/onboarding/service";
 import { createBarberShopJoinRequest } from "@/lib/operations/shop-team-invites";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -364,6 +365,8 @@ async function persistActivationAvailability(
     }
   });
 
+  await publishBarberMarketplaceReadiness(supabase, barberReference);
+
   return NextResponse.json({
     hasAvailabilityDraft: true,
     hasServiceLocation,
@@ -455,6 +458,8 @@ export async function POST(request: Request) {
     if (visibilityUpdate.error) {
       throw visibilityUpdate.error;
     }
+
+    await publishBarberMarketplaceReadiness(supabase, barberId);
 
     return NextResponse.json({
       visibilityState: parsed.data.visibilityState,

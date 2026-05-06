@@ -3,7 +3,9 @@ import { z } from "zod";
 import { requireMarketplaceActor } from "@/lib/marketplace/auth";
 import { type ServiceMutationInput } from "@/lib/marketplace/engine";
 import { marketplaceErrorResponse } from "@/lib/marketplace/http";
+import { publishBarberMarketplaceReadiness, revalidateMarketplaceSurfaces } from "@/lib/marketplace/publishing";
 import { buildServiceCatalogPayload, getMarketplaceProvider } from "@/lib/marketplace/provider";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 const createServiceSchema = z.object({
   category: z.string().min(1),
@@ -35,6 +37,12 @@ export async function POST(request: Request) {
     const payload = createServiceSchema.parse(await request.json());
     const marketplaceProvider = await getMarketplaceProvider();
     const result = await marketplaceProvider.createService(actor, payload satisfies ServiceMutationInput);
+    const supabase = createSupabaseAdminClient();
+    if (supabase && actor.barberId) {
+      await publishBarberMarketplaceReadiness(supabase, actor.barberId);
+    } else {
+      revalidateMarketplaceSurfaces();
+    }
     return NextResponse.json({ service: result.service });
   } catch (error) {
     if (error instanceof z.ZodError) {

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionUser } from "@/lib/booking/route-auth";
 import { BarberToolsServiceError, getBarberStatusPayload, updateBarberStatus } from "@/lib/barber/service";
+import { publishBarberMarketplaceReadiness } from "@/lib/marketplace/publishing";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 const updateStatusSchema = z.object({
   liveStatus: z.enum(["offline", "available", "busy", "on_break", "away"]),
@@ -38,6 +40,10 @@ export async function POST(request: Request) {
     }
 
     const payload = await updateBarberStatus(user, parsed.data);
+    const supabase = createSupabaseAdminClient();
+    if (supabase && payload.barberId) {
+      await publishBarberMarketplaceReadiness(supabase, payload.barberId);
+    }
     return NextResponse.json(payload);
   } catch (error) {
     return toErrorResponse(error, "Unable to update barber status.");

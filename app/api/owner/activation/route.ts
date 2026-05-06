@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getSessionUser } from "@/lib/booking/route-auth";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import { getMarketplaceState, setMarketplaceState } from "@/lib/marketplace/state";
+import { publishShopMarketplaceReadiness } from "@/lib/marketplace/publishing";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { UserAccount } from "@/types/domain";
 
@@ -193,6 +194,8 @@ export async function POST(request: Request) {
         throw locationUpdate.error;
       }
     }
+
+    publishShopMarketplaceReadiness({ shopId });
 
     return NextResponse.json({ ok: true, shopId });
   } catch (error) {

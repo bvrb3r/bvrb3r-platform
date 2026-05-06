@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
-import { decorateDiscoveryWithActivation } from "@/lib/marketplace/activation";
-import { getMarketplaceActivationProvider } from "@/lib/marketplace/activation-provider";
-import { buildDiscoveryPayload, getMarketplaceProvider } from "@/lib/marketplace/provider";
-import { getTrustProvider } from "@/lib/trust/provider";
+import { searchBarbersAndShopsPayload } from "@/lib/booking/platform-service";
+import { getMarketplaceProvider } from "@/lib/marketplace/provider";
 
 const filterSchema = z.object({
   query: z.string().optional(),
@@ -34,15 +32,7 @@ export async function GET(request: NextRequest) {
   });
   if (!parsed.success) return NextResponse.json({ error: "Invalid discovery filters." }, { status: 400 });
 
-  const marketplaceProvider = await getMarketplaceProvider();
-  const trustProvider = await getTrustProvider();
-  const activationProvider = await getMarketplaceActivationProvider();
-  const [runtime, trustState, activationState, session] = await Promise.all([
-    marketplaceProvider.readRuntime(),
-    trustProvider.readState(),
-    activationProvider.readState(),
-    getCurrentUserFromServer()
-  ]);
+  const session = await getCurrentUserFromServer();
   const clientId = parsed.data.clientId ?? (session.user.role === "client" ? session.user.clientId : undefined);
   const filters = {
     query: parsed.data.query,
@@ -55,37 +45,16 @@ export async function GET(request: NextRequest) {
     specialty: parsed.data.specialty,
     maxDistanceMiles: parsed.data.maxDistanceMiles
   };
-  const results = buildDiscoveryPayload(runtime, trustState, filters);
-  const decorated = decorateDiscoveryWithActivation(results, activationState, trustState);
+  const payload = await searchBarbersAndShopsPayload({
+    ...filters,
+    clientId
+  });
+  const results = payload.barbers;
 
   try {
-    await marketplaceProvider.recordDiscoveryImpression({ filters, results: decorated, clientId });
+    const marketplaceProvider = await getMarketplaceProvider();
+    await marketplaceProvider.recordDiscoveryImpression({ filters, results, clientId });
   } catch {}
 
-  try {
-    for (const result of decorated.slice(0, 4)) {
-      if (result.boostedLabel) {
-        await activationProvider.recordMonetizationEvent({
-          eventType: "boost_impression",
-          barberId: result.barberId,
-          citySlug: "tampa-bay",
-          sourceKind: "discovery",
-          referenceId: result.username,
-          metadata: { label: result.boostedLabel }
-        });
-      }
-      if (result.featuredLabel) {
-        await activationProvider.recordMonetizationEvent({
-          eventType: "featured_impression",
-          barberId: result.barberId,
-          citySlug: "tampa-bay",
-          sourceKind: "discovery",
-          referenceId: result.username,
-          metadata: { label: result.featuredLabel }
-        });
-      }
-    }
-  } catch {}
-
-  return NextResponse.json({ results: decorated });
+  return NextResponse.json({ results });
 }

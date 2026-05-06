@@ -6,6 +6,8 @@ import {
   mutateProfileMedia,
   ProfileMediaServiceError
 } from "@/lib/profile/service";
+import { publishBarberMarketplaceReadiness, revalidateMarketplaceSurfaces } from "@/lib/marketplace/publishing";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 const mutationSchema = z.discriminatedUnion("action", [
   z.object({
@@ -97,6 +99,14 @@ export async function POST(request: Request) {
     }
 
     const payload = await mutateProfileMedia(user, parsed.data);
+    const supabase = createSupabaseAdminClient();
+    const action = parsed.data.action;
+    const shopId = "shopId" in parsed.data ? parsed.data.shopId : undefined;
+    if (supabase && (action === "set_barber_photo" || action === "remove_barber_photo" || action === "add_barber_gallery_image" || action === "remove_barber_gallery_image") && user.barberId) {
+      await publishBarberMarketplaceReadiness(supabase, user.barberId);
+    } else if (shopId && (action === "set_shop_photo" || action === "remove_shop_photo" || action === "add_shop_gallery_image" || action === "remove_shop_gallery_image")) {
+      revalidateMarketplaceSurfaces({ shopId });
+    }
     return NextResponse.json(payload);
   } catch (error) {
     return toErrorResponse(error);

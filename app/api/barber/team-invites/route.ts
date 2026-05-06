@@ -6,6 +6,8 @@ import {
   listBarberTeamInvites,
   respondToBarberTeamInvite
 } from "@/lib/operations/shop-team-invites";
+import { publishBarberMarketplaceReadiness, publishShopMarketplaceReadiness } from "@/lib/marketplace/publishing";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 const responseSchema = z.object({
   inviteId: z.string().trim().min(1),
@@ -40,6 +42,13 @@ export async function PATCH(request: Request) {
     }
 
     const payload = await respondToBarberTeamInvite(user, parsed.data);
+    if (parsed.data.status === "accepted") {
+      const supabase = createSupabaseAdminClient();
+      if (supabase && payload.invite.barberId) {
+        await publishBarberMarketplaceReadiness(supabase, payload.invite.barberId);
+      }
+      publishShopMarketplaceReadiness({ shopId: payload.invite.shopId });
+    }
     return NextResponse.json(payload);
   } catch (error) {
     return toErrorResponse(error, "Unable to update the shop invitation.");

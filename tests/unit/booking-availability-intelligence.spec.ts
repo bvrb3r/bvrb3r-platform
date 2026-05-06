@@ -23,6 +23,12 @@ function createQuery<T extends Record<string, unknown>>(rows: T[], filters: Arra
     eq(field: string, value: unknown) {
       return createQuery(rows, [...filters, (row) => row[field] === value]);
     },
+    order() {
+      return createQuery(rows, filters);
+    },
+    limit() {
+      return createQuery(rows, filters);
+    },
     then<TResult1 = { data: T[]; error: null }, TResult2 = never>(
       onfulfilled?: ((value: { data: T[]; error: null }) => TResult1 | PromiseLike<TResult1>) | null,
       onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
@@ -88,6 +94,8 @@ describe("canonical availability intelligence", () => {
         bio: "Sharp fades and clean lineups.",
         years_experience: 7,
         shop_reference: "loc-live",
+        profile_photo_path: null,
+        profile_photo_url: "https://example.com/phillip.jpg",
         specialties: ["Fade"],
         badges: [],
         service_area_label: "Ybor",
@@ -189,6 +197,16 @@ describe("canonical availability intelligence", () => {
         total_amount: 55
       }],
       reviews: [],
+      barber_portfolios: [{
+        id: "portfolio-1",
+        barber_reference: "barber-live",
+        storage_path: "portfolio/fallback.jpg",
+        image_url: "https://example.com/cut.jpg",
+        caption: "Low taper",
+        style_tag_ids: [],
+        featured: true,
+        created_at: targetDay.toISOString()
+      }],
       marketplace_visibility: [{
         barber_reference: "barber-live",
         visibility_state: "public",
@@ -242,6 +260,8 @@ describe("canonical availability intelligence", () => {
         bio: "Sharp fades and clean lineups.",
         years_experience: 7,
         shop_reference: "loc-live",
+        profile_photo_path: null,
+        profile_photo_url: "https://example.com/phillip.jpg",
         specialties: ["Fade"],
         badges: [],
         service_area_label: "Ybor",
@@ -301,6 +321,16 @@ describe("canonical availability intelligence", () => {
       blocked_times: [],
       appointments: [],
       reviews: [],
+      barber_portfolios: [{
+        id: "portfolio-1",
+        barber_reference: "barber-live",
+        storage_path: "portfolio/fallback.jpg",
+        image_url: "https://example.com/cut.jpg",
+        caption: "Low taper",
+        style_tag_ids: [],
+        featured: true,
+        created_at: targetDay.toISOString()
+      }],
       marketplace_visibility: [{
         barber_reference: "barber-live",
         visibility_state: "public",
@@ -316,9 +346,112 @@ describe("canonical availability intelligence", () => {
     expect(results).toHaveLength(1);
     expect(results[0].locationId).toBe("loc-live");
     expect(results[0].mostBookedServiceId).toBe("srv-cut");
+    expect(results[0].profilePhotoUrl).toBe("https://example.com/phillip.jpg");
+    expect(results[0].galleryPreviewUrls).toEqual(["https://example.com/cut.jpg"]);
     expect(results[0].bookingHref).toContain("barberId=barber-live");
     expect(results[0].bookingHref).toContain("locationId=loc-live");
     expect(results[0].bookingHref).toContain("serviceId=srv-cut");
     expect(results[0].bookingHref).toContain("appointmentTime=");
+  });
+
+  it("includes marketplace service catalog entries in canonical client discovery", async () => {
+    const targetDay = new Date();
+    targetDay.setDate(targetDay.getDate() + 1);
+    targetDay.setHours(12, 0, 0, 0);
+    const targetEnd = new Date(targetDay);
+    targetEnd.setHours(15, 0, 0, 0);
+
+    const supabase = createSupabaseMock({
+      barbers: [{
+        id: "barber-uuid",
+        reference_code: "barber-live",
+        profile_id: "profile-uuid",
+        compensation_model: "booth_rent",
+        app_approval_status: "approved",
+        shop_approval_status: "approved",
+        commission_rate: null,
+        booth_rent_amount: 150,
+        booth_rent_frequency: "weekly",
+        bio: "Private studio cuts.",
+        booking_slug: "barber-live"
+      }],
+      barber_profiles: [{
+        barber_reference: "barber-live",
+        username: "barber-live",
+        display_name: "Phillip McGee",
+        bio: "Private studio cuts.",
+        years_experience: 7,
+        shop_reference: "loc-live",
+        profile_photo_path: null,
+        profile_photo_url: null,
+        specialties: ["Fade"],
+        badges: [],
+        service_area_label: "Ybor",
+        next_available_at: null,
+        visibility_state: "public"
+      }],
+      profiles: [{
+        id: "profile-uuid",
+        full_name: "Phillip McGee",
+        email: "phillipmcgee813@gmail.com",
+        phone: "8135550101",
+        primary_onboarding_role: "barber"
+      }],
+      services: [],
+      marketplace_services: [{
+        service_reference: "market-srv-cut",
+        category: "Haircut",
+        name: "Marketplace Precision Cut",
+        description: "Full cut and finish",
+        duration_min: 45,
+        buffer_min: 15,
+        price: 55,
+        deposit_amount: 15,
+        full_prepay_required: false,
+        owner_type: "barber",
+        barber_reference: "barber-live",
+        shop_reference: null,
+        style_tag_ids: [],
+        created_at: targetDay.toISOString(),
+        updated_at: targetDay.toISOString()
+      }],
+      locations: [{
+        id: "location-uuid",
+        reference_code: "loc-live",
+        name: "BVRB3R Ybor",
+        neighborhood: "Ybor",
+        city: "Tampa",
+        state: "FL",
+        phone: "8135550000",
+        address: "1 Barber Way",
+        latitude: 27.960,
+        longitude: -82.440
+      }],
+      availability_rules: [{
+        barber_id: "barber-uuid",
+        location_id: "location-uuid",
+        weekday: targetDay.getDay(),
+        start_time: formatTime(targetDay),
+        end_time: formatTime(targetEnd)
+      }],
+      blocked_times: [],
+      appointments: [],
+      reviews: [],
+      barber_portfolios: [],
+      marketplace_visibility: [{
+        barber_reference: "barber-live",
+        visibility_state: "public",
+        accepts_instant_bookings: true,
+        featured_rank: null
+      }]
+    });
+
+    const results = await buildCanonicalDiscoveryResults(supabase as never, {
+      locationId: "loc-live"
+    });
+
+    expect(results).toHaveLength(1);
+    expect(results[0].mostBookedService).toBe("Marketplace Precision Cut");
+    expect(results[0].mostBookedServiceId).toBe("market-srv-cut");
   });
 });

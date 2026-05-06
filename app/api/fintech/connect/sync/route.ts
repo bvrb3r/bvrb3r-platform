@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionUser } from "@/lib/booking/route-auth";
 import { FintechServiceError, refreshStripeConnectSubjectAccount } from "@/lib/fintech/service";
+import { publishBarberMarketplaceReadiness, publishShopMarketplaceReadiness } from "@/lib/marketplace/publishing";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 const connectSubjectSchema = z.object({
   shopId: z.string().trim().optional().nullable()
@@ -25,6 +27,13 @@ export async function POST(request: NextRequest) {
     }
 
     const payload = await refreshStripeConnectSubjectAccount(user, parsed.data);
+    const supabase = createSupabaseAdminClient();
+    if (supabase && user.barberId) {
+      await publishBarberMarketplaceReadiness(supabase, user.barberId);
+    }
+    if (parsed.data.shopId ?? user.ownedShopId) {
+      publishShopMarketplaceReadiness({ shopId: parsed.data.shopId ?? user.ownedShopId });
+    }
     return NextResponse.json(payload);
   } catch (error) {
     return toErrorResponse(error);

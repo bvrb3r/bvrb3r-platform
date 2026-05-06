@@ -73,6 +73,10 @@ const directoryPayload: ArchitectAccountDirectoryPayload = {
       availabilityCount: 1,
       documentCount: 1,
       reviewCount: 0,
+      marketplaceLive: false,
+      searchIncluded: false,
+      feedEligible: false,
+      feedAssetCount: 0,
       marketplaceBlockers: ["Barber approval pending"],
       searchText: "phillip mcgee phillipmcgee813@gmail.com barber"
     },
@@ -96,6 +100,10 @@ const directoryPayload: ArchitectAccountDirectoryPayload = {
       availabilityCount: 0,
       documentCount: 0,
       reviewCount: 0,
+      marketplaceLive: false,
+      searchIncluded: false,
+      feedEligible: false,
+      feedAssetCount: 0,
       marketplaceBlockers: ["Shop approval pending"],
       searchText: "bvrb3r shop bvrb3r@gmail.com shop_owner bvrb3r studio"
     }
@@ -320,6 +328,10 @@ describe("architect account workspaces", () => {
             approvalStatus: "approved",
             verificationStatus: "approved",
             marketplaceBlockers: [],
+            marketplaceLive: true,
+            searchIncluded: true,
+            feedEligible: true,
+            feedAssetCount: 1,
             barber: detailPayload.account.barber
               ? {
                   ...detailPayload.account.barber,

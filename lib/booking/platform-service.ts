@@ -1473,26 +1473,70 @@ export async function getClientHomePayload(clientId?: string) {
   };
 }
 
-export async function searchBarbersAndShopsPayload(params: { query?: string; category?: string; clientId?: string; }) {
+function filterDiscoveryResults(
+  results: DiscoveryResult[],
+  filters: {
+    minRating?: number;
+    maxPrice?: number;
+    availability?: "any" | "today" | "now";
+    specialty?: string;
+    maxDistanceMiles?: number;
+  }
+) {
+  const now = new Date();
+  return results.filter((result) => {
+    if (typeof filters.minRating === "number" && result.rating < filters.minRating) return false;
+    if (typeof filters.maxPrice === "number" && result.priceRange[0] > filters.maxPrice) return false;
+    if (typeof filters.maxDistanceMiles === "number" && result.distanceMiles > filters.maxDistanceMiles) return false;
+    if (filters.specialty) {
+      const specialty = filters.specialty.toLowerCase();
+      if (!result.specialties.some((entry) => entry.toLowerCase().includes(specialty))) return false;
+    }
+    if (filters.availability === "today") {
+      const date = new Date(result.nextAvailableAt);
+      return !Number.isNaN(date.getTime()) && date.toDateString() === now.toDateString();
+    }
+    if (filters.availability === "now") {
+      const date = new Date(result.nextAvailableAt);
+      return !Number.isNaN(date.getTime()) && date.getTime() <= now.getTime() + 2 * 60 * 60 * 1000;
+    }
+    return true;
+  });
+}
+
+export async function searchBarbersAndShopsPayload(params: {
+  query?: string;
+  category?: string;
+  clientId?: string;
+  locationId?: string;
+  minRating?: number;
+  maxPrice?: number;
+  availability?: "any" | "today" | "now";
+  specialty?: string;
+  maxDistanceMiles?: number;
+}) {
   const supabase = getSupabase();
   const shops = await readShops(supabase);
   const queryText = params.query?.trim();
   const effectiveQuery = queryText || params.category || undefined;
   const clientProfile = await readClientProfile(supabase, params.clientId);
-  const locationId = resolveLocationId(shops, clientProfile?.favoriteShopReference);
+  const locationId = params.locationId || resolveLocationId(shops, clientProfile?.favoriteShopReference);
 
   if (!supabase) {
     const bundle = await readMarketplaceBundle();
-    const results = decorateDiscoveryWithActivation(
+    const results = filterDiscoveryResults(decorateDiscoveryWithActivation(
       buildDiscoveryPayload(bundle.runtime, bundle.trustState, {
         query: effectiveQuery,
         locationId,
-        availability: "any",
-        maxDistanceMiles: 12
+        availability: params.availability ?? "any",
+        minRating: params.minRating,
+        maxPrice: params.maxPrice,
+        specialty: params.specialty,
+        maxDistanceMiles: params.maxDistanceMiles ?? 12
       }),
       bundle.activationState,
       bundle.trustState
-    );
+    ), params);
     const visibleShops = filterBookableMarketplaceShops(shops, bundle.trustState, results);
     const matchingShops = queryText
       ? visibleShops.filter((shop) => `${shop.name} ${shop.neighborhood} ${shop.city}`.toLowerCase().includes(queryText.toLowerCase()))
@@ -1509,7 +1553,7 @@ export async function searchBarbersAndShopsPayload(params: { query?: string; cat
 
   const routine = await readClientRoutine(supabase, params.clientId, clientProfile?.favoriteBarberReference);
   const trustState = await readTrustStateSafe();
-  const results = await buildCanonicalDiscoveryResults(supabase, {
+  const results = filterDiscoveryResults(await buildCanonicalDiscoveryResults(supabase, {
     locationId,
     query: queryText,
     category: params.category,
@@ -1519,7 +1563,7 @@ export async function searchBarbersAndShopsPayload(params: { query?: string; cat
     },
     routine,
     trustState
-  });
+  }), params);
   const visibleShops = filterBookableMarketplaceShops(shops, trustState, results);
   const matchingShops = queryText
     ? visibleShops.filter((shop) => `${shop.name} ${shop.neighborhood} ${shop.city}`.toLowerCase().includes(queryText.toLowerCase()))
