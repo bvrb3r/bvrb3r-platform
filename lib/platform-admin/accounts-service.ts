@@ -3,6 +3,7 @@ import { isSupabaseEnabled } from "@/lib/config/runtime";
 import { isUpcomingAppointmentStatus } from "@/lib/appointments/domain";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getStripeConnectEnvironment } from "@/lib/stripe/connect";
 import type { AppointmentStatus, UserAccount } from "@/types/domain";
 import type {
   ArchitectAccountDetailPayload,
@@ -700,6 +701,7 @@ function buildSearchText(values: Array<string | number | boolean | null | undefi
 async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountDirectoryItem[]> {
   const indexes = buildIndexes(data);
   const accountStatuses = await getAccountStatuses(data);
+  const stripeEnvironment = getStripeConnectEnvironment();
   const profilesById = new Map(data.profiles.map((profile) => [profile.id, profile]));
   const realAuthUsers = data.authUsers.filter(isRealOperationalAuthUser);
   const authUsersById = new Map(realAuthUsers.map((user) => [user.id, user]));
@@ -736,6 +738,7 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
     const client = indexes.clientsByProfileId.get(profile.id);
     const reference = barberReference(barber);
     const linkedShopIds = reference ? getLinkedShopIds(reference, profile.id, data) : [];
+    const serviceLocationLabels = locationLabelsForProfile(profile.id, data, indexes);
     const barberProfile = reference ? indexes.barberProfilesByReference.get(reference) : undefined;
     const visibility = reference ? indexes.visibilityByReference.get(reference) : undefined;
     const barberStatus = reference ? indexes.barberStatusByReference.get(reference) : undefined;
@@ -779,6 +782,23 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
       activeLinkedBarbers
     });
     const marketplaceLive = marketplaceBlockers.length === 0;
+    const publicRoute = role === "barber" && reference
+      ? `/barber/${barberProfile?.username ?? fallbackBarberSlug(reference)}`
+      : role === "shop_owner" && shop
+        ? `/shop/${encodeURIComponent(shop.id)}`
+        : undefined;
+    const discoveryLocation = role === "barber"
+      ? serviceLocationLabels.join(" | ") || undefined
+      : role === "shop_owner" && shop
+        ? [shop.address, shop.city, shop.state].filter(Boolean).join(", ") || undefined
+        : undefined;
+    const directSearchMatch = marketplaceLive && Boolean(
+      role === "barber"
+        ? profile.full_name || profile.email || barberProfile?.username || reference
+        : role === "shop_owner"
+          ? shop?.name || shop?.city || shop?.state
+          : false
+    );
     const feedAssetCount = role === "barber" && reference
       ? data.barberPortfolios.filter((asset) => asset.barber_reference === reference).length
       : role === "shop_owner" && shop
@@ -820,9 +840,16 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
       documentCount,
       reviewCount,
       marketplaceLive,
+      clientHomeIncluded: marketplaceLive,
       searchIncluded: marketplaceLive,
+      clientSearchIncluded: marketplaceLive,
+      directSearchMatch,
       feedEligible: marketplaceLive && feedAssetCount > 0,
       feedAssetCount,
+      publicRoute,
+      discoveryLocation,
+      payoutMode: stripeEnvironment.mode,
+      serviceLocationCount: serviceLocationLabels.length,
       marketplaceBlockers,
       searchText: buildSearchText([
         profile.full_name,
@@ -846,7 +873,10 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
         barberProfile?.username,
         shop?.name,
         shop?.city,
-        shop?.state
+        shop?.state,
+        discoveryLocation,
+        publicRoute,
+        stripeEnvironment.mode
       ])
     });
   }
@@ -1056,6 +1086,7 @@ export async function getArchitectAccountDetailPayload(actor: UserAccount, profi
   const client = indexes.clientsByProfileId.get(profileId);
   const reference = barberReference(barber);
   const linkedShopIds = reference ? getLinkedShopIds(reference, profileId, data) : [];
+  const serviceLocationLabels = locationLabelsForProfile(profileId, data, indexes);
   const verificationProfiles = data.verificationProfiles.filter((row) => row.user_id === profileId);
   const verificationProfileIds = verificationProfiles.map((row) => row.id);
   const documents = data.verificationDocuments.filter((row) =>
@@ -1125,7 +1156,8 @@ export async function getArchitectAccountDetailPayload(actor: UserAccount, profi
         servicesCount: getActiveServicesForBarber(reference, linkedShopIds, data).length,
         availabilityRulesCount: data.availabilityRules.filter((row) => row.barber_id === barber.id).length,
         workingHoursCount: data.workingHours.filter((row) => row.barber_reference === reference).length,
-        linkedShopIds
+        linkedShopIds,
+        serviceLocationLabels
       } : undefined,
       shopOwner: {
         shopExists: Boolean(shop),

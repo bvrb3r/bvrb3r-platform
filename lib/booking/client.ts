@@ -25,6 +25,11 @@ export interface ClientHomeResponse {
     email: string;
     favoriteBarberReference?: string;
     favoriteShopReference?: string;
+    preferredLocation?: {
+      city: string;
+      state: string;
+      postalCode?: string;
+    };
     loyaltyPoints: number;
     retentionTag: string;
     notes: string[];

@@ -290,7 +290,10 @@ export function ClientSearchScreen({
     () => ((homePayload?.recommendedShops?.length ? homePayload.recommendedShops : homePayload?.shops ?? []) as RecommendedShopView[]),
     [homePayload]
   );
-  const defaultLocationId = initialLocationId || homePayload?.locationId || homePayload?.shops?.[0]?.id || "";
+  const defaultLocationId = initialLocationId || (homePayload?.hasResolvedLocation ? homePayload.locationId : "") || "";
+  const clientLocationLabel = homePayload?.client?.preferredLocation
+    ? [homePayload.client.preferredLocation.city, homePayload.client.preferredLocation.state].filter(Boolean).join(", ")
+    : "";
 
   const [query, setQuery] = useState(initialQuery);
   const [serviceFilter, setServiceFilter] = useState(initialCategory || initialSpecialty);
@@ -353,6 +356,7 @@ export function ClientSearchScreen({
     return source.filter((result) => (result.galleryPreviewUrls?.length ?? 0) > 0 || Boolean(result.profilePhotoUrl)).slice(0, 8);
   }, [barberResults, visibleBarbers]);
   const errorMessage = discoveryQuery.error ? getReadableActionError(discoveryQuery.error as MarketplaceApiError) : null;
+  const debugEnabled = process.env.NODE_ENV !== "production";
   const hasKnownBookableBarbers = Boolean(barberResults.length || recommendedBarbers.length);
   const barberEmptyState = hasKnownBookableBarbers && hasActiveSearchQuery
     ? {
@@ -592,6 +596,21 @@ export function ClientSearchScreen({
           </div>
         )}
       </ClientSectionBlock>
+
+      {debugEnabled ? (
+        <details className="rounded-[24px] border border-white/10 bg-black/30 p-4 text-sm text-white/62" data-testid="client-search-debug">
+          <summary className="cursor-pointer font-semibold text-white">Discovery debug</summary>
+          <dl className="mt-4 grid gap-2 sm:grid-cols-2">
+            <div><dt className="text-white/40">Discovery request succeeded</dt><dd>{discoveryQuery.error ? "no" : "yes"}</dd></div>
+            <div><dt className="text-white/40">Barber count</dt><dd>{barberResults.length}</dd></div>
+            <div><dt className="text-white/40">Shop count</dt><dd>{visibleShops.length}</dd></div>
+            <div><dt className="text-white/40">Feed count</dt><dd>{marketplaceFeed.length}</dd></div>
+            <div><dt className="text-white/40">Last error</dt><dd>{discoveryQuery.error instanceof Error ? discoveryQuery.error.message : "none"}</dd></div>
+            <div><dt className="text-white/40">Client location</dt><dd>{clientLocationLabel || "not set"}</dd></div>
+            <div className="sm:col-span-2"><dt className="text-white/40">Filters</dt><dd>{JSON.stringify({ query: trimmedQuery, serviceFilter, selectedLocationId, minRating, maxPrice, availability, verifiedOnly })}</dd></div>
+          </dl>
+        </details>
+      ) : null}
     </div>
   );
 }

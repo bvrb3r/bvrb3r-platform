@@ -116,6 +116,14 @@ function readableError(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
+function formatPreferredLocation(location?: { city?: string; state?: string; postalCode?: string } | null) {
+  if (!location) {
+    return "";
+  }
+
+  return [location.city, location.state, location.postalCode].map((part) => part?.trim()).filter(Boolean).join(", ");
+}
+
 export function ClientProfileScreen({
   payload,
   isSignedInClient,
@@ -146,7 +154,11 @@ export function ClientProfileScreen({
   const [locationFeedback, setLocationFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
   const [locationModalOpen, setLocationModalOpen] = useState(false);
-  const [locationDraft, setLocationDraft] = useState({ city: "", state: "" });
+  const [locationDraft, setLocationDraft] = useState(() => ({
+    city: payload.client?.preferredLocation?.city ?? "",
+    state: payload.client?.preferredLocation?.state ?? ""
+  }));
+  const [savedClientLocation, setSavedClientLocation] = useState(payload.client?.preferredLocation ?? null);
   const [isSavingLocation, setIsSavingLocation] = useState(false);
   const profileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -167,6 +179,13 @@ export function ClientProfileScreen({
   const membershipValue = membership?.value ?? null;
   const referralSummary = referralSummaryQuery.data ?? null;
   const primaryShop = preferredShops[0] ?? null;
+  const savedClientLocationLabel = formatPreferredLocation(savedClientLocation);
+  const localBookingAreaTitle = primaryShop?.name ?? (savedClientLocationLabel || "No local booking area saved yet");
+  const localBookingAreaDetail = primaryShop
+    ? [primaryShop.neighborhood, primaryShop.city, primaryShop.state].filter(Boolean).join(", ")
+    : savedClientLocationLabel
+      ? "Saved client booking area."
+      : "Save a city so client search can start near your preferred booking area.";
   const selectedSection = (initialSection && initialSection in sectionIdMap ? initialSection : null) as ProfileSectionKey | null;
   const notificationPreference = mediaQuery.data?.viewer.notificationPreference ?? payload.notificationPreference;
   const hasPhone = clientPhone.length > 0;
@@ -183,6 +202,14 @@ export function ClientProfileScreen({
 
     target.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [selectedSection]);
+
+  useEffect(() => {
+    setSavedClientLocation(client?.preferredLocation ?? null);
+    setLocationDraft({
+      city: client?.preferredLocation?.city ?? "",
+      state: client?.preferredLocation?.state ?? ""
+    });
+  }, [client?.clientReference, client?.preferredLocation]);
 
   async function handleNotificationToggle(
     field: "inAppEnabled" | "smsEnabled" | "emailEnabled" | "pushEnabled",
@@ -310,6 +337,13 @@ export function ClientProfileScreen({
     }
   }
 
+  function openLocationModal() {
+    const city = primaryShop?.city ?? savedClientLocation?.city ?? locationDraft.city;
+    const state = primaryShop?.state ?? savedClientLocation?.state ?? locationDraft.state;
+    setLocationDraft({ city, state });
+    setLocationModalOpen(true);
+  }
+
   async function handleLocationSave() {
     setLocationFeedback(null);
     if (!locationDraft.city.trim()) {
@@ -319,20 +353,29 @@ export function ClientProfileScreen({
 
     setIsSavingLocation(true);
     try {
-      const response = await fetch("/api/onboarding/client/profile", {
+      const response = await fetch("/api/client/location", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          fullName: clientName,
-          phone: clientPhone || authPhone || "0000000000",
-          city: [locationDraft.city.trim(), locationDraft.state.trim()].filter(Boolean).join(", ")
+          city: locationDraft.city.trim(),
+          state: locationDraft.state.trim()
         })
       });
-      const body = (await response.json().catch(() => ({}))) as { error?: string };
+      const body = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        location?: { city: string; state: string; postalCode?: string };
+      };
       if (!response.ok) {
         throw new Error(body.error ?? "Unable to save location.");
       }
 
+      if (body.location) {
+        setSavedClientLocation(body.location);
+        setLocationDraft({
+          city: body.location.city,
+          state: body.location.state
+        });
+      }
       setLocationModalOpen(false);
       setLocationFeedback({ tone: "success", message: "Location saved for faster booking." });
     } catch (error) {
@@ -366,7 +409,7 @@ export function ClientProfileScreen({
           emailVerified,
           phoneVerified: hasPhone && phoneVerified,
           hasDefaultPaymentMethod: Boolean(defaultPaymentMethod),
-          hasLocation: Boolean(primaryShop ?? client?.favoriteShopReference),
+          hasLocation: Boolean(primaryShop ?? savedClientLocation ?? client?.favoriteShopReference),
           hasPreferredSupply: Boolean(favoriteBarber ?? preferredShops.length)
         }}
         actionHandlers={{
@@ -497,25 +540,15 @@ export function ClientProfileScreen({
             </div>
             <div className="rounded-[24px] border border-white/8 bg-black/18 p-4">
               <p className="surface-label">Local booking area</p>
-              <p className="mt-3 text-lg font-semibold text-white">{primaryShop?.name ?? "No local booking area saved yet"}</p>
+              <p className="mt-3 text-lg font-semibold text-white">{localBookingAreaTitle}</p>
               <p className="mt-2 text-sm text-white/58">
-                {primaryShop
-                  ? [primaryShop.neighborhood, primaryShop.city, primaryShop.state].filter(Boolean).join(", ")
-                  : "Save a preferred shop so Get a Cut Now can keep matching close to your usual area."}
+                {localBookingAreaDetail}
               </p>
               <div className="mt-4">
                 <button
                   type="button"
                   className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[13px] font-semibold text-white/86 transition hover:border-[#d7ffab]/18 hover:text-[#d7ffab]"
-                  onClick={() => {
-                    const [city = "", state = ""] = primaryShop
-                      ? [primaryShop.city, primaryShop.state]
-                      : locationDraft.city || locationDraft.state
-                        ? [locationDraft.city, locationDraft.state]
-                        : ["", ""];
-                    setLocationDraft({ city, state });
-                    setLocationModalOpen(true);
-                  }}
+                  onClick={openLocationModal}
                 >
                   Edit Location
                 </button>
@@ -839,14 +872,18 @@ export function ClientProfileScreen({
               <MapPinned className="h-4 w-4 text-[#d7ffab]" />
               Location preference
             </div>
-            <p className="mt-3 text-lg font-semibold text-white">{primaryShop?.name ?? "No local booking area saved yet"}</p>
+            <p className="mt-3 text-lg font-semibold text-white">{localBookingAreaTitle}</p>
             <p className="mt-2 text-sm text-white/58">
               Browser-level location permission is controlled by your device. In BVRB3R, nearby matching follows your saved booking area and preferred shop.
             </p>
             <div className="mt-4">
-              <ClientActionLink href={`${CLIENT_PRIMARY_TAB_HREFS.search}?type=shops` as Route} size="md" variant="secondary">
-                {primaryShop ? "Update Booking Area" : "Add Location"}
-              </ClientActionLink>
+              <button
+                type="button"
+                className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[13px] font-semibold text-white/84 transition hover:border-[#d7ffab]/18 hover:text-[#d7ffab]"
+                onClick={openLocationModal}
+              >
+                {savedClientLocation || primaryShop ? "Edit Location" : "Add Location"}
+              </button>
             </div>
           </div>
 

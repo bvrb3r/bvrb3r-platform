@@ -75,4 +75,16 @@ describe("marketplace discover route", () => {
       results: body.results
     }));
   });
+
+  it("returns a specific discovery error reference when canonical supply loading fails", async () => {
+    searchBarbersAndShopsPayloadMock.mockRejectedValue(new Error("availability_rules location_id query failed"));
+    const { GET } = await import("@/app/api/marketplace/discover/route");
+
+    const response = await GET(new NextRequest("https://bvrb3r.test/api/marketplace/discover?query=phillip"));
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body.error).toBe("Marketplace discovery failed. Reference client_discovery_failed.");
+    expect(body.code).toBe("client_discovery_failed");
+  });
 });

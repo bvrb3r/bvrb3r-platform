@@ -785,12 +785,12 @@ function listAvailabilitySlotsForBarber(params: {
     earliestAt
   } = params;
 
-  const locationUuid = locationUuidByReference.get(locationReference);
-  if (!locationUuid) {
+  const locationIds = new Set([locationReference, locationUuidByReference.get(locationReference)].filter((value): value is string => Boolean(value)));
+  if (!locationIds.size) {
     return [] as CanonicalSlot[];
   }
 
-  const rules = availabilityRules.filter((entry) => entry.barber_id === barberUuid && entry.location_id === locationUuid);
+  const rules = availabilityRules.filter((entry) => entry.barber_id === barberUuid && locationIds.has(entry.location_id));
   if (!rules.length) {
     return [] as CanonicalSlot[];
   }
@@ -1136,6 +1136,7 @@ export async function buildCanonicalDiscoveryResults(
     barberName: candidate.barberName,
     locationId: candidate.locationId,
     locationLabel: candidate.location.name,
+    cityLabel: [candidate.location.city, candidate.location.state].filter(Boolean).join(", ") || undefined,
     profilePhotoUrl: canonicalMediaUrl(
       profileByBarberReference.get(candidate.barberId)?.profile_photo_url,
       profileByBarberReference.get(candidate.barberId)?.profile_photo_path

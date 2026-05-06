@@ -412,9 +412,16 @@ export interface ArchitectAccountDirectoryItem {
   documentCount: number;
   reviewCount: number;
   marketplaceLive: boolean;
+  clientHomeIncluded?: boolean;
   searchIncluded: boolean;
+  clientSearchIncluded?: boolean;
+  directSearchMatch?: boolean;
   feedEligible: boolean;
   feedAssetCount: number;
+  publicRoute?: string;
+  discoveryLocation?: string;
+  payoutMode?: "test" | "live" | "missing";
+  serviceLocationCount?: number;
   marketplaceBlockers: string[];
   searchText: string;
 }
@@ -477,6 +484,7 @@ export interface ArchitectAccountDetailPayload {
       availabilityRulesCount: number;
       workingHoursCount: number;
       linkedShopIds: string[];
+      serviceLocationLabels?: string[];
     };
     shopOwner?: {
       shopExists: boolean;

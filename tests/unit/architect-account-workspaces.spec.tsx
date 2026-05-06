@@ -74,9 +74,16 @@ const directoryPayload: ArchitectAccountDirectoryPayload = {
       documentCount: 1,
       reviewCount: 0,
       marketplaceLive: false,
+      clientHomeIncluded: false,
       searchIncluded: false,
+      clientSearchIncluded: false,
+      directSearchMatch: false,
       feedEligible: false,
       feedAssetCount: 0,
+      publicRoute: "/barber/phillipmcgee",
+      discoveryLocation: "Independent Studio, Tampa FL",
+      payoutMode: "test",
+      serviceLocationCount: 1,
       marketplaceBlockers: ["Barber approval pending"],
       searchText: "phillip mcgee phillipmcgee813@gmail.com barber"
     },
@@ -101,9 +108,15 @@ const directoryPayload: ArchitectAccountDirectoryPayload = {
       documentCount: 0,
       reviewCount: 0,
       marketplaceLive: false,
+      clientHomeIncluded: false,
       searchIncluded: false,
+      clientSearchIncluded: false,
+      directSearchMatch: false,
       feedEligible: false,
       feedAssetCount: 0,
+      publicRoute: "/shop/shop-1",
+      discoveryLocation: "Tampa, FL",
+      payoutMode: "test",
       marketplaceBlockers: ["Shop approval pending"],
       searchText: "bvrb3r shop bvrb3r@gmail.com shop_owner bvrb3r studio"
     }
@@ -176,7 +189,8 @@ const detailPayload: ArchitectAccountDetailPayload = {
       servicesCount: 1,
       availabilityRulesCount: 1,
       workingHoursCount: 0,
-      linkedShopIds: ["shop-1"]
+      linkedShopIds: ["shop-1"],
+      serviceLocationLabels: ["Independent Studio, Tampa FL"]
     },
     verificationProfiles: [
       {
@@ -315,6 +329,9 @@ describe("architect account workspaces", () => {
     expect(screen.getByText("Verification actions")).toBeInTheDocument();
     expect(screen.getAllByText("Barber approval pending").length).toBeGreaterThan(0);
     expect(screen.getByText("Approved means eligible. Live means clients can discover and book.")).toBeInTheDocument();
+    expect(screen.getByText("Client discovery debug")).toBeInTheDocument();
+    expect(screen.getAllByText("Independent Studio, Tampa FL").length).toBeGreaterThan(0);
+    expect(screen.getByText("/barber/phillipmcgee")).toBeInTheDocument();
     expect(screen.getAllByText("Marketplace Not live").length).toBeGreaterThan(0);
     expect(screen.getByText("No real verification documents are linked to this account.")).toBeInTheDocument();
   });
@@ -329,9 +346,15 @@ describe("architect account workspaces", () => {
             verificationStatus: "approved",
             marketplaceBlockers: [],
             marketplaceLive: true,
+            clientHomeIncluded: true,
             searchIncluded: true,
+            clientSearchIncluded: true,
+            directSearchMatch: true,
             feedEligible: true,
             feedAssetCount: 1,
+            publicRoute: "/barber/phillipmcgee",
+            discoveryLocation: "Independent Studio, Tampa FL",
+            payoutMode: "test",
             barber: detailPayload.account.barber
               ? {
                   ...detailPayload.account.barber,

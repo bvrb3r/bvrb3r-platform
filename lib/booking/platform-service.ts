@@ -77,7 +77,16 @@ type ClientPreferenceRecord = {
   client_email: string;
   favorite_shop_reference: string | null;
   preferred_location_reference: string | null;
+  preferred_city?: string | null;
+  preferred_state?: string | null;
+  preferred_postal_code?: string | null;
   prefers_instant_booking: boolean;
+};
+
+export type ClientPreferredLocation = {
+  city: string;
+  state: string;
+  postalCode?: string;
 };
 
 type NotificationPreferenceRecord = {
@@ -185,6 +194,7 @@ export interface ClientProfilePayload {
     email: string;
     favoriteBarberReference?: string;
     favoriteShopReference?: string;
+    preferredLocation?: ClientPreferredLocation;
     loyaltyPoints: number;
     retentionTag: string;
     notes: string[];
@@ -230,6 +240,13 @@ type ClientFavoriteBarberInput = {
 type ClientFavoriteShopInput = {
   clientId: string;
   shopReference: string;
+};
+
+type ClientLocationInput = {
+  clientId: string;
+  city: string;
+  state?: string;
+  postalCode?: string;
 };
 
 type ClientReviewInput = {
@@ -286,6 +303,33 @@ function mapLocationRecordAsShop(row: LocationRecord) {
     kind: "shop",
     latitude: row.latitude ?? undefined,
     longitude: row.longitude ?? undefined
+  };
+}
+
+function isMissingClientLocationColumns(error: unknown) {
+  const code = typeof error === "object" && error && "code" in error ? String((error as { code?: unknown }).code) : "";
+  const message = error instanceof Error
+    ? error.message
+    : typeof error === "object" && error && "message" in error
+      ? String((error as { message?: unknown }).message)
+      : "";
+
+  return code === "42703" || /preferred_(city|state|postal_code)|column .* does not exist/i.test(message);
+}
+
+function normalizeClientPreferredLocation(row?: Pick<ClientPreferenceRecord, "preferred_city" | "preferred_state" | "preferred_postal_code"> | null): ClientPreferredLocation | undefined {
+  const city = row?.preferred_city?.trim();
+  const state = row?.preferred_state?.trim();
+  const postalCode = row?.preferred_postal_code?.trim();
+
+  if (!city && !state) {
+    return undefined;
+  }
+
+  return {
+    city: city ?? "",
+    state: state ?? "",
+    postalCode: postalCode || undefined
   };
 }
 
@@ -451,20 +495,32 @@ async function readClientPreference(supabase: SupabaseClient | null, clientId?: 
     return null;
   }
 
+  const selectWithLocation = "client_reference, client_email, favorite_shop_reference, preferred_location_reference, preferred_city, preferred_state, preferred_postal_code, prefers_instant_booking";
+  const selectWithoutLocation = "client_reference, client_email, favorite_shop_reference, preferred_location_reference, prefers_instant_booking";
   const result = await supabase
     .from("client_preferences")
-    .select("client_reference, client_email, favorite_shop_reference, preferred_location_reference, prefers_instant_booking")
+    .select(selectWithLocation)
     .eq("client_reference", clientId)
     .order("updated_at", { ascending: false })
     .limit(1);
 
-  if (result.error || !(result.data ?? []).length) {
+  const resolvedResult = result.error && isMissingClientLocationColumns(result.error)
+    ? await supabase
+        .from("client_preferences")
+        .select(selectWithoutLocation)
+        .eq("client_reference", clientId)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+    : result;
+
+  if (resolvedResult.error || !(resolvedResult.data ?? []).length) {
     return null;
   }
 
-  const row = result.data[0] as ClientPreferenceRecord;
+  const row = resolvedResult.data[0] as ClientPreferenceRecord;
   return {
     favoriteShopReference: row.favorite_shop_reference ?? row.preferred_location_reference ?? undefined,
+    preferredLocation: normalizeClientPreferredLocation(row),
     prefersInstantBooking: row.prefers_instant_booking
   };
 }
@@ -572,7 +628,8 @@ async function readClientProfile(supabase: SupabaseClient | null, clientId?: str
 
   return {
     ...profile,
-    favoriteShopReference: preference?.favoriteShopReference
+    favoriteShopReference: preference?.favoriteShopReference,
+    preferredLocation: preference?.preferredLocation
   };
 }
 
@@ -783,11 +840,95 @@ function resolvePreferredShops(
     }
   }
 
-  if (!preferred.size && shops[0]) {
-    preferred.set(shops[0].id, shops[0]);
+  return [...preferred.values()].slice(0, 4);
+}
+
+export async function saveClientLocation(input: ClientLocationInput) {
+  const city = input.city.trim();
+  const state = input.state?.trim() ?? "";
+  const postalCode = input.postalCode?.trim() ?? "";
+
+  if (!city) {
+    throw new Error("Enter a city to save your booking location.");
   }
 
-  return [...preferred.values()].slice(0, 4);
+  const supabase = getSupabase();
+  if (!supabase) {
+    throw new Error("Client location cannot be saved because Supabase is not configured.");
+  }
+
+  const clientProfile = await readCanonicalClientProfile(supabase, input.clientId);
+  if (!clientProfile) {
+    throw new Error("Client profile could not be found.");
+  }
+
+  const updatedAt = new Date().toISOString();
+  const preference = await readClientPreference(supabase, input.clientId);
+  const basePayload = {
+    client_reference: input.clientId,
+    client_email: clientProfile.email,
+    favorite_shop_reference: preference?.favoriteShopReference ?? null,
+    preferred_location_reference: preference?.favoriteShopReference ?? null,
+    preferred_city: city,
+    preferred_state: state || null,
+    preferred_postal_code: postalCode || null,
+    prefers_instant_booking: preference?.prefersInstantBooking ?? false,
+    updated_at: updatedAt
+  };
+  const existingResult = await supabase
+    .from("client_preferences")
+    .select("client_reference")
+    .eq("client_reference", input.clientId)
+    .order("updated_at", { ascending: false })
+    .limit(1);
+
+  if (existingResult.error) {
+    throw existingResult.error;
+  }
+
+  const existing = (existingResult.data ?? [])[0] as { client_reference: string } | undefined;
+  const writeResult = existing
+    ? await supabase
+        .from("client_preferences")
+        .update({
+          client_email: basePayload.client_email,
+          preferred_city: basePayload.preferred_city,
+          preferred_state: basePayload.preferred_state,
+          preferred_postal_code: basePayload.preferred_postal_code,
+          updated_at: basePayload.updated_at
+        })
+        .eq("client_reference", input.clientId)
+    : await supabase.from("client_preferences").insert({
+        ...basePayload,
+        created_at: updatedAt
+      });
+
+  if (writeResult.error) {
+    throw writeResult.error;
+  }
+
+  const savedProfile = await readClientProfile(supabase, input.clientId);
+  const location = {
+    city,
+    state,
+    postalCode: postalCode || undefined
+  };
+
+  return {
+    location,
+    client: savedProfile ?? {
+      clientReference: input.clientId,
+      fullName: clientProfile.fullName,
+      phone: clientProfile.phone,
+      email: clientProfile.email,
+      favoriteBarberReference: clientProfile.favoriteBarberReference,
+      favoriteShopReference: preference?.favoriteShopReference,
+      preferredLocation: location,
+      loyaltyPoints: clientProfile.loyaltyPoints,
+      retentionTag: clientProfile.retentionTag,
+      notes: clientProfile.notes
+    }
+  };
 }
 
 export async function saveClientFavoriteBarber(input: ClientFavoriteBarberInput) {
@@ -1377,20 +1518,30 @@ async function readCompletedClientAppointments(clientId?: string) {
     return [];
   }
 
-  const provider = await getLiveOperationsProvider();
-  const snapshot = await provider.readSnapshot({ role: "client", clientId } as LiveOperationsViewer);
+  try {
+    const provider = await getLiveOperationsProvider();
+    const snapshot = await provider.readSnapshot({ role: "client", clientId } as LiveOperationsViewer);
 
-  return snapshot.appointments
-    .filter((appointment) => appointment.status === "completed")
-    .sort((left, right) => toTimestamp(right.start) - toTimestamp(left.start));
+    return snapshot.appointments
+      .filter((appointment) => appointment.status === "completed")
+      .sort((left, right) => toTimestamp(right.start) - toTimestamp(left.start));
+  } catch (error) {
+    console.error("[platform-service] client completed appointments unavailable", {
+      clientId,
+      message: error instanceof Error ? error.message : String(error)
+    });
+    return [];
+  }
 }
 
 export async function getClientHomePayload(clientId?: string) {
   const supabase = getSupabase();
   const shops = await readShops(supabase);
   const clientProfile = await readClientProfile(supabase, clientId);
-  const hasResolvedLocation = Boolean(clientProfile?.favoriteShopReference);
-  const locationId = resolveLocationId(shops, clientProfile?.favoriteShopReference);
+  const hasSavedLocation = Boolean(clientProfile?.favoriteShopReference || clientProfile?.preferredLocation);
+  const locationId = clientProfile?.favoriteShopReference
+    ? resolveLocationId(shops, clientProfile.favoriteShopReference)
+    : undefined;
   const completedAppointments = await readCompletedClientAppointments(clientId);
   let defaultPaymentMethod: ClientPaymentMethodView | null = null;
 
@@ -1411,44 +1562,45 @@ export async function getClientHomePayload(clientId?: string) {
     const discovery = decorateDiscoveryWithActivation(
       buildDiscoveryPayload(bundle.runtime, bundle.trustState, {
         locationId,
-        maxDistanceMiles: 12,
+        maxDistanceMiles: hasSavedLocation ? 12 : undefined,
         availability: "any"
       }),
       bundle.activationState,
       bundle.trustState
     );
     const nextAvailable = buildHaircutNowPayload(bundle.runtime, clientId, locationId, bundle.trustState);
+    const localizedDiscovery = orderDiscoveryByPreferredLocation(discovery, clientProfile?.preferredLocation);
     const favoriteBarber = clientProfile?.favoriteBarberReference
-      ? discovery.find((result) => result.barberId === clientProfile.favoriteBarberReference)
+      ? localizedDiscovery.find((result) => result.barberId === clientProfile.favoriteBarberReference)
       : undefined;
-    const visibleShops = filterBookableMarketplaceShops(shops, bundle.trustState, discovery);
-    const recommendedBarbers = buildRecommendedBarbers(discovery, completedAppointments, hasResolvedLocation);
+    const visibleShops = filterBookableMarketplaceShops(shops, bundle.trustState, localizedDiscovery);
+    const recommendedBarbers = buildRecommendedBarbers(localizedDiscovery, completedAppointments, hasSavedLocation);
     const recommendedShops = buildRecommendedShops(
       visibleShops,
-      discovery,
+      localizedDiscovery,
       completedAppointments,
-      hasResolvedLocation,
+      hasSavedLocation,
       locationId
     );
 
     return {
       client: clientProfile ?? null,
       shops: visibleShops,
-      trustedBarbers: discovery.filter((result) => result.barberId !== clientProfile?.favoriteBarberReference).slice(0, 6),
+      trustedBarbers: localizedDiscovery.filter((result) => result.barberId !== clientProfile?.favoriteBarberReference).slice(0, 6),
       recommendedBarbers,
       recommendedShops,
       favoriteBarber: favoriteBarber ?? null,
       nextAvailableChair: nextAvailable,
       defaultPaymentMethod,
-      locationId,
-      hasResolvedLocation
+      locationId: locationId ?? "",
+      hasResolvedLocation: hasSavedLocation
     };
   }
 
   const routine = await readClientRoutine(supabase, clientId, clientProfile?.favoriteBarberReference);
   const trustState = await readTrustStateSafe();
   const discovery = await buildCanonicalDiscoveryResults(supabase, {
-    locationId,
+    locationId: locationId ?? "",
     clientSignal: {
       favoriteBarberReference: clientProfile?.favoriteBarberReference,
       favoriteShopReference: clientProfile?.favoriteShopReference
@@ -1457,7 +1609,7 @@ export async function getClientHomePayload(clientId?: string) {
     trustState
   });
   const nextAvailable = await buildCanonicalNextAvailableMatch(supabase, {
-    locationId,
+    locationId: locationId ?? "",
     clientSignal: {
       favoriteBarberReference: clientProfile?.favoriteBarberReference,
       favoriteShopReference: clientProfile?.favoriteShopReference
@@ -1465,30 +1617,31 @@ export async function getClientHomePayload(clientId?: string) {
     routine,
     trustState
   });
+  const localizedDiscovery = orderDiscoveryByPreferredLocation(discovery, clientProfile?.preferredLocation);
   const favoriteBarber = clientProfile?.favoriteBarberReference
-    ? discovery.find((result) => result.barberId === clientProfile.favoriteBarberReference) ?? null
+    ? localizedDiscovery.find((result) => result.barberId === clientProfile.favoriteBarberReference) ?? null
     : null;
-  const visibleShops = filterBookableMarketplaceShops(shops, trustState, discovery);
-  const recommendedBarbers = buildRecommendedBarbers(discovery, completedAppointments, hasResolvedLocation);
+  const visibleShops = filterBookableMarketplaceShops(shops, trustState, localizedDiscovery);
+  const recommendedBarbers = buildRecommendedBarbers(localizedDiscovery, completedAppointments, hasSavedLocation);
   const recommendedShops = buildRecommendedShops(
     visibleShops,
-    discovery,
+    localizedDiscovery,
     completedAppointments,
-    hasResolvedLocation,
+    hasSavedLocation,
     locationId
   );
 
   return {
     client: clientProfile ?? null,
     shops: visibleShops,
-    trustedBarbers: discovery.filter((result) => result.barberId !== clientProfile?.favoriteBarberReference).slice(0, 6),
+    trustedBarbers: localizedDiscovery.filter((result) => result.barberId !== clientProfile?.favoriteBarberReference).slice(0, 6),
     recommendedBarbers,
     recommendedShops,
     favoriteBarber,
     nextAvailableChair: nextAvailable,
     defaultPaymentMethod,
-    locationId,
-    hasResolvedLocation
+    locationId: locationId ?? "",
+    hasResolvedLocation: hasSavedLocation
   };
 }
 
@@ -1523,6 +1676,33 @@ function filterDiscoveryResults(
   });
 }
 
+function scorePreferredLocation(result: DiscoveryResult, location?: ClientPreferredLocation) {
+  if (!location) {
+    return 0;
+  }
+
+  const city = location.city.trim().toLowerCase();
+  const state = location.state.trim().toLowerCase();
+  const searchable = [
+    result.cityLabel,
+    result.locationLabel,
+    result.shopName
+  ].filter(Boolean).join(" ").toLowerCase();
+
+  return (city && searchable.includes(city) ? 2 : 0) + (state && searchable.includes(state) ? 1 : 0);
+}
+
+function orderDiscoveryByPreferredLocation(results: DiscoveryResult[], location?: ClientPreferredLocation) {
+  if (!location?.city && !location?.state) {
+    return results;
+  }
+
+  return results
+    .map((result, index) => ({ result, index, score: scorePreferredLocation(result, location) }))
+    .sort((left, right) => right.score - left.score || left.index - right.index)
+    .map(({ result }) => result);
+}
+
 export async function searchBarbersAndShopsPayload(params: {
   query?: string;
   category?: string;
@@ -1539,7 +1719,14 @@ export async function searchBarbersAndShopsPayload(params: {
   const queryText = params.query?.trim();
   const effectiveQuery = queryText || params.category || undefined;
   const clientProfile = await readClientProfile(supabase, params.clientId);
-  const locationId = params.locationId || resolveLocationId(shops, clientProfile?.favoriteShopReference);
+  const hasLocationScope = Boolean(params.locationId || clientProfile?.favoriteShopReference);
+  const locationId = params.locationId || (clientProfile?.favoriteShopReference
+    ? resolveLocationId(shops, clientProfile.favoriteShopReference)
+    : undefined);
+  const distanceAwareFilters = {
+    ...params,
+    maxDistanceMiles: hasLocationScope ? params.maxDistanceMiles : undefined
+  };
 
   if (!supabase) {
     const bundle = await readMarketplaceBundle();
@@ -1551,12 +1738,13 @@ export async function searchBarbersAndShopsPayload(params: {
         minRating: params.minRating,
         maxPrice: params.maxPrice,
         specialty: params.specialty,
-        maxDistanceMiles: params.maxDistanceMiles ?? 12
+        maxDistanceMiles: hasLocationScope ? params.maxDistanceMiles ?? 12 : undefined
       }),
       bundle.activationState,
       bundle.trustState
-    ), params);
-    const visibleShops = filterBookableMarketplaceShops(shops, bundle.trustState, results);
+    ), distanceAwareFilters);
+    const localizedResults = orderDiscoveryByPreferredLocation(results, clientProfile?.preferredLocation);
+    const visibleShops = filterBookableMarketplaceShops(shops, bundle.trustState, localizedResults);
     const matchingShops = queryText
       ? visibleShops.filter((shop) => `${shop.name} ${shop.neighborhood} ${shop.city}`.toLowerCase().includes(queryText.toLowerCase()))
       : visibleShops;
@@ -1566,14 +1754,14 @@ export async function searchBarbersAndShopsPayload(params: {
       query: queryText ?? "",
       category: params.category ?? "",
       shops: matchingShops.slice(0, 4),
-      barbers: results
+      barbers: localizedResults
     };
   }
 
   const routine = await readClientRoutine(supabase, params.clientId, clientProfile?.favoriteBarberReference);
   const trustState = await readTrustStateSafe();
   const results = filterDiscoveryResults(await buildCanonicalDiscoveryResults(supabase, {
-    locationId,
+    locationId: locationId ?? "",
     query: queryText,
     category: params.category,
     clientSignal: {
@@ -1582,8 +1770,9 @@ export async function searchBarbersAndShopsPayload(params: {
     },
     routine,
     trustState
-  }), params);
-  const visibleShops = filterBookableMarketplaceShops(shops, trustState, results);
+  }), distanceAwareFilters);
+  const localizedResults = orderDiscoveryByPreferredLocation(results, clientProfile?.preferredLocation);
+  const visibleShops = filterBookableMarketplaceShops(shops, trustState, localizedResults);
   const matchingShops = queryText
     ? visibleShops.filter((shop) => `${shop.name} ${shop.neighborhood} ${shop.city}`.toLowerCase().includes(queryText.toLowerCase()))
     : visibleShops;
@@ -1593,7 +1782,7 @@ export async function searchBarbersAndShopsPayload(params: {
     query: queryText ?? "",
     category: params.category ?? "",
     shops: matchingShops.slice(0, 4),
-    barbers: results
+    barbers: localizedResults
   };
 }
 

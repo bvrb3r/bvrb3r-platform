@@ -239,4 +239,63 @@ describe("client search screen", () => {
     expect(screen.getByText("Approved shops appear here after the shop is set up and at least one approved barber is bookable.")).toBeInTheDocument();
     expect(screen.queryByText(/We're expanding in your area/i)).not.toBeInTheDocument();
   });
+
+  it("keeps discovery platform-wide when the client has no saved location", () => {
+    useClientHomeQueryMock.mockReturnValue({
+      data: {
+        locationId: "loc-ybor",
+        hasResolvedLocation: false,
+        recommendedBarbers: [],
+        recommendedShops: [],
+        shops: [
+          {
+            id: "loc-ybor",
+            name: "Centro Ybor Flagship",
+            brandLine: "Trusted local shop",
+            neighborhood: "Ybor City",
+            city: "Tampa",
+            state: "FL",
+            phone: "(813) 555-0101",
+            address: "1600 7th Ave, Tampa, FL",
+            kind: "shop"
+          }
+        ]
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn()
+    });
+    useMarketplaceDiscoveryMock.mockReturnValue({
+      data: [],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn()
+    });
+
+    render(<ClientSearchScreen clientId="client-jordan" routeBase="/dashboard/client/search" />);
+
+    expect(useMarketplaceDiscoveryMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        locationId: undefined,
+        maxDistanceMiles: 20
+      }),
+      "client-jordan"
+    );
+    expect(screen.getByText("Set your city to find barbers near you. Search still shows live BVRB3R barbers across the platform.")).toBeInTheDocument();
+    expect(screen.getByTestId("client-search-debug")).toHaveTextContent("Barber count");
+  });
+
+  it("shows a specific discovery failure instead of the generic action error", () => {
+    useMarketplaceDiscoveryMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error("Marketplace discovery failed. Reference client_discovery_failed."),
+      refetch: vi.fn()
+    });
+
+    render(<ClientSearchScreen clientId="client-jordan" routeBase="/dashboard/client/search" />);
+
+    expect(screen.getAllByText("Marketplace discovery failed. Reference client_discovery_failed.").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Something went wrong while processing this action. Please try again.")).not.toBeInTheDocument();
+  });
 });

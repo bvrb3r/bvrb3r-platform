@@ -535,7 +535,7 @@ describe("canonical availability intelligence", () => {
       }],
       availability_rules: [{
         barber_id: "barber-uuid",
-        location_id: "location-uuid",
+        location_id: "independent-live-123",
         weekday: targetDay.getDay(),
         start_time: formatTime(targetDay),
         end_time: formatTime(targetEnd)

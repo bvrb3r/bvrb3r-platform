@@ -189,7 +189,7 @@ describe("client profile screen", () => {
         authPhone="8135550190"
         emailVerified
         phoneVerified
-        payload={({ 
+        payload={({
           client: {
             clientReference: "client-jordan",
             fullName: "Jordan Ellis",
@@ -394,7 +394,17 @@ describe("client profile screen", () => {
     expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
   });
 
-  it("opens quick location setup from the client activation gate and saves through the existing profile flow", async () => {
+  it("opens quick location setup from the client activation gate and saves canonical client location", async () => {
+    global.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        location: {
+          city: "Charlotte",
+          state: "NC"
+        }
+      })
+    })) as unknown as typeof fetch;
+
     render(
       <ClientProfileScreen
         isSignedInClient
@@ -423,9 +433,40 @@ describe("client profile screen", () => {
     fireEvent.click(screen.getByRole("button", { name: /Save location/i }));
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith("/api/onboarding/client/profile", expect.objectContaining({
+      expect(global.fetch).toHaveBeenCalledWith("/api/client/location", expect.objectContaining({
         method: "POST"
       }));
     });
+    expect(screen.getAllByText("Charlotte, NC").length).toBeGreaterThan(0);
+  });
+
+  it("displays saved client booking city instead of a pending placeholder", () => {
+    render(
+      <ClientProfileScreen
+        isSignedInClient
+        authEmail="jordan@bvrb3r.app"
+        authPhone="8135550190"
+        payload={({
+          client: {
+            clientReference: "client-jordan",
+            fullName: "Jordan Ellis",
+            email: "jordan@bvrb3r.app",
+            phone: "8135550190",
+            preferredLocation: {
+              city: "Tampa",
+              state: "FL"
+            }
+          },
+          favoriteBarber: null,
+          preferredShops: [],
+          notificationPreference: null,
+          routine: null,
+          paymentMethods: []
+        } as unknown as ClientProfilePayload)}
+      />
+    );
+
+    expect(screen.getAllByText("Tampa, FL").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Pending, Pending, Pending")).not.toBeInTheDocument();
   });
 });

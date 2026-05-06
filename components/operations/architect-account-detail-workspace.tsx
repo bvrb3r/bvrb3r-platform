@@ -266,14 +266,20 @@ export function ArchitectAccountDetailWorkspace({
         },
         {
           label: "Location / shop",
-          complete: account.barber.linkedShopIds.length > 0,
-          detail: account.barber.linkedShopIds.length ? account.barber.linkedShopIds.join(", ") : "No service location or shop connection detected"
+          complete: account.barber.linkedShopIds.length > 0 || (account.barber.serviceLocationLabels?.length ?? 0) > 0,
+          detail: account.barber.serviceLocationLabels?.length
+            ? account.barber.serviceLocationLabels.join(" | ")
+            : account.barber.linkedShopIds.length
+              ? account.barber.linkedShopIds.join(", ")
+              : "No service location or shop connection detected"
         },
         { label: "Visibility", complete: account.barber.visibilityState === "public" || account.barber.visibilityState === "featured", detail: `Visibility: ${formatLabel(account.barber.visibilityState)}` },
         { label: "Booking active", complete: account.barber.acceptingBookings === true || account.barber.acceptsInstantBookings === true, detail: `Status: ${formatLabel(account.barber.status)}` },
         { label: "Payout ready", complete: selectedVerificationProfile?.canReceivePayouts === true, detail: `Verification payout lane: ${selectedVerificationProfile?.canReceivePayouts ? "ready" : "not ready"}` },
         { label: "Marketplace", complete: account.marketplaceLive, detail: account.marketplaceBlockers.length ? account.marketplaceBlockers.join(" | ") : "Marketplace visible from account data" },
-        { label: "Client search", complete: account.searchIncluded, detail: account.searchIncluded ? "Included in client search" : "Not included in client search" },
+        { label: "Client home", complete: account.clientHomeIncluded ?? account.marketplaceLive, detail: account.clientHomeIncluded ?? account.marketplaceLive ? "Included in client home supply" : "Not included in client home" },
+        { label: "Client search", complete: account.clientSearchIncluded ?? account.searchIncluded, detail: account.clientSearchIncluded ?? account.searchIncluded ? "Included in client search" : "Not included in client search" },
+        { label: "Direct search", complete: account.directSearchMatch ?? account.searchIncluded, detail: account.directSearchMatch ?? account.searchIncluded ? "Name/slug can match client direct search" : "Direct search excluded by blockers" },
         { label: "Feed content", complete: account.feedEligible, detail: account.feedAssetCount > 0 ? `${account.feedAssetCount} public feed asset${account.feedAssetCount === 1 ? "" : "s"}` : "No public feed content yet" }
       ]
     : account.shopOwner?.shopExists
@@ -289,7 +295,9 @@ export function ArchitectAccountDetailWorkspace({
           { label: "Booking active", complete: account.shopOwner.shopStatus === "active", detail: `Shop status: ${formatLabel(account.shopOwner.shopStatus)}` },
           { label: "Payout ready", complete: selectedVerificationProfile?.canReceivePayouts === true, detail: `Verification payout lane: ${selectedVerificationProfile?.canReceivePayouts ? "ready" : "not ready"}` },
           { label: "Marketplace", complete: account.marketplaceLive, detail: account.marketplaceBlockers.length ? account.marketplaceBlockers.join(" | ") : "Marketplace visible from account data" },
-          { label: "Client search", complete: account.searchIncluded, detail: account.searchIncluded ? "Included in client search" : "Not included in client search" },
+          { label: "Client home", complete: account.clientHomeIncluded ?? account.marketplaceLive, detail: account.clientHomeIncluded ?? account.marketplaceLive ? "Included in client home supply" : "Not included in client home" },
+          { label: "Client search", complete: account.clientSearchIncluded ?? account.searchIncluded, detail: account.clientSearchIncluded ?? account.searchIncluded ? "Included in client search" : "Not included in client search" },
+          { label: "Direct search", complete: account.directSearchMatch ?? account.searchIncluded, detail: account.directSearchMatch ?? account.searchIncluded ? "Name/slug can match client direct search" : "Direct search excluded by blockers" },
           { label: "Feed content", complete: account.feedEligible, detail: account.feedAssetCount > 0 ? `${account.feedAssetCount} public feed asset${account.feedAssetCount === 1 ? "" : "s"}` : "No public feed content yet" }
         ]
       : [];
@@ -512,6 +520,31 @@ export function ArchitectAccountDetailWorkspace({
                 No marketplace blockers are currently detected from live account data.
               </div>
             )}
+          </Card>
+
+          <Card className="rounded-[32px] p-6">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="surface-label">Client discovery debug</p>
+                <h2 className="mt-3 text-2xl font-semibold text-white">Search and public route state</h2>
+                <p className="mt-3 text-sm leading-7 text-white/62">
+                  This mirrors the marketplace live decision used by client Home, Search, and public profile routing.
+                </p>
+              </div>
+              <span className={cn("status-pill", account.searchIncluded ? badgeClasses("approved") : badgeClasses("pending"))}>
+                Client search {account.searchIncluded ? "included" : "excluded"}
+              </span>
+            </div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <Field label="Client Home included" value={(account.clientHomeIncluded ?? account.marketplaceLive) ? "yes" : "no"} />
+              <Field label="Client Search included" value={(account.clientSearchIncluded ?? account.searchIncluded) ? "yes" : "no"} />
+              <Field label="Direct search match" value={(account.directSearchMatch ?? account.searchIncluded) ? "yes" : "no"} />
+              <Field label="Marketplace live" value={account.marketplaceLive ? "yes" : "no"} />
+              <Field label="Current discovery location" value={account.discoveryLocation} />
+              <Field label="Public route" value={account.publicRoute} />
+              <Field label="Payout mode" value={account.payoutMode} />
+              <Field label="Feed eligible" value={account.feedEligible ? "yes" : "no"} />
+            </div>
           </Card>
 
           <Card className="rounded-[32px] p-6">
