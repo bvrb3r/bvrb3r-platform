@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getClientExperienceContext } from "@/lib/client-experience/session";
-import { saveClientLocation } from "@/lib/booking/platform-service";
+import { ensureClientProfileForUser, saveClientLocation } from "@/lib/booking/platform-service";
 
 const clientLocationSchema = z.object({
   city: z.string().trim().min(1, "City is required.").max(80),
@@ -51,7 +51,8 @@ function getClientLocationSaveFailureReason(error: unknown): ClientLocationSaveF
 export async function POST(request: Request) {
   const context = await getClientExperienceContext();
 
-  if (!context.isSignedInClient || !context.clientId || context.viewer.role !== "client") {
+  const isClientUser = context.viewer.role === "client" && context.viewer.id !== "guest-user";
+  if (!isClientUser) {
     logClientLocationSaveFailure("auth_missing", {
       clientId: context.clientId || null,
       viewerRole: context.viewer.role
@@ -78,14 +79,22 @@ export async function POST(request: Request) {
   }
 
   try {
+    const repair = await ensureClientProfileForUser({
+      userId: context.viewer.id,
+      clientId: context.clientId || undefined,
+      email: context.viewer.email,
+      fullName: context.viewer.canonicalFullName ?? context.viewer.name,
+      phone: context.viewer.phone,
+      role: context.viewer.role
+    });
     const result = await saveClientLocation({
-      clientId: context.clientId,
+      clientId: repair.clientId,
       city: parsed.data.city,
       state: parsed.data.state,
       postalCode: parsed.data.postalCode
     });
 
-    return NextResponse.json(result);
+    return NextResponse.json({ ...result, repair });
   } catch (error) {
     const reason = getClientLocationSaveFailureReason(error);
     const message = error instanceof Error && error.message ? error.message : "Unable to save client location.";

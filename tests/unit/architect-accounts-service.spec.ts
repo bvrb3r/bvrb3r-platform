@@ -460,6 +460,107 @@ describe("architect account service", () => {
     expect(payload.account?.verificationProfiles[0]?.id).toBe("verification-barber");
   });
 
+  it("shows client repair diagnostics for missing profile and preference rows", async () => {
+    stageArchitectAccountRowsForTests({
+      authUsers: [
+        {
+          id: "profile-client-missing",
+          email: "missing-client@bvrb3r.app",
+          phone: "+18135550707",
+          created_at: "2026-04-08T12:00:00.000Z",
+          updated_at: "2026-04-08T12:00:00.000Z",
+          email_confirmed_at: "2026-04-08T12:05:00.000Z",
+          app_metadata: { provider: "email", providers: ["email"] },
+          user_metadata: { full_name: "Missing Client" },
+          identities: [{ provider: "email" }]
+        }
+      ],
+      profiles: [
+        {
+          id: "profile-client-missing",
+          role: "client",
+          primary_onboarding_role: "client",
+          onboarding_state: "active",
+          full_name: "Missing Client",
+          email: "missing-client@bvrb3r.app",
+          phone: "8135550707",
+          created_at: "2026-04-08T12:00:00.000Z"
+        }
+      ],
+      clients: []
+    });
+
+    const missingPayload = await getArchitectAccountDetailPayload(founder, "profile-client-missing");
+
+    expect(missingPayload.account?.client).toMatchObject({
+      authUserExists: true,
+      clientProfileRowExists: false,
+      clientPreferencesRowExists: false,
+      locationSaved: false,
+      repairStatus: "missing_client_profile_row",
+      referenceCode: "client-profile-"
+    });
+
+    stageArchitectAccountRowsForTests({
+      authUsers: [
+        {
+          id: "profile-client-ready",
+          email: "ready-client@bvrb3r.app",
+          phone: "+18135550808",
+          created_at: "2026-04-09T12:00:00.000Z",
+          updated_at: "2026-04-09T12:00:00.000Z",
+          email_confirmed_at: "2026-04-09T12:05:00.000Z",
+          app_metadata: { provider: "email", providers: ["email"] },
+          user_metadata: { full_name: "Ready Client" },
+          identities: [{ provider: "email" }]
+        }
+      ],
+      profiles: [
+        {
+          id: "profile-client-ready",
+          role: "client",
+          primary_onboarding_role: "client",
+          onboarding_state: "active",
+          full_name: "Ready Client",
+          email: "ready-client@bvrb3r.app",
+          phone: "8135550808",
+          created_at: "2026-04-09T12:00:00.000Z"
+        }
+      ],
+      clients: [
+        {
+          id: "client-ready-row",
+          reference_code: "client-ready",
+          profile_id: "profile-client-ready",
+          loyalty_points: 0,
+          retention_tag: "new",
+          created_at: "2026-04-09T12:00:00.000Z"
+        }
+      ],
+      clientPreferences: [
+        {
+          client_reference: "client-ready",
+          client_email: "ready-client@bvrb3r.app",
+          preferred_location_reference: "client-location:Tampa:FL:",
+          preferred_city: "Tampa",
+          preferred_state: "FL",
+          preferred_postal_code: null
+        }
+      ]
+    });
+
+    const readyPayload = await getArchitectAccountDetailPayload(founder, "profile-client-ready");
+
+    expect(readyPayload.account?.client).toMatchObject({
+      authUserExists: true,
+      clientProfileRowExists: true,
+      clientPreferencesRowExists: true,
+      locationSaved: true,
+      repairStatus: "ready",
+      referenceCode: "client-ready"
+    });
+  });
+
   it("does not keep a stale barber verification blocker after Architect approval", async () => {
     stageArchitectAccountRowsForTests({
       authUsers: [

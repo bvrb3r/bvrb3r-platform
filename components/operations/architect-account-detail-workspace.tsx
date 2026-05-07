@@ -463,6 +463,11 @@ export function ArchitectAccountDetailWorkspace({
               <DetailMetric label="Active" value={account.client.bookingCounts.active} />
               <DetailMetric label="Cancelled" value={account.client.bookingCounts.cancelled} />
               <DetailMetric label="Loyalty points" value={account.client.loyaltyPoints ?? 0} />
+              <Field label="Auth user exists" value={account.client.authUserExists ? "yes" : "no"} />
+              <Field label="Client profile row exists" value={account.client.clientProfileRowExists ? "yes" : "no"} />
+              <Field label="Client preferences row exists" value={account.client.clientPreferencesRowExists ? "yes" : "no"} />
+              <Field label="Location saved" value={account.client.locationSaved ? "yes" : "no"} />
+              <Field label="Repair status" value={account.client.repairStatus} />
               <Field label="Client id" value={account.client.id} />
               <Field label="Client reference" value={account.client.referenceCode} />
               <Field label="Retention tag" value={account.client.retentionTag} />

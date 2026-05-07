@@ -63,6 +63,15 @@ type ClientRow = {
   created_at?: string | null;
 };
 
+type ClientPreferenceRow = {
+  client_reference: string;
+  client_email?: string | null;
+  preferred_location_reference?: string | null;
+  preferred_city?: string | null;
+  preferred_state?: string | null;
+  preferred_postal_code?: string | null;
+};
+
 type BarberRow = {
   id: string;
   reference_code?: string | null;
@@ -158,6 +167,7 @@ type AccountData = {
   authUsers: AuthUserRow[];
   profiles: ProfileRow[];
   clients: ClientRow[];
+  clientPreferences: ClientPreferenceRow[];
   barbers: BarberRow[];
   shops: ShopRow[];
   locations: LocationRow[];
@@ -197,6 +207,7 @@ function emptyData(): AccountData {
     authUsers: [],
     profiles: [],
     clients: [],
+    clientPreferences: [],
     barbers: [],
     shops: [],
     locations: [],
@@ -335,6 +346,7 @@ async function readAccountData(warnings: string[]): Promise<AccountData> {
     authUsers,
     profiles,
     clients,
+    clientPreferences,
     barbers,
     shops,
     locations,
@@ -356,6 +368,7 @@ async function readAccountData(warnings: string[]): Promise<AccountData> {
     readAuthUsers(warnings, source),
     safeRows<ProfileRow>(warnings, "Profiles", () => supabase.from("profiles").select("id, role, full_name, email, phone, primary_onboarding_role, onboarding_state, phone_verified_at, last_onboarded_at, created_at")),
     safeRows<ClientRow>(warnings, "Clients", () => supabase.from("clients").select("id, reference_code, profile_id, loyalty_points, retention_tag, created_at")),
+    safeRows<ClientPreferenceRow>(warnings, "Client preferences", () => supabase.from("client_preferences").select("client_reference, client_email, preferred_location_reference, preferred_city, preferred_state, preferred_postal_code")),
     safeRows<BarberRow>(warnings, "Barbers", () => supabase.from("barbers").select("id, reference_code, profile_id, compensation_model, barber_subtype, app_approval_status, shop_approval_status, created_at")),
     safeRows<ShopRow>(warnings, "Shops", () => supabase.from("shops").select("id, name, owner_profile_id, app_approval_status, neighborhood, city, state, phone, address, created_at")),
     safeRows<LocationRow>(warnings, "Locations", () => supabase.from("locations").select("id, reference_code, name, city, state")),
@@ -379,6 +392,7 @@ async function readAccountData(warnings: string[]): Promise<AccountData> {
     authUsers,
     profiles,
     clients,
+    clientPreferences,
     barbers,
     shops,
     locations,
@@ -544,6 +558,7 @@ function asStringArray(value: unknown) {
 function buildIndexes(data: AccountData) {
   return {
     clientsByProfileId: byProfileId(data.clients),
+    clientPreferencesByReference: new Map(data.clientPreferences.map((row) => [row.client_reference, row])),
     barbersByProfileId: byProfileId(data.barbers),
     shopsByOwnerProfileId: new Map(data.shops.filter((row) => row.owner_profile_id).map((row) => [row.owner_profile_id as string, row])),
     barberProfilesByReference: new Map(data.barberProfiles.map((row) => [row.barber_reference, row])),
@@ -611,6 +626,26 @@ function getApprovalStatus(role: ArchitectAccountRoleFilter, barber?: BarberRow,
 
 function getVerificationStatus(verification?: VerificationProfileRow) {
   return verification?.overall_status ?? "missing_verification_profile";
+}
+
+function fallbackClientReference(profileId: string) {
+  return `client-${profileId.slice(0, 8)}`;
+}
+
+function hasSavedClientLocation(preference?: ClientPreferenceRow | null) {
+  if (!preference) return false;
+  return Boolean(
+    preference.preferred_city?.trim()
+    || preference.preferred_state?.trim()
+    || preference.preferred_postal_code?.trim()
+    || preference.preferred_location_reference?.startsWith("client-location:")
+  );
+}
+
+function formatClientRepairStatus(client: ClientRow | undefined, preference?: ClientPreferenceRow | null) {
+  if (!client) return "missing_client_profile_row";
+  if (!preference) return "missing_client_preferences_row";
+  return "ready";
 }
 
 function locationLabelsForProfile(profileId: string, data: AccountData, indexes: ReturnType<typeof buildIndexes>) {
@@ -1084,6 +1119,8 @@ export async function getArchitectAccountDetailPayload(actor: UserAccount, profi
   const barber = indexes.barbersByProfileId.get(profileId);
   const shop = indexes.shopsByOwnerProfileId.get(profileId);
   const client = indexes.clientsByProfileId.get(profileId);
+  const clientReference = client?.reference_code ?? (account.role === "client" ? fallbackClientReference(profileId) : undefined);
+  const clientPreference = clientReference ? indexes.clientPreferencesByReference.get(clientReference) : undefined;
   const reference = barberReference(barber);
   const linkedShopIds = reference ? getLinkedShopIds(reference, profileId, data) : [];
   const serviceLocationLabels = locationLabelsForProfile(profileId, data, indexes);
@@ -1173,11 +1210,16 @@ export async function getArchitectAccountDetailPayload(actor: UserAccount, profi
         locationLabels: locationLabelsForProfile(profileId, data, indexes),
         shopStatus: shopControl?.shopStatus
       },
-      client: client ? {
-        id: client.id,
-        referenceCode: client.reference_code,
-        retentionTag: client.retention_tag,
-        loyaltyPoints: client.loyalty_points,
+      client: account.role === "client" ? {
+        id: client?.id,
+        referenceCode: clientReference,
+        retentionTag: client?.retention_tag,
+        loyaltyPoints: client?.loyalty_points,
+        authUserExists: Boolean(authUser),
+        clientProfileRowExists: Boolean(client),
+        clientPreferencesRowExists: Boolean(clientPreference),
+        locationSaved: hasSavedClientLocation(clientPreference),
+        repairStatus: formatClientRepairStatus(client, clientPreference),
         bookingCounts: {
           total: bookingRows.length,
           completed: bookingRows.filter((row) => row.status === "completed").length,

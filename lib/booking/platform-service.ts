@@ -250,6 +250,25 @@ type ClientLocationInput = {
   postalCode?: string;
 };
 
+type ClientProfileRepairInput = {
+  userId: string;
+  clientId?: string | null;
+  email?: string | null;
+  fullName?: string | null;
+  phone?: string | null;
+  role: string;
+};
+
+export type ClientProfileRepairStatus = {
+  authUserExists: boolean;
+  clientProfileRowExists: boolean;
+  clientPreferencesRowExists: boolean;
+  locationSaved: boolean;
+  repaired: boolean;
+  repairStatus: string;
+  clientId: string;
+};
+
 type ClientReviewInput = {
   clientId: string;
   appointmentId: string;
@@ -319,6 +338,18 @@ function isMissingClientLocationColumns(error: unknown) {
     || /preferred_(city|state|postal_code)|column .* does not exist|schema cache/i.test(message);
 }
 
+function isClientProfileRepairSchemaError(error: unknown) {
+  const code = typeof error === "object" && error && "code" in error ? String((error as { code?: unknown }).code) : "";
+  const message = error instanceof Error
+    ? error.message
+    : typeof error === "object" && error && "message" in error
+      ? String((error as { message?: unknown }).message)
+      : "";
+
+  return ["42P01", "42703", "PGRST204", "PGRST205"].includes(code)
+    || /relation .* does not exist|column .* does not exist|schema cache|could not find/i.test(message);
+}
+
 function isClientLocationReference(reference?: string | null) {
   return Boolean(reference?.startsWith("client-location:"));
 }
@@ -382,6 +413,26 @@ function normalizeClientPreferredLocation(row?: Pick<ClientPreferenceRecord, "pr
     ...location,
     display: formatClientPreferredLocation(location)
   };
+}
+
+function fallbackClientReferenceForUser(userId: string) {
+  return `client-${userId.slice(0, 8)}`;
+}
+
+function resolveClientRepairReference(input: ClientProfileRepairInput) {
+  const provided = input.clientId?.trim();
+  return provided || fallbackClientReferenceForUser(input.userId);
+}
+
+function repairDisplayName(input: ClientProfileRepairInput) {
+  const name = input.fullName?.trim();
+  if (name) return name;
+  const emailPrefix = input.email?.split("@")[0]?.trim();
+  return emailPrefix || "Client";
+}
+
+function repairEmail(input: ClientProfileRepairInput, clientReference: string) {
+  return input.email?.trim().toLowerCase() || `${clientReference}@client.bvrb3r.local`;
 }
 
 function serializeError(error: unknown) {
@@ -704,6 +755,234 @@ async function readClientProfile(supabase: SupabaseClient | null, clientId?: str
     ...profile,
     favoriteShopReference: preference?.favoriteShopReference,
     preferredLocation: preference?.preferredLocation
+  };
+}
+
+async function readClientPreferenceForRepair(supabase: SupabaseClient, clientReference: string) {
+  const selectWithLocation = "client_reference, client_email, favorite_shop_reference, preferred_location_reference, preferred_city, preferred_state, preferred_postal_code, prefers_instant_booking";
+  const selectWithoutLocation = "client_reference, client_email, favorite_shop_reference, preferred_location_reference, prefers_instant_booking";
+  const result = await supabase
+    .from("client_preferences")
+    .select(selectWithLocation)
+    .eq("client_reference", clientReference)
+    .order("updated_at", { ascending: false })
+    .limit(1);
+
+  const resolvedResult = result.error && isMissingClientLocationColumns(result.error)
+    ? await supabase
+        .from("client_preferences")
+        .select(selectWithoutLocation)
+        .eq("client_reference", clientReference)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+    : result;
+
+  if (resolvedResult.error) {
+    throw resolvedResult.error;
+  }
+
+  const row = resolvedResult.data?.[0] as ClientPreferenceRecord | undefined;
+  return {
+    row,
+    locationSaved: Boolean(normalizeClientPreferredLocation(row) ?? decodeClientLocationReference(row?.preferred_location_reference))
+  };
+}
+
+async function upsertClientProfileMirror(
+  supabase: SupabaseClient,
+  clientReference: string,
+  email: string,
+  fullName: string,
+  phone: string
+) {
+  const write = await supabase
+    .from("client_profiles")
+    .upsert({
+      client_reference: clientReference,
+      profile_email: email,
+      full_name: fullName,
+      phone,
+      loyalty_points: 0,
+      retention_tag: "new",
+      notes: []
+    }, { onConflict: "profile_email" });
+
+  if (write.error && !isClientProfileRepairSchemaError(write.error)) {
+    throw write.error;
+  }
+}
+
+export async function ensureClientProfileForUser(input: ClientProfileRepairInput): Promise<ClientProfileRepairStatus> {
+  let clientReference = resolveClientRepairReference(input);
+  if (input.role !== "client") {
+    throw new Error("Only client accounts can repair client profile rows.");
+  }
+
+  const supabase = getSupabase();
+  if (!supabase) {
+    return {
+      authUserExists: Boolean(input.userId),
+      clientProfileRowExists: false,
+      clientPreferencesRowExists: false,
+      locationSaved: false,
+      repaired: false,
+      repairStatus: "supabase_unavailable",
+      clientId: clientReference
+    };
+  }
+
+  const now = new Date().toISOString();
+  const email = repairEmail(input, clientReference);
+  const fullName = repairDisplayName(input);
+  const phone = input.phone?.trim() ?? "";
+  const actions: string[] = [];
+
+  const profileLookup = await supabase
+    .from("profiles")
+    .select("id, role, full_name, email, phone")
+    .eq("id", input.userId)
+    .maybeSingle();
+
+  if (profileLookup.error && !isClientProfileRepairSchemaError(profileLookup.error)) {
+    throw profileLookup.error;
+  }
+
+  if (!profileLookup.data) {
+    const profilePayload = {
+      id: input.userId,
+      role: "client",
+      full_name: fullName,
+      email,
+      phone: phone || null,
+      primary_onboarding_role: "client",
+      onboarding_state: "active",
+      last_onboarded_at: now
+    };
+    let profileWrite = await supabase.from("profiles").upsert(profilePayload, { onConflict: "id" });
+    if (profileWrite.error && isClientProfileRepairSchemaError(profileWrite.error)) {
+      profileWrite = await supabase.from("profiles").upsert({
+        id: input.userId,
+        role: "client",
+        full_name: fullName,
+        email,
+        phone: phone || null
+      }, { onConflict: "id" });
+    }
+
+    if (profileWrite.error) {
+      throw profileWrite.error;
+    }
+
+    actions.push("created_profile_row");
+  }
+
+  const clientByProfile = await supabase
+    .from("clients")
+    .select("id, reference_code, profile_id, loyalty_points, retention_tag, created_at")
+    .eq("profile_id", input.userId)
+    .order("created_at", { ascending: true })
+    .limit(1);
+
+  if (clientByProfile.error && !isClientProfileRepairSchemaError(clientByProfile.error)) {
+    throw clientByProfile.error;
+  }
+
+  let clientRow = (clientByProfile.data?.[0] as { id: string; reference_code?: string | null; profile_id?: string | null } | undefined) ?? null;
+  if (!clientRow) {
+    const clientByReference = await supabase
+      .from("clients")
+      .select("id, reference_code, profile_id, loyalty_points, retention_tag, created_at")
+      .eq("reference_code", clientReference)
+      .order("created_at", { ascending: true })
+      .limit(1);
+
+    if (clientByReference.error && !isClientProfileRepairSchemaError(clientByReference.error)) {
+      throw clientByReference.error;
+    }
+
+    clientRow = (clientByReference.data?.[0] as { id: string; reference_code?: string | null; profile_id?: string | null } | undefined) ?? null;
+  }
+
+  if (clientRow?.reference_code) {
+    clientReference = clientRow.reference_code;
+  }
+
+  if (clientRow?.profile_id && clientRow.profile_id !== input.userId) {
+    throw new Error("Client profile reference belongs to another account.");
+  }
+
+  if (!clientRow) {
+    const clientWrite = await supabase.from("clients").insert({
+      id: canonicalClientUuid(clientReference),
+      profile_id: input.userId,
+      reference_code: clientReference,
+      loyalty_points: 0,
+      retention_tag: "new"
+    });
+
+    if (clientWrite.error) {
+      throw clientWrite.error;
+    }
+
+    actions.push("created_client_row");
+  } else if (!clientRow.reference_code) {
+    const clientUpdate = await supabase
+      .from("clients")
+      .update({
+        profile_id: input.userId,
+        reference_code: clientReference
+      })
+      .eq("id", clientRow.id);
+
+    if (clientUpdate.error) {
+      throw clientUpdate.error;
+    }
+
+    actions.push("repaired_client_reference");
+  }
+
+  await upsertClientProfileMirror(supabase, clientReference, email, fullName, phone);
+
+  let preference = await readClientPreferenceForRepair(supabase, clientReference);
+  if (!preference.row) {
+    const preferenceWrite = await supabase.from("client_preferences").insert({
+      client_reference: clientReference,
+      client_email: email,
+      favorite_shop_reference: null,
+      preferred_location_reference: null,
+      prefers_instant_booking: false,
+      updated_at: now,
+      created_at: now
+    });
+
+    if (preferenceWrite.error) {
+      throw preferenceWrite.error;
+    }
+
+    actions.push("created_client_preferences_row");
+    preference = await readClientPreferenceForRepair(supabase, clientReference);
+  } else if (preference.row.client_email !== email) {
+    const preferenceUpdate = await supabase
+      .from("client_preferences")
+      .update({
+        client_email: email,
+        updated_at: now
+      })
+      .eq("client_reference", clientReference);
+
+    if (preferenceUpdate.error) {
+      throw preferenceUpdate.error;
+    }
+  }
+
+  return {
+    authUserExists: true,
+    clientProfileRowExists: true,
+    clientPreferencesRowExists: Boolean(preference.row),
+    locationSaved: preference.locationSaved,
+    repaired: actions.length > 0,
+    repairStatus: actions.length ? actions.join(", ") : "already_ready",
+    clientId: clientReference
   };
 }
 

@@ -505,6 +505,11 @@ export interface ArchitectAccountDetailPayload {
       referenceCode?: string | null;
       retentionTag?: string | null;
       loyaltyPoints?: number | null;
+      authUserExists: boolean;
+      clientProfileRowExists: boolean;
+      clientPreferencesRowExists: boolean;
+      locationSaved: boolean;
+      repairStatus: string;
       bookingCounts: {
         total: number;
         completed: number;

@@ -270,28 +270,44 @@ export async function readCanonicalClientProfile(supabase: SupabaseClient, clien
   }
 
   await ensureCanonicalBookingData(supabase);
-  const clientResult = await supabase.from("clients").select("*").eq("id", canonicalClientUuid(clientReference)).maybeSingle();
-  if (clientResult.error || !clientResult.data) {
+  const canonicalClientId = canonicalClientUuid(clientReference);
+  const clientResult = await supabase.from("clients").select("*").eq("id", canonicalClientId).maybeSingle();
+  let clientRow = clientResult.data;
+  let clientError = clientResult.error;
+
+  if (!clientRow && !clientError) {
+    const referenceResult = await supabase
+      .from("clients")
+      .select("*")
+      .eq("reference_code", clientReference)
+      .order("created_at", { ascending: true })
+      .limit(1);
+
+    clientRow = referenceResult.data?.[0] ?? null;
+    clientError = referenceResult.error;
+  }
+
+  if (clientError || !clientRow) {
     return undefined;
   }
 
-  const profileResult = await supabase.from("profiles").select("*").eq("id", clientResult.data.profile_id).maybeSingle();
+  const profileResult = await supabase.from("profiles").select("*").eq("id", clientRow.profile_id).maybeSingle();
   if (profileResult.error || !profileResult.data) {
     return undefined;
   }
 
-  const favoriteResult = clientResult.data.favorite_barber_id
-    ? await supabase.from("barbers").select("reference_code").eq("id", clientResult.data.favorite_barber_id).maybeSingle()
+  const favoriteResult = clientRow.favorite_barber_id
+    ? await supabase.from("barbers").select("reference_code").eq("id", clientRow.favorite_barber_id).maybeSingle()
     : { data: null, error: null };
 
   return {
-    clientReference: clientResult.data.reference_code ?? clientReference,
+    clientReference: clientRow.reference_code ?? clientReference,
     fullName: profileResult.data.full_name,
     phone: profileResult.data.phone ?? "",
     email: profileResult.data.email ?? "",
     favoriteBarberReference: favoriteResult.data?.reference_code ?? undefined,
-    loyaltyPoints: clientResult.data.loyalty_points ?? 0,
-    retentionTag: toRetentionTag(clientResult.data.retention_tag),
+    loyaltyPoints: clientRow.loyalty_points ?? 0,
+    retentionTag: toRetentionTag(clientRow.retention_tag),
     notes: []
   } satisfies CanonicalClientProfile;
 }
