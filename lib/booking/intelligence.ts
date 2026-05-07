@@ -680,9 +680,27 @@ async function readCanonicalSnapshot(supabase: SupabaseClient): Promise<Canonica
     supabase.from("connected_accounts").select("subject_type, barber_id, payout_readiness_status, charges_enabled, payouts_enabled, requirements_currently_due, requirements_past_due, disabled_reason")
   ]);
 
-  const resolvedServicesResult = servicesResult.error && isMissingRelationOrColumn(servicesResult.error)
+  const resolvedBarberProfilesResult = barberProfilesResult.error && isMissingRelationOrColumn(barberProfilesResult.error)
+    ? await supabase.from("barber_profiles").select("barber_reference, username, display_name, bio, years_experience, shop_reference, profile_photo_path, specialties, badges, service_area_label, next_available_at, visibility_state")
+    : barberProfilesResult;
+  const resolvedProfilesResult = profilesResult.error && isMissingRelationOrColumn(profilesResult.error)
+    ? await supabase.from("profiles").select("id, role, full_name, email, phone")
+    : profilesResult;
+  let resolvedServicesResult = servicesResult.error && isMissingRelationOrColumn(servicesResult.error)
     ? await supabase.from("services").select("id, reference_code, location_id, category, name, description, duration_min, buffer_min, price, currency, deposit_amount, full_prepay_required, active, is_bookable, display_order, created_at, updated_at").eq("active", true)
-    : servicesResult;
+    : servicesResult as typeof servicesResult;
+  if (resolvedServicesResult.error && isMissingRelationOrColumn(resolvedServicesResult.error)) {
+    resolvedServicesResult = await supabase.from("services").select("id, reference_code, location_id, category, name, description, duration_min, buffer_min, price, deposit_amount, full_prepay_required, active").eq("active", true) as typeof servicesResult;
+  }
+  if (resolvedServicesResult.error && isMissingRelationOrColumn(resolvedServicesResult.error)) {
+    resolvedServicesResult = await supabase.from("services").select("id, location_id, category, name, description, duration_min, buffer_min, price, deposit_amount, full_prepay_required, active").eq("active", true) as typeof servicesResult;
+  }
+  let resolvedLocationsResult = locationsResult.error && isMissingRelationOrColumn(locationsResult.error)
+    ? await supabase.from("locations").select("id, reference_code, name, neighborhood, city, state, phone")
+    : locationsResult;
+  if (resolvedLocationsResult.error && isMissingRelationOrColumn(resolvedLocationsResult.error)) {
+    resolvedLocationsResult = await supabase.from("locations").select("id, name, neighborhood, city, state, phone");
+  }
   const optionalResults = [
     marketplaceServicesResult,
     marketplaceVisibilityResult,
@@ -692,10 +710,10 @@ async function readCanonicalSnapshot(supabase: SupabaseClient): Promise<Canonica
   ];
   for (const result of [
     barbersResult,
-    barberProfilesResult,
-    profilesResult,
+    resolvedBarberProfilesResult,
+    resolvedProfilesResult,
     resolvedServicesResult,
-    locationsResult,
+    resolvedLocationsResult,
     availabilityResult,
     blockedTimesResult,
     appointmentsResult,
@@ -713,9 +731,9 @@ async function readCanonicalSnapshot(supabase: SupabaseClient): Promise<Canonica
 
   return {
     barbers: (barbersResult.data ?? []) as CanonicalBarberRow[],
-    barberProfiles: (barberProfilesResult.data ?? []) as CanonicalBarberProfileRow[],
+    barberProfiles: (resolvedBarberProfilesResult.data ?? []) as CanonicalBarberProfileRow[],
     portfolios: (portfoliosResult.error ? [] : portfoliosResult.data ?? []) as CanonicalPortfolioRow[],
-    profiles: (profilesResult.data ?? []) as CanonicalProfileRow[],
+    profiles: (resolvedProfilesResult.data ?? []) as CanonicalProfileRow[],
     services: [
       ...((resolvedServicesResult.data ?? []) as CanonicalServiceRow[]),
       ...((marketplaceServicesResult.error ? [] : marketplaceServicesResult.data ?? []) as Array<{
@@ -759,7 +777,7 @@ async function readCanonicalSnapshot(supabase: SupabaseClient): Promise<Canonica
         popularity_rank: null
       } satisfies CanonicalServiceRow))
     ],
-    locations: (locationsResult.data ?? []) as CanonicalLocationRow[],
+    locations: (resolvedLocationsResult.data ?? []) as CanonicalLocationRow[],
     availabilityRules: (availabilityResult.data ?? []) as CanonicalAvailabilityRuleRow[],
     blockedTimes: (blockedTimesResult.data ?? []) as CanonicalBlockedTimeRow[],
     appointments: (appointmentsResult.data ?? []) as CanonicalAppointmentRow[],
