@@ -133,16 +133,25 @@ export function ArchitectVerificationDetailWorkspace({
               </p>
             </div>
             {profile ? (
-              <DataStatCard
-                label="Current status"
-                value={(
-                  <div className="flex flex-wrap gap-2">
-                  <span className={cn("status-pill", badgeClasses(profile.canonicalOverallStatus))}>{formatLabel(profile.canonicalOverallStatus)}</span>
-                  <span className="status-pill text-white/72">{formatLabel(profile.role)}</span>
-                  </div>
-                )}
-                className="border-[#7CFF00]/28 bg-[#7CFF00]/8"
-              />
+              <div className="grid gap-3 sm:min-w-[18rem]">
+                <DataStatCard
+                  label="Current status"
+                  value={(
+                    <div className="flex flex-wrap gap-2">
+                      <span className={cn("status-pill", badgeClasses(profile.canonicalOverallStatus))}>{formatLabel(profile.canonicalOverallStatus)}</span>
+                      <span className="status-pill text-white/72">{formatLabel(profile.role)}</span>
+                    </div>
+                  )}
+                  className="border-[#7CFF00]/28 bg-[#7CFF00]/8"
+                />
+                {profile.userId ? (
+                  <Link href={`/architect/users/${profile.userId}`}>
+                    <Button type="button" variant="secondary" className="w-full rounded-2xl">
+                      Open Account Debug
+                    </Button>
+                  </Link>
+                ) : null}
+              </div>
             ) : null}
           </div>
         </GlassCard>

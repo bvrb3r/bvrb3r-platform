@@ -87,6 +87,7 @@ export type ClientPreferredLocation = {
   city: string;
   state: string;
   postalCode?: string;
+  display?: string;
 };
 
 type NotificationPreferenceRecord = {
@@ -332,6 +333,10 @@ function encodeClientLocationReference(location: ClientPreferredLocation) {
   return `client-location:${parts.join(":")}`;
 }
 
+function formatClientPreferredLocation(location: ClientPreferredLocation) {
+  return [location.city, location.state, location.postalCode].map((part) => part?.trim()).filter(Boolean).join(", ");
+}
+
 function decodeClientLocationReference(reference?: string | null): ClientPreferredLocation | undefined {
   if (!reference || !isClientLocationReference(reference)) {
     return undefined;
@@ -346,10 +351,15 @@ function decodeClientLocationReference(reference?: string | null): ClientPreferr
     return undefined;
   }
 
-  return {
+  const location = {
     city,
     state,
     postalCode: postalCode || undefined
+  };
+
+  return {
+    ...location,
+    display: formatClientPreferredLocation(location)
   };
 }
 
@@ -362,10 +372,15 @@ function normalizeClientPreferredLocation(row?: Pick<ClientPreferenceRecord, "pr
     return undefined;
   }
 
-  return {
+  const location = {
     city: city ?? "",
     state: state ?? "",
     postalCode: postalCode || undefined
+  };
+
+  return {
+    ...location,
+    display: formatClientPreferredLocation(location)
   };
 }
 
@@ -928,7 +943,11 @@ export async function saveClientLocation(input: ClientLocationInput) {
     state,
     postalCode: postalCode || undefined
   };
-  const preferredLocationReference = encodeClientLocationReference(location);
+  const normalizedLocation = {
+    ...location,
+    display: formatClientPreferredLocation(location)
+  };
+  const preferredLocationReference = encodeClientLocationReference(normalizedLocation);
   const basePayload = {
     client_reference: input.clientId,
     client_email: clientProfile.email,
@@ -1001,7 +1020,7 @@ export async function saveClientLocation(input: ClientLocationInput) {
   const savedProfile = await readClientProfile(supabase, input.clientId);
 
   return {
-    location,
+    location: normalizedLocation,
     client: savedProfile ?? {
       clientReference: input.clientId,
       fullName: clientProfile.fullName,
@@ -1009,7 +1028,7 @@ export async function saveClientLocation(input: ClientLocationInput) {
       email: clientProfile.email,
       favoriteBarberReference: clientProfile.favoriteBarberReference,
       favoriteShopReference: preference?.favoriteShopReference,
-      preferredLocation: location,
+      preferredLocation: normalizedLocation,
       loyaltyPoints: clientProfile.loyaltyPoints,
       retentionTag: clientProfile.retentionTag,
       notes: clientProfile.notes

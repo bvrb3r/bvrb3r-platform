@@ -159,7 +159,8 @@ describe("client location canonical persistence", () => {
     });
     expect(result.client?.preferredLocation).toEqual({
       city: "Tampa",
-      state: "FL"
+      state: "FL",
+      display: "Tampa, FL"
     });
   });
 });

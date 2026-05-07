@@ -161,6 +161,7 @@ export function ClientProfileScreen({
     state: payload.client?.preferredLocation?.state ?? ""
   }));
   const [savedClientLocation, setSavedClientLocation] = useState(payload.client?.preferredLocation ?? null);
+  const [locationModalError, setLocationModalError] = useState<string | null>(null);
   const [isSavingLocation, setIsSavingLocation] = useState(false);
   const profileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -343,13 +344,15 @@ export function ClientProfileScreen({
     const city = primaryShop?.city ?? savedClientLocation?.city ?? locationDraft.city;
     const state = primaryShop?.state ?? savedClientLocation?.state ?? locationDraft.state;
     setLocationDraft({ city, state });
+    setLocationModalError(null);
     setLocationModalOpen(true);
   }
 
   async function handleLocationSave() {
     setLocationFeedback(null);
+    setLocationModalError(null);
     if (!locationDraft.city.trim()) {
-      setLocationFeedback({ tone: "error", message: "Enter a city to save your booking location." });
+      setLocationModalError("Enter a city to save your booking location.");
       return;
     }
 
@@ -365,19 +368,26 @@ export function ClientProfileScreen({
       });
       const body = (await response.json().catch(() => ({}))) as {
         error?: string;
+        reason?: string;
+        code?: string;
         location?: { city: string; state: string; postalCode?: string };
+        client?: { preferredLocation?: { city: string; state: string; postalCode?: string } | null };
       };
       if (!response.ok) {
-        throw new Error(body.error ?? "Unable to save location.");
+        const reason = body.reason ? ` (${body.reason})` : "";
+        throw new Error(`${body.error ?? "Unable to save location."}${reason}`);
       }
 
-      if (body.location) {
-        setSavedClientLocation(body.location);
-        setLocationDraft({
-          city: body.location.city,
-          state: body.location.state
-        });
+      const savedLocation = body.location ?? body.client?.preferredLocation ?? null;
+      if (!savedLocation) {
+        throw new Error("Location save response did not include a saved location.");
       }
+
+      setSavedClientLocation(savedLocation);
+      setLocationDraft({
+        city: savedLocation.city,
+        state: savedLocation.state
+      });
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["client-home"] }),
         queryClient.invalidateQueries({ queryKey: ["marketplace"] }),
@@ -386,7 +396,9 @@ export function ClientProfileScreen({
       setLocationModalOpen(false);
       setLocationFeedback({ tone: "success", message: "Location saved for faster booking." });
     } catch (error) {
-      setLocationFeedback({ tone: "error", message: readableError(error, "Unable to save location right now.") });
+      const message = readableError(error, "Unable to save location right now.");
+      setLocationModalError(message);
+      setLocationFeedback({ tone: "error", message });
     } finally {
       setIsSavingLocation(false);
     }
@@ -421,7 +433,7 @@ export function ClientProfileScreen({
         }}
         actionHandlers={{
           "client-payment": () => scrollToSection("wallet"),
-          "client-location": () => setLocationModalOpen(true),
+          "client-location": openLocationModal,
           "client-email": () => window.location.assign("/verify-contact"),
           "client-phone": () => window.location.assign("/verify-contact"),
           "client-preferred-supply": () => window.location.assign("/dashboard/client/search")
@@ -950,17 +962,24 @@ export function ClientProfileScreen({
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <label className="block text-sm font-bold text-white/72">
                 City
-                <Input value={locationDraft.city} onChange={(event) => setLocationDraft((current) => ({ ...current, city: event.target.value }))} className="mt-2" />
+                <Input value={locationDraft.city} onChange={(event) => {
+                  setLocationModalError(null);
+                  setLocationDraft((current) => ({ ...current, city: event.target.value }));
+                }} className="mt-2" />
               </label>
               <label className="block text-sm font-bold text-white/72">
                 State
-                <Input value={locationDraft.state} onChange={(event) => setLocationDraft((current) => ({ ...current, state: event.target.value }))} className="mt-2" />
+                <Input value={locationDraft.state} onChange={(event) => {
+                  setLocationModalError(null);
+                  setLocationDraft((current) => ({ ...current, state: event.target.value }));
+                }} className="mt-2" />
               </label>
             </div>
+            {locationModalError ? <div className="mt-4"><FeedbackBanner tone="error" message={locationModalError} /></div> : null}
             <div className="mt-5 flex gap-3">
               <Button type="button" variant="secondary" className="min-h-12 flex-1 rounded-2xl" onClick={() => setLocationModalOpen(false)}>Cancel</Button>
-              <Button type="button" className="min-h-12 flex-1 rounded-2xl bg-[#A3FF12] text-black hover:bg-[#8de300]" disabled={isSavingLocation} onClick={() => void handleLocationSave()}>
-                Save location
+              <Button type="button" className="min-h-12 flex-1 rounded-2xl bg-[#A3FF12] text-black hover:bg-[#8de300]" disabled={isSavingLocation} aria-busy={isSavingLocation} onClick={() => void handleLocationSave()}>
+                {isSavingLocation ? "Saving..." : "Save location"}
               </Button>
             </div>
           </div>

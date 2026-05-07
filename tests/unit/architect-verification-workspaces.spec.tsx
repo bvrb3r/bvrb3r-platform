@@ -129,6 +129,7 @@ describe("architect verification workspaces", () => {
     render(<ArchitectVerificationDetailWorkspace profileId="vprof-barber-fade" initialData={initialData} />);
 
     expect(screen.getByText("Verification Detail")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open Account Debug" })).toHaveAttribute("href", "/architect/users/user-fade");
     expect(screen.getByText("Provider status")).toBeInTheDocument();
     expect(screen.getByText("No provider-linked verification state has been recorded for this profile yet.")).toBeInTheDocument();
     expect(screen.getByText("No verification documents are currently linked to this profile.")).toBeInTheDocument();

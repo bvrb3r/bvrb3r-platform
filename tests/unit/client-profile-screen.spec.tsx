@@ -450,10 +450,57 @@ describe("client profile screen", () => {
         method: "POST"
       }));
     });
+    await waitFor(() => {
+      expect(screen.queryByRole("heading", { name: "Set location" })).not.toBeInTheDocument();
+    });
     expect(screen.getAllByText("Charlotte, NC").length).toBeGreaterThan(0);
+    expect(screen.getByText("Location saved")).toBeInTheDocument();
     expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ["client-home"] });
     expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ["marketplace"] });
     expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ["barber-search"] });
+  });
+
+  it("keeps the location modal open with an exact save failure reason", async () => {
+    global.fetch = vi.fn(async () => ({
+      ok: false,
+      json: async () => ({
+        error: "Client location update was denied by policy.",
+        reason: "rls_denied"
+      })
+    })) as unknown as typeof fetch;
+
+    render(
+      <ClientProfileScreen
+        isSignedInClient
+        authEmail="jordan@bvrb3r.app"
+        authPhone="8135550190"
+        payload={({
+          client: {
+            clientReference: "client-jordan",
+            fullName: "Jordan Ellis",
+            email: "jordan@bvrb3r.app",
+            phone: "8135550190"
+          },
+          favoriteBarber: null,
+          preferredShops: [],
+          notificationPreference: null,
+          routine: null,
+          paymentMethods: []
+        } as unknown as ClientProfilePayload)}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Set location/i }));
+    fireEvent.change(screen.getByLabelText(/City/i), { target: { value: "Tampa" } });
+    fireEvent.change(screen.getByLabelText(/State/i), { target: { value: "FL" } });
+    fireEvent.click(screen.getByRole("button", { name: /Save location/i }));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Client location update was denied by policy. (rls_denied)").length).toBeGreaterThan(0);
+    });
+    expect(screen.getByRole("heading", { name: "Set location" })).toBeInTheDocument();
+    expect(screen.getByText("Location missing")).toBeInTheDocument();
+    expect(invalidateQueriesMock).not.toHaveBeenCalled();
   });
 
   it("displays saved client booking city instead of a pending placeholder", () => {
