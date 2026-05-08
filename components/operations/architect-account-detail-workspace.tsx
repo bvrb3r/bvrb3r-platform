@@ -577,6 +577,8 @@ export function ArchitectAccountDetailWorkspace({
                   <Field label="Barber row linked to user" value={account.barberRowHealth.barberRowLinkedToUser ? "yes" : "no"} />
                   <Field label="Barber reference" value={account.barberRowHealth.barberReference} />
                   <Field label="Canonical username" value={account.barberRowHealth.username} />
+                  <Field label="Repair attempted" value={account.barberRowHealth.repairAttempted ? "yes" : "no"} />
+                  <Field label="Repair result" value={account.barberRowHealth.repairResult} />
                   <Field label="Row health discoverable" value={account.barberRowHealth.discoverable ? "yes" : "no"} />
                 </>
               ) : null}

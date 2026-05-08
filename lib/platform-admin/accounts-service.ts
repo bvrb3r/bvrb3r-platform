@@ -1,6 +1,7 @@
 import { assertPlatformAdminAccess, getPlatformAccountStatus, readPlatformAdminAuditLogEntries, readPlatformShopControlState } from "@/lib/platform-admin/service";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import { isUpcomingAppointmentStatus } from "@/lib/appointments/domain";
+import { ensureBarberProfileForIdentifier, type BarberProfileRepairResult } from "@/lib/barber/profile-repair";
 import { getMarketplaceEligibilityForBarber, type MarketplaceBarberEligibilityDiagnostic } from "@/lib/booking/intelligence";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -748,6 +749,7 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
   const accountStatuses = await getAccountStatuses(data);
   const stripeEnvironment = getStripeConnectEnvironment();
   const canonicalEligibilityByReference = new Map<string, MarketplaceBarberEligibilityDiagnostic>();
+  const repairResultByReference = new Map<string, BarberProfileRepairResult | { attempted: true; reason: string; message: string }>();
   const diagnosticsClient = accountDataOverlay ? null : createSupabaseAdminClient();
   if (diagnosticsClient) {
     await Promise.all(data.barbers.map(async (barber) => {
@@ -757,8 +759,17 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
       }
 
       try {
+        const repairResult = await ensureBarberProfileForIdentifier(reference, diagnosticsClient);
+        if (repairResult) {
+          repairResultByReference.set(reference, repairResult);
+        }
         canonicalEligibilityByReference.set(reference, await getMarketplaceEligibilityForBarber(diagnosticsClient, reference));
       } catch (error) {
+        repairResultByReference.set(reference, {
+          attempted: true,
+          reason: error instanceof Error ? error.name : "unknown",
+          message: error instanceof Error ? error.message : String(error)
+        });
         console.error("[Architect Accounts] marketplace eligibility diagnostic failed", {
           reference,
           message: error instanceof Error ? error.message : String(error)
@@ -804,6 +815,7 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
     const linkedShopIds = reference ? getLinkedShopIds(reference, profile.id, data) : [];
     const serviceLocationLabels = locationLabelsForProfile(profile.id, data, indexes);
     const barberProfile = reference ? indexes.barberProfilesByReference.get(reference) : undefined;
+    const repairResult = reference ? repairResultByReference.get(reference) : undefined;
     const visibility = reference ? indexes.visibilityByReference.get(reference) : undefined;
     const barberStatus = reference ? indexes.barberStatusByReference.get(reference) : undefined;
     const verification = getVerificationForRole(profile.id, role, data.verificationProfiles);
@@ -886,18 +898,26 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
           authUserExists: Boolean(authUser),
           platformProfileExists: profileExists,
           barberRowExists: Boolean(barber),
-          barberProfileRowExists: Boolean(barberProfile),
+          barberProfileRowExists: Boolean(barberProfile || (repairResult && "verified" in repairResult && repairResult.verified)),
           barberRowLinkedToUser: Boolean(barber && barber.profile_id === profile.id),
           barberReference: reference || undefined,
-          username: canonicalFacts?.username ?? barberProfile?.username ?? undefined,
+          username: canonicalFacts?.username ?? (repairResult && "username" in repairResult ? repairResult.username : undefined) ?? barberProfile?.username ?? undefined,
           publicRoute,
           discoverable: marketplaceLive,
+          repairAttempted: Boolean(repairResult),
+          repairResult: repairResult
+            ? "reason" in repairResult && repairResult.reason
+              ? repairResult.reason
+              : "repaired" in repairResult
+                ? repairResult.repaired ? "repaired" : "already_synced"
+                : "attempted"
+            : "not_attempted",
           blockers: [
             ...(!authUser ? ["Missing auth user"] : []),
             ...(!profileExists ? ["Missing platform profile row"] : []),
             ...(!barber ? ["Missing canonical barbers row"] : []),
             ...(barber && barber.profile_id !== profile.id ? ["Barber row is linked to a different profile"] : []),
-            ...(!barberProfile ? ["Missing canonical barber_profiles row"] : []),
+            ...(!barberProfile && !(repairResult && "verified" in repairResult && repairResult.verified) ? ["Missing canonical barber_profiles row"] : []),
             ...marketplaceBlockers
           ]
         }

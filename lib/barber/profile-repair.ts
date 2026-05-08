@@ -66,9 +66,13 @@ type VerificationProfileRow = {
 };
 
 export type BarberProfileRepairReason =
-  | "auth_missing"
+  | "missing_auth_user"
   | "role_not_barber"
-  | "profile_missing"
+  | "missing_barbers_row"
+  | "barber_profile_insert_failed"
+  | "barber_profile_link_failed"
+  | "schema_mismatch"
+  | "verification_not_found"
   | "database_write_failed"
   | "duplicate_conflict"
   | "unknown";
@@ -95,12 +99,18 @@ export type BarberProfileRepairInput = {
 };
 
 export type BarberProfileRepairResult = {
+  attempted: boolean;
   repaired: boolean;
   createdBarber: boolean;
   createdProfile: boolean;
   createdStatus: boolean;
   linkedLegacyProfile: boolean;
+  verified: boolean;
+  reason: BarberProfileRepairReason | null;
+  profileId: string;
+  barberRowId: string;
   barberReference: string;
+  barberProfileReference: string | null;
   username: string;
   message: string;
 };
@@ -184,6 +194,8 @@ async function readVerification(supabase: SupabaseClient, userId: string) {
       .from("verification_profiles")
       .select("overall_status, public_verified, can_accept_bookings, can_receive_payouts")
       .eq("user_id", userId)
+      .order("updated_at", { ascending: false })
+      .limit(1)
       .maybeSingle()
   );
 }
@@ -238,6 +250,19 @@ async function readBarberProfile(supabase: SupabaseClient, reference: string) {
       .eq("barber_reference", reference)
       .maybeSingle()
   );
+}
+
+async function verifyCanonicalBarberProfile(supabase: SupabaseClient, input: {
+  userId: string;
+  barberReference: string;
+}) {
+  const barber = await readBarberByIdentifier(supabase, input.barberReference);
+  const profileRow = await readBarberProfile(supabase, input.barberReference);
+  return {
+    verified: Boolean(barber && profileRow && barber.profile_id === input.userId && profileRow.barber_reference === input.barberReference),
+    barber,
+    profileRow
+  };
 }
 
 async function readBarberStatus(supabase: SupabaseClient, reference: string) {
@@ -329,7 +354,7 @@ export async function ensureBarberProfileForUser(
 ): Promise<BarberProfileRepairResult> {
   const supabase = client ?? createSupabaseAdminClient();
   if (!supabase || !input.userId) {
-    throw new BarberProfileRepairError("auth_missing", "A signed-in barber is required before profile repair can run.");
+    throw new BarberProfileRepairError("missing_auth_user", "A signed-in barber is required before profile repair can run.");
   }
 
   try {
@@ -342,7 +367,7 @@ export async function ensureBarberProfileForUser(
     const existingBarber = existingByProfile ?? existingByIdentifier;
     const profileRole = profile?.primary_onboarding_role ?? profile?.role ?? input.role;
     if (!profile && !existingBarber) {
-      throw new BarberProfileRepairError("profile_missing", "No platform profile or barber row could be linked to this user.");
+      throw new BarberProfileRepairError("missing_barbers_row", "No platform profile or barber row could be linked to this user.");
     }
     if (!existingBarber && !isBarberRole(profileRole) && !isBarberRole(input.role)) {
       throw new BarberProfileRepairError("role_not_barber", "Only barber accounts can create a canonical barber profile row.");
@@ -468,7 +493,7 @@ export async function ensureBarberProfileForUser(
     });
 
     if (!profileUpserted) {
-      throw new BarberProfileRepairError("database_write_failed", "Barber profile repair could not write the public profile row.");
+      throw new BarberProfileRepairError("barber_profile_insert_failed", "Barber profile repair could not write the public profile row.");
     }
 
     if (barber.booking_slug !== username) {
@@ -492,28 +517,72 @@ export async function ensureBarberProfileForUser(
       barberReference: effectiveReference,
       compensationModel: barber.compensation_model
     });
+    const verificationResult = await verifyCanonicalBarberProfile(supabase, {
+      userId: input.userId,
+      barberReference: effectiveReference
+    });
+    if (!verificationResult.verified) {
+      throw new BarberProfileRepairError("barber_profile_link_failed", "Barber profile repair wrote data, but canonical profile linkage did not verify.");
+    }
 
-    return {
+    const result = {
+      attempted: true,
       repaired: repaired || createdBarber || createdProfile || createdStatus,
       createdBarber,
       createdProfile,
       createdStatus,
       linkedLegacyProfile,
+      verified: verificationResult.verified,
+      reason: null,
+      profileId: input.userId,
+      barberRowId: verificationResult.barber?.id ?? barber.id,
       barberReference: effectiveReference,
+      barberProfileReference: verificationResult.profileRow?.barber_reference ?? null,
       username,
       message: repaired || createdBarber || createdProfile || createdStatus
         ? "Profile repaired and synced."
         : "Profile already synced."
-    };
+    } satisfies BarberProfileRepairResult;
+    console.info("barber_profile_repair_result", {
+      authUserId: input.userId,
+      barberId: result.barberRowId,
+      barberReference: result.barberReference,
+      profileId: result.profileId,
+      barberProfileId: result.barberProfileReference,
+      repaired: result.repaired,
+      reason: result.reason
+    });
+
+    return result;
   } catch (error) {
     if (error instanceof BarberProfileRepairError) {
+      console.info("barber_profile_repair_result", {
+        authUserId: input.userId,
+        barberId: input.barberId ?? null,
+        barberReference: input.barberId ?? null,
+        profileId: input.userId,
+        barberProfileId: null,
+        repaired: false,
+        reason: error.reason
+      });
       throw error;
     }
 
     const message = error instanceof Error ? error.message : String(error);
     const reason: BarberProfileRepairReason = message.toLowerCase().includes("duplicate")
       ? "duplicate_conflict"
-      : "database_write_failed";
+      : message.toLowerCase().includes("does not exist")
+        ? "schema_mismatch"
+        : "database_write_failed";
+    console.info("barber_profile_repair_result", {
+      authUserId: input.userId,
+      barberId: input.barberId ?? null,
+      barberReference: input.barberId ?? null,
+      profileId: input.userId,
+      barberProfileId: null,
+      repaired: false,
+      reason
+    });
     throw new BarberProfileRepairError(reason, `barber_profile_repair_failed: ${message}`);
   }
 }

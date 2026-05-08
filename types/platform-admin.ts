@@ -433,6 +433,8 @@ export interface ArchitectAccountDirectoryItem {
     username?: string;
     publicRoute?: string;
     discoverable: boolean;
+    repairAttempted: boolean;
+    repairResult: string;
     blockers: string[];
   };
   marketplaceFacts?: {

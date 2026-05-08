@@ -137,10 +137,12 @@ function openFilePicker(input: HTMLInputElement | null) {
 
 export function BarberProfileScreen({
   user,
-  initialSection
+  initialSection,
+  profileRepairFeedback
 }: {
   user: UserAccount;
   initialSection?: string;
+  profileRepairFeedback?: string;
 }) {
   const barberId = user.barberId;
   const barberName = user.name;
@@ -242,6 +244,7 @@ export function BarberProfileScreen({
   const profileRepairNotice = (profileQuery.data as { profileRepairNotice?: string } | undefined)?.profileRepairNotice;
   const status = mutationStatus
     ?? localFeedback
+    ?? (profileRepairFeedback ? { tone: profileRepairFeedback.includes("_") ? "error" as const : "info" as const, message: profileRepairFeedback } : null)
     ?? (profileRepairNotice ? { tone: "info" as const, message: profileRepairNotice } : null);
 
   useEffect(() => {
