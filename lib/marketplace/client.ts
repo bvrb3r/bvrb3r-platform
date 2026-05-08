@@ -45,14 +45,42 @@ export interface MarketplaceWaitlistPayload {
   query?: string;
 }
 
+const MARKETPLACE_REQUEST_TIMEOUT_MS = 5_000;
+
 async function requestJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
-  const response = await fetch(input, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {})
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), MARKETPLACE_REQUEST_TIMEOUT_MS);
+  const externalSignal = init?.signal;
+  const abortFromExternalSignal = () => controller.abort(externalSignal?.reason);
+
+  if (externalSignal?.aborted) {
+    abortFromExternalSignal();
+  } else {
+    externalSignal?.addEventListener("abort", abortFromExternalSignal, { once: true });
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(input, {
+      ...init,
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        ...(init?.headers ?? {})
+      }
+    });
+  } catch (error) {
+    if (controller.signal.aborted && !externalSignal?.aborted) {
+      const timeoutError = new Error("Marketplace request timed out. Reference client_search_timeout.") as MarketplaceApiError;
+      timeoutError.status = 504;
+      throw timeoutError;
     }
-  });
+
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+    externalSignal?.removeEventListener("abort", abortFromExternalSignal);
+  }
 
   const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
   if (!response.ok) {

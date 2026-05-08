@@ -17,6 +17,26 @@ const filterSchema = z.object({
   clientId: z.string().optional()
 });
 
+const DISCOVERY_TIMEOUT_MS = 5_000;
+const DISCOVERY_IMPRESSION_TIMEOUT_MS = 1_500;
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, reference: string): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => {
+      const error = new Error(`Marketplace discovery timed out. Reference ${reference}.`) as Error & { code?: string };
+      error.code = reference;
+      reject(error);
+    }, timeoutMs);
+  });
+
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  });
+}
+
 function getErrorMetadata(error: unknown) {
   const record = typeof error === "object" && error ? error as Record<string, unknown> : {};
 
@@ -68,22 +88,38 @@ export async function GET(request: NextRequest) {
       specialty: parsed.data.specialty,
       maxDistanceMiles: parsed.data.maxDistanceMiles
     };
-    const payload = await searchBarbersAndShopsPayload({
+    const payload = await withTimeout(searchBarbersAndShopsPayload({
       ...filters,
       clientId
-    });
+    }), DISCOVERY_TIMEOUT_MS, "client_search_timeout");
     const results = payload.barbers;
 
-    try {
-      const marketplaceProvider = await getMarketplaceProvider();
-      await marketplaceProvider.recordDiscoveryImpression({ filters, results, clientId });
-    } catch {}
+    void withTimeout(
+      getMarketplaceProvider()
+        .then((marketplaceProvider) =>
+          marketplaceProvider.recordDiscoveryImpression({ filters, results, clientId })
+        ),
+      DISCOVERY_IMPRESSION_TIMEOUT_MS,
+      "client_search_impression_timeout"
+    ).catch((error) => {
+      console.error("[marketplace/discover] impression logging failed", {
+        reference: "client_search_impression_failed",
+        ...getErrorMetadata(error),
+        filters,
+        resultCount: results.length,
+        clientId
+      });
+    });
 
     return NextResponse.json({ results });
   } catch (error) {
+    const metadata = getErrorMetadata(error);
+    const reference = metadata.code === "client_search_timeout"
+      ? "client_search_timeout"
+      : "client_search_load_failed";
     console.error("[marketplace/discover] discovery failed", {
-      reference: "client_search_load_failed",
-      ...getErrorMetadata(error),
+      reference,
+      ...metadata,
       url: request.nextUrl.pathname,
       search: request.nextUrl.search,
       queryParams: Object.fromEntries(request.nextUrl.searchParams.entries()),
@@ -93,8 +129,11 @@ export async function GET(request: NextRequest) {
       sessionRole
     });
     return NextResponse.json(
-      { error: "Marketplace discovery failed. Reference client_search_load_failed.", code: "client_search_load_failed" },
-      { status: 500 }
+      {
+        error: `Marketplace discovery failed. Reference ${reference}.`,
+        code: reference
+      },
+      { status: reference === "client_search_timeout" ? 504 : 500 }
     );
   }
 }

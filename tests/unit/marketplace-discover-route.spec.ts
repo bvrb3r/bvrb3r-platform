@@ -70,10 +70,12 @@ describe("marketplace discover route", () => {
     }));
     expect(body.results).toHaveLength(1);
     expect(body.results[0].galleryPreviewUrls).toEqual(["https://example.com/cut.jpg"]);
-    expect(recordDiscoveryImpressionMock).toHaveBeenCalledWith(expect.objectContaining({
-      clientId: "client-1",
-      results: body.results
-    }));
+    await vi.waitFor(() => {
+      expect(recordDiscoveryImpressionMock).toHaveBeenCalledWith(expect.objectContaining({
+        clientId: "client-1",
+        results: body.results
+      }));
+    });
   });
 
   it("returns a specific discovery error reference when canonical supply loading fails", async () => {

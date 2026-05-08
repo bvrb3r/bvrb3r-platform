@@ -123,6 +123,10 @@ function BarberResultCard({
   });
   const profileHref = `/barber/${result.username}` as Route;
   const heroImage = result.galleryPreviewUrls?.[0] ?? result.profilePhotoUrl;
+  const ratingLabel = result.reviewCount > 0 ? result.rating.toFixed(1) : "New";
+  const reviewLabel = result.reviewCount > 0
+    ? `${result.reviewCount} review${result.reviewCount === 1 ? "" : "s"}`
+    : "New barber";
 
   return (
     <article className="overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(8,8,8,0.99))] shadow-[0_22px_44px_rgba(0,0,0,0.2)]">
@@ -168,7 +172,7 @@ function BarberResultCard({
           </div>
           <div className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/88">
             <Star className="h-3.5 w-3.5 fill-current text-[#d7ffab]" />
-            {result.rating.toFixed(1)}
+            {ratingLabel}
           </div>
         </div>
 
@@ -179,7 +183,7 @@ function BarberResultCard({
           </span>
           <span className="inline-flex items-center gap-1.5 rounded-full border border-white/8 bg-black/18 px-3 py-2">
             <Star className="h-4 w-4 text-[#d7ffab]" />
-            {result.reviewCount} review{result.reviewCount === 1 ? "" : "s"}
+            {reviewLabel}
           </span>
         </div>
 
@@ -339,10 +343,18 @@ export function ClientSearchScreen({
   const discoveryBusy = Boolean(discoveryQuery.isLoading || discoveryQuery.isFetching || manualSearchPending);
 
   useEffect(() => {
+    if (!manualSearchPending) {
+      return;
+    }
+
     if (!discoveryQuery.isLoading && !discoveryQuery.isFetching) {
       setManualSearchPending(false);
+      return;
     }
-  }, [discoveryQuery.isFetching, discoveryQuery.isLoading]);
+
+    const timeout = window.setTimeout(() => setManualSearchPending(false), 5_500);
+    return () => window.clearTimeout(timeout);
+  }, [discoveryQuery.isFetching, discoveryQuery.isLoading, manualSearchPending]);
 
   const canonicalResults = useMemo(() => discoveryQuery.data ?? [], [discoveryQuery.data]);
   const barberResults = useMemo(
@@ -462,7 +474,7 @@ export function ClientSearchScreen({
     setManualSearchPending(true);
     syncRoute(nextQuery, serviceFilter, selectedLocationId, minRating, maxPrice, availability, verifiedOnly);
     if (nextQuery === trimmedQuery) {
-      void discoveryQuery.refetch();
+      void Promise.resolve(discoveryQuery.refetch()).finally(() => setManualSearchPending(false));
     }
   }
 

@@ -2125,6 +2125,29 @@ function orderDiscoveryByPreferredLocation(results: DiscoveryResult[], location?
     .map(({ result }) => result);
 }
 
+function discoveryResultMatchesQuery(result: DiscoveryResult, query?: string) {
+  const normalizedQuery = query?.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  const queryVariants = normalizedQuery.startsWith("@")
+    ? [normalizedQuery, normalizedQuery.slice(1)]
+    : [normalizedQuery];
+  const haystack = [
+    result.barberName,
+    result.username,
+    result.barberId,
+    result.locationLabel,
+    result.cityLabel,
+    result.shopName,
+    result.mostBookedService,
+    ...(result.specialties ?? [])
+  ].filter(Boolean).join(" ").toLowerCase();
+
+  return queryVariants.some((variant) => haystack.includes(variant));
+}
+
 export async function searchBarbersAndShopsPayload(params: {
   query?: string;
   category?: string;
@@ -2202,7 +2225,7 @@ export async function searchBarbersAndShopsPayload(params: {
     () => readTrustStateSafe(),
     { clientId: params.clientId }
   );
-  const results = filterDiscoveryResults(await buildCanonicalDiscoveryResults(supabase, {
+  const canonicalResults = await buildCanonicalDiscoveryResults(supabase, {
     locationId: locationId ?? "",
     query: queryText,
     category: params.category,
@@ -2212,7 +2235,24 @@ export async function searchBarbersAndShopsPayload(params: {
     },
     routine,
     trustState
-  }), distanceAwareFilters);
+  });
+  let results = filterDiscoveryResults(canonicalResults, distanceAwareFilters);
+  if (!results.length && queryText) {
+    const fallbackResults = await buildCanonicalDiscoveryResults(supabase, {
+      locationId: locationId ?? "",
+      category: params.category,
+      clientSignal: {
+        favoriteBarberReference: clientProfile?.favoriteBarberReference,
+        favoriteShopReference: clientProfile?.favoriteShopReference
+      },
+      routine,
+      trustState
+    });
+    results = filterDiscoveryResults(
+      fallbackResults.filter((result) => discoveryResultMatchesQuery(result, queryText)),
+      distanceAwareFilters
+    );
+  }
   const localizedResults = orderDiscoveryByPreferredLocation(results, clientProfile?.preferredLocation);
   const visibleShops = filterBookableMarketplaceShops(shops, trustState, localizedResults);
   const matchingShops = queryText

@@ -53,6 +53,23 @@ function toStorageSafeSegment(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "profile";
 }
 
+function suggestPublicUsername(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "").slice(0, 32);
+}
+
+function isFallbackPublicUsername(username?: string | null, barberId?: string | null) {
+  if (!username || !barberId) {
+    return false;
+  }
+
+  const shortReference = barberId
+    .replace(/^barber[-_]?/i, "")
+    .replace(/[^a-z0-9_-]+/gi, "")
+    .slice(0, 18)
+    .toLowerCase();
+  return username === `barber-${shortReference || "profile"}`;
+}
+
 function readableError(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
 }
@@ -239,9 +256,13 @@ export function BarberProfileScreen({
 
   useEffect(() => {
     if (profile?.profile.username && !isSavingUsername) {
-      setUsernameDraft(profile.profile.username);
+      setUsernameDraft(
+        isFallbackPublicUsername(profile.profile.username, profile.barber.id)
+          ? suggestPublicUsername(barberName)
+          : profile.profile.username
+      );
     }
-  }, [isSavingUsername, profile?.profile.username]);
+  }, [barberName, isSavingUsername, profile?.barber.id, profile?.profile.username]);
 
   async function uploadWithPath(path: string, file: File) {
     const extension = file.name.split(".").pop()?.toLowerCase() || "jpg";

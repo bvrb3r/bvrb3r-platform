@@ -66,7 +66,7 @@ const phillipResult = {
   username: "independent-barber-43b3cda2",
   barberName: "Phillip McGee",
   rating: 5,
-  reviewCount: 1,
+  reviewCount: 0,
   priceRange: [55, 55],
   priceRangeLabel: "$55",
   nextAvailableAt: "2026-05-06T16:00:00.000Z",
@@ -248,6 +248,10 @@ describe("client search screen", () => {
       );
       expect(replaceMock).toHaveBeenCalledWith(expect.stringContaining("q=phillip"));
     });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument();
+      expect(screen.queryByText("Searching phillip...")).not.toBeInTheDocument();
+    });
   });
 
   it("submits the typed query when Enter submits the search form", async () => {
@@ -304,6 +308,7 @@ describe("client search screen", () => {
     render(<ClientSearchScreen clientId="client-jordan" routeBase="/dashboard/client/search" />);
 
     expect(screen.getByText("Phillip McGee")).toBeInTheDocument();
+    expect(screen.getAllByText("New").length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: "View Barber" })).toHaveAttribute("href", "/barber/independent-barber-43b3cda2");
   });
 

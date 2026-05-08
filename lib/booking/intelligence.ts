@@ -218,7 +218,7 @@ type CandidateRecord = {
   reviewCount: number;
   priceRange: [number, number];
   nextAvailableAt: string;
-  appointmentTime: string;
+  appointmentTime?: string;
   distanceMiles: number;
   shopName?: string;
   locationId: string;
@@ -981,7 +981,14 @@ function matchesSearchableTerms(terms: string[], query?: string) {
     return true;
   }
 
-  return terms.some((term) => term.toLowerCase().includes(normalizedQuery));
+  const queryVariants = normalizedQuery.startsWith("@")
+    ? [normalizedQuery, normalizedQuery.slice(1)]
+    : [normalizedQuery];
+
+  return terms.some((term) => {
+    const normalizedTerm = term.toLowerCase();
+    return queryVariants.some((variant) => normalizedTerm.includes(variant));
+  });
 }
 
 function matchesServiceCategory(service: Service, category?: string) {
@@ -1290,6 +1297,55 @@ function listAvailabilitySlotsForBarber(params: {
   return slots;
 }
 
+function getNextAvailabilityWindowStart(params: {
+  barberUuid: string;
+  locationReference: string;
+  locationUuidByReference: Map<string, string>;
+  availabilityRules: CanonicalAvailabilityRuleRow[];
+  days?: number;
+  earliestAt?: string | null;
+}) {
+  const {
+    barberUuid,
+    locationReference,
+    locationUuidByReference,
+    availabilityRules,
+    days = 14,
+    earliestAt
+  } = params;
+  const locationIds = new Set([locationReference, locationUuidByReference.get(locationReference)].filter((value): value is string => Boolean(value)));
+  if (!locationIds.size) {
+    return undefined;
+  }
+
+  const rules = availabilityRules.filter((entry) => entry.barber_id === barberUuid && locationIds.has(entry.location_id));
+  if (!rules.length) {
+    return undefined;
+  }
+
+  const now = new Date();
+  const earliestDate = earliestAt ? new Date(earliestAt) : null;
+  const earliestThreshold = earliestDate && !Number.isNaN(earliestDate.getTime())
+    ? Math.max(now.getTime() + 15 * 60_000, earliestDate.getTime())
+    : now.getTime() + 15 * 60_000;
+
+  for (let offset = 0; offset < days; offset += 1) {
+    const day = new Date(now);
+    day.setDate(now.getDate() + offset);
+    const weekday = day.getDay();
+    const dayRules = rules.filter((entry) => entry.weekday === weekday);
+
+    for (const rule of dayRules) {
+      const startsAt = withTime(day, rule.start_time);
+      if (startsAt.getTime() >= earliestThreshold) {
+        return startsAt.toISOString();
+      }
+    }
+  }
+
+  return undefined;
+}
+
 function getMatchClassification(candidate: {
   barberReference: string;
   locationReference: string;
@@ -1418,7 +1474,15 @@ function buildCandidateRecords(
       blockedTimes: snapshot.blockedTimes
     });
     const nextSlot = slots[0];
-    if (!nextSlot) {
+    const nextAvailableAt = nextSlot?.startsAt
+      ?? getNextAvailabilityWindowStart({
+        barberUuid: barberRow.id,
+        locationReference: candidateLocationReference,
+        locationUuidByReference,
+        availabilityRules: snapshot.availabilityRules,
+        earliestAt: eligibility.profileRow?.next_available_at
+      });
+    if (!nextAvailableAt) {
       return [];
     }
 
@@ -1451,7 +1515,7 @@ function buildCandidateRecords(
     const matchedFrom = getMatchClassification({
       barberReference,
       locationReference: candidateLocationReference,
-      nextAvailableAt: nextSlot.startsAt,
+      nextAvailableAt,
       favoriteBarberReference: options.clientSignal?.favoriteBarberReference,
       favoriteShopReference: options.clientSignal?.favoriteShopReference
     });
@@ -1462,7 +1526,7 @@ function buildCandidateRecords(
         ? 24
         : 0
       : 0;
-    const waitMinutes = Math.max(0, Math.round((new Date(nextSlot.startsAt).getTime() - Date.now()) / 60_000));
+    const waitMinutes = Math.max(0, Math.round((new Date(nextAvailableAt).getTime() - Date.now()) / 60_000));
     const availabilityScore = Math.max(0, 80 - waitMinutes);
     const preferredBarberBoost = matchedFrom === "favorite_barber" ? 90 : 0;
     const preferredShopBoost = matchedFrom === "favorite_shop" ? 54 : 0;
@@ -1483,8 +1547,8 @@ function buildCandidateRecords(
         Math.min(...bookableServicePool.map((service) => service.price)),
         Math.max(...bookableServicePool.map((service) => service.price))
       ],
-      nextAvailableAt: nextSlot.startsAt,
-      appointmentTime: nextSlot.startsAt,
+      nextAvailableAt,
+      appointmentTime: nextSlot?.startsAt,
       distanceMiles,
       shopName: location.name,
       locationId: candidateLocationReference,
@@ -1616,6 +1680,7 @@ export async function buildCanonicalDiscoveryResults(
     reviewCount: candidate.reviewCount,
     priceRange: candidate.priceRange,
     nextAvailableAt: candidate.nextAvailableAt,
+    availabilityLabel: candidate.appointmentTime ? undefined : "Book appointment",
     distanceMiles: candidate.distanceMiles,
     shopName: candidate.shopName,
     specialties: candidate.specialties,
@@ -1647,7 +1712,7 @@ export async function buildCanonicalNextAvailableMatch(
 ) {
   const snapshot = await readCanonicalSnapshot(supabase);
   const candidate = buildCandidateRecords(snapshot, options)[0];
-  if (!candidate) {
+  if (!candidate?.appointmentTime) {
     return null;
   }
 
@@ -1991,11 +2056,18 @@ export async function buildCanonicalBarberProfile(
     blockedTimes: snapshot.blockedTimes
   });
   const nextSlot = nextSlots[0];
-  if (!nextSlot) {
+  const nextAvailableAt = nextSlot?.startsAt
+    ?? getNextAvailabilityWindowStart({
+      barberUuid: barberRow.id,
+      locationReference: primaryLocation.id,
+      locationUuidByReference,
+      availabilityRules: snapshot.availabilityRules,
+      earliestAt: profileRow?.next_available_at
+    });
+  if (!nextAvailableAt) {
     return null;
   }
 
-  const nextAvailableAt = nextSlot.startsAt;
   const completedAppointments = snapshot.appointments.filter((entry) => entry.barber_id === barberRow.id && entry.status === "completed");
   const bookingsCreated = snapshot.appointments.filter((entry) => entry.barber_id === barberRow.id && entry.status !== "cancelled").length;
   const completionRate = bookingsCreated ? Math.round((completedAppointments.length / bookingsCreated) * 100) : 100;
@@ -2027,7 +2099,7 @@ export async function buildCanonicalBarberProfile(
     boothRentFrequency: barberRow.booth_rent_frequency ?? undefined,
     todayEarnings: Number(completedAppointments.filter((entry) => entry.starts_at.slice(0, 10) === new Date().toISOString().slice(0, 10)).reduce((sum, entry) => sum + numeric(entry.total_amount), 0).toFixed(2)),
     upcomingPayout: Number(completedAppointments.reduce((sum, entry) => sum + numeric(entry.total_amount), 0).toFixed(2)),
-    availabilityLabel: nextSlots[0] ? createSlotLabel(new Date(nextSlots[0].startsAt)) : "Open soon",
+    availabilityLabel: nextSlot ? createSlotLabel(new Date(nextSlot.startsAt)) : "Book appointment",
     bio: barberRow.bio ?? profileRow?.bio ?? `${name} is ready to book on BVRB3R.`,
     bookingLink: buildMarketplaceBookingHref({
       barberId: barberReference,
@@ -2035,7 +2107,7 @@ export async function buildCanonicalBarberProfile(
       locationId: primaryLocation.id,
       serviceId: mostBookedService?.service.id,
       sourceKind: "public_profile",
-      appointmentTime: nextAvailableAt
+      appointmentTime: nextSlot?.startsAt
     })
   };
   const profileView = {

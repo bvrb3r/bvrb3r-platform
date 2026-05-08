@@ -749,6 +749,133 @@ describe("canonical availability intelligence", () => {
     expect(diagnostic.facts.payoutMode).toBe("test");
   });
 
+  it("does not hide an eligible barber when no exact next slot can be materialized yet", async () => {
+    const targetDay = new Date();
+    targetDay.setDate(targetDay.getDate() + 1);
+    targetDay.setHours(12, 0, 0, 0);
+    const targetEnd = new Date(targetDay);
+    targetEnd.setHours(13, 0, 0, 0);
+    const supabase = createSupabaseMock({
+      barbers: [{
+        id: "barber-uuid",
+        reference_code: "barber-phillip",
+        profile_id: "profile-uuid",
+        compensation_model: "booth_rent",
+        app_approval_status: "approved",
+        shop_approval_status: "pending",
+        commission_rate: null,
+        booth_rent_amount: 150,
+        booth_rent_frequency: "weekly",
+        bio: "Independent Tampa barber.",
+        booking_slug: null
+      }],
+      barber_profiles: [{
+        barber_reference: "barber-phillip",
+        username: null,
+        display_name: "Phillip McGee",
+        bio: "Independent Tampa barber.",
+        years_experience: 7,
+        shop_reference: "independent-barber-phillip",
+        profile_photo_path: null,
+        profile_photo_url: null,
+        specialties: ["Fade"],
+        badges: [],
+        service_area_label: "Phil's Chair / 2172 University Square More / Tampa",
+        next_available_at: null,
+        visibility_state: "public"
+      }],
+      profiles: [{
+        id: "profile-uuid",
+        full_name: "Phillip McGee",
+        email: "phillip@example.test",
+        phone: "8135550101",
+        role: "booth_rent_barber",
+        primary_onboarding_role: "barber"
+      }],
+      services: [{
+        id: "service-uuid",
+        reference_code: "srv-long-cut",
+        location_id: "location-uuid",
+        category: "Haircut",
+        name: "Long Session Cut",
+        description: "A service that needs manual time selection",
+        duration_min: 120,
+        buffer_min: 0,
+        price: 80,
+        currency: "usd",
+        deposit_amount: 0,
+        full_prepay_required: false,
+        active: true,
+        is_bookable: true,
+        display_order: 1,
+        created_at: targetDay.toISOString(),
+        updated_at: targetDay.toISOString(),
+        service_owner_type: "barber",
+        barber_reference: "barber-phillip",
+        shop_reference: "independent-barber-phillip",
+        booking_count: 0,
+        popularity_rank: 1
+      }],
+      locations: [{
+        id: "location-uuid",
+        reference_code: "independent-barber-phillip",
+        name: "Phil's Chair",
+        neighborhood: "2172 University Square More",
+        city: "Tampa",
+        state: "FL",
+        phone: "8135550101",
+        address: "2172 University Square More",
+        latitude: null,
+        longitude: null
+      }],
+      staff_locations: [],
+      availability_rules: [{
+        barber_id: "barber-uuid",
+        location_id: "location-uuid",
+        weekday: targetDay.getDay(),
+        start_time: formatTime(targetDay),
+        end_time: formatTime(targetEnd)
+      }],
+      blocked_times: [],
+      appointments: [],
+      reviews: [],
+      barber_portfolios: [],
+      marketplace_visibility: [{
+        barber_reference: "barber-phillip",
+        visibility_state: "public",
+        accepts_instant_bookings: true,
+        featured_rank: null
+      }],
+      barber_status: [{
+        barber_reference: "barber-phillip",
+        status: "active",
+        live_status: "live",
+        accepting_bookings: true
+      }],
+      connected_accounts: [{
+        subject_type: "barber",
+        barber_id: "barber-uuid",
+        payout_readiness_status: "ready",
+        livemode: false,
+        charges_enabled: true,
+        payouts_enabled: true,
+        requirements_currently_due: [],
+        requirements_past_due: [],
+        disabled_reason: null
+      }]
+    });
+
+    const results = await buildCanonicalDiscoveryResults(supabase as never, {
+      locationId: "",
+      query: "phillip"
+    });
+
+    expect(results).toHaveLength(1);
+    expect(results[0].availabilityLabel).toBe("Book appointment");
+    expect(results[0].bookingHref).toContain("barberId=barber-phillip");
+    expect(results[0].bookingHref).not.toContain("appointmentTime=");
+  });
+
   it("uses a stable fallback public slug when an activated barber has not set a username", async () => {
     const targetDay = new Date();
     targetDay.setDate(targetDay.getDate() + 1);
