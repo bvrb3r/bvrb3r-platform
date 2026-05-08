@@ -1,6 +1,7 @@
 "use client";
 
 import type { Route } from "next";
+import Link from "next/link";
 import {
   ArrowRight,
   CalendarDays,
@@ -138,6 +139,9 @@ export function ClientHomeScreen({
   const hasResolvedLocation = payload?.hasResolvedLocation ?? false;
   const recommendedBarbers = payload?.recommendedBarbers ?? payload?.trustedBarbers ?? [];
   const recommendedShops = payload?.recommendedShops ?? [];
+  const marketplaceFeed = recommendedBarbers
+    .filter((result) => (result.galleryPreviewUrls?.length ?? 0) > 0)
+    .slice(0, 6);
   const isInitialLoading = (homeQuery.isLoading && !payload) || (bookingsQuery.isLoading && !bookingsPayload);
   const errorMessage = homeQuery.error || bookingsQuery.error
     ? getReadableActionError((homeQuery.error ?? bookingsQuery.error) as BookingApiError)
@@ -365,6 +369,44 @@ export function ClientHomeScreen({
                 Find Barber Shops
               </ClientActionLink>
             </div>
+          </div>
+        )}
+      </ClientSectionBlock>
+
+      <ClientSectionBlock
+        eyebrow="Feed"
+        title="Marketplace Feed"
+        subtitle="Real public work from live barber profiles."
+      >
+        {marketplaceFeed.length ? (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {marketplaceFeed.map((result) => {
+              const imageUrl = result.galleryPreviewUrls?.[0];
+              const profileHref = `/barber/${result.username}` as Route;
+
+              return (
+                <Link key={`${result.barberId}-feed`} href={profileHref} className="group block overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(8,8,8,0.99))] p-2 text-left shadow-[0_22px_44px_rgba(0,0,0,0.2)]">
+                  <span className="relative block h-56 overflow-hidden rounded-[28px]">
+                    {imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={imageUrl} alt={`${result.barberName} public work`} className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-105" />
+                    ) : null}
+                    <span className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.12),transparent_42%,rgba(0,0,0,0.82))]" />
+                    <span className="absolute bottom-4 left-4 right-4">
+                      <span className="block text-lg font-semibold text-white">{result.barberName}</span>
+                      <span className="mt-1 block text-sm text-white/72">{result.mostBookedService ?? result.specialties[0] ?? "Fresh work"}</span>
+                    </span>
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="rounded-[30px] border border-dashed border-white/10 bg-[linear-gradient(180deg,rgba(19,19,19,0.96),rgba(8,8,8,0.98))] p-6 sm:p-7">
+            <h3 className="text-2xl font-semibold text-white" data-display="true">No public work posted yet.</h3>
+            <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">
+              Live barbers still appear in search and recommended barber cards. Public portfolio work will appear here when it is uploaded.
+            </p>
           </div>
         )}
       </ClientSectionBlock>

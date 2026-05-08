@@ -255,6 +255,16 @@ export function ArchitectAccountDetailWorkspace({
   const canManageAccountAccess = !isPlatformAdmin && account.profileExists;
   const canUseVerificationActions = Boolean(selectedVerificationProfile);
   const marketplaceStatus = getMarketplaceStatus(account);
+  const marketplaceFacts = account.marketplaceFacts;
+  const marketplaceFactLocation = marketplaceFacts
+    ? [
+        marketplaceFacts.address,
+        [marketplaceFacts.city, marketplaceFacts.state].filter(Boolean).join(", ")
+      ].filter(Boolean).join(", ")
+    : "";
+  const marketplaceSearchTerms = account.searchableTerms?.length
+    ? account.searchableTerms.join(", ")
+    : undefined;
   const readinessItems = account.barber
     ? [
         { label: "Approval", complete: account.approvalStatus === "approved", detail: `Approval: ${formatLabel(account.approvalStatus)}` },
@@ -279,7 +289,7 @@ export function ArchitectAccountDetailWorkspace({
         { label: "Marketplace", complete: account.marketplaceLive, detail: account.marketplaceBlockers.length ? account.marketplaceBlockers.join(" | ") : "Marketplace visible from account data" },
         { label: "Client home", complete: account.clientHomeIncluded ?? account.marketplaceLive, detail: account.clientHomeIncluded ?? account.marketplaceLive ? "Included in client home supply" : "Not included in client home" },
         { label: "Client search", complete: account.clientSearchIncluded ?? account.searchIncluded, detail: account.clientSearchIncluded ?? account.searchIncluded ? "Included in client search" : "Not included in client search" },
-        { label: "Direct search", complete: account.directSearchMatch ?? account.searchIncluded, detail: account.directSearchMatch ?? account.searchIncluded ? "Name/slug can match client direct search" : "Direct search excluded by blockers" },
+        { label: "Direct search Phillip", complete: account.directSearchMatch ?? account.searchIncluded, detail: account.directSearchMatch ?? account.searchIncluded ? "Phillip direct search matches canonical terms" : "Phillip direct search excluded by blockers or terms" },
         { label: "Feed content", complete: account.feedEligible, detail: account.feedAssetCount > 0 ? `${account.feedAssetCount} public feed asset${account.feedAssetCount === 1 ? "" : "s"}` : "No public feed content yet" }
       ]
     : account.shopOwner?.shopExists
@@ -297,7 +307,7 @@ export function ArchitectAccountDetailWorkspace({
           { label: "Marketplace", complete: account.marketplaceLive, detail: account.marketplaceBlockers.length ? account.marketplaceBlockers.join(" | ") : "Marketplace visible from account data" },
           { label: "Client home", complete: account.clientHomeIncluded ?? account.marketplaceLive, detail: account.clientHomeIncluded ?? account.marketplaceLive ? "Included in client home supply" : "Not included in client home" },
           { label: "Client search", complete: account.clientSearchIncluded ?? account.searchIncluded, detail: account.clientSearchIncluded ?? account.searchIncluded ? "Included in client search" : "Not included in client search" },
-          { label: "Direct search", complete: account.directSearchMatch ?? account.searchIncluded, detail: account.directSearchMatch ?? account.searchIncluded ? "Name/slug can match client direct search" : "Direct search excluded by blockers" },
+          { label: "Direct search Phillip", complete: account.directSearchMatch ?? account.searchIncluded, detail: account.directSearchMatch ?? account.searchIncluded ? "Phillip direct search matches canonical terms" : "Phillip direct search excluded by blockers or terms" },
           { label: "Feed content", complete: account.feedEligible, detail: account.feedAssetCount > 0 ? `${account.feedAssetCount} public feed asset${account.feedAssetCount === 1 ? "" : "s"}` : "No public feed content yet" }
         ]
       : [];
@@ -543,12 +553,21 @@ export function ArchitectAccountDetailWorkspace({
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
               <Field label="Client Home included" value={(account.clientHomeIncluded ?? account.marketplaceLive) ? "yes" : "no"} />
               <Field label="Client Search included" value={(account.clientSearchIncluded ?? account.searchIncluded) ? "yes" : "no"} />
-              <Field label="Direct search match" value={(account.directSearchMatch ?? account.searchIncluded) ? "yes" : "no"} />
+              <Field label="Direct search Phillip match" value={(account.directSearchMatch ?? account.searchIncluded) ? "yes" : "no"} />
               <Field label="Marketplace live" value={account.marketplaceLive ? "yes" : "no"} />
-              <Field label="Current discovery location" value={account.discoveryLocation} />
+              <Field label="Current discovery location" value={marketplaceFactLocation || account.discoveryLocation} />
               <Field label="Public route" value={account.publicRoute} />
-              <Field label="Payout mode" value={account.payoutMode} />
+              <Field label="Payout mode" value={marketplaceFacts ? `${marketplaceFacts.payoutMode} / ${formatLabel(marketplaceFacts.payoutStatus)}` : account.payoutMode} />
               <Field label="Feed eligible" value={account.feedEligible ? "yes" : "no"} />
+              <Field label="Search terms" value={marketplaceSearchTerms} />
+              <Field label="Services" value={marketplaceFacts ? `${marketplaceFacts.serviceCount} total / ${marketplaceFacts.activeServiceCount} active` : account.serviceCount} />
+              <Field label="Availability / working hours" value={marketplaceFacts ? `${marketplaceFacts.availabilityCount} availability / ${marketplaceFacts.workingHoursCount} working hours` : account.availabilityCount} />
+              <Field label="Independent location" value={marketplaceFacts ? (marketplaceFacts.independentLocationExists ? "yes" : "no") : undefined} />
+              <Field label="Accepted shops" value={marketplaceFacts?.acceptedShopCount} />
+              <Field label="Profile visibility" value={marketplaceFacts?.profileVisibility} />
+              <Field label="Booking status" value={marketplaceFacts?.bookingStatus} />
+              <Field label="Username / fallback slug" value={marketplaceFacts ? `${marketplaceFacts.username ?? "no username"} / ${marketplaceFacts.fallbackSlug}` : account.username} />
+              <Field label="Public media count" value={marketplaceFacts?.publicMediaCount ?? account.feedAssetCount} />
             </div>
           </Card>
 

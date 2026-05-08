@@ -7,8 +7,8 @@ import {
 } from "@/lib/trust/engine";
 import {
   hasRealMarketplaceText,
-  isBarberPlatformApproved,
   isKnownNonProductionMarketplaceValue,
+  isMarketplaceApprovedStatus,
   isMarketplaceBookableService,
   isPublicMarketplaceVisibilityState
 } from "@/lib/marketplace/visibility";
@@ -173,11 +173,17 @@ type CanonicalConnectedAccountRow = {
   subject_type: string | null;
   barber_id: string | null;
   payout_readiness_status: string | null;
+  livemode?: boolean | null;
   charges_enabled: boolean | null;
   payouts_enabled: boolean | null;
   requirements_currently_due: unknown;
   requirements_past_due: unknown;
   disabled_reason: string | null;
+};
+
+type CanonicalStaffLocationRow = {
+  profile_id: string;
+  location_id: string;
 };
 
 type ClientBookingSignal = {
@@ -237,6 +243,7 @@ type CanonicalSnapshot = {
   profiles: CanonicalProfileRow[];
   services: CanonicalServiceRow[];
   locations: CanonicalLocationRow[];
+  staffLocations: CanonicalStaffLocationRow[];
   availabilityRules: CanonicalAvailabilityRuleRow[];
   blockedTimes: CanonicalBlockedTimeRow[];
   appointments: CanonicalAppointmentRow[];
@@ -244,6 +251,54 @@ type CanonicalSnapshot = {
   marketplaceVisibility: CanonicalMarketplaceVisibilityRow[];
   barberStatus: CanonicalBarberStatusRow[];
   connectedAccounts: CanonicalConnectedAccountRow[];
+};
+
+export type MarketplaceBarberEligibilityDiagnostic = {
+  eligible: boolean;
+  includedInClientSearch: boolean;
+  includedInClientHome: boolean;
+  includedInMarketplaceFeed: boolean;
+  publicProfileRoute: string | null;
+  displayName: string;
+  searchableTerms: string[];
+  blockers: string[];
+  facts: {
+    profileId: string | null;
+    userId: string | null;
+    barberId: string;
+    approvalStatus: string | null;
+    verificationOverall: string | null;
+    identityStatus: string | null;
+    licenseStatus: string | null;
+    payoutStatus: string | null;
+    payoutMode: "test" | "live" | "missing";
+    profileVisibility: string | null;
+    bookingStatus: string | null;
+    serviceCount: number;
+    activeServiceCount: number;
+    availabilityCount: number;
+    workingHoursCount: number;
+    independentLocationExists: boolean;
+    acceptedShopCount: number;
+    publicMediaCount: number;
+    username: string | null;
+    fallbackSlug: string;
+    city: string | null;
+    state: string | null;
+    address: string | null;
+    suspended: boolean;
+    rejected: boolean;
+    banned: boolean;
+  };
+};
+
+type InternalMarketplaceBarberEligibility = MarketplaceBarberEligibilityDiagnostic & {
+  barberReference: string;
+  barberUuid: string;
+  profileRow?: CanonicalBarberProfileRow;
+  profile?: CanonicalProfileRow;
+  locationReferences: string[];
+  bookableServices: Service[];
 };
 
 const knownBadges = new Set<MarketplaceBadge>([
@@ -363,12 +418,17 @@ function mapLocation(row: CanonicalLocationRow): Location {
 }
 
 function parseIndependentServiceArea(label?: string | null) {
-  const [rawName = "", rawArea = ""] = (label ?? "").split("|").map((part) => part.trim());
-  const areaParts = rawArea.split(",").map((part) => part.trim()).filter(Boolean);
+  const normalized = label?.trim() ?? "";
+  const parts = normalized.includes("|")
+    ? normalized.split("|").map((part) => part.trim()).filter(Boolean)
+    : normalized.split("/").map((part) => part.trim()).filter(Boolean);
+  const [rawName = "", rawArea = "", rawCityState = ""] = parts;
+  const cityStateSource = rawCityState || rawArea;
+  const areaParts = cityStateSource.split(",").map((part) => part.trim()).filter(Boolean);
   return {
     name: rawName || "Independent barber",
-    neighborhood: rawArea || rawName || "Independent service location",
-    city: areaParts[0] ?? "",
+    neighborhood: rawCityState ? rawArea : rawArea || rawName || "Independent service location",
+    city: areaParts[0] ?? rawCityState ?? "",
     state: areaParts[1] ?? ""
   };
 }
@@ -441,19 +501,6 @@ function haversineMiles(origin: Location, target: Location) {
   return Number((earthRadiusMiles * c).toFixed(1));
 }
 
-function serviceMatchScore(service: Service, normalizedQuery: string) {
-  if (!normalizedQuery) {
-    return 0;
-  }
-
-  const haystack = `${service.name} ${service.category} ${service.description}`.toLowerCase();
-  if (haystack.includes(normalizedQuery)) {
-    return 16;
-  }
-
-  return 0;
-}
-
 function createSlotLabel(date: Date) {
   return new Intl.DateTimeFormat("en-US", {
     weekday: "short",
@@ -505,11 +552,22 @@ function isBarberDiscoverable(trustState: TrustState | undefined, barberId: stri
   return !decision || !isTrustDecisionBlocked(decision.canonicalOverallStatus);
 }
 
-function isCanonicalBarberPlatformApproved(barber: CanonicalBarberRow) {
-  return isBarberPlatformApproved({
-    appApprovalStatus: barber.app_approval_status ?? undefined,
-    shopApprovalStatus: barber.shop_approval_status ?? undefined
-  });
+function isCanonicalBarberPlatformApproved(barber: CanonicalBarberRow, trustState?: TrustState, barberReference?: string) {
+  const appApproved = isMarketplaceApprovedStatus(barber.app_approval_status);
+  if (appApproved) {
+    return true;
+  }
+
+  if (!trustState || !barberReference) {
+    return false;
+  }
+
+  const decision = buildPublicTrustSignal(trustState, barberReference).verificationDecision;
+  return decision?.canonicalOverallStatus === "approved";
+}
+
+function isBlockedMarketplaceStatus(value?: string | null) {
+  return ["suspended", "rejected", "banned", "disabled", "deactivated"].includes(value ?? "");
 }
 
 function isCanonicalBarberProfileRole(profile?: CanonicalProfileRow) {
@@ -655,6 +713,7 @@ async function readCanonicalSnapshot(supabase: SupabaseClient): Promise<Canonica
     servicesResult,
     marketplaceServicesResult,
     locationsResult,
+    staffLocationsResult,
     availabilityResult,
     blockedTimesResult,
     appointmentsResult,
@@ -670,6 +729,7 @@ async function readCanonicalSnapshot(supabase: SupabaseClient): Promise<Canonica
     supabase.from("services").select("id, reference_code, location_id, category, name, description, duration_min, buffer_min, price, currency, deposit_amount, full_prepay_required, active, is_bookable, display_order, created_at, updated_at, service_owner_type, barber_reference, shop_reference, booking_count, popularity_rank").eq("active", true),
     supabase.from("marketplace_services").select("service_reference, category, name, description, duration_min, buffer_min, price, deposit_amount, full_prepay_required, owner_type, barber_reference, shop_reference, style_tag_ids, created_at, updated_at"),
     supabase.from("locations").select("id, reference_code, name, neighborhood, city, state, phone, address, latitude, longitude"),
+    supabase.from("staff_locations").select("profile_id, location_id"),
     supabase.from("availability_rules").select("barber_id, location_id, weekday, start_time, end_time"),
     supabase.from("blocked_times").select("barber_id, starts_at, ends_at, reason"),
     supabase.from("appointments").select("id, reference_code, barber_id, client_id, service_id, location_id, status, starts_at, ends_at, total_amount"),
@@ -677,7 +737,7 @@ async function readCanonicalSnapshot(supabase: SupabaseClient): Promise<Canonica
     supabase.from("marketplace_visibility").select("barber_reference, visibility_state, accepts_instant_bookings, featured_rank"),
     supabase.from("barber_portfolios").select("id, barber_reference, storage_path, image_url, caption, style_tag_ids, featured, created_at").order("featured", { ascending: false }).order("created_at", { ascending: false }),
     supabase.from("barber_status").select("barber_reference, status, live_status, accepting_bookings"),
-    supabase.from("connected_accounts").select("subject_type, barber_id, payout_readiness_status, charges_enabled, payouts_enabled, requirements_currently_due, requirements_past_due, disabled_reason")
+    supabase.from("connected_accounts").select("subject_type, barber_id, payout_readiness_status, livemode, charges_enabled, payouts_enabled, requirements_currently_due, requirements_past_due, disabled_reason")
   ]);
 
   const resolvedBarberProfilesResult = barberProfilesResult.error && isMissingRelationOrColumn(barberProfilesResult.error)
@@ -703,6 +763,7 @@ async function readCanonicalSnapshot(supabase: SupabaseClient): Promise<Canonica
   }
   const optionalResults = [
     marketplaceServicesResult,
+    staffLocationsResult,
     marketplaceVisibilityResult,
     portfoliosResult,
     barberStatusResult,
@@ -727,6 +788,12 @@ async function readCanonicalSnapshot(supabase: SupabaseClient): Promise<Canonica
     if (result.error && !isMissingRelationOrColumn(result.error)) {
       throw result.error;
     }
+  }
+  const resolvedConnectedAccountsResult = connectedAccountsResult.error && isMissingRelationOrColumn(connectedAccountsResult.error)
+    ? await supabase.from("connected_accounts").select("subject_type, barber_id, payout_readiness_status, charges_enabled, payouts_enabled, requirements_currently_due, requirements_past_due, disabled_reason")
+    : connectedAccountsResult;
+  if (resolvedConnectedAccountsResult.error && !isMissingRelationOrColumn(resolvedConnectedAccountsResult.error)) {
+    throw resolvedConnectedAccountsResult.error;
   }
 
   return {
@@ -778,13 +845,14 @@ async function readCanonicalSnapshot(supabase: SupabaseClient): Promise<Canonica
       } satisfies CanonicalServiceRow))
     ],
     locations: (resolvedLocationsResult.data ?? []) as CanonicalLocationRow[],
+    staffLocations: (staffLocationsResult.error ? [] : staffLocationsResult.data ?? []) as CanonicalStaffLocationRow[],
     availabilityRules: (availabilityResult.data ?? []) as CanonicalAvailabilityRuleRow[],
     blockedTimes: (blockedTimesResult.data ?? []) as CanonicalBlockedTimeRow[],
     appointments: (appointmentsResult.data ?? []) as CanonicalAppointmentRow[],
     reviews: (reviewsResult.data ?? []) as CanonicalReviewRow[],
     marketplaceVisibility: (marketplaceVisibilityResult.error ? [] : marketplaceVisibilityResult.data ?? []) as CanonicalMarketplaceVisibilityRow[],
     barberStatus: (barberStatusResult.error ? [] : barberStatusResult.data ?? []) as CanonicalBarberStatusRow[],
-    connectedAccounts: (connectedAccountsResult.error ? [] : connectedAccountsResult.data ?? []) as CanonicalConnectedAccountRow[]
+    connectedAccounts: (resolvedConnectedAccountsResult.error ? [] : resolvedConnectedAccountsResult.data ?? []) as CanonicalConnectedAccountRow[]
   };
 }
 function computeServicePopularity(
@@ -905,6 +973,235 @@ function getServicesForBarber(
     }
     return left.name.localeCompare(right.name);
   });
+}
+
+function matchesSearchableTerms(terms: string[], query?: string) {
+  const normalizedQuery = query?.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  return terms.some((term) => term.toLowerCase().includes(normalizedQuery));
+}
+
+function matchesServiceCategory(service: Service, category?: string) {
+  const normalizedCategory = category?.trim().toLowerCase();
+  if (!normalizedCategory) {
+    return true;
+  }
+
+  const singularCategory = normalizedCategory.replace(/s$/, "");
+  const haystack = `${service.category} ${service.name}`.toLowerCase();
+  return haystack.includes(normalizedCategory) || haystack.includes(singularCategory);
+}
+
+function getBarberTrustDecision(trustState: TrustState | undefined, barberReference: string) {
+  return trustState ? buildPublicTrustSignal(trustState, barberReference).verificationDecision : null;
+}
+
+function getPrimaryMarketplaceLocation(input: {
+  locationsByReference: Map<string, Location>;
+  locationReferences: string[];
+  profileRow?: CanonicalBarberProfileRow;
+}) {
+  for (const locationReference of input.locationReferences) {
+    const location = getCandidateLocation(input.locationsByReference, locationReference, input.profileRow);
+    if (location) {
+      return location;
+    }
+  }
+
+  return undefined;
+}
+
+function buildMarketplaceBarberEligibility(
+  snapshot: CanonicalSnapshot,
+  barberRow: CanonicalBarberRow,
+  options: {
+    locationReferenceByUuid: Map<string, string>;
+    locationsByReference: Map<string, Location>;
+    trustState?: TrustState;
+  }
+): InternalMarketplaceBarberEligibility {
+  const barberReference = toReference(barberRow.id, barberRow.reference_code);
+  const profileRow = snapshot.barberProfiles.find((row) => row.barber_reference === barberReference);
+  const profile = snapshot.profiles.find((row) => row.id === barberRow.profile_id);
+  const visibility = getMarketplaceVisibilityRow(snapshot, barberReference);
+  const status = snapshot.barberStatus.find((row) => row.barber_reference === barberReference);
+  const connectedAccount = snapshot.connectedAccounts.find((row) => row.subject_type === "barber" && row.barber_id === barberRow.id);
+  const trustDecision = getBarberTrustDecision(options.trustState, barberReference);
+  const rawLocationReferences = getCandidateLocationReferences(
+    barberReference,
+    barberRow.id,
+    snapshot.services,
+    snapshot.availabilityRules,
+    snapshot.appointments,
+    options.locationReferenceByUuid
+  );
+  const locationReferences = rawLocationReferences.filter((locationReference) =>
+    isLocationPubliclyBookable(options.trustState, locationReference)
+  );
+  const services = getServicesForBarber(barberReference, barberRow.id, locationReferences, snapshot.services, options.locationReferenceByUuid);
+  const bookableServices = services.filter((service) =>
+    isMarketplaceBookableService(service)
+    && ![service.id, service.name, service.category, service.barberId, service.shopId].some(isKnownNonProductionMarketplaceValue)
+  );
+  const publicMediaCount = snapshot.portfolios.filter((asset) =>
+    asset.barber_reference === barberReference && Boolean(canonicalMediaUrl(asset.image_url, asset.storage_path))
+  ).length;
+  const availabilityCount = snapshot.availabilityRules.filter((row) => row.barber_id === barberRow.id).length;
+  const independentLocationExists = locationReferences.some(isIndependentServiceLocationReference);
+  const acceptedShopCount = snapshot.staffLocations.filter((row) => {
+    if (row.profile_id !== barberRow.profile_id) {
+      return false;
+    }
+    const locationReference = options.locationReferenceByUuid.get(row.location_id) ?? row.location_id;
+    return !isIndependentServiceLocationReference(locationReference);
+  }).length;
+  const primaryLocation = getPrimaryMarketplaceLocation({
+    locationsByReference: options.locationsByReference,
+    locationReferences,
+    profileRow
+  });
+  const publicSlug = resolvePublicBarberSlug({ profileRow, barberRow, barberReference });
+  const fallbackSlug = buildFallbackBarberSlug(barberReference);
+  const displayName = profileRow?.display_name ?? profile?.full_name ?? barberReference;
+  const profilePublic = isPublicMarketplaceVisibilityState(profileRow?.visibility_state);
+  const visibilityPublic = !visibility || isPublicMarketplaceVisibilityState(visibility.visibility_state);
+  const acceptingBookings = status
+    ? status.accepting_bookings === true && status.status !== "offline" && status.live_status !== "offline"
+    : visibility?.accepts_instant_bookings === true;
+  const payoutReady = connectedAccount
+    ? isConnectedAccountPayoutReady(connectedAccount)
+    : visibility?.accepts_instant_bookings === true;
+  const approvalApproved = isCanonicalBarberPlatformApproved(barberRow, options.trustState, barberReference);
+  const verificationOverall = trustDecision?.canonicalOverallStatus ?? null;
+  const verificationStatusValue = `${verificationOverall ?? ""}`;
+  const suspended = isBlockedMarketplaceStatus(barberRow.app_approval_status) || verificationStatusValue === "suspended";
+  const rejected = barberRow.app_approval_status === "rejected" || verificationStatusValue === "rejected";
+  const banned = barberRow.app_approval_status === "banned" || verificationStatusValue === "banned";
+  const validLocationOrShop = independentLocationExists || acceptedShopCount > 0 || locationReferences.length > 0;
+  const searchableTerms = [
+    displayName,
+    profileRow?.display_name,
+    profile?.full_name,
+    profileRow?.username,
+    barberRow.booking_slug,
+    publicSlug,
+    fallbackSlug,
+    barberReference,
+    barberRow.id,
+    primaryLocation?.name,
+    primaryLocation?.neighborhood,
+    primaryLocation?.city,
+    primaryLocation?.state,
+    primaryLocation?.address,
+    ...bookableServices.flatMap((service) => [service.name, service.category])
+  ].filter((value): value is string => Boolean(value?.trim()));
+  const blockers = [
+    profile ? null : "Missing identity profile",
+    isCanonicalBarberProfileRole(profile) ? null : "Profile role is not barber",
+    profileRow ? null : "Missing public barber profile",
+    hasRealMarketplaceText(displayName) ? null : "Missing public display name",
+    approvalApproved ? null : `Barber approval ${barberRow.app_approval_status ?? verificationOverall ?? "missing"}`,
+    suspended ? "Account suspended" : null,
+    rejected ? "Account rejected" : null,
+    banned ? "Account banned" : null,
+    profilePublic ? null : "Profile visibility is hidden",
+    visibilityPublic ? null : "Marketplace visibility hidden",
+    acceptingBookings ? null : "Not accepting bookings",
+    payoutReady ? null : "Payout setup incomplete",
+    bookableServices.length > 0 ? null : "No active real services",
+    availabilityCount > 0 ? null : "No real availability",
+    validLocationOrShop ? null : "No service location or shop connection"
+  ].filter((value): value is string => Boolean(value));
+  const eligible = blockers.length === 0;
+
+  return {
+    eligible,
+    includedInClientSearch: eligible,
+    includedInClientHome: eligible,
+    includedInMarketplaceFeed: eligible && publicMediaCount > 0,
+    publicProfileRoute: eligible ? `/barber/${publicSlug}` : null,
+    displayName,
+    searchableTerms,
+    blockers,
+    facts: {
+      profileId: barberRow.profile_id,
+      userId: barberRow.profile_id,
+      barberId: barberReference,
+      approvalStatus: barberRow.app_approval_status,
+      verificationOverall,
+      identityStatus: trustDecision?.identityStatus ?? null,
+      licenseStatus: trustDecision?.licenseStatus ?? null,
+      payoutStatus: connectedAccount?.payout_readiness_status ?? trustDecision?.payoutStatus ?? null,
+      payoutMode: connectedAccount ? (connectedAccount.livemode ? "live" : "test") : "missing",
+      profileVisibility: profileRow?.visibility_state ?? visibility?.visibility_state ?? null,
+      bookingStatus: acceptingBookings ? "active" : status?.status ?? (visibility?.accepts_instant_bookings ? "active" : "inactive"),
+      serviceCount: services.length,
+      activeServiceCount: bookableServices.length,
+      availabilityCount,
+      workingHoursCount: availabilityCount,
+      independentLocationExists,
+      acceptedShopCount,
+      publicMediaCount,
+      username: profileRow?.username ?? null,
+      fallbackSlug,
+      city: primaryLocation?.city ?? null,
+      state: primaryLocation?.state ?? null,
+      address: primaryLocation?.address ?? primaryLocation?.neighborhood ?? null,
+      suspended,
+      rejected,
+      banned
+    },
+    barberReference,
+    barberUuid: barberRow.id,
+    profileRow,
+    profile,
+    locationReferences,
+    bookableServices
+  };
+}
+
+function missingMarketplaceEligibilityDiagnostic(barberId: string): MarketplaceBarberEligibilityDiagnostic {
+  return {
+    eligible: false,
+    includedInClientSearch: false,
+    includedInClientHome: false,
+    includedInMarketplaceFeed: false,
+    publicProfileRoute: null,
+    displayName: barberId,
+    searchableTerms: [barberId],
+    blockers: ["Missing barber row"],
+    facts: {
+      profileId: null,
+      userId: null,
+      barberId,
+      approvalStatus: null,
+      verificationOverall: null,
+      identityStatus: null,
+      licenseStatus: null,
+      payoutStatus: null,
+      payoutMode: "missing",
+      profileVisibility: null,
+      bookingStatus: null,
+      serviceCount: 0,
+      activeServiceCount: 0,
+      availabilityCount: 0,
+      workingHoursCount: 0,
+      independentLocationExists: false,
+      acceptedShopCount: 0,
+      publicMediaCount: 0,
+      username: null,
+      fallbackSlug: buildFallbackBarberSlug(barberId),
+      city: null,
+      state: null,
+      address: null,
+      suspended: false,
+      rejected: false,
+      banned: false
+    }
+  };
 }
 
 function listAvailabilitySlotsForBarber(params: {
@@ -1075,54 +1372,28 @@ function buildCandidateRecords(
   const locationsByReference = new Map(locations.map((location) => [location.id, location]));
   const locationReferenceByUuid = new Map(snapshot.locations.map((row) => [row.id, toReference(row.id, row.reference_code)]));
   const locationUuidByReference = new Map(snapshot.locations.map((row) => [toReference(row.id, row.reference_code), row.id]));
-  const profilesById = new Map(snapshot.profiles.map((row) => [row.id, row]));
-  const barberProfilesByReference = new Map(snapshot.barberProfiles.map((row) => [row.barber_reference, row]));
   const servicesById = new Map(snapshot.services.map((row) => [row.id, row]));
   const defaultLocation = locationsByReference.get(options.locationId) ?? locations[0];
-  if (!defaultLocation) {
-    return [];
-  }
 
   return snapshot.barbers.flatMap((barberRow) => {
     const barberReference = toReference(barberRow.id, barberRow.reference_code);
-    const profileRow = barberProfilesByReference.get(barberReference);
-    const profile = profilesById.get(barberRow.profile_id);
-    if (
-      !isCanonicalBarberProfileRole(profile)
-      || !isCanonicalBarberPlatformApproved(barberRow)
-      || !profileRow
-      || !isCanonicalMarketplaceVisibilityReady(snapshot, barberReference, barberRow.id, profileRow)
-      || !hasRealMarketplaceText(profile?.full_name ?? profileRow.display_name)
-      || !isBarberDiscoverable(options.trustState, barberReference)
-    ) {
-      return [];
-    }
-    const rawLocationReferences = getCandidateLocationReferences(
-      barberReference,
-      barberRow.id,
-      snapshot.services,
-      snapshot.availabilityRules,
-      snapshot.appointments,
-      locationReferenceByUuid
-    );
-    const locationReferences = rawLocationReferences.filter((locationReference) =>
-      isLocationPubliclyBookable(options.trustState, locationReference)
-    );
-    const services = getServicesForBarber(barberReference, barberRow.id, locationReferences, snapshot.services, locationReferenceByUuid);
-    if (!services.length || !locationReferences.length) {
+    const eligibility = buildMarketplaceBarberEligibility(snapshot, barberRow, {
+      locationReferenceByUuid,
+      locationsByReference,
+      trustState: options.trustState
+    });
+    if (!eligibility.eligible || !matchesSearchableTerms(eligibility.searchableTerms, normalizedQuery)) {
       return [];
     }
 
-    const matchingServices = services.filter((service) => {
-      if (normalizedCategory && !`${service.category} ${service.name}`.toLowerCase().includes(normalizedCategory)) {
+    const matchingServices = eligibility.bookableServices.filter((service) => {
+      if (!matchesServiceCategory(service, normalizedCategory)) {
         return false;
       }
-      if (!normalizedQuery) {
-        return true;
-      }
-      return serviceMatchScore(service, normalizedQuery) > 0;
+
+      return true;
     });
-    const servicePool = matchingServices.length ? matchingServices : services;
+    const servicePool = matchingServices.length ? matchingServices : eligibility.bookableServices;
     const bookableServicePool = servicePool.filter((service) =>
       isMarketplaceBookableService(service)
       && ![service.id, service.name, service.category, service.barberId, service.shopId].some(isKnownNonProductionMarketplaceValue)
@@ -1131,11 +1402,11 @@ function buildCandidateRecords(
     if (!primaryService) {
       return [];
     }
-    const candidateLocationReference = options.clientSignal?.favoriteShopReference && locationReferences.includes(options.clientSignal.favoriteShopReference)
+    const candidateLocationReference = options.clientSignal?.favoriteShopReference && eligibility.locationReferences.includes(options.clientSignal.favoriteShopReference)
       ? options.clientSignal.favoriteShopReference
-      : locationReferences.includes(options.locationId)
+      : eligibility.locationReferences.includes(options.locationId)
         ? options.locationId
-        : locationReferences[0];
+        : eligibility.locationReferences[0];
     const slots = listAvailabilitySlotsForBarber({
       barberReference,
       barberUuid: barberRow.id,
@@ -1151,7 +1422,7 @@ function buildCandidateRecords(
       return [];
     }
 
-    const location = getCandidateLocation(locationsByReference, candidateLocationReference, profileRow);
+    const location = getCandidateLocation(locationsByReference, candidateLocationReference, eligibility.profileRow);
     if (!location) {
       return [];
     }
@@ -1172,10 +1443,10 @@ function buildCandidateRecords(
     const mostBookedServiceReference = [...serviceCounts.entries()].sort((left, right) => right[1] - left[1])[0]?.[0];
     const mostBookedService = bookableServicePool.find((service) => service.id === mostBookedServiceReference)?.name
       ?? primaryService.name;
-    const specialties = profileRow?.specialties?.length
-      ? profileRow.specialties
+    const specialties = eligibility.profileRow?.specialties?.length
+      ? eligibility.profileRow.specialties
       : [...new Set(bookableServicePool.slice(0, 3).map((service) => service.category))];
-    const distanceMiles = Number(haversineMiles(defaultLocation, location).toFixed(1));
+    const distanceMiles = Number(haversineMiles(defaultLocation ?? location, location).toFixed(1));
     const routineDueSoon = Boolean(options.routine?.nextSuggestedAt) && new Date(options.routine!.nextSuggestedAt!).getTime() <= Date.now() + 3 * 24 * 60 * 60 * 1000;
     const matchedFrom = getMatchClassification({
       barberReference,
@@ -1184,16 +1455,13 @@ function buildCandidateRecords(
       favoriteBarberReference: options.clientSignal?.favoriteBarberReference,
       favoriteShopReference: options.clientSignal?.favoriteShopReference
     });
-    const name = profile?.full_name ?? profileRow?.display_name ?? barberReference;
-    const username = resolvePublicBarberSlug({ profileRow, barberRow, barberReference });
+    const name = eligibility.displayName;
+    const username = resolvePublicBarberSlug({ profileRow: eligibility.profileRow, barberRow, barberReference });
     const queryScore = normalizedQuery
-      ? `${name} ${username} ${location.name} ${location.neighborhood} ${services.map((service) => service.name).join(" ")}`.toLowerCase().includes(normalizedQuery)
+      ? eligibility.searchableTerms.join(" ").toLowerCase().includes(normalizedQuery)
         ? 24
         : 0
       : 0;
-    if (normalizedQuery && queryScore === 0 && matchingServices.length === 0) {
-      return [];
-    }
     const waitMinutes = Math.max(0, Math.round((new Date(nextSlot.startsAt).getTime() - Date.now()) / 60_000));
     const availabilityScore = Math.max(0, 80 - waitMinutes);
     const preferredBarberBoost = matchedFrom === "favorite_barber" ? 90 : 0;
@@ -1233,7 +1501,7 @@ function buildCandidateRecords(
       }),
       rankingLabel: getRankingLabel(matchedFrom, routineDueSoon, reviewCount),
       badges: toCanonicalMarketplaceBadges(
-        profileRow?.badges,
+        eligibility.profileRow?.badges,
         reviewCount,
         rating,
         options.trustState,
@@ -1247,6 +1515,61 @@ function buildCandidateRecords(
       accelerationScore
     } satisfies CandidateRecord];
   }).sort((left, right) => right.accelerationScore - left.accelerationScore || new Date(left.nextAvailableAt).getTime() - new Date(right.nextAvailableAt).getTime());
+}
+
+export async function getMarketplaceEligibilityForBarber(
+  supabase: SupabaseClient,
+  barberId: string,
+  options: {
+    trustState?: TrustState;
+    directSearchQuery?: string;
+  } = {}
+): Promise<MarketplaceBarberEligibilityDiagnostic> {
+  const snapshot = await readCanonicalSnapshot(supabase);
+  const barberProfilesByReference = new Map(snapshot.barberProfiles.map((row) => [row.barber_reference, row]));
+  const barberRow = snapshot.barbers.find((row) => {
+    const barberReference = toReference(row.id, row.reference_code);
+    return matchesBarberIdentifier({
+      identifier: barberId,
+      row,
+      barberReference,
+      profileRow: barberProfilesByReference.get(barberReference)
+    });
+  });
+  if (!barberRow) {
+    return missingMarketplaceEligibilityDiagnostic(barberId);
+  }
+
+  const locations = snapshot.locations.map(mapLocation);
+  const locationsByReference = new Map(locations.map((location) => [location.id, location]));
+  const locationReferenceByUuid = new Map(snapshot.locations.map((row) => [row.id, toReference(row.id, row.reference_code)]));
+  const diagnostic = buildMarketplaceBarberEligibility(snapshot, barberRow, {
+    locationReferenceByUuid,
+    locationsByReference,
+    trustState: options.trustState
+  });
+  const publicDiagnostic: MarketplaceBarberEligibilityDiagnostic = {
+    eligible: diagnostic.eligible,
+    includedInClientSearch: diagnostic.includedInClientSearch,
+    includedInClientHome: diagnostic.includedInClientHome,
+    includedInMarketplaceFeed: diagnostic.includedInMarketplaceFeed,
+    publicProfileRoute: diagnostic.publicProfileRoute,
+    displayName: diagnostic.displayName,
+    searchableTerms: diagnostic.searchableTerms,
+    blockers: diagnostic.blockers,
+    facts: diagnostic.facts
+  };
+  const directSearchQuery = options.directSearchQuery?.trim();
+  if (directSearchQuery && diagnostic.eligible && !matchesSearchableTerms(diagnostic.searchableTerms, directSearchQuery)) {
+    return {
+      ...publicDiagnostic,
+      includedInClientSearch: false,
+      includedInClientHome: false,
+      blockers: [...diagnostic.blockers, `Direct search "${directSearchQuery}" does not match this barber`]
+    };
+  }
+
+  return publicDiagnostic;
 }
 
 export async function buildCanonicalDiscoveryResults(
@@ -1373,7 +1696,7 @@ export async function findCanonicalBookableSlot(
   const barberReference = toReference(barberRow.id, barberRow.reference_code);
   const profileRow = barberProfilesByReference.get(barberReference);
   if (
-    !isCanonicalBarberPlatformApproved(barberRow)
+    !isCanonicalBarberPlatformApproved(barberRow, options.trustState, barberReference)
     || !isCanonicalMarketplaceVisibilityReady(snapshot, barberReference, barberRow.id, profileRow)
     || !isBarberDiscoverable(options.trustState, barberReference)
   ) {
@@ -1476,7 +1799,7 @@ export async function buildCanonicalAvailabilityPayload(
   const barberReference = toReference(barberRow.id, barberRow.reference_code);
   const profileRow = barberProfilesByReference.get(barberReference);
   if (
-    !isCanonicalBarberPlatformApproved(barberRow)
+    !isCanonicalBarberPlatformApproved(barberRow, options.trustState, barberReference)
     || !isCanonicalMarketplaceVisibilityReady(snapshot, barberReference, barberRow.id, profileRow)
     || !isBarberDiscoverable(options.trustState, barberReference)
   ) {
@@ -1587,7 +1910,7 @@ export async function buildCanonicalBarberProfile(
   }
 
   const barberReference = toReference(barberRow.id, barberRow.reference_code);
-  if (!isCanonicalBarberPlatformApproved(barberRow) || !isBarberDiscoverable(trustState, barberReference)) {
+  if (!isCanonicalBarberPlatformApproved(barberRow, trustState, barberReference) || !isBarberDiscoverable(trustState, barberReference)) {
     return null;
   }
 

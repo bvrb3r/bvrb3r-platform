@@ -1,6 +1,7 @@
 import { assertPlatformAdminAccess, getPlatformAccountStatus, readPlatformAdminAuditLogEntries, readPlatformShopControlState } from "@/lib/platform-admin/service";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import { isUpcomingAppointmentStatus } from "@/lib/appointments/domain";
+import { getMarketplaceEligibilityForBarber, type MarketplaceBarberEligibilityDiagnostic } from "@/lib/booking/intelligence";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getStripeConnectEnvironment } from "@/lib/stripe/connect";
@@ -726,6 +727,15 @@ function fallbackBarberSlug(barberReference: string) {
   return `barber-${shortReference || "profile"}`;
 }
 
+function matchesMarketplaceSearchTerms(terms: string[] | undefined, query: string) {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery || !terms?.length) {
+    return false;
+  }
+
+  return terms.some((term) => term.toLowerCase().includes(normalizedQuery));
+}
+
 function buildSearchText(values: Array<string | number | boolean | null | undefined>) {
   const raw = values.map((value) => normalizeSearchToken(String(value ?? ""))).filter(Boolean);
   const normalized = raw.map((value) => value.replace(/[^a-z0-9@.]+/g, ""));
@@ -737,6 +747,25 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
   const indexes = buildIndexes(data);
   const accountStatuses = await getAccountStatuses(data);
   const stripeEnvironment = getStripeConnectEnvironment();
+  const canonicalEligibilityByReference = new Map<string, MarketplaceBarberEligibilityDiagnostic>();
+  const diagnosticsClient = accountDataOverlay ? null : createSupabaseAdminClient();
+  if (diagnosticsClient) {
+    await Promise.all(data.barbers.map(async (barber) => {
+      const reference = barberReference(barber);
+      if (!reference) {
+        return;
+      }
+
+      try {
+        canonicalEligibilityByReference.set(reference, await getMarketplaceEligibilityForBarber(diagnosticsClient, reference));
+      } catch (error) {
+        console.error("[Architect Accounts] marketplace eligibility diagnostic failed", {
+          reference,
+          message: error instanceof Error ? error.message : String(error)
+        });
+      }
+    }));
+  }
   const profilesById = new Map(data.profiles.map((profile) => [profile.id, profile]));
   const realAuthUsers = data.authUsers.filter(isRealOperationalAuthUser);
   const authUsersById = new Map(realAuthUsers.map((user) => [user.id, user]));
@@ -801,7 +830,10 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
     const accountStatus = profileExists ? accountStatuses.get(profile.id) ?? "active" : "profile_only";
     const approvalStatus = getApprovalStatus(role, barber, shop);
     const verificationStatus = getVerificationStatus(verification);
-    const marketplaceBlockers = getMarketplaceBlockers({
+    const canonicalEligibility = role === "barber" && reference
+      ? canonicalEligibilityByReference.get(reference)
+      : undefined;
+    const fallbackMarketplaceBlockers = getMarketplaceBlockers({
       profile,
       role,
       accountStatus,
@@ -816,29 +848,39 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
       linkedShopCount: linkedShopIds.length,
       activeLinkedBarbers
     });
-    const marketplaceLive = marketplaceBlockers.length === 0;
-    const publicRoute = role === "barber" && reference
+    const marketplaceBlockers = canonicalEligibility?.blockers ?? fallbackMarketplaceBlockers;
+    const marketplaceLive = canonicalEligibility?.eligible ?? marketplaceBlockers.length === 0;
+    const canonicalFacts = canonicalEligibility?.facts;
+    const canonicalCityState = canonicalFacts
+      ? [canonicalFacts.city, canonicalFacts.state].filter(Boolean).join(", ")
+      : "";
+    const canonicalDiscoveryLocation = canonicalFacts
+      ? [canonicalFacts.address, canonicalCityState].filter(Boolean).join(", ") || undefined
+      : undefined;
+    const publicRoute = canonicalEligibility?.publicProfileRoute ?? (role === "barber" && reference
       ? `/barber/${barberProfile?.username ?? fallbackBarberSlug(reference)}`
       : role === "shop_owner" && shop
         ? `/shop/${encodeURIComponent(shop.id)}`
-        : undefined;
-    const discoveryLocation = role === "barber"
+        : undefined);
+    const discoveryLocation = canonicalDiscoveryLocation ?? (role === "barber"
       ? serviceLocationLabels.join(" | ") || undefined
       : role === "shop_owner" && shop
         ? [shop.address, shop.city, shop.state].filter(Boolean).join(", ") || undefined
-        : undefined;
-    const directSearchMatch = marketplaceLive && Boolean(
+        : undefined);
+    const directSearchMatch = canonicalEligibility
+      ? canonicalEligibility.eligible && matchesMarketplaceSearchTerms(canonicalEligibility.searchableTerms, "phillip")
+      : marketplaceLive && Boolean(
       role === "barber"
         ? profile.full_name || profile.email || barberProfile?.username || reference
         : role === "shop_owner"
           ? shop?.name || shop?.city || shop?.state
           : false
     );
-    const feedAssetCount = role === "barber" && reference
+    const feedAssetCount = canonicalFacts?.publicMediaCount ?? (role === "barber" && reference
       ? data.barberPortfolios.filter((asset) => asset.barber_reference === reference).length
       : role === "shop_owner" && shop
         ? data.shopMediaAssets.filter((asset) => asset.shop_reference === shop.id).length
-        : 0;
+        : 0);
 
     items.push({
       profileId: profile.id,
@@ -867,7 +909,7 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
       shopId: shop?.id,
       shopName: shop?.name ?? undefined,
       clientId: client?.reference_code ?? client?.id,
-      username: barberProfile?.username ?? (reference ? fallbackBarberSlug(reference) : undefined),
+      username: canonicalFacts?.username ?? canonicalFacts?.fallbackSlug ?? barberProfile?.username ?? (reference ? fallbackBarberSlug(reference) : undefined),
       createdAt: profile.created_at,
       updatedAt: profile.last_onboarded_at ?? profile.created_at,
       serviceCount,
@@ -875,16 +917,20 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
       documentCount,
       reviewCount,
       marketplaceLive,
-      clientHomeIncluded: marketplaceLive,
-      searchIncluded: marketplaceLive,
-      clientSearchIncluded: marketplaceLive,
+      clientHomeIncluded: canonicalEligibility?.includedInClientHome ?? marketplaceLive,
+      searchIncluded: canonicalEligibility?.includedInClientSearch ?? marketplaceLive,
+      clientSearchIncluded: canonicalEligibility?.includedInClientSearch ?? marketplaceLive,
       directSearchMatch,
-      feedEligible: marketplaceLive && feedAssetCount > 0,
+      feedEligible: canonicalEligibility?.includedInMarketplaceFeed ?? (marketplaceLive && feedAssetCount > 0),
       feedAssetCount,
       publicRoute,
       discoveryLocation,
-      payoutMode: stripeEnvironment.mode,
-      serviceLocationCount: serviceLocationLabels.length,
+      payoutMode: canonicalFacts?.payoutMode ?? stripeEnvironment.mode,
+      serviceLocationCount: canonicalFacts
+        ? Number(canonicalFacts.independentLocationExists) + canonicalFacts.acceptedShopCount
+        : serviceLocationLabels.length,
+      searchableTerms: canonicalEligibility?.searchableTerms,
+      marketplaceFacts: canonicalFacts,
       marketplaceBlockers,
       searchText: buildSearchText([
         profile.full_name,
@@ -906,6 +952,7 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
         barber?.barber_subtype,
         reference,
         barberProfile?.username,
+        ...(canonicalEligibility?.searchableTerms ?? []),
         shop?.name,
         shop?.city,
         shop?.state,

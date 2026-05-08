@@ -422,6 +422,35 @@ export interface ArchitectAccountDirectoryItem {
   discoveryLocation?: string;
   payoutMode?: "test" | "live" | "missing";
   serviceLocationCount?: number;
+  searchableTerms?: string[];
+  marketplaceFacts?: {
+    profileId: string | null;
+    userId: string | null;
+    barberId: string;
+    approvalStatus: string | null;
+    verificationOverall: string | null;
+    identityStatus: string | null;
+    licenseStatus: string | null;
+    payoutStatus: string | null;
+    payoutMode: "test" | "live" | "missing";
+    profileVisibility: string | null;
+    bookingStatus: string | null;
+    serviceCount: number;
+    activeServiceCount: number;
+    availabilityCount: number;
+    workingHoursCount: number;
+    independentLocationExists: boolean;
+    acceptedShopCount: number;
+    publicMediaCount: number;
+    username: string | null;
+    fallbackSlug: string;
+    city: string | null;
+    state: string | null;
+    address: string | null;
+    suspended: boolean;
+    rejected: boolean;
+    banned: boolean;
+  };
   marketplaceBlockers: string[];
   searchText: string;
 }

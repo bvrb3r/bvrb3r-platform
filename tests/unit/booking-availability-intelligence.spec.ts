@@ -9,7 +9,12 @@ vi.mock("@/lib/marketplace/visibility", async () => {
   };
 });
 
-import { buildCanonicalAvailabilityPayload, buildCanonicalBarberProfile, buildCanonicalDiscoveryResults } from "@/lib/booking/intelligence";
+import {
+  buildCanonicalAvailabilityPayload,
+  buildCanonicalBarberProfile,
+  buildCanonicalDiscoveryResults,
+  getMarketplaceEligibilityForBarber
+} from "@/lib/booking/intelligence";
 
 type QueryResult<T> = Promise<{ data: T[]; error: null }>;
 type QueryErrorResult = Promise<{ data: null; error: { code: string; message: string } }>;
@@ -614,6 +619,134 @@ describe("canonical availability intelligence", () => {
     expect(results[0].locationId).toBe("independent-barber-phillip");
     expect(results[0].username).toBe("barber-phillip");
     expect(results[0].bookingHref).toContain("barber=barber-phillip");
+  });
+
+  it("discovers a live independent barber without requiring shop approval", async () => {
+    const targetDay = new Date();
+    targetDay.setDate(targetDay.getDate() + 1);
+    targetDay.setHours(12, 0, 0, 0);
+    const targetEnd = new Date(targetDay);
+    targetEnd.setHours(18, 0, 0, 0);
+    const tables = {
+      barbers: [{
+        id: "barber-uuid",
+        reference_code: "barber-phillip",
+        profile_id: "profile-uuid",
+        compensation_model: "booth_rent",
+        app_approval_status: "approved",
+        shop_approval_status: "pending",
+        commission_rate: null,
+        booth_rent_amount: 150,
+        booth_rent_frequency: "weekly",
+        bio: "Independent Tampa barber.",
+        booking_slug: null
+      }],
+      barber_profiles: [{
+        barber_reference: "barber-phillip",
+        username: null,
+        display_name: "Phillip McGee",
+        bio: "Independent Tampa barber.",
+        years_experience: 7,
+        shop_reference: "independent-barber-phillip",
+        profile_photo_path: null,
+        profile_photo_url: null,
+        specialties: ["Fade"],
+        badges: [],
+        service_area_label: "Phil's Chair / 2172 University Square More / Tampa",
+        next_available_at: null,
+        visibility_state: "public"
+      }],
+      profiles: [{
+        id: "profile-uuid",
+        full_name: "Phillip McGee",
+        email: "phillip@example.test",
+        phone: "8135550101",
+        role: "booth_rent_barber",
+        primary_onboarding_role: "barber"
+      }],
+      services: [{
+        id: "service-uuid",
+        reference_code: "srv-phillip-cut",
+        location_id: "independent-barber-phillip",
+        category: "Haircut",
+        name: "Independent Cut",
+        description: "Cut and finish",
+        duration_min: 45,
+        buffer_min: 0,
+        price: 55,
+        currency: "usd",
+        deposit_amount: 0,
+        full_prepay_required: false,
+        active: true,
+        is_bookable: true,
+        display_order: 1,
+        created_at: targetDay.toISOString(),
+        updated_at: targetDay.toISOString(),
+        service_owner_type: "barber",
+        barber_reference: "barber-phillip",
+        shop_reference: "independent-barber-phillip",
+        booking_count: 0,
+        popularity_rank: 1
+      }],
+      locations: [],
+      staff_locations: [],
+      availability_rules: [{
+        barber_id: "barber-uuid",
+        location_id: "independent-barber-phillip",
+        weekday: targetDay.getDay(),
+        start_time: formatTime(targetDay),
+        end_time: formatTime(targetEnd)
+      }],
+      blocked_times: [],
+      appointments: [],
+      reviews: [],
+      barber_portfolios: [],
+      marketplace_visibility: [{
+        barber_reference: "barber-phillip",
+        visibility_state: "public",
+        accepts_instant_bookings: true,
+        featured_rank: null
+      }],
+      barber_status: [{
+        barber_reference: "barber-phillip",
+        status: "active",
+        live_status: "live",
+        accepting_bookings: true
+      }],
+      connected_accounts: [{
+        subject_type: "barber",
+        barber_id: "barber-uuid",
+        payout_readiness_status: "ready",
+        livemode: false,
+        charges_enabled: true,
+        payouts_enabled: true,
+        requirements_currently_due: [],
+        requirements_past_due: [],
+        disabled_reason: null
+      }]
+    };
+    const supabase = createSupabaseMock(tables);
+
+    const results = await buildCanonicalDiscoveryResults(supabase as never, {
+      locationId: "",
+      query: "mcgee"
+    });
+    const diagnostic = await getMarketplaceEligibilityForBarber(supabase as never, "barber-phillip", {
+      directSearchQuery: "phillip"
+    });
+
+    expect(results).toHaveLength(1);
+    expect(results[0].barberName).toBe("Phillip McGee");
+    expect(results[0].locationId).toBe("independent-barber-phillip");
+    expect(results[0].cityLabel).toBe("Tampa");
+    expect(results[0].username).toBe("barber-phillip");
+    expect(diagnostic.eligible).toBe(true);
+    expect(diagnostic.includedInClientSearch).toBe(true);
+    expect(diagnostic.publicProfileRoute).toBe("/barber/barber-phillip");
+    expect(diagnostic.blockers).toEqual([]);
+    expect(diagnostic.facts.independentLocationExists).toBe(true);
+    expect(diagnostic.facts.approvalStatus).toBe("approved");
+    expect(diagnostic.facts.payoutMode).toBe("test");
   });
 
   it("uses a stable fallback public slug when an activated barber has not set a username", async () => {
