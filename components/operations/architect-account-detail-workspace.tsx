@@ -271,6 +271,7 @@ export function ArchitectAccountDetailWorkspace({
   const canUseVerificationActions = Boolean(selectedVerificationProfile);
   const marketplaceStatus = getMarketplaceStatus(account);
   const marketplaceFacts = account.marketplaceFacts;
+  const marketplaceDiagnostics = account.marketplaceDiagnostics;
   const marketplaceFactLocation = marketplaceFacts
     ? [
         marketplaceFacts.address,
@@ -568,6 +569,10 @@ export function ArchitectAccountDetailWorkspace({
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
               <Field label="Client Home included" value={(account.clientHomeIncluded ?? account.marketplaceLive) ? "yes" : "no"} />
               <Field label="Client Search included" value={(account.clientSearchIncluded ?? account.searchIncluded) ? "yes" : "no"} />
+              <Field label="Canonical evaluator eligible" value={marketplaceDiagnostics ? (account.marketplaceLive ? "yes" : "no") : undefined} />
+              <Field label="Canonical services" value={marketplaceDiagnostics ? (marketplaceDiagnostics.services ? "ready" : "blocked") : undefined} />
+              <Field label="Canonical payout" value={marketplaceDiagnostics ? (marketplaceDiagnostics.payout ? "ready" : "blocked") : undefined} />
+              <Field label="Canonical feed included" value={marketplaceDiagnostics ? (marketplaceDiagnostics.feedIncluded ? "yes" : "no") : undefined} />
               <Field label="Direct search Phillip match" value={(account.directSearchMatch ?? account.searchIncluded) ? "yes" : "no"} />
               <Field label="Marketplace live" value={account.marketplaceLive ? "yes" : "no"} />
               <Field label="Current discovery location" value={marketplaceFactLocation || account.discoveryLocation} />

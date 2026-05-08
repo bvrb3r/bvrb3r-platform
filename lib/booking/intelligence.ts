@@ -262,6 +262,21 @@ export type MarketplaceBarberEligibilityDiagnostic = {
   displayName: string;
   searchableTerms: string[];
   blockers: string[];
+  diagnostics: {
+    approval: boolean;
+    services: boolean;
+    payout: boolean;
+    visibility: boolean;
+    availability: boolean;
+    location: boolean;
+    publicProfile: boolean;
+    bookingActive: boolean;
+    serviceCount: number;
+    activeServiceCount: number;
+    payoutReady: boolean;
+    searchIncluded: boolean;
+    feedIncluded: boolean;
+  };
   facts: {
     profileId: string | null;
     userId: string | null;
@@ -339,6 +354,35 @@ function isConnectedAccountPayoutReady(row?: CanonicalConnectedAccountRow | null
     && requirementList(row.requirements_currently_due).length === 0
     && requirementList(row.requirements_past_due).length === 0
   );
+}
+
+function isTrustPayoutReady(decision?: ReturnType<typeof getBarberTrustDecision>) {
+  return decision?.canReceivePayouts === true || decision?.payoutStatus === "approved";
+}
+
+function createEligibilityDiagnostics(input: {
+  eligible: boolean;
+  includedInClientSearch: boolean;
+  includedInMarketplaceFeed: boolean;
+  publicProfileRoute: string | null;
+  blockers: string[];
+  facts: MarketplaceBarberEligibilityDiagnostic["facts"];
+}) {
+  return {
+    approval: !input.blockers.some((blocker) => blocker.startsWith("Barber approval")),
+    services: input.facts.activeServiceCount > 0,
+    payout: !input.blockers.includes("Payout setup incomplete"),
+    visibility: input.facts.profileVisibility === "public" || input.facts.profileVisibility === "featured",
+    availability: input.facts.availabilityCount > 0,
+    location: input.facts.independentLocationExists || input.facts.acceptedShopCount > 0,
+    publicProfile: Boolean(input.publicProfileRoute),
+    bookingActive: input.facts.bookingStatus === "active",
+    serviceCount: input.facts.serviceCount,
+    activeServiceCount: input.facts.activeServiceCount,
+    payoutReady: !input.blockers.includes("Payout setup incomplete"),
+    searchIncluded: input.includedInClientSearch,
+    feedIncluded: input.includedInMarketplaceFeed
+  };
 }
 
 function canonicalMediaUrl(imageUrl?: string | null, storagePath?: string | null) {
@@ -638,19 +682,19 @@ function isCanonicalMarketplaceVisibilityReady(
   snapshot: CanonicalSnapshot,
   barberReference: string,
   barberUuid: string,
-  profileRow?: CanonicalBarberProfileRow
+  profileRow?: CanonicalBarberProfileRow,
+  trustState?: TrustState
 ) {
   const visibility = getMarketplaceVisibilityRow(snapshot, barberReference);
   const status = snapshot.barberStatus.find((row) => row.barber_reference === barberReference);
   const connectedAccount = snapshot.connectedAccounts.find((row) =>
     row.subject_type === "barber" && row.barber_id === barberUuid
   );
+  const trustDecision = getBarberTrustDecision(trustState, barberReference);
   const acceptingBookings = status
     ? status.accepting_bookings === true && status.status !== "offline" && status.live_status !== "offline"
     : visibility?.accepts_instant_bookings === true;
-  const payoutReady = connectedAccount
-    ? isConnectedAccountPayoutReady(connectedAccount)
-    : visibility?.accepts_instant_bookings === true;
+  const payoutReady = isConnectedAccountPayoutReady(connectedAccount) || isTrustPayoutReady(trustDecision);
 
   if (!acceptingBookings || !payoutReady) {
     return false;
@@ -659,7 +703,6 @@ function isCanonicalMarketplaceVisibilityReady(
   if (
     !profileRow
     || !isPublicMarketplaceVisibilityState(profileRow.visibility_state)
-    || (visibility && !isPublicMarketplaceVisibilityState(visibility.visibility_state))
   ) {
     return false;
   }
@@ -1074,13 +1117,11 @@ function buildMarketplaceBarberEligibility(
   const fallbackSlug = buildFallbackBarberSlug(barberReference);
   const displayName = profileRow?.display_name ?? profile?.full_name ?? barberReference;
   const profilePublic = isPublicMarketplaceVisibilityState(profileRow?.visibility_state);
-  const visibilityPublic = !visibility || isPublicMarketplaceVisibilityState(visibility.visibility_state);
   const acceptingBookings = status
     ? status.accepting_bookings === true && status.status !== "offline" && status.live_status !== "offline"
     : visibility?.accepts_instant_bookings === true;
-  const payoutReady = connectedAccount
-    ? isConnectedAccountPayoutReady(connectedAccount)
-    : visibility?.accepts_instant_bookings === true;
+  const trustPayoutReady = isTrustPayoutReady(trustDecision);
+  const payoutReady = isConnectedAccountPayoutReady(connectedAccount) || trustPayoutReady;
   const approvalApproved = isCanonicalBarberPlatformApproved(barberRow, options.trustState, barberReference);
   const verificationOverall = trustDecision?.canonicalOverallStatus ?? null;
   const verificationStatusValue = `${verificationOverall ?? ""}`;
@@ -1115,7 +1156,6 @@ function buildMarketplaceBarberEligibility(
     rejected ? "Account rejected" : null,
     banned ? "Account banned" : null,
     profilePublic ? null : "Profile visibility is hidden",
-    visibilityPublic ? null : "Marketplace visibility hidden",
     acceptingBookings ? null : "Not accepting bookings",
     payoutReady ? null : "Payout setup incomplete",
     bookableServices.length > 0 ? null : "No active real services",
@@ -1124,43 +1164,50 @@ function buildMarketplaceBarberEligibility(
   ].filter((value): value is string => Boolean(value));
   const eligible = blockers.length === 0;
 
+  const publicProfileRoute = eligible ? `/barber/${publicSlug}` : null;
+  const includedInClientSearch = eligible;
+  const includedInClientHome = eligible;
+  const includedInMarketplaceFeed = eligible && publicMediaCount > 0;
+  const facts = {
+    profileId: barberRow.profile_id,
+    userId: barberRow.profile_id,
+    barberId: barberReference,
+    approvalStatus: barberRow.app_approval_status,
+    verificationOverall,
+    identityStatus: trustDecision?.identityStatus ?? null,
+    licenseStatus: trustDecision?.licenseStatus ?? null,
+    payoutStatus: connectedAccount?.payout_readiness_status ?? (trustPayoutReady ? "ready" : trustDecision?.payoutStatus ?? null),
+    payoutMode: connectedAccount ? (connectedAccount.livemode ? "live" : "test") : "missing",
+    profileVisibility: profileRow?.visibility_state ?? visibility?.visibility_state ?? null,
+    bookingStatus: acceptingBookings ? "active" : status?.status ?? (visibility?.accepts_instant_bookings ? "active" : "inactive"),
+    serviceCount: services.length,
+    activeServiceCount: bookableServices.length,
+    availabilityCount,
+    workingHoursCount: availabilityCount,
+    independentLocationExists,
+    acceptedShopCount,
+    publicMediaCount,
+    username: profileRow?.username ?? null,
+    fallbackSlug,
+    city: primaryLocation?.city ?? null,
+    state: primaryLocation?.state ?? null,
+    address: primaryLocation?.address ?? primaryLocation?.neighborhood ?? null,
+    suspended,
+    rejected,
+    banned
+  } satisfies MarketplaceBarberEligibilityDiagnostic["facts"];
+
   return {
     eligible,
-    includedInClientSearch: eligible,
-    includedInClientHome: eligible,
-    includedInMarketplaceFeed: eligible && publicMediaCount > 0,
-    publicProfileRoute: eligible ? `/barber/${publicSlug}` : null,
+    includedInClientSearch,
+    includedInClientHome,
+    includedInMarketplaceFeed,
+    publicProfileRoute,
     displayName,
     searchableTerms,
     blockers,
-    facts: {
-      profileId: barberRow.profile_id,
-      userId: barberRow.profile_id,
-      barberId: barberReference,
-      approvalStatus: barberRow.app_approval_status,
-      verificationOverall,
-      identityStatus: trustDecision?.identityStatus ?? null,
-      licenseStatus: trustDecision?.licenseStatus ?? null,
-      payoutStatus: connectedAccount?.payout_readiness_status ?? trustDecision?.payoutStatus ?? null,
-      payoutMode: connectedAccount ? (connectedAccount.livemode ? "live" : "test") : "missing",
-      profileVisibility: profileRow?.visibility_state ?? visibility?.visibility_state ?? null,
-      bookingStatus: acceptingBookings ? "active" : status?.status ?? (visibility?.accepts_instant_bookings ? "active" : "inactive"),
-      serviceCount: services.length,
-      activeServiceCount: bookableServices.length,
-      availabilityCount,
-      workingHoursCount: availabilityCount,
-      independentLocationExists,
-      acceptedShopCount,
-      publicMediaCount,
-      username: profileRow?.username ?? null,
-      fallbackSlug,
-      city: primaryLocation?.city ?? null,
-      state: primaryLocation?.state ?? null,
-      address: primaryLocation?.address ?? primaryLocation?.neighborhood ?? null,
-      suspended,
-      rejected,
-      banned
-    },
+    diagnostics: createEligibilityDiagnostics({ eligible, includedInClientSearch, includedInMarketplaceFeed, publicProfileRoute, blockers, facts }),
+    facts,
     barberReference,
     barberUuid: barberRow.id,
     profileRow,
@@ -1171,6 +1218,36 @@ function buildMarketplaceBarberEligibility(
 }
 
 function missingMarketplaceEligibilityDiagnostic(barberId: string): MarketplaceBarberEligibilityDiagnostic {
+  const facts = {
+    profileId: null,
+    userId: null,
+    barberId,
+    approvalStatus: null,
+    verificationOverall: null,
+    identityStatus: null,
+    licenseStatus: null,
+    payoutStatus: null,
+    payoutMode: "missing",
+    profileVisibility: null,
+    bookingStatus: null,
+    serviceCount: 0,
+    activeServiceCount: 0,
+    availabilityCount: 0,
+    workingHoursCount: 0,
+    independentLocationExists: false,
+    acceptedShopCount: 0,
+    publicMediaCount: 0,
+    username: null,
+    fallbackSlug: buildFallbackBarberSlug(barberId),
+    city: null,
+    state: null,
+    address: null,
+    suspended: false,
+    rejected: false,
+    banned: false
+  } satisfies MarketplaceBarberEligibilityDiagnostic["facts"];
+  const blockers = ["Missing barber row"];
+
   return {
     eligible: false,
     includedInClientSearch: false,
@@ -1179,35 +1256,16 @@ function missingMarketplaceEligibilityDiagnostic(barberId: string): MarketplaceB
     publicProfileRoute: null,
     displayName: barberId,
     searchableTerms: [barberId],
-    blockers: ["Missing barber row"],
-    facts: {
-      profileId: null,
-      userId: null,
-      barberId,
-      approvalStatus: null,
-      verificationOverall: null,
-      identityStatus: null,
-      licenseStatus: null,
-      payoutStatus: null,
-      payoutMode: "missing",
-      profileVisibility: null,
-      bookingStatus: null,
-      serviceCount: 0,
-      activeServiceCount: 0,
-      availabilityCount: 0,
-      workingHoursCount: 0,
-      independentLocationExists: false,
-      acceptedShopCount: 0,
-      publicMediaCount: 0,
-      username: null,
-      fallbackSlug: buildFallbackBarberSlug(barberId),
-      city: null,
-      state: null,
-      address: null,
-      suspended: false,
-      rejected: false,
-      banned: false
-    }
+    blockers,
+    diagnostics: createEligibilityDiagnostics({
+      eligible: false,
+      includedInClientSearch: false,
+      includedInMarketplaceFeed: false,
+      publicProfileRoute: null,
+      blockers,
+      facts
+    }),
+    facts
   };
 }
 
@@ -1592,7 +1650,7 @@ function buildCandidateRecords(
   });
 }
 
-export async function getMarketplaceEligibilityForBarber(
+export async function getCanonicalMarketplaceEligibility(
   supabase: SupabaseClient,
   barberId: string,
   options: {
@@ -1632,19 +1690,40 @@ export async function getMarketplaceEligibilityForBarber(
     displayName: diagnostic.displayName,
     searchableTerms: diagnostic.searchableTerms,
     blockers: diagnostic.blockers,
+    diagnostics: diagnostic.diagnostics,
     facts: diagnostic.facts
   };
   const directSearchQuery = options.directSearchQuery?.trim();
   if (directSearchQuery && diagnostic.eligible && !matchesSearchableTerms(diagnostic.searchableTerms, directSearchQuery)) {
+    const blockers = [...diagnostic.blockers, `Direct search "${directSearchQuery}" does not match this barber`];
     return {
       ...publicDiagnostic,
       includedInClientSearch: false,
       includedInClientHome: false,
-      blockers: [...diagnostic.blockers, `Direct search "${directSearchQuery}" does not match this barber`]
+      blockers,
+      diagnostics: createEligibilityDiagnostics({
+        eligible: diagnostic.eligible,
+        includedInClientSearch: false,
+        includedInMarketplaceFeed: diagnostic.includedInMarketplaceFeed,
+        publicProfileRoute: diagnostic.publicProfileRoute,
+        blockers,
+        facts: diagnostic.facts
+      })
     };
   }
 
   return publicDiagnostic;
+}
+
+export async function getMarketplaceEligibilityForBarber(
+  supabase: SupabaseClient,
+  barberId: string,
+  options: {
+    trustState?: TrustState;
+    directSearchQuery?: string;
+  } = {}
+): Promise<MarketplaceBarberEligibilityDiagnostic> {
+  return getCanonicalMarketplaceEligibility(supabase, barberId, options);
 }
 
 export async function buildCanonicalDiscoveryResults(
@@ -1773,7 +1852,7 @@ export async function findCanonicalBookableSlot(
   const profileRow = barberProfilesByReference.get(barberReference);
   if (
     !isCanonicalBarberPlatformApproved(barberRow, options.trustState, barberReference)
-    || !isCanonicalMarketplaceVisibilityReady(snapshot, barberReference, barberRow.id, profileRow)
+    || !isCanonicalMarketplaceVisibilityReady(snapshot, barberReference, barberRow.id, profileRow, options.trustState)
     || !isBarberDiscoverable(options.trustState, barberReference)
   ) {
     return null;

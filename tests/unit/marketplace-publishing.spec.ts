@@ -34,6 +34,9 @@ function createSupabaseMock(initialTables: Record<string, Row[]>) {
       limit(limit: number) {
         return createQuery(table, filters, limit);
       },
+      order() {
+        return createQuery(table, filters, rowLimit);
+      },
       maybeSingle() {
         return Promise.resolve({ data: resolveRows()[0] ?? null, error: null });
       },
@@ -74,12 +77,38 @@ function createReadyTables(overrides: Record<string, Row[]> = {}) {
     barbers: [{
       id: "barber-uuid",
       reference_code: "barber-live",
-      profile_id: "profile-uuid"
+      profile_id: "profile-uuid",
+      compensation_model: "booth_rent",
+      app_approval_status: "approved",
+      shop_approval_status: "not_required",
+      commission_rate: null,
+      booth_rent_amount: null,
+      booth_rent_frequency: null,
+      bio: "Precision cuts.",
+      booking_slug: "barber-live"
     }],
     barber_profiles: [{
       barber_reference: "barber-live",
       username: "phillip",
+      display_name: "Phillip McGee",
+      bio: "Precision cuts.",
+      years_experience: 5,
+      shop_reference: "loc-live",
+      profile_photo_path: null,
+      profile_photo_url: null,
+      specialties: ["Haircut"],
+      badges: [],
+      service_area_label: "BVRB3R Ybor / Tampa, FL",
+      next_available_at: null,
       visibility_state: "public"
+    }],
+    profiles: [{
+      id: "profile-uuid",
+      role: "booth_rent_barber",
+      full_name: "Phillip McGee",
+      email: "phillip@example.test",
+      phone: "8135550101",
+      primary_onboarding_role: "barber"
     }],
     barber_status: [{
       barber_reference: "barber-live",
@@ -92,6 +121,7 @@ function createReadyTables(overrides: Record<string, Row[]> = {}) {
       subject_type: "barber",
       barber_id: "barber-uuid",
       payout_readiness_status: "ready",
+      livemode: false,
       charges_enabled: true,
       payouts_enabled: true,
       requirements_currently_due: [],
@@ -102,14 +132,44 @@ function createReadyTables(overrides: Record<string, Row[]> = {}) {
       profile_id: "profile-uuid",
       location_id: "location-uuid"
     }],
+    locations: [{
+      id: "location-uuid",
+      reference_code: "loc-live",
+      name: "BVRB3R Ybor",
+      neighborhood: "Ybor",
+      city: "Tampa",
+      state: "FL",
+      phone: "8135550101",
+      address: "1 Barber Way",
+      latitude: null,
+      longitude: null
+    }],
     availability_rules: [{
       id: "availability-1",
       barber_id: "barber-uuid",
-      location_id: "location-uuid"
+      location_id: "location-uuid",
+      weekday: new Date().getDay(),
+      start_time: "12:00",
+      end_time: "19:00"
     }],
+    blocked_times: [],
+    appointments: [],
+    reviews: [],
+    barber_portfolios: [],
+    marketplace_services: [],
     services: [{
       id: "service-uuid",
+      reference_code: "srv-live-cut",
       location_id: "location-uuid",
+      category: "Haircut",
+      description: "A precise cut.",
+      buffer_min: 0,
+      currency: "usd",
+      deposit_amount: 0,
+      full_prepay_required: false,
+      display_order: 0,
+      created_at: null,
+      updated_at: null,
       service_owner_type: "barber",
       barber_reference: "barber-live",
       shop_reference: null,
@@ -117,7 +177,9 @@ function createReadyTables(overrides: Record<string, Row[]> = {}) {
       is_bookable: true,
       price: 55,
       duration_min: 45,
-      name: "Precision Cut"
+      name: "Precision Cut",
+      booking_count: null,
+      popularity_rank: null
     }],
     ...overrides
   };
@@ -130,6 +192,26 @@ describe("marketplace publishing", () => {
     const result = await publishBarberMarketplaceReadiness(supabase as never, "barber-live");
 
     expect(result.published).toBe(true);
+    expect(supabase.tables.get("marketplace_visibility")).toContainEqual(expect.objectContaining({
+      barber_reference: "barber-live",
+      visibility_state: "public",
+      accepts_instant_bookings: true
+    }));
+  });
+
+  it("uses canonical eligibility instead of a stale hidden marketplace visibility row", async () => {
+    const supabase = createSupabaseMock(createReadyTables({
+      marketplace_visibility: [{
+        barber_reference: "barber-live",
+        visibility_state: "hidden",
+        accepts_instant_bookings: false
+      }]
+    }));
+
+    const result = await publishBarberMarketplaceReadiness(supabase as never, "barber-live");
+
+    expect(result.published).toBe(true);
+    expect(result.blockers).toEqual([]);
     expect(supabase.tables.get("marketplace_visibility")).toContainEqual(expect.objectContaining({
       barber_reference: "barber-live",
       visibility_state: "public",

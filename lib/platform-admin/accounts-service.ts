@@ -2,7 +2,7 @@ import { assertPlatformAdminAccess, getPlatformAccountStatus, readPlatformAdminA
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import { isUpcomingAppointmentStatus } from "@/lib/appointments/domain";
 import { BarberProfileRepairError, ensureBarberProfileForIdentifier, type BarberProfileRepairResult } from "@/lib/barber/profile-repair";
-import { getMarketplaceEligibilityForBarber, type MarketplaceBarberEligibilityDiagnostic } from "@/lib/booking/intelligence";
+import { getCanonicalMarketplaceEligibility, type MarketplaceBarberEligibilityDiagnostic } from "@/lib/booking/intelligence";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getStripeConnectEnvironment } from "@/lib/stripe/connect";
@@ -829,7 +829,7 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
         if (repairResult) {
           repairResultByReference.set(reference, repairResult);
         }
-        canonicalEligibilityByReference.set(reference, await getMarketplaceEligibilityForBarber(diagnosticsClient, reference));
+        canonicalEligibilityByReference.set(reference, await getCanonicalMarketplaceEligibility(diagnosticsClient, reference));
       } catch (error) {
         repairResultByReference.set(reference, {
           attempted: true,
@@ -1058,6 +1058,7 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
       searchableTerms: canonicalEligibility?.searchableTerms,
       barberRowHealth,
       marketplaceFacts: canonicalFacts,
+      marketplaceDiagnostics: canonicalEligibility?.diagnostics,
       marketplaceBlockers,
       searchText: buildSearchText([
         profile.full_name,

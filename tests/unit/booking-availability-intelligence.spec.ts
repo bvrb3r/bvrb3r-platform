@@ -251,6 +251,17 @@ describe("canonical availability intelligence", () => {
         visibility_state: "public",
         accepts_instant_bookings: true,
         featured_rank: 1
+      }],
+      connected_accounts: [{
+        subject_type: "barber",
+        barber_id: "barber-uuid",
+        payout_readiness_status: "ready",
+        livemode: false,
+        charges_enabled: true,
+        payouts_enabled: true,
+        requirements_currently_due: [],
+        requirements_past_due: [],
+        disabled_reason: null
       }]
     });
 
@@ -375,6 +386,17 @@ describe("canonical availability intelligence", () => {
         visibility_state: "public",
         accepts_instant_bookings: true,
         featured_rank: 1
+      }],
+      connected_accounts: [{
+        subject_type: "barber",
+        barber_id: "barber-uuid",
+        payout_readiness_status: "ready",
+        livemode: false,
+        charges_enabled: true,
+        payouts_enabled: true,
+        requirements_currently_due: [],
+        requirements_past_due: [],
+        disabled_reason: null
       }]
     });
 
@@ -482,6 +504,17 @@ describe("canonical availability intelligence", () => {
         visibility_state: "public",
         accepts_instant_bookings: true,
         featured_rank: null
+      }],
+      connected_accounts: [{
+        subject_type: "barber",
+        barber_id: "barber-uuid",
+        payout_readiness_status: "ready",
+        livemode: false,
+        charges_enabled: true,
+        payouts_enabled: true,
+        requirements_currently_due: [],
+        requirements_past_due: [],
+        disabled_reason: null
       }]
     });
 

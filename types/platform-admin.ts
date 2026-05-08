@@ -487,6 +487,21 @@ export interface ArchitectAccountDirectoryItem {
     rejected: boolean;
     banned: boolean;
   };
+  marketplaceDiagnostics?: {
+    approval: boolean;
+    services: boolean;
+    payout: boolean;
+    visibility: boolean;
+    availability: boolean;
+    location: boolean;
+    publicProfile: boolean;
+    bookingActive: boolean;
+    serviceCount: number;
+    activeServiceCount: number;
+    payoutReady: boolean;
+    searchIncluded: boolean;
+    feedIncluded: boolean;
+  };
   marketplaceBlockers: string[];
   searchText: string;
 }
