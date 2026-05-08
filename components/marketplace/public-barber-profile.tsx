@@ -33,6 +33,13 @@ function getInitials(name: string) {
     .toUpperCase();
 }
 
+function safeDateLabel(iso?: string | null) {
+  if (!iso) return "Set availability";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "Set availability";
+  return dateLabel(iso);
+}
+
 function getPolicyNotes(profile: PublicBarberProfileView) {
   const deposits = profile.services
     .map((item) => item.service.deposit)
@@ -117,7 +124,7 @@ export function PublicBarberProfile({
                 </div>
                 <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
                   <p className="surface-label">Next available</p>
-                  <p className="mt-3 text-lg font-semibold">{dateLabel(profile.nextAvailableAt)}</p>
+                  <p className="mt-3 text-lg font-semibold">{safeDateLabel(profile.nextAvailableAt)}</p>
                 </div>
               </div>
             </div>
@@ -129,7 +136,7 @@ export function PublicBarberProfile({
                 <p className="surface-label">Book with confidence</p>
                 <div className="mt-3 space-y-2 text-sm leading-7 text-white/68">
                   <p className="inline-flex items-center gap-2"><MapPin className="h-4 w-4 text-[#baff69]" />{serviceLocations}</p>
-                  <p className="inline-flex items-center gap-2"><CalendarDays className="h-4 w-4 text-[#d7ffab]" />Next opening {dateLabel(profile.nextAvailableAt)}</p>
+                  <p className="inline-flex items-center gap-2"><CalendarDays className="h-4 w-4 text-[#d7ffab]" />Next opening {safeDateLabel(profile.nextAvailableAt)}</p>
                   <p className="inline-flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-[#d7ffab]" />Only real approved marketplace supply appears here.</p>
                 </div>
               </div>

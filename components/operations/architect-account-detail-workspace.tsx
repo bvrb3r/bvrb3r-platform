@@ -10,6 +10,7 @@ import { Select } from "@/components/ui/select";
 import { DataStatCard, GlassCard } from "@/design/components";
 import {
   useArchitectAccountActionMutation,
+  useArchitectBarberProfileRepairMutation,
   useArchitectAccountDetailQuery,
   useArchitectVerificationActionMutation
 } from "@/lib/platform-admin/client";
@@ -155,6 +156,7 @@ export function ArchitectAccountDetailWorkspace({
   const [internalNotes, setInternalNotes] = useState("");
   const [feedback, setFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const accountActionMutation = useArchitectAccountActionMutation(profileId);
+  const barberRepairMutation = useArchitectBarberProfileRepairMutation(profileId);
   const verificationActionMutation = useArchitectVerificationActionMutation(selectedVerificationProfileId || "__missing__");
 
   const selectedVerificationProfile = useMemo(
@@ -225,6 +227,19 @@ export function ArchitectAccountDetailWorkspace({
       setPendingAction(null);
       setReason("");
       setInternalNotes("");
+    } catch (error) {
+      setFeedback({ tone: "error", message: getReadableActionError(error as { message?: string; status?: number; code?: string }) });
+    }
+  };
+
+  const repairBarberProfile = async () => {
+    if (!account) return;
+    try {
+      const result = await barberRepairMutation.mutateAsync();
+      const checks = Object.entries(result.repair.readChecks)
+        .map(([key, value]) => `${key}: ${value ? "yes" : "no"}`)
+        .join(", ");
+      setFeedback({ tone: "success", message: `${result.repair.message} Final read checks: ${checks}` });
     } catch (error) {
       setFeedback({ tone: "error", message: getReadableActionError(error as { message?: string; status?: number; code?: string }) });
     }
@@ -573,13 +588,31 @@ export function ArchitectAccountDetailWorkspace({
                   <Field label="Auth user exists" value={account.barberRowHealth.authUserExists ? "yes" : "no"} />
                   <Field label="Platform profile row" value={account.barberRowHealth.platformProfileExists ? "yes" : "no"} />
                   <Field label="Barber row exists" value={account.barberRowHealth.barberRowExists ? "yes" : "no"} />
+                  <Field label="Barbers.id" value={account.barberRowHealth.barberRowId} />
                   <Field label="Barber profile row" value={account.barberRowHealth.barberProfileRowExists ? "yes" : "no"} />
+                  <Field label="Barber profile id" value={account.barberRowHealth.barberProfileId} />
+                  <Field label="Barber profile reference" value={account.barberRowHealth.barberProfileReference} />
+                  <Field label="Barber profile barber_id" value={account.barberRowHealth.barberProfileBarberId} />
                   <Field label="Barber row linked to user" value={account.barberRowHealth.barberRowLinkedToUser ? "yes" : "no"} />
                   <Field label="Barber reference" value={account.barberRowHealth.barberReference} />
                   <Field label="Canonical username" value={account.barberRowHealth.username} />
                   <Field label="Repair attempted" value={account.barberRowHealth.repairAttempted ? "yes" : "no"} />
                   <Field label="Repair result" value={account.barberRowHealth.repairResult} />
+                  <Field label="Final read by reference" value={account.barberRowHealth.finalReadByReference ? "yes" : "no"} />
+                  <Field label="Final read by barber id" value={account.barberRowHealth.finalReadByBarberId ? "yes" : "no"} />
+                  <Field label="Final read by profile/user" value={account.barberRowHealth.finalReadByProfileUser ? "yes" : "no"} />
                   <Field label="Row health discoverable" value={account.barberRowHealth.discoverable ? "yes" : "no"} />
+                  <div className="sm:col-span-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={barberRepairMutation.isPending}
+                      onClick={() => void repairBarberProfile()}
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                      {barberRepairMutation.isPending ? "Repairing..." : "Repair Barber Profile"}
+                    </Button>
+                  </div>
                 </>
               ) : null}
             </div>

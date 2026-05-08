@@ -120,6 +120,25 @@ export function useArchitectAccountActionMutation(profileId: string) {
   });
 }
 
+export function useArchitectBarberProfileRepairMutation(profileId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () =>
+      requestJson<{ ok: boolean; repair: { message: string; readChecks: Record<string, boolean> } }>(
+        `/api/architect/accounts/${profileId}/repair-barber-profile`,
+        { method: "POST" }
+      ),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["architect-accounts"] }),
+        queryClient.invalidateQueries({ queryKey: ["architect-account-detail", profileId] }),
+        queryClient.invalidateQueries({ queryKey: ["architect-console"] })
+      ]);
+    }
+  });
+}
+
 export function useArchitectVerificationQueueQuery(filters: ArchitectVerificationQueueFilters, initialData?: ArchitectVerificationQueuePayload) {
   return useQuery({
     queryKey: ["architect-verifications", filters],

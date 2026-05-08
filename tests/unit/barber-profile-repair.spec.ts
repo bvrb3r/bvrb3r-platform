@@ -166,8 +166,15 @@ describe("canonical barber profile repair", () => {
     }, supabase as never);
 
     expect(result.repaired).toBe(true);
+    expect(result.success).toBe(true);
     expect(result.createdProfile).toBe(true);
     expect(result.barberReference).toBe("barber-phillip");
+    expect(result.barberProfile).toMatchObject({ barber_reference: "barber-phillip" });
+    expect(result.readChecks).toMatchObject({
+      byReference: true,
+      byBarberId: true,
+      byProfileUser: true
+    });
     expect(tables.barber_profiles).toHaveLength(1);
     expect(tables.barber_profiles[0]).toMatchObject({
       barber_reference: "barber-phillip",
@@ -199,11 +206,49 @@ describe("canonical barber profile repair", () => {
     }, supabase as never);
 
     expect(result.linkedLegacyProfile).toBe(true);
+    expect(result.success).toBe(true);
     expect(tables.barber_profiles).toHaveLength(1);
     expect(tables.barber_profiles[0]).toMatchObject({
       barber_reference: "barber-phillip",
       username: "philforsure",
       bio: "Existing profile."
+    });
+  });
+
+  it("normalizes a legacy barber_profiles row found by barber_id before final read", async () => {
+    const tables = createBaseTables({
+      barber_profiles: [{
+        barber_reference: "legacy-profile-key",
+        barber_id: "barber-uuid",
+        profile_id: "profile-phillip",
+        username: "philforsure",
+        display_name: "Phillip mcgee",
+        bio: "Legacy keyed profile.",
+        visibility_state: "public"
+      }]
+    });
+    const supabase = createMutableSupabaseMock(tables);
+
+    const result = await ensureBarberProfileForUser({
+      userId: "profile-phillip",
+      barberId: "barber-phillip",
+      role: "booth_rent_barber"
+    }, supabase as never);
+
+    expect(result.success).toBe(true);
+    expect(result.barberProfile).toMatchObject({
+      barber_reference: "barber-phillip",
+      barber_id: "barber-uuid",
+      profile_id: "profile-phillip"
+    });
+    expect(result.readChecks).toMatchObject({
+      byReference: true,
+      byBarberId: true,
+      byProfileUser: true
+    });
+    expect(tables.barber_profiles).toHaveLength(1);
+    expect(tables.barber_profiles[0]).toMatchObject({
+      barber_reference: "barber-phillip"
     });
   });
 

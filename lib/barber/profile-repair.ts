@@ -30,7 +30,11 @@ type BarberRow = {
 };
 
 type BarberProfileRow = {
+  id?: string | null;
   barber_reference: string;
+  barber_id?: string | null;
+  profile_id?: string | null;
+  user_id?: string | null;
   barber_email?: string | null;
   username?: string | null;
   display_name?: string | null;
@@ -99,6 +103,7 @@ export type BarberProfileRepairInput = {
 };
 
 export type BarberProfileRepairResult = {
+  success: boolean;
   attempted: boolean;
   repaired: boolean;
   createdBarber: boolean;
@@ -112,6 +117,22 @@ export type BarberProfileRepairResult = {
   barberReference: string;
   barberProfileReference: string | null;
   username: string;
+  barber: BarberRow;
+  barberProfile: BarberProfileRow;
+  canonical: {
+    authUserId: string;
+    profileId: string;
+    barberId: string;
+    barberReference: string;
+    barberProfileId: string;
+    barberProfileReference: string;
+    username: string;
+  };
+  readChecks: {
+    byReference: boolean;
+    byBarberId: boolean;
+    byProfileUser: boolean;
+  };
   message: string;
 };
 
@@ -246,10 +267,59 @@ async function readBarberProfile(supabase: SupabaseClient, reference: string) {
   return maybeSingle<BarberProfileRow>(
     supabase
       .from("barber_profiles")
-      .select("barber_reference, barber_email, username, display_name, bio, years_experience, shop_reference, specialties, badges, service_area_label, next_available_at, visibility_state")
+      .select("*")
       .eq("barber_reference", reference)
       .maybeSingle()
   );
+}
+
+async function readBarberProfileByBarberId(supabase: SupabaseClient, barberId: string) {
+  return maybeSingle<BarberProfileRow>(
+    supabase
+      .from("barber_profiles")
+      .select("*")
+      .eq("barber_id", barberId)
+      .maybeSingle()
+  );
+}
+
+async function readBarberProfileByProfileId(supabase: SupabaseClient, profileId: string) {
+  return maybeSingle<BarberProfileRow>(
+    supabase
+      .from("barber_profiles")
+      .select("*")
+      .eq("profile_id", profileId)
+      .maybeSingle()
+  );
+}
+
+async function readBarberProfileByUserId(supabase: SupabaseClient, userId: string) {
+  return maybeSingle<BarberProfileRow>(
+    supabase
+      .from("barber_profiles")
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle()
+  );
+}
+
+async function readBarberProfileChecks(supabase: SupabaseClient, input: {
+  userId: string;
+  barberId: string;
+  barberReference: string;
+}) {
+  const [byReference, byBarberId, byProfileId, byUserId] = await Promise.all([
+    readBarberProfile(supabase, input.barberReference),
+    readBarberProfileByBarberId(supabase, input.barberId),
+    readBarberProfileByProfileId(supabase, input.userId),
+    readBarberProfileByUserId(supabase, input.userId)
+  ]);
+
+  return {
+    byReference,
+    byBarberId,
+    byProfileUser: byProfileId ?? byUserId
+  };
 }
 
 async function verifyCanonicalBarberProfile(supabase: SupabaseClient, input: {
@@ -257,11 +327,23 @@ async function verifyCanonicalBarberProfile(supabase: SupabaseClient, input: {
   barberReference: string;
 }) {
   const barber = await readBarberByIdentifier(supabase, input.barberReference);
-  const profileRow = await readBarberProfile(supabase, input.barberReference);
+  const checks = barber
+    ? await readBarberProfileChecks(supabase, {
+      userId: input.userId,
+      barberId: barber.id,
+      barberReference: input.barberReference
+    })
+    : { byReference: null, byBarberId: null, byProfileUser: null };
+  const profileRow = checks.byReference;
   return {
     verified: Boolean(barber && profileRow && barber.profile_id === input.userId && profileRow.barber_reference === input.barberReference),
     barber,
-    profileRow
+    profileRow,
+    readChecks: {
+      byReference: Boolean(checks.byReference),
+      byBarberId: Boolean(checks.byBarberId),
+      byProfileUser: Boolean(checks.byProfileUser)
+    }
   };
 }
 
@@ -302,17 +384,81 @@ async function updateReferenceKey(
   return !update.error;
 }
 
+async function updateBarberProfileByLink(
+  supabase: SupabaseClient,
+  field: "barber_id" | "profile_id" | "user_id",
+  value: string,
+  payload: BarberProfileRow
+) {
+  const optionalLinkColumns: Array<Array<keyof BarberProfileRow>> = [
+    ["barber_id", "profile_id", "user_id"],
+    ["barber_id", "profile_id"],
+    ["barber_id", "user_id"],
+    ["profile_id", "user_id"],
+    ["barber_id"],
+    ["profile_id"],
+    ["user_id"],
+    []
+  ];
+
+  for (const columns of optionalLinkColumns) {
+    const variant: BarberProfileRow = { ...payload };
+    for (const column of ["barber_id", "profile_id", "user_id"] as const) {
+      if (!columns.includes(column)) {
+        delete variant[column];
+      }
+    }
+
+    const update = await supabase
+      .from("barber_profiles")
+      .update(variant)
+      .eq(field, value);
+    if (!update.error) {
+      return true;
+    }
+    if (!isMissingRelationOrColumn(update.error)) {
+      throw update.error;
+    }
+  }
+
+  return false;
+}
+
 async function upsertBarberProfile(
   supabase: SupabaseClient,
   payload: BarberProfileRow
 ) {
-  const result = await supabase
-    .from("barber_profiles")
-    .upsert(payload, { onConflict: "barber_reference" });
-  if (result.error && !isMissingRelationOrColumn(result.error)) {
-    throw result.error;
+  const optionalLinkColumns: Array<Array<keyof BarberProfileRow>> = [
+    ["barber_id", "profile_id", "user_id"],
+    ["barber_id", "profile_id"],
+    ["barber_id", "user_id"],
+    ["profile_id", "user_id"],
+    ["barber_id"],
+    ["profile_id"],
+    ["user_id"],
+    []
+  ];
+
+  for (const columns of optionalLinkColumns) {
+    const variant: BarberProfileRow = { ...payload };
+    for (const column of ["barber_id", "profile_id", "user_id"] as const) {
+      if (!columns.includes(column)) {
+        delete variant[column];
+      }
+    }
+
+    const result = await supabase
+      .from("barber_profiles")
+      .upsert(variant, { onConflict: "barber_reference" });
+    if (!result.error) {
+      return true;
+    }
+    if (!isMissingRelationOrColumn(result.error)) {
+      throw result.error;
+    }
   }
-  return !result.error;
+
+  return false;
 }
 
 async function upsertBarberStatus(
@@ -440,6 +586,34 @@ export async function ensureBarberProfileForUser(
       }
     }
 
+    if (!profileRow) {
+      const legacyChecks = await readBarberProfileChecks(supabase, {
+        userId: input.userId,
+        barberId: barber.id,
+        barberReference: effectiveReference
+      });
+      const legacyProfile = legacyChecks.byBarberId ?? legacyChecks.byProfileUser;
+      if (legacyProfile) {
+        const normalizedLegacyProfile = {
+          ...legacyProfile,
+          barber_reference: effectiveReference,
+          barber_id: barber.id,
+          profile_id: input.userId,
+          user_id: input.userId
+        };
+        if (legacyChecks.byBarberId) {
+          await updateBarberProfileByLink(supabase, "barber_id", barber.id, normalizedLegacyProfile);
+        }
+        if (legacyChecks.byProfileUser) {
+          await updateBarberProfileByLink(supabase, "profile_id", input.userId, normalizedLegacyProfile);
+          await updateBarberProfileByLink(supabase, "user_id", input.userId, normalizedLegacyProfile);
+        }
+        profileRow = normalizedLegacyProfile;
+        linkedLegacyProfile = true;
+        repaired = true;
+      }
+    }
+
     for (const legacyReference of legacyReferences) {
       if (await readBarberStatus(supabase, effectiveReference)) break;
       const legacyStatus = await readBarberStatus(supabase, legacyReference);
@@ -479,6 +653,9 @@ export async function ensureBarberProfileForUser(
     const createdProfile = !profileRow;
     const profileUpserted = await upsertBarberProfile(supabase, {
       barber_reference: effectiveReference,
+      barber_id: barber.id,
+      profile_id: input.userId,
+      user_id: input.userId,
       barber_email: email ?? null,
       username,
       display_name: displayName,
@@ -524,8 +701,12 @@ export async function ensureBarberProfileForUser(
     if (!verificationResult.verified) {
       throw new BarberProfileRepairError("barber_profile_link_failed", "Barber profile repair wrote data, but canonical profile linkage did not verify.");
     }
+    if (!verificationResult.barber || !verificationResult.profileRow) {
+      throw new BarberProfileRepairError("barber_profile_link_failed", "Barber profile repair wrote data, but the post-repair final read did not return the barber_profiles row.");
+    }
 
     const result = {
+      success: true,
       attempted: true,
       repaired: repaired || createdBarber || createdProfile || createdStatus,
       createdBarber,
@@ -539,6 +720,18 @@ export async function ensureBarberProfileForUser(
       barberReference: effectiveReference,
       barberProfileReference: verificationResult.profileRow?.barber_reference ?? null,
       username,
+      barber: verificationResult.barber,
+      barberProfile: verificationResult.profileRow,
+      canonical: {
+        authUserId: input.userId,
+        profileId: input.userId,
+        barberId: verificationResult.barber.id,
+        barberReference: effectiveReference,
+        barberProfileId: verificationResult.profileRow.id ?? verificationResult.profileRow.barber_reference,
+        barberProfileReference: verificationResult.profileRow.barber_reference,
+        username
+      },
+      readChecks: verificationResult.readChecks,
       message: repaired || createdBarber || createdProfile || createdStatus
         ? "Profile repaired and synced."
         : "Profile already synced."

@@ -7,11 +7,13 @@ const {
   useArchitectAccountDirectoryQueryMock,
   useArchitectAccountDetailQueryMock,
   useArchitectAccountActionMutationMock,
+  useArchitectBarberProfileRepairMutationMock,
   useArchitectVerificationActionMutationMock
 } = vi.hoisted(() => ({
   useArchitectAccountDirectoryQueryMock: vi.fn(),
   useArchitectAccountDetailQueryMock: vi.fn(),
   useArchitectAccountActionMutationMock: vi.fn(),
+  useArchitectBarberProfileRepairMutationMock: vi.fn(),
   useArchitectVerificationActionMutationMock: vi.fn()
 }));
 
@@ -42,6 +44,7 @@ vi.mock("@/lib/platform-admin/client", () => ({
   useArchitectAccountDirectoryQuery: useArchitectAccountDirectoryQueryMock,
   useArchitectAccountDetailQuery: useArchitectAccountDetailQueryMock,
   useArchitectAccountActionMutation: useArchitectAccountActionMutationMock,
+  useArchitectBarberProfileRepairMutation: useArchitectBarberProfileRepairMutationMock,
   useArchitectVerificationActionMutation: useArchitectVerificationActionMutationMock
 }));
 
@@ -215,7 +218,28 @@ const detailPayload: ArchitectAccountDetailPayload = {
     ],
     documents: [],
     reviews: [],
-    auditTrail: []
+    auditTrail: [],
+    barberRowHealth: {
+      authUserExists: true,
+      platformProfileExists: true,
+      barberRowExists: true,
+      barberRowId: "barber-1",
+      barberProfileRowExists: true,
+      barberProfileId: "barber-profile-1",
+      barberProfileReference: "barber-ref-1",
+      barberProfileBarberId: "barber-1",
+      barberRowLinkedToUser: true,
+      barberReference: "barber-ref-1",
+      username: "phillipmcgee",
+      publicRoute: "/barber/phillipmcgee",
+      discoverable: false,
+      repairAttempted: true,
+      repairResult: "already_synced",
+      finalReadByReference: true,
+      finalReadByBarberId: true,
+      finalReadByProfileUser: true,
+      blockers: ["Barber approval pending"]
+    }
   },
   warnings: []
 };
@@ -225,6 +249,7 @@ describe("architect account workspaces", () => {
     useArchitectAccountDirectoryQueryMock.mockReset();
     useArchitectAccountDetailQueryMock.mockReset();
     useArchitectAccountActionMutationMock.mockReset();
+    useArchitectBarberProfileRepairMutationMock.mockReset();
     useArchitectVerificationActionMutationMock.mockReset();
 
     useArchitectAccountActionMutationMock.mockReturnValue({
@@ -232,6 +257,10 @@ describe("architect account workspaces", () => {
       mutateAsync: vi.fn()
     });
     useArchitectVerificationActionMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: vi.fn()
+    });
+    useArchitectBarberProfileRepairMutationMock.mockReturnValue({
       isPending: false,
       mutateAsync: vi.fn()
     });
@@ -332,8 +361,38 @@ describe("architect account workspaces", () => {
     expect(screen.getByText("Client discovery debug")).toBeInTheDocument();
     expect(screen.getAllByText("Independent Studio, Tampa FL").length).toBeGreaterThan(0);
     expect(screen.getByText("/barber/phillipmcgee")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /repair barber profile/i })).toBeInTheDocument();
+    expect(screen.getByText("Final read by reference")).toBeInTheDocument();
     expect(screen.getAllByText("Marketplace Not live").length).toBeGreaterThan(0);
     expect(screen.getByText("No real verification documents are linked to this account.")).toBeInTheDocument();
+  });
+
+  it("lets Architect trigger the canonical barber profile repair", async () => {
+    const mutateAsync = vi.fn().mockResolvedValue({
+      repair: {
+        message: "Profile already synced.",
+        readChecks: {
+          byReference: true,
+          byBarberId: true,
+          byProfileUser: true
+        }
+      }
+    });
+    useArchitectBarberProfileRepairMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync
+    });
+    useArchitectAccountDetailQueryMock.mockReturnValue({
+      data: detailPayload,
+      error: null
+    });
+
+    render(<ArchitectAccountDetailWorkspace profileId="profile-barber" initialData={detailPayload} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /repair barber profile/i }));
+
+    expect(mutateAsync).toHaveBeenCalled();
+    expect(await screen.findByText(/Profile already synced\. Final read checks/i)).toBeInTheDocument();
   });
 
   it("shows marketplace live separately from approval when no blockers remain", () => {

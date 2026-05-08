@@ -427,7 +427,11 @@ export interface ArchitectAccountDirectoryItem {
     authUserExists: boolean;
     platformProfileExists: boolean;
     barberRowExists: boolean;
+    barberRowId?: string;
     barberProfileRowExists: boolean;
+    barberProfileId?: string;
+    barberProfileReference?: string;
+    barberProfileBarberId?: string;
     barberRowLinkedToUser: boolean;
     barberReference?: string;
     username?: string;
@@ -435,6 +439,9 @@ export interface ArchitectAccountDirectoryItem {
     discoverable: boolean;
     repairAttempted: boolean;
     repairResult: string;
+    finalReadByReference: boolean;
+    finalReadByBarberId: boolean;
+    finalReadByProfileUser: boolean;
     blockers: string[];
   };
   marketplaceFacts?: {

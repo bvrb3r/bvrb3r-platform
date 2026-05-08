@@ -101,7 +101,7 @@ type ShopRow = {
 type LocationRow = { id: string; reference_code?: string | null; name: string | null; city?: string | null; state?: string | null };
 type StaffLocationRow = { profile_id: string; location_id: string };
 type BarberShopMembershipRow = { barber_reference: string; shop_reference: string; active: boolean | null };
-type BarberProfileRow = { barber_reference: string; username: string | null; display_name?: string | null; shop_reference?: string | null; visibility_state?: string | null; next_available_at?: string | null };
+type BarberProfileRow = { id?: string | null; barber_reference: string; barber_id?: string | null; profile_id?: string | null; user_id?: string | null; username: string | null; display_name?: string | null; shop_reference?: string | null; visibility_state?: string | null; next_available_at?: string | null };
 type MarketplaceVisibilityRow = { barber_reference: string; visibility_state: string | null; accepts_instant_bookings: boolean | null };
 type BarberStatusRow = { barber_reference: string; shop_reference?: string | null; status?: string | null; accepting_bookings?: boolean | null; next_available_at?: string | null };
 type ServiceRow = { id: string; service_owner_type?: "barber" | "shop" | string | null; barber_reference?: string | null; shop_reference?: string | null; active?: boolean | null };
@@ -898,7 +898,11 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
           authUserExists: Boolean(authUser),
           platformProfileExists: profileExists,
           barberRowExists: Boolean(barber),
-          barberProfileRowExists: Boolean(barberProfile || (repairResult && "verified" in repairResult && repairResult.verified)),
+          barberRowId: barber?.id,
+          barberProfileRowExists: Boolean(barberProfile || (repairResult && "success" in repairResult && repairResult.success)),
+          barberProfileId: repairResult && "canonical" in repairResult ? repairResult.canonical.barberProfileId : barberProfile?.barber_reference,
+          barberProfileReference: repairResult && "canonical" in repairResult ? repairResult.canonical.barberProfileReference : barberProfile?.barber_reference,
+          barberProfileBarberId: repairResult && "barberProfile" in repairResult ? repairResult.barberProfile.barber_id ?? undefined : undefined,
           barberRowLinkedToUser: Boolean(barber && barber.profile_id === profile.id),
           barberReference: reference || undefined,
           username: canonicalFacts?.username ?? (repairResult && "username" in repairResult ? repairResult.username : undefined) ?? barberProfile?.username ?? undefined,
@@ -912,12 +916,15 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
                 ? repairResult.repaired ? "repaired" : "already_synced"
                 : "attempted"
             : "not_attempted",
+          finalReadByReference: repairResult && "readChecks" in repairResult ? repairResult.readChecks.byReference : Boolean(barberProfile),
+          finalReadByBarberId: repairResult && "readChecks" in repairResult ? repairResult.readChecks.byBarberId : false,
+          finalReadByProfileUser: repairResult && "readChecks" in repairResult ? repairResult.readChecks.byProfileUser : false,
           blockers: [
             ...(!authUser ? ["Missing auth user"] : []),
             ...(!profileExists ? ["Missing platform profile row"] : []),
             ...(!barber ? ["Missing canonical barbers row"] : []),
             ...(barber && barber.profile_id !== profile.id ? ["Barber row is linked to a different profile"] : []),
-            ...(!barberProfile && !(repairResult && "verified" in repairResult && repairResult.verified) ? ["Missing canonical barber_profiles row"] : []),
+            ...(!barberProfile && !(repairResult && "success" in repairResult && repairResult.success) ? ["Missing canonical barber_profiles row"] : []),
             ...marketplaceBlockers
           ]
         }
