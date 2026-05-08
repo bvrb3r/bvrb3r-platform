@@ -134,6 +134,7 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     return NextResponse.json({
       error,
       code,
+      repairDetails: repairFailure instanceof BarberProfileRepairError ? repairFailure.details ?? null : null,
       detail: repairFailure instanceof Error ? repairFailure.message : "Canonical barber profile could not be loaded after repair."
     }, { status: code === "role_not_barber" ? 403 : 409 });
   }

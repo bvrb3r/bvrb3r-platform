@@ -598,6 +598,10 @@ export function ArchitectAccountDetailWorkspace({
                   <Field label="Canonical username" value={account.barberRowHealth.username} />
                   <Field label="Repair attempted" value={account.barberRowHealth.repairAttempted ? "yes" : "no"} />
                   <Field label="Repair result" value={account.barberRowHealth.repairResult} />
+                  <Field label="Write table" value={account.barberRowHealth.repairTable} />
+                  <Field label="Write operation" value={account.barberRowHealth.repairOperation} />
+                  <Field label="Write error code" value={account.barberRowHealth.repairErrorCode} />
+                  <Field label="Write error message" value={account.barberRowHealth.repairErrorMessage} />
                   <Field label="Final read by reference" value={account.barberRowHealth.finalReadByReference ? "yes" : "no"} />
                   <Field label="Final read by barber id" value={account.barberRowHealth.finalReadByBarberId ? "yes" : "no"} />
                   <Field label="Final read by profile/user" value={account.barberRowHealth.finalReadByProfileUser ? "yes" : "no"} />

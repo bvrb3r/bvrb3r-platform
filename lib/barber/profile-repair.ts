@@ -75,6 +75,13 @@ export type BarberProfileRepairReason =
   | "missing_barbers_row"
   | "barber_profile_insert_failed"
   | "barber_profile_link_failed"
+  | "column_missing"
+  | "not_null_violation"
+  | "unique_conflict"
+  | "rls_denied"
+  | "invalid_foreign_key"
+  | "invalid_conflict_target"
+  | "schema_cache_mismatch"
   | "schema_mismatch"
   | "verification_not_found"
   | "database_write_failed"
@@ -83,11 +90,13 @@ export type BarberProfileRepairReason =
 
 export class BarberProfileRepairError extends Error {
   reason: BarberProfileRepairReason;
+  details?: Record<string, unknown>;
 
-  constructor(reason: BarberProfileRepairReason, message: string) {
+  constructor(reason: BarberProfileRepairReason, message: string, details?: Record<string, unknown>) {
     super(message);
     this.name = "BarberProfileRepairError";
     this.reason = reason;
+    this.details = details;
   }
 }
 
@@ -136,10 +145,62 @@ export type BarberProfileRepairResult = {
   message: string;
 };
 
-function isMissingRelationOrColumn(error: { code?: string; message?: string } | null | undefined) {
+type SupabaseLikeError = {
+  code?: string;
+  message?: string;
+  details?: string;
+  hint?: string;
+};
+
+type RepairWriteContext = {
+  table: string;
+  operation: "insert" | "update" | "upsert";
+  payloadKeys: string[];
+  conflictTarget?: string;
+};
+
+function isMissingRelationOrColumn(error: SupabaseLikeError | null | undefined) {
   if (!error) return false;
-  const message = `${error.message ?? ""}`.toLowerCase();
-  return error.code === "42P01" || error.code === "42703" || message.includes("does not exist");
+  const text = `${error.message ?? ""} ${error.details ?? ""} ${error.hint ?? ""}`.toLowerCase();
+  return error.code === "42P01"
+    || error.code === "42703"
+    || error.code === "PGRST204"
+    || text.includes("does not exist")
+    || text.includes("could not find")
+    || text.includes("schema cache");
+}
+
+function classifySupabaseRepairError(error: SupabaseLikeError): BarberProfileRepairReason {
+  const text = `${error.message ?? ""} ${error.details ?? ""} ${error.hint ?? ""}`.toLowerCase();
+  if (error.code === "PGRST204" || text.includes("schema cache")) return "schema_cache_mismatch";
+  if (error.code === "23502" || text.includes("null value")) return "not_null_violation";
+  if (error.code === "23505" || text.includes("duplicate key")) return "unique_conflict";
+  if (error.code === "23503" || text.includes("foreign key")) return "invalid_foreign_key";
+  if (error.code === "42P10" || text.includes("no unique or exclusion constraint")) return "invalid_conflict_target";
+  if (error.code === "42501" || text.includes("row-level security") || text.includes("rls")) return "rls_denied";
+  if (error.code === "42703" || text.includes("could not find") || text.includes("column")) return "column_missing";
+  if (error.code === "42P01" || text.includes("does not exist")) return "schema_mismatch";
+  return "database_write_failed";
+}
+
+function throwSupabaseRepairWriteError(error: SupabaseLikeError, context: RepairWriteContext): never {
+  const reason = classifySupabaseRepairError(error);
+  const details = {
+    table: context.table,
+    operation: context.operation,
+    payloadKeys: context.payloadKeys,
+    conflictTarget: context.conflictTarget,
+    code: error.code ?? null,
+    message: error.message ?? null,
+    supabaseDetails: error.details ?? null,
+    hint: error.hint ?? null
+  };
+  console.error("[barber-profile-repair] database write failed", details);
+  throw new BarberProfileRepairError(
+    reason,
+    `${reason}: ${context.table}.${context.operation} failed${error.code ? ` (${error.code})` : ""}: ${error.message ?? "Unknown Supabase error"}`,
+    details
+  );
 }
 
 function toReference(row: Pick<BarberRow, "id" | "reference_code">) {
@@ -390,75 +451,101 @@ async function updateBarberProfileByLink(
   value: string,
   payload: BarberProfileRow
 ) {
-  const optionalLinkColumns: Array<Array<keyof BarberProfileRow>> = [
-    ["barber_id", "profile_id", "user_id"],
-    ["barber_id", "profile_id"],
-    ["barber_id", "user_id"],
-    ["profile_id", "user_id"],
-    ["barber_id"],
-    ["profile_id"],
-    ["user_id"],
-    []
-  ];
-
-  for (const columns of optionalLinkColumns) {
-    const variant: BarberProfileRow = { ...payload };
-    for (const column of ["barber_id", "profile_id", "user_id"] as const) {
-      if (!columns.includes(column)) {
-        delete variant[column];
-      }
-    }
-
-    const update = await supabase
-      .from("barber_profiles")
-      .update(variant)
-      .eq(field, value);
-    if (!update.error) {
-      return true;
-    }
-    if (!isMissingRelationOrColumn(update.error)) {
-      throw update.error;
-    }
+  const writePayload = toBarberProfileWritePayload(payload);
+  const update = await supabase
+    .from("barber_profiles")
+    .update(writePayload)
+    .eq(field, value);
+  if (!update.error) {
+    return true;
   }
+  if (!isMissingRelationOrColumn(update.error)) {
+    throwSupabaseRepairWriteError(update.error, {
+      table: "barber_profiles",
+      operation: "update",
+      payloadKeys: Object.keys(writePayload)
+    });
+  }
+  console.info("[barber-profile-repair] skipped legacy link update because link column is unavailable", {
+    table: "barber_profiles",
+    operation: "update",
+    linkField: field,
+    code: update.error.code ?? null,
+    message: update.error.message ?? null,
+    details: update.error.details ?? null,
+    hint: update.error.hint ?? null
+  });
 
   return false;
 }
 
-async function upsertBarberProfile(
+function toBarberProfileWritePayload(payload: BarberProfileRow) {
+  return {
+    barber_reference: payload.barber_reference,
+    barber_email: payload.barber_email ?? "",
+    username: payload.username ?? fallbackBarberSlug(payload.barber_reference),
+    display_name: payload.display_name ?? payload.username ?? payload.barber_reference,
+    bio: payload.bio ?? "",
+    years_experience: payload.years_experience ?? 0,
+    shop_reference: payload.shop_reference ?? null,
+    specialties: payload.specialties ?? [],
+    badges: payload.badges ?? [],
+    service_area_label: payload.service_area_label ?? null,
+    next_available_at: payload.next_available_at ?? null,
+    visibility_state: payload.visibility_state ?? "hidden",
+    updated_at: new Date().toISOString()
+  };
+}
+
+async function writeBarberProfile(
   supabase: SupabaseClient,
   payload: BarberProfileRow
 ) {
-  const optionalLinkColumns: Array<Array<keyof BarberProfileRow>> = [
-    ["barber_id", "profile_id", "user_id"],
-    ["barber_id", "profile_id"],
-    ["barber_id", "user_id"],
-    ["profile_id", "user_id"],
-    ["barber_id"],
-    ["profile_id"],
-    ["user_id"],
-    []
-  ];
+  const writePayload = toBarberProfileWritePayload(payload);
+  const existing = await readBarberProfile(supabase, payload.barber_reference);
 
-  for (const columns of optionalLinkColumns) {
-    const variant: BarberProfileRow = { ...payload };
-    for (const column of ["barber_id", "profile_id", "user_id"] as const) {
-      if (!columns.includes(column)) {
-        delete variant[column];
-      }
-    }
-
-    const result = await supabase
+  if (existing) {
+    const update = await supabase
       .from("barber_profiles")
-      .upsert(variant, { onConflict: "barber_reference" });
-    if (!result.error) {
-      return true;
+      .update(writePayload)
+      .eq("barber_reference", payload.barber_reference);
+    if (update.error) {
+      throwSupabaseRepairWriteError(update.error, {
+        table: "barber_profiles",
+        operation: "update",
+        payloadKeys: Object.keys(writePayload)
+      });
     }
-    if (!isMissingRelationOrColumn(result.error)) {
-      throw result.error;
-    }
+    return true;
   }
 
-  return false;
+  const insert = await supabase
+    .from("barber_profiles")
+    .insert(writePayload);
+  if (!insert.error) {
+    return true;
+  }
+
+  if (classifySupabaseRepairError(insert.error) === "unique_conflict") {
+    const update = await supabase
+      .from("barber_profiles")
+      .update(writePayload)
+      .eq("barber_reference", payload.barber_reference);
+    if (update.error) {
+      throwSupabaseRepairWriteError(update.error, {
+        table: "barber_profiles",
+        operation: "update",
+        payloadKeys: Object.keys(writePayload)
+      });
+    }
+    return true;
+  }
+
+  throwSupabaseRepairWriteError(insert.error, {
+    table: "barber_profiles",
+    operation: "insert",
+    payloadKeys: Object.keys(writePayload)
+  });
 }
 
 async function upsertBarberStatus(
@@ -469,7 +556,12 @@ async function upsertBarberStatus(
     .from("barber_status")
     .upsert(payload, { onConflict: "barber_reference" });
   if (result.error && !isMissingRelationOrColumn(result.error)) {
-    throw result.error;
+    throwSupabaseRepairWriteError(result.error, {
+      table: "barber_status",
+      operation: "upsert",
+      payloadKeys: Object.keys(payload),
+      conflictTarget: "barber_reference"
+    });
   }
   return !result.error;
 }
@@ -489,7 +581,12 @@ async function upsertUserRole(
       location_references: []
     }, { onConflict: "user_email" });
   if (result.error && !isMissingRelationOrColumn(result.error)) {
-    throw result.error;
+    throwSupabaseRepairWriteError(result.error, {
+      table: "user_roles",
+      operation: "upsert",
+      payloadKeys: ["user_email", "role", "client_reference", "barber_reference", "location_references"],
+      conflictTarget: "user_email"
+    });
   }
   return !result.error;
 }
@@ -544,7 +641,11 @@ export async function ensureBarberProfileForUser(
         .select("id, reference_code, profile_id, compensation_model, barber_subtype, app_approval_status, shop_approval_status, bio, booking_slug")
         .single();
       if (insert.error) {
-        throw insert.error;
+        throwSupabaseRepairWriteError(insert.error, {
+          table: "barbers",
+          operation: "insert",
+          payloadKeys: ["profile_id", "reference_code", "compensation_model", "barber_subtype", "app_approval_status", "shop_approval_status", "bio", "booking_slug"]
+        });
       }
       barber = insert.data as BarberRow;
       createdBarber = true;
@@ -559,7 +660,11 @@ export async function ensureBarberProfileForUser(
         })
         .eq("id", barber.id);
       if (update.error && !isMissingRelationOrColumn(update.error)) {
-        throw update.error;
+        throwSupabaseRepairWriteError(update.error, {
+          table: "barbers",
+          operation: "update",
+          payloadKeys: ["profile_id", "reference_code", "booking_slug"]
+        });
       }
       barber = {
         ...barber,
@@ -651,7 +756,7 @@ export async function ensureBarberProfileForUser(
       ?? visibilityRow?.visibility_state
       ?? (verification?.can_accept_bookings ? "public" : "hidden");
     const createdProfile = !profileRow;
-    const profileUpserted = await upsertBarberProfile(supabase, {
+    const profileWritten = await writeBarberProfile(supabase, {
       barber_reference: effectiveReference,
       barber_id: barber.id,
       profile_id: input.userId,
@@ -669,14 +774,18 @@ export async function ensureBarberProfileForUser(
       visibility_state: visibilityState
     });
 
-    if (!profileUpserted) {
+    if (!profileWritten) {
       throw new BarberProfileRepairError("barber_profile_insert_failed", "Barber profile repair could not write the public profile row.");
     }
 
     if (barber.booking_slug !== username) {
       const slugUpdate = await supabase.from("barbers").update({ booking_slug: username }).eq("id", barber.id);
       if (slugUpdate.error && !isMissingRelationOrColumn(slugUpdate.error)) {
-        throw slugUpdate.error;
+        throwSupabaseRepairWriteError(slugUpdate.error, {
+          table: "barbers",
+          operation: "update",
+          payloadKeys: ["booking_slug"]
+        });
       }
       repaired = true;
     }
@@ -756,17 +865,20 @@ export async function ensureBarberProfileForUser(
         profileId: input.userId,
         barberProfileId: null,
         repaired: false,
-        reason: error.reason
+        reason: error.reason,
+        details: error.details ?? null
       });
       throw error;
     }
 
+    const supabaseError = error as SupabaseLikeError;
     const message = error instanceof Error ? error.message : String(error);
-    const reason: BarberProfileRepairReason = message.toLowerCase().includes("duplicate")
-      ? "duplicate_conflict"
-      : message.toLowerCase().includes("does not exist")
-        ? "schema_mismatch"
-        : "database_write_failed";
+    const reason = classifySupabaseRepairError({
+      code: supabaseError.code,
+      message,
+      details: supabaseError.details,
+      hint: supabaseError.hint
+    });
     console.info("barber_profile_repair_result", {
       authUserId: input.userId,
       barberId: input.barberId ?? null,
@@ -774,9 +886,17 @@ export async function ensureBarberProfileForUser(
       profileId: input.userId,
       barberProfileId: null,
       repaired: false,
-      reason
+      reason,
+      code: supabaseError.code ?? null,
+      details: supabaseError.details ?? null,
+      hint: supabaseError.hint ?? null
     });
-    throw new BarberProfileRepairError(reason, `barber_profile_repair_failed: ${message}`);
+    throw new BarberProfileRepairError(reason, `barber_profile_repair_failed: ${message}`, {
+      code: supabaseError.code ?? null,
+      message,
+      supabaseDetails: supabaseError.details ?? null,
+      hint: supabaseError.hint ?? null
+    });
   }
 }
 

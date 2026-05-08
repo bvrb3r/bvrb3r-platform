@@ -9,7 +9,10 @@ import {
 type Row = Record<string, unknown>;
 type Tables = Record<string, Row[]>;
 
-function createMutableSupabaseMock(tables: Tables) {
+function createMutableSupabaseMock(tables: Tables, options: {
+  unsupportedPayloadFields?: Record<string, string[]>;
+  operationErrors?: Record<string, { code: string; message: string; details?: string; hint?: string }>;
+} = {}) {
   function ensureTable(table: string) {
     tables[table] ??= [];
     return tables[table];
@@ -42,7 +45,7 @@ function createMutableSupabaseMock(tables: Tables) {
         return { data: result.data[0] ?? null, error: null };
       },
       then<TResult1 = { data: Row[]; error: null }, TResult2 = never>(
-        onfulfilled?: ((value: { data: Row[]; error: null }) => TResult1 | PromiseLike<TResult1>) | null,
+        onfulfilled?: ((value: { data: Row[]; error: { code: string; message: string; details?: string; hint?: string } | null }) => TResult1 | PromiseLike<TResult1>) | null,
         onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
       ) {
         return commit().then(onfulfilled, onrejected);
@@ -51,6 +54,26 @@ function createMutableSupabaseMock(tables: Tables) {
 
     async function commit() {
       const rows = ensureTable(table);
+      const operationError = options.operationErrors?.[`${table}:${operation}`];
+      if (operationError) {
+        return { data: [], error: operationError };
+      }
+
+      const unsupportedFields = new Set(options.unsupportedPayloadFields?.[table] ?? []);
+      const entriesForFieldCheck = (Array.isArray(payload) ? payload : [payload]).filter((entry): entry is Row => Boolean(entry));
+      const unsupportedField = entriesForFieldCheck
+        .flatMap((entry) => Object.keys(entry))
+        .find((field) => unsupportedFields.has(field));
+      if (unsupportedField) {
+        return {
+          data: [],
+          error: {
+            code: "PGRST204",
+            message: `Could not find the '${unsupportedField}' column of '${table}' in the schema cache`
+          }
+        };
+      }
+
       if (operation === "insert") {
         const inserted = (Array.isArray(payload) ? payload : [payload]).filter((entry): entry is Row => Boolean(entry));
         rows.push(...inserted);
@@ -172,8 +195,8 @@ describe("canonical barber profile repair", () => {
     expect(result.barberProfile).toMatchObject({ barber_reference: "barber-phillip" });
     expect(result.readChecks).toMatchObject({
       byReference: true,
-      byBarberId: true,
-      byProfileUser: true
+      byBarberId: false,
+      byProfileUser: false
     });
     expect(tables.barber_profiles).toHaveLength(1);
     expect(tables.barber_profiles[0]).toMatchObject({
@@ -250,6 +273,63 @@ describe("canonical barber profile repair", () => {
     expect(tables.barber_profiles[0]).toMatchObject({
       barber_reference: "barber-phillip"
     });
+  });
+
+  it("writes only the migration-backed barber_profiles columns during repair", async () => {
+    const tables = createBaseTables();
+    const supabase = createMutableSupabaseMock(tables, {
+      unsupportedPayloadFields: {
+        barber_profiles: ["barber_id", "profile_id", "user_id"]
+      }
+    });
+
+    const result = await ensureBarberProfileForUser({
+      userId: "profile-phillip",
+      barberId: "barber-phillip",
+      role: "booth_rent_barber",
+      email: "phillip@example.test",
+      fullName: "Phillip mcgee",
+      preferredUsername: "philforsure"
+    }, supabase as never);
+
+    expect(result.success).toBe(true);
+    expect(tables.barber_profiles[0]).not.toHaveProperty("barber_id");
+    expect(tables.barber_profiles[0]).not.toHaveProperty("profile_id");
+    expect(tables.barber_profiles[0]).not.toHaveProperty("user_id");
+    expect(tables.barber_profiles[0]).toMatchObject({
+      barber_reference: "barber-phillip",
+      username: "philforsure",
+      display_name: "Phillip mcgee"
+    });
+  });
+
+  it("surfaces exact Supabase write reason when the barber_profiles insert fails", async () => {
+    const tables = createBaseTables();
+    const supabase = createMutableSupabaseMock(tables, {
+      operationErrors: {
+        "barber_profiles:insert": {
+          code: "23502",
+          message: "null value in column \"display_name\" violates not-null constraint",
+          details: "Failing row contains a null display_name."
+        }
+      }
+    });
+
+    await expect(ensureBarberProfileForUser({
+      userId: "profile-phillip",
+      barberId: "barber-phillip",
+      role: "booth_rent_barber",
+      email: "phillip@example.test",
+      fullName: "Phillip mcgee",
+      preferredUsername: "philforsure"
+    }, supabase as never)).rejects.toMatchObject({
+      reason: "not_null_violation",
+      details: expect.objectContaining({
+        table: "barber_profiles",
+        operation: "insert",
+        code: "23502"
+      })
+    } satisfies Partial<BarberProfileRepairError>);
   });
 
   it("repairs by public handle/booking slug so /barber/philforsure can resolve", async () => {

@@ -439,6 +439,10 @@ export interface ArchitectAccountDirectoryItem {
     discoverable: boolean;
     repairAttempted: boolean;
     repairResult: string;
+    repairTable?: string;
+    repairOperation?: string;
+    repairErrorCode?: string;
+    repairErrorMessage?: string;
     finalReadByReference: boolean;
     finalReadByBarberId: boolean;
     finalReadByProfileUser: boolean;

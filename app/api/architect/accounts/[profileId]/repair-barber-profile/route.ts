@@ -69,7 +69,8 @@ export async function POST(
     const status = error instanceof BarberProfileRepairError && error.reason === "role_not_barber" ? 403 : 409;
     return NextResponse.json({
       error: error instanceof BarberProfileRepairError ? error.reason : "barber_profile_repair_failed",
-      message: error instanceof Error ? error.message : String(error)
+      message: error instanceof Error ? error.message : String(error),
+      repairDetails: error instanceof BarberProfileRepairError ? error.details ?? null : null
     }, { status });
   }
 }

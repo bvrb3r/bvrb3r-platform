@@ -1,7 +1,7 @@
 import { assertPlatformAdminAccess, getPlatformAccountStatus, readPlatformAdminAuditLogEntries, readPlatformShopControlState } from "@/lib/platform-admin/service";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import { isUpcomingAppointmentStatus } from "@/lib/appointments/domain";
-import { ensureBarberProfileForIdentifier, type BarberProfileRepairResult } from "@/lib/barber/profile-repair";
+import { BarberProfileRepairError, ensureBarberProfileForIdentifier, type BarberProfileRepairResult } from "@/lib/barber/profile-repair";
 import { getMarketplaceEligibilityForBarber, type MarketplaceBarberEligibilityDiagnostic } from "@/lib/booking/intelligence";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -749,7 +749,7 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
   const accountStatuses = await getAccountStatuses(data);
   const stripeEnvironment = getStripeConnectEnvironment();
   const canonicalEligibilityByReference = new Map<string, MarketplaceBarberEligibilityDiagnostic>();
-  const repairResultByReference = new Map<string, BarberProfileRepairResult | { attempted: true; reason: string; message: string }>();
+  const repairResultByReference = new Map<string, BarberProfileRepairResult | { attempted: true; reason: string; message: string; details?: Record<string, unknown> }>();
   const diagnosticsClient = accountDataOverlay ? null : createSupabaseAdminClient();
   if (diagnosticsClient) {
     await Promise.all(data.barbers.map(async (barber) => {
@@ -767,11 +767,14 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
       } catch (error) {
         repairResultByReference.set(reference, {
           attempted: true,
-          reason: error instanceof Error ? error.name : "unknown",
-          message: error instanceof Error ? error.message : String(error)
+          reason: error instanceof BarberProfileRepairError ? error.reason : error instanceof Error ? error.name : "unknown",
+          message: error instanceof Error ? error.message : String(error),
+          details: error instanceof BarberProfileRepairError ? error.details : undefined
         });
         console.error("[Architect Accounts] marketplace eligibility diagnostic failed", {
           reference,
+          reason: error instanceof BarberProfileRepairError ? error.reason : "unknown",
+          details: error instanceof BarberProfileRepairError ? error.details : undefined,
           message: error instanceof Error ? error.message : String(error)
         });
       }
@@ -893,6 +896,7 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
       : role === "shop_owner" && shop
         ? data.shopMediaAssets.filter((asset) => asset.shop_reference === shop.id).length
         : 0);
+    const repairDetails = repairResult && "details" in repairResult ? repairResult.details : undefined;
     const barberRowHealth = role === "barber"
       ? {
           authUserExists: Boolean(authUser),
@@ -916,6 +920,10 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
                 ? repairResult.repaired ? "repaired" : "already_synced"
                 : "attempted"
             : "not_attempted",
+          repairTable: typeof repairDetails?.table === "string" ? repairDetails.table : undefined,
+          repairOperation: typeof repairDetails?.operation === "string" ? repairDetails.operation : undefined,
+          repairErrorCode: typeof repairDetails?.code === "string" ? repairDetails.code : undefined,
+          repairErrorMessage: typeof repairDetails?.message === "string" ? repairDetails.message : undefined,
           finalReadByReference: repairResult && "readChecks" in repairResult ? repairResult.readChecks.byReference : Boolean(barberProfile),
           finalReadByBarberId: repairResult && "readChecks" in repairResult ? repairResult.readChecks.byBarberId : false,
           finalReadByProfileUser: repairResult && "readChecks" in repairResult ? repairResult.readChecks.byProfileUser : false,
