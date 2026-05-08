@@ -1,5 +1,9 @@
 ﻿import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { isScheduledAppointmentStatus, isUpcomingAppointmentStatus } from "@/lib/appointments/domain";
+import {
+  ensureBarberProfileForIdentifier,
+  ensureMarketplaceBarberProfileRows
+} from "@/lib/barber/profile-repair";
 import { ensureRecurringBooking } from "@/lib/booking/recurring";
 import {
   canonicalAppointmentUuid,
@@ -2006,6 +2010,14 @@ export async function getClientHomePayload(clientId?: string) {
     () => readTrustStateSafe(),
     { clientId }
   );
+  if (supabase) {
+    await withMarketplaceSectionFallback(
+      "barber_profile_repair_failed",
+      null,
+      () => ensureMarketplaceBarberProfileRows(supabase),
+      { clientId }
+    );
+  }
   const discovery = await withMarketplaceSectionFallback(
     "recommended_barbers_load_failed",
     [] as DiscoveryResult[],
@@ -2225,6 +2237,12 @@ export async function searchBarbersAndShopsPayload(params: {
     () => readTrustStateSafe(),
     { clientId: params.clientId }
   );
+  await withMarketplaceSectionFallback(
+    "barber_profile_repair_failed",
+    null,
+    () => ensureMarketplaceBarberProfileRows(supabase),
+    { clientId: params.clientId, query: queryText ?? "" }
+  );
   const canonicalResults = await buildCanonicalDiscoveryResults(supabase, {
     locationId: locationId ?? "",
     query: queryText,
@@ -2311,7 +2329,16 @@ export async function getBarberDetailsPayload(barberIdOrUsername: string) {
   const supabase = getSupabase();
   if (supabase) {
     const trustState = await readTrustStateSafe();
-    const canonicalProfile = await buildCanonicalBarberProfile(supabase, barberIdOrUsername, trustState);
+    let canonicalProfile = await buildCanonicalBarberProfile(supabase, barberIdOrUsername, trustState);
+    if (!canonicalProfile) {
+      await ensureBarberProfileForIdentifier(barberIdOrUsername, supabase).catch((error) => {
+        console.error("[platform-service] barber profile repair before public profile failed", {
+          barberIdOrUsername,
+          message: error instanceof Error ? error.message : String(error)
+        });
+      });
+      canonicalProfile = await buildCanonicalBarberProfile(supabase, barberIdOrUsername, trustState);
+    }
     if (canonicalProfile) {
       return mergeProfileMedia(canonicalProfile);
     }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { ensureBarberProfileForUser } from "@/lib/barber/profile-repair";
 import { getSessionUser } from "@/lib/booking/route-auth";
 import { publishBarberMarketplaceReadiness } from "@/lib/marketplace/publishing";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -48,6 +49,24 @@ export async function POST(request: Request) {
     return toError("Profile updates are unavailable without Supabase.", 503);
   }
 
+  const repair = await ensureBarberProfileForUser({
+    userId: user.id,
+    barberId: user.barberId,
+    role: user.role,
+    email: user.email,
+    fullName: user.name,
+    phone: user.phone,
+    preferredUsername: username,
+    appApprovalStatus: user.appApprovalStatus
+  }, supabase).catch((error) => {
+    console.error("[barber-public-username] canonical barber profile repair failed", {
+      barberId: user.barberId,
+      message: error instanceof Error ? error.message : String(error)
+    });
+    return null;
+  });
+  const barberReference = repair?.barberReference ?? user.barberId;
+
   const existing = await supabase
     .from("barber_profiles")
     .select("barber_reference, username")
@@ -59,14 +78,14 @@ export async function POST(request: Request) {
   }
 
   const existingOwner = (existing.data as { barber_reference?: string | null } | null)?.barber_reference;
-  if (existingOwner && existingOwner !== user.barberId) {
+  if (existingOwner && existingOwner !== barberReference && existingOwner !== user.barberId) {
     return toError("That username is already taken.", 409);
   }
 
   const upsert = await supabase
     .from("barber_profiles")
     .upsert({
-      barber_reference: user.barberId,
+      barber_reference: barberReference,
       barber_email: user.email,
       username,
       display_name: user.name,
@@ -77,9 +96,9 @@ export async function POST(request: Request) {
     return toError("Unable to save public username.", 500);
   }
 
-  await supabase.from("barbers").update({ booking_slug: username }).eq("reference_code", user.barberId);
-  await supabase.from("barbers").update({ booking_slug: username }).eq("id", user.barberId);
-  await publishBarberMarketplaceReadiness(supabase, user.barberId);
+  await supabase.from("barbers").update({ booking_slug: username }).eq("reference_code", barberReference);
+  await supabase.from("barbers").update({ booking_slug: username }).eq("id", barberReference);
+  await publishBarberMarketplaceReadiness(supabase, barberReference);
 
   return NextResponse.json({ username, profileHref: `/barber/${username}` });
 }

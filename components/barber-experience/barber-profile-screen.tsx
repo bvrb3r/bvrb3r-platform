@@ -239,7 +239,10 @@ export function BarberProfileScreen({
   const mutationStatus = mediaMutation.error
     ? { tone: "error" as const, message: readableError(mediaMutation.error, "Unable to update barber profile media right now.") }
     : null;
-  const status = mutationStatus ?? localFeedback;
+  const profileRepairNotice = (profileQuery.data as { profileRepairNotice?: string } | undefined)?.profileRepairNotice;
+  const status = mutationStatus
+    ?? localFeedback
+    ?? (profileRepairNotice ? { tone: "info" as const, message: profileRepairNotice } : null);
 
   useEffect(() => {
     if (!selectedSection) {

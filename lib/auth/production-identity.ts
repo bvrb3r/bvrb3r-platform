@@ -1,5 +1,6 @@
 import { createHash, randomInt, randomUUID } from "node:crypto";
 import { CONTACT_VERIFICATION_POLICY, isCanonicalContactComplete } from "@/lib/auth/contact-policy";
+import { ensureBarberProfileForUser } from "@/lib/barber/profile-repair";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { hasTwilioDeliveryConfig, isSupabaseEnabled, runtimeConfig } from "@/lib/config/runtime";
@@ -2430,6 +2431,21 @@ async function ensureBarberLaneBootstrap(
   }
 
   const effectiveBarberReference = (existing.data as ClientRow | null)?.reference_code ?? barberReference;
+  await ensureBarberProfileForUser({
+    userId: profileId,
+    barberId: effectiveBarberReference,
+    role: "barber",
+    email: identity.email,
+    fullName: identity.name,
+    phone: identity.phone,
+    preferredUsername: effectiveBarberReference
+  }).catch((error) => {
+    console.error("[auth] barber profile bootstrap repair failed", {
+      profileId,
+      barberId: effectiveBarberReference,
+      message: error instanceof Error ? error.message : String(error)
+    });
+  });
   await ensureVerificationProfileQueued(profileId, "barber");
   console.info("[auth] barber lane bootstrap completed", {
     profileId,

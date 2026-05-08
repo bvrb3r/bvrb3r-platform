@@ -423,6 +423,18 @@ export interface ArchitectAccountDirectoryItem {
   payoutMode?: "test" | "live" | "missing";
   serviceLocationCount?: number;
   searchableTerms?: string[];
+  barberRowHealth?: {
+    authUserExists: boolean;
+    platformProfileExists: boolean;
+    barberRowExists: boolean;
+    barberProfileRowExists: boolean;
+    barberRowLinkedToUser: boolean;
+    barberReference?: string;
+    username?: string;
+    publicRoute?: string;
+    discoverable: boolean;
+    blockers: string[];
+  };
   marketplaceFacts?: {
     profileId: string | null;
     userId: string | null;

@@ -1,31 +1,41 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
-import { decoratePublicProfileWithActivation } from "@/lib/marketplace/activation";
+import { getBarberDetailsPayload } from "@/lib/booking/platform-service";
 import { getMarketplaceActivationProvider } from "@/lib/marketplace/activation-provider";
-import { buildPublicProfilePayload, getMarketplaceProvider } from "@/lib/marketplace/provider";
-import { getTrustProvider } from "@/lib/trust/provider";
+import { getMarketplaceProvider } from "@/lib/marketplace/provider";
 
 export async function GET(_request: NextRequest, context: { params: Promise<{ username: string }> }) {
   const { username } = await context.params;
-  const marketplaceProvider = await getMarketplaceProvider();
-  const trustProvider = await getTrustProvider();
-  const activationProvider = await getMarketplaceActivationProvider();
-  const [runtime, trustState, activationState, session] = await Promise.all([
-    marketplaceProvider.readRuntime(),
-    trustProvider.readState(),
-    activationProvider.readState(),
-    getCurrentUserFromServer()
-  ]);
-  const profile = buildPublicProfilePayload(runtime, trustState, username);
-  if (!profile) return NextResponse.json({ error: "Barber profile not found." }, { status: 404 });
-  const decoratedProfile = decoratePublicProfileWithActivation(profile, activationState);
+  const profile = await getBarberDetailsPayload(username);
+  if (!profile) {
+    return NextResponse.json({ error: "Barber profile not found." }, { status: 404 });
+  }
+
   try {
-    await marketplaceProvider.recordProfileView({ barberId: decoratedProfile.barber.id, username, clientId: session.user.role === "client" ? session.user.clientId : undefined });
+    const [marketplaceProvider, session] = await Promise.all([
+      getMarketplaceProvider(),
+      getCurrentUserFromServer()
+    ]);
+    await marketplaceProvider.recordProfileView({
+      barberId: profile.barber.id,
+      username,
+      clientId: session.user.role === "client" ? session.user.clientId : undefined
+    });
   } catch {}
+
   try {
-    if (decoratedProfile.proof?.featuredLabel) {
-      await activationProvider.recordMonetizationEvent({ eventType: "featured_impression", barberId: decoratedProfile.barber.id, citySlug: "tampa-bay", sourceKind: "public_profile", referenceId: username, metadata: { label: decoratedProfile.proof.featuredLabel } });
+    if (profile.proof?.featuredLabel) {
+      const activationProvider = await getMarketplaceActivationProvider();
+      await activationProvider.recordMonetizationEvent({
+        eventType: "featured_impression",
+        barberId: profile.barber.id,
+        citySlug: "tampa-bay",
+        sourceKind: "public_profile",
+        referenceId: username,
+        metadata: { label: profile.proof.featuredLabel }
+      });
     }
   } catch {}
-  return NextResponse.json(decoratedProfile);
+
+  return NextResponse.json(profile);
 }

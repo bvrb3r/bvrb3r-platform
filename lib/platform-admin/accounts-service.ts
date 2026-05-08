@@ -881,6 +881,27 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
       : role === "shop_owner" && shop
         ? data.shopMediaAssets.filter((asset) => asset.shop_reference === shop.id).length
         : 0);
+    const barberRowHealth = role === "barber"
+      ? {
+          authUserExists: Boolean(authUser),
+          platformProfileExists: profileExists,
+          barberRowExists: Boolean(barber),
+          barberProfileRowExists: Boolean(barberProfile),
+          barberRowLinkedToUser: Boolean(barber && barber.profile_id === profile.id),
+          barberReference: reference || undefined,
+          username: canonicalFacts?.username ?? barberProfile?.username ?? undefined,
+          publicRoute,
+          discoverable: marketplaceLive,
+          blockers: [
+            ...(!authUser ? ["Missing auth user"] : []),
+            ...(!profileExists ? ["Missing platform profile row"] : []),
+            ...(!barber ? ["Missing canonical barbers row"] : []),
+            ...(barber && barber.profile_id !== profile.id ? ["Barber row is linked to a different profile"] : []),
+            ...(!barberProfile ? ["Missing canonical barber_profiles row"] : []),
+            ...marketplaceBlockers
+          ]
+        }
+      : undefined;
 
     items.push({
       profileId: profile.id,
@@ -930,6 +951,7 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
         ? Number(canonicalFacts.independentLocationExists) + canonicalFacts.acceptedShopCount
         : serviceLocationLabels.length,
       searchableTerms: canonicalEligibility?.searchableTerms,
+      barberRowHealth,
       marketplaceFacts: canonicalFacts,
       marketplaceBlockers,
       searchText: buildSearchText([

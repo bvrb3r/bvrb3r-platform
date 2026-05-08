@@ -568,6 +568,18 @@ export function ArchitectAccountDetailWorkspace({
               <Field label="Booking status" value={marketplaceFacts?.bookingStatus} />
               <Field label="Username / fallback slug" value={marketplaceFacts ? `${marketplaceFacts.username ?? "no username"} / ${marketplaceFacts.fallbackSlug}` : account.username} />
               <Field label="Public media count" value={marketplaceFacts?.publicMediaCount ?? account.feedAssetCount} />
+              {account.barberRowHealth ? (
+                <>
+                  <Field label="Auth user exists" value={account.barberRowHealth.authUserExists ? "yes" : "no"} />
+                  <Field label="Platform profile row" value={account.barberRowHealth.platformProfileExists ? "yes" : "no"} />
+                  <Field label="Barber row exists" value={account.barberRowHealth.barberRowExists ? "yes" : "no"} />
+                  <Field label="Barber profile row" value={account.barberRowHealth.barberProfileRowExists ? "yes" : "no"} />
+                  <Field label="Barber row linked to user" value={account.barberRowHealth.barberRowLinkedToUser ? "yes" : "no"} />
+                  <Field label="Barber reference" value={account.barberRowHealth.barberReference} />
+                  <Field label="Canonical username" value={account.barberRowHealth.username} />
+                  <Field label="Row health discoverable" value={account.barberRowHealth.discoverable ? "yes" : "no"} />
+                </>
+              ) : null}
             </div>
           </Card>
 

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { ensureBarberProfileForUser } from "@/lib/barber/profile-repair";
 import { getSessionUser } from "@/lib/booking/route-auth";
 import { normalizeWorkingHoursRows } from "@/lib/barber/domain";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
@@ -426,14 +427,31 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Supabase is not configured for barber activation." }, { status: 503 });
     }
 
+    const repair = await ensureBarberProfileForUser({
+      userId: user.id,
+      barberId,
+      role: user.role,
+      email: user.email,
+      fullName: user.name,
+      phone: user.phone,
+      appApprovalStatus: user.appApprovalStatus
+    }, supabase).catch((error) => {
+      console.error("[barber-activation] canonical barber profile repair failed", {
+        barberId,
+        message: error instanceof Error ? error.message : String(error)
+      });
+      return null;
+    });
+    const effectiveBarberId = repair?.barberReference ?? barberId;
+
     if (parsed.data.action === "save_availability") {
-      return await persistActivationAvailability(supabase, user, barberId, parsed.data);
+      return await persistActivationAvailability(supabase, user, effectiveBarberId, parsed.data);
     }
 
     const profileUpdate = await supabase
       .from("barber_profiles")
       .update({ visibility_state: parsed.data.visibilityState })
-      .eq("barber_reference", barberId)
+      .eq("barber_reference", effectiveBarberId)
       .select("barber_reference")
       .maybeSingle();
 
@@ -446,7 +464,7 @@ export async function POST(request: Request) {
     }
 
     const visibility = {
-      barber_reference: barberId,
+      barber_reference: effectiveBarberId,
       visibility_state: parsed.data.visibilityState,
       accepts_instant_bookings: parsed.data.acceptsInstantBookings ?? true
     };
@@ -459,7 +477,7 @@ export async function POST(request: Request) {
       throw visibilityUpdate.error;
     }
 
-    await publishBarberMarketplaceReadiness(supabase, barberId);
+    await publishBarberMarketplaceReadiness(supabase, effectiveBarberId);
 
     return NextResponse.json({
       visibilityState: parsed.data.visibilityState,
