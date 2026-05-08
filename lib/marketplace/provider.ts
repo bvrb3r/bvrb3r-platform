@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { canonicalServiceUuid } from "@/lib/booking/canonical-booking";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import {
   createEmptyMarketplaceState,
@@ -18,6 +19,7 @@ import {
   type ServiceMutationInput
 } from "@/lib/marketplace/engine";
 import { buildBarberProofSignals, enrichPublicProfileWithProof, rankDiscoveryResults, replaceServicePopularity } from "@/lib/marketplace/insights";
+import { syncServiceToCanonicalRows } from "@/lib/marketplace/service-sync";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import type {
   Barber,
@@ -86,24 +88,6 @@ function emptyRuntimeData(): MarketplaceRuntimeData {
     rankingInputs: [],
     conversionEvents: [],
     bookingAttributions: []
-  };
-}
-
-function serviceToRow(service: Service) {
-  return {
-    service_reference: service.id,
-    category: service.category,
-    name: service.name,
-    description: service.description,
-    duration_min: service.durationMin,
-    buffer_min: service.bufferMin,
-    price: service.price,
-    deposit_amount: service.deposit,
-    full_prepay_required: service.fullPrepay,
-    owner_type: service.ownerType ?? "shop",
-    barber_reference: service.barberId ?? null,
-    shop_reference: service.shopId ?? null,
-    style_tag_ids: service.styleTagIds ?? []
   };
 }
 
@@ -800,9 +784,9 @@ function createSupabaseProvider(supabase: SupabaseClient): MarketplaceProvider {
   return {
     kind: "supabase",
     async readRuntime() { return readSupabaseRuntime(supabase); },
-    async createService(actor, input) { const runtime = await readSupabaseRuntime(supabase); const result = createServiceDefinition(runtime.state, actor, input); const persist = await supabase.from("marketplace_services").upsert(serviceToRow(result.service), { onConflict: "service_reference" }); if (persist.error) throw persist.error; await refreshDerivedSignals(supabase); return { service: result.service }; },
-    async updateService(actor, serviceId, input) { const runtime = await readSupabaseRuntime(supabase); const result = updateServiceDefinition(runtime.state, actor, serviceId, input); const persist = await supabase.from("marketplace_services").upsert(serviceToRow(result.service), { onConflict: "service_reference" }); if (persist.error) throw persist.error; await refreshDerivedSignals(supabase); return { service: result.service }; },
-    async deleteService(actor, serviceId) { const runtime = await readSupabaseRuntime(supabase); const result = deleteServiceDefinition(runtime.state, actor, serviceId); const persist = await supabase.from("marketplace_services").delete().eq("service_reference", serviceId); if (persist.error) throw persist.error; await refreshDerivedSignals(supabase); return { service: result.service }; },
+    async createService(actor, input) { const runtime = await readSupabaseRuntime(supabase); const result = createServiceDefinition(runtime.state, actor, input); await syncServiceToCanonicalRows(supabase, result.service); await refreshDerivedSignals(supabase); return { service: result.service }; },
+    async updateService(actor, serviceId, input) { const runtime = await readSupabaseRuntime(supabase); const result = updateServiceDefinition(runtime.state, actor, serviceId, input); await syncServiceToCanonicalRows(supabase, result.service); await refreshDerivedSignals(supabase); return { service: result.service }; },
+    async deleteService(actor, serviceId) { const runtime = await readSupabaseRuntime(supabase); const result = deleteServiceDefinition(runtime.state, actor, serviceId); const [marketplaceDelete, canonicalDelete] = await Promise.all([supabase.from("marketplace_services").delete().eq("service_reference", serviceId), supabase.from("services").delete().eq("id", canonicalServiceUuid(serviceId))]); if (marketplaceDelete.error) throw marketplaceDelete.error; if (canonicalDelete.error) throw canonicalDelete.error; await refreshDerivedSignals(supabase); return { service: result.service }; },
     async recordDiscoveryImpression(input) { for (const result of input.results.slice(0, 6)) { await insertConversionEvent(supabase, { eventType: "discovery_impression", barberId: result.barberId, username: result.username, clientId: input.clientId, clientEmail: getClientEmail(input.clientId), locationId: input.filters.locationId, sourceKind: "discovery", sourceReference: input.filters.query ?? result.username, metadata: { query: input.filters.query ?? "", resultsCount: input.results.length }, createdAt: nowIso() }); } if (input.clientId) { const history = await supabase.from("search_history").insert({ client_reference: input.clientId, client_email: getClientEmail(input.clientId) ?? `${input.clientId}@client.bvrb3r.local`, query: input.filters.query ?? "marketplace", filters: input.filters, searched_at: nowIso() }); if (history.error) throw history.error; } },
     async recordProfileView(input) { await insertConversionEvent(supabase, { eventType: "profile_view", barberId: input.barberId, username: input.username, clientId: input.clientId, clientEmail: getClientEmail(input.clientId), sourceKind: "public_profile", sourceReference: input.username, metadata: {}, createdAt: nowIso() }); },
     async recordHaircutNowImpression(input) { if (!input.match) return; await insertConversionEvent(supabase, { eventType: "haircut_now_impression", barberId: input.match.barberId, username: input.match.username, clientId: input.clientId, clientEmail: getClientEmail(input.clientId), locationId: input.match.locationId, sourceKind: "haircut_now", sourceReference: input.match.matchedFrom, metadata: { matchedFrom: input.match.matchedFrom }, createdAt: nowIso() }); },

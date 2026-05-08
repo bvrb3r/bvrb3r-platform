@@ -422,6 +422,17 @@ export interface ArchitectAccountDirectoryItem {
   discoveryLocation?: string;
   payoutMode?: "test" | "live" | "missing";
   serviceLocationCount?: number;
+  serviceHealth?: {
+    serviceRowsFound: number;
+    activeServiceRows: number;
+    clientVisibleServiceRows: number;
+    serviceSourceTable: string;
+    firstServiceName?: string;
+    firstServicePrice?: number;
+    firstServiceDurationMin?: number;
+    discoveryServiceGatePass: boolean;
+    serviceBlocker?: string;
+  };
   searchableTerms?: string[];
   barberRowHealth?: {
     authUserExists: boolean;

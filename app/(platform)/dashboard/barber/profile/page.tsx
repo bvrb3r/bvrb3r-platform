@@ -2,6 +2,8 @@ import { BarberProfileScreen } from "@/components/barber-experience/barber-profi
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { getAuthorizedUser } from "@/lib/auth/guards";
 import { BarberProfileRepairError, ensureBarberProfileForUser } from "@/lib/barber/profile-repair";
+import { syncOnboardingBarberServicesForUser } from "@/lib/marketplace/service-sync";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export default async function BarberProfilePage({
   searchParams
@@ -30,6 +32,15 @@ export default async function BarberProfilePage({
   const effectiveUser = repairResult.result
     ? { ...user, barberId: repairResult.result.barberReference }
     : user;
+  const supabase = createSupabaseAdminClient();
+  if (supabase) {
+    await syncOnboardingBarberServicesForUser(supabase, user.id).catch((error) => {
+      console.error("[barber-profile-page] onboarding service sync failed", {
+        userId: user.id,
+        message: error instanceof Error ? error.message : String(error)
+      });
+    });
+  }
 
   return (
     <DashboardShell

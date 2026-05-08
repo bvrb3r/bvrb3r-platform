@@ -104,7 +104,8 @@ type BarberShopMembershipRow = { barber_reference: string; shop_reference: strin
 type BarberProfileRow = { id?: string | null; barber_reference: string; barber_id?: string | null; profile_id?: string | null; user_id?: string | null; username: string | null; display_name?: string | null; shop_reference?: string | null; visibility_state?: string | null; next_available_at?: string | null };
 type MarketplaceVisibilityRow = { barber_reference: string; visibility_state: string | null; accepts_instant_bookings: boolean | null };
 type BarberStatusRow = { barber_reference: string; shop_reference?: string | null; status?: string | null; accepting_bookings?: boolean | null; next_available_at?: string | null };
-type ServiceRow = { id: string; service_owner_type?: "barber" | "shop" | string | null; barber_reference?: string | null; shop_reference?: string | null; active?: boolean | null };
+type ServiceRow = { id: string; reference_code?: string | null; service_owner_type?: "barber" | "shop" | string | null; barber_reference?: string | null; shop_reference?: string | null; active?: boolean | null; is_bookable?: boolean | null; name?: string | null; price?: number | string | null; duration_min?: number | null };
+type MarketplaceServiceRow = { service_reference: string; owner_type?: "barber" | "shop" | string | null; barber_reference?: string | null; shop_reference?: string | null; name?: string | null; price?: number | string | null; duration_min?: number | null };
 type AvailabilityRuleRow = { id: string; barber_id: string; location_id?: string | null };
 type BarberWorkingHoursRow = { id: string; barber_reference: string; shop_reference?: string | null };
 type AppointmentRow = { id: string; barber_id?: string | null; client_id?: string | null; status?: string | null };
@@ -179,6 +180,7 @@ type AccountData = {
   marketplaceVisibilities: MarketplaceVisibilityRow[];
   barberStatuses: BarberStatusRow[];
   services: ServiceRow[];
+  marketplaceServices: MarketplaceServiceRow[];
   availabilityRules: AvailabilityRuleRow[];
   workingHours: BarberWorkingHoursRow[];
   appointments: AppointmentRow[];
@@ -219,6 +221,7 @@ function emptyData(): AccountData {
     marketplaceVisibilities: [],
     barberStatuses: [],
     services: [],
+    marketplaceServices: [],
     availabilityRules: [],
     workingHours: [],
     appointments: [],
@@ -358,6 +361,7 @@ async function readAccountData(warnings: string[]): Promise<AccountData> {
     marketplaceVisibilities,
     barberStatuses,
     services,
+    marketplaceServices,
     availabilityRules,
     workingHours,
     appointments,
@@ -379,7 +383,8 @@ async function readAccountData(warnings: string[]): Promise<AccountData> {
     safeRows<BarberProfileRow>(warnings, "Barber profiles", () => supabase.from("barber_profiles").select("barber_reference, username, display_name, shop_reference, visibility_state, next_available_at")),
     safeRows<MarketplaceVisibilityRow>(warnings, "Marketplace visibility rows", () => supabase.from("marketplace_visibility").select("barber_reference, visibility_state, accepts_instant_bookings")),
     safeRows<BarberStatusRow>(warnings, "Barber status rows", () => supabase.from("barber_status").select("barber_reference, shop_reference, status, accepting_bookings, next_available_at")),
-    safeRows<ServiceRow>(warnings, "Services", () => supabase.from("services").select("id, service_owner_type, barber_reference, shop_reference, active")),
+    safeRows<ServiceRow>(warnings, "Services", () => supabase.from("services").select("id, reference_code, service_owner_type, barber_reference, shop_reference, active, is_bookable, name, price, duration_min")),
+    safeRows<MarketplaceServiceRow>(warnings, "Marketplace services", () => supabase.from("marketplace_services").select("service_reference, owner_type, barber_reference, shop_reference, name, price, duration_min")),
     safeRows<AvailabilityRuleRow>(warnings, "Availability rules", () => supabase.from("availability_rules").select("id, barber_id, location_id")),
     safeRows<BarberWorkingHoursRow>(warnings, "Working hours", () => supabase.from("barber_working_hours").select("id, barber_reference, shop_reference")),
     safeRows<AppointmentRow>(warnings, "Appointments", () => supabase.from("appointments").select("id, barber_id, client_id, status")),
@@ -404,6 +409,7 @@ async function readAccountData(warnings: string[]): Promise<AccountData> {
     marketplaceVisibilities,
     barberStatuses,
     services,
+    marketplaceServices,
     availabilityRules,
     workingHours,
     appointments,
@@ -584,17 +590,77 @@ function getLinkedShopIds(reference: string, profileId: string, data: AccountDat
 }
 
 function getActiveServicesForBarber(reference: string, linkedShopIds: string[], data: AccountData) {
-  return data.services.filter((service) =>
+  const canonical = data.services.filter((service) =>
     service.active !== false
+    && service.is_bookable !== false
     && (
       service.barber_reference === reference
       || (service.service_owner_type === "shop" && Boolean(service.shop_reference) && linkedShopIds.includes(service.shop_reference as string))
     )
   );
+  const marketplace = data.marketplaceServices
+    .filter((service) =>
+      service.owner_type === "barber"
+      && service.barber_reference === reference
+      && Boolean(service.name?.trim())
+      && Number(service.price ?? 0) > 0
+      && Number(service.duration_min ?? 0) >= 15
+    )
+    .map((service) => ({
+      id: service.service_reference,
+      reference_code: service.service_reference,
+      service_owner_type: service.owner_type,
+      barber_reference: service.barber_reference,
+      shop_reference: service.shop_reference,
+      active: true,
+      is_bookable: true,
+      name: service.name,
+      price: service.price,
+      duration_min: service.duration_min
+    } satisfies ServiceRow));
+  const merged = new Map<string, ServiceRow>();
+  for (const service of [...canonical, ...marketplace]) {
+    merged.set(service.reference_code ?? service.id, service);
+  }
+  return [...merged.values()];
 }
 
 function getActiveServicesForShop(shopId: string, data: AccountData) {
-  return data.services.filter((service) => service.active !== false && service.shop_reference === shopId);
+  return data.services.filter((service) => service.active !== false && service.is_bookable !== false && service.shop_reference === shopId);
+}
+
+function getServiceHealth(reference: string, linkedShopIds: string[], data: AccountData) {
+  const canonicalRows = data.services.filter((service) =>
+    service.barber_reference === reference
+    || (service.service_owner_type === "shop" && Boolean(service.shop_reference) && linkedShopIds.includes(service.shop_reference as string))
+  );
+  const marketplaceRows = data.marketplaceServices.filter((service) =>
+    service.barber_reference === reference
+    || (service.owner_type === "shop" && Boolean(service.shop_reference) && linkedShopIds.includes(service.shop_reference as string))
+  );
+  const activeCanonicalRows = canonicalRows.filter((service) => service.active !== false);
+  const clientVisibleRows = getActiveServicesForBarber(reference, linkedShopIds, data)
+    .filter((service) => Boolean(service.name?.trim()) && Number(service.price ?? 0) > 0 && Number(service.duration_min ?? 0) >= 15);
+  const firstService = clientVisibleRows[0] ?? activeCanonicalRows[0] ?? marketplaceRows[0];
+  const sourceTable = activeCanonicalRows.length && marketplaceRows.length
+    ? "services + marketplace_services"
+    : activeCanonicalRows.length
+      ? "services"
+      : marketplaceRows.length
+        ? "marketplace_services"
+        : "none";
+
+  return {
+    serviceRowsFound: canonicalRows.length + marketplaceRows.length,
+    activeServiceRows: activeCanonicalRows.length + marketplaceRows.filter((service) => Boolean(service.name?.trim()) && Number(service.price ?? 0) > 0 && Number(service.duration_min ?? 0) >= 15).length,
+    clientVisibleServiceRows: clientVisibleRows.length,
+    serviceSourceTable: sourceTable,
+    firstServiceName: firstService?.name ?? undefined,
+    firstServicePrice: firstService?.price !== undefined && firstService?.price !== null ? Number(firstService.price) : undefined,
+    firstServiceDurationMin: firstService?.duration_min ?? undefined,
+    discoveryServiceGatePass: clientVisibleRows.length > 0,
+    serviceBlocker: clientVisibleRows.length > 0 ? undefined : "No active real services"
+  };
 }
 
 function getAvailabilityCount(barber: BarberRow | undefined, reference: string, data: AccountData) {
@@ -828,6 +894,9 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
       : role === "shop_owner" && shop
         ? getActiveServicesForShop(shop.id, data).length
         : 0;
+    const serviceHealth = role === "barber" && reference
+      ? getServiceHealth(reference, linkedShopIds, data)
+      : undefined;
     const availabilityCount = role === "barber" ? getAvailabilityCount(barber, reference, data) : 0;
     const activeLinkedBarbers = shop
       ? data.memberships.filter((membership) => {
@@ -985,6 +1054,7 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
       serviceLocationCount: canonicalFacts
         ? Number(canonicalFacts.independentLocationExists) + canonicalFacts.acceptedShopCount
         : serviceLocationLabels.length,
+      serviceHealth,
       searchableTerms: canonicalEligibility?.searchableTerms,
       barberRowHealth,
       marketplaceFacts: canonicalFacts,

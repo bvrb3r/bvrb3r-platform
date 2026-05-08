@@ -1481,10 +1481,8 @@ function buildCandidateRecords(
         locationUuidByReference,
         availabilityRules: snapshot.availabilityRules,
         earliestAt: eligibility.profileRow?.next_available_at
-      });
-    if (!nextAvailableAt) {
-      return [];
-    }
+      })
+      ?? "";
 
     const location = getCandidateLocation(locationsByReference, candidateLocationReference, eligibility.profileRow);
     if (!location) {
@@ -1526,7 +1524,10 @@ function buildCandidateRecords(
         ? 24
         : 0
       : 0;
-    const waitMinutes = Math.max(0, Math.round((new Date(nextAvailableAt).getTime() - Date.now()) / 60_000));
+    const nextAvailableTimestamp = new Date(nextAvailableAt).getTime();
+    const waitMinutes = Number.isFinite(nextAvailableTimestamp)
+      ? Math.max(0, Math.round((nextAvailableTimestamp - Date.now()) / 60_000))
+      : 720;
     const availabilityScore = Math.max(0, 80 - waitMinutes);
     const preferredBarberBoost = matchedFrom === "favorite_barber" ? 90 : 0;
     const preferredShopBoost = matchedFrom === "favorite_shop" ? 54 : 0;
@@ -1578,7 +1579,17 @@ function buildCandidateRecords(
       cancelledCount,
       accelerationScore
     } satisfies CandidateRecord];
-  }).sort((left, right) => right.accelerationScore - left.accelerationScore || new Date(left.nextAvailableAt).getTime() - new Date(right.nextAvailableAt).getTime());
+  }).sort((left, right) => {
+    const scoreDelta = right.accelerationScore - left.accelerationScore;
+    if (scoreDelta !== 0) {
+      return scoreDelta;
+    }
+
+    const leftTime = new Date(left.nextAvailableAt).getTime();
+    const rightTime = new Date(right.nextAvailableAt).getTime();
+    return (Number.isFinite(leftTime) ? leftTime : Number.MAX_SAFE_INTEGER)
+      - (Number.isFinite(rightTime) ? rightTime : Number.MAX_SAFE_INTEGER);
+  });
 }
 
 export async function getMarketplaceEligibilityForBarber(
@@ -2063,10 +2074,8 @@ export async function buildCanonicalBarberProfile(
       locationUuidByReference,
       availabilityRules: snapshot.availabilityRules,
       earliestAt: profileRow?.next_available_at
-    });
-  if (!nextAvailableAt) {
-    return null;
-  }
+    })
+    ?? "";
 
   const completedAppointments = snapshot.appointments.filter((entry) => entry.barber_id === barberRow.id && entry.status === "completed");
   const bookingsCreated = snapshot.appointments.filter((entry) => entry.barber_id === barberRow.id && entry.status !== "cancelled").length;
@@ -2165,7 +2174,7 @@ export async function buildCanonicalBarberProfile(
       locationId: primaryLocation.id,
       serviceId: mostBookedService?.service.id,
       sourceKind: "public_profile",
-      appointmentTime: nextAvailableAt
+      appointmentTime: nextSlot?.startsAt
     })
   };
 }

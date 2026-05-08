@@ -5,6 +5,7 @@ import {
   BarberProfileRepairError,
   ensureBarberProfileForUser
 } from "@/lib/barber/profile-repair";
+import { syncOnboardingBarberServicesForUser } from "@/lib/marketplace/service-sync";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 type ProfileRow = {
@@ -49,6 +50,7 @@ export async function POST(
       phone: profile?.phone,
       preferredUsername: undefined
     }, supabase);
+    const serviceSync = await syncOnboardingBarberServicesForUser(supabase, profileId);
 
     revalidatePath(`/architect/users/${profileId}`);
     revalidatePath("/dashboard/client");
@@ -63,7 +65,8 @@ export async function POST(
         message: result.message,
         canonical: result.canonical,
         readChecks: result.readChecks
-      }
+      },
+      serviceSync
     });
   } catch (error) {
     const status = error instanceof BarberProfileRepairError && error.reason === "role_not_barber" ? 403 : 409;

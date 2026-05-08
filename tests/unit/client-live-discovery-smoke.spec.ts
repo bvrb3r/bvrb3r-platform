@@ -388,4 +388,127 @@ describe("live client discovery smoke test", () => {
     expect(payload.barbers[0].barberName.toLowerCase()).toContain("phillip");
     expect(payload.barbers[0].username).toBe("philforsure");
   });
+
+  it("promotes real onboarding services before client discovery checks the service gate", async () => {
+    const targetDay = new Date();
+    targetDay.setDate(targetDay.getDate() + 1);
+    targetDay.setHours(12, 0, 0, 0);
+    const targetEnd = new Date(targetDay);
+    targetEnd.setHours(19, 0, 0, 0);
+    const tables: Record<string, Array<Record<string, unknown>>> = {
+      shops: [],
+      barbers: [{
+        id: "barber-uuid",
+        reference_code: "barber-phillip",
+        profile_id: "profile-uuid",
+        compensation_model: "booth_rent",
+        app_approval_status: "approved",
+        shop_approval_status: "pending",
+        commission_rate: null,
+        booth_rent_amount: 150,
+        booth_rent_frequency: "weekly",
+        bio: "Independent Tampa barber.",
+        booking_slug: "philforsure"
+      }],
+      barber_profiles: [{
+        barber_reference: "barber-phillip",
+        username: "philforsure",
+        display_name: "Phillip mcgee",
+        bio: "Independent Tampa barber.",
+        years_experience: 7,
+        shop_reference: "independent-barber-43b3cda2",
+        profile_photo_path: null,
+        profile_photo_url: null,
+        specialties: ["Haircut"],
+        badges: [],
+        service_area_label: "Phils chair / 2172 University Square More / Tampa",
+        next_available_at: null,
+        visibility_state: "public"
+      }],
+      profiles: [{
+        id: "profile-uuid",
+        full_name: "Phillip mcgee",
+        email: "phillip@example.test",
+        phone: "8135550101",
+        role: "booth_rent_barber",
+        primary_onboarding_role: "barber"
+      }],
+      services: [],
+      marketplace_services: [],
+      user_onboarding_states: [{
+        user_id: "profile-uuid",
+        role: "barber",
+        profile_data: {
+          primaryServices: "Haircut + Beard",
+          startingPrice: "65",
+          averageDuration: "60 min"
+        }
+      }],
+      locations: [{
+        id: "location-uuid",
+        reference_code: "independent-barber-43b3cda2",
+        name: "Phils chair",
+        neighborhood: "2172 University Square More",
+        city: "Tampa",
+        state: "FL",
+        phone: "8135550101",
+        address: "2172 University Square More",
+        latitude: null,
+        longitude: null
+      }],
+      staff_locations: [],
+      availability_rules: [{
+        barber_id: "barber-uuid",
+        location_id: "location-uuid",
+        weekday: targetDay.getDay(),
+        start_time: formatTime(targetDay),
+        end_time: formatTime(targetEnd)
+      }],
+      blocked_times: [],
+      appointments: [],
+      reviews: [],
+      marketplace_visibility: [{
+        barber_reference: "barber-phillip",
+        visibility_state: "public",
+        accepts_instant_bookings: true,
+        featured_rank: null
+      }],
+      barber_portfolios: [],
+      barber_status: [{
+        barber_reference: "barber-phillip",
+        status: "active",
+        live_status: "live",
+        accepting_bookings: true
+      }],
+      connected_accounts: [{
+        subject_type: "barber",
+        barber_id: "barber-uuid",
+        payout_readiness_status: "ready",
+        livemode: false,
+        charges_enabled: true,
+        payouts_enabled: true,
+        requirements_currently_due: [],
+        requirements_past_due: [],
+        disabled_reason: null
+      }],
+      user_roles: [],
+      platform_events: [],
+      barber_profile_redirects: [],
+      barber_working_hours: [],
+      clients: [],
+      client_preferences: [],
+      barber_shop_memberships: [],
+      shop_media_assets: []
+    };
+    createSupabaseAdminClientMock.mockReturnValue(createSupabaseMock(tables));
+
+    const payload = await searchBarbersAndShopsPayload({ query: "philforsure" });
+
+    expect(tables.services).toHaveLength(1);
+    expect(tables.marketplace_services).toHaveLength(1);
+    expect(payload.barbers.length).toBeGreaterThanOrEqual(1);
+    expect(payload.barbers[0].barberName.toLowerCase()).toContain("phillip");
+    expect(payload.barbers[0].mostBookedService).toBe("Haircut + Beard");
+    expect(payload.barbers[0].bookingHref).toContain("serviceId=");
+  });
 });

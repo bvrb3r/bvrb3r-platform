@@ -24,6 +24,7 @@ import {
 import { decorateDiscoveryWithActivation, decoratePublicProfileWithActivation } from "@/lib/marketplace/activation";
 import { getMarketplaceActivationProvider } from "@/lib/marketplace/activation-provider";
 import { buildDiscoveryPayload, buildHaircutNowPayload, buildPublicProfilePayload, getMarketplaceProvider, type MarketplaceRuntimeData } from "@/lib/marketplace/provider";
+import { syncAllOnboardingBarberServices } from "@/lib/marketplace/service-sync";
 import { getMarketplaceState, setMarketplaceState } from "@/lib/marketplace/state";
 import { getEngagementProvider } from "@/lib/engagement/provider";
 import { readBookingTransactionBreakdown } from "@/lib/fintech/breakdown";
@@ -2243,6 +2244,12 @@ export async function searchBarbersAndShopsPayload(params: {
     () => ensureMarketplaceBarberProfileRows(supabase),
     { clientId: params.clientId, query: queryText ?? "" }
   );
+  await withMarketplaceSectionFallback(
+    "barber_service_sync_failed",
+    [],
+    () => syncAllOnboardingBarberServices(supabase),
+    { clientId: params.clientId, query: queryText ?? "" }
+  );
   const canonicalResults = await buildCanonicalDiscoveryResults(supabase, {
     locationId: locationId ?? "",
     query: queryText,
@@ -2329,6 +2336,12 @@ export async function getBarberDetailsPayload(barberIdOrUsername: string) {
   const supabase = getSupabase();
   if (supabase) {
     const trustState = await readTrustStateSafe();
+    await syncAllOnboardingBarberServices(supabase).catch((error) => {
+      console.error("[platform-service] onboarding barber service sync before public profile failed", {
+        barberIdOrUsername,
+        message: error instanceof Error ? error.message : String(error)
+      });
+    });
     let canonicalProfile = await buildCanonicalBarberProfile(supabase, barberIdOrUsername, trustState);
     if (!canonicalProfile) {
       await ensureBarberProfileForIdentifier(barberIdOrUsername, supabase).catch((error) => {

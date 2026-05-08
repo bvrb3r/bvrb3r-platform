@@ -583,6 +583,30 @@ export function ArchitectAccountDetailWorkspace({
               <Field label="Booking status" value={marketplaceFacts?.bookingStatus} />
               <Field label="Username / fallback slug" value={marketplaceFacts ? `${marketplaceFacts.username ?? "no username"} / ${marketplaceFacts.fallbackSlug}` : account.username} />
               <Field label="Public media count" value={marketplaceFacts?.publicMediaCount ?? account.feedAssetCount} />
+              {account.serviceHealth ? (
+                <>
+                  <Field label="Service rows found" value={account.serviceHealth.serviceRowsFound} />
+                  <Field label="Active service rows" value={account.serviceHealth.activeServiceRows} />
+                  <Field label="Client-visible services" value={account.serviceHealth.clientVisibleServiceRows} />
+                  <Field label="Service source table" value={account.serviceHealth.serviceSourceTable} />
+                  <Field label="First service" value={account.serviceHealth.firstServiceName} />
+                  <Field label="First service price" value={account.serviceHealth.firstServicePrice} />
+                  <Field label="First service duration" value={account.serviceHealth.firstServiceDurationMin ? `${account.serviceHealth.firstServiceDurationMin} min` : undefined} />
+                  <Field label="Discovery service gate" value={account.serviceHealth.discoveryServiceGatePass ? "pass" : "fail"} />
+                  <Field label="Service blocker" value={account.serviceHealth.serviceBlocker} />
+                  <div className="sm:col-span-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={barberRepairMutation.isPending}
+                      onClick={() => void repairBarberProfile()}
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                      {barberRepairMutation.isPending ? "Repairing..." : "Repair Service Visibility"}
+                    </Button>
+                  </div>
+                </>
+              ) : null}
               {account.barberRowHealth ? (
                 <>
                   <Field label="Auth user exists" value={account.barberRowHealth.authUserExists ? "yes" : "no"} />

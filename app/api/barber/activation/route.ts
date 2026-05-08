@@ -6,6 +6,7 @@ import { normalizeWorkingHoursRows } from "@/lib/barber/domain";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import { getMarketplaceState, setMarketplaceState } from "@/lib/marketplace/state";
 import { publishBarberMarketplaceReadiness } from "@/lib/marketplace/publishing";
+import { syncOnboardingBarberServicesForUser } from "@/lib/marketplace/service-sync";
 import { markOnboardingStepComplete } from "@/lib/onboarding/service";
 import { createBarberShopJoinRequest } from "@/lib/operations/shop-team-invites";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -366,6 +367,7 @@ async function persistActivationAvailability(
     }
   });
 
+  await syncOnboardingBarberServicesForUser(supabase, user.id);
   await publishBarberMarketplaceReadiness(supabase, barberReference);
 
   return NextResponse.json({
