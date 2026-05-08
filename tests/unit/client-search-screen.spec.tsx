@@ -61,6 +61,30 @@ vi.mock("@/components/client-experience/marketplace-tracked-action-link", () => 
 
 import { ClientSearchScreen } from "@/components/client-experience/client-search-screen";
 
+const phillipResult = {
+  barberId: "barber-phillip",
+  username: "independent-barber-43b3cda2",
+  barberName: "Phillip McGee",
+  rating: 5,
+  reviewCount: 1,
+  priceRange: [55, 55],
+  priceRangeLabel: "$55",
+  nextAvailableAt: "2026-05-06T16:00:00.000Z",
+  availabilityLabel: "Today 4:00 PM",
+  distanceMiles: 0,
+  locationId: "independent-barber-43b3cda2",
+  locationLabel: "Phils chair",
+  cityLabel: "Tampa",
+  shopName: undefined,
+  specialties: ["Haircut"],
+  mostBookedService: "Haircut",
+  mostBookedServiceId: "srv-haircut",
+  retentionScore: 0,
+  activityScore: 0,
+  badges: ["verified_identity"],
+  galleryPreviewUrls: []
+};
+
 describe("client search screen", () => {
   beforeEach(() => {
     replaceMock.mockReset();
@@ -208,6 +232,107 @@ describe("client search screen", () => {
     });
   });
 
+  it("submits the typed query when Search is clicked", async () => {
+    render(<ClientSearchScreen clientId="client-jordan" routeBase="/dashboard/client/search" />);
+
+    const input = screen.getByPlaceholderText("Search barber or shop name");
+    fireEvent.change(input, { target: { value: "phillip" } });
+    expect(input).toHaveValue("phillip");
+
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+
+    await waitFor(() => {
+      expect(useMarketplaceDiscoveryMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ query: "phillip" }),
+        "client-jordan"
+      );
+      expect(replaceMock).toHaveBeenCalledWith(expect.stringContaining("q=phillip"));
+    });
+  });
+
+  it("submits the typed query when Enter submits the search form", async () => {
+    render(<ClientSearchScreen clientId="client-jordan" routeBase="/dashboard/client/search" />);
+
+    const input = screen.getByPlaceholderText("Search barber or shop name");
+    fireEvent.change(input, { target: { value: "mcgee" } });
+    fireEvent.submit(input.closest("form")!);
+
+    await waitFor(() => {
+      expect(useMarketplaceDiscoveryMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ query: "mcgee" }),
+        "client-jordan"
+      );
+      expect(replaceMock).toHaveBeenCalledWith(expect.stringContaining("q=mcgee"));
+    });
+  });
+
+  it("shows a search loading state while discovery is fetching", () => {
+    useMarketplaceDiscoveryMock.mockReturnValue({
+      data: [],
+      isLoading: false,
+      isFetching: true,
+      error: null,
+      refetch: vi.fn()
+    });
+
+    render(<ClientSearchScreen clientId="client-jordan" initialQuery="phillip" routeBase="/dashboard/client/search" />);
+
+    expect(screen.getByRole("button", { name: /Searching/i })).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByText("Searching phillip...")).toBeInTheDocument();
+  });
+
+  it("renders returned live barber results from marketplace discovery", () => {
+    useClientHomeQueryMock.mockReturnValue({
+      data: {
+        locationId: "",
+        hasResolvedLocation: true,
+        recommendedBarbers: [],
+        recommendedShops: [],
+        shops: []
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn()
+    });
+    useMarketplaceDiscoveryMock.mockReturnValue({
+      data: [phillipResult],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn()
+    });
+
+    render(<ClientSearchScreen clientId="client-jordan" routeBase="/dashboard/client/search" />);
+
+    expect(screen.getByText("Phillip McGee")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View Barber" })).toHaveAttribute("href", "/barber/independent-barber-43b3cda2");
+  });
+
+  it("shows a completed direct-search empty state when the API returns no barbers", () => {
+    useClientHomeQueryMock.mockReturnValue({
+      data: {
+        locationId: "",
+        hasResolvedLocation: true,
+        recommendedBarbers: [],
+        recommendedShops: [],
+        shops: []
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn()
+    });
+    useMarketplaceDiscoveryMock.mockReturnValue({
+      data: [],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn()
+    });
+
+    render(<ClientSearchScreen clientId="client-jordan" initialQuery="phillip" routeBase="/dashboard/client/search" />);
+
+    expect(screen.getByText("No matching barbers found.")).toBeInTheDocument();
+    expect(screen.queryByText("No live barbers yet.")).not.toBeInTheDocument();
+  });
+
   it("uses accurate live-supply empty states when no bookable barbers or shops exist", () => {
     useClientHomeQueryMock.mockReturnValue({
       data: {
@@ -307,31 +432,7 @@ describe("client search screen", () => {
       refetch: vi.fn()
     });
     useMarketplaceDiscoveryMock.mockReturnValue({
-      data: [
-        {
-          barberId: "barber-phillip",
-          username: "independent-barber-43b3cda2",
-          barberName: "Phillip McGee",
-          rating: 5,
-          reviewCount: 1,
-          priceRange: [55, 55],
-          priceRangeLabel: "$55",
-          nextAvailableAt: "2026-05-06T16:00:00.000Z",
-          availabilityLabel: "Today 4:00 PM",
-          distanceMiles: 0,
-          locationId: "independent-barber-43b3cda2",
-          locationLabel: "Phils chair",
-          cityLabel: "Tampa",
-          shopName: undefined,
-          specialties: ["Haircut"],
-          mostBookedService: "Haircut",
-          mostBookedServiceId: "srv-haircut",
-          retentionScore: 0,
-          activityScore: 0,
-          badges: ["verified_identity"],
-          galleryPreviewUrls: []
-        }
-      ],
+      data: [phillipResult],
       isLoading: false,
       error: null,
       refetch: vi.fn()

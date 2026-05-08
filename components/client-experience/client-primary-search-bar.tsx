@@ -12,6 +12,7 @@ export function ClientPrimarySearchBar({
   placeholder = "Find a barber or shop",
   quickActions,
   compact = false,
+  isSubmitting = false,
   className
 }: {
   value: string;
@@ -20,6 +21,7 @@ export function ClientPrimarySearchBar({
   placeholder?: string;
   quickActions?: Array<{ label: string; onSelect: () => void }>;
   compact?: boolean;
+  isSubmitting?: boolean;
   className?: string;
 }) {
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -39,13 +41,16 @@ export function ClientPrimarySearchBar({
         />
         <button
           type="submit"
+          disabled={isSubmitting}
+          aria-busy={isSubmitting}
           className={cn(
             "inline-flex items-center justify-center gap-2 rounded-full border border-[#c8f17f]/38 bg-[linear-gradient(180deg,#8ed62c_0%,#6fb61b_100%)] px-5 text-[14px] font-semibold text-[#050b03] ring-1 ring-[#d4ff96]/18 shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_14px_30px_rgba(111,182,27,0.24)] transition hover:-translate-y-0.5 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_18px_36px_rgba(111,182,27,0.3)]",
+            isSubmitting ? "cursor-wait opacity-80 hover:translate-y-0" : "",
             compact ? "h-12" : "h-14"
           )}
         >
-          Search
-          <ArrowRight className="h-4 w-4" />
+          {isSubmitting ? "Searching" : "Search"}
+          <ArrowRight className={cn("h-4 w-4", isSubmitting ? "animate-pulse" : "")} />
         </button>
       </form>
       {quickActions?.length ? (

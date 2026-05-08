@@ -32,6 +32,8 @@ const serviceFilters = [
   { label: "Designs", query: "hair designs" }
 ] as const;
 
+const emptyDiscoveryResults: DiscoveryResult[] = [];
+
 function RailSkeleton() {
   return (
     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -285,7 +287,7 @@ export function ClientSearchScreen({
   const homeQuery = useClientHomeQuery();
   const homePayload = homeQuery.data;
   const prefersShopDiscovery = initialType === "shops";
-  const recommendedBarbers = homePayload?.recommendedBarbers ?? [];
+  const recommendedBarbers = homePayload?.recommendedBarbers ?? emptyDiscoveryResults;
   const allShops = useMemo(
     () => ((homePayload?.recommendedShops?.length ? homePayload.recommendedShops : homePayload?.shops ?? []) as RecommendedShopView[]),
     [homePayload]
@@ -302,6 +304,9 @@ export function ClientSearchScreen({
   const [maxPrice, setMaxPrice] = useState<number | undefined>(initialMaxPrice);
   const [availability, setAvailability] = useState<AvailabilityFilter>(initialAvailability);
   const [verifiedOnly, setVerifiedOnly] = useState(initialVerifiedOnly);
+  const [submittedQuery, setSubmittedQuery] = useState(initialQuery);
+  const [lastSubmittedQuery, setLastSubmittedQuery] = useState(initialQuery.trim());
+  const [manualSearchPending, setManualSearchPending] = useState(false);
 
   useEffect(() => {
     if (!selectedLocationId && defaultLocationId) {
@@ -309,8 +314,9 @@ export function ClientSearchScreen({
     }
   }, [defaultLocationId, selectedLocationId]);
 
-  const deferredQuery = useDeferredValue(query);
-  const trimmedQuery = deferredQuery.trim();
+  const deferredSubmittedQuery = useDeferredValue(submittedQuery);
+  const trimmedQuery = deferredSubmittedQuery.trim();
+  const draftQuery = query.trim();
   const hasActiveSearchQuery = Boolean(
     trimmedQuery
     || serviceFilter
@@ -319,6 +325,7 @@ export function ClientSearchScreen({
     || availability !== "any"
     || verifiedOnly
   );
+  const hasSubmittedDirectSearch = Boolean(lastSubmittedQuery);
 
   const discoveryQuery = useMarketplaceDiscovery({
     query: trimmedQuery || undefined,
@@ -329,6 +336,14 @@ export function ClientSearchScreen({
     availability,
     maxDistanceMiles: 20
   }, clientId);
+  const discoveryBusy = Boolean(discoveryQuery.isLoading || discoveryQuery.isFetching || manualSearchPending);
+
+  useEffect(() => {
+    if (!discoveryQuery.isLoading && !discoveryQuery.isFetching) {
+      setManualSearchPending(false);
+    }
+  }, [discoveryQuery.isFetching, discoveryQuery.isLoading]);
+
   const canonicalResults = useMemo(() => discoveryQuery.data ?? [], [discoveryQuery.data]);
   const barberResults = useMemo(
     () => verifiedOnly
@@ -336,9 +351,17 @@ export function ClientSearchScreen({
       : canonicalResults,
     [canonicalResults, verifiedOnly]
   );
+  const defaultBarberResults = useMemo(() => {
+    const results = new Map<string, DiscoveryResult>();
+    for (const result of [...recommendedBarbers, ...barberResults]) {
+      results.set(result.barberId, result);
+    }
+
+    return [...results.values()];
+  }, [barberResults, recommendedBarbers]);
   const visibleBarbers = hasActiveSearchQuery
     ? barberResults
-    : (recommendedBarbers.length ? recommendedBarbers : barberResults);
+    : defaultBarberResults;
   const visibleShops = useMemo(() => {
     const normalizedQuery = trimmedQuery.toLowerCase();
     const ordered = [...allShops];
@@ -357,8 +380,14 @@ export function ClientSearchScreen({
   }, [barberResults, visibleBarbers]);
   const errorMessage = discoveryQuery.error ? getReadableActionError(discoveryQuery.error as MarketplaceApiError) : null;
   const debugEnabled = process.env.NODE_ENV !== "production";
-  const hasKnownBookableBarbers = Boolean(barberResults.length || recommendedBarbers.length);
-  const barberEmptyState = hasKnownBookableBarbers && hasActiveSearchQuery
+  const hasKnownBookableBarbers = Boolean(barberResults.length || defaultBarberResults.length);
+  const barberEmptyState = hasSubmittedDirectSearch && hasActiveSearchQuery
+    ? {
+        title: "No matching barbers found.",
+        body: "Try a different name or clear filters to search all live BVRB3R barbers.",
+        actionLabel: "Refresh Search"
+      }
+    : hasKnownBookableBarbers && hasActiveSearchQuery
     ? {
         title: "No nearby matches yet.",
         body: "Try searching by name or expanding your city.",
@@ -427,7 +456,14 @@ export function ClientSearchScreen({
   }
 
   function handleSearchSubmit() {
-    syncRoute(query, serviceFilter, selectedLocationId, minRating, maxPrice, availability, verifiedOnly);
+    const nextQuery = draftQuery;
+    setSubmittedQuery(nextQuery);
+    setLastSubmittedQuery(nextQuery);
+    setManualSearchPending(true);
+    syncRoute(nextQuery, serviceFilter, selectedLocationId, minRating, maxPrice, availability, verifiedOnly);
+    if (nextQuery === trimmedQuery) {
+      void discoveryQuery.refetch();
+    }
   }
 
   function handleServiceShortcut(nextCategory: string) {
@@ -464,7 +500,8 @@ export function ClientSearchScreen({
       subtitle="Real profiles, ratings, and next openings."
     >
       {errorMessage ? <FeedbackBanner tone="error" message={errorMessage} /> : null}
-      {discoveryQuery.isLoading && !visibleBarbers.length ? (
+      {discoveryBusy ? <FeedbackBanner tone="info" message={`Searching ${trimmedQuery || draftQuery || "marketplace"}...`} /> : null}
+      {discoveryBusy && !visibleBarbers.length ? (
         <RailSkeleton />
       ) : visibleBarbers.length ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -528,6 +565,7 @@ export function ClientSearchScreen({
         onSubmit={handleSearchSubmit}
         placeholder="Search barber or shop name"
         className="bg-[rgba(10,10,10,0.95)] backdrop-blur-xl"
+        isSubmitting={discoveryBusy}
       />
 
       {homePayload && !homePayload.hasResolvedLocation ? (
@@ -602,6 +640,8 @@ export function ClientSearchScreen({
           <summary className="cursor-pointer font-semibold text-white">Discovery debug</summary>
           <dl className="mt-4 grid gap-2 sm:grid-cols-2">
             <div><dt className="text-white/40">Discovery request succeeded</dt><dd>{discoveryQuery.error ? "no" : "yes"}</dd></div>
+            <div><dt className="text-white/40">Request status</dt><dd>{discoveryBusy ? "loading" : discoveryQuery.error ? "error" : "ready"}</dd></div>
+            <div><dt className="text-white/40">Last query submitted</dt><dd>{lastSubmittedQuery || "none"}</dd></div>
             <div><dt className="text-white/40">Barber count</dt><dd>{barberResults.length}</dd></div>
             <div><dt className="text-white/40">Shop count</dt><dd>{visibleShops.length}</dd></div>
             <div><dt className="text-white/40">Feed count</dt><dd>{marketplaceFeed.length}</dd></div>
