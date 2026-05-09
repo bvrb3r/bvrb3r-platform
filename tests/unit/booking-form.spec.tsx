@@ -248,6 +248,8 @@ describe("booking form", () => {
     expect(screen.getByRole("heading", { name: "Choose service" })).toBeInTheDocument();
     expect(screen.getByText("Booking with")).toBeInTheDocument();
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Centro Ybor Flagship").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("2172 University Square Mall, Tampa, FL").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: /Signature Precision Cut/ })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
@@ -261,6 +263,7 @@ describe("booking form", () => {
     expect(screen.getByText("Jordan Ellis")).toBeInTheDocument();
     expect(screen.getByText("8135550190")).toBeInTheDocument();
     expect(screen.queryByText("Client name")).not.toBeInTheDocument();
+    expect(screen.getAllByText("2172 University Square Mall, Tampa, FL").length).toBeGreaterThan(0);
     expect(screen.getByText(/Visa ending in 4242 will be charged/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Book Appointment" })).toBeEnabled();
   });
@@ -285,6 +288,41 @@ describe("booking form", () => {
     const summary = screen.getByText("Booking Summary").closest("div");
     expect(summary?.textContent).not.toContain("BVR Points");
     expect(summary?.textContent).not.toContain("Subtotal");
+  });
+
+  it("only shows promo errors after the client tries to apply a code", async () => {
+    const applyPromotionMock = vi.fn().mockRejectedValue(new Error("Shop not found for this promotion"));
+
+    useClientPromotionsQueryMock.mockReturnValue({
+      data: {
+        promotions: [],
+        quote: null
+      },
+      isLoading: false,
+      error: new Error("Shop not found for this promotion")
+    });
+    useApplyPromotionMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: applyPromotionMock
+    });
+
+    render(<BookingForm />);
+    await advanceToReview();
+
+    expect(screen.queryByText("Shop not found for this promotion")).not.toBeInTheDocument();
+    expect(screen.queryByText("Promo code not valid for this booking.")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    expect(screen.getByText("Enter a promo code first.")).toBeInTheDocument();
+    expect(applyPromotionMock).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByPlaceholderText("Enter promo code"), {
+      target: { value: "NOPE" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+
+    expect(await screen.findByText("Promo code not valid for this booking.")).toBeInTheDocument();
+    expect(screen.queryByText("Shop not found for this promotion")).not.toBeInTheDocument();
   });
 
   it("creates the appointment and payment through the canonical booking path", async () => {
@@ -327,6 +365,26 @@ describe("booking form", () => {
     expect(await screen.findByText("Appointment booked")).toBeInTheDocument();
     expect(screen.getByText("Confirmation appt-live-1. Visa ending in 4242 was charged for this booking.")).toBeInTheDocument();
     expect(mutatePaymentMock).not.toHaveBeenCalled();
+  });
+
+  it("does not show confirmation when the canonical pay and book path fails", async () => {
+    const mutateBookingMock = vi.fn().mockRejectedValue(new Error("Payment authorization failed"));
+
+    useCreateBookingMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: mutateBookingMock
+    });
+
+    render(<BookingForm />);
+    await advanceToReview();
+
+    fireEvent.click(screen.getByRole("button", { name: "Book Appointment" }));
+
+    await waitFor(() => {
+      expect(mutateBookingMock).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.getByText("Payment authorization failed")).toBeInTheDocument();
+    expect(screen.queryByText("Appointment booked")).not.toBeInTheDocument();
   });
 
   it("passes AI recommendation attribution through the canonical booking payload", async () => {
@@ -375,7 +433,7 @@ describe("booking form", () => {
     render(<BookingForm />);
     await advanceToReview();
 
-    expect(screen.getByText("No saved payment method is ready for this account yet. Add one in Wallet before confirming the booking.")).toBeInTheDocument();
+    expect(screen.getByText("Add a payment method before booking.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open wallet" })).toHaveAttribute("href", "/profile");
     expect(screen.getByRole("button", { name: "Book Appointment" })).toBeDisabled();
   });

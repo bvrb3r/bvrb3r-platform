@@ -590,6 +590,7 @@ export function BookingForm() {
     currentBarberResult?.cityLabel ||
     currentBarberResult?.locationLabel ||
     "Location is confirmed before you book.";
+  const showLocationDetail = Boolean(selectedLocationDetail && selectedLocationDetail !== selectedLocationName);
   const isInitialLoading = (searchQuery.isLoading && !searchQuery.data) || (barberProfileQuery.isLoading && !barberProfileQuery.data);
   const waitlistPending = waitlistMutation.isPending;
   const formError = searchQuery.error || barberProfileQuery.error || availabilityQuery.error;
@@ -597,6 +598,13 @@ export function BookingForm() {
   const offlineMessage = "You’re offline. Review your booking details now, then reconnect to confirm the chair or join the waitlist.";
 
   async function applyPromotion(selection: { promotionId?: string; promotionCode?: string }) {
+    const normalizedPromotionCode = selection.promotionCode?.trim().toUpperCase() ?? "";
+
+    if (!selection.promotionId && !normalizedPromotionCode) {
+      setPromotionFeedback({ tone: "info", message: "Enter a promo code first." });
+      return null;
+    }
+
     if (!isOnline) {
       setPromotionFeedback({ tone: "info", message: offlineMessage });
       return null;
@@ -615,22 +623,22 @@ export function BookingForm() {
         barberId: resolvedBarberId || undefined,
         appointmentTime: resolveBookableSlot(availableSlots, form.getValues("appointmentTime"))?.startsAt ?? undefined,
         promotionId: selection.promotionId,
-        promotionCode: selection.promotionCode
+        promotionCode: normalizedPromotionCode || undefined
       });
 
       setAppliedPromotion(result);
-      setPromotionCode(result.promotion.code ?? selection.promotionCode ?? "");
+      setPromotionCode(result.promotion.code ?? normalizedPromotionCode);
       setPromotionFeedback({
         tone: "success",
         message: `${result.promotion.name} is now applied to this booking quote.`
       });
 
       return result;
-    } catch (error) {
+    } catch {
       setAppliedPromotion(null);
       setPromotionFeedback({
         tone: "error",
-        message: getReadableActionError(error as BookingApiError)
+        message: "Promo code not valid for this booking."
       });
       return null;
     }
@@ -662,7 +670,7 @@ export function BookingForm() {
     if (!selectedPaymentMethod) {
       setStatusUpdate({
         tone: "error",
-        message: "Add a saved payment method in Profile before confirming this booking so we can secure the appointment payment."
+        message: "Add a payment method before booking."
       });
       return;
     }
@@ -752,9 +760,6 @@ export function BookingForm() {
 
   const selectedSlot = resolveBookableSlot(availableSlots, watchAppointmentTime) ?? undefined;
   const selectedSlotLabel = selectedSlot ? dateLabel(selectedSlot.startsAt) : "Choose a time";
-  const selectedLocationLabel = selectedLocationDetail && selectedLocationDetail !== selectedLocationName
-    ? `${selectedLocationName}, ${selectedLocationDetail}`
-    : selectedLocationName;
   const activeStepIndex = getStepIndex(bookingStep);
   const serviceReady = Boolean(currentService);
   const timeReady = Boolean(selectedSlot);
@@ -804,7 +809,10 @@ export function BookingForm() {
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-[22px] border border-white/8 bg-black/20 px-4 py-3">
               <span>Location</span>
-              <span className="font-medium text-white">{selectedLocationLabel}</span>
+              <span className="text-right font-medium text-white">
+                {selectedLocationName}
+                {showLocationDetail ? <span className="mt-1 block text-white/58">{selectedLocationDetail}</span> : null}
+              </span>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-[22px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 px-4 py-3">
               <span>Total</span>
@@ -1093,7 +1101,10 @@ export function BookingForm() {
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-2 rounded-[22px] border border-white/8 bg-black/20 px-4 py-3">
                   <span className="inline-flex items-center gap-2"><MapPin className="h-4 w-4 text-[#d7ffab]" />Location</span>
-                  <span className="font-medium text-white">{selectedLocationLabel}</span>
+                  <span className="text-right font-medium text-white">
+                    {selectedLocationName}
+                    {showLocationDetail ? <span className="mt-1 block text-white/58">{selectedLocationDetail}</span> : null}
+                  </span>
                 </div>
               </div>
 
@@ -1102,7 +1113,6 @@ export function BookingForm() {
                   <p className="surface-label">Offers & promo codes</p>
                   {appliedPromotion ? <Badge>Applied</Badge> : null}
                 </div>
-                {promotionsQuery.error ? <div className="mt-4"><FeedbackBanner tone="error" message={getReadableActionError(promotionsQuery.error as BookingApiError)} /></div> : null}
                 {promotionFeedback ? <div className="mt-4"><FeedbackBanner tone={promotionFeedback.tone} message={promotionFeedback.message} /></div> : null}
                 <div className="mt-4 flex gap-2">
                   <Input
@@ -1114,7 +1124,7 @@ export function BookingForm() {
                     type="button"
                     variant="secondary"
                     className="h-11 shrink-0 px-4"
-                    disabled={applyPromotionMutation.isPending || !promotionCode.trim() || !resolvedLocationId || !resolvedServiceId || !isOnline}
+                    disabled={applyPromotionMutation.isPending || !resolvedLocationId || !resolvedServiceId || !isOnline}
                     onClick={() => void applyPromotion({ promotionCode: promotionCode.trim().toUpperCase() })}
                   >
                     {applyPromotionMutation.isPending ? "Applying..." : "Apply"}
@@ -1276,7 +1286,7 @@ export function BookingForm() {
                 ) : (
                   <div className="mt-4 rounded-[18px] border border-dashed border-white/10 bg-black/18 p-4">
                     <p className="text-sm leading-7 text-white/62">
-                      No saved payment method is ready for this account yet. Add one in Wallet before confirming the booking.
+                      Add a payment method before booking.
                     </p>
                     <Link
                       href="/profile"
@@ -1358,7 +1368,10 @@ export function BookingForm() {
           </div>
           <div className="flex items-center justify-between gap-3 rounded-[20px] border border-white/8 bg-black/20 px-4 py-3">
             <span>Location</span>
-            <span className="text-right text-white">{selectedLocationName}</span>
+            <span className="text-right text-white">
+              {selectedLocationName}
+              {showLocationDetail ? <span className="mt-1 block text-white/58">{selectedLocationDetail}</span> : null}
+            </span>
           </div>
           <div className="flex items-center justify-between gap-3 rounded-[20px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 px-4 py-3">
             <span>Total</span>
