@@ -51,13 +51,13 @@ export function PublicShopProfile({
               <span className="surface-label text-[#d7ffab]">Verified shop</span>
               <span className="status-pill text-[#d7ffab]">
                 <ShieldCheck className="mr-1 h-3.5 w-3.5" />
-                Approved marketplace supply
+                Verified
               </span>
             </div>
             <h1 className="mt-3 text-4xl font-black tracking-[-0.055em] text-white sm:text-6xl" data-display="true">
               {shop.name}
             </h1>
-            <p className="mt-3 max-w-2xl text-sm leading-7 text-white/66">{shop.brandLine ?? "Book with approved barbers at this shop."}</p>
+            <p className="mt-3 max-w-2xl text-sm leading-7 text-white/66">{shop.brandLine ?? "Pick a barber and book."}</p>
             <div className="mt-5 flex flex-wrap gap-3 text-sm text-white/66">
               <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-3 py-2">
                 <MapPin className="h-4 w-4 text-[#baff69]" />
@@ -82,7 +82,7 @@ export function PublicShopProfile({
               href="/dashboard/client/search?type=shops"
               className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/10 bg-black/24 px-5 text-sm font-extrabold text-white transition hover:border-[#7CFF00]/35 hover:text-[#d7ffab]"
             >
-              Back to shops
+              View barbers
             </Link>
           </div>
         </div>
@@ -92,13 +92,13 @@ export function PublicShopProfile({
         <Card className="rounded-[36px] p-6 sm:p-8">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="surface-label">Approved barbers</p>
+              <p className="surface-label">Barbers</p>
               <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-white">Choose a chair</h2>
             </div>
             <UsersRound className="h-5 w-5 text-[#baff69]" />
           </div>
           <div className="mt-5 grid gap-3 md:grid-cols-2">
-            {barbers.map((profile) => (
+            {barbers.length ? barbers.map((profile) => (
               <div key={profile.barber.id} className="rounded-[28px] border border-white/8 bg-black/20 p-4">
                 <div className="flex items-start gap-4">
                   <Avatar
@@ -150,7 +150,11 @@ export function PublicShopProfile({
                   </MarketplaceTrackedActionLink>
                 </div>
               </div>
-            ))}
+            )) : (
+              <div className="rounded-[24px] border border-dashed border-white/10 bg-black/20 p-5 text-sm text-white/58">
+                Bookable barbers will appear here when the roster is ready.
+              </div>
+            )}
           </div>
         </Card>
 
@@ -158,8 +162,8 @@ export function PublicShopProfile({
           <Card className="rounded-[36px] p-6 sm:p-8">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="surface-label">Shop services</p>
-                <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-white">Shared menu</h2>
+                <p className="surface-label">Services</p>
+                <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-white">Menu</h2>
               </div>
               <Scissors className="h-5 w-5 text-[#baff69]" />
             </div>
@@ -176,7 +180,7 @@ export function PublicShopProfile({
                 </div>
               )) : (
                 <div className="rounded-[22px] border border-dashed border-white/10 bg-black/20 p-4 text-sm leading-6 text-white/58">
-                  This shop uses barber-specific service menus.
+                  Choose a barber to see their service menu.
                 </div>
               )}
             </div>
@@ -185,7 +189,7 @@ export function PublicShopProfile({
           <Card className="rounded-[36px] p-6 sm:p-8">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="surface-label">Shop work</p>
+                <p className="surface-label">Portfolio</p>
                 <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-white">Gallery</h2>
               </div>
               <CalendarDays className="h-5 w-5 text-[#baff69]" />
@@ -201,7 +205,7 @@ export function PublicShopProfile({
               </div>
             ) : (
               <p className="mt-4 rounded-[22px] border border-dashed border-white/10 bg-black/20 p-4 text-sm leading-6 text-white/58">
-                Gallery images will appear after the shop adds real profile media.
+                Public shop work will appear here when it is added.
               </p>
             )}
           </Card>

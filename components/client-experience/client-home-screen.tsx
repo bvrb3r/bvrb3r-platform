@@ -122,6 +122,7 @@ function describeUpcomingPayment(input: {
 }
 
 export function ClientHomeScreen({
+  clientId,
   displayName
 }: {
   clientId?: string;
@@ -303,7 +304,7 @@ export function ClientHomeScreen({
         eyebrow="Barbers"
         title="Recommended Barbers"
         subtitle={recommendedBarbers.length
-          ? "Book again or discover someone new."
+          ? "Book fast from live barber profiles."
           : "Explore top barbers on BVRB3R."}
         action={recommendedBarbers.length ? (
           <ClientActionLink href={barberSearchHref} size="md" variant="secondary">
@@ -315,14 +316,14 @@ export function ClientHomeScreen({
         {recommendedBarbers.length ? (
           <div className="flex gap-4 overflow-x-auto pb-2 hide-scrollbar">
             {recommendedBarbers.map((result) => (
-              <ClientDiscoveryCard key={result.barberId} result={result} />
+              <ClientDiscoveryCard key={result.barberId} result={result} canFavorite={Boolean(clientId)} />
             ))}
           </div>
         ) : (
           <div className="rounded-[30px] border border-dashed border-white/10 bg-[linear-gradient(180deg,rgba(19,19,19,0.96),rgba(8,8,8,0.98))] p-6 sm:p-7">
             <h3 className="text-2xl font-semibold text-white" data-display="true">Explore top barbers on BVRB3R.</h3>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">
-              Verified, active, bookable barbers will surface here automatically as your market grows.
+              Live barbers appear here as soon as they are ready to book.
             </p>
             <div className="mt-5">
               <ClientActionLink href={barberSearchHref} size="lg" variant="secondary">
@@ -353,8 +354,9 @@ export function ClientHomeScreen({
                 key={shop.id}
                 location={{
                   ...shop,
-                  viewHref: `/dashboard/client/search?type=shops&q=${encodeURIComponent(shop.name)}&locationId=${encodeURIComponent(shop.id)}` as Route
+                  viewHref: `/shop/${encodeURIComponent(shop.id)}` as Route
                 }}
+                canFavorite={Boolean(clientId)}
               />
             ))}
           </div>
@@ -362,7 +364,7 @@ export function ClientHomeScreen({
           <div className="rounded-[30px] border border-dashed border-white/10 bg-[linear-gradient(180deg,rgba(19,19,19,0.96),rgba(8,8,8,0.98))] p-6 sm:p-7">
             <h3 className="text-2xl font-semibold text-white" data-display="true">Explore barber shops on BVRB3R.</h3>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">
-              Verified shops will surface here automatically as active booking supply expands.
+              Live shops appear here as soon as their roster is ready.
             </p>
             <div className="mt-5">
               <ClientActionLink href={shopSearchHref} size="lg" variant="secondary">

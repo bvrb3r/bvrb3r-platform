@@ -1,8 +1,11 @@
+"use client";
+
 import type { Route } from "next";
 import Link from "next/link";
-import { ArrowRight, Clock3, MapPin, ShieldCheck, Sparkles, Star, TrendingUp, Users } from "lucide-react";
+import { ArrowRight, Clock3, Heart, MapPin, Scissors, ShieldCheck, Star } from "lucide-react";
 import { ClientActionLink } from "@/components/client-experience/client-action-link";
 import { MarketplaceTrackedActionLink } from "@/components/client-experience/marketplace-tracked-action-link";
+import { useSaveFavoriteBarberMutation } from "@/lib/booking/client";
 import { buildMarketplaceBookingHref } from "@/lib/marketplace/links";
 import { cn } from "@/lib/utils";
 import type { DiscoveryResult } from "@/types/domain";
@@ -28,47 +31,40 @@ function getAccent(username: string) {
   return accents[hash % accents.length];
 }
 
-function getRetentionLabel(score?: number) {
-  if (!score) {
-    return "Building repeat traffic";
+function getVerifiedLabel(result: DiscoveryResult) {
+  if (result.badges.some((badge) => badge.startsWith("verified_"))) {
+    return "Verified";
   }
 
-  if (score >= 90) {
-    return "High rebooking pull";
-  }
-
-  if (score >= 55) {
-    return "Strong repeat demand";
-  }
-
-  return "Growing repeat demand";
+  return result.trustLabel ?? null;
 }
 
-function getActivityLabel(score?: number) {
-  if (!score) {
-    return "Fresh profile activity";
-  }
+function getLocationLabel(result: DiscoveryResult) {
+  return result.cityLabel ?? result.locationLabel ?? `${result.distanceMiles.toFixed(1)} mi away`;
+}
 
-  if (score >= 120) {
-    return "High marketplace momentum";
-  }
+function getServiceLine(result: DiscoveryResult) {
+  const services = [
+    result.mostBookedService,
+    ...result.specialties
+  ].filter((value, index, values): value is string => Boolean(value?.trim()) && values.indexOf(value) === index);
 
-  if (score >= 65) {
-    return "Strong booking activity";
-  }
-
-  return "Active in discovery";
+  return services.slice(0, 2).join(" + ") || "Bookable services";
 }
 
 export function ClientDiscoveryCard({
   result,
-  layout = "stacked"
+  layout = "rail",
+  canFavorite = false
 }: {
   result: DiscoveryResult;
-  layout?: "stacked" | "list";
+  layout?: "rail" | "grid" | "stacked" | "list";
+  canFavorite?: boolean;
 }) {
   const [start, end] = getAccent(result.username);
   const initials = getInitials(result.barberName);
+  const favoriteMutation = useSaveFavoriteBarberMutation();
+  const saved = favoriteMutation.isSuccess;
   const bookHref: Route = (result.bookingHref as Route | undefined) ??
     buildMarketplaceBookingHref({
       barberId: result.barberId,
@@ -79,163 +75,131 @@ export function ClientDiscoveryCard({
       query: result.mostBookedService ?? undefined
     });
   const profileHref = `/barber/${result.username}` as Route;
-  const titleBadge = result.rankingLabel ?? result.trustLabel ?? result.featuredLabel ?? result.cityLabel ?? "Trusted nearby";
-  const descriptor = result.specialties[0] ?? result.mostBookedService ?? "Local favorite";
   const heroImage = result.galleryPreviewUrls?.[0] ?? result.profilePhotoUrl;
-  const galleryPreview = (result.galleryPreviewUrls ?? []).slice(heroImage === result.galleryPreviewUrls?.[0] ? 1 : 0, 3);
+  const ratingLabel = result.reviewCount > 0 ? result.rating.toFixed(1) : "New";
+  const reviewLabel = result.reviewCount > 0
+    ? `${result.reviewCount} review${result.reviewCount === 1 ? "" : "s"}`
+    : "New barber";
+  const verifiedLabel = getVerifiedLabel(result);
+  const priceLabel = result.priceRangeLabel ?? `$${result.priceRange[0]} - $${result.priceRange[1]}`;
+  const isRail = layout === "rail" || layout === "stacked";
+
+  async function handleFavorite() {
+    if (!canFavorite) {
+      return;
+    }
+
+    await favoriteMutation.mutateAsync({ barberReference: result.barberId });
+  }
 
   return (
     <article
       className={cn(
-        "overflow-hidden rounded-[32px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(8,8,8,0.99))] shadow-[0_24px_46px_rgba(0,0,0,0.22)]",
-        layout === "stacked" ? "w-[18.5rem] shrink-0" : "w-full"
+        "overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(7,7,7,0.99))] shadow-[0_18px_36px_rgba(0,0,0,0.22)]",
+        isRail ? "w-[16.25rem] shrink-0 sm:w-[17rem]" : "w-full"
       )}
+      data-testid="compact-barber-card"
     >
-      <div className={cn(layout === "stacked" ? "" : "md:grid md:grid-cols-[12.5rem_minmax(0,1fr)]")}>
-        <div className={cn("relative overflow-hidden", layout === "stacked" ? "h-48" : "h-52 md:h-full")}>
-          {heroImage ? (
+      <div className="relative aspect-[4/3] overflow-hidden">
+        {heroImage ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={heroImage}
+            alt={`${result.barberName} preview`}
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        ) : (
+          <div
+            className="absolute inset-0"
+            style={{ background: `linear-gradient(145deg, ${start}, ${end})` }}
+          />
+        )}
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.06),rgba(0,0,0,0.68))]" />
+        <span className="absolute left-3 top-3 inline-flex max-w-[72%] items-center gap-1.5 rounded-full border border-white/10 bg-black/45 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-white/90">
+          <Clock3 className="h-3.5 w-3.5 text-[#d7ffab]" />
+          <span className="truncate">{result.availabilityLabel ?? "Book appointment"}</span>
+        </span>
+        {canFavorite ? (
+          <button
+            type="button"
+            aria-label={`Favorite ${result.barberName}`}
+            className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-black/48 text-white transition hover:border-[#d7ffab]/40 hover:text-[#d7ffab] disabled:opacity-60"
+            disabled={favoriteMutation.isPending}
+            onClick={() => void handleFavorite()}
+          >
+            <Heart className={cn("h-4 w-4", saved ? "fill-[#d7ffab] text-[#d7ffab]" : "")} />
+          </button>
+        ) : null}
+        <div className="absolute bottom-3 left-3 flex h-12 w-12 items-center justify-center overflow-hidden rounded-[16px] border border-white/10 bg-black/30 text-base font-semibold text-white shadow-[0_12px_26px_rgba(0,0,0,0.24)]">
+          {result.profilePhotoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={heroImage}
-              alt={`${result.barberName} discovery preview`}
-              className="absolute inset-0 h-full w-full object-cover"
-            />
+            <img src={result.profilePhotoUrl} alt={result.barberName} className="h-full w-full object-cover" />
           ) : (
-            <div
-              className="absolute inset-0"
-              style={{ background: `linear-gradient(145deg, ${start}, ${end})` }}
-            />
+            initials
           )}
-          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.12),rgba(0,0,0,0.74))]" />
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.16),transparent_55%)]" />
-          <div className="absolute left-4 top-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/35 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/88">
-            <ShieldCheck className="h-3.5 w-3.5" />
-            {titleBadge}
-          </div>
-          <div className="absolute right-4 top-4 inline-flex items-center gap-1 rounded-full border border-white/10 bg-black/35 px-3 py-1.5 text-[11px] font-semibold text-white/92">
-            <Star className="h-3.5 w-3.5 fill-current" />
-            {result.rating.toFixed(1)}
-          </div>
-          <div className="absolute bottom-5 left-4 flex h-16 w-16 items-center justify-center overflow-hidden rounded-[22px] border border-white/10 bg-black/24 text-2xl font-semibold text-white/92 shadow-[0_18px_34px_rgba(0,0,0,0.24)]">
-            {result.profilePhotoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={result.profilePhotoUrl}
-                alt={result.barberName}
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              initials
-            )}
-          </div>
-          <div className="absolute bottom-5 right-4 flex items-end gap-2">
-            {galleryPreview.length ? galleryPreview.map((imageUrl, index) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={`${result.barberId}-gallery-${index}`}
-                src={imageUrl}
-                alt={`${result.barberName} gallery ${index + 1}`}
-                className="h-14 w-14 rounded-[18px] border border-white/10 object-cover shadow-[0_12px_28px_rgba(0,0,0,0.22)]"
-              />
-            )) : null}
-            <div className="rounded-[18px] border border-white/10 bg-black/35 px-3 py-2 text-right text-[11px] uppercase tracking-[0.16em] text-white/72">
-              <p>Known for</p>
-              <p className="mt-1 text-sm font-semibold normal-case tracking-normal text-white">{descriptor}</p>
+        </div>
+      </div>
+
+      <div className="p-3.5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <Link href={profileHref} className="line-clamp-1 text-lg font-semibold text-white transition hover:text-[#d7ffab]">
+              {result.barberName}
+            </Link>
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-white/58">
+              {verifiedLabel ? (
+                <span className="inline-flex items-center gap-1 text-[#d7ffab]">
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  {verifiedLabel}
+                </span>
+              ) : null}
+              <span className="inline-flex items-center gap-1">
+                <Star className="h-3.5 w-3.5 fill-current text-[#d7ffab]" />
+                {ratingLabel} <span className="text-white/40">{reviewLabel}</span>
+              </span>
             </div>
           </div>
         </div>
 
-        <div className="p-4 sm:p-5">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <Link href={profileHref} className="block line-clamp-2-safe text-xl font-semibold text-white transition hover:text-[#d7ffab]">
-                {result.barberName}
-              </Link>
-              <p className="mt-1 line-clamp-2-safe text-sm text-white/58">{result.shopName ?? "Independent barber"}</p>
-            </div>
-            <div className="rounded-[18px] border border-white/8 bg-black/22 px-3 py-2 text-right shadow-[0_12px_26px_rgba(0,0,0,0.18)]">
-              <p className="text-[10px] uppercase tracking-[0.18em] text-white/46">Price range</p>
-              <p className="mt-1 text-sm font-semibold text-white">{result.priceRangeLabel ?? `$${result.priceRange[0]} - $${result.priceRange[1]}`}</p>
-            </div>
-          </div>
+        <div className="mt-3 grid gap-2 text-sm text-white/68">
+          <span className="inline-flex min-w-0 items-center gap-1.5">
+            <MapPin className="h-4 w-4 shrink-0 text-[#baff69]" />
+            <span className="truncate">{getLocationLabel(result)}</span>
+          </span>
+          <span className="inline-flex min-w-0 items-center gap-1.5">
+            <Scissors className="h-4 w-4 shrink-0 text-[#d7ffab]" />
+            <span className="truncate">{getServiceLine(result)}</span>
+          </span>
+        </div>
 
-          <div className="mt-4 flex flex-wrap gap-2 text-sm text-white/72">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-white/8 bg-black/18 px-3 py-2">
-              <MapPin className="h-4 w-4 text-[#baff69]" />
-              {result.locationLabel ?? `${result.distanceMiles.toFixed(1)} mi away`}
-            </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-white/8 bg-black/18 px-3 py-2">
-              <Clock3 className="h-4 w-4 text-[#d7ffab]" />
-              {result.availabilityLabel ?? "Next available"}
-            </span>
-          </div>
+        <div className="mt-3 flex items-center justify-between gap-3">
+          <span className="text-sm font-semibold text-white">{priceLabel}</span>
+          <span className="text-xs text-white/48">{result.shopName ?? "Independent"}</span>
+        </div>
 
-          <div className="mt-4 rounded-[22px] border border-white/8 bg-black/18 p-4">
-            <p className="text-[10px] uppercase tracking-[0.18em] text-white/44">Why clients book here</p>
-              <p className="mt-3 line-clamp-3-safe text-sm leading-6 text-white/74">
-                {result.reviewCount} reviews, {result.rating.toFixed(1)} stars, and {getRetentionLabel(result.retentionScore).toLowerCase()} backed by {getActivityLabel(result.activityScore).toLowerCase()}.
-              </p>
-            <div className="mt-4 grid gap-2 sm:grid-cols-3">
-              <div className="rounded-[18px] border border-white/8 bg-black/18 px-3 py-3 text-xs text-white/72">
-                <div className="inline-flex items-center gap-2 text-white/92">
-                  <Users className="h-3.5 w-3.5 text-[#baff69]" />
-                  {result.reviewCount} reviews
-                </div>
-              </div>
-              <div className="rounded-[18px] border border-white/8 bg-black/18 px-3 py-3 text-xs text-white/72">
-                <div className="inline-flex items-center gap-2 text-white/92">
-                  <Sparkles className="h-3.5 w-3.5 text-[#d7ffab]" />
-                  {getRetentionLabel(result.retentionScore)}
-                </div>
-              </div>
-              <div className="rounded-[18px] border border-white/8 bg-black/18 px-3 py-3 text-xs text-white/72">
-                <div className="inline-flex items-center gap-2 text-white/92">
-                  <TrendingUp className="h-3.5 w-3.5 text-[#baff69]" />
-                  {getActivityLabel(result.activityScore)}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-4 flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.14em] text-white/56">
-            {result.specialties.slice(0, 2).map((specialty) => (
-              <span key={specialty} className="rounded-full border border-white/10 bg-black/18 px-3 py-2 text-white/78">
-                {specialty}
-              </span>
-            ))}
-            {result.reputationTier ? (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-[#d8ff9f]/18 bg-[#d8ff9f]/10 px-3 py-2 text-[#e8ffc2]">
-                <Sparkles className="h-3.5 w-3.5" />
-                {result.reputationTier}
-              </span>
-            ) : null}
-          </div>
-
-          <div className="mt-5 flex flex-wrap gap-3">
-            <MarketplaceTrackedActionLink
-              href={bookHref}
-              analytics={{
-                eventType: "booking_cta_clicked",
-                barberId: result.barberId,
-                username: result.username,
-                locationId: result.locationId,
-                sourceKind: "discovery",
-                sourceReference: layout,
-                metadata: {
-                  rating: result.rating,
-                  reviewCount: result.reviewCount,
-                  retentionScore: result.retentionScore ?? 0,
-                  activityScore: result.activityScore ?? 0
-                }
-              }}
-            >
-              Book now
-            </MarketplaceTrackedActionLink>
-            <ClientActionLink href={profileHref} variant="secondary">
-              View profile
-              <ArrowRight className="h-4 w-4 text-[#baff69]" />
-            </ClientActionLink>
-          </div>
+        <div className="mt-4 grid grid-cols-[1fr_auto] gap-2">
+          <MarketplaceTrackedActionLink
+            href={bookHref}
+            className="min-h-10 px-4 text-sm"
+            analytics={{
+              eventType: "booking_cta_clicked",
+              barberId: result.barberId,
+              username: result.username,
+              locationId: result.locationId,
+              sourceKind: "discovery",
+              sourceReference: isRail ? "home_recommended_barbers" : "search_barbers_near_you",
+              metadata: {
+                rating: result.rating,
+                reviewCount: result.reviewCount
+              }
+            }}
+          >
+            Book
+          </MarketplaceTrackedActionLink>
+          <ClientActionLink href={profileHref} variant="outline" className="min-h-10 px-3 text-xs">
+            View Profile
+            <ArrowRight className="h-3.5 w-3.5 text-[#baff69]" />
+          </ClientActionLink>
         </div>
       </div>
     </article>

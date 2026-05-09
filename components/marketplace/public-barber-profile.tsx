@@ -34,10 +34,17 @@ function getInitials(name: string) {
 }
 
 function safeDateLabel(iso?: string | null) {
-  if (!iso) return "Set availability";
+  if (!iso) return "Book appointment";
   const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "Set availability";
+  if (Number.isNaN(date.getTime())) return "Book appointment";
   return dateLabel(iso);
+}
+
+function serviceBookingHref(baseHref: string | null | undefined, serviceId: string) {
+  const [path, query = ""] = (baseHref ?? "/booking/new").split("?");
+  const params = new URLSearchParams(query);
+  params.set("serviceId", serviceId);
+  return `${path || "/booking/new"}?${params.toString()}` as Route;
 }
 
 function getPolicyNotes(profile: PublicBarberProfileView) {
@@ -95,7 +102,7 @@ export function PublicBarberProfile({
             )}
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <p className="surface-label text-[#d7ffab]">Barber profile</p>
+                <p className="surface-label text-[#d7ffab]">@{profile.profile.username}</p>
                 {verificationBadges.map((badge) => (
                   <span key={badge} className="status-pill text-[#d7ffab]">{badge}</span>
                 ))}
@@ -111,7 +118,7 @@ export function PublicBarberProfile({
               </div>
               <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-                  <p className="surface-label">Review score</p>
+                  <p className="surface-label">Rating</p>
                   <p className="mt-3 text-2xl font-semibold">{reviewScore.toFixed(1)}</p>
                 </div>
                 <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
@@ -119,11 +126,11 @@ export function PublicBarberProfile({
                   <p className="mt-3 text-2xl font-semibold">{reviewCount}</p>
                 </div>
                 <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-                  <p className="surface-label">Starting price</p>
+                  <p className="surface-label">From</p>
                   <p className="mt-3 text-2xl font-semibold">{currency(profile.priceRange[0])}</p>
                 </div>
                 <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-                  <p className="surface-label">Next available</p>
+                  <p className="surface-label">Availability</p>
                   <p className="mt-3 text-lg font-semibold">{safeDateLabel(profile.nextAvailableAt)}</p>
                 </div>
               </div>
@@ -133,11 +140,11 @@ export function PublicBarberProfile({
           <div className="mt-6 rounded-[28px] border border-white/8 bg-black/20 p-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="max-w-2xl">
-                <p className="surface-label">Book with confidence</p>
+                <p className="surface-label">Ready to book</p>
                 <div className="mt-3 space-y-2 text-sm leading-7 text-white/68">
                   <p className="inline-flex items-center gap-2"><MapPin className="h-4 w-4 text-[#baff69]" />{serviceLocations}</p>
                   <p className="inline-flex items-center gap-2"><CalendarDays className="h-4 w-4 text-[#d7ffab]" />Next opening {safeDateLabel(profile.nextAvailableAt)}</p>
-                  <p className="inline-flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-[#d7ffab]" />Only real approved marketplace supply appears here.</p>
+                  <p className="inline-flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-[#d7ffab]" />Verified barber</p>
                 </div>
               </div>
               <div className="grid w-full gap-3 sm:w-auto">
@@ -157,10 +164,10 @@ export function PublicBarberProfile({
                     }
                   }}
                 >
-                  Book this barber
+                  Book
                 </MarketplaceTrackedActionLink>
                 <Link href={(profile.bookingCtaHref ?? `/booking/new?barberId=${profile.barber.id}&locationId=${profile.shopLocations[0]?.id ?? ""}`) as Route} className="inline-flex h-12 items-center justify-center rounded-full border border-white/10 bg-black/25 px-5 text-[11px] font-semibold uppercase tracking-[0.22em] text-white transition hover:border-[#7CFF00]/24 hover:text-[#d7ffab]">
-                  View booking flow
+                  Choose service
                 </Link>
               </div>
             </div>
@@ -179,8 +186,8 @@ export function PublicBarberProfile({
         <Card id="barber-profile-reviews" className="rounded-[36px] scroll-mt-6 p-6 sm:p-8">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="surface-label">Service menu</p>
-              <p className="mt-2 text-sm text-white/58">Pricing, duration, and booking rules all come from the shared service system.</p>
+              <p className="surface-label">Services</p>
+              <p className="mt-2 text-sm text-white/58">Choose a service to start booking.</p>
             </div>
             <Clock3 className="h-5 w-5 text-[#baff69]" />
           </div>
@@ -203,10 +210,29 @@ export function PublicBarberProfile({
                     {item.service.fullPrepay ? "Prepay required" : "Card-on-file supported"}
                   </div>
                 </div>
+                <div className="mt-4">
+                  <MarketplaceTrackedActionLink
+                    href={serviceBookingHref(profile.bookingCtaHref, item.service.id)}
+                    className="h-11 px-5 text-sm"
+                    analytics={{
+                      eventType: "booking_cta_clicked",
+                      barberId: profile.barber.id,
+                      username: profile.profile.username,
+                      locationId: profile.shopLocations[0]?.id,
+                      sourceKind: "public_profile",
+                      sourceReference: "service_card",
+                      metadata: {
+                        serviceId: item.service.id
+                      }
+                    }}
+                  >
+                    Book
+                  </MarketplaceTrackedActionLink>
+                </div>
               </div>
             )) : (
               <div className="empty-state-panel rounded-[24px] p-5 text-sm text-white/55">
-                No services are live on this barber profile yet.
+                Services are not available yet.
               </div>
             )}
           </div>
@@ -215,7 +241,7 @@ export function PublicBarberProfile({
             <div className="mt-5 rounded-[28px] border border-white/8 bg-black/20 p-5">
               <div className="flex items-center gap-2 text-[#d7ffab]">
                 <CreditCard className="h-4 w-4" />
-                <p className="surface-label">Booking policies</p>
+                <p className="surface-label">Payment policy</p>
               </div>
               <div className="mt-4 space-y-3 text-sm leading-7 text-white/68">
                 {policyNotes.map((note) => (
@@ -233,7 +259,7 @@ export function PublicBarberProfile({
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="surface-label">Portfolio</p>
-                <p className="mt-2 text-sm text-white/58">Recent work from the real barber profile and shop gallery.</p>
+                <p className="mt-2 text-sm text-white/58">Public haircut work.</p>
               </div>
               <span className="status-pill text-white/72">{profile.portfolio.length} images</span>
             </div>
@@ -248,7 +274,7 @@ export function PublicBarberProfile({
                       className="h-40 w-full rounded-[20px] border border-white/8 object-cover"
                     />
                   ) : null}
-                  <p className="mt-4 text-sm leading-7 text-white/68">{asset.caption || "Recent work from this barber."}</p>
+                  <p className="mt-4 text-sm leading-7 text-white/68">{asset.caption || "Fresh work from this barber."}</p>
                 </div>
               ))}
             </div>
@@ -256,9 +282,9 @@ export function PublicBarberProfile({
         ) : (
           <Card className="rounded-[36px] p-6 sm:p-8">
             <p className="surface-label">Portfolio</p>
-            <p className="mt-3 text-lg font-semibold text-white">No portfolio images yet.</p>
+            <p className="mt-3 text-lg font-semibold text-white">Portfolio coming soon.</p>
             <p className="mt-3 text-sm leading-7 text-white/62">
-              This barber profile is live, but gallery images have not been added yet.
+              Public haircut images will appear here when they are added.
             </p>
           </Card>
         )}
@@ -266,8 +292,8 @@ export function PublicBarberProfile({
         <Card className="rounded-[36px] p-6 sm:p-8">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="surface-label">Review summary</p>
-              <p className="mt-2 text-sm text-white/58">Real review history only. No placeholder testimonials.</p>
+              <p className="surface-label">Reviews</p>
+              <p className="mt-2 text-sm text-white/58">{profile.reviews.length ? "Client feedback" : "Reviews building"}</p>
             </div>
             <div className="inline-flex items-center gap-2 text-[#d7ffab]">
               <Star className="h-4 w-4 fill-current" />
@@ -291,7 +317,7 @@ export function PublicBarberProfile({
             </div>
           ) : (
             <div className="mt-4 rounded-[24px] border border-dashed border-white/10 bg-black/18 p-5 text-sm leading-7 text-white/58">
-              Reviews will appear here after completed appointments generate real client feedback.
+              Reviews building.
             </div>
           )}
           <div className="mt-5">
@@ -311,7 +337,7 @@ export function PublicBarberProfile({
                 }
               }}
             >
-              Book with {profile.barber.name.split(" ")[0]}
+              Book
             </MarketplaceTrackedActionLink>
           </div>
         </Card>

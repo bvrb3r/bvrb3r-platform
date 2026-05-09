@@ -101,7 +101,7 @@ function getSourceLabel(sourceKind?: MarketplaceSourceKind) {
     case "haircut_now":
       return "Instant match booking";
     case "client_dashboard":
-      return "Client dashboard booking";
+      return "From Home";
     default:
       return "Direct booking";
   }
@@ -479,7 +479,7 @@ export function BookingForm() {
   }, [watchAddOnId, watchAppointmentTime, watchBarberId, watchClientName, watchClientPhone, watchLocationId, watchServiceId]);
 
   const currentShop = shops.find((shop) => shop.id === watchLocationId) ?? shops[0];
-  const runtimeLabel = searchQuery.isLoading || barberProfileQuery.isLoading ? "Loading live booking data" : "Persisted booking mode";
+  const runtimeLabel = searchQuery.isLoading || barberProfileQuery.isLoading ? "Loading booking options" : "Ready to book";
   const isInitialLoading = (searchQuery.isLoading && !searchQuery.data) || (barberProfileQuery.isLoading && !barberProfileQuery.data);
   const waitlistPending = waitlistMutation.isPending;
   const formError = searchQuery.error || barberProfileQuery.error || availabilityQuery.error;
@@ -595,7 +595,7 @@ export function BookingForm() {
       setStatusUpdate({
         tone: "success",
         message: sourceKind
-          ? "Marketplace booking confirmed and payment secured. The appointment, canonical payment record, status history, and platform events are now live."
+          ? "Booking confirmed and payment secured."
           : "Appointment confirmed and payment secured. The booking is now live across client, barber, and shop operations."
       });
     } catch (error) {
@@ -646,16 +646,15 @@ export function BookingForm() {
             <Badge>Book with BVRB3R</Badge>
             {sourceKind ? <Badge>{getSourceLabel(sourceKind)}</Badge> : null}
           </div>
-          <h2 className="mt-5 text-balance text-3xl font-semibold sm:text-5xl" data-display="true">Reserve your chair in minutes.</h2>
+          <h2 className="mt-5 text-balance text-3xl font-semibold sm:text-5xl" data-display="true">Book your appointment.</h2>
           <p className="mt-4 max-w-2xl text-base leading-7 text-white/68">
-            Choose a barber, choose a service, lock a time, and confirm. This flow now writes the appointment, service snapshot, status history, payments, and event log into the real booking stack.
+            Choose a service, choose a time, confirm the details, then pay or reserve.
           </p>
           <div className="mt-6 grid grid-cols-2 gap-2 text-[11px] uppercase tracking-[0.18em] text-white/48 sm:flex sm:flex-wrap sm:tracking-[0.22em]">
-            <span className="rounded-full border border-[#7CFF00]/20 bg-[#7CFF00]/10 px-3 py-2 text-[#d7ffab]">01 Select service</span>
-            <span className="rounded-full border border-white/8 bg-black/25 px-3 py-2">02 Select time</span>
-            <span className="rounded-full border border-white/8 bg-black/25 px-3 py-2">03 Review booking</span>
-            <span className="rounded-full border border-white/8 bg-black/25 px-3 py-2">04 Confirm</span>
-            <span className="rounded-full border border-white/8 bg-black/25 px-3 py-2">05 Saved live</span>
+            <span className="rounded-full border border-[#7CFF00]/20 bg-[#7CFF00]/10 px-3 py-2 text-[#d7ffab]">01 Choose service</span>
+            <span className="rounded-full border border-white/8 bg-black/25 px-3 py-2">02 Choose time</span>
+            <span className="rounded-full border border-white/8 bg-black/25 px-3 py-2">03 Confirm details</span>
+            <span className="rounded-full border border-white/8 bg-black/25 px-3 py-2">04 Pay or confirm</span>
           </div>
           <div className="mt-5 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
             <div className="rounded-[24px] border border-white/8 bg-black/20 px-4 py-3 text-[11px] uppercase tracking-[0.22em] text-[#cfff93]">
@@ -663,7 +662,7 @@ export function BookingForm() {
             </div>
             {currentBarberResult ? (
               <div className="rounded-[24px] border border-[#7CFF00]/16 bg-[#7CFF00]/8 px-4 py-3 text-sm text-white/78">
-                Booking with <span className="text-[#d7ffab]">{currentBarberResult.barberName}</span>{matchedFrom ? ` via ${matchedFrom.replaceAll("_", " ")}` : ""}
+                Booking with <span className="text-[#d7ffab]">{currentBarberResult.barberName}</span>{matchedFrom ? ` from ${matchedFrom.replaceAll("_", " ")}` : ""}
               </div>
             ) : null}
           </div>
@@ -749,7 +748,7 @@ export function BookingForm() {
               <div>
                 <label className="surface-label mb-3 block" htmlFor="booking-payment-method">Saved payment method</label>
                 <p className="text-sm leading-7 text-white/62">
-                  The booking engine creates the appointment and secures the canonical payment against the saved card you choose here.
+                  Choose the saved card for this booking.
                 </p>
               </div>
               {selectedPaymentMethod ? <Badge>{selectedPaymentMethod.isDefault ? "Default card" : "Saved card"}</Badge> : null}
@@ -797,7 +796,7 @@ export function BookingForm() {
           <label className="md:col-span-2 flex items-start gap-3 rounded-[28px] border border-white/8 bg-[linear-gradient(180deg,rgba(21,21,21,0.95),rgba(10,10,10,0.98))] p-5 text-sm leading-7 text-white/72">
             <input type="checkbox" className="mt-1 accent-[#7CFF00]" defaultChecked {...form.register("acknowledgePolicy")} />
             <span>
-              I acknowledge the cancellation policy. Deposits can be reserved at booking, the appointment stays protected from double-booking, and the rest of the ticket closes through the live shop workflow.
+              I acknowledge the cancellation policy.
             </span>
           </label>
           {form.formState.errors.acknowledgePolicy ? (
@@ -806,7 +805,7 @@ export function BookingForm() {
           {confirmationId ? (
             <div className="md:col-span-2 rounded-[28px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-5 text-sm leading-7 text-white/78">
               <p>
-                Booking confirmed. Appointment <span className="text-[#d3ffa0]">{confirmationId}</span> is now live in the booking system.
+                Booking confirmed. Appointment <span className="text-[#d3ffa0]">{confirmationId}</span> is ready.
               </p>
               <p className="mt-3 text-white/68">
                 {confirmationPaymentStatus
@@ -820,12 +819,12 @@ export function BookingForm() {
               <p className="mt-3 text-white/68">
                 {pointsRedemptionPreview.approvedPoints
                   ? `${pointsRedemptionPreview.approvedPoints} pts applied for ${currency(pointsRedemptionPreview.discountAmount)} off this booking.`
-                  : "BVR Points stay ready for checkout and repeat bookings."}
+                  : "BVR Points are ready for future bookings."}
               </p>
               <p className="mt-2 text-white/60">
                 {pointsBalance
                   ? `Current balance ${pointsBalance.unlockedPoints} pts (${currency(pointsBalance.inAppValue)} in-app value). New points post after the paid service closes.`
-                  : "New points post after the paid service closes."}
+                  : "New points post after service closes."}
               </p>
             </div>
           ) : null}
@@ -845,7 +844,7 @@ export function BookingForm() {
         {isInitialLoading ? <Skeleton className="mt-4 h-16 w-full" /> : <p className="mt-4 text-sm leading-7 text-white/64">{currentService?.description ?? "Pick a barber and service to see booking details."}</p>}
         <div className="mt-6 rounded-[24px] border border-white/8 bg-black/20 p-4 text-sm text-white/68">
           <p className="surface-label">Booking context</p>
-          <p className="mt-3">{sourceKind ? `${getSourceLabel(sourceKind)} with ${currentBarberResult?.barberName ?? "selected barber"}.` : "Client booking flow with live availability and operational sync."}</p>
+          <p className="mt-3">{sourceKind ? `${getSourceLabel(sourceKind)} with ${currentBarberResult?.barberName ?? "selected barber"}.` : "Choose your barber, service, and time."}</p>
           {query ? <p className="mt-2 text-white/52">Search context: {query}</p> : null}
         </div>
         <div className="mt-6 rounded-[24px] border border-white/8 bg-black/20 p-4">
@@ -906,7 +905,7 @@ export function BookingForm() {
             </div>
           ) : null}
           <p className="mt-3 text-sm leading-7 text-white/62">
-            Redeem unlocked points right here at confirmation. Promo points burn first, earned points stay more valuable later, and the quote updates instantly using the canonical redemption route.
+            Redeem unlocked points at confirmation. The quote updates before you book.
           </p>
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
             <div className="rounded-[20px] border border-white/8 bg-black/18 px-4 py-4">

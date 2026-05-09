@@ -5,11 +5,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   replaceMock,
   useClientHomeQueryMock,
-  useMarketplaceDiscoveryMock
+  useMarketplaceDiscoveryMock,
+  useSaveFavoriteBarberMutationMock,
+  useSaveFavoriteShopMutationMock
 } = vi.hoisted(() => ({
   replaceMock: vi.fn(),
   useClientHomeQueryMock: vi.fn(),
-  useMarketplaceDiscoveryMock: vi.fn()
+  useMarketplaceDiscoveryMock: vi.fn(),
+  useSaveFavoriteBarberMutationMock: vi.fn(),
+  useSaveFavoriteShopMutationMock: vi.fn()
 }));
 
 vi.mock("next/navigation", () => ({
@@ -42,7 +46,9 @@ vi.mock("next/link", () => ({
 }));
 
 vi.mock("@/lib/booking/client", () => ({
-  useClientHomeQuery: useClientHomeQueryMock
+  useClientHomeQuery: useClientHomeQueryMock,
+  useSaveFavoriteBarberMutation: useSaveFavoriteBarberMutationMock,
+  useSaveFavoriteShopMutation: useSaveFavoriteShopMutationMock
 }));
 
 vi.mock("@/lib/marketplace/client", () => ({
@@ -90,6 +96,18 @@ describe("client search screen", () => {
     replaceMock.mockReset();
     useClientHomeQueryMock.mockReset();
     useMarketplaceDiscoveryMock.mockReset();
+    useSaveFavoriteBarberMutationMock.mockReset();
+    useSaveFavoriteShopMutationMock.mockReset();
+    useSaveFavoriteBarberMutationMock.mockReturnValue({
+      isPending: false,
+      isSuccess: false,
+      mutateAsync: vi.fn()
+    });
+    useSaveFavoriteShopMutationMock.mockReturnValue({
+      isPending: false,
+      isSuccess: false,
+      mutateAsync: vi.fn()
+    });
 
     useClientHomeQueryMock.mockReturnValue({
       data: {
@@ -309,7 +327,7 @@ describe("client search screen", () => {
 
     expect(screen.getByText("Phillip McGee")).toBeInTheDocument();
     expect(screen.getAllByText("New").length).toBeGreaterThan(0);
-    expect(screen.getByRole("link", { name: "View Barber" })).toHaveAttribute("href", "/barber/independent-barber-43b3cda2");
+    expect(screen.getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/barber/independent-barber-43b3cda2");
   });
 
   it("shows a completed direct-search empty state when the API returns no barbers", () => {
@@ -446,7 +464,7 @@ describe("client search screen", () => {
     render(<ClientSearchScreen clientId="client-jordan" initialQuery="Phillip" routeBase="/dashboard/client/search" />);
 
     expect(screen.getByText("Phillip McGee")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "View Barber" })).toHaveAttribute("href", "/barber/independent-barber-43b3cda2");
+    expect(screen.getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/barber/independent-barber-43b3cda2");
     expect(screen.queryByText(/client_home_load_failed/i)).not.toBeInTheDocument();
     expect(screen.queryByText("Something went wrong while processing this action. Please try again.")).not.toBeInTheDocument();
     expect(screen.getByTestId("client-search-debug")).toHaveTextContent("Phillip McGee (barber-phillip)");

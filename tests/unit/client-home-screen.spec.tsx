@@ -4,10 +4,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   useClientHomeQueryMock,
-  useClientBookingsQueryMock
+  useClientBookingsQueryMock,
+  useSaveFavoriteBarberMutationMock,
+  useSaveFavoriteShopMutationMock
 } = vi.hoisted(() => ({
   useClientHomeQueryMock: vi.fn(),
-  useClientBookingsQueryMock: vi.fn()
+  useClientBookingsQueryMock: vi.fn(),
+  useSaveFavoriteBarberMutationMock: vi.fn(),
+  useSaveFavoriteShopMutationMock: vi.fn()
 }));
 
 vi.mock("next/link", () => ({
@@ -35,7 +39,9 @@ vi.mock("next/link", () => ({
 
 vi.mock("@/lib/booking/client", () => ({
   useClientHomeQuery: useClientHomeQueryMock,
-  useClientBookingsQuery: useClientBookingsQueryMock
+  useClientBookingsQuery: useClientBookingsQueryMock,
+  useSaveFavoriteBarberMutation: useSaveFavoriteBarberMutationMock,
+  useSaveFavoriteShopMutation: useSaveFavoriteShopMutationMock
 }));
 
 vi.mock("@/components/client-experience/marketplace-tracked-action-link", () => ({
@@ -54,6 +60,18 @@ describe("client home screen", () => {
   beforeEach(() => {
     useClientHomeQueryMock.mockReset();
     useClientBookingsQueryMock.mockReset();
+    useSaveFavoriteBarberMutationMock.mockReset();
+    useSaveFavoriteShopMutationMock.mockReset();
+    useSaveFavoriteBarberMutationMock.mockReturnValue({
+      isPending: false,
+      isSuccess: false,
+      mutateAsync: vi.fn()
+    });
+    useSaveFavoriteShopMutationMock.mockReturnValue({
+      isPending: false,
+      isSuccess: false,
+      mutateAsync: vi.fn()
+    });
 
     useClientHomeQueryMock.mockReturnValue({
       data: {

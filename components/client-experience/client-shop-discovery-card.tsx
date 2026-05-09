@@ -1,6 +1,11 @@
+"use client";
+
 import type { Route } from "next";
-import { ArrowRight, Clock3, MapPin, ShieldCheck, Star, Store } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, Heart, MapPin, ShieldCheck, Star, Store, UsersRound } from "lucide-react";
 import { ClientActionLink } from "@/components/client-experience/client-action-link";
+import { useSaveFavoriteShopMutation } from "@/lib/booking/client";
+import { cn } from "@/lib/utils";
 
 type ClientShopCardData = {
   id: string;
@@ -18,93 +23,127 @@ type ClientShopCardData = {
   reviewCount?: number;
   viewHref?: string;
   bookHref?: string;
+  profilePhotoUrl?: string;
+  coverPhotoUrl?: string;
 };
 
-function getSubhead(location: ClientShopCardData) {
-  if (location.brandLine) {
-    return location.brandLine;
-  }
-
-  if (location.kind === "mobile") {
-    return "Mobile grooming setup";
-  }
-
-  return "Trusted booking location";
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "BV";
 }
 
-export function ClientShopDiscoveryCard({ location }: { location: ClientShopCardData; }) {
-  const searchHref = (location.viewHref
-    ?? `/dashboard/client/search?type=shops&q=${encodeURIComponent(location.name)}&locationId=${encodeURIComponent(location.id)}`) as Route;
+function getLocationLabel(location: ClientShopCardData) {
+  return location.address ?? `${location.neighborhood}, ${location.city}, ${location.state}`;
+}
+
+export function ClientShopDiscoveryCard({
+  location,
+  layout = "rail",
+  canFavorite = false
+}: {
+  location: ClientShopCardData;
+  layout?: "rail" | "grid";
+  canFavorite?: boolean;
+}) {
+  const favoriteMutation = useSaveFavoriteShopMutation();
+  const searchHref = (location.viewHref ?? `/shop/${encodeURIComponent(location.id)}`) as Route;
   const primaryCtaHref = (location.bookHref ?? searchHref) as Route;
-  const primaryCtaLabel = location.bookHref ? "Book" : "View Barbers";
+  const primaryCtaLabel = location.bookHref ? "Book" : "View barbers";
+  const imageUrl = location.coverPhotoUrl ?? location.profilePhotoUrl;
+  const ratingLabel = typeof location.rating === "number" ? location.rating.toFixed(1) : "New";
+  const reviewLabel = typeof location.reviewCount === "number" && location.reviewCount > 0
+    ? `${location.reviewCount} review${location.reviewCount === 1 ? "" : "s"}`
+    : "New shop";
+  const barberCount = location.activeBarbersCount ?? 0;
+  const saved = favoriteMutation.isSuccess;
+
+  async function handleFavorite() {
+    if (!canFavorite) {
+      return;
+    }
+
+    await favoriteMutation.mutateAsync({ shopReference: location.id });
+  }
 
   return (
-    <article className="overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(8,8,8,0.99))] shadow-[0_22px_44px_rgba(0,0,0,0.2)]">
-      <div className="relative h-44 overflow-hidden bg-[linear-gradient(145deg,rgba(124,255,0,0.22),rgba(255,255,255,0.08),rgba(8,8,8,0.96))]">
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.1),rgba(0,0,0,0.7))]" />
-        <div className="absolute left-4 top-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/35 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/88">
-          {location.verifiedLabel ? (
-            <>
-              <ShieldCheck className="h-3.5 w-3.5 text-[#baff69]" />
-              {location.verifiedLabel}
-            </>
-          ) : (
-            <>
-              <Store className="h-3.5 w-3.5 text-[#d7ffab]" />
-              Barber shop
-            </>
-          )}
-        </div>
-        {typeof location.activeBarbersCount === "number" ? (
-          <div className="absolute right-4 top-4 rounded-full border border-white/10 bg-black/35 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/88">
-            {location.activeBarbersCount} barber{location.activeBarbersCount === 1 ? "" : "s"}
-          </div>
+    <article
+      className={cn(
+        "overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(7,7,7,0.99))] shadow-[0_18px_36px_rgba(0,0,0,0.22)]",
+        layout === "rail" ? "w-[16.25rem] shrink-0 sm:w-[17rem]" : "w-full"
+      )}
+      data-testid="compact-shop-card"
+    >
+      <div className="relative aspect-[4/3] overflow-hidden">
+        {imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={imageUrl} alt={`${location.name} preview`} className="absolute inset-0 h-full w-full object-cover" />
+        ) : (
+          <div className="absolute inset-0 bg-[linear-gradient(145deg,rgba(124,255,0,0.28),rgba(255,255,255,0.08),rgba(8,8,8,0.98))]" />
+        )}
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.06),rgba(0,0,0,0.7))]" />
+        <span className="absolute left-3 top-3 inline-flex max-w-[72%] items-center gap-1.5 rounded-full border border-white/10 bg-black/45 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-white/90">
+          <ShieldCheck className="h-3.5 w-3.5 text-[#d7ffab]" />
+          <span className="truncate">{location.verifiedLabel ?? "Verified shop"}</span>
+        </span>
+        {canFavorite ? (
+          <button
+            type="button"
+            aria-label={`Favorite ${location.name}`}
+            className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-black/48 text-white transition hover:border-[#d7ffab]/40 hover:text-[#d7ffab] disabled:opacity-60"
+            disabled={favoriteMutation.isPending}
+            onClick={() => void handleFavorite()}
+          >
+            <Heart className={cn("h-4 w-4", saved ? "fill-[#d7ffab] text-[#d7ffab]" : "")} />
+          </button>
         ) : null}
-        <div className="absolute bottom-4 left-4 flex h-14 w-14 items-center justify-center rounded-[20px] border border-white/10 bg-black/28 text-white shadow-[0_16px_30px_rgba(0,0,0,0.24)]">
-          <Store className="h-7 w-7 text-[#d7ffab]" />
+        <div className="absolute bottom-3 left-3 flex h-12 w-12 items-center justify-center overflow-hidden rounded-[16px] border border-white/10 bg-black/30 text-base font-semibold text-[#d7ffab] shadow-[0_12px_26px_rgba(0,0,0,0.24)]">
+          {location.profilePhotoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={location.profilePhotoUrl} alt={location.name} className="h-full w-full object-cover" />
+          ) : (
+            getInitials(location.name)
+          )}
         </div>
       </div>
 
-      <div className="p-4 sm:p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-xl font-semibold text-white">{location.name}</p>
-            <p className="mt-1 text-sm text-white/58">{getSubhead(location)}</p>
-          </div>
-          {typeof location.rating === "number" ? (
-            <div className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/88">
-              <Star className="h-3.5 w-3.5 fill-current text-[#d7ffab]" />
-              {location.rating.toFixed(1)}
-            </div>
-          ) : null}
-        </div>
-
-        <div className="mt-4 flex flex-wrap gap-2 text-sm text-white/72">
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-white/8 bg-black/18 px-3 py-2">
-            <MapPin className="h-4 w-4 text-[#baff69]" />
-            {location.address ?? `${location.neighborhood}, ${location.city}, ${location.state}`}
+      <div className="p-3.5">
+        <Link href={searchHref} className="line-clamp-1 text-lg font-semibold text-white transition hover:text-[#d7ffab]">
+          {location.name}
+        </Link>
+        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-white/58">
+          <span className="inline-flex items-center gap-1">
+            <Star className="h-3.5 w-3.5 fill-current text-[#d7ffab]" />
+            {ratingLabel} <span className="text-white/40">{reviewLabel}</span>
           </span>
-          {location.nextAvailableLabel ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-white/8 bg-black/18 px-3 py-2">
-              <Clock3 className="h-4 w-4 text-[#d7ffab]" />
-              {location.nextAvailableLabel}
-            </span>
-          ) : null}
-          {typeof location.reviewCount === "number" ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-white/8 bg-black/18 px-3 py-2">
-              <Star className="h-4 w-4 text-[#d7ffab]" />
-              {location.reviewCount} review{location.reviewCount === 1 ? "" : "s"}
-            </span>
-          ) : null}
         </div>
 
-        <div className="mt-5 flex gap-3">
-          <ClientActionLink href={primaryCtaHref} variant="secondary" className="flex-1">
+        <div className="mt-3 grid gap-2 text-sm text-white/68">
+          <span className="inline-flex min-w-0 items-center gap-1.5">
+            <MapPin className="h-4 w-4 shrink-0 text-[#baff69]" />
+            <span className="truncate">{getLocationLabel(location)}</span>
+          </span>
+          <span className="inline-flex min-w-0 items-center gap-1.5">
+            <UsersRound className="h-4 w-4 shrink-0 text-[#d7ffab]" />
+            <span>{barberCount || "No"} barber{barberCount === 1 ? "" : "s"}</span>
+          </span>
+        </div>
+
+        <div className="mt-3 flex items-center gap-2 text-xs text-white/48">
+          <Store className="h-3.5 w-3.5 text-[#d7ffab]" />
+          <span className="truncate">{location.brandLine ?? "Pick a chair"}</span>
+        </div>
+
+        <div className="mt-4 grid grid-cols-[1fr_auto] gap-2">
+          <ClientActionLink href={primaryCtaHref} className="min-h-10 px-4 text-sm">
             {primaryCtaLabel}
           </ClientActionLink>
-          <ClientActionLink href={searchHref} variant="outline">
+          <ClientActionLink href={searchHref} variant="outline" className="min-h-10 px-3 text-xs">
             View Shop
-            <ArrowRight className="h-4 w-4 text-[#baff69]" />
+            <ArrowRight className="h-3.5 w-3.5 text-[#baff69]" />
           </ClientActionLink>
         </div>
       </div>

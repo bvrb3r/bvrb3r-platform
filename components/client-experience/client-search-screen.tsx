@@ -4,11 +4,11 @@ import type { Route } from "next";
 import Link from "next/link";
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Clock3, MapPin, RefreshCw, ShieldCheck, Star } from "lucide-react";
+import { Clock3, RefreshCw, ShieldCheck, Star } from "lucide-react";
+import { ClientDiscoveryCard } from "@/components/client-experience/client-discovery-card";
 import { ClientPrimarySearchBar } from "@/components/client-experience/client-primary-search-bar";
 import { ClientSectionBlock } from "@/components/client-experience/client-section-block";
 import { ClientShopDiscoveryCard } from "@/components/client-experience/client-shop-discovery-card";
-import { MarketplaceTrackedActionLink } from "@/components/client-experience/marketplace-tracked-action-link";
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,7 +18,6 @@ import {
   useMarketplaceDiscovery,
   type MarketplaceApiError
 } from "@/lib/marketplace/client";
-import { buildMarketplaceBookingHref } from "@/lib/marketplace/links";
 import { getReadableActionError } from "@/lib/utils/feedback";
 import type { DiscoveryResult, RecommendedShopView } from "@/types/domain";
 
@@ -82,15 +81,6 @@ function SearchEmptyState({
   );
 }
 
-function getInitials(name: string) {
-  return name
-    .split(" ")
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-}
-
 function getBarberVerifiedLabel(result: DiscoveryResult) {
   if (result.badges.some((badge) => badge.startsWith("verified_"))) {
     return "Verified";
@@ -99,123 +89,8 @@ function getBarberVerifiedLabel(result: DiscoveryResult) {
   return result.trustLabel ?? null;
 }
 
-function getBarberLocationLabel(result: DiscoveryResult) {
-  return result.cityLabel ?? result.locationLabel ?? `${result.distanceMiles.toFixed(1)} mi away`;
-}
-
 function getFeedCaption(result: DiscoveryResult) {
   return result.mostBookedService ?? result.specialties[0] ?? "Fresh work";
-}
-
-function BarberResultCard({
-  result
-}: {
-  result: DiscoveryResult;
-}) {
-  const verifiedLabel = getBarberVerifiedLabel(result);
-  const bookHref: Route = (result.bookingHref as Route | undefined) ?? buildMarketplaceBookingHref({
-    barberId: result.barberId,
-    username: result.username,
-    locationId: result.locationId,
-    serviceId: result.mostBookedServiceId,
-    sourceKind: "discovery",
-    query: result.mostBookedService ?? undefined
-  });
-  const profileHref = `/barber/${result.username}` as Route;
-  const heroImage = result.galleryPreviewUrls?.[0] ?? result.profilePhotoUrl;
-  const ratingLabel = result.reviewCount > 0 ? result.rating.toFixed(1) : "New";
-  const reviewLabel = result.reviewCount > 0
-    ? `${result.reviewCount} review${result.reviewCount === 1 ? "" : "s"}`
-    : "New barber";
-
-  return (
-    <article className="overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(8,8,8,0.99))] shadow-[0_22px_44px_rgba(0,0,0,0.2)]">
-      <div className="relative h-48 overflow-hidden">
-        {heroImage ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={heroImage}
-            alt={`${result.barberName} preview`}
-            className="absolute inset-0 h-full w-full object-cover"
-          />
-        ) : (
-          <div className="absolute inset-0 bg-[linear-gradient(145deg,rgba(124,255,0,0.3),rgba(255,255,255,0.08),rgba(8,8,8,0.96))]" />
-        )}
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.08),rgba(0,0,0,0.72))]" />
-        <div className="absolute left-4 top-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/35 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/88">
-          <Clock3 className="h-3.5 w-3.5 text-[#d7ffab]" />
-          {result.availabilityLabel ?? "Bookable"}
-        </div>
-        {verifiedLabel ? (
-          <div className="absolute right-4 top-4 inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/35 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/88">
-            <ShieldCheck className="h-3.5 w-3.5 text-[#baff69]" />
-            {verifiedLabel}
-          </div>
-        ) : null}
-        <div className="absolute bottom-4 left-4 flex h-14 w-14 items-center justify-center overflow-hidden rounded-[20px] border border-white/10 bg-black/28 text-lg font-semibold text-white/92 shadow-[0_16px_30px_rgba(0,0,0,0.24)]">
-          {result.profilePhotoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={result.profilePhotoUrl} alt={result.barberName} className="h-full w-full object-cover" />
-          ) : (
-            getInitials(result.barberName)
-          )}
-        </div>
-      </div>
-
-      <div className="p-4 sm:p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <Link href={profileHref} className="line-clamp-2-safe text-xl font-semibold text-white transition hover:text-[#d7ffab]">
-              {result.barberName}
-            </Link>
-            <p className="mt-1 text-sm text-white/58">{result.specialties[0] ?? result.mostBookedService ?? "Trusted barber"}</p>
-          </div>
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/88">
-            <Star className="h-3.5 w-3.5 fill-current text-[#d7ffab]" />
-            {ratingLabel}
-          </div>
-        </div>
-
-        <div className="mt-4 flex flex-wrap gap-2 text-sm text-white/72">
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-white/8 bg-black/18 px-3 py-2">
-            <MapPin className="h-4 w-4 text-[#baff69]" />
-            {getBarberLocationLabel(result)}
-          </span>
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-white/8 bg-black/18 px-3 py-2">
-            <Star className="h-4 w-4 text-[#d7ffab]" />
-            {reviewLabel}
-          </span>
-        </div>
-
-        <div className="mt-5 flex gap-3">
-          <MarketplaceTrackedActionLink
-            href={bookHref}
-            className="flex-1"
-            analytics={{
-              eventType: "booking_cta_clicked",
-              barberId: result.barberId,
-              username: result.username,
-              locationId: result.locationId,
-              sourceKind: "discovery",
-              sourceReference: "search_barbers_near_you",
-              metadata: {
-                rating: result.rating,
-                reviewCount: result.reviewCount
-              }
-            }}
-          >
-            Book
-          </MarketplaceTrackedActionLink>
-          <Link
-            href={profileHref}
-            className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/18 px-4 text-[13px] font-semibold text-white/82 transition hover:border-[#d7ffab]/18 hover:text-[#d7ffab]"
-          >
-            View Barber
-          </Link>
-        </div>
-      </div>
-    </article>
-  );
 }
 
 function MarketplaceFeedCard({
@@ -516,9 +391,9 @@ export function ClientSearchScreen({
       {discoveryBusy && !visibleBarbers.length ? (
         <RailSkeleton />
       ) : visibleBarbers.length ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {visibleBarbers.slice(0, hasActiveSearchQuery ? 9 : 6).map((result) => (
-            <BarberResultCard key={result.barberId} result={result} />
+            <ClientDiscoveryCard key={result.barberId} result={result} layout="grid" canFavorite={Boolean(clientId)} />
           ))}
         </div>
       ) : (
@@ -539,7 +414,7 @@ export function ClientSearchScreen({
       {homeQuery.isLoading && !homePayload ? (
         <RailSkeleton />
       ) : visibleShops.length ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {visibleShops.slice(0, 6).map((shop) => (
             <ClientShopDiscoveryCard
               key={shop.id}
@@ -547,6 +422,8 @@ export function ClientSearchScreen({
                 ...shop,
                 viewHref: `/shop/${encodeURIComponent(shop.id)}` as Route
               }}
+              layout="grid"
+              canFavorite={Boolean(clientId)}
             />
           ))}
         </div>
@@ -566,7 +443,7 @@ export function ClientSearchScreen({
         <div className="relative">
           <PageHeader
             title="Find the right barber."
-            subtitle="Search barbers and shops, then book from a real profile."
+            subtitle="Search live barbers and shops."
           />
         </div>
       </Card>

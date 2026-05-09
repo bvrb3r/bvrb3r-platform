@@ -17,9 +17,10 @@ vi.mock("@/components/marketplace/public-barber-growth-actions", () => ({
 }));
 
 import { PublicBarberProfile } from "@/components/marketplace/public-barber-profile";
+import type { PublicBarberProfileView } from "@/lib/marketplace/engine";
 
 describe("public barber profile", () => {
-  it("renders canonical trust, services, policies, and clean empty sections", () => {
+  it("renders the client-facing hero, services, policies, and clean empty sections", () => {
     render(
       <PublicBarberProfile
         profile={{
@@ -70,7 +71,7 @@ describe("public barber profile", () => {
           ],
           reviews: [],
           portfolio: []
-        } as any}
+        } as unknown as PublicBarberProfileView}
       />
     );
 
@@ -78,12 +79,16 @@ describe("public barber profile", () => {
     expect(screen.queryByText("Verified license")).not.toBeInTheDocument();
     expect(screen.getByText("Verified identity")).toBeInTheDocument();
     expect(screen.getByText("Verified shop")).toBeInTheDocument();
-    expect(screen.getByText("Service menu")).toBeInTheDocument();
+    expect(screen.getByText("@wave")).toBeInTheDocument();
+    expect(screen.getByText("Services")).toBeInTheDocument();
     expect(screen.getByText("Signature Precision Cut")).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "Book" }).length).toBeGreaterThan(0);
     expect(screen.getByText(/Deposits apply to select services starting at \$15/)).toBeInTheDocument();
     expect(screen.getByText("Card on file is required when the selected service policy needs it.")).toBeInTheDocument();
-    expect(screen.getByText("No portfolio images yet.")).toBeInTheDocument();
-    expect(screen.getByText("Reviews will appear here after completed appointments generate real client feedback.")).toBeInTheDocument();
+    expect(screen.getByText("Portfolio coming soon.")).toBeInTheDocument();
+    expect(screen.getAllByText("Reviews building").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/shared service system/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/approved marketplace supply/i)).not.toBeInTheDocument();
   });
 
   it("renders canonical portfolio media when real assets exist", () => {
@@ -121,11 +126,11 @@ describe("public barber profile", () => {
               caption: "Sharp taper finish."
             }
           ]
-        } as any}
+        } as unknown as PublicBarberProfileView}
       />
     );
 
     expect(screen.getByRole("img", { name: /sharp taper finish/i })).toBeInTheDocument();
-    expect(screen.queryByText("No portfolio images yet.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Portfolio coming soon.")).not.toBeInTheDocument();
   });
 });
