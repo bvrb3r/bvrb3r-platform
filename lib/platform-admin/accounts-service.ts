@@ -3,7 +3,7 @@ import { isSupabaseEnabled } from "@/lib/config/runtime";
 import { isUpcomingAppointmentStatus } from "@/lib/appointments/domain";
 import { BarberProfileRepairError, ensureBarberProfileForIdentifier, type BarberProfileRepairResult } from "@/lib/barber/profile-repair";
 import { getCanonicalMarketplaceEligibility, type MarketplaceBarberEligibilityDiagnostic } from "@/lib/booking/intelligence";
-import { syncAllOnboardingBarberServices } from "@/lib/marketplace/service-sync";
+import { syncAllOnboardingBarberServices, syncCheckoutLibraryServicesForBarber } from "@/lib/marketplace/service-sync";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getStripeConnectEnvironment } from "@/lib/stripe/connect";
@@ -592,19 +592,25 @@ function getLinkedShopIds(reference: string, profileId: string, data: AccountDat
   return Array.from(ids);
 }
 
-function getActiveServicesForBarber(reference: string, linkedShopIds: string[], data: AccountData) {
+function serviceKeySet(reference: string, barberId: string | undefined, profileId: string | undefined) {
+  return new Set([reference, barberId, profileId].filter((value): value is string => Boolean(value)));
+}
+
+function getActiveServicesForBarber(reference: string, barberId: string | undefined, profileId: string | undefined, linkedShopIds: string[], data: AccountData) {
+  const barberKeys = serviceKeySet(reference, barberId, profileId);
   const canonical = data.services.filter((service) =>
     service.active !== false
     && service.is_bookable !== false
     && (
-      service.barber_reference === reference
+      (Boolean(service.barber_reference) && barberKeys.has(service.barber_reference as string))
       || (service.service_owner_type === "shop" && Boolean(service.shop_reference) && linkedShopIds.includes(service.shop_reference as string))
     )
   );
   const marketplace = data.marketplaceServices
     .filter((service) =>
       service.owner_type === "barber"
-      && service.barber_reference === reference
+      && Boolean(service.barber_reference)
+      && barberKeys.has(service.barber_reference as string)
       && Boolean(service.name?.trim())
       && Number(service.price ?? 0) > 0
       && Number(service.duration_min ?? 0) >= 15
@@ -632,19 +638,23 @@ function getActiveServicesForShop(shopId: string, data: AccountData) {
   return data.services.filter((service) => service.active !== false && service.is_bookable !== false && service.shop_reference === shopId);
 }
 
-function getServiceHealth(reference: string, linkedShopIds: string[], data: AccountData) {
+function getServiceHealth(reference: string, barberId: string | undefined, profileId: string | undefined, linkedShopIds: string[], data: AccountData) {
+  const barberKeys = serviceKeySet(reference, barberId, profileId);
   const canonicalRows = data.services.filter((service) =>
-    service.barber_reference === reference
+    (Boolean(service.barber_reference) && barberKeys.has(service.barber_reference as string))
     || (service.service_owner_type === "shop" && Boolean(service.shop_reference) && linkedShopIds.includes(service.shop_reference as string))
   );
   const marketplaceRows = data.marketplaceServices.filter((service) =>
-    service.barber_reference === reference
+    (Boolean(service.barber_reference) && barberKeys.has(service.barber_reference as string))
     || (service.owner_type === "shop" && Boolean(service.shop_reference) && linkedShopIds.includes(service.shop_reference as string))
   );
   const activeCanonicalRows = canonicalRows.filter((service) => service.active !== false);
-  const clientVisibleRows = getActiveServicesForBarber(reference, linkedShopIds, data)
+  const clientVisibleRows = getActiveServicesForBarber(reference, barberId, profileId, linkedShopIds, data)
     .filter((service) => Boolean(service.name?.trim()) && Number(service.price ?? 0) > 0 && Number(service.duration_min ?? 0) >= 15);
   const firstService = clientVisibleRows[0] ?? activeCanonicalRows[0] ?? marketplaceRows[0];
+  const firstServiceRecord = firstService as Partial<ServiceRow & MarketplaceServiceRow> | undefined;
+  const marketplaceServiceReferences = new Set(marketplaceRows.map((service) => service.service_reference));
+  const firstServiceReference = firstServiceRecord?.service_reference ?? firstServiceRecord?.reference_code ?? firstServiceRecord?.id;
   const sourceTable = activeCanonicalRows.length && marketplaceRows.length
     ? "services + marketplace_services"
     : activeCanonicalRows.length
@@ -658,11 +668,24 @@ function getServiceHealth(reference: string, linkedShopIds: string[], data: Acco
     activeServiceRows: activeCanonicalRows.length + marketplaceRows.filter((service) => Boolean(service.name?.trim()) && Number(service.price ?? 0) > 0 && Number(service.duration_min ?? 0) >= 15).length,
     clientVisibleServiceRows: clientVisibleRows.length,
     serviceSourceTable: sourceTable,
+    checkoutLibraryServices: marketplaceRows.length,
+    canonicalServices: canonicalRows.length,
+    marketplaceServices: marketplaceRows.length,
+    onboardingServices: 0,
     firstServiceName: firstService?.name ?? undefined,
     firstServicePrice: firstService?.price !== undefined && firstService?.price !== null ? Number(firstService.price) : undefined,
     firstServiceDurationMin: firstService?.duration_min ?? undefined,
+    firstServiceSourceTable: firstServiceReference && marketplaceServiceReferences.has(firstServiceReference) ? "marketplace_services" : firstService ? "services" : undefined,
+    firstServiceBarberKey: firstServiceRecord?.barber_reference ?? undefined,
+    serviceSourceTablesChecked: ["services", "marketplace_services"],
+    serviceBarberKeysChecked: [...barberKeys],
     discoveryServiceGatePass: clientVisibleRows.length > 0,
-    serviceBlocker: clientVisibleRows.length > 0 ? undefined : "No active real services"
+    serviceBlocker: clientVisibleRows.length > 0 ? undefined : "No active real services",
+    serviceSourceMismatchReason: clientVisibleRows.length > 0
+      ? undefined
+      : marketplaceRows.length > 0
+        ? "Marketplace service rows were found, but none were active/client-visible for the canonical barber keys."
+        : "Checkout Library uses marketplace_services keyed by barber_reference; no rows matched barbers.reference_code, barbers.id, or profiles.id."
   };
 }
 
@@ -850,6 +873,7 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
         if (repairResult) {
           repairResultByReference.set(reference, repairResult);
         }
+        await syncCheckoutLibraryServicesForBarber(diagnosticsClient, reference);
         canonicalEligibilityByReference.set(reference, await getCanonicalMarketplaceEligibility(diagnosticsClient, reference, { trustState }));
       } catch (error) {
         repairResultByReference.set(reference, {
@@ -911,12 +935,12 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
     const verification = getVerificationForRole(profile.id, role, data.verificationProfiles);
     const verificationProfileIds = data.verificationProfiles.filter((row) => row.user_id === profile.id).map((row) => row.id);
     const serviceCount = role === "barber"
-      ? getActiveServicesForBarber(reference, linkedShopIds, data).length
+      ? getActiveServicesForBarber(reference, barber?.id, profile.id, linkedShopIds, data).length
       : role === "shop_owner" && shop
         ? getActiveServicesForShop(shop.id, data).length
         : 0;
     const serviceHealth = role === "barber" && reference
-      ? getServiceHealth(reference, linkedShopIds, data)
+      ? getServiceHealth(reference, barber?.id, profile.id, linkedShopIds, data)
       : undefined;
     const availabilityCount = role === "barber" ? getAvailabilityCount(barber, reference, data) : 0;
     const activeLinkedBarbers = shop
@@ -1386,7 +1410,7 @@ export async function getArchitectAccountDetailPayload(actor: UserAccount, profi
         nextAvailableAt: barberStatus?.next_available_at ?? barberProfile?.next_available_at ?? null,
         visibilityState: visibility?.visibility_state ?? barberProfile?.visibility_state ?? null,
         acceptsInstantBookings: visibility?.accepts_instant_bookings ?? null,
-        servicesCount: getActiveServicesForBarber(reference, linkedShopIds, data).length,
+        servicesCount: getActiveServicesForBarber(reference, barber.id, profile.id, linkedShopIds, data).length,
         availabilityRulesCount: data.availabilityRules.filter((row) => row.barber_id === barber.id).length,
         workingHoursCount: data.workingHours.filter((row) => row.barber_reference === reference).length,
         linkedShopIds,

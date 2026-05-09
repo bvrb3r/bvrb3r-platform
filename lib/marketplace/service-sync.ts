@@ -15,6 +15,22 @@ type BarberRow = {
   profile_id: string;
 };
 
+type MarketplaceServiceRow = {
+  service_reference: string;
+  category?: string | null;
+  name?: string | null;
+  description?: string | null;
+  duration_min?: number | string | null;
+  buffer_min?: number | string | null;
+  price?: number | string | null;
+  deposit_amount?: number | string | null;
+  full_prepay_required?: boolean | null;
+  owner_type?: string | null;
+  barber_reference?: string | null;
+  shop_reference?: string | null;
+  style_tag_ids?: string[] | null;
+};
+
 type OnboardingServiceDraft = {
   category: string;
   name: string;
@@ -56,6 +72,18 @@ function inferCategory(name: string) {
   if (normalized.includes("design")) return "Designs";
   if (normalized.includes("cut") || normalized.includes("hair")) return "Haircuts";
   return "Signature";
+}
+
+function isMissingRelationOrColumn(error: unknown) {
+  const record = typeof error === "object" && error ? error as { code?: string; message?: string } : {};
+  const message = `${record.message ?? ""}`.toLowerCase();
+  return record.code === "42P01"
+    || record.code === "42703"
+    || record.code === "PGRST204"
+    || record.code === "PGRST205"
+    || message.includes("does not exist")
+    || message.includes("schema cache")
+    || message.includes("column");
 }
 
 function firstServiceName(value: unknown) {
@@ -238,6 +266,131 @@ async function resolveFirstServiceLocation(supabase: SupabaseClient, barber: Bar
 
   const availabilityLocationId = (availabilityResult.data as { location_id?: string | null } | null)?.location_id ?? null;
   return availabilityLocationId ? readLocationById(supabase, availabilityLocationId) : null;
+}
+
+async function resolveBarberForServiceSync(supabase: SupabaseClient, barberReferenceOrUserId: string) {
+  const byReference = await supabase
+    .from("barbers")
+    .select("id, reference_code, profile_id")
+    .eq("reference_code", barberReferenceOrUserId)
+    .maybeSingle();
+
+  if (byReference.error) {
+    throw byReference.error;
+  }
+
+  if (byReference.data) {
+    return byReference.data as BarberRow;
+  }
+
+  const byId = await supabase
+    .from("barbers")
+    .select("id, reference_code, profile_id")
+    .eq("id", barberReferenceOrUserId)
+    .maybeSingle();
+
+  if (byId.error) {
+    throw byId.error;
+  }
+
+  if (byId.data) {
+    return byId.data as BarberRow;
+  }
+
+  const byProfile = await supabase
+    .from("barbers")
+    .select("id, reference_code, profile_id")
+    .eq("profile_id", barberReferenceOrUserId)
+    .maybeSingle();
+
+  if (byProfile.error) {
+    throw byProfile.error;
+  }
+
+  return (byProfile.data ?? null) as BarberRow | null;
+}
+
+async function readCheckoutLibraryServices(supabase: SupabaseClient) {
+  // Checkout Library is sourced from marketplace_services keyed by barber_reference.
+  let result = await supabase
+    .from("marketplace_services")
+    .select("service_reference, category, name, description, duration_min, buffer_min, price, deposit_amount, full_prepay_required, owner_type, barber_reference, shop_reference, style_tag_ids");
+
+  if (result.error && isMissingRelationOrColumn(result.error)) {
+    result = await supabase
+      .from("marketplace_services")
+      .select("service_reference, category, name, description, duration_min, buffer_min, price, deposit_amount, full_prepay_required, owner_type, barber_reference, shop_reference");
+  }
+
+  if (result.error) {
+    throw result.error;
+  }
+
+  return (result.data ?? []) as MarketplaceServiceRow[];
+}
+
+function isRealCheckoutService(row: MarketplaceServiceRow) {
+  return row.owner_type === "barber"
+    && Boolean(row.service_reference?.trim())
+    && Boolean(row.name?.trim())
+    && numeric(row.price) > 0
+    && integerMinutes(row.duration_min) >= 15;
+}
+
+export async function syncCheckoutLibraryServicesForBarber(supabase: SupabaseClient, barberReferenceOrUserId: string) {
+  const barber = await resolveBarberForServiceSync(supabase, barberReferenceOrUserId);
+  if (!barber) {
+    return {
+      synced: false,
+      checked: 0,
+      repaired: 0,
+      reason: "missing_barber_row"
+    };
+  }
+
+  const barberReference = barber.reference_code ?? barber.id;
+  const barberKeys = [barberReference, barber.id, barber.profile_id]
+    .filter((value, index, values): value is string => Boolean(value) && values.indexOf(value) === index);
+  const rows = (await readCheckoutLibraryServices(supabase))
+    .filter((row) => row.barber_reference && barberKeys.includes(row.barber_reference))
+    .filter(isRealCheckoutService);
+  const location = await resolveFirstServiceLocation(supabase, barber);
+  let repaired = 0;
+
+  for (const row of rows) {
+    const beforeKey = row.barber_reference;
+    await syncServiceToCanonicalRows(supabase, {
+      id: row.service_reference,
+      category: row.category?.trim() || inferCategory(row.name ?? ""),
+      name: row.name?.trim() ?? "Service",
+      description: row.description ?? "",
+      durationMin: integerMinutes(row.duration_min),
+      bufferMin: integerMinutes(row.buffer_min),
+      price: numeric(row.price),
+      deposit: numeric(row.deposit_amount),
+      fullPrepay: row.full_prepay_required === true,
+      addOnIds: [],
+      ownerType: "barber",
+      barberId: barberReference,
+      shopId: location?.reference_code ?? location?.id ?? row.shop_reference ?? undefined,
+      styleTagIds: row.style_tag_ids ?? [],
+      isActive: true,
+      isBookable: true
+    });
+
+    if (beforeKey !== barberReference) {
+      repaired += 1;
+    }
+  }
+
+  return {
+    synced: rows.length > 0,
+    checked: rows.length,
+    repaired,
+    barberReference,
+    sourceTable: "marketplace_services" as const,
+    sourceKeyFields: ["barber_reference", "barbers.reference_code", "barbers.id", "barbers.profile_id"]
+  };
 }
 
 export async function syncOnboardingBarberService(

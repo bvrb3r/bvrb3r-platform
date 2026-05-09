@@ -427,11 +427,20 @@ export interface ArchitectAccountDirectoryItem {
     activeServiceRows: number;
     clientVisibleServiceRows: number;
     serviceSourceTable: string;
+    checkoutLibraryServices?: number;
+    canonicalServices?: number;
+    marketplaceServices?: number;
+    onboardingServices?: number;
     firstServiceName?: string;
     firstServicePrice?: number;
     firstServiceDurationMin?: number;
+    firstServiceSourceTable?: string;
+    firstServiceBarberKey?: string;
+    serviceSourceTablesChecked?: string[];
+    serviceBarberKeysChecked?: string[];
     discoveryServiceGatePass: boolean;
     serviceBlocker?: string;
+    serviceSourceMismatchReason?: string;
   };
   searchableTerms?: string[];
   barberRowHealth?: {
@@ -489,6 +498,15 @@ export interface ArchitectAccountDirectoryItem {
     bookingActive: boolean;
     payoutReady: boolean;
     payoutAccountCount: number;
+    checkoutLibraryServiceCount: number;
+    marketplaceServiceCount: number;
+    servicesTableServiceCount: number;
+    clientVisibleServiceCount: number;
+    firstServiceSourceTable: "services" | "marketplace_services" | null;
+    firstServiceBarberKey: string | null;
+    serviceSourceTablesChecked: string[];
+    serviceBarberKeysChecked: string[];
+    serviceSourceMismatchReason: string | null;
     marketplaceVisibilityRowFound: boolean;
     marketplaceVisibilityState: string | null;
     marketplaceVisibilityAcceptsInstantBookings: boolean | null;

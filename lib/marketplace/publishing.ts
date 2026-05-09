@@ -1,6 +1,6 @@
 import { revalidatePath, revalidateTag } from "next/cache";
 import { getCanonicalMarketplaceEligibility } from "@/lib/booking/intelligence";
-import { syncOnboardingBarberServicesForUser } from "@/lib/marketplace/service-sync";
+import { syncCheckoutLibraryServicesForBarber, syncOnboardingBarberServicesForUser } from "@/lib/marketplace/service-sync";
 import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createEmptyTrustState } from "@/lib/trust/engine";
 import { getTrustProvider } from "@/lib/trust/provider";
@@ -125,6 +125,13 @@ export async function publishBarberMarketplaceReadiness(supabase: SupabaseClient
   const barberReference = barber.reference_code ?? barber.id;
   await syncOnboardingBarberServicesForUser(supabase, barber.profile_id).catch((error) => {
     console.error("[marketplace-publishing] onboarding service sync failed", {
+      barberReference,
+      profileId: barber.profile_id,
+      message: error instanceof Error ? error.message : String(error)
+    });
+  });
+  await syncCheckoutLibraryServicesForBarber(supabase, barberReference).catch((error) => {
+    console.error("[marketplace-publishing] checkout library service sync failed", {
       barberReference,
       profileId: barber.profile_id,
       message: error instanceof Error ? error.message : String(error)

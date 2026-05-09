@@ -87,6 +87,7 @@ type CanonicalServiceRow = {
   shop_reference: string | null;
   booking_count: number | null;
   popularity_rank: number | null;
+  source_table?: "services" | "marketplace_services";
 };
 
 type CanonicalAvailabilityRuleRow = {
@@ -312,12 +313,49 @@ export type MarketplaceBarberEligibilityDiagnostic = {
     bookingActive: boolean;
     payoutReady: boolean;
     payoutAccountCount: number;
+    checkoutLibraryServiceCount: number;
+    marketplaceServiceCount: number;
+    servicesTableServiceCount: number;
+    clientVisibleServiceCount: number;
+    firstServiceSourceTable: "services" | "marketplace_services" | null;
+    firstServiceBarberKey: string | null;
+    serviceSourceTablesChecked: string[];
+    serviceBarberKeysChecked: string[];
+    serviceSourceMismatchReason: string | null;
     marketplaceVisibilityRowFound: boolean;
     marketplaceVisibilityState: string | null;
     marketplaceVisibilityAcceptsInstantBookings: boolean | null;
     suspended: boolean;
     rejected: boolean;
     banned: boolean;
+  };
+};
+
+export type CanonicalBarberService = {
+  id: string;
+  barberReference: string;
+  name: string;
+  priceCents: number;
+  durationMinutes: number;
+  active: boolean;
+  clientVisible: boolean;
+  sourceTable: "services" | "marketplace_services";
+  barberKeyUsed: string | null;
+};
+
+export type CanonicalBarberServicesResult = {
+  services: CanonicalBarberService[];
+  activeServices: CanonicalBarberService[];
+  clientVisibleServices: CanonicalBarberService[];
+  sourceDiagnostics: {
+    checkoutLibraryCount: number;
+    marketplaceServicesCount: number;
+    servicesTableCount: number;
+    onboardingServicesCount: number;
+    syncedCount: number;
+    sourceTablesChecked: string[];
+    barberKeysChecked: string[];
+    sourceMismatchReason?: string;
   };
 };
 
@@ -832,8 +870,15 @@ async function readCanonicalSnapshot(supabase: SupabaseClient): Promise<Canonica
   if (resolvedLocationsResult.error && isMissingRelationOrColumn(resolvedLocationsResult.error)) {
     resolvedLocationsResult = await supabase.from("locations").select("id, name, neighborhood, city, state, phone");
   }
+  let resolvedMarketplaceServicesResult = marketplaceServicesResult;
+  if (resolvedMarketplaceServicesResult.error && isMissingRelationOrColumn(resolvedMarketplaceServicesResult.error)) {
+    resolvedMarketplaceServicesResult = await supabase
+      .from("marketplace_services")
+      .select("service_reference, category, name, description, duration_min, buffer_min, price, deposit_amount, full_prepay_required, owner_type, barber_reference, shop_reference");
+  }
+
   const optionalResults = [
-    marketplaceServicesResult,
+    resolvedMarketplaceServicesResult,
     staffLocationsResult,
     marketplaceVisibilityResult,
     portfoliosResult,
@@ -873,8 +918,11 @@ async function readCanonicalSnapshot(supabase: SupabaseClient): Promise<Canonica
     portfolios: (portfoliosResult.error ? [] : portfoliosResult.data ?? []) as CanonicalPortfolioRow[],
     profiles: (resolvedProfilesResult.data ?? []) as CanonicalProfileRow[],
     services: [
-      ...((resolvedServicesResult.data ?? []) as CanonicalServiceRow[]),
-      ...((marketplaceServicesResult.error ? [] : marketplaceServicesResult.data ?? []) as Array<{
+      ...((resolvedServicesResult.data ?? []) as CanonicalServiceRow[]).map((row) => ({
+        ...row,
+        source_table: "services" as const
+      })),
+      ...((resolvedMarketplaceServicesResult.error ? [] : resolvedMarketplaceServicesResult.data ?? []) as Array<{
         service_reference: string;
         category: string;
         name: string;
@@ -912,7 +960,8 @@ async function readCanonicalSnapshot(supabase: SupabaseClient): Promise<Canonica
         barber_reference: row.barber_reference,
         shop_reference: row.shop_reference,
         booking_count: null,
-        popularity_rank: null
+        popularity_rank: null,
+        source_table: "marketplace_services"
       } satisfies CanonicalServiceRow))
     ],
     locations: (resolvedLocationsResult.data ?? []) as CanonicalLocationRow[],
@@ -990,6 +1039,7 @@ function mapService(row: CanonicalServiceRow, locationReference: string): Servic
 function getCandidateLocationReferences(
   barberReference: string,
   barberUuid: string,
+  profileId: string,
   services: CanonicalServiceRow[],
   availabilityRules: CanonicalAvailabilityRuleRow[],
   appointments: CanonicalAppointmentRow[],
@@ -1002,7 +1052,7 @@ function getCandidateLocationReferences(
     .forEach((entry) => references.add(locationReferenceByUuid.get(entry.location_id) ?? entry.location_id));
 
   services
-    .filter((entry) => entry.barber_reference === barberReference || entry.barber_reference === barberUuid)
+    .filter((entry) => [barberReference, barberUuid, profileId].includes(entry.barber_reference ?? ""))
     .forEach((entry) => references.add(entry.shop_reference ?? locationReferenceByUuid.get(entry.location_id) ?? entry.location_id));
 
   appointments
@@ -1015,14 +1065,24 @@ function getCandidateLocationReferences(
 function getServicesForBarber(
   barberReference: string,
   barberUuid: string,
+  profileId: string,
   locationReferences: string[],
   rows: CanonicalServiceRow[],
   locationReferenceByUuid: Map<string, string>
 ) {
+  const serviceResult = getCanonicalBarberServicesFromRows({
+    barberReference,
+    barberUuid,
+    profileId,
+    locationReferences,
+    rows,
+    locationReferenceByUuid
+  });
+  const clientVisibleIds = new Set(serviceResult.clientVisibleServices.map((service) => service.id));
   const services = rows
     .filter((row) => {
       const locationReference = locationReferenceByUuid.get(row.location_id) ?? row.location_id;
-      const directBarberMatch = row.barber_reference === barberReference || row.barber_reference === barberUuid;
+      const directBarberMatch = [barberReference, barberUuid, profileId].includes(row.barber_reference ?? "");
       const sharedShopMatch = !row.barber_reference && locationReferences.includes(row.shop_reference ?? locationReference);
       const sharedLocationMatch = !row.shop_reference && locationReferences.includes(locationReference);
       return row.active && row.is_bookable !== false && (directBarberMatch || sharedShopMatch || sharedLocationMatch);
@@ -1031,7 +1091,9 @@ function getServicesForBarber(
 
   const unique = new Map<string, Service>();
   for (const service of services) {
-    unique.set(service.id, service);
+    if (clientVisibleIds.has(service.id)) {
+      unique.set(service.id, service);
+    }
   }
 
   return [...unique.values()].sort((left, right) => {
@@ -1044,6 +1106,87 @@ function getServicesForBarber(
     }
     return left.name.localeCompare(right.name);
   });
+}
+
+function getCanonicalBarberServicesFromRows(input: {
+  barberReference: string;
+  barberUuid: string;
+  profileId: string;
+  locationReferences: string[];
+  rows: CanonicalServiceRow[];
+  locationReferenceByUuid: Map<string, string>;
+}): CanonicalBarberServicesResult {
+  const barberKeys = [input.barberReference, input.barberUuid, input.profileId]
+    .filter((value, index, values): value is string => Boolean(value) && values.indexOf(value) === index);
+  const barberKeySet = new Set(barberKeys);
+  const matchedRows = input.rows.filter((row) => {
+    const locationReference = input.locationReferenceByUuid.get(row.location_id) ?? row.location_id;
+    const directBarberMatch = Boolean(row.barber_reference && barberKeySet.has(row.barber_reference));
+    const sharedShopMatch = !row.barber_reference && input.locationReferences.includes(row.shop_reference ?? locationReference);
+    const sharedLocationMatch = !row.shop_reference && input.locationReferences.includes(locationReference);
+    return directBarberMatch || sharedShopMatch || sharedLocationMatch;
+  });
+  const services = matchedRows.map((row): CanonicalBarberService => {
+    const active = row.active !== false && row.is_bookable !== false;
+    const clientVisible = active
+      && isMarketplaceBookableService(mapService(row, input.locationReferenceByUuid.get(row.location_id) ?? row.location_id))
+      && ![toReference(row.id, row.reference_code), row.name, row.category, row.barber_reference, row.shop_reference]
+        .some(isKnownNonProductionMarketplaceValue);
+    return {
+      id: toReference(row.id, row.reference_code),
+      barberReference: input.barberReference,
+      name: row.name,
+      priceCents: Math.round(numeric(row.price) * 100),
+      durationMinutes: Number(row.duration_min ?? 0),
+      active,
+      clientVisible,
+      sourceTable: row.source_table ?? "services",
+      barberKeyUsed: row.barber_reference ?? null
+    };
+  });
+  const unique = new Map<string, CanonicalBarberService>();
+  for (const service of services) {
+    const previous = unique.get(service.id);
+    if (!previous || (!previous.clientVisible && service.clientVisible)) {
+      unique.set(service.id, service);
+    }
+  }
+  const uniqueServices = [...unique.values()];
+  const activeServices = uniqueServices.filter((service) => service.active);
+  const clientVisibleServices = uniqueServices.filter((service) => service.clientVisible);
+  const servicesTableCount = uniqueServices.filter((service) => service.sourceTable === "services").length;
+  const marketplaceServicesCount = uniqueServices.filter((service) => service.sourceTable === "marketplace_services").length;
+  const checkoutLibraryCount = input.rows.filter((row) =>
+    row.source_table === "marketplace_services"
+    && Boolean(row.barber_reference)
+    && barberKeySet.has(row.barber_reference!)
+  ).length;
+  const wrongKeyRows = input.rows.filter((row) =>
+    row.source_table === "marketplace_services"
+    && Boolean(row.barber_reference)
+    && row.barber_reference !== input.barberReference
+    && barberKeySet.has(row.barber_reference!)
+  );
+
+  return {
+    services: uniqueServices,
+    activeServices,
+    clientVisibleServices,
+    sourceDiagnostics: {
+      checkoutLibraryCount,
+      marketplaceServicesCount,
+      servicesTableCount,
+      onboardingServicesCount: 0,
+      syncedCount: 0,
+      sourceTablesChecked: ["services", "marketplace_services"],
+      barberKeysChecked: barberKeys,
+      sourceMismatchReason: clientVisibleServices.length
+        ? undefined
+        : wrongKeyRows.length
+          ? `Checkout Library uses marketplace_services keyed by ${wrongKeyRows[0]?.barber_reference}; marketplace checks canonical barber reference ${input.barberReference}.`
+          : "No active client-visible service rows matched canonical barber service keys."
+    }
+  };
 }
 
 function matchesSearchableTerms(terms: string[], query?: string) {
@@ -1114,6 +1257,7 @@ function buildMarketplaceBarberEligibility(
   const rawLocationReferences = getCandidateLocationReferences(
     barberReference,
     barberRow.id,
+    barberRow.profile_id,
     snapshot.services,
     snapshot.availabilityRules,
     snapshot.appointments,
@@ -1122,7 +1266,15 @@ function buildMarketplaceBarberEligibility(
   const locationReferences = rawLocationReferences.filter((locationReference) =>
     isLocationPubliclyBookable(options.trustState, locationReference)
   );
-  const services = getServicesForBarber(barberReference, barberRow.id, locationReferences, snapshot.services, options.locationReferenceByUuid);
+  const canonicalServices = getCanonicalBarberServicesFromRows({
+    barberReference,
+    barberUuid: barberRow.id,
+    profileId: barberRow.profile_id,
+    locationReferences,
+    rows: snapshot.services,
+    locationReferenceByUuid: options.locationReferenceByUuid
+  });
+  const services = getServicesForBarber(barberReference, barberRow.id, barberRow.profile_id, locationReferences, snapshot.services, options.locationReferenceByUuid);
   const bookableServices = services.filter((service) =>
     isMarketplaceBookableService(service)
     && ![service.id, service.name, service.category, service.barberId, service.shopId].some(isKnownNonProductionMarketplaceValue)
@@ -1231,6 +1383,15 @@ function buildMarketplaceBarberEligibility(
     bookingActive: acceptingBookings,
     payoutReady,
     payoutAccountCount: connectedAccounts.length,
+    checkoutLibraryServiceCount: canonicalServices.sourceDiagnostics.checkoutLibraryCount,
+    marketplaceServiceCount: canonicalServices.sourceDiagnostics.marketplaceServicesCount,
+    servicesTableServiceCount: canonicalServices.sourceDiagnostics.servicesTableCount,
+    clientVisibleServiceCount: canonicalServices.clientVisibleServices.length,
+    firstServiceSourceTable: canonicalServices.clientVisibleServices[0]?.sourceTable ?? canonicalServices.activeServices[0]?.sourceTable ?? canonicalServices.services[0]?.sourceTable ?? null,
+    firstServiceBarberKey: canonicalServices.clientVisibleServices[0]?.barberKeyUsed ?? canonicalServices.activeServices[0]?.barberKeyUsed ?? canonicalServices.services[0]?.barberKeyUsed ?? null,
+    serviceSourceTablesChecked: canonicalServices.sourceDiagnostics.sourceTablesChecked,
+    serviceBarberKeysChecked: canonicalServices.sourceDiagnostics.barberKeysChecked,
+    serviceSourceMismatchReason: canonicalServices.sourceDiagnostics.sourceMismatchReason ?? null,
     marketplaceVisibilityRowFound: Boolean(visibility),
     marketplaceVisibilityState: visibility?.visibility_state ?? null,
     marketplaceVisibilityAcceptsInstantBookings: visibility?.accepts_instant_bookings ?? null,
@@ -1295,6 +1456,15 @@ function missingMarketplaceEligibilityDiagnostic(barberId: string): MarketplaceB
     bookingActive: false,
     payoutReady: false,
     payoutAccountCount: 0,
+    checkoutLibraryServiceCount: 0,
+    marketplaceServiceCount: 0,
+    servicesTableServiceCount: 0,
+    clientVisibleServiceCount: 0,
+    firstServiceSourceTable: null,
+    firstServiceBarberKey: null,
+    serviceSourceTablesChecked: ["services", "marketplace_services"],
+    serviceBarberKeysChecked: [barberId],
+    serviceSourceMismatchReason: "Barber row was not found for canonical marketplace eligibility.",
     marketplaceVisibilityRowFound: false,
     marketplaceVisibilityState: null,
     marketplaceVisibilityAcceptsInstantBookings: null,
@@ -1784,6 +1954,58 @@ export async function getCanonicalMarketplaceEligibility(
   return publicDiagnostic;
 }
 
+export async function getCanonicalBarberServices(
+  supabase: SupabaseClient,
+  barberIdOrReference: string
+): Promise<CanonicalBarberServicesResult> {
+  const snapshot = await readCanonicalSnapshot(supabase);
+  const barberRow = snapshot.barbers.find((row) => {
+    const reference = toReference(row.id, row.reference_code);
+    return row.id === barberIdOrReference
+      || row.profile_id === barberIdOrReference
+      || reference === barberIdOrReference;
+  });
+
+  if (!barberRow) {
+    return {
+      services: [],
+      activeServices: [],
+      clientVisibleServices: [],
+      sourceDiagnostics: {
+        checkoutLibraryCount: 0,
+        marketplaceServicesCount: 0,
+        servicesTableCount: 0,
+        onboardingServicesCount: 0,
+        syncedCount: 0,
+        sourceTablesChecked: ["services", "marketplace_services"],
+        barberKeysChecked: [barberIdOrReference],
+        sourceMismatchReason: "Barber row was not found for canonical service lookup."
+      }
+    };
+  }
+
+  const locationReferenceByUuid = new Map(snapshot.locations.map((row) => [row.id, toReference(row.id, row.reference_code)]));
+  const barberReference = toReference(barberRow.id, barberRow.reference_code);
+  const locationReferences = getCandidateLocationReferences(
+    barberReference,
+    barberRow.id,
+    barberRow.profile_id,
+    snapshot.services,
+    snapshot.availabilityRules,
+    snapshot.appointments,
+    locationReferenceByUuid
+  );
+
+  return getCanonicalBarberServicesFromRows({
+    barberReference,
+    barberUuid: barberRow.id,
+    profileId: barberRow.profile_id,
+    locationReferences,
+    rows: snapshot.services,
+    locationReferenceByUuid
+  });
+}
+
 export async function getMarketplaceEligibilityForBarber(
   supabase: SupabaseClient,
   barberId: string,
@@ -1935,6 +2157,7 @@ export async function findCanonicalBookableSlot(
   const rawLocationReferences = getCandidateLocationReferences(
     barberReference,
     barberRow.id,
+    barberRow.profile_id,
     snapshot.services,
     snapshot.availabilityRules,
     snapshot.appointments,
@@ -1943,7 +2166,7 @@ export async function findCanonicalBookableSlot(
   const locationReferences = rawLocationReferences.filter((locationReference) =>
     isLocationPubliclyBookable(options.trustState, locationReference)
   );
-  const services = getServicesForBarber(barberReference, barberRow.id, locationReferences, snapshot.services, locationReferenceByUuid);
+  const services = getServicesForBarber(barberReference, barberRow.id, barberRow.profile_id, locationReferences, snapshot.services, locationReferenceByUuid);
   const bookableServices = services.filter((service) =>
     isMarketplaceBookableService(service)
     && ![service.id, service.name, service.category, service.barberId, service.shopId].some(isKnownNonProductionMarketplaceValue)
@@ -2040,6 +2263,7 @@ export async function buildCanonicalAvailabilityPayload(
   const rawLocationReferences = getCandidateLocationReferences(
     barberReference,
     barberRow.id,
+    barberRow.profile_id,
     snapshot.services,
     snapshot.availabilityRules,
     snapshot.appointments,
@@ -2048,7 +2272,7 @@ export async function buildCanonicalAvailabilityPayload(
   const locationReferences = rawLocationReferences.filter((locationReference) =>
     isLocationPubliclyBookable(options.trustState, locationReference)
   );
-  const services = getServicesForBarber(barberReference, barberRow.id, locationReferences, snapshot.services, locationReferenceByUuid);
+  const services = getServicesForBarber(barberReference, barberRow.id, barberRow.profile_id, locationReferences, snapshot.services, locationReferenceByUuid);
   const bookableServices = services.filter((service) =>
     isMarketplaceBookableService(service)
     && ![service.id, service.name, service.category, service.barberId, service.shopId].some(isKnownNonProductionMarketplaceValue)
@@ -2153,6 +2377,7 @@ export async function buildCanonicalBarberProfile(
   const rawLocationReferences = getCandidateLocationReferences(
     barberReference,
     barberRow.id,
+    barberRow.profile_id,
     snapshot.services,
     snapshot.availabilityRules,
     snapshot.appointments,
@@ -2165,7 +2390,7 @@ export async function buildCanonicalBarberProfile(
   const locations = locationReferences
     .map((locationReference) => getCandidateLocation(locationsByReference, locationReference, profileRow))
     .filter((location): location is Location => Boolean(location));
-  const services = getServicesForBarber(barberReference, barberRow.id, locationReferences, snapshot.services, locationReferenceByUuid);
+  const services = getServicesForBarber(barberReference, barberRow.id, barberRow.profile_id, locationReferences, snapshot.services, locationReferenceByUuid);
   const bookableServices = services.filter((service) =>
     isMarketplaceBookableService(service)
     && ![service.id, service.name, service.category, service.barberId, service.shopId].some(isKnownNonProductionMarketplaceValue)

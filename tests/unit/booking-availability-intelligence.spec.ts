@@ -12,6 +12,7 @@ vi.mock("@/lib/marketplace/visibility", async () => {
 import {
   buildCanonicalAvailabilityPayload,
   buildCanonicalBarberProfile,
+  getCanonicalBarberServices,
   buildCanonicalDiscoveryResults,
   getCanonicalMarketplaceEligibility,
   getMarketplaceEligibilityForBarber
@@ -790,6 +791,135 @@ describe("canonical availability intelligence", () => {
     expect(profileIdDiagnostic.includeInClientSearch).toBe(true);
     expect(profileIdDiagnostic.directSearchIncluded).toBe(true);
     expect(profileIdDiagnostic.blockers).toEqual([]);
+  });
+
+  it("counts Checkout Library marketplace services keyed by profile id as canonical active services", async () => {
+    const targetDay = new Date();
+    targetDay.setDate(targetDay.getDate() + 1);
+    targetDay.setHours(12, 0, 0, 0);
+    const targetEnd = new Date(targetDay);
+    targetEnd.setHours(19, 0, 0, 0);
+    const tables = {
+      barbers: [{
+        id: "barber-uuid",
+        reference_code: "barber-phillip",
+        profile_id: "profile-uuid",
+        compensation_model: "booth_rent",
+        app_approval_status: "approved",
+        shop_approval_status: "pending",
+        commission_rate: null,
+        booth_rent_amount: 150,
+        booth_rent_frequency: "weekly",
+        bio: "Independent Tampa barber.",
+        booking_slug: null
+      }],
+      barber_profiles: [{
+        barber_reference: "barber-phillip",
+        username: "philforsure",
+        display_name: "Phillip McGee",
+        bio: "Sharp cuts in Tampa.",
+        years_experience: 5,
+        shop_reference: null,
+        profile_photo_url: null,
+        profile_photo_path: null,
+        specialties: ["Haircuts"],
+        badges: ["Verified"],
+        service_area_label: "Tampa, FL",
+        next_available_at: null,
+        visibility_state: "public"
+      }],
+      profiles: [{
+        id: "profile-uuid",
+        role: "barber",
+        full_name: "Phillip McGee",
+        email: "phillip@example.com",
+        phone: null,
+        primary_onboarding_role: "barber"
+      }],
+      services: [],
+      marketplace_services: [{
+        service_reference: "srv-test-cut",
+        category: "Haircuts",
+        name: "test cut",
+        description: "",
+        duration_min: 15,
+        buffer_min: 0,
+        price: 5,
+        deposit_amount: 0,
+        full_prepay_required: false,
+        owner_type: "barber",
+        barber_reference: "profile-uuid",
+        shop_reference: "independent-barber-phillip"
+      }],
+      locations: [],
+      staff_locations: [],
+      availability_rules: [{
+        barber_id: "barber-uuid",
+        location_id: "independent-barber-phillip",
+        weekday: targetDay.getDay(),
+        start_time: formatTime(targetDay),
+        end_time: formatTime(targetEnd)
+      }],
+      blocked_times: [],
+      appointments: [],
+      reviews: [],
+      barber_portfolios: [],
+      marketplace_visibility: [{
+        barber_reference: "barber-phillip",
+        visibility_state: "public",
+        accepts_instant_bookings: true,
+        featured_rank: null
+      }],
+      barber_status: [{
+        barber_reference: "barber-phillip",
+        status: "active",
+        live_status: "live",
+        accepting_bookings: true
+      }],
+      connected_accounts: [{
+        subject_type: "barber",
+        barber_id: "barber-uuid",
+        payout_readiness_status: "ready",
+        livemode: false,
+        charges_enabled: true,
+        payouts_enabled: true,
+        requirements_currently_due: [],
+        requirements_past_due: [],
+        disabled_reason: null
+      }]
+    };
+    const supabase = createSupabaseMock(tables, {
+      missingColumns: {
+        marketplace_services: ["style_tag_ids"]
+      }
+    });
+
+    const services = await getCanonicalBarberServices(supabase as never, "barber-phillip");
+    const results = await buildCanonicalDiscoveryResults(supabase as never, {
+      locationId: "",
+      query: "philforsure"
+    });
+    const diagnostic = await getCanonicalMarketplaceEligibility(supabase as never, "barber-phillip", {
+      directSearchQuery: "phillip"
+    });
+
+    expect(services.sourceDiagnostics.checkoutLibraryCount).toBe(1);
+    expect(services.clientVisibleServices).toHaveLength(1);
+    expect(services.clientVisibleServices[0]).toMatchObject({
+      name: "test cut",
+      priceCents: 500,
+      durationMinutes: 15,
+      sourceTable: "marketplace_services",
+      barberKeyUsed: "profile-uuid"
+    });
+    expect(results).toHaveLength(1);
+    expect(results[0].barberName).toBe("Phillip McGee");
+    expect(results[0].mostBookedService).toBe("test cut");
+    expect(diagnostic.eligible).toBe(true);
+    expect(diagnostic.blockers).toEqual([]);
+    expect(diagnostic.facts.checkoutLibraryServiceCount).toBe(1);
+    expect(diagnostic.facts.activeServiceCount).toBe(1);
+    expect(diagnostic.facts.serviceBarberKeysChecked).toEqual(["barber-phillip", "barber-uuid", "profile-uuid"]);
   });
 
   it("does not hide an eligible barber when no exact next slot can be materialized yet", async () => {

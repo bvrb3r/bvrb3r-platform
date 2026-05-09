@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { syncOnboardingBarberService } from "@/lib/marketplace/service-sync";
+import { syncCheckoutLibraryServicesForBarber, syncOnboardingBarberService } from "@/lib/marketplace/service-sync";
 
 function createQuery<T extends Record<string, unknown>>(rows: T[], filters: Array<(row: T) => boolean> = []) {
   const resolve = () => Promise.resolve({
@@ -122,5 +122,73 @@ describe("barber service sync", () => {
     expect(result).toEqual({ synced: false, reason: "no_onboarding_service_payload" });
     expect(tables.marketplace_services).toBeUndefined();
     expect(tables.services).toBeUndefined();
+  });
+
+  it("repairs Checkout Library services keyed by profile id into canonical barber service rows", async () => {
+    const tables: Record<string, Array<Record<string, unknown>>> = {
+      barbers: [{
+        id: "barber-uuid",
+        reference_code: "barber-phillip",
+        profile_id: "profile-uuid"
+      }],
+      staff_locations: [],
+      availability_rules: [{
+        id: "availability-1",
+        barber_id: "barber-uuid",
+        location_id: "location-uuid"
+      }],
+      locations: [{
+        id: "location-uuid",
+        reference_code: "independent-barber-43b3cda2"
+      }],
+      marketplace_services: [{
+        service_reference: "srv-test-cut",
+        category: "Haircuts",
+        name: "test cut",
+        description: "",
+        duration_min: 15,
+        buffer_min: 0,
+        price: 5,
+        deposit_amount: 0,
+        full_prepay_required: false,
+        owner_type: "barber",
+        barber_reference: "profile-uuid",
+        shop_reference: "independent-barber-43b3cda2",
+        style_tag_ids: []
+      }],
+      services: []
+    };
+
+    const result = await syncCheckoutLibraryServicesForBarber(createSupabaseMock(tables) as never, "barber-phillip");
+    const secondResult = await syncCheckoutLibraryServicesForBarber(createSupabaseMock(tables) as never, "barber-phillip");
+
+    expect(result).toMatchObject({
+      synced: true,
+      checked: 1,
+      repaired: 1,
+      barberReference: "barber-phillip",
+      sourceTable: "marketplace_services"
+    });
+    expect(secondResult).toMatchObject({
+      synced: true,
+      checked: 1,
+      repaired: 0
+    });
+    expect(tables.marketplace_services).toHaveLength(1);
+    expect(tables.marketplace_services[0]).toMatchObject({
+      service_reference: "srv-test-cut",
+      barber_reference: "barber-phillip",
+      name: "test cut",
+      price: 5,
+      duration_min: 15
+    });
+    expect(tables.services).toHaveLength(1);
+    expect(tables.services[0]).toMatchObject({
+      reference_code: "srv-test-cut",
+      barber_reference: "barber-phillip",
+      service_owner_type: "barber",
+      active: true,
+      is_bookable: true
+    });
   });
 });

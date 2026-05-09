@@ -597,6 +597,13 @@ export function ArchitectAccountDetailWorkspace({
               <Field label="Feed eligible" value={account.feedEligible ? "yes" : "no"} />
               <Field label="Search terms" value={marketplaceSearchTerms} />
               <Field label="Services" value={marketplaceFacts ? `${marketplaceFacts.serviceCount} total / ${marketplaceFacts.activeServiceCount} active` : account.serviceCount} />
+              <Field label="Checkout library service count" value={marketplaceFacts?.checkoutLibraryServiceCount} />
+              <Field label="Marketplace service count" value={marketplaceFacts?.marketplaceServiceCount} />
+              <Field label="Services table count" value={marketplaceFacts?.servicesTableServiceCount} />
+              <Field label="Client-visible service count" value={marketplaceFacts?.clientVisibleServiceCount} />
+              <Field label="Service source tables checked" value={marketplaceFacts?.serviceSourceTablesChecked?.join(", ")} />
+              <Field label="Service barber keys checked" value={marketplaceFacts?.serviceBarberKeysChecked?.join(", ")} />
+              <Field label="Service source mismatch" value={marketplaceFacts?.serviceSourceMismatchReason} />
               <Field label="Profile ready final" value={marketplaceFacts ? (marketplaceFacts.profileReady ? "yes" : "no") : undefined} />
               <Field label="Location ready final" value={marketplaceFacts ? (marketplaceFacts.locationReady ? "yes" : "no") : undefined} />
               <Field label="Availability / working hours" value={marketplaceFacts ? `${marketplaceFacts.availabilityCount} availability / ${marketplaceFacts.workingHoursCount} working hours` : account.availabilityCount} />
@@ -615,11 +622,20 @@ export function ArchitectAccountDetailWorkspace({
                   <Field label="Active service rows" value={account.serviceHealth.activeServiceRows} />
                   <Field label="Client-visible services" value={account.serviceHealth.clientVisibleServiceRows} />
                   <Field label="Service source table" value={account.serviceHealth.serviceSourceTable} />
+                  <Field label="Checkout library services" value={account.serviceHealth.checkoutLibraryServices} />
+                  <Field label="Canonical services" value={account.serviceHealth.canonicalServices} />
+                  <Field label="Marketplace services" value={account.serviceHealth.marketplaceServices} />
+                  <Field label="Onboarding services" value={account.serviceHealth.onboardingServices} />
                   <Field label="First service" value={account.serviceHealth.firstServiceName} />
                   <Field label="First service price" value={account.serviceHealth.firstServicePrice} />
                   <Field label="First service duration" value={account.serviceHealth.firstServiceDurationMin ? `${account.serviceHealth.firstServiceDurationMin} min` : undefined} />
+                  <Field label="First service source" value={account.serviceHealth.firstServiceSourceTable} />
+                  <Field label="First service barber key" value={account.serviceHealth.firstServiceBarberKey} />
+                  <Field label="Service tables checked" value={account.serviceHealth.serviceSourceTablesChecked?.join(", ")} />
+                  <Field label="Service keys checked" value={account.serviceHealth.serviceBarberKeysChecked?.join(", ")} />
                   <Field label="Discovery service gate" value={account.serviceHealth.discoveryServiceGatePass ? "pass" : "fail"} />
                   <Field label="Service blocker" value={account.serviceHealth.serviceBlocker} />
+                  <Field label="Service source mismatch" value={account.serviceHealth.serviceSourceMismatchReason} />
                   <div className="sm:col-span-2">
                     <Button
                       type="button"
