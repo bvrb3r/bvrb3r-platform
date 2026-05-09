@@ -328,6 +328,9 @@ describe("client search screen", () => {
     expect(screen.getByText("Phillip McGee")).toBeInTheDocument();
     expect(screen.getAllByText("New").length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/barber/independent-barber-43b3cda2");
+    const bookLink = screen.getByRole("link", { name: "Book" });
+    expect(bookLink).toHaveAttribute("href", expect.stringContaining("barberId=barber-phillip"));
+    expect(bookLink.getAttribute("href")).not.toContain("serviceId=");
   });
 
   it("shows a completed direct-search empty state when the API returns no barbers", () => {

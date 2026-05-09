@@ -65,15 +65,13 @@ export function ClientDiscoveryCard({
   const initials = getInitials(result.barberName);
   const favoriteMutation = useSaveFavoriteBarberMutation();
   const saved = favoriteMutation.isSuccess;
-  const bookHref: Route = (result.bookingHref as Route | undefined) ??
-    buildMarketplaceBookingHref({
-      barberId: result.barberId,
-      username: result.username,
-      locationId: result.locationId,
-      serviceId: result.mostBookedServiceId,
-      sourceKind: "discovery",
-      query: result.mostBookedService ?? undefined
-    });
+  const bookHref: Route = buildMarketplaceBookingHref({
+    barberId: result.barberId,
+    username: result.username,
+    locationId: result.locationId,
+    sourceKind: "discovery",
+    query: result.mostBookedService ?? undefined
+  });
   const profileHref = `/barber/${result.username}` as Route;
   const heroImage = result.galleryPreviewUrls?.[0] ?? result.profilePhotoUrl;
   const ratingLabel = result.reviewCount > 0 ? result.rating.toFixed(1) : "New";

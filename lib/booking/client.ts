@@ -250,6 +250,8 @@ export interface CreateBookingPayload {
   matchedFrom?: "favorite_barber" | "favorite_shop" | "nearby" | "available_now";
   discoveryQuery?: string;
   barberUsername?: string;
+  barberName?: string;
+  serviceName?: string;
   aiRecommendationId?: string;
   aiRecommendationType?: AiRecommendationType;
   promotionId?: string;

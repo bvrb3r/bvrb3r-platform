@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import { CalendarDays, CheckCircle2, Clock3, MapPin, Scissors } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -34,7 +35,7 @@ import { useApplyPromotionMutation, useClientPromotionsQuery } from "@/lib/promo
 import type { PromotionPreviewView } from "@/lib/promotions/service";
 import { calculateBookingQuote, resolveBookableAddOn, resolveBookableBarber, resolveBookableService, resolveBookableSlot } from "@/lib/utils/booking";
 import { getReadableActionError } from "@/lib/utils/feedback";
-import { currency, dateLabel } from "@/lib/utils";
+import { cn, currency, dateLabel } from "@/lib/utils";
 import type { AiRecommendationType } from "@/types/ai";
 import type { HaircutNowMatch, MarketplaceSourceKind, Service } from "@/types/domain";
 
@@ -52,6 +53,7 @@ const bookingSchema = z.object({
 });
 
 type BookingValues = z.infer<typeof bookingSchema>;
+type BookingStep = "service" | "time" | "review";
 type BookingDraft = Pick<
   BookingValues,
   "locationId" | "barberId" | "serviceId" | "addOnId" | "appointmentTime" | "clientName" | "clientPhone"
@@ -156,6 +158,72 @@ function buildQuickRedeemOptions(maxRedeemablePoints: number) {
     .filter((option, index, array) => array.findIndex((entry) => entry.points === option.points) === index);
 }
 
+const bookingSteps: Array<{ id: BookingStep; label: string }> = [
+  { id: "service", label: "Choose service" },
+  { id: "time", label: "Pick time" },
+  { id: "review", label: "Review" }
+];
+
+function getStepIndex(step: BookingStep) {
+  return bookingSteps.findIndex((entry) => entry.id === step);
+}
+
+function getSlotDateKey(iso: string) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return iso.slice(0, 10);
+  }
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getSlotDayLabel(iso: string) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return "Available day";
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric"
+  }).format(date);
+}
+
+function getSlotTimeLabel(iso: string) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return iso;
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(date);
+}
+
+function getSlotPeriod(iso: string): "Morning" | "Afternoon" | "Evening" {
+  const hour = new Date(iso).getHours();
+  if (hour < 12) {
+    return "Morning";
+  }
+  if (hour < 17) {
+    return "Afternoon";
+  }
+  return "Evening";
+}
+
+function groupSlotsByDate<T extends { startsAt: string }>(slots: T[]) {
+  return slots.reduce<Record<string, T[]>>((groups, slot) => {
+    const key = getSlotDateKey(slot.startsAt);
+    groups[key] = [...(groups[key] ?? []), slot];
+    return groups;
+  }, {});
+}
+
 function readBookingDraft(): Partial<BookingDraft> | null {
   if (typeof window === "undefined") {
     return null;
@@ -210,6 +278,7 @@ export function BookingForm() {
   const [appliedPromotion, setAppliedPromotion] = useState<PromotionPreviewView | null>(null);
   const [requestedPointsToRedeem, setRequestedPointsToRedeem] = useState(0);
   const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState("");
+  const [selectedDateKey, setSelectedDateKey] = useState("");
 
   const sourceKind = toMarketplaceSource(searchParams.get("source"));
   const matchedFrom = toMatchedFrom(searchParams.get("matchedFrom"));
@@ -221,6 +290,7 @@ export function BookingForm() {
   const preselectedServiceId = searchParams.get("serviceId") ?? "";
   const preselectedAppointmentTime = searchParams.get("appointmentTime") ?? "";
   const preselectedUsername = searchParams.get("barber") ?? undefined;
+  const [bookingStep, setBookingStep] = useState<BookingStep>(() => (preselectedServiceId ? "time" : "service"));
 
   const searchQuery = useBarberSearchQuery({});
   const shops = useMemo(() => searchQuery.data?.shops ?? [], [searchQuery.data?.shops]);
@@ -382,6 +452,16 @@ export function BookingForm() {
     locationId: resolvedLocationId || undefined
   });
   const availableSlots = useMemo(() => availabilityQuery.data?.slots ?? [], [availabilityQuery.data?.slots]);
+  const slotsByDate = useMemo(() => groupSlotsByDate(availableSlots), [availableSlots]);
+  const slotDateKeys = useMemo(() => Object.keys(slotsByDate), [slotsByDate]);
+  const selectedDateSlots = selectedDateKey ? slotsByDate[selectedDateKey] ?? [] : [];
+  const timezoneLabel = useMemo(() => {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || "local time";
+    } catch {
+      return "local time";
+    }
+  }, []);
   const paymentMethods = useMemo(() => paymentMethodsQuery.data?.methods ?? [], [paymentMethodsQuery.data?.methods]);
   const defaultPaymentMethod = useMemo(
     () => paymentMethods.find((method) => method.isDefault) ?? paymentMethods[0] ?? null,
@@ -408,6 +488,17 @@ export function BookingForm() {
       form.setValue("appointmentTime", nextSlot);
     }
   }, [availableSlots, form, preselectedAppointmentTime]);
+
+  useEffect(() => {
+    const activeSlot = availableSlots.find((slot) => slot.startsAt === form.getValues("appointmentTime")) ?? availableSlots[0];
+    if (!activeSlot) {
+      setSelectedDateKey("");
+      return;
+    }
+
+    const nextDateKey = getSlotDateKey(activeSlot.startsAt);
+    setSelectedDateKey((current) => current || nextDateKey);
+  }, [availableSlots, form, watchAppointmentTime]);
 
   useEffect(() => {
     if (!sourceKind || !resolvedBarberId) {
@@ -479,7 +570,6 @@ export function BookingForm() {
   }, [watchAddOnId, watchAppointmentTime, watchBarberId, watchClientName, watchClientPhone, watchLocationId, watchServiceId]);
 
   const currentShop = shops.find((shop) => shop.id === watchLocationId) ?? shops[0];
-  const runtimeLabel = searchQuery.isLoading || barberProfileQuery.isLoading ? "Loading booking options" : "Ready to book";
   const isInitialLoading = (searchQuery.isLoading && !searchQuery.data) || (barberProfileQuery.isLoading && !barberProfileQuery.data);
   const waitlistPending = waitlistMutation.isPending;
   const formError = searchQuery.error || barberProfileQuery.error || availabilityQuery.error;
@@ -582,6 +672,8 @@ export function BookingForm() {
         matchedFrom,
         discoveryQuery: query,
         barberUsername: barberProfileQuery.data?.profile.username ?? preselectedUsername,
+        barberName: currentBarberResult?.barberName,
+        serviceName: currentService?.name,
         aiRecommendationId,
         aiRecommendationType,
         promotionId: promotionSelection?.promotion.id,
@@ -638,216 +730,475 @@ export function BookingForm() {
     }
   }
 
-  return (
-    <div className="grid gap-4 lg:grid-cols-[1.08fr_0.92fr]">
-      <Card className="overflow-hidden rounded-[38px] p-0">
-        <div className="border-b border-white/8 px-6 py-6 sm:px-8 sm:py-8">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge>Book with BVRB3R</Badge>
-            {sourceKind ? <Badge>{getSourceLabel(sourceKind)}</Badge> : null}
+  const selectedSlot = resolveBookableSlot(availableSlots, watchAppointmentTime) ?? undefined;
+  const selectedSlotLabel = selectedSlot ? dateLabel(selectedSlot.startsAt) : "Choose a time";
+  const selectedLocationLabel = currentShop?.name ?? currentBarberResult?.locationLabel ?? "Selected location";
+  const activeStepIndex = getStepIndex(bookingStep);
+  const serviceReady = Boolean(currentService);
+  const timeReady = Boolean(selectedSlot);
+  const reviewReady = serviceReady && timeReady && Boolean(selectedPaymentMethod) && isOnline;
+
+  function continueToTime() {
+    if (!currentService) {
+      setStatusUpdate({ tone: "error", message: "Choose a service before picking a time." });
+      return;
+    }
+    setStatusUpdate(null);
+    setBookingStep("time");
+  }
+
+  function continueToReview() {
+    if (!selectedSlot) {
+      setStatusUpdate({ tone: "error", message: "Choose an available time before reviewing the appointment." });
+      return;
+    }
+    setStatusUpdate(null);
+    setBookingStep("review");
+  }
+
+  if (confirmationId) {
+    return (
+      <div className="mx-auto max-w-3xl">
+        <Card className="rounded-[34px] p-6 sm:p-8">
+          <div className="flex h-14 w-14 items-center justify-center rounded-full border border-[#7CFF00]/24 bg-[#7CFF00]/12 text-[#d7ffab]">
+            <CheckCircle2 className="h-7 w-7" />
           </div>
-          <h2 className="mt-5 text-balance text-3xl font-semibold sm:text-5xl" data-display="true">Book your appointment.</h2>
-          <p className="mt-4 max-w-2xl text-base leading-7 text-white/68">
-            Choose a service, choose a time, confirm the details, then pay or reserve.
-          </p>
-          <div className="mt-6 grid grid-cols-2 gap-2 text-[11px] uppercase tracking-[0.18em] text-white/48 sm:flex sm:flex-wrap sm:tracking-[0.22em]">
-            <span className="rounded-full border border-[#7CFF00]/20 bg-[#7CFF00]/10 px-3 py-2 text-[#d7ffab]">01 Choose service</span>
-            <span className="rounded-full border border-white/8 bg-black/25 px-3 py-2">02 Choose time</span>
-            <span className="rounded-full border border-white/8 bg-black/25 px-3 py-2">03 Confirm details</span>
-            <span className="rounded-full border border-white/8 bg-black/25 px-3 py-2">04 Pay or confirm</span>
-          </div>
-          <div className="mt-5 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
-            <div className="rounded-[24px] border border-white/8 bg-black/20 px-4 py-3 text-[11px] uppercase tracking-[0.22em] text-[#cfff93]">
-              {runtimeLabel}
+          <p className="mt-6 surface-label text-[#d7ffab]">Appointment booked</p>
+          <h2 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">
+            You are on the books.
+          </h2>
+          <div className="mt-6 grid gap-3 text-sm text-white/72">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-[22px] border border-white/8 bg-black/20 px-4 py-3">
+              <span>Barber</span>
+              <span className="font-medium text-white">{currentBarberResult?.barberName ?? "Selected barber"}</span>
             </div>
-            {currentBarberResult ? (
-              <div className="rounded-[24px] border border-[#7CFF00]/16 bg-[#7CFF00]/8 px-4 py-3 text-sm text-white/78">
-                Booking with <span className="text-[#d7ffab]">{currentBarberResult.barberName}</span>{matchedFrom ? ` from ${matchedFrom.replaceAll("_", " ")}` : ""}
-              </div>
-            ) : null}
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-[22px] border border-white/8 bg-black/20 px-4 py-3">
+              <span>Service</span>
+              <span className="font-medium text-white">{currentService?.name ?? "Selected service"}</span>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-[22px] border border-white/8 bg-black/20 px-4 py-3">
+              <span>Date and time</span>
+              <span className="font-medium text-white">{selectedSlotLabel}</span>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-[22px] border border-white/8 bg-black/20 px-4 py-3">
+              <span>Location</span>
+              <span className="font-medium text-white">{selectedLocationLabel}</span>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-[22px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 px-4 py-3">
+              <span>Total</span>
+              <span className="font-semibold text-[#d7ffab]">{currency(displayedQuote.grandTotal)}</span>
+            </div>
+          </div>
+          <p className="mt-5 text-sm leading-7 text-white/62">
+            Confirmation {confirmationId}. {confirmationPaymentStatus === "captured" && confirmationPaymentLabel
+              ? `${confirmationPaymentLabel} was charged for this booking.`
+              : "Payment status will update in Activity."}
+          </p>
+          <div className="mt-7 grid gap-3 sm:grid-cols-3">
+            <Link href="/dashboard/client/activity" className="inline-flex h-12 items-center justify-center rounded-full bg-[#7CFF00] px-5 text-sm font-semibold text-black transition hover:bg-[#baff69]">
+              View Appointment
+            </Link>
+            <Link href="/dashboard/client/messages" className="inline-flex h-12 items-center justify-center rounded-full border border-white/10 bg-black/25 px-5 text-sm font-semibold text-white transition hover:border-[#7CFF00]/24 hover:text-[#d7ffab]">
+              Message Barber
+            </Link>
+            <Link href="/dashboard/client" className="inline-flex h-12 items-center justify-center rounded-full border border-white/10 bg-black/25 px-5 text-sm font-semibold text-white transition hover:border-[#7CFF00]/24 hover:text-[#d7ffab]">
+              Back Home
+            </Link>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1.05fr)_22rem]">
+      <Card className="overflow-hidden rounded-[34px] p-0">
+        <div className="border-b border-white/8 px-5 py-6 sm:px-8">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge>{sourceKind ? getSourceLabel(sourceKind) : "Book appointment"}</Badge>
+            {currentBarberResult ? <Badge>{currentBarberResult.barberName}</Badge> : null}
+          </div>
+          <h2 className="mt-4 text-balance text-3xl font-semibold sm:text-5xl" data-display="true">
+            Book your appointment.
+          </h2>
+          <p className="mt-3 max-w-2xl text-sm leading-7 text-white/66">
+            Choose a service, pick a time, review the total, then book.
+          </p>
+          <div className="mt-5 grid gap-2 text-[11px] uppercase tracking-[0.18em] text-white/48 sm:grid-cols-3">
+            {bookingSteps.map((step, index) => {
+              const isActive = bookingStep === step.id;
+              const isComplete = index < activeStepIndex;
+              return (
+                <button
+                  key={step.id}
+                  type="button"
+                  className={cn(
+                    "rounded-full border px-3 py-2 text-left transition",
+                    isActive || isComplete
+                      ? "border-[#7CFF00]/24 bg-[#7CFF00]/10 text-[#d7ffab]"
+                      : "border-white/8 bg-black/25 text-white/48"
+                  )}
+                  onClick={() => {
+                    if (step.id === "service") setBookingStep("service");
+                    if (step.id === "time" && serviceReady) setBookingStep("time");
+                    if (step.id === "review" && serviceReady && timeReady) setBookingStep("review");
+                  }}
+                >
+                  {String(index + 1).padStart(2, "0")} {step.label}
+                </button>
+              );
+            })}
           </div>
         </div>
-        <form className="grid gap-4 p-5 sm:p-8 md:grid-cols-2" onSubmit={form.handleSubmit(handleCreateBooking)}>
-          <div className="md:col-span-2">
+
+        <form className="p-5 sm:p-8" onSubmit={form.handleSubmit(handleCreateBooking)}>
+          <div className="space-y-3">
             {statusUpdate ? <FeedbackBanner tone={statusUpdate.tone} message={statusUpdate.message} /> : null}
             {!isOnline ? <FeedbackBanner tone="info" message={offlineMessage} /> : null}
             {formError ? <FeedbackBanner tone="error" message={getReadableActionError(formError as BookingApiError)} /> : null}
           </div>
-          <div className="rounded-[28px] border border-white/8 bg-black/20 p-4 md:col-span-2">
-            <label className="surface-label mb-3 block">Location</label>
-            <Select
-              {...form.register("locationId")}
-              onChange={(event) => {
-                form.setValue("locationId", event.target.value);
-                setLocation(event.target.value);
-              }}
-            >
-              {shops.map((shop) => (
-                <option key={shop.id} value={shop.id}>{shop.name}</option>
-              ))}
-            </Select>
-          </div>
-          <div className="rounded-[28px] border border-white/8 bg-black/20 p-4">
-            <label className="surface-label mb-3 block">Barber</label>
-            <Select
-              {...form.register("barberId")}
-              onChange={(event) => {
-                form.setValue("barberId", event.target.value);
-                setBarber(event.target.value);
-              }}
-            >
-              {barbers.map((barber) => (
-                <option key={barber.barberId} value={barber.barberId}>{barber.barberName}</option>
-              ))}
-            </Select>
-          </div>
-          <div className="rounded-[28px] border border-white/8 bg-black/20 p-4">
-            <label className="surface-label mb-3 block">Service</label>
-            <Select
-              value={watchServiceId}
-              onChange={(event) => form.setValue("serviceId", event.target.value)}
-            >
-              {primaryServices.map((service) => (
-                <option key={service.id} value={service.id}>{service.name}</option>
-              ))}
-            </Select>
-          </div>
-          <div className="rounded-[28px] border border-white/8 bg-black/20 p-4">
-            <label className="surface-label mb-3 block">Add-on</label>
-            <Select
-              value={watchAddOnId}
-              onChange={(event) => form.setValue("addOnId", event.target.value)}
-            >
-              <option value="">No add-on</option>
-              {addOns.map((service) => (
-                <option key={service.id} value={service.id}>{service.name}</option>
-              ))}
-            </Select>
-          </div>
-          <div className="rounded-[28px] border border-white/8 bg-black/20 p-4">
-            <label className="surface-label mb-3 block">Time</label>
-            <Select
-              value={form.watch("appointmentTime")}
-              onChange={(event) => form.setValue("appointmentTime", event.target.value)}
-            >
-              {availableSlots.map((slot) => (
-                <option key={slot.startsAt} value={slot.startsAt}>{slot.label}</option>
-              ))}
-            </Select>
-          </div>
-          <div className="rounded-[28px] border border-white/8 bg-black/20 p-4">
-            <label className="surface-label mb-3 block">Client name</label>
-            <Input {...form.register("clientName")} />
-          </div>
-          <div className="rounded-[28px] border border-white/8 bg-black/20 p-4">
-            <label className="surface-label mb-3 block">Phone</label>
-            <Input type="tel" inputMode="tel" {...form.register("clientPhone")} />
-          </div>
-          <div className="rounded-[28px] border border-white/8 bg-black/20 p-4 md:col-span-2">
-            <div className="flex flex-wrap items-start justify-between gap-3">
+
+          {bookingStep === "service" ? (
+            <section className="mt-5 space-y-5" aria-labelledby="booking-service-step">
               <div>
-                <label className="surface-label mb-3 block" htmlFor="booking-payment-method">Saved payment method</label>
-                <p className="text-sm leading-7 text-white/62">
-                  Choose the saved card for this booking.
-                </p>
+                <p className="surface-label text-[#d7ffab]">Step 1</p>
+                <h3 id="booking-service-step" className="mt-2 text-2xl font-semibold text-white">Choose service</h3>
+                <p className="mt-2 text-sm text-white/58">Only active services from this barber are shown.</p>
               </div>
-              {selectedPaymentMethod ? <Badge>{selectedPaymentMethod.isDefault ? "Default card" : "Saved card"}</Badge> : null}
-            </div>
-            {paymentMethodsError ? <div className="mt-4"><FeedbackBanner tone="error" message={paymentMethodsError} /></div> : null}
-            {paymentMethodsQuery.isLoading && !paymentMethods.length ? (
-              <div className="mt-4 rounded-[22px] border border-white/8 bg-black/18 p-4">
-                <Skeleton className="h-11 w-full rounded-[16px]" />
-              </div>
-            ) : paymentMethods.length ? (
-              <div className="mt-4 space-y-3">
-                <Select
-                  id="booking-payment-method"
-                  value={selectedPaymentMethodId}
-                  onChange={(event) => setSelectedPaymentMethodId(event.target.value)}
-                >
-                  {paymentMethods.map((method) => (
-                    <option key={method.id} value={method.id}>
-                      {method.label}{method.isDefault ? " (default)" : ""}
-                    </option>
-                  ))}
-                </Select>
-                <p className="text-sm text-white/52">
-                  {selectedPaymentMethod
-                    ? `${selectedPaymentMethod.label} will be charged ${currency(displayedQuote.grandTotal)} when you confirm this booking.`
-                    : "Choose a saved card to continue."}
-                </p>
-              </div>
-            ) : (
-              <div className="mt-4 rounded-[22px] border border-dashed border-white/10 bg-black/18 p-4">
-                <p className="text-sm leading-7 text-white/62">
-                  No saved payment method is ready for this account yet. Add one in Wallet before confirming the booking.
-                </p>
-                <div className="mt-4">
-                  <Link
-                    href="/profile"
-                    className="inline-flex h-11 items-center justify-center rounded-full border border-white/10 bg-black/25 px-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-white transition hover:border-[#7CFF00]/24 hover:text-[#d7ffab]"
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
+                  <label className="surface-label mb-3 block">Location</label>
+                  <Select
+                    {...form.register("locationId")}
+                    onChange={(event) => {
+                      form.setValue("locationId", event.target.value);
+                      setLocation(event.target.value);
+                    }}
                   >
-                    Open wallet
-                  </Link>
+                    {shops.map((shop) => (
+                      <option key={shop.id} value={shop.id}>{shop.name}</option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
+                  <label className="surface-label mb-3 block">Barber</label>
+                  <Select
+                    {...form.register("barberId")}
+                    onChange={(event) => {
+                      form.setValue("barberId", event.target.value);
+                      setBarber(event.target.value);
+                    }}
+                  >
+                    {barbers.map((barber) => (
+                      <option key={barber.barberId} value={barber.barberId}>{barber.barberName}</option>
+                    ))}
+                  </Select>
                 </div>
               </div>
-            )}
-          </div>
-          <label className="md:col-span-2 flex items-start gap-3 rounded-[28px] border border-white/8 bg-[linear-gradient(180deg,rgba(21,21,21,0.95),rgba(10,10,10,0.98))] p-5 text-sm leading-7 text-white/72">
-            <input type="checkbox" className="mt-1 accent-[#7CFF00]" defaultChecked {...form.register("acknowledgePolicy")} />
-            <span>
-              I acknowledge the cancellation policy.
-            </span>
-          </label>
-          {form.formState.errors.acknowledgePolicy ? (
-            <p className="md:col-span-2 text-sm text-rose-200">{form.formState.errors.acknowledgePolicy.message}</p>
+
+              {isInitialLoading ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Skeleton className="h-32 rounded-[24px]" />
+                  <Skeleton className="h-32 rounded-[24px]" />
+                </div>
+              ) : primaryServices.length ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {primaryServices.map((service) => {
+                    const selected = service.id === watchServiceId;
+                    return (
+                      <button
+                        key={service.id}
+                        type="button"
+                        className={cn(
+                          "rounded-[24px] border p-4 text-left transition",
+                          selected
+                            ? "border-[#7CFF00]/34 bg-[#7CFF00]/10 shadow-[0_16px_30px_rgba(124,255,0,0.08)]"
+                            : "border-white/8 bg-black/20 hover:border-[#7CFF00]/22"
+                        )}
+                        onClick={() => {
+                          form.setValue("serviceId", service.id);
+                          setStatusUpdate(null);
+                        }}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-lg font-semibold text-white">{service.name}</p>
+                            <p className="mt-2 line-clamp-2 text-sm leading-6 text-white/58">{service.description ?? "Book this service."}</p>
+                          </div>
+                          {selected ? <CheckCircle2 className="h-5 w-5 shrink-0 text-[#d7ffab]" /> : null}
+                        </div>
+                        <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-white/68">
+                          <span className="rounded-full border border-white/8 bg-black/24 px-3 py-1.5">{currency(service.price)}</span>
+                          <span className="rounded-full border border-white/8 bg-black/24 px-3 py-1.5">{service.durationMin} min</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="empty-state-panel rounded-[24px] p-5 text-sm text-white/58">
+                  No active services are available for this barber yet.
+                </div>
+              )}
+
+              {addOns.length ? (
+                <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
+                  <label className="surface-label mb-3 block">Optional add-on</label>
+                  <Select
+                    value={watchAddOnId}
+                    onChange={(event) => form.setValue("addOnId", event.target.value)}
+                  >
+                    <option value="">No add-on</option>
+                    {addOns.map((service) => (
+                      <option key={service.id} value={service.id}>{service.name}</option>
+                    ))}
+                  </Select>
+                </div>
+              ) : null}
+
+              <div className="sticky bottom-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] z-10 -mx-1 rounded-[24px] border border-white/10 bg-[rgba(7,7,7,0.94)] p-3 backdrop-blur sm:mx-0 md:static md:border-0 md:bg-transparent md:p-0 md:backdrop-blur-none">
+                <Button type="button" className="h-12 w-full px-6 sm:w-auto" disabled={!serviceReady || isInitialLoading} onClick={continueToTime}>
+                  Continue
+                </Button>
+              </div>
+            </section>
           ) : null}
-          {confirmationId ? (
-            <div className="md:col-span-2 rounded-[28px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-5 text-sm leading-7 text-white/78">
-              <p>
-                Booking confirmed. Appointment <span className="text-[#d3ffa0]">{confirmationId}</span> is ready.
-              </p>
-              <p className="mt-3 text-white/68">
-                {confirmationPaymentStatus
-                  ? confirmationPaymentStatus === "captured"
-                    ? `${confirmationPaymentLabel ?? "Saved card"} was charged for this booking.`
-                    : confirmationPaymentStatus === "authorized"
-                      ? `${confirmationPaymentLabel ?? "Saved card"} is now authorized for this booking.`
-                      : `${confirmationPaymentLabel ?? "Saved card"} needs attention before this booking is fully paid.`
-                  : "Payment status will update here as soon as the booking payment is secured."}
-              </p>
-              <p className="mt-3 text-white/68">
-                {pointsRedemptionPreview.approvedPoints
-                  ? `${pointsRedemptionPreview.approvedPoints} pts applied for ${currency(pointsRedemptionPreview.discountAmount)} off this booking.`
-                  : "BVR Points are ready for future bookings."}
-              </p>
-              <p className="mt-2 text-white/60">
-                {pointsBalance
-                  ? `Current balance ${pointsBalance.unlockedPoints} pts (${currency(pointsBalance.inAppValue)} in-app value). New points post after the paid service closes.`
-                  : "New points post after service closes."}
-              </p>
-            </div>
+
+          {bookingStep === "time" ? (
+            <section className="mt-5 space-y-5" aria-labelledby="booking-time-step">
+              <div>
+                <p className="surface-label text-[#d7ffab]">Step 2</p>
+                <h3 id="booking-time-step" className="mt-2 text-2xl font-semibold text-white">Pick date and time</h3>
+                <p className="mt-2 text-sm text-white/58">Times shown in {timezoneLabel}.</p>
+              </div>
+
+              {availabilityQuery.isLoading && !availableSlots.length ? (
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <Skeleton className="h-16 rounded-[22px]" />
+                  <Skeleton className="h-16 rounded-[22px]" />
+                  <Skeleton className="h-16 rounded-[22px]" />
+                </div>
+              ) : availableSlots.length ? (
+                <>
+                  <div className="flex gap-2 overflow-x-auto pb-1">
+                    {slotDateKeys.map((dateKey) => (
+                      <button
+                        key={dateKey}
+                        type="button"
+                        className={cn(
+                          "min-w-[8.75rem] rounded-[22px] border px-4 py-3 text-left transition",
+                          selectedDateKey === dateKey
+                            ? "border-[#7CFF00]/34 bg-[#7CFF00]/10 text-white"
+                            : "border-white/8 bg-black/20 text-white/64 hover:border-[#7CFF00]/22"
+                        )}
+                        onClick={() => {
+                          setSelectedDateKey(dateKey);
+                          const nextSlot = slotsByDate[dateKey]?.[0];
+                          if (nextSlot) {
+                            form.setValue("appointmentTime", nextSlot.startsAt);
+                          }
+                        }}
+                      >
+                        <span className="surface-label block text-white/42">Date</span>
+                        <span className="mt-1 block text-sm font-semibold">{getSlotDayLabel(slotsByDate[dateKey]?.[0]?.startsAt ?? dateKey)}</span>
+                        <span className="mt-1 block text-xs text-white/48">{slotsByDate[dateKey]?.length ?? 0} times</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="space-y-4">
+                    {(["Morning", "Afternoon", "Evening"] as const).map((period) => {
+                      const periodSlots = selectedDateSlots.filter((slot) => getSlotPeriod(slot.startsAt) === period);
+                      if (!periodSlots.length) {
+                        return null;
+                      }
+
+                      return (
+                        <div key={period} className="rounded-[24px] border border-white/8 bg-black/20 p-4">
+                          <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-white">
+                            <Clock3 className="h-4 w-4 text-[#d7ffab]" />
+                            {period}
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                            {periodSlots.map((slot) => {
+                              const selected = slot.startsAt === watchAppointmentTime;
+                              return (
+                                <button
+                                  key={slot.startsAt}
+                                  type="button"
+                                  className={cn(
+                                    "rounded-full border px-4 py-3 text-sm font-semibold transition",
+                                    selected
+                                      ? "border-[#7CFF00]/34 bg-[#7CFF00] text-black"
+                                      : "border-white/8 bg-black/24 text-white hover:border-[#7CFF00]/22 hover:text-[#d7ffab]"
+                                  )}
+                                  onClick={() => form.setValue("appointmentTime", slot.startsAt)}
+                                >
+                                  {getSlotTimeLabel(slot.startsAt)}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : (
+                <div className="empty-state-panel rounded-[24px] p-5">
+                  <p className="text-lg font-semibold text-white">No times for this service yet.</p>
+                  <p className="mt-2 text-sm leading-7 text-white/58">Choose another day when more availability opens, or join the waitlist.</p>
+                  <Button type="button" variant="secondary" className="mt-4 h-11 px-5" disabled={waitlistPending || !watchServiceId || !watchLocationId || !isOnline} onClick={() => void handleJoinWaitlist()}>
+                    {waitlistPending ? "Joining waitlist..." : "Join waitlist"}
+                  </Button>
+                </div>
+              )}
+
+              <div className="sticky bottom-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] z-10 -mx-1 flex flex-col gap-3 rounded-[24px] border border-white/10 bg-[rgba(7,7,7,0.94)] p-3 backdrop-blur sm:mx-0 sm:flex-row md:static md:border-0 md:bg-transparent md:p-0 md:backdrop-blur-none">
+                <Button type="button" variant="secondary" className="h-12 px-6" onClick={() => setBookingStep("service")}>
+                  Back
+                </Button>
+                <Button type="button" className="h-12 px-6" disabled={!timeReady || availabilityQuery.isLoading} onClick={continueToReview}>
+                  Continue to Review
+                </Button>
+              </div>
+            </section>
           ) : null}
-          <div className="md:col-span-2 sticky bottom-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] z-10 -mx-1 flex flex-col gap-3 rounded-[28px] border border-white/10 bg-[rgba(7,7,7,0.94)] p-3 backdrop-blur sm:mx-0 sm:flex-row md:static md:border-0 md:bg-transparent md:p-0 md:backdrop-blur-none">
-            <Button className="h-12 px-6" disabled={bookingMutation.isPending || waitlistPending || isInitialLoading || !availableSlots.length || !isOnline || !selectedPaymentMethod}>
-              {bookingMutation.isPending ? "Securing booking..." : "Confirm and pay"}
-            </Button>
-            <Button type="button" variant="secondary" className="h-12 px-6" disabled={bookingMutation.isPending || waitlistPending || !watchServiceId || !watchLocationId || !isOnline} onClick={() => void handleJoinWaitlist()}>
-              {waitlistPending ? "Joining waitlist..." : "Join waitlist"}
-            </Button>
-          </div>
+
+          {bookingStep === "review" ? (
+            <section className="mt-5 space-y-5" aria-labelledby="booking-review-step">
+              <div>
+                <p className="surface-label text-[#d7ffab]">Step 3</p>
+                <h3 id="booking-review-step" className="mt-2 text-2xl font-semibold text-white">Review appointment</h3>
+                <p className="mt-2 text-sm text-white/58">Nothing is booked until you tap Book Appointment.</p>
+              </div>
+
+              <div className="grid gap-3 text-sm text-white/72">
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-[22px] border border-white/8 bg-black/20 px-4 py-3">
+                  <span className="inline-flex items-center gap-2"><Scissors className="h-4 w-4 text-[#d7ffab]" />Service</span>
+                  <span className="font-medium text-white">{currentService?.name ?? "Choose a service"}</span>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-[22px] border border-white/8 bg-black/20 px-4 py-3">
+                  <span className="inline-flex items-center gap-2"><CalendarDays className="h-4 w-4 text-[#d7ffab]" />Date and time</span>
+                  <span className="font-medium text-white">{selectedSlotLabel}</span>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-[22px] border border-white/8 bg-black/20 px-4 py-3">
+                  <span className="inline-flex items-center gap-2"><MapPin className="h-4 w-4 text-[#d7ffab]" />Location</span>
+                  <span className="font-medium text-white">{selectedLocationLabel}</span>
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
+                  <label className="surface-label mb-3 block">Client name</label>
+                  <Input {...form.register("clientName")} />
+                  {form.formState.errors.clientName ? <p className="mt-2 text-sm text-rose-200">{form.formState.errors.clientName.message}</p> : null}
+                </div>
+                <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
+                  <label className="surface-label mb-3 block">Phone</label>
+                  <Input type="tel" inputMode="tel" {...form.register("clientPhone")} />
+                  {form.formState.errors.clientPhone ? <p className="mt-2 text-sm text-rose-200">{form.formState.errors.clientPhone.message}</p> : null}
+                </div>
+              </div>
+
+              <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    {paymentMethods.length ? (
+                      <label className="surface-label mb-2 block" htmlFor="booking-payment-method">Payment method</label>
+                    ) : (
+                      <p className="surface-label mb-2">Payment method</p>
+                    )}
+                    <p className="text-sm leading-7 text-white/62">Choose the saved card for this booking.</p>
+                  </div>
+                  {selectedPaymentMethod ? <Badge>{selectedPaymentMethod.isDefault ? "Default card" : "Saved card"}</Badge> : null}
+                </div>
+                {paymentMethodsError ? <div className="mt-4"><FeedbackBanner tone="error" message={paymentMethodsError} /></div> : null}
+                {paymentMethodsQuery.isLoading && !paymentMethods.length ? (
+                  <div className="mt-4 rounded-[18px] border border-white/8 bg-black/18 p-4">
+                    <Skeleton className="h-11 w-full rounded-[16px]" />
+                  </div>
+                ) : paymentMethods.length ? (
+                  <div className="mt-4 space-y-3">
+                    <Select
+                      id="booking-payment-method"
+                      value={selectedPaymentMethodId}
+                      onChange={(event) => setSelectedPaymentMethodId(event.target.value)}
+                    >
+                      {paymentMethods.map((method) => (
+                        <option key={method.id} value={method.id}>
+                          {method.label}{method.isDefault ? " (default)" : ""}
+                        </option>
+                      ))}
+                    </Select>
+                    <p className="text-sm text-white/52">
+                      {selectedPaymentMethod
+                        ? `${selectedPaymentMethod.label} will be charged ${currency(displayedQuote.grandTotal)} when you book.`
+                        : "Choose a saved card to continue."}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="mt-4 rounded-[18px] border border-dashed border-white/10 bg-black/18 p-4">
+                    <p className="text-sm leading-7 text-white/62">
+                      No saved payment method is ready for this account yet. Add one in Wallet before confirming the booking.
+                    </p>
+                    <Link
+                      href="/profile"
+                      className="mt-4 inline-flex h-11 items-center justify-center rounded-full border border-white/10 bg-black/25 px-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-white transition hover:border-[#7CFF00]/24 hover:text-[#d7ffab]"
+                    >
+                      Open wallet
+                    </Link>
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
+                <p className="surface-label">Tip</p>
+                <p className="mt-2 text-sm leading-7 text-white/58">
+                  Tips are handled through the existing checkout receipt after service, so this booking total stays tied to the canonical service price.
+                </p>
+              </div>
+
+              <label className="flex items-start gap-3 rounded-[24px] border border-white/8 bg-black/20 p-5 text-sm leading-7 text-white/72">
+                <input type="checkbox" className="mt-1 accent-[#7CFF00]" defaultChecked {...form.register("acknowledgePolicy")} />
+                <span>I acknowledge the cancellation policy.</span>
+              </label>
+              {form.formState.errors.acknowledgePolicy ? (
+                <p className="text-sm text-rose-200">{form.formState.errors.acknowledgePolicy.message}</p>
+              ) : null}
+
+              <div className="sticky bottom-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] z-10 -mx-1 flex flex-col gap-3 rounded-[24px] border border-white/10 bg-[rgba(7,7,7,0.94)] p-3 backdrop-blur sm:mx-0 sm:flex-row md:static md:border-0 md:bg-transparent md:p-0 md:backdrop-blur-none">
+                <Button type="button" variant="secondary" className="h-12 px-6" onClick={() => setBookingStep("time")}>
+                  Back
+                </Button>
+                <Button className="h-12 px-6" disabled={bookingMutation.isPending || waitlistPending || isInitialLoading || !reviewReady}>
+                  {bookingMutation.isPending ? "Booking..." : "Book Appointment"}
+                </Button>
+              </div>
+            </section>
+          ) : null}
         </form>
       </Card>
-      <Card className="rounded-[38px] p-5 sm:p-8 lg:sticky lg:top-4">
-        <p className="surface-label">Reservation quote</p>
-        {isInitialLoading ? <Skeleton className="mt-4 h-12 w-48" /> : <h3 className="mt-4 text-4xl font-semibold" data-display="true">{currentService?.name ?? "Choose a service"}</h3>}
-        {isInitialLoading ? <Skeleton className="mt-4 h-16 w-full" /> : <p className="mt-4 text-sm leading-7 text-white/64">{currentService?.description ?? "Pick a barber and service to see booking details."}</p>}
-        <div className="mt-6 rounded-[24px] border border-white/8 bg-black/20 p-4 text-sm text-white/68">
-          <p className="surface-label">Booking context</p>
-          <p className="mt-3">{sourceKind ? `${getSourceLabel(sourceKind)} with ${currentBarberResult?.barberName ?? "selected barber"}.` : "Choose your barber, service, and time."}</p>
-          {query ? <p className="mt-2 text-white/52">Search context: {query}</p> : null}
+
+      <Card className="rounded-[34px] p-5 sm:p-6 lg:sticky lg:top-4">
+        <p className="surface-label">Receipt preview</p>
+        {isInitialLoading ? <Skeleton className="mt-4 h-12 w-48" /> : <h3 className="mt-4 text-3xl font-semibold" data-display="true">{currentService?.name ?? "Choose a service"}</h3>}
+        {isInitialLoading ? <Skeleton className="mt-4 h-16 w-full" /> : <p className="mt-3 text-sm leading-7 text-white/64">{currentBarberResult?.barberName ? `With ${currentBarberResult.barberName}` : "Select a barber and service to see the receipt."}</p>}
+        <div className="mt-5 grid gap-2 text-sm text-white/68">
+          <div className="flex items-center justify-between gap-3 rounded-[20px] border border-white/8 bg-black/20 px-4 py-3">
+            <span>Time</span>
+            <span className="text-right text-white">{selectedSlotLabel}</span>
+          </div>
+          <div className="flex items-center justify-between gap-3 rounded-[20px] border border-white/8 bg-black/20 px-4 py-3">
+            <span>Location</span>
+            <span className="text-right text-white">{selectedLocationLabel}</span>
+          </div>
         </div>
-        <div className="mt-6 rounded-[24px] border border-white/8 bg-black/20 p-4">
+
+        {bookingStep === "review" ? (
+          <>
+          <div className="mt-5 rounded-[24px] border border-white/8 bg-black/20 p-4">
           <div className="flex items-center justify-between gap-3">
             <p className="surface-label">Offers and promo codes</p>
             {appliedPromotion ? <Badge>Applied</Badge> : null}
@@ -980,8 +1331,11 @@ export function BookingForm() {
           {pointsBlockedCopy ? (
             <p className="mt-3 text-sm text-white/52">{pointsBlockedCopy}</p>
           ) : null}
-        </div>
-        <div className="mt-8 space-y-3 text-sm text-white/72">
+          </div>
+          </>
+        ) : null}
+
+        <div className="mt-6 space-y-3 text-sm text-white/72">
           {isInitialLoading ? (
             <>
               <QuoteRowSkeleton />

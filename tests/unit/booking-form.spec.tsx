@@ -73,6 +73,12 @@ vi.mock("@/lib/payments/client", () => ({
 
 import { BookingForm } from "@/components/booking/booking-form";
 
+async function advanceToReview() {
+  fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+  fireEvent.click(screen.getByRole("button", { name: "Continue to Review" }));
+  await screen.findByRole("heading", { name: "Review appointment" });
+}
+
 describe("booking form", () => {
   beforeEach(() => {
     useSearchParamsMock.mockReset();
@@ -214,12 +220,21 @@ describe("booking form", () => {
     });
   });
 
-  it("shows saved payment selection inside the booking confirmation flow", () => {
+  it("shows service, time, and saved payment selection inside the booking flow", async () => {
     render(<BookingForm />);
 
-    expect(screen.getByLabelText("Saved payment method")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Choose service" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Signature Precision Cut/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(screen.getByRole("heading", { name: "Pick date and time" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /AM|PM/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Continue to Review" }));
+
+    expect(await screen.findByLabelText("Payment method")).toBeInTheDocument();
     expect(screen.getByText(/Visa ending in 4242 will be charged/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Confirm and pay" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Book Appointment" })).toBeEnabled();
   });
 
   it("creates the appointment and payment through the canonical booking path", async () => {
@@ -240,6 +255,7 @@ describe("booking form", () => {
     });
 
     const { container } = render(<BookingForm />);
+    await advanceToReview();
 
     fireEvent.change(container.querySelector('input[name="clientName"]') as HTMLInputElement, {
       target: { value: "Jordan Ellis" }
@@ -247,7 +263,7 @@ describe("booking form", () => {
     fireEvent.change(container.querySelector('input[name="clientPhone"]') as HTMLInputElement, {
       target: { value: "8135550190" }
     });
-    fireEvent.click(screen.getByRole("button", { name: "Confirm and pay" }));
+    fireEvent.click(screen.getByRole("button", { name: "Book Appointment" }));
 
     await waitFor(() => {
       expect(mutateBookingMock).toHaveBeenCalledWith(expect.objectContaining({
@@ -257,12 +273,14 @@ describe("booking form", () => {
         appointmentTime: "2026-04-28T14:00:00.000Z",
         clientName: "Jordan Ellis",
         clientPhone: "8135550190",
-        paymentMethodId: "pm-default"
+        paymentMethodId: "pm-default",
+        barberName: "Wave Carter",
+        serviceName: "Signature Precision Cut"
       }));
     });
 
-    expect(await screen.findByText(/Booking confirmed\. Appointment/i)).toBeInTheDocument();
-    expect(screen.getByText("Visa ending in 4242 was charged for this booking.")).toBeInTheDocument();
+    expect(await screen.findByText("Appointment booked")).toBeInTheDocument();
+    expect(screen.getByText("Confirmation appt-live-1. Visa ending in 4242 was charged for this booking.")).toBeInTheDocument();
     expect(mutatePaymentMock).not.toHaveBeenCalled();
   });
 
@@ -289,6 +307,7 @@ describe("booking form", () => {
     });
 
     const { container } = render(<BookingForm />);
+    await advanceToReview();
 
     fireEvent.change(container.querySelector('input[name="clientName"]') as HTMLInputElement, {
       target: { value: "Jordan Ellis" }
@@ -296,7 +315,7 @@ describe("booking form", () => {
     fireEvent.change(container.querySelector('input[name="clientPhone"]') as HTMLInputElement, {
       target: { value: "8135550190" }
     });
-    fireEvent.click(screen.getByRole("button", { name: "Confirm and pay" }));
+    fireEvent.click(screen.getByRole("button", { name: "Book Appointment" }));
 
     await waitFor(() => {
       expect(mutateBookingMock).toHaveBeenCalledWith(expect.objectContaining({
@@ -306,7 +325,7 @@ describe("booking form", () => {
     });
   });
 
-  it("blocks confirmation when no saved payment method exists", () => {
+  it("blocks confirmation when no saved payment method exists", async () => {
     usePaymentMethodsQueryMock.mockReturnValue({
       data: { methods: [] },
       isLoading: false,
@@ -314,9 +333,10 @@ describe("booking form", () => {
     });
 
     render(<BookingForm />);
+    await advanceToReview();
 
     expect(screen.getByText("No saved payment method is ready for this account yet. Add one in Wallet before confirming the booking.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open wallet" })).toHaveAttribute("href", "/profile");
-    expect(screen.getByRole("button", { name: "Confirm and pay" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Book Appointment" })).toBeDisabled();
   });
 });

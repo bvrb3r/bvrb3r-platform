@@ -9,7 +9,8 @@ const {
   recordReferralBookingProgressMock,
   trackAiRecommendationMock,
   createBookingMock,
-  recordBookingCreatedMock
+  recordBookingCreatedMock,
+  queueBookingCreatedNotificationsMock
 } = vi.hoisted(() => ({
   getClientExperienceContextMock: vi.fn(),
   getLiveOperationsProviderMock: vi.fn(),
@@ -17,7 +18,8 @@ const {
   recordReferralBookingProgressMock: vi.fn(),
   trackAiRecommendationMock: vi.fn(),
   createBookingMock: vi.fn(),
-  recordBookingCreatedMock: vi.fn()
+  recordBookingCreatedMock: vi.fn(),
+  queueBookingCreatedNotificationsMock: vi.fn()
 }));
 
 vi.mock("@/lib/client-experience/session", () => ({
@@ -38,6 +40,10 @@ vi.mock("@/lib/referrals/service", () => ({
 
 vi.mock("@/lib/ai/service", () => ({
   trackAiRecommendation: trackAiRecommendationMock
+}));
+
+vi.mock("@/lib/booking/notifications", () => ({
+  queueBookingCreatedNotifications: queueBookingCreatedNotificationsMock
 }));
 
 import { POST as postBooking } from "@/app/api/bookings/route";
@@ -72,6 +78,7 @@ describe("bookings route", () => {
     trackAiRecommendationMock.mockReset();
     createBookingMock.mockReset();
     recordBookingCreatedMock.mockReset();
+    queueBookingCreatedNotificationsMock.mockReset();
 
     getClientExperienceContextMock.mockResolvedValue({
       viewer: {
@@ -92,6 +99,7 @@ describe("bookings route", () => {
     });
     recordReferralBookingProgressMock.mockResolvedValue({ referralEvent: null });
     trackAiRecommendationMock.mockResolvedValue({ ok: true });
+    queueBookingCreatedNotificationsMock.mockResolvedValue({ queued: 2, skipped: false });
   });
 
   it("rejects invalid booking payloads", async () => {
@@ -142,6 +150,42 @@ describe("bookings route", () => {
       clientId: "client-jordan",
       appointmentId: "appt-new"
     });
+    expect(queueBookingCreatedNotificationsMock).toHaveBeenCalledWith(expect.objectContaining({
+      appointment: appointmentFixture,
+      clientName: "Jordan Ellis",
+      clientEmail: "client@bvrb3r.demo",
+      startsAt: appointmentFixture.start
+    }));
+  });
+
+  it("keeps the booking successful when confirmation notification queueing fails", async () => {
+    createBookingMock.mockResolvedValue({
+      appointment: appointmentFixture
+    });
+    queueBookingCreatedNotificationsMock.mockRejectedValueOnce(new Error("notification write failed"));
+
+    const response = await postBooking(new NextRequest("https://bvrb3r.demo/api/bookings", {
+      method: "POST",
+      body: JSON.stringify({
+        locationId: "loc-ybor",
+        barberId: "barber-blaze",
+        serviceId: "srv-signature",
+        addOnIds: [],
+        appointmentTime: "2026-03-23T14:00:00-04:00",
+        clientName: "Jordan Ellis",
+        clientPhone: "(813) 555-0190",
+        barberName: "Blaze Reed",
+        serviceName: "Signature Cut"
+      })
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.appointment.id).toBe("appt-new");
+    expect(queueBookingCreatedNotificationsMock).toHaveBeenCalledWith(expect.objectContaining({
+      barberName: "Blaze Reed",
+      serviceName: "Signature Cut"
+    }));
   });
 
   it("returns a safe validation error when a stale service selection reaches the API", async () => {

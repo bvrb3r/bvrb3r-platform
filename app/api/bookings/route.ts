@@ -1,6 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { trackAiRecommendation } from "@/lib/ai/service";
+import { queueBookingCreatedNotifications } from "@/lib/booking/notifications";
 import { recordReferralBookingProgress } from "@/lib/referrals/service";
 import { getClientExperienceContext } from "@/lib/client-experience/session";
 import { recordBookingCreatedPlatformEvent } from "@/lib/core/booking-events";
@@ -22,6 +23,8 @@ const bookingSchema = z.object({
   matchedFrom: z.enum(["favorite_barber", "favorite_shop", "nearby", "available_now"]).optional(),
   discoveryQuery: z.string().optional(),
   barberUsername: z.string().optional(),
+  barberName: z.string().optional(),
+  serviceName: z.string().optional(),
   aiRecommendationId: z.string().optional(),
   aiRecommendationType: z.enum(["rebooking_reminder", "available_now", "barber_gap_alert"]).optional(),
   promotionId: z.string().optional(),
@@ -40,6 +43,8 @@ export async function POST(request: NextRequest) {
       matchedFrom,
       discoveryQuery,
       barberUsername,
+      barberName,
+      serviceName,
       aiRecommendationId,
       aiRecommendationType,
       ...bookingInput
@@ -65,6 +70,24 @@ export async function POST(request: NextRequest) {
         matchedFrom: matchedFrom ?? null
       }
     });
+
+    try {
+      await queueBookingCreatedNotifications({
+        appointment: result.appointment,
+        clientName: bookingInput.clientName,
+        clientEmail: clientContext.activeClient?.email ?? clientContext.viewer.email,
+        barberName,
+        serviceName,
+        startsAt: result.appointment.start ?? bookingInput.appointmentTime
+      });
+    } catch (notificationError) {
+      console.error("booking_notification_queue_failed", {
+        appointmentId: result.appointment.id,
+        barberId: result.appointment.barberId,
+        clientId: result.appointment.clientId,
+        error: notificationError instanceof Error ? notificationError.message : String(notificationError)
+      });
+    }
 
     if (sourceKind) {
       const marketplaceProvider = await getMarketplaceProvider();
