@@ -5,6 +5,7 @@ const {
   useSearchParamsMock,
   usePwaMock,
   useBookingStoreMock,
+  useClientHomeQueryMock,
   useClientPointsBalanceQueryMock,
   useClientMembershipQueryMock,
   useBarberAvailabilityQueryMock,
@@ -21,6 +22,7 @@ const {
   useSearchParamsMock: vi.fn(),
   usePwaMock: vi.fn(),
   useBookingStoreMock: vi.fn(),
+  useClientHomeQueryMock: vi.fn(),
   useClientPointsBalanceQueryMock: vi.fn(),
   useClientMembershipQueryMock: vi.fn(),
   useBarberAvailabilityQueryMock: vi.fn(),
@@ -48,6 +50,7 @@ vi.mock("@/lib/data/booking-store", () => ({
 }));
 
 vi.mock("@/lib/booking/client", () => ({
+  useClientHomeQuery: useClientHomeQueryMock,
   useClientPointsBalanceQuery: useClientPointsBalanceQueryMock,
   useClientMembershipQuery: useClientMembershipQueryMock,
   useBarberAvailabilityQuery: useBarberAvailabilityQueryMock,
@@ -84,6 +87,7 @@ describe("booking form", () => {
     useSearchParamsMock.mockReset();
     usePwaMock.mockReset();
     useBookingStoreMock.mockReset();
+    useClientHomeQueryMock.mockReset();
     useClientPointsBalanceQueryMock.mockReset();
     useClientMembershipQueryMock.mockReset();
     useBarberAvailabilityQueryMock.mockReset();
@@ -107,6 +111,21 @@ describe("booking form", () => {
       setLocation: vi.fn(),
       setBarber: vi.fn()
     });
+    useClientHomeQueryMock.mockReturnValue({
+      data: {
+        client: {
+          clientReference: "client-jordan",
+          fullName: "Jordan Ellis",
+          phone: "8135550190",
+          email: "jordan@example.com",
+          loyaltyPoints: 180,
+          retentionTag: "vip",
+          notes: []
+        }
+      },
+      isLoading: false,
+      error: null
+    });
     useClientMembershipQueryMock.mockReturnValue({ data: null });
     useClientPointsBalanceQueryMock.mockReturnValue({
       data: {
@@ -124,7 +143,10 @@ describe("booking form", () => {
         shops: [
           {
             id: "loc-ybor",
-            name: "Centro Ybor Flagship"
+            name: "Centro Ybor Flagship",
+            city: "Tampa",
+            state: "FL",
+            address: "2172 University Square Mall"
           }
         ],
         barbers: [
@@ -224,17 +246,45 @@ describe("booking form", () => {
     render(<BookingForm />);
 
     expect(screen.getByRole("heading", { name: "Choose service" })).toBeInTheDocument();
+    expect(screen.getByText("Booking with")).toBeInTheDocument();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Signature Precision Cut/ })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
     expect(screen.getByRole("heading", { name: "Pick date and time" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /AM|PM/ })).toBeInTheDocument();
+    expect(screen.queryByText(/times$/i)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Continue to Review" }));
 
     expect(await screen.findByLabelText("Payment method")).toBeInTheDocument();
+    expect(screen.getByText("Jordan Ellis")).toBeInTheDocument();
+    expect(screen.getByText("8135550190")).toBeInTheDocument();
+    expect(screen.queryByText("Client name")).not.toBeInTheDocument();
     expect(screen.getByText(/Visa ending in 4242 will be charged/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Book Appointment" })).toBeEnabled();
+  });
+
+  it("keeps the review receipt and summary client-facing without duplicated internal rows", async () => {
+    render(<BookingForm />);
+    await advanceToReview();
+
+    expect(screen.getByText("Offers & promo codes")).toBeInTheDocument();
+    expect(screen.getByText("No active offers for this booking.")).toBeInTheDocument();
+    expect(screen.getByText("Rewards")).toBeInTheDocument();
+    expect(screen.getByText("Price breakdown")).toBeInTheDocument();
+    expect(screen.getAllByText("Subtotal")).toHaveLength(1);
+    expect(screen.getByText("Total due today")).toBeInTheDocument();
+
+    expect(screen.queryByText("Live availability")).not.toBeInTheDocument();
+    expect(screen.queryByText(/including buffer/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("Deposit reserved")).not.toBeInTheDocument();
+    expect(screen.queryByText("Remaining at checkout")).not.toBeInTheDocument();
+    expect(screen.queryByText("Selected time")).not.toBeInTheDocument();
+
+    const summary = screen.getByText("Booking Summary").closest("div");
+    expect(summary?.textContent).not.toContain("BVR Points");
+    expect(summary?.textContent).not.toContain("Subtotal");
   });
 
   it("creates the appointment and payment through the canonical booking path", async () => {
@@ -254,15 +304,10 @@ describe("booking form", () => {
       mutateAsync: mutatePaymentMock
     });
 
-    const { container } = render(<BookingForm />);
+    render(<BookingForm />);
     await advanceToReview();
 
-    fireEvent.change(container.querySelector('input[name="clientName"]') as HTMLInputElement, {
-      target: { value: "Jordan Ellis" }
-    });
-    fireEvent.change(container.querySelector('input[name="clientPhone"]') as HTMLInputElement, {
-      target: { value: "8135550190" }
-    });
+    expect(screen.getByText("Jordan Ellis")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Book Appointment" }));
 
     await waitFor(() => {
@@ -306,15 +351,10 @@ describe("booking form", () => {
       mutateAsync: mutateBookingMock
     });
 
-    const { container } = render(<BookingForm />);
+    render(<BookingForm />);
     await advanceToReview();
 
-    fireEvent.change(container.querySelector('input[name="clientName"]') as HTMLInputElement, {
-      target: { value: "Jordan Ellis" }
-    });
-    fireEvent.change(container.querySelector('input[name="clientPhone"]') as HTMLInputElement, {
-      target: { value: "8135550190" }
-    });
+    expect(screen.getByText("Jordan Ellis")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Book Appointment" }));
 
     await waitFor(() => {

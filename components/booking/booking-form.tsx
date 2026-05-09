@@ -19,6 +19,7 @@ import { useBookingStore } from "@/lib/data/booking-store";
 import {
   useClientPointsBalanceQuery,
   useClientMembershipQuery,
+  useClientHomeQuery,
   useBarberAvailabilityQuery,
   useBarberProfileQuery,
   useBarberSearchQuery,
@@ -58,17 +59,6 @@ type BookingDraft = Pick<
   BookingValues,
   "locationId" | "barberId" | "serviceId" | "addOnId" | "appointmentTime" | "clientName" | "clientPhone"
 >;
-
-function QuoteRowSkeleton() {
-  return (
-    <div className="rounded-[22px] border border-white/8 bg-black/20 px-4 py-3">
-      <div className="flex items-center justify-between gap-3">
-        <Skeleton className="h-4 w-28" />
-        <Skeleton className="h-4 w-20" />
-      </div>
-    </div>
-  );
-}
 
 function toMarketplaceSource(value: string | null): MarketplaceSourceKind | undefined {
   if (value === "direct" || value === "discovery" || value === "public_profile" || value === "haircut_now" || value === "client_dashboard") {
@@ -267,6 +257,7 @@ export function BookingForm() {
   const analyticsMutation = useMarketplaceAnalyticsMutation();
   const waitlistMutation = useMarketplaceWaitlistMutation();
   const membershipQuery = useClientMembershipQuery();
+  const clientHomeQuery = useClientHomeQuery();
   const pointsBalanceQuery = useClientPointsBalanceQuery();
   const ctaTrackedRef = useRef<string | null>(null);
   const [confirmationId, setConfirmationId] = useState("");
@@ -317,6 +308,14 @@ export function BookingForm() {
   const watchAppointmentTime = form.watch("appointmentTime");
   const watchClientName = form.watch("clientName");
   const watchClientPhone = form.watch("clientPhone");
+  const clientContact = clientHomeQuery.data?.client;
+  const profileClientName = clientContact?.fullName?.trim() ?? "";
+  const profileClientPhone = clientContact?.phone?.trim() ?? "";
+  const profileClientEmail = clientContact?.email?.trim() ?? "";
+  const resolvedClientName = watchClientName.trim() || profileClientName;
+  const resolvedClientPhone = watchClientPhone.trim() || profileClientPhone;
+  const hasClientName = resolvedClientName.length >= 2;
+  const hasClientPhone = resolvedClientPhone.length >= 10;
 
   useEffect(() => {
     const draft = readBookingDraft();
@@ -348,6 +347,16 @@ export function BookingForm() {
       setBarber(nextBarberId);
     }
   }, [form, preselectedAppointmentTime, preselectedBarberId, preselectedLocationId, preselectedServiceId, setBarber, setLocation]);
+
+  useEffect(() => {
+    if (profileClientName && !form.getValues("clientName")) {
+      form.setValue("clientName", profileClientName);
+    }
+
+    if (profileClientPhone && !form.getValues("clientPhone")) {
+      form.setValue("clientPhone", profileClientPhone);
+    }
+  }, [form, profileClientName, profileClientPhone]);
 
   useEffect(() => {
     const nextLocationId = preselectedLocationId || shops[0]?.id;
@@ -570,6 +579,17 @@ export function BookingForm() {
   }, [watchAddOnId, watchAppointmentTime, watchBarberId, watchClientName, watchClientPhone, watchLocationId, watchServiceId]);
 
   const currentShop = shops.find((shop) => shop.id === watchLocationId) ?? shops[0];
+  const locationCityState = [currentShop?.city, currentShop?.state].filter(Boolean).join(", ");
+  const selectedLocationName =
+    currentShop?.name ??
+    currentBarberResult?.shopName ??
+    currentBarberResult?.locationLabel ??
+    "Service location";
+  const selectedLocationDetail =
+    [currentShop?.address, locationCityState].filter(Boolean).join(", ") ||
+    currentBarberResult?.cityLabel ||
+    currentBarberResult?.locationLabel ||
+    "Location is confirmed before you book.";
   const isInitialLoading = (searchQuery.isLoading && !searchQuery.data) || (barberProfileQuery.isLoading && !barberProfileQuery.data);
   const waitlistPending = waitlistMutation.isPending;
   const formError = searchQuery.error || barberProfileQuery.error || availabilityQuery.error;
@@ -732,11 +752,13 @@ export function BookingForm() {
 
   const selectedSlot = resolveBookableSlot(availableSlots, watchAppointmentTime) ?? undefined;
   const selectedSlotLabel = selectedSlot ? dateLabel(selectedSlot.startsAt) : "Choose a time";
-  const selectedLocationLabel = currentShop?.name ?? currentBarberResult?.locationLabel ?? "Selected location";
+  const selectedLocationLabel = selectedLocationDetail && selectedLocationDetail !== selectedLocationName
+    ? `${selectedLocationName}, ${selectedLocationDetail}`
+    : selectedLocationName;
   const activeStepIndex = getStepIndex(bookingStep);
   const serviceReady = Boolean(currentService);
   const timeReady = Boolean(selectedSlot);
-  const reviewReady = serviceReady && timeReady && Boolean(selectedPaymentMethod) && isOnline;
+  const reviewReady = serviceReady && timeReady && Boolean(selectedPaymentMethod) && hasClientName && hasClientPhone && isOnline;
 
   function continueToTime() {
     if (!currentService) {
@@ -866,34 +888,17 @@ export function BookingForm() {
                 <p className="mt-2 text-sm text-white/58">Only active services from this barber are shown.</p>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                  <label className="surface-label mb-3 block">Location</label>
-                  <Select
-                    {...form.register("locationId")}
-                    onChange={(event) => {
-                      form.setValue("locationId", event.target.value);
-                      setLocation(event.target.value);
-                    }}
-                  >
-                    {shops.map((shop) => (
-                      <option key={shop.id} value={shop.id}>{shop.name}</option>
-                    ))}
-                  </Select>
-                </div>
-                <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                  <label className="surface-label mb-3 block">Barber</label>
-                  <Select
-                    {...form.register("barberId")}
-                    onChange={(event) => {
-                      form.setValue("barberId", event.target.value);
-                      setBarber(event.target.value);
-                    }}
-                  >
-                    {barbers.map((barber) => (
-                      <option key={barber.barberId} value={barber.barberId}>{barber.barberName}</option>
-                    ))}
-                  </Select>
+              <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
+                <p className="surface-label text-[#d7ffab]">Booking with</p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <p className="text-lg font-semibold text-white">{currentBarberResult?.barberName ?? "Selected barber"}</p>
+                    <p className="mt-1 text-sm text-white/58">Your barber is locked for this booking.</p>
+                  </div>
+                  <div className="rounded-[20px] border border-white/8 bg-black/18 px-4 py-3">
+                    <p className="text-sm font-semibold text-white">{selectedLocationName}</p>
+                    <p className="mt-1 text-sm leading-6 text-white/58">{selectedLocationDetail}</p>
+                  </div>
                 </div>
               </div>
 
@@ -1002,7 +1007,6 @@ export function BookingForm() {
                       >
                         <span className="surface-label block text-white/42">Date</span>
                         <span className="mt-1 block text-sm font-semibold">{getSlotDayLabel(slotsByDate[dateKey]?.[0]?.startsAt ?? dateKey)}</span>
-                        <span className="mt-1 block text-xs text-white/48">{slotsByDate[dateKey]?.length ?? 0} times</span>
                       </button>
                     ))}
                   </div>
@@ -1047,8 +1051,8 @@ export function BookingForm() {
                 </>
               ) : (
                 <div className="empty-state-panel rounded-[24px] p-5">
-                  <p className="text-lg font-semibold text-white">No times for this service yet.</p>
-                  <p className="mt-2 text-sm leading-7 text-white/58">Choose another day when more availability opens, or join the waitlist.</p>
+                  <p className="text-lg font-semibold text-white">No times available for this date.</p>
+                  <p className="mt-2 text-sm leading-7 text-white/58">Try another day, or join the waitlist.</p>
                   <Button type="button" variant="secondary" className="mt-4 h-11 px-5" disabled={waitlistPending || !watchServiceId || !watchLocationId || !isOnline} onClick={() => void handleJoinWaitlist()}>
                     {waitlistPending ? "Joining waitlist..." : "Join waitlist"}
                   </Button>
@@ -1080,6 +1084,10 @@ export function BookingForm() {
                   <span className="font-medium text-white">{currentService?.name ?? "Choose a service"}</span>
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-2 rounded-[22px] border border-white/8 bg-black/20 px-4 py-3">
+                  <span>Barber</span>
+                  <span className="font-medium text-white">{currentBarberResult?.barberName ?? "Selected barber"}</span>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-[22px] border border-white/8 bg-black/20 px-4 py-3">
                   <span className="inline-flex items-center gap-2"><CalendarDays className="h-4 w-4 text-[#d7ffab]" />Date and time</span>
                   <span className="font-medium text-white">{selectedSlotLabel}</span>
                 </div>
@@ -1089,17 +1097,144 @@ export function BookingForm() {
                 </div>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                  <label className="surface-label mb-3 block">Client name</label>
-                  <Input {...form.register("clientName")} />
-                  {form.formState.errors.clientName ? <p className="mt-2 text-sm text-rose-200">{form.formState.errors.clientName.message}</p> : null}
+              <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="surface-label">Offers & promo codes</p>
+                  {appliedPromotion ? <Badge>Applied</Badge> : null}
                 </div>
-                <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                  <label className="surface-label mb-3 block">Phone</label>
-                  <Input type="tel" inputMode="tel" {...form.register("clientPhone")} />
-                  {form.formState.errors.clientPhone ? <p className="mt-2 text-sm text-rose-200">{form.formState.errors.clientPhone.message}</p> : null}
+                {promotionsQuery.error ? <div className="mt-4"><FeedbackBanner tone="error" message={getReadableActionError(promotionsQuery.error as BookingApiError)} /></div> : null}
+                {promotionFeedback ? <div className="mt-4"><FeedbackBanner tone={promotionFeedback.tone} message={promotionFeedback.message} /></div> : null}
+                <div className="mt-4 flex gap-2">
+                  <Input
+                    value={promotionCode}
+                    onChange={(event) => setPromotionCode(event.target.value.toUpperCase())}
+                    placeholder="Enter promo code"
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="h-11 shrink-0 px-4"
+                    disabled={applyPromotionMutation.isPending || !promotionCode.trim() || !resolvedLocationId || !resolvedServiceId || !isOnline}
+                    onClick={() => void applyPromotion({ promotionCode: promotionCode.trim().toUpperCase() })}
+                  >
+                    {applyPromotionMutation.isPending ? "Applying..." : "Apply"}
+                  </Button>
                 </div>
+                <div className="mt-4 space-y-2">
+                  {(promotionsQuery.data?.promotions ?? []).slice(0, 2).map((promotion) => (
+                    <button
+                      key={promotion.id}
+                      type="button"
+                      className="w-full rounded-[20px] border border-white/8 bg-black/18 px-4 py-3 text-left transition hover:border-[#7CFF00]/24 hover:bg-black/25"
+                      onClick={() => void applyPromotion({ promotionId: promotion.id })}
+                      disabled={applyPromotionMutation.isPending || !isOnline}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-sm font-medium text-white">{promotion.name}</span>
+                        <span className="text-sm text-[#d7ffab]">Save {currency(promotion.estimatedDiscount)}</span>
+                      </div>
+                      <p className="mt-1 text-xs leading-6 text-white/58">
+                        {promotion.code ? `${promotion.code} • ` : ""}
+                        {promotion.description ?? `${promotion.discountType === "percent" ? `${promotion.discountValue}%` : currency(promotion.discountValue)} off this booking.`}
+                      </p>
+                    </button>
+                  ))}
+                  {!promotionsQuery.isLoading && !(promotionsQuery.data?.promotions?.length) ? (
+                    <p className="text-sm leading-7 text-white/52">No active offers for this booking.</p>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="surface-label">Rewards</p>
+                  <Badge>{pointsBalance ? `${pointsBalance.unlockedPoints} pts` : "BVR Points"}</Badge>
+                </div>
+                {pointsBalanceQuery.error ? (
+                  <div className="mt-4">
+                    <FeedbackBanner tone="error" message={getReadableActionError(pointsBalanceQuery.error as BookingApiError)} />
+                  </div>
+                ) : null}
+                <p className="mt-3 text-sm leading-7 text-white/62">
+                  {pointsBalanceQuery.isLoading && !pointsBalance
+                    ? "Checking your BVR Points..."
+                    : pointsBalance?.unlockedPoints
+                      ? `${pointsBalance.unlockedPoints} points available.`
+                      : "No points available yet."}
+                </p>
+                {pointsRedemptionPreview.maxRedeemablePoints > 0 ? (
+                  <div className="mt-4 rounded-[20px] border border-white/8 bg-black/18 px-4 py-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <label className="surface-label block" htmlFor="bvr-points-redeem">Redeem points</label>
+                      {quickRedeemOptions.length ? (
+                        <div className="flex flex-wrap gap-2">
+                          {quickRedeemOptions.map((option) => (
+                            <Button
+                              key={option.label}
+                              type="button"
+                              variant={requestedPointsToRedeem === option.points ? "primary" : "secondary"}
+                              className="h-9 px-3"
+                              disabled={!isOnline}
+                              onClick={() => setRequestedPointsToRedeem(option.points)}
+                            >
+                              {option.label}
+                            </Button>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                    <Input
+                      id="bvr-points-redeem"
+                      className="mt-3"
+                      type="number"
+                      min={0}
+                      max={pointsRedemptionPreview.maxRedeemablePoints}
+                      step={1}
+                      value={requestedPointsToRedeem}
+                      disabled={!isOnline}
+                      onChange={(event) => {
+                        const nextValue = Number.parseInt(event.target.value || "0", 10);
+                        if (Number.isNaN(nextValue)) {
+                          setRequestedPointsToRedeem(0);
+                          return;
+                        }
+
+                        setRequestedPointsToRedeem(Math.max(0, Math.min(nextValue, pointsRedemptionPreview.maxRedeemablePoints)));
+                      }}
+                    />
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm text-white/56">
+                      <span>{pointsRedemptionPreview.approvedPoints} pts applied</span>
+                      <span className="text-[#d7ffab]">-{currency(pointsRedemptionPreview.discountAmount)}</span>
+                    </div>
+                  </div>
+                ) : null}
+                {pointsBlockedCopy ? (
+                  <p className="mt-3 text-sm text-white/52">{pointsBlockedCopy}</p>
+                ) : null}
+              </div>
+
+              <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
+                <p className="surface-label">Contact</p>
+                {hasClientName && hasClientPhone ? (
+                  <div className="mt-3 space-y-1 text-sm leading-6 text-white/72">
+                    <p className="font-medium text-white">{resolvedClientName}</p>
+                    <p>{resolvedClientPhone}</p>
+                    {profileClientEmail ? <p>{profileClientEmail}</p> : null}
+                  </div>
+                ) : (
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="surface-label mb-3 block">Name</label>
+                      <Input {...form.register("clientName")} />
+                      {form.formState.errors.clientName ? <p className="mt-2 text-sm text-rose-200">{form.formState.errors.clientName.message}</p> : null}
+                    </div>
+                    <div>
+                      <label className="surface-label mb-3 block">Phone</label>
+                      <Input type="tel" inputMode="tel" {...form.register("clientPhone")} />
+                      {form.formState.errors.clientPhone ? <p className="mt-2 text-sm text-rose-200">{form.formState.errors.clientPhone.message}</p> : null}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
@@ -1154,10 +1289,41 @@ export function BookingForm() {
               </div>
 
               <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                <p className="surface-label">Tip</p>
-                <p className="mt-2 text-sm leading-7 text-white/58">
-                  Tips are handled through the existing checkout receipt after service, so this booking total stays tied to the canonical service price.
-                </p>
+                <p className="surface-label">Price breakdown</p>
+                <div className="mt-4 space-y-3 text-sm text-white/72">
+                  <div className="flex items-center justify-between gap-3">
+                    <span>Subtotal</span>
+                    <span className="font-medium text-white">{currency(displayedQuote.subtotal)}</span>
+                  </div>
+                  {displayedQuote.discountTotal > 0 || appliedPromotion ? (
+                    <div className="flex items-center justify-between gap-3">
+                      <span>Discount</span>
+                      <span className="font-medium text-[#d7ffab]">-{currency(displayedQuote.discountTotal)}</span>
+                    </div>
+                  ) : null}
+                  {membershipPricingAdjustment ? (
+                    <div className="flex items-center justify-between gap-3">
+                      <span>{membershipPricingAdjustment.label}</span>
+                      <span className="font-medium text-[#d7ffab]">-{currency(membershipPricingAdjustment.discountAmount)}</span>
+                    </div>
+                  ) : null}
+                  {displayedQuote.taxTotal > 0 ? (
+                    <div className="flex items-center justify-between gap-3">
+                      <span>Tax</span>
+                      <span className="font-medium text-white">{currency(displayedQuote.taxTotal)}</span>
+                    </div>
+                  ) : null}
+                  {pointsRedemptionPreview.discountAmount > 0 ? (
+                    <div className="flex items-center justify-between gap-3">
+                      <span>BVR Points</span>
+                      <span className="font-medium text-[#d7ffab]">-{currency(pointsRedemptionPreview.discountAmount)}</span>
+                    </div>
+                  ) : null}
+                  <div className="flex items-center justify-between gap-3 border-t border-white/8 pt-3">
+                    <span className="font-semibold text-white">Total due today</span>
+                    <span className="text-lg font-semibold text-[#d7ffab]">{currency(displayedQuote.grandTotal)}</span>
+                  </div>
+                </div>
               </div>
 
               <label className="flex items-start gap-3 rounded-[24px] border border-white/8 bg-black/20 p-5 text-sm leading-7 text-white/72">
@@ -1182,191 +1348,22 @@ export function BookingForm() {
       </Card>
 
       <Card className="rounded-[34px] p-5 sm:p-6 lg:sticky lg:top-4">
-        <p className="surface-label">Receipt preview</p>
+        <p className="surface-label">Booking Summary</p>
         {isInitialLoading ? <Skeleton className="mt-4 h-12 w-48" /> : <h3 className="mt-4 text-3xl font-semibold" data-display="true">{currentService?.name ?? "Choose a service"}</h3>}
-        {isInitialLoading ? <Skeleton className="mt-4 h-16 w-full" /> : <p className="mt-3 text-sm leading-7 text-white/64">{currentBarberResult?.barberName ? `With ${currentBarberResult.barberName}` : "Select a barber and service to see the receipt."}</p>}
+        {isInitialLoading ? <Skeleton className="mt-4 h-16 w-full" /> : <p className="mt-3 text-sm leading-7 text-white/64">{currentBarberResult?.barberName ? `With ${currentBarberResult.barberName}` : "Select a barber and service to continue."}</p>}
         <div className="mt-5 grid gap-2 text-sm text-white/68">
           <div className="flex items-center justify-between gap-3 rounded-[20px] border border-white/8 bg-black/20 px-4 py-3">
-            <span>Time</span>
+            <span>Date/time</span>
             <span className="text-right text-white">{selectedSlotLabel}</span>
           </div>
           <div className="flex items-center justify-between gap-3 rounded-[20px] border border-white/8 bg-black/20 px-4 py-3">
             <span>Location</span>
-            <span className="text-right text-white">{selectedLocationLabel}</span>
+            <span className="text-right text-white">{selectedLocationName}</span>
           </div>
-        </div>
-
-        {bookingStep === "review" ? (
-          <>
-          <div className="mt-5 rounded-[24px] border border-white/8 bg-black/20 p-4">
-          <div className="flex items-center justify-between gap-3">
-            <p className="surface-label">Offers and promo codes</p>
-            {appliedPromotion ? <Badge>Applied</Badge> : null}
+          <div className="flex items-center justify-between gap-3 rounded-[20px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 px-4 py-3">
+            <span>Total</span>
+            <span className="text-right font-semibold text-[#d7ffab]">{currency(displayedQuote.grandTotal)}</span>
           </div>
-          {promotionsQuery.error ? <div className="mt-4"><FeedbackBanner tone="error" message={getReadableActionError(promotionsQuery.error as BookingApiError)} /></div> : null}
-          {promotionFeedback ? <div className="mt-4"><FeedbackBanner tone={promotionFeedback.tone} message={promotionFeedback.message} /></div> : null}
-          <div className="mt-4 flex gap-2">
-            <Input
-              value={promotionCode}
-              onChange={(event) => setPromotionCode(event.target.value.toUpperCase())}
-              placeholder="Enter promo code"
-            />
-            <Button
-              type="button"
-              variant="secondary"
-              className="h-11 shrink-0 px-4"
-              disabled={applyPromotionMutation.isPending || !promotionCode.trim() || !resolvedLocationId || !resolvedServiceId || !isOnline}
-              onClick={() => void applyPromotion({ promotionCode: promotionCode.trim().toUpperCase() })}
-            >
-              {applyPromotionMutation.isPending ? "Applying..." : "Apply"}
-            </Button>
-          </div>
-          <div className="mt-4 space-y-2">
-            {(promotionsQuery.data?.promotions ?? []).slice(0, 3).map((promotion) => (
-              <button
-                key={promotion.id}
-                type="button"
-                className="w-full rounded-[20px] border border-white/8 bg-black/18 px-4 py-3 text-left transition hover:border-[#7CFF00]/24 hover:bg-black/25"
-                onClick={() => void applyPromotion({ promotionId: promotion.id })}
-                disabled={applyPromotionMutation.isPending || !isOnline}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm font-medium text-white">{promotion.name}</span>
-                  <span className="text-sm text-[#d7ffab]">Save {currency(promotion.estimatedDiscount)}</span>
-                </div>
-                <p className="mt-1 text-xs leading-6 text-white/58">
-                  {promotion.code ? `${promotion.code} • ` : ""}
-                  {promotion.description ?? `${promotion.discountType === "percent" ? `${promotion.discountValue}%` : currency(promotion.discountValue)} off this booking.`}
-                </p>
-              </button>
-            ))}
-            {!promotionsQuery.isLoading && !(promotionsQuery.data?.promotions?.length) ? (
-              <p className="text-sm leading-7 text-white/52">No active offers match this chair selection right now, but you can still book at the live total below.</p>
-            ) : null}
-          </div>
-        </div>
-        <div className="mt-6 rounded-[24px] border border-white/8 bg-black/20 p-4">
-          <div className="flex items-center justify-between gap-3">
-            <p className="surface-label">BVR Points</p>
-            <Badge>{pointsBalance ? `${pointsBalance.unlockedPoints} unlocked` : "Reward-ready"}</Badge>
-          </div>
-          {pointsBalanceQuery.error ? (
-            <div className="mt-4">
-              <FeedbackBanner tone="error" message={getReadableActionError(pointsBalanceQuery.error as BookingApiError)} />
-            </div>
-          ) : null}
-          <p className="mt-3 text-sm leading-7 text-white/62">
-            Redeem unlocked points at confirmation. The quote updates before you book.
-          </p>
-          <div className="mt-4 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-[20px] border border-white/8 bg-black/18 px-4 py-4">
-              <p className="surface-label">Available balance</p>
-              <p className="mt-3 text-2xl font-semibold text-white">{pointsBalanceQuery.isLoading && !pointsBalance ? "..." : pointsBalance?.unlockedPoints ?? 0} pts</p>
-              <p className="mt-2 text-sm text-white/56">{currency(pointsBalance?.inAppValue ?? 0)} in booking value</p>
-            </div>
-            <div className="rounded-[20px] border border-white/8 bg-black/18 px-4 py-4">
-              <p className="surface-label">Max usable</p>
-              <p className="mt-3 text-2xl font-semibold text-white">{pointsRedemptionPreview.maxRedeemablePoints} pts</p>
-              <p className="mt-2 text-sm text-white/56">{currency(pointsToInAppValue(pointsRedemptionPreview.maxRedeemablePoints))} on this booking</p>
-            </div>
-            <div className="rounded-[20px] border border-white/8 bg-black/18 px-4 py-4">
-              <p className="surface-label">Pending</p>
-              <p className="mt-3 text-2xl font-semibold text-white">{pointsBalance?.pendingPoints ?? 0} pts</p>
-              <p className="mt-2 text-sm text-white/56">Unlocks after validation windows close</p>
-            </div>
-          </div>
-          <div className="mt-4 rounded-[20px] border border-white/8 bg-black/18 px-4 py-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <label className="surface-label block" htmlFor="bvr-points-redeem">Redeem on this booking</label>
-              {quickRedeemOptions.length ? (
-                <div className="flex flex-wrap gap-2">
-                  {quickRedeemOptions.map((option) => (
-                    <Button
-                      key={option.label}
-                      type="button"
-                      variant={requestedPointsToRedeem === option.points ? "primary" : "secondary"}
-                      className="h-9 px-3"
-                      disabled={!isOnline}
-                      onClick={() => setRequestedPointsToRedeem(option.points)}
-                    >
-                      {option.label}
-                    </Button>
-                  ))}
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    className="h-9 px-3"
-                    disabled={!isOnline || !pointsRedemptionPreview.maxRedeemablePoints}
-                    onClick={() => setRequestedPointsToRedeem(pointsRedemptionPreview.maxRedeemablePoints)}
-                  >
-                    Auto-apply max
-                  </Button>
-                </div>
-              ) : null}
-            </div>
-            <Input
-              id="bvr-points-redeem"
-              className="mt-3"
-              type="number"
-              min={0}
-              max={pointsRedemptionPreview.maxRedeemablePoints}
-              step={1}
-              value={requestedPointsToRedeem}
-              disabled={!isOnline}
-              onChange={(event) => {
-                const nextValue = Number.parseInt(event.target.value || "0", 10);
-                if (Number.isNaN(nextValue)) {
-                  setRequestedPointsToRedeem(0);
-                  return;
-                }
-
-                setRequestedPointsToRedeem(Math.max(0, Math.min(nextValue, pointsRedemptionPreview.maxRedeemablePoints)));
-              }}
-            />
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm text-white/56">
-              <span>Discount {currency(pointsRedemptionPreview.discountAmount)}</span>
-              <span>{pointsRedemptionPreview.approvedPoints} pts applied</span>
-            </div>
-          </div>
-          {pointsBlockedCopy ? (
-            <p className="mt-3 text-sm text-white/52">{pointsBlockedCopy}</p>
-          ) : null}
-          </div>
-          </>
-        ) : null}
-
-        <div className="mt-6 space-y-3 text-sm text-white/72">
-          {isInitialLoading ? (
-            <>
-              <QuoteRowSkeleton />
-              <QuoteRowSkeleton />
-              <QuoteRowSkeleton />
-              <QuoteRowSkeleton />
-              <QuoteRowSkeleton />
-              <QuoteRowSkeleton />
-            </>
-          ) : (
-            <>
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-[22px] border border-white/8 bg-black/20 px-4 py-3"><span>Location</span><span>{currentShop?.name}</span></div>
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-[22px] border border-white/8 bg-black/20 px-4 py-3"><span>Duration</span><span>{displayedQuote.totalDurationMinutes} min including buffer</span></div>
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-[22px] border border-white/8 bg-black/20 px-4 py-3"><span>Subtotal</span><span>{currency(displayedQuote.subtotal)}</span></div>
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-[22px] border border-white/8 bg-black/20 px-4 py-3"><span>Discount</span><span className={displayedQuote.discountTotal > 0 ? "text-[#d7ffab]" : ""}>{displayedQuote.discountTotal > 0 ? `-${currency(displayedQuote.discountTotal)}` : currency(0)}</span></div>
-              {membershipPricingAdjustment ? (
-                <div className="flex flex-wrap items-center justify-between gap-2 rounded-[22px] border border-[#7CFF00]/14 bg-[#7CFF00]/8 px-4 py-3">
-                  <span>{membershipPricingAdjustment.label}</span>
-                  <span className="text-[#d7ffab]">-{currency(membershipPricingAdjustment.discountAmount)}</span>
-                </div>
-              ) : null}
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-[22px] border border-white/8 bg-black/20 px-4 py-3"><span>Estimated tax</span><span>{currency(displayedQuote.taxTotal)}</span></div>
-              <div className="flex items-center justify-between rounded-[22px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 px-4 py-3"><span>Deposit reserved</span><span className="text-[#d3ffa0]">{currency(displayedQuote.depositDue)}</span></div>
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-[22px] border border-white/8 bg-black/20 px-4 py-3"><span>Remaining at checkout</span><span>{currency(displayedQuote.balanceDue)}</span></div>
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-[22px] border border-white/8 bg-black/20 px-4 py-3"><span>Final total</span><span>{currency(displayedQuote.grandTotal)}</span></div>
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-[22px] border border-white/8 bg-black/20 px-4 py-3"><span>Live availability</span><span>{`${availableSlots.length} available slot${availableSlots.length === 1 ? "" : "s"}`}</span></div>
-              {form.watch("appointmentTime") ? (
-                <div className="flex flex-wrap items-center justify-between gap-2 rounded-[22px] border border-white/8 bg-black/20 px-4 py-3"><span>Selected time</span><span>{dateLabel(watchAppointmentTime)}</span></div>
-              ) : null}
-            </>
-          )}
         </div>
       </Card>
     </div>
