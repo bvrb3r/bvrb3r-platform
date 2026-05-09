@@ -483,6 +483,15 @@ export interface ArchitectAccountDirectoryItem {
     city: string | null;
     state: string | null;
     address: string | null;
+    profileReady: boolean;
+    locationReady: boolean;
+    visibilityPublic: boolean;
+    bookingActive: boolean;
+    payoutReady: boolean;
+    payoutAccountCount: number;
+    marketplaceVisibilityRowFound: boolean;
+    marketplaceVisibilityState: string | null;
+    marketplaceVisibilityAcceptsInstantBookings: boolean | null;
     suspended: boolean;
     rejected: boolean;
     banned: boolean;

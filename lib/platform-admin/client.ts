@@ -125,7 +125,12 @@ export function useArchitectBarberProfileRepairMutation(profileId: string) {
 
   return useMutation({
     mutationFn: () =>
-      requestJson<{ ok: boolean; repair: { message: string; readChecks: Record<string, boolean> } }>(
+      requestJson<{
+        ok: boolean;
+        repair: { message: string; readChecks: Record<string, boolean> };
+        publishResult?: { published: boolean; blockers: string[] };
+        eligibility?: { eligible: boolean; blockers: string[]; includedInClientHome?: boolean; includedInClientSearch?: boolean };
+      }>(
         `/api/architect/accounts/${profileId}/repair-barber-profile`,
         { method: "POST" }
       ),

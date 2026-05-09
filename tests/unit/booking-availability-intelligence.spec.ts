@@ -13,6 +13,7 @@ import {
   buildCanonicalAvailabilityPayload,
   buildCanonicalBarberProfile,
   buildCanonicalDiscoveryResults,
+  getCanonicalMarketplaceEligibility,
   getMarketplaceEligibilityForBarber
 } from "@/lib/booking/intelligence";
 
@@ -767,6 +768,9 @@ describe("canonical availability intelligence", () => {
     const diagnostic = await getMarketplaceEligibilityForBarber(supabase as never, "barber-phillip", {
       directSearchQuery: "phillip"
     });
+    const profileIdDiagnostic = await getCanonicalMarketplaceEligibility(supabase as never, "profile-uuid", {
+      directSearchQuery: "/barber/barber-phillip"
+    });
 
     expect(results).toHaveLength(1);
     expect(results[0].barberName).toBe("Phillip McGee");
@@ -780,6 +784,12 @@ describe("canonical availability intelligence", () => {
     expect(diagnostic.facts.independentLocationExists).toBe(true);
     expect(diagnostic.facts.approvalStatus).toBe("approved");
     expect(diagnostic.facts.payoutMode).toBe("test");
+    expect(profileIdDiagnostic.eligible).toBe(true);
+    expect(profileIdDiagnostic.isMarketplaceLive).toBe(true);
+    expect(profileIdDiagnostic.includeInClientHome).toBe(true);
+    expect(profileIdDiagnostic.includeInClientSearch).toBe(true);
+    expect(profileIdDiagnostic.directSearchIncluded).toBe(true);
+    expect(profileIdDiagnostic.blockers).toEqual([]);
   });
 
   it("does not hide an eligible barber when no exact next slot can be materialized yet", async () => {

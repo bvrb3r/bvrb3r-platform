@@ -379,6 +379,7 @@ describe("live client discovery smoke test", () => {
     createSupabaseAdminClientMock.mockReturnValue(createSupabaseMock(tables));
 
     const payload = await searchBarbersAndShopsPayload({ query: "philforsure" });
+    const routePayload = await searchBarbersAndShopsPayload({ query: "/barber/philforsure" });
 
     expect(tables.barber_profiles[0]).toMatchObject({
       barber_reference: "barber-phillip",
@@ -387,6 +388,8 @@ describe("live client discovery smoke test", () => {
     expect(payload.barbers.length).toBeGreaterThanOrEqual(1);
     expect(payload.barbers[0].barberName.toLowerCase()).toContain("phillip");
     expect(payload.barbers[0].username).toBe("philforsure");
+    expect(routePayload.barbers.length).toBeGreaterThanOrEqual(1);
+    expect(routePayload.barbers[0].username).toBe("philforsure");
   });
 
   it("promotes real onboarding services before client discovery checks the service gate", async () => {

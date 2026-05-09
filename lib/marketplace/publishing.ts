@@ -1,6 +1,9 @@
 import { revalidatePath, revalidateTag } from "next/cache";
 import { getCanonicalMarketplaceEligibility } from "@/lib/booking/intelligence";
+import { syncOnboardingBarberServicesForUser } from "@/lib/marketplace/service-sync";
 import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { createEmptyTrustState } from "@/lib/trust/engine";
+import { getTrustProvider } from "@/lib/trust/provider";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 
@@ -45,6 +48,18 @@ function publicBarberSlug(username: string | null | undefined, barberReference: 
 
   const normalized = slugify(username ?? "");
   return normalized !== "barber" ? normalized : fallbackBarberSlug(barberReference);
+}
+
+async function readTrustStateForMarketplacePublishing() {
+  try {
+    const provider = await getTrustProvider();
+    return provider.readState();
+  } catch (error) {
+    console.error("[marketplace-publishing] trust state unavailable", {
+      message: error instanceof Error ? error.message : String(error)
+    });
+    return createEmptyTrustState();
+  }
 }
 
 async function resolveBarber(supabase: SupabaseClient, barberReference: string) {
@@ -108,10 +123,18 @@ export async function publishBarberMarketplaceReadiness(supabase: SupabaseClient
   }
 
   const barberReference = barber.reference_code ?? barber.id;
+  await syncOnboardingBarberServicesForUser(supabase, barber.profile_id).catch((error) => {
+    console.error("[marketplace-publishing] onboarding service sync failed", {
+      barberReference,
+      profileId: barber.profile_id,
+      message: error instanceof Error ? error.message : String(error)
+    });
+  });
+  const trustState = await readTrustStateForMarketplacePublishing();
   const [profileResult, canonicalProfileResult, eligibility] = await Promise.all([
     supabase.from("barber_profiles").select("barber_reference, username, visibility_state").eq("barber_reference", barberReference).maybeSingle(),
     supabase.from("profiles").select("email").eq("id", barber.profile_id).maybeSingle(),
-    getCanonicalMarketplaceEligibility(supabase, barberReference)
+    getCanonicalMarketplaceEligibility(supabase, barberReference, { trustState })
   ]);
 
   if (profileResult.error) {

@@ -5,8 +5,12 @@ import {
   BarberProfileRepairError,
   ensureBarberProfileForUser
 } from "@/lib/barber/profile-repair";
+import { getCanonicalMarketplaceEligibility } from "@/lib/booking/intelligence";
+import { publishBarberMarketplaceReadiness } from "@/lib/marketplace/publishing";
 import { syncOnboardingBarberServicesForUser } from "@/lib/marketplace/service-sync";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { createEmptyTrustState } from "@/lib/trust/engine";
+import { getTrustProvider } from "@/lib/trust/provider";
 
 type ProfileRow = {
   id: string;
@@ -16,6 +20,15 @@ type ProfileRow = {
   email?: string | null;
   phone?: string | null;
 };
+
+async function readTrustStateSafe() {
+  try {
+    const provider = await getTrustProvider();
+    return provider.readState();
+  } catch {
+    return createEmptyTrustState();
+  }
+}
 
 export async function POST(
   _request: NextRequest,
@@ -51,6 +64,13 @@ export async function POST(
       preferredUsername: undefined
     }, supabase);
     const serviceSync = await syncOnboardingBarberServicesForUser(supabase, profileId);
+    const barberReference = result.canonical.barberReference;
+    const publishResult = await publishBarberMarketplaceReadiness(supabase, barberReference);
+    const trustState = await readTrustStateSafe();
+    const eligibility = await getCanonicalMarketplaceEligibility(supabase, barberReference, {
+      trustState,
+      directSearchQuery: "phillip"
+    });
 
     revalidatePath(`/architect/users/${profileId}`);
     revalidatePath("/dashboard/client");
@@ -66,7 +86,9 @@ export async function POST(
         canonical: result.canonical,
         readChecks: result.readChecks
       },
-      serviceSync
+      serviceSync,
+      publishResult,
+      eligibility
     });
   } catch (error) {
     const status = error instanceof BarberProfileRepairError && error.reason === "role_not_barber" ? 403 : 409;

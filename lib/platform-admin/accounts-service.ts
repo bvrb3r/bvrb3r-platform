@@ -3,9 +3,12 @@ import { isSupabaseEnabled } from "@/lib/config/runtime";
 import { isUpcomingAppointmentStatus } from "@/lib/appointments/domain";
 import { BarberProfileRepairError, ensureBarberProfileForIdentifier, type BarberProfileRepairResult } from "@/lib/barber/profile-repair";
 import { getCanonicalMarketplaceEligibility, type MarketplaceBarberEligibilityDiagnostic } from "@/lib/booking/intelligence";
+import { syncAllOnboardingBarberServices } from "@/lib/marketplace/service-sync";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getStripeConnectEnvironment } from "@/lib/stripe/connect";
+import { createEmptyTrustState } from "@/lib/trust/engine";
+import { getTrustProvider } from "@/lib/trust/provider";
 import type { AppointmentStatus, UserAccount } from "@/types/domain";
 import type {
   ArchitectAccountDetailPayload,
@@ -785,6 +788,18 @@ function digitsOnly(value?: string | null) {
   return `${value ?? ""}`.replace(/\D+/g, "");
 }
 
+async function readTrustStateForMarketplaceDiagnostics() {
+  try {
+    const provider = await getTrustProvider();
+    return provider.readState();
+  } catch (error) {
+    console.error("[Architect Accounts] trust state unavailable for marketplace diagnostics", {
+      message: error instanceof Error ? error.message : String(error)
+    });
+    return createEmptyTrustState();
+  }
+}
+
 function fallbackBarberSlug(barberReference: string) {
   const shortReference = barberReference
     .replace(/^barber[-_]?/i, "")
@@ -818,6 +833,12 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
   const repairResultByReference = new Map<string, BarberProfileRepairResult | { attempted: true; reason: string; message: string; details?: Record<string, unknown> }>();
   const diagnosticsClient = accountDataOverlay ? null : createSupabaseAdminClient();
   if (diagnosticsClient) {
+    const trustState = await readTrustStateForMarketplaceDiagnostics();
+    await syncAllOnboardingBarberServices(diagnosticsClient).catch((error) => {
+      console.error("[Architect Accounts] onboarding service sync before marketplace diagnostics failed", {
+        message: error instanceof Error ? error.message : String(error)
+      });
+    });
     await Promise.all(data.barbers.map(async (barber) => {
       const reference = barberReference(barber);
       if (!reference) {
@@ -829,7 +850,7 @@ async function buildDirectoryItems(data: AccountData): Promise<ArchitectAccountD
         if (repairResult) {
           repairResultByReference.set(reference, repairResult);
         }
-        canonicalEligibilityByReference.set(reference, await getCanonicalMarketplaceEligibility(diagnosticsClient, reference));
+        canonicalEligibilityByReference.set(reference, await getCanonicalMarketplaceEligibility(diagnosticsClient, reference, { trustState }));
       } catch (error) {
         repairResultByReference.set(reference, {
           attempted: true,

@@ -1,11 +1,25 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
   revalidateTag: vi.fn()
 }));
 
+const { trustStateRef } = vi.hoisted(() => ({
+  trustStateRef: { current: undefined as unknown }
+}));
+
+vi.mock("@/lib/trust/provider", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/trust/engine")>("@/lib/trust/engine");
+  return {
+    getTrustProvider: async () => ({
+      readState: async () => trustStateRef.current ?? actual.createEmptyTrustState()
+    })
+  };
+});
+
 import { publishBarberMarketplaceReadiness } from "@/lib/marketplace/publishing";
+import { createEmptyTrustState } from "@/lib/trust/engine";
 import { revalidatePath } from "next/cache";
 
 type Row = Record<string, unknown>;
@@ -186,6 +200,10 @@ function createReadyTables(overrides: Record<string, Row[]> = {}) {
 }
 
 describe("marketplace publishing", () => {
+  beforeEach(() => {
+    trustStateRef.current = undefined;
+  });
+
   it("publishes a fully activated barber into marketplace visibility", async () => {
     const supabase = createSupabaseMock(createReadyTables());
 
@@ -206,6 +224,76 @@ describe("marketplace publishing", () => {
         visibility_state: "hidden",
         accepts_instant_bookings: false
       }]
+    }));
+
+    const result = await publishBarberMarketplaceReadiness(supabase as never, "barber-live");
+
+    expect(result.published).toBe(true);
+    expect(result.blockers).toEqual([]);
+    expect(supabase.tables.get("marketplace_visibility")).toContainEqual(expect.objectContaining({
+      barber_reference: "barber-live",
+      visibility_state: "public",
+      accepts_instant_bookings: true
+    }));
+  });
+
+  it("uses trust payout readiness from the canonical evaluator when connected account rows are not present", async () => {
+    const trustState = createEmptyTrustState();
+    trustState.barberVerifications = [
+      {
+        id: "verify-identity-barber-live",
+        barberId: "barber-live",
+        category: "identity_verification",
+        legalName: "Phillip McGee",
+        userId: "profile-uuid",
+        verificationProfileId: "verify-profile-barber-live",
+        verificationStatus: "approved",
+        updatedAt: new Date().toISOString()
+      },
+      {
+        id: "verify-license-barber-live",
+        barberId: "barber-live",
+        category: "license_verification",
+        legalName: "Phillip McGee",
+        userId: "profile-uuid",
+        verificationProfileId: "verify-profile-barber-live",
+        verificationStatus: "approved",
+        updatedAt: new Date().toISOString()
+      },
+      {
+        id: "verify-payout-barber-live",
+        barberId: "barber-live",
+        category: "payout_verification",
+        legalName: "Phillip McGee",
+        userId: "profile-uuid",
+        verificationProfileId: "verify-profile-barber-live",
+        verificationStatus: "approved",
+        payoutStatus: "approved",
+        complianceStatus: "approved",
+        updatedAt: new Date().toISOString()
+      }
+    ];
+    trustState.verificationProfiles = [{
+      id: "verify-profile-barber-live",
+      userId: "profile-uuid",
+      role: "barber",
+      overallStatus: "approved",
+      identityStatus: "approved",
+      licenseStatus: "approved",
+      businessStatus: "not_started",
+      payoutStatus: "approved",
+      complianceStatus: "approved",
+      publicVerified: true,
+      canAcceptBookings: true,
+      canReceivePayouts: true,
+      canCreateShopListing: false,
+      currentRequirements: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }];
+    trustStateRef.current = trustState;
+    const supabase = createSupabaseMock(createReadyTables({
+      connected_accounts: []
     }));
 
     const result = await publishBarberMarketplaceReadiness(supabase as never, "barber-live");

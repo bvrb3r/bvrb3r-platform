@@ -361,7 +361,7 @@ describe("architect account workspaces", () => {
     expect(screen.getByText("Client discovery debug")).toBeInTheDocument();
     expect(screen.getAllByText("Independent Studio, Tampa FL").length).toBeGreaterThan(0);
     expect(screen.getByText("/barber/phillipmcgee")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /repair barber profile/i })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /force recalculate marketplace eligibility/i }).length).toBeGreaterThan(0);
     expect(screen.getByText("Final read by reference")).toBeInTheDocument();
     expect(screen.getAllByText("Marketplace Not live").length).toBeGreaterThan(0);
     expect(screen.getByText("No real verification documents are linked to this account.")).toBeInTheDocument();
@@ -389,7 +389,7 @@ describe("architect account workspaces", () => {
 
     render(<ArchitectAccountDetailWorkspace profileId="profile-barber" initialData={detailPayload} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /repair barber profile/i }));
+    fireEvent.click(screen.getAllByRole("button", { name: /force recalculate marketplace eligibility/i })[0]);
 
     expect(mutateAsync).toHaveBeenCalled();
     expect(await screen.findByText(/Profile already synced\. Final read checks/i)).toBeInTheDocument();

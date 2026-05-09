@@ -255,9 +255,14 @@ type CanonicalSnapshot = {
 
 export type MarketplaceBarberEligibilityDiagnostic = {
   eligible: boolean;
+  isMarketplaceLive: boolean;
   includedInClientSearch: boolean;
   includedInClientHome: boolean;
   includedInMarketplaceFeed: boolean;
+  includeInClientSearch: boolean;
+  includeInClientHome: boolean;
+  includeInMarketplaceFeed: boolean;
+  directSearchIncluded: boolean;
   publicProfileRoute: string | null;
   displayName: string;
   searchableTerms: string[];
@@ -301,6 +306,15 @@ export type MarketplaceBarberEligibilityDiagnostic = {
     city: string | null;
     state: string | null;
     address: string | null;
+    profileReady: boolean;
+    locationReady: boolean;
+    visibilityPublic: boolean;
+    bookingActive: boolean;
+    payoutReady: boolean;
+    payoutAccountCount: number;
+    marketplaceVisibilityRowFound: boolean;
+    marketplaceVisibilityState: string | null;
+    marketplaceVisibilityAcceptsInstantBookings: boolean | null;
     suspended: boolean;
     rejected: boolean;
     banned: boolean;
@@ -393,6 +407,14 @@ function slugify(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "barber";
 }
 
+function normalizePublicRouteSearchTerm(value?: string | null) {
+  const trimmed = value?.trim() ?? "";
+  return trimmed
+    .replace(/^https?:\/\/[^/]+/i, "")
+    .replace(/^\/?barber\//i, "")
+    .replace(/^@/, "");
+}
+
 function normalizePublicSlug(value?: string | null) {
   if (!value?.trim()) {
     return null;
@@ -433,11 +455,17 @@ function matchesBarberIdentifier(input: {
     barberReference: input.barberReference
   });
 
-  return input.barberReference === input.identifier
-    || input.row.id === input.identifier
-    || input.row.booking_slug === input.identifier
-    || input.profileRow?.username === input.identifier
-    || publicSlug === input.identifier;
+  const identifier = normalizePublicRouteSearchTerm(input.identifier).toLowerCase();
+  const candidateValues = [
+    input.barberReference,
+    input.row.id,
+    input.row.profile_id,
+    input.row.booking_slug,
+    input.profileRow?.username,
+    publicSlug
+  ];
+
+  return candidateValues.some((value) => normalizePublicRouteSearchTerm(value).toLowerCase() === identifier);
 }
 
 function toReference(id: string, referenceCode?: string | null) {
@@ -1019,18 +1047,20 @@ function getServicesForBarber(
 }
 
 function matchesSearchableTerms(terms: string[], query?: string) {
-  const normalizedQuery = query?.trim().toLowerCase();
+  const normalizedQuery = normalizePublicRouteSearchTerm(query).toLowerCase();
   if (!normalizedQuery) {
     return true;
   }
 
-  const queryVariants = normalizedQuery.startsWith("@")
-    ? [normalizedQuery, normalizedQuery.slice(1)]
-    : [normalizedQuery];
+  const queryVariants = [normalizedQuery, normalizedQuery.replace(/^@/, "")]
+    .filter((value, index, values) => value && values.indexOf(value) === index);
 
   return terms.some((term) => {
     const normalizedTerm = term.toLowerCase();
-    return queryVariants.some((variant) => normalizedTerm.includes(variant));
+    const routeNormalizedTerm = normalizePublicRouteSearchTerm(term).toLowerCase();
+    return queryVariants.some((variant) =>
+      normalizedTerm.includes(variant) || routeNormalizedTerm.includes(variant)
+    );
   });
 }
 
@@ -1078,7 +1108,8 @@ function buildMarketplaceBarberEligibility(
   const profile = snapshot.profiles.find((row) => row.id === barberRow.profile_id);
   const visibility = getMarketplaceVisibilityRow(snapshot, barberReference);
   const status = snapshot.barberStatus.find((row) => row.barber_reference === barberReference);
-  const connectedAccount = snapshot.connectedAccounts.find((row) => row.subject_type === "barber" && row.barber_id === barberRow.id);
+  const connectedAccounts = snapshot.connectedAccounts.filter((row) => row.subject_type === "barber" && row.barber_id === barberRow.id);
+  const connectedAccount = connectedAccounts[0];
   const trustDecision = getBarberTrustDecision(options.trustState, barberReference);
   const rawLocationReferences = getCandidateLocationReferences(
     barberReference,
@@ -1136,7 +1167,9 @@ function buildMarketplaceBarberEligibility(
     profileRow?.username,
     barberRow.booking_slug,
     publicSlug,
+    `/barber/${publicSlug}`,
     fallbackSlug,
+    `/barber/${fallbackSlug}`,
     barberReference,
     barberRow.id,
     primaryLocation?.name,
@@ -1192,6 +1225,15 @@ function buildMarketplaceBarberEligibility(
     city: primaryLocation?.city ?? null,
     state: primaryLocation?.state ?? null,
     address: primaryLocation?.address ?? primaryLocation?.neighborhood ?? null,
+    profileReady: Boolean(profile && profileRow && hasRealMarketplaceText(displayName)),
+    locationReady: validLocationOrShop,
+    visibilityPublic: profilePublic,
+    bookingActive: acceptingBookings,
+    payoutReady,
+    payoutAccountCount: connectedAccounts.length,
+    marketplaceVisibilityRowFound: Boolean(visibility),
+    marketplaceVisibilityState: visibility?.visibility_state ?? null,
+    marketplaceVisibilityAcceptsInstantBookings: visibility?.accepts_instant_bookings ?? null,
     suspended,
     rejected,
     banned
@@ -1199,9 +1241,14 @@ function buildMarketplaceBarberEligibility(
 
   return {
     eligible,
+    isMarketplaceLive: eligible,
     includedInClientSearch,
     includedInClientHome,
     includedInMarketplaceFeed,
+    includeInClientSearch: includedInClientSearch,
+    includeInClientHome: includedInClientHome,
+    includeInMarketplaceFeed: includedInMarketplaceFeed,
+    directSearchIncluded: includedInClientSearch,
     publicProfileRoute,
     displayName,
     searchableTerms,
@@ -1242,6 +1289,15 @@ function missingMarketplaceEligibilityDiagnostic(barberId: string): MarketplaceB
     city: null,
     state: null,
     address: null,
+    profileReady: false,
+    locationReady: false,
+    visibilityPublic: false,
+    bookingActive: false,
+    payoutReady: false,
+    payoutAccountCount: 0,
+    marketplaceVisibilityRowFound: false,
+    marketplaceVisibilityState: null,
+    marketplaceVisibilityAcceptsInstantBookings: null,
     suspended: false,
     rejected: false,
     banned: false
@@ -1250,9 +1306,14 @@ function missingMarketplaceEligibilityDiagnostic(barberId: string): MarketplaceB
 
   return {
     eligible: false,
+    isMarketplaceLive: false,
     includedInClientSearch: false,
     includedInClientHome: false,
     includedInMarketplaceFeed: false,
+    includeInClientSearch: false,
+    includeInClientHome: false,
+    includeInMarketplaceFeed: false,
+    directSearchIncluded: false,
     publicProfileRoute: null,
     displayName: barberId,
     searchableTerms: [barberId],
@@ -1683,9 +1744,14 @@ export async function getCanonicalMarketplaceEligibility(
   });
   const publicDiagnostic: MarketplaceBarberEligibilityDiagnostic = {
     eligible: diagnostic.eligible,
+    isMarketplaceLive: diagnostic.eligible,
     includedInClientSearch: diagnostic.includedInClientSearch,
     includedInClientHome: diagnostic.includedInClientHome,
     includedInMarketplaceFeed: diagnostic.includedInMarketplaceFeed,
+    includeInClientSearch: diagnostic.includedInClientSearch,
+    includeInClientHome: diagnostic.includedInClientHome,
+    includeInMarketplaceFeed: diagnostic.includedInMarketplaceFeed,
+    directSearchIncluded: diagnostic.includedInClientSearch,
     publicProfileRoute: diagnostic.publicProfileRoute,
     displayName: diagnostic.displayName,
     searchableTerms: diagnostic.searchableTerms,
@@ -1700,6 +1766,9 @@ export async function getCanonicalMarketplaceEligibility(
       ...publicDiagnostic,
       includedInClientSearch: false,
       includedInClientHome: false,
+      includeInClientSearch: false,
+      includeInClientHome: false,
+      directSearchIncluded: false,
       blockers,
       diagnostics: createEligibilityDiagnostics({
         eligible: diagnostic.eligible,
@@ -1955,7 +2024,7 @@ export async function buildCanonicalAvailabilityPayload(
   const profileRow = barberProfilesByReference.get(barberReference);
   if (
     !isCanonicalBarberPlatformApproved(barberRow, options.trustState, barberReference)
-    || !isCanonicalMarketplaceVisibilityReady(snapshot, barberReference, barberRow.id, profileRow)
+    || !isCanonicalMarketplaceVisibilityReady(snapshot, barberReference, barberRow.id, profileRow, options.trustState)
     || !isBarberDiscoverable(options.trustState, barberReference)
   ) {
     return {
@@ -2074,7 +2143,7 @@ export async function buildCanonicalBarberProfile(
   if (
     !isCanonicalBarberProfileRole(profile)
     || !profileRow
-    || !isCanonicalMarketplaceVisibilityReady(snapshot, barberReference, barberRow.id, profileRow)
+    || !isCanonicalMarketplaceVisibilityReady(snapshot, barberReference, barberRow.id, profileRow, trustState)
     || !hasRealMarketplaceText(profile?.full_name ?? profileRow.display_name)
   ) {
     return null;

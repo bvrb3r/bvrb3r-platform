@@ -239,7 +239,10 @@ export function ArchitectAccountDetailWorkspace({
       const checks = Object.entries(result.repair.readChecks)
         .map(([key, value]) => `${key}: ${value ? "yes" : "no"}`)
         .join(", ");
-      setFeedback({ tone: "success", message: `${result.repair.message} Final read checks: ${checks}` });
+      const finalStatus = result.eligibility
+        ? ` Marketplace ${result.eligibility.eligible ? "LIVE" : `blocked: ${result.eligibility.blockers.join(" | ") || "unknown"}`}.`
+        : "";
+      setFeedback({ tone: "success", message: `${result.repair.message} Final read checks: ${checks}.${finalStatus}` });
     } catch (error) {
       setFeedback({ tone: "error", message: getReadableActionError(error as { message?: string; status?: number; code?: string }) });
     }
@@ -536,6 +539,17 @@ export function ArchitectAccountDetailWorkspace({
               <div className="flex flex-wrap gap-2">
                 <span className={cn("status-pill", badgeClasses(account.approvalStatus))}>Approval {formatLabel(account.approvalStatus)}</span>
                 <span className={cn("status-pill", marketplaceStatus.tone === "approved" ? badgeClasses("approved") : badgeClasses("pending"))}>Marketplace {marketplaceStatus.label}</span>
+                {account.role === "barber" ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={barberRepairMutation.isPending}
+                    onClick={() => void repairBarberProfile()}
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    {barberRepairMutation.isPending ? "Recalculating..." : "Force Recalculate Marketplace Eligibility"}
+                  </Button>
+                ) : null}
               </div>
             </div>
             {account.marketplaceBlockers.length ? (
@@ -578,14 +592,21 @@ export function ArchitectAccountDetailWorkspace({
               <Field label="Current discovery location" value={marketplaceFactLocation || account.discoveryLocation} />
               <Field label="Public route" value={account.publicRoute} />
               <Field label="Payout mode" value={marketplaceFacts ? `${marketplaceFacts.payoutMode} / ${formatLabel(marketplaceFacts.payoutStatus)}` : account.payoutMode} />
+              <Field label="Payout readiness rows found" value={marketplaceFacts?.payoutAccountCount} />
+              <Field label="Payout ready final" value={marketplaceFacts ? (marketplaceFacts.payoutReady ? "yes" : "no") : undefined} />
               <Field label="Feed eligible" value={account.feedEligible ? "yes" : "no"} />
               <Field label="Search terms" value={marketplaceSearchTerms} />
               <Field label="Services" value={marketplaceFacts ? `${marketplaceFacts.serviceCount} total / ${marketplaceFacts.activeServiceCount} active` : account.serviceCount} />
+              <Field label="Profile ready final" value={marketplaceFacts ? (marketplaceFacts.profileReady ? "yes" : "no") : undefined} />
+              <Field label="Location ready final" value={marketplaceFacts ? (marketplaceFacts.locationReady ? "yes" : "no") : undefined} />
               <Field label="Availability / working hours" value={marketplaceFacts ? `${marketplaceFacts.availabilityCount} availability / ${marketplaceFacts.workingHoursCount} working hours` : account.availabilityCount} />
               <Field label="Independent location" value={marketplaceFacts ? (marketplaceFacts.independentLocationExists ? "yes" : "no") : undefined} />
               <Field label="Accepted shops" value={marketplaceFacts?.acceptedShopCount} />
               <Field label="Profile visibility" value={marketplaceFacts?.profileVisibility} />
               <Field label="Booking status" value={marketplaceFacts?.bookingStatus} />
+              <Field label="Marketplace visibility row" value={marketplaceFacts ? (marketplaceFacts.marketplaceVisibilityRowFound ? "found" : "missing") : undefined} />
+              <Field label="Marketplace visibility state" value={marketplaceFacts?.marketplaceVisibilityState} />
+              <Field label="Marketplace accepts instant" value={marketplaceFacts?.marketplaceVisibilityAcceptsInstantBookings === undefined || marketplaceFacts?.marketplaceVisibilityAcceptsInstantBookings === null ? undefined : (marketplaceFacts.marketplaceVisibilityAcceptsInstantBookings ? "yes" : "no")} />
               <Field label="Username / fallback slug" value={marketplaceFacts ? `${marketplaceFacts.username ?? "no username"} / ${marketplaceFacts.fallbackSlug}` : account.username} />
               <Field label="Public media count" value={marketplaceFacts?.publicMediaCount ?? account.feedAssetCount} />
               {account.serviceHealth ? (
@@ -607,7 +628,7 @@ export function ArchitectAccountDetailWorkspace({
                       onClick={() => void repairBarberProfile()}
                     >
                       <RotateCcw className="h-4 w-4" />
-                      {barberRepairMutation.isPending ? "Repairing..." : "Repair Service Visibility"}
+                      {barberRepairMutation.isPending ? "Recalculating..." : "Force Recalculate Marketplace Eligibility"}
                     </Button>
                   </div>
                 </>
@@ -643,7 +664,7 @@ export function ArchitectAccountDetailWorkspace({
                       onClick={() => void repairBarberProfile()}
                     >
                       <RotateCcw className="h-4 w-4" />
-                      {barberRepairMutation.isPending ? "Repairing..." : "Repair Barber Profile"}
+                      {barberRepairMutation.isPending ? "Recalculating..." : "Force Recalculate Marketplace Eligibility"}
                     </Button>
                   </div>
                 </>
