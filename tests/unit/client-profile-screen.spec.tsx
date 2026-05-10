@@ -212,6 +212,7 @@ describe("client profile screen", () => {
           favoriteBarber: {
             barber: { name: "Wave Carter" },
             profile: {
+              username: "wave",
               profilePhotoUrl: null,
               headline: "Precision fades that hold their shape."
             },
@@ -272,6 +273,8 @@ describe("client profile screen", () => {
     expect(screen.queryByText("Preferred barber")).not.toBeInTheDocument();
     expect(screen.queryByText("Standing routine")).not.toBeInTheDocument();
     expect(screen.getByText("Preferred Barbers")).toBeInTheDocument();
+    expect(screen.getByText("wave")).toBeInTheDocument();
+    expect(screen.queryByText("Wave Carter")).not.toBeInTheDocument();
     expect(screen.getByText("Preferred Shops")).toBeInTheDocument();
     expect(screen.queryByText("Preferred Location")).not.toBeInTheDocument();
     expect(screen.getByTestId("payment-methods-panel")).toHaveTextContent("Methods 2");

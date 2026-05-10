@@ -32,6 +32,7 @@ import {
 } from "@/lib/payments/client";
 import { applyPointsPreviewToQuote, pointsToInAppValue, previewPointsRedemption } from "@/lib/points/redemption";
 import { useMarketplaceAnalyticsMutation, useMarketplaceWaitlistMutation } from "@/lib/marketplace/client";
+import { getBookingLocationLines, getClientFacingBarberName } from "@/lib/marketplace/client-facing";
 import { useApplyPromotionMutation, useClientPromotionsQuery } from "@/lib/promotions/client";
 import type { PromotionPreviewView } from "@/lib/promotions/service";
 import { calculateBookingQuote, resolveBookableAddOn, resolveBookableBarber, resolveBookableService, resolveBookableSlot } from "@/lib/utils/booking";
@@ -579,18 +580,23 @@ export function BookingForm() {
   }, [watchAddOnId, watchAppointmentTime, watchBarberId, watchClientName, watchClientPhone, watchLocationId, watchServiceId]);
 
   const currentShop = shops.find((shop) => shop.id === watchLocationId) ?? shops[0];
-  const locationCityState = [currentShop?.city, currentShop?.state].filter(Boolean).join(", ");
-  const selectedLocationName =
-    currentShop?.name ??
-    currentBarberResult?.shopName ??
-    currentBarberResult?.locationLabel ??
-    "Service location";
-  const selectedLocationDetail =
-    [currentShop?.address, locationCityState].filter(Boolean).join(", ") ||
-    currentBarberResult?.cityLabel ||
-    currentBarberResult?.locationLabel ||
-    "Location is confirmed before you book.";
-  const showLocationDetail = Boolean(selectedLocationDetail && selectedLocationDetail !== selectedLocationName);
+  const profileLocation = barberProfileQuery.data?.shopLocations.find((location) => location.id === watchLocationId)
+    ?? barberProfileQuery.data?.shopLocations[0];
+  const selectedLocationLines = getBookingLocationLines(
+    profileLocation ?? currentShop ?? {
+      name: currentBarberResult?.locationLabel ?? currentBarberResult?.shopName,
+      city: currentBarberResult?.cityLabel,
+      state: ""
+    }
+  );
+  const selectedLocationName = selectedLocationLines[0] ?? "Service location";
+  const selectedLocationDetailLines = selectedLocationLines.slice(1);
+  const selectedLocationDetail = selectedLocationDetailLines.join(", ");
+  const showLocationDetail = selectedLocationDetailLines.length > 0;
+  const clientFacingBarberName = getClientFacingBarberName({
+    username: barberProfileQuery.data?.profile.username ?? currentBarberResult?.username ?? preselectedUsername,
+    barberName: currentBarberResult?.barberName
+  });
   const isInitialLoading = (searchQuery.isLoading && !searchQuery.data) || (barberProfileQuery.isLoading && !barberProfileQuery.data);
   const waitlistPending = waitlistMutation.isPending;
   const formError = searchQuery.error || barberProfileQuery.error || availabilityQuery.error;
@@ -700,7 +706,7 @@ export function BookingForm() {
         matchedFrom,
         discoveryQuery: query,
         barberUsername: barberProfileQuery.data?.profile.username ?? preselectedUsername,
-        barberName: currentBarberResult?.barberName,
+        barberName: clientFacingBarberName,
         serviceName: currentService?.name,
         aiRecommendationId,
         aiRecommendationType,
@@ -797,7 +803,7 @@ export function BookingForm() {
           <div className="mt-6 grid gap-3 text-sm text-white/72">
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-[22px] border border-white/8 bg-black/20 px-4 py-3">
               <span>Barber</span>
-              <span className="font-medium text-white">{currentBarberResult?.barberName ?? "Selected barber"}</span>
+              <span className="font-medium text-white">{clientFacingBarberName}</span>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-[22px] border border-white/8 bg-black/20 px-4 py-3">
               <span>Service</span>
@@ -846,7 +852,7 @@ export function BookingForm() {
         <div className="border-b border-white/8 px-5 py-6 sm:px-8">
           <div className="flex flex-wrap items-center gap-2">
             <Badge>{sourceKind ? getSourceLabel(sourceKind) : "Book appointment"}</Badge>
-            {currentBarberResult ? <Badge>{currentBarberResult.barberName}</Badge> : null}
+            {currentBarberResult ? <Badge>{clientFacingBarberName}</Badge> : null}
           </div>
           <h2 className="mt-4 text-balance text-3xl font-semibold sm:text-5xl" data-display="true">
             Book your appointment.
@@ -900,7 +906,7 @@ export function BookingForm() {
                 <p className="surface-label text-[#d7ffab]">Booking with</p>
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   <div>
-                    <p className="text-lg font-semibold text-white">{currentBarberResult?.barberName ?? "Selected barber"}</p>
+                    <p className="text-lg font-semibold text-white">{clientFacingBarberName}</p>
                     <p className="mt-1 text-sm text-white/58">Your barber is locked for this booking.</p>
                   </div>
                   <div className="rounded-[20px] border border-white/8 bg-black/18 px-4 py-3">
@@ -1093,7 +1099,7 @@ export function BookingForm() {
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-2 rounded-[22px] border border-white/8 bg-black/20 px-4 py-3">
                   <span>Barber</span>
-                  <span className="font-medium text-white">{currentBarberResult?.barberName ?? "Selected barber"}</span>
+                  <span className="font-medium text-white">{clientFacingBarberName}</span>
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-2 rounded-[22px] border border-white/8 bg-black/20 px-4 py-3">
                   <span className="inline-flex items-center gap-2"><CalendarDays className="h-4 w-4 text-[#d7ffab]" />Date and time</span>
@@ -1360,7 +1366,7 @@ export function BookingForm() {
       <Card className="rounded-[34px] p-5 sm:p-6 lg:sticky lg:top-4">
         <p className="surface-label">Booking Summary</p>
         {isInitialLoading ? <Skeleton className="mt-4 h-12 w-48" /> : <h3 className="mt-4 text-3xl font-semibold" data-display="true">{currentService?.name ?? "Choose a service"}</h3>}
-        {isInitialLoading ? <Skeleton className="mt-4 h-16 w-full" /> : <p className="mt-3 text-sm leading-7 text-white/64">{currentBarberResult?.barberName ? `With ${currentBarberResult.barberName}` : "Select a barber and service to continue."}</p>}
+        {isInitialLoading ? <Skeleton className="mt-4 h-16 w-full" /> : <p className="mt-3 text-sm leading-7 text-white/64">{currentBarberResult ? `With ${clientFacingBarberName}` : "Select a barber and service to continue."}</p>}
         <div className="mt-5 grid gap-2 text-sm text-white/68">
           <div className="flex items-center justify-between gap-3 rounded-[20px] border border-white/8 bg-black/20 px-4 py-3">
             <span>Date/time</span>

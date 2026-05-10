@@ -59,6 +59,9 @@ type LocationRow = {
   neighborhood: string;
   city: string;
   state: string;
+  address?: string | null;
+  address_line_2?: string | null;
+  postal_code?: string | null;
 };
 
 type PaymentRow = {
@@ -147,6 +150,14 @@ export type BarberActivationSetupView = {
   locationMode: "custom" | "shop" | "later" | null;
   serviceLocationLabel: string | null;
   requestedShopId: string | null;
+  bookingLocation?: {
+    name: string;
+    address: string;
+    addressLine2?: string | null;
+    city: string;
+    state: string;
+    postalCode?: string | null;
+  } | null;
 };
 
 export type BarberClientRelationshipView = {
@@ -360,13 +371,13 @@ async function resolveBarberContext(user: UserAccount, supabase: SupabaseClient)
     uuidIds.length
       ? supabase
         .from("locations")
-        .select("id, reference_code, name, neighborhood, city, state")
+        .select("id, reference_code, name, neighborhood, city, state, address, address_line_2, postal_code")
         .in("id", uuidIds)
       : Promise.resolve({ data: [], error: null }),
     referenceCodes.length
       ? supabase
         .from("locations")
-        .select("id, reference_code, name, neighborhood, city, state")
+        .select("id, reference_code, name, neighborhood, city, state, address, address_line_2, postal_code")
         .in("reference_code", referenceCodes)
       : Promise.resolve({ data: [], error: null })
   ]);
@@ -400,13 +411,13 @@ async function readLocationMap(supabase: SupabaseClient, references: string[]) {
     referenceValues.length
       ? supabase
         .from("locations")
-        .select("id, reference_code, name, neighborhood, city, state")
+        .select("id, reference_code, name, neighborhood, city, state, address, address_line_2, postal_code")
         .in("reference_code", referenceValues)
       : Promise.resolve({ data: [], error: null }),
     uuidValues.length
       ? supabase
         .from("locations")
-        .select("id, reference_code, name, neighborhood, city, state")
+        .select("id, reference_code, name, neighborhood, city, state, address, address_line_2, postal_code")
         .in("id", uuidValues)
       : Promise.resolve({ data: [], error: null })
   ]);
@@ -655,6 +666,48 @@ function formatServiceLocationLabel(serviceLocation: Record<string, unknown> | n
   return [name, [city, state].filter(Boolean).join(", ") || address].filter(Boolean).join(" | ") || null;
 }
 
+function buildBookingLocationFromServiceLocation(serviceLocation: Record<string, unknown> | null) {
+  if (!serviceLocation) {
+    return null;
+  }
+
+  const name = typeof serviceLocation.name === "string" ? serviceLocation.name.trim() : "";
+  const address = typeof serviceLocation.address === "string" ? serviceLocation.address.trim() : "";
+  const addressLine2 = typeof serviceLocation.addressLine2 === "string" ? serviceLocation.addressLine2.trim() : "";
+  const city = typeof serviceLocation.city === "string" ? serviceLocation.city.trim() : "";
+  const state = typeof serviceLocation.state === "string" ? serviceLocation.state.trim() : "";
+  const postalCode = typeof serviceLocation.postalCode === "string" ? serviceLocation.postalCode.trim() : "";
+
+  if (!name && !address && !city && !state) {
+    return null;
+  }
+
+  return {
+    name,
+    address,
+    addressLine2: addressLine2 || null,
+    city,
+    state,
+    postalCode: postalCode || null
+  };
+}
+
+function buildBookingLocationFromLocation(location?: LocationRow | null) {
+  if (!location) {
+    return null;
+  }
+
+  const fallbackAddress = location.address || (/\d/.test(location.neighborhood ?? "") ? location.neighborhood : "");
+  return {
+    name: location.name,
+    address: fallbackAddress,
+    addressLine2: location.address_line_2 ?? null,
+    city: location.city,
+    state: location.state,
+    postalCode: location.postal_code ?? null
+  };
+}
+
 async function readActivationSetupView(
   supabase: SupabaseClient | null,
   user: UserAccount,
@@ -686,13 +739,16 @@ async function readActivationSetupView(
   const customLocationLabel = formatServiceLocationLabel(activation?.serviceLocation ?? null);
   const hasCustomLocation = activation?.locationMode === "custom" && Boolean(customLocationLabel);
   const hasAssignedLocation = locations.length > 0;
+  const bookingLocation = buildBookingLocationFromLocation(locations[0])
+    ?? buildBookingLocationFromServiceLocation(activation?.serviceLocation ?? null);
 
   return {
     hasAvailabilityDraft,
     hasServiceLocation: hasAssignedLocation || hasCustomLocation,
     locationMode: activation?.locationMode ?? (hasAssignedLocation ? "shop" : null),
     serviceLocationLabel: customLocationLabel ?? (hasAssignedLocation ? formatLocationLabel(locations[0]) : null),
-    requestedShopId: activation?.requestedShopId ?? null
+    requestedShopId: activation?.requestedShopId ?? null,
+    bookingLocation
   };
 }
 

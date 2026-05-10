@@ -93,7 +93,15 @@ describe("client bookings screen", () => {
           id: "pm-default",
           label: "Visa ending in 4242",
           isDefault: true
-        }
+        },
+        recommendedBarbers: [
+          {
+            barberId: "barber-wave",
+            username: "wave",
+            barberName: "Wave Carter"
+          }
+        ],
+        trustedBarbers: []
       }
     });
     useClientBookingsQueryMock.mockReturnValue({
@@ -233,7 +241,8 @@ describe("client bookings screen", () => {
 
     expect(screen.getByText("Upcoming Appointments")).toBeInTheDocument();
     expect(screen.getByText("Past Appointments / Receipts")).toBeInTheDocument();
-    expect(screen.getAllByText("Wave Carter").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("wave").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Wave Carter")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Message Barber" })).toHaveAttribute("href", "/dashboard/client/messages");
     expect(screen.getByRole("button", { name: "View Receipt" })).toBeInTheDocument();

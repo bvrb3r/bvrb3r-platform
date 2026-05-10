@@ -90,6 +90,8 @@ export interface Location {
   chairs: number;
   taxRate: number;
   address?: string;
+  addressLine2?: string;
+  postalCode?: string;
   latitude?: number;
   longitude?: number;
 }

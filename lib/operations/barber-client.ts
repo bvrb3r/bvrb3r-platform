@@ -170,6 +170,14 @@ export interface BarberActivationSetupView {
   locationMode: "custom" | "shop" | "later" | null;
   serviceLocationLabel: string | null;
   requestedShopId: string | null;
+  bookingLocation?: {
+    name: string;
+    address: string;
+    addressLine2?: string | null;
+    city: string;
+    state: string;
+    postalCode?: string | null;
+  } | null;
 }
 
 export interface BarberScheduleResponse {
@@ -629,6 +637,41 @@ export function useUpdateBarberActivationAvailabilityMutation() {
         queryClient.invalidateQueries({ queryKey: ["marketplace", "discover"] }),
         queryClient.invalidateQueries({ queryKey: ["marketplace", "map"] }),
         queryClient.invalidateQueries({ queryKey: ["marketplace", "haircut-now"] })
+      ]);
+    }
+  });
+}
+
+export function useUpdateBarberBookingLocationMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: {
+      serviceLocation: {
+        name: string;
+        address: string;
+        addressLine2?: string;
+        city: string;
+        state: string;
+        postalCode?: string;
+      };
+    }) =>
+      requestJson<BarberActivationAvailabilityResponse>("/api/barber/activation", {
+        method: "POST",
+        body: JSON.stringify({
+          action: "save_booking_location",
+          ...payload
+        })
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["activation-status"] }),
+        queryClient.invalidateQueries({ queryKey: ["activation", "status"] }),
+        queryClient.invalidateQueries({ queryKey: ["barber-overview"] }),
+        queryClient.invalidateQueries({ queryKey: ["barber-schedule"] }),
+        queryClient.invalidateQueries({ queryKey: ["marketplace", "discover"] }),
+        queryClient.invalidateQueries({ queryKey: ["marketplace", "haircut-now"] }),
+        queryClient.invalidateQueries({ queryKey: ["barber-profile"] })
       ]);
     }
   });

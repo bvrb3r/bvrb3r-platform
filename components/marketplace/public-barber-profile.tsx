@@ -4,6 +4,7 @@ import { CalendarDays, Clock3, CreditCard, MapPin, ShieldCheck, Star } from "luc
 import { MarketplaceTrackedActionLink } from "@/components/client-experience/marketplace-tracked-action-link";
 import { PublicBarberGrowthActions } from "@/components/marketplace/public-barber-growth-actions";
 import { Card } from "@/components/ui/card";
+import { getBookingLocationSummary, getClientFacingBarberName } from "@/lib/marketplace/client-facing";
 import { currency, dateLabel } from "@/lib/utils";
 import type { PublicBarberProfileView } from "@/lib/marketplace/engine";
 
@@ -68,7 +69,11 @@ export function PublicBarberProfile({
   viewerCanFollow?: boolean;
   viewerCanReport?: boolean;
 }) {
-  const initials = getInitials(profile.barber.name);
+  const clientFacingName = getClientFacingBarberName({
+    username: profile.profile.username,
+    barberName: profile.barber.name
+  });
+  const initials = getInitials(clientFacingName);
   const reviewCount = profile.proof?.reviewCount ?? profile.reviews.length;
   const reviewScore = profile.proof?.reviewScore ?? profile.barber.rating;
   const verificationBadges = [
@@ -76,7 +81,7 @@ export function PublicBarberProfile({
     ...(profile.proof?.verificationLabels ?? [])
   ].slice(0, 6);
   const serviceLocations = profile.shopLocations.length
-    ? profile.shopLocations.map((location) => `${location.name} • ${location.neighborhood}`).join(" | ")
+    ? profile.shopLocations.map((location) => getBookingLocationSummary(location)).join(" | ")
     : profile.shop?.name ?? "Independent barber";
   const policyNotes = getPolicyNotes(profile);
 
@@ -89,7 +94,7 @@ export function PublicBarberProfile({
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={profile.profile.profilePhotoUrl}
-                alt={profile.barber.name}
+                alt={clientFacingName}
                 className="h-24 w-24 rounded-[28px] border border-white/10 object-cover shadow-[0_20px_42px_rgba(124,255,0,0.14)] sm:h-32 sm:w-32 sm:rounded-[32px]"
               />
             ) : (
@@ -107,7 +112,7 @@ export function PublicBarberProfile({
                   <span key={badge} className="status-pill text-[#d7ffab]">{badge}</span>
                 ))}
               </div>
-              <h1 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">{profile.barber.name}</h1>
+              <h1 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">{clientFacingName}</h1>
               <p className="mt-3 max-w-2xl text-sm leading-7 text-white/66">{profile.profile.headline}</p>
               <div className="mt-5 flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.18em] text-white/58">
                 {profile.profile.specialties.slice(0, 4).map((specialty) => (
@@ -270,7 +275,7 @@ export function PublicBarberProfile({
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={asset.imageUrl}
-                      alt={asset.caption || profile.barber.name}
+                      alt={asset.caption || clientFacingName}
                       className="h-40 w-full rounded-[20px] border border-white/8 object-cover"
                     />
                   ) : null}

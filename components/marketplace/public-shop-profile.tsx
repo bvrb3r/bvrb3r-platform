@@ -5,6 +5,7 @@ import { MarketplaceTrackedActionLink } from "@/components/client-experience/mar
 import { PublicShopFavoriteAction } from "@/components/marketplace/public-shop-favorite-action";
 import { Card } from "@/components/ui/card";
 import { Avatar } from "@/design/components";
+import { getClientFacingBarberName } from "@/lib/marketplace/client-facing";
 import { currency, dateLabel } from "@/lib/utils";
 import type { PublicShopProfilePayload } from "@/lib/booking/platform-service";
 
@@ -98,59 +99,66 @@ export function PublicShopProfile({
             <UsersRound className="h-5 w-5 text-[#baff69]" />
           </div>
           <div className="mt-5 grid gap-3 md:grid-cols-2">
-            {barbers.length ? barbers.map((profile) => (
-              <div key={profile.barber.id} className="rounded-[28px] border border-white/8 bg-black/20 p-4">
-                <div className="flex items-start gap-4">
-                  <Avatar
-                    src={profile.profile.profilePhotoUrl}
-                    alt={profile.barber.name}
-                    initials={getInitials(profile.barber.name)}
-                    className="h-16 w-16 border-2 border-[#7CFF00]/55"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="truncate text-xl font-black tracking-[-0.035em] text-white">{profile.barber.name}</p>
-                      <ShieldCheck className="h-4 w-4 shrink-0 text-[#baff69]" />
-                    </div>
-                    <p className="mt-1 text-sm text-white/58">{profile.profile.specialties.slice(0, 2).join(" | ") || "Bookable barber"}</p>
-                    <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
-                      <span className="rounded-[16px] border border-white/8 bg-black/25 px-3 py-2 text-white/72">
-                        <Star className="mr-1 inline h-3.5 w-3.5 fill-amber-300 text-amber-300" />
-                        {(profile.proof?.reviewScore ?? profile.barber.rating).toFixed(1)}
-                      </span>
-                      <span className="rounded-[16px] border border-white/8 bg-black/25 px-3 py-2 text-white/72">
-                        {currency(profile.priceRange[0])}+
-                      </span>
-                      <span className="rounded-[16px] border border-white/8 bg-black/25 px-3 py-2 text-white/72">
-                        {profile.services.length} services
-                      </span>
+            {barbers.length ? barbers.map((profile) => {
+              const barberName = getClientFacingBarberName({
+                username: profile.profile.username,
+                barberName: profile.barber.name
+              });
+
+              return (
+                <div key={profile.barber.id} className="rounded-[28px] border border-white/8 bg-black/20 p-4">
+                  <div className="flex items-start gap-4">
+                    <Avatar
+                      src={profile.profile.profilePhotoUrl}
+                      alt={barberName}
+                      initials={getInitials(barberName)}
+                      className="h-16 w-16 border-2 border-[#7CFF00]/55"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="truncate text-xl font-black tracking-[-0.035em] text-white">{barberName}</p>
+                        <ShieldCheck className="h-4 w-4 shrink-0 text-[#baff69]" />
+                      </div>
+                      <p className="mt-1 text-sm text-white/58">{profile.profile.specialties.slice(0, 2).join(" | ") || "Bookable barber"}</p>
+                      <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
+                        <span className="rounded-[16px] border border-white/8 bg-black/25 px-3 py-2 text-white/72">
+                          <Star className="mr-1 inline h-3.5 w-3.5 fill-amber-300 text-amber-300" />
+                          {(profile.proof?.reviewScore ?? profile.barber.rating).toFixed(1)}
+                        </span>
+                        <span className="rounded-[16px] border border-white/8 bg-black/25 px-3 py-2 text-white/72">
+                          {currency(profile.priceRange[0])}+
+                        </span>
+                        <span className="rounded-[16px] border border-white/8 bg-black/25 px-3 py-2 text-white/72">
+                          {profile.services.length} services
+                        </span>
+                      </div>
                     </div>
                   </div>
+                  <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                    <Link
+                      href={`/barber/${profile.profile.username}` as Route}
+                      className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/24 px-4 text-sm font-extrabold text-white transition hover:border-[#7CFF00]/35 hover:text-[#d7ffab]"
+                    >
+                      View Profile
+                    </Link>
+                    <MarketplaceTrackedActionLink
+                      href={(profile.bookingCtaHref ?? `/booking/new?barberId=${profile.barber.id}&locationId=${shop.id}`) as Route}
+                      className="min-h-11 px-4 text-sm"
+                      analytics={{
+                        eventType: "booking_cta_clicked",
+                        barberId: profile.barber.id,
+                        username: profile.profile.username,
+                        locationId: shop.id,
+                        sourceKind: "public_profile",
+                        sourceReference: "shop_profile_barber_card"
+                      }}
+                    >
+                      Book
+                    </MarketplaceTrackedActionLink>
+                  </div>
                 </div>
-                <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                  <Link
-                    href={`/barber/${profile.profile.username}` as Route}
-                    className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/24 px-4 text-sm font-extrabold text-white transition hover:border-[#7CFF00]/35 hover:text-[#d7ffab]"
-                  >
-                    View Profile
-                  </Link>
-                  <MarketplaceTrackedActionLink
-                    href={(profile.bookingCtaHref ?? `/booking/new?barberId=${profile.barber.id}&locationId=${shop.id}`) as Route}
-                    className="min-h-11 px-4 text-sm"
-                    analytics={{
-                      eventType: "booking_cta_clicked",
-                      barberId: profile.barber.id,
-                      username: profile.profile.username,
-                      locationId: shop.id,
-                      sourceKind: "public_profile",
-                      sourceReference: "shop_profile_barber_card"
-                    }}
-                  >
-                    Book
-                  </MarketplaceTrackedActionLink>
-                </div>
-              </div>
-            )) : (
+              );
+            }) : (
               <div className="rounded-[24px] border border-dashed border-white/10 bg-black/20 p-5 text-sm text-white/58">
                 Bookable barbers will appear here when the roster is ready.
               </div>

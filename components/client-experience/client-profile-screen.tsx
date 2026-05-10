@@ -32,6 +32,7 @@ import { Avatar, DataStatCard, PageHeader, StatusBadge } from "@/design/componen
 import { useClientMembershipQuery } from "@/lib/booking/client";
 import type { ClientProfilePayload } from "@/lib/booking/platform-service";
 import { useCreateReferralInviteMutation, useClientReferralSummary } from "@/lib/engagement/client";
+import { getClientFacingBarberName } from "@/lib/marketplace/client-facing";
 import { usePointsBalanceQuery, usePointsHistoryQuery } from "@/lib/points/client";
 import { useMutateProfileMediaMutation, useProfileMediaWorkspaceQuery } from "@/lib/profile/client";
 import { uploadMediaAsset } from "@/lib/storage/media";
@@ -167,6 +168,12 @@ export function ClientProfileScreen({
 
   const client = payload.client;
   const favoriteBarber = payload.favoriteBarber;
+  const favoriteBarberName = favoriteBarber
+    ? getClientFacingBarberName({
+      username: favoriteBarber.profile.username,
+      barberName: favoriteBarber.barber.name
+    })
+    : "";
   const preferredShops = payload.preferredShops;
   const paymentMethods = payload.paymentMethods;
   const defaultPaymentMethod = paymentMethods.find((method) => method.isDefault) ?? null;
@@ -594,12 +601,12 @@ export function ClientProfileScreen({
                   <div className="flex items-start gap-3">
                     <Avatar
                       src={favoriteBarber.profile.profilePhotoUrl}
-                      alt={favoriteBarber.barber.name}
-                      initials={initialsForName(favoriteBarber.barber.name)}
+                      alt={favoriteBarberName}
+                      initials={initialsForName(favoriteBarberName)}
                       className="h-16 w-16 rounded-[20px]"
                     />
                     <div className="min-w-0 flex-1">
-                      <p className="text-lg font-semibold text-white">{favoriteBarber.barber.name}</p>
+                      <p className="text-lg font-semibold text-white">{favoriteBarberName}</p>
                       <p className="mt-1 text-sm text-white/58">
                         {favoriteBarber.shopLocations[0]?.name ?? favoriteBarber.profile.headline ?? "Preferred barber"}
                       </p>

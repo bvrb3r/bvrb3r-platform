@@ -3,6 +3,7 @@ import type { MouseEventHandler } from "react";
 import { ArrowRight, Clock3, MapPin, ShieldCheck, Star } from "lucide-react";
 import { ClientActionLink } from "@/components/client-experience/client-action-link";
 import { MarketplaceTrackedActionLink } from "@/components/client-experience/marketplace-tracked-action-link";
+import { getClientFacingBarberName } from "@/lib/marketplace/client-facing";
 
 type MatchPreview = {
   accent: string;
@@ -73,7 +74,11 @@ export function NextAvailableChairCard({
     );
   }
 
-  const initials = getInitials(match.barberName);
+  const barberName = getClientFacingBarberName({
+    username: match.username,
+    barberName: match.barberName
+  });
+  const initials = getInitials(barberName);
 
   return (
     <article className="relative overflow-hidden rounded-[34px] border border-[#d9ff9e]/18 bg-[linear-gradient(180deg,rgba(22,28,14,0.96),rgba(8,8,8,0.99))] p-5 shadow-[0_28px_60px_rgba(0,0,0,0.28)] sm:p-6">
@@ -105,7 +110,7 @@ export function NextAvailableChairCard({
                 </div>
               </div>
               <div className="min-w-0">
-                <p className="text-2xl font-semibold text-white sm:text-[2rem]" data-display="true">{match.barberName}</p>
+                <p className="text-2xl font-semibold text-white sm:text-[2rem]" data-display="true">{barberName}</p>
                 <div className="mt-3 flex flex-wrap gap-2 text-sm text-white/78">
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/20 px-3 py-2">
                     <Star className="h-4 w-4 fill-current text-[#d7ffab]" />

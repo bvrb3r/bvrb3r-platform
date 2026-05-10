@@ -25,6 +25,7 @@ import type {
 import type { TrustState } from "@/types/trust";
 import { buildPublicTrustSignal } from "@/lib/trust/engine";
 import { buildMarketplaceBookingHref } from "@/lib/marketplace/links";
+import { getClientFacingBarberName } from "@/lib/marketplace/client-facing";
 import {
   filterVisibleMarketplaceBarbers,
   isBarberMarketplaceVisible,
@@ -636,12 +637,19 @@ export function getPublicBarberProfileByUsername(
   const portfolio = state.barberPortfolios.filter((asset) => asset.barberId === barber.id);
   const mostBookedService = [...services].sort((left, right) => left.popularity.popularityRank - right.popularity.popularityRank || right.popularity.bookingCount - left.popularity.bookingCount)[0];
   const prices = services.map((entry) => entry.service.price);
-  const shopLocations = state.locations.filter((location) => visibleShop?.locationIds.includes(location.id));
-  const primaryLocationId = shopLocations[0]?.id ?? visibleShop?.locationIds[0] ?? profile.shopId;
+  const shopLocations = visibleShop
+    ? state.locations.filter((location) => visibleShop.locationIds.includes(location.id))
+    : state.locations.filter((location) => barber.locationIds.includes(location.id));
+  const primaryLocationId = shopLocations[0]?.id ?? visibleShop?.locationIds[0] ?? barber.locationIds[0] ?? profile.shopId;
+  const publicBarberName = getClientFacingBarberName({
+    username: profile.username,
+    name: barber.name
+  });
 
   return {
     barber: {
       ...barber,
+      name: publicBarberName,
       rating: averageRating,
       reviewCount,
       bio: barber.bio
@@ -703,10 +711,15 @@ function getDiscoveryRow(
     .filter(Boolean);
   const priceRange: [number, number] = [Math.min(...prices), Math.max(...prices)];
 
+  const publicBarberName = getClientFacingBarberName({
+    username: profile.username,
+    name: barber.name
+  });
+
   return {
     barberId: barber.id,
     username: profile.username,
-    barberName: barber.name,
+    barberName: publicBarberName,
     locationId: location?.id ?? entry?.locationId,
     locationLabel: location ? `${location.name} | ${location.neighborhood}` : undefined,
     profilePhotoUrl: profile.profilePhotoUrl,
@@ -753,6 +766,7 @@ export function searchMarketplace(state: MarketplaceState, filters: DiscoveryFil
       const services = barber && publicProfile ? getServicesForPublicProfile(state, barber, publicProfile) : [];
       const searchText = [
         row.barberName,
+        barber?.name,
         row.username,
         row.shopName,
         row.specialties.join(" "),

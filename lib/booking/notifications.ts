@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
+import { getClientFacingBarberName } from "@/lib/marketplace/client-facing";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { LiveAppointmentRecord } from "@/lib/operations/live-state";
 import type { Role } from "@/types/domain";
@@ -16,6 +17,7 @@ type BookingNotificationInput = {
   appointment: LiveAppointmentRecord;
   clientName: string;
   clientEmail?: string | null;
+  barberUsername?: string | null;
   barberName?: string | null;
   serviceName?: string | null;
   startsAt?: string | null;
@@ -79,7 +81,11 @@ export async function queueBookingCreatedNotifications(input: BookingNotificatio
 
   const appointmentTime = formatAppointmentTime(input.startsAt ?? input.appointment.start);
   const serviceName = input.serviceName?.trim() || input.appointment.serviceId;
-  const barberName = input.barberName?.trim() || input.appointment.barberId;
+  const barberName = getClientFacingBarberName({
+    username: input.barberUsername,
+    barberName: input.barberName,
+    name: input.appointment.barberId
+  });
   const createdAt = new Date().toISOString();
   const rows = [];
 

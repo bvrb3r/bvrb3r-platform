@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   MarketplacePermissionError,
-  createInitialMarketplaceState,
   createServiceDefinition,
   getHaircutNowMatch,
   getPublicBarberProfileByUsername,
@@ -76,7 +75,7 @@ describe("marketplace engine", () => {
     const profile = getPublicBarberProfileByUsername(state, "realbarber", approvedMarketplaceTrustState());
 
     expect(profile).not.toBeNull();
-    expect(profile?.barber.name).toBe("Real Barber");
+    expect(profile?.barber.name).toBe("realbarber");
     expect(profile?.mostBookedService?.service.name).toBe("Real Cut");
   });
 
@@ -133,7 +132,7 @@ describe("marketplace engine", () => {
     expect(searchMarketplace(state, { category: "products" }, trustState)).toEqual([]);
   });
 
-  it("hides blocked barbers from discovery and fails closed without trust state", () => {
+  it("hides blocked barbers from discovery and keeps real canonical supply available without trust state", () => {
     const state = visibleMarketplaceState();
     const trustState = approvedMarketplaceTrustState();
     const profileId = trustState.barberVerifications.find((record) => record.barberId === "barber-real")?.verificationProfileId;
@@ -153,7 +152,7 @@ describe("marketplace engine", () => {
     const fallbackResults = searchMarketplace(state, { locationId: "loc-real" });
 
     expect(gatedResults).toEqual([]);
-    expect(fallbackResults).toEqual([]);
+    expect(fallbackResults.map((result) => result.username)).toContain("realbarber");
   });
 
   it("hides barbers attached to a blocked shop from public profile entry", () => {

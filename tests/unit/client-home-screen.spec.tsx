@@ -213,6 +213,8 @@ describe("client home screen", () => {
     expect(screen.getByText("Upcoming Appointment")).toBeInTheDocument();
     expect(screen.getByText("Recommended Barbers")).toBeInTheDocument();
     expect(screen.getByText("Recommended Barber Shops")).toBeInTheDocument();
+    expect(screen.getAllByText("wave").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Wave Carter")).not.toBeInTheDocument();
     expect(screen.queryByText("Search Availability")).not.toBeInTheDocument();
     expect(screen.queryByText("Explore Services")).not.toBeInTheDocument();
     expect(screen.queryByText("Open Activity")).not.toBeInTheDocument();

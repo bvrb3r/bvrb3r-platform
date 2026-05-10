@@ -52,7 +52,11 @@ describe("public barber profile", () => {
             {
               id: "loc-ybor",
               name: "Centro Ybor Flagship",
-              neighborhood: "Ybor City"
+              neighborhood: "Ybor City",
+              address: "2172 University Square Mall",
+              city: "Tampa",
+              state: "FL",
+              postalCode: "33612"
             }
           ],
           bookingCtaHref: "/booking/new?barberId=barber-wave",
@@ -75,7 +79,9 @@ describe("public barber profile", () => {
       />
     );
 
-    expect(screen.getByText("Wave Carter")).toBeInTheDocument();
+    expect(screen.getByText("wave")).toBeInTheDocument();
+    expect(screen.queryByText("Wave Carter")).not.toBeInTheDocument();
+    expect(screen.getByText(/2172 University Square Mall, Tampa, FL 33612/)).toBeInTheDocument();
     expect(screen.queryByText("Verified license")).not.toBeInTheDocument();
     expect(screen.getByText("Verified identity")).toBeInTheDocument();
     expect(screen.getByText("Verified shop")).toBeInTheDocument();

@@ -163,6 +163,16 @@ describe("booking form", () => {
     useBarberProfileQueryMock.mockReturnValue({
       data: {
         profile: { username: "wave" },
+        shopLocations: [
+          {
+            id: "loc-ybor",
+            name: "Phils chair",
+            address: "2172 University Square Mall",
+            city: "Tampa",
+            state: "FL",
+            postalCode: "33612"
+          }
+        ],
         services: [
           {
             service: {
@@ -248,8 +258,8 @@ describe("booking form", () => {
     expect(screen.getByRole("heading", { name: "Choose service" })).toBeInTheDocument();
     expect(screen.getByText("Booking with")).toBeInTheDocument();
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
-    expect(screen.getAllByText("Centro Ybor Flagship").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("2172 University Square Mall, Tampa, FL").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Phils chair").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("2172 University Square Mall, Tampa, FL 33612").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: /Signature Precision Cut/ })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
@@ -263,7 +273,7 @@ describe("booking form", () => {
     expect(screen.getByText("Jordan Ellis")).toBeInTheDocument();
     expect(screen.getByText("8135550190")).toBeInTheDocument();
     expect(screen.queryByText("Client name")).not.toBeInTheDocument();
-    expect(screen.getAllByText("2172 University Square Mall, Tampa, FL").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("2172 University Square Mall, Tampa, FL 33612").length).toBeGreaterThan(0);
     expect(screen.getByText(/Visa ending in 4242 will be charged/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Book Appointment" })).toBeEnabled();
   });
@@ -357,7 +367,7 @@ describe("booking form", () => {
         clientName: "Jordan Ellis",
         clientPhone: "8135550190",
         paymentMethodId: "pm-default",
-        barberName: "Wave Carter",
+        barberName: "wave",
         serviceName: "Signature Precision Cut"
       }));
     });
@@ -365,6 +375,14 @@ describe("booking form", () => {
     expect(await screen.findByText("Appointment booked")).toBeInTheDocument();
     expect(screen.getByText("Confirmation appt-live-1. Visa ending in 4242 was charged for this booking.")).toBeInTheDocument();
     expect(mutatePaymentMock).not.toHaveBeenCalled();
+  });
+
+  it("uses the public barber username on client-facing booking surfaces", async () => {
+    render(<BookingForm />);
+    await advanceToReview();
+
+    expect(screen.getAllByText("wave").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Wave Carter")).not.toBeInTheDocument();
   });
 
   it("does not show confirmation when the canonical pay and book path fails", async () => {

@@ -108,6 +108,7 @@ describe("barber activation availability route", () => {
         serviceLocation: {
           name: "Phil Studio",
           address: "123 Main St",
+          addressLine2: "Suite 4",
           city: "Charlotte",
           state: "NC",
           postalCode: "28202"
@@ -125,7 +126,43 @@ describe("barber activation availability route", () => {
     expect(setMarketplaceStateMock).toHaveBeenCalledWith(expect.objectContaining({
       locations: [expect.objectContaining({
         id: "independent-barber-real",
-        city: "Charlotte"
+        address: "123 Main St",
+        addressLine2: "Suite 4",
+        city: "Charlotte",
+        postalCode: "28202"
+      })]
+    }));
+  });
+
+  it("saves a booking address that client booking can display", async () => {
+    const { POST } = await import("@/app/api/barber/activation/route");
+
+    const response = await POST(new Request("https://bvrb3r.test/api/barber/activation", {
+      method: "POST",
+      body: JSON.stringify({
+        action: "save_booking_location",
+        serviceLocation: {
+          name: "Phils chair",
+          address: "2172 University Square Mall",
+          city: "Tampa",
+          state: "FL",
+          postalCode: "33612"
+        }
+      })
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.hasServiceLocation).toBe(true);
+    expect(body.serviceLocationLabel).toContain("Phils chair");
+    expect(setMarketplaceStateMock).toHaveBeenCalledWith(expect.objectContaining({
+      locations: [expect.objectContaining({
+        id: "independent-barber-real",
+        name: "Phils chair",
+        address: "2172 University Square Mall",
+        city: "Tampa",
+        state: "FL",
+        postalCode: "33612"
       })]
     }));
   });

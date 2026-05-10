@@ -1,5 +1,6 @@
 ﻿import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { buildMarketplaceBookingHref } from "@/lib/marketplace/links";
+import { getClientFacingBarberName } from "@/lib/marketplace/client-facing";
 import {
   buildPublicTrustSignal,
   computeShopVerificationDecision,
@@ -37,6 +38,8 @@ type CanonicalLocationRow = {
   state: string;
   phone: string | null;
   address: string | null;
+  address_line_2?: string | null;
+  postal_code?: string | null;
   latitude: number | null;
   longitude: number | null;
 };
@@ -511,6 +514,7 @@ function toReference(id: string, referenceCode?: string | null) {
 }
 
 function mapLocation(row: CanonicalLocationRow): Location {
+  const fallbackAddress = !row.address && /\d/.test(row.neighborhood ?? "") ? row.neighborhood : undefined;
   return {
     id: toReference(row.id, row.reference_code),
     name: row.name,
@@ -521,7 +525,9 @@ function mapLocation(row: CanonicalLocationRow): Location {
     hours: "",
     chairs: 0,
     taxRate: 0,
-    address: row.address ?? undefined,
+    address: row.address ?? fallbackAddress,
+    addressLine2: row.address_line_2 ?? undefined,
+    postalCode: row.postal_code ?? undefined,
     latitude: row.latitude ?? undefined,
     longitude: row.longitude ?? undefined
   };
@@ -837,7 +843,7 @@ async function readCanonicalSnapshot(supabase: SupabaseClient): Promise<Canonica
     supabase.from("profiles").select("id, role, full_name, email, phone, primary_onboarding_role"),
     supabase.from("services").select("id, reference_code, location_id, category, name, description, duration_min, buffer_min, price, currency, deposit_amount, full_prepay_required, active, is_bookable, display_order, created_at, updated_at, service_owner_type, barber_reference, shop_reference, booking_count, popularity_rank").eq("active", true),
     supabase.from("marketplace_services").select("service_reference, category, name, description, duration_min, buffer_min, price, deposit_amount, full_prepay_required, owner_type, barber_reference, shop_reference, style_tag_ids, created_at, updated_at"),
-    supabase.from("locations").select("id, reference_code, name, neighborhood, city, state, phone, address, latitude, longitude"),
+    supabase.from("locations").select("id, reference_code, name, neighborhood, city, state, phone, address, address_line_2, postal_code, latitude, longitude"),
     supabase.from("staff_locations").select("profile_id, location_id"),
     supabase.from("availability_rules").select("barber_id, location_id, weekday, start_time, end_time"),
     supabase.from("blocked_times").select("barber_id, starts_at, ends_at, reason"),
@@ -1298,7 +1304,11 @@ function buildMarketplaceBarberEligibility(
   });
   const publicSlug = resolvePublicBarberSlug({ profileRow, barberRow, barberReference });
   const fallbackSlug = buildFallbackBarberSlug(barberReference);
-  const displayName = profileRow?.display_name ?? profile?.full_name ?? barberReference;
+  const displayName = getClientFacingBarberName({
+    username: profileRow?.username ?? barberRow.booking_slug,
+    publicDisplayName: profileRow?.display_name,
+    name: profile?.full_name ?? barberReference
+  });
   const profilePublic = isPublicMarketplaceVisibilityState(profileRow?.visibility_state);
   const acceptingBookings = status
     ? status.accepting_bookings === true && status.status !== "offline" && status.live_status !== "offline"
@@ -2454,7 +2464,11 @@ export async function buildCanonicalBarberProfile(
   const bookingsCreated = snapshot.appointments.filter((entry) => entry.barber_id === barberRow.id && entry.status !== "cancelled").length;
   const completionRate = bookingsCreated ? Math.round((completedAppointments.length / bookingsCreated) * 100) : 100;
   const locationIds = locations.map((location) => location.id);
-  const name = profile?.full_name ?? profileRow?.display_name ?? barberReference;
+  const name = getClientFacingBarberName({
+    username: profileRow?.username ?? barberRow.booking_slug,
+    publicDisplayName: profileRow?.display_name,
+    name: profile?.full_name ?? barberReference
+  });
   const username = resolvePublicBarberSlug({ profileRow, barberRow, barberReference });
   const trustSignal = trustState ? buildPublicTrustSignal(trustState, barberReference, primaryLocation.id) : null;
   const ratingBadges = toCanonicalMarketplaceBadges(

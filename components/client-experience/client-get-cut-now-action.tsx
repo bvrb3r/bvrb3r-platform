@@ -12,6 +12,7 @@ import type {
   ClientHomeResponse,
   ClientPaymentMethodSummary
 } from "@/lib/booking/client";
+import { getClientFacingBarberName } from "@/lib/marketplace/client-facing";
 import { buildMarketplaceBookingHref } from "@/lib/marketplace/links";
 import { cn, currency } from "@/lib/utils";
 
@@ -95,6 +96,12 @@ export function ClientGetCutNowAction({
       : !defaultPaymentMethod
         ? "payment"
         : "ready";
+  const barberName = nextAvailableChair
+    ? getClientFacingBarberName({
+      username: nextAvailableChair.username,
+      barberName: nextAvailableChair.barberName
+    })
+    : "";
 
   const ctaHref = state === "location"
     ? locationHref
@@ -150,7 +157,7 @@ export function ClientGetCutNowAction({
             <div className="space-y-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <p className="text-xl font-semibold text-white">{nextAvailableChair.barberName}</p>
+                  <p className="text-xl font-semibold text-white">{barberName}</p>
                   <p className="mt-2 text-sm text-white/64">
                     {nextAvailableChair.shopName ?? "Location available in booking"}
                   </p>

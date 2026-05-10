@@ -21,6 +21,7 @@ import {
   type BookingApiError,
   type ClientBookingsResponse
 } from "@/lib/booking/client";
+import { getBookingLocationSummary, getClientFacingBarberName } from "@/lib/marketplace/client-facing";
 import { buildMarketplaceBookingHref } from "@/lib/marketplace/links";
 import { useCreateAppointmentPaymentMutation, type PaymentApiError } from "@/lib/payments/client";
 import { cn, currency } from "@/lib/utils";
@@ -86,11 +87,7 @@ function getLocationLabel(location?: Location | { name?: string | null; neighbor
     return "Location pending";
   }
 
-  if (location.address) {
-    return location.address;
-  }
-
-  return [location.name, location.neighborhood, location.city, location.state].filter(Boolean).join(", ") || "Location pending";
+  return getBookingLocationSummary(location) || "Location pending";
 }
 
 function getInitials(name: string) {
@@ -184,6 +181,25 @@ export function ClientBookingsScreen() {
     }
     return entries;
   }, [favoriteBarber]);
+  const publicBarberIdentityById = useMemo(() => {
+    const entries = new Map<string, { username?: string; barberName?: string }>();
+    for (const result of [
+      ...(homePayload?.recommendedBarbers ?? []),
+      ...(homePayload?.trustedBarbers ?? [])
+    ]) {
+      entries.set(result.barberId, {
+        username: result.username,
+        barberName: result.barberName
+      });
+    }
+    if (favoriteBarber?.barber.id) {
+      entries.set(favoriteBarber.barber.id, {
+        username: favoriteBarber.profile.username,
+        barberName: favoriteBarber.barber.name
+      });
+    }
+    return entries;
+  }, [favoriteBarber, homePayload?.recommendedBarbers, homePayload?.trustedBarbers]);
 
   function getReviewDraft(appointmentId: string) {
     return reviewDrafts[appointmentId] ?? { rating: 5, message: "" };
@@ -312,7 +328,11 @@ export function ClientBookingsScreen() {
         ) : upcomingAppointments.length ? (
           <div className="space-y-4">
             {upcomingAppointments.map((appointment) => {
-              const barberName = appointment.view?.barber?.name ?? "Your barber";
+              const publicIdentity = publicBarberIdentityById.get(appointment.barberId);
+              const barberName = getClientFacingBarberName({
+                username: publicIdentity?.username,
+                barberName: publicIdentity?.barberName ?? appointment.view?.barber?.name
+              });
               const location = appointment.view?.location;
               const isPaymentSummaryCard = appointment.id === nextAppointment?.id;
               const outstandingBalance = isPaymentSummaryCard
@@ -469,7 +489,11 @@ export function ClientBookingsScreen() {
         ) : history.length ? (
           <div className="space-y-4">
             {history.map((appointment) => {
-              const barberName = appointment.view?.barber?.name ?? favoriteBarber?.barber.name ?? "Your barber";
+              const publicIdentity = publicBarberIdentityById.get(appointment.barberId);
+              const barberName = getClientFacingBarberName({
+                username: publicIdentity?.username,
+                barberName: publicIdentity?.barberName ?? appointment.view?.barber?.name ?? favoriteBarber?.barber.name
+              });
               const location = appointment.view?.location;
               const hasReceiptDetail = Boolean(appointment.receipt || appointment.breakdown || appointment.moneyTimeline);
               const isReceiptOpen = expandedReceipts[appointment.id] ?? false;

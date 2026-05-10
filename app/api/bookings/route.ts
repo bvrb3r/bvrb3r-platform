@@ -76,6 +76,7 @@ export async function POST(request: NextRequest) {
         appointment: result.appointment,
         clientName: bookingInput.clientName,
         clientEmail: clientContext.activeClient?.email ?? clientContext.viewer.email,
+        barberUsername,
         barberName,
         serviceName,
         startsAt: result.appointment.start ?? bookingInput.appointmentTime

@@ -23,6 +23,7 @@ const workingHourSchema = z.object({
 const serviceLocationSchema = z.object({
   name: z.string().trim().min(1).max(120),
   address: z.string().trim().min(1).max(180),
+  addressLine2: z.string().trim().max(120).optional(),
   city: z.string().trim().min(1).max(100),
   state: z.string().trim().min(2).max(40),
   postalCode: z.string().trim().max(20).optional()
@@ -42,13 +43,20 @@ const saveAvailabilitySchema = z.object({
   shopId: z.string().trim().min(1).optional()
 });
 
+const saveBookingLocationSchema = z.object({
+  action: z.literal("save_booking_location"),
+  serviceLocation: serviceLocationSchema
+});
+
 const updateActivationSchema = z.discriminatedUnion("action", [
   setVisibilitySchema,
-  saveAvailabilitySchema
+  saveAvailabilitySchema,
+  saveBookingLocationSchema
 ]);
 
 type SetVisibilityInput = z.infer<typeof setVisibilitySchema>;
 type SaveAvailabilityInput = z.infer<typeof saveAvailabilitySchema>;
+type SaveBookingLocationInput = z.infer<typeof saveBookingLocationSchema>;
 
 function assertBarber(user: UserAccount) {
   if (!(user.role === "commission_barber" || user.role === "booth_rent_barber") || !user.barberId) {
@@ -67,7 +75,7 @@ function getIndependentLocationReference(barberReference: string) {
   return `independent-${barberReference}`;
 }
 
-function formatServiceLocationLabel(input: SaveAvailabilityInput["serviceLocation"]) {
+function formatServiceLocationLabel(input: SaveAvailabilityInput["serviceLocation"] | SaveBookingLocationInput["serviceLocation"]) {
   if (!input) {
     return null;
   }
@@ -133,7 +141,9 @@ function updateDemoActivationAvailability(barberId: string, input: SaveAvailabil
     hours: `${input.workingHours.length} working day${input.workingHours.length === 1 ? "" : "s"}`,
     chairs: 1,
     taxRate: 0,
-    address: input.serviceLocation.address
+    address: input.serviceLocation.address,
+    addressLine2: input.serviceLocation.addressLine2,
+    postalCode: input.serviceLocation.postalCode
   };
 
   setMarketplaceState({
@@ -154,6 +164,51 @@ function updateDemoActivationAvailability(barberId: string, input: SaveAvailabil
     hasServiceLocation: true,
     locationMode: input.locationMode,
     serviceLocationLabel,
+    requestedShopId: null
+  };
+}
+
+function updateDemoBookingLocation(barberId: string, input: SaveBookingLocationInput) {
+  const state = getMarketplaceState();
+  const barber = state.barbers.find((entry) => entry.id === barberId);
+  if (!barber) {
+    return null;
+  }
+
+  const locationId = getIndependentLocationReference(barberId);
+  const nextLocation = {
+    id: locationId,
+    name: input.serviceLocation.name,
+    neighborhood: input.serviceLocation.address,
+    city: input.serviceLocation.city,
+    state: input.serviceLocation.state,
+    phone: "",
+    hours: "",
+    chairs: 1,
+    taxRate: 0,
+    address: input.serviceLocation.address,
+    addressLine2: input.serviceLocation.addressLine2,
+    postalCode: input.serviceLocation.postalCode
+  };
+
+  setMarketplaceState({
+    ...state,
+    locations: [
+      nextLocation,
+      ...state.locations.filter((location) => location.id !== locationId)
+    ],
+    barbers: state.barbers.map((entry) =>
+      entry.id === barberId
+        ? { ...entry, locationIds: Array.from(new Set([...(entry.locationIds ?? []), locationId])) }
+        : entry
+    )
+  });
+
+  return {
+    hasAvailabilityDraft: true,
+    hasServiceLocation: true,
+    locationMode: "custom" as const,
+    serviceLocationLabel: formatServiceLocationLabel(input.serviceLocation),
     requestedShopId: null
   };
 }
@@ -227,7 +282,7 @@ async function persistActivationAvailability(
     const locationReference = getIndependentLocationReference(barberReference);
     const existingLocation = await supabase
       .from("locations")
-      .select("id, reference_code, name, neighborhood, city, state")
+      .select("id, reference_code, name, neighborhood, city, state, address, address_line_2, postal_code")
       .eq("reference_code", locationReference)
       .maybeSingle();
 
@@ -241,6 +296,9 @@ async function persistActivationAvailability(
       neighborhood: input.serviceLocation.address,
       city: input.serviceLocation.city,
       state: input.serviceLocation.state,
+      address: input.serviceLocation.address,
+      address_line_2: input.serviceLocation.addressLine2 ?? null,
+      postal_code: input.serviceLocation.postalCode ?? null,
       phone: null,
       hours: {},
       tax_rate: 0
@@ -250,12 +308,12 @@ async function persistActivationAvailability(
         .from("locations")
         .update(locationPayload)
         .eq("id", (existingLocation.data as { id: string }).id)
-        .select("id, reference_code, name, neighborhood, city, state")
+        .select("id, reference_code, name, neighborhood, city, state, address, address_line_2, postal_code")
         .single()
       : await supabase
         .from("locations")
         .insert(locationPayload)
-        .select("id, reference_code, name, neighborhood, city, state")
+        .select("id, reference_code, name, neighborhood, city, state, address, address_line_2, postal_code")
         .single();
 
     if (locationResult.error || !locationResult.data) {
@@ -379,6 +437,104 @@ async function persistActivationAvailability(
   });
 }
 
+async function persistBookingLocation(
+  supabase: SupabaseClient,
+  user: UserAccount,
+  barberReference: string,
+  input: SaveBookingLocationInput
+) {
+  const barber = await resolveBarber(supabase, barberReference);
+  if (!barber) {
+    return NextResponse.json({ error: "No barber account is available for booking location setup." }, { status: 404 });
+  }
+
+  const now = new Date().toISOString();
+  const locationReference = getIndependentLocationReference(barberReference);
+  const existingLocation = await supabase
+    .from("locations")
+    .select("id, reference_code")
+    .eq("reference_code", locationReference)
+    .maybeSingle();
+
+  if (existingLocation.error) {
+    throw existingLocation.error;
+  }
+
+  const locationPayload = {
+    reference_code: locationReference,
+    name: input.serviceLocation.name,
+    neighborhood: input.serviceLocation.address,
+    city: input.serviceLocation.city,
+    state: input.serviceLocation.state,
+    address: input.serviceLocation.address,
+    address_line_2: input.serviceLocation.addressLine2 ?? null,
+    postal_code: input.serviceLocation.postalCode ?? null,
+    phone: null,
+    hours: {},
+    tax_rate: 0
+  };
+  const locationResult = existingLocation.data
+    ? await supabase
+      .from("locations")
+      .update(locationPayload)
+      .eq("id", (existingLocation.data as { id: string }).id)
+      .select("id, reference_code, name, neighborhood, city, state, address, address_line_2, postal_code")
+      .single()
+    : await supabase
+      .from("locations")
+      .insert(locationPayload)
+      .select("id, reference_code, name, neighborhood, city, state, address, address_line_2, postal_code")
+      .single();
+
+  if (locationResult.error || !locationResult.data) {
+    throw locationResult.error ?? new Error("Unable to save barber booking location.");
+  }
+
+  const location = locationResult.data as { id: string };
+  const membershipResult = await supabase
+    .from("staff_locations")
+    .upsert({
+      profile_id: barber.profile_id,
+      location_id: location.id,
+      routing_model: "freelance",
+      commission_rate: barber.commission_rate,
+      booth_rent_amount: barber.booth_rent_amount,
+      booth_rent_frequency: barber.booth_rent_frequency,
+      updated_at: now,
+      fintech_updated_at: now
+    }, { onConflict: "profile_id,location_id" });
+
+  if (membershipResult.error) {
+    throw membershipResult.error;
+  }
+
+  const serviceLocationLabel = formatServiceLocationLabel(input.serviceLocation);
+  await supabase
+    .from("barber_profiles")
+    .update({ service_area_label: serviceLocationLabel })
+    .eq("barber_reference", barberReference);
+
+  await markOnboardingStepComplete(user, "barber", "barber_availability", {
+    acceptsSameDay: true,
+    serviceMode: "custom",
+    activationAvailability: {
+      locationMode: "custom",
+      serviceLocation: input.serviceLocation,
+      updatedAt: now
+    }
+  });
+
+  await publishBarberMarketplaceReadiness(supabase, barberReference);
+
+  return NextResponse.json({
+    hasAvailabilityDraft: true,
+    hasServiceLocation: true,
+    locationMode: "custom",
+    serviceLocationLabel,
+    requestedShopId: null
+  });
+}
+
 export async function POST(request: Request) {
   try {
     const parsed = updateActivationSchema.safeParse(await request.json().catch(() => null));
@@ -416,6 +572,15 @@ export async function POST(request: Request) {
         return NextResponse.json(result);
       }
 
+      if (parsed.data.action === "save_booking_location") {
+        const result = updateDemoBookingLocation(barberId, parsed.data);
+        if (!result) {
+          return NextResponse.json({ error: "No barber account is available for booking location setup." }, { status: 404 });
+        }
+
+        return NextResponse.json(result);
+      }
+
       const result = updateDemoVisibility(barberId, parsed.data);
       if (!result) {
         return NextResponse.json({ error: "Create a public barber profile before turning visibility on." }, { status: 409 });
@@ -448,6 +613,10 @@ export async function POST(request: Request) {
 
     if (parsed.data.action === "save_availability") {
       return await persistActivationAvailability(supabase, user, effectiveBarberId, parsed.data);
+    }
+
+    if (parsed.data.action === "save_booking_location") {
+      return await persistBookingLocation(supabase, user, effectiveBarberId, parsed.data);
     }
 
     const profileUpdate = await supabase

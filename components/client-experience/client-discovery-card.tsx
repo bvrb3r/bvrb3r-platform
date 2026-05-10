@@ -6,6 +6,7 @@ import { ArrowRight, Clock3, Heart, MapPin, Scissors, ShieldCheck, Star } from "
 import { ClientActionLink } from "@/components/client-experience/client-action-link";
 import { MarketplaceTrackedActionLink } from "@/components/client-experience/marketplace-tracked-action-link";
 import { useSaveFavoriteBarberMutation } from "@/lib/booking/client";
+import { getClientFacingBarberName } from "@/lib/marketplace/client-facing";
 import { buildMarketplaceBookingHref } from "@/lib/marketplace/links";
 import { cn } from "@/lib/utils";
 import type { DiscoveryResult } from "@/types/domain";
@@ -62,7 +63,11 @@ export function ClientDiscoveryCard({
   canFavorite?: boolean;
 }) {
   const [start, end] = getAccent(result.username);
-  const initials = getInitials(result.barberName);
+  const barberName = getClientFacingBarberName({
+    username: result.username,
+    barberName: result.barberName
+  });
+  const initials = getInitials(barberName);
   const favoriteMutation = useSaveFavoriteBarberMutation();
   const saved = favoriteMutation.isSuccess;
   const bookHref: Route = buildMarketplaceBookingHref({
@@ -103,7 +108,7 @@ export function ClientDiscoveryCard({
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={heroImage}
-            alt={`${result.barberName} preview`}
+            alt={`${barberName} preview`}
             className="absolute inset-0 h-full w-full object-cover"
           />
         ) : (
@@ -120,7 +125,7 @@ export function ClientDiscoveryCard({
         {canFavorite ? (
           <button
             type="button"
-            aria-label={`Favorite ${result.barberName}`}
+            aria-label={`Favorite ${barberName}`}
             className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-black/48 text-white transition hover:border-[#d7ffab]/40 hover:text-[#d7ffab] disabled:opacity-60"
             disabled={favoriteMutation.isPending}
             onClick={() => void handleFavorite()}
@@ -131,7 +136,7 @@ export function ClientDiscoveryCard({
         <div className="absolute bottom-3 left-3 flex h-12 w-12 items-center justify-center overflow-hidden rounded-[16px] border border-white/10 bg-black/30 text-base font-semibold text-white shadow-[0_12px_26px_rgba(0,0,0,0.24)]">
           {result.profilePhotoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={result.profilePhotoUrl} alt={result.barberName} className="h-full w-full object-cover" />
+            <img src={result.profilePhotoUrl} alt={barberName} className="h-full w-full object-cover" />
           ) : (
             initials
           )}
@@ -142,7 +147,7 @@ export function ClientDiscoveryCard({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <Link href={profileHref} className="line-clamp-1 text-lg font-semibold text-white transition hover:text-[#d7ffab]">
-              {result.barberName}
+              {barberName}
             </Link>
             <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-white/58">
               {verifiedLabel ? (

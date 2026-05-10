@@ -66,6 +66,7 @@ import {
   useBarberOverviewQuery,
   useRespondBarberTeamInviteMutation,
   useSaveBarberSubtypeMutation,
+  useUpdateBarberBookingLocationMutation,
   useUpdateBarberActivationAvailabilityMutation,
   useUpdateBarberActivationMutation,
   useUpdateBarberStatusMutation,
@@ -290,6 +291,7 @@ export function BarberSettingsScreen({
   const statusMutation = useUpdateBarberStatusMutation();
   const activationMutation = useUpdateBarberActivationMutation();
   const activationAvailabilityMutation = useUpdateBarberActivationAvailabilityMutation();
+  const bookingLocationMutation = useUpdateBarberBookingLocationMutation();
   const uploadMutation = useCreateVerificationUploadMutation();
   const submitVerificationMutation = useSubmitBarberVerificationMutation();
   const identitySessionMutation = useStartBarberIdentitySessionMutation();
@@ -319,6 +321,14 @@ export function BarberSettingsScreen({
   const [serviceLocationDraft, setServiceLocationDraft] = useState({
     name: "",
     address: "",
+    city: "",
+    state: "",
+    postalCode: ""
+  });
+  const [bookingLocationDraft, setBookingLocationDraft] = useState({
+    name: "",
+    address: "",
+    addressLine2: "",
     city: "",
     state: "",
     postalCode: ""
@@ -442,6 +452,22 @@ export function BarberSettingsScreen({
 
     target.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [selectedSection]);
+
+  useEffect(() => {
+    const bookingLocation = activationSetup?.bookingLocation;
+    if (!bookingLocation) {
+      return;
+    }
+
+    setBookingLocationDraft({
+      name: bookingLocation.name ?? "",
+      address: bookingLocation.address ?? "",
+      addressLine2: bookingLocation.addressLine2 ?? "",
+      city: bookingLocation.city ?? "",
+      state: bookingLocation.state ?? "",
+      postalCode: bookingLocation.postalCode ?? ""
+    });
+  }, [activationSetup?.bookingLocation]);
 
   async function navigateToStripeUrl(loadUrl: () => Promise<string>, successMessage: string) {
     setFeedback(null);
@@ -664,6 +690,65 @@ export function BarberSettingsScreen({
     try {
       await saveSubtypeMutation.mutateAsync(selectedSubtype);
       setFeedback({ tone: "success", message: "Business model saved through the existing barber subtype flow." });
+    } catch (error) {
+      setFeedback({ tone: "error", message: getReadableActionError(error as BarberApiError) });
+    }
+  }
+
+  function resetBookingLocationDraft() {
+    const bookingLocation = activationSetup?.bookingLocation;
+    setBookingLocationDraft({
+      name: bookingLocation?.name ?? "",
+      address: bookingLocation?.address ?? "",
+      addressLine2: bookingLocation?.addressLine2 ?? "",
+      city: bookingLocation?.city ?? "",
+      state: bookingLocation?.state ?? "",
+      postalCode: bookingLocation?.postalCode ?? ""
+    });
+  }
+
+  function useFirstShopAddressDraft() {
+    const firstShop = overviewPayload?.shops[0];
+    if (!firstShop) {
+      setFeedback({ tone: "info", message: "No connected shop address is available yet." });
+      return;
+    }
+
+    const [name = firstShop.label, address = "", cityState = ""] = firstShop.label.split("•").map((part) => part.trim());
+    const [city = "", state = ""] = cityState.split(",").map((part) => part.trim());
+    setBookingLocationDraft((current) => ({
+      ...current,
+      name: name || firstShop.label,
+      address,
+      city,
+      state
+    }));
+  }
+
+  async function handleSaveBookingLocation() {
+    setFeedback(null);
+    const missingLocation = !bookingLocationDraft.name.trim()
+      || !bookingLocationDraft.address.trim()
+      || !bookingLocationDraft.city.trim()
+      || !bookingLocationDraft.state.trim();
+    if (missingLocation) {
+      setFeedback({ tone: "error", message: "Add the location label, street address, city, and state clients should see when booking." });
+      return;
+    }
+
+    try {
+      await bookingLocationMutation.mutateAsync({
+        serviceLocation: {
+          name: bookingLocationDraft.name.trim(),
+          address: bookingLocationDraft.address.trim(),
+          addressLine2: bookingLocationDraft.addressLine2.trim() || undefined,
+          city: bookingLocationDraft.city.trim(),
+          state: bookingLocationDraft.state.trim(),
+          postalCode: bookingLocationDraft.postalCode.trim() || undefined
+        }
+      });
+      await Promise.all([overviewQuery.refetch(), serviceCatalogQuery.refetch()]);
+      setFeedback({ tone: "success", message: "Booking location saved. Clients will see this address when they book." });
     } catch (error) {
       setFeedback({ tone: "error", message: getReadableActionError(error as BarberApiError) });
     }
@@ -1122,6 +1207,54 @@ export function BarberSettingsScreen({
               <div className="mt-5 flex justify-end">
                 <Button type="button" className="h-11 px-5" disabled={saveSubtypeMutation.isPending} onClick={() => void handleSaveSubtype()}>
                   {saveSubtypeMutation.isPending ? "Saving..." : "Save business model"}
+                </Button>
+              </div>
+            </GlassCard>
+
+            <GlassCard id="barber-settings-booking-location" className="scroll-mt-6 p-5 sm:p-6 xl:col-span-2">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <SectionLabel>Booking Location</SectionLabel>
+                  <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-white">Where clients go for appointments</h2>
+                  <p className="mt-2 text-sm leading-6 text-white/56">Clients see this address when booking.</p>
+                </div>
+                <CircleIcon icon={MapPin} className="h-11 w-11 rounded-2xl" />
+              </div>
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <span className="surface-label">Location label / chair name</span>
+                  <Input className="mt-2" value={bookingLocationDraft.name} onChange={(event) => setBookingLocationDraft((current) => ({ ...current, name: event.target.value }))} placeholder="Phils chair" />
+                </label>
+                <label className="block">
+                  <span className="surface-label">Street address</span>
+                  <Input className="mt-2" value={bookingLocationDraft.address} onChange={(event) => setBookingLocationDraft((current) => ({ ...current, address: event.target.value }))} placeholder="2172 University Square Mall" />
+                </label>
+                <label className="block">
+                  <span className="surface-label">Address line 2</span>
+                  <Input className="mt-2" value={bookingLocationDraft.addressLine2} onChange={(event) => setBookingLocationDraft((current) => ({ ...current, addressLine2: event.target.value }))} placeholder="Suite or chair detail" />
+                </label>
+                <label className="block">
+                  <span className="surface-label">City</span>
+                  <Input className="mt-2" value={bookingLocationDraft.city} onChange={(event) => setBookingLocationDraft((current) => ({ ...current, city: event.target.value }))} placeholder="Tampa" />
+                </label>
+                <label className="block">
+                  <span className="surface-label">State</span>
+                  <Input className="mt-2" value={bookingLocationDraft.state} onChange={(event) => setBookingLocationDraft((current) => ({ ...current, state: event.target.value }))} placeholder="FL" />
+                </label>
+                <label className="block">
+                  <span className="surface-label">ZIP</span>
+                  <Input className="mt-2" value={bookingLocationDraft.postalCode} onChange={(event) => setBookingLocationDraft((current) => ({ ...current, postalCode: event.target.value }))} placeholder="33612" />
+                </label>
+              </div>
+              <div className="mt-5 flex flex-wrap gap-3">
+                <Button type="button" className="h-11 px-5" disabled={bookingLocationMutation.isPending} onClick={() => void handleSaveBookingLocation()}>
+                  {bookingLocationMutation.isPending ? "Saving..." : "Save booking location"}
+                </Button>
+                <Button type="button" variant="secondary" className="h-11 px-5" onClick={resetBookingLocationDraft}>
+                  Reset location
+                </Button>
+                <Button type="button" variant="secondary" className="h-11 px-5" onClick={useFirstShopAddressDraft}>
+                  Use shop address
                 </Button>
               </div>
             </GlassCard>

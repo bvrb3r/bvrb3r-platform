@@ -73,6 +73,8 @@ type LocationRecord = {
   state: string;
   phone: string | null;
   address: string | null;
+  address_line_2?: string | null;
+  postal_code?: string | null;
   latitude: number | null;
   longitude: number | null;
 };
@@ -316,6 +318,7 @@ function getSupabase() {
 }
 
 function mapLocationRecordAsShop(row: LocationRecord) {
+  const fallbackAddress = !row.address && /\d/.test(row.neighborhood ?? "") ? row.neighborhood : null;
   return {
     id: row.reference_code ?? row.id,
     name: row.name,
@@ -324,7 +327,7 @@ function mapLocationRecordAsShop(row: LocationRecord) {
     city: row.city,
     state: row.state,
     phone: row.phone ?? "",
-    address: row.address ?? `${row.name}, ${row.neighborhood}, ${row.city}, ${row.state}`,
+    address: row.address ?? fallbackAddress ?? `${row.name}, ${row.neighborhood}, ${row.city}, ${row.state}`,
     kind: "shop",
     latitude: row.latitude ?? undefined,
     longitude: row.longitude ?? undefined
@@ -609,7 +612,7 @@ async function readShops(supabase: SupabaseClient | null) {
 
   const locationResult = await supabase
     .from("locations")
-    .select("id, reference_code, name, neighborhood, city, state, phone")
+    .select("id, reference_code, name, neighborhood, city, state, phone, address, address_line_2, postal_code, latitude, longitude")
     .order("neighborhood");
 
   if (locationResult.error || !(locationResult.data ?? []).length) {

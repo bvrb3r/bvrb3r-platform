@@ -25,6 +25,7 @@ import {
   useClientHomeQuery,
   type BookingApiError
 } from "@/lib/booking/client";
+import { getClientFacingBarberName } from "@/lib/marketplace/client-facing";
 import { currency } from "@/lib/utils";
 import { getReadableActionError } from "@/lib/utils/feedback";
 
@@ -162,6 +163,17 @@ export function ClientHomeScreen({
     outstandingBalance: bookingsPayload?.nextAppointmentPayment?.outstandingBalance ?? nextAppointment?.balanceDue ?? 0,
     paymentStatus: bookingsPayload?.nextAppointmentPayment?.latestBookingPayment?.paymentStatus ?? null
   });
+  const nextAppointmentDiscoveryMatch = nextAppointment
+    ? recommendedBarbers.find((result) => result.barberId === nextAppointment.barberId)
+      ?? payload?.trustedBarbers?.find((result) => result.barberId === nextAppointment.barberId)
+    : undefined;
+  const favoriteAppointmentBarber = nextAppointment && bookingsPayload?.favoriteBarber?.barber.id === nextAppointment.barberId
+    ? bookingsPayload.favoriteBarber
+    : null;
+  const nextAppointmentBarberName = getClientFacingBarberName({
+    username: nextAppointmentDiscoveryMatch?.username ?? favoriteAppointmentBarber?.profile.username,
+    barberName: nextAppointment?.view?.barber?.name
+  });
 
   if (isInitialLoading) {
     return (
@@ -249,7 +261,7 @@ export function ClientHomeScreen({
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="text-2xl font-semibold text-white" data-display="true">
-                  {nextAppointment.view?.barber?.name ?? "Upcoming appointment"}
+                  {nextAppointmentBarberName}
                 </p>
                 <p className="mt-2 text-sm text-white/66">
                   {nextAppointment.view?.service?.name ?? "Service pending"} at {nextAppointment.view?.location?.name ?? "BVRB3R"}
