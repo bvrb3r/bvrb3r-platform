@@ -17,6 +17,8 @@ const {
   useClientPromotionsQueryMock,
   useApplyPromotionMutationMock,
   usePaymentMethodsQueryMock,
+  useAddPaymentMethodMutationMock,
+  useCreateSavedPaymentMethodSetupMutationMock,
   useCreateAppointmentPaymentMutationMock
 } = vi.hoisted(() => ({
   useSearchParamsMock: vi.fn(),
@@ -34,6 +36,8 @@ const {
   useClientPromotionsQueryMock: vi.fn(),
   useApplyPromotionMutationMock: vi.fn(),
   usePaymentMethodsQueryMock: vi.fn(),
+  useAddPaymentMethodMutationMock: vi.fn(),
+  useCreateSavedPaymentMethodSetupMutationMock: vi.fn(),
   useCreateAppointmentPaymentMutationMock: vi.fn()
 }));
 
@@ -71,6 +75,8 @@ vi.mock("@/lib/promotions/client", () => ({
 
 vi.mock("@/lib/payments/client", () => ({
   usePaymentMethodsQuery: usePaymentMethodsQueryMock,
+  useAddPaymentMethodMutation: useAddPaymentMethodMutationMock,
+  useCreateSavedPaymentMethodSetupMutation: useCreateSavedPaymentMethodSetupMutationMock,
   useCreateAppointmentPaymentMutation: useCreateAppointmentPaymentMutationMock
 }));
 
@@ -99,7 +105,10 @@ describe("booking form", () => {
     useClientPromotionsQueryMock.mockReset();
     useApplyPromotionMutationMock.mockReset();
     usePaymentMethodsQueryMock.mockReset();
+    useAddPaymentMethodMutationMock.mockReset();
+    useCreateSavedPaymentMethodSetupMutationMock.mockReset();
     useCreateAppointmentPaymentMutationMock.mockReset();
+    Reflect.deleteProperty(window, "Stripe");
 
     useSearchParamsMock.mockReturnValue({
       get: vi.fn().mockReturnValue(null)
@@ -246,6 +255,20 @@ describe("booking form", () => {
       isLoading: false,
       error: null
     });
+    useAddPaymentMethodMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: vi.fn()
+    });
+    useCreateSavedPaymentMethodSetupMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: vi.fn().mockResolvedValue({
+        provider: "stripe",
+        mode: "setup",
+        clientSecret: "seti_booking_inline_secret",
+        customerId: "cus_booking_inline",
+        publishableKey: "pk_test_booking_inline"
+      })
+    });
     useCreateAppointmentPaymentMutationMock.mockReturnValue({
       isPending: false,
       mutateAsync: vi.fn()
@@ -269,12 +292,14 @@ describe("booking form", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Continue to Review" }));
 
-    expect(await screen.findByLabelText("Payment method")).toBeInTheDocument();
+    expect(await screen.findByText("Payment method")).toBeInTheDocument();
     expect(screen.getByText("Jordan Ellis")).toBeInTheDocument();
     expect(screen.getByText("8135550190")).toBeInTheDocument();
     expect(screen.queryByText("Client name")).not.toBeInTheDocument();
     expect(screen.getAllByText("2172 University Square Mall, Tampa, FL 33612").length).toBeGreaterThan(0);
-    expect(screen.getByText(/Visa ending in 4242 will be charged/)).toBeInTheDocument();
+    expect(screen.getByText("Visa •••• 4242")).toBeInTheDocument();
+    expect(screen.getByText("Exp 12/29")).toBeInTheDocument();
+    expect(screen.queryByText("Add a payment method before booking.")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Book Appointment" })).toBeEnabled();
   });
 
@@ -451,8 +476,104 @@ describe("booking form", () => {
     render(<BookingForm />);
     await advanceToReview();
 
-    expect(screen.getByText("Add a payment method before booking.")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open wallet" })).toHaveAttribute("href", "/profile");
+    expect(screen.getByText("Add a payment method to complete booking.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Cardholder name")).toBeInTheDocument();
+    expect(screen.getByLabelText("ZIP")).toBeInTheDocument();
+    expect(screen.getByText("Secure card details")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Manage payment methods" })).toHaveAttribute("href", "/dashboard/client/profile?section=wallet");
+    expect(screen.queryByRole("link", { name: "Open wallet" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Book Appointment" })).toBeDisabled();
+  });
+
+  it("saves an inline card and enables booking without leaving the flow", async () => {
+    const createSetupMock = vi.fn().mockResolvedValue({
+      provider: "stripe",
+      mode: "setup",
+      clientSecret: "seti_inline_secret",
+      customerId: "cus_inline",
+      publishableKey: "pk_test_inline"
+    });
+    const addMethodMock = vi.fn().mockResolvedValue({
+      method: {
+        id: "pm-inline",
+        provider: "stripe",
+        brand: "Visa",
+        last4: "4242",
+        expMonth: 4,
+        expYear: 2028,
+        isDefault: true,
+        createdAt: "2026-04-02T00:00:00.000Z",
+        label: "Visa ending in 4242"
+      }
+    });
+    const paymentElementMountMock = vi.fn();
+    const paymentElementUnmountMock = vi.fn();
+    const submitMock = vi.fn().mockResolvedValue({});
+    const confirmSetupMock = vi.fn().mockResolvedValue({
+      setupIntent: {
+        payment_method: "pm_inline_stripe"
+      }
+    });
+    const elementsMock = {
+      create: vi.fn().mockReturnValue({
+        mount: paymentElementMountMock,
+        unmount: paymentElementUnmountMock
+      }),
+      submit: submitMock
+    };
+
+    Reflect.set(window, "Stripe", vi.fn().mockReturnValue({
+      elements: vi.fn().mockReturnValue(elementsMock),
+      confirmSetup: confirmSetupMock
+    }));
+    usePaymentMethodsQueryMock.mockReturnValue({
+      data: { methods: [] },
+      isLoading: false,
+      error: null
+    });
+    useCreateSavedPaymentMethodSetupMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: createSetupMock
+    });
+    useAddPaymentMethodMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: addMethodMock
+    });
+
+    render(<BookingForm />);
+    await advanceToReview();
+
+    await waitFor(() => {
+      expect(createSetupMock).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(paymentElementMountMock).toHaveBeenCalled();
+    });
+
+    expect(screen.getByRole("button", { name: "Book Appointment" })).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("Cardholder name"), {
+      target: { value: "Jordan Ellis" }
+    });
+    fireEvent.change(screen.getByLabelText("ZIP"), {
+      target: { value: "33612" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save card" }));
+
+    await waitFor(() => {
+      expect(confirmSetupMock).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(addMethodMock).toHaveBeenCalledWith(expect.objectContaining({
+        provider: "stripe",
+        providerCustomerId: "cus_inline",
+        providerPaymentMethodId: "pm_inline_stripe",
+        isDefault: true
+      }));
+    });
+
+    expect(await screen.findByText("Visa •••• 4242")).toBeInTheDocument();
+    expect(screen.getByText("Exp 04/28")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Book Appointment" })).toBeEnabled();
   });
 });

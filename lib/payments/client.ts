@@ -42,6 +42,14 @@ export interface PaymentApiError extends Error {
   status?: number;
 }
 
+export interface PaymentSetupIntentView {
+  provider: "stripe";
+  mode: "setup";
+  clientSecret: string;
+  customerId?: string;
+  publishableKey?: string;
+}
+
 async function requestJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
   const response = await fetch(input, {
     ...init,
@@ -93,6 +101,16 @@ export function useAddPaymentMethodMutation() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["payments", "methods"] });
     }
+  });
+}
+
+export function useCreateSavedPaymentMethodSetupMutation() {
+  return useMutation({
+    mutationFn: () =>
+      requestJson<PaymentSetupIntentView>("/api/payments/setup-intent", {
+        method: "POST",
+        body: JSON.stringify({ mode: "booking_inline" })
+      })
   });
 }
 

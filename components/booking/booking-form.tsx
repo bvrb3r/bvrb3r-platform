@@ -14,6 +14,7 @@ import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { InlineBookingPaymentMethod } from "@/components/booking/inline-booking-payment-method";
 import { usePwa } from "@/components/pwa/pwa-provider";
 import { useBookingStore } from "@/lib/data/booking-store";
 import {
@@ -28,7 +29,8 @@ import {
 } from "@/lib/booking/client";
 import { applyMembershipPricingAdjustmentToQuote, buildMembershipPricingAdjustment } from "@/lib/monetization/membership";
 import {
-  usePaymentMethodsQuery
+  usePaymentMethodsQuery,
+  type ClientPaymentMethodView
 } from "@/lib/payments/client";
 import { applyPointsPreviewToQuote, pointsToInAppValue, previewPointsRedemption } from "@/lib/points/redemption";
 import { useMarketplaceAnalyticsMutation, useMarketplaceWaitlistMutation } from "@/lib/marketplace/client";
@@ -270,6 +272,8 @@ export function BookingForm() {
   const [appliedPromotion, setAppliedPromotion] = useState<PromotionPreviewView | null>(null);
   const [requestedPointsToRedeem, setRequestedPointsToRedeem] = useState(0);
   const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState("");
+  const [inlineSavedPaymentMethod, setInlineSavedPaymentMethod] = useState<ClientPaymentMethodView | null>(null);
+  const [paymentSetupPending, setPaymentSetupPending] = useState(false);
   const [selectedDateKey, setSelectedDateKey] = useState("");
 
   const sourceKind = toMarketplaceSource(searchParams.get("source"));
@@ -472,7 +476,19 @@ export function BookingForm() {
       return "local time";
     }
   }, []);
-  const paymentMethods = useMemo(() => paymentMethodsQuery.data?.methods ?? [], [paymentMethodsQuery.data?.methods]);
+  const paymentMethods = useMemo(() => {
+    const queriedPaymentMethods = paymentMethodsQuery.data?.methods ?? [];
+    const methodsById = new Map<string, ClientPaymentMethodView>();
+    for (const method of queriedPaymentMethods) {
+      methodsById.set(method.id, method);
+    }
+
+    if (inlineSavedPaymentMethod) {
+      methodsById.set(inlineSavedPaymentMethod.id, inlineSavedPaymentMethod);
+    }
+
+    return Array.from(methodsById.values());
+  }, [inlineSavedPaymentMethod, paymentMethodsQuery.data?.methods]);
   const defaultPaymentMethod = useMemo(
     () => paymentMethods.find((method) => method.isDefault) ?? paymentMethods[0] ?? null,
     [paymentMethods]
@@ -676,7 +692,7 @@ export function BookingForm() {
     if (!selectedPaymentMethod) {
       setStatusUpdate({
         tone: "error",
-        message: "Add a payment method before booking."
+        message: "Save a payment method before booking."
       });
       return;
     }
@@ -769,7 +785,7 @@ export function BookingForm() {
   const activeStepIndex = getStepIndex(bookingStep);
   const serviceReady = Boolean(currentService);
   const timeReady = Boolean(selectedSlot);
-  const reviewReady = serviceReady && timeReady && Boolean(selectedPaymentMethod) && hasClientName && hasClientPhone && isOnline;
+  const reviewReady = serviceReady && timeReady && Boolean(selectedPaymentMethod) && hasClientName && hasClientPhone && isOnline && !paymentSetupPending;
 
   function continueToTime() {
     if (!currentService) {
@@ -1253,56 +1269,20 @@ export function BookingForm() {
                 )}
               </div>
 
-              <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    {paymentMethods.length ? (
-                      <label className="surface-label mb-2 block" htmlFor="booking-payment-method">Payment method</label>
-                    ) : (
-                      <p className="surface-label mb-2">Payment method</p>
-                    )}
-                    <p className="text-sm leading-7 text-white/62">Choose the saved card for this booking.</p>
-                  </div>
-                  {selectedPaymentMethod ? <Badge>{selectedPaymentMethod.isDefault ? "Default card" : "Saved card"}</Badge> : null}
-                </div>
-                {paymentMethodsError ? <div className="mt-4"><FeedbackBanner tone="error" message={paymentMethodsError} /></div> : null}
-                {paymentMethodsQuery.isLoading && !paymentMethods.length ? (
-                  <div className="mt-4 rounded-[18px] border border-white/8 bg-black/18 p-4">
-                    <Skeleton className="h-11 w-full rounded-[16px]" />
-                  </div>
-                ) : paymentMethods.length ? (
-                  <div className="mt-4 space-y-3">
-                    <Select
-                      id="booking-payment-method"
-                      value={selectedPaymentMethodId}
-                      onChange={(event) => setSelectedPaymentMethodId(event.target.value)}
-                    >
-                      {paymentMethods.map((method) => (
-                        <option key={method.id} value={method.id}>
-                          {method.label}{method.isDefault ? " (default)" : ""}
-                        </option>
-                      ))}
-                    </Select>
-                    <p className="text-sm text-white/52">
-                      {selectedPaymentMethod
-                        ? `${selectedPaymentMethod.label} will be charged ${currency(displayedQuote.grandTotal)} when you book.`
-                        : "Choose a saved card to continue."}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="mt-4 rounded-[18px] border border-dashed border-white/10 bg-black/18 p-4">
-                    <p className="text-sm leading-7 text-white/62">
-                      Add a payment method before booking.
-                    </p>
-                    <Link
-                      href="/profile"
-                      className="mt-4 inline-flex h-11 items-center justify-center rounded-full border border-white/10 bg-black/25 px-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-white transition hover:border-[#7CFF00]/24 hover:text-[#d7ffab]"
-                    >
-                      Open wallet
-                    </Link>
-                  </div>
-                )}
-              </div>
+              <InlineBookingPaymentMethod
+                paymentMethods={paymentMethods}
+                selectedPaymentMethodId={selectedPaymentMethodId}
+                selectedPaymentMethod={selectedPaymentMethod ?? null}
+                totalDue={displayedQuote.grandTotal}
+                isLoading={paymentMethodsQuery.isLoading && !paymentMethods.length}
+                errorMessage={paymentMethodsError}
+                onSelectPaymentMethod={setSelectedPaymentMethodId}
+                onSavedPaymentMethod={(method) => {
+                  setInlineSavedPaymentMethod(method);
+                  setSelectedPaymentMethodId(method.id);
+                }}
+                onPendingChange={setPaymentSetupPending}
+              />
 
               <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
                 <p className="surface-label">Price breakdown</p>
@@ -1354,8 +1334,8 @@ export function BookingForm() {
                 <Button type="button" variant="secondary" className="h-12 px-6" onClick={() => setBookingStep("time")}>
                   Back
                 </Button>
-                <Button className="h-12 px-6" disabled={bookingMutation.isPending || waitlistPending || isInitialLoading || !reviewReady}>
-                  {bookingMutation.isPending ? "Booking..." : "Book Appointment"}
+                <Button className="h-12 px-6" disabled={bookingMutation.isPending || waitlistPending || isInitialLoading || paymentSetupPending || !reviewReady}>
+                  {bookingMutation.isPending ? "Booking appointment..." : "Book Appointment"}
                 </Button>
               </div>
             </section>
