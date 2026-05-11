@@ -246,6 +246,7 @@ describe("booking form", () => {
             last4: "4242",
             expMonth: 12,
             expYear: 2029,
+            nickname: "Phil Stripe Card",
             isDefault: true,
             createdAt: "2026-04-01T00:00:00.000Z",
             label: "Visa ending in 4242"
@@ -297,7 +298,8 @@ describe("booking form", () => {
     expect(screen.getByText("8135550190")).toBeInTheDocument();
     expect(screen.queryByText("Client name")).not.toBeInTheDocument();
     expect(screen.getAllByText("2172 University Square Mall, Tampa, FL 33612").length).toBeGreaterThan(0);
-    expect(screen.getByText("Visa •••• 4242")).toBeInTheDocument();
+    expect(screen.getByText("Phil Stripe Card")).toBeInTheDocument();
+    expect(screen.getByText(/4242/)).toBeInTheDocument();
     expect(screen.getByText("Exp 12/29")).toBeInTheDocument();
     expect(screen.queryByText("Add a payment method before booking.")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Book Appointment" })).toBeEnabled();
@@ -506,13 +508,22 @@ describe("booking form", () => {
         last4: "4242",
         expMonth: 4,
         expYear: 2028,
+        nickname: "Phil Stripe Card",
         isDefault: true,
         createdAt: "2026-04-02T00:00:00.000Z",
         label: "Visa ending in 4242"
       }
     });
+    const handlers: {
+      ready?: () => void;
+      change?: (event: { complete?: boolean; error?: { message?: string } }) => void;
+      loaderror?: (event: { error?: { message?: string } }) => void;
+    } = {};
     const cardElementMountMock = vi.fn();
     const cardElementUnmountMock = vi.fn();
+    const cardElementOnMock = vi.fn((event: "ready" | "change" | "loaderror", handler: never) => {
+      handlers[event] = handler;
+    });
     const confirmCardSetupMock = vi.fn().mockResolvedValue({
       setupIntent: {
         payment_method: "pm_inline_stripe"
@@ -520,8 +531,13 @@ describe("booking form", () => {
     });
     const elementsMock = {
       create: vi.fn().mockReturnValue({
-        mount: cardElementMountMock,
-        unmount: cardElementUnmountMock
+        mount: (target: HTMLElement) => {
+          cardElementMountMock(target);
+          handlers.ready?.();
+          handlers.change?.({ complete: true });
+        },
+        unmount: cardElementUnmountMock,
+        on: cardElementOnMock
       })
     };
 
@@ -565,16 +581,23 @@ describe("booking form", () => {
     await waitFor(() => {
       expect(confirmCardSetupMock).toHaveBeenCalledTimes(1);
     });
+    expect(await screen.findByText("Name this card")).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText("Example: Phil Stripe Card"), {
+      target: { value: "Phil Stripe Card" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save Card" }));
     await waitFor(() => {
       expect(addMethodMock).toHaveBeenCalledWith(expect.objectContaining({
         provider: "stripe",
         providerCustomerId: "cus_inline",
         providerPaymentMethodId: "pm_inline_stripe",
+        nickname: "Phil Stripe Card",
         isDefault: true
       }));
     });
 
-    expect(await screen.findByText("Visa •••• 4242")).toBeInTheDocument();
+    expect(await screen.findByText("Phil Stripe Card")).toBeInTheDocument();
+    expect(screen.getByText(/4242/)).toBeInTheDocument();
     expect(screen.getByText("Exp 04/28")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Book Appointment" })).toBeEnabled();
   });

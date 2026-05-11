@@ -6,12 +6,14 @@ const {
   useAddPaymentMethodMutationMock,
   useCreateSavedPaymentMethodSetupMutationMock,
   useSetDefaultPaymentMethodMutationMock,
+  useRenamePaymentMethodMutationMock,
   useRemovePaymentMethodMutationMock
 } = vi.hoisted(() => ({
   usePaymentMethodsQueryMock: vi.fn(),
   useAddPaymentMethodMutationMock: vi.fn(),
   useCreateSavedPaymentMethodSetupMutationMock: vi.fn(),
   useSetDefaultPaymentMethodMutationMock: vi.fn(),
+  useRenamePaymentMethodMutationMock: vi.fn(),
   useRemovePaymentMethodMutationMock: vi.fn()
 }));
 
@@ -20,14 +22,23 @@ vi.mock("@/lib/payments/client", () => ({
   useAddPaymentMethodMutation: useAddPaymentMethodMutationMock,
   useCreateSavedPaymentMethodSetupMutation: useCreateSavedPaymentMethodSetupMutationMock,
   useSetDefaultPaymentMethodMutation: useSetDefaultPaymentMethodMutationMock,
+  useRenamePaymentMethodMutation: useRenamePaymentMethodMutationMock,
   useRemovePaymentMethodMutation: useRemovePaymentMethodMutationMock
 }));
 
 import { ClientPaymentMethodsPanel } from "@/components/client-experience/client-payment-methods-panel";
 
 function installStripeMock() {
+  const handlers: {
+    ready?: () => void;
+    change?: (event: { complete?: boolean; error?: { message?: string } }) => void;
+    loaderror?: (event: { error?: { message?: string } }) => void;
+  } = {};
   const cardElementMountMock = vi.fn();
   const cardElementUnmountMock = vi.fn();
+  const cardElementOnMock = vi.fn((event: "ready" | "change" | "loaderror", handler: never) => {
+    handlers[event] = handler;
+  });
   const confirmCardSetupMock = vi.fn().mockResolvedValue({
     setupIntent: {
       payment_method: "pm_wallet_stripe"
@@ -35,8 +46,13 @@ function installStripeMock() {
   });
   const elementsMock = {
     create: vi.fn().mockReturnValue({
-      mount: cardElementMountMock,
-      unmount: cardElementUnmountMock
+      mount: (target: HTMLElement) => {
+        cardElementMountMock(target);
+        handlers.ready?.();
+        handlers.change?.({ complete: true });
+      },
+      unmount: cardElementUnmountMock,
+      on: cardElementOnMock
     })
   };
 
@@ -47,7 +63,8 @@ function installStripeMock() {
 
   return {
     cardElementMountMock,
-    confirmCardSetupMock
+    confirmCardSetupMock,
+    handlers
   };
 }
 
@@ -57,6 +74,7 @@ describe("client payment methods panel", () => {
     useAddPaymentMethodMutationMock.mockReset();
     useCreateSavedPaymentMethodSetupMutationMock.mockReset();
     useSetDefaultPaymentMethodMutationMock.mockReset();
+    useRenamePaymentMethodMutationMock.mockReset();
     useRemovePaymentMethodMutationMock.mockReset();
     Reflect.deleteProperty(window, "Stripe");
 
@@ -65,6 +83,10 @@ describe("client payment methods panel", () => {
       mutateAsync: vi.fn()
     });
     useRemovePaymentMethodMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: vi.fn()
+    });
+    useRenamePaymentMethodMutationMock.mockReturnValue({
       isPending: false,
       mutateAsync: vi.fn()
     });
@@ -88,6 +110,7 @@ describe("client payment methods panel", () => {
           last4: "4242",
           expMonth: 4,
           expYear: 2028,
+          nickname: null,
           isDefault: true,
           createdAt: "2026-05-11T12:00:00.000Z",
           label: "Visa ending in 4242"
@@ -161,6 +184,7 @@ describe("client payment methods panel", () => {
         last4: "4242",
         expMonth: 4,
         expYear: 2028,
+        nickname: "Phil Stripe Card",
         isDefault: true,
         createdAt: "2026-05-11T12:00:00.000Z",
         label: "Visa ending in 4242"
@@ -190,11 +214,17 @@ describe("client payment methods panel", () => {
     await waitFor(() => {
       expect(confirmCardSetupMock).toHaveBeenCalledTimes(1);
     });
+    expect(await screen.findByText("Name this card")).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText("Example: Phil Stripe Card"), {
+      target: { value: "Phil Stripe Card" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save Card" }));
     await waitFor(() => {
       expect(addMethodMock).toHaveBeenCalledWith(expect.objectContaining({
         provider: "stripe",
         providerCustomerId: "cus_wallet",
         providerPaymentMethodId: "pm_wallet_stripe",
+        nickname: "Phil Stripe Card",
         isDefault: true
       }));
     });
@@ -204,6 +234,74 @@ describe("client payment methods panel", () => {
     expect(payload).not.toHaveProperty("last4");
     expect(payload).not.toHaveProperty("expMonth");
     expect(payload).not.toHaveProperty("expYear");
+    expect(await screen.findByText("Phil Stripe Card")).toBeInTheDocument();
+    expect(screen.getByText(/4242/)).toBeInTheDocument();
+  });
+
+  it("defaults a blank card nickname to the card brand and last four", async () => {
+    const { confirmCardSetupMock } = installStripeMock();
+    const addMethodMock = vi.fn().mockResolvedValue({
+      method: {
+        id: "pm-wallet",
+        provider: "stripe",
+        brand: "Visa",
+        last4: "4242",
+        expMonth: 4,
+        expYear: 2028,
+        nickname: null,
+        isDefault: true,
+        createdAt: "2026-05-11T12:00:00.000Z",
+        label: "Visa ending in 4242"
+      }
+    });
+    usePaymentMethodsQueryMock.mockReturnValue({
+      data: { methods: [] },
+      isLoading: false,
+      error: null
+    });
+    useAddPaymentMethodMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: addMethodMock
+    });
+
+    render(<ClientPaymentMethodsPanel initialMethods={[]} isSignedInClient />);
+
+    fireEvent.click(await screen.findByLabelText("I authorize BVRB3R to save this card on file for future bookings."));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Save card" })).toBeEnabled();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save card" }));
+    await waitFor(() => {
+      expect(confirmCardSetupMock).toHaveBeenCalledTimes(1);
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Save Card" }));
+
+    await waitFor(() => {
+      expect(addMethodMock).toHaveBeenCalledWith(expect.not.objectContaining({
+        nickname: expect.any(String)
+      }));
+    });
+    expect(await screen.findByText(/4242/)).toBeInTheDocument();
+  });
+
+  it("shows a Stripe mount failure message when Elements cannot load", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    Reflect.set(window, "Stripe", vi.fn().mockReturnValue({
+      elements: vi.fn(() => {
+        throw new Error("bad publishable key");
+      }),
+      confirmCardSetup: vi.fn()
+    }));
+    usePaymentMethodsQueryMock.mockReturnValue({
+      data: { methods: [] },
+      isLoading: false,
+      error: null
+    });
+
+    render(<ClientPaymentMethodsPanel initialMethods={[]} isSignedInClient />);
+
+    expect(await screen.findByText("Secure card form failed to load. Check Stripe publishable key or SetupIntent.")).toBeInTheDocument();
+    consoleErrorSpy.mockRestore();
   });
 
   it("renders the saved default card without raw provider references", () => {
@@ -216,6 +314,7 @@ describe("client payment methods panel", () => {
           last4: "4242",
           expMonth: 4,
           expYear: 2028,
+          nickname: "Phil Stripe Card",
           isDefault: true,
           createdAt: "2026-05-11T12:00:00.000Z",
           label: "Visa ending in 4242"
@@ -227,11 +326,14 @@ describe("client payment methods panel", () => {
 
     render(<ClientPaymentMethodsPanel initialMethods={[]} isSignedInClient />);
 
-    expect(screen.getByText("Visa •••• 4242")).toBeInTheDocument();
+    expect(screen.getByText("Phil Stripe Card")).toBeInTheDocument();
+    expect(screen.getByText(/4242/)).toBeInTheDocument();
     expect(screen.getByText("Default for bookings")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Change card" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Replace" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Remove/ })).toBeInTheDocument();
     expect(screen.queryByText(/cus_/)).not.toBeInTheDocument();
     expect(screen.queryByText(/pm_/)).not.toBeInTheDocument();
   });
 });
+

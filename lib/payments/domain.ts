@@ -17,6 +17,7 @@ export interface PaymentMethodReferenceInput {
   last4?: string | null;
   expMonth?: number | null;
   expYear?: number | null;
+  nickname?: string | null;
   isDefault?: boolean;
 }
 
@@ -87,6 +88,7 @@ export function normalizePaymentMethodReference(input: PaymentMethodReferenceInp
     last4,
     expMonth,
     expYear,
+    nickname: input.nickname?.trim() || null,
     isDefault: input.isDefault ?? false
   };
 }

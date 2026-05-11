@@ -10,6 +10,7 @@ export interface ClientPaymentMethodView {
   last4: string | null;
   expMonth: number | null;
   expYear: number | null;
+  nickname?: string | null;
   isDefault: boolean;
   createdAt: string;
   label: string;
@@ -92,6 +93,7 @@ export function useAddPaymentMethodMutation() {
       last4?: string;
       expMonth?: number;
       expYear?: number;
+      nickname?: string | null;
       isDefault?: boolean;
     }) =>
       requestJson<{ method: ClientPaymentMethodView }>("/api/payments/methods", {
@@ -120,6 +122,20 @@ export function useSetDefaultPaymentMethodMutation() {
     mutationFn: (paymentMethodId: string) =>
       requestJson<{ method: ClientPaymentMethodView }>(`/api/payments/methods/${paymentMethodId}/default`, {
         method: "POST"
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["payments", "methods"] });
+    }
+  });
+}
+
+export function useRenamePaymentMethodMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ paymentMethodId, nickname }: { paymentMethodId: string; nickname: string }) =>
+      requestJson<{ method: ClientPaymentMethodView }>(`/api/payments/methods/${paymentMethodId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ nickname })
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["payments", "methods"] });

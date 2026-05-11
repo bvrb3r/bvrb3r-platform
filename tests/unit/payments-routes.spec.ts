@@ -8,6 +8,7 @@ const {
   listClientPaymentMethodsMock,
   addClientPaymentMethodMock,
   setDefaultClientPaymentMethodMock,
+  renameClientPaymentMethodMock,
   removeClientPaymentMethodMock,
   createAppointmentPaymentMock,
   capturePaymentMock,
@@ -18,6 +19,7 @@ const {
   listClientPaymentMethodsMock: vi.fn(),
   addClientPaymentMethodMock: vi.fn(),
   setDefaultClientPaymentMethodMock: vi.fn(),
+  renameClientPaymentMethodMock: vi.fn(),
   removeClientPaymentMethodMock: vi.fn(),
   createAppointmentPaymentMock: vi.fn(),
   capturePaymentMock: vi.fn(),
@@ -36,6 +38,7 @@ vi.mock("@/lib/payments/service", async () => {
     listClientPaymentMethods: listClientPaymentMethodsMock,
     addClientPaymentMethod: addClientPaymentMethodMock,
     setDefaultClientPaymentMethod: setDefaultClientPaymentMethodMock,
+    renameClientPaymentMethod: renameClientPaymentMethodMock,
     removeClientPaymentMethod: removeClientPaymentMethodMock,
     createAppointmentPayment: createAppointmentPaymentMock,
     capturePayment: capturePaymentMock,
@@ -45,7 +48,7 @@ vi.mock("@/lib/payments/service", async () => {
 });
 
 import { GET as getPaymentMethods, POST as postPaymentMethod } from "@/app/api/payments/methods/route";
-import { DELETE as deletePaymentMethod } from "@/app/api/payments/methods/[id]/route";
+import { DELETE as deletePaymentMethod, PATCH as patchPaymentMethod } from "@/app/api/payments/methods/[id]/route";
 import { POST as postDefaultPaymentMethod } from "@/app/api/payments/methods/[id]/default/route";
 import { POST as postAppointmentPayment } from "@/app/api/payments/appointments/[appointmentId]/create/route";
 import { POST as postCapturePayment } from "@/app/api/payments/[paymentId]/capture/route";
@@ -58,6 +61,7 @@ describe("phase 9 payment routes", () => {
     listClientPaymentMethodsMock.mockReset();
     addClientPaymentMethodMock.mockReset();
     setDefaultClientPaymentMethodMock.mockReset();
+    renameClientPaymentMethodMock.mockReset();
     removeClientPaymentMethodMock.mockReset();
     createAppointmentPaymentMock.mockReset();
     capturePaymentMock.mockReset();
@@ -119,7 +123,8 @@ describe("phase 9 payment routes", () => {
         provider: "stripe",
         providerPaymentMethodId: "pm_stripe_1",
         brand: "Visa",
-        last4: "4242"
+        last4: "4242",
+        nickname: "Phil Stripe Card"
       })
     });
 
@@ -128,6 +133,37 @@ describe("phase 9 payment routes", () => {
 
     expect(response.status).toBe(201);
     expect(body.method.label).toContain("4242");
+    expect(addClientPaymentMethodMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      nickname: "Phil Stripe Card"
+    }));
+  });
+
+  it("renames a saved payment method", async () => {
+    getSessionUserMock.mockResolvedValue(resolveDemoUser("client@bvrb3r.demo"));
+    renameClientPaymentMethodMock.mockResolvedValue({
+      id: "pm-1",
+      provider: "stripe",
+      brand: "Visa",
+      last4: "4242",
+      expMonth: 8,
+      expYear: 2028,
+      nickname: "Phil Stripe Card",
+      isDefault: true,
+      createdAt: "2026-03-19T18:00:00.000Z",
+      label: "Visa ending in 4242"
+    });
+
+    const response = await patchPaymentMethod(new NextRequest("https://bvrb3r.demo/api/payments/methods/pm-1", {
+      method: "PATCH",
+      body: JSON.stringify({ nickname: "Phil Stripe Card" })
+    }), {
+      params: Promise.resolve({ id: "pm-1" })
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.method.nickname).toBe("Phil Stripe Card");
+    expect(renameClientPaymentMethodMock).toHaveBeenCalledWith(expect.anything(), "pm-1", "Phil Stripe Card");
   });
 
   it("sets a default payment method", async () => {

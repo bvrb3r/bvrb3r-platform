@@ -5,11 +5,13 @@ import { CreditCard, ShieldCheck, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   useAddPaymentMethodMutation,
   useCreateSavedPaymentMethodSetupMutation,
   usePaymentMethodsQuery,
+  useRenamePaymentMethodMutation,
   useRemovePaymentMethodMutation,
   useSetDefaultPaymentMethodMutation,
   type ClientPaymentMethodView,
@@ -21,6 +23,9 @@ import { getReadableActionError } from "@/lib/utils/feedback";
 type StripeCardElementLike = {
   mount(target: HTMLElement): void;
   unmount?: () => void;
+  on?(event: "ready", handler: () => void): void;
+  on?(event: "change", handler: (event: { complete?: boolean; error?: { message?: string } }) => void): void;
+  on?(event: "loaderror", handler: (event: { error?: { message?: string } }) => void): void;
 };
 
 type StripeElementsLike = {
@@ -28,7 +33,7 @@ type StripeElementsLike = {
 };
 
 type StripeLike = {
-  elements(options: { clientSecret: string }): StripeElementsLike;
+  elements(options?: { clientSecret?: string }): StripeElementsLike;
   confirmCardSetup(clientSecret: string, options: {
     payment_method: {
       card: StripeCardElementLike;
@@ -48,6 +53,8 @@ declare global {
 }
 
 let stripeScriptPromise: Promise<void> | null = null;
+const CARD_FORM_LOAD_ERROR = "Secure card form failed to load. Check Stripe publishable key or SetupIntent.";
+const STRIPE_SCRIPT_TIMEOUT_MS = 10000;
 
 function loadStripeJs(publishableKey: string): Promise<StripeLike> {
   if (typeof window === "undefined") {
@@ -60,18 +67,29 @@ function loadStripeJs(publishableKey: string): Promise<StripeLike> {
 
   if (!stripeScriptPromise) {
     stripeScriptPromise = new Promise((resolve, reject) => {
+      const timeout = window.setTimeout(() => {
+        reject(new Error("Stripe.js did not load before timeout."));
+      }, STRIPE_SCRIPT_TIMEOUT_MS);
+      const finish = () => {
+        window.clearTimeout(timeout);
+        resolve();
+      };
+      const fail = () => {
+        window.clearTimeout(timeout);
+        reject(new Error("Unable to load Stripe."));
+      };
       const existingScript = document.querySelector<HTMLScriptElement>("script[src='https://js.stripe.com/v3']");
       if (existingScript) {
-        existingScript.addEventListener("load", () => resolve(), { once: true });
-        existingScript.addEventListener("error", () => reject(new Error("Unable to load Stripe.")), { once: true });
+        existingScript.addEventListener("load", finish, { once: true });
+        existingScript.addEventListener("error", fail, { once: true });
         return;
       }
 
       const script = document.createElement("script");
       script.src = "https://js.stripe.com/v3";
       script.async = true;
-      script.addEventListener("load", () => resolve(), { once: true });
-      script.addEventListener("error", () => reject(new Error("Unable to load Stripe.")), { once: true });
+      script.addEventListener("load", finish, { once: true });
+      script.addEventListener("error", fail, { once: true });
       document.head.appendChild(script);
     });
   }
@@ -86,8 +104,16 @@ function loadStripeJs(publishableKey: string): Promise<StripeLike> {
 }
 
 function getPaymentMethodTitle(method: ClientPaymentMethodView) {
+  if (method.nickname?.trim()) {
+    return method.nickname.trim();
+  }
+
+  return getPaymentMethodCardLine(method);
+}
+
+function getPaymentMethodCardLine(method: ClientPaymentMethodView) {
   const brand = method.brand ? method.brand.charAt(0).toUpperCase() + method.brand.slice(1) : "Card";
-  return method.last4 ? `${brand} •••• ${method.last4}` : method.label;
+  return method.last4 ? `${brand} \u2022\u2022\u2022\u2022 ${method.last4}` : method.label;
 }
 
 function getExpirationLabel(method: ClientPaymentMethodView) {
@@ -118,19 +144,24 @@ export function ClientPaymentMethodsPanel({
   const methodsQuery = usePaymentMethodsQuery({ methods: initialMethods }, isSignedInClient);
   const addMethodMutation = useAddPaymentMethodMutation();
   const setDefaultMutation = useSetDefaultPaymentMethodMutation();
+  const renameMethodMutation = useRenamePaymentMethodMutation();
   const removeMethodMutation = useRemovePaymentMethodMutation();
   const setupMutation = useCreateSavedPaymentMethodSetupMutation();
   const [statusMessage, setStatusMessage] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [mode, setMode] = useState<"saved" | "add">("saved");
   const [authorized, setAuthorized] = useState(false);
+  const [cardComplete, setCardComplete] = useState(false);
+  const [cardMountNode, setCardMountNode] = useState<HTMLDivElement | null>(null);
   const [setupIntent, setSetupIntent] = useState<PaymentSetupIntentView | null>(null);
   const [inlineSavedPaymentMethod, setInlineSavedPaymentMethod] = useState<ClientPaymentMethodView | null>(null);
+  const [pendingStripePaymentMethodId, setPendingStripePaymentMethodId] = useState<string | null>(null);
+  const [nicknameDraft, setNicknameDraft] = useState("");
+  const [renamingMethod, setRenamingMethod] = useState<ClientPaymentMethodView | null>(null);
   const [setupStatus, setSetupStatus] = useState<"idle" | "loading" | "ready" | "success" | "error">("idle");
   const [setupMessage, setSetupMessage] = useState<string | null>(null);
   const setupRequestStartedRef = useRef(false);
   const stripeRef = useRef<StripeLike | null>(null);
   const cardElementRef = useRef<StripeCardElementLike | null>(null);
-  const elementContainerRef = useRef<HTMLDivElement | null>(null);
 
   const methods = useMemo(() => {
     const methodsById = new Map<string, ClientPaymentMethodView>();
@@ -169,19 +200,19 @@ export function ClientPaymentMethodsPanel({
 
         if (!intent.clientSecret || !intent.publishableKey) {
           setSetupStatus("error");
-          setSetupMessage("Secure card form failed to load. Check Stripe publishable key.");
+          setSetupMessage(CARD_FORM_LOAD_ERROR);
           return;
         }
 
         setSetupIntent(intent);
       })
-      .catch((error) => {
+      .catch(() => {
         if (cancelled) {
           return;
         }
 
         setSetupStatus("error");
-        setSetupMessage(getReadableActionError(error as PaymentApiError));
+        setSetupMessage(CARD_FORM_LOAD_ERROR);
       });
 
     return () => {
@@ -190,18 +221,32 @@ export function ClientPaymentMethodsPanel({
   }, [setupIntent, setupMutation, showAddForm]);
 
   useEffect(() => {
-    if (!showAddForm || !setupIntent?.clientSecret || !setupIntent.publishableKey || !elementContainerRef.current) {
+    if (!showAddForm || !setupIntent?.clientSecret || !setupIntent.publishableKey || !cardMountNode) {
       return;
     }
 
     let cancelled = false;
+    let ready = false;
+    const readyTimeout = window.setTimeout(() => {
+      if (cancelled || ready) {
+        return;
+      }
+
+      console.error("[payments] stripe_card_element_mount_failed", {
+        reference: "stripe_card_element_mount_failed",
+        reason: "ready_timeout"
+      });
+      setSetupStatus("error");
+      setSetupMessage(CARD_FORM_LOAD_ERROR);
+    }, STRIPE_SCRIPT_TIMEOUT_MS);
+
     loadStripeJs(setupIntent.publishableKey)
       .then((stripe) => {
-        if (cancelled || !elementContainerRef.current) {
+        if (cancelled) {
           return;
         }
 
-        const elements = stripe.elements({ clientSecret: setupIntent.clientSecret });
+        const elements = stripe.elements();
         const cardElement = elements.create("card", {
           hidePostalCode: false,
           style: {
@@ -218,27 +263,72 @@ export function ClientPaymentMethodsPanel({
             }
           }
         });
-        cardElement.mount(elementContainerRef.current);
+        cardElement.on?.("ready", () => {
+          if (cancelled) {
+            return;
+          }
+
+          ready = true;
+          window.clearTimeout(readyTimeout);
+          setSetupStatus("ready");
+          setSetupMessage(null);
+        });
+        cardElement.on?.("change", (event) => {
+          if (cancelled) {
+            return;
+          }
+
+          setCardComplete(Boolean(event.complete));
+          if (event.error?.message) {
+            setSetupMessage(event.error.message);
+          } else if (event.complete) {
+            setSetupMessage(null);
+          }
+        });
+        cardElement.on?.("loaderror", (event) => {
+          if (cancelled) {
+            return;
+          }
+
+          console.error("[payments] stripe_card_element_mount_failed", {
+            reference: "stripe_card_element_mount_failed",
+            message: event.error?.message ?? null
+          });
+          window.clearTimeout(readyTimeout);
+          setSetupStatus("error");
+          setSetupMessage(CARD_FORM_LOAD_ERROR);
+        });
+        cardElement.mount(cardMountNode);
         stripeRef.current = stripe;
         cardElementRef.current = cardElement;
-        setSetupStatus("ready");
+        if (!cardElement.on) {
+          ready = true;
+          window.clearTimeout(readyTimeout);
+          setSetupStatus("ready");
+        }
       })
       .catch(() => {
         if (cancelled) {
           return;
         }
 
+        window.clearTimeout(readyTimeout);
+        console.error("[payments] stripe_card_element_mount_failed", {
+          reference: "stripe_card_element_mount_failed",
+          reason: "stripe_load_failed"
+        });
         setSetupStatus("error");
-        setSetupMessage("Secure card form failed to load. Check Stripe publishable key.");
+        setSetupMessage(CARD_FORM_LOAD_ERROR);
       });
 
     return () => {
       cancelled = true;
+      window.clearTimeout(readyTimeout);
       cardElementRef.current?.unmount?.();
       cardElementRef.current = null;
       stripeRef.current = null;
     };
-  }, [setupIntent?.clientSecret, setupIntent?.publishableKey, showAddForm]);
+  }, [cardMountNode, setupIntent?.clientSecret, setupIntent?.publishableKey, showAddForm]);
 
   function startAddCard() {
     setMode("add");
@@ -247,6 +337,9 @@ export function ClientPaymentMethodsPanel({
     setSetupStatus("idle");
     setSetupMessage(null);
     setStatusMessage(null);
+    setCardComplete(false);
+    setPendingStripePaymentMethodId(null);
+    setNicknameDraft("");
   }
 
   function cancelAddCard() {
@@ -256,6 +349,9 @@ export function ClientPaymentMethodsPanel({
     setSetupStatus("idle");
     setSetupMessage(null);
     setAuthorized(false);
+    setCardComplete(false);
+    setPendingStripePaymentMethodId(null);
+    setNicknameDraft("");
   }
 
   async function handleSaveCard() {
@@ -271,7 +367,12 @@ export function ClientPaymentMethodsPanel({
     const cardElement = cardElementRef.current;
     if (!stripe || !cardElement || !setupIntent) {
       setSetupStatus("error");
-      setSetupMessage("Secure card form failed to load. Check Stripe publishable key.");
+      setSetupMessage(CARD_FORM_LOAD_ERROR);
+      return;
+    }
+
+    if (!cardComplete) {
+      setSetupMessage("Enter complete card details.");
       return;
     }
 
@@ -291,26 +392,107 @@ export function ClientPaymentMethodsPanel({
         throw new Error("Stripe did not return a saved card reference.");
       }
 
-      const response = await addMethodMutation.mutateAsync({
-        provider: "stripe",
-        providerCustomerId: setupIntent.customerId,
-        providerPaymentMethodId,
-        isDefault: true
-      });
-
-      setInlineSavedPaymentMethod(response.method);
-      setAuthorized(false);
-      setMode("saved");
-      setSetupIntent(null);
-      setupRequestStartedRef.current = false;
-      setSetupStatus("success");
-      setStatusMessage({
-        tone: "success",
-        message: `${response.method.label} is saved for future bookings.`
-      });
+      setPendingStripePaymentMethodId(providerPaymentMethodId);
+      setNicknameDraft("");
     } catch (error) {
       setSetupStatus("ready");
-      setSetupMessage(getReadableActionError(error as PaymentApiError));
+      console.error("[payments] stripe_confirm_card_setup_failed", {
+        reference: "stripe_confirm_card_setup_failed",
+        message: error instanceof Error ? error.message : "Unknown Stripe card setup failure"
+      });
+      setSetupMessage(error instanceof Error && error.message ? error.message : "Card could not be saved.");
+    }
+  }
+
+  function resetConfirmedCardState() {
+    setPendingStripePaymentMethodId(null);
+    setNicknameDraft("");
+    setSetupIntent(null);
+    setupRequestStartedRef.current = false;
+    setSetupStatus("idle");
+    setSetupMessage(null);
+    setAuthorized(false);
+    setCardComplete(false);
+  }
+
+  async function saveConfirmedCard() {
+    if (!pendingStripePaymentMethodId || !setupIntent) {
+      setSetupMessage("Card could not be saved.");
+      return;
+    }
+
+    const nickname = nicknameDraft.trim();
+    const payload = {
+      provider: "stripe" as const,
+      providerCustomerId: setupIntent.customerId,
+      providerPaymentMethodId: pendingStripePaymentMethodId,
+      nickname: nickname || undefined,
+      isDefault: true
+    };
+
+    try {
+      const response = await addMethodMutation.mutateAsync(payload);
+      setInlineSavedPaymentMethod(response.method);
+      setMode("saved");
+      resetConfirmedCardState();
+      setStatusMessage({
+        tone: "success",
+        message: "Card saved."
+      });
+    } catch (error) {
+      if (nickname) {
+        console.error("[payments] payment_method_nickname_save_failed", {
+          reference: "payment_method_nickname_save_failed",
+          message: error instanceof Error ? error.message : "Unknown card nickname save failure"
+        });
+        try {
+          const response = await addMethodMutation.mutateAsync({
+            ...payload,
+            nickname: undefined
+          });
+          setInlineSavedPaymentMethod(response.method);
+          setMode("saved");
+          resetConfirmedCardState();
+          setStatusMessage({
+            tone: "error",
+            message: "Card name could not be saved, but the card was saved."
+          });
+          return;
+        } catch {
+          // Fall through to the normal card-save error.
+        }
+      }
+
+      setSetupMessage("Card could not be saved.");
+    }
+  }
+
+  async function handleRenameCard() {
+    if (!renamingMethod) {
+      return;
+    }
+
+    try {
+      const response = await renameMethodMutation.mutateAsync({
+        paymentMethodId: renamingMethod.id,
+        nickname: nicknameDraft
+      });
+      setInlineSavedPaymentMethod(response.method);
+      setRenamingMethod(null);
+      setNicknameDraft("");
+      setStatusMessage({
+        tone: "success",
+        message: "Card name saved."
+      });
+    } catch (error) {
+      console.error("[payments] payment_method_nickname_save_failed", {
+        reference: "payment_method_nickname_save_failed",
+        message: error instanceof Error ? error.message : "Unknown card nickname save failure"
+      });
+      setStatusMessage({
+        tone: "error",
+        message: "Card name could not be saved, but the card was saved."
+      });
     }
   }
 
@@ -381,6 +563,9 @@ export function ClientPaymentMethodsPanel({
               </div>
               <div>
                 <p className="font-medium text-white">{getPaymentMethodTitle(defaultMethod)}</p>
+                {defaultMethod.nickname ? (
+                  <p className="mt-1 text-sm text-white/68">{getPaymentMethodCardLine(defaultMethod)}</p>
+                ) : null}
                 <p className="mt-1 text-sm text-white/55">Default for bookings</p>
                 <p className="mt-1 text-xs text-white/40">{getExpirationLabel(defaultMethod)}</p>
               </div>
@@ -397,25 +582,61 @@ export function ClientPaymentMethodsPanel({
                 <div key={method.id} className="flex flex-wrap items-center justify-between gap-2 rounded-[18px] border border-white/8 bg-black/18 px-3 py-3">
                   <div>
                     <p className="text-sm font-medium text-white">{getPaymentMethodTitle(method)}</p>
+                    {method.nickname ? (
+                      <p className="mt-1 text-xs text-white/58">{getPaymentMethodCardLine(method)}</p>
+                    ) : null}
                     <p className="mt-1 text-xs text-white/45">{getExpirationLabel(method)}</p>
                   </div>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    className="h-9 px-3"
-                    disabled={!isSignedInClient || setDefaultMutation.isPending}
-                    onClick={() => void handleSetDefault(method.id)}
-                  >
-                    Make default
-                  </Button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="h-9 px-3"
+                      disabled={!isSignedInClient || setDefaultMutation.isPending}
+                      onClick={() => void handleSetDefault(method.id)}
+                    >
+                      Make default
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="h-9 px-3"
+                      onClick={() => {
+                        setRenamingMethod(method);
+                        setNicknameDraft(method.nickname ?? "");
+                      }}
+                    >
+                      Rename
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="h-9 px-3"
+                      disabled={removeMethodMutation.isPending}
+                      onClick={() => void handleRemove(method.id)}
+                    >
+                      Remove
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
           ) : null}
 
           <div className="mt-4 flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              className="h-10 px-4"
+              onClick={() => {
+                setRenamingMethod(defaultMethod);
+                setNicknameDraft(defaultMethod.nickname ?? "");
+              }}
+            >
+              Rename
+            </Button>
             <Button type="button" variant="secondary" className="h-10 px-4" onClick={startAddCard}>
-              Change card
+              Replace
             </Button>
             <Button
               type="button"
@@ -458,8 +679,8 @@ export function ClientPaymentMethodsPanel({
               <span>ZIP</span>
             </div>
             <div
-              ref={elementContainerRef}
-              className="min-h-[54px] rounded-[16px] border border-white/10 bg-[#101010] px-4 py-4"
+              ref={setCardMountNode}
+              className="min-h-[56px] rounded-[16px] border border-white/10 bg-[#101010] px-4 py-4"
               aria-label="Card number, MM/YY, CVC, and ZIP"
             />
             {setupStatus === "loading" ? (
@@ -495,6 +716,80 @@ export function ClientPaymentMethodsPanel({
           </div>
         </div>
       ) : null}
+
+      {pendingStripePaymentMethodId ? (
+        <CardNameModal
+          title="Name this card"
+          copy="Give this card a name so it is easy to recognize later."
+          value={nicknameDraft}
+          isPending={addMethodMutation.isPending}
+          onChange={setNicknameDraft}
+          onCancel={resetConfirmedCardState}
+          onSave={() => void saveConfirmedCard()}
+        />
+      ) : null}
+
+      {renamingMethod ? (
+        <CardNameModal
+          title="Rename card"
+          copy="Update the name clients see for this saved card."
+          value={nicknameDraft}
+          isPending={renameMethodMutation.isPending}
+          onChange={setNicknameDraft}
+          onCancel={() => {
+            setRenamingMethod(null);
+            setNicknameDraft("");
+          }}
+          onSave={() => void handleRenameCard()}
+        />
+      ) : null}
     </div>
   );
 }
+
+function CardNameModal({
+  title,
+  copy,
+  value,
+  isPending,
+  onChange,
+  onCancel,
+  onSave
+}: {
+  title: string;
+  copy: string;
+  value: string;
+  isPending: boolean;
+  onChange: (value: string) => void;
+  onCancel: () => void;
+  onSave: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 px-4 py-5 backdrop-blur-sm sm:items-center">
+      <div className="w-full max-w-md rounded-[22px] border border-white/10 bg-[#080808] p-5 shadow-2xl">
+        <p className="text-lg font-semibold text-white">{title}</p>
+        <p className="mt-2 text-sm leading-6 text-white/58">{copy}</p>
+        <div className="mt-4">
+          <label className="surface-label mb-2 block" htmlFor="saved-card-nickname">Card name</label>
+          <Input
+            id="saved-card-nickname"
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            placeholder="Example: Phil Stripe Card"
+            maxLength={80}
+          />
+          <p className="mt-2 text-xs leading-5 text-white/42">We&apos;ll also show the card brand and last 4 digits.</p>
+        </div>
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
+          <Button type="button" variant="secondary" className="h-10 px-4" disabled={isPending} onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button type="button" className="h-10 px-4" disabled={isPending} onClick={onSave}>
+            {isPending ? "Saving..." : "Save Card"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+

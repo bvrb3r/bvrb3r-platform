@@ -35,6 +35,13 @@ async function createStripeProvider(): Promise<PaymentProvider> {
     throw new Error("Stripe secret key is missing.");
   }
 
+  if (!publishableKey) {
+    console.error("[payments] stripe_publishable_key_missing", {
+      reference: "stripe_publishable_key_missing"
+    });
+    throw new Error("Stripe publishable key is missing.");
+  }
+
   const stripe = new Stripe(secretKey);
 
   async function ensureCustomer(email: string, name: string) {

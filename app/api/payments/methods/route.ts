@@ -11,6 +11,7 @@ const createPaymentMethodSchema = z.object({
   last4: z.string().trim().optional(),
   expMonth: z.number().int().min(1).max(12).optional(),
   expYear: z.number().int().min(2024).optional(),
+  nickname: z.string().trim().max(80).optional(),
   isDefault: z.boolean().optional()
 });
 
