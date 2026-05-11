@@ -26,31 +26,28 @@ vi.mock("@/lib/payments/client", () => ({
 import { ClientPaymentMethodsPanel } from "@/components/client-experience/client-payment-methods-panel";
 
 function installStripeMock() {
-  const paymentElementMountMock = vi.fn();
-  const paymentElementUnmountMock = vi.fn();
-  const submitMock = vi.fn().mockResolvedValue({});
-  const confirmSetupMock = vi.fn().mockResolvedValue({
+  const cardElementMountMock = vi.fn();
+  const cardElementUnmountMock = vi.fn();
+  const confirmCardSetupMock = vi.fn().mockResolvedValue({
     setupIntent: {
       payment_method: "pm_wallet_stripe"
     }
   });
   const elementsMock = {
     create: vi.fn().mockReturnValue({
-      mount: paymentElementMountMock,
-      unmount: paymentElementUnmountMock
-    }),
-    submit: submitMock
+      mount: cardElementMountMock,
+      unmount: cardElementUnmountMock
+    })
   };
 
   Reflect.set(window, "Stripe", vi.fn().mockReturnValue({
     elements: vi.fn().mockReturnValue(elementsMock),
-    confirmSetup: confirmSetupMock
+    confirmCardSetup: confirmCardSetupMock
   }));
 
   return {
-    paymentElementMountMock,
-    confirmSetupMock,
-    submitMock
+    cardElementMountMock,
+    confirmCardSetupMock
   };
 }
 
@@ -100,7 +97,7 @@ describe("client payment methods panel", () => {
   });
 
   it("renders a Stripe card-on-file form without provider reference fields", async () => {
-    const { paymentElementMountMock } = installStripeMock();
+    const { cardElementMountMock } = installStripeMock();
     usePaymentMethodsQueryMock.mockReturnValue({
       data: { methods: [] },
       isLoading: false,
@@ -111,7 +108,11 @@ describe("client payment methods panel", () => {
 
     expect(screen.getAllByText("Card on file").length).toBeGreaterThan(0);
     expect(screen.getByText("Add a card so booking and rebooking stay fast. Protected and encrypted by Stripe.")).toBeInTheDocument();
-    expect(screen.getByLabelText("Stripe secure card entry: Card number, expiration, CVC, and postal code")).toBeInTheDocument();
+    expect(screen.getByText("Card number")).toBeInTheDocument();
+    expect(screen.getByText("MM/YY")).toBeInTheDocument();
+    expect(screen.getByText("CVC")).toBeInTheDocument();
+    expect(screen.getByText("ZIP")).toBeInTheDocument();
+    expect(screen.getByLabelText("Card number, MM/YY, CVC, and ZIP")).toBeInTheDocument();
     expect(screen.getByLabelText("I authorize BVRB3R to save this card on file for future bookings.")).toBeInTheDocument();
 
     expect(screen.queryByText("Provider")).not.toBeInTheDocument();
@@ -121,9 +122,11 @@ describe("client payment methods panel", () => {
     expect(screen.queryByText("Last 4")).not.toBeInTheDocument();
     expect(screen.queryByText("Exp month")).not.toBeInTheDocument();
     expect(screen.queryByText("Exp year")).not.toBeInTheDocument();
+    expect(screen.queryByText("Cardholder name")).not.toBeInTheDocument();
+    expect(screen.queryByText("Stripe secure card entry")).not.toBeInTheDocument();
 
     await waitFor(() => {
-      expect(paymentElementMountMock).toHaveBeenCalled();
+      expect(cardElementMountMock).toHaveBeenCalled();
     });
   });
 
@@ -140,13 +143,6 @@ describe("client payment methods panel", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Save card" })).toBeDisabled();
     });
-    fireEvent.change(screen.getByLabelText("Cardholder name"), {
-      target: { value: "Jordan Ellis" }
-    });
-    fireEvent.change(screen.getByLabelText("ZIP"), {
-      target: { value: "33612" }
-    });
-
     expect(screen.getByRole("button", { name: "Save card" })).toBeDisabled();
     fireEvent.click(screen.getByLabelText("I authorize BVRB3R to save this card on file for future bookings."));
 
@@ -156,7 +152,7 @@ describe("client payment methods panel", () => {
   });
 
   it("saves a Stripe card without sending raw card metadata from the client", async () => {
-    const { confirmSetupMock } = installStripeMock();
+    const { confirmCardSetupMock } = installStripeMock();
     const addMethodMock = vi.fn().mockResolvedValue({
       method: {
         id: "pm-wallet",
@@ -185,12 +181,6 @@ describe("client payment methods panel", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Save card" })).toBeDisabled();
     });
-    fireEvent.change(screen.getByLabelText("Cardholder name"), {
-      target: { value: "Jordan Ellis" }
-    });
-    fireEvent.change(screen.getByLabelText("ZIP"), {
-      target: { value: "33612" }
-    });
     fireEvent.click(screen.getByLabelText("I authorize BVRB3R to save this card on file for future bookings."));
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Save card" })).toBeEnabled();
@@ -198,7 +188,7 @@ describe("client payment methods panel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save card" }));
 
     await waitFor(() => {
-      expect(confirmSetupMock).toHaveBeenCalledTimes(1);
+      expect(confirmCardSetupMock).toHaveBeenCalledTimes(1);
     });
     await waitFor(() => {
       expect(addMethodMock).toHaveBeenCalledWith(expect.objectContaining({

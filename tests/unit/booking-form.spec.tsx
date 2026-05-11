@@ -477,9 +477,14 @@ describe("booking form", () => {
     await advanceToReview();
 
     expect(screen.getByText("Add a payment method to complete booking.")).toBeInTheDocument();
-    expect(screen.getByLabelText("Cardholder name")).toBeInTheDocument();
-    expect(screen.getByLabelText("ZIP")).toBeInTheDocument();
-    expect(screen.getByText("Secure card details")).toBeInTheDocument();
+    expect(screen.getByText("Card number")).toBeInTheDocument();
+    expect(screen.getByText("MM/YY")).toBeInTheDocument();
+    expect(screen.getByText("CVC")).toBeInTheDocument();
+    expect(screen.getByText("ZIP")).toBeInTheDocument();
+    expect(screen.getByLabelText("Card number, MM/YY, CVC, and ZIP")).toBeInTheDocument();
+    expect(screen.queryByText("Cardholder name")).not.toBeInTheDocument();
+    expect(screen.queryByText("Secure card details")).not.toBeInTheDocument();
+    expect(screen.queryByText("Stripe secure card entry")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Manage payment methods" })).toHaveAttribute("href", "/dashboard/client/profile?section=wallet");
     expect(screen.queryByRole("link", { name: "Open wallet" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Book Appointment" })).toBeDisabled();
@@ -506,25 +511,23 @@ describe("booking form", () => {
         label: "Visa ending in 4242"
       }
     });
-    const paymentElementMountMock = vi.fn();
-    const paymentElementUnmountMock = vi.fn();
-    const submitMock = vi.fn().mockResolvedValue({});
-    const confirmSetupMock = vi.fn().mockResolvedValue({
+    const cardElementMountMock = vi.fn();
+    const cardElementUnmountMock = vi.fn();
+    const confirmCardSetupMock = vi.fn().mockResolvedValue({
       setupIntent: {
         payment_method: "pm_inline_stripe"
       }
     });
     const elementsMock = {
       create: vi.fn().mockReturnValue({
-        mount: paymentElementMountMock,
-        unmount: paymentElementUnmountMock
-      }),
-      submit: submitMock
+        mount: cardElementMountMock,
+        unmount: cardElementUnmountMock
+      })
     };
 
     Reflect.set(window, "Stripe", vi.fn().mockReturnValue({
       elements: vi.fn().mockReturnValue(elementsMock),
-      confirmSetup: confirmSetupMock
+      confirmCardSetup: confirmCardSetupMock
     }));
     usePaymentMethodsQueryMock.mockReturnValue({
       data: { methods: [] },
@@ -547,21 +550,20 @@ describe("booking form", () => {
       expect(createSetupMock).toHaveBeenCalledTimes(1);
     });
     await waitFor(() => {
-      expect(paymentElementMountMock).toHaveBeenCalled();
+      expect(cardElementMountMock).toHaveBeenCalled();
     });
 
     expect(screen.getByRole("button", { name: "Book Appointment" })).toBeDisabled();
 
-    fireEvent.change(screen.getByLabelText("Cardholder name"), {
-      target: { value: "Jordan Ellis" }
-    });
-    fireEvent.change(screen.getByLabelText("ZIP"), {
-      target: { value: "33612" }
+    expect(screen.getByRole("button", { name: "Save card" })).toBeDisabled();
+    fireEvent.click(screen.getByLabelText("I authorize BVRB3R to save this card on file for future bookings."));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Save card" })).toBeEnabled();
     });
     fireEvent.click(screen.getByRole("button", { name: "Save card" }));
 
     await waitFor(() => {
-      expect(confirmSetupMock).toHaveBeenCalledTimes(1);
+      expect(confirmCardSetupMock).toHaveBeenCalledTimes(1);
     });
     await waitFor(() => {
       expect(addMethodMock).toHaveBeenCalledWith(expect.objectContaining({

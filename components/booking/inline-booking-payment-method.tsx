@@ -6,7 +6,6 @@ import { CreditCard, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
-import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -18,22 +17,21 @@ import {
 import { currency } from "@/lib/utils";
 import { getReadableActionError } from "@/lib/utils/feedback";
 
-type StripePaymentElementLike = {
+type StripeCardElementLike = {
   mount(target: HTMLElement): void;
   unmount?: () => void;
 };
 
 type StripeElementsLike = {
-  create(type: "payment", options?: Record<string, unknown>): StripePaymentElementLike;
-  submit?: () => Promise<{ error?: { message?: string } }>;
+  create(type: "card", options?: Record<string, unknown>): StripeCardElementLike;
 };
 
 type StripeLike = {
   elements(options: { clientSecret: string }): StripeElementsLike;
-  confirmSetup(options: {
-    elements: StripeElementsLike;
-    confirmParams?: Record<string, unknown>;
-    redirect: "if_required";
+  confirmCardSetup(clientSecret: string, options: {
+    payment_method: {
+      card: StripeCardElementLike;
+    };
   }): Promise<{
     error?: { message?: string };
     setupIntent?: {
@@ -134,17 +132,14 @@ export function InlineBookingPaymentMethod({
 }: InlineBookingPaymentMethodProps) {
   const [mode, setMode] = useState<"saved" | "add">("saved");
   const [changeOpen, setChangeOpen] = useState(false);
-  const [cardholderName, setCardholderName] = useState("");
-  const [postalCode, setPostalCode] = useState("");
-  const [saveForFuture, setSaveForFuture] = useState(true);
+  const [saveForFuture, setSaveForFuture] = useState(false);
   const [setupIntent, setSetupIntent] = useState<PaymentSetupIntentView | null>(null);
   const [setupStatus, setSetupStatus] = useState<"idle" | "loading" | "ready" | "success" | "error">("idle");
   const [setupMessage, setSetupMessage] = useState<string | null>(null);
   const setupMutation = useCreateSavedPaymentMethodSetupMutation();
   const addMethodMutation = useAddPaymentMethodMutation();
   const stripeRef = useRef<StripeLike | null>(null);
-  const elementsRef = useRef<StripeElementsLike | null>(null);
-  const paymentElementRef = useRef<StripePaymentElementLike | null>(null);
+  const cardElementRef = useRef<StripeCardElementLike | null>(null);
   const elementContainerRef = useRef<HTMLDivElement | null>(null);
   const setupRequestStartedRef = useRef(false);
 
@@ -187,7 +182,7 @@ export function InlineBookingPaymentMethod({
 
         if (!intent.clientSecret || !intent.publishableKey) {
           setSetupStatus("error");
-          setSetupMessage("Secure card setup is unavailable right now.");
+          setSetupMessage("Secure card form failed to load. Check Stripe publishable key.");
           return;
         }
 
@@ -221,29 +216,40 @@ export function InlineBookingPaymentMethod({
         }
 
         const elements = stripe.elements({ clientSecret: setupIntent.clientSecret });
-        const paymentElement = elements.create("payment", {
-          layout: "tabs"
+        const cardElement = elements.create("card", {
+          hidePostalCode: false,
+          style: {
+            base: {
+              color: "#ffffff",
+              fontFamily: "Inter, system-ui, sans-serif",
+              fontSize: "16px",
+              "::placeholder": {
+                color: "rgba(255,255,255,0.42)"
+              }
+            },
+            invalid: {
+              color: "#fecdd3"
+            }
+          }
         });
-        paymentElement.mount(elementContainerRef.current);
+        cardElement.mount(elementContainerRef.current);
         stripeRef.current = stripe;
-        elementsRef.current = elements;
-        paymentElementRef.current = paymentElement;
+        cardElementRef.current = cardElement;
         setSetupStatus("ready");
       })
-      .catch((error) => {
+      .catch(() => {
         if (cancelled) {
           return;
         }
 
         setSetupStatus("error");
-        setSetupMessage(getReadableActionError(error as Error));
+        setSetupMessage("Secure card form failed to load. Check Stripe publishable key.");
       });
 
     return () => {
       cancelled = true;
-      paymentElementRef.current?.unmount?.();
-      paymentElementRef.current = null;
-      elementsRef.current = null;
+      cardElementRef.current?.unmount?.();
+      cardElementRef.current = null;
       stripeRef.current = null;
     };
   }, [setupIntent?.clientSecret, setupIntent?.publishableKey, showAddForm]);
@@ -269,21 +275,11 @@ export function InlineBookingPaymentMethod({
   async function handleSaveCard() {
     setSetupMessage(null);
 
-    if (!cardholderName.trim()) {
-      setSetupMessage("Enter the cardholder name.");
-      return;
-    }
-
-    if (!postalCode.trim()) {
-      setSetupMessage("Enter the billing ZIP.");
-      return;
-    }
-
     const stripe = stripeRef.current;
-    const elements = elementsRef.current;
-    if (!stripe || !elements || !setupIntent) {
+    const cardElement = cardElementRef.current;
+    if (!stripe || !cardElement || !setupIntent) {
       setSetupStatus("error");
-      setSetupMessage("Secure card setup is still loading.");
+      setSetupMessage("Secure card form failed to load. Check Stripe publishable key.");
       return;
     }
 
@@ -293,24 +289,10 @@ export function InlineBookingPaymentMethod({
         return;
       }
 
-      const submitResult = await elements.submit?.();
-      if (submitResult?.error) {
-        throw new Error(submitResult.error.message ?? "Check the card details and try again.");
-      }
-
-      const result = await stripe.confirmSetup({
-        elements,
-        confirmParams: {
-          payment_method_data: {
-            billing_details: {
-              name: cardholderName.trim(),
-              address: {
-                postal_code: postalCode.trim()
-              }
-            }
-          }
-        },
-        redirect: "if_required"
+      const result = await stripe.confirmCardSetup(setupIntent.clientSecret, {
+        payment_method: {
+          card: cardElement
+        }
       });
 
       if (result.error) {
@@ -408,36 +390,22 @@ export function InlineBookingPaymentMethod({
       ) : (
         <div className="mt-4 rounded-[18px] border border-white/10 bg-black/22 p-4">
           <p className="text-sm leading-7 text-white/72">Add a payment method to complete booking.</p>
-          <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_9rem]">
-            <div>
-              <label className="surface-label mb-2 block" htmlFor="booking-cardholder-name">Cardholder name</label>
-              <Input
-                id="booking-cardholder-name"
-                value={cardholderName}
-                onChange={(event) => setCardholderName(event.target.value)}
-                autoComplete="cc-name"
-              />
-            </div>
-            <div>
-              <label className="surface-label mb-2 block" htmlFor="booking-card-zip">ZIP</label>
-              <Input
-                id="booking-card-zip"
-                value={postalCode}
-                onChange={(event) => setPostalCode(event.target.value)}
-                autoComplete="postal-code"
-                inputMode="numeric"
-              />
-            </div>
-          </div>
 
           <div className="mt-4">
-            <p className="surface-label mb-2">Secure card details</p>
+            <div className="mb-2 grid grid-cols-[1.45fr_0.7fr_0.55fr_0.7fr] gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/42">
+              <span>Card number</span>
+              <span>MM/YY</span>
+              <span>CVC</span>
+              <span>ZIP</span>
+            </div>
             <div
               ref={elementContainerRef}
-              className="min-h-[74px] rounded-[16px] border border-white/10 bg-black/30 p-3"
-              aria-label="Secure card details"
+              className="min-h-[54px] rounded-[16px] border border-white/10 bg-[#101010] px-4 py-4"
+              aria-label="Card number, MM/YY, CVC, and ZIP"
             />
-            {setupStatus === "loading" ? <Skeleton className="mt-3 h-4 w-44 rounded-full" /> : null}
+            {setupStatus === "loading" ? (
+              <p className="mt-3 text-sm text-white/50">Loading secure card form...</p>
+            ) : null}
           </div>
 
           <label className="mt-4 flex items-start gap-3 text-sm leading-6 text-white/68">
