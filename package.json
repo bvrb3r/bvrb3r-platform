@@ -41,6 +41,8 @@
     "@capacitor/cli": "^8.2.0",
     "@capacitor/core": "^8.2.0",
     "@hookform/resolvers": "^3.10.0",
+    "@stripe/react-stripe-js": "^6.3.0",
+    "@stripe/stripe-js": "^9.4.0",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.49.1",
     "@tanstack/react-query": "^5.64.2",
@@ -74,4 +76,3 @@
     "vitest": "^2.1.8"
   }
 }
-

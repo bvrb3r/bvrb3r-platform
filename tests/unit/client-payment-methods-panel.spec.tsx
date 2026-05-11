@@ -7,14 +7,28 @@ const {
   useCreateSavedPaymentMethodSetupMutationMock,
   useSetDefaultPaymentMethodMutationMock,
   useRenamePaymentMethodMutationMock,
-  useRemovePaymentMethodMutationMock
+  useRemovePaymentMethodMutationMock,
+  loadStripeMock,
+  stripeCardMock,
+  confirmCardSetupMock,
+  stripeMockState
 } = vi.hoisted(() => ({
   usePaymentMethodsQueryMock: vi.fn(),
   useAddPaymentMethodMutationMock: vi.fn(),
   useCreateSavedPaymentMethodSetupMutationMock: vi.fn(),
   useSetDefaultPaymentMethodMutationMock: vi.fn(),
   useRenamePaymentMethodMutationMock: vi.fn(),
-  useRemovePaymentMethodMutationMock: vi.fn()
+  useRemovePaymentMethodMutationMock: vi.fn(),
+  loadStripeMock: vi.fn(),
+  stripeCardMock: {
+    focus: vi.fn()
+  },
+  confirmCardSetupMock: vi.fn(),
+  stripeMockState: {
+    autoReady: true,
+    complete: true,
+    loadError: null as string | null
+  }
 }));
 
 vi.mock("@/lib/payments/client", () => ({
@@ -26,45 +40,58 @@ vi.mock("@/lib/payments/client", () => ({
   useRemovePaymentMethodMutation: useRemovePaymentMethodMutationMock
 }));
 
+vi.mock("@stripe/stripe-js", () => ({
+  loadStripe: loadStripeMock
+}));
+
+vi.mock("@stripe/react-stripe-js", async () => {
+  const React = await vi.importActual<typeof import("react")>("react");
+
+  return {
+    Elements: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
+    CardElement: (props: {
+      onReady?: (element: typeof stripeCardMock) => void;
+      onChange?: (event: { complete?: boolean; error?: { message?: string } }) => void;
+      onLoadError?: (event: { error?: { message?: string } }) => void;
+    }) => {
+      const { onReady, onChange, onLoadError } = props;
+
+      React.useEffect(() => {
+        if (stripeMockState.loadError) {
+          onLoadError?.({ error: { message: stripeMockState.loadError } });
+        } else if (stripeMockState.autoReady) {
+          onReady?.(stripeCardMock);
+          onChange?.({ complete: stripeMockState.complete });
+        }
+      }, [onChange, onLoadError, onReady]);
+
+      return React.createElement(
+        "div",
+        { "data-testid": "mock-stripe-card-element" },
+        React.createElement("iframe", { title: "Secure card input" })
+      );
+    },
+    useStripe: () => ({
+      confirmCardSetup: confirmCardSetupMock
+    }),
+    useElements: () => ({
+      getElement: () => stripeCardMock
+    })
+  };
+});
+
 import { ClientPaymentMethodsPanel } from "@/components/client-experience/client-payment-methods-panel";
 
 function installStripeMock() {
-  const handlers: {
-    ready?: () => void;
-    change?: (event: { complete?: boolean; error?: { message?: string } }) => void;
-    loaderror?: (event: { error?: { message?: string } }) => void;
-  } = {};
-  const cardElementMountMock = vi.fn();
-  const cardElementUnmountMock = vi.fn();
-  const cardElementOnMock = vi.fn((event: "ready" | "change" | "loaderror", handler: never) => {
-    handlers[event] = handler;
-  });
-  const confirmCardSetupMock = vi.fn().mockResolvedValue({
+  loadStripeMock.mockResolvedValue({});
+  confirmCardSetupMock.mockResolvedValue({
     setupIntent: {
       payment_method: "pm_wallet_stripe"
     }
   });
-  const elementsMock = {
-    create: vi.fn().mockReturnValue({
-      mount: (target: HTMLElement) => {
-        cardElementMountMock(target);
-        handlers.ready?.();
-        handlers.change?.({ complete: true });
-      },
-      unmount: cardElementUnmountMock,
-      on: cardElementOnMock
-    })
-  };
-
-  Reflect.set(window, "Stripe", vi.fn().mockReturnValue({
-    elements: vi.fn().mockReturnValue(elementsMock),
-    confirmCardSetup: confirmCardSetupMock
-  }));
 
   return {
-    cardElementMountMock,
-    confirmCardSetupMock,
-    handlers
+    confirmCardSetupMock
   };
 }
 
@@ -76,7 +103,28 @@ describe("client payment methods panel", () => {
     useSetDefaultPaymentMethodMutationMock.mockReset();
     useRenamePaymentMethodMutationMock.mockReset();
     useRemovePaymentMethodMutationMock.mockReset();
-    Reflect.deleteProperty(window, "Stripe");
+    loadStripeMock.mockReset();
+    confirmCardSetupMock.mockReset();
+    stripeCardMock.focus.mockReset();
+    stripeMockState.autoReady = true;
+    stripeMockState.complete = true;
+    stripeMockState.loadError = null;
+    window.requestAnimationFrame = (callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    };
+    Element.prototype.getBoundingClientRect = vi.fn(() => ({
+      x: 0,
+      y: 0,
+      width: 240,
+      height: 56,
+      top: 0,
+      right: 240,
+      bottom: 56,
+      left: 0,
+      toJSON: () => ({})
+    }));
+    loadStripeMock.mockResolvedValue({});
 
     useSetDefaultPaymentMethodMutationMock.mockReturnValue({
       isPending: false,
@@ -120,7 +168,7 @@ describe("client payment methods panel", () => {
   });
 
   it("renders a Stripe card-on-file form without provider reference fields", async () => {
-    const { cardElementMountMock } = installStripeMock();
+    installStripeMock();
     usePaymentMethodsQueryMock.mockReturnValue({
       data: { methods: [] },
       isLoading: false,
@@ -148,9 +196,8 @@ describe("client payment methods panel", () => {
     expect(screen.queryByText("Cardholder name")).not.toBeInTheDocument();
     expect(screen.queryByText("Stripe secure card entry")).not.toBeInTheDocument();
 
-    await waitFor(() => {
-      expect(cardElementMountMock).toHaveBeenCalled();
-    });
+    expect(await screen.findByTestId("mock-stripe-card-element")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText("Loading secure card form...")).not.toBeInTheDocument());
   });
 
   it("requires card-on-file authorization before saving", async () => {
@@ -171,6 +218,24 @@ describe("client payment methods panel", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Save card" })).toBeEnabled();
+    });
+  });
+
+  it("keeps Save card disabled until Stripe reports complete card details", async () => {
+    installStripeMock();
+    stripeMockState.complete = false;
+    usePaymentMethodsQueryMock.mockReturnValue({
+      data: { methods: [] },
+      isLoading: false,
+      error: null
+    });
+
+    render(<ClientPaymentMethodsPanel initialMethods={[]} isSignedInClient />);
+
+    fireEvent.click(await screen.findByLabelText("I authorize BVRB3R to save this card on file for future bookings."));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Save card" })).toBeDisabled();
     });
   });
 
@@ -286,12 +351,17 @@ describe("client payment methods panel", () => {
 
   it("shows a Stripe mount failure message when Elements cannot load", async () => {
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    Reflect.set(window, "Stripe", vi.fn().mockReturnValue({
-      elements: vi.fn(() => {
-        throw new Error("bad publishable key");
-      }),
-      confirmCardSetup: vi.fn()
-    }));
+    loadStripeMock.mockResolvedValue(null);
+    useCreateSavedPaymentMethodSetupMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: vi.fn().mockResolvedValue({
+        provider: "stripe",
+        mode: "setup",
+        clientSecret: "seti_wallet_failure_secret",
+        customerId: "cus_wallet",
+        publishableKey: "pk_test_wallet_failure"
+      })
+    });
     usePaymentMethodsQueryMock.mockReturnValue({
       data: { methods: [] },
       isLoading: false,
@@ -300,7 +370,55 @@ describe("client payment methods panel", () => {
 
     render(<ClientPaymentMethodsPanel initialMethods={[]} isSignedInClient />);
 
-    expect(await screen.findByText("Secure card form failed to load. Check Stripe publishable key or SetupIntent.")).toBeInTheDocument();
+    expect(await screen.findByText("Secure card form failed to load. Stripe setup is not ready.")).toBeInTheDocument();
+    consoleErrorSpy.mockRestore();
+  });
+
+  it("shows a Stripe setup error when the publishable key is missing", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    useCreateSavedPaymentMethodSetupMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: vi.fn().mockResolvedValue({
+        provider: "stripe",
+        mode: "setup",
+        clientSecret: "seti_wallet_missing_key_secret",
+        customerId: "cus_wallet",
+        publishableKey: ""
+      })
+    });
+    usePaymentMethodsQueryMock.mockReturnValue({
+      data: { methods: [] },
+      isLoading: false,
+      error: null
+    });
+
+    render(<ClientPaymentMethodsPanel initialMethods={[]} isSignedInClient />);
+
+    expect(await screen.findByText("Secure card form failed to load. Stripe setup is not ready.")).toBeInTheDocument();
+    consoleErrorSpy.mockRestore();
+  });
+
+  it("shows a Stripe setup error when the setup intent client secret is missing", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    useCreateSavedPaymentMethodSetupMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: vi.fn().mockResolvedValue({
+        provider: "stripe",
+        mode: "setup",
+        clientSecret: "",
+        customerId: "cus_wallet",
+        publishableKey: "pk_test_wallet_missing_secret"
+      })
+    });
+    usePaymentMethodsQueryMock.mockReturnValue({
+      data: { methods: [] },
+      isLoading: false,
+      error: null
+    });
+
+    render(<ClientPaymentMethodsPanel initialMethods={[]} isSignedInClient />);
+
+    expect(await screen.findByText("Secure card form failed to load. Stripe setup is not ready.")).toBeInTheDocument();
     consoleErrorSpy.mockRestore();
   });
 

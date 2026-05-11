@@ -1,11 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CreditCard, ShieldCheck, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Input } from "@/components/ui/input";
+import {
+  StripeCardOnFileForm,
+  STRIPE_CARD_FORM_LOAD_ERROR,
+  type ConfirmStripeCardSetup
+} from "@/components/payments/stripe-card-on-file-form";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   useAddPaymentMethodMutation,
@@ -19,89 +24,6 @@ import {
   type PaymentSetupIntentView
 } from "@/lib/payments/client";
 import { getReadableActionError } from "@/lib/utils/feedback";
-
-type StripeCardElementLike = {
-  mount(target: HTMLElement): void;
-  unmount?: () => void;
-  on?(event: "ready", handler: () => void): void;
-  on?(event: "change", handler: (event: { complete?: boolean; error?: { message?: string } }) => void): void;
-  on?(event: "loaderror", handler: (event: { error?: { message?: string } }) => void): void;
-};
-
-type StripeElementsLike = {
-  create(type: "card", options?: Record<string, unknown>): StripeCardElementLike;
-};
-
-type StripeLike = {
-  elements(options?: { clientSecret?: string }): StripeElementsLike;
-  confirmCardSetup(clientSecret: string, options: {
-    payment_method: {
-      card: StripeCardElementLike;
-    };
-  }): Promise<{
-    error?: { message?: string };
-    setupIntent?: {
-      payment_method?: string | { id?: string };
-    };
-  }>;
-};
-
-declare global {
-  interface Window {
-    Stripe?: (publishableKey: string) => StripeLike;
-  }
-}
-
-let stripeScriptPromise: Promise<void> | null = null;
-const CARD_FORM_LOAD_ERROR = "Secure card form failed to load. Check Stripe publishable key or SetupIntent.";
-const STRIPE_SCRIPT_TIMEOUT_MS = 10000;
-
-function loadStripeJs(publishableKey: string): Promise<StripeLike> {
-  if (typeof window === "undefined") {
-    return Promise.reject(new Error("Stripe cannot load outside the browser."));
-  }
-
-  if (window.Stripe) {
-    return Promise.resolve(window.Stripe(publishableKey));
-  }
-
-  if (!stripeScriptPromise) {
-    stripeScriptPromise = new Promise((resolve, reject) => {
-      const timeout = window.setTimeout(() => {
-        reject(new Error("Stripe.js did not load before timeout."));
-      }, STRIPE_SCRIPT_TIMEOUT_MS);
-      const finish = () => {
-        window.clearTimeout(timeout);
-        resolve();
-      };
-      const fail = () => {
-        window.clearTimeout(timeout);
-        reject(new Error("Unable to load Stripe."));
-      };
-      const existingScript = document.querySelector<HTMLScriptElement>("script[src='https://js.stripe.com/v3']");
-      if (existingScript) {
-        existingScript.addEventListener("load", finish, { once: true });
-        existingScript.addEventListener("error", fail, { once: true });
-        return;
-      }
-
-      const script = document.createElement("script");
-      script.src = "https://js.stripe.com/v3";
-      script.async = true;
-      script.addEventListener("load", finish, { once: true });
-      script.addEventListener("error", fail, { once: true });
-      document.head.appendChild(script);
-    });
-  }
-
-  return stripeScriptPromise.then(() => {
-    if (!window.Stripe) {
-      throw new Error("Stripe did not initialize.");
-    }
-
-    return window.Stripe(publishableKey);
-  });
-}
 
 function getPaymentMethodTitle(method: ClientPaymentMethodView) {
   if (method.nickname?.trim()) {
@@ -126,14 +48,6 @@ function getExpirationLabel(method: ClientPaymentMethodView) {
   return `Exp ${month}/${year}`;
 }
 
-function getStripePaymentMethodId(paymentMethod: string | { id?: string } | undefined) {
-  if (typeof paymentMethod === "string") {
-    return paymentMethod;
-  }
-
-  return paymentMethod?.id ?? "";
-}
-
 export function ClientPaymentMethodsPanel({
   initialMethods,
   isSignedInClient
@@ -151,7 +65,6 @@ export function ClientPaymentMethodsPanel({
   const [mode, setMode] = useState<"saved" | "add">("saved");
   const [authorized, setAuthorized] = useState(false);
   const [cardComplete, setCardComplete] = useState(false);
-  const [cardMountNode, setCardMountNode] = useState<HTMLDivElement | null>(null);
   const [setupIntent, setSetupIntent] = useState<PaymentSetupIntentView | null>(null);
   const [inlineSavedPaymentMethod, setInlineSavedPaymentMethod] = useState<ClientPaymentMethodView | null>(null);
   const [pendingStripePaymentMethodId, setPendingStripePaymentMethodId] = useState<string | null>(null);
@@ -160,8 +73,7 @@ export function ClientPaymentMethodsPanel({
   const [setupStatus, setSetupStatus] = useState<"idle" | "loading" | "ready" | "success" | "error">("idle");
   const [setupMessage, setSetupMessage] = useState<string | null>(null);
   const setupRequestStartedRef = useRef(false);
-  const stripeRef = useRef<StripeLike | null>(null);
-  const cardElementRef = useRef<StripeCardElementLike | null>(null);
+  const confirmCardSetupRef = useRef<ConfirmStripeCardSetup | null>(null);
 
   const methods = useMemo(() => {
     const methodsById = new Map<string, ClientPaymentMethodView>();
@@ -181,7 +93,7 @@ export function ClientPaymentMethodsPanel({
   );
   const showAddForm = isSignedInClient && (mode === "add" || !methods.length);
   const savePending = setupMutation.isPending || addMethodMutation.isPending || setupStatus === "loading";
-  const canSaveCard = setupStatus === "ready" && authorized && !addMethodMutation.isPending;
+  const canSaveCard = setupStatus === "ready" && cardComplete && authorized && Boolean(confirmCardSetupRef.current) && !addMethodMutation.isPending;
 
   useEffect(() => {
     if (!showAddForm || setupIntent || setupRequestStartedRef.current) {
@@ -199,8 +111,13 @@ export function ClientPaymentMethodsPanel({
         }
 
         if (!intent.clientSecret || !intent.publishableKey) {
+          console.error("[payments] payment setup intent is incomplete", {
+            reference: intent.clientSecret ? "stripe_publishable_key_missing" : "setup_intent_client_secret_missing",
+            hasClientSecret: Boolean(intent.clientSecret),
+            hasPublishableKey: Boolean(intent.publishableKey)
+          });
           setSetupStatus("error");
-          setSetupMessage(CARD_FORM_LOAD_ERROR);
+          setSetupMessage(STRIPE_CARD_FORM_LOAD_ERROR);
           return;
         }
 
@@ -211,8 +128,11 @@ export function ClientPaymentMethodsPanel({
           return;
         }
 
+        console.error("[payments] payment setup intent could not be created", {
+          reference: "stripe_setup_intent_create_failed"
+        });
         setSetupStatus("error");
-        setSetupMessage(CARD_FORM_LOAD_ERROR);
+        setSetupMessage(STRIPE_CARD_FORM_LOAD_ERROR);
       });
 
     return () => {
@@ -220,115 +140,27 @@ export function ClientPaymentMethodsPanel({
     };
   }, [setupIntent, setupMutation, showAddForm]);
 
-  useEffect(() => {
-    if (!showAddForm || !setupIntent?.clientSecret || !setupIntent.publishableKey || !cardMountNode) {
-      return;
+  const handleStripeStatusChange = useCallback((status: "idle" | "loading" | "ready" | "error") => {
+    setSetupStatus(status);
+  }, []);
+
+  const handleStripeReadyChange = useCallback((ready: boolean) => {
+    if (ready) {
+      setSetupStatus("ready");
     }
+  }, []);
 
-    let cancelled = false;
-    let ready = false;
-    const readyTimeout = window.setTimeout(() => {
-      if (cancelled || ready) {
-        return;
-      }
+  const handleStripeCompleteChange = useCallback((complete: boolean) => {
+    setCardComplete(complete);
+  }, []);
 
-      console.error("[payments] stripe_card_element_mount_failed", {
-        reference: "stripe_card_element_mount_failed",
-        reason: "ready_timeout"
-      });
-      setSetupStatus("error");
-      setSetupMessage(CARD_FORM_LOAD_ERROR);
-    }, STRIPE_SCRIPT_TIMEOUT_MS);
+  const handleStripeErrorMessage = useCallback((message: string | null) => {
+    setSetupMessage(message);
+  }, []);
 
-    loadStripeJs(setupIntent.publishableKey)
-      .then((stripe) => {
-        if (cancelled) {
-          return;
-        }
-
-        const elements = stripe.elements();
-        const cardElement = elements.create("card", {
-          hidePostalCode: false,
-          style: {
-            base: {
-              color: "#ffffff",
-              fontFamily: "Inter, system-ui, sans-serif",
-              fontSize: "16px",
-              "::placeholder": {
-                color: "rgba(255,255,255,0.42)"
-              }
-            },
-            invalid: {
-              color: "#fecdd3"
-            }
-          }
-        });
-        cardElement.on?.("ready", () => {
-          if (cancelled) {
-            return;
-          }
-
-          ready = true;
-          window.clearTimeout(readyTimeout);
-          setSetupStatus("ready");
-          setSetupMessage(null);
-        });
-        cardElement.on?.("change", (event) => {
-          if (cancelled) {
-            return;
-          }
-
-          setCardComplete(Boolean(event.complete));
-          if (event.error?.message) {
-            setSetupMessage(event.error.message);
-          } else if (event.complete) {
-            setSetupMessage(null);
-          }
-        });
-        cardElement.on?.("loaderror", (event) => {
-          if (cancelled) {
-            return;
-          }
-
-          console.error("[payments] stripe_card_element_mount_failed", {
-            reference: "stripe_card_element_mount_failed",
-            message: event.error?.message ?? null
-          });
-          window.clearTimeout(readyTimeout);
-          setSetupStatus("error");
-          setSetupMessage(CARD_FORM_LOAD_ERROR);
-        });
-        cardElement.mount(cardMountNode);
-        stripeRef.current = stripe;
-        cardElementRef.current = cardElement;
-        if (!cardElement.on) {
-          ready = true;
-          window.clearTimeout(readyTimeout);
-          setSetupStatus("ready");
-        }
-      })
-      .catch(() => {
-        if (cancelled) {
-          return;
-        }
-
-        window.clearTimeout(readyTimeout);
-        console.error("[payments] stripe_card_element_mount_failed", {
-          reference: "stripe_card_element_mount_failed",
-          reason: "stripe_load_failed"
-        });
-        setSetupStatus("error");
-        setSetupMessage(CARD_FORM_LOAD_ERROR);
-      });
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(readyTimeout);
-      cardElementRef.current?.unmount?.();
-      cardElementRef.current = null;
-      stripeRef.current = null;
-    };
-  }, [cardMountNode, setupIntent?.clientSecret, setupIntent?.publishableKey, showAddForm]);
+  const handleConfirmSetupChange = useCallback((confirmSetup: ConfirmStripeCardSetup | null) => {
+    confirmCardSetupRef.current = confirmSetup;
+  }, []);
 
   function startAddCard() {
     setMode("add");
@@ -338,6 +170,7 @@ export function ClientPaymentMethodsPanel({
     setSetupMessage(null);
     setStatusMessage(null);
     setCardComplete(false);
+    confirmCardSetupRef.current = null;
     setPendingStripePaymentMethodId(null);
     setNicknameDraft("");
   }
@@ -350,6 +183,7 @@ export function ClientPaymentMethodsPanel({
     setSetupMessage(null);
     setAuthorized(false);
     setCardComplete(false);
+    confirmCardSetupRef.current = null;
     setPendingStripePaymentMethodId(null);
     setNicknameDraft("");
   }
@@ -363,11 +197,10 @@ export function ClientPaymentMethodsPanel({
       return;
     }
 
-    const stripe = stripeRef.current;
-    const cardElement = cardElementRef.current;
-    if (!stripe || !cardElement || !setupIntent) {
+    const confirmCardSetup = confirmCardSetupRef.current;
+    if (!confirmCardSetup || !setupIntent?.clientSecret) {
       setSetupStatus("error");
-      setSetupMessage(CARD_FORM_LOAD_ERROR);
+      setSetupMessage(STRIPE_CARD_FORM_LOAD_ERROR);
       return;
     }
 
@@ -377,21 +210,7 @@ export function ClientPaymentMethodsPanel({
     }
 
     try {
-      const result = await stripe.confirmCardSetup(setupIntent.clientSecret, {
-        payment_method: {
-          card: cardElement
-        }
-      });
-
-      if (result.error) {
-        throw new Error(result.error.message ?? "Unable to save this card.");
-      }
-
-      const providerPaymentMethodId = getStripePaymentMethodId(result.setupIntent?.payment_method);
-      if (!providerPaymentMethodId) {
-        throw new Error("Stripe did not return a saved card reference.");
-      }
-
+      const providerPaymentMethodId = await confirmCardSetup();
       setPendingStripePaymentMethodId(providerPaymentMethodId);
       setNicknameDraft("");
     } catch (error) {
@@ -413,6 +232,7 @@ export function ClientPaymentMethodsPanel({
     setSetupMessage(null);
     setAuthorized(false);
     setCardComplete(false);
+    confirmCardSetupRef.current = null;
   }
 
   async function saveConfirmedCard() {
@@ -672,20 +492,15 @@ export function ClientPaymentMethodsPanel({
           </div>
 
           <div className="mt-4">
-            <div className="mb-2 grid grid-cols-[1.45fr_0.7fr_0.55fr_0.7fr] gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/42">
-              <span>Card number</span>
-              <span>MM/YY</span>
-              <span>CVC</span>
-              <span>ZIP</span>
-            </div>
-            <div
-              ref={setCardMountNode}
-              className="min-h-[56px] rounded-[16px] border border-white/10 bg-[#101010] px-4 py-4"
-              aria-label="Card number, MM/YY, CVC, and ZIP"
+            <StripeCardOnFileForm
+              setupIntent={setupIntent}
+              isSetupIntentLoading={setupMutation.isPending || setupStatus === "idle"}
+              onReadyChange={handleStripeReadyChange}
+              onCompleteChange={handleStripeCompleteChange}
+              onErrorMessage={handleStripeErrorMessage}
+              onStatusChange={handleStripeStatusChange}
+              onConfirmSetupChange={handleConfirmSetupChange}
             />
-            {setupStatus === "loading" ? (
-              <p className="mt-3 text-sm text-white/50">Loading secure card form...</p>
-            ) : null}
           </div>
 
           <label className="mt-4 flex items-start gap-3 text-sm leading-6 text-white/68">
@@ -706,7 +521,7 @@ export function ClientPaymentMethodsPanel({
 
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <Button type="button" className="h-11 px-5" disabled={!canSaveCard || savePending} onClick={() => void handleSaveCard()}>
-              {addMethodMutation.isPending ? "Saving card..." : "Save card"}
+              {setupMutation.isPending || setupStatus === "loading" ? "Loading card form..." : addMethodMutation.isPending ? "Saving card..." : "Save card"}
             </Button>
             {methods.length ? (
               <Button type="button" variant="secondary" className="h-11 px-5" onClick={cancelAddCard}>

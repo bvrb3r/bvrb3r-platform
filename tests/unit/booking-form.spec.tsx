@@ -19,7 +19,11 @@ const {
   usePaymentMethodsQueryMock,
   useAddPaymentMethodMutationMock,
   useCreateSavedPaymentMethodSetupMutationMock,
-  useCreateAppointmentPaymentMutationMock
+  useCreateAppointmentPaymentMutationMock,
+  loadStripeMock,
+  stripeCardMock,
+  confirmCardSetupMock,
+  stripeMockState
 } = vi.hoisted(() => ({
   useSearchParamsMock: vi.fn(),
   usePwaMock: vi.fn(),
@@ -38,7 +42,17 @@ const {
   usePaymentMethodsQueryMock: vi.fn(),
   useAddPaymentMethodMutationMock: vi.fn(),
   useCreateSavedPaymentMethodSetupMutationMock: vi.fn(),
-  useCreateAppointmentPaymentMutationMock: vi.fn()
+  useCreateAppointmentPaymentMutationMock: vi.fn(),
+  loadStripeMock: vi.fn(),
+  stripeCardMock: {
+    focus: vi.fn()
+  },
+  confirmCardSetupMock: vi.fn(),
+  stripeMockState: {
+    autoReady: true,
+    complete: true,
+    loadError: null as string | null
+  }
 }));
 
 vi.mock("next/navigation", () => ({
@@ -80,6 +94,46 @@ vi.mock("@/lib/payments/client", () => ({
   useCreateAppointmentPaymentMutation: useCreateAppointmentPaymentMutationMock
 }));
 
+vi.mock("@stripe/stripe-js", () => ({
+  loadStripe: loadStripeMock
+}));
+
+vi.mock("@stripe/react-stripe-js", async () => {
+  const React = await vi.importActual<typeof import("react")>("react");
+
+  return {
+    Elements: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
+    CardElement: (props: {
+      onReady?: (element: typeof stripeCardMock) => void;
+      onChange?: (event: { complete?: boolean; error?: { message?: string } }) => void;
+      onLoadError?: (event: { error?: { message?: string } }) => void;
+    }) => {
+      const { onReady, onChange, onLoadError } = props;
+
+      React.useEffect(() => {
+        if (stripeMockState.loadError) {
+          onLoadError?.({ error: { message: stripeMockState.loadError } });
+        } else if (stripeMockState.autoReady) {
+          onReady?.(stripeCardMock);
+          onChange?.({ complete: stripeMockState.complete });
+        }
+      }, [onChange, onLoadError, onReady]);
+
+      return React.createElement(
+        "div",
+        { "data-testid": "mock-stripe-card-element" },
+        React.createElement("iframe", { title: "Secure card input" })
+      );
+    },
+    useStripe: () => ({
+      confirmCardSetup: confirmCardSetupMock
+    }),
+    useElements: () => ({
+      getElement: () => stripeCardMock
+    })
+  };
+});
+
 import { BookingForm } from "@/components/booking/booking-form";
 
 async function advanceToReview() {
@@ -108,7 +162,33 @@ describe("booking form", () => {
     useAddPaymentMethodMutationMock.mockReset();
     useCreateSavedPaymentMethodSetupMutationMock.mockReset();
     useCreateAppointmentPaymentMutationMock.mockReset();
-    Reflect.deleteProperty(window, "Stripe");
+    loadStripeMock.mockReset();
+    confirmCardSetupMock.mockReset();
+    stripeCardMock.focus.mockReset();
+    stripeMockState.autoReady = true;
+    stripeMockState.complete = true;
+    stripeMockState.loadError = null;
+    window.requestAnimationFrame = (callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    };
+    Element.prototype.getBoundingClientRect = vi.fn(() => ({
+      x: 0,
+      y: 0,
+      width: 240,
+      height: 56,
+      top: 0,
+      right: 240,
+      bottom: 56,
+      left: 0,
+      toJSON: () => ({})
+    }));
+    loadStripeMock.mockResolvedValue({});
+    confirmCardSetupMock.mockResolvedValue({
+      setupIntent: {
+        payment_method: "pm_inline_stripe"
+      }
+    });
 
     useSearchParamsMock.mockReturnValue({
       get: vi.fn().mockReturnValue(null)
@@ -514,37 +594,6 @@ describe("booking form", () => {
         label: "Visa ending in 4242"
       }
     });
-    const handlers: {
-      ready?: () => void;
-      change?: (event: { complete?: boolean; error?: { message?: string } }) => void;
-      loaderror?: (event: { error?: { message?: string } }) => void;
-    } = {};
-    const cardElementMountMock = vi.fn();
-    const cardElementUnmountMock = vi.fn();
-    const cardElementOnMock = vi.fn((event: "ready" | "change" | "loaderror", handler: never) => {
-      handlers[event] = handler;
-    });
-    const confirmCardSetupMock = vi.fn().mockResolvedValue({
-      setupIntent: {
-        payment_method: "pm_inline_stripe"
-      }
-    });
-    const elementsMock = {
-      create: vi.fn().mockReturnValue({
-        mount: (target: HTMLElement) => {
-          cardElementMountMock(target);
-          handlers.ready?.();
-          handlers.change?.({ complete: true });
-        },
-        unmount: cardElementUnmountMock,
-        on: cardElementOnMock
-      })
-    };
-
-    Reflect.set(window, "Stripe", vi.fn().mockReturnValue({
-      elements: vi.fn().mockReturnValue(elementsMock),
-      confirmCardSetup: confirmCardSetupMock
-    }));
     usePaymentMethodsQueryMock.mockReturnValue({
       data: { methods: [] },
       isLoading: false,
@@ -565,9 +614,8 @@ describe("booking form", () => {
     await waitFor(() => {
       expect(createSetupMock).toHaveBeenCalledTimes(1);
     });
-    await waitFor(() => {
-      expect(cardElementMountMock).toHaveBeenCalled();
-    });
+    expect(await screen.findByTestId("mock-stripe-card-element")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText("Loading secure card form...")).not.toBeInTheDocument());
 
     expect(screen.getByRole("button", { name: "Book Appointment" })).toBeDisabled();
 
