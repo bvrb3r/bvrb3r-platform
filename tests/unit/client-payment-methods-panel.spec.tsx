@@ -198,6 +198,7 @@ describe("client payment methods panel", () => {
 
     expect(await screen.findByTestId("mock-stripe-card-element")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByText("Loading secure card form...")).not.toBeInTheDocument());
+    expect(screen.getByText("Secure card form ready.")).toBeInTheDocument();
   });
 
   it("requires card-on-file authorization before saving", async () => {
@@ -370,7 +371,24 @@ describe("client payment methods panel", () => {
 
     render(<ClientPaymentMethodsPanel initialMethods={[]} isSignedInClient />);
 
-    expect(await screen.findByText("Secure card form failed to load. Stripe setup is not ready.")).toBeInTheDocument();
+    expect(await screen.findByText("Secure card form failed to load.")).toBeInTheDocument();
+    consoleErrorSpy.mockRestore();
+  });
+
+  it("shows a Stripe mount failure message when the card element load fails", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    installStripeMock();
+    stripeMockState.loadError = "Stripe iframe failed";
+    usePaymentMethodsQueryMock.mockReturnValue({
+      data: { methods: [] },
+      isLoading: false,
+      error: null
+    });
+
+    render(<ClientPaymentMethodsPanel initialMethods={[]} isSignedInClient />);
+
+    expect(await screen.findByText("Secure card form failed to load.")).toBeInTheDocument();
+    expect(screen.queryByText("Secure card form ready.")).not.toBeInTheDocument();
     consoleErrorSpy.mockRestore();
   });
 
@@ -394,7 +412,7 @@ describe("client payment methods panel", () => {
 
     render(<ClientPaymentMethodsPanel initialMethods={[]} isSignedInClient />);
 
-    expect(await screen.findByText("Secure card form failed to load. Stripe setup is not ready.")).toBeInTheDocument();
+    expect(await screen.findByText("Secure card form failed to load.")).toBeInTheDocument();
     consoleErrorSpy.mockRestore();
   });
 
@@ -418,7 +436,7 @@ describe("client payment methods panel", () => {
 
     render(<ClientPaymentMethodsPanel initialMethods={[]} isSignedInClient />);
 
-    expect(await screen.findByText("Secure card form failed to load. Stripe setup is not ready.")).toBeInTheDocument();
+    expect(await screen.findByText("Secure card form failed to load.")).toBeInTheDocument();
     consoleErrorSpy.mockRestore();
   });
 

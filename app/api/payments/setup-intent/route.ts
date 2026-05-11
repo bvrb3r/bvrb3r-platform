@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
       message: error instanceof Error ? error.message : "Unknown setup intent failure"
     });
     return NextResponse.json({
-      error: "Secure card form failed to load. Stripe setup is not ready."
+      error: "Secure card form failed to load."
     }, { status: 500 });
   }
 }

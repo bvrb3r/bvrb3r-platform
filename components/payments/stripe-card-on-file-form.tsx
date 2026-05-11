@@ -5,7 +5,7 @@ import { CardElement, Elements, useElements, useStripe } from "@stripe/react-str
 import { loadStripe, type Stripe, type StripeCardElement } from "@stripe/stripe-js";
 import type { PaymentSetupIntentView } from "@/lib/payments/client";
 
-export const STRIPE_CARD_FORM_LOAD_ERROR = "Secure card form failed to load. Stripe setup is not ready.";
+export const STRIPE_CARD_FORM_LOAD_ERROR = "Secure card form failed to load.";
 
 const STRIPE_CARD_READY_TIMEOUT_MS = 5000;
 const stripePromiseCache = new Map<string, Promise<Stripe | null>>();
@@ -13,8 +13,13 @@ const stripePromiseCache = new Map<string, Promise<Stripe | null>>();
 type StripeSetupReference =
   | "stripe_publishable_key_missing"
   | "stripe_load_failed"
+  | "setup_intent_loading"
+  | "setup_intent_ready"
   | "setup_intent_client_secret_missing"
-  | "card_element_not_ready"
+  | "elements_provider_mounted"
+  | "card_element_ready"
+  | "card_element_change"
+  | "card_element_not_ready_timeout"
   | "card_element_load_error";
 
 export type ConfirmStripeCardSetup = () => Promise<string>;
@@ -31,6 +36,13 @@ type StripeCardOnFileFormProps = {
 
 function logStripeCardFormError(reference: StripeSetupReference, details?: Record<string, unknown>) {
   console.error("[payments] stripe card form failed", {
+    reference,
+    ...(details ?? {})
+  });
+}
+
+function logStripeCardFormDebug(reference: StripeSetupReference, details?: Record<string, unknown>) {
+  console.log("[payments] stripe card form state", {
     reference,
     ...(details ?? {})
   });
@@ -102,6 +114,7 @@ export function StripeCardOnFileForm({
 
   useEffect(() => {
     if (isSetupIntentLoading) {
+      logStripeCardFormDebug("setup_intent_loading");
       onStatusChange("loading");
       onErrorMessage(null);
       return;
@@ -129,6 +142,10 @@ export function StripeCardOnFileForm({
     setStripeLoadState({
       key: publishableKey,
       status: "loading"
+    });
+    logStripeCardFormDebug("setup_intent_ready", {
+      hasClientSecret: Boolean(clientSecret),
+      hasPublishableKey: Boolean(publishableKey)
     });
     onStatusChange("loading");
     onErrorMessage(null);
@@ -182,6 +199,7 @@ export function StripeCardOnFileForm({
   const showLoading = isSetupIntentLoading
     || Boolean(clientSecret && publishableKey && stripePromise && !stripeLoadFailed && !stripeReady)
     || Boolean(showStripeElement && !elementReady && !elementFailed);
+  const showReady = Boolean(showStripeElement && elementReady && !elementFailed);
   const handleReadyChange = useCallback((ready: boolean) => {
     setElementState((current) => {
       const nextFailed = ready ? false : current.key === activeSetupKey && current.failed;
@@ -220,8 +238,8 @@ export function StripeCardOnFileForm({
         <span>ZIP</span>
       </div>
       <div
-        className="relative z-[1] min-h-[56px] rounded-[16px] border border-white/10 bg-[#101010] px-4 py-4"
-        style={{ pointerEvents: "auto" }}
+        className="relative z-[5] min-h-[56px] rounded-[16px] border border-[rgba(255,255,255,0.18)] bg-[rgba(255,255,255,0.04)] p-4"
+        style={{ pointerEvents: "auto", cursor: "text" }}
         aria-label="Card number, MM/YY, CVC, and ZIP"
         data-testid="stripe-card-element-container"
         data-stripe-card-host="true"
@@ -242,6 +260,9 @@ export function StripeCardOnFileForm({
       </div>
       {showLoading ? (
         <p className="mt-3 text-sm text-white/50">Loading secure card form...</p>
+      ) : null}
+      {showReady ? (
+        <p className="mt-3 text-sm text-[#baff69]/70">Secure card form ready.</p>
       ) : null}
     </div>
   );
@@ -273,6 +294,13 @@ function StripeCardElementFields({
   }, [onElementFailure, onErrorMessage, onReadyChange, onStatusChange]);
 
   useEffect(() => {
+    logStripeCardFormDebug("elements_provider_mounted", {
+      hasStripe: Boolean(stripe),
+      hasElements: Boolean(elements)
+    });
+  }, [elements, stripe]);
+
+  useEffect(() => {
     readyRef.current = false;
     onReadyChange(false);
     onCompleteChange(false);
@@ -285,7 +313,7 @@ function StripeCardElementFields({
         return;
       }
 
-      markFailed("card_element_not_ready", {
+      markFailed("card_element_not_ready_timeout", {
         reason: "ready_timeout"
       });
     }, STRIPE_CARD_READY_TIMEOUT_MS);
@@ -304,7 +332,7 @@ function StripeCardElementFields({
     onConfirmSetupChange(async () => {
       const card = elements.getElement(CardElement);
       if (!card) {
-        markFailed("card_element_not_ready", {
+        markFailed("card_element_not_ready_timeout", {
           reason: "card_element_missing_at_confirm"
         });
         throw new Error(STRIPE_CARD_FORM_LOAD_ERROR);
@@ -335,6 +363,7 @@ function StripeCardElementFields({
 
   const verifyMountedIframe = useCallback((cardElement: StripeCardElement) => {
     readyRef.current = true;
+    logStripeCardFormDebug("card_element_ready");
     onReadyChange(true);
     onStatusChange("ready");
     onErrorMessage(null);
@@ -348,33 +377,52 @@ function StripeCardElementFields({
       const iframeRect = iframe?.getBoundingClientRect();
 
       if (!host || !iframe) {
-        logStripeCardFormError("card_element_not_ready", {
+        markFailed("card_element_not_ready_timeout", {
           reason: "iframe_diagnostic_missing_after_ready",
+          iframeExists: Boolean(iframe),
           hostHeight: hostRect?.height ?? null,
           iframeHeight: iframeRect?.height ?? null,
+          iframeWidth: iframeRect?.width ?? null,
           pointerEvents: hostStyle?.pointerEvents ?? null
         });
         return;
       }
 
       if ((hostRect?.height ?? 0) <= 0 || (iframeRect?.height ?? 0) <= 0 || hostStyle?.pointerEvents === "none") {
-        markFailed("card_element_not_ready", {
+        markFailed("card_element_not_ready_timeout", {
           reason: "iframe_not_visible_or_interactive",
+          iframeExists: Boolean(iframe),
           hostHeight: hostRect?.height ?? null,
           iframeHeight: iframeRect?.height ?? null,
+          iframeWidth: iframeRect?.width ?? null,
           pointerEvents: hostStyle?.pointerEvents ?? null
         });
         return;
       }
+
+      logStripeCardFormDebug("card_element_ready", {
+        iframeExists: true,
+        iframeHeight: iframeRect?.height ?? null,
+        iframeWidth: iframeRect?.width ?? null
+      });
     });
   }, [markFailed, onErrorMessage, onReadyChange, onStatusChange]);
 
   return (
-    <div ref={elementHostRef} className="min-h-6 w-full" style={{ pointerEvents: "auto" }}>
+    <div
+      ref={elementHostRef}
+      className="relative z-[6] block min-h-[24px] w-full"
+      style={{ pointerEvents: "auto" }}
+    >
       <CardElement
-        className="block min-h-6 w-full"
+        className="relative z-[7] block min-h-[24px] w-full"
         onReady={verifyMountedIframe}
         onChange={(event) => {
+          logStripeCardFormDebug("card_element_change", {
+            complete: Boolean(event.complete),
+            empty: Boolean(event.empty),
+            error: event.error?.message ?? null
+          });
           onCompleteChange(Boolean(event.complete));
           if (event.error?.message) {
             onErrorMessage(event.error.message);

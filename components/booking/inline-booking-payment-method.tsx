@@ -84,7 +84,12 @@ export function InlineBookingPaymentMethod({
 
   const showAddForm = mode === "add" || (!paymentMethods.length && !isLoading);
   const isPending = setupMutation.isPending || addMethodMutation.isPending || setupStatus === "loading";
-  const canSaveCard = setupStatus === "ready" && cardComplete && saveForFuture && Boolean(confirmCardSetupRef.current) && !addMethodMutation.isPending;
+  const canSaveCard = setupStatus === "ready"
+    && cardComplete
+    && saveForFuture
+    && Boolean(setupIntent?.clientSecret)
+    && Boolean(confirmCardSetupRef.current)
+    && !addMethodMutation.isPending;
   const selectedTitle = selectedPaymentMethod ? getPaymentMethodTitle(selectedPaymentMethod) : "";
   const selectedCardLine = selectedPaymentMethod ? getPaymentMethodCardLine(selectedPaymentMethod) : "";
   const selectedExpiration = selectedPaymentMethod ? getExpirationLabel(selectedPaymentMethod) : "";
@@ -197,13 +202,6 @@ export function InlineBookingPaymentMethod({
   async function handleSaveCard() {
     setSetupMessage(null);
 
-    const confirmCardSetup = confirmCardSetupRef.current;
-    if (!confirmCardSetup || !setupIntent?.clientSecret) {
-      setSetupStatus("error");
-      setSetupMessage(STRIPE_CARD_FORM_LOAD_ERROR);
-      return;
-    }
-
     try {
       if (!saveForFuture) {
         setSetupMessage("Authorize BVRB3R to save this card before continuing.");
@@ -211,7 +209,14 @@ export function InlineBookingPaymentMethod({
       }
 
       if (!cardComplete) {
-        setSetupMessage("Enter complete card details.");
+        setSetupMessage("Enter complete card details before saving.");
+        return;
+      }
+
+      const confirmCardSetup = confirmCardSetupRef.current;
+      if (!confirmCardSetup || !setupIntent?.clientSecret) {
+        setSetupStatus("error");
+        setSetupMessage(STRIPE_CARD_FORM_LOAD_ERROR);
         return;
       }
 

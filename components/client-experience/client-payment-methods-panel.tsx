@@ -93,7 +93,12 @@ export function ClientPaymentMethodsPanel({
   );
   const showAddForm = isSignedInClient && (mode === "add" || !methods.length);
   const savePending = setupMutation.isPending || addMethodMutation.isPending || setupStatus === "loading";
-  const canSaveCard = setupStatus === "ready" && cardComplete && authorized && Boolean(confirmCardSetupRef.current) && !addMethodMutation.isPending;
+  const canSaveCard = setupStatus === "ready"
+    && cardComplete
+    && authorized
+    && Boolean(setupIntent?.clientSecret)
+    && Boolean(confirmCardSetupRef.current)
+    && !addMethodMutation.isPending;
 
   useEffect(() => {
     if (!showAddForm || setupIntent || setupRequestStartedRef.current) {
@@ -198,14 +203,14 @@ export function ClientPaymentMethodsPanel({
     }
 
     const confirmCardSetup = confirmCardSetupRef.current;
-    if (!confirmCardSetup || !setupIntent?.clientSecret) {
-      setSetupStatus("error");
-      setSetupMessage(STRIPE_CARD_FORM_LOAD_ERROR);
+    if (!cardComplete) {
+      setSetupMessage("Enter complete card details before saving.");
       return;
     }
 
-    if (!cardComplete) {
-      setSetupMessage("Enter complete card details.");
+    if (!confirmCardSetup || !setupIntent?.clientSecret) {
+      setSetupStatus("error");
+      setSetupMessage(STRIPE_CARD_FORM_LOAD_ERROR);
       return;
     }
 
