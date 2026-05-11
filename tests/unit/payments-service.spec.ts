@@ -169,8 +169,11 @@ describe("payment methods service", () => {
 
     expect(resolver.tables.client_preferences).toHaveLength(1);
     expect(resolver.tables.client_preferences[0]).toMatchObject({
+      client_id: "11111111-1111-4111-8111-111111111111",
       client_reference: "client-jordan",
-      client_email: "client-jordan@client.bvrb3r.local"
+      client_email: "client-jordan@client.bvrb3r.local",
+      provider_customer_ref: null,
+      default_payment_method_ref: null
     });
   });
 

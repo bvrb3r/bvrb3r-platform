@@ -115,6 +115,11 @@ type ClientPaymentContext = {
   preferencesRepaired: boolean;
 };
 
+export type ClientPaymentProfileRepairView = ClientPaymentContext & {
+  profileName: string;
+  profileEmail: string;
+};
+
 type PaymentRow = {
   id: string;
   appointment_id: string | null;
@@ -489,6 +494,16 @@ function isPaymentSchemaMissing(error: {
     || combined.includes("schema cache");
 }
 
+function isPaymentPreferencePayloadSchemaMismatch(error: {
+  code?: string | null;
+  message?: string | null;
+  details?: string | null;
+}) {
+  return isPaymentSchemaMissing(error)
+    || error.code === "PGRST204"
+    || `${error.message ?? ""} ${error.details ?? ""}`.toLowerCase().includes("client_id");
+}
+
 async function readClientRowByIdOrReference(
   supabase: SupabaseClient,
   clientIdentifier: string
@@ -589,17 +604,30 @@ async function ensureClientPaymentPreferenceRow(
   const now = new Date().toISOString();
   const email = context.profileEmail?.trim().toLowerCase() || `${clientReference}@client.bvrb3r.local`;
   if (!existing.data) {
-    const insertResult = await supabase
+    const basePayload = {
+      client_reference: clientReference,
+      client_email: email,
+      favorite_shop_reference: null,
+      preferred_location_reference: null,
+      prefers_instant_booking: false,
+      updated_at: now,
+      created_at: now
+    };
+    const enrichedPayload = {
+      ...basePayload,
+      client_id: context.clientId,
+      provider_customer_ref: null,
+      default_payment_method_ref: null
+    };
+    let insertResult = await supabase
       .from("client_preferences")
-      .insert({
-        client_reference: clientReference,
-        client_email: email,
-        favorite_shop_reference: null,
-        preferred_location_reference: null,
-        prefers_instant_booking: false,
-        updated_at: now,
-        created_at: now
-      });
+      .insert(enrichedPayload);
+
+    if (insertResult.error && isPaymentPreferencePayloadSchemaMismatch(insertResult.error)) {
+      insertResult = await supabase
+        .from("client_preferences")
+        .insert(basePayload);
+    }
 
     if (insertResult.error) {
       if (isPaymentSchemaMissing(insertResult.error)) {
@@ -612,11 +640,23 @@ async function ensureClientPaymentPreferenceRow(
     return true;
   }
 
-  if (email && existing.data.client_email !== email) {
-    const updateResult = await supabase
+  const shouldSyncEmail = email && existing.data.client_email !== email;
+  if (shouldSyncEmail) {
+    let updateResult = await supabase
       .from("client_preferences")
-      .update({ client_email: email, updated_at: now })
+      .update({
+        client_email: email,
+        client_id: context.clientId,
+        updated_at: now
+      })
       .eq("client_reference", clientReference);
+
+    if (updateResult.error && isPaymentPreferencePayloadSchemaMismatch(updateResult.error)) {
+      updateResult = await supabase
+        .from("client_preferences")
+        .update({ client_email: email, updated_at: now })
+        .eq("client_reference", clientReference);
+    }
 
     if (updateResult.error && !isPaymentSchemaMissing(updateResult.error)) {
       throw new PaymentServiceError("Unable to sync client payment preferences.", 500);
@@ -711,18 +751,63 @@ async function syncClientPreferencePaymentDefaults(
     return;
   }
 
+  await ensureClientPaymentPreferenceRow(supabase, context);
+
   const defaultMethod = paymentMethods.find((method) => method.is_default) ?? paymentMethods[0] ?? null;
-  const updateResult = await supabase
+  let updateResult = await supabase
     .from("client_preferences")
     .update({
+      client_id: context.clientId,
       provider_customer_ref: defaultMethod?.provider_customer_id ?? null,
       default_payment_method_ref: defaultMethod?.provider_payment_method_id ?? null,
       updated_at: new Date().toISOString()
     })
     .eq("client_reference", clientReference);
 
+  if (updateResult.error && isPaymentPreferencePayloadSchemaMismatch(updateResult.error)) {
+    updateResult = await supabase
+      .from("client_preferences")
+      .update({
+        updated_at: new Date().toISOString()
+      })
+      .eq("client_reference", clientReference);
+  }
+
   if (updateResult.error && !isPaymentSchemaMissing(updateResult.error)) {
     throw new PaymentServiceError("Unable to sync client payment preference defaults.", 500);
+  }
+}
+
+async function syncClientPreferenceProviderCustomer(
+  supabase: SupabaseClient,
+  context: ClientPaymentContext,
+  providerCustomerId?: string | null
+) {
+  const clientReference = context.clientReference?.trim();
+  if (!clientReference || !providerCustomerId?.trim()) {
+    return;
+  }
+
+  await ensureClientPaymentPreferenceRow(supabase, context);
+
+  let updateResult = await supabase
+    .from("client_preferences")
+    .update({
+      client_id: context.clientId,
+      provider_customer_ref: providerCustomerId.trim(),
+      updated_at: new Date().toISOString()
+    })
+    .eq("client_reference", clientReference);
+
+  if (updateResult.error && isPaymentPreferencePayloadSchemaMismatch(updateResult.error)) {
+    updateResult = await supabase
+      .from("client_preferences")
+      .update({ updated_at: new Date().toISOString() })
+      .eq("client_reference", clientReference);
+  }
+
+  if (updateResult.error && !isPaymentSchemaMissing(updateResult.error)) {
+    throw new PaymentServiceError("Unable to sync client payment customer reference.", 500);
   }
 }
 
@@ -1874,6 +1959,39 @@ export async function listClientPaymentMethods(user: UserAccount) {
   }
 
   return readClientPaymentMethodsByClientId(actor.clientId, supabase);
+}
+
+export async function ensureClientPaymentProfileForUser(
+  user: UserAccount,
+  supabaseInput?: SupabaseClient | null
+): Promise<ClientPaymentProfileRepairView> {
+  const supabase = supabaseInput ?? getSupabaseOrThrow();
+  const actor = await resolvePaymentActor(user, supabase);
+
+  if (actor.role !== "client" || !actor.clientId) {
+    throw new PaymentServiceError("Only clients can initialize saved payment methods.", 403);
+  }
+
+  const profileEmail = actor.profile.email || user.email;
+  const profileName = actor.profile.full_name || user.name || profileEmail;
+  return {
+    clientId: actor.clientId,
+    clientReference: actor.clientReference ?? null,
+    profileId: actor.profile.id,
+    profileEmail,
+    profileName,
+    profilePhone: actor.profile.phone ?? user.phone,
+    preferencesRepaired: Boolean(actor.clientPreferencesRepaired)
+  };
+}
+
+export async function syncClientPaymentSetupCustomer(
+  profile: ClientPaymentProfileRepairView,
+  providerCustomerId?: string | null,
+  supabaseInput?: SupabaseClient | null
+) {
+  const supabase = supabaseInput ?? getSupabaseOrThrow();
+  await syncClientPreferenceProviderCustomer(supabase, profile, providerCustomerId);
 }
 
 export async function addClientPaymentMethod(user: UserAccount, input: PaymentMethodReferenceInput) {

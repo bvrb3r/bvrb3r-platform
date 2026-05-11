@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/booking/route-auth";
 import { getPaymentProvider } from "@/lib/payments/provider";
+import { ensureClientPaymentProfileForUser, syncClientPaymentSetupCustomer } from "@/lib/payments/service";
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,11 +11,13 @@ export async function POST(request: NextRequest) {
     }
 
     await request.json().catch(() => null);
+    const paymentProfile = await ensureClientPaymentProfileForUser(user);
     const provider = await getPaymentProvider();
     const intent = await provider.createSavedPaymentMethodSetup({
-      customerEmail: user.email,
-      customerName: user.name
+      customerEmail: paymentProfile.profileEmail,
+      customerName: paymentProfile.profileName
     });
+    await syncClientPaymentSetupCustomer(paymentProfile, intent.customerId);
 
     return NextResponse.json(intent);
   } catch (error) {
@@ -23,7 +26,7 @@ export async function POST(request: NextRequest) {
       message: error instanceof Error ? error.message : "Unknown setup intent failure"
     });
     return NextResponse.json({
-      error: "Secure card form failed to load. Check Stripe publishable key or SetupIntent."
+      error: "Secure card form failed to load. Stripe setup is not ready."
     }, { status: 500 });
   }
 }

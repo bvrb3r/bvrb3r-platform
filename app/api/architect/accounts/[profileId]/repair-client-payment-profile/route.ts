@@ -2,7 +2,7 @@ import { revalidatePath } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { requireArchitectAdmin } from "@/app/api/architect/verifications/_shared";
 import { ensureClientProfileForUser } from "@/lib/booking/platform-service";
-import { readClientPaymentMethodsByClientId } from "@/lib/payments/service";
+import { ensureClientPaymentProfileForUser, readClientPaymentMethodsByClientId } from "@/lib/payments/service";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 type ProfileRow = {
@@ -52,9 +52,20 @@ export async function POST(
       fullName: profile?.full_name,
       phone: profile?.phone
     });
-    const methods = await readClientPaymentMethodsByClientId(repair.clientId, supabase, {
+    const paymentProfile = await ensureClientPaymentProfileForUser({
+      id: profileId,
+      role: "client",
+      email: profile?.email ?? `${repair.clientId}@client.bvrb3r.local`,
+      password: "",
+      name: profile?.full_name ?? profile?.email ?? "Client",
+      title: "Client",
+      locationIds: [],
+      phone: profile?.phone ?? undefined,
+      clientId: repair.clientId
+    }, supabase);
+    const methods = await readClientPaymentMethodsByClientId(paymentProfile.clientReference ?? paymentProfile.clientId, supabase, {
       profileId,
-      clientReference: repair.clientId,
+      clientReference: paymentProfile.clientReference ?? repair.clientId,
       profileEmail: profile?.email,
       profileName: profile?.full_name,
       profilePhone: profile?.phone
@@ -68,6 +79,7 @@ export async function POST(
     return NextResponse.json({
       ok: true,
       repair,
+      paymentProfile,
       paymentMethodCount: methods.length,
       defaultPaymentExists: methods.some((method) => method.isDefault)
     });

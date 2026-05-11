@@ -13,7 +13,11 @@ const {
   createAppointmentPaymentMock,
   capturePaymentMock,
   refundPaymentMock,
-  createAppointmentTipMock
+  createAppointmentTipMock,
+  ensureClientPaymentProfileForUserMock,
+  syncClientPaymentSetupCustomerMock,
+  getPaymentProviderMock,
+  createSavedPaymentMethodSetupMock
 } = vi.hoisted(() => ({
   getSessionUserMock: vi.fn(),
   listClientPaymentMethodsMock: vi.fn(),
@@ -24,7 +28,11 @@ const {
   createAppointmentPaymentMock: vi.fn(),
   capturePaymentMock: vi.fn(),
   refundPaymentMock: vi.fn(),
-  createAppointmentTipMock: vi.fn()
+  createAppointmentTipMock: vi.fn(),
+  ensureClientPaymentProfileForUserMock: vi.fn(),
+  syncClientPaymentSetupCustomerMock: vi.fn(),
+  getPaymentProviderMock: vi.fn(),
+  createSavedPaymentMethodSetupMock: vi.fn()
 }));
 
 vi.mock("@/lib/booking/route-auth", () => ({
@@ -43,13 +51,20 @@ vi.mock("@/lib/payments/service", async () => {
     createAppointmentPayment: createAppointmentPaymentMock,
     capturePayment: capturePaymentMock,
     refundPayment: refundPaymentMock,
-    createAppointmentTip: createAppointmentTipMock
+    createAppointmentTip: createAppointmentTipMock,
+    ensureClientPaymentProfileForUser: ensureClientPaymentProfileForUserMock,
+    syncClientPaymentSetupCustomer: syncClientPaymentSetupCustomerMock
   };
 });
+
+vi.mock("@/lib/payments/provider", () => ({
+  getPaymentProvider: getPaymentProviderMock
+}));
 
 import { GET as getPaymentMethods, POST as postPaymentMethod } from "@/app/api/payments/methods/route";
 import { DELETE as deletePaymentMethod, PATCH as patchPaymentMethod } from "@/app/api/payments/methods/[id]/route";
 import { POST as postDefaultPaymentMethod } from "@/app/api/payments/methods/[id]/default/route";
+import { POST as postSetupIntent } from "@/app/api/payments/setup-intent/route";
 import { POST as postAppointmentPayment } from "@/app/api/payments/appointments/[appointmentId]/create/route";
 import { POST as postCapturePayment } from "@/app/api/payments/[paymentId]/capture/route";
 import { POST as postRefundPayment } from "@/app/api/payments/[paymentId]/refund/route";
@@ -67,6 +82,20 @@ describe("phase 9 payment routes", () => {
     capturePaymentMock.mockReset();
     refundPaymentMock.mockReset();
     createAppointmentTipMock.mockReset();
+    ensureClientPaymentProfileForUserMock.mockReset();
+    syncClientPaymentSetupCustomerMock.mockReset();
+    getPaymentProviderMock.mockReset();
+    createSavedPaymentMethodSetupMock.mockReset();
+    getPaymentProviderMock.mockResolvedValue({
+      createSavedPaymentMethodSetup: createSavedPaymentMethodSetupMock
+    });
+    createSavedPaymentMethodSetupMock.mockResolvedValue({
+      provider: "stripe",
+      mode: "setup",
+      clientSecret: "seti_client_secret",
+      customerId: "cus_client",
+      publishableKey: "pk_test_client"
+    });
   });
 
   it("returns the signed-in client's payment methods", async () => {
@@ -90,6 +119,36 @@ describe("phase 9 payment routes", () => {
 
     expect(response.status).toBe(200);
     expect(body.methods[0].id).toBe("pm-1");
+  });
+
+  it("creates setup intents after repairing the client payment profile", async () => {
+    const user = resolveDemoUser("client@bvrb3r.demo");
+    const repair = {
+      clientId: "11111111-1111-4111-8111-111111111111",
+      clientReference: "client-jordan",
+      profileId: user.id,
+      profileEmail: "jordan@example.com",
+      profileName: "Jordan Ellis",
+      profilePhone: "8135550190",
+      preferencesRepaired: true
+    };
+    getSessionUserMock.mockResolvedValue(user);
+    ensureClientPaymentProfileForUserMock.mockResolvedValue(repair);
+
+    const response = await postSetupIntent(new NextRequest("https://bvrb3r.demo/api/payments/setup-intent", {
+      method: "POST",
+      body: JSON.stringify({ mode: "booking_inline" })
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.clientSecret).toBe("seti_client_secret");
+    expect(ensureClientPaymentProfileForUserMock).toHaveBeenCalledWith(user);
+    expect(createSavedPaymentMethodSetupMock).toHaveBeenCalledWith({
+      customerEmail: "jordan@example.com",
+      customerName: "Jordan Ellis"
+    });
+    expect(syncClientPaymentSetupCustomerMock).toHaveBeenCalledWith(repair, "cus_client");
   });
 
   it("rejects invalid payment method payloads", async () => {
