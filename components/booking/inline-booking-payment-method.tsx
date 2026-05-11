@@ -150,7 +150,7 @@ export function InlineBookingPaymentMethod({
 
   const showAddForm = mode === "add" || (!paymentMethods.length && !isLoading);
   const isPending = setupMutation.isPending || addMethodMutation.isPending || setupStatus === "loading";
-  const canSaveCard = setupStatus === "ready" && !addMethodMutation.isPending;
+  const canSaveCard = setupStatus === "ready" && saveForFuture && !addMethodMutation.isPending;
   const selectedTitle = selectedPaymentMethod ? getPaymentMethodTitle(selectedPaymentMethod) : "";
   const selectedExpiration = selectedPaymentMethod ? getExpirationLabel(selectedPaymentMethod) : "";
 
@@ -288,6 +288,11 @@ export function InlineBookingPaymentMethod({
     }
 
     try {
+      if (!saveForFuture) {
+        setSetupMessage("Authorize BVRB3R to save this card before continuing.");
+        return;
+      }
+
       const submitResult = await elements.submit?.();
       if (submitResult?.error) {
         throw new Error(submitResult.error.message ?? "Check the card details and try again.");
@@ -365,7 +370,8 @@ export function InlineBookingPaymentMethod({
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-base font-semibold text-white">{selectedTitle}</p>
-              <p className="mt-1 text-sm text-white/58">{selectedExpiration}</p>
+              <p className="mt-1 text-sm text-white/58">Charged when you book</p>
+              <p className="mt-1 text-xs text-white/42">{selectedExpiration}</p>
               <p className="mt-2 text-xs uppercase tracking-[0.18em] text-white/38">{currency(totalDue)} due today</p>
             </div>
           </div>
@@ -441,7 +447,7 @@ export function InlineBookingPaymentMethod({
               checked={saveForFuture}
               onChange={(event) => setSaveForFuture(event.target.checked)}
             />
-            <span>Save card for future bookings</span>
+            <span>I authorize BVRB3R to save this card on file for future bookings.</span>
           </label>
 
           {setupMessage ? (

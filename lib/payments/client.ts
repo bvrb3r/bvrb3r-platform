@@ -127,6 +127,19 @@ export function useSetDefaultPaymentMethodMutation() {
   });
 }
 
+export function useRemovePaymentMethodMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (paymentMethodId: string) =>
+      requestJson<{ ok: boolean }>(`/api/payments/methods/${paymentMethodId}`, {
+        method: "DELETE"
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["payments", "methods"] });
+    }
+  });
+}
+
 export function useCreateAppointmentPaymentMutation() {
   const queryClient = useQueryClient();
   return useMutation({

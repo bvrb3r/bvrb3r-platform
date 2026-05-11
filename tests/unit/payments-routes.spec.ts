@@ -8,6 +8,7 @@ const {
   listClientPaymentMethodsMock,
   addClientPaymentMethodMock,
   setDefaultClientPaymentMethodMock,
+  removeClientPaymentMethodMock,
   createAppointmentPaymentMock,
   capturePaymentMock,
   refundPaymentMock,
@@ -17,6 +18,7 @@ const {
   listClientPaymentMethodsMock: vi.fn(),
   addClientPaymentMethodMock: vi.fn(),
   setDefaultClientPaymentMethodMock: vi.fn(),
+  removeClientPaymentMethodMock: vi.fn(),
   createAppointmentPaymentMock: vi.fn(),
   capturePaymentMock: vi.fn(),
   refundPaymentMock: vi.fn(),
@@ -34,6 +36,7 @@ vi.mock("@/lib/payments/service", async () => {
     listClientPaymentMethods: listClientPaymentMethodsMock,
     addClientPaymentMethod: addClientPaymentMethodMock,
     setDefaultClientPaymentMethod: setDefaultClientPaymentMethodMock,
+    removeClientPaymentMethod: removeClientPaymentMethodMock,
     createAppointmentPayment: createAppointmentPaymentMock,
     capturePayment: capturePaymentMock,
     refundPayment: refundPaymentMock,
@@ -42,6 +45,7 @@ vi.mock("@/lib/payments/service", async () => {
 });
 
 import { GET as getPaymentMethods, POST as postPaymentMethod } from "@/app/api/payments/methods/route";
+import { DELETE as deletePaymentMethod } from "@/app/api/payments/methods/[id]/route";
 import { POST as postDefaultPaymentMethod } from "@/app/api/payments/methods/[id]/default/route";
 import { POST as postAppointmentPayment } from "@/app/api/payments/appointments/[appointmentId]/create/route";
 import { POST as postCapturePayment } from "@/app/api/payments/[paymentId]/capture/route";
@@ -54,6 +58,7 @@ describe("phase 9 payment routes", () => {
     listClientPaymentMethodsMock.mockReset();
     addClientPaymentMethodMock.mockReset();
     setDefaultClientPaymentMethodMock.mockReset();
+    removeClientPaymentMethodMock.mockReset();
     createAppointmentPaymentMock.mockReset();
     capturePaymentMock.mockReset();
     refundPaymentMock.mockReset();
@@ -148,6 +153,22 @@ describe("phase 9 payment routes", () => {
 
     expect(response.status).toBe(200);
     expect(body.method.isDefault).toBe(true);
+  });
+
+  it("removes a saved payment method", async () => {
+    getSessionUserMock.mockResolvedValue(resolveDemoUser("client@bvrb3r.demo"));
+    removeClientPaymentMethodMock.mockResolvedValue({ ok: true });
+
+    const response = await deletePaymentMethod(new NextRequest("https://bvrb3r.demo/api/payments/methods/pm-2", {
+      method: "DELETE"
+    }), {
+      params: Promise.resolve({ id: "pm-2" })
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(removeClientPaymentMethodMock).toHaveBeenCalledWith(expect.anything(), "pm-2");
   });
 
   it("creates an appointment-linked payment record", async () => {

@@ -1371,6 +1371,31 @@ async function syncLegacyBillingDefault(
   }
 }
 
+async function enrichTokenizedPaymentMethodFromProvider(input: PaymentMethodReferenceInput) {
+  const normalized = normalizePaymentMethodReference(input);
+  if (normalized.provider !== "stripe") {
+    return normalized;
+  }
+
+  try {
+    const stripe = getStripeConnectClient();
+    const paymentMethod = await stripe.paymentMethods.retrieve(normalized.providerPaymentMethodId);
+    const card = paymentMethod.type === "card" ? paymentMethod.card : null;
+    return {
+      ...normalized,
+      providerCustomerId: typeof paymentMethod.customer === "string"
+        ? paymentMethod.customer
+        : normalized.providerCustomerId,
+      brand: card?.brand ?? normalized.brand,
+      last4: card?.last4 ?? normalized.last4,
+      expMonth: card?.exp_month ?? normalized.expMonth,
+      expYear: card?.exp_year ?? normalized.expYear
+    };
+  } catch (error) {
+    throw toStripePaymentServiceError(error, "Unable to verify the saved Stripe card.", 502);
+  }
+}
+
 export async function readClientPaymentMethodsByClientId(
   clientId: string,
   supabaseInput?: SupabaseClient | null,
@@ -1853,7 +1878,7 @@ export async function addClientPaymentMethod(user: UserAccount, input: PaymentMe
     throw new PaymentServiceError("Only clients can add saved payment methods.", 403);
   }
 
-  const normalized = normalizePaymentMethodReference(input);
+  const normalized = await enrichTokenizedPaymentMethodFromProvider(input);
   const existingMethods = await readClientPaymentMethodsByClientId(actor.clientId, supabase);
   const shouldBeDefault = normalized.isDefault || existingMethods.length === 0;
 
@@ -1981,6 +2006,84 @@ export async function setDefaultClientPaymentMethod(user: UserAccount, paymentMe
   }
 
   return mapPaymentMethodRow(setDefault.data as PaymentMethodRow);
+}
+
+export async function removeClientPaymentMethod(user: UserAccount, paymentMethodId: string) {
+  const supabase = getSupabaseOrThrow();
+  const actor = await resolvePaymentActor(user, supabase);
+
+  if (actor.role !== "client" || !actor.clientId) {
+    throw new PaymentServiceError("Only clients can remove saved payment methods.", 403);
+  }
+
+  const methodResult = await supabase
+    .from("payment_methods")
+    .select("id, client_id, provider, provider_customer_id, provider_payment_method_id, brand, last4, exp_month, exp_year, is_default, created_at")
+    .eq("id", paymentMethodId)
+    .maybeSingle();
+
+  if (methodResult.error) {
+    throw new PaymentServiceError("Unable to load the requested payment method.", 500);
+  }
+
+  if (!methodResult.data) {
+    throw new PaymentServiceError("Payment method not found.", 404);
+  }
+
+  const paymentMethod = methodResult.data as PaymentMethodRow;
+  assertClientOwnsPaymentMethod(actor, paymentMethod);
+
+  if (paymentMethod.provider === "stripe") {
+    try {
+      await getStripeConnectClient().paymentMethods.detach(paymentMethod.provider_payment_method_id);
+    } catch (error) {
+      if (error instanceof StripeConnectError) {
+        throw new PaymentServiceError(error.message, error.status);
+      }
+
+      throw new PaymentServiceError("Unable to remove the saved Stripe card.", 502);
+    }
+  }
+
+  const deleteCanonical = await supabase
+    .from("payment_methods")
+    .delete()
+    .eq("id", paymentMethod.id)
+    .eq("client_id", actor.clientId);
+
+  if (deleteCanonical.error) {
+    throw new PaymentServiceError("Unable to remove the saved payment method.", 500);
+  }
+
+  await supabase
+    .from("saved_payment_methods")
+    .delete()
+    .eq("profile_id", actor.profile.id)
+    .eq("provider_payment_method_id", paymentMethod.provider_payment_method_id);
+
+  const remainingRows = await readCanonicalPaymentMethodRows(supabase, actor.clientId, actor.clientReference ?? actor.clientId);
+  let syncedRows = remainingRows;
+  if (paymentMethod.is_default && remainingRows.length && !remainingRows.some((method) => method.is_default)) {
+    const nextDefault = remainingRows[0];
+    const setDefault = await supabase
+      .from("payment_methods")
+      .update({ is_default: true, updated_at: new Date().toISOString() })
+      .eq("id", nextDefault.id);
+
+    if (setDefault.error) {
+      throw new PaymentServiceError("Unable to select a new default payment method.", 500);
+    }
+
+    syncedRows = await readCanonicalPaymentMethodRows(supabase, actor.clientId, actor.clientReference ?? actor.clientId);
+    await syncLegacyBillingDefault(supabase, actor, nextDefault.provider, nextDefault.provider_payment_method_id);
+  }
+
+  const paymentContext = clientPaymentContextFromActor(actor);
+  if (paymentContext) {
+    await syncClientPreferencePaymentDefaults(supabase, paymentContext, syncedRows);
+  }
+
+  return { ok: true };
 }
 
 export async function createAppointmentPayment(user: UserAccount, input: {
