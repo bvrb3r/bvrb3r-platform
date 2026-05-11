@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { CardElement, Elements, useElements, useStripe } from "@stripe/react-stripe-js";
 import { loadStripe, type Stripe, type StripeCardElement } from "@stripe/stripe-js";
 import type { PaymentSetupIntentView } from "@/lib/payments/client";
@@ -18,7 +18,12 @@ type StripeSetupReference =
   | "setup_intent_client_secret_missing"
   | "elements_provider_mounted"
   | "card_element_ready"
+  | "card_element_focus"
+  | "card_element_blur"
   | "card_element_change"
+  | "card_element_iframe_detected"
+  | "card_element_parent_pointer_events"
+  | "card_element_active_element_after_click"
   | "card_element_not_ready_timeout"
   | "card_element_load_error";
 
@@ -33,6 +38,8 @@ type StripeCardOnFileFormProps = {
   onStatusChange: (status: "idle" | "loading" | "ready" | "error") => void;
   onConfirmSetupChange: (confirmSetup: ConfirmStripeCardSetup | null) => void;
 };
+
+const CARD_ELEMENT_CONTAINER_CLASS_NAME = "relative z-[50] min-h-[56px] rounded-[16px] border border-[rgba(255,255,255,0.18)] bg-[rgba(255,255,255,0.04)] p-4";
 
 function logStripeCardFormError(reference: StripeSetupReference, details?: Record<string, unknown>) {
   console.error("[payments] stripe card form failed", {
@@ -104,6 +111,10 @@ export function StripeCardOnFileForm({
   const stripePromise = useMemo(
     () => getStripePromise(publishableKey),
     [publishableKey]
+  );
+  const elementsOptions = useMemo(
+    () => clientSecret ? { clientSecret } : undefined,
+    [clientSecret]
   );
 
   useEffect(() => {
@@ -237,27 +248,28 @@ export function StripeCardOnFileForm({
         <span>CVC</span>
         <span>ZIP</span>
       </div>
-      <div
-        className="relative z-[5] min-h-[56px] rounded-[16px] border border-[rgba(255,255,255,0.18)] bg-[rgba(255,255,255,0.04)] p-4"
-        style={{ pointerEvents: "auto", cursor: "text" }}
-        aria-label="Card number, MM/YY, CVC, and ZIP"
-        data-testid="stripe-card-element-container"
-        data-stripe-card-host="true"
-      >
-        {showStripeElement ? (
-          <Elements stripe={stripePromise} options={{ clientSecret }}>
-            <StripeCardElementFields
-              clientSecret={clientSecret}
-              onReadyChange={handleReadyChange}
-              onCompleteChange={onCompleteChange}
-              onErrorMessage={onErrorMessage}
-              onStatusChange={onStatusChange}
-              onElementFailure={handleElementFailure}
-              onConfirmSetupChange={onConfirmSetupChange}
-            />
-          </Elements>
-        ) : null}
-      </div>
+      {!showStripeElement ? (
+        <div
+          className={CARD_ELEMENT_CONTAINER_CLASS_NAME}
+          style={{ pointerEvents: "auto", cursor: "text" }}
+          aria-label="Card number, MM/YY, CVC, and ZIP"
+          data-testid="stripe-card-element-container"
+          data-stripe-card-host="true"
+        />
+      ) : null}
+      {showStripeElement && elementsOptions ? (
+        <Elements stripe={stripePromise} options={elementsOptions}>
+          <StripeCardElementFields
+            clientSecret={clientSecret}
+            onReadyChange={handleReadyChange}
+            onCompleteChange={onCompleteChange}
+            onErrorMessage={onErrorMessage}
+            onStatusChange={onStatusChange}
+            onElementFailure={handleElementFailure}
+            onConfirmSetupChange={onConfirmSetupChange}
+          />
+        </Elements>
+      ) : null}
       {showLoading ? (
         <p className="mt-3 text-sm text-white/50">Loading secure card form...</p>
       ) : null}
@@ -283,7 +295,25 @@ function StripeCardElementFields({
   const stripe = useStripe();
   const elements = useElements();
   const elementHostRef = useRef<HTMLDivElement | null>(null);
+  const cardElementRef = useRef<StripeCardElement | null>(null);
   const readyRef = useRef(false);
+
+  const cardElementOptions = useMemo(() => ({
+    hidePostalCode: false,
+    style: {
+      base: {
+        color: "#ffffff",
+        fontSize: "16px",
+        fontFamily: "Inter, system-ui, sans-serif",
+        "::placeholder": {
+          color: "#8a8a8a"
+        }
+      },
+      invalid: {
+        color: "#ff6b6b"
+      }
+    }
+  }), []);
 
   const markFailed = useCallback((reference: StripeSetupReference, details?: Record<string, unknown>) => {
     logStripeCardFormError(reference, details);
@@ -302,11 +332,6 @@ function StripeCardElementFields({
 
   useEffect(() => {
     readyRef.current = false;
-    onReadyChange(false);
-    onCompleteChange(false);
-    onConfirmSetupChange(null);
-    onStatusChange("loading");
-    onErrorMessage(null);
 
     const timeout = window.setTimeout(() => {
       if (readyRef.current) {
@@ -321,7 +346,7 @@ function StripeCardElementFields({
     return () => {
       window.clearTimeout(timeout);
     };
-  }, [clientSecret, markFailed, onCompleteChange, onConfirmSetupChange, onErrorMessage, onReadyChange, onStatusChange]);
+  }, [clientSecret, markFailed]);
 
   useEffect(() => {
     if (!stripe || !elements) {
@@ -361,96 +386,149 @@ function StripeCardElementFields({
     };
   }, [clientSecret, elements, markFailed, onConfirmSetupChange, stripe]);
 
+  const logActiveElementAfterClick = useCallback((reason: string) => {
+    window.requestAnimationFrame(() => {
+      const activeElement = document.activeElement;
+      logStripeCardFormDebug("card_element_active_element_after_click", {
+        reason,
+        tagName: activeElement?.tagName?.toLowerCase() ?? null,
+        title: activeElement?.getAttribute("title") ?? null,
+        ariaLabel: activeElement?.getAttribute("aria-label") ?? null
+      });
+    });
+  }, []);
+
+  const logPointerDiagnostics = useCallback((reason: string) => {
+    const host = elementHostRef.current;
+    const ancestors: Array<Record<string, unknown>> = [];
+    let node: HTMLElement | null = host;
+
+    for (let depth = 0; node && depth < 6; depth += 1) {
+      const style = window.getComputedStyle(node);
+      ancestors.push({
+        depth,
+        tagName: node.tagName.toLowerCase(),
+        dataStripeHost: node.getAttribute("data-stripe-card-host"),
+        pointerEvents: style.pointerEvents,
+        position: style.position,
+        zIndex: style.zIndex,
+        overflow: style.overflow,
+        ariaDisabled: node.getAttribute("aria-disabled"),
+        disabled: node.hasAttribute("disabled")
+      });
+      node = node.parentElement;
+    }
+
+    logStripeCardFormDebug("card_element_parent_pointer_events", {
+      reason,
+      ancestors
+    });
+  }, []);
+
+  const readIframeDiagnostics = useCallback((reason: string) => {
+    const host = elementHostRef.current;
+    const iframe = host?.querySelector("iframe") ?? null;
+    const hostStyle = host ? window.getComputedStyle(host) : null;
+    const hostRect = host?.getBoundingClientRect();
+    const iframeRect = iframe?.getBoundingClientRect();
+    const diagnostics = {
+      reason,
+      iframeExists: Boolean(iframe),
+      hostHeight: hostRect?.height ?? null,
+      hostWidth: hostRect?.width ?? null,
+      iframeHeight: iframeRect?.height ?? null,
+      iframeWidth: iframeRect?.width ?? null,
+      pointerEvents: hostStyle?.pointerEvents ?? null,
+      position: hostStyle?.position ?? null,
+      zIndex: hostStyle?.zIndex ?? null
+    };
+
+    logStripeCardFormDebug("card_element_iframe_detected", diagnostics);
+    logPointerDiagnostics(reason);
+
+    return {
+      hasInteractiveIframe: Boolean(host && iframe)
+        && (hostRect?.height ?? 0) > 0
+        && (iframeRect?.height ?? 0) > 0
+        && hostStyle?.pointerEvents !== "none",
+      diagnostics
+    };
+  }, [logPointerDiagnostics]);
+
   const verifyMountedIframe = useCallback((cardElement: StripeCardElement) => {
+    cardElementRef.current = cardElement;
     readyRef.current = true;
     logStripeCardFormDebug("card_element_ready");
     onReadyChange(true);
     onStatusChange("ready");
     onErrorMessage(null);
-    cardElement.focus();
 
     window.requestAnimationFrame(() => {
-      const host = elementHostRef.current;
-      const iframe = host?.querySelector("iframe") ?? null;
-      const hostStyle = host ? window.getComputedStyle(host) : null;
-      const hostRect = host?.getBoundingClientRect();
-      const iframeRect = iframe?.getBoundingClientRect();
-
-      if (!host || !iframe) {
+      const { hasInteractiveIframe, diagnostics } = readIframeDiagnostics("ready");
+      if (!hasInteractiveIframe) {
         markFailed("card_element_not_ready_timeout", {
-          reason: "iframe_diagnostic_missing_after_ready",
-          iframeExists: Boolean(iframe),
-          hostHeight: hostRect?.height ?? null,
-          iframeHeight: iframeRect?.height ?? null,
-          iframeWidth: iframeRect?.width ?? null,
-          pointerEvents: hostStyle?.pointerEvents ?? null
+          ...diagnostics,
+          failureReason: "iframe_missing_or_not_interactive_after_ready"
         });
         return;
       }
-
-      if ((hostRect?.height ?? 0) <= 0 || (iframeRect?.height ?? 0) <= 0 || hostStyle?.pointerEvents === "none") {
-        markFailed("card_element_not_ready_timeout", {
-          reason: "iframe_not_visible_or_interactive",
-          iframeExists: Boolean(iframe),
-          hostHeight: hostRect?.height ?? null,
-          iframeHeight: iframeRect?.height ?? null,
-          iframeWidth: iframeRect?.width ?? null,
-          pointerEvents: hostStyle?.pointerEvents ?? null
-        });
-        return;
-      }
-
-      logStripeCardFormDebug("card_element_ready", {
-        iframeExists: true,
-        iframeHeight: iframeRect?.height ?? null,
-        iframeWidth: iframeRect?.width ?? null
-      });
     });
-  }, [markFailed, onErrorMessage, onReadyChange, onStatusChange]);
+  }, [markFailed, onErrorMessage, onReadyChange, onStatusChange, readIframeDiagnostics]);
+
+  const handleHostClick = useCallback(() => {
+    readIframeDiagnostics("click");
+    cardElementRef.current?.focus();
+    logActiveElementAfterClick("click");
+  }, [logActiveElementAfterClick, readIframeDiagnostics]);
+
+  const handleFocus = useCallback(() => {
+    logStripeCardFormDebug("card_element_focus");
+    readIframeDiagnostics("focus");
+    logActiveElementAfterClick("focus");
+  }, [logActiveElementAfterClick, readIframeDiagnostics]);
+
+  const handleBlur = useCallback(() => {
+    logStripeCardFormDebug("card_element_blur");
+  }, []);
+
+  const handleChange = useCallback((event: Parameters<NonNullable<ComponentProps<typeof CardElement>["onChange"]>>[0]) => {
+    logStripeCardFormDebug("card_element_change", {
+      complete: Boolean(event.complete),
+      empty: Boolean(event.empty),
+      error: event.error?.message ?? null
+    });
+    onCompleteChange(Boolean(event.complete));
+    if (event.error?.message) {
+      onErrorMessage(event.error.message);
+    } else if (event.complete) {
+      onErrorMessage(null);
+    }
+  }, [onCompleteChange, onErrorMessage]);
+
+  const handleLoadError = useCallback((event: Parameters<NonNullable<ComponentProps<typeof CardElement>["onLoadError"]>>[0]) => {
+    markFailed("card_element_load_error", {
+      message: event.error?.message ?? null
+    });
+  }, [markFailed]);
 
   return (
     <div
       ref={elementHostRef}
-      className="relative z-[6] block min-h-[24px] w-full"
-      style={{ pointerEvents: "auto" }}
+      className={CARD_ELEMENT_CONTAINER_CLASS_NAME}
+      style={{ pointerEvents: "auto", cursor: "text" }}
+      aria-label="Card number, MM/YY, CVC, and ZIP"
+      data-testid="stripe-card-element-container"
+      data-stripe-card-host="true"
+      onClick={handleHostClick}
     >
       <CardElement
-        className="relative z-[7] block min-h-[24px] w-full"
+        className="relative z-[60] block min-h-[24px] w-full"
         onReady={verifyMountedIframe}
-        onChange={(event) => {
-          logStripeCardFormDebug("card_element_change", {
-            complete: Boolean(event.complete),
-            empty: Boolean(event.empty),
-            error: event.error?.message ?? null
-          });
-          onCompleteChange(Boolean(event.complete));
-          if (event.error?.message) {
-            onErrorMessage(event.error.message);
-          } else if (event.complete) {
-            onErrorMessage(null);
-          }
-        }}
-        onLoadError={(event) => {
-          markFailed("card_element_load_error", {
-            message: event.error?.message ?? null
-          });
-        }}
-        options={{
-          hidePostalCode: false,
-          style: {
-            base: {
-              color: "#ffffff",
-              fontSize: "16px",
-              fontFamily: "Inter, system-ui, sans-serif",
-              "::placeholder": {
-                color: "#8a8a8a"
-              }
-            },
-            invalid: {
-              color: "#ff6b6b"
-            }
-          }
-        }}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
+        onChange={handleChange}
+        onLoadError={handleLoadError}
+        options={cardElementOptions}
       />
     </div>
   );

@@ -27,7 +27,9 @@ const {
   stripeMockState: {
     autoReady: true,
     complete: true,
-    loadError: null as string | null
+    loadError: null as string | null,
+    mountCount: 0,
+    unmountCount: 0
   }
 }));
 
@@ -51,10 +53,19 @@ vi.mock("@stripe/react-stripe-js", async () => {
     Elements: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
     CardElement: (props: {
       onReady?: (element: typeof stripeCardMock) => void;
+      onFocus?: () => void;
+      onBlur?: () => void;
       onChange?: (event: { complete?: boolean; error?: { message?: string } }) => void;
       onLoadError?: (event: { error?: { message?: string } }) => void;
     }) => {
-      const { onReady, onChange, onLoadError } = props;
+      const { onReady, onFocus, onBlur, onChange, onLoadError } = props;
+
+      React.useEffect(() => {
+        stripeMockState.mountCount += 1;
+        return () => {
+          stripeMockState.unmountCount += 1;
+        };
+      }, []);
 
       React.useEffect(() => {
         if (stripeMockState.loadError) {
@@ -67,7 +78,12 @@ vi.mock("@stripe/react-stripe-js", async () => {
 
       return React.createElement(
         "div",
-        { "data-testid": "mock-stripe-card-element" },
+        {
+          "data-testid": "mock-stripe-card-element",
+          onFocus,
+          onBlur,
+          tabIndex: 0
+        },
         React.createElement("iframe", { title: "Secure card input" })
       );
     },
@@ -109,6 +125,8 @@ describe("client payment methods panel", () => {
     stripeMockState.autoReady = true;
     stripeMockState.complete = true;
     stripeMockState.loadError = null;
+    stripeMockState.mountCount = 0;
+    stripeMockState.unmountCount = 0;
     window.requestAnimationFrame = (callback: FrameRequestCallback) => {
       callback(0);
       return 1;
@@ -199,6 +217,14 @@ describe("client payment methods panel", () => {
     expect(await screen.findByTestId("mock-stripe-card-element")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByText("Loading secure card form...")).not.toBeInTheDocument());
     expect(screen.getByText("Secure card form ready.")).toBeInTheDocument();
+    const cardWrapper = screen.getByTestId("stripe-card-element-container");
+    expect(cardWrapper).toHaveStyle({
+      pointerEvents: "auto",
+      cursor: "text"
+    });
+    expect(cardWrapper.closest("fieldset[disabled]")).toBeNull();
+    expect(cardWrapper.querySelector("[data-stripe-card-overlay='true']")).not.toBeInTheDocument();
+    expect(cardWrapper.childElementCount).toBe(1);
   });
 
   it("requires card-on-file authorization before saving", async () => {
@@ -220,6 +246,57 @@ describe("client payment methods panel", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Save card" })).toBeEnabled();
     });
+  });
+
+  it("does not remount the Stripe card element when authorization changes", async () => {
+    installStripeMock();
+    usePaymentMethodsQueryMock.mockReturnValue({
+      data: { methods: [] },
+      isLoading: false,
+      error: null
+    });
+
+    render(<ClientPaymentMethodsPanel initialMethods={[]} isSignedInClient />);
+
+    expect(await screen.findByTestId("mock-stripe-card-element")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText("Loading secure card form...")).not.toBeInTheDocument());
+    expect(stripeMockState.mountCount).toBe(1);
+
+    fireEvent.click(screen.getByLabelText("I authorize BVRB3R to save this card on file for future bookings."));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Save card" })).toBeEnabled();
+    });
+
+    expect(stripeMockState.mountCount).toBe(1);
+  });
+
+  it("does not remount the Stripe card element when the nickname modal opens", async () => {
+    installStripeMock();
+    usePaymentMethodsQueryMock.mockReturnValue({
+      data: { methods: [] },
+      isLoading: false,
+      error: null
+    });
+
+    render(<ClientPaymentMethodsPanel initialMethods={[]} isSignedInClient />);
+
+    expect(await screen.findByTestId("mock-stripe-card-element")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText("Loading secure card form...")).not.toBeInTheDocument());
+    expect(stripeMockState.mountCount).toBe(1);
+
+    fireEvent.click(screen.getByLabelText("I authorize BVRB3R to save this card on file for future bookings."));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Save card" })).toBeEnabled();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save card" }));
+
+    expect(await screen.findByText("Name this card")).toBeInTheDocument();
+    expect(stripeMockState.mountCount).toBe(1);
+
+    fireEvent.change(screen.getByPlaceholderText("Example: Phil Stripe Card"), {
+      target: { value: "Phil Stripe Card" }
+    });
+    expect(stripeMockState.mountCount).toBe(1);
   });
 
   it("keeps Save card disabled until Stripe reports complete card details", async () => {
