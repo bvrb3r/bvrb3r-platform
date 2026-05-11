@@ -4,6 +4,7 @@ import { isUpcomingAppointmentStatus } from "@/lib/appointments/domain";
 import { BarberProfileRepairError, ensureBarberProfileForIdentifier, type BarberProfileRepairResult } from "@/lib/barber/profile-repair";
 import { getCanonicalMarketplaceEligibility, type MarketplaceBarberEligibilityDiagnostic } from "@/lib/booking/intelligence";
 import { syncAllOnboardingBarberServices, syncCheckoutLibraryServicesForBarber } from "@/lib/marketplace/service-sync";
+import { readClientPaymentMethodsByClientId } from "@/lib/payments/service";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getStripeConnectEnvironment } from "@/lib/stripe/connect";
@@ -75,6 +76,8 @@ type ClientPreferenceRow = {
   preferred_city?: string | null;
   preferred_state?: string | null;
   preferred_postal_code?: string | null;
+  provider_customer_ref?: string | null;
+  default_payment_method_ref?: string | null;
 };
 
 type BarberRow = {
@@ -1340,7 +1343,52 @@ export async function getArchitectAccountDetailPayload(actor: UserAccount, profi
   const shop = indexes.shopsByOwnerProfileId.get(profileId);
   const client = indexes.clientsByProfileId.get(profileId);
   const clientReference = client?.reference_code ?? (account.role === "client" ? fallbackClientReference(profileId) : undefined);
-  const clientPreference = clientReference ? indexes.clientPreferencesByReference.get(clientReference) : undefined;
+  let clientPreference = clientReference ? indexes.clientPreferencesByReference.get(clientReference) : undefined;
+  let clientPaymentMethodCount = 0;
+  let clientDefaultPaymentExists = false;
+  let clientDefaultPaymentLabel: string | null = null;
+  let clientPreferencesRepaired = false;
+
+  if (account.role === "client" && client) {
+    const diagnosticsClient = accountDataOverlay ? null : createSupabaseAdminClient();
+    if (diagnosticsClient) {
+      try {
+        const hadPreferenceBeforeRead = Boolean(clientPreference);
+        const paymentMethods = await readClientPaymentMethodsByClientId(client.reference_code ?? client.id, diagnosticsClient, {
+          profileId,
+          clientReference,
+          profileEmail: effectiveProfile.email,
+          profileName: effectiveProfile.full_name,
+          profilePhone: effectiveProfile.phone
+        });
+        clientPaymentMethodCount = paymentMethods.length;
+        const defaultPaymentMethod = paymentMethods.find((method) => method.isDefault) ?? paymentMethods[0] ?? null;
+        clientDefaultPaymentExists = Boolean(defaultPaymentMethod);
+        clientDefaultPaymentLabel = defaultPaymentMethod?.label ?? null;
+
+        if (clientReference) {
+          const preferenceRead = await diagnosticsClient
+            .from("client_preferences")
+            .select("client_reference, client_email, preferred_location_reference, preferred_city, preferred_state, preferred_postal_code")
+            .eq("client_reference", clientReference)
+            .maybeSingle();
+
+          if (!preferenceRead.error && preferenceRead.data) {
+            clientPreference = preferenceRead.data as ClientPreferenceRow;
+            clientPreferencesRepaired = !hadPreferenceBeforeRead;
+          }
+        }
+      } catch (error) {
+        console.error("[Architect Accounts] Client payment method diagnostics failed", {
+          profileId,
+          clientId: client.id,
+          clientReference,
+          error
+        });
+        warnings.push("Client payment method diagnostics could not be read for this account.");
+      }
+    }
+  }
   const reference = barberReference(barber);
   const linkedShopIds = reference ? getLinkedShopIds(reference, profileId, data) : [];
   const serviceLocationLabels = locationLabelsForProfile(profileId, data, indexes);
@@ -1438,7 +1486,11 @@ export async function getArchitectAccountDetailPayload(actor: UserAccount, profi
         authUserExists: Boolean(authUser),
         clientProfileRowExists: Boolean(client),
         clientPreferencesRowExists: Boolean(clientPreference),
+        clientPreferencesRepaired,
         locationSaved: hasSavedClientLocation(clientPreference),
+        paymentMethodCount: clientPaymentMethodCount,
+        defaultPaymentExists: clientDefaultPaymentExists,
+        defaultPaymentLabel: clientDefaultPaymentLabel,
         repairStatus: formatClientRepairStatus(client, clientPreference),
         bookingCounts: {
           total: bookingRows.length,

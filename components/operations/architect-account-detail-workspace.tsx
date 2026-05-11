@@ -12,6 +12,7 @@ import {
   useArchitectAccountActionMutation,
   useArchitectBarberProfileRepairMutation,
   useArchitectAccountDetailQuery,
+  useArchitectClientPaymentRepairMutation,
   useArchitectVerificationActionMutation
 } from "@/lib/platform-admin/client";
 import { cn } from "@/lib/utils";
@@ -157,6 +158,7 @@ export function ArchitectAccountDetailWorkspace({
   const [feedback, setFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const accountActionMutation = useArchitectAccountActionMutation(profileId);
   const barberRepairMutation = useArchitectBarberProfileRepairMutation(profileId);
+  const clientPaymentRepairMutation = useArchitectClientPaymentRepairMutation(profileId);
   const verificationActionMutation = useArchitectVerificationActionMutation(selectedVerificationProfileId || "__missing__");
 
   const selectedVerificationProfile = useMemo(
@@ -243,6 +245,19 @@ export function ArchitectAccountDetailWorkspace({
         ? ` Marketplace ${result.eligibility.eligible ? "LIVE" : `blocked: ${result.eligibility.blockers.join(" | ") || "unknown"}`}.`
         : "";
       setFeedback({ tone: "success", message: `${result.repair.message} Final read checks: ${checks}.${finalStatus}` });
+    } catch (error) {
+      setFeedback({ tone: "error", message: getReadableActionError(error as { message?: string; status?: number; code?: string }) });
+    }
+  };
+
+  const repairClientPaymentProfile = async () => {
+    if (!account) return;
+    try {
+      const result = await clientPaymentRepairMutation.mutateAsync();
+      setFeedback({
+        tone: "success",
+        message: `Client payment profile ${result.repair.repairStatus}. ${result.paymentMethodCount} saved payment method${result.paymentMethodCount === 1 ? "" : "s"} found; default payment ${result.defaultPaymentExists ? "exists" : "missing"}.`
+      });
     } catch (error) {
       setFeedback({ tone: "error", message: getReadableActionError(error as { message?: string; status?: number; code?: string }) });
     }
@@ -492,14 +507,28 @@ export function ArchitectAccountDetailWorkspace({
               <DetailMetric label="Active" value={account.client.bookingCounts.active} />
               <DetailMetric label="Cancelled" value={account.client.bookingCounts.cancelled} />
               <DetailMetric label="Loyalty points" value={account.client.loyaltyPoints ?? 0} />
+              <DetailMetric label="Saved payment methods" value={account.client.paymentMethodCount} />
+              <DetailMetric label="Default payment" value={account.client.defaultPaymentExists ? "Yes" : "No"} />
               <Field label="Auth user exists" value={account.client.authUserExists ? "yes" : "no"} />
               <Field label="Client profile row exists" value={account.client.clientProfileRowExists ? "yes" : "no"} />
               <Field label="Client preferences row exists" value={account.client.clientPreferencesRowExists ? "yes" : "no"} />
+              <Field label="Client preferences repaired" value={account.client.clientPreferencesRepaired ? "yes" : "no"} />
               <Field label="Location saved" value={account.client.locationSaved ? "yes" : "no"} />
+              <Field label="Default payment label" value={account.client.defaultPaymentLabel} />
               <Field label="Repair status" value={account.client.repairStatus} />
               <Field label="Client id" value={account.client.id} />
               <Field label="Client reference" value={account.client.referenceCode} />
               <Field label="Retention tag" value={account.client.retentionTag} />
+            </div>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={clientPaymentRepairMutation.isPending}
+                onClick={() => void repairClientPaymentProfile()}
+              >
+                {clientPaymentRepairMutation.isPending ? "Repairing..." : "Repair Client Payment Profile"}
+              </Button>
             </div>
           </Card>
         ) : null}

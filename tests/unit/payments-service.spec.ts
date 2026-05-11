@@ -1,173 +1,289 @@
 import { describe, expect, it, vi } from "vitest";
 import { PaymentServiceError, readClientPaymentMethodsByClientId } from "@/lib/payments/service";
 
-type QueryResult = {
-  data: unknown;
-  error: {
-    code?: string | null;
-    message?: string | null;
-    details?: string | null;
-    hint?: string | null;
-  } | null;
+type TableName = "clients" | "client_preferences" | "payment_methods" | "saved_payment_methods" | "billing_customers";
+type Row = Record<string, unknown>;
+type QueryError = {
+  code?: string | null;
+  message?: string | null;
+  details?: string | null;
+  hint?: string | null;
 };
 
-function createSupabaseStub({
-  clientLookupResult,
-  paymentMethodsResult
-}: {
-  clientLookupResult?: QueryResult;
-  paymentMethodsResult?: QueryResult;
-}) {
+type Seed = Partial<Record<TableName, Row[]>> & {
+  errors?: Partial<Record<TableName, QueryError>>;
+};
+
+function createPaymentResolverSupabaseStub(seed: Seed = {}) {
+  const tables: Record<TableName, Row[]> = {
+    clients: [...(seed.clients ?? [])],
+    client_preferences: [...(seed.client_preferences ?? [])],
+    payment_methods: [...(seed.payment_methods ?? [])],
+    saved_payment_methods: [...(seed.saved_payment_methods ?? [])],
+    billing_customers: [...(seed.billing_customers ?? [])]
+  };
+  const writes: Array<{ table: TableName; type: "insert" | "update"; payload: Row; filters: Array<[string, unknown]> }> = [];
+
+  class QueryBuilder {
+    private filters: Array<[string, unknown]> = [];
+    private inFilters: Array<[string, unknown[]]> = [];
+    private operation: "insert" | "update" | null = null;
+    private payload: Row | null = null;
+
+    constructor(private readonly table: TableName) {}
+
+    select() {
+      return this;
+    }
+
+    eq(column: string, value: unknown) {
+      this.filters.push([column, value]);
+      return this;
+    }
+
+    neq(column: string, value: unknown) {
+      this.filters.push([`!${column}`, value]);
+      return this;
+    }
+
+    in(column: string, values: unknown[]) {
+      this.inFilters.push([column, values]);
+      return this;
+    }
+
+    order() {
+      return this;
+    }
+
+    insert(payload: Row) {
+      this.operation = "insert";
+      this.payload = payload;
+      return this;
+    }
+
+    update(payload: Row) {
+      this.operation = "update";
+      this.payload = payload;
+      return this;
+    }
+
+    maybeSingle() {
+      return this.execute().then((result) => ({
+        data: Array.isArray(result.data) ? result.data[0] ?? null : result.data,
+        error: result.error
+      }));
+    }
+
+    single() {
+      return this.execute().then((result) => ({
+        data: Array.isArray(result.data) ? result.data[0] ?? null : result.data,
+        error: result.error
+      }));
+    }
+
+    then<TResult1 = { data: Row[] | null; error: QueryError | null }, TResult2 = never>(
+      onfulfilled?: ((value: { data: Row[] | null; error: QueryError | null }) => TResult1 | PromiseLike<TResult1>) | null,
+      onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
+    ) {
+      return this.execute().then(onfulfilled, onrejected);
+    }
+
+    private execute() {
+      const error = seed.errors?.[this.table];
+      if (error) {
+        return Promise.resolve({ data: null, error });
+      }
+
+      if (this.operation === "insert" && this.payload) {
+        const row = {
+          id: this.payload.id ?? `${this.table}-${tables[this.table].length + 1}`,
+          created_at: this.payload.created_at ?? "2026-05-11T12:00:00.000Z",
+          ...this.payload
+        };
+        tables[this.table].push(row);
+        writes.push({ table: this.table, type: "insert", payload: row, filters: [...this.filters] });
+        return Promise.resolve({ data: [row], error: null });
+      }
+
+      if (this.operation === "update" && this.payload) {
+        const rows = this.filteredRows();
+        for (const row of rows) {
+          Object.assign(row, this.payload);
+        }
+        writes.push({ table: this.table, type: "update", payload: this.payload, filters: [...this.filters] });
+        return Promise.resolve({ data: rows, error: null });
+      }
+
+      return Promise.resolve({ data: this.filteredRows(), error: null });
+    }
+
+    private filteredRows() {
+      return tables[this.table].filter((row) => {
+        const matchesEq = this.filters.every(([column, value]) => {
+          if (column.startsWith("!")) {
+            return row[column.slice(1)] !== value;
+          }
+
+          return row[column] === value;
+        });
+        const matchesIn = this.inFilters.every(([column, values]) => values.includes(row[column]));
+        return matchesEq && matchesIn;
+      });
+    }
+  }
+
   return {
-    from(table: string) {
-      if (table === "clients") {
-        return {
-          select(columns: string) {
-            expect(columns).toBe("id");
+    tables,
+    writes,
+    supabase: {
+      from(table: TableName) {
+        if (!tables[table]) {
+          throw new Error(`Unexpected table ${table}`);
+        }
 
-            return {
-              eq(column: string, value: string) {
-                expect(column).toBe("reference_code");
-                expect(value).toBe("client-jordan");
-
-                return {
-                  maybeSingle() {
-                    return Promise.resolve(clientLookupResult ?? { data: null, error: null });
-                  }
-                };
-              }
-            };
-          }
-        };
+        return new QueryBuilder(table);
       }
-
-      if (table === "payment_methods") {
-        return {
-          select(columns: string) {
-            expect(columns).toContain("client_id");
-            expect(columns).toContain("provider_payment_method_id");
-
-            return {
-              eq(column: string, value: string) {
-                expect(column).toBe("client_id");
-                expect(value).toBe("11111111-1111-4111-8111-111111111111");
-
-                return {
-                  order(firstColumn: string, firstOptions: { ascending: boolean }) {
-                    expect(firstColumn).toBe("is_default");
-                    expect(firstOptions).toEqual({ ascending: false });
-
-                    return {
-                      order(secondColumn: string, secondOptions: { ascending: boolean }) {
-                        expect(secondColumn).toBe("created_at");
-                        expect(secondOptions).toEqual({ ascending: true });
-                        return Promise.resolve(paymentMethodsResult ?? { data: [], error: null });
-                      }
-                    };
-                  }
-                };
-              }
-            };
-          }
-        };
-      }
-
-      throw new Error(`Unexpected table ${table}`);
     }
   };
 }
 
 describe("payment methods service", () => {
   it("returns an empty list when a canonical client has no saved payment methods", async () => {
-    const supabase = {
-      from(table: string) {
-        expect(table).toBe("payment_methods");
-
-        return {
-          select(columns: string) {
-            expect(columns).toContain("client_id");
-
-            return {
-              eq(column: string, value: string) {
-                expect(column).toBe("client_id");
-                expect(value).toBe("11111111-1111-4111-8111-111111111111");
-
-                return {
-                  order() {
-                    return {
-                      order() {
-                        return Promise.resolve({ data: [], error: null });
-                      }
-                    };
-                  }
-                };
-              }
-            };
-          }
-        };
-      }
-    };
+    const resolver = createPaymentResolverSupabaseStub();
 
     await expect(
-      readClientPaymentMethodsByClientId("11111111-1111-4111-8111-111111111111", supabase as never)
+      readClientPaymentMethodsByClientId("11111111-1111-4111-8111-111111111111", resolver.supabase as never)
     ).resolves.toEqual([]);
   });
 
-  it("resolves a client reference code before querying payment methods", async () => {
-    const supabase = createSupabaseStub({
-      clientLookupResult: {
-        data: { id: "11111111-1111-4111-8111-111111111111" },
-        error: null
-      },
-      paymentMethodsResult: {
-        data: [],
-        error: null
-      }
+  it("repairs a missing client preferences row while resolving saved payment methods", async () => {
+    const resolver = createPaymentResolverSupabaseStub({
+      clients: [{
+        id: "11111111-1111-4111-8111-111111111111",
+        reference_code: "client-jordan",
+        profile_id: "profile-jordan"
+      }]
     });
 
-    await expect(readClientPaymentMethodsByClientId("client-jordan", supabase as never)).resolves.toEqual([]);
+    await expect(readClientPaymentMethodsByClientId("client-jordan", resolver.supabase as never)).resolves.toEqual([]);
+
+    expect(resolver.tables.client_preferences).toHaveLength(1);
+    expect(resolver.tables.client_preferences[0]).toMatchObject({
+      client_reference: "client-jordan",
+      client_email: "client-jordan@client.bvrb3r.local"
+    });
   });
 
-  it("returns an empty list when a client reference cannot be resolved to a canonical client row", async () => {
-    const supabase = createSupabaseStub({
-      clientLookupResult: {
-        data: null,
-        error: null
-      }
+  it("syncs a Wallet saved card into canonical booking payment methods", async () => {
+    const resolver = createPaymentResolverSupabaseStub({
+      clients: [{
+        id: "11111111-1111-4111-8111-111111111111",
+        reference_code: "client-jordan",
+        profile_id: "profile-jordan"
+      }],
+      client_preferences: [{
+        client_reference: "client-jordan",
+        client_email: "jordan@example.com"
+      }],
+      saved_payment_methods: [{
+        id: "spm-1",
+        profile_id: "profile-jordan",
+        billing_customer_id: "billing-1",
+        provider: "stripe",
+        provider_payment_method_id: "pm_wallet_4242",
+        brand: "Visa",
+        last4: "4242",
+        exp_month: 4,
+        exp_year: 2028,
+        is_default: true,
+        created_at: "2026-05-01T12:00:00.000Z"
+      }],
+      billing_customers: [{
+        id: "billing-1",
+        provider_customer_id: "cus_wallet",
+        default_payment_method_id: "pm_wallet_4242"
+      }]
     });
 
-    await expect(readClientPaymentMethodsByClientId("client-jordan", supabase as never)).resolves.toEqual([]);
+    const methods = await readClientPaymentMethodsByClientId("client-jordan", resolver.supabase as never);
+
+    expect(methods).toMatchObject([{
+      provider: "stripe",
+      brand: "Visa",
+      last4: "4242",
+      expMonth: 4,
+      expYear: 2028,
+      isDefault: true,
+      label: "Visa ending in 4242"
+    }]);
+    expect(resolver.tables.payment_methods).toHaveLength(1);
+    expect(resolver.tables.payment_methods[0]).toMatchObject({
+      client_id: "11111111-1111-4111-8111-111111111111",
+      provider_customer_id: "cus_wallet",
+      provider_payment_method_id: "pm_wallet_4242",
+      is_default: true
+    });
+    expect(resolver.tables.client_preferences[0]).toMatchObject({
+      provider_customer_ref: "cus_wallet",
+      default_payment_method_ref: "pm_wallet_4242"
+    });
   });
 
-  it("treats expected no-row responses as an empty payment method list", async () => {
-    const supabase = createSupabaseStub({
-      clientLookupResult: {
-        data: { id: "11111111-1111-4111-8111-111111111111" },
-        error: null
-      },
-      paymentMethodsResult: {
-        data: null,
-        error: {
-          code: "PGRST116",
-          message: "The result contains 0 rows",
-          details: null
-        }
-      }
+  it("does not duplicate an existing canonical payment method when syncing Wallet rows", async () => {
+    const resolver = createPaymentResolverSupabaseStub({
+      clients: [{
+        id: "11111111-1111-4111-8111-111111111111",
+        reference_code: "client-jordan",
+        profile_id: "profile-jordan"
+      }],
+      client_preferences: [{
+        client_reference: "client-jordan",
+        client_email: "jordan@example.com"
+      }],
+      payment_methods: [{
+        id: "pm-row",
+        client_id: "11111111-1111-4111-8111-111111111111",
+        provider: "stripe",
+        provider_customer_id: "cus_wallet",
+        provider_payment_method_id: "pm_wallet_4242",
+        brand: "Visa",
+        last4: "4242",
+        exp_month: 4,
+        exp_year: 2028,
+        is_default: true,
+        created_at: "2026-05-01T12:00:00.000Z"
+      }],
+      saved_payment_methods: [{
+        id: "spm-1",
+        profile_id: "profile-jordan",
+        billing_customer_id: "billing-1",
+        provider: "stripe",
+        provider_payment_method_id: "pm_wallet_4242",
+        brand: "Visa",
+        last4: "4242",
+        exp_month: 4,
+        exp_year: 2028,
+        is_default: true,
+        created_at: "2026-05-01T12:00:00.000Z"
+      }]
     });
 
-    await expect(readClientPaymentMethodsByClientId("client-jordan", supabase as never)).resolves.toEqual([]);
+    const methods = await readClientPaymentMethodsByClientId("client-jordan", resolver.supabase as never);
+
+    expect(methods).toHaveLength(1);
+    expect(resolver.writes.filter((write) => write.table === "payment_methods" && write.type === "insert")).toHaveLength(0);
   });
 
   it("still throws for real payment method query failures", async () => {
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    const supabase = createSupabaseStub({
-      clientLookupResult: {
-        data: { id: "11111111-1111-4111-8111-111111111111" },
-        error: null
-      },
-      paymentMethodsResult: {
-        data: null,
-        error: {
+    const resolver = createPaymentResolverSupabaseStub({
+      clients: [{
+        id: "11111111-1111-4111-8111-111111111111",
+        reference_code: "client-jordan",
+        profile_id: "profile-jordan"
+      }],
+      errors: {
+        payment_methods: {
           code: "42P01",
           message: "relation \"payment_methods\" does not exist",
           details: null
@@ -175,7 +291,7 @@ describe("payment methods service", () => {
       }
     });
 
-    await expect(readClientPaymentMethodsByClientId("client-jordan", supabase as never)).rejects.toBeInstanceOf(PaymentServiceError);
+    await expect(readClientPaymentMethodsByClientId("client-jordan", resolver.supabase as never)).rejects.toBeInstanceOf(PaymentServiceError);
 
     consoleErrorSpy.mockRestore();
   });

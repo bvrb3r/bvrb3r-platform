@@ -615,7 +615,11 @@ export interface ArchitectAccountDetailPayload {
       authUserExists: boolean;
       clientProfileRowExists: boolean;
       clientPreferencesRowExists: boolean;
+      clientPreferencesRepaired: boolean;
       locationSaved: boolean;
+      paymentMethodCount: number;
+      defaultPaymentExists: boolean;
+      defaultPaymentLabel?: string | null;
       repairStatus: string;
       bookingCounts: {
         total: number;

@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { runtimeConfig } from "@/lib/config/runtime";
+import { canonicalClientUuid } from "@/lib/booking/canonical-booking";
 import {
   buildPlatformEventIdempotencyKey,
   recordRequiredPlatformEvent,
@@ -37,12 +38,14 @@ type ProfileRow = {
   id: string;
   email: string;
   full_name: string | null;
+  phone?: string | null;
   role: Role;
 };
 
 type ClientRow = {
   id: string;
   profile_id: string | null;
+  reference_code?: string | null;
 };
 
 type BarberRow = {
@@ -79,6 +82,36 @@ type PaymentMethodRow = {
   exp_year: number | null;
   is_default: boolean;
   created_at: string;
+};
+
+type LegacySavedPaymentMethodRow = {
+  id: string;
+  profile_id: string;
+  billing_customer_id: string | null;
+  provider: InternalPaymentProvider;
+  provider_payment_method_id: string;
+  brand: string | null;
+  last4: string | null;
+  exp_month: number | null;
+  exp_year: number | null;
+  is_default: boolean;
+  created_at: string;
+};
+
+type BillingCustomerRow = {
+  id: string;
+  provider_customer_id: string | null;
+  default_payment_method_id: string | null;
+};
+
+type ClientPaymentContext = {
+  clientId: string;
+  clientReference: string | null;
+  profileId: string | null;
+  profileEmail?: string | null;
+  profileName?: string | null;
+  profilePhone?: string | null;
+  preferencesRepaired: boolean;
 };
 
 type PaymentRow = {
@@ -151,6 +184,8 @@ type PayoutExecutionSummaryRow = {
 type PaymentActorContext = {
   profile: ProfileRow;
   clientId?: string;
+  clientReference?: string | null;
+  clientPreferencesRepaired?: boolean;
   barberId?: string;
   locationIds: string[];
   role: UserAccount["role"];
@@ -434,35 +469,362 @@ function logPaymentMethodsReadError(
   });
 }
 
-async function resolveClientPaymentMethodsClientId(
-  clientIdentifier: string,
-  supabase: SupabaseClient
+function fallbackClientReferenceForUser(userId: string) {
+  return `client-${userId.slice(0, 8)}`;
+}
+
+function isPaymentSchemaMissing(error: {
+  code?: string | null;
+  message?: string | null;
+  details?: string | null;
+}) {
+  const combined = `${error.message ?? ""} ${error.details ?? ""}`.toLowerCase();
+  return error.code === "42P01"
+    || error.code === "42703"
+    || error.code === "PGRST204"
+    || combined.includes("does not exist")
+    || combined.includes("schema cache");
+}
+
+async function readClientRowByIdOrReference(
+  supabase: SupabaseClient,
+  clientIdentifier: string
 ) {
   const normalizedIdentifier = clientIdentifier.trim();
   if (!normalizedIdentifier) {
     return null;
   }
 
-  if (UUID_PATTERN.test(normalizedIdentifier)) {
-    return normalizedIdentifier;
-  }
+  const query = UUID_PATTERN.test(normalizedIdentifier)
+    ? supabase
+      .from("clients")
+      .select("id, reference_code, profile_id")
+      .eq("id", normalizedIdentifier)
+      .maybeSingle()
+    : supabase
+      .from("clients")
+      .select("id, reference_code, profile_id")
+      .eq("reference_code", normalizedIdentifier)
+      .maybeSingle();
 
-  const clientResult = await supabase
-    .from("clients")
-    .select("id")
-    .eq("reference_code", normalizedIdentifier)
-    .maybeSingle();
-
-  if (clientResult.error) {
-    if (clientResult.error.code === "22P02" || isBenignEmptyPaymentMethodsError(clientResult.error)) {
+  const result = await query;
+  if (result.error) {
+    if (result.error.code === "22P02" || isBenignEmptyPaymentMethodsError(result.error)) {
       return null;
     }
 
-    logPaymentMethodsReadError("client_lookup", normalizedIdentifier, clientResult.error);
+    logPaymentMethodsReadError("client_lookup", normalizedIdentifier, result.error);
     throw new PaymentServiceError("Unable to resolve the saved payment method client.", 500);
   }
 
-  return clientResult.data?.id ?? null;
+  return (result.data as ClientRow | null) ?? null;
+}
+
+async function resolveClientPaymentContext(
+  clientIdentifier: string,
+  supabase: SupabaseClient,
+  options: {
+    profileId?: string | null;
+    clientReference?: string | null;
+    profileEmail?: string | null;
+    profileName?: string | null;
+    profilePhone?: string | null;
+    repairPreferences?: boolean;
+  } = {}
+): Promise<ClientPaymentContext | null> {
+  const normalizedIdentifier = clientIdentifier.trim();
+  if (!normalizedIdentifier) {
+    return null;
+  }
+
+  const client = await readClientRowByIdOrReference(supabase, normalizedIdentifier);
+  const clientId = client?.id ?? (UUID_PATTERN.test(normalizedIdentifier) ? normalizedIdentifier : null);
+  if (!clientId) {
+    return null;
+  }
+
+  const context: ClientPaymentContext = {
+    clientId,
+    clientReference: client?.reference_code ?? options.clientReference ?? (UUID_PATTERN.test(normalizedIdentifier) ? null : normalizedIdentifier),
+    profileId: client?.profile_id ?? options.profileId ?? null,
+    profileEmail: options.profileEmail,
+    profileName: options.profileName,
+    profilePhone: options.profilePhone,
+    preferencesRepaired: false
+  };
+
+  if (options.repairPreferences !== false) {
+    context.preferencesRepaired = await ensureClientPaymentPreferenceRow(supabase, context);
+  }
+
+  return context;
+}
+
+async function ensureClientPaymentPreferenceRow(
+  supabase: SupabaseClient,
+  context: ClientPaymentContext
+) {
+  const clientReference = context.clientReference?.trim();
+  if (!clientReference) {
+    return false;
+  }
+
+  const existing = await supabase
+    .from("client_preferences")
+    .select("client_reference, client_email")
+    .eq("client_reference", clientReference)
+    .maybeSingle();
+
+  if (existing.error) {
+    if (isPaymentSchemaMissing(existing.error)) {
+      return false;
+    }
+
+    throw new PaymentServiceError("Unable to resolve client payment preferences.", 500);
+  }
+
+  const now = new Date().toISOString();
+  const email = context.profileEmail?.trim().toLowerCase() || `${clientReference}@client.bvrb3r.local`;
+  if (!existing.data) {
+    const insertResult = await supabase
+      .from("client_preferences")
+      .insert({
+        client_reference: clientReference,
+        client_email: email,
+        favorite_shop_reference: null,
+        preferred_location_reference: null,
+        prefers_instant_booking: false,
+        updated_at: now,
+        created_at: now
+      });
+
+    if (insertResult.error) {
+      if (isPaymentSchemaMissing(insertResult.error)) {
+        return false;
+      }
+
+      throw new PaymentServiceError("Unable to repair client payment preferences.", 500);
+    }
+
+    return true;
+  }
+
+  if (email && existing.data.client_email !== email) {
+    const updateResult = await supabase
+      .from("client_preferences")
+      .update({ client_email: email, updated_at: now })
+      .eq("client_reference", clientReference);
+
+    if (updateResult.error && !isPaymentSchemaMissing(updateResult.error)) {
+      throw new PaymentServiceError("Unable to sync client payment preferences.", 500);
+    }
+  }
+
+  return false;
+}
+
+async function readCanonicalPaymentMethodRows(
+  supabase: SupabaseClient,
+  clientId: string,
+  clientIdentifierForLog: string
+) {
+  const result = await supabase
+    .from("payment_methods")
+    .select("id, client_id, provider, provider_customer_id, provider_payment_method_id, brand, last4, exp_month, exp_year, is_default, created_at")
+    .eq("client_id", clientId)
+    .order("is_default", { ascending: false })
+    .order("created_at", { ascending: true });
+
+  if (result.error) {
+    if (isBenignEmptyPaymentMethodsError(result.error)) {
+      return [] as PaymentMethodRow[];
+    }
+
+    logPaymentMethodsReadError("payment_methods_query", clientIdentifierForLog, result.error, clientId);
+    throw new PaymentServiceError("Unable to load saved payment methods.", 500);
+  }
+
+  return ((result.data ?? []) as PaymentMethodRow[]);
+}
+
+async function readLegacySavedPaymentMethodsForProfile(
+  supabase: SupabaseClient,
+  profileId: string | null
+) {
+  if (!profileId) {
+    return [] as LegacySavedPaymentMethodRow[];
+  }
+
+  const result = await supabase
+    .from("saved_payment_methods")
+    .select("id, profile_id, billing_customer_id, provider, provider_payment_method_id, brand, last4, exp_month, exp_year, is_default, created_at")
+    .eq("profile_id", profileId)
+    .order("is_default", { ascending: false })
+    .order("created_at", { ascending: true });
+
+  if (result.error) {
+    if (isBenignEmptyPaymentMethodsError(result.error) || isPaymentSchemaMissing(result.error)) {
+      return [];
+    }
+
+    throw new PaymentServiceError("Unable to load legacy saved payment methods.", 500);
+  }
+
+  return (result.data ?? []) as LegacySavedPaymentMethodRow[];
+}
+
+async function readBillingCustomersForLegacyMethods(
+  supabase: SupabaseClient,
+  legacyMethods: LegacySavedPaymentMethodRow[]
+) {
+  const billingCustomerIds = [...new Set(legacyMethods.map((method) => method.billing_customer_id).filter((id): id is string => Boolean(id)))];
+  if (!billingCustomerIds.length) {
+    return new Map<string, BillingCustomerRow>();
+  }
+
+  const result = await supabase
+    .from("billing_customers")
+    .select("id, provider_customer_id, default_payment_method_id")
+    .in("id", billingCustomerIds);
+
+  if (result.error) {
+    if (isPaymentSchemaMissing(result.error)) {
+      return new Map<string, BillingCustomerRow>();
+    }
+
+    throw new PaymentServiceError("Unable to load saved billing customer references.", 500);
+  }
+
+  return new Map(((result.data ?? []) as BillingCustomerRow[]).map((row) => [row.id, row]));
+}
+
+async function syncClientPreferencePaymentDefaults(
+  supabase: SupabaseClient,
+  context: ClientPaymentContext,
+  paymentMethods: PaymentMethodRow[]
+) {
+  const clientReference = context.clientReference?.trim();
+  if (!clientReference) {
+    return;
+  }
+
+  const defaultMethod = paymentMethods.find((method) => method.is_default) ?? paymentMethods[0] ?? null;
+  const updateResult = await supabase
+    .from("client_preferences")
+    .update({
+      provider_customer_ref: defaultMethod?.provider_customer_id ?? null,
+      default_payment_method_ref: defaultMethod?.provider_payment_method_id ?? null,
+      updated_at: new Date().toISOString()
+    })
+    .eq("client_reference", clientReference);
+
+  if (updateResult.error && !isPaymentSchemaMissing(updateResult.error)) {
+    throw new PaymentServiceError("Unable to sync client payment preference defaults.", 500);
+  }
+}
+
+function clientPaymentContextFromActor(actor: PaymentActorContext): ClientPaymentContext | null {
+  if (!actor.clientId) {
+    return null;
+  }
+
+  return {
+    clientId: actor.clientId,
+    clientReference: actor.clientReference ?? null,
+    profileId: actor.profile.id,
+    profileEmail: actor.profile.email,
+    profileName: actor.profile.full_name,
+    profilePhone: actor.profile.phone ?? null,
+    preferencesRepaired: Boolean(actor.clientPreferencesRepaired)
+  };
+}
+
+async function syncLegacyPaymentMethodsIntoCanonical(
+  supabase: SupabaseClient,
+  context: ClientPaymentContext,
+  canonicalRows: PaymentMethodRow[]
+) {
+  const legacyRows = await readLegacySavedPaymentMethodsForProfile(supabase, context.profileId);
+  if (!legacyRows.length) {
+    await syncClientPreferencePaymentDefaults(supabase, context, canonicalRows);
+    return canonicalRows;
+  }
+
+  const billingCustomers = await readBillingCustomersForLegacyMethods(supabase, legacyRows);
+  const existingProviderRefs = new Set(canonicalRows.map((row) => `${row.provider}:${row.provider_payment_method_id}`));
+  let rowsChanged = false;
+  let hasDefault = canonicalRows.some((row) => row.is_default);
+
+  for (const legacy of legacyRows) {
+    const providerKey = `${legacy.provider}:${legacy.provider_payment_method_id}`;
+    if (existingProviderRefs.has(providerKey)) {
+      continue;
+    }
+
+    const shouldBeDefault = legacy.is_default || !hasDefault;
+    if (shouldBeDefault) {
+      const clearDefaults = await supabase
+        .from("payment_methods")
+        .update({ is_default: false, updated_at: new Date().toISOString() })
+        .eq("client_id", context.clientId)
+        .eq("is_default", true);
+
+      if (clearDefaults.error) {
+        throw new PaymentServiceError("Unable to clear previous default payment method during wallet sync.", 500);
+      }
+    }
+
+    const billingCustomer = legacy.billing_customer_id ? billingCustomers.get(legacy.billing_customer_id) : undefined;
+    const insertResult = await supabase
+      .from("payment_methods")
+      .insert({
+        client_id: context.clientId,
+        provider: legacy.provider,
+        provider_customer_id: billingCustomer?.provider_customer_id ?? null,
+        provider_payment_method_id: legacy.provider_payment_method_id,
+        brand: legacy.brand,
+        last4: legacy.last4,
+        exp_month: legacy.exp_month,
+        exp_year: legacy.exp_year,
+        is_default: shouldBeDefault,
+        updated_at: new Date().toISOString()
+      });
+
+    if (insertResult.error) {
+      if (insertResult.error.code === "23505") {
+        continue;
+      }
+
+      throw new PaymentServiceError("Unable to sync wallet payment method into booking payments.", 500);
+    }
+
+    rowsChanged = true;
+    hasDefault = hasDefault || shouldBeDefault;
+    existingProviderRefs.add(providerKey);
+  }
+
+  const nextRows = rowsChanged
+    ? await readCanonicalPaymentMethodRows(supabase, context.clientId, context.clientReference ?? context.clientId)
+    : canonicalRows;
+
+  if (nextRows.length && !nextRows.some((row) => row.is_default)) {
+    const first = nextRows[0];
+    const setDefault = await supabase
+      .from("payment_methods")
+      .update({ is_default: true, updated_at: new Date().toISOString() })
+      .eq("id", first.id);
+
+    if (setDefault.error) {
+      throw new PaymentServiceError("Unable to set the default payment method during wallet sync.", 500);
+    }
+
+    const repairedRows = await readCanonicalPaymentMethodRows(supabase, context.clientId, context.clientReference ?? context.clientId);
+    await syncClientPreferencePaymentDefaults(supabase, context, repairedRows);
+    return repairedRows;
+  }
+
+  await syncClientPreferencePaymentDefaults(supabase, context, nextRows);
+  return nextRows;
 }
 
 function isShopStaff(role: UserAccount["role"]) {
@@ -583,14 +945,26 @@ function toStripePaymentServiceError(error: unknown, fallbackMessage: string, st
 }
 
 async function resolvePaymentActor(user: UserAccount, supabase: SupabaseClient): Promise<PaymentActorContext> {
-  const profileResult = await supabase
+  let profileResult = await supabase
     .from("profiles")
-    .select("id, email, full_name, role")
-    .eq("email", user.email)
+    .select("id, email, full_name, phone, role")
+    .eq("id", user.id)
     .maybeSingle();
 
   if (profileResult.error) {
     throw new PaymentServiceError("Unable to resolve the payment profile.", 500);
+  }
+
+  if (!profileResult.data && user.email) {
+    profileResult = await supabase
+      .from("profiles")
+      .select("id, email, full_name, phone, role")
+      .eq("email", user.email)
+      .maybeSingle();
+
+    if (profileResult.error) {
+      throw new PaymentServiceError("Unable to resolve the payment profile.", 500);
+    }
   }
 
   if (!profileResult.data) {
@@ -606,19 +980,83 @@ async function resolvePaymentActor(user: UserAccount, supabase: SupabaseClient):
   if (user.role === "client") {
     const clientResult = await supabase
       .from("clients")
-      .select("id, profile_id")
+      .select("id, reference_code, profile_id")
       .eq("profile_id", actor.profile.id)
-      .maybeSingle();
+      .order("created_at", { ascending: true })
+      .limit(1);
 
     if (clientResult.error) {
       throw new PaymentServiceError("Unable to resolve the client payment account.", 500);
     }
 
-    if (!clientResult.data) {
-      throw new PaymentServiceError("No client payment account is available.", 404);
+    let clientRow: ClientRow | null = ((clientResult.data ?? []) as ClientRow[])[0] ?? null;
+    const providedClientReference = user.clientId?.trim();
+    if (!clientRow && providedClientReference) {
+      const clientByReference = await readClientRowByIdOrReference(supabase, providedClientReference);
+      clientRow = clientByReference;
     }
 
-    actor.clientId = (clientResult.data as ClientRow).id;
+    const clientReference = clientRow?.reference_code
+      ?? providedClientReference
+      ?? fallbackClientReferenceForUser(user.id);
+
+    if (!clientRow) {
+      const clientWrite = await supabase
+        .from("clients")
+        .insert({
+          id: canonicalClientUuid(clientReference),
+          profile_id: actor.profile.id,
+          reference_code: clientReference,
+          loyalty_points: 0,
+          retention_tag: "new"
+        })
+        .select("id, reference_code, profile_id")
+        .single();
+
+      if (clientWrite.error) {
+        throw new PaymentServiceError("Unable to repair the client payment account.", 500);
+      }
+
+      clientRow = clientWrite.data as ClientRow;
+      if (clientRow.profile_id && clientRow.profile_id !== actor.profile.id) {
+        throw new PaymentServiceError("Client payment account belongs to another profile.", 403);
+      }
+    } else {
+      if (clientRow.profile_id && clientRow.profile_id !== actor.profile.id) {
+        throw new PaymentServiceError("Client payment account belongs to another profile.", 403);
+      }
+
+      if (!clientRow.profile_id || !clientRow.reference_code) {
+        const updatePayload = {
+          profile_id: clientRow.profile_id ?? actor.profile.id,
+          reference_code: clientRow.reference_code ?? clientReference
+        };
+        const clientUpdate = await supabase
+          .from("clients")
+          .update(updatePayload)
+          .eq("id", clientRow.id)
+          .select("id, reference_code, profile_id")
+          .maybeSingle();
+
+        if (clientUpdate.error) {
+          throw new PaymentServiceError("Unable to link the client payment account.", 500);
+        }
+
+        clientRow = clientUpdate.data as ClientRow;
+      }
+    }
+
+    actor.clientId = clientRow.id;
+    actor.clientReference = clientRow.reference_code ?? clientReference;
+    actor.clientPreferencesRepaired = await ensureClientPaymentPreferenceRow(supabase, {
+      clientId: clientRow.id,
+      clientReference: actor.clientReference,
+      profileId: actor.profile.id,
+      profileEmail: actor.profile.email,
+      profileName: actor.profile.full_name,
+      profilePhone: actor.profile.phone ?? user.phone,
+      preferencesRepaired: false
+    });
   }
 
   if (user.role === "commission_barber" || user.role === "booth_rent_barber") {
@@ -935,36 +1373,30 @@ async function syncLegacyBillingDefault(
 
 export async function readClientPaymentMethodsByClientId(
   clientId: string,
-  supabaseInput?: SupabaseClient | null
+  supabaseInput?: SupabaseClient | null,
+  options: {
+    profileId?: string | null;
+    clientReference?: string | null;
+    profileEmail?: string | null;
+    profileName?: string | null;
+    profilePhone?: string | null;
+    repairPreferences?: boolean;
+    syncLegacyWallet?: boolean;
+  } = {}
 ) {
   const supabase = supabaseInput ?? getSupabaseOrThrow();
-  const resolvedClientId = await resolveClientPaymentMethodsClientId(clientId, supabase);
+  const context = await resolveClientPaymentContext(clientId, supabase, options);
 
-  if (!resolvedClientId) {
+  if (!context) {
     return [];
   }
 
-  const result = await supabase
-    .from("payment_methods")
-    .select("id, client_id, provider, provider_customer_id, provider_payment_method_id, brand, last4, exp_month, exp_year, is_default, created_at")
-    .eq("client_id", resolvedClientId)
-    .order("is_default", { ascending: false })
-    .order("created_at", { ascending: true });
+  const canonicalRows = await readCanonicalPaymentMethodRows(supabase, context.clientId, clientId);
+  const resolvedRows = options.syncLegacyWallet === false
+    ? canonicalRows
+    : await syncLegacyPaymentMethodsIntoCanonical(supabase, context, canonicalRows);
 
-  if (result.error) {
-    if (isBenignEmptyPaymentMethodsError(result.error)) {
-      return [];
-    }
-
-    logPaymentMethodsReadError("payment_methods_query", clientId, result.error, resolvedClientId);
-    throw new PaymentServiceError("Unable to load saved payment methods.", 500);
-  }
-
-  if (!result.data?.length) {
-    return [];
-  }
-
-  return (result.data as PaymentMethodRow[]).map(mapPaymentMethodRow);
+  return resolvedRows.map(mapPaymentMethodRow);
 }
 
 export async function readAppointmentPaymentSummary(
@@ -1469,6 +1901,12 @@ export async function addClientPaymentMethod(user: UserAccount, input: PaymentMe
     await syncLegacyBillingDefault(supabase, actor, normalized.provider, normalized.providerPaymentMethodId);
   }
 
+  const paymentContext = clientPaymentContextFromActor(actor);
+  if (paymentContext) {
+    const latestRows = await readCanonicalPaymentMethodRows(supabase, actor.clientId, actor.clientReference ?? actor.clientId);
+    await syncClientPreferencePaymentDefaults(supabase, paymentContext, latestRows);
+  }
+
   return mapPaymentMethodRow(insertResult.data as PaymentMethodRow);
 }
 
@@ -1535,6 +1973,12 @@ export async function setDefaultClientPaymentMethod(user: UserAccount, paymentMe
   }
 
   await syncLegacyBillingDefault(supabase, actor, paymentMethod.provider, paymentMethod.provider_payment_method_id);
+
+  const paymentContext = clientPaymentContextFromActor(actor);
+  if (paymentContext) {
+    const latestRows = await readCanonicalPaymentMethodRows(supabase, actor.clientId, actor.clientReference ?? actor.clientId);
+    await syncClientPreferencePaymentDefaults(supabase, paymentContext, latestRows);
+  }
 
   return mapPaymentMethodRow(setDefault.data as PaymentMethodRow);
 }

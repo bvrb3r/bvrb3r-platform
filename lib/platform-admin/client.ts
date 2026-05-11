@@ -144,6 +144,35 @@ export function useArchitectBarberProfileRepairMutation(profileId: string) {
   });
 }
 
+export function useArchitectClientPaymentRepairMutation(profileId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () =>
+      requestJson<{
+        ok: boolean;
+        repair: {
+          clientId: string;
+          clientReference: string;
+          repaired: boolean;
+          repairStatus: string;
+        };
+        paymentMethodCount: number;
+        defaultPaymentExists: boolean;
+      }>(
+        `/api/architect/accounts/${profileId}/repair-client-payment-profile`,
+        { method: "POST" }
+      ),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["architect-accounts"] }),
+        queryClient.invalidateQueries({ queryKey: ["architect-account-detail", profileId] }),
+        queryClient.invalidateQueries({ queryKey: ["architect-console"] })
+      ]);
+    }
+  });
+}
+
 export function useArchitectVerificationQueueQuery(filters: ArchitectVerificationQueueFilters, initialData?: ArchitectVerificationQueuePayload) {
   return useQuery({
     queryKey: ["architect-verifications", filters],
