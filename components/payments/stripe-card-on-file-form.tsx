@@ -1,13 +1,28 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
-import { CardElement, Elements, useElements, useStripe } from "@stripe/react-stripe-js";
-import { loadStripe, type Stripe, type StripeCardElement } from "@stripe/stripe-js";
+import {
+  CardCvcElement,
+  CardExpiryElement,
+  CardNumberElement,
+  Elements,
+  PostalCodeElement,
+  useElements,
+  useStripe
+} from "@stripe/react-stripe-js";
+import {
+  loadStripe,
+  type Stripe,
+  type StripeCardCvcElement,
+  type StripeCardExpiryElement,
+  type StripeCardNumberElement,
+  type StripePostalCodeElement
+} from "@stripe/stripe-js";
 import type { PaymentSetupIntentView } from "@/lib/payments/client";
 
 export const STRIPE_CARD_FORM_LOAD_ERROR = "Secure card form failed to load.";
 
-const STRIPE_CARD_READY_TIMEOUT_MS = 5000;
+const STRIPE_CARD_READY_TIMEOUT_MS = 8000;
 const stripePromiseCache = new Map<string, Promise<Stripe | null>>();
 
 type StripeSetupReference =
@@ -17,15 +32,14 @@ type StripeSetupReference =
   | "setup_intent_ready"
   | "setup_intent_client_secret_missing"
   | "elements_provider_mounted"
-  | "card_element_ready"
-  | "card_element_focus"
-  | "card_element_blur"
-  | "card_element_change"
-  | "card_element_iframe_detected"
-  | "card_element_parent_pointer_events"
-  | "card_element_active_element_after_click"
-  | "card_element_not_ready_timeout"
-  | "card_element_load_error";
+  | "split_elements_ready"
+  | "split_element_ready"
+  | "split_element_focus"
+  | "split_element_blur"
+  | "split_element_change"
+  | "split_element_iframe_detected"
+  | "split_element_not_ready_timeout"
+  | "split_element_load_error";
 
 export type ConfirmStripeCardSetup = () => Promise<string>;
 
@@ -39,17 +53,33 @@ type StripeCardOnFileFormProps = {
   onConfirmSetupChange: (confirmSetup: ConfirmStripeCardSetup | null) => void;
 };
 
-const CARD_ELEMENT_CONTAINER_CLASS_NAME = "relative z-[50] min-h-[56px] rounded-[16px] border border-[rgba(255,255,255,0.18)] bg-[rgba(255,255,255,0.04)] p-4";
+type SplitFieldName = "cardNumber" | "cardExpiry" | "cardCvc" | "postalCode";
+
+type SplitFieldState = Record<SplitFieldName, {
+  ready: boolean;
+  complete: boolean;
+  error: string | null;
+}>;
+
+const EMPTY_SPLIT_FIELD_STATE: SplitFieldState = {
+  cardNumber: { ready: false, complete: false, error: null },
+  cardExpiry: { ready: false, complete: false, error: null },
+  cardCvc: { ready: false, complete: false, error: null },
+  postalCode: { ready: false, complete: false, error: null }
+};
+
+const FIELD_CONTAINER_CLASS_NAME = "relative z-[50] min-h-[56px] rounded-[16px] border border-[rgba(255,255,255,0.18)] bg-[rgba(255,255,255,0.04)] px-4 py-4";
+const FIELD_LABEL_CLASS_NAME = "mb-2 block text-[10px] font-semibold uppercase tracking-[0.18em] text-white/42";
 
 function logStripeCardFormError(reference: StripeSetupReference, details?: Record<string, unknown>) {
-  console.error("[payments] stripe card form failed", {
+  console.error("[payments] stripe split card form failed", {
     reference,
     ...(details ?? {})
   });
 }
 
 function logStripeCardFormDebug(reference: StripeSetupReference, details?: Record<string, unknown>) {
-  console.log("[payments] stripe card form state", {
+  console.log("[payments] stripe split card form state", {
     reference,
     ...(details ?? {})
   });
@@ -77,6 +107,18 @@ function getStripePaymentMethodId(paymentMethod: string | { id?: string } | null
   }
 
   return paymentMethod?.id ?? "";
+}
+
+function isSplitFieldStateReady(state: SplitFieldState) {
+  return state.cardNumber.ready && state.cardExpiry.ready && state.cardCvc.ready && state.postalCode.ready;
+}
+
+function isSplitFieldStateComplete(state: SplitFieldState) {
+  return state.cardNumber.complete && state.cardExpiry.complete && state.cardCvc.complete && state.postalCode.complete;
+}
+
+function getFirstSplitFieldError(state: SplitFieldState) {
+  return state.cardNumber.error ?? state.cardExpiry.error ?? state.cardCvc.error ?? state.postalCode.error ?? null;
 }
 
 export function StripeCardOnFileForm({
@@ -154,6 +196,11 @@ export function StripeCardOnFileForm({
       key: publishableKey,
       status: "loading"
     });
+    setElementState({
+      key: activeSetupKey,
+      ready: false,
+      failed: false
+    });
     logStripeCardFormDebug("setup_intent_ready", {
       hasClientSecret: Boolean(clientSecret),
       hasPublishableKey: Boolean(publishableKey)
@@ -204,7 +251,7 @@ export function StripeCardOnFileForm({
     return () => {
       cancelled = true;
     };
-  }, [clientSecret, isSetupIntentLoading, onErrorMessage, onStatusChange, publishableKey, setupIntent, stripePromise]);
+  }, [activeSetupKey, clientSecret, isSetupIntentLoading, onErrorMessage, onStatusChange, publishableKey, setupIntent, stripePromise]);
 
   const showStripeElement = Boolean(clientSecret && publishableKey && stripePromise && stripeReady && !stripeLoadFailed);
   const showLoading = isSetupIntentLoading
@@ -242,24 +289,17 @@ export function StripeCardOnFileForm({
 
   return (
     <div>
-      <div className="mb-2 grid grid-cols-[1.45fr_0.7fr_0.55fr_0.7fr] gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/42">
-        <span>Card number</span>
-        <span>MM/YY</span>
-        <span>CVC</span>
-        <span>ZIP</span>
-      </div>
       {!showStripeElement ? (
-        <div
-          className={CARD_ELEMENT_CONTAINER_CLASS_NAME}
-          style={{ pointerEvents: "auto", cursor: "text" }}
-          aria-label="Card number, MM/YY, CVC, and ZIP"
-          data-testid="stripe-card-element-container"
-          data-stripe-card-host="true"
-        />
+        <div className="grid gap-3 sm:grid-cols-[1.45fr_0.7fr_0.55fr_0.7fr]">
+          <EmptyStripeField label="Card number" />
+          <EmptyStripeField label="MM/YY" />
+          <EmptyStripeField label="CVC" />
+          <EmptyStripeField label="ZIP" />
+        </div>
       ) : null}
       {showStripeElement && elementsOptions ? (
         <Elements stripe={stripePromise} options={elementsOptions}>
-          <StripeCardElementFields
+          <StripeSplitCardElementFields
             clientSecret={clientSecret}
             onReadyChange={handleReadyChange}
             onCompleteChange={onCompleteChange}
@@ -280,7 +320,21 @@ export function StripeCardOnFileForm({
   );
 }
 
-function StripeCardElementFields({
+function EmptyStripeField({ label }: { label: string }) {
+  return (
+    <div>
+      <label className={FIELD_LABEL_CLASS_NAME}>{label}</label>
+      <div
+        className={FIELD_CONTAINER_CLASS_NAME}
+        style={{ pointerEvents: "auto", cursor: "text" }}
+        aria-label={label}
+        data-testid={`stripe-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-placeholder`}
+      />
+    </div>
+  );
+}
+
+function StripeSplitCardElementFields({
   clientSecret,
   onReadyChange,
   onCompleteChange,
@@ -294,26 +348,41 @@ function StripeCardElementFields({
 }) {
   const stripe = useStripe();
   const elements = useElements();
-  const elementHostRef = useRef<HTMLDivElement | null>(null);
-  const cardElementRef = useRef<StripeCardElement | null>(null);
+  const [fieldState, setFieldState] = useState<SplitFieldState>(EMPTY_SPLIT_FIELD_STATE);
   const readyRef = useRef(false);
+  const cardNumberRef = useRef<StripeCardNumberElement | null>(null);
+  const cardExpiryRef = useRef<StripeCardExpiryElement | null>(null);
+  const cardCvcRef = useRef<StripeCardCvcElement | null>(null);
+  const postalCodeRef = useRef<StripePostalCodeElement | null>(null);
+  const postalCodeValueRef = useRef("");
+  const fieldHostRefs = useRef<Record<SplitFieldName, HTMLDivElement | null>>({
+    cardNumber: null,
+    cardExpiry: null,
+    cardCvc: null,
+    postalCode: null
+  });
 
-  const cardElementOptions = useMemo(() => ({
-    hidePostalCode: false,
-    style: {
-      base: {
-        color: "#ffffff",
-        fontSize: "16px",
-        fontFamily: "Inter, system-ui, sans-serif",
-        "::placeholder": {
-          color: "#8a8a8a"
-        }
-      },
-      invalid: {
-        color: "#ff6b6b"
+  const elementStyle = useMemo(() => ({
+    base: {
+      color: "#ffffff",
+      fontSize: "16px",
+      fontFamily: "Inter, system-ui, sans-serif",
+      "::placeholder": {
+        color: "#8a8a8a"
       }
+    },
+    invalid: {
+      color: "#ff6b6b"
     }
   }), []);
+
+  const cardNumberOptions = useMemo(() => ({
+    showIcon: true,
+    style: elementStyle
+  }), [elementStyle]);
+  const smallFieldOptions = useMemo(() => ({
+    style: elementStyle
+  }), [elementStyle]);
 
   const markFailed = useCallback((reference: StripeSetupReference, details?: Record<string, unknown>) => {
     logStripeCardFormError(reference, details);
@@ -332,21 +401,50 @@ function StripeCardElementFields({
 
   useEffect(() => {
     readyRef.current = false;
+    setFieldState(EMPTY_SPLIT_FIELD_STATE);
+    onReadyChange(false);
+    onCompleteChange(false);
 
     const timeout = window.setTimeout(() => {
       if (readyRef.current) {
         return;
       }
 
-      markFailed("card_element_not_ready_timeout", {
-        reason: "ready_timeout"
+      markFailed("split_element_not_ready_timeout", {
+        reason: "ready_timeout",
+        fieldState
       });
     }, STRIPE_CARD_READY_TIMEOUT_MS);
 
     return () => {
       window.clearTimeout(timeout);
     };
-  }, [clientSecret, markFailed]);
+    // fieldState intentionally excluded so the timeout reflects the initial mount window.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientSecret, markFailed, onCompleteChange, onReadyChange]);
+
+  useEffect(() => {
+    const ready = isSplitFieldStateReady(fieldState);
+    const complete = isSplitFieldStateComplete(fieldState);
+    const firstError = getFirstSplitFieldError(fieldState);
+
+    if (ready && !readyRef.current) {
+      readyRef.current = true;
+      logStripeCardFormDebug("split_elements_ready", {
+        fields: Object.fromEntries(Object.entries(fieldState).map(([field, state]) => [field, state.ready]))
+      });
+      onReadyChange(true);
+      onStatusChange("ready");
+      onErrorMessage(firstError);
+    }
+
+    onCompleteChange(complete);
+    if (firstError) {
+      onErrorMessage(firstError);
+    } else if (complete) {
+      onErrorMessage(null);
+    }
+  }, [fieldState, onCompleteChange, onErrorMessage, onReadyChange, onStatusChange]);
 
   useEffect(() => {
     if (!stripe || !elements) {
@@ -355,17 +453,23 @@ function StripeCardElementFields({
     }
 
     onConfirmSetupChange(async () => {
-      const card = elements.getElement(CardElement);
-      if (!card) {
-        markFailed("card_element_not_ready_timeout", {
-          reason: "card_element_missing_at_confirm"
+      const cardNumber = elements.getElement(CardNumberElement);
+      if (!cardNumber) {
+        markFailed("split_element_not_ready_timeout", {
+          reason: "card_number_element_missing_at_confirm"
         });
         throw new Error(STRIPE_CARD_FORM_LOAD_ERROR);
       }
 
+      const postalCode = postalCodeValueRef.current.trim();
       const result = await stripe.confirmCardSetup(clientSecret, {
         payment_method: {
-          card
+          card: cardNumber,
+          billing_details: postalCode ? {
+            address: {
+              postal_code: postalCode
+            }
+          } : undefined
         }
       });
 
@@ -386,52 +490,28 @@ function StripeCardElementFields({
     };
   }, [clientSecret, elements, markFailed, onConfirmSetupChange, stripe]);
 
-  const logActiveElementAfterClick = useCallback((reason: string) => {
-    window.requestAnimationFrame(() => {
-      const activeElement = document.activeElement;
-      logStripeCardFormDebug("card_element_active_element_after_click", {
-        reason,
-        tagName: activeElement?.tagName?.toLowerCase() ?? null,
-        title: activeElement?.getAttribute("title") ?? null,
-        ariaLabel: activeElement?.getAttribute("aria-label") ?? null
-      });
-    });
+  const setHostRef = useCallback((field: SplitFieldName, node: HTMLDivElement | null) => {
+    fieldHostRefs.current[field] = node;
   }, []);
 
-  const logPointerDiagnostics = useCallback((reason: string) => {
-    const host = elementHostRef.current;
-    const ancestors: Array<Record<string, unknown>> = [];
-    let node: HTMLElement | null = host;
-
-    for (let depth = 0; node && depth < 6; depth += 1) {
-      const style = window.getComputedStyle(node);
-      ancestors.push({
-        depth,
-        tagName: node.tagName.toLowerCase(),
-        dataStripeHost: node.getAttribute("data-stripe-card-host"),
-        pointerEvents: style.pointerEvents,
-        position: style.position,
-        zIndex: style.zIndex,
-        overflow: style.overflow,
-        ariaDisabled: node.getAttribute("aria-disabled"),
-        disabled: node.hasAttribute("disabled")
-      });
-      node = node.parentElement;
-    }
-
-    logStripeCardFormDebug("card_element_parent_pointer_events", {
-      reason,
-      ancestors
-    });
+  const updateField = useCallback((field: SplitFieldName, update: Partial<SplitFieldState[SplitFieldName]>) => {
+    setFieldState((current) => ({
+      ...current,
+      [field]: {
+        ...current[field],
+        ...update
+      }
+    }));
   }, []);
 
-  const readIframeDiagnostics = useCallback((reason: string) => {
-    const host = elementHostRef.current;
+  const readIframeDiagnostics = useCallback((field: SplitFieldName, reason: string) => {
+    const host = fieldHostRefs.current[field];
     const iframe = host?.querySelector("iframe") ?? null;
     const hostStyle = host ? window.getComputedStyle(host) : null;
     const hostRect = host?.getBoundingClientRect();
     const iframeRect = iframe?.getBoundingClientRect();
     const diagnostics = {
+      field,
       reason,
       iframeExists: Boolean(iframe),
       hostHeight: hostRect?.height ?? null,
@@ -443,8 +523,7 @@ function StripeCardElementFields({
       zIndex: hostStyle?.zIndex ?? null
     };
 
-    logStripeCardFormDebug("card_element_iframe_detected", diagnostics);
-    logPointerDiagnostics(reason);
+    logStripeCardFormDebug("split_element_iframe_detected", diagnostics);
 
     return {
       hasInteractiveIframe: Boolean(host && iframe)
@@ -453,83 +532,204 @@ function StripeCardElementFields({
         && hostStyle?.pointerEvents !== "none",
       diagnostics
     };
-  }, [logPointerDiagnostics]);
-
-  const verifyMountedIframe = useCallback((cardElement: StripeCardElement) => {
-    cardElementRef.current = cardElement;
-    readyRef.current = true;
-    logStripeCardFormDebug("card_element_ready");
-    onReadyChange(true);
-    onStatusChange("ready");
-    onErrorMessage(null);
-
-    window.requestAnimationFrame(() => {
-      const { hasInteractiveIframe, diagnostics } = readIframeDiagnostics("ready");
-      if (!hasInteractiveIframe) {
-        markFailed("card_element_not_ready_timeout", {
-          ...diagnostics,
-          failureReason: "iframe_missing_or_not_interactive_after_ready"
-        });
-        return;
-      }
-    });
-  }, [markFailed, onErrorMessage, onReadyChange, onStatusChange, readIframeDiagnostics]);
-
-  const handleHostClick = useCallback(() => {
-    readIframeDiagnostics("click");
-    cardElementRef.current?.focus();
-    logActiveElementAfterClick("click");
-  }, [logActiveElementAfterClick, readIframeDiagnostics]);
-
-  const handleFocus = useCallback(() => {
-    logStripeCardFormDebug("card_element_focus");
-    readIframeDiagnostics("focus");
-    logActiveElementAfterClick("focus");
-  }, [logActiveElementAfterClick, readIframeDiagnostics]);
-
-  const handleBlur = useCallback(() => {
-    logStripeCardFormDebug("card_element_blur");
   }, []);
 
-  const handleChange = useCallback((event: Parameters<NonNullable<ComponentProps<typeof CardElement>["onChange"]>>[0]) => {
-    logStripeCardFormDebug("card_element_change", {
+  const handleReady = useCallback((field: SplitFieldName) => {
+    return (
+      element: StripeCardNumberElement | StripeCardExpiryElement | StripeCardCvcElement | StripePostalCodeElement
+    ) => {
+      if (field === "cardNumber") {
+        cardNumberRef.current = element as StripeCardNumberElement;
+      }
+      if (field === "cardExpiry") {
+        cardExpiryRef.current = element as StripeCardExpiryElement;
+      }
+      if (field === "cardCvc") {
+        cardCvcRef.current = element as StripeCardCvcElement;
+      }
+      if (field === "postalCode") {
+        postalCodeRef.current = element as StripePostalCodeElement;
+      }
+
+      logStripeCardFormDebug("split_element_ready", { field });
+      updateField(field, { ready: true });
+
+      window.requestAnimationFrame(() => {
+        const { hasInteractiveIframe, diagnostics } = readIframeDiagnostics(field, "ready");
+        if (!hasInteractiveIframe) {
+          markFailed("split_element_not_ready_timeout", {
+            ...diagnostics,
+            failureReason: "iframe_missing_or_not_interactive_after_ready"
+          });
+        }
+      });
+    };
+  }, [markFailed, readIframeDiagnostics, updateField]);
+
+  const handleFocus = useCallback((field: SplitFieldName) => {
+    return () => {
+      logStripeCardFormDebug("split_element_focus", { field });
+      readIframeDiagnostics(field, "focus");
+    };
+  }, [readIframeDiagnostics]);
+
+  const handleBlur = useCallback((field: SplitFieldName) => {
+    return () => {
+      logStripeCardFormDebug("split_element_blur", { field });
+    };
+  }, []);
+
+  const handleFieldClick = useCallback((field: SplitFieldName) => {
+    readIframeDiagnostics(field, "click");
+    if (field === "cardNumber") {
+      cardNumberRef.current?.focus();
+    }
+    if (field === "cardExpiry") {
+      cardExpiryRef.current?.focus();
+    }
+    if (field === "cardCvc") {
+      cardCvcRef.current?.focus();
+    }
+    if (field === "postalCode") {
+      postalCodeRef.current?.focus();
+    }
+  }, [readIframeDiagnostics]);
+
+  const handleCardNumberChange = useCallback((event: Parameters<NonNullable<ComponentProps<typeof CardNumberElement>["onChange"]>>[0]) => {
+    logStripeCardFormDebug("split_element_change", {
+      field: "cardNumber",
       complete: Boolean(event.complete),
       empty: Boolean(event.empty),
       error: event.error?.message ?? null
     });
-    onCompleteChange(Boolean(event.complete));
-    if (event.error?.message) {
-      onErrorMessage(event.error.message);
-    } else if (event.complete) {
-      onErrorMessage(null);
-    }
-  }, [onCompleteChange, onErrorMessage]);
+    updateField("cardNumber", { complete: Boolean(event.complete), error: event.error?.message ?? null });
+  }, [updateField]);
 
-  const handleLoadError = useCallback((event: Parameters<NonNullable<ComponentProps<typeof CardElement>["onLoadError"]>>[0]) => {
-    markFailed("card_element_load_error", {
-      message: event.error?.message ?? null
+  const handleCardExpiryChange = useCallback((event: Parameters<NonNullable<ComponentProps<typeof CardExpiryElement>["onChange"]>>[0]) => {
+    logStripeCardFormDebug("split_element_change", {
+      field: "cardExpiry",
+      complete: Boolean(event.complete),
+      empty: Boolean(event.empty),
+      error: event.error?.message ?? null
     });
+    updateField("cardExpiry", { complete: Boolean(event.complete), error: event.error?.message ?? null });
+  }, [updateField]);
+
+  const handleCardCvcChange = useCallback((event: Parameters<NonNullable<ComponentProps<typeof CardCvcElement>["onChange"]>>[0]) => {
+    logStripeCardFormDebug("split_element_change", {
+      field: "cardCvc",
+      complete: Boolean(event.complete),
+      empty: Boolean(event.empty),
+      error: event.error?.message ?? null
+    });
+    updateField("cardCvc", { complete: Boolean(event.complete), error: event.error?.message ?? null });
+  }, [updateField]);
+
+  const handlePostalCodeChange = useCallback((event: Parameters<NonNullable<ComponentProps<typeof PostalCodeElement>["onChange"]>>[0]) => {
+    postalCodeValueRef.current = event.value ?? "";
+    logStripeCardFormDebug("split_element_change", {
+      field: "postalCode",
+      complete: Boolean(event.complete),
+      empty: Boolean(event.empty),
+      error: event.error?.message ?? null
+    });
+    updateField("postalCode", { complete: Boolean(event.complete), error: event.error?.message ?? null });
+  }, [updateField]);
+
+  const handleLoadError = useCallback((field: SplitFieldName) => {
+    return (event: Parameters<NonNullable<ComponentProps<typeof CardNumberElement>["onLoadError"]>>[0]) => {
+      markFailed("split_element_load_error", {
+        field,
+        message: event.error?.message ?? null
+      });
+    };
   }, [markFailed]);
 
   return (
-    <div
-      ref={elementHostRef}
-      className={CARD_ELEMENT_CONTAINER_CLASS_NAME}
-      style={{ pointerEvents: "auto", cursor: "text" }}
-      aria-label="Card number, MM/YY, CVC, and ZIP"
-      data-testid="stripe-card-element-container"
-      data-stripe-card-host="true"
-      onClick={handleHostClick}
-    >
-      <CardElement
-        className="relative z-[60] block min-h-[24px] w-full"
-        onReady={verifyMountedIframe}
-        onFocus={handleFocus}
-        onBlur={handleBlur}
-        onChange={handleChange}
-        onLoadError={handleLoadError}
-        options={cardElementOptions}
-      />
+    <div className="grid gap-3 sm:grid-cols-[1.45fr_0.7fr_0.55fr_0.7fr]">
+      <div>
+        <label className={FIELD_LABEL_CLASS_NAME}>Card number</label>
+        <div
+          ref={(node) => setHostRef("cardNumber", node)}
+          className={FIELD_CONTAINER_CLASS_NAME}
+          style={{ pointerEvents: "auto", cursor: "text" }}
+          data-testid="stripe-card-number-element-container"
+          onClick={() => handleFieldClick("cardNumber")}
+        >
+          <CardNumberElement
+            className="relative z-[60] block min-h-[24px] w-full"
+            onReady={handleReady("cardNumber")}
+            onFocus={handleFocus("cardNumber")}
+            onBlur={handleBlur("cardNumber")}
+            onChange={handleCardNumberChange}
+            onLoadError={handleLoadError("cardNumber")}
+            options={cardNumberOptions}
+          />
+        </div>
+      </div>
+
+      <div>
+        <label className={FIELD_LABEL_CLASS_NAME}>MM/YY</label>
+        <div
+          ref={(node) => setHostRef("cardExpiry", node)}
+          className={FIELD_CONTAINER_CLASS_NAME}
+          style={{ pointerEvents: "auto", cursor: "text" }}
+          data-testid="stripe-card-expiry-element-container"
+          onClick={() => handleFieldClick("cardExpiry")}
+        >
+          <CardExpiryElement
+            className="relative z-[60] block min-h-[24px] w-full"
+            onReady={handleReady("cardExpiry")}
+            onFocus={handleFocus("cardExpiry")}
+            onBlur={handleBlur("cardExpiry")}
+            onChange={handleCardExpiryChange}
+            onLoadError={handleLoadError("cardExpiry")}
+            options={smallFieldOptions}
+          />
+        </div>
+      </div>
+
+      <div>
+        <label className={FIELD_LABEL_CLASS_NAME}>CVC</label>
+        <div
+          ref={(node) => setHostRef("cardCvc", node)}
+          className={FIELD_CONTAINER_CLASS_NAME}
+          style={{ pointerEvents: "auto", cursor: "text" }}
+          data-testid="stripe-card-cvc-element-container"
+          onClick={() => handleFieldClick("cardCvc")}
+        >
+          <CardCvcElement
+            className="relative z-[60] block min-h-[24px] w-full"
+            onReady={handleReady("cardCvc")}
+            onFocus={handleFocus("cardCvc")}
+            onBlur={handleBlur("cardCvc")}
+            onChange={handleCardCvcChange}
+            onLoadError={handleLoadError("cardCvc")}
+            options={smallFieldOptions}
+          />
+        </div>
+      </div>
+
+      <div>
+        <label className={FIELD_LABEL_CLASS_NAME}>ZIP</label>
+        <div
+          ref={(node) => setHostRef("postalCode", node)}
+          className={FIELD_CONTAINER_CLASS_NAME}
+          style={{ pointerEvents: "auto", cursor: "text" }}
+          data-testid="stripe-postal-code-element-container"
+          onClick={() => handleFieldClick("postalCode")}
+        >
+          <PostalCodeElement
+            className="relative z-[60] block min-h-[24px] w-full"
+            onReady={handleReady("postalCode")}
+            onFocus={handleFocus("postalCode")}
+            onBlur={handleBlur("postalCode")}
+            onChange={handlePostalCodeChange}
+            onLoadError={handleLoadError("postalCode")}
+            options={smallFieldOptions}
+          />
+        </div>
+      </div>
     </div>
   );
 }
