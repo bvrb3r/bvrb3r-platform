@@ -1,14 +1,24 @@
 import { ClientAppShell } from "@/components/client-experience/client-app-shell";
 import { ClientProfileScreen } from "@/components/client-experience/client-profile-screen";
+import { StripeDebugCard } from "@/components/debug/stripe-debug-card";
 import { ensureClientProfileForUser, getClientProfilePayload } from "@/lib/booking/platform-service";
 import { getClientExperienceContext } from "@/lib/client-experience/session";
 
 export default async function ClientProfileDashboardPage({
   searchParams
 }: {
-  searchParams: Promise<{ section?: string }>;
+  searchParams: Promise<{ section?: string; stripeMinimalTest?: string }>;
 }) {
   const context = await getClientExperienceContext();
+  const params = await searchParams;
+  if (params.stripeMinimalTest === "1") {
+    return (
+      <ClientAppShell activeTab="profile">
+        <StripeDebugCard />
+      </ClientAppShell>
+    );
+  }
+
   let clientId = context.clientId;
   if (context.isSignedInClient && context.viewer.role === "client") {
     const repair = await ensureClientProfileForUser({
@@ -22,7 +32,6 @@ export default async function ClientProfileDashboardPage({
     clientId = repair.clientId;
   }
   const payload = await getClientProfilePayload(clientId);
-  const params = await searchParams;
 
   return (
     <ClientAppShell activeTab="profile">

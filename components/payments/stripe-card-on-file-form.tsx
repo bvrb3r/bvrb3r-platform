@@ -21,6 +21,7 @@ import type { PaymentSetupIntentView } from "@/lib/payments/client";
 export const STRIPE_CARD_FORM_LOAD_ERROR = "Secure card fields did not finish loading. Refresh and try again.";
 export const STRIPE_CARD_FORM_MISSING_KEY_ERROR = "Secure card form failed to load. Stripe publishable key is missing.";
 export const STRIPE_CARD_FORM_MISSING_SECRET_ERROR = "Secure card form failed to load. SetupIntent was not created.";
+export const STRIPE_CARD_FORM_INVALID_SECRET_ERROR = "Secure card form failed to load. SetupIntent was not valid.";
 
 const STRIPE_CARD_READY_TIMEOUT_MS = 8000;
 const stripePromiseCache = new Map<string, Promise<Stripe | null>>();
@@ -62,8 +63,28 @@ type StripeCardFormDebugSnapshot = ReturnType<typeof getFieldDebugSnapshot> & {
   };
   setupIntent: {
     hasClientSecret: boolean;
+    clientSecretPrefix: string;
+    startsWithSeti: boolean;
     hasPublishableKey: boolean;
   };
+  iframes: Record<StripeFieldKey, StripeFieldIframeDiagnostics>;
+};
+
+type StripeFieldIframeDiagnostics = {
+  exists: boolean;
+  width: number;
+  height: number;
+  visibility: string;
+  pointerEvents: string;
+  opacity: string;
+  zIndex: string;
+  hostWidth: number;
+  hostHeight: number;
+  hostPointerEvents: string;
+  hostPosition: string;
+  hostZIndex: string;
+  hostDisabled: boolean;
+  hostInert: boolean;
 };
 
 export type ConfirmStripeCardSetup = () => Promise<string>;
@@ -89,7 +110,7 @@ function createInitialFieldState(): StripeFieldState {
     cardNumber: { ready: false, complete: false, error: null },
     cardExpiry: { ready: false, complete: false, error: null },
     cardCvc: { ready: false, complete: false, error: null },
-    postalCode: { ready: false, complete: false, error: null }
+    postalCode: { ready: true, complete: false, error: null }
   };
 }
 
@@ -101,7 +122,7 @@ function logStripeCardFormError(reference: StripeSetupReference, details?: Recor
 }
 
 function logStripeCardFormDebug(reference: StripeSetupReference, details?: Record<string, unknown>) {
-  if (process.env.NODE_ENV === "production" || process.env.NODE_ENV === "test") {
+  if (process.env.NODE_ENV === "test") {
     return;
   }
 
@@ -159,6 +180,54 @@ function hasInvalidPublishableKeyPrefix(prefix: string) {
   return prefix === "invalid";
 }
 
+function getClientSecretPrefix(clientSecret: string) {
+  if (!clientSecret) {
+    return "missing";
+  }
+
+  if (clientSecret.startsWith("seti_")) {
+    return "seti";
+  }
+
+  if (clientSecret.startsWith("pi_")) {
+    return "pi";
+  }
+
+  return "invalid";
+}
+
+function hasValidSetupIntentSecret(clientSecret: string) {
+  return clientSecret.startsWith("seti_");
+}
+
+function createEmptyIframeDiagnostics(): StripeFieldIframeDiagnostics {
+  return {
+    exists: false,
+    width: 0,
+    height: 0,
+    visibility: "unknown",
+    pointerEvents: "unknown",
+    opacity: "unknown",
+    zIndex: "unknown",
+    hostWidth: 0,
+    hostHeight: 0,
+    hostPointerEvents: "unknown",
+    hostPosition: "unknown",
+    hostZIndex: "unknown",
+    hostDisabled: false,
+    hostInert: false
+  };
+}
+
+function createInitialIframeDiagnostics(): Record<StripeFieldKey, StripeFieldIframeDiagnostics> {
+  return {
+    cardNumber: createEmptyIframeDiagnostics(),
+    cardExpiry: createEmptyIframeDiagnostics(),
+    cardCvc: createEmptyIframeDiagnostics(),
+    postalCode: createEmptyIframeDiagnostics()
+  };
+}
+
 function getAllFieldsComplete(fields: StripeFieldState) {
   return Object.values(fields).every((field) => field.ready && field.complete && !field.error);
 }
@@ -194,7 +263,12 @@ export function StripeCardOnFileForm({
   const publishableKey = setupIntent?.publishableKey?.trim() || envPublishableKey;
   const publishableKeyPrefix = getStripeKeyPrefix(publishableKey);
   const clientSecret = setupIntent?.clientSecret?.trim() ?? "";
-  const setupIntentReady = Boolean(clientSecret && publishableKey && !hasInvalidPublishableKeyPrefix(publishableKeyPrefix));
+  const clientSecretPrefix = getClientSecretPrefix(clientSecret);
+  const setupIntentReady = Boolean(
+    hasValidSetupIntentSecret(clientSecret)
+    && publishableKey
+    && !hasInvalidPublishableKeyPrefix(publishableKeyPrefix)
+  );
   const [retryNonce, setRetryNonce] = useState(0);
   const activeSetupKey = `${publishableKey}:${clientSecret}:${retryNonce}`;
   const [stripeLoadState, setStripeLoadState] = useState<{
@@ -205,6 +279,7 @@ export function StripeCardOnFileForm({
     status: "idle"
   });
   const [fields, setFields] = useState<StripeFieldState>(() => createInitialFieldState());
+  const [iframeDiagnostics, setIframeDiagnostics] = useState<Record<StripeFieldKey, StripeFieldIframeDiagnostics>>(() => createInitialIframeDiagnostics());
   const [fieldFailure, setFieldFailure] = useState<string | null>(null);
   const allFieldsReady = getAllFieldsReady(fields);
   const allFieldsComplete = getAllFieldsComplete(fields);
@@ -216,17 +291,14 @@ export function StripeCardOnFileForm({
     () => getStripePromise(publishableKey),
     [publishableKey]
   );
-  const elementsOptions = useMemo(
-    () => clientSecret ? { clientSecret } : undefined,
-    [clientSecret]
-  );
 
-  const showStripeElement = Boolean(setupIntentReady && stripePromise && stripeReady && !stripeLoadFailed);
+  const showStripeElement = Boolean(setupIntentReady && stripePromise && !stripeLoadFailed);
   const hasResolvedSetupIntent = Boolean(setupIntent) && !isSetupIntentLoading;
   const failureMessage = fieldFailure
     ?? (hasResolvedSetupIntent && publishableKeyPrefix === "missing" ? STRIPE_CARD_FORM_MISSING_KEY_ERROR : null)
     ?? (hasResolvedSetupIntent && hasInvalidPublishableKeyPrefix(publishableKeyPrefix) ? STRIPE_CARD_FORM_MISSING_KEY_ERROR : null)
     ?? (hasResolvedSetupIntent && !clientSecret ? STRIPE_CARD_FORM_MISSING_SECRET_ERROR : null)
+    ?? (hasResolvedSetupIntent && clientSecret && !hasValidSetupIntentSecret(clientSecret) ? STRIPE_CARD_FORM_INVALID_SECRET_ERROR : null)
     ?? (stripeLoadFailed ? STRIPE_CARD_FORM_LOAD_ERROR : null);
   const currentStage: StripeCardFormStage = failureMessage
     ? "error"
@@ -259,12 +331,16 @@ export function StripeCardOnFileForm({
     },
     setupIntent: {
       hasClientSecret: Boolean(clientSecret),
+      clientSecretPrefix,
+      startsWithSeti: clientSecret.startsWith("seti_"),
       hasPublishableKey: Boolean(publishableKey)
-    }
-  }), [allReady, clientSecret, failureMessage, fields, publishableKey, publishableKeyPrefix, setupIntentReady, stripeReady]);
+    },
+    iframes: iframeDiagnostics
+  }), [allReady, clientSecret, clientSecretPrefix, failureMessage, fields, iframeDiagnostics, publishableKey, publishableKeyPrefix, setupIntentReady, stripeReady]);
 
   useEffect(() => {
     setFields(createInitialFieldState());
+    setIframeDiagnostics(createInitialIframeDiagnostics());
     setFieldFailure(null);
     onReadyChange(false);
     onCompleteChange(false);
@@ -390,7 +466,7 @@ export function StripeCardOnFileForm({
   }, [clientSecret, isSetupIntentLoading, onErrorMessage, onStatusChange, publishableKey, publishableKeyPrefix, setupIntent, stripePromise]);
 
   useEffect(() => {
-    if (failureMessage || allReady) {
+    if (failureMessage || allReady || !setupIntentReady || !stripePromise) {
       return;
     }
 
@@ -406,7 +482,7 @@ export function StripeCardOnFileForm({
     return () => {
       window.clearTimeout(timeout);
     };
-  }, [allReady, currentStage, debugSnapshot, failureMessage]);
+  }, [allReady, currentStage, debugSnapshot, failureMessage, setupIntentReady, stripePromise]);
 
   const handleFieldReady = useCallback((field: StripeFieldKey) => {
     setFields((current) => ({
@@ -450,8 +526,16 @@ export function StripeCardOnFileForm({
     setFieldFailure(STRIPE_CARD_FORM_LOAD_ERROR);
   }, []);
 
+  const handleDiagnosticsChange = useCallback((field: StripeFieldKey, diagnostics: StripeFieldIframeDiagnostics) => {
+    setIframeDiagnostics((current) => ({
+      ...current,
+      [field]: diagnostics
+    }));
+  }, []);
+
   const handleRetry = useCallback(() => {
     setFields(createInitialFieldState());
+    setIframeDiagnostics(createInitialIframeDiagnostics());
     setFieldFailure(null);
     onReadyChange(false);
     onCompleteChange(false);
@@ -464,13 +548,14 @@ export function StripeCardOnFileForm({
 
   return (
     <div>
-      {showStripeElement && elementsOptions ? (
-        <Elements key={activeSetupKey} stripe={stripePromise} options={elementsOptions}>
+      {showStripeElement ? (
+        <Elements stripe={stripePromise}>
           <SplitStripeCardFields
             clientSecret={clientSecret}
             onFieldReady={handleFieldReady}
             onFieldChange={handleFieldChange}
             onFieldLoadError={handleFieldLoadError}
+            onDiagnosticsChange={handleDiagnosticsChange}
             onStatusChange={onStatusChange}
             onErrorMessage={onErrorMessage}
             onConfirmSetupChange={onConfirmSetupChange}
@@ -517,6 +602,7 @@ function SplitStripeCardFields({
   onFieldReady,
   onFieldChange,
   onFieldLoadError,
+  onDiagnosticsChange,
   onStatusChange,
   onErrorMessage,
   onConfirmSetupChange
@@ -525,6 +611,7 @@ function SplitStripeCardFields({
   onFieldReady: (field: StripeFieldKey) => void;
   onFieldChange: (field: StripeFieldKey, complete: boolean, errorMessage?: string | null) => void;
   onFieldLoadError: (field: StripeFieldKey, message?: string | null) => void;
+  onDiagnosticsChange: (field: StripeFieldKey, diagnostics: StripeFieldIframeDiagnostics) => void;
   onStatusChange: (status: StripeCardFormStatus) => void;
   onErrorMessage: (message: string | null) => void;
   onConfirmSetupChange: (confirmSetup: ConfirmStripeCardSetup | null) => void;
@@ -577,11 +664,12 @@ function SplitStripeCardFields({
       hasStripe: Boolean(stripe),
       hasElements: Boolean(elements)
     });
+    return () => {
+      logStripeCardFormDebug("elements_provider_mounted", {
+        lifecycle: "unmounted"
+      });
+    };
   }, [elements, stripe]);
-
-  useEffect(() => {
-    onFieldReady("postalCode");
-  }, [onFieldReady]);
 
   useEffect(() => {
     if (!stripe || !elements) {
@@ -635,21 +723,57 @@ function SplitStripeCardFields({
     fieldHostRefs.current[field] = node;
   }, []);
 
-  const logFieldIframeSize = useCallback((field: StripeFieldKey) => {
+  const inspectFieldIframe = useCallback((field: StripeFieldKey) => {
     window.requestAnimationFrame(() => {
       const host = fieldHostRefs.current[field];
       const iframe = host?.querySelector("iframe") ?? null;
       const hostRect = host?.getBoundingClientRect();
       const iframeRect = iframe?.getBoundingClientRect();
-      logStripeCardFormDebug("card_element_ready", {
-        field,
+      const iframeStyle = iframe ? window.getComputedStyle(iframe) : null;
+      const hostStyle = host ? window.getComputedStyle(host) : null;
+      const diagnostics: StripeFieldIframeDiagnostics = {
+        exists: Boolean(iframe),
+        width: iframeRect?.width ?? 0,
+        height: iframeRect?.height ?? 0,
+        visibility: iframeStyle?.visibility ?? "missing",
+        pointerEvents: iframeStyle?.pointerEvents ?? "missing",
+        opacity: iframeStyle?.opacity ?? "missing",
+        zIndex: iframeStyle?.zIndex ?? "missing",
         hostWidth: hostRect?.width ?? 0,
         hostHeight: hostRect?.height ?? 0,
-        iframeWidth: iframeRect?.width ?? 0,
-        iframeHeight: iframeRect?.height ?? 0
+        hostPointerEvents: hostStyle?.pointerEvents ?? "missing",
+        hostPosition: hostStyle?.position ?? "missing",
+        hostZIndex: hostStyle?.zIndex ?? "missing",
+        hostDisabled: Boolean(host?.closest("fieldset[disabled], [aria-disabled='true']")),
+        hostInert: Boolean(host?.closest("[inert]"))
+      };
+      onDiagnosticsChange(field, diagnostics);
+      logStripeCardFormDebug("card_element_ready", {
+        field,
+        diagnostics
       });
     });
-  }, []);
+  }, [onDiagnosticsChange]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      inspectFieldIframe("cardNumber");
+      inspectFieldIframe("cardExpiry");
+      inspectFieldIframe("cardCvc");
+      inspectFieldIframe("postalCode");
+    });
+    const later = window.setTimeout(() => {
+      inspectFieldIframe("cardNumber");
+      inspectFieldIframe("cardExpiry");
+      inspectFieldIframe("cardCvc");
+      inspectFieldIframe("postalCode");
+    }, 750);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(later);
+    };
+  }, [inspectFieldIframe]);
 
   const focusField = useCallback((field: StripeFieldKey) => {
     if (field === "cardNumber") {
@@ -674,20 +798,20 @@ function SplitStripeCardFields({
   const handleNumberReady = useCallback((element: StripeCardNumberElement) => {
     cardNumberRef.current = element;
     onFieldReady("cardNumber");
-    logFieldIframeSize("cardNumber");
-  }, [logFieldIframeSize, onFieldReady]);
+    inspectFieldIframe("cardNumber");
+  }, [inspectFieldIframe, onFieldReady]);
 
   const handleExpiryReady = useCallback((element: StripeCardExpiryElement) => {
     cardExpiryRef.current = element;
     onFieldReady("cardExpiry");
-    logFieldIframeSize("cardExpiry");
-  }, [logFieldIframeSize, onFieldReady]);
+    inspectFieldIframe("cardExpiry");
+  }, [inspectFieldIframe, onFieldReady]);
 
   const handleCvcReady = useCallback((element: StripeCardCvcElement) => {
     cardCvcRef.current = element;
     onFieldReady("cardCvc");
-    logFieldIframeSize("cardCvc");
-  }, [logFieldIframeSize, onFieldReady]);
+    inspectFieldIframe("cardCvc");
+  }, [inspectFieldIframe, onFieldReady]);
 
   return (
     <div className={SPLIT_FIELD_GRID_CLASS_NAME}>
@@ -700,7 +824,13 @@ function SplitStripeCardFields({
         <CardNumberElement
           className={CARD_FIELD_INPUT_CLASS_NAME}
           onReady={handleNumberReady}
-          onFocus={() => logStripeCardFormDebug("card_element_focus", { field: "cardNumber" })}
+          onFocus={() => {
+            inspectFieldIframe("cardNumber");
+            logStripeCardFormDebug("card_element_focus", {
+              field: "cardNumber",
+              activeElement: document.activeElement?.tagName ?? "unknown"
+            });
+          }}
           onBlur={() => logStripeCardFormDebug("card_element_blur", { field: "cardNumber" })}
           onChange={(event) => onFieldChange("cardNumber", Boolean(event.complete), event.error?.message ?? null)}
           onLoadError={(event) => onFieldLoadError("cardNumber", event.error?.message ?? null)}
@@ -716,7 +846,13 @@ function SplitStripeCardFields({
         <CardExpiryElement
           className={CARD_FIELD_INPUT_CLASS_NAME}
           onReady={handleExpiryReady}
-          onFocus={() => logStripeCardFormDebug("card_element_focus", { field: "cardExpiry" })}
+          onFocus={() => {
+            inspectFieldIframe("cardExpiry");
+            logStripeCardFormDebug("card_element_focus", {
+              field: "cardExpiry",
+              activeElement: document.activeElement?.tagName ?? "unknown"
+            });
+          }}
           onBlur={() => logStripeCardFormDebug("card_element_blur", { field: "cardExpiry" })}
           onChange={(event) => onFieldChange("cardExpiry", Boolean(event.complete), event.error?.message ?? null)}
           options={cardExpiryOptions}
@@ -731,7 +867,13 @@ function SplitStripeCardFields({
         <CardCvcElement
           className={CARD_FIELD_INPUT_CLASS_NAME}
           onReady={handleCvcReady}
-          onFocus={() => logStripeCardFormDebug("card_element_focus", { field: "cardCvc" })}
+          onFocus={() => {
+            inspectFieldIframe("cardCvc");
+            logStripeCardFormDebug("card_element_focus", {
+              field: "cardCvc",
+              activeElement: document.activeElement?.tagName ?? "unknown"
+            });
+          }}
           onBlur={() => logStripeCardFormDebug("card_element_blur", { field: "cardCvc" })}
           onChange={(event) => onFieldChange("cardCvc", Boolean(event.complete), event.error?.message ?? null)}
           options={cardCvcOptions}
@@ -783,7 +925,15 @@ function PaymentDebugPanel({
     ["publishableKeyPkTest", String(snapshot.publishableKey.startsWithPkTest)],
     ["publishableKeyPrefix", snapshot.publishableKey.prefix],
     ["clientSecret", String(snapshot.setupIntent.hasClientSecret)],
+    ["clientSecretPrefix", snapshot.setupIntent.clientSecretPrefix],
+    ["clientSecretSeti", String(snapshot.setupIntent.startsWithSeti)],
     ["lastError", snapshot.lastError ?? "none"]
+  ];
+  const iframeRows: Array<[string, StripeFieldIframeDiagnostics]> = [
+    ["cardNumber", snapshot.iframes.cardNumber],
+    ["cardExpiry", snapshot.iframes.cardExpiry],
+    ["cardCvc", snapshot.iframes.cardCvc],
+    ["zip", snapshot.iframes.postalCode]
   ];
 
   return (
@@ -797,6 +947,22 @@ function PaymentDebugPanel({
           </div>
         ))}
       </dl>
+      <div className="mt-3 space-y-1 border-t border-white/10 pt-3">
+        {iframeRows.map(([label, diagnostic]) => (
+          <div key={label} className="grid gap-1 font-mono text-[11px] text-white/58 sm:grid-cols-[90px_1fr]">
+            <span className="text-white/42">{label}</span>
+            <span>
+              iframe={String(diagnostic.exists)} {Math.round(diagnostic.width)}x{Math.round(diagnostic.height)}
+              {" "}host={Math.round(diagnostic.hostWidth)}x{Math.round(diagnostic.hostHeight)}
+              {" "}pe={diagnostic.pointerEvents}/{diagnostic.hostPointerEvents}
+              {" "}z={diagnostic.zIndex}/{diagnostic.hostZIndex}
+              {" "}visibility={diagnostic.visibility}
+              {" "}disabled={String(diagnostic.hostDisabled)}
+              {" "}inert={String(diagnostic.hostInert)}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -828,8 +994,8 @@ function StripeFieldShell({
       <div
         ref={setHostRef}
         id={fieldId}
-        className={`${CARD_FIELD_CLASS_NAME} w-full ${minWidthClassName} overflow-visible`}
-        style={{ pointerEvents: "auto", cursor: "text" }}
+        className={`${CARD_FIELD_CLASS_NAME} isolate w-full ${minWidthClassName} overflow-visible pointer-events-auto`}
+        style={{ pointerEvents: "auto", cursor: "text", position: "relative", zIndex: 50 }}
         onClick={onFocusRequest}
         data-testid={`stripe-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-field`}
         data-stripe-card-host="true"

@@ -32,6 +32,7 @@ const {
       cardCvc: true
     },
     loadError: null as string | null,
+    elementsOptions: [] as unknown[],
     mountCount: {
       cardNumber: 0,
       cardExpiry: 0,
@@ -109,7 +110,10 @@ vi.mock("@stripe/react-stripe-js", async () => {
   const CardCvcElement = createSplitElement("cardCvc", "mock-stripe-card-cvc-element", { focus: vi.fn() });
 
   return {
-    Elements: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
+    Elements: ({ children, options }: { children: React.ReactNode; options?: unknown }) => {
+      stripeMockState.elementsOptions.push(options);
+      return React.createElement(React.Fragment, null, children);
+    },
     CardNumberElement,
     CardExpiryElement,
     CardCvcElement,
@@ -155,6 +159,7 @@ describe("client payment methods panel", () => {
       cardCvc: true
     };
     stripeMockState.loadError = null;
+    stripeMockState.elementsOptions = [];
     stripeMockState.mountCount = {
       cardNumber: 0,
       cardExpiry: 0,
@@ -257,6 +262,8 @@ describe("client payment methods panel", () => {
     expect(screen.getByTestId("mock-stripe-card-cvc-element")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByText("Loading secure card fields...")).not.toBeInTheDocument());
     expect(screen.getByText("Secure card form ready.")).toBeInTheDocument();
+    expect(stripeMockState.elementsOptions.length).toBeGreaterThan(0);
+    expect(stripeMockState.elementsOptions.every((options) => options === undefined)).toBe(true);
     const cardWrapper = screen.getByTestId("stripe-card-number-field");
     expect(cardWrapper).toHaveClass("min-w-[280px]");
     expect(screen.getByTestId("stripe-mm-yy-field")).toHaveClass("min-w-[110px]");

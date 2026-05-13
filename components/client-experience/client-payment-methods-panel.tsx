@@ -132,6 +132,14 @@ export function ClientPaymentMethodsPanel({
           reference: "setup_intent_response_ready",
           surface: "wallet",
           hasClientSecret: Boolean(intent.clientSecret),
+          clientSecretPrefix: intent.clientSecret?.startsWith("seti_")
+            ? "seti"
+            : intent.clientSecret?.startsWith("pi_")
+              ? "pi"
+              : intent.clientSecret
+                ? "invalid"
+                : "missing",
+          clientSecretStartsWithSeti: Boolean(intent.clientSecret?.startsWith("seti_")),
           hasPublishableKey: Boolean(intent.publishableKey),
           publishableKeyPrefix: intent.publishableKey?.startsWith("pk_test_")
             ? "pk_test"

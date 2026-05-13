@@ -76,7 +76,7 @@ async function createStripeProvider(): Promise<PaymentProvider> {
       const customer = await ensureCustomer(input.customerEmail, input.customerName);
       const intent = await stripe.setupIntents.create({
         customer: customer.id,
-        automatic_payment_methods: { enabled: true },
+        payment_method_types: ["card"],
         usage: "off_session"
       });
 

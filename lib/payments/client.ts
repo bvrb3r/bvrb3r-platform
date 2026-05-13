@@ -86,6 +86,22 @@ function getPublishableKeyPrefix(publishableKey?: string) {
   return "invalid";
 }
 
+function getClientSecretPrefix(clientSecret?: string) {
+  if (!clientSecret) {
+    return "missing";
+  }
+
+  if (clientSecret.startsWith("seti_")) {
+    return "seti";
+  }
+
+  if (clientSecret.startsWith("pi_")) {
+    return "pi";
+  }
+
+  return "invalid";
+}
+
 async function createSavedPaymentMethodSetup(): Promise<PaymentSetupIntentView> {
   console.log("[payments] setup_intent_request_started", {
     reference: "setup_intent_request_started",
@@ -107,6 +123,8 @@ async function createSavedPaymentMethodSetup(): Promise<PaymentSetupIntentView> 
     ok: response.ok,
     status: response.status,
     hasClientSecret: typeof body.clientSecret === "string" && body.clientSecret.length > 0,
+    clientSecretPrefix: getClientSecretPrefix(body.clientSecret as string | undefined),
+    clientSecretStartsWithSeti: typeof body.clientSecret === "string" && body.clientSecret.startsWith("seti_"),
     hasPublishableKey: typeof body.publishableKey === "string" && body.publishableKey.length > 0,
     publishableKeyPrefix: getPublishableKeyPrefix(body.publishableKey as string | undefined)
   });

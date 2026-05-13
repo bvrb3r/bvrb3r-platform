@@ -19,6 +19,22 @@ function getPublishableKeyPrefix(publishableKey?: string) {
   return "invalid";
 }
 
+function getClientSecretPrefix(clientSecret?: string) {
+  if (!clientSecret) {
+    return "missing";
+  }
+
+  if (clientSecret.startsWith("seti_")) {
+    return "seti";
+  }
+
+  if (clientSecret.startsWith("pi_")) {
+    return "pi";
+  }
+
+  return "invalid";
+}
+
 export async function POST(request: NextRequest) {
   try {
     const user = await getSessionUser();
@@ -45,6 +61,8 @@ export async function POST(request: NextRequest) {
       clientReference: paymentProfile.clientReference,
       stripeCustomerId: intent.customerId ? "present" : "missing",
       hasClientSecret: Boolean(intent.clientSecret),
+      clientSecretPrefix: getClientSecretPrefix(intent.clientSecret),
+      clientSecretStartsWithSeti: intent.clientSecret.startsWith("seti_"),
       hasPublishableKey: Boolean(intent.publishableKey),
       publishableKeyPrefix: getPublishableKeyPrefix(intent.publishableKey)
     });

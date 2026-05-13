@@ -55,7 +55,8 @@ const {
       cardExpiry: true,
       cardCvc: true
     },
-    loadError: null as string | null
+    loadError: null as string | null,
+    elementsOptions: [] as unknown[]
   }
 }));
 
@@ -146,7 +147,10 @@ vi.mock("@stripe/react-stripe-js", async () => {
   const CardCvcElement = createSplitElement("cardCvc", "mock-stripe-card-cvc-element", { focus: vi.fn() });
 
   return {
-    Elements: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
+    Elements: ({ children, options }: { children: React.ReactNode; options?: unknown }) => {
+      stripeMockState.elementsOptions.push(options);
+      return React.createElement(React.Fragment, null, children);
+    },
     CardNumberElement,
     CardExpiryElement,
     CardCvcElement,
@@ -197,6 +201,7 @@ describe("booking form", () => {
       cardCvc: true
     };
     stripeMockState.loadError = null;
+    stripeMockState.elementsOptions = [];
     window.requestAnimationFrame = (callback: FrameRequestCallback) => {
       callback(0);
       return 1;
@@ -647,6 +652,8 @@ describe("booking form", () => {
     expect(screen.getByTestId("mock-stripe-card-expiry-element")).toBeInTheDocument();
     expect(screen.getByTestId("mock-stripe-card-cvc-element")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByText("Loading secure card fields...")).not.toBeInTheDocument());
+    expect(stripeMockState.elementsOptions.length).toBeGreaterThan(0);
+    expect(stripeMockState.elementsOptions.every((options) => options === undefined)).toBe(true);
 
     expect(screen.getByRole("button", { name: "Book Appointment" })).toBeDisabled();
 
