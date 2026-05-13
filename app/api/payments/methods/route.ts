@@ -24,6 +24,14 @@ function toErrorResponse(error: unknown) {
   return NextResponse.json({ error: message }, { status: 500 });
 }
 
+function logPaymentMethodSave(stage: string, details: Record<string, unknown>) {
+  console.log("[payments] payment_method_save", {
+    reference: "payment_method_save",
+    stage,
+    ...details
+  });
+}
+
 export async function GET() {
   try {
     const user = await getSessionUser();
@@ -37,14 +45,44 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const user = await getSessionUser();
-    const parsed = createPaymentMethodSchema.safeParse(await request.json().catch(() => null));
+    const payload = await request.json().catch(() => null);
+    const parsed = createPaymentMethodSchema.safeParse(payload);
     if (!parsed.success) {
+      logPaymentMethodSave("payload_invalid", {
+        authenticatedUserPresent: Boolean(user.id),
+        providerPaymentMethodIdPresent: Boolean((payload as { providerPaymentMethodId?: unknown } | null)?.providerPaymentMethodId),
+        providerCustomerIdPresent: Boolean((payload as { providerCustomerId?: unknown } | null)?.providerCustomerId),
+        nicknamePresent: Boolean((payload as { nickname?: unknown } | null)?.nickname),
+        isDefault: Boolean((payload as { isDefault?: unknown } | null)?.isDefault)
+      });
       return NextResponse.json({ error: "Invalid payment method payload." }, { status: 400 });
     }
 
+    logPaymentMethodSave("request_valid", {
+      authenticatedUserPresent: Boolean(user.id),
+      userId: user.id,
+      role: user.role,
+      provider: parsed.data.provider,
+      providerPaymentMethodIdPresent: Boolean(parsed.data.providerPaymentMethodId),
+      providerCustomerIdPresent: Boolean(parsed.data.providerCustomerId),
+      nicknamePresent: Boolean(parsed.data.nickname),
+      isDefault: Boolean(parsed.data.isDefault)
+    });
     const method = await addClientPaymentMethod(user, parsed.data);
-    return NextResponse.json({ method }, { status: 201 });
+    logPaymentMethodSave("request_success", {
+      userId: user.id,
+      methodId: method.id,
+      isDefault: method.isDefault,
+      brandPresent: Boolean(method.brand),
+      last4Present: Boolean(method.last4),
+      nicknamePresent: Boolean(method.nickname)
+    });
+    return NextResponse.json({ method }, { status: 200 });
   } catch (error) {
+    console.error("[payments] payment_method_save_failed", {
+      reference: "payment_method_save_failed",
+      message: error instanceof Error ? error.message : "Unknown payment method save failure"
+    });
     return toErrorResponse(error);
   }
 }

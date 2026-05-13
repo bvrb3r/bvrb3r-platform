@@ -190,7 +190,7 @@ describe("phase 9 payment routes", () => {
     const response = await postPaymentMethod(request);
     const body = await response.json();
 
-    expect(response.status).toBe(201);
+    expect(response.status).toBe(200);
     expect(body.method.label).toContain("4242");
     expect(addClientPaymentMethodMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       nickname: "Phil Stripe Card"

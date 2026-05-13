@@ -1461,6 +1461,43 @@ async function syncLegacyBillingDefault(
   }
 }
 
+function logPaymentMethodSaveStage(stage: string, details: Record<string, unknown>) {
+  console.log("[payments] payment_method_save", {
+    reference: "payment_method_save",
+    stage,
+    ...details
+  });
+}
+
+function logPaymentMethodSaveFailure(
+  stage: string,
+  error: unknown,
+  details: Record<string, unknown> = {}
+) {
+  const supabaseError = error as {
+    code?: string | null;
+    message?: string | null;
+    details?: string | null;
+    hint?: string | null;
+  };
+  console.error("[payments] payment_method_save_failed", {
+    reference: "payment_method_save_failed",
+    stage,
+    code: supabaseError?.code ?? null,
+    message: error instanceof Error ? error.message : supabaseError?.message ?? "Unknown payment method save failure",
+    details: supabaseError?.details ?? null,
+    hint: supabaseError?.hint ?? null,
+    ...details
+  });
+}
+
+function isUniqueViolation(error: {
+  code?: string | null;
+  message?: string | null;
+}) {
+  return error.code === "23505" || `${error.message ?? ""}`.toLowerCase().includes("duplicate key");
+}
+
 async function enrichTokenizedPaymentMethodFromProvider(input: PaymentMethodReferenceInput) {
   const normalized = normalizePaymentMethodReference(input);
   if (normalized.provider !== "stripe") {
@@ -1468,20 +1505,44 @@ async function enrichTokenizedPaymentMethodFromProvider(input: PaymentMethodRefe
   }
 
   try {
+    logPaymentMethodSaveStage("stripe_retrieve_started", {
+      providerPaymentMethodIdPresent: Boolean(normalized.providerPaymentMethodId),
+      providerCustomerIdPresent: Boolean(normalized.providerCustomerId)
+    });
     const stripe = getStripeConnectClient();
     const paymentMethod = await stripe.paymentMethods.retrieve(normalized.providerPaymentMethodId);
     const card = paymentMethod.type === "card" ? paymentMethod.card : null;
+    const retrievedCustomerId = typeof paymentMethod.customer === "string" ? paymentMethod.customer : null;
+    if (normalized.providerCustomerId && retrievedCustomerId && retrievedCustomerId !== normalized.providerCustomerId) {
+      logPaymentMethodSaveFailure("stripe_customer_mismatch", new Error("Stripe payment method customer mismatch."), {
+        expectedCustomerPresent: true,
+        retrievedCustomerPresent: true
+      });
+      throw new PaymentServiceError("Card could not be saved because Stripe returned a different customer.", 409);
+    }
+
+    logPaymentMethodSaveStage("stripe_retrieve_success", {
+      providerPaymentMethodIdPresent: true,
+      providerCustomerIdPresent: Boolean(retrievedCustomerId ?? normalized.providerCustomerId),
+      cardMetadataRetrieved: Boolean(card?.brand && card?.last4 && card?.exp_month && card?.exp_year)
+    });
     return {
       ...normalized,
-      providerCustomerId: typeof paymentMethod.customer === "string"
-        ? paymentMethod.customer
-        : normalized.providerCustomerId,
+      providerCustomerId: retrievedCustomerId ?? normalized.providerCustomerId,
       brand: card?.brand ?? normalized.brand,
       last4: card?.last4 ?? normalized.last4,
       expMonth: card?.exp_month ?? normalized.expMonth,
       expYear: card?.exp_year ?? normalized.expYear
     };
   } catch (error) {
+    if (error instanceof PaymentServiceError) {
+      throw error;
+    }
+
+    logPaymentMethodSaveFailure("stripe_retrieve_failed", error, {
+      providerPaymentMethodIdPresent: Boolean(normalized.providerPaymentMethodId),
+      providerCustomerIdPresent: Boolean(normalized.providerCustomerId)
+    });
     throw toStripePaymentServiceError(error, "Unable to verify the saved Stripe card.", 502);
   }
 }
@@ -2001,9 +2062,41 @@ export async function addClientPaymentMethod(user: UserAccount, input: PaymentMe
     throw new PaymentServiceError("Only clients can add saved payment methods.", 403);
   }
 
+  logPaymentMethodSaveStage("actor_resolved", {
+    authenticatedUserIdPresent: Boolean(user.id),
+    clientProfileResolved: Boolean(actor.profile.id),
+    clientId: actor.clientId,
+    clientReference: actor.clientReference ?? null,
+    preferencesRepaired: Boolean(actor.clientPreferencesRepaired)
+  });
+
   const normalized = await enrichTokenizedPaymentMethodFromProvider(input);
-  const existingMethods = await readClientPaymentMethodsByClientId(actor.clientId, supabase);
+  const existingMethods = await readCanonicalPaymentMethodRows(supabase, actor.clientId, actor.clientReference ?? actor.clientId);
   const shouldBeDefault = normalized.isDefault || existingMethods.length === 0;
+
+  const existingProviderMethod = await supabase
+    .from("payment_methods")
+    .select(PAYMENT_METHOD_SELECT)
+    .eq("provider", normalized.provider)
+    .eq("provider_payment_method_id", normalized.providerPaymentMethodId)
+    .maybeSingle();
+
+  if (existingProviderMethod.error) {
+    logPaymentMethodSaveFailure("existing_payment_method_lookup_failed", existingProviderMethod.error, {
+      clientId: actor.clientId,
+      providerPaymentMethodIdPresent: true
+    });
+    throw new PaymentServiceError("Card could not be saved because wallet lookup failed.", 500);
+  }
+
+  const existingProviderRow = (existingProviderMethod.data as PaymentMethodRow | null) ?? null;
+  if (existingProviderRow && existingProviderRow.client_id !== actor.clientId) {
+    logPaymentMethodSaveFailure("provider_payment_method_conflict", new Error("Provider payment method belongs to another client."), {
+      clientId: actor.clientId,
+      existingClientId: existingProviderRow.client_id
+    });
+    throw new PaymentServiceError("This card is already saved to another client account.", 409);
+  }
 
   if (shouldBeDefault) {
     const clearDefaults = await supabase
@@ -2013,50 +2106,138 @@ export async function addClientPaymentMethod(user: UserAccount, input: PaymentMe
       .eq("is_default", true);
 
     if (clearDefaults.error) {
-      throw new PaymentServiceError("Unable to clear the previous default payment method.", 500);
+      logPaymentMethodSaveFailure("clear_default_failed", clearDefaults.error, {
+        clientId: actor.clientId
+      });
+      throw new PaymentServiceError("Card could not be saved because the default card could not be updated.", 500);
     }
   }
 
-  const insertResult = await supabase
-    .from("payment_methods")
-    .insert({
-      client_id: actor.clientId,
-      provider: normalized.provider,
-      provider_customer_id: normalized.providerCustomerId,
-      provider_payment_method_id: normalized.providerPaymentMethodId,
-      brand: normalized.brand,
-      last4: normalized.last4,
-      exp_month: normalized.expMonth,
-      exp_year: normalized.expYear,
-      nickname: normalized.nickname,
-      is_default: shouldBeDefault,
-      updated_at: new Date().toISOString()
-    })
-    .select(PAYMENT_METHOD_SELECT)
-    .single();
+  const now = new Date().toISOString();
+  const basePayload = {
+    client_id: actor.clientId,
+    provider: normalized.provider,
+    provider_customer_id: normalized.providerCustomerId,
+    provider_payment_method_id: normalized.providerPaymentMethodId,
+    brand: normalized.brand,
+    last4: normalized.last4,
+    exp_month: normalized.expMonth,
+    exp_year: normalized.expYear,
+    is_default: shouldBeDefault,
+    updated_at: now
+  };
+  const payloadWithNickname = {
+    ...basePayload,
+    nickname: normalized.nickname
+  };
 
-  if (insertResult.error) {
-    throw new PaymentServiceError("Unable to store the tokenized payment method reference.", 500);
+  async function writeCanonicalPaymentMethod(includeNickname: boolean) {
+    const payload = includeNickname ? payloadWithNickname : basePayload;
+    return existingProviderRow
+      ? supabase
+        .from("payment_methods")
+        .update(payload)
+        .eq("id", existingProviderRow.id)
+        .eq("client_id", actor.clientId)
+        .select(PAYMENT_METHOD_SELECT)
+        .single()
+      : supabase
+        .from("payment_methods")
+        .insert(payload)
+        .select(PAYMENT_METHOD_SELECT)
+        .single();
   }
 
-  const billingCustomerId = await ensureLegacyBillingCustomer(
-    supabase,
-    actor,
-    normalized.provider,
-    normalized.providerCustomerId
-  );
-  await syncLegacySavedPaymentMethod(supabase, actor, { ...normalized, isDefault: shouldBeDefault }, billingCustomerId);
-  if (shouldBeDefault) {
-    await syncLegacyBillingDefault(supabase, actor, normalized.provider, normalized.providerPaymentMethodId);
+  let writeResult = await writeCanonicalPaymentMethod(true);
+  if (writeResult.error && normalized.nickname && isPaymentSchemaMissing(writeResult.error)) {
+    logPaymentMethodSaveFailure("payment_method_nickname_save_failed", writeResult.error, {
+      clientId: actor.clientId,
+      providerPaymentMethodIdPresent: true
+    });
+    writeResult = await writeCanonicalPaymentMethod(false);
+  }
+
+  if (writeResult.error && !existingProviderRow && isUniqueViolation(writeResult.error)) {
+    const reread = await supabase
+      .from("payment_methods")
+      .select(PAYMENT_METHOD_SELECT)
+      .eq("provider", normalized.provider)
+      .eq("provider_payment_method_id", normalized.providerPaymentMethodId)
+      .maybeSingle();
+
+    if (!reread.error && reread.data && (reread.data as PaymentMethodRow).client_id === actor.clientId) {
+      writeResult = await supabase
+        .from("payment_methods")
+        .update(payloadWithNickname)
+        .eq("id", (reread.data as PaymentMethodRow).id)
+        .eq("client_id", actor.clientId)
+        .select(PAYMENT_METHOD_SELECT)
+        .single();
+    }
+  }
+
+  if (writeResult.error) {
+    logPaymentMethodSaveFailure("payment_methods_write_failed", writeResult.error, {
+      operation: existingProviderRow ? "update" : "insert",
+      clientId: actor.clientId,
+      providerCustomerIdPresent: Boolean(normalized.providerCustomerId),
+      providerPaymentMethodIdPresent: true,
+      nicknamePresent: Boolean(normalized.nickname),
+      isDefault: shouldBeDefault
+    });
+    throw new PaymentServiceError("Card could not be saved because the wallet database write failed.", 500);
+  }
+
+  const savedPaymentMethod = writeResult.data as PaymentMethodRow;
+  logPaymentMethodSaveStage("payment_methods_write_success", {
+    operation: existingProviderRow ? "update" : "insert",
+    clientId: actor.clientId,
+    paymentMethodId: savedPaymentMethod.id,
+    providerCustomerIdPresent: Boolean(savedPaymentMethod.provider_customer_id),
+    providerPaymentMethodIdPresent: Boolean(savedPaymentMethod.provider_payment_method_id),
+    cardMetadataRetrieved: Boolean(savedPaymentMethod.brand && savedPaymentMethod.last4 && savedPaymentMethod.exp_month && savedPaymentMethod.exp_year),
+    isDefault: savedPaymentMethod.is_default
+  });
+
+  try {
+    const billingCustomerId = await ensureLegacyBillingCustomer(
+      supabase,
+      actor,
+      normalized.provider,
+      normalized.providerCustomerId
+    );
+    await syncLegacySavedPaymentMethod(supabase, actor, { ...normalized, isDefault: shouldBeDefault }, billingCustomerId);
+    if (shouldBeDefault) {
+      await syncLegacyBillingDefault(supabase, actor, normalized.provider, normalized.providerPaymentMethodId);
+    }
+  } catch (error) {
+    logPaymentMethodSaveFailure("legacy_payment_bridge_sync_failed", error, {
+      clientId: actor.clientId,
+      profileId: actor.profile.id,
+      providerCustomerIdPresent: Boolean(normalized.providerCustomerId),
+      providerPaymentMethodIdPresent: true
+    });
   }
 
   const paymentContext = clientPaymentContextFromActor(actor);
   if (paymentContext) {
-    const latestRows = await readCanonicalPaymentMethodRows(supabase, actor.clientId, actor.clientReference ?? actor.clientId);
-    await syncClientPreferencePaymentDefaults(supabase, paymentContext, latestRows);
+    try {
+      const latestRows = await readCanonicalPaymentMethodRows(supabase, actor.clientId, actor.clientReference ?? actor.clientId);
+      await syncClientPreferencePaymentDefaults(supabase, paymentContext, latestRows);
+      logPaymentMethodSaveStage("client_preferences_default_sync_success", {
+        clientId: actor.clientId,
+        clientReference: actor.clientReference ?? null,
+        defaultPaymentMethodRefPresent: true
+      });
+    } catch (error) {
+      logPaymentMethodSaveFailure("payment_method_default_sync_failed", error, {
+        clientId: actor.clientId,
+        clientReference: actor.clientReference ?? null
+      });
+    }
   }
 
-  return mapPaymentMethodRow(insertResult.data as PaymentMethodRow);
+  return mapPaymentMethodRow(savedPaymentMethod);
 }
 
 export async function setDefaultClientPaymentMethod(user: UserAccount, paymentMethodId: string) {

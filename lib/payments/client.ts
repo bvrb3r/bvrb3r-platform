@@ -52,6 +52,23 @@ export interface PaymentSetupIntentView {
   setupIntentStatusCode?: number;
 }
 
+export type AddPaymentMethodPayload = {
+  provider: "stripe";
+  providerCustomerId?: string;
+  providerPaymentMethodId: string;
+  brand?: string;
+  last4?: string;
+  expMonth?: number;
+  expYear?: number;
+  nickname?: string | null;
+  isDefault?: boolean;
+};
+
+export type AddPaymentMethodResult = {
+  method: ClientPaymentMethodView;
+  savePaymentStatusCode?: number;
+};
+
 async function requestJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
   const response = await fetch(input, {
     ...init,
@@ -142,6 +159,46 @@ async function createSavedPaymentMethodSetup(): Promise<PaymentSetupIntentView> 
   };
 }
 
+async function addSavedPaymentMethod(payload: AddPaymentMethodPayload): Promise<AddPaymentMethodResult> {
+  console.log("[payments] save_payment_method_request_started", {
+    reference: "save_payment_method_request_started",
+    route: "/api/payments/methods",
+    providerPaymentMethodIdPresent: Boolean(payload.providerPaymentMethodId),
+    providerCustomerIdPresent: Boolean(payload.providerCustomerId),
+    nicknamePresent: Boolean(payload.nickname),
+    isDefault: Boolean(payload.isDefault)
+  });
+
+  const response = await fetch("/api/payments/methods", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+
+  console.log("[payments] save_payment_method_response_status", {
+    reference: "save_payment_method_response_status",
+    route: "/api/payments/methods",
+    ok: response.ok,
+    status: response.status,
+    methodPresent: Boolean(body.method),
+    errorPresent: typeof body.error === "string"
+  });
+
+  if (!response.ok) {
+    const error = new Error((body.error as string | undefined) ?? `Request failed with status ${response.status}`) as PaymentApiError;
+    error.status = response.status;
+    throw error;
+  }
+
+  return {
+    method: (body as { method: ClientPaymentMethodView }).method,
+    savePaymentStatusCode: response.status
+  };
+}
+
 export function usePaymentMethodsQuery(
   initialData?: { methods: ClientPaymentMethodView[] },
   enabled = true
@@ -157,21 +214,7 @@ export function usePaymentMethodsQuery(
 export function useAddPaymentMethodMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: {
-      provider: "stripe";
-      providerCustomerId?: string;
-      providerPaymentMethodId: string;
-      brand?: string;
-      last4?: string;
-      expMonth?: number;
-      expYear?: number;
-      nickname?: string | null;
-      isDefault?: boolean;
-    }) =>
-      requestJson<{ method: ClientPaymentMethodView }>("/api/payments/methods", {
-        method: "POST",
-        body: JSON.stringify(payload)
-      }),
+    mutationFn: addSavedPaymentMethod,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["payments", "methods"] });
     }

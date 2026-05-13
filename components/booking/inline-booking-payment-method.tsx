@@ -20,6 +20,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   useAddPaymentMethodMutation,
   useCreateSavedPaymentMethodSetupMutation,
+  type PaymentApiError,
   type ClientPaymentMethodView,
   type PaymentSetupIntentView
 } from "@/lib/payments/client";
@@ -74,6 +75,30 @@ function createInitialSetupDebug(): StripeSetupIntentRequestDebug {
   };
 }
 
+type PaymentMethodSaveDebug = {
+  pendingStripePaymentMethodIdPresent: boolean;
+  requestStarted: boolean;
+  statusCode: number | null;
+  lastError: string | null;
+};
+
+function createInitialSaveDebug(): PaymentMethodSaveDebug {
+  return {
+    pendingStripePaymentMethodIdPresent: false,
+    requestStarted: false,
+    statusCode: null,
+    lastError: null
+  };
+}
+
+function getPaymentSaveErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message.trim();
+  }
+
+  return "Card could not be saved.";
+}
+
 export function InlineBookingPaymentMethod({
   paymentMethods,
   selectedPaymentMethodId,
@@ -95,11 +120,14 @@ export function InlineBookingPaymentMethod({
   const [setupStatus, setSetupStatus] = useState<"idle" | "loading" | "ready" | "success" | "error">("idle");
   const [setupMessage, setSetupMessage] = useState<string | null>(null);
   const [setupDebug, setSetupDebug] = useState<StripeSetupIntentRequestDebug>(() => createInitialSetupDebug());
+  const [saveDebug, setSaveDebug] = useState<PaymentMethodSaveDebug>(() => createInitialSaveDebug());
   const setupMutation = useCreateSavedPaymentMethodSetupMutation();
   const addMethodMutation = useAddPaymentMethodMutation();
   const confirmCardSetupRef = useRef<ConfirmStripeCardSetup | null>(null);
   const setupRequestStartedRef = useRef(false);
   const createSetupIntentRef = useRef(setupMutation.mutateAsync);
+  const showPaymentDebugPanel = typeof window !== "undefined"
+    && new URLSearchParams(window.location.search).get("debugPayments") === "1";
 
   const showAddForm = mode === "add" || (!paymentMethods.length && !isLoading);
   const isPending = setupMutation.isPending || addMethodMutation.isPending || setupStatus === "loading";
@@ -267,6 +295,7 @@ export function InlineBookingPaymentMethod({
     setSetupStatus("idle");
     setSetupMessage(null);
     setSetupDebug(createInitialSetupDebug());
+    setSaveDebug(createInitialSaveDebug());
     setCardComplete(false);
     confirmCardSetupRef.current = null;
   }, []);
@@ -288,6 +317,7 @@ export function InlineBookingPaymentMethod({
     setSetupStatus("idle");
     setSetupMessage(null);
     setSetupDebug(createInitialSetupDebug());
+    setSaveDebug(createInitialSaveDebug());
     setCardComplete(false);
     confirmCardSetupRef.current = null;
     setPendingStripePaymentMethodId(null);
@@ -336,6 +366,7 @@ export function InlineBookingPaymentMethod({
     setSetupStatus("idle");
     setSetupMessage(null);
     setSetupDebug(createInitialSetupDebug());
+    setSaveDebug(createInitialSaveDebug());
     setSaveForFuture(false);
     setCardComplete(false);
     confirmCardSetupRef.current = null;
@@ -344,6 +375,12 @@ export function InlineBookingPaymentMethod({
   async function saveConfirmedCard() {
     if (!pendingStripePaymentMethodId || !setupIntent) {
       setSetupMessage("Card could not be saved.");
+      setSaveDebug({
+        pendingStripePaymentMethodIdPresent: Boolean(pendingStripePaymentMethodId),
+        requestStarted: false,
+        statusCode: null,
+        lastError: "missing_confirmed_payment_method"
+      });
       return;
     }
 
@@ -357,7 +394,19 @@ export function InlineBookingPaymentMethod({
     };
 
     try {
+      setSaveDebug({
+        pendingStripePaymentMethodIdPresent: true,
+        requestStarted: true,
+        statusCode: null,
+        lastError: null
+      });
       const response = await addMethodMutation.mutateAsync(payload);
+      setSaveDebug({
+        pendingStripePaymentMethodIdPresent: true,
+        requestStarted: true,
+        statusCode: response.savePaymentStatusCode ?? 200,
+        lastError: null
+      });
       onSavedPaymentMethod(response.method);
       onSelectPaymentMethod(response.method.id);
       setMode("saved");
@@ -375,6 +424,12 @@ export function InlineBookingPaymentMethod({
             ...payload,
             nickname: undefined
           });
+          setSaveDebug({
+            pendingStripePaymentMethodIdPresent: true,
+            requestStarted: true,
+            statusCode: response.savePaymentStatusCode ?? 200,
+            lastError: "nickname_save_failed_card_saved"
+          });
           onSavedPaymentMethod(response.method);
           onSelectPaymentMethod(response.method.id);
           setMode("saved");
@@ -382,12 +437,26 @@ export function InlineBookingPaymentMethod({
           resetConfirmedCardState();
           setSetupMessage("Card name could not be saved, but the card was saved.");
           return;
-        } catch {
+        } catch (retryError) {
+          const retryMessage = getPaymentSaveErrorMessage(retryError);
+          setSaveDebug({
+            pendingStripePaymentMethodIdPresent: true,
+            requestStarted: true,
+            statusCode: typeof (retryError as PaymentApiError).status === "number" ? (retryError as PaymentApiError).status! : null,
+            lastError: retryMessage
+          });
           // Fall through to the normal card-save error.
         }
       }
 
-      setSetupMessage("Card could not be saved.");
+      const message = getPaymentSaveErrorMessage(error);
+      setSaveDebug({
+        pendingStripePaymentMethodIdPresent: true,
+        requestStarted: true,
+        statusCode: typeof (error as PaymentApiError).status === "number" ? (error as PaymentApiError).status! : null,
+        lastError: message
+      });
+      setSetupMessage(message);
     }
   }
 
@@ -516,6 +585,7 @@ export function InlineBookingPaymentMethod({
             <CardNameModal
               value={nicknameDraft}
               isPending={addMethodMutation.isPending}
+              debug={showPaymentDebugPanel ? saveDebug : null}
               onChange={setNicknameDraft}
               onCancel={resetConfirmedCardState}
               onSave={() => void saveConfirmedCard()}
@@ -530,12 +600,14 @@ export function InlineBookingPaymentMethod({
 function CardNameModal({
   value,
   isPending,
+  debug,
   onChange,
   onCancel,
   onSave
 }: {
   value: string;
   isPending: boolean;
+  debug?: PaymentMethodSaveDebug | null;
   onChange: (value: string) => void;
   onCancel: () => void;
   onSave: () => void;
@@ -556,6 +628,7 @@ function CardNameModal({
           />
           <p className="mt-2 text-xs leading-5 text-white/42">We&apos;ll also show the card brand and last 4 digits.</p>
         </div>
+        {debug ? <PaymentSaveDebugPanel debug={debug} /> : null}
         <div className="mt-5 flex flex-wrap justify-end gap-2">
           <Button type="button" variant="secondary" className="h-10 px-4" disabled={isPending} onClick={onCancel}>
             Cancel
@@ -564,6 +637,29 @@ function CardNameModal({
             {isPending ? "Saving..." : "Save Card"}
           </Button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function PaymentSaveDebugPanel({ debug }: { debug: PaymentMethodSaveDebug }) {
+  const rows: Array<[string, string]> = [
+    ["pendingStripePaymentMethodId", String(debug.pendingStripePaymentMethodIdPresent)],
+    ["savePaymentRequestStarted", String(debug.requestStarted)],
+    ["savePaymentStatusCode", debug.statusCode == null ? "none" : String(debug.statusCode)],
+    ["savePaymentLastError", debug.lastError ?? "none"]
+  ];
+
+  return (
+    <div className="mt-4 rounded-[14px] border border-white/10 bg-white/[0.03] p-3 text-[11px] text-white/58">
+      <p className="mb-2 font-semibold text-white/74">Payment save debug</p>
+      <div className="space-y-1">
+        {rows.map(([label, value]) => (
+          <div key={label} className="flex justify-between gap-3">
+            <span>{label}</span>
+            <span className="font-mono text-white/78">{value}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
