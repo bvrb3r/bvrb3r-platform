@@ -80,6 +80,9 @@ type PaymentMethodSaveDebug = {
   requestStarted: boolean;
   statusCode: number | null;
   lastError: string | null;
+  savedMethodId: string | null;
+  defaultPaymentMethodId: string | null;
+  clientPreferencesUpdated: boolean;
 };
 
 function createInitialSaveDebug(): PaymentMethodSaveDebug {
@@ -87,7 +90,10 @@ function createInitialSaveDebug(): PaymentMethodSaveDebug {
     pendingStripePaymentMethodIdPresent: false,
     requestStarted: false,
     statusCode: null,
-    lastError: null
+    lastError: null,
+    savedMethodId: null,
+    defaultPaymentMethodId: null,
+    clientPreferencesUpdated: false
   };
 }
 
@@ -379,7 +385,10 @@ export function InlineBookingPaymentMethod({
         pendingStripePaymentMethodIdPresent: Boolean(pendingStripePaymentMethodId),
         requestStarted: false,
         statusCode: null,
-        lastError: "missing_confirmed_payment_method"
+        lastError: "missing_confirmed_payment_method",
+        savedMethodId: null,
+        defaultPaymentMethodId: null,
+        clientPreferencesUpdated: false
       });
       return;
     }
@@ -398,14 +407,20 @@ export function InlineBookingPaymentMethod({
         pendingStripePaymentMethodIdPresent: true,
         requestStarted: true,
         statusCode: null,
-        lastError: null
+        lastError: null,
+        savedMethodId: null,
+        defaultPaymentMethodId: null,
+        clientPreferencesUpdated: false
       });
       const response = await addMethodMutation.mutateAsync(payload);
       setSaveDebug({
         pendingStripePaymentMethodIdPresent: true,
         requestStarted: true,
         statusCode: response.savePaymentStatusCode ?? 200,
-        lastError: null
+        lastError: null,
+        savedMethodId: response.method.id,
+        defaultPaymentMethodId: response.method.isDefault ? response.method.id : null,
+        clientPreferencesUpdated: Boolean(response.clientPreferencesUpdated)
       });
       onSavedPaymentMethod(response.method);
       onSelectPaymentMethod(response.method.id);
@@ -428,7 +443,10 @@ export function InlineBookingPaymentMethod({
             pendingStripePaymentMethodIdPresent: true,
             requestStarted: true,
             statusCode: response.savePaymentStatusCode ?? 200,
-            lastError: "nickname_save_failed_card_saved"
+            lastError: "nickname_save_failed_card_saved",
+            savedMethodId: response.method.id,
+            defaultPaymentMethodId: response.method.isDefault ? response.method.id : null,
+            clientPreferencesUpdated: Boolean(response.clientPreferencesUpdated)
           });
           onSavedPaymentMethod(response.method);
           onSelectPaymentMethod(response.method.id);
@@ -443,7 +461,10 @@ export function InlineBookingPaymentMethod({
             pendingStripePaymentMethodIdPresent: true,
             requestStarted: true,
             statusCode: typeof (retryError as PaymentApiError).status === "number" ? (retryError as PaymentApiError).status! : null,
-            lastError: retryMessage
+            lastError: retryMessage,
+            savedMethodId: null,
+            defaultPaymentMethodId: null,
+            clientPreferencesUpdated: false
           });
           // Fall through to the normal card-save error.
         }
@@ -454,7 +475,10 @@ export function InlineBookingPaymentMethod({
         pendingStripePaymentMethodIdPresent: true,
         requestStarted: true,
         statusCode: typeof (error as PaymentApiError).status === "number" ? (error as PaymentApiError).status! : null,
-        lastError: message
+        lastError: message,
+        savedMethodId: null,
+        defaultPaymentMethodId: null,
+        clientPreferencesUpdated: false
       });
       setSetupMessage(message);
     }
@@ -647,7 +671,10 @@ function PaymentSaveDebugPanel({ debug }: { debug: PaymentMethodSaveDebug }) {
     ["pendingStripePaymentMethodId", String(debug.pendingStripePaymentMethodIdPresent)],
     ["savePaymentRequestStarted", String(debug.requestStarted)],
     ["savePaymentStatusCode", debug.statusCode == null ? "none" : String(debug.statusCode)],
-    ["savePaymentLastError", debug.lastError ?? "none"]
+    ["savePaymentLastError", debug.lastError ?? "none"],
+    ["savedMethodId", debug.savedMethodId ?? "none"],
+    ["defaultPaymentMethodId", debug.defaultPaymentMethodId ?? "none"],
+    ["clientPreferencesUpdated", String(debug.clientPreferencesUpdated)]
   ];
 
   return (

@@ -68,16 +68,18 @@ export async function POST(request: Request) {
       nicknamePresent: Boolean(parsed.data.nickname),
       isDefault: Boolean(parsed.data.isDefault)
     });
-    const method = await addClientPaymentMethod(user, parsed.data);
+    const savedMethodResult = await addClientPaymentMethod(user, parsed.data);
+    const { clientPreferencesUpdated = false, ...method } = savedMethodResult;
     logPaymentMethodSave("request_success", {
       userId: user.id,
       methodId: method.id,
       isDefault: method.isDefault,
       brandPresent: Boolean(method.brand),
       last4Present: Boolean(method.last4),
-      nicknamePresent: Boolean(method.nickname)
+      nicknamePresent: Boolean(method.nickname),
+      clientPreferencesUpdated
     });
-    return NextResponse.json({ method }, { status: 200 });
+    return NextResponse.json({ method, clientPreferencesUpdated }, { status: 200 });
   } catch (error) {
     console.error("[payments] payment_method_save_failed", {
       reference: "payment_method_save_failed",

@@ -67,6 +67,12 @@ export type AddPaymentMethodPayload = {
 export type AddPaymentMethodResult = {
   method: ClientPaymentMethodView;
   savePaymentStatusCode?: number;
+  clientPreferencesUpdated?: boolean;
+};
+
+export type PaymentMethodsResponse = {
+  methods: ClientPaymentMethodView[];
+  loadMethodsStatusCode?: number;
 };
 
 async function requestJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
@@ -195,7 +201,38 @@ async function addSavedPaymentMethod(payload: AddPaymentMethodPayload): Promise<
 
   return {
     method: (body as { method: ClientPaymentMethodView }).method,
-    savePaymentStatusCode: response.status
+    savePaymentStatusCode: response.status,
+    clientPreferencesUpdated: Boolean((body as { clientPreferencesUpdated?: boolean }).clientPreferencesUpdated)
+  };
+}
+
+async function loadSavedPaymentMethods(): Promise<PaymentMethodsResponse> {
+  const response = await fetch("/api/payments/methods", {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json"
+    }
+  });
+  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+
+  console.log("[payments] load_payment_methods_response_status", {
+    reference: "load_payment_methods_response_status",
+    route: "/api/payments/methods",
+    ok: response.ok,
+    status: response.status,
+    methodsPresent: Array.isArray(body.methods),
+    errorPresent: typeof body.error === "string"
+  });
+
+  if (!response.ok) {
+    const error = new Error((body.error as string | undefined) ?? `Request failed with status ${response.status}`) as PaymentApiError;
+    error.status = response.status;
+    throw error;
+  }
+
+  return {
+    methods: Array.isArray(body.methods) ? (body.methods as ClientPaymentMethodView[]) : [],
+    loadMethodsStatusCode: response.status
   };
 }
 
@@ -205,8 +242,8 @@ export function usePaymentMethodsQuery(
 ) {
   return useQuery({
     queryKey: ["payments", "methods"],
-    queryFn: () => requestJson<{ methods: ClientPaymentMethodView[] }>("/api/payments/methods"),
-    initialData,
+    queryFn: loadSavedPaymentMethods,
+    initialData: initialData ? { ...initialData, loadMethodsStatusCode: 200 } : undefined,
     enabled
   });
 }

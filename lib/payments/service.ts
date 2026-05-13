@@ -440,6 +440,7 @@ function getSupabaseOrThrow() {
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const PAYMENT_METHOD_BASE_SELECT = "id, client_id, provider, provider_payment_method_id, brand, last4, exp_month, exp_year, is_default, created_at";
 const PAYMENT_METHOD_SELECT = "id, client_id, provider, provider_customer_id, provider_payment_method_id, brand, last4, exp_month, exp_year, nickname, is_default, created_at";
 
 function isBenignEmptyPaymentMethodsError(error: {
@@ -492,6 +493,23 @@ function isPaymentSchemaMissing(error: {
     || error.code === "PGRST204"
     || combined.includes("does not exist")
     || combined.includes("schema cache");
+}
+
+function normalizePaymentMethodRow(row: Partial<PaymentMethodRow> & Record<string, unknown>): PaymentMethodRow {
+  return {
+    id: String(row.id),
+    client_id: String(row.client_id),
+    provider: row.provider as InternalPaymentProvider,
+    provider_customer_id: typeof row.provider_customer_id === "string" ? row.provider_customer_id : null,
+    provider_payment_method_id: String(row.provider_payment_method_id),
+    brand: typeof row.brand === "string" ? row.brand : null,
+    last4: typeof row.last4 === "string" ? row.last4 : null,
+    exp_month: typeof row.exp_month === "number" ? row.exp_month : null,
+    exp_year: typeof row.exp_year === "number" ? row.exp_year : null,
+    nickname: typeof row.nickname === "string" ? row.nickname : null,
+    is_default: Boolean(row.is_default),
+    created_at: typeof row.created_at === "string" ? row.created_at : new Date().toISOString()
+  };
 }
 
 function isPaymentPreferencePayloadSchemaMismatch(error: {
@@ -671,15 +689,39 @@ async function readCanonicalPaymentMethodRows(
   clientId: string,
   clientIdentifierForLog: string
 ) {
-  const result = await supabase
+  const fullResult = await supabase
     .from("payment_methods")
     .select(PAYMENT_METHOD_SELECT)
     .eq("client_id", clientId)
     .order("is_default", { ascending: false })
     .order("created_at", { ascending: true });
+  let result: {
+    data: unknown[] | null;
+    error: {
+      code?: string | null;
+      message?: string | null;
+      details?: string | null;
+      hint?: string | null;
+    } | null;
+  } = fullResult;
+
+  if (result.error && isPaymentSchemaMissing(result.error)) {
+    logPaymentMethodsReadError("payment_methods_query", clientIdentifierForLog, result.error, clientId);
+    result = await supabase
+      .from("payment_methods")
+      .select(PAYMENT_METHOD_BASE_SELECT)
+      .eq("client_id", clientId)
+      .order("is_default", { ascending: false })
+      .order("created_at", { ascending: true });
+  }
 
   if (result.error) {
     if (isBenignEmptyPaymentMethodsError(result.error)) {
+      return [] as PaymentMethodRow[];
+    }
+
+    if (isPaymentSchemaMissing(result.error)) {
+      logPaymentMethodsReadError("payment_methods_query", clientIdentifierForLog, result.error, clientId);
       return [] as PaymentMethodRow[];
     }
 
@@ -687,7 +729,7 @@ async function readCanonicalPaymentMethodRows(
     throw new PaymentServiceError("Unable to load saved payment methods.", 500);
   }
 
-  return ((result.data ?? []) as PaymentMethodRow[]);
+  return ((result.data ?? []) as Array<Partial<PaymentMethodRow> & Record<string, unknown>>).map(normalizePaymentMethodRow);
 }
 
 async function readLegacySavedPaymentMethodsForProfile(
@@ -760,9 +802,22 @@ async function syncClientPreferencePaymentDefaults(
       client_id: context.clientId,
       provider_customer_ref: defaultMethod?.provider_customer_id ?? null,
       default_payment_method_ref: defaultMethod?.provider_payment_method_id ?? null,
+      default_payment_method_id: defaultMethod?.id ?? null,
       updated_at: new Date().toISOString()
     })
     .eq("client_reference", clientReference);
+
+  if (updateResult.error && isPaymentPreferencePayloadSchemaMismatch(updateResult.error)) {
+    updateResult = await supabase
+      .from("client_preferences")
+      .update({
+        client_id: context.clientId,
+        provider_customer_ref: defaultMethod?.provider_customer_id ?? null,
+        default_payment_method_ref: defaultMethod?.provider_payment_method_id ?? null,
+        updated_at: new Date().toISOString()
+      })
+      .eq("client_reference", clientReference);
+  }
 
   if (updateResult.error && isPaymentPreferencePayloadSchemaMismatch(updateResult.error)) {
     updateResult = await supabase
@@ -863,21 +918,30 @@ async function syncLegacyPaymentMethodsIntoCanonical(
     }
 
     const billingCustomer = legacy.billing_customer_id ? billingCustomers.get(legacy.billing_customer_id) : undefined;
-    const insertResult = await supabase
+    const legacyInsertPayload = {
+      client_id: context.clientId,
+      provider: legacy.provider,
+      provider_customer_id: billingCustomer?.provider_customer_id ?? null,
+      provider_payment_method_id: legacy.provider_payment_method_id,
+      brand: legacy.brand,
+      last4: legacy.last4,
+      exp_month: legacy.exp_month,
+      exp_year: legacy.exp_year,
+      is_default: shouldBeDefault,
+      updated_at: new Date().toISOString()
+    };
+    let insertResult = await supabase
       .from("payment_methods")
       .insert({
-        client_id: context.clientId,
-        provider: legacy.provider,
-        provider_customer_id: billingCustomer?.provider_customer_id ?? null,
-        provider_payment_method_id: legacy.provider_payment_method_id,
-        brand: legacy.brand,
-        last4: legacy.last4,
-        exp_month: legacy.exp_month,
-        exp_year: legacy.exp_year,
+        ...legacyInsertPayload,
         nickname: null,
-        is_default: shouldBeDefault,
-        updated_at: new Date().toISOString()
       });
+
+    if (insertResult.error && isPaymentSchemaMissing(insertResult.error)) {
+      insertResult = await supabase
+        .from("payment_methods")
+        .insert(legacyInsertPayload);
+    }
 
     if (insertResult.error) {
       if (insertResult.error.code === "23505") {
@@ -1498,6 +1562,40 @@ function isUniqueViolation(error: {
   return error.code === "23505" || `${error.message ?? ""}`.toLowerCase().includes("duplicate key");
 }
 
+async function readPaymentMethodByProviderReference(
+  supabase: SupabaseClient,
+  provider: InternalPaymentProvider,
+  providerPaymentMethodId: string
+) {
+  let result = await supabase
+    .from("payment_methods")
+    .select(PAYMENT_METHOD_SELECT)
+    .eq("provider", provider)
+    .eq("provider_payment_method_id", providerPaymentMethodId)
+    .maybeSingle();
+
+  if (result.error && isPaymentSchemaMissing(result.error)) {
+    result = await supabase
+      .from("payment_methods")
+      .select(PAYMENT_METHOD_BASE_SELECT)
+      .eq("provider", provider)
+      .eq("provider_payment_method_id", providerPaymentMethodId)
+      .maybeSingle();
+  }
+
+  if (result.error) {
+    return {
+      data: null,
+      error: result.error
+    };
+  }
+
+  return {
+    data: result.data ? normalizePaymentMethodRow(result.data as Partial<PaymentMethodRow> & Record<string, unknown>) : null,
+    error: null
+  };
+}
+
 async function enrichTokenizedPaymentMethodFromProvider(input: PaymentMethodReferenceInput) {
   const normalized = normalizePaymentMethodReference(input);
   if (normalized.provider !== "stripe") {
@@ -2074,12 +2172,11 @@ export async function addClientPaymentMethod(user: UserAccount, input: PaymentMe
   const existingMethods = await readCanonicalPaymentMethodRows(supabase, actor.clientId, actor.clientReference ?? actor.clientId);
   const shouldBeDefault = normalized.isDefault || existingMethods.length === 0;
 
-  const existingProviderMethod = await supabase
-    .from("payment_methods")
-    .select(PAYMENT_METHOD_SELECT)
-    .eq("provider", normalized.provider)
-    .eq("provider_payment_method_id", normalized.providerPaymentMethodId)
-    .maybeSingle();
+  const existingProviderMethod = await readPaymentMethodByProviderReference(
+    supabase,
+    normalized.provider,
+    normalized.providerPaymentMethodId
+  );
 
   if (existingProviderMethod.error) {
     logPaymentMethodSaveFailure("existing_payment_method_lookup_failed", existingProviderMethod.error, {
@@ -2089,7 +2186,7 @@ export async function addClientPaymentMethod(user: UserAccount, input: PaymentMe
     throw new PaymentServiceError("Card could not be saved because wallet lookup failed.", 500);
   }
 
-  const existingProviderRow = (existingProviderMethod.data as PaymentMethodRow | null) ?? null;
+  const existingProviderRow = existingProviderMethod.data;
   if (existingProviderRow && existingProviderRow.client_id !== actor.clientId) {
     logPaymentMethodSaveFailure("provider_payment_method_conflict", new Error("Provider payment method belongs to another client."), {
       clientId: actor.clientId,
@@ -2133,18 +2230,19 @@ export async function addClientPaymentMethod(user: UserAccount, input: PaymentMe
 
   async function writeCanonicalPaymentMethod(includeNickname: boolean) {
     const payload = includeNickname ? payloadWithNickname : basePayload;
+    const select = includeNickname ? PAYMENT_METHOD_SELECT : PAYMENT_METHOD_BASE_SELECT;
     return existingProviderRow
       ? supabase
         .from("payment_methods")
         .update(payload)
         .eq("id", existingProviderRow.id)
         .eq("client_id", actor.clientId)
-        .select(PAYMENT_METHOD_SELECT)
+        .select(select)
         .single()
       : supabase
         .from("payment_methods")
         .insert(payload)
-        .select(PAYMENT_METHOD_SELECT)
+        .select(select)
         .single();
   }
 
@@ -2158,20 +2256,19 @@ export async function addClientPaymentMethod(user: UserAccount, input: PaymentMe
   }
 
   if (writeResult.error && !existingProviderRow && isUniqueViolation(writeResult.error)) {
-    const reread = await supabase
-      .from("payment_methods")
-      .select(PAYMENT_METHOD_SELECT)
-      .eq("provider", normalized.provider)
-      .eq("provider_payment_method_id", normalized.providerPaymentMethodId)
-      .maybeSingle();
+    const reread = await readPaymentMethodByProviderReference(
+      supabase,
+      normalized.provider,
+      normalized.providerPaymentMethodId
+    );
 
-    if (!reread.error && reread.data && (reread.data as PaymentMethodRow).client_id === actor.clientId) {
+    if (!reread.error && reread.data && reread.data.client_id === actor.clientId) {
       writeResult = await supabase
         .from("payment_methods")
-        .update(payloadWithNickname)
-        .eq("id", (reread.data as PaymentMethodRow).id)
+        .update(basePayload)
+        .eq("id", reread.data.id)
         .eq("client_id", actor.clientId)
-        .select(PAYMENT_METHOD_SELECT)
+        .select(PAYMENT_METHOD_BASE_SELECT)
         .single();
     }
   }
@@ -2188,7 +2285,7 @@ export async function addClientPaymentMethod(user: UserAccount, input: PaymentMe
     throw new PaymentServiceError("Card could not be saved because the wallet database write failed.", 500);
   }
 
-  const savedPaymentMethod = writeResult.data as PaymentMethodRow;
+  const savedPaymentMethod = normalizePaymentMethodRow(writeResult.data as unknown as Partial<PaymentMethodRow> & Record<string, unknown>);
   logPaymentMethodSaveStage("payment_methods_write_success", {
     operation: existingProviderRow ? "update" : "insert",
     clientId: actor.clientId,
@@ -2219,11 +2316,13 @@ export async function addClientPaymentMethod(user: UserAccount, input: PaymentMe
     });
   }
 
+  let clientPreferencesUpdated = false;
   const paymentContext = clientPaymentContextFromActor(actor);
   if (paymentContext) {
     try {
       const latestRows = await readCanonicalPaymentMethodRows(supabase, actor.clientId, actor.clientReference ?? actor.clientId);
       await syncClientPreferencePaymentDefaults(supabase, paymentContext, latestRows);
+      clientPreferencesUpdated = true;
       logPaymentMethodSaveStage("client_preferences_default_sync_success", {
         clientId: actor.clientId,
         clientReference: actor.clientReference ?? null,
@@ -2237,7 +2336,10 @@ export async function addClientPaymentMethod(user: UserAccount, input: PaymentMe
     }
   }
 
-  return mapPaymentMethodRow(savedPaymentMethod);
+  return {
+    ...mapPaymentMethodRow(savedPaymentMethod),
+    clientPreferencesUpdated
+  };
 }
 
 export async function setDefaultClientPaymentMethod(user: UserAccount, paymentMethodId: string) {

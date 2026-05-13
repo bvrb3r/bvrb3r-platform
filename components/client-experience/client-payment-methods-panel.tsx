@@ -70,6 +70,9 @@ type PaymentMethodSaveDebug = {
   requestStarted: boolean;
   statusCode: number | null;
   lastError: string | null;
+  savedMethodId: string | null;
+  defaultPaymentMethodId: string | null;
+  clientPreferencesUpdated: boolean;
 };
 
 function createInitialSaveDebug(): PaymentMethodSaveDebug {
@@ -77,7 +80,10 @@ function createInitialSaveDebug(): PaymentMethodSaveDebug {
     pendingStripePaymentMethodIdPresent: false,
     requestStarted: false,
     statusCode: null,
-    lastError: null
+    lastError: null,
+    savedMethodId: null,
+    defaultPaymentMethodId: null,
+    clientPreferencesUpdated: false
   };
 }
 
@@ -361,7 +367,6 @@ export function ClientPaymentMethodsPanel({
     setupRequestStartedRef.current = false;
     setSetupStatus("idle");
     setSetupMessage(null);
-    setSaveDebug(createInitialSaveDebug());
     setAuthorized(false);
     setCardComplete(false);
     confirmCardSetupRef.current = null;
@@ -374,7 +379,10 @@ export function ClientPaymentMethodsPanel({
         pendingStripePaymentMethodIdPresent: Boolean(pendingStripePaymentMethodId),
         requestStarted: false,
         statusCode: null,
-        lastError: "missing_confirmed_payment_method"
+        lastError: "missing_confirmed_payment_method",
+        savedMethodId: null,
+        defaultPaymentMethodId: null,
+        clientPreferencesUpdated: false
       });
       return;
     }
@@ -393,14 +401,20 @@ export function ClientPaymentMethodsPanel({
         pendingStripePaymentMethodIdPresent: true,
         requestStarted: true,
         statusCode: null,
-        lastError: null
+        lastError: null,
+        savedMethodId: null,
+        defaultPaymentMethodId: null,
+        clientPreferencesUpdated: false
       });
       const response = await addMethodMutation.mutateAsync(payload);
       setSaveDebug({
         pendingStripePaymentMethodIdPresent: true,
         requestStarted: true,
         statusCode: response.savePaymentStatusCode ?? 200,
-        lastError: null
+        lastError: null,
+        savedMethodId: response.method.id,
+        defaultPaymentMethodId: response.method.isDefault ? response.method.id : null,
+        clientPreferencesUpdated: Boolean(response.clientPreferencesUpdated)
       });
       setInlineSavedPaymentMethod(response.method);
       setMode("saved");
@@ -424,7 +438,10 @@ export function ClientPaymentMethodsPanel({
             pendingStripePaymentMethodIdPresent: true,
             requestStarted: true,
             statusCode: response.savePaymentStatusCode ?? 200,
-            lastError: "nickname_save_failed_card_saved"
+            lastError: "nickname_save_failed_card_saved",
+            savedMethodId: response.method.id,
+            defaultPaymentMethodId: response.method.isDefault ? response.method.id : null,
+            clientPreferencesUpdated: Boolean(response.clientPreferencesUpdated)
           });
           setInlineSavedPaymentMethod(response.method);
           setMode("saved");
@@ -440,7 +457,10 @@ export function ClientPaymentMethodsPanel({
             pendingStripePaymentMethodIdPresent: true,
             requestStarted: true,
             statusCode: typeof (retryError as PaymentApiError).status === "number" ? (retryError as PaymentApiError).status! : null,
-            lastError: retryMessage
+            lastError: retryMessage,
+            savedMethodId: null,
+            defaultPaymentMethodId: null,
+            clientPreferencesUpdated: false
           });
           // Fall through to the normal card-save error.
         }
@@ -451,7 +471,10 @@ export function ClientPaymentMethodsPanel({
         pendingStripePaymentMethodIdPresent: true,
         requestStarted: true,
         statusCode: typeof (error as PaymentApiError).status === "number" ? (error as PaymentApiError).status! : null,
-        lastError: message
+        lastError: message,
+        savedMethodId: null,
+        defaultPaymentMethodId: null,
+        clientPreferencesUpdated: false
       });
       setSetupMessage(message);
     }
@@ -539,6 +562,13 @@ export function ClientPaymentMethodsPanel({
 
       {statusMessage ? <div className="mt-4"><FeedbackBanner tone={statusMessage.tone} message={statusMessage.message} /></div> : null}
       {methodsQuery.error ? <div className="mt-4"><FeedbackBanner tone="error" message={getReadableActionError(methodsQuery.error as PaymentApiError)} /></div> : null}
+      {showPaymentDebugPanel ? (
+        <WalletPaymentDebugPanel
+          loadStatusCode={methodsQuery.data?.loadMethodsStatusCode ?? (methodsQuery.error as PaymentApiError | null)?.status ?? null}
+          loadLastError={methodsQuery.error instanceof Error ? methodsQuery.error.message : null}
+          saveDebug={saveDebug}
+        />
+      ) : null}
 
       {methodsQuery.isLoading && !methods.length ? (
         <div className="mt-4 rounded-[22px] border border-white/10 bg-black/25 p-4">
@@ -795,12 +825,50 @@ function PaymentSaveDebugPanel({ debug }: { debug: PaymentMethodSaveDebug }) {
     ["pendingStripePaymentMethodId", String(debug.pendingStripePaymentMethodIdPresent)],
     ["savePaymentRequestStarted", String(debug.requestStarted)],
     ["savePaymentStatusCode", debug.statusCode == null ? "none" : String(debug.statusCode)],
-    ["savePaymentLastError", debug.lastError ?? "none"]
+    ["savePaymentLastError", debug.lastError ?? "none"],
+    ["savedMethodId", debug.savedMethodId ?? "none"],
+    ["defaultPaymentMethodId", debug.defaultPaymentMethodId ?? "none"],
+    ["clientPreferencesUpdated", String(debug.clientPreferencesUpdated)]
   ];
 
   return (
     <div className="mt-4 rounded-[14px] border border-white/10 bg-white/[0.03] p-3 text-[11px] text-white/58">
       <p className="mb-2 font-semibold text-white/74">Payment save debug</p>
+      <div className="space-y-1">
+        {rows.map(([label, value]) => (
+          <div key={label} className="flex justify-between gap-3">
+            <span>{label}</span>
+            <span className="font-mono text-white/78">{value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function WalletPaymentDebugPanel({
+  loadStatusCode,
+  loadLastError,
+  saveDebug
+}: {
+  loadStatusCode: number | null;
+  loadLastError: string | null;
+  saveDebug: PaymentMethodSaveDebug;
+}) {
+  const rows: Array<[string, string]> = [
+    ["loadMethodsStatusCode", loadStatusCode == null ? "none" : String(loadStatusCode)],
+    ["loadMethodsLastError", loadLastError ?? "none"],
+    ["savePaymentRequestStarted", String(saveDebug.requestStarted)],
+    ["savePaymentStatusCode", saveDebug.statusCode == null ? "none" : String(saveDebug.statusCode)],
+    ["savePaymentLastError", saveDebug.lastError ?? "none"],
+    ["savedMethodId", saveDebug.savedMethodId ?? "none"],
+    ["defaultPaymentMethodId", saveDebug.defaultPaymentMethodId ?? "none"],
+    ["clientPreferencesUpdated", String(saveDebug.clientPreferencesUpdated)]
+  ];
+
+  return (
+    <div className="mt-4 rounded-[16px] border border-white/10 bg-white/[0.03] p-3 text-[11px] text-white/58">
+      <p className="mb-2 font-semibold text-white/74">Wallet payment debug</p>
       <div className="space-y-1">
         {rows.map(([label, value]) => (
           <div key={label} className="flex justify-between gap-3">
