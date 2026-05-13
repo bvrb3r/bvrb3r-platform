@@ -258,6 +258,10 @@ describe("client payment methods panel", () => {
     await waitFor(() => expect(screen.queryByText("Loading secure card form...")).not.toBeInTheDocument());
     expect(screen.getByText("Secure card form ready.")).toBeInTheDocument();
     const cardWrapper = screen.getByTestId("stripe-card-number-field");
+    expect(cardWrapper).toHaveClass("min-w-[280px]");
+    expect(screen.getByTestId("stripe-mm-yy-field")).toHaveClass("min-w-[110px]");
+    expect(screen.getByTestId("stripe-cvc-field")).toHaveClass("min-w-[90px]");
+    expect(screen.getByTestId("stripe-zip-field")).toHaveClass("min-w-[110px]");
     expect(cardWrapper).toHaveStyle({
       pointerEvents: "auto",
       cursor: "text"
@@ -265,6 +269,8 @@ describe("client payment methods panel", () => {
     expect(cardWrapper.closest("fieldset[disabled]")).toBeNull();
     expect(cardWrapper.querySelector("[data-stripe-card-overlay='true']")).not.toBeInTheDocument();
     expect(cardWrapper.childElementCount).toBe(1);
+    fireEvent.click(cardWrapper);
+    expect(stripeCardNumberMock.focus).toHaveBeenCalledTimes(1);
   });
 
   it("requires card-on-file authorization before saving", async () => {
@@ -524,7 +530,7 @@ describe("client payment methods panel", () => {
 
     render(<ClientPaymentMethodsPanel initialMethods={[]} isSignedInClient />);
 
-    expect(await screen.findByText(/Secure card form failed to load/)).toBeInTheDocument();
+    expect(await screen.findByText("Secure card fields did not finish loading. Refresh and try again.")).toBeInTheDocument();
     consoleErrorSpy.mockRestore();
   });
 
@@ -540,7 +546,7 @@ describe("client payment methods panel", () => {
 
     render(<ClientPaymentMethodsPanel initialMethods={[]} isSignedInClient />);
 
-    expect(await screen.findByText(/Secure card form failed to load/)).toBeInTheDocument();
+    expect(await screen.findByText("Secure card fields did not finish loading. Refresh and try again.")).toBeInTheDocument();
     expect(screen.queryByText("Secure card form ready.")).not.toBeInTheDocument();
     consoleErrorSpy.mockRestore();
   });

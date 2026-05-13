@@ -9,10 +9,16 @@ import {
   useElements,
   useStripe
 } from "@stripe/react-stripe-js";
-import { loadStripe, type Stripe } from "@stripe/stripe-js";
+import {
+  loadStripe,
+  type Stripe,
+  type StripeCardCvcElement,
+  type StripeCardExpiryElement,
+  type StripeCardNumberElement
+} from "@stripe/stripe-js";
 import type { PaymentSetupIntentView } from "@/lib/payments/client";
 
-export const STRIPE_CARD_FORM_LOAD_ERROR = "Secure card form failed to load. Refresh the page or contact support.";
+export const STRIPE_CARD_FORM_LOAD_ERROR = "Secure card fields did not finish loading. Refresh and try again.";
 export const STRIPE_CARD_FORM_MISSING_KEY_ERROR = "Secure card form failed to load. Stripe publishable key is missing.";
 export const STRIPE_CARD_FORM_MISSING_SECRET_ERROR = "Secure card form failed to load. SetupIntent was not created.";
 
@@ -54,8 +60,9 @@ type StripeCardOnFileFormProps = {
 };
 
 const CARD_FIELD_CLASS_NAME = "relative z-[50] min-h-[56px] rounded-[16px] border border-[rgba(255,255,255,0.18)] bg-[rgba(255,255,255,0.04)] px-4 py-4";
-const CARD_FIELD_INPUT_CLASS_NAME = "relative z-[60] block min-h-[24px] w-full";
-const POSTAL_INPUT_CLASS_NAME = "relative z-[60] block h-6 w-full border-0 bg-transparent p-0 text-base text-white outline-none placeholder:text-[#8a8a8a]";
+const CARD_FIELD_INPUT_CLASS_NAME = "relative z-[60] block min-h-[24px] w-full [&>iframe]:!w-full";
+const POSTAL_INPUT_CLASS_NAME = "relative z-[60] block min-h-[24px] w-full border-0 bg-transparent p-0 text-base text-white outline-none placeholder:text-[#8a8a8a]";
+const SPLIT_FIELD_GRID_CLASS_NAME = "grid w-full grid-cols-1 gap-3 md:grid-cols-[minmax(280px,2fr)_minmax(110px,0.7fr)_minmax(90px,0.55fr)_minmax(110px,0.7fr)]";
 
 function createInitialFieldState(): StripeFieldState {
   return {
@@ -74,6 +81,10 @@ function logStripeCardFormError(reference: StripeSetupReference, details?: Recor
 }
 
 function logStripeCardFormDebug(reference: StripeSetupReference, details?: Record<string, unknown>) {
+  if (process.env.NODE_ENV === "production" || process.env.NODE_ENV === "test") {
+    return;
+  }
+
   console.log("[payments] stripe card form state", {
     reference,
     ...(details ?? {})
@@ -126,6 +137,21 @@ function getAllFieldsReady(fields: StripeFieldState) {
 
 function getAllFieldsComplete(fields: StripeFieldState) {
   return Object.values(fields).every((field) => field.ready && field.complete && !field.error);
+}
+
+function getFieldDebugSnapshot(fields: StripeFieldState) {
+  return {
+    cardNumberReady: fields.cardNumber.ready,
+    cardExpiryReady: fields.cardExpiry.ready,
+    cardCvcReady: fields.cardCvc.ready,
+    zipReady: fields.postalCode.ready,
+    cardNumberComplete: fields.cardNumber.complete,
+    cardExpiryComplete: fields.cardExpiry.complete,
+    cardCvcComplete: fields.cardCvc.complete,
+    zipComplete: fields.postalCode.complete,
+    allReady: getAllFieldsReady(fields),
+    allComplete: getAllFieldsComplete(fields)
+  };
 }
 
 export function StripeCardOnFileForm({
@@ -187,10 +213,11 @@ export function StripeCardOnFileForm({
 
   useEffect(() => {
     onReadyChange(allFieldsReady);
+    logStripeCardFormDebug("card_element_change", getFieldDebugSnapshot(fields));
     if (allFieldsReady) {
       onStatusChange("ready");
     }
-  }, [allFieldsReady, onReadyChange, onStatusChange]);
+  }, [allFieldsReady, fields, onReadyChange, onStatusChange]);
 
   useEffect(() => {
     onCompleteChange(allFieldsComplete);
@@ -310,7 +337,7 @@ export function StripeCardOnFileForm({
     const timeout = window.setTimeout(() => {
       logStripeCardFormError("card_element_not_ready_timeout", {
         reason: "split_fields_ready_timeout",
-        readyFields: Object.fromEntries(Object.entries(fields).map(([key, state]) => [key, state.ready]))
+        ...getFieldDebugSnapshot(fields)
       });
       setFieldFailure(STRIPE_CARD_FORM_LOAD_ERROR);
     }, STRIPE_CARD_READY_TIMEOUT_MS);
@@ -388,11 +415,11 @@ export function StripeCardOnFileForm({
           />
         </Elements>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-[minmax(0,1.7fr)_minmax(0,0.8fr)_minmax(0,0.7fr)_minmax(0,0.8fr)]">
-          <StripeFieldShell label="Card number" />
-          <StripeFieldShell label="MM/YY" />
-          <StripeFieldShell label="CVC" />
-          <StripeFieldShell label="ZIP" />
+        <div className={SPLIT_FIELD_GRID_CLASS_NAME}>
+          <StripeFieldShell label="Card number" minWidthClassName="min-w-[280px]" />
+          <StripeFieldShell label="MM/YY" minWidthClassName="min-w-[110px]" />
+          <StripeFieldShell label="CVC" minWidthClassName="min-w-[90px]" />
+          <StripeFieldShell label="ZIP" minWidthClassName="min-w-[110px]" />
         </div>
       )}
 
@@ -439,6 +466,15 @@ function SplitStripeCardFields({
 }) {
   const stripe = useStripe();
   const elements = useElements();
+  const fieldHostRefs = useRef<Record<StripeFieldKey, HTMLDivElement | null>>({
+    cardNumber: null,
+    cardExpiry: null,
+    cardCvc: null,
+    postalCode: null
+  });
+  const cardNumberRef = useRef<StripeCardNumberElement | null>(null);
+  const cardExpiryRef = useRef<StripeCardExpiryElement | null>(null);
+  const cardCvcRef = useRef<StripeCardCvcElement | null>(null);
   const postalCodeRef = useRef("");
   const [postalCode, setPostalCode] = useState("");
 
@@ -527,15 +563,78 @@ function SplitStripeCardFields({
   const handlePostalCodeChange = useCallback((value: string) => {
     postalCodeRef.current = value;
     setPostalCode(value);
-    onFieldChange("postalCode", value.trim().length >= 3, null);
+    onFieldChange("postalCode", value.trim().length >= 5, null);
   }, [onFieldChange]);
 
+  const setHostRef = useCallback((field: StripeFieldKey, node: HTMLDivElement | null) => {
+    fieldHostRefs.current[field] = node;
+  }, []);
+
+  const logFieldIframeSize = useCallback((field: StripeFieldKey) => {
+    window.requestAnimationFrame(() => {
+      const host = fieldHostRefs.current[field];
+      const iframe = host?.querySelector("iframe") ?? null;
+      const hostRect = host?.getBoundingClientRect();
+      const iframeRect = iframe?.getBoundingClientRect();
+      logStripeCardFormDebug("card_element_ready", {
+        field,
+        hostWidth: hostRect?.width ?? 0,
+        hostHeight: hostRect?.height ?? 0,
+        iframeWidth: iframeRect?.width ?? 0,
+        iframeHeight: iframeRect?.height ?? 0
+      });
+    });
+  }, []);
+
+  const focusField = useCallback((field: StripeFieldKey) => {
+    if (field === "cardNumber") {
+      cardNumberRef.current?.focus();
+      return;
+    }
+
+    if (field === "cardExpiry") {
+      cardExpiryRef.current?.focus();
+      return;
+    }
+
+    if (field === "cardCvc") {
+      cardCvcRef.current?.focus();
+      return;
+    }
+
+    const postalInput = fieldHostRefs.current.postalCode?.querySelector("input");
+    postalInput?.focus();
+  }, []);
+
+  const handleNumberReady = useCallback((element: StripeCardNumberElement) => {
+    cardNumberRef.current = element;
+    onFieldReady("cardNumber");
+    logFieldIframeSize("cardNumber");
+  }, [logFieldIframeSize, onFieldReady]);
+
+  const handleExpiryReady = useCallback((element: StripeCardExpiryElement) => {
+    cardExpiryRef.current = element;
+    onFieldReady("cardExpiry");
+    logFieldIframeSize("cardExpiry");
+  }, [logFieldIframeSize, onFieldReady]);
+
+  const handleCvcReady = useCallback((element: StripeCardCvcElement) => {
+    cardCvcRef.current = element;
+    onFieldReady("cardCvc");
+    logFieldIframeSize("cardCvc");
+  }, [logFieldIframeSize, onFieldReady]);
+
   return (
-    <div className="grid gap-3 sm:grid-cols-[minmax(0,1.7fr)_minmax(0,0.8fr)_minmax(0,0.7fr)_minmax(0,0.8fr)]">
-      <StripeFieldShell label="Card number">
+    <div className={SPLIT_FIELD_GRID_CLASS_NAME}>
+      <StripeFieldShell
+        label="Card number"
+        minWidthClassName="min-w-[280px]"
+        onFocusRequest={() => focusField("cardNumber")}
+        setHostRef={(node) => setHostRef("cardNumber", node)}
+      >
         <CardNumberElement
           className={CARD_FIELD_INPUT_CLASS_NAME}
-          onReady={() => onFieldReady("cardNumber")}
+          onReady={handleNumberReady}
           onFocus={() => logStripeCardFormDebug("card_element_focus", { field: "cardNumber" })}
           onBlur={() => logStripeCardFormDebug("card_element_blur", { field: "cardNumber" })}
           onChange={(event) => onFieldChange("cardNumber", Boolean(event.complete), event.error?.message ?? null)}
@@ -543,33 +642,49 @@ function SplitStripeCardFields({
           options={cardNumberOptions}
         />
       </StripeFieldShell>
-      <StripeFieldShell label="MM/YY">
+      <StripeFieldShell
+        label="MM/YY"
+        minWidthClassName="min-w-[110px]"
+        onFocusRequest={() => focusField("cardExpiry")}
+        setHostRef={(node) => setHostRef("cardExpiry", node)}
+      >
         <CardExpiryElement
           className={CARD_FIELD_INPUT_CLASS_NAME}
-          onReady={() => onFieldReady("cardExpiry")}
+          onReady={handleExpiryReady}
           onFocus={() => logStripeCardFormDebug("card_element_focus", { field: "cardExpiry" })}
           onBlur={() => logStripeCardFormDebug("card_element_blur", { field: "cardExpiry" })}
           onChange={(event) => onFieldChange("cardExpiry", Boolean(event.complete), event.error?.message ?? null)}
           options={cardExpiryOptions}
         />
       </StripeFieldShell>
-      <StripeFieldShell label="CVC">
+      <StripeFieldShell
+        label="CVC"
+        minWidthClassName="min-w-[90px]"
+        onFocusRequest={() => focusField("cardCvc")}
+        setHostRef={(node) => setHostRef("cardCvc", node)}
+      >
         <CardCvcElement
           className={CARD_FIELD_INPUT_CLASS_NAME}
-          onReady={() => onFieldReady("cardCvc")}
+          onReady={handleCvcReady}
           onFocus={() => logStripeCardFormDebug("card_element_focus", { field: "cardCvc" })}
           onBlur={() => logStripeCardFormDebug("card_element_blur", { field: "cardCvc" })}
           onChange={(event) => onFieldChange("cardCvc", Boolean(event.complete), event.error?.message ?? null)}
           options={cardCvcOptions}
         />
       </StripeFieldShell>
-      <StripeFieldShell label="ZIP">
+      <StripeFieldShell
+        label="ZIP"
+        minWidthClassName="min-w-[110px]"
+        onFocusRequest={() => focusField("postalCode")}
+        setHostRef={(node) => setHostRef("postalCode", node)}
+      >
         <input
           aria-label="ZIP"
           className={POSTAL_INPUT_CLASS_NAME}
           data-testid="postal-code-input"
           inputMode="numeric"
           autoComplete="postal-code"
+          maxLength={10}
           value={postalCode}
           onChange={(event) => handlePostalCodeChange(event.target.value)}
           placeholder="33612"
@@ -581,24 +696,39 @@ function SplitStripeCardFields({
 
 function StripeFieldShell({
   label,
-  children
+  children,
+  minWidthClassName,
+  onFocusRequest,
+  setHostRef
 }: {
   label: string;
   children?: ReactNode;
+  minWidthClassName: string;
+  onFocusRequest?: () => void;
+  setHostRef?: (node: HTMLDivElement | null) => void;
 }) {
+  const fieldId = `stripe-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-field`;
+
   return (
-    <label className="block">
-      <span className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.18em] text-white/42">
+    <div className="min-w-0">
+      <label
+        htmlFor={fieldId}
+        className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.18em] text-white/42"
+        onClick={onFocusRequest}
+      >
         {label}
-      </span>
-      <span
-        className={CARD_FIELD_CLASS_NAME}
+      </label>
+      <div
+        ref={setHostRef}
+        id={fieldId}
+        className={`${CARD_FIELD_CLASS_NAME} w-full ${minWidthClassName} overflow-visible`}
         style={{ pointerEvents: "auto", cursor: "text" }}
+        onClick={onFocusRequest}
         data-testid={`stripe-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-field`}
         data-stripe-card-host="true"
       >
         {children}
-      </span>
-    </label>
+      </div>
+    </div>
   );
 }
