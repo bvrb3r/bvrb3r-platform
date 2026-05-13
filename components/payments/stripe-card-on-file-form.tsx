@@ -89,8 +89,20 @@ type StripeFieldIframeDiagnostics = {
 
 export type ConfirmStripeCardSetup = () => Promise<string>;
 
+export type StripeSetupIntentRequestDebug = {
+  requestStarted: boolean;
+  statusCode: number | null;
+  ready: boolean;
+  error: string | null;
+  clientSecretPresent: boolean;
+  publishableKeyPresent: boolean;
+  customerIdPresent: boolean;
+};
+
 type StripeCardOnFileFormProps = {
   setupIntent: PaymentSetupIntentView | null;
+  setupIntentError?: string | null;
+  setupIntentDebug?: StripeSetupIntentRequestDebug;
   isSetupIntentLoading: boolean;
   onReadyChange: (ready: boolean) => void;
   onCompleteChange: (complete: boolean) => void;
@@ -249,6 +261,8 @@ function getFieldDebugSnapshot(fields: StripeFieldState) {
 
 export function StripeCardOnFileForm({
   setupIntent,
+  setupIntentError = null,
+  setupIntentDebug,
   isSetupIntentLoading,
   onReadyChange,
   onCompleteChange,
@@ -295,6 +309,7 @@ export function StripeCardOnFileForm({
   const showStripeElement = Boolean(setupIntentReady && stripePromise && !stripeLoadFailed);
   const hasResolvedSetupIntent = Boolean(setupIntent) && !isSetupIntentLoading;
   const failureMessage = fieldFailure
+    ?? setupIntentError
     ?? (hasResolvedSetupIntent && publishableKeyPrefix === "missing" ? STRIPE_CARD_FORM_MISSING_KEY_ERROR : null)
     ?? (hasResolvedSetupIntent && hasInvalidPublishableKeyPrefix(publishableKeyPrefix) ? STRIPE_CARD_FORM_MISSING_KEY_ERROR : null)
     ?? (hasResolvedSetupIntent && !clientSecret ? STRIPE_CARD_FORM_MISSING_SECRET_ERROR : null)
@@ -561,12 +576,15 @@ export function StripeCardOnFileForm({
             onConfirmSetupChange={onConfirmSetupChange}
           />
         </Elements>
+      ) : !failureMessage ? (
+        <div className="rounded-[16px] border border-dashed border-white/12 bg-white/[0.03] px-4 py-4 text-sm text-white/54">
+          Preparing secure card fields...
+        </div>
       ) : (
         <div className={SPLIT_FIELD_GRID_CLASS_NAME}>
-          <StripeFieldShell label="Card number" minWidthClassName="min-w-[280px]" />
-          <StripeFieldShell label="MM/YY" minWidthClassName="min-w-[110px]" />
-          <StripeFieldShell label="CVC" minWidthClassName="min-w-[90px]" />
-          <StripeFieldShell label="ZIP" minWidthClassName="min-w-[110px]" />
+          <div className="rounded-[16px] border border-red-400/20 bg-red-500/10 px-4 py-4 text-sm text-red-100 md:col-span-4">
+            Secure card fields are unavailable until payment setup starts.
+          </div>
         </div>
       )}
 
@@ -591,7 +609,7 @@ export function StripeCardOnFileForm({
         </div>
       ) : null}
       {showDebugPanel ? (
-        <PaymentDebugPanel snapshot={debugSnapshot} stage={currentStage} />
+        <PaymentDebugPanel snapshot={debugSnapshot} stage={currentStage} setupIntentDebug={setupIntentDebug} />
       ) : null}
     </div>
   );
@@ -903,14 +921,23 @@ function SplitStripeCardFields({
 
 function PaymentDebugPanel({
   snapshot,
-  stage
+  stage,
+  setupIntentDebug
 }: {
   snapshot: StripeCardFormDebugSnapshot;
   stage: StripeCardFormStage;
+  setupIntentDebug?: StripeSetupIntentRequestDebug;
 }) {
   const rows: Array<[string, string]> = [
     ["stage", stage],
-    ["setupIntentReady", String(snapshot.setupIntentReady)],
+    ["setupIntentRequestStarted", String(setupIntentDebug?.requestStarted ?? false)],
+    ["setupIntentStatusCode", setupIntentDebug?.statusCode == null ? "none" : String(setupIntentDebug.statusCode)],
+    ["setupIntentReady", String(setupIntentDebug?.ready ?? snapshot.setupIntentReady)],
+    ["setupIntentError", setupIntentDebug?.error ?? "none"],
+    ["clientSecretPresent", String(setupIntentDebug?.clientSecretPresent ?? snapshot.setupIntent.hasClientSecret)],
+    ["publishableKeyPresent", String(setupIntentDebug?.publishableKeyPresent ?? snapshot.setupIntent.hasPublishableKey)],
+    ["customerIdPresent", String(setupIntentDebug?.customerIdPresent ?? false)],
+    ["formSetupIntentReady", String(snapshot.setupIntentReady)],
     ["stripeReady", String(snapshot.stripeReady)],
     ["cardNumberReady", String(snapshot.cardNumberReady)],
     ["cardExpiryReady", String(snapshot.cardExpiryReady)],

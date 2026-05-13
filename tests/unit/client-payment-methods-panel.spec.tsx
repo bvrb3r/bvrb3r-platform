@@ -240,7 +240,7 @@ describe("client payment methods panel", () => {
 
     expect(screen.getAllByText("Card on file").length).toBeGreaterThan(0);
     expect(screen.getByText("Add a card so booking and rebooking stay fast. Protected and encrypted by Stripe.")).toBeInTheDocument();
-    expect(screen.getByText("Card number")).toBeInTheDocument();
+    expect(await screen.findByText("Card number")).toBeInTheDocument();
     expect(screen.getByText("MM/YY")).toBeInTheDocument();
     expect(screen.getByText("CVC")).toBeInTheDocument();
     expect(screen.getByText("ZIP")).toBeInTheDocument();

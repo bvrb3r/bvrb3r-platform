@@ -593,7 +593,7 @@ describe("booking form", () => {
     await advanceToReview();
 
     expect(screen.getByText("Add a payment method to complete booking.")).toBeInTheDocument();
-    expect(screen.getByText("Card number")).toBeInTheDocument();
+    expect(await screen.findByText("Card number")).toBeInTheDocument();
     expect(screen.getByText("MM/YY")).toBeInTheDocument();
     expect(screen.getByText("CVC")).toBeInTheDocument();
     expect(screen.getByText("ZIP")).toBeInTheDocument();

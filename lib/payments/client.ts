@@ -49,6 +49,7 @@ export interface PaymentSetupIntentView {
   clientSecret: string;
   customerId?: string;
   publishableKey?: string;
+  setupIntentStatusCode?: number;
 }
 
 async function requestJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
@@ -135,7 +136,10 @@ async function createSavedPaymentMethodSetup(): Promise<PaymentSetupIntentView> 
     throw error;
   }
 
-  return body as unknown as PaymentSetupIntentView;
+  return {
+    ...(body as unknown as PaymentSetupIntentView),
+    setupIntentStatusCode: response.status
+  };
 }
 
 export function usePaymentMethodsQuery(

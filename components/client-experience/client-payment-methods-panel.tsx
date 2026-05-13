@@ -11,7 +11,8 @@ import {
   STRIPE_CARD_FORM_LOAD_ERROR,
   STRIPE_CARD_FORM_MISSING_KEY_ERROR,
   STRIPE_CARD_FORM_MISSING_SECRET_ERROR,
-  type ConfirmStripeCardSetup
+  type ConfirmStripeCardSetup,
+  type StripeSetupIntentRequestDebug
 } from "@/components/payments/stripe-card-on-file-form";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -50,6 +51,20 @@ function getExpirationLabel(method: ClientPaymentMethodView) {
   return `Exp ${month}/${year}`;
 }
 
+const PAYMENT_SETUP_START_ERROR = "Payment setup could not start. Refresh and try again.";
+
+function createInitialSetupDebug(): StripeSetupIntentRequestDebug {
+  return {
+    requestStarted: false,
+    statusCode: null,
+    ready: false,
+    error: null,
+    clientSecretPresent: false,
+    publishableKeyPresent: false,
+    customerIdPresent: false
+  };
+}
+
 export function ClientPaymentMethodsPanel({
   initialMethods,
   isSignedInClient
@@ -74,8 +89,10 @@ export function ClientPaymentMethodsPanel({
   const [renamingMethod, setRenamingMethod] = useState<ClientPaymentMethodView | null>(null);
   const [setupStatus, setSetupStatus] = useState<"idle" | "loading" | "ready" | "success" | "error">("idle");
   const [setupMessage, setSetupMessage] = useState<string | null>(null);
+  const [setupDebug, setSetupDebug] = useState<StripeSetupIntentRequestDebug>(() => createInitialSetupDebug());
   const setupRequestStartedRef = useRef(false);
   const confirmCardSetupRef = useRef<ConfirmStripeCardSetup | null>(null);
+  const createSetupIntentRef = useRef(setupMutation.mutateAsync);
 
   const methods = useMemo(() => {
     const methodsById = new Map<string, ClientPaymentMethodView>();
@@ -110,6 +127,10 @@ export function ClientPaymentMethodsPanel({
         : "Save card";
 
   useEffect(() => {
+    createSetupIntentRef.current = setupMutation.mutateAsync;
+  }, [setupMutation.mutateAsync]);
+
+  useEffect(() => {
     if (!showAddForm || setupIntent || setupRequestStartedRef.current) {
       return;
     }
@@ -118,16 +139,30 @@ export function ClientPaymentMethodsPanel({
     setupRequestStartedRef.current = true;
     setSetupStatus("loading");
     setSetupMessage(null);
+    setSetupDebug({
+      ...createInitialSetupDebug(),
+      requestStarted: true
+    });
     console.log("[payments] setup_intent_request_started", {
       reference: "setup_intent_request_started",
       surface: "wallet"
     });
-    setupMutation.mutateAsync()
+    createSetupIntentRef.current()
       .then((intent) => {
         if (cancelled) {
           return;
         }
 
+        const responseDebug = {
+          requestStarted: true,
+          statusCode: intent.setupIntentStatusCode ?? 200,
+          ready: Boolean(intent.clientSecret && intent.publishableKey),
+          error: null,
+          clientSecretPresent: Boolean(intent.clientSecret),
+          publishableKeyPresent: Boolean(intent.publishableKey),
+          customerIdPresent: Boolean(intent.customerId)
+        };
+        setSetupDebug(responseDebug);
         console.log("[payments] setup_intent_response_ready", {
           reference: "setup_intent_response_ready",
           surface: "wallet",
@@ -158,12 +193,17 @@ export function ClientPaymentMethodsPanel({
           });
           setSetupStatus("error");
           setSetupMessage(intent.clientSecret ? STRIPE_CARD_FORM_MISSING_KEY_ERROR : STRIPE_CARD_FORM_MISSING_SECRET_ERROR);
+          setSetupDebug({
+            ...responseDebug,
+            ready: false,
+            error: intent.clientSecret ? "publishable_key_missing" : "client_secret_missing"
+          });
           return;
         }
 
         setSetupIntent(intent);
       })
-      .catch(() => {
+      .catch((error) => {
         if (cancelled) {
           return;
         }
@@ -172,13 +212,22 @@ export function ClientPaymentMethodsPanel({
           reference: "stripe_setup_intent_create_failed"
         });
         setSetupStatus("error");
-        setSetupMessage(STRIPE_CARD_FORM_LOAD_ERROR);
+        setSetupMessage(PAYMENT_SETUP_START_ERROR);
+        setSetupDebug({
+          requestStarted: true,
+          statusCode: typeof (error as PaymentApiError).status === "number" ? (error as PaymentApiError).status! : null,
+          ready: false,
+          error: error instanceof Error && error.message ? error.message : "setup_intent_request_failed",
+          clientSecretPresent: false,
+          publishableKeyPresent: false,
+          customerIdPresent: false
+        });
       });
 
     return () => {
       cancelled = true;
     };
-  }, [setupIntent, setupMutation, showAddForm]);
+  }, [setupIntent, showAddForm]);
 
   const handleStripeStatusChange = useCallback((status: "idle" | "loading" | "ready" | "error") => {
     setSetupStatus(status);
@@ -207,6 +256,7 @@ export function ClientPaymentMethodsPanel({
     setupRequestStartedRef.current = false;
     setSetupStatus("idle");
     setSetupMessage(null);
+    setSetupDebug(createInitialSetupDebug());
     setCardComplete(false);
     confirmCardSetupRef.current = null;
   }, []);
@@ -217,6 +267,7 @@ export function ClientPaymentMethodsPanel({
     setupRequestStartedRef.current = false;
     setSetupStatus("idle");
     setSetupMessage(null);
+    setSetupDebug(createInitialSetupDebug());
     setStatusMessage(null);
     setCardComplete(false);
     confirmCardSetupRef.current = null;
@@ -230,6 +281,7 @@ export function ClientPaymentMethodsPanel({
     setupRequestStartedRef.current = false;
     setSetupStatus("idle");
     setSetupMessage(null);
+    setSetupDebug(createInitialSetupDebug());
     setAuthorized(false);
     setCardComplete(false);
     confirmCardSetupRef.current = null;
@@ -543,6 +595,8 @@ export function ClientPaymentMethodsPanel({
           <div className="mt-4">
             <StripeCardOnFileForm
               setupIntent={setupIntent}
+              setupIntentError={setupStatus === "error" ? setupMessage : null}
+              setupIntentDebug={setupDebug}
               isSetupIntentLoading={setupMutation.isPending || setupStatus === "idle"}
               onReadyChange={handleStripeReadyChange}
               onCompleteChange={handleStripeCompleteChange}
@@ -576,6 +630,11 @@ export function ClientPaymentMethodsPanel({
             {methods.length ? (
               <Button type="button" variant="secondary" className="h-11 px-5" onClick={cancelAddCard}>
                 Cancel
+              </Button>
+            ) : null}
+            {setupStatus === "error" ? (
+              <Button type="button" variant="secondary" className="h-11 px-5" onClick={retryCardSetup}>
+                Retry loading card form
               </Button>
             ) : null}
           </div>
