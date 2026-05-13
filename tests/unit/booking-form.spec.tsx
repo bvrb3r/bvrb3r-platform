@@ -21,7 +21,7 @@ const {
   useCreateSavedPaymentMethodSetupMutationMock,
   useCreateAppointmentPaymentMutationMock,
   loadStripeMock,
-  stripeCardMock,
+  stripeCardNumberMock,
   confirmCardSetupMock,
   stripeMockState
 } = vi.hoisted(() => ({
@@ -44,13 +44,17 @@ const {
   useCreateSavedPaymentMethodSetupMutationMock: vi.fn(),
   useCreateAppointmentPaymentMutationMock: vi.fn(),
   loadStripeMock: vi.fn(),
-  stripeCardMock: {
+  stripeCardNumberMock: {
     focus: vi.fn()
   },
   confirmCardSetupMock: vi.fn(),
   stripeMockState: {
     autoReady: true,
-    complete: true,
+    complete: {
+      cardNumber: true,
+      cardExpiry: true,
+      cardCvc: true
+    },
     loadError: null as string | null
   }
 }));
@@ -101,35 +105,56 @@ vi.mock("@stripe/stripe-js", () => ({
 vi.mock("@stripe/react-stripe-js", async () => {
   const React = await vi.importActual<typeof import("react")>("react");
 
-  return {
-    Elements: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
-    CardElement: (props: {
-      onReady?: (element: typeof stripeCardMock) => void;
+  function createSplitElement(field: "cardNumber" | "cardExpiry" | "cardCvc", testId: string, element: typeof stripeCardNumberMock) {
+    function MockStripeElement(props: {
+      onReady?: (element: typeof stripeCardNumberMock) => void;
+      onFocus?: () => void;
+      onBlur?: () => void;
       onChange?: (event: { complete?: boolean; error?: { message?: string } }) => void;
       onLoadError?: (event: { error?: { message?: string } }) => void;
-    }) => {
-      const { onReady, onChange, onLoadError } = props;
+    }) {
+      const { onReady, onFocus, onBlur, onChange, onLoadError } = props;
 
       React.useEffect(() => {
-        if (stripeMockState.loadError) {
-          onLoadError?.({ error: { message: stripeMockState.loadError } });
+        const shouldFail = stripeMockState.loadError === field || (field === "cardNumber" && Boolean(stripeMockState.loadError));
+        if (shouldFail) {
+          onLoadError?.({ error: { message: stripeMockState.loadError ?? "Stripe iframe failed" } });
         } else if (stripeMockState.autoReady) {
-          onReady?.(stripeCardMock);
-          onChange?.({ complete: stripeMockState.complete });
+          onReady?.(element);
+          onChange?.({ complete: stripeMockState.complete[field] });
         }
       }, [onChange, onLoadError, onReady]);
 
       return React.createElement(
         "div",
-        { "data-testid": "mock-stripe-card-element" },
+        {
+          "data-testid": testId,
+          onFocus,
+          onBlur,
+          tabIndex: 0
+        },
         React.createElement("iframe", { title: "Secure card input" })
       );
-    },
+    }
+
+    MockStripeElement.displayName = `MockStripe${field}`;
+    return MockStripeElement;
+  }
+
+  const CardNumberElement = createSplitElement("cardNumber", "mock-stripe-card-number-element", stripeCardNumberMock);
+  const CardExpiryElement = createSplitElement("cardExpiry", "mock-stripe-card-expiry-element", { focus: vi.fn() });
+  const CardCvcElement = createSplitElement("cardCvc", "mock-stripe-card-cvc-element", { focus: vi.fn() });
+
+  return {
+    Elements: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
+    CardNumberElement,
+    CardExpiryElement,
+    CardCvcElement,
     useStripe: () => ({
       confirmCardSetup: confirmCardSetupMock
     }),
     useElements: () => ({
-      getElement: () => stripeCardMock
+      getElement: (element: unknown) => element === CardNumberElement ? stripeCardNumberMock : null
     })
   };
 });
@@ -164,9 +189,13 @@ describe("booking form", () => {
     useCreateAppointmentPaymentMutationMock.mockReset();
     loadStripeMock.mockReset();
     confirmCardSetupMock.mockReset();
-    stripeCardMock.focus.mockReset();
+    stripeCardNumberMock.focus.mockReset();
     stripeMockState.autoReady = true;
-    stripeMockState.complete = true;
+    stripeMockState.complete = {
+      cardNumber: true,
+      cardExpiry: true,
+      cardCvc: true
+    };
     stripeMockState.loadError = null;
     window.requestAnimationFrame = (callback: FrameRequestCallback) => {
       callback(0);
@@ -563,7 +592,7 @@ describe("booking form", () => {
     expect(screen.getByText("MM/YY")).toBeInTheDocument();
     expect(screen.getByText("CVC")).toBeInTheDocument();
     expect(screen.getByText("ZIP")).toBeInTheDocument();
-    expect(screen.getByLabelText("Card number, MM/YY, CVC, and ZIP")).toBeInTheDocument();
+    expect(screen.getByTestId("postal-code-input")).toBeInTheDocument();
     expect(screen.queryByText("Cardholder name")).not.toBeInTheDocument();
     expect(screen.queryByText("Secure card details")).not.toBeInTheDocument();
     expect(screen.queryByText("Stripe secure card entry")).not.toBeInTheDocument();
@@ -614,12 +643,17 @@ describe("booking form", () => {
     await waitFor(() => {
       expect(createSetupMock).toHaveBeenCalledTimes(1);
     });
-    expect(await screen.findByTestId("mock-stripe-card-element")).toBeInTheDocument();
+    expect(await screen.findByTestId("mock-stripe-card-number-element")).toBeInTheDocument();
+    expect(screen.getByTestId("mock-stripe-card-expiry-element")).toBeInTheDocument();
+    expect(screen.getByTestId("mock-stripe-card-cvc-element")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByText("Loading secure card form...")).not.toBeInTheDocument());
 
     expect(screen.getByRole("button", { name: "Book Appointment" })).toBeDisabled();
 
     expect(screen.getByRole("button", { name: "Save card" })).toBeDisabled();
+    fireEvent.change(screen.getByTestId("postal-code-input"), {
+      target: { value: "33612" }
+    });
     fireEvent.click(screen.getByLabelText("I authorize BVRB3R to save this card on file for future bookings."));
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Save card" })).toBeEnabled();
@@ -629,6 +663,16 @@ describe("booking form", () => {
     await waitFor(() => {
       expect(confirmCardSetupMock).toHaveBeenCalledTimes(1);
     });
+    expect(confirmCardSetupMock).toHaveBeenCalledWith("seti_inline_secret", expect.objectContaining({
+      payment_method: expect.objectContaining({
+        card: stripeCardNumberMock,
+        billing_details: {
+          address: {
+            postal_code: "33612"
+          }
+        }
+      })
+    }));
     expect(await screen.findByText("Name this card")).toBeInTheDocument();
     fireEvent.change(screen.getByPlaceholderText("Example: Phil Stripe Card"), {
       target: { value: "Phil Stripe Card" }

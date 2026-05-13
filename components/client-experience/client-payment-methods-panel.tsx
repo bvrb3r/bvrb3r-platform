@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input";
 import {
   StripeCardOnFileForm,
   STRIPE_CARD_FORM_LOAD_ERROR,
+  STRIPE_CARD_FORM_MISSING_KEY_ERROR,
+  STRIPE_CARD_FORM_MISSING_SECRET_ERROR,
   type ConfirmStripeCardSetup
 } from "@/components/payments/stripe-card-on-file-form";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -122,7 +124,7 @@ export function ClientPaymentMethodsPanel({
             hasPublishableKey: Boolean(intent.publishableKey)
           });
           setSetupStatus("error");
-          setSetupMessage(STRIPE_CARD_FORM_LOAD_ERROR);
+          setSetupMessage(intent.clientSecret ? STRIPE_CARD_FORM_MISSING_KEY_ERROR : STRIPE_CARD_FORM_MISSING_SECRET_ERROR);
           return;
         }
 
