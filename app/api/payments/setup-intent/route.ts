@@ -3,6 +3,22 @@ import { getSessionUser } from "@/lib/booking/route-auth";
 import { getPaymentProvider } from "@/lib/payments/provider";
 import { ensureClientPaymentProfileForUser, syncClientPaymentSetupCustomer } from "@/lib/payments/service";
 
+function getPublishableKeyPrefix(publishableKey?: string) {
+  if (!publishableKey) {
+    return "missing";
+  }
+
+  if (publishableKey.startsWith("pk_test_")) {
+    return "pk_test";
+  }
+
+  if (publishableKey.startsWith("pk_live_")) {
+    return "pk_live";
+  }
+
+  return "invalid";
+}
+
 export async function POST(request: NextRequest) {
   try {
     const user = await getSessionUser();
@@ -11,6 +27,10 @@ export async function POST(request: NextRequest) {
     }
 
     await request.json().catch(() => null);
+    console.log("[payments] setup_intent_create_started", {
+      reference: "setup_intent_create_started",
+      userId: user.id
+    });
     const paymentProfile = await ensureClientPaymentProfileForUser(user);
     const provider = await getPaymentProvider();
     const intent = await provider.createSavedPaymentMethodSetup({
@@ -18,6 +38,16 @@ export async function POST(request: NextRequest) {
       customerName: paymentProfile.profileName
     });
     await syncClientPaymentSetupCustomer(paymentProfile, intent.customerId);
+    console.log("[payments] setup_intent_create_success", {
+      reference: "setup_intent_create_success",
+      userId: user.id,
+      clientId: paymentProfile.clientId,
+      clientReference: paymentProfile.clientReference,
+      stripeCustomerId: intent.customerId ? "present" : "missing",
+      hasClientSecret: Boolean(intent.clientSecret),
+      hasPublishableKey: Boolean(intent.publishableKey),
+      publishableKeyPrefix: getPublishableKeyPrefix(intent.publishableKey)
+    });
 
     return NextResponse.json(intent);
   } catch (error) {

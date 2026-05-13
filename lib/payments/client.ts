@@ -70,6 +70,56 @@ async function requestJson<T>(input: RequestInfo, init?: RequestInit): Promise<T
   return body as T;
 }
 
+function getPublishableKeyPrefix(publishableKey?: string) {
+  if (!publishableKey) {
+    return "missing";
+  }
+
+  if (publishableKey.startsWith("pk_test_")) {
+    return "pk_test";
+  }
+
+  if (publishableKey.startsWith("pk_live_")) {
+    return "pk_live";
+  }
+
+  return "invalid";
+}
+
+async function createSavedPaymentMethodSetup(): Promise<PaymentSetupIntentView> {
+  console.log("[payments] setup_intent_request_started", {
+    reference: "setup_intent_request_started",
+    route: "/api/payments/setup-intent"
+  });
+
+  const response = await fetch("/api/payments/setup-intent", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ mode: "booking_inline" })
+  });
+  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+
+  console.log("[payments] setup_intent_response_status", {
+    reference: "setup_intent_response_status",
+    route: "/api/payments/setup-intent",
+    ok: response.ok,
+    status: response.status,
+    hasClientSecret: typeof body.clientSecret === "string" && body.clientSecret.length > 0,
+    hasPublishableKey: typeof body.publishableKey === "string" && body.publishableKey.length > 0,
+    publishableKeyPrefix: getPublishableKeyPrefix(body.publishableKey as string | undefined)
+  });
+
+  if (!response.ok) {
+    const error = new Error((body.error as string | undefined) ?? `Request failed with status ${response.status}`) as PaymentApiError;
+    error.status = response.status;
+    throw error;
+  }
+
+  return body as unknown as PaymentSetupIntentView;
+}
+
 export function usePaymentMethodsQuery(
   initialData?: { methods: ClientPaymentMethodView[] },
   enabled = true
@@ -108,11 +158,7 @@ export function useAddPaymentMethodMutation() {
 
 export function useCreateSavedPaymentMethodSetupMutation() {
   return useMutation({
-    mutationFn: () =>
-      requestJson<PaymentSetupIntentView>("/api/payments/setup-intent", {
-        method: "POST",
-        body: JSON.stringify({ mode: "booking_inline" })
-      })
+    mutationFn: createSavedPaymentMethodSetup
   });
 }
 

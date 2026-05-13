@@ -101,6 +101,13 @@ export function ClientPaymentMethodsPanel({
     && Boolean(setupIntent?.clientSecret)
     && Boolean(confirmCardSetupRef.current)
     && !addMethodMutation.isPending;
+  const saveCardButtonLabel = addMethodMutation.isPending
+    ? "Saving card..."
+    : setupMutation.isPending || setupStatus === "idle"
+      ? "Creating secure card session..."
+      : setupStatus === "loading"
+        ? "Loading secure card fields..."
+        : "Save card";
 
   useEffect(() => {
     if (!showAddForm || setupIntent || setupRequestStartedRef.current) {
@@ -111,11 +118,29 @@ export function ClientPaymentMethodsPanel({
     setupRequestStartedRef.current = true;
     setSetupStatus("loading");
     setSetupMessage(null);
+    console.log("[payments] setup_intent_request_started", {
+      reference: "setup_intent_request_started",
+      surface: "wallet"
+    });
     setupMutation.mutateAsync()
       .then((intent) => {
         if (cancelled) {
           return;
         }
+
+        console.log("[payments] setup_intent_response_ready", {
+          reference: "setup_intent_response_ready",
+          surface: "wallet",
+          hasClientSecret: Boolean(intent.clientSecret),
+          hasPublishableKey: Boolean(intent.publishableKey),
+          publishableKeyPrefix: intent.publishableKey?.startsWith("pk_test_")
+            ? "pk_test"
+            : intent.publishableKey?.startsWith("pk_live_")
+              ? "pk_live"
+              : intent.publishableKey
+                ? "invalid"
+                : "missing"
+        });
 
         if (!intent.clientSecret || !intent.publishableKey) {
           console.error("[payments] payment setup intent is incomplete", {
@@ -167,6 +192,15 @@ export function ClientPaymentMethodsPanel({
 
   const handleConfirmSetupChange = useCallback((confirmSetup: ConfirmStripeCardSetup | null) => {
     confirmCardSetupRef.current = confirmSetup;
+  }, []);
+
+  const retryCardSetup = useCallback(() => {
+    setSetupIntent(null);
+    setupRequestStartedRef.current = false;
+    setSetupStatus("idle");
+    setSetupMessage(null);
+    setCardComplete(false);
+    confirmCardSetupRef.current = null;
   }, []);
 
   function startAddCard() {
@@ -507,6 +541,7 @@ export function ClientPaymentMethodsPanel({
               onErrorMessage={handleStripeErrorMessage}
               onStatusChange={handleStripeStatusChange}
               onConfirmSetupChange={handleConfirmSetupChange}
+              onRetryLoad={retryCardSetup}
             />
           </div>
 
@@ -528,7 +563,7 @@ export function ClientPaymentMethodsPanel({
 
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <Button type="button" className="h-11 px-5" disabled={!canSaveCard || savePending} onClick={() => void handleSaveCard()}>
-              {setupMutation.isPending || setupStatus === "loading" ? "Loading card form..." : addMethodMutation.isPending ? "Saving card..." : "Save card"}
+              {saveCardButtonLabel}
             </Button>
             {methods.length ? (
               <Button type="button" variant="secondary" className="h-11 px-5" onClick={cancelAddCard}>

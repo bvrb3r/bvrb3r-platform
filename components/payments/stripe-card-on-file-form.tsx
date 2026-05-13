@@ -22,7 +22,7 @@ export const STRIPE_CARD_FORM_LOAD_ERROR = "Secure card fields did not finish lo
 export const STRIPE_CARD_FORM_MISSING_KEY_ERROR = "Secure card form failed to load. Stripe publishable key is missing.";
 export const STRIPE_CARD_FORM_MISSING_SECRET_ERROR = "Secure card form failed to load. SetupIntent was not created.";
 
-const STRIPE_CARD_READY_TIMEOUT_MS = 5000;
+const STRIPE_CARD_READY_TIMEOUT_MS = 8000;
 const stripePromiseCache = new Map<string, Promise<Stripe | null>>();
 
 type StripeSetupReference =
@@ -39,6 +39,9 @@ type StripeSetupReference =
   | "card_element_load_error"
   | "card_element_not_ready_timeout";
 
+type StripeCardFormStatus = "idle" | "loading" | "ready" | "error";
+type StripeCardFormStage = "setup_intent" | "stripe_script" | "elements" | "ready" | "error";
+
 type StripeFieldKey = "cardNumber" | "cardExpiry" | "cardCvc" | "postalCode";
 
 type StripeFieldState = Record<StripeFieldKey, {
@@ -46,6 +49,22 @@ type StripeFieldState = Record<StripeFieldKey, {
   complete: boolean;
   error: string | null;
 }>;
+
+type StripeCardFormDebugSnapshot = ReturnType<typeof getFieldDebugSnapshot> & {
+  setupIntentReady: boolean;
+  stripeReady: boolean;
+  allReady: boolean;
+  lastError: string | null;
+  publishableKey: {
+    present: boolean;
+    startsWithPkTest: boolean;
+    prefix: string;
+  };
+  setupIntent: {
+    hasClientSecret: boolean;
+    hasPublishableKey: boolean;
+  };
+};
 
 export type ConfirmStripeCardSetup = () => Promise<string>;
 
@@ -55,8 +74,9 @@ type StripeCardOnFileFormProps = {
   onReadyChange: (ready: boolean) => void;
   onCompleteChange: (complete: boolean) => void;
   onErrorMessage: (message: string | null) => void;
-  onStatusChange: (status: "idle" | "loading" | "ready" | "error") => void;
+  onStatusChange: (status: StripeCardFormStatus) => void;
   onConfirmSetupChange: (confirmSetup: ConfirmStripeCardSetup | null) => void;
+  onRetryLoad?: () => void;
 };
 
 const CARD_FIELD_CLASS_NAME = "relative z-[50] min-h-[56px] rounded-[16px] border border-[rgba(255,255,255,0.18)] bg-[rgba(255,255,255,0.04)] px-4 py-4";
@@ -135,6 +155,10 @@ function getAllFieldsReady(fields: StripeFieldState) {
   return Object.values(fields).every((field) => field.ready);
 }
 
+function hasInvalidPublishableKeyPrefix(prefix: string) {
+  return prefix === "invalid";
+}
+
 function getAllFieldsComplete(fields: StripeFieldState) {
   return Object.values(fields).every((field) => field.ready && field.complete && !field.error);
 }
@@ -161,12 +185,16 @@ export function StripeCardOnFileForm({
   onCompleteChange,
   onErrorMessage,
   onStatusChange,
-  onConfirmSetupChange
+  onConfirmSetupChange,
+  onRetryLoad
 }: StripeCardOnFileFormProps) {
+  const showDebugPanel = typeof window !== "undefined"
+    && new URLSearchParams(window.location.search).get("debugPayments") === "1";
   const envPublishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.trim() ?? "";
   const publishableKey = setupIntent?.publishableKey?.trim() || envPublishableKey;
   const publishableKeyPrefix = getStripeKeyPrefix(publishableKey);
   const clientSecret = setupIntent?.clientSecret?.trim() ?? "";
+  const setupIntentReady = Boolean(clientSecret && publishableKey && !hasInvalidPublishableKeyPrefix(publishableKeyPrefix));
   const [retryNonce, setRetryNonce] = useState(0);
   const activeSetupKey = `${publishableKey}:${clientSecret}:${retryNonce}`;
   const [stripeLoadState, setStripeLoadState] = useState<{
@@ -182,6 +210,7 @@ export function StripeCardOnFileForm({
   const allFieldsComplete = getAllFieldsComplete(fields);
   const stripeReady = stripeLoadState.key === publishableKey && stripeLoadState.status === "ready";
   const stripeLoadFailed = stripeLoadState.key === publishableKey && stripeLoadState.status === "error";
+  const allReady = setupIntentReady && stripeReady && allFieldsReady;
 
   const stripePromise = useMemo(
     () => getStripePromise(publishableKey),
@@ -192,16 +221,47 @@ export function StripeCardOnFileForm({
     [clientSecret]
   );
 
-  const showStripeElement = Boolean(clientSecret && publishableKeyPrefix !== "missing" && stripePromise && stripeReady && !stripeLoadFailed);
-  const showLoading = isSetupIntentLoading
-    || Boolean(clientSecret && publishableKeyPrefix !== "missing" && stripePromise && !stripeReady && !stripeLoadFailed)
-    || Boolean(showStripeElement && !allFieldsReady && !fieldFailure);
-  const showReady = Boolean(showStripeElement && allFieldsReady && !fieldFailure);
+  const showStripeElement = Boolean(setupIntentReady && stripePromise && stripeReady && !stripeLoadFailed);
   const hasResolvedSetupIntent = Boolean(setupIntent) && !isSetupIntentLoading;
   const failureMessage = fieldFailure
     ?? (hasResolvedSetupIntent && publishableKeyPrefix === "missing" ? STRIPE_CARD_FORM_MISSING_KEY_ERROR : null)
+    ?? (hasResolvedSetupIntent && hasInvalidPublishableKeyPrefix(publishableKeyPrefix) ? STRIPE_CARD_FORM_MISSING_KEY_ERROR : null)
     ?? (hasResolvedSetupIntent && !clientSecret ? STRIPE_CARD_FORM_MISSING_SECRET_ERROR : null)
     ?? (stripeLoadFailed ? STRIPE_CARD_FORM_LOAD_ERROR : null);
+  const currentStage: StripeCardFormStage = failureMessage
+    ? "error"
+    : allReady
+      ? "ready"
+      : isSetupIntentLoading || !setupIntent
+        ? "setup_intent"
+        : !stripeReady
+          ? "stripe_script"
+          : "elements";
+  const loadingMessage = currentStage === "setup_intent"
+    ? "Creating secure card session..."
+    : currentStage === "stripe_script"
+      ? "Loading Stripe..."
+      : currentStage === "elements"
+        ? "Loading secure card fields..."
+        : null;
+  const showLoading = Boolean(loadingMessage && !failureMessage);
+  const showReady = currentStage === "ready" && !failureMessage;
+  const debugSnapshot = useMemo<StripeCardFormDebugSnapshot>(() => ({
+    setupIntentReady,
+    stripeReady,
+    ...getFieldDebugSnapshot(fields),
+    allReady,
+    lastError: failureMessage ?? null,
+    publishableKey: {
+      present: Boolean(publishableKey),
+      startsWithPkTest: publishableKey.startsWith("pk_test_"),
+      prefix: publishableKeyPrefix
+    },
+    setupIntent: {
+      hasClientSecret: Boolean(clientSecret),
+      hasPublishableKey: Boolean(publishableKey)
+    }
+  }), [allReady, clientSecret, failureMessage, fields, publishableKey, publishableKeyPrefix, setupIntentReady, stripeReady]);
 
   useEffect(() => {
     setFields(createInitialFieldState());
@@ -212,12 +272,12 @@ export function StripeCardOnFileForm({
   }, [activeSetupKey, onCompleteChange, onConfirmSetupChange, onReadyChange]);
 
   useEffect(() => {
-    onReadyChange(allFieldsReady);
+    onReadyChange(allReady);
     logStripeCardFormDebug("card_element_change", getFieldDebugSnapshot(fields));
-    if (allFieldsReady) {
+    if (allReady) {
       onStatusChange("ready");
     }
-  }, [allFieldsReady, fields, onReadyChange, onStatusChange]);
+  }, [allReady, fields, onReadyChange, onStatusChange]);
 
   useEffect(() => {
     onCompleteChange(allFieldsComplete);
@@ -251,9 +311,9 @@ export function StripeCardOnFileForm({
       return;
     }
 
-    if (publishableKeyPrefix === "missing" || !stripePromise) {
+    if (publishableKeyPrefix === "missing" || hasInvalidPublishableKeyPrefix(publishableKeyPrefix) || !stripePromise) {
       logStripeCardFormError("stripe_publishable_key_missing", {
-        present: false,
+        present: Boolean(publishableKey),
         prefix: publishableKeyPrefix
       });
       onStatusChange("error");
@@ -330,14 +390,15 @@ export function StripeCardOnFileForm({
   }, [clientSecret, isSetupIntentLoading, onErrorMessage, onStatusChange, publishableKey, publishableKeyPrefix, setupIntent, stripePromise]);
 
   useEffect(() => {
-    if (!showStripeElement || allFieldsReady || fieldFailure) {
+    if (failureMessage || allReady) {
       return;
     }
 
     const timeout = window.setTimeout(() => {
       logStripeCardFormError("card_element_not_ready_timeout", {
-        reason: "split_fields_ready_timeout",
-        ...getFieldDebugSnapshot(fields)
+        reason: "card_form_ready_timeout",
+        stage: currentStage,
+        ...debugSnapshot
       });
       setFieldFailure(STRIPE_CARD_FORM_LOAD_ERROR);
     }, STRIPE_CARD_READY_TIMEOUT_MS);
@@ -345,7 +406,7 @@ export function StripeCardOnFileForm({
     return () => {
       window.clearTimeout(timeout);
     };
-  }, [allFieldsReady, fieldFailure, fields, showStripeElement]);
+  }, [allReady, currentStage, debugSnapshot, failureMessage]);
 
   const handleFieldReady = useCallback((field: StripeFieldKey) => {
     setFields((current) => ({
@@ -398,7 +459,8 @@ export function StripeCardOnFileForm({
     onStatusChange("loading");
     onConfirmSetupChange(null);
     setRetryNonce((current) => current + 1);
-  }, [onCompleteChange, onConfirmSetupChange, onErrorMessage, onReadyChange, onStatusChange]);
+    onRetryLoad?.();
+  }, [onCompleteChange, onConfirmSetupChange, onErrorMessage, onReadyChange, onRetryLoad, onStatusChange]);
 
   return (
     <div>
@@ -424,7 +486,7 @@ export function StripeCardOnFileForm({
       )}
 
       {showLoading ? (
-        <p className="mt-3 text-sm text-white/50">Loading secure card form...</p>
+        <p className="mt-3 text-sm text-white/50">{loadingMessage}</p>
       ) : null}
       {showReady ? (
         <p className="mt-3 text-sm text-[#baff69]/70">Secure card form ready.</p>
@@ -438,10 +500,13 @@ export function StripeCardOnFileForm({
               className="mt-2 text-xs font-semibold uppercase tracking-[0.18em] text-red-100 underline decoration-red-200/40 underline-offset-4"
               onClick={handleRetry}
             >
-              Retry card form
+              Retry loading card form
             </button>
           ) : null}
         </div>
+      ) : null}
+      {showDebugPanel ? (
+        <PaymentDebugPanel snapshot={debugSnapshot} stage={currentStage} />
       ) : null}
     </div>
   );
@@ -460,7 +525,7 @@ function SplitStripeCardFields({
   onFieldReady: (field: StripeFieldKey) => void;
   onFieldChange: (field: StripeFieldKey, complete: boolean, errorMessage?: string | null) => void;
   onFieldLoadError: (field: StripeFieldKey, message?: string | null) => void;
-  onStatusChange: (status: "idle" | "loading" | "ready" | "error") => void;
+  onStatusChange: (status: StripeCardFormStatus) => void;
   onErrorMessage: (message: string | null) => void;
   onConfirmSetupChange: (confirmSetup: ConfirmStripeCardSetup | null) => void;
 }) {
@@ -690,6 +755,48 @@ function SplitStripeCardFields({
           placeholder="33612"
         />
       </StripeFieldShell>
+    </div>
+  );
+}
+
+function PaymentDebugPanel({
+  snapshot,
+  stage
+}: {
+  snapshot: StripeCardFormDebugSnapshot;
+  stage: StripeCardFormStage;
+}) {
+  const rows: Array<[string, string]> = [
+    ["stage", stage],
+    ["setupIntentReady", String(snapshot.setupIntentReady)],
+    ["stripeReady", String(snapshot.stripeReady)],
+    ["cardNumberReady", String(snapshot.cardNumberReady)],
+    ["cardExpiryReady", String(snapshot.cardExpiryReady)],
+    ["cardCvcReady", String(snapshot.cardCvcReady)],
+    ["zipReady", String(snapshot.zipReady)],
+    ["allReady", String(snapshot.allReady)],
+    ["cardNumberComplete", String(snapshot.cardNumberComplete)],
+    ["cardExpiryComplete", String(snapshot.cardExpiryComplete)],
+    ["cardCvcComplete", String(snapshot.cardCvcComplete)],
+    ["zipComplete", String(snapshot.zipComplete)],
+    ["publishableKeyPresent", String(snapshot.publishableKey.present)],
+    ["publishableKeyPkTest", String(snapshot.publishableKey.startsWithPkTest)],
+    ["publishableKeyPrefix", snapshot.publishableKey.prefix],
+    ["clientSecret", String(snapshot.setupIntent.hasClientSecret)],
+    ["lastError", snapshot.lastError ?? "none"]
+  ];
+
+  return (
+    <div className="mt-3 rounded-[14px] border border-white/10 bg-black/40 px-3 py-3 text-xs leading-5 text-white/62">
+      <p className="mb-2 font-semibold uppercase tracking-[0.18em] text-white/48">Payment debug</p>
+      <dl className="grid gap-x-3 gap-y-1 sm:grid-cols-2">
+        {rows.map(([label, value]) => (
+          <div key={label} className="flex items-center justify-between gap-3">
+            <dt className="text-white/42">{label}</dt>
+            <dd className="font-mono text-white/72">{value}</dd>
+          </div>
+        ))}
+      </dl>
     </div>
   );
 }

@@ -255,7 +255,7 @@ describe("client payment methods panel", () => {
     expect(await screen.findByTestId("mock-stripe-card-number-element")).toBeInTheDocument();
     expect(screen.getByTestId("mock-stripe-card-expiry-element")).toBeInTheDocument();
     expect(screen.getByTestId("mock-stripe-card-cvc-element")).toBeInTheDocument();
-    await waitFor(() => expect(screen.queryByText("Loading secure card form...")).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText("Loading secure card fields...")).not.toBeInTheDocument());
     expect(screen.getByText("Secure card form ready.")).toBeInTheDocument();
     const cardWrapper = screen.getByTestId("stripe-card-number-field");
     expect(cardWrapper).toHaveClass("min-w-[280px]");
@@ -308,7 +308,7 @@ describe("client payment methods panel", () => {
     render(<ClientPaymentMethodsPanel initialMethods={[]} isSignedInClient />);
 
     expect(await screen.findByTestId("mock-stripe-card-number-element")).toBeInTheDocument();
-    await waitFor(() => expect(screen.queryByText("Loading secure card form...")).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText("Loading secure card fields...")).not.toBeInTheDocument());
     expect(stripeMockState.mountCount.cardNumber).toBe(1);
     expect(stripeMockState.mountCount.cardExpiry).toBe(1);
     expect(stripeMockState.mountCount.cardCvc).toBe(1);
@@ -337,7 +337,7 @@ describe("client payment methods panel", () => {
     render(<ClientPaymentMethodsPanel initialMethods={[]} isSignedInClient />);
 
     expect(await screen.findByTestId("mock-stripe-card-number-element")).toBeInTheDocument();
-    await waitFor(() => expect(screen.queryByText("Loading secure card form...")).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText("Loading secure card fields...")).not.toBeInTheDocument());
     expect(stripeMockState.mountCount.cardNumber).toBe(1);
 
     fireEvent.change(screen.getByTestId("postal-code-input"), {
