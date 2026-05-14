@@ -31,6 +31,25 @@ const bookingSchema = z.object({
   promotionCode: z.string().optional()
 });
 
+function serializeBookingValidationError(error: LiveOperationValidationError) {
+  const details = error.details && typeof error.details === "object"
+    ? error.details as Record<string, unknown>
+    : null;
+
+  if (error.code === "verification_blocked" && details?.gate === "shop_activation") {
+    return {
+      error: "This provider is not available for booking yet.",
+      code: error.code,
+      details: {
+        ...details,
+        reasons: ["This provider is not available for booking yet."]
+      }
+    };
+  }
+
+  return { error: error.message, code: error.code, details: error.details ?? null };
+}
+
 export async function POST(request: NextRequest) {
   const parsed = bookingSchema.safeParse(await request.json());
   if (!parsed.success) {
@@ -142,7 +161,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     if (error instanceof LiveOperationValidationError) {
       return NextResponse.json(
-        { error: error.message, code: error.code, details: error.details ?? null },
+        serializeBookingValidationError(error),
         { status: error.status }
       );
     }

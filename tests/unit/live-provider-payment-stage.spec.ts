@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { resolveOperationalPaymentRecordAttributes, rethrowAppointmentPersistenceError } from "@/lib/operations/live-provider";
+import {
+  resolveOperationalPaymentRecordAttributes,
+  rethrowAppointmentPersistenceError,
+  shouldRequireShopBusinessVerificationForBooking
+} from "@/lib/operations/live-provider";
 import { LiveOperationConflictError, bookAppointmentInSnapshot, createInitialLiveOperationsSnapshot } from "@/lib/operations/live-state";
 
 describe("live operations payment stage mapping", () => {
@@ -39,5 +43,39 @@ describe("live operations payment stage mapping", () => {
         appointment
       )
     ).toThrow(LiveOperationConflictError);
+  });
+
+  it("does not require shop business verification for barber-direct independent bookings", () => {
+    expect(shouldRequireShopBusinessVerificationForBooking({
+      serviceOwnerType: "barber",
+      serviceBarberReference: "barber-phillip",
+      locationReference: "independent-barber-phillip",
+      hasStaffMembership: false
+    })).toBe(false);
+  });
+
+  it("does not turn a pending shop attachment into a blanket client booking blocker", () => {
+    expect(shouldRequireShopBusinessVerificationForBooking({
+      serviceOwnerType: "barber",
+      serviceBarberReference: "barber-phillip",
+      locationReference: "shop-pending",
+      hasStaffMembership: true
+    })).toBe(false);
+  });
+
+  it("requires shop business verification only for explicit shop-owned booking lanes", () => {
+    expect(shouldRequireShopBusinessVerificationForBooking({
+      serviceOwnerType: "shop",
+      serviceBarberReference: null,
+      locationReference: "shop-unapproved",
+      hasStaffMembership: true
+    })).toBe(true);
+
+    expect(shouldRequireShopBusinessVerificationForBooking({
+      serviceOwnerType: "shop",
+      serviceBarberReference: "barber-phillip",
+      locationReference: "shop-unapproved",
+      hasStaffMembership: true
+    })).toBe(true);
   });
 });

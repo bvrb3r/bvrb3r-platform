@@ -248,6 +248,42 @@ describe("bookings route", () => {
     expect(body.details.codes).toContain("identity_verification_required");
   });
 
+  it("hides internal shop-lane verification language from client booking errors", async () => {
+    createBookingMock.mockRejectedValue(
+      new LiveOperationValidationError(
+        "Business verification must be approved for this shop lane.",
+        "verification_blocked",
+        {
+          gate: "shop_activation",
+          barberId: "barber-blaze",
+          locationId: "loc-ybor",
+          codes: ["business_verification_required"],
+          reasons: ["Business verification must be approved for this shop lane."],
+          degraded: false
+        }
+      )
+    );
+
+    const response = await postBooking(new NextRequest("https://bvrb3r.demo/api/bookings", {
+      method: "POST",
+      body: JSON.stringify({
+        locationId: "loc-ybor",
+        barberId: "barber-blaze",
+        serviceId: "srv-signature",
+        addOnIds: [],
+        appointmentTime: "2026-03-23T14:00:00-04:00",
+        clientName: "Jordan Ellis",
+        clientPhone: "(813) 555-0190"
+      })
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.error).toBe("This provider is not available for booking yet.");
+    expect(body.details.reasons).toEqual(["This provider is not available for booking yet."]);
+    expect(JSON.stringify(body)).not.toContain("Business verification must be approved for this shop lane.");
+  });
+
   it("preserves live conflict responses for schedule collisions", async () => {
     createBookingMock.mockRejectedValue(
       new LiveOperationConflictError("The selected time is no longer available with this barber.", appointmentFixture, "schedule_conflict")

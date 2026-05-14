@@ -23,6 +23,25 @@ const bookingSchema = z.object({
   aiRecommendationType: z.enum(["rebooking_reminder", "available_now", "barber_gap_alert"]).optional()
 });
 
+function serializeBookingValidationError(error: LiveOperationValidationError) {
+  const details = error.details && typeof error.details === "object"
+    ? error.details as Record<string, unknown>
+    : null;
+
+  if (error.code === "verification_blocked" && details?.gate === "shop_activation") {
+    return {
+      error: "This provider is not available for booking yet.",
+      code: error.code,
+      details: {
+        ...details,
+        reasons: ["This provider is not available for booking yet."]
+      }
+    };
+  }
+
+  return { error: error.message, code: error.code, details: error.details ?? null };
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -111,7 +130,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     if (error instanceof LiveOperationValidationError) {
       return NextResponse.json(
-        { error: error.message, code: error.code, details: error.details ?? null },
+        serializeBookingValidationError(error),
         { status: error.status }
       );
     }

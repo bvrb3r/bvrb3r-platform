@@ -167,15 +167,20 @@ function createVerificationBlockedError(input: {
   reasons: string[];
   degraded: boolean;
 }) {
+  const isShopLaneBlock = input.gate === "shop_activation";
+  const safeReasons = isShopLaneBlock
+    ? ["This provider is not available for booking yet."]
+    : input.reasons;
+
   return new LiveOperationValidationError(
-    input.reasons[0] ?? "This booking lane is not currently eligible for verification-gated booking.",
+    safeReasons[0] ?? "This booking lane is not currently eligible for verification-gated booking.",
     "verification_blocked",
     {
       gate: input.gate,
       barberId: input.barberId,
       locationId: input.locationId,
       codes: input.codes,
-      reasons: input.reasons,
+      reasons: safeReasons,
       degraded: input.degraded
     }
   );
@@ -203,12 +208,50 @@ function assertBookableBarberLane(barberId: string, locationId: string, trustSta
       degraded: bookingGate.degraded
     });
   }
+}
 
+function isIndependentBookingLocationReference(locationReference?: string | null) {
+  return Boolean(locationReference?.startsWith("independent-"));
+}
+
+export function shouldRequireShopBusinessVerificationForBooking(input: {
+  serviceOwnerType?: string | null;
+  serviceBarberReference?: string | null;
+  locationReference?: string | null;
+  hasStaffMembership?: boolean;
+}) {
+  if (isIndependentBookingLocationReference(input.locationReference)) {
+    return false;
+  }
+
+  return input.serviceOwnerType === "shop"
+    && input.hasStaffMembership === true;
+}
+
+function assertShopLaneIfRequired(input: {
+  barberId: string;
+  locationId: string;
+  locationReference?: string | null;
+  service: CanonicalServiceRow;
+  membership: StaffMembershipRow | null;
+  trustState?: TrustState;
+}) {
+  if (!input.trustState || !shouldRequireShopBusinessVerificationForBooking({
+    serviceOwnerType: input.service.service_owner_type,
+    serviceBarberReference: input.service.barber_reference,
+    locationReference: input.locationReference,
+    hasStaffMembership: Boolean(input.membership)
+  })) {
+    return;
+  }
+
+  const { trustState, barberId, locationId } = input;
   const shopGate = getVerificationGateDecision(computeShopVerificationDecision(trustState, locationId), "shop_activation");
   if (!shopGate.allowed) {
-    console.warn("[live-provider] booking blocked by shop activation gate", {
+    console.warn("[live-provider] booking blocked by explicit shop-owned lane activation gate", {
       barberId,
       locationId,
+      serviceId: input.service.reference_code ?? input.service.id,
       codes: shopGate.codes,
       reasons: shopGate.reasons
     });
@@ -1258,8 +1301,29 @@ async function resolveCanonicalBookingContext(
   if (membershipResult.error) {
     throw membershipResult.error;
   }
-  if (!membershipResult.data) {
-    throw new LiveOperationValidationError(`Barber ${input.barberId} is not assigned to shop ${input.locationId}.`);
+
+  const membership = (membershipResult.data as StaffMembershipRow | null) ?? null;
+  const locationReference = locationRow.reference_code ?? input.locationId;
+  const requiresShopLane = shouldRequireShopBusinessVerificationForBooking({
+    serviceOwnerType: primaryService.service_owner_type,
+    serviceBarberReference: primaryService.barber_reference,
+    locationReference,
+    hasStaffMembership: Boolean(membership)
+  });
+
+  if (!membership && primaryService.service_owner_type === "shop") {
+    throw new LiveOperationValidationError(
+      "This provider is not available for booking yet.",
+      "verification_blocked",
+      {
+        gate: "shop_activation",
+        barberId: input.barberId,
+        locationId: input.locationId,
+        codes: ["shop_lane_assignment_required"],
+        reasons: ["This provider is not available for booking yet."],
+        degraded: false
+      }
+    );
   }
 
   const quote = calculateAppointmentQuote(
@@ -1314,7 +1378,9 @@ async function resolveCanonicalBookingContext(
     location: locationRow,
     barber: barberRow,
     client: (clientResult.data as CanonicalClientRow | null) ?? null,
-    membership: membershipResult.data as StaffMembershipRow,
+    membership,
+    requiresShopLane,
+    locationReference,
     primaryService,
     addOnServices,
     quote: finalQuote,
@@ -1405,6 +1471,14 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
       const trustState = await readTrustStateSafe();
       assertBookableBarberLane(input.barberId, input.locationId, trustState);
       const context = await resolveCanonicalBookingContext(supabase, fullSnapshot, input);
+      assertShopLaneIfRequired({
+        barberId: input.barberId,
+        locationId: input.locationId,
+        locationReference: context.locationReference,
+        service: context.primaryService,
+        membership: context.membership,
+        trustState
+      });
       const confirmationCode = await generateUniqueConfirmationCode(
         supabase,
         `${input.locationId}:${input.barberId}:${input.serviceId}:${input.appointmentTime}:${input.clientPhone}`
@@ -1413,7 +1487,7 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
         ...input,
         clientId: input.clientId ?? context.client?.reference_code ?? context.matchedClient?.id,
         confirmationCode,
-        membershipId: context.membership.id,
+        membershipId: context.membership?.id,
         bookingSource: input.bookingSource ?? "booking",
         createdBy: context.actorProfileId ?? undefined,
         pricingSnapshot: context.quote
