@@ -1644,6 +1644,9 @@ async function insertPaymentRecord(
   options: {
     createdAt?: string;
     paymentMethodId?: string | null;
+    shopId?: string | null;
+    payoutRoute?: "freelance" | "booth_rent" | "commission";
+    platformHold?: boolean;
   } = {}
 ) {
   const createdAt = options.createdAt ?? appointment.updatedAt;
@@ -1668,7 +1671,9 @@ async function insertPaymentRecord(
   return createCapturedStripePaymentRecord(supabase, {
     appointmentId: canonicalAppointmentUuid(appointment.id),
     clientId: canonicalClientUuid(appointment.clientId),
-    shopId: canonicalLocationUuid(appointment.shopId ?? appointment.locationId),
+    shopId: options.shopId === undefined
+      ? canonicalLocationUuid(appointment.shopId ?? appointment.locationId)
+      : options.shopId,
     barberId: canonicalBarberUuid(appointment.barberId),
     serviceId: canonicalServiceUuid(appointment.serviceId),
     amount,
@@ -1689,7 +1694,9 @@ async function insertPaymentRecord(
       locationReference: appointment.locationId,
       serviceReference: appointment.serviceId,
       serviceId: canonicalServiceUuid(appointment.serviceId),
-      service_id: canonicalServiceUuid(appointment.serviceId)
+      service_id: canonicalServiceUuid(appointment.serviceId),
+      payoutRoute: options.payoutRoute ?? null,
+      platformHold: options.platformHold ?? null
     },
     createdAt
   });
@@ -2443,7 +2450,12 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
               fullPrepay: true
             },
             {
-              paymentMethodId: input.paymentMethodId ?? null
+              paymentMethodId: input.paymentMethodId ?? null,
+              shopId: context.resolvedBarber.isFreelance || !context.membership
+                ? null
+                : canonicalLocationUuid(appointmentForPayment.shopId ?? appointmentForPayment.locationId),
+              payoutRoute: context.resolvedBarber.relationshipType,
+              platformHold: true
             }
           );
           diagnostics.paymentMethodResolved = true;

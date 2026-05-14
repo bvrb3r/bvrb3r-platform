@@ -1411,18 +1411,68 @@ function logBookingPaymentStageFailure(
   details: Record<string, unknown> = {}
 ) {
   const candidate = error && typeof error === "object"
-    ? error as { code?: string | null; message?: string | null; details?: string | null; hint?: string | null; status?: number | null }
+    ? error as { code?: string | null; name?: string | null; message?: string | null; details?: string | null; hint?: string | null; status?: number | null }
     : null;
   console.error("[payments] booking_transaction_stage_failed", {
     reference: "booking_transaction_stage_failed",
     stage,
     errorCode: candidate?.code ?? null,
+    errorName: candidate?.name ?? (error instanceof Error ? error.name : null),
     errorStatus: candidate?.status ?? null,
     errorMessage: candidate?.message ?? (error instanceof Error ? error.message : String(error)),
     errorDetails: candidate?.details ?? null,
     errorHint: candidate?.hint ?? null,
     ...details
   });
+}
+
+function describePaymentInsertConstraint(error: {
+  code?: string | null;
+  message?: string | null;
+  details?: string | null;
+}) {
+  const combined = `${error.message ?? ""} ${error.details ?? ""}`.toLowerCase();
+  if (error.code === "23502" || combined.includes("null value")) {
+    return "not_null_violation";
+  }
+  if (error.code === "23503" || combined.includes("foreign key")) {
+    return "foreign_key_violation";
+  }
+  if (error.code === "23505" || combined.includes("duplicate key")) {
+    return "unique_violation";
+  }
+  if (error.code === "23514" || combined.includes("check constraint")) {
+    return "check_constraint_violation";
+  }
+  if (isPaymentSchemaMissing(error)) {
+    return "schema_mismatch";
+  }
+  return "unknown";
+}
+
+function extractPaymentInsertColumn(error: {
+  message?: string | null;
+  details?: string | null;
+}) {
+  const combined = `${error.message ?? ""} ${error.details ?? ""}`;
+  const quotedColumn = combined.match(/column\s+"([^"]+)"/i)?.[1];
+  if (quotedColumn) {
+    return quotedColumn;
+  }
+
+  return [
+    "appointment_id",
+    "client_id",
+    "shop_id",
+    "barber_id",
+    "payment_method_id",
+    "provider_payment_intent_id",
+    "currency",
+    "payment_status",
+    "payment_type",
+    "metadata",
+    "updated_at"
+  ].find((column) => combined.toLowerCase().includes(column)) ?? null;
 }
 
 function describeBookingPaymentMethodInput(value?: string | null) {
@@ -2194,7 +2244,7 @@ export async function readClientPaymentMethodsByClientId(
     return [];
   }
 
-  const canonicalRows = await readCanonicalPaymentMethodRows(supabase, context.clientId, clientId);
+  const canonicalRows = await readCanonicalPaymentMethodRows(supabase, context.clientId, context.clientId);
   const resolvedRows = options.syncLegacyWallet === false
     ? canonicalRows
     : await syncLegacyPaymentMethodsIntoCanonical(supabase, context, canonicalRows);
@@ -2578,6 +2628,25 @@ export async function createPaymentLedgerEntry(
 ) {
   const createdAt = input.createdAt ?? new Date().toISOString();
   const providerPaymentIntentId = input.providerPaymentIntentId ?? `${input.provider}_pay_${randomUUID()}`;
+  const paymentPayload = {
+    appointment_id: input.appointmentId ?? null,
+    client_id: input.clientId ?? null,
+    shop_id: input.shopId ?? null,
+    barber_id: input.barberId ?? null,
+    payment_method_id: input.paymentMethodId ?? null,
+    provider: input.provider,
+    provider_payment_intent_id: providerPaymentIntentId,
+    amount: roundCurrency(input.amount),
+    currency: (input.currency ?? "usd").toLowerCase(),
+    payment_status: input.paymentStatus,
+    payment_type: input.paymentType,
+    paid_at: input.paidAt ?? (input.paymentStatus === "captured" ? createdAt : null),
+    type: input.legacyType ?? input.paymentType,
+    status: input.legacyStatus ?? input.paymentStatus,
+    metadata: input.metadata ?? {},
+    created_at: createdAt,
+    updated_at: createdAt
+  };
   logBookingPaymentStage("payment_record_insert_started", {
     appointmentId: input.appointmentId ?? null,
     clientId: input.clientId ?? null,
@@ -2585,37 +2654,32 @@ export async function createPaymentLedgerEntry(
     shopId: input.shopId ?? null,
     provider: input.provider,
     providerPaymentIntentIdPresent: Boolean(providerPaymentIntentId),
-    paymentMethodIdPresent: Boolean(input.paymentMethodId)
+    paymentMethodIdPresent: Boolean(input.paymentMethodId),
+    amountPresent: Number.isFinite(Number(input.amount)),
+    currency: (input.currency ?? "usd").toLowerCase(),
+    payloadKeys: Object.keys(paymentPayload)
   });
   const paymentInsert = await supabase
     .from("payments")
-    .insert({
-      appointment_id: input.appointmentId ?? null,
-      client_id: input.clientId ?? null,
-      shop_id: input.shopId ?? null,
-      barber_id: input.barberId ?? null,
-      payment_method_id: input.paymentMethodId ?? null,
-      provider: input.provider,
-      provider_payment_intent_id: providerPaymentIntentId,
-      amount: roundCurrency(input.amount),
-      currency: (input.currency ?? "usd").toLowerCase(),
-      payment_status: input.paymentStatus,
-      payment_type: input.paymentType,
-      paid_at: input.paidAt ?? (input.paymentStatus === "captured" ? createdAt : null),
-      type: input.legacyType ?? input.paymentType,
-      status: input.legacyStatus ?? input.paymentStatus,
-      metadata: input.metadata ?? {},
-      created_at: createdAt,
-      updated_at: createdAt
-    })
+    .insert(paymentPayload)
     .select("id, appointment_id, client_id, shop_id, barber_id, payment_method_id, provider, provider_payment_intent_id, amount, currency, payment_status, payment_type, paid_at, created_at")
     .single();
 
   if (paymentInsert.error) {
     logBookingPaymentStageFailure("payment_record_insert_failed", paymentInsert.error, {
+      table: "payments",
       appointmentId: input.appointmentId ?? null,
       clientId: input.clientId ?? null,
-      provider: input.provider
+      barberId: input.barberId ?? null,
+      shopId: input.shopId ?? null,
+      provider: input.provider,
+      providerPaymentIntentIdPresent: Boolean(providerPaymentIntentId),
+      paymentMethodIdPresent: Boolean(input.paymentMethodId),
+      amountPresent: Number.isFinite(Number(input.amount)),
+      currency: (input.currency ?? "usd").toLowerCase(),
+      payloadKeys: Object.keys(paymentPayload),
+      constraintKind: describePaymentInsertConstraint(paymentInsert.error),
+      column: extractPaymentInsertColumn(paymentInsert.error)
     });
     throw new PaymentServiceError("Unable to write the payment ledger entry.", 500);
   }

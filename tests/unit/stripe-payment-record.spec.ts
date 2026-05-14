@@ -391,7 +391,58 @@ describe("stripe payment record creation", () => {
     });
   });
 
+  it("persists barber-direct freelance booking payments without a shop id", async () => {
+    const stripeCreateMock = vi.fn().mockResolvedValue({
+      id: "pi_freelance_1",
+      status: "succeeded"
+    });
+    getStripeConnectClientMock.mockReturnValue({
+      paymentIntents: {
+        create: stripeCreateMock
+      }
+    });
+
+    const supabase = createSupabaseStub();
+
+    await createCapturedStripePaymentRecord(supabase as never, {
+      appointmentId: "appt-freelance-1",
+      clientId: "client-live-1",
+      shopId: null,
+      barberId: "barber-live-1",
+      serviceId: "service-live-1",
+      amount: 5,
+      paymentType: "booking",
+      paymentMethodId: "pm-local-1",
+      metadata: {
+        payoutRoute: "freelance",
+        platformHold: true
+      },
+      createdAt: "2026-04-21T12:30:00.000Z"
+    });
+
+    expect(supabase.state.insertedPayment).toMatchObject({
+      appointment_id: "appt-freelance-1",
+      shop_id: null,
+      barber_id: "barber-live-1",
+      provider_payment_intent_id: "pi_freelance_1",
+      payment_status: "captured",
+      payment_type: "booking"
+    });
+    expect(stripeCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          barber_id: "barber-live-1",
+          service_id: "service-live-1",
+          payoutRoute: "freelance",
+          platformHold: "true"
+        })
+      }),
+      undefined
+    );
+  });
+
   it("refunds the Stripe intent when the canonical payment ledger cannot be written", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const stripeCreateMock = vi.fn().mockResolvedValue({
       id: "pi_ledger_failed",
       status: "succeeded"
@@ -441,6 +492,14 @@ describe("stripe payment record creation", () => {
         idempotencyKey: "refund:booking:appt-ledger-failed:booking:25.00"
       })
     );
+    expect(consoleErrorSpy).toHaveBeenCalledWith("[payments] booking_transaction_stage_failed", expect.objectContaining({
+      stage: "payment_record_insert_failed",
+      table: "payments",
+      constraintKind: "not_null_violation",
+      column: "payment_type",
+      payloadKeys: expect.arrayContaining(["appointment_id", "client_id", "barber_id", "provider_payment_intent_id", "payment_type"])
+    }));
+    consoleErrorSpy.mockRestore();
   });
 
   it("hydrates a saved card customer from client preferences before charging", async () => {
