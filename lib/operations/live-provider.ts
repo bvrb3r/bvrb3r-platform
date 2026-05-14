@@ -192,12 +192,21 @@ type BookingTransactionDiagnostics = {
   canonicalBarberUuid: string | null;
   canonicalServiceUuid: string | null;
   canonicalLocationUuid: string | null;
+  selectedPaymentMethodIdPresent: boolean;
+  providerPaymentMethodIdPresent: boolean;
+  providerCustomerIdPresent: boolean;
   paymentMethodResolved: boolean;
   stripePaymentIntentIdPresent: boolean;
+  paymentIntentCreateStarted: boolean;
+  paymentIntentCreateSucceeded: boolean;
   appointmentInsertStarted: boolean;
   appointmentInsertSucceeded: boolean;
   paymentRecordInsertStarted: boolean;
   paymentRecordInsertSucceeded: boolean;
+  appointmentConfirmStarted: boolean;
+  appointmentConfirmSucceeded: boolean;
+  rollbackAttempted: boolean;
+  refundAttempted: boolean;
 };
 
 function createBookingTransactionDiagnostics(): BookingTransactionDiagnostics {
@@ -206,12 +215,21 @@ function createBookingTransactionDiagnostics(): BookingTransactionDiagnostics {
     canonicalBarberUuid: null,
     canonicalServiceUuid: null,
     canonicalLocationUuid: null,
+    selectedPaymentMethodIdPresent: false,
+    providerPaymentMethodIdPresent: false,
+    providerCustomerIdPresent: false,
     paymentMethodResolved: false,
     stripePaymentIntentIdPresent: false,
+    paymentIntentCreateStarted: false,
+    paymentIntentCreateSucceeded: false,
     appointmentInsertStarted: false,
     appointmentInsertSucceeded: false,
     paymentRecordInsertStarted: false,
-    paymentRecordInsertSucceeded: false
+    paymentRecordInsertSucceeded: false,
+    appointmentConfirmStarted: false,
+    appointmentConfirmSucceeded: false,
+    rollbackAttempted: false,
+    refundAttempted: false
   };
 }
 
@@ -221,12 +239,21 @@ function publicBookingTransactionDiagnostics(diagnostics: BookingTransactionDiag
     canonicalBarberUuidPresent: Boolean(diagnostics.canonicalBarberUuid),
     canonicalServiceUuidPresent: Boolean(diagnostics.canonicalServiceUuid),
     canonicalLocationUuidPresent: Boolean(diagnostics.canonicalLocationUuid),
+    selectedPaymentMethodIdPresent: diagnostics.selectedPaymentMethodIdPresent,
+    providerPaymentMethodIdPresent: diagnostics.providerPaymentMethodIdPresent,
+    providerCustomerIdPresent: diagnostics.providerCustomerIdPresent,
     paymentMethodResolved: diagnostics.paymentMethodResolved,
     stripePaymentIntentIdPresent: diagnostics.stripePaymentIntentIdPresent,
+    paymentIntentCreateStarted: diagnostics.paymentIntentCreateStarted,
+    paymentIntentCreateSucceeded: diagnostics.paymentIntentCreateSucceeded,
     appointmentInsertStarted: diagnostics.appointmentInsertStarted,
     appointmentInsertSucceeded: diagnostics.appointmentInsertSucceeded,
     paymentRecordInsertStarted: diagnostics.paymentRecordInsertStarted,
-    paymentRecordInsertSucceeded: diagnostics.paymentRecordInsertSucceeded
+    paymentRecordInsertSucceeded: diagnostics.paymentRecordInsertSucceeded,
+    appointmentConfirmStarted: diagnostics.appointmentConfirmStarted,
+    appointmentConfirmSucceeded: diagnostics.appointmentConfirmSucceeded,
+    rollbackAttempted: diagnostics.rollbackAttempted,
+    refundAttempted: diagnostics.refundAttempted
   };
 }
 
@@ -256,6 +283,11 @@ function mergeBookingPaymentDiagnostics(
         bookingPaymentDiagnostics?: {
           paymentMethodResolved?: boolean;
           stripePaymentIntentIdPresent?: boolean;
+          providerPaymentMethodIdPresent?: boolean;
+          providerCustomerIdPresent?: boolean;
+          paymentIntentCreateStarted?: boolean;
+          paymentIntentCreateSucceeded?: boolean;
+          refundAttempted?: boolean;
         };
       }).bookingPaymentDiagnostics
     : null;
@@ -266,6 +298,11 @@ function mergeBookingPaymentDiagnostics(
 
   diagnostics.paymentMethodResolved = Boolean(paymentDiagnostics.paymentMethodResolved);
   diagnostics.stripePaymentIntentIdPresent = Boolean(paymentDiagnostics.stripePaymentIntentIdPresent);
+  diagnostics.providerPaymentMethodIdPresent = Boolean(paymentDiagnostics.providerPaymentMethodIdPresent);
+  diagnostics.providerCustomerIdPresent = Boolean(paymentDiagnostics.providerCustomerIdPresent);
+  diagnostics.paymentIntentCreateStarted = Boolean(paymentDiagnostics.paymentIntentCreateStarted);
+  diagnostics.paymentIntentCreateSucceeded = Boolean(paymentDiagnostics.paymentIntentCreateSucceeded);
+  diagnostics.refundAttempted = Boolean(paymentDiagnostics.refundAttempted);
 }
 
 function describePublicReference(value?: string | null) {
@@ -341,23 +378,48 @@ function createVerificationBlockedError(input: {
   );
 }
 
-function assertBookableBarberLane(barberId: string, locationId: string, trustState?: TrustState) {
-  if (!trustState) {
+function assertBookableBarberLane(input: {
+  barberId: string;
+  locationId: string;
+  trustState?: TrustState;
+  relationshipType?: "freelance" | "booth_rent" | "commission" | null;
+  serviceOwnerType?: string | null;
+}) {
+  if (!input.trustState) {
     return;
   }
 
-  const bookingGate = getVerificationGateDecision(buildPublicTrustSignal(trustState, barberId, locationId).verificationDecision, "booking");
+  const bookingGate = getVerificationGateDecision(
+    buildPublicTrustSignal(input.trustState, input.barberId, input.locationId).verificationDecision,
+    "booking"
+  );
   if (!bookingGate.allowed) {
+    const isFreelanceDirectBooking = input.relationshipType === "freelance"
+      && input.serviceOwnerType !== "shop";
+    const fatalCodes = bookingGate.codes.filter((code) =>
+      ["verification_suspended", "verification_rejected", "verification_expired", "verification_needs_update"].includes(code)
+    );
+    if (isFreelanceDirectBooking && fatalCodes.length === 0) {
+      console.info("[live-provider] booking verification gate bypassed for freelance direct booking", {
+        barberId: input.barberId,
+        locationId: input.locationId,
+        relationshipType: input.relationshipType,
+        serviceOwnerType: input.serviceOwnerType,
+        suppressedCodes: bookingGate.codes
+      });
+      return;
+    }
+
     console.warn("[live-provider] booking blocked by barber verification gate", {
-      barberId,
-      locationId,
+      barberId: input.barberId,
+      locationId: input.locationId,
       codes: bookingGate.codes,
       reasons: bookingGate.reasons
     });
     throw createVerificationBlockedError({
       gate: "booking",
-      barberId,
-      locationId,
+      barberId: input.barberId,
+      locationId: input.locationId,
       codes: bookingGate.codes,
       reasons: bookingGate.reasons,
       degraded: bookingGate.degraded
@@ -1761,7 +1823,11 @@ function createDemoProvider(): LiveOperationsProvider {
     },
     async createBooking(input) {
       const trustState = await readTrustStateSafe();
-      assertBookableBarberLane(input.barberId, input.locationId, trustState);
+      assertBookableBarberLane({
+        barberId: input.barberId,
+        locationId: input.locationId,
+        trustState
+      });
       const result = bookAppointmentInSnapshot(getDemoSnapshot(), input);
       setDemoSnapshot(result.snapshot);
       return result;
@@ -2195,7 +2261,7 @@ function appointmentUpsertRow(appointment: LiveAppointmentRecord) {
     id: canonicalAppointmentUuid(appointment.id),
     reference_code: appointment.id,
     location_id: canonicalLocationUuid(appointment.locationId),
-    shop_id: canonicalLocationUuid(appointment.shopId ?? appointment.locationId),
+    shop_id: appointment.shopId ? canonicalLocationUuid(appointment.shopId) : null,
     barber_id: canonicalBarberUuid(appointment.barberId),
     client_id: canonicalClientUuid(appointment.clientId),
     service_id: canonicalServiceUuid(appointment.serviceId),
@@ -2290,6 +2356,7 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
     },
     async createBooking(input) {
       const diagnostics = createBookingTransactionDiagnostics();
+      diagnostics.selectedPaymentMethodIdPresent = Boolean(input.paymentMethodId?.trim());
       logBookingTransactionStage("booking_request_received", {
         locationIdKind: describePublicReference(input.locationId),
         barberIdKind: describePublicReference(input.barberId),
@@ -2335,7 +2402,13 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
       });
       const trustState = await readTrustStateSafe();
       const barberTrustReference = context.barber.reference_code ?? input.barberId;
-      assertBookableBarberLane(barberTrustReference, context.locationReference, trustState);
+      assertBookableBarberLane({
+        barberId: barberTrustReference,
+        locationId: context.locationReference,
+        trustState,
+        relationshipType: context.resolvedBarber.relationshipType,
+        serviceOwnerType: context.primaryService.service_owner_type
+      });
       assertShopLaneIfRequired({
         barberId: barberTrustReference,
         locationId: input.locationId,
@@ -2350,8 +2423,9 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
       );
       const result = bookAppointmentInSnapshot(fullSnapshot, {
         ...input,
-        locationId: context.locationReference,
+        locationId: context.location.id,
         barberId: context.barber.id,
+        serviceId: context.primaryService.id,
         clientId: context.resolvedClient.clientId,
         confirmationCode,
         membershipId: context.membership?.id,
@@ -2359,29 +2433,35 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
         createdBy: context.actorProfileId ?? undefined,
         pricingSnapshot: context.quote
       });
-      const snapshotWithBookingClient = ensureSnapshotIncludesBookingClient(result.snapshot, context.resolvedClient);
+      const bookedAppointment = context.resolvedBarber.isFreelance
+        ? { ...result.appointment, shopId: undefined }
+        : result.appointment;
+      const bookingSnapshot = bookedAppointment === result.appointment
+        ? result.snapshot
+        : replaceAppointmentInSnapshot(result.snapshot, bookedAppointment);
+      const snapshotWithBookingClient = ensureSnapshotIncludesBookingClient(bookingSnapshot, context.resolvedClient);
 
       await assertCanonicalSlotAvailability(supabase, {
         barber: context.barber,
         appointment: {
-          id: result.appointment.id,
-          start: result.appointment.start,
-          end: result.appointment.end
+          id: bookedAppointment.id,
+          start: bookedAppointment.start,
+          end: bookedAppointment.end
         },
-        latestAppointment: result.appointment
+        latestAppointment: bookedAppointment
       });
       logBookingTransactionStage("availability_validated", {
-        appointmentId: result.appointment.id,
-        barberId: result.appointment.barberId,
-        startsAt: result.appointment.start,
-        endsAt: result.appointment.end
+        appointmentId: bookedAppointment.id,
+        barberId: bookedAppointment.barberId,
+        startsAt: bookedAppointment.start,
+        endsAt: bookedAppointment.end
       });
 
-      const bookingPaymentAmount = Math.max(result.appointment.grandTotal ?? result.appointment.totalAmount, 0);
+      const bookingPaymentAmount = Math.max(bookedAppointment.grandTotal ?? bookedAppointment.totalAmount, 0);
       const appointmentForPayment = bookingPaymentAmount > 0
-        ? withCapturedBookingSettlement(result.appointment)
-        : result.appointment;
-      const snapshotForPayment = appointmentForPayment.id === result.appointment.id
+        ? withCapturedBookingSettlement(bookedAppointment)
+        : bookedAppointment;
+      const snapshotForPayment = appointmentForPayment.id === bookedAppointment.id
         ? replaceAppointmentInSnapshot(snapshotWithBookingClient, appointmentForPayment)
         : snapshotWithBookingClient;
 
@@ -2472,6 +2552,7 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
         }
       } catch (error) {
         mergeBookingPaymentDiagnostics(diagnostics, error);
+        diagnostics.rollbackAttempted = true;
         await supabase.from("appointments").delete().eq("reference_code", appointmentForPayment.id);
         logBookingTransactionStageFailure("payment_record_insert_failed", error, {
           appointmentId: appointmentForPayment.id,
@@ -2496,6 +2577,14 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
         );
         throw error;
       }
+
+      diagnostics.appointmentConfirmStarted = true;
+      diagnostics.appointmentConfirmSucceeded = true;
+      logBookingTransactionStage("appointment_confirm_succeeded", {
+        appointmentId: appointmentForPayment.id,
+        status: appointmentForPayment.status,
+        ...publicBookingTransactionDiagnostics(diagnostics)
+      });
 
       await runBookingPostCommitStep("appointment_status_history_insert", () =>
         syncAppointmentStatusHistory(supabase, appointmentForPayment, {

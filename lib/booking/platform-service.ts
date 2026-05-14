@@ -2027,6 +2027,7 @@ export async function getClientHomePayload(clientId?: string) {
     [] as DiscoveryResult[],
     () => buildCanonicalDiscoveryResults(supabase, {
       locationId: locationId ?? "",
+      diagnosticRouteName: "client_home",
       clientSignal: {
         favoriteBarberReference: clientProfile?.favoriteBarberReference,
         favoriteShopReference: clientProfile?.favoriteShopReference
@@ -2257,6 +2258,7 @@ export async function searchBarbersAndShopsPayload(params: {
     locationId: locationId ?? "",
     query: queryText,
     category: params.category,
+    diagnosticRouteName: "client_search",
     clientSignal: {
       favoriteBarberReference: clientProfile?.favoriteBarberReference,
       favoriteShopReference: clientProfile?.favoriteShopReference
@@ -2269,6 +2271,7 @@ export async function searchBarbersAndShopsPayload(params: {
     const fallbackResults = await buildCanonicalDiscoveryResults(supabase, {
       locationId: locationId ?? "",
       category: params.category,
+      diagnosticRouteName: "client_search_fallback",
       clientSignal: {
         favoriteBarberReference: clientProfile?.favoriteBarberReference,
         favoriteShopReference: clientProfile?.favoriteShopReference

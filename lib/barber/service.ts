@@ -468,6 +468,19 @@ async function resolveBarberContext(user: UserAccount, supabase: SupabaseClient)
   ]);
 
   if ((uuidLocationsResult.error || referenceLocationsResult.error) && membershipLocationIds.length && requiresShopAssignment) {
+    console.error("[barber-calendar] assignment_resolution", {
+      reference: "assignment_resolution",
+      barberIdPresent: Boolean(barber.id),
+      barberUsername: barber.reference_code ?? barberReference,
+      relationshipType,
+      hasActiveShopRelationship: membershipLocationIds.length > 0,
+      staffLocationsCount: membershipLocationIds.length,
+      assignmentRequired: requiresShopAssignment,
+      calendarMode: "shop_assigned",
+      fallbackFreelanceMode: false,
+      errorSuppressedForFreelance: false,
+      finalError: "Unable to resolve barber shop assignments."
+    });
     throw new BarberToolsServiceError("Unable to resolve barber shop assignments.", 500);
   }
 
@@ -493,6 +506,20 @@ async function resolveBarberContext(user: UserAccount, supabase: SupabaseClient)
     });
     locationsById.set(fallbackLocation.id, fallbackLocation);
   }
+
+  console.info("[barber-calendar] assignment_resolution", {
+    reference: "assignment_resolution",
+    barberIdPresent: Boolean(barber.id),
+    barberUsername: barber.reference_code ?? barberReference,
+    relationshipType,
+    hasActiveShopRelationship: membershipLocationIds.length > 0,
+    staffLocationsCount: membershipLocationIds.length,
+    assignmentRequired: requiresShopAssignment,
+    calendarMode: relationshipType === "freelance" ? "freelance" : "shop_assigned",
+    fallbackFreelanceMode: relationshipType === "freelance",
+    errorSuppressedForFreelance: Boolean((uuidLocationsResult.error || referenceLocationsResult.error) && !requiresShopAssignment),
+    finalError: null
+  });
 
   return {
     viewer,
@@ -1052,7 +1079,7 @@ export async function getBarberOverviewPayload(user: UserAccount): Promise<Barbe
     .sort((left, right) => new Date(left.start).getTime() - new Date(right.start).getTime());
   const locationReferences = Array.from(new Set(todayAppointments.map((appointment) => appointment.locationId)));
   const locationMap = supabase ? await readLocationMap(supabase, locationReferences) : new Map<string, { id: string; label: string }>();
-  const canonicalBarberId = context?.barber.id ?? viewer.barberId!;
+  const canonicalBarberId = context?.barber.reference_code ?? context?.barber.id ?? viewer.barberId!;
   const [status, workingHours, blockedTimes] = await Promise.all([
     buildStatusView(user, appointments, supabase),
     readWorkingHoursView(supabase, canonicalBarberId, locationMap),
@@ -1097,7 +1124,7 @@ export async function getBarberSchedulePayload(
   const timelineRange = buildBarberScheduleRange(viewMode, anchorDate);
   const locationReferences = Array.from(new Set(appointments.map((appointment) => appointment.locationId)));
   const locationMap = supabase ? await readLocationMap(supabase, locationReferences) : new Map<string, { id: string; label: string }>();
-  const canonicalBarberId = context?.barber.id ?? viewer.barberId!;
+  const canonicalBarberId = context?.barber.reference_code ?? context?.barber.id ?? viewer.barberId!;
   const [status, workingHours, blockedTimes] = await Promise.all([
     buildStatusView(user, appointments, supabase),
     readWorkingHoursView(supabase, canonicalBarberId, locationMap),

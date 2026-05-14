@@ -336,6 +336,11 @@ export class PaymentServiceError extends Error {
 type BookingPaymentDiagnostics = {
   paymentMethodResolved: boolean;
   stripePaymentIntentIdPresent: boolean;
+  providerPaymentMethodIdPresent?: boolean;
+  providerCustomerIdPresent?: boolean;
+  paymentIntentCreateStarted?: boolean;
+  paymentIntentCreateSucceeded?: boolean;
+  refundAttempted?: boolean;
 };
 
 function withBookingPaymentDiagnostics<T extends PaymentServiceError>(
@@ -1784,12 +1789,38 @@ export async function createCapturedStripePaymentRecord(
     throw new PaymentServiceError("A positive Stripe payment amount is required.", 400);
   }
 
-  const paymentMethod = await loadStripePaymentMethodOrThrow(supabase, input.clientId, input.paymentMethodId);
+  let paymentMethod: PaymentMethodRow;
+  try {
+    paymentMethod = await loadStripePaymentMethodOrThrow(supabase, input.clientId, input.paymentMethodId);
+  } catch (error) {
+    if (error instanceof PaymentServiceError) {
+      throw withBookingPaymentDiagnostics(error, {
+        paymentMethodResolved: false,
+        stripePaymentIntentIdPresent: false,
+        providerPaymentMethodIdPresent: false,
+        providerCustomerIdPresent: false,
+        paymentIntentCreateStarted: false,
+        paymentIntentCreateSucceeded: false,
+        refundAttempted: false
+      });
+    }
+    throw error;
+  }
+  const baseDiagnostics: BookingPaymentDiagnostics = {
+    paymentMethodResolved: true,
+    stripePaymentIntentIdPresent: false,
+    providerPaymentMethodIdPresent: Boolean(paymentMethod.provider_payment_method_id?.trim()),
+    providerCustomerIdPresent: Boolean(paymentMethod.provider_customer_id?.trim()),
+    paymentIntentCreateStarted: false,
+    paymentIntentCreateSucceeded: false,
+    refundAttempted: false
+  };
   const stripe = getStripeConnectClient();
   const createdAt = input.createdAt ?? new Date().toISOString();
 
   let intent: Awaited<ReturnType<typeof stripe.paymentIntents.create>> | null = null;
   try {
+    baseDiagnostics.paymentIntentCreateStarted = true;
     logBookingPaymentStage("payment_intent_create_started", {
       appointmentId: input.appointmentId,
       clientId: input.clientId,
@@ -1829,6 +1860,8 @@ export async function createCapturedStripePaymentRecord(
       paymentIntentIdPresent: Boolean(intent.id),
       status: intent.status
     });
+    baseDiagnostics.stripePaymentIntentIdPresent = Boolean(intent.id);
+    baseDiagnostics.paymentIntentCreateSucceeded = intent.status === "succeeded";
   } catch (error) {
     logBookingPaymentStageFailure("payment_intent_create_failed", error, {
       appointmentId: input.appointmentId,
@@ -1837,8 +1870,9 @@ export async function createCapturedStripePaymentRecord(
     throw withBookingPaymentDiagnostics(
       toStripePaymentServiceError(error, "Unable to collect the required Stripe card payment."),
       {
-        paymentMethodResolved: true,
-        stripePaymentIntentIdPresent: false
+        ...baseDiagnostics,
+        stripePaymentIntentIdPresent: false,
+        paymentIntentCreateSucceeded: false
       }
     );
   }
@@ -1853,8 +1887,9 @@ export async function createCapturedStripePaymentRecord(
     throw withBookingPaymentDiagnostics(
       new PaymentServiceError("Stripe did not confirm this payment successfully.", 409),
       {
-        paymentMethodResolved: true,
-        stripePaymentIntentIdPresent: Boolean(intent.id)
+        ...baseDiagnostics,
+        stripePaymentIntentIdPresent: Boolean(intent.id),
+        paymentIntentCreateSucceeded: false
       }
     );
   }
@@ -1888,6 +1923,7 @@ export async function createCapturedStripePaymentRecord(
       paymentIntentIdPresent: Boolean(intent.id)
     });
     try {
+      baseDiagnostics.refundAttempted = true;
       logBookingPaymentStage("payment_intent_refund_started", {
         appointmentId: input.appointmentId,
         clientId: input.clientId,
@@ -1913,7 +1949,7 @@ export async function createCapturedStripePaymentRecord(
       throw withBookingPaymentDiagnostics(
         new PaymentServiceError("Payment could not be finalized, so the charge was reversed. Please try again.", 500),
         {
-          paymentMethodResolved: true,
+          ...baseDiagnostics,
           stripePaymentIntentIdPresent: Boolean(intent.id)
         }
       );
@@ -1929,7 +1965,7 @@ export async function createCapturedStripePaymentRecord(
       throw withBookingPaymentDiagnostics(
         new PaymentServiceError("Payment could not be finalized. Please contact support if you see a card charge.", 500),
         {
-          paymentMethodResolved: true,
+          ...baseDiagnostics,
           stripePaymentIntentIdPresent: Boolean(intent.id)
         }
       );

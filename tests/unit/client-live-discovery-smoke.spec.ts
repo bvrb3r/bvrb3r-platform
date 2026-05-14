@@ -27,7 +27,7 @@ vi.mock("@/lib/trust/provider", async () => {
   };
 });
 
-import { searchBarbersAndShopsPayload } from "@/lib/booking/platform-service";
+import { getClientHomePayload, searchBarbersAndShopsPayload } from "@/lib/booking/platform-service";
 
 type QueryResult<T> = Promise<{ data: T[]; error: null }>;
 
@@ -219,8 +219,8 @@ describe("live client discovery smoke test", () => {
       }],
       staff_locations: [],
       availability_rules: [{
-        barber_id: "barber-uuid",
-        location_id: "location-uuid",
+        barber_id: "barber-phillip",
+        location_id: "independent-barber-43b3cda2",
         weekday: targetDay.getDay(),
         start_time: formatTime(targetDay),
         end_time: formatTime(targetEnd)
@@ -374,6 +374,7 @@ describe("live client discovery smoke test", () => {
     }));
 
     const payload = await searchBarbersAndShopsPayload({ query: "philforsure" });
+    const home = await getClientHomePayload();
 
     expect(payload.barbers).toHaveLength(1);
     expect(payload.barbers[0]).toMatchObject({
@@ -384,6 +385,7 @@ describe("live client discovery smoke test", () => {
     });
     expect(payload.barbers[0].bookingHref).toContain("barberId=barber-phillip");
     expect(payload.barbers[0].bookingHref).toContain("serviceId=srv-test-cut");
+    expect(home.recommendedBarbers.some((barber) => barber.username === "philforsure")).toBe(true);
   });
 
   it("repairs a missing canonical barber profile row before returning Phillip", async () => {

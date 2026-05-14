@@ -686,6 +686,41 @@ function isBlockedMarketplaceStatus(value?: string | null) {
   return ["suspended", "rejected", "banned", "disabled", "deactivated"].includes(value ?? "");
 }
 
+function barberIdentityValues(
+  barberReference: string,
+  barberUuid: string,
+  profileId?: string | null
+) {
+  return new Set([barberReference, barberUuid, profileId].filter((value): value is string => Boolean(value)));
+}
+
+function matchesCanonicalBarberIdentity(
+  value: string | null | undefined,
+  barberReference: string,
+  barberUuid: string,
+  profileId?: string | null
+) {
+  return Boolean(value && barberIdentityValues(barberReference, barberUuid, profileId).has(value));
+}
+
+function resolveDiscoveryRelationshipType(
+  barberRow: CanonicalBarberRow,
+  hasShopAssignment: boolean
+): "freelance" | "booth_rent" | "commission" {
+  if (!hasShopAssignment) {
+    return "freelance";
+  }
+
+  const normalized = `${barberRow.compensation_model ?? ""}`.toLowerCase();
+  if (normalized.includes("commission")) {
+    return "commission";
+  }
+  if (normalized.includes("booth")) {
+    return "booth_rent";
+  }
+  return "freelance";
+}
+
 function isCanonicalBarberProfileRole(profile?: CanonicalProfileRow) {
   if (!profile) {
     return false;
@@ -1048,15 +1083,15 @@ function getCandidateLocationReferences(
   const references = new Set<string>();
 
   availabilityRules
-    .filter((entry) => entry.barber_id === barberUuid)
+    .filter((entry) => matchesCanonicalBarberIdentity(entry.barber_id, barberReference, barberUuid, profileId))
     .forEach((entry) => references.add(locationReferenceByUuid.get(entry.location_id) ?? entry.location_id));
 
   services
-    .filter((entry) => [barberReference, barberUuid, profileId].includes(entry.barber_reference ?? ""))
+    .filter((entry) => matchesCanonicalBarberIdentity(entry.barber_reference, barberReference, barberUuid, profileId))
     .forEach((entry) => references.add(entry.shop_reference ?? locationReferenceByUuid.get(entry.location_id) ?? entry.location_id));
 
   appointments
-    .filter((entry) => entry.barber_id === barberUuid)
+    .filter((entry) => matchesCanonicalBarberIdentity(entry.barber_id, barberReference, barberUuid, profileId))
     .forEach((entry) => references.add(locationReferenceByUuid.get(entry.location_id) ?? entry.location_id));
 
   return [...references];
@@ -1082,7 +1117,7 @@ function getServicesForBarber(
   const services = rows
     .filter((row) => {
       const locationReference = locationReferenceByUuid.get(row.location_id) ?? row.location_id;
-      const directBarberMatch = [barberReference, barberUuid, profileId].includes(row.barber_reference ?? "");
+      const directBarberMatch = matchesCanonicalBarberIdentity(row.barber_reference, barberReference, barberUuid, profileId);
       const sharedShopMatch = !row.barber_reference && locationReferences.includes(row.shop_reference ?? locationReference);
       const sharedLocationMatch = !row.shop_reference && locationReferences.includes(locationReference);
       return row.active && row.is_bookable !== false && (directBarberMatch || sharedShopMatch || sharedLocationMatch);
@@ -1282,7 +1317,9 @@ function buildMarketplaceBarberEligibility(
   const publicMediaCount = snapshot.portfolios.filter((asset) =>
     asset.barber_reference === barberReference && Boolean(canonicalMediaUrl(asset.image_url, asset.storage_path))
   ).length;
-  const availabilityCount = snapshot.availabilityRules.filter((row) => row.barber_id === barberRow.id).length;
+  const availabilityCount = snapshot.availabilityRules.filter((row) =>
+    matchesCanonicalBarberIdentity(row.barber_id, barberReference, barberRow.id, barberRow.profile_id)
+  ).length;
   const independentLocationExists = locationReferences.some(isIndependentServiceLocationReference);
   const acceptedShopCount = snapshot.staffLocations.filter((row) => {
     if (row.profile_id !== barberRow.profile_id) {
@@ -1533,16 +1570,23 @@ function listAvailabilitySlotsForBarber(params: {
     return [] as CanonicalSlot[];
   }
 
-  const rules = availabilityRules.filter((entry) => entry.barber_id === barberUuid && locationIds.has(entry.location_id));
+  const rules = availabilityRules.filter((entry) =>
+    matchesCanonicalBarberIdentity(entry.barber_id, barberReference, barberUuid)
+    && locationIds.has(entry.location_id)
+  );
   if (!rules.length) {
     return [] as CanonicalSlot[];
   }
 
   const unavailableAppointments = appointments
-    .filter((entry) => entry.barber_id === barberUuid && entry.status !== "cancelled" && entry.status !== "no_show")
+    .filter((entry) =>
+      matchesCanonicalBarberIdentity(entry.barber_id, barberReference, barberUuid)
+      && entry.status !== "cancelled"
+      && entry.status !== "no_show"
+    )
     .map((entry) => ({ startsAt: entry.starts_at, endsAt: entry.ends_at }));
   const blockedRanges = blockedTimes
-    .filter((entry) => entry.barber_id === barberUuid)
+    .filter((entry) => matchesCanonicalBarberIdentity(entry.barber_id, barberReference, barberUuid))
     .map((entry) => ({ startsAt: entry.starts_at, endsAt: entry.ends_at }));
   const durationMinutes = service.durationMin + service.bufferMin;
   const slots: CanonicalSlot[] = [];
@@ -1590,6 +1634,7 @@ function listAvailabilitySlotsForBarber(params: {
 }
 
 function getNextAvailabilityWindowStart(params: {
+  barberReference: string;
   barberUuid: string;
   locationReference: string;
   locationUuidByReference: Map<string, string>;
@@ -1599,6 +1644,7 @@ function getNextAvailabilityWindowStart(params: {
 }) {
   const {
     barberUuid,
+    barberReference,
     locationReference,
     locationUuidByReference,
     availabilityRules,
@@ -1610,7 +1656,10 @@ function getNextAvailabilityWindowStart(params: {
     return undefined;
   }
 
-  const rules = availabilityRules.filter((entry) => entry.barber_id === barberUuid && locationIds.has(entry.location_id));
+  const rules = availabilityRules.filter((entry) =>
+    matchesCanonicalBarberIdentity(entry.barber_id, barberReference, barberUuid)
+    && locationIds.has(entry.location_id)
+  );
   if (!rules.length) {
     return undefined;
   }
@@ -1709,6 +1758,7 @@ function buildCandidateRecords(
     locationId: string;
     query?: string;
     category?: string;
+    diagnosticRouteName?: string;
     clientSignal?: ClientBookingSignal;
     routine?: RoutineSignal | null;
     trustState?: TrustState;
@@ -1730,6 +1780,28 @@ function buildCandidateRecords(
     filteredOutByVerification: 0,
     finalVisibleBarbers: 0
   };
+  const visibilityDiagnostics = {
+    routeName: options.diagnosticRouteName ?? (normalizedQuery || normalizedCategory ? "client_search" : "client_home"),
+    totalRawBarbers: snapshot.barbers.length,
+    totalAfterRoleStatus: 0,
+    totalAfterSuspension: 0,
+    totalAfterServiceFilter: 0,
+    totalAfterAvailabilityFilter: 0,
+    totalAfterLocationFilter: 0,
+    totalAfterVerificationFilter: 0,
+    totalAfterShopAssignmentFilter: 0,
+    totalAfterPayoutFilter: 0,
+    totalAfterMarketplaceVisibilityFilter: 0,
+    finalVisibleCount: 0,
+    targetBarberUsername: "philforsure",
+    targetFoundRaw: false,
+    targetCanonicalBarberIdPresent: false,
+    targetHasActiveService: false,
+    targetHasAvailability: false,
+    targetRelationshipType: null as "freelance" | "booth_rent" | "commission" | null,
+    targetMarketplaceVisible: false,
+    targetFilteredReason: null as string | null
+  };
 
   const candidates = snapshot.barbers.flatMap((barberRow) => {
     const barberReference = toReference(barberRow.id, barberRow.reference_code);
@@ -1738,6 +1810,52 @@ function buildCandidateRecords(
       locationsByReference,
       trustState: options.trustState
     });
+    const blockerText = eligibility.blockers.join(" ");
+    const targetTerms = [
+      eligibility.facts.username,
+      eligibility.profileRow?.username,
+      barberRow.booking_slug,
+      barberRow.reference_code,
+      eligibility.displayName,
+      eligibility.profile?.full_name
+    ].filter(Boolean).join(" ").toLowerCase();
+    const isTargetBarber = targetTerms.includes("philforsure")
+      || (targetTerms.includes("phillip") && targetTerms.includes("mcgee"));
+    const hasShopAssignment = eligibility.facts.acceptedShopCount > 0;
+    if (!eligibility.blockers.includes("Profile role is not barber") && eligibility.facts.bookingActive) {
+      visibilityDiagnostics.totalAfterRoleStatus += 1;
+    }
+    if (!eligibility.facts.suspended && !eligibility.facts.rejected && !eligibility.facts.banned) {
+      visibilityDiagnostics.totalAfterSuspension += 1;
+    }
+    if (eligibility.facts.activeServiceCount > 0) {
+      visibilityDiagnostics.totalAfterServiceFilter += 1;
+    }
+    if (eligibility.facts.availabilityCount > 0) {
+      visibilityDiagnostics.totalAfterAvailabilityFilter += 1;
+    }
+    if (eligibility.facts.locationReady) {
+      visibilityDiagnostics.totalAfterLocationFilter += 1;
+    }
+    if (!/approval|suspended|rejected|banned|verification/i.test(blockerText)) {
+      visibilityDiagnostics.totalAfterVerificationFilter += 1;
+    }
+    if (!/shop|staff/i.test(blockerText)) {
+      visibilityDiagnostics.totalAfterShopAssignmentFilter += 1;
+    }
+    if (!eligibility.blockers.includes("Payout setup incomplete")) {
+      visibilityDiagnostics.totalAfterPayoutFilter += 1;
+    }
+    if (eligibility.facts.visibilityPublic && eligibility.facts.bookingActive) {
+      visibilityDiagnostics.totalAfterMarketplaceVisibilityFilter += 1;
+    }
+    if (isTargetBarber) {
+      visibilityDiagnostics.targetFoundRaw = true;
+      visibilityDiagnostics.targetCanonicalBarberIdPresent = Boolean(eligibility.barberUuid);
+      visibilityDiagnostics.targetHasActiveService = eligibility.facts.activeServiceCount > 0;
+      visibilityDiagnostics.targetHasAvailability = eligibility.facts.availabilityCount > 0;
+      visibilityDiagnostics.targetRelationshipType = resolveDiscoveryRelationshipType(barberRow, hasShopAssignment);
+    }
     if (!eligibility.eligible) {
       if (eligibility.blockers.some((blocker) => /shop|staff|location/i.test(blocker))) {
         diagnostics.filteredOutByShopAssignment += 1;
@@ -1748,10 +1866,16 @@ function buildCandidateRecords(
       if (eligibility.blockers.some((blocker) => /approval|suspended|rejected|banned|verification/i.test(blocker))) {
         diagnostics.filteredOutByVerification += 1;
       }
+      if (isTargetBarber) {
+        visibilityDiagnostics.targetFilteredReason = eligibility.blockers[0] ?? "eligibility_blocked";
+      }
       return [];
     }
 
     if (!matchesSearchableTerms(eligibility.searchableTerms, normalizedQuery)) {
+      if (isTargetBarber) {
+        visibilityDiagnostics.targetFilteredReason = "query_mismatch";
+      }
       return [];
     }
 
@@ -1769,6 +1893,9 @@ function buildCandidateRecords(
     );
     const primaryService = [...bookableServicePool].sort((left, right) => left.price - right.price)[0];
     if (!primaryService) {
+      if (isTargetBarber) {
+        visibilityDiagnostics.targetFilteredReason = "no_matching_service";
+      }
       return [];
     }
     const candidateLocationReference = options.clientSignal?.favoriteShopReference && eligibility.locationReferences.includes(options.clientSignal.favoriteShopReference)
@@ -1789,6 +1916,7 @@ function buildCandidateRecords(
     const nextSlot = slots[0];
     const nextAvailableAt = nextSlot?.startsAt
       ?? getNextAvailabilityWindowStart({
+        barberReference,
         barberUuid: barberRow.id,
         locationReference: candidateLocationReference,
         locationUuidByReference,
@@ -1799,13 +1927,20 @@ function buildCandidateRecords(
 
     const location = getCandidateLocation(locationsByReference, candidateLocationReference, eligibility.profileRow);
     if (!location) {
+      if (isTargetBarber) {
+        visibilityDiagnostics.targetFilteredReason = "location_unresolved";
+      }
       return [];
     }
 
-    const barberAppointments = snapshot.appointments.filter((entry) => entry.barber_id === barberRow.id);
+    const barberAppointments = snapshot.appointments.filter((entry) =>
+      matchesCanonicalBarberIdentity(entry.barber_id, barberReference, barberRow.id, barberRow.profile_id)
+    );
     const completedAppointments = barberAppointments.filter((entry) => entry.status === "completed");
     const cancelledCount = barberAppointments.filter((entry) => entry.status === "cancelled").length;
-    const reviewRows = snapshot.reviews.filter((entry) => entry.barber_id === barberRow.id);
+    const reviewRows = snapshot.reviews.filter((entry) =>
+      matchesCanonicalBarberIdentity(entry.barber_id, barberReference, barberRow.id, barberRow.profile_id)
+    );
     const reviewCount = reviewRows.length;
     const rating = Number(((reviewCount
       ? reviewRows.reduce((sum, entry) => sum + entry.rating, 0) / reviewCount
@@ -1849,6 +1984,11 @@ function buildCandidateRecords(
     const conversionScore = completedAppointments.length * 4 - cancelledCount * 3;
     const distanceScore = Math.max(0, 18 - distanceMiles * 3);
     const accelerationScore = preferredBarberBoost + preferredShopBoost + routineBoost + availabilityScore + reviewScore + conversionScore + distanceScore + queryScore;
+
+    if (isTargetBarber) {
+      visibilityDiagnostics.targetMarketplaceVisible = true;
+      visibilityDiagnostics.targetFilteredReason = null;
+    }
 
     return [{
       barberId: barberReference,
@@ -1895,12 +2035,20 @@ function buildCandidateRecords(
   });
 
   diagnostics.finalVisibleBarbers = candidates.length;
+  visibilityDiagnostics.finalVisibleCount = candidates.length;
   console.info("[marketplace] barberSearchFilters", {
     reference: "barberSearchFilters",
     query: options.query ?? null,
     category: options.category ?? null,
     locationId: options.locationId || null,
     ...diagnostics
+  });
+  console.info("[marketplace] barber_visibility_diagnostics", {
+    reference: "barber_visibility_diagnostics",
+    query: options.query ?? null,
+    category: options.category ?? null,
+    locationId: options.locationId || null,
+    ...visibilityDiagnostics
   });
 
   return candidates.sort((left, right) => {
@@ -2058,6 +2206,7 @@ export async function buildCanonicalDiscoveryResults(
     locationId: string;
     query?: string;
     category?: string;
+    diagnosticRouteName?: string;
     clientSignal?: ClientBookingSignal;
     routine?: RoutineSignal | null;
     trustState?: TrustState;
@@ -2451,7 +2600,9 @@ export async function buildCanonicalBarberProfile(
       styleTags: []
     } satisfies ServiceCatalogItem))
     .sort((left, right) => left.popularity.popularityRank - right.popularity.popularityRank || left.service.price - right.service.price);
-  const reviewRows = snapshot.reviews.filter((entry) => entry.barber_id === barberRow.id);
+  const reviewRows = snapshot.reviews.filter((entry) =>
+    matchesCanonicalBarberIdentity(entry.barber_id, barberReference, barberRow.id, barberRow.profile_id)
+  );
   const reviews = reviewRows.map((row) => ({
     id: row.id,
     barberId: barberReference,
@@ -2477,6 +2628,7 @@ export async function buildCanonicalBarberProfile(
   const nextSlot = nextSlots[0];
   const nextAvailableAt = nextSlot?.startsAt
     ?? getNextAvailabilityWindowStart({
+      barberReference,
       barberUuid: barberRow.id,
       locationReference: primaryLocation.id,
       locationUuidByReference,
@@ -2485,8 +2637,14 @@ export async function buildCanonicalBarberProfile(
     })
     ?? "";
 
-  const completedAppointments = snapshot.appointments.filter((entry) => entry.barber_id === barberRow.id && entry.status === "completed");
-  const bookingsCreated = snapshot.appointments.filter((entry) => entry.barber_id === barberRow.id && entry.status !== "cancelled").length;
+  const completedAppointments = snapshot.appointments.filter((entry) =>
+    matchesCanonicalBarberIdentity(entry.barber_id, barberReference, barberRow.id, barberRow.profile_id)
+    && entry.status === "completed"
+  );
+  const bookingsCreated = snapshot.appointments.filter((entry) =>
+    matchesCanonicalBarberIdentity(entry.barber_id, barberReference, barberRow.id, barberRow.profile_id)
+    && entry.status !== "cancelled"
+  ).length;
   const completionRate = bookingsCreated ? Math.round((completedAppointments.length / bookingsCreated) * 100) : 100;
   const locationIds = locations.map((location) => location.id);
   const name = getClientFacingBarberName({

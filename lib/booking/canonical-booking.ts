@@ -353,12 +353,18 @@ export async function readCanonicalClientProfile(supabase: SupabaseClient, clien
 export async function readCanonicalWorkingHours(supabase: SupabaseClient, barberReference: string, shopReference?: string) {
   await ensureCanonicalBookingData(supabase);
   const barberId = await resolveCanonicalBarberId(supabase, barberReference);
-  let query = supabase.from("availability_rules").select("*").eq("barber_id", barberId);
-  if (shopReference) {
-    query = query.eq("location_id", canonicalLocationUuid(shopReference));
-  }
+  const readByBarberId = async (value: string) => {
+    let query = supabase.from("availability_rules").select("*").eq("barber_id", value);
+    if (shopReference) {
+      query = query.in("location_id", [...new Set([canonicalLocationUuid(shopReference), shopReference])]);
+    }
+    return query.order("weekday");
+  };
 
-  const result = await query.order("weekday");
+  let result = await readByBarberId(barberId);
+  if (!result.error && !(result.data ?? []).length && barberReference !== barberId) {
+    result = await readByBarberId(barberReference);
+  }
   if (result.error) {
     return [] as CanonicalWorkingHoursRow[];
   }
