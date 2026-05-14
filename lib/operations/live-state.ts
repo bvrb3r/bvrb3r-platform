@@ -68,6 +68,7 @@ export interface BookingMutationInput {
   pointsToRedeem?: number;
   pointsUserId?: string;
   paymentMethodId?: string;
+  actorProfileId?: string;
   createdBy?: string;
   internalNotes?: string;
   pricingSnapshot?: AppointmentFinancialQuote;

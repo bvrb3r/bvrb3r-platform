@@ -345,6 +345,61 @@ describe("stripe payment record creation", () => {
     );
   });
 
+  it("hydrates a saved card customer from client preferences before charging", async () => {
+    const stripeCreateMock = vi.fn().mockResolvedValue({
+      id: "pi_live_4",
+      status: "succeeded"
+    });
+    getStripeConnectClientMock.mockReturnValue({
+      paymentIntents: {
+        create: stripeCreateMock
+      }
+    });
+
+    const supabase = createSupabaseStub({
+      clientPreferences: [{
+        client_reference: "client-live-1",
+        client_email: "client@example.com",
+        provider_customer_ref: "cus_preference_4242",
+        default_payment_method_id: "pm-local-without-customer",
+        default_payment_method_ref: "pm_preference_4242"
+      }],
+      paymentMethods: [{
+        id: "pm-local-without-customer",
+        client_id: "client-live-1",
+        provider: "stripe",
+        provider_customer_id: null,
+        provider_payment_method_id: "pm_preference_4242",
+        brand: "Visa",
+        last4: "4242",
+        exp_month: 12,
+        exp_year: 2034,
+        is_default: true,
+        created_at: "2026-04-21T12:00:00.000Z"
+      }]
+    });
+
+    await createCapturedStripePaymentRecord(supabase as never, {
+      appointmentId: "appt-live-4",
+      clientId: "client-live-1",
+      shopId: "shop-live-1",
+      barberId: "barber-live-1",
+      serviceId: "service-live-1",
+      amount: 25,
+      paymentType: "booking",
+      paymentMethodId: "pm-local-without-customer",
+      createdAt: "2026-04-21T12:30:00.000Z"
+    });
+
+    expect(stripeCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customer: "cus_preference_4242",
+        payment_method: "pm_preference_4242"
+      }),
+      undefined
+    );
+  });
+
   it("does not charge a selected saved card that belongs to another client", async () => {
     const stripeCreateMock = vi.fn();
     getStripeConnectClientMock.mockReturnValue({

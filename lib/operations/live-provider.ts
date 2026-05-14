@@ -435,6 +435,28 @@ async function readCanonicalClientByIdentifier(
   return null;
 }
 
+async function readCanonicalClientByProfileId(
+  supabase: SupabaseClient,
+  profileId: string | null | undefined
+) {
+  if (!profileId) {
+    return null;
+  }
+
+  const result = await supabase
+    .from("clients")
+    .select("id, reference_code, profile_id")
+    .eq("profile_id", profileId)
+    .order("created_at", { ascending: true })
+    .limit(1);
+
+  if (result.error) {
+    throw result.error;
+  }
+
+  return ((result.data ?? []) as CanonicalClientRow[])[0] ?? null;
+}
+
 async function readClientProfileById(supabase: SupabaseClient, profileId?: string | null) {
   if (!profileId) {
     return null;
@@ -451,6 +473,39 @@ async function readClientProfileById(supabase: SupabaseClient, profileId?: strin
   }
 
   return (result.data ?? null) as CanonicalClientProfileRow | null;
+}
+
+async function linkCanonicalClientToProfileIfNeeded(
+  supabase: SupabaseClient,
+  input: {
+    client: CanonicalClientRow;
+    profile: CanonicalClientProfileRow;
+    clientReference?: string | null;
+  }
+) {
+  if (input.client.profile_id && input.client.profile_id !== input.profile.id) {
+    return input.client;
+  }
+
+  if (input.client.profile_id && input.client.reference_code) {
+    return input.client;
+  }
+
+  const updateResult = await supabase
+    .from("clients")
+    .update({
+      profile_id: input.client.profile_id ?? input.profile.id,
+      reference_code: input.client.reference_code ?? input.clientReference ?? `client-${input.profile.id.slice(0, 8)}`
+    })
+    .eq("id", input.client.id)
+    .select("id, reference_code, profile_id")
+    .maybeSingle();
+
+  if (updateResult.error) {
+    throw updateResult.error;
+  }
+
+  return (updateResult.data as CanonicalClientRow | null) ?? input.client;
 }
 
 async function readClientProfileByEmail(supabase: SupabaseClient, email?: string | null) {
@@ -513,6 +568,7 @@ export async function resolveBookingClient(
   supabase: SupabaseClient,
   input: {
     clientId?: string | null;
+    actorProfileId?: string | null;
     actorEmail?: string | null;
     clientName: string;
     clientPhone: string;
@@ -520,18 +576,60 @@ export async function resolveBookingClient(
 ): Promise<ResolvedBookingClient | null> {
   const candidates = uniqDefined([input.clientId]);
   let client: CanonicalClientRow | null = null;
-  for (const candidate of candidates) {
-    client = await readCanonicalClientByIdentifier(supabase, candidate);
-    if (client) {
+  let profile: CanonicalClientProfileRow | null = null;
+  let resolvedBy: "actor_profile" | "actor_profile_reference" | "client_reference" | "actor_email" | "created" | null = null;
+
+  const actorProfileId = input.actorProfileId?.trim();
+  if (actorProfileId && isUuid(actorProfileId)) {
+    profile = await readClientProfileById(supabase, actorProfileId);
+    if (profile) {
+      client = await readCanonicalClientByProfileId(supabase, profile.id);
+      if (client) {
+        resolvedBy = "actor_profile";
+      } else {
+        const candidate = candidates[0]
+          ? await readCanonicalClientByIdentifier(supabase, candidates[0])
+          : null;
+        if (candidate && (!candidate.profile_id || candidate.profile_id === profile.id)) {
+          client = await linkCanonicalClientToProfileIfNeeded(supabase, {
+            client: candidate,
+            profile,
+            clientReference: candidates[0]
+          });
+          resolvedBy = "actor_profile_reference";
+        }
+      }
+    }
+  }
+
+  if (!client) {
+    for (const candidate of candidates) {
+      const candidateClient = await readCanonicalClientByIdentifier(supabase, candidate);
+      if (!candidateClient) {
+        continue;
+      }
+      if (profile && candidateClient.profile_id && candidateClient.profile_id !== profile.id) {
+        continue;
+      }
+      client = profile
+        ? await linkCanonicalClientToProfileIfNeeded(supabase, {
+          client: candidateClient,
+          profile,
+          clientReference: candidate
+        })
+        : candidateClient;
+      resolvedBy = "client_reference";
       break;
     }
   }
 
-  let profile = client ? await readClientProfileById(supabase, client.profile_id) : null;
+  profile = profile ?? (client ? await readClientProfileById(supabase, client.profile_id) : null);
   if (!client && input.actorEmail) {
     profile = await readClientProfileByEmail(supabase, input.actorEmail);
     if (profile) {
-      client = await readCanonicalClientByIdentifier(supabase, profile.id);
+      client = await readCanonicalClientByProfileId(supabase, profile.id)
+        ?? await readCanonicalClientByIdentifier(supabase, profile.id);
+      resolvedBy = client ? "actor_email" : resolvedBy;
     }
   }
 
@@ -551,9 +649,20 @@ export async function resolveBookingClient(
       .single();
 
     if (insertResult.error) {
-      throw insertResult.error;
+      const existing = await readCanonicalClientByIdentifier(supabase, clientReference);
+      if (!existing || (existing.profile_id && existing.profile_id !== profile.id)) {
+        throw insertResult.error;
+      }
+
+      client = await linkCanonicalClientToProfileIfNeeded(supabase, {
+        client: existing,
+        profile,
+        clientReference
+      });
+    } else {
+      client = insertResult.data as CanonicalClientRow;
     }
-    client = insertResult.data as CanonicalClientRow;
+    resolvedBy = "created";
   }
 
   if (!client) {
@@ -562,6 +671,15 @@ export async function resolveBookingClient(
 
   profile = profile ?? await readClientProfileById(supabase, client.profile_id);
   await ensureClientPreferencesForResolvedClient(supabase, { client, profile });
+  console.info("[live-provider] booking_client_resolution", {
+    actorProfileIdPresent: Boolean(actorProfileId),
+    requestClientIdPresent: Boolean(input.clientId?.trim()),
+    requestClientIdLooksPublicReference: Boolean(input.clientId?.startsWith("client-")),
+    resolvedBy,
+    canonicalClientId: client.id,
+    profileId: client.profile_id ?? null,
+    clientReference: client.reference_code ?? null
+  });
 
   return {
     clientId: client.id,
@@ -1758,6 +1876,7 @@ async function resolveCanonicalBookingContext(
     }),
     resolveBookingClient(supabase, {
       clientId: input.clientId,
+      actorProfileId: input.actorRole === "client" ? input.actorProfileId ?? input.createdBy : null,
       actorEmail: input.actorEmail,
       clientName: input.clientName,
       clientPhone: input.clientPhone

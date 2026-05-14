@@ -82,7 +82,7 @@ describe("bookings route", () => {
 
     getClientExperienceContextMock.mockResolvedValue({
       viewer: {
-        id: "user-client",
+        id: "11111111-1111-4111-8111-111111111111",
         role: "client"
       },
       activeClient: {
@@ -139,11 +139,12 @@ describe("bookings route", () => {
       barberId: "barber-blaze",
       serviceId: "srv-signature",
       clientId: "client-jordan",
-      pointsUserId: "user-client",
+      pointsUserId: "11111111-1111-4111-8111-111111111111",
       paymentMethodId: "pm-default",
       pointsToRedeem: 24,
       actorRole: "client",
       actorEmail: "client@bvrb3r.demo",
+      actorProfileId: "11111111-1111-4111-8111-111111111111",
       bookingSource: "booking"
     }));
     expect(recordReferralBookingProgressMock).toHaveBeenCalledWith({

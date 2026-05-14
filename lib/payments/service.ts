@@ -447,7 +447,7 @@ function getSupabaseOrThrow() {
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const PAYMENT_METHOD_BASE_SELECT = "id, client_id, provider, provider_payment_method_id, brand, last4, exp_month, exp_year, is_default, created_at";
+const PAYMENT_METHOD_BASE_SELECT = "id, client_id, provider, provider_customer_id, provider_payment_method_id, brand, last4, exp_month, exp_year, is_default, created_at";
 const PAYMENT_METHOD_SELECT = "id, client_id, provider, provider_customer_id, provider_payment_method_id, brand, last4, exp_month, exp_year, nickname, is_default, created_at";
 
 function isBenignEmptyPaymentMethodsError(error: {
@@ -503,19 +503,38 @@ function isPaymentSchemaMissing(error: {
 }
 
 function normalizePaymentMethodRow(row: Partial<PaymentMethodRow> & Record<string, unknown>): PaymentMethodRow {
+  const providerCustomerId = row.provider_customer_id
+    ?? row.providerCustomerId
+    ?? row.stripe_customer_id
+    ?? row.stripeCustomerId
+    ?? null;
+  const providerPaymentMethodId = row.provider_payment_method_id
+    ?? row.providerPaymentMethodId
+    ?? row.stripe_payment_method_id
+    ?? row.stripePaymentMethodId
+    ?? row.external_payment_method_id
+    ?? null;
+  const expMonth = row.exp_month ?? row.expMonth;
+  const expYear = row.exp_year ?? row.expYear;
+  const isDefault = row.is_default ?? row.isDefault;
+
   return {
     id: String(row.id),
-    client_id: String(row.client_id),
+    client_id: String(row.client_id ?? row.clientId),
     provider: row.provider as InternalPaymentProvider,
-    provider_customer_id: typeof row.provider_customer_id === "string" ? row.provider_customer_id : null,
-    provider_payment_method_id: String(row.provider_payment_method_id),
+    provider_customer_id: typeof providerCustomerId === "string" ? providerCustomerId : null,
+    provider_payment_method_id: typeof providerPaymentMethodId === "string" ? providerPaymentMethodId : "",
     brand: typeof row.brand === "string" ? row.brand : null,
     last4: typeof row.last4 === "string" ? row.last4 : null,
-    exp_month: typeof row.exp_month === "number" ? row.exp_month : null,
-    exp_year: typeof row.exp_year === "number" ? row.exp_year : null,
+    exp_month: typeof expMonth === "number" ? expMonth : null,
+    exp_year: typeof expYear === "number" ? expYear : null,
     nickname: typeof row.nickname === "string" ? row.nickname : null,
-    is_default: Boolean(row.is_default),
-    created_at: typeof row.created_at === "string" ? row.created_at : new Date().toISOString()
+    is_default: Boolean(isDefault),
+    created_at: typeof row.created_at === "string"
+      ? row.created_at
+      : typeof row.createdAt === "string"
+        ? row.createdAt
+        : new Date().toISOString()
   };
 }
 
@@ -1362,6 +1381,27 @@ function logBookingPaymentMethodResolution(
   });
 }
 
+function describeBookingPaymentMethodInput(value?: string | null) {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return "missing";
+  }
+
+  if (trimmed.startsWith("pm_")) {
+    return "stripe_provider_ref";
+  }
+
+  if (UUID_PATTERN.test(trimmed)) {
+    return "uuid";
+  }
+
+  if (/visa|mastercard|amex|discover|ending|\u2022{2,}|\*{2,}/i.test(trimmed)) {
+    return "display_label";
+  }
+
+  return "saved_method_id";
+}
+
 async function readStripePaymentMethodForCharge(
   supabase: SupabaseClient,
   clientId: string,
@@ -1414,8 +1454,20 @@ async function readSelectedStripePaymentMethodForCharge(
   clientId: string,
   paymentMethodId: string
 ) {
+  logBookingPaymentMethodResolution("selected_lookup_started", {
+    clientId,
+    selectedPaymentMethodIdKind: describeBookingPaymentMethodInput(paymentMethodId)
+  });
+
   const byId = await readStripePaymentMethodForCharge(supabase, clientId, "id", paymentMethodId);
   if (byId) {
+    logBookingPaymentMethodResolution("selected_id_found", {
+      clientId,
+      selectedRowFound: true,
+      providerPaymentMethodIdPresent: Boolean(byId.provider_payment_method_id?.trim()),
+      providerCustomerIdPresent: Boolean(byId.provider_customer_id?.trim()),
+      belongsToClient: byId.client_id === clientId
+    });
     return byId;
   }
 
@@ -1423,13 +1475,31 @@ async function readSelectedStripePaymentMethodForCharge(
     ? await readStripePaymentMethodForCharge(supabase, clientId, "provider_payment_method_id", paymentMethodId)
     : null;
   if (byProviderReference) {
+    logBookingPaymentMethodResolution("selected_provider_ref_found", {
+      clientId,
+      selectedRowFound: true,
+      providerPaymentMethodIdPresent: Boolean(byProviderReference.provider_payment_method_id?.trim()),
+      providerCustomerIdPresent: Boolean(byProviderReference.provider_customer_id?.trim()),
+      belongsToClient: byProviderReference.client_id === clientId
+    });
     return byProviderReference;
   }
 
-  await readClientPaymentMethodsForCharge(supabase, clientId, "selected_repair_failed");
+  const repairedMethods = await readClientPaymentMethodsForCharge(supabase, clientId, "selected_repair_failed");
+  logBookingPaymentMethodResolution("selected_repair_completed", {
+    clientId,
+    savedMethodsCount: repairedMethods.length
+  });
 
   const repairedById = await readStripePaymentMethodForCharge(supabase, clientId, "id", paymentMethodId);
   if (repairedById) {
+    logBookingPaymentMethodResolution("selected_id_found_after_repair", {
+      clientId,
+      selectedRowFound: true,
+      providerPaymentMethodIdPresent: Boolean(repairedById.provider_payment_method_id?.trim()),
+      providerCustomerIdPresent: Boolean(repairedById.provider_customer_id?.trim()),
+      belongsToClient: repairedById.client_id === clientId
+    });
     return repairedById;
   }
 
@@ -1458,15 +1528,106 @@ async function readDefaultStripePaymentMethodForCharge(
   supabase: SupabaseClient,
   clientId: string
 ) {
+  let preference: ClientPaymentPreferenceRow | null = null;
+  try {
+    const context = await resolveClientPaymentContext(clientId, supabase);
+    preference = context
+      ? await readClientPaymentPreferenceDefault(supabase, context)
+      : null;
+  } catch (error) {
+    logBookingPaymentMethodResolution("default_preference_read_failed", {
+      clientId,
+      errorMessage: error instanceof Error ? error.message : "Unable to read payment preference"
+    });
+  }
+
+  if (preference?.default_payment_method_id) {
+    const preferenceMethod = await readStripePaymentMethodForCharge(
+      supabase,
+      clientId,
+      "id",
+      preference.default_payment_method_id
+    );
+    if (preferenceMethod) {
+      logBookingPaymentMethodResolution("default_preference_id_selected", {
+        clientId,
+        defaultPaymentMethodId: preference.default_payment_method_id,
+        providerPaymentMethodIdPresent: Boolean(preferenceMethod.provider_payment_method_id?.trim()),
+        providerCustomerIdPresent: Boolean(preferenceMethod.provider_customer_id?.trim())
+      });
+      return preferenceMethod;
+    }
+  }
+
+  if (preference?.default_payment_method_ref?.startsWith("pm_")) {
+    const preferenceMethod = await readStripePaymentMethodForCharge(
+      supabase,
+      clientId,
+      "provider_payment_method_id",
+      preference.default_payment_method_ref
+    );
+    if (preferenceMethod) {
+      logBookingPaymentMethodResolution("default_preference_provider_ref_selected", {
+        clientId,
+        defaultPaymentMethodId: preference.default_payment_method_id ?? null,
+        providerPaymentMethodIdPresent: true,
+        providerCustomerIdPresent: Boolean(preferenceMethod.provider_customer_id?.trim())
+      });
+      return preferenceMethod;
+    }
+  }
+
   const methods = await readClientPaymentMethodsForCharge(supabase, clientId, "default_repair_failed");
   const defaultMethod = methods.find((method) => method.isDefault)
     ?? (methods.length === 1 ? methods[0] : null);
+  logBookingPaymentMethodResolution("default_methods_loaded", {
+    clientId,
+    defaultPaymentMethodId: preference?.default_payment_method_id ?? null,
+    savedMethodsCount: methods.length,
+    selectedRowFound: Boolean(defaultMethod)
+  });
 
   if (!defaultMethod) {
     return null;
   }
 
   return readStripePaymentMethodForCharge(supabase, clientId, "id", defaultMethod.id);
+}
+
+async function hydrateStripePaymentMethodCustomerForCharge(
+  supabase: SupabaseClient,
+  clientId: string,
+  method: PaymentMethodRow
+) {
+  if (method.provider_customer_id?.trim()) {
+    return method;
+  }
+
+  try {
+    const context = await resolveClientPaymentContext(clientId, supabase, { repairPreferences: false });
+    const preference = context
+      ? await readClientPaymentPreferenceDefault(supabase, context)
+      : null;
+    if (preference?.provider_customer_ref?.trim()) {
+      logBookingPaymentMethodResolution("provider_customer_hydrated_from_preferences", {
+        clientId,
+        resolvedPaymentMethodId: method.id,
+        providerCustomerIdPresent: true
+      });
+      return {
+        ...method,
+        provider_customer_id: preference.provider_customer_ref.trim()
+      };
+    }
+  } catch (error) {
+    logBookingPaymentMethodResolution("provider_customer_hydration_failed", {
+      clientId,
+      resolvedPaymentMethodId: method.id,
+      errorMessage: error instanceof Error ? error.message : "Unable to hydrate provider customer reference"
+    });
+  }
+
+  return method;
 }
 
 async function loadStripePaymentMethodOrThrow(
@@ -1478,21 +1639,24 @@ async function loadStripePaymentMethodOrThrow(
   logBookingPaymentMethodResolution("resolve_started", {
     clientId,
     selectedPaymentMethodIdPresent: Boolean(requestedPaymentMethodId),
+    selectedPaymentMethodIdKind: describeBookingPaymentMethodInput(requestedPaymentMethodId),
     selectedPaymentMethodLooksProviderRef: Boolean(requestedPaymentMethodId?.startsWith("pm_"))
   });
 
-  const method = requestedPaymentMethodId
+  const resolvedMethod = requestedPaymentMethodId
     ? await readSelectedStripePaymentMethodForCharge(supabase, clientId, requestedPaymentMethodId)
     : await readDefaultStripePaymentMethodForCharge(supabase, clientId);
 
-  if (!method) {
+  if (!resolvedMethod) {
     logBookingPaymentMethodResolution("not_found", {
       clientId,
-      selectedPaymentMethodIdPresent: Boolean(requestedPaymentMethodId)
+      selectedPaymentMethodIdPresent: Boolean(requestedPaymentMethodId),
+      selectedPaymentMethodIdKind: describeBookingPaymentMethodInput(requestedPaymentMethodId)
     });
     throw new PaymentServiceError(BOOKING_PAYMENT_METHOD_ERROR_MESSAGE, 400);
   }
 
+  const method = await hydrateStripePaymentMethodCustomerForCharge(supabase, clientId, resolvedMethod);
   if (!method.provider_payment_method_id?.trim() || !method.provider_customer_id?.trim()) {
     logBookingPaymentMethodResolution("provider_refs_missing", {
       clientId,
@@ -1509,7 +1673,9 @@ async function loadStripePaymentMethodOrThrow(
     resolvedPaymentMethodId: method.id,
     providerPaymentMethodIdPresent: true,
     providerCustomerIdPresent: true,
-    belongsToClient: method.client_id === clientId
+    belongsToClient: method.client_id === clientId,
+    finalProviderPaymentMethodStartsWithPm: method.provider_payment_method_id.startsWith("pm_"),
+    finalProviderCustomerStartsWithCus: method.provider_customer_id.startsWith("cus_")
   });
 
   return method;

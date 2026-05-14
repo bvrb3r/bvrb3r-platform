@@ -74,6 +74,27 @@ function serializeBookingValidationError(error: LiveOperationValidationError) {
   return { error: error.message, code: error.code, details: error.details ?? null };
 }
 
+function describePaymentMethodId(value?: string | null) {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return "missing";
+  }
+
+  if (/^pm_/i.test(trimmed)) {
+    return "stripe_provider_ref";
+  }
+
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(trimmed)) {
+    return "uuid";
+  }
+
+  if (/visa|mastercard|amex|discover|ending|\u2022{2,}|\*{2,}/i.test(trimmed)) {
+    return "display_label";
+  }
+
+  return "saved_method_id";
+}
+
 export async function POST(request: NextRequest) {
   const parsed = bookingSchema.safeParse(await request.json());
   if (!parsed.success) {
@@ -93,6 +114,13 @@ export async function POST(request: NextRequest) {
       ...bookingInput
     } = parsed.data;
     const clientContext = await getClientExperienceContext();
+    console.info("[bookings] booking_payment_payload_received", {
+      paymentMethodIdPresent: Boolean(bookingInput.paymentMethodId?.trim()),
+      paymentMethodIdKind: describePaymentMethodId(bookingInput.paymentMethodId),
+      clientContextClientIdPresent: Boolean(clientContext.clientId),
+      viewerIdPresent: Boolean(clientContext.viewer.id),
+      viewerRole: clientContext.viewer.role
+    });
     const provider = await getLiveOperationsProvider();
     const result = await provider.createBooking({
       ...bookingInput,
@@ -100,6 +128,7 @@ export async function POST(request: NextRequest) {
       pointsUserId: clientContext.viewer.role === "client" ? clientContext.viewer.id : undefined,
       actorRole: "client",
       actorEmail: clientContext.activeClient?.email ?? clientContext.viewer.email,
+      actorProfileId: clientContext.viewer.role === "client" ? clientContext.viewer.id : undefined,
       createdBy: clientContext.viewer.id,
       bookingSource: sourceKind ?? "booking"
     });
