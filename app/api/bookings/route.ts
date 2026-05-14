@@ -52,6 +52,14 @@ function serializeBookingValidationError(error: LiveOperationValidationError) {
     };
   }
 
+  if (/\bclient-[a-z0-9-]+/i.test(error.message) && /not found/i.test(error.message)) {
+    return {
+      error: "We could not book this appointment. Please try again.",
+      code: error.code,
+      details: null
+    };
+  }
+
   if (error.code === "verification_blocked" && details?.gate === "shop_activation") {
     return {
       error: "This provider is not available for booking yet.",
@@ -92,6 +100,7 @@ export async function POST(request: NextRequest) {
       pointsUserId: clientContext.viewer.role === "client" ? clientContext.viewer.id : undefined,
       actorRole: "client",
       actorEmail: clientContext.activeClient?.email ?? clientContext.viewer.email,
+      createdBy: clientContext.viewer.id,
       bookingSource: sourceKind ?? "booking"
     });
     await recordBookingCreatedPlatformEvent({

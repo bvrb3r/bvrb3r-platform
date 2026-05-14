@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   isIndependentBookingLocationReference,
+  isPseudoClientReference,
   isPseudoBarberReference,
   resolveOperationalPaymentRecordAttributes,
   rethrowAppointmentPersistenceError,
   shouldRequireShopBusinessVerificationForBooking
 } from "@/lib/operations/live-provider";
-import { canonicalBarberUuid, canonicalLocationUuid } from "@/lib/booking/canonical-booking";
+import { canonicalBarberUuid, canonicalClientUuid, canonicalLocationUuid, canonicalServiceUuid } from "@/lib/booking/canonical-booking";
 import { LiveOperationConflictError, bookAppointmentInSnapshot, createInitialLiveOperationsSnapshot } from "@/lib/operations/live-state";
 
 describe("live operations payment stage mapping", () => {
@@ -94,5 +95,14 @@ describe("live operations payment stage mapping", () => {
 
     expect(isPseudoBarberReference("barber-43b3cda2")).toBe(true);
     expect(canonicalBarberUuid(barberId)).toBe(barberId);
+  });
+
+  it("treats public client reference codes as pseudo ids and preserves canonical client and service UUIDs", () => {
+    const clientId = "22345678-1234-5123-9234-123456789abc";
+    const serviceId = "32345678-1234-5123-9234-123456789abc";
+
+    expect(isPseudoClientReference("client-1fd26b88")).toBe(true);
+    expect(canonicalClientUuid(clientId)).toBe(clientId);
+    expect(canonicalServiceUuid(serviceId)).toBe(serviceId);
   });
 });

@@ -235,6 +235,10 @@ export function canonicalLocationUuid(reference: string) {
 }
 
 export function canonicalServiceUuid(reference: string) {
+  if (isUuid(reference)) {
+    return reference;
+  }
+
   return SERVICE_ID_MAP[reference] ?? stableUuid(`service:${reference}`);
 }
 
@@ -247,6 +251,10 @@ export function canonicalBarberUuid(reference: string) {
 }
 
 export function canonicalClientUuid(reference: string) {
+  if (isUuid(reference)) {
+    return reference;
+  }
+
   return stableUuid(`client:${reference}`);
 }
 

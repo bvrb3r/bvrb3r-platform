@@ -12,7 +12,6 @@ import {
   canonicalBarberUuid,
   canonicalClientUuid,
   canonicalLocationUuid,
-  canonicalProfileUuid,
   canonicalServiceUuid,
   readCanonicalOperationsSnapshot
 } from "@/lib/booking/canonical-booking";
@@ -96,6 +95,13 @@ type CanonicalClientRow = {
   id: string;
   reference_code: string | null;
   profile_id: string | null;
+};
+
+type CanonicalClientProfileRow = {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+  phone: string | null;
 };
 
 type CanonicalServiceRow = {
@@ -219,6 +225,10 @@ export function isPseudoBarberReference(barberReference?: string | null) {
   return Boolean(barberReference?.startsWith("barber-"));
 }
 
+export function isPseudoClientReference(clientReference?: string | null) {
+  return Boolean(clientReference?.startsWith("client-"));
+}
+
 export function shouldRequireShopBusinessVerificationForBooking(input: {
   serviceOwnerType?: string | null;
   serviceBarberReference?: string | null;
@@ -316,7 +326,7 @@ export type ResolvedBookableBarber = {
 async function readBarberDisplayName(supabase: SupabaseClient, profileId: string) {
   const result = await supabase
     .from("profiles")
-    .select("full_name, display_name")
+    .select("full_name")
     .eq("id", profileId)
     .maybeSingle();
 
@@ -324,8 +334,8 @@ async function readBarberDisplayName(supabase: SupabaseClient, profileId: string
     return null;
   }
 
-  const row = result.data as { full_name?: string | null; display_name?: string | null } | null;
-  return row?.display_name ?? row?.full_name ?? null;
+  const row = result.data as { full_name?: string | null } | null;
+  return row?.full_name ?? null;
 }
 
 export async function resolveBookableBarber(
@@ -384,6 +394,185 @@ export async function resolveBookableBarber(
     shopAssignment: membership,
     relationshipType,
     barber
+  };
+}
+
+async function readCanonicalClientByIdentifier(
+  supabase: SupabaseClient,
+  identifier: string | null | undefined
+) {
+  if (!identifier) {
+    return null;
+  }
+
+  const lookupPlan: Array<{ column: "id" | "reference_code" | "profile_id"; value: string }> = [];
+  if (isUuid(identifier)) {
+    lookupPlan.push({ column: "id", value: identifier });
+    lookupPlan.push({ column: "profile_id", value: identifier });
+  }
+  lookupPlan.push({ column: "reference_code", value: identifier });
+
+  const canonicalId = canonicalClientUuid(identifier);
+  if (canonicalId !== identifier) {
+    lookupPlan.push({ column: "id", value: canonicalId });
+  }
+
+  for (const lookup of lookupPlan) {
+    const result = await supabase
+      .from("clients")
+      .select("id, reference_code, profile_id")
+      .eq(lookup.column, lookup.value)
+      .maybeSingle();
+
+    if (result.error) {
+      throw result.error;
+    }
+    if (result.data) {
+      return result.data as CanonicalClientRow;
+    }
+  }
+
+  return null;
+}
+
+async function readClientProfileById(supabase: SupabaseClient, profileId?: string | null) {
+  if (!profileId) {
+    return null;
+  }
+
+  const result = await supabase
+    .from("profiles")
+    .select("id, full_name, email, phone")
+    .eq("id", profileId)
+    .maybeSingle();
+
+  if (result.error) {
+    throw result.error;
+  }
+
+  return (result.data ?? null) as CanonicalClientProfileRow | null;
+}
+
+async function readClientProfileByEmail(supabase: SupabaseClient, email?: string | null) {
+  if (!email) {
+    return null;
+  }
+
+  const result = await supabase
+    .from("profiles")
+    .select("id, full_name, email, phone")
+    .eq("email", email)
+    .maybeSingle();
+
+  if (result.error) {
+    throw result.error;
+  }
+
+  return (result.data ?? null) as CanonicalClientProfileRow | null;
+}
+
+async function ensureClientPreferencesForResolvedClient(
+  supabase: SupabaseClient,
+  input: {
+    client: CanonicalClientRow;
+    profile: CanonicalClientProfileRow | null;
+  }
+) {
+  const clientReference = input.client.reference_code ?? input.client.id;
+  const result = await supabase
+    .from("client_preferences")
+    .upsert({
+      client_reference: clientReference,
+      client_email: input.profile?.email ?? "",
+      client_id: input.client.id,
+      updated_at: new Date().toISOString()
+    }, { onConflict: "client_reference" });
+
+  if (result.error) {
+    console.warn("[live-provider] client preference repair skipped during booking context resolution", {
+      clientId: input.client.id,
+      clientReference,
+      message: result.error.message
+    });
+  }
+}
+
+export type ResolvedBookingClient = {
+  clientId: string;
+  profileId: string | null;
+  userId: string | null;
+  referenceCode: string | null;
+  name: string;
+  email: string;
+  phone: string;
+  client: CanonicalClientRow;
+  profile: CanonicalClientProfileRow | null;
+};
+
+export async function resolveBookingClient(
+  supabase: SupabaseClient,
+  input: {
+    clientId?: string | null;
+    actorEmail?: string | null;
+    clientName: string;
+    clientPhone: string;
+  }
+): Promise<ResolvedBookingClient | null> {
+  const candidates = uniqDefined([input.clientId]);
+  let client: CanonicalClientRow | null = null;
+  for (const candidate of candidates) {
+    client = await readCanonicalClientByIdentifier(supabase, candidate);
+    if (client) {
+      break;
+    }
+  }
+
+  let profile = client ? await readClientProfileById(supabase, client.profile_id) : null;
+  if (!client && input.actorEmail) {
+    profile = await readClientProfileByEmail(supabase, input.actorEmail);
+    if (profile) {
+      client = await readCanonicalClientByIdentifier(supabase, profile.id);
+    }
+  }
+
+  if (!client && profile) {
+    const clientReference = input.clientId && !isUuid(input.clientId)
+      ? input.clientId
+      : `client-${profile.id.slice(0, 8)}`;
+    const insertResult = await supabase
+      .from("clients")
+      .insert({
+        profile_id: profile.id,
+        reference_code: clientReference,
+        loyalty_points: 0,
+        retention_tag: "new"
+      })
+      .select("id, reference_code, profile_id")
+      .single();
+
+    if (insertResult.error) {
+      throw insertResult.error;
+    }
+    client = insertResult.data as CanonicalClientRow;
+  }
+
+  if (!client) {
+    return null;
+  }
+
+  profile = profile ?? await readClientProfileById(supabase, client.profile_id);
+  await ensureClientPreferencesForResolvedClient(supabase, { client, profile });
+
+  return {
+    clientId: client.id,
+    profileId: client.profile_id,
+    userId: client.profile_id,
+    referenceCode: client.reference_code,
+    name: profile?.full_name ?? input.clientName,
+    email: profile?.email ?? input.actorEmail ?? "",
+    phone: profile?.phone ?? input.clientPhone,
+    client,
+    profile
   };
 }
 
@@ -645,21 +834,43 @@ async function loadCanonicalServicesByReference(
   supabase: SupabaseClient,
   serviceReferences: string[]
 ) {
-  const ids = [...new Set(serviceReferences.map((reference) => canonicalServiceUuid(reference)))];
+  const references = uniqDefined(serviceReferences);
+  const ids = [...new Set(references.map((reference) => canonicalServiceUuid(reference)))];
   if (!ids.length) {
     return [] as CanonicalServiceRow[];
   }
 
-  const result = await supabase
+  const byIdResult = await supabase
     .from("services")
     .select("id, reference_code, location_id, category, name, description, duration_min, buffer_min, price, currency, deposit_amount, full_prepay_required, active, is_bookable, display_order, created_at, updated_at, service_owner_type, barber_reference, shop_reference")
     .in("id", ids);
 
-  if (result.error) {
-    throw result.error;
+  if (byIdResult.error) {
+    throw byIdResult.error;
   }
 
-  return (result.data ?? []) as CanonicalServiceRow[];
+  const rows = (byIdResult.data ?? []) as CanonicalServiceRow[];
+  const matchedReferences = new Set(rows.flatMap((row) => [row.id, row.reference_code].filter(Boolean) as string[]));
+  const missingReferences = references.filter((reference) => !matchedReferences.has(reference));
+  if (!missingReferences.length) {
+    return rows;
+  }
+
+  const byReferenceResult = await supabase
+    .from("services")
+    .select("id, reference_code, location_id, category, name, description, duration_min, buffer_min, price, currency, deposit_amount, full_prepay_required, active, is_bookable, display_order, created_at, updated_at, service_owner_type, barber_reference, shop_reference")
+    .in("reference_code", missingReferences);
+
+  if (byReferenceResult.error) {
+    throw byReferenceResult.error;
+  }
+
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  for (const row of (byReferenceResult.data ?? []) as CanonicalServiceRow[]) {
+    byId.set(row.id, row);
+  }
+
+  return [...byId.values()];
 }
 
 function matchesLocationReference(
@@ -1529,61 +1740,28 @@ async function assertCanonicalSlotAvailability(
   }
 }
 
-async function upsertCanonicalClient(supabase: SupabaseClient, client: Client) {
-  const existingProfileResult = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("email", client.email)
-    .maybeSingle();
-  if (existingProfileResult.error) {
-    throw existingProfileResult.error;
-  }
-
-  const profileId = existingProfileResult.data?.id ?? canonicalProfileUuid(client.email);
-  const profileResult = await supabase.from("profiles").upsert({
-    id: profileId,
-    role: "client",
-    full_name: client.name,
-    email: client.email,
-    phone: client.phone
-  }, { onConflict: "id" });
-  if (profileResult.error) {
-    throw profileResult.error;
-  }
-
-  const clientResult = await supabase.from("clients").upsert({
-    id: canonicalClientUuid(client.id),
-    reference_code: client.id,
-    profile_id: profileId,
-    favorite_barber_id: client.favoriteBarberId ? canonicalBarberUuid(client.favoriteBarberId) : null,
-    loyalty_points: client.loyaltyPoints,
-    retention_tag: client.retentionTag
-  }, { onConflict: "id" });
-  if (clientResult.error) {
-    throw clientResult.error;
-  }
-}
-
 async function resolveCanonicalBookingContext(
   supabase: SupabaseClient,
   snapshot: LiveOperationsSnapshot,
   input: BookingMutationInput
 ) {
-  const clientId = input.clientId ? canonicalClientUuid(input.clientId) : null;
   const serviceRows = await loadCanonicalServicesByReference(supabase, [input.serviceId, ...input.addOnIds]);
   const primaryService = serviceRows.find((row) => matchesReference(input.serviceId, row));
   if (!primaryService) {
     throw new LiveOperationValidationError(`Service ${input.serviceId} is not available for booking.`);
   }
 
-  const [resolvedBarber, clientResult] = await Promise.all([
+  const [resolvedBarber, resolvedClient] = await Promise.all([
     resolveBookableBarber(supabase, {
       barberId: input.barberId,
       serviceBarberReference: primaryService.barber_reference
     }),
-    clientId
-      ? supabase.from("clients").select("id, reference_code, profile_id").eq("id", clientId).maybeSingle()
-      : Promise.resolve({ data: null, error: null })
+    resolveBookingClient(supabase, {
+      clientId: input.clientId,
+      actorEmail: input.actorEmail,
+      clientName: input.clientName,
+      clientPhone: input.clientPhone
+    })
   ]);
 
   if (!resolvedBarber) {
@@ -1592,11 +1770,11 @@ async function resolveCanonicalBookingContext(
       "invalid_resource_reference"
     );
   }
-  if (clientResult.error) {
-    throw clientResult.error;
-  }
-  if (input.clientId && !clientResult.data) {
-    throw new LiveOperationValidationError(`Client ${input.clientId} was not found.`, "invalid_resource_reference");
+  if (!resolvedClient) {
+    throw new LiveOperationValidationError(
+      `Client ${input.clientId ?? input.actorEmail ?? "session"} was not found.`,
+      "invalid_resource_reference"
+    );
   }
 
   const barberRow = resolvedBarber.barber;
@@ -1678,8 +1856,9 @@ async function resolveCanonicalBookingContext(
       || client.name.toLowerCase() === input.clientName.toLowerCase()
   );
   const actorProfileId = input.createdBy ?? await resolveProfileIdByEmail(supabase, input.actorEmail);
+  const clientReferenceForBusiness = resolvedClient.referenceCode ?? resolvedClient.clientId;
   const appliedPromotion = await preparePromotionForBooking(supabase, {
-    clientId: input.clientId ?? (clientResult.data as CanonicalClientRow | null)?.reference_code ?? matchedClient?.id,
+    clientId: clientReferenceForBusiness,
     shopId: input.locationId,
     serviceId: input.serviceId,
     addOnIds: input.addOnIds,
@@ -1698,8 +1877,8 @@ async function resolveCanonicalBookingContext(
         balanceDue: appliedPromotion.quote.balanceDue
       }
     : quote;
-  const clientMembershipSubscription = input.clientId
-    ? await readActiveClientMembershipSubscription(input.clientId, supabase)
+  const clientMembershipSubscription = clientReferenceForBusiness
+    ? await readActiveClientMembershipSubscription(clientReferenceForBusiness, supabase)
     : null;
   const membershipPricingAdjustment = buildMembershipPricingAdjustment(clientMembershipSubscription, promotedQuote.subtotal);
   const quoteAfterMembership = applyMembershipPricingAdjustmentToQuote(promotedQuote, membershipPricingAdjustment);
@@ -1718,7 +1897,8 @@ async function resolveCanonicalBookingContext(
     location: locationRow,
     barber: barberRow,
     resolvedBarber,
-    client: (clientResult.data as CanonicalClientRow | null) ?? null,
+    client: resolvedClient.client,
+    resolvedClient,
     membership,
     requiresShopLane,
     locationReference,
@@ -1800,6 +1980,32 @@ function replaceAppointmentInSnapshot(
       .sort((left, right) => new Date(left.start).getTime() - new Date(right.start).getTime())
   } satisfies LiveOperationsSnapshot;
 }
+
+function ensureSnapshotIncludesBookingClient(
+  snapshot: LiveOperationsSnapshot,
+  resolvedClient: ResolvedBookingClient
+) {
+  if (snapshot.clients.some((entry) => entry.id === resolvedClient.clientId)) {
+    return snapshot;
+  }
+
+  return {
+    ...snapshot,
+    clients: [
+      ...snapshot.clients,
+      {
+        id: resolvedClient.clientId,
+        name: resolvedClient.name,
+        phone: resolvedClient.phone,
+        email: resolvedClient.email,
+        loyaltyPoints: 0,
+        retentionTag: "new",
+        notes: []
+      } satisfies Client
+    ]
+  } satisfies LiveOperationsSnapshot;
+}
+
 function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvider {
   return {
     kind: "supabase",
@@ -1829,14 +2035,14 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
         ...input,
         locationId: context.locationReference,
         barberId: context.barber.id,
-        clientId: input.clientId ?? context.client?.reference_code ?? context.matchedClient?.id,
+        clientId: context.resolvedClient.clientId,
         confirmationCode,
         membershipId: context.membership?.id,
         bookingSource: input.bookingSource ?? "booking",
         createdBy: context.actorProfileId ?? undefined,
         pricingSnapshot: context.quote
       });
-      const client = result.snapshot.clients.find((entry) => entry.id === result.appointment.clientId);
+      const snapshotWithBookingClient = ensureSnapshotIncludesBookingClient(result.snapshot, context.resolvedClient);
 
       await assertCanonicalSlotAvailability(supabase, {
         barber: context.barber,
@@ -1848,19 +2054,13 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
         latestAppointment: result.appointment
       });
 
-      if (!client) {
-        throw new Error(`Client ${result.appointment.clientId} was not found.`);
-      }
-
       const bookingPaymentAmount = Math.max(result.appointment.grandTotal ?? result.appointment.totalAmount, 0);
       const appointmentForPayment = bookingPaymentAmount > 0
         ? withCapturedBookingSettlement(result.appointment)
         : result.appointment;
       const snapshotForPayment = appointmentForPayment.id === result.appointment.id
-        ? replaceAppointmentInSnapshot(result.snapshot, appointmentForPayment)
-        : result.snapshot;
-
-      await upsertCanonicalClient(supabase, client);
+        ? replaceAppointmentInSnapshot(snapshotWithBookingClient, appointmentForPayment)
+        : snapshotWithBookingClient;
 
       const appointmentRow = appointmentUpsertRow(appointmentForPayment);
       const existingAppointment = await supabase
