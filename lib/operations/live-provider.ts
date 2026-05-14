@@ -171,18 +171,95 @@ function logBookingTransactionStageFailure(
   details: Record<string, unknown> = {}
 ) {
   const candidate = error && typeof error === "object"
-    ? error as { code?: string | null; message?: string | null; details?: string | null; hint?: string | null; status?: number | null }
+    ? error as { code?: string | null; name?: string | null; message?: string | null; details?: string | null; hint?: string | null; status?: number | null }
     : null;
   console.error("[bookings] booking_transaction_stage_failed", {
     reference: "booking_transaction_stage_failed",
     stage,
+    safeMessage: details.safeMessage ?? null,
     errorCode: candidate?.code ?? null,
+    errorName: candidate?.name ?? (error instanceof Error ? error.name : null),
     errorStatus: candidate?.status ?? null,
     errorMessage: candidate?.message ?? (error instanceof Error ? error.message : String(error)),
     errorDetails: candidate?.details ?? null,
     errorHint: candidate?.hint ?? null,
     ...details
   });
+}
+
+type BookingTransactionDiagnostics = {
+  canonicalClientUuid: string | null;
+  canonicalBarberUuid: string | null;
+  canonicalServiceUuid: string | null;
+  canonicalLocationUuid: string | null;
+  paymentMethodResolved: boolean;
+  stripePaymentIntentIdPresent: boolean;
+  appointmentInsertStarted: boolean;
+  appointmentInsertSucceeded: boolean;
+};
+
+function createBookingTransactionDiagnostics(): BookingTransactionDiagnostics {
+  return {
+    canonicalClientUuid: null,
+    canonicalBarberUuid: null,
+    canonicalServiceUuid: null,
+    canonicalLocationUuid: null,
+    paymentMethodResolved: false,
+    stripePaymentIntentIdPresent: false,
+    appointmentInsertStarted: false,
+    appointmentInsertSucceeded: false
+  };
+}
+
+function publicBookingTransactionDiagnostics(diagnostics: BookingTransactionDiagnostics) {
+  return {
+    canonicalClientUuidPresent: Boolean(diagnostics.canonicalClientUuid),
+    canonicalBarberUuidPresent: Boolean(diagnostics.canonicalBarberUuid),
+    canonicalServiceUuidPresent: Boolean(diagnostics.canonicalServiceUuid),
+    canonicalLocationUuidPresent: Boolean(diagnostics.canonicalLocationUuid),
+    paymentMethodResolved: diagnostics.paymentMethodResolved,
+    stripePaymentIntentIdPresent: diagnostics.stripePaymentIntentIdPresent,
+    appointmentInsertStarted: diagnostics.appointmentInsertStarted,
+    appointmentInsertSucceeded: diagnostics.appointmentInsertSucceeded
+  };
+}
+
+function attachBookingTransactionDiagnostics(
+  error: unknown,
+  stage: string,
+  safeMessage: string,
+  diagnostics: BookingTransactionDiagnostics
+) {
+  if (error && typeof error === "object") {
+    (error as {
+      bookingTransaction?: Record<string, unknown>;
+    }).bookingTransaction = {
+      stage,
+      safeMessage,
+      ...publicBookingTransactionDiagnostics(diagnostics)
+    };
+  }
+}
+
+function mergeBookingPaymentDiagnostics(
+  diagnostics: BookingTransactionDiagnostics,
+  error: unknown
+) {
+  const paymentDiagnostics = error && typeof error === "object"
+    ? (error as {
+        bookingPaymentDiagnostics?: {
+          paymentMethodResolved?: boolean;
+          stripePaymentIntentIdPresent?: boolean;
+        };
+      }).bookingPaymentDiagnostics
+    : null;
+
+  if (!paymentDiagnostics) {
+    return;
+  }
+
+  diagnostics.paymentMethodResolved = Boolean(paymentDiagnostics.paymentMethodResolved);
+  diagnostics.stripePaymentIntentIdPresent = Boolean(paymentDiagnostics.stripePaymentIntentIdPresent);
 }
 
 function describePublicReference(value?: string | null) {
@@ -2198,6 +2275,7 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
       return scopeLiveOperationsSnapshot(fullSnapshot, viewer);
     },
     async createBooking(input) {
+      const diagnostics = createBookingTransactionDiagnostics();
       logBookingTransactionStage("booking_request_received", {
         locationIdKind: describePublicReference(input.locationId),
         barberIdKind: describePublicReference(input.barberId),
@@ -2212,22 +2290,34 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
         walkInCount: fullSnapshot.walkIns.length
       });
       const context = await resolveCanonicalBookingContext(supabase, fullSnapshot, input);
+      diagnostics.canonicalClientUuid = canonicalClientUuid(context.resolvedClient.clientId);
+      diagnostics.canonicalBarberUuid = context.barber.id;
+      diagnostics.canonicalServiceUuid = context.primaryService.id;
+      diagnostics.canonicalLocationUuid = context.location.id;
       logBookingTransactionStage("canonical_client_resolved", {
         clientId: context.resolvedClient.clientId,
-        actorProfileIdPresent: Boolean(context.actorProfileId)
+        actorProfileIdPresent: Boolean(context.actorProfileId),
+        ...publicBookingTransactionDiagnostics(diagnostics)
       });
       logBookingTransactionStage("canonical_barber_resolved", {
         barberId: context.barber.id,
-        barberReferencePresent: Boolean(context.barber.reference_code)
+        barberReferencePresent: Boolean(context.barber.reference_code),
+        relationshipType: context.resolvedBarber.relationshipType,
+        isFreelance: context.resolvedBarber.isFreelance,
+        shopAssignmentPresent: Boolean(context.resolvedBarber.shopAssignment),
+        ...publicBookingTransactionDiagnostics(diagnostics)
       });
       logBookingTransactionStage("canonical_service_resolved", {
         serviceId: context.primaryService.id,
         serviceReferencePresent: Boolean(context.primaryService.reference_code),
-        servicePrice: context.primaryService.price
+        servicePrice: context.primaryService.price,
+        serviceOwnerType: context.primaryService.service_owner_type,
+        ...publicBookingTransactionDiagnostics(diagnostics)
       });
       logBookingTransactionStage("canonical_location_resolved", {
         locationReference: context.locationReference,
-        locationIdKind: describePublicReference(context.locationReference)
+        locationIdKind: describePublicReference(context.locationReference),
+        ...publicBookingTransactionDiagnostics(diagnostics)
       });
       const trustState = await readTrustStateSafe();
       const barberTrustReference = context.barber.reference_code ?? input.barberId;
@@ -2296,26 +2386,52 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
         .eq("reference_code", appointmentForPayment.id)
         .maybeSingle();
       if (existingAppointment.error) {
+        logBookingTransactionStageFailure("appointment_lookup_failed", existingAppointment.error, {
+          appointmentId: appointmentForPayment.id,
+          safeMessage: "Appointment could not be saved.",
+          ...publicBookingTransactionDiagnostics(diagnostics)
+        });
+        attachBookingTransactionDiagnostics(
+          existingAppointment.error,
+          "appointment_lookup_failed",
+          "Appointment could not be saved.",
+          diagnostics
+        );
         throw existingAppointment.error;
       }
 
+      diagnostics.appointmentInsertStarted = true;
       const appointmentResult = existingAppointment.data
         ? await supabase.from("appointments").update(appointmentRow).eq("id", existingAppointment.data.id)
         : await supabase.from("appointments").insert(appointmentRow);
         if (appointmentResult.error) {
           logBookingTransactionStageFailure("appointment_insert_failed", appointmentResult.error, {
-            appointmentId: appointmentForPayment.id
+            appointmentId: appointmentForPayment.id,
+            safeMessage: "Appointment could not be saved.",
+            ...publicBookingTransactionDiagnostics(diagnostics)
           });
-          rethrowAppointmentPersistenceError(appointmentResult.error, result.appointment);
+          try {
+            rethrowAppointmentPersistenceError(appointmentResult.error, result.appointment);
+          } catch (error) {
+            attachBookingTransactionDiagnostics(
+              error,
+              "appointment_insert_failed",
+              error instanceof LiveOperationConflictError ? "This time is no longer available." : "Appointment could not be saved.",
+              diagnostics
+            );
+            throw error;
+          }
         }
+      diagnostics.appointmentInsertSucceeded = true;
       logBookingTransactionStage("appointment_insert_succeeded", {
         appointmentId: appointmentForPayment.id,
-        existingAppointment: Boolean(existingAppointment.data)
+        existingAppointment: Boolean(existingAppointment.data),
+        ...publicBookingTransactionDiagnostics(diagnostics)
       });
 
       try {
         if (bookingPaymentAmount > 0) {
-          await insertPaymentRecord(
+          const payment = await insertPaymentRecord(
             supabase,
             appointmentForPayment,
             bookingPaymentAmount,
@@ -2330,16 +2446,33 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
               paymentMethodId: input.paymentMethodId ?? null
             }
           );
+          diagnostics.paymentMethodResolved = true;
+          diagnostics.stripePaymentIntentIdPresent = Boolean(payment);
         }
       } catch (error) {
+        mergeBookingPaymentDiagnostics(diagnostics, error);
         await supabase.from("appointments").delete().eq("reference_code", appointmentForPayment.id);
         logBookingTransactionStageFailure("payment_record_insert_failed", error, {
           appointmentId: appointmentForPayment.id,
-          rollback: "appointment_deleted"
+          rollback: "appointment_deleted",
+          safeMessage: "Payment could not be completed.",
+          ...publicBookingTransactionDiagnostics(diagnostics)
         });
         if (error instanceof PaymentServiceError) {
-          throw new LiveOperationValidationError(error.message, "invalid_booking_selection");
+          throw new LiveOperationValidationError("Payment could not be completed.", "invalid_booking_selection", {
+            transaction: {
+              stage: "payment_record_insert_failed",
+              safeMessage: "Payment could not be completed.",
+              ...publicBookingTransactionDiagnostics(diagnostics)
+            }
+          });
         }
+        attachBookingTransactionDiagnostics(
+          error,
+          "payment_record_insert_failed",
+          "Payment could not be completed.",
+          diagnostics
+        );
         throw error;
       }
 

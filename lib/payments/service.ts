@@ -333,6 +333,19 @@ export class PaymentServiceError extends Error {
   }
 }
 
+type BookingPaymentDiagnostics = {
+  paymentMethodResolved: boolean;
+  stripePaymentIntentIdPresent: boolean;
+};
+
+function withBookingPaymentDiagnostics<T extends PaymentServiceError>(
+  error: T,
+  diagnostics: BookingPaymentDiagnostics
+) {
+  (error as T & { bookingPaymentDiagnostics?: BookingPaymentDiagnostics }).bookingPaymentDiagnostics = diagnostics;
+  return error;
+}
+
 function numeric(value: number | string | null | undefined) {
   return Number(value ?? 0);
 }
@@ -1771,7 +1784,13 @@ export async function createCapturedStripePaymentRecord(
       appointmentId: input.appointmentId,
       clientId: input.clientId
     });
-    throw toStripePaymentServiceError(error, "Unable to collect the required Stripe card payment.");
+    throw withBookingPaymentDiagnostics(
+      toStripePaymentServiceError(error, "Unable to collect the required Stripe card payment."),
+      {
+        paymentMethodResolved: true,
+        stripePaymentIntentIdPresent: false
+      }
+    );
   }
 
   if (intent.status !== "succeeded") {
@@ -1781,7 +1800,13 @@ export async function createCapturedStripePaymentRecord(
       paymentIntentIdPresent: Boolean(intent.id),
       status: intent.status
     });
-    throw new PaymentServiceError("Stripe did not confirm this payment successfully.", 409);
+    throw withBookingPaymentDiagnostics(
+      new PaymentServiceError("Stripe did not confirm this payment successfully.", 409),
+      {
+        paymentMethodResolved: true,
+        stripePaymentIntentIdPresent: Boolean(intent.id)
+      }
+    );
   }
 
   try {
@@ -1835,7 +1860,13 @@ export async function createCapturedStripePaymentRecord(
         clientId: input.clientId,
         paymentIntentIdPresent: Boolean(intent.id)
       });
-      throw new PaymentServiceError("Payment could not be finalized, so the charge was reversed. Please try again.", 500);
+      throw withBookingPaymentDiagnostics(
+        new PaymentServiceError("Payment could not be finalized, so the charge was reversed. Please try again.", 500),
+        {
+          paymentMethodResolved: true,
+          stripePaymentIntentIdPresent: Boolean(intent.id)
+        }
+      );
     } catch (refundError) {
       if (refundError instanceof PaymentServiceError) {
         throw refundError;
@@ -1845,7 +1876,13 @@ export async function createCapturedStripePaymentRecord(
         clientId: input.clientId,
         paymentIntentIdPresent: Boolean(intent.id)
       });
-      throw new PaymentServiceError("Payment could not be finalized. Please contact support if you see a card charge.", 500);
+      throw withBookingPaymentDiagnostics(
+        new PaymentServiceError("Payment could not be finalized. Please contact support if you see a card charge.", 500),
+        {
+          paymentMethodResolved: true,
+          stripePaymentIntentIdPresent: Boolean(intent.id)
+        }
+      );
     }
   }
 }

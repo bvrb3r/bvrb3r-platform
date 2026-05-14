@@ -413,6 +413,62 @@ describe("bookings route", () => {
     expect(JSON.stringify(body)).not.toContain("database write failed");
   });
 
+  it("returns and logs the exact safe failed booking stage when transaction diagnostics are attached", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const error = new Error("null value in column location_id violates not-null constraint");
+    (error as {
+      bookingTransaction?: Record<string, unknown>;
+    }).bookingTransaction = {
+      stage: "appointment_insert_failed",
+      safeMessage: "Appointment could not be saved.",
+      canonicalClientUuidPresent: true,
+      canonicalBarberUuidPresent: true,
+      canonicalServiceUuidPresent: true,
+      canonicalLocationUuidPresent: true,
+      paymentMethodResolved: false,
+      stripePaymentIntentIdPresent: false,
+      appointmentInsertStarted: true,
+      appointmentInsertSucceeded: false
+    };
+    createBookingMock.mockRejectedValue(error);
+
+    try {
+      const response = await postBooking(new NextRequest("https://bvrb3r.demo/api/bookings", {
+        method: "POST",
+        body: JSON.stringify({
+          locationId: "independent-barber-43b3cda2",
+          barberId: "barber-43b3cda2",
+          serviceId: "srv-test-cut",
+          addOnIds: [],
+          appointmentTime: "2026-03-23T14:00:00-04:00",
+          clientName: "Jordan Ellis",
+          clientPhone: "(813) 555-0190"
+        })
+      }));
+      const body = await response.json();
+
+      expect(response.status).toBe(500);
+      expect(body.error).toBe("Appointment could not be saved.");
+      expect(body.code).toBe("booking_processing_failed");
+      expect(consoleSpy).toHaveBeenCalledWith("[bookings] booking_transaction_stage_failed", expect.objectContaining({
+        stage: "appointment_insert_failed",
+        safeMessage: "Appointment could not be saved.",
+        canonicalClientUuidPresent: true,
+        canonicalBarberUuidPresent: true,
+        canonicalServiceUuidPresent: true,
+        canonicalLocationUuidPresent: true,
+        paymentMethodResolved: false,
+        stripePaymentIntentIdPresent: false,
+        appointmentInsertStarted: true,
+        appointmentInsertSucceeded: false
+      }));
+      expect(JSON.stringify(body)).not.toContain("43b3cda2");
+      expect(JSON.stringify(body)).not.toContain("location_id");
+    } finally {
+      consoleSpy.mockRestore();
+    }
+  });
+
   it("records an AI conversion when a booking is created from a recommendation", async () => {
     createBookingMock.mockResolvedValue({
       appointment: appointmentFixture

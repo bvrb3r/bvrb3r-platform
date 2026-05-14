@@ -74,6 +74,27 @@ function serializeBookingValidationError(error: LiveOperationValidationError) {
   return { error: error.message, code: error.code, details: error.details ?? null };
 }
 
+function extractBookingTransactionDiagnostics(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return {};
+  }
+
+  const direct = (error as { bookingTransaction?: Record<string, unknown> }).bookingTransaction;
+  if (direct) {
+    return direct;
+  }
+
+  const details = (error as { details?: unknown }).details;
+  if (!details || typeof details !== "object") {
+    return {};
+  }
+
+  const transaction = (details as { transaction?: unknown }).transaction;
+  return transaction && typeof transaction === "object"
+    ? transaction as Record<string, unknown>
+    : {};
+}
+
 function describePaymentMethodId(value?: string | null) {
   const trimmed = value?.trim();
   if (!trimmed) {
@@ -106,17 +127,21 @@ function logBookingRouteStage(stage: string, details: Record<string, unknown> = 
 
 function logBookingRouteFailure(stage: string, error: unknown, details: Record<string, unknown> = {}) {
   const candidate = error && typeof error === "object"
-    ? error as { code?: string | null; message?: string | null; details?: string | null; hint?: string | null; status?: number | null }
+    ? error as { code?: string | null; name?: string | null; message?: string | null; details?: string | null; hint?: string | null; status?: number | null }
     : null;
+  const transactionDiagnostics = extractBookingTransactionDiagnostics(error);
   console.error("[bookings] booking_transaction_stage_failed", {
     reference: "booking_transaction_stage_failed",
     stage,
     route: "/api/bookings",
+    safeMessage: details.safeMessage ?? transactionDiagnostics.safeMessage ?? null,
     errorCode: candidate?.code ?? null,
+    errorName: candidate?.name ?? (error instanceof Error ? error.name : null),
     errorStatus: candidate?.status ?? null,
     errorMessage: candidate?.message ?? (error instanceof Error ? error.message : String(error)),
     errorDetails: candidate?.details ?? null,
     errorHint: candidate?.hint ?? null,
+    ...transactionDiagnostics,
     ...details
   });
 }
@@ -251,11 +276,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ appointment: result.appointment });
   } catch (error) {
     if (error instanceof LiveOperationValidationError) {
+      const serialized = serializeBookingValidationError(error);
       logBookingRouteFailure("booking_validation_failed", error, {
-        code: error.code
+        code: error.code,
+        safeMessage: serialized.error
       });
       return NextResponse.json(
-        serializeBookingValidationError(error),
+        serialized,
         { status: error.status }
       );
     }
@@ -263,6 +290,7 @@ export async function POST(request: NextRequest) {
     if (error instanceof LiveOperationConflictError) {
       logBookingRouteFailure("booking_conflict_failed", error, {
         code: error.code,
+        safeMessage: "This time is no longer available.",
         latestAppointmentId: error.latestAppointment.id
       });
       return NextResponse.json(
@@ -271,9 +299,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    logBookingRouteFailure("booking_unhandled_failed", error);
+    const diagnostics = extractBookingTransactionDiagnostics(error);
+    const safeMessage = typeof diagnostics.safeMessage === "string" && diagnostics.safeMessage.trim()
+      ? diagnostics.safeMessage
+      : "We could not book this appointment. Please try again.";
+    logBookingRouteFailure("booking_unhandled_failed", error, {
+      safeMessage
+    });
     return NextResponse.json(
-      { error: "We could not book this appointment. Please try again.", code: "booking_processing_failed" },
+      { error: safeMessage, code: "booking_processing_failed" },
       { status: 500 }
     );
   }

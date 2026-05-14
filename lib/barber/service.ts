@@ -296,6 +296,17 @@ function fallbackIndependentLocationReference(barberReference: string, reference
     ?? (barberReference.startsWith("barber-") ? `independent-${barberReference}` : `independent-barber-${barberReference}`);
 }
 
+function resolveBarberRelationshipType(compensationModel?: string | null) {
+  const normalized = (compensationModel ?? "").toLowerCase();
+  if (normalized.includes("commission")) {
+    return "commission";
+  }
+  if (normalized.includes("booth")) {
+    return "booth_rent";
+  }
+  return "freelance";
+}
+
 function parseFreelanceLocationLabel(serviceAreaLabel?: string | null, displayName?: string | null) {
   const parts = (serviceAreaLabel ?? "")
     .split(/[\/\n]+/)
@@ -414,6 +425,8 @@ async function resolveBarberContext(user: UserAccount, supabase: SupabaseClient)
   }
 
   const barber = barberResult.data as BarberRow;
+  const relationshipType = resolveBarberRelationshipType(barber.compensation_model);
+  const requiresShopAssignment = relationshipType !== "freelance";
   const referenceIds = viewer.locationIds ?? [];
   const membershipResult = await supabase
     .from("staff_locations")
@@ -453,7 +466,7 @@ async function resolveBarberContext(user: UserAccount, supabase: SupabaseClient)
       : Promise.resolve({ data: [], error: null })
   ]);
 
-  if ((uuidLocationsResult.error || referenceLocationsResult.error) && membershipLocationIds.length) {
+  if ((uuidLocationsResult.error || referenceLocationsResult.error) && membershipLocationIds.length && requiresShopAssignment) {
     throw new BarberToolsServiceError("Unable to resolve barber shop assignments.", 500);
   }
 
@@ -461,6 +474,8 @@ async function resolveBarberContext(user: UserAccount, supabase: SupabaseClient)
     console.warn("[barber] shop location assignments unavailable; using freelance calendar fallback", {
       profileId: barber.profile_id,
       barberReference: barber.reference_code ?? barberReference,
+      relationshipType,
+      requiresShopAssignment,
       uuidErrorCode: uuidLocationsResult.error?.code ?? null,
       referenceErrorCode: referenceLocationsResult.error?.code ?? null
     });

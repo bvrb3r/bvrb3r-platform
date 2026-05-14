@@ -410,7 +410,7 @@ describe("stripe payment record creation", () => {
 
     const supabase = createSupabaseStub({ failPaymentInsert: true });
 
-    await expect(createCapturedStripePaymentRecord(supabase as never, {
+    const failure = createCapturedStripePaymentRecord(supabase as never, {
       appointmentId: "appt-ledger-failed",
       clientId: "client-live-1",
       shopId: "shop-live-1",
@@ -421,7 +421,15 @@ describe("stripe payment record creation", () => {
       paymentMethodId: "pm-local-1",
       idempotencyKey: "booking:appt-ledger-failed:booking:25.00",
       createdAt: "2026-04-21T12:30:00.000Z"
-    })).rejects.toThrow("Payment could not be finalized, so the charge was reversed. Please try again.");
+    });
+
+    await expect(failure).rejects.toMatchObject({
+      message: "Payment could not be finalized, so the charge was reversed. Please try again.",
+      bookingPaymentDiagnostics: {
+        paymentMethodResolved: true,
+        stripePaymentIntentIdPresent: true
+      }
+    });
 
     expect(stripeRefundMock).toHaveBeenCalledWith(
       expect.objectContaining({
