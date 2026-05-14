@@ -353,10 +353,14 @@ export async function readCanonicalClientProfile(supabase: SupabaseClient, clien
 export async function readCanonicalWorkingHours(supabase: SupabaseClient, barberReference: string, shopReference?: string) {
   await ensureCanonicalBookingData(supabase);
   const barberId = await resolveCanonicalBarberId(supabase, barberReference);
+  const barberLookupValues = [...new Set([barberId, barberReference])];
+  const shopLookupValues = shopReference
+    ? [...new Set([canonicalLocationUuid(shopReference), shopReference])]
+    : [];
   const readByBarberId = async (value: string) => {
     let query = supabase.from("availability_rules").select("*").eq("barber_id", value);
-    if (shopReference) {
-      query = query.in("location_id", [...new Set([canonicalLocationUuid(shopReference), shopReference])]);
+    if (shopLookupValues.length) {
+      query = query.in("location_id", shopLookupValues);
     }
     return query.order("weekday");
   };
@@ -365,16 +369,32 @@ export async function readCanonicalWorkingHours(supabase: SupabaseClient, barber
   if (!result.error && !(result.data ?? []).length && barberReference !== barberId) {
     result = await readByBarberId(barberReference);
   }
-  if (result.error) {
+  if (!result.error && (result.data ?? []).length) {
+    return ((result.data ?? []) as Array<{ weekday: number; start_time: string; end_time: string }>).map((row) => ({
+      barber_reference: barberReference,
+      shop_reference: shopReference ?? "",
+      weekday: row.weekday,
+      start_time: row.start_time,
+      end_time: row.end_time
+    }));
+  }
+
+  let legacyQuery = supabase
+    .from("barber_working_hours")
+    .select("barber_reference, shop_reference, weekday, start_time, end_time")
+    .in("barber_reference", barberLookupValues);
+  if (shopLookupValues.length) {
+    legacyQuery = legacyQuery.in("shop_reference", shopLookupValues);
+  }
+  const legacyResult = await legacyQuery.order("weekday");
+  if (legacyResult.error) {
     return [] as CanonicalWorkingHoursRow[];
   }
 
-  return ((result.data ?? []) as Array<{ weekday: number; start_time: string; end_time: string }>).map((row) => ({
+  return ((legacyResult.data ?? []) as CanonicalWorkingHoursRow[]).map((row) => ({
+    ...row,
     barber_reference: barberReference,
-    shop_reference: shopReference ?? "",
-    weekday: row.weekday,
-    start_time: row.start_time,
-    end_time: row.end_time
+    shop_reference: shopReference ?? row.shop_reference
   }));
 }
 

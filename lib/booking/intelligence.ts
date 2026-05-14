@@ -101,6 +101,14 @@ type CanonicalAvailabilityRuleRow = {
   end_time: string;
 };
 
+type CanonicalBarberWorkingHoursRow = {
+  barber_reference: string;
+  shop_reference: string;
+  weekday: number;
+  start_time: string;
+  end_time: string;
+};
+
 type CanonicalBlockedTimeRow = {
   barber_id: string;
   starts_at: string;
@@ -703,6 +711,66 @@ function matchesCanonicalBarberIdentity(
   return Boolean(value && barberIdentityValues(barberReference, barberUuid, profileId).has(value));
 }
 
+function getCanonicalBarberProfileRow(
+  snapshot: CanonicalSnapshot,
+  barberReference: string,
+  barberUuid: string,
+  profileId?: string | null
+) {
+  return snapshot.barberProfiles.find((row) =>
+    matchesCanonicalBarberIdentity(row.barber_reference, barberReference, barberUuid, profileId)
+  );
+}
+
+function isAcceptingBookingStatus(row?: CanonicalBarberStatusRow | null) {
+  if (!row) {
+    return true;
+  }
+
+  const status = `${row.status ?? ""}`.toLowerCase();
+  const liveStatus = `${row.live_status ?? ""}`.toLowerCase();
+  if (row.accepting_bookings === false || status === "offline" || liveStatus === "offline") {
+    return false;
+  }
+
+  return row.accepting_bookings === true
+    || ["active", "available", "live"].includes(status)
+    || ["active", "available", "live"].includes(liveStatus);
+}
+
+function getCanonicalBarberStatusRow(
+  snapshot: CanonicalSnapshot,
+  barberReference: string,
+  barberUuid: string,
+  profileId?: string | null
+) {
+  const rows = snapshot.barberStatus.filter((row) =>
+    matchesCanonicalBarberIdentity(row.barber_reference, barberReference, barberUuid, profileId)
+  );
+  return rows.find(isAcceptingBookingStatus) ?? rows[0];
+}
+
+function normalizeAvailabilityRules(input: {
+  availabilityRules: CanonicalAvailabilityRuleRow[];
+  workingHours: CanonicalBarberWorkingHoursRow[];
+}) {
+  const unique = new Map<string, CanonicalAvailabilityRuleRow>();
+  for (const row of input.availabilityRules) {
+    unique.set(`${row.barber_id}:${row.location_id}:${row.weekday}:${row.start_time}:${row.end_time}`, row);
+  }
+  for (const row of input.workingHours) {
+    const normalized = {
+      barber_id: row.barber_reference,
+      location_id: row.shop_reference,
+      weekday: row.weekday,
+      start_time: row.start_time,
+      end_time: row.end_time
+    } satisfies CanonicalAvailabilityRuleRow;
+    unique.set(`${normalized.barber_id}:${normalized.location_id}:${normalized.weekday}:${normalized.start_time}:${normalized.end_time}`, normalized);
+  }
+  return [...unique.values()];
+}
+
 function resolveDiscoveryRelationshipType(
   barberRow: CanonicalBarberRow,
   hasShopAssignment: boolean
@@ -781,21 +849,33 @@ function getLocationActivationGate(trustState: TrustState | undefined, locationR
   return getVerificationGateDecision(computeShopVerificationDecision(trustState, locationReference), "shop_activation");
 }
 
-function getMarketplaceVisibilityRow(snapshot: CanonicalSnapshot, barberReference: string) {
-  return snapshot.marketplaceVisibility.find((row) => row.barber_reference === barberReference);
+function getMarketplaceVisibilityRow(
+  snapshot: CanonicalSnapshot,
+  barberReference: string,
+  barberUuid?: string,
+  profileId?: string | null
+) {
+  const rows = snapshot.marketplaceVisibility.filter((row) =>
+    barberUuid
+      ? matchesCanonicalBarberIdentity(row.barber_reference, barberReference, barberUuid, profileId)
+      : row.barber_reference === barberReference
+  );
+  return rows.find((row) =>
+    isPublicMarketplaceVisibilityState(row.visibility_state)
+    && row.accepts_instant_bookings !== false
+  ) ?? rows[0];
 }
 
 function isCanonicalMarketplaceVisibilityReady(
   snapshot: CanonicalSnapshot,
   barberReference: string,
   barberUuid: string,
+  profileId?: string | null,
   profileRow?: CanonicalBarberProfileRow
 ) {
-  const visibility = getMarketplaceVisibilityRow(snapshot, barberReference);
-  const status = snapshot.barberStatus.find((row) => row.barber_reference === barberReference);
-  const acceptingBookings = status
-    ? status.accepting_bookings === true && status.status !== "offline" && status.live_status !== "offline"
-    : true;
+  const visibility = getMarketplaceVisibilityRow(snapshot, barberReference, barberUuid, profileId);
+  const status = getCanonicalBarberStatusRow(snapshot, barberReference, barberUuid, profileId);
+  const acceptingBookings = isAcceptingBookingStatus(status);
 
   if (!acceptingBookings) {
     return false;
@@ -859,6 +939,7 @@ async function readCanonicalSnapshot(supabase: SupabaseClient): Promise<Canonica
     locationsResult,
     staffLocationsResult,
     availabilityResult,
+    barberWorkingHoursResult,
     blockedTimesResult,
     appointmentsResult,
     reviewsResult,
@@ -875,6 +956,7 @@ async function readCanonicalSnapshot(supabase: SupabaseClient): Promise<Canonica
     supabase.from("locations").select("id, reference_code, name, neighborhood, city, state, phone, address, address_line_2, postal_code, latitude, longitude"),
     supabase.from("staff_locations").select("profile_id, location_id"),
     supabase.from("availability_rules").select("barber_id, location_id, weekday, start_time, end_time"),
+    supabase.from("barber_working_hours").select("barber_reference, shop_reference, weekday, start_time, end_time"),
     supabase.from("blocked_times").select("barber_id, starts_at, ends_at, reason"),
     supabase.from("appointments").select("id, reference_code, barber_id, client_id, service_id, location_id, status, starts_at, ends_at, total_amount"),
     supabase.from("reviews").select("id, appointment_id, barber_id, client_id, location_id, rating, message, created_at"),
@@ -915,6 +997,7 @@ async function readCanonicalSnapshot(supabase: SupabaseClient): Promise<Canonica
   const optionalResults = [
     resolvedMarketplaceServicesResult,
     staffLocationsResult,
+    barberWorkingHoursResult,
     marketplaceVisibilityResult,
     portfoliosResult,
     barberStatusResult,
@@ -1001,7 +1084,10 @@ async function readCanonicalSnapshot(supabase: SupabaseClient): Promise<Canonica
     ],
     locations: (resolvedLocationsResult.data ?? []) as CanonicalLocationRow[],
     staffLocations: (staffLocationsResult.error ? [] : staffLocationsResult.data ?? []) as CanonicalStaffLocationRow[],
-    availabilityRules: (availabilityResult.data ?? []) as CanonicalAvailabilityRuleRow[],
+    availabilityRules: normalizeAvailabilityRules({
+      availabilityRules: (availabilityResult.data ?? []) as CanonicalAvailabilityRuleRow[],
+      workingHours: (barberWorkingHoursResult.error ? [] : barberWorkingHoursResult.data ?? []) as CanonicalBarberWorkingHoursRow[]
+    }),
     blockedTimes: (blockedTimesResult.data ?? []) as CanonicalBlockedTimeRow[],
     appointments: (appointmentsResult.data ?? []) as CanonicalAppointmentRow[],
     reviews: (reviewsResult.data ?? []) as CanonicalReviewRow[],
@@ -1282,10 +1368,10 @@ function buildMarketplaceBarberEligibility(
   }
 ): InternalMarketplaceBarberEligibility {
   const barberReference = toReference(barberRow.id, barberRow.reference_code);
-  const profileRow = snapshot.barberProfiles.find((row) => row.barber_reference === barberReference);
+  const profileRow = getCanonicalBarberProfileRow(snapshot, barberReference, barberRow.id, barberRow.profile_id);
   const profile = snapshot.profiles.find((row) => row.id === barberRow.profile_id);
-  const visibility = getMarketplaceVisibilityRow(snapshot, barberReference);
-  const status = snapshot.barberStatus.find((row) => row.barber_reference === barberReference);
+  const visibility = getMarketplaceVisibilityRow(snapshot, barberReference, barberRow.id, barberRow.profile_id);
+  const status = getCanonicalBarberStatusRow(snapshot, barberReference, barberRow.id, barberRow.profile_id);
   const connectedAccounts = snapshot.connectedAccounts.filter((row) => row.subject_type === "barber" && row.barber_id === barberRow.id);
   const connectedAccount = connectedAccounts[0];
   const trustDecision = getBarberTrustDecision(options.trustState, barberReference);
@@ -1341,9 +1427,7 @@ function buildMarketplaceBarberEligibility(
     name: profile?.full_name ?? barberReference
   });
   const profilePublic = isPublicMarketplaceVisibilityState(profileRow?.visibility_state);
-  const acceptingBookings = status
-    ? status.accepting_bookings === true && status.status !== "offline" && status.live_status !== "offline"
-    : true;
+  const acceptingBookings = isAcceptingBookingStatus(status);
   const trustPayoutReady = isTrustPayoutReady(trustDecision);
   const payoutReady = isConnectedAccountPayoutReady(connectedAccount) || trustPayoutReady;
   const approvalApproved = isCanonicalBarberPlatformApproved(barberRow, options.trustState, barberReference);
@@ -1543,6 +1627,7 @@ function missingMarketplaceEligibilityDiagnostic(barberId: string): MarketplaceB
 function listAvailabilitySlotsForBarber(params: {
   barberReference: string;
   barberUuid: string;
+  profileId?: string | null;
   locationReference: string;
   locationUuidByReference: Map<string, string>;
   service: Service;
@@ -1571,7 +1656,7 @@ function listAvailabilitySlotsForBarber(params: {
   }
 
   const rules = availabilityRules.filter((entry) =>
-    matchesCanonicalBarberIdentity(entry.barber_id, barberReference, barberUuid)
+    matchesCanonicalBarberIdentity(entry.barber_id, barberReference, barberUuid, params.profileId)
     && locationIds.has(entry.location_id)
   );
   if (!rules.length) {
@@ -1580,13 +1665,13 @@ function listAvailabilitySlotsForBarber(params: {
 
   const unavailableAppointments = appointments
     .filter((entry) =>
-      matchesCanonicalBarberIdentity(entry.barber_id, barberReference, barberUuid)
+      matchesCanonicalBarberIdentity(entry.barber_id, barberReference, barberUuid, params.profileId)
       && entry.status !== "cancelled"
       && entry.status !== "no_show"
     )
     .map((entry) => ({ startsAt: entry.starts_at, endsAt: entry.ends_at }));
   const blockedRanges = blockedTimes
-    .filter((entry) => matchesCanonicalBarberIdentity(entry.barber_id, barberReference, barberUuid))
+    .filter((entry) => matchesCanonicalBarberIdentity(entry.barber_id, barberReference, barberUuid, params.profileId))
     .map((entry) => ({ startsAt: entry.starts_at, endsAt: entry.ends_at }));
   const durationMinutes = service.durationMin + service.bufferMin;
   const slots: CanonicalSlot[] = [];
@@ -1636,6 +1721,7 @@ function listAvailabilitySlotsForBarber(params: {
 function getNextAvailabilityWindowStart(params: {
   barberReference: string;
   barberUuid: string;
+  profileId?: string | null;
   locationReference: string;
   locationUuidByReference: Map<string, string>;
   availabilityRules: CanonicalAvailabilityRuleRow[];
@@ -1657,7 +1743,7 @@ function getNextAvailabilityWindowStart(params: {
   }
 
   const rules = availabilityRules.filter((entry) =>
-    matchesCanonicalBarberIdentity(entry.barber_id, barberReference, barberUuid)
+    matchesCanonicalBarberIdentity(entry.barber_id, barberReference, barberUuid, params.profileId)
     && locationIds.has(entry.location_id)
   );
   if (!rules.length) {
@@ -1906,6 +1992,7 @@ function buildCandidateRecords(
     const slots = listAvailabilitySlotsForBarber({
       barberReference,
       barberUuid: barberRow.id,
+      profileId: barberRow.profile_id,
       locationReference: candidateLocationReference,
       locationUuidByReference,
       service: primaryService,
@@ -1918,6 +2005,7 @@ function buildCandidateRecords(
       ?? getNextAvailabilityWindowStart({
         barberReference,
         barberUuid: barberRow.id,
+        profileId: barberRow.profile_id,
         locationReference: candidateLocationReference,
         locationUuidByReference,
         availabilityRules: snapshot.availabilityRules,
@@ -2073,14 +2161,13 @@ export async function getCanonicalMarketplaceEligibility(
   } = {}
 ): Promise<MarketplaceBarberEligibilityDiagnostic> {
   const snapshot = await readCanonicalSnapshot(supabase);
-  const barberProfilesByReference = new Map(snapshot.barberProfiles.map((row) => [row.barber_reference, row]));
   const barberRow = snapshot.barbers.find((row) => {
     const barberReference = toReference(row.id, row.reference_code);
     return matchesBarberIdentifier({
       identifier: barberId,
       row,
       barberReference,
-      profileRow: barberProfilesByReference.get(barberReference)
+      profileRow: getCanonicalBarberProfileRow(snapshot, barberReference, row.id, row.profile_id)
     });
   });
   if (!barberRow) {
@@ -2307,14 +2394,13 @@ export async function findCanonicalBookableSlot(
   }
 ) {
   const snapshot = await readCanonicalSnapshot(supabase);
-  const barberProfilesByReference = new Map(snapshot.barberProfiles.map((row) => [row.barber_reference, row]));
   const barberRow = snapshot.barbers.find((row) => {
     const reference = toReference(row.id, row.reference_code);
     return matchesBarberIdentifier({
       identifier: barberIdOrUsername,
       row,
       barberReference: reference,
-      profileRow: barberProfilesByReference.get(reference)
+      profileRow: getCanonicalBarberProfileRow(snapshot, reference, row.id, row.profile_id)
     });
   });
   if (!barberRow) {
@@ -2324,10 +2410,10 @@ export async function findCanonicalBookableSlot(
   const locationReferenceByUuid = new Map(snapshot.locations.map((row) => [row.id, toReference(row.id, row.reference_code)]));
   const locationUuidByReference = new Map(snapshot.locations.map((row) => [toReference(row.id, row.reference_code), row.id]));
   const barberReference = toReference(barberRow.id, barberRow.reference_code);
-  const profileRow = barberProfilesByReference.get(barberReference);
+  const profileRow = getCanonicalBarberProfileRow(snapshot, barberReference, barberRow.id, barberRow.profile_id);
   if (
     !isCanonicalBarberPlatformApproved(barberRow, options.trustState, barberReference)
-    || !isCanonicalMarketplaceVisibilityReady(snapshot, barberReference, barberRow.id, profileRow)
+    || !isCanonicalMarketplaceVisibilityReady(snapshot, barberReference, barberRow.id, barberRow.profile_id, profileRow)
     || !isBarberDiscoverable(options.trustState, barberReference)
   ) {
     return null;
@@ -2369,6 +2455,7 @@ export async function findCanonicalBookableSlot(
     listAvailabilitySlotsForBarber({
       barberReference,
       barberUuid: barberRow.id,
+      profileId: barberRow.profile_id,
       locationReference,
       locationUuidByReference,
       service: selectedService,
@@ -2411,14 +2498,13 @@ export async function buildCanonicalAvailabilityPayload(
   }
 ) {
   const snapshot = await readCanonicalSnapshot(supabase);
-  const barberProfilesByReference = new Map(snapshot.barberProfiles.map((row) => [row.barber_reference, row]));
   const barberRow = snapshot.barbers.find((row) => {
     const reference = toReference(row.id, row.reference_code);
     return matchesBarberIdentifier({
       identifier: barberIdOrUsername,
       row,
       barberReference: reference,
-      profileRow: barberProfilesByReference.get(reference)
+      profileRow: getCanonicalBarberProfileRow(snapshot, reference, row.id, row.profile_id)
     });
   });
   if (!barberRow) {
@@ -2428,10 +2514,10 @@ export async function buildCanonicalAvailabilityPayload(
   const locationReferenceByUuid = new Map(snapshot.locations.map((row) => [row.id, toReference(row.id, row.reference_code)]));
   const locationUuidByReference = new Map(snapshot.locations.map((row) => [toReference(row.id, row.reference_code), row.id]));
   const barberReference = toReference(barberRow.id, barberRow.reference_code);
-  const profileRow = barberProfilesByReference.get(barberReference);
+  const profileRow = getCanonicalBarberProfileRow(snapshot, barberReference, barberRow.id, barberRow.profile_id);
   if (
     !isCanonicalBarberPlatformApproved(barberRow, options.trustState, barberReference)
-    || !isCanonicalMarketplaceVisibilityReady(snapshot, barberReference, barberRow.id, profileRow)
+    || !isCanonicalMarketplaceVisibilityReady(snapshot, barberReference, barberRow.id, barberRow.profile_id, profileRow)
     || !isBarberDiscoverable(options.trustState, barberReference)
   ) {
     return {
@@ -2495,6 +2581,7 @@ export async function buildCanonicalAvailabilityPayload(
   const slots = listAvailabilitySlotsForBarber({
     barberReference,
     barberUuid: barberRow.id,
+    profileId: barberRow.profile_id,
     locationReference: locationId,
     locationUuidByReference,
     service: selectedService,
@@ -2527,14 +2614,13 @@ export async function buildCanonicalBarberProfile(
   trustState?: TrustState
 ): Promise<PublicBarberProfileView | null> {
   const snapshot = await readCanonicalSnapshot(supabase);
-  const barberProfilesByReference = new Map(snapshot.barberProfiles.map((row) => [row.barber_reference, row]));
   const barberRow = snapshot.barbers.find((row) => {
     const reference = toReference(row.id, row.reference_code);
     return matchesBarberIdentifier({
       identifier: barberIdOrUsername,
       row,
       barberReference: reference,
-      profileRow: barberProfilesByReference.get(reference)
+      profileRow: getCanonicalBarberProfileRow(snapshot, reference, row.id, row.profile_id)
     });
   });
   if (!barberRow) {
@@ -2546,12 +2632,12 @@ export async function buildCanonicalBarberProfile(
     return null;
   }
 
-  const profileRow = barberProfilesByReference.get(barberReference);
+  const profileRow = getCanonicalBarberProfileRow(snapshot, barberReference, barberRow.id, barberRow.profile_id);
   const profile = snapshot.profiles.find((entry) => entry.id === barberRow.profile_id);
   if (
     !isCanonicalBarberProfileRole(profile)
     || !profileRow
-    || !isCanonicalMarketplaceVisibilityReady(snapshot, barberReference, barberRow.id, profileRow)
+    || !isCanonicalMarketplaceVisibilityReady(snapshot, barberReference, barberRow.id, barberRow.profile_id, profileRow)
     || !hasRealMarketplaceText(profile?.full_name ?? profileRow.display_name)
   ) {
     return null;
@@ -2618,6 +2704,7 @@ export async function buildCanonicalBarberProfile(
   const nextSlots = listAvailabilitySlotsForBarber({
     barberReference,
     barberUuid: barberRow.id,
+    profileId: barberRow.profile_id,
     locationReference: primaryLocation.id,
     locationUuidByReference,
     service: serviceCatalog[0].service,
@@ -2630,6 +2717,7 @@ export async function buildCanonicalBarberProfile(
     ?? getNextAvailabilityWindowStart({
       barberReference,
       barberUuid: barberRow.id,
+      profileId: barberRow.profile_id,
       locationReference: primaryLocation.id,
       locationUuidByReference,
       availabilityRules: snapshot.availabilityRules,

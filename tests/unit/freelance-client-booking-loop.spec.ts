@@ -71,7 +71,7 @@ vi.mock("@/lib/booking/platform-service", async () => {
 });
 
 import { buildCanonicalBarberProfile } from "@/lib/booking/intelligence";
-import { getClientHomePayload, searchBarbersAndShopsPayload } from "@/lib/booking/platform-service";
+import { getBarberAvailabilityPayload, getClientHomePayload, searchBarbersAndShopsPayload } from "@/lib/booking/platform-service";
 import { getBarberSchedulePayload } from "@/lib/barber/service";
 import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
 
@@ -213,9 +213,10 @@ function createTables() {
       tax_rate: 0
     }],
     staff_locations: [],
-    availability_rules: [{
-      barber_id: "barber-43b3cda2",
-      location_id: "independent-barber-43b3cda2",
+    availability_rules: [],
+    barber_working_hours: [{
+      barber_reference: BARBER_PROFILE_ID,
+      shop_reference: "independent-barber-43b3cda2",
       weekday: targetDay.getDay(),
       start_time: timeValue(targetDay),
       end_time: timeValue(addMinutes(targetDay, 240))
@@ -236,15 +237,20 @@ function createTables() {
     walk_in_queue: [],
     reviews: [],
     marketplace_visibility: [{
-      barber_reference: "barber-43b3cda2",
-      visibility_state: "hidden",
-      accepts_instant_bookings: false,
+      barber_reference: BARBER_ID,
+      visibility_state: "public",
+      accepts_instant_bookings: true,
       featured_rank: null
     }],
     barber_portfolios: [],
     barber_status: [{
       barber_reference: "barber-43b3cda2",
-      status: "available",
+      status: "offline",
+      live_status: "offline",
+      accepting_bookings: false
+    }, {
+      barber_reference: BARBER_PROFILE_ID,
+      status: "active",
       live_status: "available",
       accepting_bookings: true
     }],
@@ -494,6 +500,11 @@ describe("freelance client booking loop", () => {
     const home = await getClientHomePayload("client-1fd26b88");
     const search = await searchBarbersAndShopsPayload({ query: "philforsure", clientId: "client-1fd26b88" });
     const profile = await buildCanonicalBarberProfile(supabase as never, "philforsure");
+    const availability = await getBarberAvailabilityPayload("philforsure", {
+      serviceId: "srv-test-cut",
+      locationId: "independent-barber-43b3cda2",
+      days: 2
+    });
     const beforeCalendar = await getBarberSchedulePayload({
       id: BARBER_PROFILE_ID,
       role: "booth_rent_barber",
@@ -508,6 +519,7 @@ describe("freelance client booking loop", () => {
     expect(home.recommendedBarbers.some((barber) => barber.username === "philforsure")).toBe(true);
     expect(search.barbers.some((barber) => barber.username === "philforsure")).toBe(true);
     expect(profile?.services.some((entry) => entry.service.name === "test cut")).toBe(true);
+    expect(availability?.slots.length).toBeGreaterThan(0);
     expect(beforeCalendar.shops).toEqual([expect.objectContaining({
       id: "independent-barber-43b3cda2"
     })]);
