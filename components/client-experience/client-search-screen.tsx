@@ -283,7 +283,7 @@ export function ClientSearchScreen({
       }
     : {
         title: "No live barbers yet.",
-        body: "Approved barbers appear here after services, hours, location/shop, booking, and payout setup are complete.",
+        body: "Approved barbers appear here after services, hours, location, and booking setup are complete.",
         actionLabel: "Refresh Search"
       };
   const shopEmptyState = allShops.length && hasActiveSearchQuery

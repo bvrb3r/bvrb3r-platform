@@ -426,7 +426,7 @@ function createEligibilityDiagnostics(input: {
   return {
     approval: !input.blockers.some((blocker) => blocker.startsWith("Barber approval")),
     services: input.facts.activeServiceCount > 0,
-    payout: !input.blockers.includes("Payout setup incomplete"),
+    payout: input.facts.payoutReady,
     visibility: input.facts.profileVisibility === "public" || input.facts.profileVisibility === "featured",
     availability: input.facts.availabilityCount > 0,
     location: input.facts.independentLocationExists || input.facts.acceptedShopCount > 0,
@@ -434,7 +434,7 @@ function createEligibilityDiagnostics(input: {
     bookingActive: input.facts.bookingStatus === "active",
     serviceCount: input.facts.serviceCount,
     activeServiceCount: input.facts.activeServiceCount,
-    payoutReady: !input.blockers.includes("Payout setup incomplete"),
+    payoutReady: input.facts.payoutReady,
     searchIncluded: input.includedInClientSearch,
     feedIncluded: input.includedInMarketplaceFeed
   };
@@ -754,21 +754,15 @@ function isCanonicalMarketplaceVisibilityReady(
   snapshot: CanonicalSnapshot,
   barberReference: string,
   barberUuid: string,
-  profileRow?: CanonicalBarberProfileRow,
-  trustState?: TrustState
+  profileRow?: CanonicalBarberProfileRow
 ) {
   const visibility = getMarketplaceVisibilityRow(snapshot, barberReference);
   const status = snapshot.barberStatus.find((row) => row.barber_reference === barberReference);
-  const connectedAccount = snapshot.connectedAccounts.find((row) =>
-    row.subject_type === "barber" && row.barber_id === barberUuid
-  );
-  const trustDecision = getBarberTrustDecision(trustState, barberReference);
   const acceptingBookings = status
     ? status.accepting_bookings === true && status.status !== "offline" && status.live_status !== "offline"
-    : visibility?.accepts_instant_bookings === true;
-  const payoutReady = isConnectedAccountPayoutReady(connectedAccount) || isTrustPayoutReady(trustDecision);
+    : true;
 
-  if (!acceptingBookings || !payoutReady) {
+  if (!acceptingBookings) {
     return false;
   }
 
@@ -1312,7 +1306,7 @@ function buildMarketplaceBarberEligibility(
   const profilePublic = isPublicMarketplaceVisibilityState(profileRow?.visibility_state);
   const acceptingBookings = status
     ? status.accepting_bookings === true && status.status !== "offline" && status.live_status !== "offline"
-    : visibility?.accepts_instant_bookings === true;
+    : true;
   const trustPayoutReady = isTrustPayoutReady(trustDecision);
   const payoutReady = isConnectedAccountPayoutReady(connectedAccount) || trustPayoutReady;
   const approvalApproved = isCanonicalBarberPlatformApproved(barberRow, options.trustState, barberReference);
@@ -1352,7 +1346,6 @@ function buildMarketplaceBarberEligibility(
     banned ? "Account banned" : null,
     profilePublic ? null : "Profile visibility is hidden",
     acceptingBookings ? null : "Not accepting bookings",
-    payoutReady ? null : "Payout setup incomplete",
     bookableServices.length > 0 ? null : "No active real services",
     availabilityCount > 0 ? null : "No real availability",
     validLocationOrShop ? null : "No service location or shop connection"
@@ -1730,14 +1723,35 @@ function buildCandidateRecords(
   const servicesById = new Map(snapshot.services.map((row) => [row.id, row]));
   const defaultLocation = locationsByReference.get(options.locationId) ?? locations[0];
 
-  return snapshot.barbers.flatMap((barberRow) => {
+  const diagnostics = {
+    totalCandidateBarbers: snapshot.barbers.length,
+    filteredOutByShopAssignment: 0,
+    filteredOutByPayoutSetup: 0,
+    filteredOutByVerification: 0,
+    finalVisibleBarbers: 0
+  };
+
+  const candidates = snapshot.barbers.flatMap((barberRow) => {
     const barberReference = toReference(barberRow.id, barberRow.reference_code);
     const eligibility = buildMarketplaceBarberEligibility(snapshot, barberRow, {
       locationReferenceByUuid,
       locationsByReference,
       trustState: options.trustState
     });
-    if (!eligibility.eligible || !matchesSearchableTerms(eligibility.searchableTerms, normalizedQuery)) {
+    if (!eligibility.eligible) {
+      if (eligibility.blockers.some((blocker) => /shop|staff|location/i.test(blocker))) {
+        diagnostics.filteredOutByShopAssignment += 1;
+      }
+      if (eligibility.blockers.includes("Payout setup incomplete")) {
+        diagnostics.filteredOutByPayoutSetup += 1;
+      }
+      if (eligibility.blockers.some((blocker) => /approval|suspended|rejected|banned|verification/i.test(blocker))) {
+        diagnostics.filteredOutByVerification += 1;
+      }
+      return [];
+    }
+
+    if (!matchesSearchableTerms(eligibility.searchableTerms, normalizedQuery)) {
       return [];
     }
 
@@ -1878,7 +1892,18 @@ function buildCandidateRecords(
       cancelledCount,
       accelerationScore
     } satisfies CandidateRecord];
-  }).sort((left, right) => {
+  });
+
+  diagnostics.finalVisibleBarbers = candidates.length;
+  console.info("[marketplace] barberSearchFilters", {
+    reference: "barberSearchFilters",
+    query: options.query ?? null,
+    category: options.category ?? null,
+    locationId: options.locationId || null,
+    ...diagnostics
+  });
+
+  return candidates.sort((left, right) => {
     const scoreDelta = right.accelerationScore - left.accelerationScore;
     if (scoreDelta !== 0) {
       return scoreDelta;
@@ -2153,7 +2178,7 @@ export async function findCanonicalBookableSlot(
   const profileRow = barberProfilesByReference.get(barberReference);
   if (
     !isCanonicalBarberPlatformApproved(barberRow, options.trustState, barberReference)
-    || !isCanonicalMarketplaceVisibilityReady(snapshot, barberReference, barberRow.id, profileRow, options.trustState)
+    || !isCanonicalMarketplaceVisibilityReady(snapshot, barberReference, barberRow.id, profileRow)
     || !isBarberDiscoverable(options.trustState, barberReference)
   ) {
     return null;
@@ -2257,7 +2282,7 @@ export async function buildCanonicalAvailabilityPayload(
   const profileRow = barberProfilesByReference.get(barberReference);
   if (
     !isCanonicalBarberPlatformApproved(barberRow, options.trustState, barberReference)
-    || !isCanonicalMarketplaceVisibilityReady(snapshot, barberReference, barberRow.id, profileRow, options.trustState)
+    || !isCanonicalMarketplaceVisibilityReady(snapshot, barberReference, barberRow.id, profileRow)
     || !isBarberDiscoverable(options.trustState, barberReference)
   ) {
     return {
@@ -2377,7 +2402,7 @@ export async function buildCanonicalBarberProfile(
   if (
     !isCanonicalBarberProfileRole(profile)
     || !profileRow
-    || !isCanonicalMarketplaceVisibilityReady(snapshot, barberReference, barberRow.id, profileRow, trustState)
+    || !isCanonicalMarketplaceVisibilityReady(snapshot, barberReference, barberRow.id, profileRow)
     || !hasRealMarketplaceText(profile?.full_name ?? profileRow.display_name)
   ) {
     return null;

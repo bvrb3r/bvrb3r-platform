@@ -780,7 +780,6 @@ function getMarketplaceBlockers(input: {
     if (!input.barber) blockers.push("Missing barber row");
     if (!barberApproved) blockers.push(`Barber approval ${barberApproval ?? "missing"}`);
     if (!barberApproved && !verificationApproved) blockers.push(`Verification ${input.verification?.overall_status ?? "missing"}`);
-    if (input.verification && input.verification.can_receive_payouts !== true) blockers.push("Payout setup incomplete");
     if (input.serviceCount <= 0) blockers.push("No active real services");
     if (input.availabilityCount <= 0) blockers.push("No real availability");
     if (input.linkedShopCount <= 0) blockers.push("No service location or shop connection");

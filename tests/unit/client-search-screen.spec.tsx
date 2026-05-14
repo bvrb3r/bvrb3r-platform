@@ -69,7 +69,7 @@ import { ClientSearchScreen } from "@/components/client-experience/client-search
 
 const phillipResult = {
   barberId: "barber-phillip",
-  username: "independent-barber-43b3cda2",
+  username: "philforsure",
   barberName: "Phillip McGee",
   rating: 5,
   reviewCount: 0,
@@ -325,9 +325,9 @@ describe("client search screen", () => {
 
     render(<ClientSearchScreen clientId="client-jordan" routeBase="/dashboard/client/search" />);
 
-    expect(screen.getByText("Phillip McGee")).toBeInTheDocument();
+    expect(screen.getByText("philforsure")).toBeInTheDocument();
     expect(screen.getAllByText("New").length).toBeGreaterThan(0);
-    expect(screen.getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/barber/independent-barber-43b3cda2");
+    expect(screen.getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/barber/philforsure");
     const bookLink = screen.getByRole("link", { name: "Book" });
     expect(bookLink).toHaveAttribute("href", expect.stringContaining("barberId=barber-phillip"));
     expect(bookLink.getAttribute("href")).not.toContain("serviceId=");
@@ -383,7 +383,7 @@ describe("client search screen", () => {
     expect(screen.getByText("No live barbers yet.")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Approved barbers appear here after services, hours, location/shop, booking, and payout setup are complete."
+        "Approved barbers appear here after services, hours, location, and booking setup are complete."
       )
     ).toBeInTheDocument();
     expect(screen.getByText("No live shops yet.")).toBeInTheDocument();
@@ -466,8 +466,8 @@ describe("client search screen", () => {
 
     render(<ClientSearchScreen clientId="client-jordan" initialQuery="Phillip" routeBase="/dashboard/client/search" />);
 
-    expect(screen.getByText("Phillip McGee")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/barber/independent-barber-43b3cda2");
+    expect(screen.getByText("philforsure")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/barber/philforsure");
     expect(screen.queryByText(/client_home_load_failed/i)).not.toBeInTheDocument();
     expect(screen.queryByText("Something went wrong while processing this action. Please try again.")).not.toBeInTheDocument();
     expect(screen.getByTestId("client-search-debug")).toHaveTextContent("Phillip McGee (barber-phillip)");

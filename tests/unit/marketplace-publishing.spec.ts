@@ -307,7 +307,7 @@ describe("marketplace publishing", () => {
     }));
   });
 
-  it("does not publish when the final payout readiness blocker is missing", async () => {
+  it("publishes freelance discovery while payout setup is still pending", async () => {
     const supabase = createSupabaseMock(createReadyTables({
       connected_accounts: [{
         subject_type: "barber",
@@ -323,11 +323,11 @@ describe("marketplace publishing", () => {
 
     const result = await publishBarberMarketplaceReadiness(supabase as never, "barber-live");
 
-    expect(result.published).toBe(false);
-    expect(result.blockers).toContain("Payout setup incomplete");
+    expect(result.published).toBe(true);
+    expect(result.blockers).not.toContain("Payout setup incomplete");
     expect(supabase.tables.get("marketplace_visibility")).toContainEqual(expect.objectContaining({
       barber_reference: "barber-live",
-      accepts_instant_bookings: false
+      accepts_instant_bookings: true
     }));
   });
 

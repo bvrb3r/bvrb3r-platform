@@ -425,8 +425,6 @@ async function resolveBarberContext(user: UserAccount, supabase: SupabaseClient)
   }
 
   const barber = barberResult.data as BarberRow;
-  const relationshipType = resolveBarberRelationshipType(barber.compensation_model);
-  const requiresShopAssignment = relationshipType !== "freelance";
   const referenceIds = viewer.locationIds ?? [];
   const membershipResult = await supabase
     .from("staff_locations")
@@ -449,6 +447,9 @@ async function resolveBarberContext(user: UserAccount, supabase: SupabaseClient)
     : ((membershipResult.data ?? []) as Array<{ location_id: string }>)
     .map((row) => row.location_id)
     .filter(Boolean);
+  const configuredRelationshipType = resolveBarberRelationshipType(barber.compensation_model);
+  const relationshipType = membershipLocationIds.length ? configuredRelationshipType : "freelance";
+  const requiresShopAssignment = relationshipType !== "freelance" && membershipLocationIds.length > 0;
   const uuidIds = [...new Set([...referenceIds.filter(isUuidLike), ...membershipLocationIds])];
   const referenceCodes = [...new Set(referenceIds.filter((value) => !isUuidLike(value) && !isIndependentBarberLocationReference(value)))];
   const [uuidLocationsResult, referenceLocationsResult] = await Promise.all([

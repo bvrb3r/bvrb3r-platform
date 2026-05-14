@@ -196,6 +196,8 @@ type BookingTransactionDiagnostics = {
   stripePaymentIntentIdPresent: boolean;
   appointmentInsertStarted: boolean;
   appointmentInsertSucceeded: boolean;
+  paymentRecordInsertStarted: boolean;
+  paymentRecordInsertSucceeded: boolean;
 };
 
 function createBookingTransactionDiagnostics(): BookingTransactionDiagnostics {
@@ -207,7 +209,9 @@ function createBookingTransactionDiagnostics(): BookingTransactionDiagnostics {
     paymentMethodResolved: false,
     stripePaymentIntentIdPresent: false,
     appointmentInsertStarted: false,
-    appointmentInsertSucceeded: false
+    appointmentInsertSucceeded: false,
+    paymentRecordInsertStarted: false,
+    paymentRecordInsertSucceeded: false
   };
 }
 
@@ -220,7 +224,9 @@ function publicBookingTransactionDiagnostics(diagnostics: BookingTransactionDiag
     paymentMethodResolved: diagnostics.paymentMethodResolved,
     stripePaymentIntentIdPresent: diagnostics.stripePaymentIntentIdPresent,
     appointmentInsertStarted: diagnostics.appointmentInsertStarted,
-    appointmentInsertSucceeded: diagnostics.appointmentInsertSucceeded
+    appointmentInsertSucceeded: diagnostics.appointmentInsertSucceeded,
+    paymentRecordInsertStarted: diagnostics.paymentRecordInsertStarted,
+    paymentRecordInsertSucceeded: diagnostics.paymentRecordInsertSucceeded
   };
 }
 
@@ -519,20 +525,21 @@ export async function resolveBookableBarber(
     throw membershipResult.error;
   }
 
-  const membership = (membershipResult.data as StaffMembershipRow | null) ?? null;
   const compensationModel = (barber.compensation_model ?? "").toLowerCase();
-  const relationshipType = compensationModel.includes("commission")
+  const configuredRelationshipType = compensationModel.includes("commission")
     ? "commission"
     : compensationModel.includes("booth")
       ? "booth_rent"
       : "freelance";
+  const membership = (membershipResult.data as StaffMembershipRow | null) ?? null;
+  const relationshipType = membership ? configuredRelationshipType : "freelance";
 
   return {
     barberId: barber.id,
     profileId: barber.profile_id,
     userId: barber.profile_id,
     displayName,
-    isFreelance: !membership || relationshipType === "freelance",
+    isFreelance: relationshipType === "freelance",
     shopAssignment: membership,
     relationshipType,
     barber
@@ -2438,6 +2445,7 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
 
       try {
         if (bookingPaymentAmount > 0) {
+          diagnostics.paymentRecordInsertStarted = true;
           const payment = await insertPaymentRecord(
             supabase,
             appointmentForPayment,
@@ -2460,6 +2468,7 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
           );
           diagnostics.paymentMethodResolved = true;
           diagnostics.stripePaymentIntentIdPresent = Boolean(payment);
+          diagnostics.paymentRecordInsertSucceeded = true;
         }
       } catch (error) {
         mergeBookingPaymentDiagnostics(diagnostics, error);

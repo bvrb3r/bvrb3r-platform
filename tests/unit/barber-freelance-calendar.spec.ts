@@ -49,17 +49,21 @@ const freelanceBarber = {
 
 function createSupabaseMock(input?: {
   locationLookupFails?: boolean;
+  barber?: typeof freelanceBarber;
+  staffLocations?: Array<{ location_id: string }>;
 }) {
   const locationLookupFails = input?.locationLookupFails ?? false;
+  const barber = input?.barber ?? freelanceBarber;
+  const staffLocations = input?.staffLocations ?? [{ location_id: "stale-shop-location" }];
 
   function resultFor(table: string, single: boolean) {
     if (table === "barbers" && single) {
-      return { data: freelanceBarber, error: null };
+      return { data: barber, error: null };
     }
 
     if (table === "staff_locations") {
       return {
-        data: [{ location_id: "stale-shop-location" }],
+        data: staffLocations,
         error: null
       };
     }
@@ -217,5 +221,32 @@ describe("freelance barber calendar", () => {
     expect(payload.timeline.appointments).toHaveLength(1);
     expect(payload.timeline.appointments[0].id).toBe("appt-phil-1");
     expect(payload.upcomingAppointments).toHaveLength(1);
+  });
+
+  it("treats a commission-configured barber with no active assignment as freelance", async () => {
+    createSupabaseAdminClientMock.mockReturnValue(createSupabaseMock({
+      barber: {
+        ...freelanceBarber,
+        compensation_model: "commission"
+      },
+      staffLocations: [],
+      locationLookupFails: true
+    }));
+
+    const payload = await getBarberSchedulePayload({
+      id: "22345678-1234-5123-9234-123456789abc",
+      role: "commission_barber",
+      email: "philforsure@example.com",
+      password: "DevOnly!123",
+      name: "philforsure",
+      title: "Freelance Barber",
+      locationIds: [],
+      barberId: "barber-43b3cda2"
+    }, { viewMode: "day", anchorDate: "2026-05-14" });
+
+    expect(payload.shops).toEqual([expect.objectContaining({
+      id: "independent-barber-43b3cda2"
+    })]);
+    expect(payload.timeline.appointments).toEqual([]);
   });
 });

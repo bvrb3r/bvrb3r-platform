@@ -679,7 +679,7 @@ describe("architect account service", () => {
     expect(payload.account?.marketplaceBlockers).not.toContain("Barber approval pending");
     expect(payload.account?.marketplaceBlockers).not.toContain("Verification pending");
     expect(payload.account?.marketplaceBlockers).not.toContain("Missing public username");
-    expect(payload.account?.marketplaceBlockers).toContain("Payout setup incomplete");
+    expect(payload.account?.marketplaceBlockers).not.toContain("Payout setup incomplete");
   });
 
   it("does not keep a stale shop verification blocker after Architect approval", async () => {
