@@ -239,6 +239,10 @@ export function canonicalServiceUuid(reference: string) {
 }
 
 export function canonicalBarberUuid(reference: string) {
+  if (isUuid(reference)) {
+    return reference;
+  }
+
   return stableUuid(`barber:${reference}`);
 }
 
@@ -252,6 +256,24 @@ export function canonicalProfileUuid(email: string) {
 
 export function canonicalAppointmentUuid(reference: string) {
   return stableUuid(`appointment:${reference}`);
+}
+
+async function resolveCanonicalBarberId(supabase: SupabaseClient, barberReference: string) {
+  if (isUuid(barberReference)) {
+    return barberReference;
+  }
+
+  const result = await supabase
+    .from("barbers")
+    .select("id")
+    .eq("reference_code", barberReference)
+    .maybeSingle();
+
+  if (!result.error && result.data?.id) {
+    return result.data.id as string;
+  }
+
+  return canonicalBarberUuid(barberReference);
 }
 
 function numeric(value: number | string | null | undefined) {
@@ -322,7 +344,8 @@ export async function readCanonicalClientProfile(supabase: SupabaseClient, clien
 
 export async function readCanonicalWorkingHours(supabase: SupabaseClient, barberReference: string, shopReference?: string) {
   await ensureCanonicalBookingData(supabase);
-  let query = supabase.from("availability_rules").select("*").eq("barber_id", canonicalBarberUuid(barberReference));
+  const barberId = await resolveCanonicalBarberId(supabase, barberReference);
+  let query = supabase.from("availability_rules").select("*").eq("barber_id", barberId);
   if (shopReference) {
     query = query.eq("location_id", canonicalLocationUuid(shopReference));
   }

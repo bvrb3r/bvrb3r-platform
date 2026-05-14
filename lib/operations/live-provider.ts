@@ -89,6 +89,7 @@ type CanonicalBarberRow = {
   id: string;
   reference_code: string | null;
   profile_id: string;
+  compensation_model?: string | null;
 };
 
 type CanonicalClientRow = {
@@ -214,6 +215,10 @@ export function isIndependentBookingLocationReference(locationReference?: string
   return Boolean(locationReference?.startsWith("independent-"));
 }
 
+export function isPseudoBarberReference(barberReference?: string | null) {
+  return Boolean(barberReference?.startsWith("barber-"));
+}
+
 export function shouldRequireShopBusinessVerificationForBooking(input: {
   serviceOwnerType?: string | null;
   serviceBarberReference?: string | null;
@@ -231,6 +236,155 @@ export function shouldRequireShopBusinessVerificationForBooking(input: {
 function isBarberDirectService(service: CanonicalServiceRow, barber: CanonicalBarberRow) {
   return service.service_owner_type === "barber"
     || matchesBarberReference(service.barber_reference, barber);
+}
+
+function uniqDefined(values: Array<string | null | undefined>) {
+  return values
+    .map((value) => value?.trim())
+    .filter((value, index, array): value is string => Boolean(value) && array.indexOf(value) === index);
+}
+
+async function readCanonicalBarberByIdentifier(
+  supabase: SupabaseClient,
+  identifier: string | null | undefined
+) {
+  if (!identifier) {
+    return null;
+  }
+
+  const select = "id, reference_code, profile_id, compensation_model";
+  const lookupPlan: Array<{ column: "id" | "reference_code" | "profile_id"; value: string }> = [];
+  if (isUuid(identifier)) {
+    lookupPlan.push({ column: "id", value: identifier });
+    lookupPlan.push({ column: "profile_id", value: identifier });
+  }
+  lookupPlan.push({ column: "reference_code", value: identifier });
+
+  const canonicalId = canonicalBarberUuid(identifier);
+  if (canonicalId !== identifier) {
+    lookupPlan.push({ column: "id", value: canonicalId });
+  }
+
+  for (const lookup of lookupPlan) {
+    const result = await supabase
+      .from("barbers")
+      .select(select)
+      .eq(lookup.column, lookup.value)
+      .maybeSingle();
+
+    if (result.error) {
+      throw result.error;
+    }
+    if (result.data) {
+      return result.data as CanonicalBarberRow;
+    }
+  }
+
+  const profileResult = await supabase
+    .from("barber_profiles")
+    .select("barber_reference, username")
+    .or(`barber_reference.eq.${identifier},username.eq.${identifier}`)
+    .maybeSingle();
+
+  if (profileResult.error) {
+    throw profileResult.error;
+  }
+
+  const profileRow = profileResult.data as {
+    barber_reference?: string | null;
+    username?: string | null;
+  } | null;
+  const profileBarberReference = profileRow?.barber_reference;
+  if (profileBarberReference && profileBarberReference !== identifier) {
+    return readCanonicalBarberByIdentifier(supabase, profileBarberReference);
+  }
+
+  return null;
+}
+
+export type ResolvedBookableBarber = {
+  barberId: string;
+  profileId: string;
+  userId: string;
+  displayName: string | null;
+  isFreelance: boolean;
+  shopAssignment: StaffMembershipRow | null;
+  relationshipType: "freelance" | "booth_rent" | "commission";
+  barber: CanonicalBarberRow;
+};
+
+async function readBarberDisplayName(supabase: SupabaseClient, profileId: string) {
+  const result = await supabase
+    .from("profiles")
+    .select("full_name, display_name")
+    .eq("id", profileId)
+    .maybeSingle();
+
+  if (result.error) {
+    return null;
+  }
+
+  const row = result.data as { full_name?: string | null; display_name?: string | null } | null;
+  return row?.display_name ?? row?.full_name ?? null;
+}
+
+export async function resolveBookableBarber(
+  supabase: SupabaseClient,
+  input: {
+    barberId?: string | null;
+    serviceBarberReference?: string | null;
+  }
+): Promise<ResolvedBookableBarber | null> {
+  const candidates = uniqDefined([
+    input.barberId,
+    input.barberId?.startsWith("@") ? input.barberId.slice(1) : null,
+    input.serviceBarberReference
+  ]);
+
+  let barber: CanonicalBarberRow | null = null;
+  for (const candidate of candidates) {
+    barber = await readCanonicalBarberByIdentifier(supabase, candidate);
+    if (barber) {
+      break;
+    }
+  }
+
+  if (!barber) {
+    return null;
+  }
+
+  const [membershipResult, displayName] = await Promise.all([
+    supabase
+      .from("staff_locations")
+      .select("id, location_id, profile_id")
+      .eq("profile_id", barber.profile_id)
+      .limit(1)
+      .maybeSingle(),
+    readBarberDisplayName(supabase, barber.profile_id)
+  ]);
+
+  if (membershipResult.error) {
+    throw membershipResult.error;
+  }
+
+  const membership = (membershipResult.data as StaffMembershipRow | null) ?? null;
+  const compensationModel = (barber.compensation_model ?? "").toLowerCase();
+  const relationshipType = compensationModel.includes("commission")
+    ? "commission"
+    : compensationModel.includes("booth")
+      ? "booth_rent"
+      : "freelance";
+
+  return {
+    barberId: barber.id,
+    profileId: barber.profile_id,
+    userId: barber.profile_id,
+    displayName,
+    isFreelance: !membership || relationshipType === "freelance",
+    shopAssignment: membership,
+    relationshipType,
+    barber
+  };
 }
 
 async function readBookingLocationByReference(
@@ -519,7 +673,7 @@ function matchesBarberReference(
   value: string | null | undefined,
   row: CanonicalBarberRow
 ) {
-  return Boolean(value) && (value === row.id || value === row.reference_code);
+  return Boolean(value) && (value === row.id || value === row.reference_code || value === row.profile_id);
 }
 
 function isCanonicalServiceBookableForContext(
@@ -874,10 +1028,16 @@ async function loadWorkflowPersistenceBarber(
   supabase: SupabaseClient,
   barberReference: string
 ): Promise<WorkflowPersistenceBarber | null> {
+  const barberRow = await readCanonicalBarberByIdentifier(supabase, barberReference);
+
+  if (!barberRow) {
+    return null;
+  }
+
   const barberResult = await supabase
     .from("barbers")
     .select("id, reference_code, profile_id, compensation_model, commission_rate, booth_rent_amount, booth_rent_frequency")
-    .eq("id", canonicalBarberUuid(barberReference))
+    .eq("id", barberRow.id)
     .maybeSingle();
 
   if (barberResult.error) {
@@ -1409,21 +1569,28 @@ async function resolveCanonicalBookingContext(
   snapshot: LiveOperationsSnapshot,
   input: BookingMutationInput
 ) {
-  const barberId = canonicalBarberUuid(input.barberId);
   const clientId = input.clientId ? canonicalClientUuid(input.clientId) : null;
   const serviceRows = await loadCanonicalServicesByReference(supabase, [input.serviceId, ...input.addOnIds]);
-  const [barberResult, clientResult] = await Promise.all([
-    supabase.from("barbers").select("id, reference_code, profile_id").eq("id", barberId).maybeSingle(),
+  const primaryService = serviceRows.find((row) => matchesReference(input.serviceId, row));
+  if (!primaryService) {
+    throw new LiveOperationValidationError(`Service ${input.serviceId} is not available for booking.`);
+  }
+
+  const [resolvedBarber, clientResult] = await Promise.all([
+    resolveBookableBarber(supabase, {
+      barberId: input.barberId,
+      serviceBarberReference: primaryService.barber_reference
+    }),
     clientId
       ? supabase.from("clients").select("id, reference_code, profile_id").eq("id", clientId).maybeSingle()
       : Promise.resolve({ data: null, error: null })
   ]);
 
-  if (barberResult.error) {
-    throw barberResult.error;
-  }
-  if (!barberResult.data) {
-    throw new LiveOperationValidationError(`Barber ${input.barberId} was not found.`, "invalid_resource_reference");
+  if (!resolvedBarber) {
+    throw new LiveOperationValidationError(
+      `Barber ${input.barberId} was not found.`,
+      "invalid_resource_reference"
+    );
   }
   if (clientResult.error) {
     throw clientResult.error;
@@ -1432,11 +1599,7 @@ async function resolveCanonicalBookingContext(
     throw new LiveOperationValidationError(`Client ${input.clientId} was not found.`, "invalid_resource_reference");
   }
 
-  const barberRow = barberResult.data as CanonicalBarberRow;
-  const primaryService = serviceRows.find((row) => matchesReference(input.serviceId, row));
-  if (!primaryService) {
-    throw new LiveOperationValidationError(`Service ${input.serviceId} is not available for booking.`);
-  }
+  const barberRow = resolvedBarber.barber;
 
   const locationRow = await resolveBookingLocationRow(supabase, input, primaryService, barberRow);
   if (!locationRow) {
@@ -1554,6 +1717,7 @@ async function resolveCanonicalBookingContext(
   return {
     location: locationRow,
     barber: barberRow,
+    resolvedBarber,
     client: (clientResult.data as CanonicalClientRow | null) ?? null,
     membership,
     requiresShopLane,
@@ -1645,11 +1809,12 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
     },
     async createBooking(input) {
       const fullSnapshot = await readFullSupabaseSnapshot(supabase);
-      const trustState = await readTrustStateSafe();
-      assertBookableBarberLane(input.barberId, input.locationId, trustState);
       const context = await resolveCanonicalBookingContext(supabase, fullSnapshot, input);
+      const trustState = await readTrustStateSafe();
+      const barberTrustReference = context.barber.reference_code ?? input.barberId;
+      assertBookableBarberLane(barberTrustReference, context.locationReference, trustState);
       assertShopLaneIfRequired({
-        barberId: input.barberId,
+        barberId: barberTrustReference,
         locationId: input.locationId,
         locationReference: context.locationReference,
         service: context.primaryService,
@@ -1663,6 +1828,7 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
       const result = bookAppointmentInSnapshot(fullSnapshot, {
         ...input,
         locationId: context.locationReference,
+        barberId: context.barber.id,
         clientId: input.clientId ?? context.client?.reference_code ?? context.matchedClient?.id,
         confirmationCode,
         membershipId: context.membership?.id,
@@ -1789,25 +1955,18 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
         throw new Error(`Appointment ${input.appointmentId} was not found.`);
       }
 
-      const [locationResult, barberResult] = await Promise.all([
+      const [locationResult, resolvedBarber] = await Promise.all([
         supabase
           .from("locations")
           .select("id, reference_code, name, tax_rate")
           .eq("id", canonicalLocationUuid(previousAppointment.locationId))
           .maybeSingle(),
-        supabase
-          .from("barbers")
-          .select("id, reference_code, profile_id")
-          .eq("id", canonicalBarberUuid(previousAppointment.barberId))
-          .maybeSingle()
+        resolveBookableBarber(supabase, { barberId: previousAppointment.barberId })
       ]);
       if (locationResult.error) {
         throw locationResult.error;
       }
-      if (barberResult.error) {
-        throw barberResult.error;
-      }
-      if (!locationResult.data || !barberResult.data) {
+      if (!locationResult.data || !resolvedBarber) {
         throw new LiveOperationValidationError("The booking can no longer be rescheduled because its canonical context is incomplete.", "invalid_resource_reference");
       }
 
@@ -1815,14 +1974,14 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
       const primaryService = serviceRows.find((row) => matchesReference(previousAppointment.serviceId, row));
       if (!primaryService || !isCanonicalServiceBookableForContext(primaryService, {
         location: locationResult.data as CanonicalLocationRow,
-        barber: barberResult.data as CanonicalBarberRow
+        barber: resolvedBarber.barber
       })) {
         throw new LiveOperationValidationError("The service linked to this booking is no longer bookable for this barber.", "invalid_booking_selection");
       }
 
       const result = rescheduleAppointmentInSnapshot(fullSnapshot, input);
       await assertCanonicalSlotAvailability(supabase, {
-        barber: barberResult.data as CanonicalBarberRow,
+        barber: resolvedBarber.barber,
         appointment: {
           id: result.appointment.id,
           start: result.appointment.start,

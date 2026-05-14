@@ -36,6 +36,14 @@ function serializeBookingValidationError(error: LiveOperationValidationError) {
     };
   }
 
+  if (/\bbarber-[a-z0-9-]+/i.test(error.message) && /not found/i.test(error.message)) {
+    return {
+      error: "This barber is not available for booking yet.",
+      code: error.code,
+      details: null
+    };
+  }
+
   if (error.code === "verification_blocked" && details?.gate === "shop_activation") {
     return {
       error: "This provider is not available for booking yet.",

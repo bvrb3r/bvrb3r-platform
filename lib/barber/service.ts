@@ -287,6 +287,68 @@ function formatLocationLabel(location: Pick<LocationRow, "name" | "neighborhood"
   return area ? `${location.name} • ${area}` : [location.name, location.state].filter(Boolean).join(" • ");
 }
 
+function isIndependentBarberLocationReference(reference: string | null | undefined) {
+  return Boolean(reference?.startsWith("independent-barber-"));
+}
+
+function fallbackIndependentLocationReference(barberReference: string, referenceIds: string[]) {
+  return referenceIds.find(isIndependentBarberLocationReference)
+    ?? (barberReference.startsWith("barber-") ? `independent-${barberReference}` : `independent-barber-${barberReference}`);
+}
+
+function parseFreelanceLocationLabel(serviceAreaLabel?: string | null, displayName?: string | null) {
+  const parts = (serviceAreaLabel ?? "")
+    .split(/[\/\n]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const joined = parts.join(" ");
+  const stateMatch = joined.match(/\b([A-Z]{2})\b/);
+  const city = parts.find((part) => /tampa/i.test(part))
+    ?? parts.find((part) => !/\d/.test(part))
+    ?? "Freelance service area";
+
+  return {
+    name: parts[0] ?? (displayName ? `${displayName} booking location` : "Freelance location"),
+    neighborhood: parts[1] ?? "Independent barber",
+    city,
+    state: stateMatch?.[1] ?? (/tampa/i.test(joined) ? "FL" : "NA"),
+    address: parts.find((part) => /\d/.test(part)) ?? null
+  };
+}
+
+async function readFreelanceLocationFallback(
+  supabase: SupabaseClient,
+  input: {
+    barberReference: string;
+    referenceIds: string[];
+  }
+) {
+  const result = await supabase
+    .from("barber_profiles")
+    .select("display_name, service_area_label")
+    .eq("barber_reference", input.barberReference)
+    .maybeSingle();
+
+  if (result.error && !isMissingRelationError(result.error)) {
+    throw new BarberToolsServiceError("Unable to resolve barber freelance location.", 500);
+  }
+
+  const row = (result.data ?? null) as { display_name?: string | null; service_area_label?: string | null } | null;
+  const label = parseFreelanceLocationLabel(row?.service_area_label, row?.display_name);
+  const reference = fallbackIndependentLocationReference(input.barberReference, input.referenceIds);
+  return {
+    id: reference,
+    reference_code: reference,
+    name: label.name,
+    neighborhood: label.neighborhood,
+    city: label.city,
+    state: label.state,
+    address: label.address,
+    address_line_2: null,
+    postal_code: null
+  } satisfies LocationRow;
+}
+
 function formatPaymentStatusLabel(status: string | null, outstandingBalance: number) {
   if (status === "captured" && outstandingBalance <= 0) {
     return "Paid in full";
@@ -389,6 +451,13 @@ async function resolveBarberContext(user: UserAccount, supabase: SupabaseClient)
   const locationsById = new Map<string, LocationRow>();
   for (const location of [...(uuidLocationsResult.data ?? []), ...(referenceLocationsResult.data ?? [])] as LocationRow[]) {
     locationsById.set(location.id, location);
+  }
+  if (!locationsById.size) {
+    const fallbackLocation = await readFreelanceLocationFallback(supabase, {
+      barberReference: barber.reference_code ?? barberReference,
+      referenceIds
+    });
+    locationsById.set(fallbackLocation.id, fallbackLocation);
   }
 
   return {
@@ -949,10 +1018,11 @@ export async function getBarberOverviewPayload(user: UserAccount): Promise<Barbe
     .sort((left, right) => new Date(left.start).getTime() - new Date(right.start).getTime());
   const locationReferences = Array.from(new Set(todayAppointments.map((appointment) => appointment.locationId)));
   const locationMap = supabase ? await readLocationMap(supabase, locationReferences) : new Map<string, { id: string; label: string }>();
+  const canonicalBarberId = context?.barber.id ?? viewer.barberId!;
   const [status, workingHours, blockedTimes] = await Promise.all([
     buildStatusView(user, appointments, supabase),
-    readWorkingHoursView(supabase, viewer.barberId!, locationMap),
-    supabase ? readBlockedTimes(supabase, viewer.barberId!) : Promise.resolve([])
+    readWorkingHoursView(supabase, canonicalBarberId, locationMap),
+    supabase ? readBlockedTimes(supabase, canonicalBarberId) : Promise.resolve([])
   ]);
   const activationSetup = await readActivationSetupView(supabase, user, workingHours, context?.locations ?? []);
   const clients = buildClientRelationshipView(appointments, dashboard.clients, viewer.barberId!);
@@ -993,10 +1063,11 @@ export async function getBarberSchedulePayload(
   const timelineRange = buildBarberScheduleRange(viewMode, anchorDate);
   const locationReferences = Array.from(new Set(appointments.map((appointment) => appointment.locationId)));
   const locationMap = supabase ? await readLocationMap(supabase, locationReferences) : new Map<string, { id: string; label: string }>();
+  const canonicalBarberId = context?.barber.id ?? viewer.barberId!;
   const [status, workingHours, blockedTimes] = await Promise.all([
     buildStatusView(user, appointments, supabase),
-    readWorkingHoursView(supabase, viewer.barberId!, locationMap),
-    supabase ? readBlockedTimes(supabase, viewer.barberId!) : Promise.resolve([])
+    readWorkingHoursView(supabase, canonicalBarberId, locationMap),
+    supabase ? readBlockedTimes(supabase, canonicalBarberId) : Promise.resolve([])
   ]);
 
   return {
