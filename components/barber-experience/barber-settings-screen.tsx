@@ -359,6 +359,8 @@ export function BarberSettingsScreen({
   const payoutStatus = connectedAccount?.operationalStatus ?? null;
   const stripeEnvironment = readinessPayload?.stripeEnvironment;
   const payoutsReady = isStripeConnectReadyForActivation(connectedAccount, stripeEnvironment);
+  const payoutsRequiredForActivation = selectedSubtype !== "freelance";
+  const payoutsClearForActivation = !payoutsRequiredForActivation || payoutsReady;
   const payoutReadinessLabel = getStripePayoutReadinessLabel(payoutsReady, stripeEnvironment);
   const readyForPayoutAmount = payoutsPayload?.summary.readyForPayoutAmount ?? readinessPayload?.routingSummary.readyForPayoutAmount;
   const hasPayoutAmount = typeof readyForPayoutAmount === "number";
@@ -393,7 +395,7 @@ export function BarberSettingsScreen({
     && (hasServiceLocation || hasAcceptedShopLink)
     && isProfilePublic
     && isBookingActive
-    && payoutsReady;
+    && payoutsClearForActivation;
 
   const statusItems = [
     {
@@ -872,7 +874,7 @@ export function BarberSettingsScreen({
             isProfilePublic,
             isAcceptingBookings: isBookingActive,
             payoutsReady,
-            payoutsRequired: true,
+            payoutsRequired: payoutsRequiredForActivation,
             hasServiceLocation,
             serviceLocationRequired: true,
             hasShopLink: hasAcceptedShopLink,

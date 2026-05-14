@@ -52,6 +52,11 @@ type CanonicalServiceReferenceRow = CanonicalReferenceRow & {
   name: string;
 };
 
+type CanonicalBarberIdentityRow = CanonicalReferenceRow & {
+  profile_id: string | null;
+  booking_slug?: string | null;
+};
+
 type CanonicalProfileRow = {
   id: string;
   full_name: string;
@@ -266,22 +271,67 @@ export function canonicalAppointmentUuid(reference: string) {
   return stableUuid(`appointment:${reference}`);
 }
 
-async function resolveCanonicalBarberId(supabase: SupabaseClient, barberReference: string) {
+function uniqueStrings(values: Array<string | null | undefined>) {
+  return [...new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value)))];
+}
+
+async function resolveCanonicalBarberIdentity(supabase: SupabaseClient, barberReference: string) {
   if (isUuid(barberReference)) {
-    return barberReference;
+    const uuidResult = await supabase
+      .from("barbers")
+      .select("id, reference_code, profile_id, booking_slug")
+      .or(`id.eq.${barberReference},profile_id.eq.${barberReference}`)
+      .maybeSingle();
+
+    if (!uuidResult.error && uuidResult.data?.id) {
+      return uuidResult.data as CanonicalBarberIdentityRow;
+    }
+
+    return {
+      id: barberReference,
+      reference_code: null,
+      profile_id: null,
+      booking_slug: null
+    } satisfies CanonicalBarberIdentityRow;
   }
 
-  const result = await supabase
+  const referenceResult = await supabase
     .from("barbers")
-    .select("id")
+    .select("id, reference_code, profile_id, booking_slug")
     .eq("reference_code", barberReference)
     .maybeSingle();
 
-  if (!result.error && result.data?.id) {
-    return result.data.id as string;
+  if (!referenceResult.error && referenceResult.data?.id) {
+    return referenceResult.data as CanonicalBarberIdentityRow;
   }
 
-  return canonicalBarberUuid(barberReference);
+  const slugResult = await supabase
+    .from("barbers")
+    .select("id, reference_code, profile_id, booking_slug")
+    .eq("booking_slug", barberReference)
+    .maybeSingle();
+
+  if (!slugResult.error && slugResult.data?.id) {
+    return slugResult.data as CanonicalBarberIdentityRow;
+  }
+
+  const canonicalId = canonicalBarberUuid(barberReference);
+  const canonicalResult = await supabase
+    .from("barbers")
+    .select("id, reference_code, profile_id, booking_slug")
+    .eq("id", canonicalId)
+    .maybeSingle();
+
+  if (!canonicalResult.error && canonicalResult.data?.id) {
+    return canonicalResult.data as CanonicalBarberIdentityRow;
+  }
+
+  return {
+    id: canonicalId,
+    reference_code: barberReference,
+    profile_id: null,
+    booking_slug: null
+  } satisfies CanonicalBarberIdentityRow;
 }
 
 function numeric(value: number | string | null | undefined) {
@@ -352,10 +402,17 @@ export async function readCanonicalClientProfile(supabase: SupabaseClient, clien
 
 export async function readCanonicalWorkingHours(supabase: SupabaseClient, barberReference: string, shopReference?: string) {
   await ensureCanonicalBookingData(supabase);
-  const barberId = await resolveCanonicalBarberId(supabase, barberReference);
-  const barberLookupValues = [...new Set([barberId, barberReference])];
+  const barberIdentity = await resolveCanonicalBarberIdentity(supabase, barberReference);
+  const barberId = barberIdentity.id;
+  const barberLookupValues = uniqueStrings([
+    barberId,
+    barberReference,
+    barberIdentity.reference_code,
+    barberIdentity.profile_id,
+    barberIdentity.booking_slug
+  ]);
   const shopLookupValues = shopReference
-    ? [...new Set([canonicalLocationUuid(shopReference), shopReference])]
+    ? uniqueStrings([canonicalLocationUuid(shopReference), shopReference])
     : [];
   const readByBarberId = async (value: string) => {
     let query = supabase.from("availability_rules").select("*").eq("barber_id", value);
@@ -365,18 +422,17 @@ export async function readCanonicalWorkingHours(supabase: SupabaseClient, barber
     return query.order("weekday");
   };
 
-  let result = await readByBarberId(barberId);
-  if (!result.error && !(result.data ?? []).length && barberReference !== barberId) {
-    result = await readByBarberId(barberReference);
-  }
-  if (!result.error && (result.data ?? []).length) {
-    return ((result.data ?? []) as Array<{ weekday: number; start_time: string; end_time: string }>).map((row) => ({
-      barber_reference: barberReference,
-      shop_reference: shopReference ?? "",
-      weekday: row.weekday,
-      start_time: row.start_time,
-      end_time: row.end_time
-    }));
+  for (const lookupValue of barberLookupValues) {
+    const result = await readByBarberId(lookupValue);
+    if (!result.error && (result.data ?? []).length) {
+      return ((result.data ?? []) as Array<{ location_id?: string | null; weekday: number; start_time: string; end_time: string }>).map((row) => ({
+        barber_reference: barberIdentity.reference_code ?? barberReference,
+        shop_reference: shopReference ?? row.location_id ?? "",
+        weekday: row.weekday,
+        start_time: row.start_time,
+        end_time: row.end_time
+      }));
+    }
   }
 
   let legacyQuery = supabase

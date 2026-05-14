@@ -29,6 +29,7 @@ const {
   useBarberOverviewQueryMock,
   useRespondBarberTeamInviteMutationMock,
   useSaveBarberSubtypeMutationMock,
+  useUpdateBarberBookingLocationMutationMock,
   useUpdateBarberActivationAvailabilityMutationMock,
   useUpdateBarberActivationMutationMock,
   useUpdateBarberStatusMutationMock,
@@ -60,6 +61,7 @@ const {
   useBarberOverviewQueryMock: vi.fn(),
   useRespondBarberTeamInviteMutationMock: vi.fn(),
   useSaveBarberSubtypeMutationMock: vi.fn(),
+  useUpdateBarberBookingLocationMutationMock: vi.fn(),
   useUpdateBarberActivationAvailabilityMutationMock: vi.fn(),
   useUpdateBarberActivationMutationMock: vi.fn(),
   useUpdateBarberStatusMutationMock: vi.fn(),
@@ -113,6 +115,7 @@ vi.mock("@/lib/operations/barber-client", () => ({
   useBarberOverviewQuery: useBarberOverviewQueryMock,
   useRespondBarberTeamInviteMutation: useRespondBarberTeamInviteMutationMock,
   useSaveBarberSubtypeMutation: useSaveBarberSubtypeMutationMock,
+  useUpdateBarberBookingLocationMutation: useUpdateBarberBookingLocationMutationMock,
   useUpdateBarberActivationAvailabilityMutation: useUpdateBarberActivationAvailabilityMutationMock,
   useUpdateBarberActivationMutation: useUpdateBarberActivationMutationMock,
   useUpdateBarberStatusMutation: useUpdateBarberStatusMutationMock
@@ -289,6 +292,7 @@ function setupHookMocks() {
   });
   useRespondBarberTeamInviteMutationMock.mockReturnValue({ mutateAsync: vi.fn(), isPending: false });
   useSaveBarberSubtypeMutationMock.mockReturnValue({ mutateAsync: vi.fn(), isPending: false });
+  useUpdateBarberBookingLocationMutationMock.mockReturnValue({ mutateAsync: vi.fn(), isPending: false });
   useUpdateBarberActivationAvailabilityMutationMock.mockReturnValue({ mutateAsync: vi.fn(), isPending: false });
   useUpdateBarberActivationMutationMock.mockReturnValue({ mutateAsync: vi.fn(), isPending: false });
   useUpdateBarberStatusMutationMock.mockReturnValue({ mutateAsync: vi.fn(), isPending: false });

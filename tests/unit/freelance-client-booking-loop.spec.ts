@@ -72,8 +72,9 @@ vi.mock("@/lib/booking/platform-service", async () => {
 
 import { buildCanonicalBarberProfile } from "@/lib/booking/intelligence";
 import { getBarberAvailabilityPayload, getClientHomePayload, searchBarbersAndShopsPayload } from "@/lib/booking/platform-service";
-import { getBarberSchedulePayload } from "@/lib/barber/service";
+import { getBarberOverviewPayload, getBarberSchedulePayload } from "@/lib/barber/service";
 import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
+import type { UserAccount } from "@/types/domain";
 
 type Row = Record<string, unknown>;
 type QueryResult = { data: Row[] | null; error: Row | null };
@@ -496,6 +497,16 @@ describe("freelance client booking loop", () => {
       paymentIntents: { create: stripeCreateMock },
       refunds: { create: vi.fn() }
     });
+    const barberUser: UserAccount = {
+      id: BARBER_PROFILE_ID,
+      role: "booth_rent_barber",
+      email: "philforsure@example.com",
+      password: "DevOnly!123",
+      name: "philforsure",
+      title: "Freelance Barber",
+      locationIds: [],
+      barberId: "barber-43b3cda2"
+    };
 
     const home = await getClientHomePayload("client-1fd26b88");
     const search = await searchBarbersAndShopsPayload({ query: "philforsure", clientId: "client-1fd26b88" });
@@ -505,21 +516,17 @@ describe("freelance client booking loop", () => {
       locationId: "independent-barber-43b3cda2",
       days: 2
     });
-    const beforeCalendar = await getBarberSchedulePayload({
-      id: BARBER_PROFILE_ID,
-      role: "booth_rent_barber",
-      email: "philforsure@example.com",
-      password: "DevOnly!123",
-      name: "philforsure",
-      title: "Freelance Barber",
-      locationIds: [],
-      barberId: "barber-43b3cda2"
-    }, { viewMode: "day", anchorDate: "2026-05-15" });
+    const beforeMore = await getBarberOverviewPayload(barberUser);
+    const beforeCalendar = await getBarberSchedulePayload(barberUser, { viewMode: "day", anchorDate: "2026-05-15" });
 
     expect(home.recommendedBarbers.some((barber) => barber.username === "philforsure")).toBe(true);
     expect(search.barbers.some((barber) => barber.username === "philforsure")).toBe(true);
     expect(profile?.services.some((entry) => entry.service.name === "test cut")).toBe(true);
     expect(availability?.slots.length).toBeGreaterThan(0);
+    expect(beforeMore.workingHours.length).toBeGreaterThan(0);
+    expect(beforeMore.activationSetup.hasAvailabilityDraft).toBe(true);
+    expect(beforeMore.status.liveStatus).toBe("available");
+    expect(beforeMore.status.isOnline).toBe(true);
     expect(beforeCalendar.shops).toEqual([expect.objectContaining({
       id: "independent-barber-43b3cda2"
     })]);
@@ -600,16 +607,7 @@ describe("freelance client booking loop", () => {
       status: "confirmed"
     });
 
-    const afterCalendar = await getBarberSchedulePayload({
-      id: BARBER_PROFILE_ID,
-      role: "booth_rent_barber",
-      email: "philforsure@example.com",
-      password: "DevOnly!123",
-      name: "philforsure",
-      title: "Freelance Barber",
-      locationIds: [],
-      barberId: "barber-43b3cda2"
-    }, { viewMode: "day", anchorDate: "2026-05-15" });
+    const afterCalendar = await getBarberSchedulePayload(barberUser, { viewMode: "day", anchorDate: "2026-05-15" });
     expect(afterCalendar.timeline.appointments).toHaveLength(1);
     expect(afterCalendar.timeline.appointments[0]).toMatchObject({
       id: insertedAppointment.reference_code,

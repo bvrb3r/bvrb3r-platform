@@ -5,6 +5,7 @@ import { canonicalAppointmentUuid, canonicalBarberUuid, canonicalLocationUuid, r
 import { getBarberAppointmentsPayload, getBarberDashboardPayload } from "@/lib/booking/platform-service";
 import { buildClientHistoryIntelligence } from "@/lib/engagement/intelligence";
 import { buildBarberMoneyDashboardSummary } from "@/lib/fintech/tax";
+import { publishBarberMarketplaceReadiness } from "@/lib/marketplace/publishing";
 import { buildBarberRevenueIntelligenceSummary } from "@/lib/monetization/service";
 import { getOnboardingState } from "@/lib/onboarding/service";
 import { toBarberViewer } from "@/lib/booking/route-auth";
@@ -32,9 +33,9 @@ type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 type BarberStatusRow = {
   barber_reference: string;
   shop_reference: string | null;
-  status: "available" | "busy" | "offline";
+  status: string | null;
   next_available_at: string | null;
-  accepting_bookings: boolean;
+  accepting_bookings: boolean | null;
   availability_note: string | null;
   updated_at: string;
   barber_id: string | null;
@@ -91,6 +92,13 @@ type CanonicalWorkingHoursView = {
   weekday: number;
   start_time: string;
   end_time: string;
+};
+
+type BarberContext = {
+  viewer: ReturnType<typeof assertBarberUser>;
+  barber: BarberRow;
+  barberReference: string;
+  locations: LocationRow[];
 };
 
 export type BarberShopScopeView = {
@@ -882,10 +890,96 @@ async function readActivationSetupView(
   };
 }
 
+function uniqueStrings(values: Array<string | null | undefined>) {
+  return [...new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value)))];
+}
+
+function getBarberStatusAliases(user: UserAccount, context?: BarberContext | null) {
+  return uniqueStrings([
+    user.barberId,
+    context?.barberReference,
+    context?.barber.id,
+    context?.barber.reference_code,
+    context?.barber.profile_id
+  ]);
+}
+
+function isBookingActiveStatusRow(row?: BarberStatusRow | null) {
+  if (!row) {
+    return false;
+  }
+
+  const status = `${row.status ?? ""}`.toLowerCase();
+  const liveStatus = `${row.live_status ?? ""}`.toLowerCase();
+  if (row.accepting_bookings === false || status === "offline" || liveStatus === "offline") {
+    return false;
+  }
+
+  return row.accepting_bookings === true
+    || ["active", "available", "live"].includes(status)
+    || ["active", "available", "live"].includes(liveStatus);
+}
+
+function toBarberLiveStatus(row: BarberStatusRow): BarberLiveStatus {
+  if (row.live_status === "available" || row.live_status === "busy" || row.live_status === "offline" || row.live_status === "on_break" || row.live_status === "away") {
+    return row.live_status;
+  }
+
+  const status = `${row.status ?? ""}`.toLowerCase();
+  if (status === "busy") {
+    return "busy";
+  }
+  if (status === "offline") {
+    return "offline";
+  }
+  return isBookingActiveStatusRow(row) ? "available" : "offline";
+}
+
+async function readCanonicalBarberStatusRows(
+  supabase: SupabaseClient,
+  user: UserAccount,
+  context?: BarberContext | null
+) {
+  const aliases = getBarberStatusAliases(user, context);
+  const [referenceResult, barberIdResult] = await Promise.all([
+    aliases.length
+      ? supabase
+        .from("barber_status")
+        .select("barber_reference, shop_reference, status, next_available_at, accepting_bookings, availability_note, updated_at, barber_id, current_shop_id, live_status, is_online, accepts_walk_ins, last_seen_at")
+        .in("barber_reference", aliases)
+      : Promise.resolve({ data: [], error: null }),
+    context?.barber.id
+      ? supabase
+        .from("barber_status")
+        .select("barber_reference, shop_reference, status, next_available_at, accepting_bookings, availability_note, updated_at, barber_id, current_shop_id, live_status, is_online, accepts_walk_ins, last_seen_at")
+        .eq("barber_id", context.barber.id)
+      : Promise.resolve({ data: [], error: null })
+  ]);
+
+  if (referenceResult.error || barberIdResult.error) {
+    throw new BarberToolsServiceError("Unable to read barber live status.", 500);
+  }
+
+  const rows = [
+    ...((referenceResult.data ?? []) as BarberStatusRow[]),
+    ...((barberIdResult.data ?? []) as BarberStatusRow[])
+  ];
+  const seen = new Set<string>();
+  return rows.filter((row) => {
+    const key = `${row.barber_reference}:${row.barber_id ?? ""}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
 async function buildStatusView(
   user: UserAccount,
   appointments: BaseBarberAppointment[],
-  supabase: SupabaseClient | null
+  supabase: SupabaseClient | null,
+  context?: BarberContext | null
 ) {
   const activeAppointment = appointments.find((appointment) => appointment.status === "checked_in" || appointment.status === "in_service") ?? null;
   const upcomingAppointment = appointments.find((appointment) => isUpcomingAppointmentStatus(appointment.status)) ?? null;
@@ -908,17 +1002,8 @@ async function buildStatusView(
     return defaultStatus;
   }
 
-  const rowResult = await supabase
-    .from("barber_status")
-    .select("barber_reference, shop_reference, status, next_available_at, accepting_bookings, availability_note, updated_at, barber_id, current_shop_id, live_status, is_online, accepts_walk_ins, last_seen_at")
-    .eq("barber_reference", user.barberId)
-    .maybeSingle();
-
-  if (rowResult.error) {
-    throw new BarberToolsServiceError("Unable to read barber live status.", 500);
-  }
-
-  const row = rowResult.data as BarberStatusRow | null;
+  const statusRows = await readCanonicalBarberStatusRows(supabase, user, context);
+  const row = statusRows.find(isBookingActiveStatusRow) ?? statusRows[0] ?? null;
   if (!row) {
     return defaultStatus;
   }
@@ -930,12 +1015,12 @@ async function buildStatusView(
   const currentShopId = row.shop_reference
     ?? (row.current_shop_id ? locationLabels.get(row.current_shop_id)?.id ?? row.current_shop_id : null)
     ?? defaultShopId;
-  const liveStatus = row.live_status ?? (row.status === "busy" ? "busy" : row.status === "offline" ? "offline" : "available");
-  const isOnline = row.is_online ?? liveStatus !== "offline";
+  const liveStatus = toBarberLiveStatus(row);
+  const isOnline = row.is_online ?? (isBookingActiveStatusRow(row) || liveStatus !== "offline");
   const acceptsWalkIns = row.accepts_walk_ins ?? row.accepting_bookings ?? false;
 
   return {
-    barberId: row.barber_reference,
+    barberId: context?.barberReference ?? row.barber_reference,
     currentShopId,
     currentShopLabel: currentShopId ? locationLabels.get(currentShopId)?.label ?? currentShopId : null,
     liveStatus,
@@ -1081,7 +1166,7 @@ export async function getBarberOverviewPayload(user: UserAccount): Promise<Barbe
   const locationMap = supabase ? await readLocationMap(supabase, locationReferences) : new Map<string, { id: string; label: string }>();
   const canonicalBarberId = context?.barber.reference_code ?? context?.barber.id ?? viewer.barberId!;
   const [status, workingHours, blockedTimes] = await Promise.all([
-    buildStatusView(user, appointments, supabase),
+    buildStatusView(user, appointments, supabase, context),
     readWorkingHoursView(supabase, canonicalBarberId, locationMap),
     supabase ? readBlockedTimes(supabase, canonicalBarberId) : Promise.resolve([])
   ]);
@@ -1126,7 +1211,7 @@ export async function getBarberSchedulePayload(
   const locationMap = supabase ? await readLocationMap(supabase, locationReferences) : new Map<string, { id: string; label: string }>();
   const canonicalBarberId = context?.barber.reference_code ?? context?.barber.id ?? viewer.barberId!;
   const [status, workingHours, blockedTimes] = await Promise.all([
-    buildStatusView(user, appointments, supabase),
+    buildStatusView(user, appointments, supabase, context),
     readWorkingHoursView(supabase, canonicalBarberId, locationMap),
     supabase ? readBlockedTimes(supabase, canonicalBarberId) : Promise.resolve([])
   ]);
@@ -1207,7 +1292,8 @@ export async function getBarberStatusPayload(user: UserAccount) {
   const dashboard = await getBarberDashboardPayload(viewer);
   const financialMap = await readPaymentSummaryMap(supabase, dashboard.appointments);
   const appointments = hydrateAppointmentsWithFinancials(dashboard.appointments, financialMap);
-  return buildStatusView(user, appointments, supabase);
+  const context = supabase ? await resolveBarberContext(user, supabase) : null;
+  return buildStatusView(user, appointments, supabase, context);
 }
 
 export async function updateBarberStatus(
@@ -1265,6 +1351,8 @@ export async function updateBarberStatus(
   if (result.error) {
     throw new BarberToolsServiceError("Unable to update barber live status.", 500);
   }
+
+  await publishBarberMarketplaceReadiness(supabase, context.barberReference);
 
   return getBarberStatusPayload(user);
 }
