@@ -95,7 +95,34 @@ function describePaymentMethodId(value?: string | null) {
   return "saved_method_id";
 }
 
+function logBookingRouteStage(stage: string, details: Record<string, unknown> = {}) {
+  console.info("[bookings] booking_transaction_stage", {
+    reference: "booking_transaction_stage",
+    stage,
+    route: "/api/bookings",
+    ...details
+  });
+}
+
+function logBookingRouteFailure(stage: string, error: unknown, details: Record<string, unknown> = {}) {
+  const candidate = error && typeof error === "object"
+    ? error as { code?: string | null; message?: string | null; details?: string | null; hint?: string | null; status?: number | null }
+    : null;
+  console.error("[bookings] booking_transaction_stage_failed", {
+    reference: "booking_transaction_stage_failed",
+    stage,
+    route: "/api/bookings",
+    errorCode: candidate?.code ?? null,
+    errorStatus: candidate?.status ?? null,
+    errorMessage: candidate?.message ?? (error instanceof Error ? error.message : String(error)),
+    errorDetails: candidate?.details ?? null,
+    errorHint: candidate?.hint ?? null,
+    ...details
+  });
+}
+
 export async function POST(request: NextRequest) {
+  logBookingRouteStage("booking_request_received");
   const parsed = bookingSchema.safeParse(await request.json());
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid booking payload." }, { status: 400 });
@@ -114,6 +141,11 @@ export async function POST(request: NextRequest) {
       ...bookingInput
     } = parsed.data;
     const clientContext = await getClientExperienceContext();
+    logBookingRouteStage("auth_user_resolved", {
+      authUserIdPresent: Boolean(clientContext.viewer.id),
+      actorRole: clientContext.viewer.role,
+      clientContextClientIdPresent: Boolean(clientContext.clientId)
+    });
     console.info("[bookings] booking_payment_payload_received", {
       paymentMethodIdPresent: Boolean(bookingInput.paymentMethodId?.trim()),
       paymentMethodIdKind: describePaymentMethodId(bookingInput.paymentMethodId),
@@ -211,9 +243,17 @@ export async function POST(request: NextRequest) {
       } catch {}
     }
 
+    logBookingRouteStage("booking_response_returned", {
+      appointmentId: result.appointment.id,
+      clientId: result.appointment.clientId,
+      barberId: result.appointment.barberId
+    });
     return NextResponse.json({ appointment: result.appointment });
   } catch (error) {
     if (error instanceof LiveOperationValidationError) {
+      logBookingRouteFailure("booking_validation_failed", error, {
+        code: error.code
+      });
       return NextResponse.json(
         serializeBookingValidationError(error),
         { status: error.status }
@@ -221,12 +261,20 @@ export async function POST(request: NextRequest) {
     }
 
     if (error instanceof LiveOperationConflictError) {
+      logBookingRouteFailure("booking_conflict_failed", error, {
+        code: error.code,
+        latestAppointmentId: error.latestAppointment.id
+      });
       return NextResponse.json(
         { error: error.message, code: error.code, latestAppointment: error.latestAppointment },
         { status: error.status }
       );
     }
 
-    return NextResponse.json({ error: "Unable to create appointment." }, { status: 500 });
+    logBookingRouteFailure("booking_unhandled_failed", error);
+    return NextResponse.json(
+      { error: "We could not book this appointment. Please try again.", code: "booking_processing_failed" },
+      { status: 500 }
+    );
   }
 }

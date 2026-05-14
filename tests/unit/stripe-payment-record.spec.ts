@@ -32,11 +32,13 @@ vi.mock("@/lib/stripe/connect", () => ({
 import { createCapturedStripePaymentRecord } from "@/lib/payments/service";
 
 type Row = Record<string, unknown>;
+type QueryResult = { data: Row[] | null; error: Row | null };
 
 function createSupabaseStub(seed: {
   clients?: Row[];
   clientPreferences?: Row[];
   paymentMethods?: Row[];
+  failPaymentInsert?: boolean;
 } = {}) {
   const defaultPaymentMethodRow = {
     id: "pm-local-1",
@@ -126,8 +128,8 @@ function createSupabaseStub(seed: {
       }));
     }
 
-    then<TResult1 = { data: Row[] | null; error: null }, TResult2 = never>(
-      onfulfilled?: ((value: { data: Row[] | null; error: null }) => TResult1 | PromiseLike<TResult1>) | null,
+    then<TResult1 = QueryResult, TResult2 = never>(
+      onfulfilled?: ((value: QueryResult) => TResult1 | PromiseLike<TResult1>) | null,
       onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
     ) {
       return this.execute().then(onfulfilled, onrejected);
@@ -135,6 +137,17 @@ function createSupabaseStub(seed: {
 
     private execute() {
       if (this.operation === "insert" && this.payload) {
+        if (this.table === "payments" && seed.failPaymentInsert) {
+          return Promise.resolve({
+            data: null,
+            error: {
+              code: "23502",
+              message: "null value in column payment_type violates not-null constraint",
+              details: "Failing row contains payment ledger test data.",
+              hint: null
+            }
+          });
+        }
         const row = {
           id: this.payload.id ?? (this.table === "payments" ? `pay-live-${tables[this.table].length + 1}` : `${this.table}-${tables[this.table].length + 1}`),
           created_at: this.payload.created_at ?? "2026-05-14T12:00:00.000Z",
@@ -342,6 +355,83 @@ describe("stripe payment record creation", () => {
         payment_method: "pm_stripe_1"
       }),
       undefined
+    );
+  });
+
+  it("does not fail the booking payment when payout-routing sync fails after the ledger row is saved", async () => {
+    const stripeCreateMock = vi.fn().mockResolvedValue({
+      id: "pi_routing_later",
+      status: "succeeded"
+    });
+    getStripeConnectClientMock.mockReturnValue({
+      paymentIntents: {
+        create: stripeCreateMock
+      }
+    });
+    syncPaymentRoutingRecordMock.mockRejectedValueOnce(new Error("routing ledger temporarily unavailable"));
+
+    const supabase = createSupabaseStub();
+
+    const payment = await createCapturedStripePaymentRecord(supabase as never, {
+      appointmentId: "appt-routing-later",
+      clientId: "client-live-1",
+      shopId: "shop-live-1",
+      barberId: "barber-live-1",
+      serviceId: "service-live-1",
+      amount: 25,
+      paymentType: "booking",
+      paymentMethodId: "pm-local-1",
+      createdAt: "2026-04-21T12:30:00.000Z"
+    });
+
+    expect(payment.id).toBe("pay-live-1");
+    expect(supabase.state.insertedPayment).toMatchObject({
+      appointment_id: "appt-routing-later",
+      provider_payment_intent_id: "pi_routing_later"
+    });
+  });
+
+  it("refunds the Stripe intent when the canonical payment ledger cannot be written", async () => {
+    const stripeCreateMock = vi.fn().mockResolvedValue({
+      id: "pi_ledger_failed",
+      status: "succeeded"
+    });
+    const stripeRefundMock = vi.fn().mockResolvedValue({
+      id: "re_ledger_failed"
+    });
+    getStripeConnectClientMock.mockReturnValue({
+      paymentIntents: {
+        create: stripeCreateMock
+      },
+      refunds: {
+        create: stripeRefundMock
+      }
+    });
+
+    const supabase = createSupabaseStub({ failPaymentInsert: true });
+
+    await expect(createCapturedStripePaymentRecord(supabase as never, {
+      appointmentId: "appt-ledger-failed",
+      clientId: "client-live-1",
+      shopId: "shop-live-1",
+      barberId: "barber-live-1",
+      serviceId: "service-live-1",
+      amount: 25,
+      paymentType: "booking",
+      paymentMethodId: "pm-local-1",
+      idempotencyKey: "booking:appt-ledger-failed:booking:25.00",
+      createdAt: "2026-04-21T12:30:00.000Z"
+    })).rejects.toThrow("Payment could not be finalized, so the charge was reversed. Please try again.");
+
+    expect(stripeRefundMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payment_intent: "pi_ledger_failed",
+        amount: 2500,
+        reason: "requested_by_customer"
+      }),
+      expect.objectContaining({
+        idempotencyKey: "refund:booking:appt-ledger-failed:booking:25.00"
+      })
     );
   });
 

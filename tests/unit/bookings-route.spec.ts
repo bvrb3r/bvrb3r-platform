@@ -390,6 +390,29 @@ describe("bookings route", () => {
     expect(body.latestAppointment.id).toBe("appt-new");
   });
 
+  it("returns a safe stage-specific error for unexpected booking transaction failures", async () => {
+    createBookingMock.mockRejectedValue(new Error("database write failed with internal details"));
+
+    const response = await postBooking(new NextRequest("https://bvrb3r.demo/api/bookings", {
+      method: "POST",
+      body: JSON.stringify({
+        locationId: "loc-ybor",
+        barberId: "barber-blaze",
+        serviceId: "srv-signature",
+        addOnIds: [],
+        appointmentTime: "2026-03-23T14:00:00-04:00",
+        clientName: "Jordan Ellis",
+        clientPhone: "(813) 555-0190"
+      })
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body.error).toBe("We could not book this appointment. Please try again.");
+    expect(body.code).toBe("booking_processing_failed");
+    expect(JSON.stringify(body)).not.toContain("database write failed");
+  });
+
   it("records an AI conversion when a booking is created from a recommendation", async () => {
     createBookingMock.mockResolvedValue({
       appointment: appointmentFixture

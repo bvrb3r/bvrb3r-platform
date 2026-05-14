@@ -154,6 +154,71 @@ function normalizePhone(value: string) {
   return value.replace(/\D/g, "");
 }
 
+function logBookingTransactionStage(
+  stage: string,
+  details: Record<string, unknown> = {}
+) {
+  console.info("[bookings] booking_transaction_stage", {
+    reference: "booking_transaction_stage",
+    stage,
+    ...details
+  });
+}
+
+function logBookingTransactionStageFailure(
+  stage: string,
+  error: unknown,
+  details: Record<string, unknown> = {}
+) {
+  const candidate = error && typeof error === "object"
+    ? error as { code?: string | null; message?: string | null; details?: string | null; hint?: string | null; status?: number | null }
+    : null;
+  console.error("[bookings] booking_transaction_stage_failed", {
+    reference: "booking_transaction_stage_failed",
+    stage,
+    errorCode: candidate?.code ?? null,
+    errorStatus: candidate?.status ?? null,
+    errorMessage: candidate?.message ?? (error instanceof Error ? error.message : String(error)),
+    errorDetails: candidate?.details ?? null,
+    errorHint: candidate?.hint ?? null,
+    ...details
+  });
+}
+
+function describePublicReference(value?: string | null) {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return "missing";
+  }
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(trimmed)) {
+    return "uuid";
+  }
+  if (/^independent-barber-/i.test(trimmed)) {
+    return "independent_barber_pseudo_location";
+  }
+  if (/^barber-/i.test(trimmed)) {
+    return "public_barber_reference";
+  }
+  if (/^client-/i.test(trimmed)) {
+    return "public_client_reference";
+  }
+  return "reference";
+}
+
+async function runBookingPostCommitStep(
+  stage: string,
+  action: () => Promise<unknown>,
+  details: Record<string, unknown> = {}
+) {
+  logBookingTransactionStage(`${stage}_started`, details);
+  try {
+    await action();
+    logBookingTransactionStage(`${stage}_succeeded`, details);
+  } catch (error) {
+    logBookingTransactionStageFailure(`${stage}_failed`, error, details);
+  }
+}
+
 async function readTrustStateSafe() {
   try {
     const trustProvider = await getTrustProvider();
@@ -2133,8 +2198,37 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
       return scopeLiveOperationsSnapshot(fullSnapshot, viewer);
     },
     async createBooking(input) {
+      logBookingTransactionStage("booking_request_received", {
+        locationIdKind: describePublicReference(input.locationId),
+        barberIdKind: describePublicReference(input.barberId),
+        serviceIdKind: describePublicReference(input.serviceId),
+        clientIdKind: describePublicReference(input.clientId),
+        paymentMethodIdPresent: Boolean(input.paymentMethodId?.trim())
+      });
       const fullSnapshot = await readFullSupabaseSnapshot(supabase);
+      logBookingTransactionStage("booking_snapshot_loaded", {
+        appointmentCount: fullSnapshot.appointments.length,
+        clientCount: fullSnapshot.clients.length,
+        walkInCount: fullSnapshot.walkIns.length
+      });
       const context = await resolveCanonicalBookingContext(supabase, fullSnapshot, input);
+      logBookingTransactionStage("canonical_client_resolved", {
+        clientId: context.resolvedClient.clientId,
+        actorProfileIdPresent: Boolean(context.actorProfileId)
+      });
+      logBookingTransactionStage("canonical_barber_resolved", {
+        barberId: context.barber.id,
+        barberReferencePresent: Boolean(context.barber.reference_code)
+      });
+      logBookingTransactionStage("canonical_service_resolved", {
+        serviceId: context.primaryService.id,
+        serviceReferencePresent: Boolean(context.primaryService.reference_code),
+        servicePrice: context.primaryService.price
+      });
+      logBookingTransactionStage("canonical_location_resolved", {
+        locationReference: context.locationReference,
+        locationIdKind: describePublicReference(context.locationReference)
+      });
       const trustState = await readTrustStateSafe();
       const barberTrustReference = context.barber.reference_code ?? input.barberId;
       assertBookableBarberLane(barberTrustReference, context.locationReference, trustState);
@@ -2172,6 +2266,12 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
         },
         latestAppointment: result.appointment
       });
+      logBookingTransactionStage("availability_validated", {
+        appointmentId: result.appointment.id,
+        barberId: result.appointment.barberId,
+        startsAt: result.appointment.start,
+        endsAt: result.appointment.end
+      });
 
       const bookingPaymentAmount = Math.max(result.appointment.grandTotal ?? result.appointment.totalAmount, 0);
       const appointmentForPayment = bookingPaymentAmount > 0
@@ -2182,6 +2282,14 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
         : snapshotWithBookingClient;
 
       const appointmentRow = appointmentUpsertRow(appointmentForPayment);
+      logBookingTransactionStage("appointment_insert_started", {
+        appointmentId: appointmentForPayment.id,
+        clientId: appointmentForPayment.clientId,
+        barberId: appointmentForPayment.barberId,
+        serviceId: appointmentForPayment.serviceId,
+        locationId: appointmentForPayment.locationId,
+        paymentRequired: bookingPaymentAmount > 0
+      });
       const existingAppointment = await supabase
         .from("appointments")
         .select("id")
@@ -2195,8 +2303,15 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
         ? await supabase.from("appointments").update(appointmentRow).eq("id", existingAppointment.data.id)
         : await supabase.from("appointments").insert(appointmentRow);
         if (appointmentResult.error) {
+          logBookingTransactionStageFailure("appointment_insert_failed", appointmentResult.error, {
+            appointmentId: appointmentForPayment.id
+          });
           rethrowAppointmentPersistenceError(appointmentResult.error, result.appointment);
         }
+      logBookingTransactionStage("appointment_insert_succeeded", {
+        appointmentId: appointmentForPayment.id,
+        existingAppointment: Boolean(existingAppointment.data)
+      });
 
       try {
         if (bookingPaymentAmount > 0) {
@@ -2218,49 +2333,70 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
         }
       } catch (error) {
         await supabase.from("appointments").delete().eq("reference_code", appointmentForPayment.id);
+        logBookingTransactionStageFailure("payment_record_insert_failed", error, {
+          appointmentId: appointmentForPayment.id,
+          rollback: "appointment_deleted"
+        });
         if (error instanceof PaymentServiceError) {
           throw new LiveOperationValidationError(error.message, "invalid_booking_selection");
         }
         throw error;
       }
 
-      await syncAppointmentStatusHistory(supabase, appointmentForPayment, {
-        previousStatus: undefined,
-        actorProfileId: context.actorProfileId,
-        reason: "appointment_booked"
-      });
-      await syncAppointmentLineItems(supabase, appointmentForPayment);
+      await runBookingPostCommitStep("appointment_status_history_insert", () =>
+        syncAppointmentStatusHistory(supabase, appointmentForPayment, {
+          previousStatus: undefined,
+          actorProfileId: context.actorProfileId,
+          reason: "appointment_booked"
+        }),
+      { appointmentId: appointmentForPayment.id });
+      await runBookingPostCommitStep("appointment_line_items_sync", () =>
+        syncAppointmentLineItems(supabase, appointmentForPayment),
+      { appointmentId: appointmentForPayment.id });
       if (context.appliedPromotion && context.promotionDiscountTotal && appointmentForPayment.clientId) {
-        await createPromotionRedemptionForAppointment(supabase, {
-          promotionId: context.appliedPromotion.promotionId,
-          clientReference: appointmentForPayment.clientId,
-          appointmentReference: appointmentForPayment.id,
-          discountAmount: context.promotionDiscountTotal,
-          redeemedAt: appointmentForPayment.updatedAt
-        });
+        await runBookingPostCommitStep("promotion_redemption_insert", () =>
+          createPromotionRedemptionForAppointment(supabase, {
+            promotionId: context.appliedPromotion!.promotionId,
+            clientReference: appointmentForPayment.clientId,
+            appointmentReference: appointmentForPayment.id,
+            discountAmount: context.promotionDiscountTotal!,
+            redeemedAt: appointmentForPayment.updatedAt
+          }),
+        { appointmentId: appointmentForPayment.id });
       }
       if (input.pointsUserId && (input.pointsToRedeem ?? 0) > 0) {
-        await commitPointsRedemption({
-          userId: input.pointsUserId,
-          role: "client",
-          purpose: "booking_discount",
-          requestedPoints: input.pointsToRedeem ?? 0,
-          orderTotal: context.quoteBeforePoints.grandTotal,
-          sourceId: appointmentForPayment.id,
-          locationId: appointmentForPayment.locationId,
-          metadata: {
-            appointmentId: appointmentForPayment.id,
-            clientId: appointmentForPayment.clientId,
-            barberId: appointmentForPayment.barberId,
-            promotionId: context.appliedPromotion?.promotionId ?? null,
-            bookingSource: appointmentForPayment.bookingSource ?? null
-          }
-        });
+        await runBookingPostCommitStep("points_redemption_commit", () =>
+          commitPointsRedemption({
+            userId: input.pointsUserId!,
+            role: "client",
+            purpose: "booking_discount",
+            requestedPoints: input.pointsToRedeem ?? 0,
+            orderTotal: context.quoteBeforePoints.grandTotal,
+            sourceId: appointmentForPayment.id,
+            locationId: appointmentForPayment.locationId,
+            metadata: {
+              appointmentId: appointmentForPayment.id,
+              clientId: appointmentForPayment.clientId,
+              barberId: appointmentForPayment.barberId,
+              promotionId: context.appliedPromotion?.promotionId ?? null,
+              bookingSource: appointmentForPayment.bookingSource ?? null
+            }
+          }),
+        { appointmentId: appointmentForPayment.id });
       }
-      await insertNotificationRecords(supabase, appointmentForPayment, "booking");
-      await persistArtifactsForAppointment(supabase, snapshotForPayment, appointmentForPayment, {
-        activityType: "booking",
-        actorRole: input.actorRole ?? "client"
+      await runBookingPostCommitStep("booking_notifications_insert", () =>
+        insertNotificationRecords(supabase, appointmentForPayment, "booking"),
+      { appointmentId: appointmentForPayment.id });
+      await runBookingPostCommitStep("booking_artifacts_persist", () =>
+        persistArtifactsForAppointment(supabase, snapshotForPayment, appointmentForPayment, {
+          activityType: "booking",
+          actorRole: input.actorRole ?? "client"
+        }),
+      { appointmentId: appointmentForPayment.id });
+      logBookingTransactionStage("booking_response_returned", {
+        appointmentId: appointmentForPayment.id,
+        clientId: appointmentForPayment.clientId,
+        barberId: appointmentForPayment.barberId
       });
       return {
         appointment: appointmentForPayment,

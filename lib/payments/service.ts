@@ -1381,6 +1381,37 @@ function logBookingPaymentMethodResolution(
   });
 }
 
+function logBookingPaymentStage(
+  stage: string,
+  details: Record<string, unknown> = {}
+) {
+  console.info("[payments] booking_transaction_stage", {
+    reference: "booking_transaction_stage",
+    stage,
+    ...details
+  });
+}
+
+function logBookingPaymentStageFailure(
+  stage: string,
+  error: unknown,
+  details: Record<string, unknown> = {}
+) {
+  const candidate = error && typeof error === "object"
+    ? error as { code?: string | null; message?: string | null; details?: string | null; hint?: string | null; status?: number | null }
+    : null;
+  console.error("[payments] booking_transaction_stage_failed", {
+    reference: "booking_transaction_stage_failed",
+    stage,
+    errorCode: candidate?.code ?? null,
+    errorStatus: candidate?.status ?? null,
+    errorMessage: candidate?.message ?? (error instanceof Error ? error.message : String(error)),
+    errorDetails: candidate?.details ?? null,
+    errorHint: candidate?.hint ?? null,
+    ...details
+  });
+}
+
 function describeBookingPaymentMethodInput(value?: string | null) {
   const trimmed = value?.trim();
   if (!trimmed) {
@@ -1694,8 +1725,18 @@ export async function createCapturedStripePaymentRecord(
   const stripe = getStripeConnectClient();
   const createdAt = input.createdAt ?? new Date().toISOString();
 
+  let intent: Awaited<ReturnType<typeof stripe.paymentIntents.create>> | null = null;
   try {
-    const intent = await stripe.paymentIntents.create({
+    logBookingPaymentStage("payment_intent_create_started", {
+      appointmentId: input.appointmentId,
+      clientId: input.clientId,
+      barberId: input.barberId,
+      serviceId: input.serviceId ?? null,
+      amount: normalizedAmount,
+      providerPaymentMethodIdPresent: Boolean(paymentMethod.provider_payment_method_id?.trim()),
+      providerCustomerIdPresent: Boolean(paymentMethod.provider_customer_id?.trim())
+    });
+    intent = await stripe.paymentIntents.create({
       amount: Math.round(normalizedAmount * 100),
       currency: (input.currency ?? "usd").toLowerCase(),
       customer: paymentMethod.provider_customer_id ?? undefined,
@@ -1719,12 +1760,32 @@ export async function createCapturedStripePaymentRecord(
       }),
       description: input.description ?? undefined
     }, input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : undefined);
+    logBookingPaymentStage("payment_intent_create_succeeded", {
+      appointmentId: input.appointmentId,
+      clientId: input.clientId,
+      paymentIntentIdPresent: Boolean(intent.id),
+      status: intent.status
+    });
+  } catch (error) {
+    logBookingPaymentStageFailure("payment_intent_create_failed", error, {
+      appointmentId: input.appointmentId,
+      clientId: input.clientId
+    });
+    throw toStripePaymentServiceError(error, "Unable to collect the required Stripe card payment.");
+  }
 
-    if (intent.status !== "succeeded") {
-      throw new PaymentServiceError("Stripe did not confirm this payment successfully.", 409);
-    }
+  if (intent.status !== "succeeded") {
+    logBookingPaymentStageFailure("payment_intent_create_failed", new PaymentServiceError("Stripe did not confirm this payment successfully.", 409), {
+      appointmentId: input.appointmentId,
+      clientId: input.clientId,
+      paymentIntentIdPresent: Boolean(intent.id),
+      status: intent.status
+    });
+    throw new PaymentServiceError("Stripe did not confirm this payment successfully.", 409);
+  }
 
-    return createPaymentLedgerEntry(supabase, {
+  try {
+    return await createPaymentLedgerEntry(supabase, {
       appointmentId: input.appointmentId,
       clientId: input.clientId,
       shopId: input.shopId,
@@ -1746,7 +1807,46 @@ export async function createCapturedStripePaymentRecord(
       createdAt
     });
   } catch (error) {
-    throw toStripePaymentServiceError(error, "Unable to collect the required Stripe card payment.");
+    logBookingPaymentStageFailure("payment_record_insert_failed", error, {
+      appointmentId: input.appointmentId,
+      clientId: input.clientId,
+      paymentIntentIdPresent: Boolean(intent.id)
+    });
+    try {
+      logBookingPaymentStage("payment_intent_refund_started", {
+        appointmentId: input.appointmentId,
+        clientId: input.clientId,
+        paymentIntentIdPresent: Boolean(intent.id)
+      });
+      await stripe.refunds.create({
+        payment_intent: intent.id,
+        amount: Math.round(normalizedAmount * 100),
+        reason: "requested_by_customer",
+        metadata: normalizeStripeMetadata({
+          appointment_id: input.appointmentId,
+          client_id: input.clientId,
+          barber_id: input.barberId,
+          service_id: input.serviceId ?? null,
+          rollback_reason: "payment_ledger_insert_failed"
+        })
+      }, input.idempotencyKey ? { idempotencyKey: `refund:${input.idempotencyKey}` } : undefined);
+      logBookingPaymentStage("payment_intent_refund_succeeded", {
+        appointmentId: input.appointmentId,
+        clientId: input.clientId,
+        paymentIntentIdPresent: Boolean(intent.id)
+      });
+      throw new PaymentServiceError("Payment could not be finalized, so the charge was reversed. Please try again.", 500);
+    } catch (refundError) {
+      if (refundError instanceof PaymentServiceError) {
+        throw refundError;
+      }
+      logBookingPaymentStageFailure("payment_intent_refund_failed", refundError, {
+        appointmentId: input.appointmentId,
+        clientId: input.clientId,
+        paymentIntentIdPresent: Boolean(intent.id)
+      });
+      throw new PaymentServiceError("Payment could not be finalized. Please contact support if you see a card charge.", 500);
+    }
   }
 }
 
@@ -2441,6 +2541,15 @@ export async function createPaymentLedgerEntry(
 ) {
   const createdAt = input.createdAt ?? new Date().toISOString();
   const providerPaymentIntentId = input.providerPaymentIntentId ?? `${input.provider}_pay_${randomUUID()}`;
+  logBookingPaymentStage("payment_record_insert_started", {
+    appointmentId: input.appointmentId ?? null,
+    clientId: input.clientId ?? null,
+    barberId: input.barberId ?? null,
+    shopId: input.shopId ?? null,
+    provider: input.provider,
+    providerPaymentIntentIdPresent: Boolean(providerPaymentIntentId),
+    paymentMethodIdPresent: Boolean(input.paymentMethodId)
+  });
   const paymentInsert = await supabase
     .from("payments")
     .insert({
@@ -2466,14 +2575,45 @@ export async function createPaymentLedgerEntry(
     .single();
 
   if (paymentInsert.error) {
+    logBookingPaymentStageFailure("payment_record_insert_failed", paymentInsert.error, {
+      appointmentId: input.appointmentId ?? null,
+      clientId: input.clientId ?? null,
+      provider: input.provider
+    });
     throw new PaymentServiceError("Unable to write the payment ledger entry.", 500);
   }
 
   const paymentRow = paymentInsert.data as PaymentRow;
-  await syncPaymentRoutingRecord(supabase, paymentRow.id);
-  await recordPaymentStatusPlatformEvent(supabase, paymentRow, {
-    source: input.metadata?.source === "stripe_webhook" ? "webhook" : "api"
+  logBookingPaymentStage("payment_record_insert_succeeded", {
+    appointmentId: paymentRow.appointment_id,
+    clientId: paymentRow.client_id,
+    paymentId: paymentRow.id,
+    providerPaymentIntentIdPresent: Boolean(paymentRow.provider_payment_intent_id)
   });
+
+  try {
+    await syncPaymentRoutingRecord(supabase, paymentRow.id);
+    logBookingPaymentStage("payment_routing_sync_succeeded", {
+      appointmentId: paymentRow.appointment_id,
+      paymentId: paymentRow.id
+    });
+  } catch (error) {
+    logBookingPaymentStageFailure("payment_routing_sync_failed", error, {
+      appointmentId: paymentRow.appointment_id,
+      paymentId: paymentRow.id
+    });
+  }
+
+  try {
+    await recordPaymentStatusPlatformEvent(supabase, paymentRow, {
+      source: input.metadata?.source === "stripe_webhook" ? "webhook" : "api"
+    });
+  } catch (error) {
+    logBookingPaymentStageFailure("payment_status_platform_event_failed", error, {
+      appointmentId: paymentRow.appointment_id,
+      paymentId: paymentRow.id
+    });
+  }
   return mapPaymentRow(paymentRow);
 }
 
