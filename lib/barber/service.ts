@@ -421,14 +421,23 @@ async function resolveBarberContext(user: UserAccount, supabase: SupabaseClient)
     .eq("profile_id", barber.profile_id);
 
   if (membershipResult.error && !isMissingRelationError(membershipResult.error)) {
-    throw new BarberToolsServiceError("Unable to resolve barber shop assignments.", 500);
+    console.warn("[barber] staff location assignments unavailable; using freelance calendar fallback", {
+      profileId: barber.profile_id,
+      barberReference: barber.reference_code ?? barberReference,
+      code: membershipResult.error.code ?? null,
+      message: membershipResult.error.message ?? null,
+      details: membershipResult.error.details ?? null,
+      hint: membershipResult.error.hint ?? null
+    });
   }
 
-  const membershipLocationIds = ((membershipResult.data ?? []) as Array<{ location_id: string }>)
+  const membershipLocationIds = membershipResult.error
+    ? []
+    : ((membershipResult.data ?? []) as Array<{ location_id: string }>)
     .map((row) => row.location_id)
     .filter(Boolean);
   const uuidIds = [...new Set([...referenceIds.filter(isUuidLike), ...membershipLocationIds])];
-  const referenceCodes = [...new Set(referenceIds.filter((value) => !isUuidLike(value)))];
+  const referenceCodes = [...new Set(referenceIds.filter((value) => !isUuidLike(value) && !isIndependentBarberLocationReference(value)))];
   const [uuidLocationsResult, referenceLocationsResult] = await Promise.all([
     uuidIds.length
       ? supabase
@@ -444,8 +453,17 @@ async function resolveBarberContext(user: UserAccount, supabase: SupabaseClient)
       : Promise.resolve({ data: [], error: null })
   ]);
 
-  if (uuidLocationsResult.error || referenceLocationsResult.error) {
+  if ((uuidLocationsResult.error || referenceLocationsResult.error) && membershipLocationIds.length) {
     throw new BarberToolsServiceError("Unable to resolve barber shop assignments.", 500);
+  }
+
+  if (uuidLocationsResult.error || referenceLocationsResult.error) {
+    console.warn("[barber] shop location assignments unavailable; using freelance calendar fallback", {
+      profileId: barber.profile_id,
+      barberReference: barber.reference_code ?? barberReference,
+      uuidErrorCode: uuidLocationsResult.error?.code ?? null,
+      referenceErrorCode: referenceLocationsResult.error?.code ?? null
+    });
   }
 
   const locationsById = new Map<string, LocationRow>();

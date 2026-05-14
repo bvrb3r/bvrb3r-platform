@@ -1349,56 +1349,168 @@ async function loadAppointmentOrThrow(supabase: SupabaseClient, appointmentId: s
   return result.data as AppointmentRow;
 }
 
+const BOOKING_PAYMENT_METHOD_ERROR_MESSAGE = "Payment method could not be used. Please choose another card.";
+
+function logBookingPaymentMethodResolution(
+  stage: string,
+  details: Record<string, unknown>
+) {
+  console.log("[payments] booking_payment_method_resolution", {
+    reference: "booking_payment_method_resolution",
+    stage,
+    ...details
+  });
+}
+
+async function readStripePaymentMethodForCharge(
+  supabase: SupabaseClient,
+  clientId: string,
+  column: "id" | "provider_payment_method_id",
+  value: string
+) {
+  const trimmedValue = value.trim();
+  if (!trimmedValue) {
+    return null;
+  }
+
+  let result = await supabase
+    .from("payment_methods")
+    .select(PAYMENT_METHOD_SELECT)
+    .eq(column, trimmedValue)
+    .eq("client_id", clientId)
+    .eq("provider", "stripe")
+    .maybeSingle();
+
+  if (result.error && isPaymentSchemaMissing(result.error)) {
+    result = await supabase
+      .from("payment_methods")
+      .select(PAYMENT_METHOD_BASE_SELECT)
+      .eq(column, trimmedValue)
+      .eq("client_id", clientId)
+      .eq("provider", "stripe")
+      .maybeSingle();
+  }
+
+  if (result.error) {
+    logBookingPaymentMethodResolution("query_failed", {
+      clientId,
+      lookupColumn: column,
+      paymentMethodIdPresent: true,
+      code: result.error.code ?? null,
+      message: result.error.message ?? null,
+      details: result.error.details ?? null,
+      hint: result.error.hint ?? null
+    });
+    throw new PaymentServiceError(BOOKING_PAYMENT_METHOD_ERROR_MESSAGE, 500);
+  }
+
+  return result.data
+    ? normalizePaymentMethodRow(result.data as Partial<PaymentMethodRow> & Record<string, unknown>)
+    : null;
+}
+
+async function readSelectedStripePaymentMethodForCharge(
+  supabase: SupabaseClient,
+  clientId: string,
+  paymentMethodId: string
+) {
+  const byId = await readStripePaymentMethodForCharge(supabase, clientId, "id", paymentMethodId);
+  if (byId) {
+    return byId;
+  }
+
+  const byProviderReference = paymentMethodId.startsWith("pm_")
+    ? await readStripePaymentMethodForCharge(supabase, clientId, "provider_payment_method_id", paymentMethodId)
+    : null;
+  if (byProviderReference) {
+    return byProviderReference;
+  }
+
+  await readClientPaymentMethodsForCharge(supabase, clientId, "selected_repair_failed");
+
+  const repairedById = await readStripePaymentMethodForCharge(supabase, clientId, "id", paymentMethodId);
+  if (repairedById) {
+    return repairedById;
+  }
+
+  return paymentMethodId.startsWith("pm_")
+    ? readStripePaymentMethodForCharge(supabase, clientId, "provider_payment_method_id", paymentMethodId)
+    : null;
+}
+
+async function readClientPaymentMethodsForCharge(
+  supabase: SupabaseClient,
+  clientId: string,
+  failureStage: string
+) {
+  try {
+    return await readClientPaymentMethodsByClientId(clientId, supabase);
+  } catch (error) {
+    logBookingPaymentMethodResolution(failureStage, {
+      clientId,
+      errorMessage: error instanceof Error ? error.message : "Unknown payment method sync failure"
+    });
+    throw new PaymentServiceError(BOOKING_PAYMENT_METHOD_ERROR_MESSAGE, 500);
+  }
+}
+
+async function readDefaultStripePaymentMethodForCharge(
+  supabase: SupabaseClient,
+  clientId: string
+) {
+  const methods = await readClientPaymentMethodsForCharge(supabase, clientId, "default_repair_failed");
+  const defaultMethod = methods.find((method) => method.isDefault)
+    ?? (methods.length === 1 ? methods[0] : null);
+
+  if (!defaultMethod) {
+    return null;
+  }
+
+  return readStripePaymentMethodForCharge(supabase, clientId, "id", defaultMethod.id);
+}
+
 async function loadStripePaymentMethodOrThrow(
   supabase: SupabaseClient,
   clientId: string,
   paymentMethodId?: string | null
 ) {
-  const methodResult = paymentMethodId
-    ? await supabase
-      .from("payment_methods")
-      .select(PAYMENT_METHOD_SELECT)
-      .eq("id", paymentMethodId)
-      .eq("client_id", clientId)
-      .eq("provider", "stripe")
-      .maybeSingle()
-    : await supabase
-      .from("payment_methods")
-      .select(PAYMENT_METHOD_SELECT)
-      .eq("client_id", clientId)
-      .eq("provider", "stripe")
-      .eq("is_default", true)
-      .maybeSingle();
+  const requestedPaymentMethodId = paymentMethodId?.trim() || null;
+  logBookingPaymentMethodResolution("resolve_started", {
+    clientId,
+    selectedPaymentMethodIdPresent: Boolean(requestedPaymentMethodId),
+    selectedPaymentMethodLooksProviderRef: Boolean(requestedPaymentMethodId?.startsWith("pm_"))
+  });
 
-  if (methodResult.error) {
-    throw new PaymentServiceError("Unable to resolve the Stripe payment method for this charge.", 500);
-  }
-
-  let method = (methodResult.data as PaymentMethodRow | null) ?? null;
-  if (!method && !paymentMethodId) {
-    await readClientPaymentMethodsByClientId(clientId, supabase);
-    const repairedDefaultResult = await supabase
-      .from("payment_methods")
-      .select(PAYMENT_METHOD_SELECT)
-      .eq("client_id", clientId)
-      .eq("provider", "stripe")
-      .eq("is_default", true)
-      .maybeSingle();
-
-    if (repairedDefaultResult.error) {
-      throw new PaymentServiceError("Unable to resolve the Stripe payment method for this charge.", 500);
-    }
-
-    method = (repairedDefaultResult.data as PaymentMethodRow | null) ?? null;
-  }
+  const method = requestedPaymentMethodId
+    ? await readSelectedStripePaymentMethodForCharge(supabase, clientId, requestedPaymentMethodId)
+    : await readDefaultStripePaymentMethodForCharge(supabase, clientId);
 
   if (!method) {
-    throw new PaymentServiceError("A saved Stripe payment method is required before this payment can be completed.", 400);
+    logBookingPaymentMethodResolution("not_found", {
+      clientId,
+      selectedPaymentMethodIdPresent: Boolean(requestedPaymentMethodId)
+    });
+    throw new PaymentServiceError(BOOKING_PAYMENT_METHOD_ERROR_MESSAGE, 400);
   }
 
-  if (!method.provider_customer_id?.trim()) {
-    throw new PaymentServiceError("The saved Stripe payment method is missing its customer reference.", 409);
+  if (!method.provider_payment_method_id?.trim() || !method.provider_customer_id?.trim()) {
+    logBookingPaymentMethodResolution("provider_refs_missing", {
+      clientId,
+      resolvedPaymentMethodId: method.id,
+      providerPaymentMethodIdPresent: Boolean(method.provider_payment_method_id?.trim()),
+      providerCustomerIdPresent: Boolean(method.provider_customer_id?.trim()),
+      belongsToClient: method.client_id === clientId
+    });
+    throw new PaymentServiceError(BOOKING_PAYMENT_METHOD_ERROR_MESSAGE, 409);
   }
+
+  logBookingPaymentMethodResolution("resolve_success", {
+    clientId,
+    resolvedPaymentMethodId: method.id,
+    providerPaymentMethodIdPresent: true,
+    providerCustomerIdPresent: true,
+    belongsToClient: method.client_id === clientId
+  });
 
   return method;
 }
