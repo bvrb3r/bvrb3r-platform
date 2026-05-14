@@ -284,6 +284,33 @@ describe("bookings route", () => {
     expect(JSON.stringify(body)).not.toContain("Business verification must be approved for this shop lane.");
   });
 
+  it("does not expose independent barber pseudo-location ids in client booking errors", async () => {
+    createBookingMock.mockRejectedValue(
+      new LiveOperationValidationError(
+        "Shop independent-barber-43b3cda2 was not found.",
+        "invalid_resource_reference"
+      )
+    );
+
+    const response = await postBooking(new NextRequest("https://bvrb3r.demo/api/bookings", {
+      method: "POST",
+      body: JSON.stringify({
+        locationId: "independent-barber-43b3cda2",
+        barberId: "barber-phillip",
+        serviceId: "srv-test-cut",
+        addOnIds: [],
+        appointmentTime: "2026-03-23T14:00:00-04:00",
+        clientName: "Jordan Ellis",
+        clientPhone: "(813) 555-0190"
+      })
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.error).toBe("This provider is not available for booking yet.");
+    expect(JSON.stringify(body)).not.toContain("independent-barber-43b3cda2");
+  });
+
   it("preserves live conflict responses for schedule collisions", async () => {
     createBookingMock.mockRejectedValue(
       new LiveOperationConflictError("The selected time is no longer available with this barber.", appointmentFixture, "schedule_conflict")

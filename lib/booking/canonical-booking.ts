@@ -222,7 +222,15 @@ function stableUuid(seed: string) {
   return `${base.slice(0, 8).join("")}-${base.slice(8, 12).join("")}-${base.slice(12, 16).join("")}-${base.slice(16, 20).join("")}-${base.slice(20, 32).join("")}`;
 }
 
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
 export function canonicalLocationUuid(reference: string) {
+  if (isUuid(reference)) {
+    return reference;
+  }
+
   return LOCATION_ID_MAP[reference] ?? stableUuid(`location:${reference}`);
 }
 

@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  isIndependentBookingLocationReference,
   resolveOperationalPaymentRecordAttributes,
   rethrowAppointmentPersistenceError,
   shouldRequireShopBusinessVerificationForBooking
 } from "@/lib/operations/live-provider";
+import { canonicalLocationUuid } from "@/lib/booking/canonical-booking";
 import { LiveOperationConflictError, bookAppointmentInSnapshot, createInitialLiveOperationsSnapshot } from "@/lib/operations/live-state";
 
 describe("live operations payment stage mapping", () => {
@@ -46,6 +48,7 @@ describe("live operations payment stage mapping", () => {
   });
 
   it("does not require shop business verification for barber-direct independent bookings", () => {
+    expect(isIndependentBookingLocationReference("independent-barber-phillip")).toBe(true);
     expect(shouldRequireShopBusinessVerificationForBooking({
       serviceOwnerType: "barber",
       serviceBarberReference: "barber-phillip",
@@ -77,5 +80,11 @@ describe("live operations payment stage mapping", () => {
       locationReference: "shop-unapproved",
       hasStaffMembership: true
     })).toBe(true);
+  });
+
+  it("preserves real location UUIDs instead of hashing them as pseudo-shop references", () => {
+    const locationId = "12345678-1234-5123-9234-123456789abc";
+
+    expect(canonicalLocationUuid(locationId)).toBe(locationId);
   });
 });

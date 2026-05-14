@@ -210,7 +210,7 @@ function assertBookableBarberLane(barberId: string, locationId: string, trustSta
   }
 }
 
-function isIndependentBookingLocationReference(locationReference?: string | null) {
+export function isIndependentBookingLocationReference(locationReference?: string | null) {
   return Boolean(locationReference?.startsWith("independent-"));
 }
 
@@ -226,6 +226,165 @@ export function shouldRequireShopBusinessVerificationForBooking(input: {
 
   return input.serviceOwnerType === "shop"
     && input.hasStaffMembership === true;
+}
+
+function isBarberDirectService(service: CanonicalServiceRow, barber: CanonicalBarberRow) {
+  return service.service_owner_type === "barber"
+    || matchesBarberReference(service.barber_reference, barber);
+}
+
+async function readBookingLocationByReference(
+  supabase: SupabaseClient,
+  locationReference: string | null | undefined
+) {
+  if (!locationReference) {
+    return null;
+  }
+
+  const idCandidates = [
+    isUuid(locationReference) ? locationReference : null,
+    canonicalLocationUuid(locationReference)
+  ].filter((value, index, values): value is string => Boolean(value) && values.indexOf(value) === index);
+
+  if (idCandidates.length) {
+    const byId = await supabase
+      .from("locations")
+      .select("id, reference_code, name, tax_rate")
+      .in("id", idCandidates)
+      .limit(1)
+      .maybeSingle();
+
+    if (byId.error) {
+      throw byId.error;
+    }
+    if (byId.data) {
+      return byId.data as CanonicalLocationRow;
+    }
+  }
+
+  const byReference = await supabase
+    .from("locations")
+    .select("id, reference_code, name, tax_rate")
+    .eq("reference_code", locationReference)
+    .maybeSingle();
+
+  if (byReference.error) {
+    throw byReference.error;
+  }
+
+  return (byReference.data ?? null) as CanonicalLocationRow | null;
+}
+
+function parseIndependentLocationLabel(serviceAreaLabel?: string | null, displayName?: string | null) {
+  const parts = (serviceAreaLabel ?? "")
+    .split(/[\/\n,]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const stateMatch = (serviceAreaLabel ?? "").match(/\b([A-Z]{2})\b/);
+
+  return {
+    name: parts[0] ?? (displayName ? `${displayName} booking location` : "Independent barber"),
+    neighborhood: parts[1] ?? parts[0] ?? "Independent service location",
+    city: parts.find((part) => /tampa/i.test(part)) ?? parts.at(-1) ?? "Service area",
+    state: stateMatch?.[1] ?? "NA"
+  };
+}
+
+async function readIndependentBarberProfileLocation(
+  supabase: SupabaseClient,
+  barberReference: string
+) {
+  const profileResult = await supabase
+    .from("barber_profiles")
+    .select("display_name, service_area_label")
+    .eq("barber_reference", barberReference)
+    .maybeSingle();
+
+  if (profileResult.error) {
+    console.warn("[live-provider] independent barber location profile lookup failed", {
+      barberReference,
+      message: profileResult.error.message
+    });
+    return parseIndependentLocationLabel();
+  }
+
+  const row = (profileResult.data ?? null) as { display_name?: string | null; service_area_label?: string | null } | null;
+  return parseIndependentLocationLabel(row?.service_area_label, row?.display_name);
+}
+
+async function ensureIndependentBookingLocation(
+  supabase: SupabaseClient,
+  input: {
+    locationReference: string;
+    service: CanonicalServiceRow;
+    barber: CanonicalBarberRow;
+  }
+) {
+  const barberReference = input.barber.reference_code ?? input.barber.id;
+  const locationId = isUuid(input.service.location_id)
+    ? input.service.location_id
+    : canonicalLocationUuid(input.locationReference);
+  const profileLocation = await readIndependentBarberProfileLocation(supabase, barberReference);
+  const payload = {
+    id: locationId,
+    reference_code: input.locationReference,
+    name: profileLocation.name,
+    neighborhood: profileLocation.neighborhood,
+    city: profileLocation.city,
+    state: profileLocation.state,
+    phone: null,
+    tax_rate: 0
+  };
+
+  const upsertResult = await supabase
+    .from("locations")
+    .upsert(payload, { onConflict: "id" });
+
+  if (upsertResult.error) {
+    throw upsertResult.error;
+  }
+
+  return readBookingLocationByReference(supabase, locationId);
+}
+
+async function resolveBookingLocationRow(
+  supabase: SupabaseClient,
+  input: BookingMutationInput,
+  service: CanonicalServiceRow,
+  barber: CanonicalBarberRow
+) {
+  const candidateReferences = [
+    input.locationId,
+    service.shop_reference,
+    service.location_id
+  ].filter((value, index, values): value is string => Boolean(value) && values.indexOf(value) === index);
+
+  for (const candidate of candidateReferences) {
+    const location = await readBookingLocationByReference(supabase, candidate);
+    if (location && isCanonicalServiceBookableForContext(service, { location, barber })) {
+      return location;
+    }
+  }
+
+  const locationReference = service.shop_reference ?? input.locationId;
+  if (isBarberDirectService(service, barber) || isIndependentBookingLocationReference(locationReference)) {
+    const repaired = await ensureIndependentBookingLocation(supabase, {
+      locationReference,
+      service,
+      barber
+    });
+    if (repaired && isCanonicalServiceBookableForContext(service, { location: repaired, barber })) {
+      return repaired;
+    }
+  }
+
+  return null;
+}
+
+function bookingLocationReferenceForPersistence(location: CanonicalLocationRow) {
+  return location.reference_code && canonicalLocationUuid(location.reference_code) === location.id
+    ? location.reference_code
+    : location.id;
 }
 
 function assertShopLaneIfRequired(input: {
@@ -374,7 +533,9 @@ function isCanonicalServiceBookableForContext(
     return false;
   }
 
-  if (row.location_id !== params.location.id) {
+  const locationMatches = row.location_id === params.location.id
+    || Boolean(row.shop_reference && matchesLocationReference(row.shop_reference, params.location));
+  if (!locationMatches) {
     return false;
   }
 
@@ -391,6 +552,10 @@ function isCanonicalServiceBookableForContext(
   }
 
   return true;
+}
+
+function isUuid(value: string | null | undefined) {
+  return Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value));
 }
 
 async function syncAppointmentLineItems(supabase: SupabaseClient, appointment: LiveAppointmentRecord) {
@@ -1244,24 +1409,16 @@ async function resolveCanonicalBookingContext(
   snapshot: LiveOperationsSnapshot,
   input: BookingMutationInput
 ) {
-  const locationId = canonicalLocationUuid(input.locationId);
   const barberId = canonicalBarberUuid(input.barberId);
   const clientId = input.clientId ? canonicalClientUuid(input.clientId) : null;
   const serviceRows = await loadCanonicalServicesByReference(supabase, [input.serviceId, ...input.addOnIds]);
-  const [locationResult, barberResult, clientResult] = await Promise.all([
-    supabase.from("locations").select("id, reference_code, name, tax_rate").eq("id", locationId).maybeSingle(),
+  const [barberResult, clientResult] = await Promise.all([
     supabase.from("barbers").select("id, reference_code, profile_id").eq("id", barberId).maybeSingle(),
     clientId
       ? supabase.from("clients").select("id, reference_code, profile_id").eq("id", clientId).maybeSingle()
       : Promise.resolve({ data: null, error: null })
   ]);
 
-  if (locationResult.error) {
-    throw locationResult.error;
-  }
-  if (!locationResult.data) {
-    throw new LiveOperationValidationError(`Shop ${input.locationId} was not found.`, "invalid_resource_reference");
-  }
   if (barberResult.error) {
     throw barberResult.error;
   }
@@ -1275,11 +1432,31 @@ async function resolveCanonicalBookingContext(
     throw new LiveOperationValidationError(`Client ${input.clientId} was not found.`, "invalid_resource_reference");
   }
 
-  const locationRow = locationResult.data as CanonicalLocationRow;
   const barberRow = barberResult.data as CanonicalBarberRow;
-
   const primaryService = serviceRows.find((row) => matchesReference(input.serviceId, row));
-  if (!primaryService || !isCanonicalServiceBookableForContext(primaryService, { location: locationRow, barber: barberRow })) {
+  if (!primaryService) {
+    throw new LiveOperationValidationError(`Service ${input.serviceId} is not available for booking.`);
+  }
+
+  const locationRow = await resolveBookingLocationRow(supabase, input, primaryService, barberRow);
+  if (!locationRow) {
+    throw new LiveOperationValidationError(
+      "This provider is not available for booking yet.",
+      primaryService.service_owner_type === "shop" ? "verification_blocked" : "invalid_resource_reference",
+      primaryService.service_owner_type === "shop"
+        ? {
+            gate: "shop_activation",
+            barberId: input.barberId,
+            locationId: input.locationId,
+            codes: ["shop_lane_location_required"],
+            reasons: ["This provider is not available for booking yet."],
+            degraded: false
+          }
+        : undefined
+    );
+  }
+
+  if (!isCanonicalServiceBookableForContext(primaryService, { location: locationRow, barber: barberRow })) {
     throw new LiveOperationValidationError(`Service ${input.serviceId} is not available for booking.`);
   }
 
@@ -1303,7 +1480,7 @@ async function resolveCanonicalBookingContext(
   }
 
   const membership = (membershipResult.data as StaffMembershipRow | null) ?? null;
-  const locationReference = locationRow.reference_code ?? input.locationId;
+  const locationReference = bookingLocationReferenceForPersistence(locationRow);
   const requiresShopLane = shouldRequireShopBusinessVerificationForBooking({
     serviceOwnerType: primaryService.service_owner_type,
     serviceBarberReference: primaryService.barber_reference,
@@ -1485,6 +1662,7 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
       );
       const result = bookAppointmentInSnapshot(fullSnapshot, {
         ...input,
+        locationId: context.locationReference,
         clientId: input.clientId ?? context.client?.reference_code ?? context.matchedClient?.id,
         confirmationCode,
         membershipId: context.membership?.id,
