@@ -36,7 +36,12 @@ export async function GET() {
   try {
     const user = await getSessionUser();
     const methods = await listClientPaymentMethods(user);
-    return NextResponse.json({ methods });
+    const defaultPaymentMethod = methods.find((method) => method.isDefault)
+      ?? (methods.length === 1 ? methods[0] : null);
+    return NextResponse.json({
+      methods,
+      defaultPaymentMethodId: defaultPaymentMethod?.id ?? null
+    });
   } catch (error) {
     return toErrorResponse(error);
   }
@@ -79,7 +84,11 @@ export async function POST(request: Request) {
       nicknamePresent: Boolean(method.nickname),
       clientPreferencesUpdated
     });
-    return NextResponse.json({ method, clientPreferencesUpdated }, { status: 200 });
+    return NextResponse.json({
+      method,
+      defaultPaymentMethodId: method.isDefault ? method.id : null,
+      clientPreferencesUpdated
+    }, { status: 200 });
   } catch (error) {
     console.error("[payments] payment_method_save_failed", {
       reference: "payment_method_save_failed",

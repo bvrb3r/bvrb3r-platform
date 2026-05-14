@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CreditCard, ShieldCheck, Trash2 } from "lucide-react";
+import { CreditCard, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
@@ -16,6 +16,8 @@ import {
 } from "@/components/payments/stripe-card-on-file-form";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  getResolvedDefaultPaymentMethod,
+  normalizeClientPaymentMethodDefaults,
   useAddPaymentMethodMutation,
   useCreateSavedPaymentMethodSetupMutation,
   usePaymentMethodsQuery,
@@ -114,6 +116,7 @@ export function ClientPaymentMethodsPanel({
   const [cardComplete, setCardComplete] = useState(false);
   const [setupIntent, setSetupIntent] = useState<PaymentSetupIntentView | null>(null);
   const [inlineSavedPaymentMethod, setInlineSavedPaymentMethod] = useState<ClientPaymentMethodView | null>(null);
+  const [localDefaultPaymentMethodId, setLocalDefaultPaymentMethodId] = useState<string | null>(null);
   const [pendingStripePaymentMethodId, setPendingStripePaymentMethodId] = useState<string | null>(null);
   const [nicknameDraft, setNicknameDraft] = useState("");
   const [renamingMethod, setRenamingMethod] = useState<ClientPaymentMethodView | null>(null);
@@ -137,10 +140,17 @@ export function ClientPaymentMethodsPanel({
       methodsById.set(inlineSavedPaymentMethod.id, inlineSavedPaymentMethod);
     }
 
-    return Array.from(methodsById.values());
-  }, [inlineSavedPaymentMethod, methodsQuery.data?.methods]);
+    return normalizeClientPaymentMethodDefaults(
+      Array.from(methodsById.values()),
+      localDefaultPaymentMethodId ?? methodsQuery.data?.defaultPaymentMethodId
+    );
+  }, [inlineSavedPaymentMethod, localDefaultPaymentMethodId, methodsQuery.data?.defaultPaymentMethodId, methodsQuery.data?.methods]);
   const defaultMethod = useMemo(
-    () => methods.find((method) => method.isDefault) ?? methods[0] ?? null,
+    () => getResolvedDefaultPaymentMethod(methods, localDefaultPaymentMethodId ?? methodsQuery.data?.defaultPaymentMethodId),
+    [localDefaultPaymentMethodId, methods, methodsQuery.data?.defaultPaymentMethodId]
+  );
+  const sortedMethods = useMemo(
+    () => [...methods].sort((left, right) => Number(right.isDefault) - Number(left.isDefault)),
     [methods]
   );
   const showAddForm = isSignedInClient && (mode === "add" || !methods.length);
@@ -413,10 +423,11 @@ export function ClientPaymentMethodsPanel({
         statusCode: response.savePaymentStatusCode ?? 200,
         lastError: null,
         savedMethodId: response.method.id,
-        defaultPaymentMethodId: response.method.isDefault ? response.method.id : null,
+        defaultPaymentMethodId: response.defaultPaymentMethodId ?? (response.method.isDefault ? response.method.id : null),
         clientPreferencesUpdated: Boolean(response.clientPreferencesUpdated)
       });
       setInlineSavedPaymentMethod(response.method);
+      setLocalDefaultPaymentMethodId(response.defaultPaymentMethodId ?? (response.method.isDefault ? response.method.id : null));
       setMode("saved");
       resetConfirmedCardState();
       setStatusMessage({
@@ -440,10 +451,11 @@ export function ClientPaymentMethodsPanel({
             statusCode: response.savePaymentStatusCode ?? 200,
             lastError: "nickname_save_failed_card_saved",
             savedMethodId: response.method.id,
-            defaultPaymentMethodId: response.method.isDefault ? response.method.id : null,
+            defaultPaymentMethodId: response.defaultPaymentMethodId ?? (response.method.isDefault ? response.method.id : null),
             clientPreferencesUpdated: Boolean(response.clientPreferencesUpdated)
           });
           setInlineSavedPaymentMethod(response.method);
+          setLocalDefaultPaymentMethodId(response.defaultPaymentMethodId ?? (response.method.isDefault ? response.method.id : null));
           setMode("saved");
           resetConfirmedCardState();
           setStatusMessage({
@@ -513,6 +525,8 @@ export function ClientPaymentMethodsPanel({
     setStatusMessage(null);
     try {
       const result = await setDefaultMutation.mutateAsync(paymentMethodId);
+      setInlineSavedPaymentMethod(result.method);
+      setLocalDefaultPaymentMethodId(result.defaultPaymentMethodId ?? result.method.id);
       setStatusMessage({
         tone: "success",
         message: `${result.method.label} is now the default card for bookings.`
@@ -530,6 +544,7 @@ export function ClientPaymentMethodsPanel({
     try {
       await removeMethodMutation.mutateAsync(paymentMethodId);
       setInlineSavedPaymentMethod((current) => current?.id === paymentMethodId ? null : current);
+      setLocalDefaultPaymentMethodId((current) => current === paymentMethodId ? null : current);
       setStatusMessage({
         tone: "success",
         message: "Card removed from your wallet."
@@ -566,6 +581,7 @@ export function ClientPaymentMethodsPanel({
         <WalletPaymentDebugPanel
           loadStatusCode={methodsQuery.data?.loadMethodsStatusCode ?? (methodsQuery.error as PaymentApiError | null)?.status ?? null}
           loadLastError={methodsQuery.error instanceof Error ? methodsQuery.error.message : null}
+          loadedDefaultPaymentMethodId={localDefaultPaymentMethodId ?? methodsQuery.data?.defaultPaymentMethodId ?? defaultMethod?.id ?? null}
           saveDebug={saveDebug}
         />
       ) : null}
@@ -592,31 +608,46 @@ export function ClientPaymentMethodsPanel({
             </div>
             <Badge className="gap-1">
               <ShieldCheck className="h-3.5 w-3.5" />
-              Saved
+              Default
             </Badge>
           </div>
 
-          {methods.length > 1 ? (
-            <div className="mt-4 grid gap-2">
-              {methods.filter((method) => method.id !== defaultMethod.id).map((method) => (
+          {sortedMethods.length ? (
+            <div className="mt-5">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-white">Saved cards</p>
+                <p className="text-xs text-white/45">{sortedMethods.length} saved</p>
+              </div>
+              <div className="grid gap-2">
+                {sortedMethods.map((method) => (
                 <div key={method.id} className="flex flex-wrap items-center justify-between gap-2 rounded-[18px] border border-white/8 bg-black/18 px-3 py-3">
                   <div>
-                    <p className="text-sm font-medium text-white">{getPaymentMethodTitle(method)}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-medium text-white">{getPaymentMethodTitle(method)}</p>
+                      {method.isDefault ? (
+                        <Badge className="gap-1">
+                          <ShieldCheck className="h-3.5 w-3.5" />
+                          Default
+                        </Badge>
+                      ) : null}
+                    </div>
                     {method.nickname ? (
                       <p className="mt-1 text-xs text-white/58">{getPaymentMethodCardLine(method)}</p>
                     ) : null}
                     <p className="mt-1 text-xs text-white/45">{getExpirationLabel(method)}</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      className="h-9 px-3"
-                      disabled={!isSignedInClient || setDefaultMutation.isPending}
-                      onClick={() => void handleSetDefault(method.id)}
-                    >
-                      Make default
-                    </Button>
+                    {!method.isDefault ? (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="h-9 px-3"
+                        disabled={!isSignedInClient || setDefaultMutation.isPending}
+                        onClick={() => void handleSetDefault(method.id)}
+                      >
+                        Make default
+                      </Button>
+                    ) : null}
                     <Button
                       type="button"
                       variant="secondary"
@@ -628,6 +659,11 @@ export function ClientPaymentMethodsPanel({
                     >
                       Rename
                     </Button>
+                    {method.isDefault ? (
+                      <Button type="button" variant="secondary" className="h-9 px-3" onClick={startAddCard}>
+                        Replace
+                      </Button>
+                    ) : null}
                     <Button
                       type="button"
                       variant="secondary"
@@ -640,35 +676,9 @@ export function ClientPaymentMethodsPanel({
                   </div>
                 </div>
               ))}
+              </div>
             </div>
           ) : null}
-
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              className="h-10 px-4"
-              onClick={() => {
-                setRenamingMethod(defaultMethod);
-                setNicknameDraft(defaultMethod.nickname ?? "");
-              }}
-            >
-              Rename
-            </Button>
-            <Button type="button" variant="secondary" className="h-10 px-4" onClick={startAddCard}>
-              Replace
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              className="h-10 px-4"
-              disabled={removeMethodMutation.isPending}
-              onClick={() => void handleRemove(defaultMethod.id)}
-            >
-              <Trash2 className="mr-2 h-4 w-4" />
-              Remove
-            </Button>
-          </div>
         </div>
       ) : null}
 
@@ -849,15 +859,18 @@ function PaymentSaveDebugPanel({ debug }: { debug: PaymentMethodSaveDebug }) {
 function WalletPaymentDebugPanel({
   loadStatusCode,
   loadLastError,
+  loadedDefaultPaymentMethodId,
   saveDebug
 }: {
   loadStatusCode: number | null;
   loadLastError: string | null;
+  loadedDefaultPaymentMethodId: string | null;
   saveDebug: PaymentMethodSaveDebug;
 }) {
   const rows: Array<[string, string]> = [
     ["loadMethodsStatusCode", loadStatusCode == null ? "none" : String(loadStatusCode)],
     ["loadMethodsLastError", loadLastError ?? "none"],
+    ["loadedDefaultPaymentMethodId", loadedDefaultPaymentMethodId ?? "none"],
     ["savePaymentRequestStarted", String(saveDebug.requestStarted)],
     ["savePaymentStatusCode", saveDebug.statusCode == null ? "none" : String(saveDebug.statusCode)],
     ["savePaymentLastError", saveDebug.lastError ?? "none"],

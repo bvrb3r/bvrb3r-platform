@@ -19,7 +19,7 @@ export async function POST(
     const user = await getSessionUser();
     const { id } = await params;
     const method = await setDefaultClientPaymentMethod(user, id);
-    return NextResponse.json({ method });
+    return NextResponse.json({ method, defaultPaymentMethodId: method.id });
   } catch (error) {
     return toErrorResponse(error);
   }

@@ -105,6 +105,13 @@ type BillingCustomerRow = {
   default_payment_method_id: string | null;
 };
 
+type ClientPaymentPreferenceRow = {
+  client_reference: string;
+  provider_customer_ref?: string | null;
+  default_payment_method_ref?: string | null;
+  default_payment_method_id?: string | null;
+};
+
 type ClientPaymentContext = {
   clientId: string;
   clientReference: string | null;
@@ -795,7 +802,8 @@ async function syncClientPreferencePaymentDefaults(
 
   await ensureClientPaymentPreferenceRow(supabase, context);
 
-  const defaultMethod = paymentMethods.find((method) => method.is_default) ?? paymentMethods[0] ?? null;
+  const defaultMethod = paymentMethods.find((method) => method.is_default)
+    ?? (paymentMethods.length === 1 ? paymentMethods[0] : null);
   let updateResult = await supabase
     .from("client_preferences")
     .update({
@@ -831,6 +839,96 @@ async function syncClientPreferencePaymentDefaults(
   if (updateResult.error && !isPaymentSchemaMissing(updateResult.error)) {
     throw new PaymentServiceError("Unable to sync client payment preference defaults.", 500);
   }
+}
+
+async function readClientPaymentPreferenceDefault(
+  supabase: SupabaseClient,
+  context: ClientPaymentContext
+) {
+  const clientReference = context.clientReference?.trim();
+  if (!clientReference) {
+    return null;
+  }
+
+  const result = await supabase
+    .from("client_preferences")
+    .select("client_reference, provider_customer_ref, default_payment_method_ref, default_payment_method_id")
+    .eq("client_reference", clientReference)
+    .maybeSingle();
+
+  if (result.error && isPaymentPreferencePayloadSchemaMismatch(result.error)) {
+    return null;
+  }
+
+  if (result.error) {
+    throw new PaymentServiceError("Unable to resolve client payment preference defaults.", 500);
+  }
+
+  return (result.data as ClientPaymentPreferenceRow | null) ?? null;
+}
+
+async function repairCanonicalPaymentMethodDefaultState(
+  supabase: SupabaseClient,
+  context: ClientPaymentContext,
+  paymentMethods: PaymentMethodRow[]
+) {
+  if (!paymentMethods.length) {
+    await syncClientPreferencePaymentDefaults(supabase, context, []);
+    return paymentMethods;
+  }
+
+  const preference = await readClientPaymentPreferenceDefault(supabase, context);
+  const defaultRows = paymentMethods.filter((method) => method.is_default);
+  const preferenceDefaultRow = paymentMethods.find((method) =>
+    (preference?.default_payment_method_id && method.id === preference.default_payment_method_id)
+    || (preference?.default_payment_method_ref && method.provider_payment_method_id === preference.default_payment_method_ref)
+  ) ?? null;
+  const targetDefault = defaultRows[0]
+    ?? preferenceDefaultRow
+    ?? (paymentMethods.length === 1 ? paymentMethods[0] : null);
+
+  if (!targetDefault) {
+    await syncClientPreferencePaymentDefaults(supabase, context, paymentMethods.map((method) => ({
+      ...method,
+      is_default: false
+    })));
+    return paymentMethods.map((method) => ({
+      ...method,
+      is_default: false
+    }));
+  }
+
+  const hasMismatch = paymentMethods.some((method) => method.is_default !== (method.id === targetDefault.id))
+    || defaultRows.length !== 1;
+
+  if (!hasMismatch) {
+    await syncClientPreferencePaymentDefaults(supabase, context, paymentMethods);
+    return paymentMethods;
+  }
+
+  const clearDefaults = await supabase
+    .from("payment_methods")
+    .update({ is_default: false, updated_at: new Date().toISOString() })
+    .eq("client_id", context.clientId)
+    .eq("is_default", true);
+
+  if (clearDefaults.error) {
+    throw new PaymentServiceError("Unable to repair wallet default payment method state.", 500);
+  }
+
+  const setDefault = await supabase
+    .from("payment_methods")
+    .update({ is_default: true, updated_at: new Date().toISOString() })
+    .eq("id", targetDefault.id)
+    .eq("client_id", context.clientId);
+
+  if (setDefault.error) {
+    throw new PaymentServiceError("Unable to repair wallet default payment method state.", 500);
+  }
+
+  const repairedRows = await readCanonicalPaymentMethodRows(supabase, context.clientId, context.clientReference ?? context.clientId);
+  await syncClientPreferencePaymentDefaults(supabase, context, repairedRows);
+  return repairedRows;
 }
 
 async function syncClientPreferenceProviderCustomer(
@@ -889,8 +987,7 @@ async function syncLegacyPaymentMethodsIntoCanonical(
 ) {
   const legacyRows = await readLegacySavedPaymentMethodsForProfile(supabase, context.profileId);
   if (!legacyRows.length) {
-    await syncClientPreferencePaymentDefaults(supabase, context, canonicalRows);
-    return canonicalRows;
+    return repairCanonicalPaymentMethodDefaultState(supabase, context, canonicalRows);
   }
 
   const billingCustomers = await readBillingCustomersForLegacyMethods(supabase, legacyRows);
@@ -1277,7 +1374,24 @@ async function loadStripePaymentMethodOrThrow(
     throw new PaymentServiceError("Unable to resolve the Stripe payment method for this charge.", 500);
   }
 
-  const method = (methodResult.data as PaymentMethodRow | null) ?? null;
+  let method = (methodResult.data as PaymentMethodRow | null) ?? null;
+  if (!method && !paymentMethodId) {
+    await readClientPaymentMethodsByClientId(clientId, supabase);
+    const repairedDefaultResult = await supabase
+      .from("payment_methods")
+      .select(PAYMENT_METHOD_SELECT)
+      .eq("client_id", clientId)
+      .eq("provider", "stripe")
+      .eq("is_default", true)
+      .maybeSingle();
+
+    if (repairedDefaultResult.error) {
+      throw new PaymentServiceError("Unable to resolve the Stripe payment method for this charge.", 500);
+    }
+
+    method = (repairedDefaultResult.data as PaymentMethodRow | null) ?? null;
+  }
+
   if (!method) {
     throw new PaymentServiceError("A saved Stripe payment method is required before this payment can be completed.", 400);
   }
@@ -1669,8 +1783,9 @@ export async function readClientPaymentMethodsByClientId(
   const resolvedRows = options.syncLegacyWallet === false
     ? canonicalRows
     : await syncLegacyPaymentMethodsIntoCanonical(supabase, context, canonicalRows);
+  const defaultNormalizedRows = await repairCanonicalPaymentMethodDefaultState(supabase, context, resolvedRows);
 
-  return resolvedRows.map(mapPaymentMethodRow);
+  return defaultNormalizedRows.map(mapPaymentMethodRow);
 }
 
 export async function readAppointmentPaymentSummary(
@@ -2388,23 +2503,31 @@ export async function setDefaultClientPaymentMethod(user: UserAccount, paymentMe
     throw new PaymentServiceError("Unable to set the default payment method.", 500);
   }
 
-  await supabase
-    .from("saved_payment_methods")
-    .update({ is_default: false })
-    .eq("profile_id", actor.profile.id)
-    .neq("provider_payment_method_id", paymentMethod.provider_payment_method_id);
+  try {
+    await supabase
+      .from("saved_payment_methods")
+      .update({ is_default: false })
+      .eq("profile_id", actor.profile.id)
+      .neq("provider_payment_method_id", paymentMethod.provider_payment_method_id);
 
-  const legacyDefaultResult = await supabase
-    .from("saved_payment_methods")
-    .update({ is_default: true })
-    .eq("profile_id", actor.profile.id)
-    .eq("provider_payment_method_id", paymentMethod.provider_payment_method_id);
+    const legacyDefaultResult = await supabase
+      .from("saved_payment_methods")
+      .update({ is_default: true })
+      .eq("profile_id", actor.profile.id)
+      .eq("provider_payment_method_id", paymentMethod.provider_payment_method_id);
 
-  if (legacyDefaultResult.error) {
-    throw new PaymentServiceError("Unable to sync the default saved payment method bridge.", 500);
+    if (legacyDefaultResult.error && !isPaymentSchemaMissing(legacyDefaultResult.error)) {
+      throw legacyDefaultResult.error;
+    }
+
+    await syncLegacyBillingDefault(supabase, actor, paymentMethod.provider, paymentMethod.provider_payment_method_id);
+  } catch (error) {
+    logPaymentMethodSaveFailure("legacy_payment_bridge_sync_failed", error, {
+      clientId: actor.clientId,
+      profileId: actor.profile.id,
+      providerPaymentMethodIdPresent: true
+    });
   }
-
-  await syncLegacyBillingDefault(supabase, actor, paymentMethod.provider, paymentMethod.provider_payment_method_id);
 
   const paymentContext = clientPaymentContextFromActor(actor);
   if (paymentContext) {
@@ -2591,29 +2714,7 @@ export async function createAppointmentPayment(user: UserAccount, input: {
 
   let paymentMethod: PaymentMethodRow | null = null;
   if (actor.role === "client") {
-    const requestedMethodId = input.paymentMethodId;
-    const methodQuery = requestedMethodId
-      ? supabase
-        .from("payment_methods")
-        .select(PAYMENT_METHOD_SELECT)
-        .eq("id", requestedMethodId)
-        .maybeSingle()
-      : supabase
-        .from("payment_methods")
-        .select(PAYMENT_METHOD_SELECT)
-        .eq("client_id", actor.clientId ?? "")
-        .eq("is_default", true)
-        .maybeSingle();
-
-    const methodResult = await methodQuery;
-    if (methodResult.error) {
-      throw new PaymentServiceError("Unable to resolve the saved payment method for this appointment.", 500);
-    }
-
-    paymentMethod = (methodResult.data as PaymentMethodRow | null) ?? null;
-    if (!paymentMethod) {
-      throw new PaymentServiceError("Save a default payment method before creating an appointment payment.", 400);
-    }
+    paymentMethod = await loadStripePaymentMethodOrThrow(supabase, actor.clientId ?? "", input.paymentMethodId);
     assertClientOwnsPaymentMethod(actor, paymentMethod);
   }
 

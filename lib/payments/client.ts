@@ -66,14 +66,50 @@ export type AddPaymentMethodPayload = {
 
 export type AddPaymentMethodResult = {
   method: ClientPaymentMethodView;
+  defaultPaymentMethodId?: string | null;
   savePaymentStatusCode?: number;
   clientPreferencesUpdated?: boolean;
 };
 
 export type PaymentMethodsResponse = {
   methods: ClientPaymentMethodView[];
+  defaultPaymentMethodId?: string | null;
   loadMethodsStatusCode?: number;
 };
+
+export function getResolvedDefaultPaymentMethod(
+  methods: ClientPaymentMethodView[],
+  defaultPaymentMethodId?: string | null
+) {
+  if (!methods.length) {
+    return null;
+  }
+
+  if (defaultPaymentMethodId) {
+    const matchedDefault = methods.find((method) => method.id === defaultPaymentMethodId);
+    if (matchedDefault) {
+      return matchedDefault;
+    }
+  }
+
+  return methods.find((method) => method.isDefault)
+    ?? (methods.length === 1 ? methods[0] : null);
+}
+
+export function normalizeClientPaymentMethodDefaults(
+  methods: ClientPaymentMethodView[],
+  defaultPaymentMethodId?: string | null
+) {
+  const defaultMethod = getResolvedDefaultPaymentMethod(methods, defaultPaymentMethodId);
+  if (!defaultMethod) {
+    return methods.map((method) => ({ ...method, isDefault: false }));
+  }
+
+  return methods.map((method) => ({
+    ...method,
+    isDefault: method.id === defaultMethod.id
+  }));
+}
 
 async function requestJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
   const response = await fetch(input, {
@@ -201,6 +237,7 @@ async function addSavedPaymentMethod(payload: AddPaymentMethodPayload): Promise<
 
   return {
     method: (body as { method: ClientPaymentMethodView }).method,
+    defaultPaymentMethodId: typeof body.defaultPaymentMethodId === "string" ? body.defaultPaymentMethodId : null,
     savePaymentStatusCode: response.status,
     clientPreferencesUpdated: Boolean((body as { clientPreferencesUpdated?: boolean }).clientPreferencesUpdated)
   };
@@ -232,6 +269,7 @@ async function loadSavedPaymentMethods(): Promise<PaymentMethodsResponse> {
 
   return {
     methods: Array.isArray(body.methods) ? (body.methods as ClientPaymentMethodView[]) : [],
+    defaultPaymentMethodId: typeof body.defaultPaymentMethodId === "string" ? body.defaultPaymentMethodId : null,
     loadMethodsStatusCode: response.status
   };
 }
@@ -243,7 +281,11 @@ export function usePaymentMethodsQuery(
   return useQuery({
     queryKey: ["payments", "methods"],
     queryFn: loadSavedPaymentMethods,
-    initialData: initialData ? { ...initialData, loadMethodsStatusCode: 200 } : undefined,
+    initialData: initialData ? {
+      ...initialData,
+      defaultPaymentMethodId: getResolvedDefaultPaymentMethod(initialData.methods)?.id ?? null,
+      loadMethodsStatusCode: 200
+    } : undefined,
     enabled
   });
 }
@@ -268,7 +310,7 @@ export function useSetDefaultPaymentMethodMutation() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (paymentMethodId: string) =>
-      requestJson<{ method: ClientPaymentMethodView }>(`/api/payments/methods/${paymentMethodId}/default`, {
+      requestJson<{ method: ClientPaymentMethodView; defaultPaymentMethodId?: string | null }>(`/api/payments/methods/${paymentMethodId}/default`, {
         method: "POST"
       }),
     onSuccess: async () => {

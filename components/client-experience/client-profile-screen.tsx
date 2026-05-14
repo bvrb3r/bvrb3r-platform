@@ -33,6 +33,7 @@ import { useClientMembershipQuery } from "@/lib/booking/client";
 import type { ClientProfilePayload } from "@/lib/booking/platform-service";
 import { useCreateReferralInviteMutation, useClientReferralSummary } from "@/lib/engagement/client";
 import { getClientFacingBarberName } from "@/lib/marketplace/client-facing";
+import { getResolvedDefaultPaymentMethod, type ClientPaymentMethodView } from "@/lib/payments/client";
 import { usePointsBalanceQuery, usePointsHistoryQuery } from "@/lib/points/client";
 import { useMutateProfileMediaMutation, useProfileMediaWorkspaceQuery } from "@/lib/profile/client";
 import { uploadMediaAsset } from "@/lib/storage/media";
@@ -85,6 +86,29 @@ function validateProfilePhoto(file: File | null) {
   }
 
   return null;
+}
+
+function getPaymentMethodTitle(method: ClientPaymentMethodView | null) {
+  if (!method) {
+    return "No default payment method";
+  }
+
+  if (method.nickname?.trim()) {
+    return method.nickname.trim();
+  }
+
+  return method.label;
+}
+
+function getPaymentMethodDetail(method: ClientPaymentMethodView | null) {
+  if (!method) {
+    return "Add a payment method to keep booking and rebooking fast.";
+  }
+
+  const month = method.expMonth ? String(method.expMonth).padStart(2, "0") : null;
+  const year = method.expYear ? String(method.expYear).slice(-2) : null;
+  const expiry = month && year ? `Exp ${month}/${year}` : null;
+  return [method.nickname ? method.label : null, expiry, "Default for bookings"].filter(Boolean).join(" · ");
 }
 
 function formatOccurredAt(iso?: string | null) {
@@ -176,7 +200,7 @@ export function ClientProfileScreen({
     : "";
   const preferredShops = payload.preferredShops;
   const paymentMethods = payload.paymentMethods;
-  const defaultPaymentMethod = paymentMethods.find((method) => method.isDefault) ?? null;
+  const defaultPaymentMethod = getResolvedDefaultPaymentMethod(paymentMethods);
   const clientName = client?.fullName ?? (isSignedInClient ? "Client" : "Client preview");
   const clientEmail = client?.email?.trim() || authEmail?.trim() || "No email on file yet";
   const clientPhone = client?.phone?.trim() || authPhone?.trim() || "";
@@ -497,7 +521,7 @@ export function ClientProfileScreen({
                 <p className="text-2xl font-semibold text-white" data-display="true">{clientName}</p>
                 <div className="mt-4 flex flex-wrap gap-2">
                   <span className="rounded-full border border-white/10 bg-black/18 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-white/76">
-                    {defaultPaymentMethod?.label ?? "No default payment method"}
+                    {getPaymentMethodTitle(defaultPaymentMethod)}
                   </span>
                   <span className="rounded-full border border-white/10 bg-black/18 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-white/76">
                     {paymentMethods.length} saved payment method{paymentMethods.length === 1 ? "" : "s"}
@@ -551,9 +575,9 @@ export function ClientProfileScreen({
             </div>
             <div className="rounded-[24px] border border-white/8 bg-black/18 p-4">
               <p className="surface-label">Default payment</p>
-              <p className="mt-3 text-lg font-semibold text-white">{defaultPaymentMethod?.label ?? "No default payment method"}</p>
+              <p className="mt-3 text-lg font-semibold text-white">{getPaymentMethodTitle(defaultPaymentMethod)}</p>
               <p className="mt-2 text-sm text-white/58">
-                Manage saved cards in Wallet when booking requires payment confirmation.
+                {getPaymentMethodDetail(defaultPaymentMethod)}
               </p>
               <div className="mt-4">
                 <Link
@@ -679,11 +703,9 @@ export function ClientProfileScreen({
               <CreditCard className="h-4 w-4 text-[#baff69]" />
               Default payment method
             </div>
-            <p className="mt-4 text-lg font-semibold text-white">{defaultPaymentMethod?.label ?? "No default payment method"}</p>
+            <p className="mt-4 text-lg font-semibold text-white">{getPaymentMethodTitle(defaultPaymentMethod)}</p>
             <p className="mt-2 text-sm text-white/58">
-              {defaultPaymentMethod
-                ? "This method is used when the canonical booking flow requests payment."
-                : "Add a payment method to keep booking and rebooking fast."}
+              {getPaymentMethodDetail(defaultPaymentMethod)}
             </p>
           </div>
           <ClientPaymentMethodsPanel initialMethods={paymentMethods} isSignedInClient={isSignedInClient} />

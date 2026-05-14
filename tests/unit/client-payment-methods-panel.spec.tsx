@@ -47,6 +47,19 @@ const {
 }));
 
 vi.mock("@/lib/payments/client", () => ({
+  getResolvedDefaultPaymentMethod: (methods: Array<{ id: string; isDefault: boolean }>, defaultPaymentMethodId?: string | null) =>
+    (defaultPaymentMethodId ? methods.find((method) => method.id === defaultPaymentMethodId) : null)
+    ?? methods.find((method) => method.isDefault)
+    ?? (methods.length === 1 ? methods[0] : null),
+  normalizeClientPaymentMethodDefaults: (methods: Array<{ id: string; isDefault: boolean }>, defaultPaymentMethodId?: string | null) => {
+    const defaultMethod = (defaultPaymentMethodId ? methods.find((method) => method.id === defaultPaymentMethodId) : null)
+      ?? methods.find((method) => method.isDefault)
+      ?? (methods.length === 1 ? methods[0] : null);
+    return methods.map((method) => ({
+      ...method,
+      isDefault: defaultMethod ? method.id === defaultMethod.id : false
+    }));
+  },
   usePaymentMethodsQuery: usePaymentMethodsQueryMock,
   useAddPaymentMethodMutation: useAddPaymentMethodMutationMock,
   useCreateSavedPaymentMethodSetupMutation: useCreateSavedPaymentMethodSetupMutationMock,
@@ -463,8 +476,8 @@ describe("client payment methods panel", () => {
     expect(payload).not.toHaveProperty("last4");
     expect(payload).not.toHaveProperty("expMonth");
     expect(payload).not.toHaveProperty("expYear");
-    expect(await screen.findByText("Phil Stripe Card")).toBeInTheDocument();
-    expect(screen.getByText(/4242/)).toBeInTheDocument();
+    expect((await screen.findAllByText("Phil Stripe Card")).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/4242/).length).toBeGreaterThan(0);
   });
 
   it("defaults a blank card nickname to the card brand and last four", async () => {
@@ -628,14 +641,101 @@ describe("client payment methods panel", () => {
 
     render(<ClientPaymentMethodsPanel initialMethods={[]} isSignedInClient />);
 
-    expect(screen.getByText("Phil Stripe Card")).toBeInTheDocument();
-    expect(screen.getByText(/4242/)).toBeInTheDocument();
-    expect(screen.getByText("Default for bookings")).toBeInTheDocument();
+    expect(screen.getAllByText("Phil Stripe Card").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/4242/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Default for bookings").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Replace" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Remove/ })).toBeInTheDocument();
     expect(screen.queryByText(/cus_/)).not.toBeInTheDocument();
     expect(screen.queryByText(/pm_/)).not.toBeInTheDocument();
+  });
+
+  it("treats the only saved card as the wallet default when the server flag is missing", () => {
+    usePaymentMethodsQueryMock.mockReturnValue({
+      data: {
+        methods: [{
+          id: "pm-wallet",
+          provider: "stripe",
+          brand: "Visa",
+          last4: "4242",
+          expMonth: 12,
+          expYear: 2034,
+          nickname: "phil stripe card",
+          isDefault: false,
+          createdAt: "2026-05-11T12:00:00.000Z",
+          label: "Visa ending in 4242"
+        }],
+        defaultPaymentMethodId: null
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(<ClientPaymentMethodsPanel initialMethods={[]} isSignedInClient />);
+
+    expect(screen.getAllByText("phil stripe card").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Default for bookings").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Default").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "Make default" })).not.toBeInTheDocument();
+  });
+
+  it("shows Make default only for non-default saved cards", () => {
+    const setDefaultMock = vi.fn().mockResolvedValue({
+      method: {
+        id: "pm-business",
+        provider: "stripe",
+        brand: "Mastercard",
+        last4: "4444",
+        expMonth: 11,
+        expYear: 2030,
+        nickname: "Business Card",
+        isDefault: true,
+        createdAt: "2026-05-12T12:00:00.000Z",
+        label: "Mastercard ending in 4444"
+      },
+      defaultPaymentMethodId: "pm-business"
+    });
+    useSetDefaultPaymentMethodMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: setDefaultMock
+    });
+    usePaymentMethodsQueryMock.mockReturnValue({
+      data: {
+        methods: [{
+          id: "pm-wallet",
+          provider: "stripe",
+          brand: "Visa",
+          last4: "4242",
+          expMonth: 12,
+          expYear: 2034,
+          nickname: "phil stripe card",
+          isDefault: true,
+          createdAt: "2026-05-11T12:00:00.000Z",
+          label: "Visa ending in 4242"
+        }, {
+          id: "pm-business",
+          provider: "stripe",
+          brand: "Mastercard",
+          last4: "4444",
+          expMonth: 11,
+          expYear: 2030,
+          nickname: "Business Card",
+          isDefault: false,
+          createdAt: "2026-05-12T12:00:00.000Z",
+          label: "Mastercard ending in 4444"
+        }],
+        defaultPaymentMethodId: "pm-wallet"
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(<ClientPaymentMethodsPanel initialMethods={[]} isSignedInClient />);
+
+    expect(screen.getAllByText("phil stripe card").length).toBeGreaterThan(0);
+    expect(screen.getByText("Business Card")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Make default" })).toBeInTheDocument();
   });
 });
 

@@ -29,6 +29,8 @@ import {
 } from "@/lib/booking/client";
 import { applyMembershipPricingAdjustmentToQuote, buildMembershipPricingAdjustment } from "@/lib/monetization/membership";
 import {
+  getResolvedDefaultPaymentMethod,
+  normalizeClientPaymentMethodDefaults,
   usePaymentMethodsQuery,
   type ClientPaymentMethodView
 } from "@/lib/payments/client";
@@ -487,11 +489,14 @@ export function BookingForm() {
       methodsById.set(inlineSavedPaymentMethod.id, inlineSavedPaymentMethod);
     }
 
-    return Array.from(methodsById.values());
-  }, [inlineSavedPaymentMethod, paymentMethodsQuery.data?.methods]);
+    return normalizeClientPaymentMethodDefaults(
+      Array.from(methodsById.values()),
+      paymentMethodsQuery.data?.defaultPaymentMethodId
+    );
+  }, [inlineSavedPaymentMethod, paymentMethodsQuery.data?.defaultPaymentMethodId, paymentMethodsQuery.data?.methods]);
   const defaultPaymentMethod = useMemo(
-    () => paymentMethods.find((method) => method.isDefault) ?? paymentMethods[0] ?? null,
-    [paymentMethods]
+    () => getResolvedDefaultPaymentMethod(paymentMethods, paymentMethodsQuery.data?.defaultPaymentMethodId),
+    [paymentMethods, paymentMethodsQuery.data?.defaultPaymentMethodId]
   );
   const selectedPaymentMethod = useMemo(
     () => paymentMethods.find((method) => method.id === selectedPaymentMethodId) ?? defaultPaymentMethod,

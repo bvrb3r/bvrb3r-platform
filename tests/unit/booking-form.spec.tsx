@@ -93,6 +93,19 @@ vi.mock("@/lib/promotions/client", () => ({
 }));
 
 vi.mock("@/lib/payments/client", () => ({
+  getResolvedDefaultPaymentMethod: (methods: Array<{ id: string; isDefault: boolean }>, defaultPaymentMethodId?: string | null) =>
+    (defaultPaymentMethodId ? methods.find((method) => method.id === defaultPaymentMethodId) : null)
+    ?? methods.find((method) => method.isDefault)
+    ?? (methods.length === 1 ? methods[0] : null),
+  normalizeClientPaymentMethodDefaults: (methods: Array<{ id: string; isDefault: boolean }>, defaultPaymentMethodId?: string | null) => {
+    const defaultMethod = (defaultPaymentMethodId ? methods.find((method) => method.id === defaultPaymentMethodId) : null)
+      ?? methods.find((method) => method.isDefault)
+      ?? (methods.length === 1 ? methods[0] : null);
+    return methods.map((method) => ({
+      ...method,
+      isDefault: defaultMethod ? method.id === defaultMethod.id : false
+    }));
+  },
   usePaymentMethodsQuery: usePaymentMethodsQueryMock,
   useAddPaymentMethodMutation: useAddPaymentMethodMutationMock,
   useCreateSavedPaymentMethodSetupMutation: useCreateSavedPaymentMethodSetupMutationMock,
@@ -416,6 +429,37 @@ describe("booking form", () => {
     expect(screen.getByText(/4242/)).toBeInTheDocument();
     expect(screen.getByText("Exp 12/29")).toBeInTheDocument();
     expect(screen.queryByText("Add a payment method before booking.")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Book Appointment" })).toBeEnabled();
+  });
+
+  it("auto-selects the only saved card during booking even if default metadata is missing", async () => {
+    usePaymentMethodsQueryMock.mockReturnValue({
+      data: {
+        methods: [
+          {
+            id: "pm-only",
+            provider: "stripe",
+            brand: "Visa",
+            last4: "4242",
+            expMonth: 12,
+            expYear: 2034,
+            nickname: "phil stripe card",
+            isDefault: false,
+            createdAt: "2026-04-01T00:00:00.000Z",
+            label: "Visa ending in 4242"
+          }
+        ],
+        defaultPaymentMethodId: null
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(<BookingForm />);
+    await advanceToReview();
+
+    expect(screen.getByText("phil stripe card")).toBeInTheDocument();
+    expect(screen.getByText("Default for bookings")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Book Appointment" })).toBeEnabled();
   });
 

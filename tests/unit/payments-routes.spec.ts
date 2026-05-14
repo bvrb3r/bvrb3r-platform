@@ -119,6 +119,7 @@ describe("phase 9 payment routes", () => {
 
     expect(response.status).toBe(200);
     expect(body.methods[0].id).toBe("pm-1");
+    expect(body.defaultPaymentMethodId).toBe("pm-1");
   });
 
   it("creates setup intents after repairing the client payment profile", async () => {
@@ -192,6 +193,7 @@ describe("phase 9 payment routes", () => {
 
     expect(response.status).toBe(200);
     expect(body.method.label).toContain("4242");
+    expect(body.defaultPaymentMethodId).toBe("pm-1");
     expect(addClientPaymentMethodMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       nickname: "Phil Stripe Card"
     }));
@@ -248,6 +250,7 @@ describe("phase 9 payment routes", () => {
 
     expect(response.status).toBe(200);
     expect(body.method.isDefault).toBe(true);
+    expect(body.defaultPaymentMethodId).toBe("pm-2");
   });
 
   it("removes a saved payment method", async () => {

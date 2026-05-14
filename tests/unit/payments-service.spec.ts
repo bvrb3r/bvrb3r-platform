@@ -277,6 +277,99 @@ describe("payment methods service", () => {
     expect(resolver.writes.filter((write) => write.table === "payment_methods" && write.type === "insert")).toHaveLength(0);
   });
 
+  it("repairs a single canonical saved card into the default payment method", async () => {
+    const resolver = createPaymentResolverSupabaseStub({
+      clients: [{
+        id: "11111111-1111-4111-8111-111111111111",
+        reference_code: "client-jordan",
+        profile_id: "profile-jordan"
+      }],
+      client_preferences: [{
+        client_reference: "client-jordan",
+        client_email: "jordan@example.com",
+        default_payment_method_id: null,
+        default_payment_method_ref: null
+      }],
+      payment_methods: [{
+        id: "pm-single",
+        client_id: "11111111-1111-4111-8111-111111111111",
+        provider: "stripe",
+        provider_customer_id: "cus_wallet",
+        provider_payment_method_id: "pm_wallet_4242",
+        brand: "Visa",
+        last4: "4242",
+        exp_month: 12,
+        exp_year: 2034,
+        is_default: false,
+        created_at: "2026-05-01T12:00:00.000Z"
+      }]
+    });
+
+    const methods = await readClientPaymentMethodsByClientId("client-jordan", resolver.supabase as never);
+
+    expect(methods).toMatchObject([{
+      id: "pm-single",
+      isDefault: true
+    }]);
+    expect(resolver.tables.payment_methods[0]).toMatchObject({
+      id: "pm-single",
+      is_default: true
+    });
+    expect(resolver.tables.client_preferences[0]).toMatchObject({
+      default_payment_method_id: "pm-single",
+      default_payment_method_ref: "pm_wallet_4242"
+    });
+  });
+
+  it("uses a valid client preference default when multiple canonical cards exist", async () => {
+    const resolver = createPaymentResolverSupabaseStub({
+      clients: [{
+        id: "11111111-1111-4111-8111-111111111111",
+        reference_code: "client-jordan",
+        profile_id: "profile-jordan"
+      }],
+      client_preferences: [{
+        client_reference: "client-jordan",
+        client_email: "jordan@example.com",
+        default_payment_method_id: "pm-business",
+        default_payment_method_ref: "pm_wallet_4444"
+      }],
+      payment_methods: [{
+        id: "pm-personal",
+        client_id: "11111111-1111-4111-8111-111111111111",
+        provider: "stripe",
+        provider_customer_id: "cus_wallet",
+        provider_payment_method_id: "pm_wallet_4242",
+        brand: "Visa",
+        last4: "4242",
+        exp_month: 12,
+        exp_year: 2034,
+        is_default: false,
+        created_at: "2026-05-01T12:00:00.000Z"
+      }, {
+        id: "pm-business",
+        client_id: "11111111-1111-4111-8111-111111111111",
+        provider: "stripe",
+        provider_customer_id: "cus_wallet",
+        provider_payment_method_id: "pm_wallet_4444",
+        brand: "Mastercard",
+        last4: "4444",
+        exp_month: 11,
+        exp_year: 2030,
+        is_default: false,
+        created_at: "2026-05-02T12:00:00.000Z"
+      }]
+    });
+
+    const methods = await readClientPaymentMethodsByClientId("client-jordan", resolver.supabase as never);
+
+    expect(methods.find((method) => method.id === "pm-business")?.isDefault).toBe(true);
+    expect(methods.find((method) => method.id === "pm-personal")?.isDefault).toBe(false);
+    expect(resolver.tables.payment_methods.find((row) => row.id === "pm-business")).toMatchObject({
+      is_default: true
+    });
+  });
+
   it("still throws for real payment method query failures", async () => {
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const resolver = createPaymentResolverSupabaseStub({
@@ -287,8 +380,8 @@ describe("payment methods service", () => {
       }],
       errors: {
         payment_methods: {
-          code: "42P01",
-          message: "relation \"payment_methods\" does not exist",
+          code: "42501",
+          message: "permission denied for table payment_methods",
           details: null
         }
       }

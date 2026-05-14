@@ -419,7 +419,7 @@ export function InlineBookingPaymentMethod({
         statusCode: response.savePaymentStatusCode ?? 200,
         lastError: null,
         savedMethodId: response.method.id,
-        defaultPaymentMethodId: response.method.isDefault ? response.method.id : null,
+        defaultPaymentMethodId: response.defaultPaymentMethodId ?? (response.method.isDefault ? response.method.id : null),
         clientPreferencesUpdated: Boolean(response.clientPreferencesUpdated)
       });
       onSavedPaymentMethod(response.method);
@@ -445,7 +445,7 @@ export function InlineBookingPaymentMethod({
             statusCode: response.savePaymentStatusCode ?? 200,
             lastError: "nickname_save_failed_card_saved",
             savedMethodId: response.method.id,
-            defaultPaymentMethodId: response.method.isDefault ? response.method.id : null,
+            defaultPaymentMethodId: response.defaultPaymentMethodId ?? (response.method.isDefault ? response.method.id : null),
             clientPreferencesUpdated: Boolean(response.clientPreferencesUpdated)
           });
           onSavedPaymentMethod(response.method);
@@ -516,7 +516,9 @@ export function InlineBookingPaymentMethod({
               {selectedPaymentMethod.nickname ? (
                 <p className="mt-1 text-sm text-white/68">{selectedCardLine}</p>
               ) : null}
-              <p className="mt-1 text-sm text-white/58">Charged when you book</p>
+              <p className="mt-1 text-sm text-white/58">
+                {selectedPaymentMethod.isDefault ? "Default for bookings" : "Charged when you book"}
+              </p>
               <p className="mt-1 text-xs text-white/42">{selectedExpiration}</p>
               <p className="mt-2 text-xs uppercase tracking-[0.18em] text-white/38">{currency(totalDue)} due today</p>
             </div>
