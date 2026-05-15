@@ -2,10 +2,11 @@ import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { BarberClientsWorkspace } from "@/components/operations/barber-clients-workspace";
 import { Card } from "@/components/ui/card";
 import { getAuthorizedUser } from "@/lib/auth/guards";
+import { isBarberAccountRole } from "@/lib/auth/roles";
 
 export default async function ClientsPage() {
   const user = await getAuthorizedUser(["owner", "manager", "front_desk", "commission_barber", "booth_rent_barber"]);
-  const isBarber = user.role === "commission_barber" || user.role === "booth_rent_barber";
+  const isBarber = isBarberAccountRole(user.role);
 
   if (isBarber) {
     return (

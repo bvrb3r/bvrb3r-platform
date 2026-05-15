@@ -1,15 +1,17 @@
 ﻿export type Role =
   | "platform_admin"
+  | "architect"
   | "owner"
   | "manager"
   | "front_desk"
+  | "barber"
   | "commission_barber"
   | "booth_rent_barber"
   | "client";
 
 export type CompensationModel = "commission" | "booth_rent";
 export type IdentityLane = "client" | "barber" | "shop_owner" | "platform_admin";
-export type BarberSubtype = "freelance" | "blueprint" | "commission";
+export type BarberSubtype = "freelance" | "booth_rent" | "commission";
 export type ApprovalStatus = "not_required" | "pending" | "under_review" | "approved" | "rejected";
 export type IdentityOnboardingState =
   | "awaiting_contact_verification"
@@ -177,7 +179,8 @@ export interface Barber {
   id: string;
   userId: string;
   name: string;
-  role: Extract<Role, "commission_barber" | "booth_rent_barber">;
+  role: Extract<Role, "barber" | "commission_barber" | "booth_rent_barber">;
+  barberSubtype?: BarberSubtype;
   appApprovalStatus?: ApprovalStatus;
   shopApprovalStatus?: ApprovalStatus;
   locationIds: string[];

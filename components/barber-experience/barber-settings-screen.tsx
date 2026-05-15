@@ -80,7 +80,7 @@ import type { BarberSubtype, UserAccount } from "@/types/domain";
 const subtypeOptions: Array<{ subtype: BarberSubtype; label: string; description: string }> = [
   { subtype: "freelance", label: "Freelance", description: "Independent chair posture with self-managed availability." },
   { subtype: "commission", label: "Commission", description: "Shop commission model with shared schedule and payout rails." },
-  { subtype: "blueprint", label: "Booth rent / Blueprint", description: "Booth-rent model with independent revenue posture." }
+  { subtype: "booth_rent", label: "Booth rent", description: "Booth-rent model with independent revenue posture." }
 ];
 
 const sectionIdMap = {

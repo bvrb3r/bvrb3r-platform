@@ -1,6 +1,7 @@
 import { BarberCheckoutScreen } from "@/components/barber-experience/barber-checkout-screen";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { getAuthorizedUser } from "@/lib/auth/guards";
+import type { Role } from "@/types/domain";
 
 export default async function BarberCheckoutPage({
   searchParams
@@ -19,7 +20,7 @@ export default async function BarberCheckoutPage({
     >
       <BarberCheckoutScreen
         barberName={user.name}
-        barberRole={user.role as "commission_barber" | "booth_rent_barber"}
+        barberRole={user.role as Extract<Role, "barber" | "commission_barber" | "booth_rent_barber">}
         initialSection={params.section}
       />
     </DashboardShell>

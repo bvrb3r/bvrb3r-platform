@@ -3,12 +3,15 @@ import { redirect } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { ServiceCatalogWorkspace } from "@/components/marketplace/service-catalog-workspace";
 import { getAuthorizedUser } from "@/lib/auth/guards";
+import { isBarberAccountRole } from "@/lib/auth/roles";
 import type { Role } from "@/types/domain";
 
-function getTitle(role: Extract<Role, "owner" | "commission_barber" | "booth_rent_barber">) {
+function getTitle(role: Extract<Role, "owner" | "barber" | "commission_barber" | "booth_rent_barber">, barberSubtype?: string) {
   switch (role) {
     case "owner":
       return "Service catalog and ownership controls";
+    case "barber":
+      return barberSubtype === "commission" ? "Shop-defined services at your chair" : "Own and refine your service menu";
     case "booth_rent_barber":
       return "Own and refine your service menu";
     case "commission_barber":
@@ -18,10 +21,14 @@ function getTitle(role: Extract<Role, "owner" | "commission_barber" | "booth_ren
   }
 }
 
-function getSubtitle(role: Extract<Role, "owner" | "commission_barber" | "booth_rent_barber">) {
+function getSubtitle(role: Extract<Role, "owner" | "barber" | "commission_barber" | "booth_rent_barber">, barberSubtype?: string) {
   switch (role) {
     case "owner":
       return "Control the commission service catalog, protect pricing authority, and review popularity signals that now feed marketplace discovery.";
+    case "barber":
+      return barberSubtype === "commission"
+        ? "See the shop-defined services you perform, understand how they rank, and stay clear on the owner-controlled pricing boundary."
+        : "Create and manage your own barber-owned services while keeping pricing, style tags, and public profile presentation aligned.";
     case "booth_rent_barber":
       return "Create and manage your own barber-owned services while keeping booth-rent pricing, style tags, and public profile presentation aligned.";
     case "commission_barber":
@@ -37,13 +44,13 @@ export default async function ServicesPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const user = await getAuthorizedUser(["owner", "commission_barber", "booth_rent_barber"]);
-  const marketplaceRole = user.role as Extract<Role, "owner" | "commission_barber" | "booth_rent_barber">;
+  const marketplaceRole = user.role as Extract<Role, "owner" | "barber" | "commission_barber" | "booth_rent_barber">;
 
   if (marketplaceRole === "owner") {
     redirect("/dashboard/owner/settings?section=services" as Route);
   }
 
-  if (marketplaceRole === "commission_barber" || marketplaceRole === "booth_rent_barber") {
+  if (isBarberAccountRole(marketplaceRole)) {
     const params = await searchParams;
     const query = new URLSearchParams({ section: "services" });
     Object.entries(params).forEach(([key, value]) => {
@@ -58,10 +65,10 @@ export default async function ServicesPage({
     <DashboardShell
       user={user}
       activeHref="/services"
-      title={getTitle(marketplaceRole)}
-      subtitle={getSubtitle(marketplaceRole)}
+      title={getTitle(marketplaceRole, user.barberSubtype)}
+      subtitle={getSubtitle(marketplaceRole, user.barberSubtype)}
     >
-      <ServiceCatalogWorkspace role={marketplaceRole} barberId={user.barberId} />
+      <ServiceCatalogWorkspace role={marketplaceRole} barberSubtype={user.barberSubtype} barberId={user.barberId} />
     </DashboardShell>
   );
 }

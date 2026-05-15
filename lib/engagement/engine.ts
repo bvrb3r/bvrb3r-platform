@@ -61,9 +61,11 @@ const EVENT_POINTS: Partial<Record<EngagementEventType, number>> = {
 
 const ALLOWED_EVENT_TYPES: Record<Role, readonly EngagementEventType[]> = {
   platform_admin: ["payout_released", "appointment_booked"],
+  architect: ["payout_released", "appointment_booked"],
   owner: ["payout_released", "appointment_booked"],
   manager: ["appointment_booked"],
   front_desk: ["appointment_booked", "waitlist_joined"],
+  barber: ["service_completed", "review_received", "profile_updated", "portfolio_updated", "booking_accepted", "payout_released"],
   commission_barber: ["service_completed", "review_received", "profile_updated", "portfolio_updated", "booking_accepted", "payout_released"],
   booth_rent_barber: ["service_completed", "review_received", "profile_updated", "portfolio_updated", "booking_accepted", "payout_released"],
   client: ["appointment_booked", "appointment_rebooked", "waitlist_joined", "barber_followed", "barber_reviewed", "reward_redeemed"]

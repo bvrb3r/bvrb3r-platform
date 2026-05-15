@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { Card } from "@/components/ui/card";
 import { getAuthorizedUser } from "@/lib/auth/guards";
+import { isBarberAccountRole } from "@/lib/auth/roles";
 
 export default async function AppointmentsPage({
   searchParams
@@ -10,7 +11,7 @@ export default async function AppointmentsPage({
   searchParams: Promise<{ view?: string; date?: string }>;
 }) {
   const user = await getAuthorizedUser(["owner", "manager", "front_desk", "commission_barber", "booth_rent_barber"]);
-  const isBarber = user.role === "commission_barber" || user.role === "booth_rent_barber";
+  const isBarber = isBarberAccountRole(user.role);
 
   if (isBarber) {
     const params = await searchParams;

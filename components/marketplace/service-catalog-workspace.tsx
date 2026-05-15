@@ -15,6 +15,7 @@ import type { Role } from "@/types/domain";
 
 interface ServiceCatalogWorkspaceProps {
   role: Role;
+  barberSubtype?: "freelance" | "booth_rent" | "commission";
   barberId?: string;
 }
 
@@ -52,7 +53,7 @@ function MetricSkeleton() {
   );
 }
 
-export function ServiceCatalogWorkspace({ role }: ServiceCatalogWorkspaceProps) {
+export function ServiceCatalogWorkspace({ role, barberSubtype }: ServiceCatalogWorkspaceProps) {
   const catalogQuery = useMarketplaceServiceCatalog();
   const createMutation = useCreateMarketplaceServiceMutation();
   const updateMutation = useUpdateMarketplaceServiceMutation();
@@ -70,6 +71,9 @@ export function ServiceCatalogWorkspace({ role }: ServiceCatalogWorkspaceProps) 
   });
 
   const isInitialLoading = catalogQuery.isLoading && !catalogQuery.data;
+  const canOwnBarberServices = role === "barber"
+    ? barberSubtype !== "commission"
+    : role === "booth_rent_barber";
 
   function updateDraft(serviceId: string, field: keyof ServiceDraft, value: string) {
     setDrafts((current) => ({
@@ -135,11 +139,11 @@ export function ServiceCatalogWorkspace({ role }: ServiceCatalogWorkspaceProps) 
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="surface-label">Service ownership engine</p>
-              <h3 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">{role === "owner" ? "Control the commission catalog" : role === "booth_rent_barber" ? "Own your chair services" : "Shop-defined services only"}</h3>
+              <h3 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">{role === "owner" ? "Control the commission catalog" : canOwnBarberServices ? "Own your chair services" : "Shop-defined services only"}</h3>
               <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">
                 {role === "owner"
                   ? "Owner accounts control shop-defined commission services, pricing, and marketplace presentation across the business."
-                  : role === "booth_rent_barber"
+                  : canOwnBarberServices
                     ? "Booth-rent barbers can create and edit their own self-owned services without touching the shop-controlled commission catalog."
                     : "Commission barbers perform the shop catalog, but service names, pricing, duration, and structure remain owner-controlled."}
               </p>
@@ -147,7 +151,7 @@ export function ServiceCatalogWorkspace({ role }: ServiceCatalogWorkspaceProps) 
             <div className="rounded-[24px] border border-white/8 bg-black/20 p-4 text-sm text-white/68">
               <div className="inline-flex items-center gap-2 rounded-full border border-[#7CFF00]/20 bg-[#7CFF00]/10 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-[#d7ffab]">
                 {role === "owner" ? <Store className="h-4 w-4" /> : <Scissors className="h-4 w-4" />}
-                {role === "owner" ? "Shop-owned catalog" : role === "booth_rent_barber" ? "Barber-owned services" : "Read-only service catalog"}
+                {role === "owner" ? "Shop-owned catalog" : canOwnBarberServices ? "Barber-owned services" : "Read-only service catalog"}
               </div>
             </div>
           </div>

@@ -1,4 +1,5 @@
 import { readBookingTransactionBreakdown } from "@/lib/fintech/breakdown";
+import { isBarberAccountRole, normalizeAccountRole } from "@/lib/auth/roles";
 import { buildTaxSummary } from "@/lib/fintech/tax";
 import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
 import { listPayoutQueue } from "@/lib/payments/service";
@@ -27,7 +28,7 @@ function isInRange(value: string | null | undefined, start: string, end: string)
 async function readScopedSnapshot(user: UserAccount) {
   const provider = await getLiveOperationsProvider();
   return provider.readSnapshot({
-    role: user.role,
+    role: normalizeAccountRole(user.role),
     email: user.email,
     clientId: user.clientId,
     barberId: user.barberId,
@@ -41,7 +42,7 @@ export async function readFintechTaxSummaryExport(input: {
 }) {
   const snapshot = await readScopedSnapshot(input.user);
 
-  if (input.user.role === "commission_barber" || input.user.role === "booth_rent_barber") {
+  if (isBarberAccountRole(input.user.role)) {
     return buildTaxSummary({
       role: "barber",
       subjectId: input.user.barberId ?? input.user.id,
@@ -71,7 +72,7 @@ export async function readPayoutExport(input: {
       .filter((appointment) =>
         isInRange(appointment.completedAt ?? appointment.updatedAt, start, end)
         && (
-          !(input.user.role === "commission_barber" || input.user.role === "booth_rent_barber")
+          !isBarberAccountRole(input.user.role)
           || appointment.barberId === input.user.barberId
         )
       )
@@ -103,7 +104,7 @@ export async function readRevenueExport(input: {
   const snapshot = await readScopedSnapshot(input.user);
   const scopedAppointments = snapshot.appointments.filter((appointment) =>
     isInRange(appointment.start, start, end)
-    && !(input.user.role === "commission_barber" || input.user.role === "booth_rent_barber")
+    && !isBarberAccountRole(input.user.role)
   );
   const rows = await Promise.all(scopedAppointments.map(async (appointment) => {
     const breakdown = await readBookingTransactionBreakdown(appointment.id).catch(() => null);

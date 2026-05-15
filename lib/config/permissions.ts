@@ -17,6 +17,11 @@ export const permissionMatrix: PermissionGroup[] = [
     restricted: ["Cannot access payroll or global analytics"]
   },
   {
+    role: "barber",
+    allows: ["Manage own bookings", "Update availability", "Manage chair services", "See own earnings"],
+    restricted: ["Cannot access owner reports", "Cannot edit unrelated shop-owned services"]
+  },
+  {
     role: "commission_barber",
     allows: ["Manage own schedule", "See own earnings", "View shop-defined services", "Update personal notes"],
     restricted: ["Cannot view team financials", "Cannot edit service pricing or service definitions"]

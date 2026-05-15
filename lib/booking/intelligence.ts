@@ -1,6 +1,7 @@
 ﻿import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { buildMarketplaceBookingHref } from "@/lib/marketplace/links";
 import { getClientFacingBarberName } from "@/lib/marketplace/client-facing";
+import { isBarberAccountRole } from "@/lib/auth/roles";
 import {
   buildPublicTrustSignal,
   computeShopVerificationDecision,
@@ -58,6 +59,7 @@ type CanonicalBarberRow = {
   reference_code: string | null;
   profile_id: string;
   compensation_model: "commission" | "booth_rent";
+  barber_subtype?: "freelance" | "booth_rent" | "commission" | "blueprint" | null;
   app_approval_status: string | null;
   shop_approval_status: string | null;
   commission_rate: number | string | null;
@@ -775,6 +777,18 @@ function resolveDiscoveryRelationshipType(
   barberRow: CanonicalBarberRow,
   hasShopAssignment: boolean
 ): "freelance" | "booth_rent" | "commission" {
+  if (barberRow.barber_subtype === "freelance") {
+    return "freelance";
+  }
+
+  if (barberRow.barber_subtype === "commission") {
+    return hasShopAssignment ? "commission" : "freelance";
+  }
+
+  if (barberRow.barber_subtype === "booth_rent" || barberRow.barber_subtype === "blueprint") {
+    return hasShopAssignment ? "booth_rent" : "freelance";
+  }
+
   if (!hasShopAssignment) {
     return "freelance";
   }
@@ -797,9 +811,7 @@ function isCanonicalBarberProfileRole(profile?: CanonicalProfileRow) {
   const primaryRole = profile.primary_onboarding_role?.toString() ?? "";
   const role = profile.role?.toString() ?? "";
   return primaryRole === "barber"
-    || role === "barber"
-    || role === "commission_barber"
-    || role === "booth_rent_barber";
+    || isBarberAccountRole(role);
 }
 
 function getBarberBookingGate(trustState: TrustState | undefined, barberId: string): VerificationGateDecision | null {
@@ -948,7 +960,7 @@ async function readCanonicalSnapshot(supabase: SupabaseClient): Promise<Canonica
     barberStatusResult,
     connectedAccountsResult
   ] = await Promise.all([
-    supabase.from("barbers").select("id, reference_code, profile_id, compensation_model, app_approval_status, shop_approval_status, commission_rate, booth_rent_amount, booth_rent_frequency, bio, booking_slug"),
+    supabase.from("barbers").select("id, reference_code, profile_id, compensation_model, barber_subtype, app_approval_status, shop_approval_status, commission_rate, booth_rent_amount, booth_rent_frequency, bio, booking_slug"),
     supabase.from("barber_profiles").select("barber_reference, username, display_name, bio, years_experience, shop_reference, profile_photo_path, profile_photo_url, specialties, badges, service_area_label, next_available_at, visibility_state"),
     supabase.from("profiles").select("id, role, full_name, email, phone, primary_onboarding_role"),
     supabase.from("services").select("id, reference_code, location_id, category, name, description, duration_min, buffer_min, price, currency, deposit_amount, full_prepay_required, active, is_bookable, display_order, created_at, updated_at, service_owner_type, barber_reference, shop_reference, booking_count, popularity_rank").eq("active", true),
@@ -2755,7 +2767,12 @@ export async function buildCanonicalBarberProfile(
     id: barberReference,
     userId: barberRow.profile_id,
     name,
-    role: barberRow.compensation_model === "booth_rent" ? "booth_rent_barber" : "commission_barber",
+    role: "barber",
+    barberSubtype: barberRow.barber_subtype === "commission"
+      ? "commission"
+      : barberRow.barber_subtype === "booth_rent" || barberRow.barber_subtype === "blueprint"
+        ? "booth_rent"
+        : "freelance",
     locationIds,
     specialties: profileRow?.specialties?.length ? profileRow.specialties : [...new Set(serviceCatalog.map((entry) => entry.service.category))],
     rating: averageRating,

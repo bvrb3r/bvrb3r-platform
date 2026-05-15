@@ -499,13 +499,14 @@ describe("freelance client booking loop", () => {
     });
     const barberUser: UserAccount = {
       id: BARBER_PROFILE_ID,
-      role: "booth_rent_barber",
+      role: "barber",
       email: "philforsure@example.com",
       password: "DevOnly!123",
       name: "philforsure",
       title: "Freelance Barber",
       locationIds: [],
-      barberId: "barber-43b3cda2"
+      barberId: "barber-43b3cda2",
+      barberSubtype: "freelance"
     };
 
     const home = await getClientHomePayload("client-1fd26b88");

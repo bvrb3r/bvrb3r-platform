@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { isBarberAccountRole } from "@/lib/auth/roles";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { runtimeConfig } from "@/lib/config/runtime";
 import { canonicalClientUuid } from "@/lib/booking/canonical-booking";
@@ -1347,7 +1348,7 @@ async function resolvePaymentActor(user: UserAccount, supabase: SupabaseClient):
     });
   }
 
-  if (user.role === "commission_barber" || user.role === "booth_rent_barber") {
+  if (isBarberAccountRole(user.role)) {
     const barberResult = await supabase
       .from("barbers")
       .select("id, profile_id")

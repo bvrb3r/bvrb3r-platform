@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { isBarberAccountRole, normalizeAccountRole } from "@/lib/auth/roles";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
 import { getMarketplaceActivationProvider } from "@/lib/marketplace/activation-provider";
 
@@ -25,7 +26,7 @@ export async function GET() {
     return NextResponse.json({ campaigns: state.boostCampaigns });
   }
 
-  if (user.role === "commission_barber" || user.role === "booth_rent_barber") {
+  if (isBarberAccountRole(user.role)) {
     return NextResponse.json({ campaigns: state.boostCampaigns.filter((campaign) => campaign.scopeType === "barber" && campaign.scopeId === user.barberId) });
   }
 
@@ -41,7 +42,7 @@ export async function POST(request: NextRequest) {
   const { user } = await getCurrentUserFromServer();
   const provider = await getMarketplaceActivationProvider();
   try {
-    const result = await provider.createBoostCampaign({ role: user.role, barberId: user.barberId, userEmail: user.email }, parsed.data);
+    const result = await provider.createBoostCampaign({ role: normalizeAccountRole(user.role), barberId: user.barberId, userEmail: user.email }, parsed.data);
     return NextResponse.json({ campaign: result.campaign });
   } catch (error) {
     const status = typeof error === "object" && error && "status" in error ? Number((error as { status?: number }).status ?? 500) : 500;

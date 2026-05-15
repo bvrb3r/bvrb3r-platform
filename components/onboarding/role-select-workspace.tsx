@@ -112,7 +112,7 @@ export function RoleSelectWorkspace() {
             {selectedRole === "barber" ? (
               <>
                 <p className="mt-5 text-sm leading-7 text-white/58">
-                  The next step will ask whether you are entering as a freelance, commission, or booth-rent / blueprint barber, then attach the correct approval lane before you reach the barber dashboard.
+                  The next step will ask whether you are entering as a freelance, commission, or booth-rent barber, then attach the correct approval lane before you reach the barber dashboard.
                 </p>
                 <div className="mt-5 flex flex-wrap gap-3">
                   <Button

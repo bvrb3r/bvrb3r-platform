@@ -1,5 +1,6 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { isBarberAccountRole } from "@/lib/auth/roles";
 import { getSessionUser } from "@/lib/booking/route-auth";
 import { recordBookingUpdatedPlatformEvents } from "@/lib/core/booking-events";
 import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
@@ -16,7 +17,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   }
 
   const user = await getSessionUser();
-  if (!(user.role === "owner" || user.role === "manager" || user.role === "commission_barber" || user.role === "booth_rent_barber")) {
+  if (!(user.role === "owner" || user.role === "manager" || isBarberAccountRole(user.role))) {
     return NextResponse.json({ error: "You do not have access to start this service." }, { status: 403 });
   }
 

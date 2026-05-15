@@ -333,7 +333,7 @@ describe("production identity provisioning", () => {
     });
     expect(state.profiles[0]).toMatchObject({
       id: "auth-role-pending",
-      role: "booth_rent_barber",
+      role: "barber",
       primary_onboarding_role: "barber",
       onboarding_state: "awaiting_contact_verification"
     });
@@ -360,7 +360,7 @@ describe("production identity provisioning", () => {
     });
     expect(state.profiles[0]).toMatchObject({
       id: "auth-role-ready",
-      role: "booth_rent_barber",
+      role: "barber",
       primary_onboarding_role: "barber"
     });
     expect(state.barbers).toHaveLength(1);
@@ -732,13 +732,13 @@ describe("production identity provisioning", () => {
     expect(state.profiles[0]).toMatchObject({
       id: "auth-new-barber",
       primary_onboarding_role: "barber",
-      role: "booth_rent_barber",
+      role: "barber",
       onboarding_state: "active"
     });
     expect(state.barbers[0]).toMatchObject({
       profile_id: "auth-new-barber",
       reference_code: "barber-auth-new",
-      barber_subtype: null,
+      barber_subtype: "freelance",
       app_approval_status: "pending"
     });
     expect(state.verification_profiles).toHaveLength(1);
@@ -750,12 +750,16 @@ describe("production identity provisioning", () => {
       can_accept_bookings: false
     });
     expect(state.clients).toHaveLength(0);
-    expect(state.user_roles).toHaveLength(0);
+    expect(state.user_roles).toEqual([expect.objectContaining({
+      user_email: "barber@bvrb3r.app",
+      role: "barber",
+      barber_reference: "barber-auth-new"
+    })]);
     expect(result.user.primaryOnboardingRole).toBe("barber");
     expect(result.user.accountStatus).toBe("active");
     expect(result.user.onboardingState).toBe("active");
     expect(result.user.barberId).toBe("barber-auth-new");
-    expect(result.user.barberSubtype).toBeUndefined();
+    expect(result.user.barberSubtype).toBe("freelance");
     expect(result.seedProfileData.barberId).toBe("barber-auth-new");
   });
 
@@ -809,7 +813,7 @@ describe("production identity provisioning", () => {
     expect(state.profiles[0]).toMatchObject({
       id: "auth-dashboard-barber",
       primary_onboarding_role: "barber",
-      role: "commission_barber",
+      role: "barber",
       onboarding_state: "active"
     });
     expect(state.barbers[0]).toMatchObject({
@@ -826,7 +830,7 @@ describe("production identity provisioning", () => {
       overall_status: "submitted"
     });
     expect(result.user.barberSubtype).toBe("commission");
-    expect(result.user.role).toBe("commission_barber");
+    expect(result.user.role).toBe("barber");
     expect(result.user.accountStatus).toBe("active");
   });
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { trackAiRecommendation } from "@/lib/ai/service";
+import { isBarberAccountRole } from "@/lib/auth/roles";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
 
 const bodySchema = z.object({
@@ -13,7 +14,7 @@ const bodySchema = z.object({
 });
 
 function resolveActorRole(role: string) {
-  if (role === "commission_barber" || role === "booth_rent_barber") {
+  if (isBarberAccountRole(role)) {
     return "barber";
   }
 

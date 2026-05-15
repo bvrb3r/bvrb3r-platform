@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { StaffProfileWorkspace } from "@/components/operations/staff-profile-workspace";
 import { getAuthorizedUser } from "@/lib/auth/guards";
+import { isBarberAccountRole } from "@/lib/auth/roles";
 
 export default async function WorkspaceProfilePage() {
   const user = await getAuthorizedUser(["owner", "manager", "front_desk", "commission_barber", "booth_rent_barber"]);
@@ -11,7 +12,7 @@ export default async function WorkspaceProfilePage() {
     redirect("/dashboard/owner/settings" as Route);
   }
 
-  if (user.role === "commission_barber" || user.role === "booth_rent_barber") {
+  if (isBarberAccountRole(user.role)) {
     redirect("/dashboard/barber/profile" as Route);
   }
 

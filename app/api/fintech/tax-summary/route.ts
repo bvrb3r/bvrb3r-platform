@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isBarberAccountRole } from "@/lib/auth/roles";
 import { getSessionUser } from "@/lib/booking/route-auth";
 import { readFintechTaxSummaryExport } from "@/lib/fintech/exports";
 
@@ -11,7 +12,7 @@ function readYear(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   const user = await getSessionUser();
-  if (!(user.role === "owner" || user.role === "manager" || user.role === "commission_barber" || user.role === "booth_rent_barber")) {
+  if (!(user.role === "owner" || user.role === "manager" || isBarberAccountRole(user.role))) {
     return NextResponse.json({ error: "Only owner, manager, or barber roles can view tax summaries." }, { status: 403 });
   }
 

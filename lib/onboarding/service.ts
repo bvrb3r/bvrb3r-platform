@@ -2,6 +2,7 @@ import type { Route } from "next";
 import { isCanonicalContactComplete } from "@/lib/auth/contact-policy";
 import { isPlatformAdminUser } from "@/lib/auth/demo-auth";
 import { initializeProductionRoleSelection } from "@/lib/auth/production-identity";
+import { isBarberAccountRole, normalizeBarberSubtype } from "@/lib/auth/roles";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import { getTrustState, setTrustState } from "@/lib/trust/state";
@@ -255,8 +256,8 @@ function createEmptyState(
             barberId: user.barberId ?? `barber-${user.id.slice(0, 8)}`,
             ...(user.barberSubtype
               ? {
-                  barberSubtype: user.barberSubtype,
-                  compensationModel: user.role === "commission_barber" ? "commission" : "booth_rent"
+                  barberSubtype: normalizeBarberSubtype(user.barberSubtype),
+                  compensationModel: normalizeBarberSubtype(user.barberSubtype)
                 }
               : {})
           }
@@ -302,9 +303,8 @@ function isRoleActive(user: UserAccount, role: OnboardingRole, verificationProfi
 
   if (role === "barber") {
     return Boolean(
-      (user.role === "commission_barber" || user.role === "booth_rent_barber")
+      isBarberAccountRole(user.role)
       && verificationProfile?.canAcceptBookings
-      && verificationProfile?.canReceivePayouts
       && verificationProfile?.publicVerified
     );
   }
@@ -368,7 +368,7 @@ function getCanonicalRoleDestination(user: UserAccount): OnboardingRole | null {
 
   if (
     !user.primaryOnboardingRole
-    && (user.role === "commission_barber" || user.role === "booth_rent_barber")
+    && isBarberAccountRole(user.role)
     && user.barberId
   ) {
     return "barber";
@@ -638,7 +638,7 @@ function isRuntimeRoleAllowedForOnboarding(user: UserAccount, role: OnboardingRo
   }
 
   if (role === "barber") {
-    return user.role === "commission_barber" || user.role === "booth_rent_barber";
+    return isBarberAccountRole(user.role);
   }
 
   return user.role === "owner";

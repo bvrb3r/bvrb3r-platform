@@ -1,4 +1,5 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { isBarberAccountRole } from "@/lib/auth/roles";
 import { isSupabaseEnabled, runtimeConfig } from "@/lib/config/runtime";
 import { demoLocations } from "@/lib/data/demo";
 import { getEngagementState, setEngagementState } from "@/lib/engagement/state";
@@ -248,7 +249,7 @@ function mapShopGalleryAsset(row: ShopGalleryRow | ShopMediaAsset | ManagedMedia
 }
 
 function assertBarberRole(user: UserAccount) {
-  if (!(user.role === "commission_barber" || user.role === "booth_rent_barber") || !user.barberId) {
+  if (!isBarberAccountRole(user.role) || !user.barberId) {
     throw new ProfileMediaServiceError("Only barbers can manage barber profile media.", 403);
   }
 

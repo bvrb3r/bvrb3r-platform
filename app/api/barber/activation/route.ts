@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { ensureBarberProfileForUser } from "@/lib/barber/profile-repair";
+import { isBarberAccountRole } from "@/lib/auth/roles";
 import { getSessionUser } from "@/lib/booking/route-auth";
 import { normalizeWorkingHoursRows } from "@/lib/barber/domain";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
@@ -59,7 +60,7 @@ type SaveAvailabilityInput = z.infer<typeof saveAvailabilitySchema>;
 type SaveBookingLocationInput = z.infer<typeof saveBookingLocationSchema>;
 
 function assertBarber(user: UserAccount) {
-  if (!(user.role === "commission_barber" || user.role === "booth_rent_barber") || !user.barberId) {
+  if (!isBarberAccountRole(user.role) || !user.barberId) {
     return null;
   }
 

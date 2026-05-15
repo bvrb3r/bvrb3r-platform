@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { isBarberAccountRole, normalizeAccountRole } from "@/lib/auth/roles";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
 import { recordBookingUpdatedPlatformEvents } from "@/lib/core/booking-events";
 import { getEngagementProvider } from "@/lib/engagement/provider";
@@ -12,7 +13,7 @@ const transitionSchema = z.object({
 });
 
 function actorRoleForUserRole(role: string) {
-  if (role === "commission_barber" || role === "booth_rent_barber") {
+  if (isBarberAccountRole(role)) {
     return "barber" as const;
   }
 
@@ -44,7 +45,7 @@ export async function POST(
     return NextResponse.json({ error: "Only front desk, manager, or owner can check clients in." }, { status: 403 });
   }
 
-  if ((parsed.data.action === "service_start" || parsed.data.action === "service_complete") && !(user.role === "commission_barber" || user.role === "booth_rent_barber" || user.role === "manager" || user.role === "owner")) {
+  if ((parsed.data.action === "service_start" || parsed.data.action === "service_complete") && !(isBarberAccountRole(user.role) || user.role === "manager" || user.role === "owner")) {
     return NextResponse.json({ error: "Only barber, manager, or owner can change chair-service status." }, { status: 403 });
   }
 
@@ -71,12 +72,12 @@ export async function POST(
       }
     });
 
-    if (parsed.data.action === "service_complete" && (user.role === "commission_barber" || user.role === "booth_rent_barber")) {
+    if (parsed.data.action === "service_complete" && isBarberAccountRole(user.role)) {
       try {
         const engagementProvider = await getEngagementProvider();
         await engagementProvider.recordEvent(
           {
-            role: user.role,
+            role: normalizeAccountRole(user.role),
             barberId: user.barberId,
             userEmail: user.email,
             locationIds: user.locationIds

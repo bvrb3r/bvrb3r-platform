@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { ensureBarberProfileForUser } from "@/lib/barber/profile-repair";
+import { isBarberAccountRole } from "@/lib/auth/roles";
 import { getSessionUser } from "@/lib/booking/route-auth";
 import { publishBarberMarketplaceReadiness } from "@/lib/marketplace/publishing";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -30,7 +31,7 @@ function toError(message: string, status = 400) {
 
 export async function POST(request: Request) {
   const user = await getSessionUser();
-  if (!(user.role === "commission_barber" || user.role === "booth_rent_barber") || !user.barberId) {
+  if (!isBarberAccountRole(user.role) || !user.barberId) {
     return toError("Only barbers can update a public username.", 403);
   }
 

@@ -96,7 +96,7 @@ export function BarberCheckoutScreen({
   initialSection
 }: {
   barberName: string;
-  barberRole: Extract<Role, "commission_barber" | "booth_rent_barber">;
+  barberRole: Extract<Role, "barber" | "commission_barber" | "booth_rent_barber">;
   initialSection?: string;
 }) {
   const overviewQuery = useBarberOverviewQuery();

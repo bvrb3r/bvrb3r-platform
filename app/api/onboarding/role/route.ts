@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getOnboardingSessionUser, toOnboardingErrorResponse } from "@/app/api/onboarding/_shared";
+import { normalizeBarberSubtype } from "@/lib/auth/roles";
 import { initializeSelectedUserLane, resolvePostAuthDestination } from "@/lib/onboarding/service";
 
 const schema = z.discriminatedUnion("role", [
@@ -9,7 +10,7 @@ const schema = z.discriminatedUnion("role", [
   }),
   z.object({
     role: z.literal("barber"),
-    barberSubtype: z.enum(["freelance", "blueprint", "commission"]).optional()
+    barberSubtype: z.enum(["freelance", "booth_rent", "blueprint", "commission"]).transform(normalizeBarberSubtype).optional()
   }),
   z.object({
     role: z.literal("shop_owner"),

@@ -52,9 +52,11 @@ const BARBER_CATEGORIES: BarberVerificationCategory[] = [
 ];
 const REPORT_SUBJECTS: Record<Role, readonly SafetyReportRecord["subjectType"][]> = {
   platform_admin: ["client", "barber", "shop", "review", "booking"],
+  architect: ["client", "barber", "shop", "review", "booking"],
   owner: ["client", "barber", "shop", "review", "booking"],
   manager: ["booking"],
   front_desk: ["booking"],
+  barber: ["client", "review", "booking"],
   commission_barber: ["client", "review", "booking"],
   booth_rent_barber: ["client", "review", "booking"],
   client: ["barber", "shop", "review", "booking"]

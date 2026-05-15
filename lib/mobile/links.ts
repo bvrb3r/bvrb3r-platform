@@ -4,9 +4,11 @@ import type { MobileActivationLink } from "@/types/mobile";
 
 const ROLE_HOME_ROUTE: Record<Role, string> = {
   platform_admin: "/architect",
+  architect: "/architect",
   owner: "/dashboard/owner",
   manager: "/dashboard/manager",
   front_desk: "/dashboard/front-desk",
+  barber: "/dashboard/barber",
   commission_barber: "/dashboard/barber",
   booth_rent_barber: "/dashboard/barber",
   client: "/dashboard/client"

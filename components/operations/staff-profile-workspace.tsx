@@ -4,6 +4,7 @@ import { BellRing, Building2, MessageSquareText, ShieldCheck, UserRound, WalletC
 import { GalleryManagerCard, ProfilePhotoManagerCard } from "@/components/profile/profile-media-manager";
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
+import { isBarberAccountRole } from "@/lib/auth/roles";
 import { permissionMatrix } from "@/lib/config/permissions";
 import { useBarberFintechReadinessQuery } from "@/lib/fintech/client";
 import { useMutateProfileMediaMutation, useProfileMediaWorkspaceQuery } from "@/lib/profile/client";
@@ -19,6 +20,10 @@ function getRoleProfileCopy(user: UserAccount) {
       return "Manager profile keeps shift visibility, communications, and operational permissions readable at a glance.";
     case "front_desk":
       return "Front desk profile keeps queue access, guest communication, and shop coverage visible in one clean layer.";
+    case "barber":
+      return user.barberSubtype === "commission"
+        ? "Commission barber profile keeps chair identity, payout model, and guest-facing trust signals close together."
+        : "Barber profile keeps independent chair identity, payout posture, and public-facing presence visible together.";
     case "commission_barber":
       return "Commission barber profile keeps chair identity, payout model, and guest-facing trust signals close together.";
     case "booth_rent_barber":
@@ -52,9 +57,10 @@ export function StaffProfileWorkspace({ user }: { user: UserAccount; }) {
     id: locationId,
     name: locationId
   }));
-  const permissions = permissionMatrix.find((group) => group.role === user.role);
-  const isBarber = user.role === "commission_barber" || user.role === "booth_rent_barber";
-  const barberCompensationModel = user.role === "booth_rent_barber" ? "booth_rent" : "commission";
+  const permissions = permissionMatrix.find((group) => group.role === user.role)
+    ?? (isBarberAccountRole(user.role) ? permissionMatrix.find((group) => group.role === "barber") : undefined);
+  const isBarber = isBarberAccountRole(user.role);
+  const barberCompensationModel = user.barberSubtype === "commission" ? "commission" : "booth_rent";
   const trustQuery = useBarberTrustSummary(isBarber);
   const fintechQuery = useBarberFintechReadinessQuery(isBarber);
   const verificationDecision = trustQuery.data?.verificationDecision;

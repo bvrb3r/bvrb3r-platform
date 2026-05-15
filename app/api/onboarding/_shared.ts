@@ -102,7 +102,7 @@ export function toOnboardingErrorResponse(error: unknown) {
   return NextResponse.json({ error: message, diagnostics }, { status: 500 });
 }
 
-export function roleToRuntimeRole(role: OnboardingRole, profileData: Record<string, unknown>): UserAccount["role"] {
+export function roleToRuntimeRole(role: OnboardingRole): UserAccount["role"] {
   if (role === "client") {
     return "client";
   }
@@ -111,5 +111,5 @@ export function roleToRuntimeRole(role: OnboardingRole, profileData: Record<stri
     return "owner";
   }
 
-  return profileData.compensationModel === "commission" ? "commission_barber" : "booth_rent_barber";
+  return "barber";
 }

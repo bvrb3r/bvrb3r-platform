@@ -1,6 +1,7 @@
 import type { Route } from "next";
 import { demoUsers } from "@/lib/data/demo";
 import { runtimeConfig } from "@/lib/config/runtime";
+import { isBarberAccountRole } from "@/lib/auth/roles";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import type { Role, UserAccount } from "@/types/domain";
 
@@ -124,6 +125,8 @@ export function getRoleLabel(role: Role) {
       return "Shop manager";
     case "front_desk":
       return "Front desk";
+    case "barber":
+      return "Barber";
     case "commission_barber":
       return "Commission barber";
     case "booth_rent_barber":
@@ -144,7 +147,7 @@ export function getUserRoleLabel(user: UserAccount) {
     return "Barber manager";
   }
 
-  if (user.email === "lux@bvrb3r.demo") {
+  if (user.barberSubtype === "freelance" || user.email === "lux@bvrb3r.demo") {
     return "Freelance barber";
   }
 
@@ -169,12 +172,16 @@ export function getDefaultRouteForUser(user: UserAccount): Route {
       return "/dashboard/manager";
     case "front_desk":
       return "/dashboard/front-desk";
+    case "barber":
     case "commission_barber":
     case "booth_rent_barber":
       return "/dashboard/barber";
     case "client":
       return "/dashboard/client";
     default:
+      if (isBarberAccountRole(user.role)) {
+        return "/dashboard/barber";
+      }
       return "/";
   }
 }

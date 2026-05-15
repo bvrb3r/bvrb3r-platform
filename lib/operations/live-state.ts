@@ -1,4 +1,5 @@
 import { demoAppointments, demoBarbers, demoClients, demoUsers, demoWalkIns } from "@/lib/data/demo";
+import { isBarberAccountRole } from "@/lib/auth/roles";
 import {
   buildAppointmentLifecycleFields,
   canTransitionAppointmentStatus,
@@ -569,7 +570,7 @@ export function scopeLiveOperationsSnapshot(snapshot: LiveOperationsSnapshot, vi
       return hasLocationScope && locationIds.includes(appointment.locationId);
     }
 
-    if (viewer.role === "commission_barber" || viewer.role === "booth_rent_barber") {
+    if (isBarberAccountRole(viewer.role)) {
       return appointment.barberId === viewer.barberId;
     }
 
@@ -601,7 +602,7 @@ export function scopeLiveOperationsSnapshot(snapshot: LiveOperationsSnapshot, vi
         return isLocationScopedRole(viewer.role) && hasLocationScope && locationIds.includes(entry.locationReference);
       }),
     compensationSnapshots:
-      viewer.role === "commission_barber" || viewer.role === "booth_rent_barber"
+      isBarberAccountRole(viewer.role)
         ? snapshot.compensationSnapshots.filter((entry) => entry.barberReference === viewer.barberId)
         : viewer.role === "owner"
           ? snapshot.compensationSnapshots.filter((entry) => hasLocationScope && locationIds.includes(entry.locationReference))
@@ -611,7 +612,7 @@ export function scopeLiveOperationsSnapshot(snapshot: LiveOperationsSnapshot, vi
     ownerAnalytics:
       viewer.role === "owner" || viewer.role === "manager"
         ? snapshot.ownerAnalytics.filter((entry) => hasLocationScope && locationIds.includes(entry.locationReference))
-        : viewer.role === "front_desk" || viewer.role === "commission_barber" || viewer.role === "booth_rent_barber" || viewer.role === "client"
+        : viewer.role === "front_desk" || isBarberAccountRole(viewer.role) || viewer.role === "client"
           ? []
           : snapshot.ownerAnalytics
   };

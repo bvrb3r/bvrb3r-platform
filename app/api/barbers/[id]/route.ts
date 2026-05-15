@@ -7,10 +7,7 @@ import {
 } from "@/lib/barber/profile-repair";
 import { getBarberDetailsPayload } from "@/lib/booking/platform-service";
 import { getSessionUser } from "@/lib/booking/route-auth";
-
-function isBarberRole(role: string) {
-  return role === "barber" || role === "commission_barber" || role === "booth_rent_barber" || role === "freelance_barber";
-}
+import { isBarberAccountRole } from "@/lib/auth/roles";
 
 function repairErrorCode(error: unknown) {
   return error instanceof BarberProfileRepairError ? error.reason : "unknown";
@@ -22,7 +19,7 @@ function buildEditableBarberProfilePayload(repair: BarberProfileRepairResult) {
     ?? repair.username
     ?? repair.barberReference;
   const compensationModel = repair.barber.compensation_model === "commission" ? "commission" : "booth_rent";
-  const role = compensationModel === "commission" ? "commission_barber" : "booth_rent_barber";
+  const role = "barber";
   const username = repair.username;
   const bookingHref = `/booking/new?barberId=${encodeURIComponent(repair.barberReference)}`;
 
@@ -79,7 +76,7 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
 
   try {
     const user = await getSessionUser();
-    if (isBarberRole(user.role)) {
+    if (isBarberAccountRole(user.role)) {
       const repair = await ensureBarberProfileForUser({
         userId: user.id,
         barberId: user.barberId ?? id,

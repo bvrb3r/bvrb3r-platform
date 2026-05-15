@@ -29,6 +29,7 @@ import {
   useSendMessageBroadcastMutation,
   useSendMessageMutation
 } from "@/lib/messages/client";
+import { isBarberAccountRole } from "@/lib/auth/roles";
 import type {
   MessagingBroadcastAudience,
   MessagingContactCandidate,
@@ -128,7 +129,7 @@ function getRoleBadgeLabel(role?: string | null, threadType?: string) {
     return "Shop";
   }
 
-  if (role === "commission_barber" || role === "booth_rent_barber") {
+  if (isBarberAccountRole(role)) {
     return "Barber";
   }
 
@@ -165,7 +166,7 @@ function getThreadFilter(role?: string | null, threadType?: string): ThreadFilte
     return "shops";
   }
 
-  if (role === "commission_barber" || role === "booth_rent_barber") {
+  if (isBarberAccountRole(role)) {
     return "barbers";
   }
 

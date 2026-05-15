@@ -26,6 +26,7 @@ import type { TrustState } from "@/types/trust";
 import { buildPublicTrustSignal } from "@/lib/trust/engine";
 import { buildMarketplaceBookingHref } from "@/lib/marketplace/links";
 import { getClientFacingBarberName } from "@/lib/marketplace/client-facing";
+import { isBarberAccountRole } from "@/lib/auth/roles";
 import {
   filterVisibleMarketplaceBarbers,
   isBarberMarketplaceVisible,
@@ -71,6 +72,7 @@ export interface MarketplaceState {
 
 export interface MarketplaceActor {
   role: Role;
+  barberSubtype?: Barber["barberSubtype"];
   barberId?: string;
   locationIds?: string[];
   email?: string;
@@ -249,8 +251,12 @@ export function createInitialMarketplaceState(): MarketplaceState {
   return createEmptyMarketplaceState();
 }
 
+function isCommissionBarberRelationship(actor: MarketplaceActor) {
+  return actor.barberSubtype === "commission" || actor.role === "commission_barber";
+}
+
 export function canCreateServiceDefinition(actor: MarketplaceActor) {
-  return actor.role === "owner" || actor.role === "booth_rent_barber";
+  return actor.role === "owner" || (isBarberAccountRole(actor.role) && !isCommissionBarberRelationship(actor));
 }
 
 export function canEditServiceDefinition(actor: MarketplaceActor, service: Service) {
@@ -260,7 +266,7 @@ export function canEditServiceDefinition(actor: MarketplaceActor, service: Servi
     return normalizedService.ownerType === "shop";
   }
 
-  if (actor.role === "booth_rent_barber") {
+  if (isBarberAccountRole(actor.role) && !isCommissionBarberRelationship(actor)) {
     return normalizedService.ownerType === "barber" && normalizedService.barberId === actor.barberId;
   }
 
@@ -360,24 +366,7 @@ export function getServiceCatalogView(state: MarketplaceState, actor: Marketplac
     };
   }
 
-  if (actor.role === "booth_rent_barber") {
-    const editableServices = services
-      .filter((service) => service.ownerType === "barber" && service.barberId === actor.barberId)
-      .map((service) => ({ ...toCatalogItem(service, state, actor), popularity: popularityMap.get(service.id)! }))
-      .sort((left, right) => left.service.name.localeCompare(right.service.name));
-
-    return {
-      viewerRole: actor.role,
-      canCreate: true,
-      createOwnerType: "barber",
-      editableServices,
-      readOnlyServices: [],
-      shops: state.shops,
-      styleTags: state.styleTags
-    };
-  }
-
-  if (actor.role === "commission_barber") {
+  if (isBarberAccountRole(actor.role) && isCommissionBarberRelationship(actor)) {
     const barber = getBarber(state, actor.barberId);
     const profile = actor.barberId ? getProfile(state, actor.barberId) : undefined;
     if (!barber || !profile) {
@@ -400,6 +389,23 @@ export function getServiceCatalogView(state: MarketplaceState, actor: Marketplac
       canCreate: false,
       editableServices: [],
       readOnlyServices,
+      shops: state.shops,
+      styleTags: state.styleTags
+    };
+  }
+
+  if (isBarberAccountRole(actor.role)) {
+    const editableServices = services
+      .filter((service) => service.ownerType === "barber" && service.barberId === actor.barberId)
+      .map((service) => ({ ...toCatalogItem(service, state, actor), popularity: popularityMap.get(service.id)! }))
+      .sort((left, right) => left.service.name.localeCompare(right.service.name));
+
+    return {
+      viewerRole: actor.role,
+      canCreate: true,
+      createOwnerType: "barber",
+      editableServices,
+      readOnlyServices: [],
       shops: state.shops,
       styleTags: state.styleTags
     };
@@ -431,7 +437,7 @@ function getPreferredShopId(state: MarketplaceState, actor: MarketplaceActor, re
     return requestedShopId ?? state.shops[0]?.id;
   }
 
-  if (actor.role === "booth_rent_barber") {
+  if (isBarberAccountRole(actor.role)) {
     const profile = actor.barberId ? getProfile(state, actor.barberId) : undefined;
     return profile?.shopId ?? state.shops[0]?.id;
   }

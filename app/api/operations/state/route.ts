@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { isBarberAccountRole, normalizeAccountRole } from "@/lib/auth/roles";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
 import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
 import { LiveOperationsViewer } from "@/lib/operations/live-state";
@@ -36,8 +37,8 @@ async function resolveViewer(view: z.infer<typeof querySchema>["view"]): Promise
   }
 
   if (view === "barber") {
-    return user.role === "commission_barber" || user.role === "booth_rent_barber"
-      ? { role: user.role, locationIds: user.locationIds, barberId: user.barberId, clientId: user.clientId, email: user.email }
+    return isBarberAccountRole(user.role)
+      ? { role: normalizeAccountRole(user.role), locationIds: user.locationIds, barberId: user.barberId, clientId: user.clientId, email: user.email }
       : null;
   }
 

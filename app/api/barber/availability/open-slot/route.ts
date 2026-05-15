@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { isBarberAccountRole } from "@/lib/auth/roles";
 import { getSessionUser } from "@/lib/booking/route-auth";
 import { queueBarberOpenSlotNotifications } from "@/lib/engagement/availability";
 
@@ -16,7 +17,7 @@ export async function POST(request: NextRequest) {
   }
 
   const user = await getSessionUser();
-  if (!(user.role === "owner" || user.role === "manager" || user.role === "commission_barber" || user.role === "booth_rent_barber") || !user.barberId) {
+  if (!(user.role === "owner" || user.role === "manager" || isBarberAccountRole(user.role)) || !user.barberId) {
     return NextResponse.json({ error: "You do not have access to notify clients about barber availability." }, { status: 403 });
   }
 

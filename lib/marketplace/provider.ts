@@ -419,7 +419,7 @@ async function readSupabaseRuntime(supabase: SupabaseClient): Promise<Marketplac
     supabase.from("search_history").select("client_reference, query, filters, searched_at").order("searched_at", { ascending: false }),
     supabase.from("client_preferences").select("client_reference, favorite_shop_reference, preferred_location_reference, preferred_style_tag_ids, prefers_instant_booking"),
     supabase.from("reviews").select("id, appointment_id, barber_id, client_id, location_id, rating, message, created_at").order("created_at", { ascending: false }),
-    supabase.from("barbers").select("id, reference_code, profile_id, compensation_model, commission_rate, booth_rent_amount, booth_rent_frequency, bio, booking_slug, app_approval_status, shop_approval_status"),
+    supabase.from("barbers").select("id, reference_code, profile_id, compensation_model, barber_subtype, commission_rate, booth_rent_amount, booth_rent_frequency, bio, booking_slug, app_approval_status, shop_approval_status"),
     supabase.from("profiles").select("id, full_name, primary_onboarding_role, onboarding_state"),
     supabase.from("clients").select("id, reference_code"),
     supabase.from("locations").select("id, reference_code, name, neighborhood, city, state, phone, hours, tax_rate"),
@@ -478,7 +478,7 @@ async function readSupabaseRuntime(supabase: SupabaseClient): Promise<Marketplac
     const indexedLocationIds = indexRows.filter((entry: any) => entry.barber_reference === barberReference).map((entry: any) => entry.location_reference);
     const locationIds = uniqueStrings([...(locationIdsByProfile.get(row.profile_id) ?? []), ...indexedLocationIds]);
     const compensationModel: Barber["compensationModel"] = row.compensation_model === "booth_rent" ? "booth_rent" : "commission";
-    const role: Barber["role"] = compensationModel === "booth_rent" ? "booth_rent_barber" : "commission_barber";
+    const role: Barber["role"] = "barber";
 
     if (canonicalProfile?.primary_onboarding_role !== "barber") {
       return null;
@@ -489,6 +489,7 @@ async function readSupabaseRuntime(supabase: SupabaseClient): Promise<Marketplac
       userId: row.profile_id,
       name: publicProfile?.display_name ?? canonicalProfile?.full_name ?? barberReference,
       role,
+      barberSubtype: row.barber_subtype === "commission" ? "commission" : row.barber_subtype === "booth_rent" || row.barber_subtype === "blueprint" ? "booth_rent" : "freelance",
       appApprovalStatus: row.app_approval_status ?? "pending",
       shopApprovalStatus: row.shop_approval_status ?? undefined,
       locationIds,

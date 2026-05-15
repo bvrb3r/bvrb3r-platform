@@ -1,16 +1,17 @@
 import { getCurrentUserFromServer } from "@/lib/auth/session";
+import { isRoleAllowed, normalizeAccountRole } from "@/lib/auth/roles";
 import { MobilePermissionError, type MobileActor } from "@/lib/mobile/engine";
 import type { Role } from "@/types/domain";
 
 export async function requireMobileActor(allowedRoles: Role[]) {
   const { user } = await getCurrentUserFromServer();
 
-  if (!allowedRoles.includes(user.role)) {
+  if (!isRoleAllowed(user.role, allowedRoles)) {
     throw new MobilePermissionError("You do not have access to this mobile activation action.");
   }
 
   return {
-    role: user.role,
+    role: normalizeAccountRole(user.role),
     userEmail: user.email,
     clientId: user.clientId,
     barberId: user.barberId,

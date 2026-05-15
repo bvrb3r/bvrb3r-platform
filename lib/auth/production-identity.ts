@@ -10,6 +10,7 @@ import {
   isSignupRoleIntent,
   type SignupRoleIntent
 } from "@/lib/auth/signup-role-intent";
+import { isBarberAccountRole, normalizeBarberSubtype } from "@/lib/auth/roles";
 import type {
   ApprovalStatus,
   BarberSubtype,
@@ -520,10 +521,8 @@ function toRuntimeRole(input: {
     return "owner" as const;
   }
 
-  if (input.primaryRole === "barber" || input.profileRole === "commission_barber" || input.profileRole === "booth_rent_barber") {
-    return input.compensationModel === "commission" || input.profileRole === "commission_barber"
-      ? "commission_barber"
-      : "booth_rent_barber";
+  if (input.primaryRole === "barber" || isBarberAccountRole(input.profileRole)) {
+    return "barber" as const;
   }
 
   return "client" as const;
@@ -534,16 +533,15 @@ function getTitle(role: Role, subtype?: BarberSubtype | null) {
     return "Shop Owner";
   }
 
-  if (role === "commission_barber") {
-    return "Commission Barber";
-  }
-
-  if (role === "booth_rent_barber") {
-    if (subtype === "blueprint") {
-      return "Blueprint Barber";
-    }
+  if (isBarberAccountRole(role)) {
     if (subtype === "freelance") {
       return "Freelance Barber";
+    }
+    if (subtype === "booth_rent") {
+      return "Booth-rent Barber";
+    }
+    if (subtype === "commission") {
+      return "Commission Barber";
     }
     return "Barber";
   }
@@ -2372,9 +2370,9 @@ async function ensureBarberLaneBootstrap(
       profile_id: profileId,
       reference_code: barberReference,
       compensation_model: "booth_rent",
-      barber_subtype: null,
+      barber_subtype: "freelance",
       app_approval_status: "pending",
-      shop_approval_status: "pending"
+      shop_approval_status: "not_required"
     }
   });
 
@@ -2409,9 +2407,9 @@ async function ensureBarberLaneBootstrap(
         profile_id: profileId,
         reference_code: barberReference,
         compensation_model: "booth_rent",
-        barber_subtype: null,
+        barber_subtype: "freelance",
         app_approval_status: "pending",
-        shop_approval_status: "pending",
+        shop_approval_status: "not_required",
         bio: null,
         booking_slug: barberReference
       });
@@ -2472,17 +2470,18 @@ async function ensureBarberLane(
   const supabase = await getSupabase();
   const barberReference = `barber-${profileId.slice(0, 8)}`;
   const compensationModel = toBarberCompensation(subtype);
-  const runtimeRole: Role = compensationModel === "commission" ? "commission_barber" : "booth_rent_barber";
+  const normalizedSubtype = normalizeBarberSubtype(subtype);
+  const runtimeRole: Role = "barber";
   console.info("[auth] barber subtype lane bootstrap requested", {
     profileId,
-    subtype,
+    subtype: normalizedSubtype,
     payload: {
       profile_id: profileId,
       reference_code: barberReference,
       compensation_model: compensationModel,
-      barber_subtype: subtype,
+      barber_subtype: normalizedSubtype,
       app_approval_status: "pending",
-      shop_approval_status: subtype === "freelance" ? "not_required" : "pending"
+      shop_approval_status: normalizedSubtype === "freelance" ? "not_required" : "pending"
     }
   });
 
@@ -2491,13 +2490,13 @@ async function ensureBarberLane(
       role: runtimeRole,
       barberId: barberReference,
       appApprovalStatus: "pending" as ApprovalStatus,
-      shopApprovalStatus: (subtype === "freelance" ? "not_required" : "pending") as ApprovalStatus,
+      shopApprovalStatus: (normalizedSubtype === "freelance" ? "not_required" : "pending") as ApprovalStatus,
       seedProfileData: {
         fullName: identity.name,
         email: identity.email,
         phone: identity.phone,
         barberId: barberReference,
-        barberSubtype: subtype,
+        barberSubtype: normalizedSubtype,
         compensationModel
       }
     };
@@ -2522,9 +2521,9 @@ async function ensureBarberLane(
         profile_id: profileId,
         reference_code: barberReference,
         compensation_model: compensationModel,
-        barber_subtype: subtype,
+        barber_subtype: normalizedSubtype,
         app_approval_status: "pending",
-        shop_approval_status: subtype === "freelance" ? "not_required" : "pending",
+        shop_approval_status: normalizedSubtype === "freelance" ? "not_required" : "pending",
         bio: null,
         booking_slug: barberReference
       });
@@ -2537,9 +2536,9 @@ async function ensureBarberLane(
       .update({
         reference_code: (existing.data as ClientRow).reference_code ?? barberReference,
         compensation_model: compensationModel,
-        barber_subtype: subtype,
+        barber_subtype: normalizedSubtype,
         app_approval_status: "pending",
-        shop_approval_status: subtype === "freelance" ? "not_required" : "pending"
+        shop_approval_status: normalizedSubtype === "freelance" ? "not_required" : "pending"
       })
       .eq("id", (existing.data as ClientRow).id);
     if (update.error && !isSchemaError(update.error)) {
@@ -2600,7 +2599,7 @@ async function ensureBarberLane(
   console.info("[auth] barber subtype lane bootstrap completed", {
     profileId,
     barberId: effectiveBarberReference,
-    subtype,
+    subtype: normalizedSubtype,
     runtimeRole,
     existed: Boolean(existing.data)
   });
@@ -2609,13 +2608,13 @@ async function ensureBarberLane(
     role: runtimeRole,
     barberId: effectiveBarberReference,
     appApprovalStatus: "pending" as ApprovalStatus,
-    shopApprovalStatus: (subtype === "freelance" ? "not_required" : "pending") as ApprovalStatus,
+    shopApprovalStatus: (normalizedSubtype === "freelance" ? "not_required" : "pending") as ApprovalStatus,
     seedProfileData: {
       fullName: identity.name,
       email: identity.email,
       phone: identity.phone,
       barberId: effectiveBarberReference,
-      barberSubtype: subtype,
+      barberSubtype: normalizedSubtype,
       compensationModel
     }
   };
@@ -2998,7 +2997,7 @@ export async function initializeProductionRoleSelection(
     if (!input.barberSubtype) {
       await upsertProfileForLane({
         profileId,
-        role: "booth_rent_barber",
+        role: "barber",
         primaryOnboardingRole: "barber",
         onboardingState: "active",
         fullName: identity.name,
@@ -3022,7 +3021,7 @@ export async function initializeProductionRoleSelection(
       };
     }
 
-    const subtype = input.barberSubtype;
+    const subtype = normalizeBarberSubtype(input.barberSubtype);
     const lane = await ensureBarberLane(profileId, identity, subtype);
     await upsertProfileForLane({
       profileId,

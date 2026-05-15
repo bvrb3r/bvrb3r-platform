@@ -2,6 +2,7 @@
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import { createEmptyMarketplaceActivationState, getMonetizationEligibility, type MarketplaceActivationState } from "@/lib/marketplace/activation";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { isBarberAccountRole } from "@/lib/auth/roles";
 import { buildPublicTrustSignal, computeShopVerificationDecision, getVerificationGateDecision } from "@/lib/trust/engine";
 import { getTrustProvider } from "@/lib/trust/provider";
 import type {
@@ -375,7 +376,7 @@ function createSupabaseProvider(supabase: SupabaseClient): MarketplaceActivation
       return { upload };
     },
     async createBoostCampaign(actor, input) {
-      if (!["owner", "commission_barber", "booth_rent_barber"].includes(actor.role)) {
+      if (!(actor.role === "owner" || isBarberAccountRole(actor.role))) {
         throw new ActivationPermissionError("Only owner or barber roles can launch boosted visibility.");
       }
       const scopeType = input.scopeType;

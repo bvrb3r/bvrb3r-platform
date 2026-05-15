@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getDefaultRouteForUser, isPlatformAdminUser } from "@/lib/auth/demo-auth";
+import { isRoleAllowed } from "@/lib/auth/roles";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
 import { Role } from "@/types/domain";
 
@@ -31,7 +32,7 @@ export async function getAuthorizedUser(allowedRoles: Role[]) {
   }
   redirectIfAccessDisabled(user.accountStatus);
 
-  if (!allowedRoles.includes(user.role)) {
+  if (!isRoleAllowed(user.role, allowedRoles)) {
     redirect(getDefaultRouteForUser(user));
   }
 

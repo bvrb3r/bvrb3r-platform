@@ -575,7 +575,7 @@ async function upsertUserRole(
     .from("user_roles")
     .upsert({
       user_email: input.email,
-      role: input.compensationModel === "commission" ? "commission_barber" : "booth_rent_barber",
+      role: "barber",
       client_reference: null,
       barber_reference: input.barberReference,
       location_references: []

@@ -59,7 +59,7 @@ export function getRuntimeRoleForSignupIntent(role: SignupRoleIntent): Role {
   }
 
   if (role === "barber") {
-    return "booth_rent_barber";
+    return "barber";
   }
 
   return "client";

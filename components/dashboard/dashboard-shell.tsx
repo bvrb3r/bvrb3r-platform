@@ -20,6 +20,7 @@ import { CLIENT_PRIMARY_NAV_ITEMS, CLIENT_PRIMARY_TAB_HREFS } from "@/components
 import { OWNER_PRIMARY_NAV_ITEMS } from "@/components/owner-experience/owner-tab-config";
 import { Card } from "@/components/ui/card";
 import { getDefaultRouteForUser, getUserRoleLabel } from "@/lib/auth/demo-auth";
+import { isBarberAccountRole } from "@/lib/auth/roles";
 import { cn } from "@/lib/utils";
 import type { Role, UserAccount } from "@/types/domain";
 
@@ -66,6 +67,7 @@ function getNavigation(user: UserAccount): NavItem[] {
         { href: "/team", activeHref: "/team", label: "Barbers", icon: Users },
         { href: "/workspace/profile", activeHref: "/workspace/profile", label: "Profile", icon: UserRound }
       ];
+    case "barber":
     case "commission_barber":
     case "booth_rent_barber":
       return BARBER_PRIMARY_NAV_ITEMS;
@@ -83,7 +85,7 @@ function getNavigation(user: UserAccount): NavItem[] {
 }
 
 function isBarberRole(role: Role) {
-  return role === "commission_barber" || role === "booth_rent_barber";
+  return isBarberAccountRole(role);
 }
 
 function getPrimaryFocusLabel(role: Role) {
@@ -94,6 +96,7 @@ function getPrimaryFocusLabel(role: Role) {
       return "Operations overview";
     case "front_desk":
       return "Check-in workflow";
+    case "barber":
     case "commission_barber":
     case "booth_rent_barber":
       return "Barber tools";
@@ -112,6 +115,7 @@ function getPrimaryActionTitle(role: Role) {
       return "Keep schedule, queue, and attendance moving without opening owner-only controls.";
     case "front_desk":
       return "Move arrivals from the door to the right chair without friction.";
+    case "barber":
     case "commission_barber":
     case "booth_rent_barber":
       return "Calendar, Checkout, Profile, Messages, and More stay focused by job.";
@@ -130,6 +134,7 @@ function getBoundaryCopy(role: Role) {
       return "Manager mode keeps the floor visible while ownership financial controls, payout rules, and transfer rights stay protected.";
     case "front_desk":
       return "Front desk mode stays focused on queue movement, guest support, check-in flow, and handoff clarity.";
+    case "barber":
     case "commission_barber":
       return "Barber tools stay separated so schedule, payment, profile, messages, and setup stay easy to scan.";
     case "booth_rent_barber":
@@ -149,6 +154,7 @@ function getLocationScopeLabel(role: Role) {
       return "Assigned shop";
     case "front_desk":
       return "Desk coverage";
+    case "barber":
     case "commission_barber":
     case "booth_rent_barber":
       return "Assigned locations";
@@ -167,6 +173,7 @@ function getAlertLabel(role: Role) {
       return "No manager alerts yet";
     case "front_desk":
       return "No queue alerts yet";
+    case "barber":
     case "commission_barber":
     case "booth_rent_barber":
       return "No alerts yet";
@@ -178,7 +185,7 @@ function getAlertLabel(role: Role) {
 }
 
 function getNavigationCountLabel(role: Role, count: number) {
-  if (role === "owner" || role === "commission_barber" || role === "booth_rent_barber" || role === "client") {
+  if (role === "owner" || isBarberAccountRole(role) || role === "client") {
     return `${count} tabs`;
   }
 
@@ -190,7 +197,7 @@ function getHeroNavigationCountLabel(role: Role, count: number) {
     return `${count} owner tabs`;
   }
 
-  if (role === "commission_barber" || role === "booth_rent_barber") {
+  if (isBarberAccountRole(role)) {
     return `${count} barber tabs`;
   }
 
@@ -221,6 +228,7 @@ function getUtilityCards(user: UserAccount): UtilityCard[] {
         { label: "Shop scope", value: String(user.locationIds.length), detail: "Assigned locations on this session", icon: MapPinned },
         { label: "Operator tools", value: "Ready", detail: "Public intake and operator tools stay separated.", icon: Bell }
       ];
+    case "barber":
     case "commission_barber":
     case "booth_rent_barber":
       return [
@@ -246,6 +254,7 @@ function getNotificationsHref(role: Role): ComponentProps<typeof Link>["href"] {
     case "manager":
     case "front_desk":
       return "/queue";
+    case "barber":
     case "commission_barber":
     case "booth_rent_barber":
       return "/dashboard/barber";
@@ -260,6 +269,7 @@ function getMessagesHref(role: Role): ComponentProps<typeof Link>["href"] {
   switch (role) {
     case "client":
       return CLIENT_PRIMARY_TAB_HREFS.messages;
+    case "barber":
     case "commission_barber":
     case "booth_rent_barber":
       return "/dashboard/barber/messages";
@@ -281,7 +291,7 @@ function getProfileHref(role: Role): ComponentProps<typeof Link>["href"] {
     return CLIENT_PRIMARY_TAB_HREFS.profile;
   }
 
-  if (role === "commission_barber" || role === "booth_rent_barber") {
+  if (isBarberAccountRole(role)) {
     return "/dashboard/barber/profile";
   }
 
@@ -323,7 +333,7 @@ function getApprovalBanner(user: UserAccount): ApprovalBanner | null {
     };
   }
 
-  if (user.role === "commission_barber" || user.role === "booth_rent_barber") {
+  if (isBarberAccountRole(user.role)) {
     const appStatus = formatApprovalStatus(user.appApprovalStatus);
     const shopStatus = user.shopApprovalStatus && user.shopApprovalStatus !== "not_required"
       ? formatApprovalStatus(user.shopApprovalStatus)
@@ -334,8 +344,8 @@ function getApprovalBanner(user: UserAccount): ApprovalBanner | null {
 
     const subtypeLabel = user.barberSubtype === "commission"
       ? "Commission barber"
-      : user.barberSubtype === "blueprint"
-        ? "Blueprint barber"
+      : user.barberSubtype === "booth_rent"
+        ? "Booth-rent barber"
         : "Freelance barber";
     const detailParts = [
       `${subtypeLabel} lane is open for setup.`,

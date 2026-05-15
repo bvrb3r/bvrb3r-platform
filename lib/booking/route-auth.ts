@@ -1,4 +1,5 @@
-﻿import { getCurrentUserFromServer } from "@/lib/auth/session";
+import { isBarberAccountRole, normalizeAccountRole } from "@/lib/auth/roles";
+import { getCurrentUserFromServer } from "@/lib/auth/session";
 import type { LiveActorRole, LiveOperationsViewer } from "@/lib/operations/live-state";
 import type { UserAccount } from "@/types/domain";
 
@@ -8,7 +9,7 @@ export async function getSessionUser() {
 }
 
 export function toLifecycleActorRole(role: UserAccount["role"]): LiveActorRole | null {
-  if (role === "commission_barber" || role === "booth_rent_barber") {
+  if (isBarberAccountRole(role)) {
     return "barber";
   }
 
@@ -20,12 +21,12 @@ export function toLifecycleActorRole(role: UserAccount["role"]): LiveActorRole |
 }
 
 export function toBarberViewer(user: UserAccount): LiveOperationsViewer | null {
-  if (!(user.role === "commission_barber" || user.role === "booth_rent_barber")) {
+  if (!isBarberAccountRole(user.role)) {
     return null;
   }
 
   return {
-    role: user.role,
+    role: normalizeAccountRole(user.role),
     barberId: user.barberId,
     clientId: user.clientId,
     locationIds: user.locationIds,
@@ -56,9 +57,9 @@ export function toBookingViewer(user: UserAccount): LiveOperationsViewer | null 
     };
   }
 
-  if (user.role === "commission_barber" || user.role === "booth_rent_barber") {
+  if (isBarberAccountRole(user.role)) {
     return {
-      role: user.role,
+      role: normalizeAccountRole(user.role),
       barberId: user.barberId,
       locationIds: user.locationIds,
       email: user.email

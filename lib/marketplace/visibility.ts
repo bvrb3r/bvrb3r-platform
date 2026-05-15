@@ -2,12 +2,12 @@ import {
   buildPublicTrustSignal,
   computeShopVerificationDecision
 } from "@/lib/trust/engine";
+import { isBarberAccountRole } from "@/lib/auth/roles";
 import type { MarketplaceState } from "@/lib/marketplace/engine";
 import type { Barber, BarberProfile, Location, Service, Shop } from "@/types/domain";
 import type { TrustState } from "@/types/trust";
 
 const PUBLIC_VISIBILITY_STATES = new Set(["public", "featured"]);
-const BARBER_MARKETPLACE_ROLES = new Set(["commission_barber", "booth_rent_barber"]);
 const MARKETPLACE_APPROVED_STATUS = "approved";
 const KNOWN_DEMO_MARKETPLACE_REFERENCES = new Set([
   "barber-wave",
@@ -230,7 +230,7 @@ export function isBarberMarketplaceVisible(
     return false;
   }
 
-  if (!BARBER_MARKETPLACE_ROLES.has(barber.role)) {
+  if (!isBarberAccountRole(barber.role)) {
     return false;
   }
 

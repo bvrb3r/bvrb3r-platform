@@ -4,6 +4,7 @@ import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { AccountSessionWorkspace } from "@/components/auth/account-session-workspace";
 import { OwnerSettingsWorkspace } from "@/components/operations/owner-settings-workspace";
 import { getAuthorizedUser } from "@/lib/auth/guards";
+import { isBarberAccountRole } from "@/lib/auth/roles";
 
 export default async function SettingsPage() {
   const user = await getAuthorizedUser(["owner", "commission_barber", "booth_rent_barber", "client"]);
@@ -17,7 +18,7 @@ export default async function SettingsPage() {
     redirect("/dashboard/owner/settings" as Route);
   }
 
-  if (user.role === "commission_barber" || user.role === "booth_rent_barber") {
+  if (isBarberAccountRole(user.role)) {
     redirect("/dashboard/barber/more?section=settings" as Route);
   }
 

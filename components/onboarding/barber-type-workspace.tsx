@@ -27,9 +27,9 @@ const barberSubtypeCards: Array<{
     approvalCopy: "Requires BVRB3R app approval and shop approval."
   },
   {
-    subtype: "blueprint",
-    title: "Booth Rent / Blueprint Barber",
-    copy: "Independent booth-rent or Blueprint-style barber operating inside a shop with location approval and verification controls.",
+    subtype: "booth_rent",
+    title: "Booth Rent Barber",
+    copy: "Independent booth-rent barber operating inside a shop with location approval and verification controls.",
     approvalCopy: "Requires BVRB3R app approval and shop approval."
   }
 ];

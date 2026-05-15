@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getOnboardingSessionUser, toOnboardingErrorResponse } from "@/app/api/onboarding/_shared";
+import { normalizeBarberSubtype } from "@/lib/auth/roles";
 import { initializeSelectedUserLane, resolvePostAuthDestination } from "@/lib/onboarding/service";
 
 const schema = z.object({
-  barberSubtype: z.enum(["freelance", "commission", "blueprint"])
+  barberSubtype: z.enum(["freelance", "commission", "booth_rent", "blueprint"]).transform(normalizeBarberSubtype)
 });
 
 export async function POST(request: NextRequest) {

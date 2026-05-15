@@ -375,7 +375,7 @@ describe("barber workspace", () => {
   });
 
   it("renders the Phase 5 today-first barber lane from canonical overview truth", () => {
-    render(<BarberWorkspace barberName="Blaze King" barberTitle="Booth-Rent Barber" barberSubtype="blueprint" />);
+    render(<BarberWorkspace barberName="Blaze King" barberTitle="Booth-Rent Barber" barberSubtype="booth_rent" />);
 
     expect(screen.getByText("Today")).toBeInTheDocument();
     expect(screen.getByText("Next client")).toBeInTheDocument();
@@ -446,7 +446,7 @@ describe("barber workspace", () => {
       error: null
     });
 
-    render(<BarberWorkspace barberName="Blaze King" barberTitle="Booth-Rent Barber" barberSubtype="blueprint" />);
+    render(<BarberWorkspace barberName="Blaze King" barberTitle="Booth-Rent Barber" barberSubtype="booth_rent" />);
 
     expect(screen.getByText(/No appointments are on today's barber calendar yet/i)).toBeInTheDocument();
     expect(screen.getByText(/No appointments are on this barber's live day sheet yet/i)).toBeInTheDocument();
@@ -487,7 +487,7 @@ describe("barber workspace", () => {
       }
     });
 
-    render(<BarberWorkspace barberName="Blaze King" barberTitle="Booth-Rent Barber" barberSubtype="blueprint" />);
+    render(<BarberWorkspace barberName="Blaze King" barberTitle="Booth-Rent Barber" barberSubtype="booth_rent" />);
 
     expect(screen.getAllByText("Booking access is still paused pending review.").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Payouts are blocked until verification clears.").length).toBeGreaterThan(0);
@@ -498,7 +498,7 @@ describe("barber workspace", () => {
     const cancelBooking = vi.fn().mockResolvedValue({});
     useBarberCancelBookingMutationMock.mockReturnValue({ isPending: false, mutateAsync: cancelBooking });
 
-    render(<BarberWorkspace barberName="Blaze King" barberTitle="Booth-Rent Barber" barberSubtype="blueprint" />);
+    render(<BarberWorkspace barberName="Blaze King" barberTitle="Booth-Rent Barber" barberSubtype="booth_rent" />);
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel booking" }));
 
@@ -522,7 +522,7 @@ describe("barber workspace", () => {
       mutateAsync: notifyGap
     });
 
-    render(<BarberWorkspace barberName="Blaze King" barberTitle="Booth-Rent Barber" barberSubtype="blueprint" />);
+    render(<BarberWorkspace barberName="Blaze King" barberTitle="Booth-Rent Barber" barberSubtype="booth_rent" />);
 
     fireEvent.click(screen.getByRole("button", { name: "Notify follow list" }));
 
