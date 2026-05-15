@@ -72,6 +72,16 @@ function toErrorResponse(error: unknown, fallback: string, status = 500) {
   return NextResponse.json({ error: message }, { status });
 }
 
+function isMissingRelationOrColumn(error: unknown) {
+  const candidate = error && typeof error === "object"
+    ? error as { code?: string | null; message?: string | null }
+    : null;
+  const message = `${candidate?.message ?? ""}`.toLowerCase();
+  return ["42P01", "42703", "PGRST200", "PGRST204", "PGRST205"].includes(candidate?.code ?? "")
+    || message.includes("does not exist")
+    || message.includes("schema cache");
+}
+
 function getIndependentLocationReference(barberReference: string) {
   return `independent-${barberReference}`;
 }
@@ -215,47 +225,80 @@ function updateDemoBookingLocation(barberId: string, input: SaveBookingLocationI
 }
 
 async function resolveBarber(supabase: SupabaseClient, barberReference: string) {
-  const referenceResult = await supabase
+  const productionSelect = "id, reference_code, profile_id, barber_subtype, status, is_bookable, is_discoverable";
+  let referenceResult = await supabase
     .from("barbers")
-    .select("id, reference_code, profile_id, compensation_model, commission_rate, booth_rent_amount, booth_rent_frequency")
+    .select(productionSelect)
     .eq("reference_code", barberReference)
     .maybeSingle();
+
+  if (referenceResult.error && isMissingRelationOrColumn(referenceResult.error)) {
+    referenceResult = await supabase
+      .from("barbers")
+      .select("id, reference_code, profile_id, compensation_model, commission_rate, booth_rent_amount, booth_rent_frequency")
+      .eq("reference_code", barberReference)
+      .maybeSingle();
+  }
 
   if (referenceResult.error) {
     throw referenceResult.error;
   }
 
   if (referenceResult.data) {
-    return referenceResult.data as {
+    const row = referenceResult.data as {
       id: string;
       reference_code: string | null;
       profile_id: string;
-      compensation_model: string;
-      commission_rate: number | string | null;
-      booth_rent_amount: number | string | null;
-      booth_rent_frequency: string | null;
+      compensation_model?: string | null;
+      commission_rate?: number | string | null;
+      booth_rent_amount?: number | string | null;
+      booth_rent_frequency?: string | null;
+    };
+    return {
+      ...row,
+      compensation_model: row.compensation_model ?? "freelance",
+      commission_rate: row.commission_rate ?? null,
+      booth_rent_amount: row.booth_rent_amount ?? null,
+      booth_rent_frequency: row.booth_rent_frequency ?? null
     };
   }
 
-  const uuidResult = await supabase
+  let uuidResult = await supabase
     .from("barbers")
-    .select("id, reference_code, profile_id, compensation_model, commission_rate, booth_rent_amount, booth_rent_frequency")
+    .select(productionSelect)
     .eq("id", barberReference)
     .maybeSingle();
+
+  if (uuidResult.error && isMissingRelationOrColumn(uuidResult.error)) {
+    uuidResult = await supabase
+      .from("barbers")
+      .select("id, reference_code, profile_id, compensation_model, commission_rate, booth_rent_amount, booth_rent_frequency")
+      .eq("id", barberReference)
+      .maybeSingle();
+  }
 
   if (uuidResult.error) {
     throw uuidResult.error;
   }
 
-  return uuidResult.data as {
+  const row = uuidResult.data as {
     id: string;
     reference_code: string | null;
     profile_id: string;
-    compensation_model: string;
-    commission_rate: number | string | null;
-    booth_rent_amount: number | string | null;
-    booth_rent_frequency: string | null;
+    compensation_model?: string | null;
+    commission_rate?: number | string | null;
+    booth_rent_amount?: number | string | null;
+    booth_rent_frequency?: string | null;
   } | null;
+  return row
+    ? {
+        ...row,
+        compensation_model: row.compensation_model ?? "freelance",
+        commission_rate: row.commission_rate ?? null,
+        booth_rent_amount: row.booth_rent_amount ?? null,
+        booth_rent_frequency: row.booth_rent_frequency ?? null
+      }
+    : null;
 }
 
 async function persistActivationAvailability(

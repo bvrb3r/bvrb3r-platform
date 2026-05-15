@@ -50,7 +50,12 @@ type BarberRow = {
   id: string;
   reference_code: string | null;
   profile_id: string;
-  compensation_model: string;
+  compensation_model?: string | null;
+  barber_subtype?: string | null;
+  default_money_relationship?: string | null;
+  status?: string | null;
+  is_bookable?: boolean | null;
+  is_discoverable?: boolean | null;
 };
 
 type LocationRow = {
@@ -100,6 +105,21 @@ type BarberContext = {
   barberReference: string;
   locations: LocationRow[];
 };
+
+function normalizeBarberRow(row: Partial<BarberRow>): BarberRow {
+  const reference = row.reference_code ?? row.id ?? "";
+  return {
+    id: row.id ?? reference,
+    reference_code: row.reference_code ?? null,
+    profile_id: row.profile_id ?? "",
+    compensation_model: row.compensation_model ?? row.default_money_relationship ?? row.barber_subtype ?? "freelance",
+    barber_subtype: row.barber_subtype ?? "freelance",
+    default_money_relationship: row.default_money_relationship ?? null,
+    status: row.status ?? null,
+    is_bookable: row.is_bookable ?? null,
+    is_discoverable: row.is_discoverable ?? null
+  };
+}
 
 export type BarberShopScopeView = {
   id: string;
@@ -304,8 +324,23 @@ function fallbackIndependentLocationReference(barberReference: string, reference
     ?? (barberReference.startsWith("barber-") ? `independent-${barberReference}` : `independent-barber-${barberReference}`);
 }
 
-function resolveBarberRelationshipType(compensationModel?: string | null) {
-  const normalized = (compensationModel ?? "").toLowerCase();
+function resolveBarberRelationshipType(input: {
+  compensationModel?: string | null;
+  barberSubtype?: string | null;
+  defaultMoneyRelationship?: string | null;
+  hasShopAssignment?: boolean;
+}) {
+  const explicit = (input.defaultMoneyRelationship ?? input.barberSubtype ?? "").toLowerCase();
+  const normalized = (input.compensationModel ?? "").toLowerCase();
+  if (explicit === "freelance") {
+    return "freelance";
+  }
+  if (explicit === "commission" || normalized.includes("commission")) {
+    return input.hasShopAssignment ? "commission" : "freelance";
+  }
+  if (explicit === "booth_rent" || explicit === "blueprint" || normalized.includes("booth")) {
+    return input.hasShopAssignment ? "booth_rent" : "freelance";
+  }
   if (normalized.includes("commission")) {
     return "commission";
   }
@@ -418,11 +453,19 @@ async function resolveBarberContext(user: UserAccount, supabase: SupabaseClient)
   const viewer = assertBarberUser(user);
   const barberReference = viewer.barberId!;
   const barberUuid = canonicalBarberUuid(barberReference);
-  const barberResult = await supabase
+  let barberResult = await supabase
     .from("barbers")
-    .select("id, reference_code, profile_id, compensation_model")
+    .select("id, reference_code, profile_id, barber_subtype, status, is_bookable, is_discoverable")
     .or(`reference_code.eq.${barberReference},id.eq.${barberUuid}`)
     .maybeSingle();
+
+  if (barberResult.error && isMissingRelationError(barberResult.error)) {
+    barberResult = await supabase
+      .from("barbers")
+      .select("id, reference_code, profile_id, compensation_model")
+      .or(`reference_code.eq.${barberReference},id.eq.${barberUuid}`)
+      .maybeSingle();
+  }
 
   if (barberResult.error) {
     throw new BarberToolsServiceError("Unable to resolve the barber account.", 500);
@@ -432,7 +475,7 @@ async function resolveBarberContext(user: UserAccount, supabase: SupabaseClient)
     throw new BarberToolsServiceError("No barber account is available for these tools.", 404);
   }
 
-  const barber = barberResult.data as BarberRow;
+  const barber = normalizeBarberRow(barberResult.data as Partial<BarberRow>);
   const referenceIds = viewer.locationIds ?? [];
   const membershipResult = await supabase
     .from("staff_locations")
@@ -455,8 +498,12 @@ async function resolveBarberContext(user: UserAccount, supabase: SupabaseClient)
     : ((membershipResult.data ?? []) as Array<{ location_id: string }>)
     .map((row) => row.location_id)
     .filter(Boolean);
-  const configuredRelationshipType = resolveBarberRelationshipType(barber.compensation_model);
-  const relationshipType = membershipLocationIds.length ? configuredRelationshipType : "freelance";
+  const relationshipType = resolveBarberRelationshipType({
+    compensationModel: barber.compensation_model,
+    barberSubtype: barber.barber_subtype,
+    defaultMoneyRelationship: barber.default_money_relationship,
+    hasShopAssignment: membershipLocationIds.length > 0
+  });
   const requiresShopAssignment = relationshipType !== "freelance" && membershipLocationIds.length > 0;
   const uuidIds = [...new Set([...referenceIds.filter(isUuidLike), ...membershipLocationIds])];
   const referenceCodes = [...new Set(referenceIds.filter((value) => !isUuidLike(value) && !isIndependentBarberLocationReference(value)))];
@@ -487,9 +534,9 @@ async function resolveBarberContext(user: UserAccount, supabase: SupabaseClient)
       calendarMode: "shop_assigned",
       fallbackFreelanceMode: false,
       errorSuppressedForFreelance: false,
-      finalError: "Unable to resolve barber shop assignments."
+      finalError: "Shop assignment details could not be loaded."
     });
-    throw new BarberToolsServiceError("Unable to resolve barber shop assignments.", 500);
+    throw new BarberToolsServiceError("Shop assignment details could not be loaded.", 500);
   }
 
   if (uuidLocationsResult.error || referenceLocationsResult.error) {
@@ -985,9 +1032,9 @@ async function buildStatusView(
   const upcomingAppointment = appointments.find((appointment) => isUpcomingAppointmentStatus(appointment.status)) ?? null;
   const defaultShopId = upcomingAppointment?.locationId ?? user.locationIds[0] ?? null;
   const defaultStatus: BarberStatusView = {
-    barberId: user.barberId ?? "",
-    currentShopId: defaultShopId,
-    currentShopLabel: defaultShopId ?? null,
+    barberId: context?.barberReference ?? user.barberId ?? "",
+    currentShopId: context?.locations[0]?.reference_code ?? context?.locations[0]?.id ?? defaultShopId,
+    currentShopLabel: context?.locations[0] ? formatLocationLabel(context.locations[0]) : defaultShopId ?? null,
     liveStatus: activeAppointment ? "busy" : "available",
     liveStatusLabel: formatLiveStatusLabel(activeAppointment ? "busy" : "available"),
     isOnline: true,
@@ -1003,7 +1050,8 @@ async function buildStatusView(
   }
 
   const statusRows = await readCanonicalBarberStatusRows(supabase, user, context);
-  const row = statusRows.find(isBookingActiveStatusRow) ?? statusRows[0] ?? null;
+  const canonicalBookable = context?.barber.is_bookable === true || context?.barber.status === "active";
+  const row = statusRows.find(isBookingActiveStatusRow) ?? (canonicalBookable ? null : statusRows[0] ?? null);
   if (!row) {
     return defaultStatus;
   }

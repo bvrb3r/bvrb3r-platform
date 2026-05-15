@@ -1,7 +1,7 @@
 ﻿import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { buildMarketplaceBookingHref } from "@/lib/marketplace/links";
 import { getClientFacingBarberName } from "@/lib/marketplace/client-facing";
-import { isBarberAccountRole } from "@/lib/auth/roles";
+import { getCanonicalAccountRole, isBarberAccountRole } from "@/lib/auth/roles";
 import {
   buildPublicTrustSignal,
   computeShopVerificationDecision,
@@ -52,16 +52,22 @@ type CanonicalProfileRow = {
   email: string | null;
   phone: string | null;
   primary_onboarding_role: string | null;
+  onboarding_state?: string | null;
 };
 
 type CanonicalBarberRow = {
   id: string;
   reference_code: string | null;
   profile_id: string;
-  compensation_model: "commission" | "booth_rent";
+  compensation_model: "commission" | "booth_rent" | "freelance" | string | null;
+  default_money_relationship?: "freelance" | "booth_rent" | "commission" | null;
   barber_subtype?: "freelance" | "booth_rent" | "commission" | "blueprint" | null;
   app_approval_status: string | null;
   shop_approval_status: string | null;
+  status?: string | null;
+  onboarding_status?: string | null;
+  is_bookable?: boolean | null;
+  is_discoverable?: boolean | null;
   commission_rate: number | string | null;
   booth_rent_amount: number | string | null;
   booth_rent_frequency: "weekly" | "monthly" | null;
@@ -88,12 +94,66 @@ type CanonicalServiceRow = {
   created_at: string | null;
   updated_at: string | null;
   service_owner_type: "barber" | "shop" | null;
+  service_owner?: "barber" | "shop" | null;
   barber_reference: string | null;
   shop_reference: string | null;
   booking_count: number | null;
   popularity_rank: number | null;
   source_table?: "services" | "marketplace_services";
 };
+
+function normalizeCanonicalBarberRow(row: Partial<CanonicalBarberRow>): CanonicalBarberRow {
+  const reference = row.reference_code ?? row.booking_slug ?? row.id ?? "";
+  return {
+    id: row.id ?? reference,
+    reference_code: row.reference_code ?? row.booking_slug ?? null,
+    profile_id: row.profile_id ?? "",
+    compensation_model: row.compensation_model ?? row.barber_subtype ?? "freelance",
+    default_money_relationship: row.default_money_relationship ?? null,
+    barber_subtype: row.barber_subtype ?? "freelance",
+    app_approval_status: row.app_approval_status ?? null,
+    shop_approval_status: row.shop_approval_status ?? null,
+    status: row.status ?? null,
+    onboarding_status: row.onboarding_status ?? null,
+    is_bookable: row.is_bookable ?? null,
+    is_discoverable: row.is_discoverable ?? null,
+    commission_rate: row.commission_rate ?? null,
+    booth_rent_amount: row.booth_rent_amount ?? null,
+    booth_rent_frequency: row.booth_rent_frequency ?? null,
+    bio: row.bio ?? null,
+    booking_slug: row.booking_slug ?? row.reference_code ?? null
+  };
+}
+
+function normalizeCanonicalServiceRow(row: Partial<CanonicalServiceRow>): CanonicalServiceRow {
+  const owner = row.service_owner_type ?? row.service_owner ?? (row.barber_reference ? "barber" : "shop");
+  return {
+    id: row.id ?? row.reference_code ?? "",
+    reference_code: row.reference_code ?? null,
+    location_id: row.location_id ?? row.shop_reference ?? "",
+    category: row.category ?? "Haircut",
+    name: row.name ?? "Service",
+    description: row.description ?? null,
+    duration_min: Number(row.duration_min ?? 0),
+    buffer_min: Number(row.buffer_min ?? 0),
+    price: row.price ?? 0,
+    currency: row.currency ?? "usd",
+    deposit_amount: row.deposit_amount ?? 0,
+    full_prepay_required: row.full_prepay_required ?? true,
+    active: row.active !== false,
+    is_bookable: row.is_bookable !== false,
+    display_order: row.display_order ?? 0,
+    created_at: row.created_at ?? null,
+    updated_at: row.updated_at ?? null,
+    service_owner_type: owner,
+    service_owner: owner,
+    barber_reference: row.barber_reference ?? null,
+    shop_reference: row.shop_reference ?? null,
+    booking_count: row.booking_count ?? null,
+    popularity_rank: row.popularity_rank ?? null,
+    source_table: row.source_table ?? "services"
+  };
+}
 
 type CanonicalAvailabilityRuleRow = {
   barber_id: string;
@@ -439,7 +499,7 @@ function createEligibilityDiagnostics(input: {
     payout: input.facts.payoutReady,
     visibility: input.facts.profileVisibility === "public" || input.facts.profileVisibility === "featured",
     availability: input.facts.availabilityCount > 0,
-    location: input.facts.independentLocationExists || input.facts.acceptedShopCount > 0,
+    location: input.facts.locationReady,
     publicProfile: Boolean(input.publicProfileRoute),
     bookingActive: input.facts.bookingStatus === "active",
     serviceCount: input.facts.serviceCount,
@@ -740,6 +800,47 @@ function isAcceptingBookingStatus(row?: CanonicalBarberStatusRow | null) {
     || ["active", "available", "live"].includes(liveStatus);
 }
 
+function getCanonicalServiceOwnerType(row: Pick<CanonicalServiceRow, "service_owner_type" | "service_owner" | "barber_reference">) {
+  const ownerType = row.service_owner_type ?? row.service_owner ?? null;
+  if (ownerType === "barber" || ownerType === "shop") {
+    return ownerType;
+  }
+
+  return row.barber_reference ? "barber" : "shop";
+}
+
+function isCanonicalProfileActive(profile?: CanonicalProfileRow | null) {
+  const state = profile?.onboarding_state?.toLowerCase();
+  return !state || ["active", "complete", "completed", "verified"].includes(state);
+}
+
+function isCanonicalBarberBookable(barber: CanonicalBarberRow, status?: CanonicalBarberStatusRow | null) {
+  if (barber.is_bookable === true) {
+    return true;
+  }
+  if (barber.is_bookable === false) {
+    return false;
+  }
+
+  return isAcceptingBookingStatus(status);
+}
+
+function isCanonicalBarberDiscoverable(input: {
+  barber: CanonicalBarberRow;
+  profileRow?: CanonicalBarberProfileRow | null;
+  visibility?: CanonicalMarketplaceVisibilityRow | null;
+}) {
+  if (input.barber.is_discoverable === true) {
+    return true;
+  }
+  if (input.barber.is_discoverable === false) {
+    return false;
+  }
+
+  return isPublicMarketplaceVisibilityState(input.profileRow?.visibility_state)
+    || isPublicMarketplaceVisibilityState(input.visibility?.visibility_state);
+}
+
 function getCanonicalBarberStatusRow(
   snapshot: CanonicalSnapshot,
   barberReference: string,
@@ -798,6 +899,16 @@ function resolveDiscoveryRelationshipType(
     return "commission";
   }
   if (normalized.includes("booth")) {
+    return "booth_rent";
+  }
+  return "freelance";
+}
+
+function toDomainCompensationModel(value?: string | null): "freelance" | "booth_rent" | "commission" {
+  if (value === "commission") {
+    return "commission";
+  }
+  if (value === "booth_rent" || value === "blueprint") {
     return "booth_rent";
   }
   return "freelance";
@@ -883,29 +994,31 @@ function isCanonicalMarketplaceVisibilityReady(
   barberReference: string,
   barberUuid: string,
   profileId?: string | null,
-  profileRow?: CanonicalBarberProfileRow
+  profileRow?: CanonicalBarberProfileRow,
+  barberRow?: CanonicalBarberRow
 ) {
   const visibility = getMarketplaceVisibilityRow(snapshot, barberReference, barberUuid, profileId);
   const status = getCanonicalBarberStatusRow(snapshot, barberReference, barberUuid, profileId);
-  const acceptingBookings = isAcceptingBookingStatus(status);
+  const acceptingBookings = barberRow ? isCanonicalBarberBookable(barberRow, status) : isAcceptingBookingStatus(status);
 
   if (!acceptingBookings) {
     return false;
   }
 
-  if (
-    !profileRow
-    || !isPublicMarketplaceVisibilityState(profileRow.visibility_state)
-  ) {
+  const visible = barberRow
+    ? isCanonicalBarberDiscoverable({ barber: barberRow, profileRow, visibility })
+    : isPublicMarketplaceVisibilityState(profileRow?.visibility_state);
+  if (!visible) {
     return false;
   }
 
   return ![
     barberReference,
-    profileRow.barber_reference,
-    profileRow.username,
-    profileRow.display_name,
-    visibility?.barber_reference
+    profileRow?.barber_reference,
+    profileRow?.username,
+    profileRow?.display_name,
+    visibility?.barber_reference,
+    barberRow?.booking_slug
   ].some(isKnownNonProductionMarketplaceValue);
 }
 
@@ -960,10 +1073,10 @@ async function readCanonicalSnapshot(supabase: SupabaseClient): Promise<Canonica
     barberStatusResult,
     connectedAccountsResult
   ] = await Promise.all([
-    supabase.from("barbers").select("id, reference_code, profile_id, compensation_model, barber_subtype, app_approval_status, shop_approval_status, commission_rate, booth_rent_amount, booth_rent_frequency, bio, booking_slug"),
+    supabase.from("barbers").select("id, reference_code, profile_id, booking_slug, barber_subtype, app_approval_status, shop_approval_status, status, is_bookable, is_discoverable"),
     supabase.from("barber_profiles").select("barber_reference, username, display_name, bio, years_experience, shop_reference, profile_photo_path, profile_photo_url, specialties, badges, service_area_label, next_available_at, visibility_state"),
-    supabase.from("profiles").select("id, role, full_name, email, phone, primary_onboarding_role"),
-    supabase.from("services").select("id, reference_code, location_id, category, name, description, duration_min, buffer_min, price, currency, deposit_amount, full_prepay_required, active, is_bookable, display_order, created_at, updated_at, service_owner_type, barber_reference, shop_reference, booking_count, popularity_rank").eq("active", true),
+    supabase.from("profiles").select("id, role, full_name, email, phone, primary_onboarding_role, onboarding_state"),
+    supabase.from("services").select("id, reference_code, location_id, category, name, description, duration_min, buffer_min, price, currency, deposit_amount, full_prepay_required, active, is_bookable, display_order, created_at, updated_at, service_owner, service_owner_type, barber_reference, shop_reference").eq("active", true),
     supabase.from("marketplace_services").select("service_reference, category, name, description, duration_min, buffer_min, price, deposit_amount, full_prepay_required, owner_type, barber_reference, shop_reference, style_tag_ids, created_at, updated_at"),
     supabase.from("locations").select("id, reference_code, name, neighborhood, city, state, phone, address, address_line_2, postal_code, latitude, longitude"),
     supabase.from("staff_locations").select("profile_id, location_id"),
@@ -981,17 +1094,26 @@ async function readCanonicalSnapshot(supabase: SupabaseClient): Promise<Canonica
   const resolvedBarberProfilesResult = barberProfilesResult.error && isMissingRelationOrColumn(barberProfilesResult.error)
     ? await supabase.from("barber_profiles").select("barber_reference, username, display_name, bio, years_experience, shop_reference, profile_photo_path, specialties, badges, service_area_label, next_available_at, visibility_state")
     : barberProfilesResult;
+  let resolvedBarbersResult = barbersResult.error && isMissingRelationOrColumn(barbersResult.error)
+    ? await supabase.from("barbers").select("id, reference_code, profile_id, barber_subtype, app_approval_status, shop_approval_status, status, is_bookable, is_discoverable")
+    : barbersResult;
+  if (resolvedBarbersResult.error && isMissingRelationOrColumn(resolvedBarbersResult.error)) {
+    resolvedBarbersResult = await supabase.from("barbers").select("id, reference_code, profile_id, compensation_model, app_approval_status, shop_approval_status") as typeof barbersResult;
+  }
   const resolvedProfilesResult = profilesResult.error && isMissingRelationOrColumn(profilesResult.error)
     ? await supabase.from("profiles").select("id, role, full_name, email, phone")
     : profilesResult;
   let resolvedServicesResult = servicesResult.error && isMissingRelationOrColumn(servicesResult.error)
-    ? await supabase.from("services").select("id, reference_code, location_id, category, name, description, duration_min, buffer_min, price, currency, deposit_amount, full_prepay_required, active, is_bookable, display_order, created_at, updated_at").eq("active", true)
+    ? await supabase.from("services").select("id, reference_code, location_id, category, name, description, duration_min, buffer_min, price, currency, deposit_amount, full_prepay_required, active, is_bookable, display_order, created_at, updated_at, service_owner, barber_reference, shop_reference").eq("active", true)
     : servicesResult as typeof servicesResult;
   if (resolvedServicesResult.error && isMissingRelationOrColumn(resolvedServicesResult.error)) {
-    resolvedServicesResult = await supabase.from("services").select("id, reference_code, location_id, category, name, description, duration_min, buffer_min, price, deposit_amount, full_prepay_required, active").eq("active", true) as typeof servicesResult;
+    resolvedServicesResult = await supabase.from("services").select("id, reference_code, location_id, category, name, description, duration_min, buffer_min, price, currency, deposit_amount, full_prepay_required, active, is_bookable, display_order, created_at, updated_at, service_owner_type, barber_reference, shop_reference").eq("active", true) as typeof servicesResult;
   }
   if (resolvedServicesResult.error && isMissingRelationOrColumn(resolvedServicesResult.error)) {
-    resolvedServicesResult = await supabase.from("services").select("id, location_id, category, name, description, duration_min, buffer_min, price, deposit_amount, full_prepay_required, active").eq("active", true) as typeof servicesResult;
+    resolvedServicesResult = await supabase.from("services").select("id, location_id, name, duration_min, price, active, is_bookable, service_owner, barber_reference, shop_reference").eq("active", true) as typeof servicesResult;
+  }
+  if (resolvedServicesResult.error && isMissingRelationOrColumn(resolvedServicesResult.error)) {
+    resolvedServicesResult = await supabase.from("services").select("id, location_id, name, duration_min, price, active, is_bookable, barber_reference, shop_reference").eq("active", true) as typeof servicesResult;
   }
   let resolvedLocationsResult = locationsResult.error && isMissingRelationOrColumn(locationsResult.error)
     ? await supabase.from("locations").select("id, reference_code, name, neighborhood, city, state, phone")
@@ -1016,7 +1138,7 @@ async function readCanonicalSnapshot(supabase: SupabaseClient): Promise<Canonica
     connectedAccountsResult
   ];
   for (const result of [
-    barbersResult,
+    resolvedBarbersResult,
     resolvedBarberProfilesResult,
     resolvedProfilesResult,
     resolvedServicesResult,
@@ -1043,15 +1165,14 @@ async function readCanonicalSnapshot(supabase: SupabaseClient): Promise<Canonica
   }
 
   return {
-    barbers: (barbersResult.data ?? []) as CanonicalBarberRow[],
+    barbers: ((resolvedBarbersResult.data ?? []) as Array<Partial<CanonicalBarberRow>>).map(normalizeCanonicalBarberRow),
     barberProfiles: (resolvedBarberProfilesResult.data ?? []) as CanonicalBarberProfileRow[],
     portfolios: (portfoliosResult.error ? [] : portfoliosResult.data ?? []) as CanonicalPortfolioRow[],
     profiles: (resolvedProfilesResult.data ?? []) as CanonicalProfileRow[],
     services: [
-      ...((resolvedServicesResult.data ?? []) as CanonicalServiceRow[]).map((row) => ({
-        ...row,
-        source_table: "services" as const
-      })),
+      ...((resolvedServicesResult.data ?? []) as Array<Partial<CanonicalServiceRow>>).map((row) =>
+        normalizeCanonicalServiceRow({ ...row, source_table: "services" })
+      ),
       ...((resolvedMarketplaceServicesResult.error ? [] : resolvedMarketplaceServicesResult.data ?? []) as Array<{
         service_reference: string;
         category: string;
@@ -1087,6 +1208,7 @@ async function readCanonicalSnapshot(supabase: SupabaseClient): Promise<Canonica
         created_at: row.created_at,
         updated_at: row.updated_at,
         service_owner_type: row.owner_type,
+        service_owner: row.owner_type,
         barber_reference: row.barber_reference,
         shop_reference: row.shop_reference,
         booking_count: null,
@@ -1157,7 +1279,7 @@ function mapService(row: CanonicalServiceRow, locationReference: string): Servic
     deposit: numeric(row.deposit_amount),
     fullPrepay: row.full_prepay_required,
     addOnIds: [],
-    ownerType: row.service_owner_type ?? "shop",
+    ownerType: getCanonicalServiceOwnerType(row),
     barberId: row.barber_reference ?? undefined,
     shopId: row.shop_reference ?? locationReference,
     currency: row.currency ?? "usd",
@@ -1438,14 +1560,19 @@ function buildMarketplaceBarberEligibility(
     publicDisplayName: profileRow?.display_name,
     name: profile?.full_name ?? barberReference
   });
-  const profilePublic = isPublicMarketplaceVisibilityState(profileRow?.visibility_state);
-  const acceptingBookings = isAcceptingBookingStatus(status);
+  const profileActive = isCanonicalProfileActive(profile);
+  const profilePublic = isCanonicalBarberDiscoverable({ barber: barberRow, profileRow, visibility });
+  const acceptingBookings = isCanonicalBarberBookable(barberRow, status);
   const trustPayoutReady = isTrustPayoutReady(trustDecision);
-  const payoutReady = isConnectedAccountPayoutReady(connectedAccount) || trustPayoutReady;
+  const relationshipType = resolveDiscoveryRelationshipType(barberRow, acceptedShopCount > 0);
+  const payoutReady = relationshipType === "freelance" || isConnectedAccountPayoutReady(connectedAccount) || trustPayoutReady;
   const approvalApproved = isCanonicalBarberPlatformApproved(barberRow, options.trustState, barberReference);
   const verificationOverall = trustDecision?.canonicalOverallStatus ?? null;
   const verificationStatusValue = `${verificationOverall ?? ""}`;
-  const suspended = isBlockedMarketplaceStatus(barberRow.app_approval_status) || verificationStatusValue === "suspended";
+  const barberStatusValue = `${barberRow.status ?? ""}`.toLowerCase();
+  const suspended = isBlockedMarketplaceStatus(barberRow.app_approval_status)
+    || isBlockedMarketplaceStatus(barberStatusValue)
+    || verificationStatusValue === "suspended";
   const rejected = barberRow.app_approval_status === "rejected" || verificationStatusValue === "rejected";
   const banned = barberRow.app_approval_status === "banned" || verificationStatusValue === "banned";
   const validLocationOrShop = independentLocationExists || acceptedShopCount > 0 || locationReferences.length > 0;
@@ -1453,6 +1580,7 @@ function buildMarketplaceBarberEligibility(
     displayName,
     profileRow?.display_name,
     profile?.full_name,
+    profile?.email,
     profileRow?.username,
     barberRow.booking_slug,
     publicSlug,
@@ -1471,7 +1599,7 @@ function buildMarketplaceBarberEligibility(
   const blockers = [
     profile ? null : "Missing identity profile",
     isCanonicalBarberProfileRole(profile) ? null : "Profile role is not barber",
-    profileRow ? null : "Missing public barber profile",
+    profileActive ? null : `Profile onboarding ${profile?.onboarding_state ?? "inactive"}`,
     hasRealMarketplaceText(displayName) ? null : "Missing public display name",
     approvalApproved ? null : `Barber approval ${barberRow.app_approval_status ?? verificationOverall ?? "missing"}`,
     suspended ? "Account suspended" : null,
@@ -1499,7 +1627,7 @@ function buildMarketplaceBarberEligibility(
     licenseStatus: trustDecision?.licenseStatus ?? null,
     payoutStatus: connectedAccount?.payout_readiness_status ?? (trustPayoutReady ? "ready" : trustDecision?.payoutStatus ?? null),
     payoutMode: connectedAccount ? (connectedAccount.livemode ? "live" : "test") : "missing",
-    profileVisibility: profileRow?.visibility_state ?? visibility?.visibility_state ?? null,
+    profileVisibility: profilePublic ? "public" : profileRow?.visibility_state ?? visibility?.visibility_state ?? null,
     bookingStatus: acceptingBookings ? "active" : status?.status ?? (visibility?.accepts_instant_bookings ? "active" : "inactive"),
     serviceCount: services.length,
     activeServiceCount: bookableServices.length,
@@ -1513,7 +1641,7 @@ function buildMarketplaceBarberEligibility(
     city: primaryLocation?.city ?? null,
     state: primaryLocation?.state ?? null,
     address: primaryLocation?.address ?? primaryLocation?.neighborhood ?? null,
-    profileReady: Boolean(profile && profileRow && hasRealMarketplaceText(displayName)),
+    profileReady: Boolean(profile && profileActive && hasRealMarketplaceText(displayName)),
     locationReady: validLocationOrShop,
     visibilityPublic: profilePublic,
     bookingActive: acceptingBookings,
@@ -1891,6 +2019,22 @@ function buildCandidateRecords(
     totalAfterPayoutFilter: 0,
     totalAfterMarketplaceVisibilityFilter: 0,
     finalVisibleCount: 0,
+    targetEmail: "phillipmcgee813@gmail.com",
+    targetBarberId: null as string | null,
+    targetBarberProfileId: null as string | null,
+    targetReferenceCode: null as string | null,
+    targetRole: null as string | null,
+    targetCanonicalRole: null as string | null,
+    targetOnboardingState: null as string | null,
+    targetAppApprovalStatus: null as string | null,
+    targetStatus: null as string | null,
+    targetIsBookable: null as boolean | null,
+    targetIsDiscoverable: null as boolean | null,
+    targetServiceCount: 0,
+    targetActiveServiceCount: 0,
+    targetAvailabilityCount: 0,
+    targetBookable: false,
+    targetDiscoverable: false,
     targetBarberUsername: "philforsure",
     targetFoundRaw: false,
     targetCanonicalBarberIdPresent: false,
@@ -1914,10 +2058,15 @@ function buildCandidateRecords(
       eligibility.profileRow?.username,
       barberRow.booking_slug,
       barberRow.reference_code,
+      eligibility.profile?.email,
       eligibility.displayName,
-      eligibility.profile?.full_name
+      eligibility.profile?.full_name,
+      ...eligibility.bookableServices.flatMap((service) => [service.name, service.category])
     ].filter(Boolean).join(" ").toLowerCase();
     const isTargetBarber = targetTerms.includes("philforsure")
+      || targetTerms.includes("phillipmcgee813@gmail.com")
+      || targetTerms.includes("barber-43b3cda2")
+      || targetTerms.includes("test cut")
       || (targetTerms.includes("phillip") && targetTerms.includes("mcgee"));
     const hasShopAssignment = eligibility.facts.acceptedShopCount > 0;
     if (!eligibility.blockers.includes("Profile role is not barber") && eligibility.facts.bookingActive) {
@@ -1949,6 +2098,21 @@ function buildCandidateRecords(
     }
     if (isTargetBarber) {
       visibilityDiagnostics.targetFoundRaw = true;
+      visibilityDiagnostics.targetBarberId = barberRow.id;
+      visibilityDiagnostics.targetBarberProfileId = barberRow.profile_id;
+      visibilityDiagnostics.targetReferenceCode = barberReference;
+      visibilityDiagnostics.targetRole = eligibility.profile?.role ?? null;
+      visibilityDiagnostics.targetCanonicalRole = getCanonicalAccountRole(eligibility.profile?.role).toString();
+      visibilityDiagnostics.targetOnboardingState = eligibility.profile?.onboarding_state ?? null;
+      visibilityDiagnostics.targetAppApprovalStatus = barberRow.app_approval_status ?? null;
+      visibilityDiagnostics.targetStatus = barberRow.status ?? null;
+      visibilityDiagnostics.targetIsBookable = barberRow.is_bookable ?? null;
+      visibilityDiagnostics.targetIsDiscoverable = barberRow.is_discoverable ?? null;
+      visibilityDiagnostics.targetServiceCount = eligibility.facts.serviceCount;
+      visibilityDiagnostics.targetActiveServiceCount = eligibility.facts.activeServiceCount;
+      visibilityDiagnostics.targetAvailabilityCount = eligibility.facts.availabilityCount;
+      visibilityDiagnostics.targetBookable = eligibility.facts.bookingActive;
+      visibilityDiagnostics.targetDiscoverable = eligibility.facts.visibilityPublic;
       visibilityDiagnostics.targetCanonicalBarberIdPresent = Boolean(eligibility.barberUuid);
       visibilityDiagnostics.targetHasActiveService = eligibility.facts.activeServiceCount > 0;
       visibilityDiagnostics.targetHasAvailability = eligibility.facts.availabilityCount > 0;
@@ -2149,6 +2313,26 @@ function buildCandidateRecords(
     category: options.category ?? null,
     locationId: options.locationId || null,
     ...visibilityDiagnostics
+  });
+  console.info("[marketplace] client_search_barber_filter", {
+    reference: "client_search_barber_filter",
+    query: options.query ?? null,
+    category: options.category ?? null,
+    routeName: visibilityDiagnostics.routeName,
+    targetEmail: visibilityDiagnostics.targetEmail,
+    targetBarberId: visibilityDiagnostics.targetBarberId,
+    targetReferenceCode: visibilityDiagnostics.targetReferenceCode,
+    role: visibilityDiagnostics.targetRole,
+    onboardingState: visibilityDiagnostics.targetOnboardingState,
+    appApprovalStatus: visibilityDiagnostics.targetAppApprovalStatus,
+    status: visibilityDiagnostics.targetStatus,
+    isBookable: visibilityDiagnostics.targetIsBookable,
+    isDiscoverable: visibilityDiagnostics.targetIsDiscoverable,
+    serviceCount: visibilityDiagnostics.targetServiceCount,
+    activeServiceCount: visibilityDiagnostics.targetActiveServiceCount,
+    availabilityCount: visibilityDiagnostics.targetAvailabilityCount,
+    finalIncluded: visibilityDiagnostics.targetMarketplaceVisible,
+    filteredReason: visibilityDiagnostics.targetFilteredReason
   });
 
   return candidates.sort((left, right) => {
@@ -2425,7 +2609,7 @@ export async function findCanonicalBookableSlot(
   const profileRow = getCanonicalBarberProfileRow(snapshot, barberReference, barberRow.id, barberRow.profile_id);
   if (
     !isCanonicalBarberPlatformApproved(barberRow, options.trustState, barberReference)
-    || !isCanonicalMarketplaceVisibilityReady(snapshot, barberReference, barberRow.id, barberRow.profile_id, profileRow)
+    || !isCanonicalMarketplaceVisibilityReady(snapshot, barberReference, barberRow.id, barberRow.profile_id, profileRow, barberRow)
     || !isBarberDiscoverable(options.trustState, barberReference)
   ) {
     return null;
@@ -2529,7 +2713,7 @@ export async function buildCanonicalAvailabilityPayload(
   const profileRow = getCanonicalBarberProfileRow(snapshot, barberReference, barberRow.id, barberRow.profile_id);
   if (
     !isCanonicalBarberPlatformApproved(barberRow, options.trustState, barberReference)
-    || !isCanonicalMarketplaceVisibilityReady(snapshot, barberReference, barberRow.id, barberRow.profile_id, profileRow)
+    || !isCanonicalMarketplaceVisibilityReady(snapshot, barberReference, barberRow.id, barberRow.profile_id, profileRow, barberRow)
     || !isBarberDiscoverable(options.trustState, barberReference)
   ) {
     return {
@@ -2648,9 +2832,8 @@ export async function buildCanonicalBarberProfile(
   const profile = snapshot.profiles.find((entry) => entry.id === barberRow.profile_id);
   if (
     !isCanonicalBarberProfileRole(profile)
-    || !profileRow
-    || !isCanonicalMarketplaceVisibilityReady(snapshot, barberReference, barberRow.id, barberRow.profile_id, profileRow)
-    || !hasRealMarketplaceText(profile?.full_name ?? profileRow.display_name)
+    || !isCanonicalMarketplaceVisibilityReady(snapshot, barberReference, barberRow.id, barberRow.profile_id, profileRow, barberRow)
+    || !hasRealMarketplaceText(profile?.full_name ?? profileRow?.display_name)
   ) {
     return null;
   }
@@ -2777,7 +2960,7 @@ export async function buildCanonicalBarberProfile(
     specialties: profileRow?.specialties?.length ? profileRow.specialties : [...new Set(serviceCatalog.map((entry) => entry.service.category))],
     rating: averageRating,
     reviewCount: reviews.length,
-    compensationModel: barberRow.compensation_model,
+    compensationModel: toDomainCompensationModel(barberRow.compensation_model),
     commissionRate: barberRow.compensation_model === "commission" ? numeric(barberRow.commission_rate) : undefined,
     boothRentAmount: barberRow.compensation_model === "booth_rent" ? numeric(barberRow.booth_rent_amount) : undefined,
     boothRentFrequency: barberRow.booth_rent_frequency ?? undefined,

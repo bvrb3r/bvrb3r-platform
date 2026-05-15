@@ -13,7 +13,7 @@
   | "client_user"
   | "client";
 
-export type CompensationModel = "commission" | "booth_rent";
+export type CompensationModel = "freelance" | "commission" | "booth_rent";
 export type IdentityLane = "client" | "barber" | "shop_owner" | "platform_admin";
 export type BarberSubtype = "freelance" | "booth_rent" | "commission";
 export type ApprovalStatus = "not_required" | "pending" | "under_review" | "approved" | "rejected";

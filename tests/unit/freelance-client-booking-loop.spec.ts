@@ -88,16 +88,7 @@ const LOCATION_ID = "55555555-5555-5555-8555-555555555555";
 const SERVICE_ID = "66666666-6666-5666-8666-666666666666";
 const PAYMENT_METHOD_ID = "77777777-7777-5777-8777-777777777777";
 
-function addMinutes(date: Date, minutes: number) {
-  return new Date(date.getTime() + minutes * 60_000);
-}
-
-function timeValue(date: Date) {
-  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}:00`;
-}
-
 function createTables() {
-  const targetDay = new Date("2026-05-15T14:00:00.000Z");
   return {
     shops: [],
     barbers: [{
@@ -108,11 +99,14 @@ function createTables() {
       barber_subtype: "freelance",
       app_approval_status: "approved",
       shop_approval_status: "not_required",
+      status: "active",
+      is_bookable: true,
+      is_discoverable: true,
       commission_rate: null,
       booth_rent_amount: null,
       booth_rent_frequency: null,
       bio: "Freelance Tampa barber.",
-      booking_slug: "philforsure"
+      booking_slug: "barber-43b3cda2"
     }],
     barber_profiles: [{
       barber_reference: "barber-43b3cda2",
@@ -139,10 +133,11 @@ function createTables() {
     }, {
       id: BARBER_PROFILE_ID,
       full_name: "Phillip mcgee",
-      email: "philforsure@example.com",
+      email: "phillipmcgee813@gmail.com",
       phone: "8135550101",
-      role: "booth_rent_barber",
-      primary_onboarding_role: "barber"
+      role: "barber_user",
+      primary_onboarding_role: "barber",
+      onboarding_state: "active"
     }],
     clients: [{
       id: CLIENT_ID,
@@ -193,7 +188,7 @@ function createTables() {
       display_order: 1,
       created_at: "2026-05-14T12:00:00.000Z",
       updated_at: "2026-05-14T12:00:00.000Z",
-      service_owner_type: "barber",
+      service_owner: "barber",
       barber_reference: "barber-43b3cda2",
       shop_reference: "independent-barber-43b3cda2",
       booking_count: 0,
@@ -216,14 +211,14 @@ function createTables() {
       tax_rate: 0
     }],
     staff_locations: [],
-    availability_rules: [],
-    barber_working_hours: [{
-      barber_reference: BARBER_PROFILE_ID,
-      shop_reference: "independent-barber-43b3cda2",
-      weekday: targetDay.getDay(),
-      start_time: timeValue(targetDay),
-      end_time: timeValue(addMinutes(targetDay, 240))
-    }],
+    availability_rules: Array.from({ length: 7 }, (_, weekday) => ({
+      barber_id: BARBER_ID,
+      location_id: LOCATION_ID,
+      weekday,
+      start_time: "12:00:00",
+      end_time: "19:00:00"
+    })),
+    barber_working_hours: [],
     blocked_times: [],
     appointments: [],
     appointment_services: [],
@@ -240,7 +235,7 @@ function createTables() {
     walk_in_queue: [],
     reviews: [],
     marketplace_visibility: [{
-      barber_reference: BARBER_ID,
+      barber_reference: "barber-43b3cda2",
       visibility_state: "public",
       accepts_instant_bookings: true,
       featured_rank: null
@@ -502,7 +497,7 @@ describe("freelance client booking loop", () => {
     const barberUser: UserAccount = {
       id: BARBER_PROFILE_ID,
       role: "barber_user",
-      email: "philforsure@example.com",
+      email: "phillipmcgee813@gmail.com",
       password: "DevOnly!123",
       name: "philforsure",
       title: "Freelance Barber",

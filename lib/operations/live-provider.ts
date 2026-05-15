@@ -89,6 +89,11 @@ type CanonicalBarberRow = {
   reference_code: string | null;
   profile_id: string;
   compensation_model?: string | null;
+  barber_subtype?: string | null;
+  default_money_relationship?: string | null;
+  status?: string | null;
+  is_bookable?: boolean | null;
+  is_discoverable?: boolean | null;
 };
 
 type CanonicalClientRow = {
@@ -123,9 +128,72 @@ type CanonicalServiceRow = {
   created_at: string | null;
   updated_at: string | null;
   service_owner_type?: "barber" | "shop" | null;
+  service_owner?: "barber" | "shop" | null;
   barber_reference?: string | null;
   shop_reference?: string | null;
 };
+
+type SupabaseListResult = {
+  data: unknown[] | null;
+  error: {
+    code?: string | null;
+    message?: string | null;
+    details?: string | null;
+    hint?: string | null;
+  } | null;
+};
+
+function normalizeCanonicalServiceRow(row: Partial<CanonicalServiceRow>): CanonicalServiceRow {
+  const owner = row.service_owner_type ?? row.service_owner ?? (row.barber_reference ? "barber" : "shop");
+  return {
+    id: row.id ?? row.reference_code ?? "",
+    reference_code: row.reference_code ?? null,
+    location_id: row.location_id ?? row.shop_reference ?? "",
+    category: row.category ?? "Haircut",
+    name: row.name ?? "Service",
+    description: row.description ?? null,
+    duration_min: Number(row.duration_min ?? 0),
+    buffer_min: Number(row.buffer_min ?? 0),
+    price: row.price ?? 0,
+    currency: row.currency ?? "usd",
+    deposit_amount: row.deposit_amount ?? 0,
+    full_prepay_required: row.full_prepay_required ?? true,
+    active: row.active !== false,
+    is_bookable: row.is_bookable !== false,
+    display_order: row.display_order ?? 0,
+    created_at: row.created_at ?? null,
+    updated_at: row.updated_at ?? null,
+    service_owner_type: owner,
+    service_owner: owner,
+    barber_reference: row.barber_reference ?? null,
+    shop_reference: row.shop_reference ?? null
+  };
+}
+
+function normalizeCanonicalBarberRow(row: Partial<CanonicalBarberRow>): CanonicalBarberRow {
+  const reference = row.reference_code ?? row.id ?? "";
+  return {
+    id: row.id ?? reference,
+    reference_code: row.reference_code ?? null,
+    profile_id: row.profile_id ?? "",
+    compensation_model: row.compensation_model ?? row.default_money_relationship ?? row.barber_subtype ?? "freelance",
+    default_money_relationship: row.default_money_relationship ?? null,
+    barber_subtype: row.barber_subtype ?? "freelance",
+    status: row.status ?? null,
+    is_bookable: row.is_bookable ?? null,
+    is_discoverable: row.is_discoverable ?? null
+  };
+}
+
+function toDomainCompensationModel(value?: string | null): "freelance" | "booth_rent" | "commission" {
+  if (value === "commission") {
+    return "commission";
+  }
+  if (value === "booth_rent" || value === "blueprint") {
+    return "booth_rent";
+  }
+  return "freelance";
+}
 
 type StaffMembershipRow = {
   id: string;
@@ -453,8 +521,27 @@ export function shouldRequireShopBusinessVerificationForBooking(input: {
     && input.hasStaffMembership === true;
 }
 
+function isMissingRelationOrColumn(error: unknown) {
+  const candidate = error && typeof error === "object"
+    ? error as { code?: string | null; message?: string | null }
+    : null;
+  const message = `${candidate?.message ?? ""}`.toLowerCase();
+  return ["42P01", "42703", "PGRST200", "PGRST204", "PGRST205"].includes(candidate?.code ?? "")
+    || message.includes("does not exist")
+    || message.includes("schema cache");
+}
+
+function getCanonicalServiceOwnerType(service: CanonicalServiceRow) {
+  const ownerType = service.service_owner_type ?? service.service_owner ?? null;
+  if (ownerType === "barber" || ownerType === "shop") {
+    return ownerType;
+  }
+
+  return service.barber_reference ? "barber" : "shop";
+}
+
 function isBarberDirectService(service: CanonicalServiceRow, barber: CanonicalBarberRow) {
-  return service.service_owner_type === "barber"
+  return getCanonicalServiceOwnerType(service) === "barber"
     || matchesBarberReference(service.barber_reference, barber);
 }
 
@@ -472,7 +559,8 @@ async function readCanonicalBarberByIdentifier(
     return null;
   }
 
-  const select = "id, reference_code, profile_id, compensation_model";
+  const productionSelect = "id, reference_code, profile_id, barber_subtype, status, is_bookable, is_discoverable";
+  const legacySelect = "id, reference_code, profile_id, compensation_model";
   const lookupPlan: Array<{ column: "id" | "reference_code" | "profile_id"; value: string }> = [];
   if (isUuid(identifier)) {
     lookupPlan.push({ column: "id", value: identifier });
@@ -486,17 +574,25 @@ async function readCanonicalBarberByIdentifier(
   }
 
   for (const lookup of lookupPlan) {
-    const result = await supabase
+    let result = await supabase
       .from("barbers")
-      .select(select)
+      .select(productionSelect)
       .eq(lookup.column, lookup.value)
       .maybeSingle();
+
+    if (result.error && isMissingRelationOrColumn(result.error)) {
+      result = await supabase
+        .from("barbers")
+        .select(legacySelect)
+        .eq(lookup.column, lookup.value)
+        .maybeSingle();
+    }
 
     if (result.error) {
       throw result.error;
     }
     if (result.data) {
-      return result.data as CanonicalBarberRow;
+      return normalizeCanonicalBarberRow(result.data as Partial<CanonicalBarberRow>);
     }
   }
 
@@ -587,14 +683,17 @@ export async function resolveBookableBarber(
     throw membershipResult.error;
   }
 
+  const membership = (membershipResult.data as StaffMembershipRow | null) ?? null;
+  const explicitRelationship = (barber.default_money_relationship ?? barber.barber_subtype ?? "").toLowerCase();
   const compensationModel = (barber.compensation_model ?? "").toLowerCase();
-  const configuredRelationshipType = compensationModel.includes("commission")
+  const configuredRelationshipType = explicitRelationship === "commission" || compensationModel.includes("commission")
     ? "commission"
-    : compensationModel.includes("booth")
+    : explicitRelationship === "booth_rent" || explicitRelationship === "blueprint" || compensationModel.includes("booth")
       ? "booth_rent"
       : "freelance";
-  const membership = (membershipResult.data as StaffMembershipRow | null) ?? null;
-  const relationshipType = membership ? configuredRelationshipType : "freelance";
+  const relationshipType = configuredRelationshipType === "freelance" || !membership
+    ? "freelance"
+    : configuredRelationshipType;
 
   return {
     barberId: barber.id,
@@ -1068,7 +1167,7 @@ function assertShopLaneIfRequired(input: {
   trustState?: TrustState;
 }) {
   if (!input.trustState || !shouldRequireShopBusinessVerificationForBooking({
-    serviceOwnerType: input.service.service_owner_type,
+    serviceOwnerType: getCanonicalServiceOwnerType(input.service),
     serviceBarberReference: input.service.barber_reference,
     locationReference: input.locationReference,
     hasStaffMembership: Boolean(input.membership)
@@ -1169,33 +1268,59 @@ async function loadCanonicalServicesByReference(
     return [] as CanonicalServiceRow[];
   }
 
-  const byIdResult = await supabase
-    .from("services")
-    .select("id, reference_code, location_id, category, name, description, duration_min, buffer_min, price, currency, deposit_amount, full_prepay_required, active, is_bookable, display_order, created_at, updated_at, service_owner_type, barber_reference, shop_reference")
-    .in("id", ids);
+  const selectBy = async (column: "id" | "reference_code", values: string[]) => {
+    let result = await supabase
+      .from("services")
+      .select("id, reference_code, location_id, category, name, description, duration_min, buffer_min, price, currency, deposit_amount, full_prepay_required, active, is_bookable, display_order, created_at, updated_at, service_owner, barber_reference, shop_reference")
+      .in(column, values) as SupabaseListResult;
+    if (result.error && isMissingRelationOrColumn(result.error)) {
+      result = await supabase
+        .from("services")
+        .select("id, reference_code, location_id, category, name, description, duration_min, buffer_min, price, currency, deposit_amount, full_prepay_required, active, is_bookable, display_order, created_at, updated_at, service_owner_type, barber_reference, shop_reference")
+        .in(column, values) as SupabaseListResult;
+    }
+    if (result.error && isMissingRelationOrColumn(result.error)) {
+      result = await supabase
+        .from("services")
+        .select("id, reference_code, location_id, category, name, description, duration_min, buffer_min, price, currency, deposit_amount, full_prepay_required, active, is_bookable, display_order, created_at, updated_at, barber_reference, shop_reference")
+        .in(column, values) as SupabaseListResult;
+    }
+    if (result.error && isMissingRelationOrColumn(result.error)) {
+      result = await supabase
+        .from("services")
+        .select("id, location_id, name, duration_min, price, active, is_bookable, service_owner, barber_reference, shop_reference")
+        .in(column, values) as SupabaseListResult;
+    }
+    if (result.error && isMissingRelationOrColumn(result.error)) {
+      result = await supabase
+        .from("services")
+        .select("id, location_id, name, duration_min, price, active, is_bookable, barber_reference, shop_reference")
+        .in(column, values) as SupabaseListResult;
+    }
+    return result;
+  };
+
+  const byIdResult = await selectBy("id", ids);
 
   if (byIdResult.error) {
     throw byIdResult.error;
   }
 
-  const rows = (byIdResult.data ?? []) as CanonicalServiceRow[];
+  const rows = ((byIdResult.data ?? []) as Array<Partial<CanonicalServiceRow>>).map(normalizeCanonicalServiceRow);
   const matchedReferences = new Set(rows.flatMap((row) => [row.id, row.reference_code].filter(Boolean) as string[]));
   const missingReferences = references.filter((reference) => !matchedReferences.has(reference));
   if (!missingReferences.length) {
     return rows;
   }
 
-  const byReferenceResult = await supabase
-    .from("services")
-    .select("id, reference_code, location_id, category, name, description, duration_min, buffer_min, price, currency, deposit_amount, full_prepay_required, active, is_bookable, display_order, created_at, updated_at, service_owner_type, barber_reference, shop_reference")
-    .in("reference_code", missingReferences);
+  const byReferenceResult = await selectBy("reference_code", missingReferences);
 
   if (byReferenceResult.error) {
     throw byReferenceResult.error;
   }
 
   const byId = new Map(rows.map((row) => [row.id, row]));
-  for (const row of (byReferenceResult.data ?? []) as CanonicalServiceRow[]) {
+  for (const row of ((byReferenceResult.data ?? []) as Array<Partial<CanonicalServiceRow>>).map(normalizeCanonicalServiceRow)) {
     byId.set(row.id, row);
   }
 
@@ -1241,7 +1366,7 @@ function isCanonicalServiceBookableForContext(
     return false;
   }
 
-  if (row.service_owner_type === "barber" && !row.barber_reference) {
+  if (getCanonicalServiceOwnerType(row) === "barber" && !row.barber_reference) {
     return false;
   }
 
@@ -1574,35 +1699,22 @@ async function loadWorkflowPersistenceBarber(
     return null;
   }
 
-  const barberResult = await supabase
-    .from("barbers")
-    .select("id, reference_code, profile_id, compensation_model, commission_rate, booth_rent_amount, booth_rent_frequency")
-    .eq("id", barberRow.id)
-    .maybeSingle();
-
-  if (barberResult.error) {
-    throw barberResult.error;
-  }
-  if (!barberResult.data) {
-    return null;
-  }
-
   const profileResult = await supabase
     .from("profiles")
     .select("email")
-    .eq("id", barberResult.data.profile_id)
+    .eq("id", barberRow.profile_id)
     .maybeSingle();
   if (profileResult.error) {
     throw profileResult.error;
   }
 
   return {
-    id: barberResult.data.reference_code ?? barberReference,
-    userId: barberResult.data.profile_id,
-    compensationModel: barberResult.data.compensation_model,
-    commissionRate: barberResult.data.commission_rate === null ? undefined : numeric(barberResult.data.commission_rate),
-    boothRentAmount: barberResult.data.booth_rent_amount === null ? undefined : numeric(barberResult.data.booth_rent_amount),
-    boothRentFrequency: barberResult.data.booth_rent_frequency ?? null,
+    id: barberRow.reference_code ?? barberReference,
+    userId: barberRow.profile_id,
+    compensationModel: toDomainCompensationModel(barberRow.compensation_model),
+    commissionRate: undefined,
+    boothRentAmount: undefined,
+    boothRentFrequency: undefined,
     email: profileResult.data?.email ?? null
   };
 }
@@ -2124,8 +2236,8 @@ async function resolveCanonicalBookingContext(
   if (!locationRow) {
     throw new LiveOperationValidationError(
       "This provider is not available for booking yet.",
-      primaryService.service_owner_type === "shop" ? "verification_blocked" : "invalid_resource_reference",
-      primaryService.service_owner_type === "shop"
+      getCanonicalServiceOwnerType(primaryService) === "shop" ? "verification_blocked" : "invalid_resource_reference",
+      getCanonicalServiceOwnerType(primaryService) === "shop"
         ? {
             gate: "shop_activation",
             barberId: input.barberId,
@@ -2164,13 +2276,13 @@ async function resolveCanonicalBookingContext(
   const membership = (membershipResult.data as StaffMembershipRow | null) ?? null;
   const locationReference = bookingLocationReferenceForPersistence(locationRow);
   const requiresShopLane = shouldRequireShopBusinessVerificationForBooking({
-    serviceOwnerType: primaryService.service_owner_type,
+    serviceOwnerType: getCanonicalServiceOwnerType(primaryService),
     serviceBarberReference: primaryService.barber_reference,
     locationReference,
     hasStaffMembership: Boolean(membership)
   });
 
-  if (!membership && primaryService.service_owner_type === "shop") {
+  if (!membership && getCanonicalServiceOwnerType(primaryService) === "shop") {
     throw new LiveOperationValidationError(
       "This provider is not available for booking yet.",
       "verification_blocked",
@@ -2392,7 +2504,7 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
         serviceId: context.primaryService.id,
         serviceReferencePresent: Boolean(context.primaryService.reference_code),
         servicePrice: context.primaryService.price,
-        serviceOwnerType: context.primaryService.service_owner_type,
+        serviceOwnerType: getCanonicalServiceOwnerType(context.primaryService),
         ...publicBookingTransactionDiagnostics(diagnostics)
       });
       logBookingTransactionStage("canonical_location_resolved", {
@@ -2407,7 +2519,7 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
         locationId: context.locationReference,
         trustState,
         relationshipType: context.resolvedBarber.relationshipType,
-        serviceOwnerType: context.primaryService.service_owner_type
+        serviceOwnerType: getCanonicalServiceOwnerType(context.primaryService)
       });
       assertShopLaneIfRequired({
         barberId: barberTrustReference,
