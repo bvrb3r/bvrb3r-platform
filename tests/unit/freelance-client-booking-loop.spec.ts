@@ -86,6 +86,7 @@ const BARBER_PROFILE_ID = "33333333-3333-4333-8333-333333333333";
 const BARBER_ID = "44444444-4444-5444-8444-444444444444";
 const LOCATION_ID = "55555555-5555-5555-8555-555555555555";
 const SERVICE_ID = "66666666-6666-5666-8666-666666666666";
+const SERVICE_REFERENCE = "srv-test-cut-1777841145997";
 const PAYMENT_METHOD_ID = "77777777-7777-5777-8777-777777777777";
 
 function createTables() {
@@ -172,7 +173,7 @@ function createTables() {
     }],
     services: [{
       id: SERVICE_ID,
-      reference_code: "srv-test-cut",
+      reference_code: SERVICE_REFERENCE,
       location_id: LOCATION_ID,
       category: "Haircut",
       name: "test cut",
@@ -260,7 +261,10 @@ function createTables() {
   } satisfies Record<string, Row[]>;
 }
 
-function createSupabaseMock(tables: Record<string, Row[]>) {
+function createSupabaseMock(
+  tables: Record<string, Row[]>,
+  options: { insertErrors?: Partial<Record<string, Row>> } = {}
+) {
   class QueryBuilder {
     private filters: Array<(row: Row) => boolean> = [];
     private operation: "insert" | "update" | "delete" | null = null;
@@ -376,6 +380,10 @@ function createSupabaseMock(tables: Record<string, Row[]>) {
     private execute(): Promise<QueryResult> {
       tables[this.table] ??= [];
       if (this.operation === "insert" && this.payload) {
+        const insertError = options.insertErrors?.[this.table];
+        if (insertError) {
+          return Promise.resolve({ data: null, error: insertError });
+        }
         const entries = Array.isArray(this.payload) ? this.payload : [this.payload];
         const inserted = entries.map((entry) => ({
           id: entry.id ?? `${this.table}-${tables[this.table].length + 1}`,
@@ -428,7 +436,7 @@ function appointmentRowsToDashboard(tables: Record<string, Row[]>) {
     shopId: undefined,
     barberId: "barber-43b3cda2",
     clientId: "client-1fd26b88",
-    serviceId: "srv-test-cut",
+    serviceId: SERVICE_REFERENCE,
     status: row.status,
     start: row.starts_at,
     end: row.ends_at,
@@ -513,7 +521,7 @@ describe("freelance client booking loop", () => {
     const search = await searchBarbersAndShopsPayload({ query: "philforsure", clientId: "client-1fd26b88" });
     const profile = await buildCanonicalBarberProfile(supabase as never, "philforsure");
     const availability = await getBarberAvailabilityPayload("philforsure", {
-      serviceId: "srv-test-cut",
+      serviceId: SERVICE_REFERENCE,
       locationId: "independent-barber-43b3cda2",
       days: 2
     });
@@ -538,7 +546,7 @@ describe("freelance client booking loop", () => {
     const booking = await provider.createBooking({
       locationId: "independent-barber-43b3cda2",
       barberId: "barber-43b3cda2",
-      serviceId: "srv-test-cut",
+      serviceId: SERVICE_REFERENCE,
       addOnIds: [],
       appointmentTime: "2026-05-15T14:00:00.000Z",
       clientName: "Phillip mcgee",
@@ -581,6 +589,10 @@ describe("freelance client booking loop", () => {
       payment_status: "captured",
       payment_type: "booking"
     });
+    expect(tables.appointment_status_history[0]).toMatchObject({
+      appointment_id: insertedAppointment.id,
+      new_status: "confirmed"
+    });
     expect(stripeCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         amount: 500,
@@ -605,7 +617,7 @@ describe("freelance client booking loop", () => {
     expect(clientSnapshot.appointments[0]).toMatchObject({
       barberId: "barber-43b3cda2",
       clientId: "client-1fd26b88",
-      serviceId: "srv-test-cut",
+      serviceId: SERVICE_REFERENCE,
       status: "confirmed"
     });
 
@@ -615,12 +627,64 @@ describe("freelance client booking loop", () => {
       id: insertedAppointment.reference_code,
       barberId: "barber-43b3cda2",
       clientId: "client-1fd26b88",
-      serviceId: "srv-test-cut",
+      serviceId: SERVICE_REFERENCE,
       status: "confirmed"
     });
 
     expect(JSON.stringify(tables.appointments)).not.toContain("independent-barber-43b3cda2");
     expect(JSON.stringify(tables.appointments)).not.toContain("client-1fd26b88");
     expect(JSON.stringify(tables.appointments)).not.toContain("barber-43b3cda2");
+    expect(JSON.stringify(tables.appointments)).not.toContain(SERVICE_REFERENCE);
+  });
+
+  it("returns a safe appointment save failure and skips Stripe when appointment insert fails", async () => {
+    const tables = createTables();
+    const supabase = createSupabaseMock(tables, {
+      insertErrors: {
+        appointments: {
+          code: "23502",
+          message: 'null value in column "shop_id" of relation "appointments" violates not-null constraint',
+          details: "Failing row contains a freelance appointment with shop_id null.",
+          hint: null
+        }
+      }
+    });
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+    getBarberDashboardPayloadMock.mockImplementation(async () => appointmentRowsToDashboard(tables));
+    const stripeCreateMock = vi.fn().mockResolvedValue({ id: "pi_should_not_run", status: "succeeded" });
+    getStripeConnectClientMock.mockReturnValue({
+      paymentIntents: { create: stripeCreateMock },
+      refunds: { create: vi.fn() }
+    });
+
+    const provider = await getLiveOperationsProvider();
+
+    await expect(provider.createBooking({
+      locationId: "independent-barber-43b3cda2",
+      barberId: "barber-43b3cda2",
+      serviceId: SERVICE_REFERENCE,
+      addOnIds: [],
+      appointmentTime: "2026-05-15T14:00:00.000Z",
+      clientName: "Phillip mcgee",
+      clientPhone: "+18136250040",
+      clientId: "client-1fd26b88",
+      actorRole: "client",
+      actorEmail: "phillipmcgeeclient@outlook.com",
+      actorProfileId: CLIENT_PROFILE_ID,
+      paymentMethodId: PAYMENT_METHOD_ID
+    })).rejects.toMatchObject({
+      bookingTransaction: {
+        stage: "appointment_insert_failed",
+        safeMessage: "Appointment could not be saved.",
+        appointmentInsertStarted: true,
+        appointmentInsertSucceeded: false,
+        paymentIntentCreateStarted: false,
+        paymentRecordInsertStarted: false
+      }
+    });
+
+    expect(tables.appointments).toHaveLength(0);
+    expect(tables.payments).toHaveLength(0);
+    expect(stripeCreateMock).not.toHaveBeenCalled();
   });
 });

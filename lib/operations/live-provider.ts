@@ -251,8 +251,40 @@ function logBookingTransactionStageFailure(
     errorMessage: candidate?.message ?? (error instanceof Error ? error.message : String(error)),
     errorDetails: candidate?.details ?? null,
     errorHint: candidate?.hint ?? null,
+    ...postgresErrorDiagnostics(error),
     ...details
   });
+}
+
+function extractQuotedDiagnostic(value: string | null | undefined, pattern: RegExp) {
+  return value?.match(pattern)?.[1] ?? null;
+}
+
+function postgresErrorDiagnostics(error: unknown) {
+  const candidate = error && typeof error === "object"
+    ? error as {
+        code?: string | null;
+        details?: string | null;
+        hint?: string | null;
+        message?: string | null;
+        table?: string | null;
+        column?: string | null;
+        constraint?: string | null;
+      }
+    : null;
+  const combined = [candidate?.message, candidate?.details, candidate?.hint].filter(Boolean).join(" ");
+
+  return {
+    postgresCode: candidate?.code ?? null,
+    postgresDetails: candidate?.details ?? null,
+    postgresHint: candidate?.hint ?? null,
+    table: candidate?.table ?? null,
+    column: candidate?.column
+      ?? extractQuotedDiagnostic(combined, /column ["']([^"']+)["']/i)
+      ?? extractQuotedDiagnostic(combined, /['"]([^'"]+)['"] column/i),
+    constraint: candidate?.constraint
+      ?? extractQuotedDiagnostic(combined, /constraint ["']([^"']+)["']/i)
+  };
 }
 
 type BookingTransactionDiagnostics = {
@@ -322,6 +354,16 @@ function publicBookingTransactionDiagnostics(diagnostics: BookingTransactionDiag
     appointmentConfirmSucceeded: diagnostics.appointmentConfirmSucceeded,
     rollbackAttempted: diagnostics.rollbackAttempted,
     refundAttempted: diagnostics.refundAttempted
+  };
+}
+
+function bookingTransactionLogDiagnostics(diagnostics: BookingTransactionDiagnostics) {
+  return {
+    canonicalClientId: diagnostics.canonicalClientUuid,
+    canonicalBarberId: diagnostics.canonicalBarberUuid,
+    canonicalServiceId: diagnostics.canonicalServiceUuid,
+    canonicalLocationId: diagnostics.canonicalLocationUuid,
+    ...publicBookingTransactionDiagnostics(diagnostics)
   };
 }
 
@@ -2584,6 +2626,9 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
         barberId: appointmentForPayment.barberId,
         serviceId: appointmentForPayment.serviceId,
         locationId: appointmentForPayment.locationId,
+        shopId: appointmentRow.shop_id,
+        shopIdNull: appointmentRow.shop_id === null,
+        payloadKeys: Object.keys(appointmentRow),
         paymentRequired: bookingPaymentAmount > 0
       });
       const existingAppointment = await supabase
@@ -2593,9 +2638,10 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
         .maybeSingle();
       if (existingAppointment.error) {
         logBookingTransactionStageFailure("appointment_lookup_failed", existingAppointment.error, {
+          table: "appointments",
           appointmentId: appointmentForPayment.id,
           safeMessage: "Appointment could not be saved.",
-          ...publicBookingTransactionDiagnostics(diagnostics)
+          ...bookingTransactionLogDiagnostics(diagnostics)
         });
         attachBookingTransactionDiagnostics(
           existingAppointment.error,
@@ -2612,9 +2658,17 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
         : await supabase.from("appointments").insert(appointmentRow);
         if (appointmentResult.error) {
           logBookingTransactionStageFailure("appointment_insert_failed", appointmentResult.error, {
+            table: "appointments",
             appointmentId: appointmentForPayment.id,
+            clientId: appointmentRow.client_id,
+            barberId: appointmentRow.barber_id,
+            serviceId: appointmentRow.service_id,
+            locationId: appointmentRow.location_id,
+            shopId: appointmentRow.shop_id,
+            shopIdNull: appointmentRow.shop_id === null,
+            payloadKeys: Object.keys(appointmentRow),
             safeMessage: "Appointment could not be saved.",
-            ...publicBookingTransactionDiagnostics(diagnostics)
+            ...bookingTransactionLogDiagnostics(diagnostics)
           });
           try {
             rethrowAppointmentPersistenceError(appointmentResult.error, result.appointment);
@@ -2667,10 +2721,11 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
         diagnostics.rollbackAttempted = true;
         await supabase.from("appointments").delete().eq("reference_code", appointmentForPayment.id);
         logBookingTransactionStageFailure("payment_record_insert_failed", error, {
+          table: "payments",
           appointmentId: appointmentForPayment.id,
           rollback: "appointment_deleted",
           safeMessage: "Payment could not be completed.",
-          ...publicBookingTransactionDiagnostics(diagnostics)
+          ...bookingTransactionLogDiagnostics(diagnostics)
         });
         if (error instanceof PaymentServiceError) {
           throw new LiveOperationValidationError("Payment could not be completed.", "invalid_booking_selection", {

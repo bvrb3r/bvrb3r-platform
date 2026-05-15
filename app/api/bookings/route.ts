@@ -126,6 +126,37 @@ function logBookingRouteStage(stage: string, details: Record<string, unknown> = 
   });
 }
 
+function extractQuotedDiagnostic(value: string | null | undefined, pattern: RegExp) {
+  return value?.match(pattern)?.[1] ?? null;
+}
+
+function postgresErrorDiagnostics(error: unknown) {
+  const candidate = error && typeof error === "object"
+    ? error as {
+        code?: string | null;
+        details?: string | null;
+        hint?: string | null;
+        message?: string | null;
+        table?: string | null;
+        column?: string | null;
+        constraint?: string | null;
+      }
+    : null;
+  const combined = [candidate?.message, candidate?.details, candidate?.hint].filter(Boolean).join(" ");
+
+  return {
+    postgresCode: candidate?.code ?? null,
+    postgresDetails: candidate?.details ?? null,
+    postgresHint: candidate?.hint ?? null,
+    table: candidate?.table ?? null,
+    column: candidate?.column
+      ?? extractQuotedDiagnostic(combined, /column ["']([^"']+)["']/i)
+      ?? extractQuotedDiagnostic(combined, /['"]([^'"]+)['"] column/i),
+    constraint: candidate?.constraint
+      ?? extractQuotedDiagnostic(combined, /constraint ["']([^"']+)["']/i)
+  };
+}
+
 function logBookingRouteFailure(stage: string, error: unknown, details: Record<string, unknown> = {}) {
   const candidate = error && typeof error === "object"
     ? error as { code?: string | null; name?: string | null; message?: string | null; details?: string | null; hint?: string | null; status?: number | null }
@@ -142,6 +173,7 @@ function logBookingRouteFailure(stage: string, error: unknown, details: Record<s
     errorMessage: candidate?.message ?? (error instanceof Error ? error.message : String(error)),
     errorDetails: candidate?.details ?? null,
     errorHint: candidate?.hint ?? null,
+    ...postgresErrorDiagnostics(error),
     ...transactionDiagnostics,
     ...details
   });
