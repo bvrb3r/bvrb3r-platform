@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getCanonicalAccountRole, isClientRole } from "@/lib/auth/roles";
 import { getSessionUser } from "@/lib/booking/route-auth";
 import { getPaymentProvider } from "@/lib/payments/provider";
 import { ensureClientPaymentProfileForUser, syncClientPaymentSetupCustomer } from "@/lib/payments/service";
@@ -38,7 +39,8 @@ function getClientSecretPrefix(clientSecret?: string) {
 export async function POST(request: NextRequest) {
   try {
     const user = await getSessionUser();
-    if (user.role !== "client") {
+    const canonicalRole = getCanonicalAccountRole(user.role);
+    if (!isClientRole(canonicalRole)) {
       return NextResponse.json({ error: "Only clients can initialize saved payment method setup." }, { status: 403 });
     }
 

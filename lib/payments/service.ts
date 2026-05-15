@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { isBarberAccountRole, isClientRole, isShopOwnerRole } from "@/lib/auth/roles";
+import { getCanonicalAccountRole, isBarberAccountRole, isClientRole, isShopOwnerRole } from "@/lib/auth/roles";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { runtimeConfig } from "@/lib/config/runtime";
 import { canonicalClientUuid } from "@/lib/booking/canonical-booking";
@@ -41,6 +41,7 @@ type ProfileRow = {
   full_name: string | null;
   phone?: string | null;
   role: Role;
+  primary_onboarding_role?: string | null;
 };
 
 type ClientRow = {
@@ -1240,7 +1241,7 @@ function toStripePaymentServiceError(error: unknown, fallbackMessage: string, st
 async function resolvePaymentActor(user: UserAccount, supabase: SupabaseClient): Promise<PaymentActorContext> {
   let profileResult = await supabase
     .from("profiles")
-    .select("id, email, full_name, phone, role")
+    .select("id, email, full_name, phone, role, primary_onboarding_role")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -1251,7 +1252,7 @@ async function resolvePaymentActor(user: UserAccount, supabase: SupabaseClient):
   if (!profileResult.data && user.email) {
     profileResult = await supabase
       .from("profiles")
-      .select("id, email, full_name, phone, role")
+      .select("id, email, full_name, phone, role, primary_onboarding_role")
       .eq("email", user.email)
       .maybeSingle();
 
@@ -1264,13 +1265,14 @@ async function resolvePaymentActor(user: UserAccount, supabase: SupabaseClient):
     throw new PaymentServiceError("No payment profile is available for this account.", 404);
   }
 
+  const profile = profileResult.data as ProfileRow;
   const actor: PaymentActorContext = {
-    profile: profileResult.data as ProfileRow,
+    profile,
     locationIds: user.locationIds,
-    role: user.role
+    role: getCanonicalAccountRole(profile.role ?? user.role)
   };
 
-  if (isPaymentClientRole(user.role)) {
+  if (isPaymentClientRole(actor.role)) {
     const clientResult = await supabase
       .from("clients")
       .select("id, reference_code, profile_id")
@@ -1780,6 +1782,13 @@ async function loadStripePaymentMethodOrThrow(
     belongsToClient: method.client_id === clientId,
     finalProviderPaymentMethodStartsWithPm: method.provider_payment_method_id.startsWith("pm_"),
     finalProviderCustomerStartsWithCus: method.provider_customer_id.startsWith("cus_")
+  });
+  console.log("[booking] payment_method_selected", {
+    reference: "payment_method_selected",
+    paymentMethodIdPresent: Boolean(method.id),
+    belongsToClient: method.client_id === clientId,
+    providerPaymentMethodPresent: Boolean(method.provider_payment_method_id?.trim()),
+    providerCustomerPresent: Boolean(method.provider_customer_id?.trim())
   });
 
   return method;
@@ -2787,12 +2796,37 @@ export async function createTipLedgerEntry(
 export async function listClientPaymentMethods(user: UserAccount) {
   const supabase = getSupabaseOrThrow();
   const actor = await resolvePaymentActor(user, supabase);
+  const allowed = isPaymentClientRole(actor.role) && Boolean(actor.clientId);
+  console.log("[payment] payment_methods_access_check", {
+    reference: "payment_methods_access_check",
+    authUserIdPresent: Boolean(user.id),
+    profileId: actor.profile.id,
+    rawRole: actor.profile.role,
+    canonicalRole: actor.role,
+    primaryOnboardingRole: actor.profile.primary_onboarding_role ?? null,
+    clientRowFound: Boolean(actor.clientId),
+    clientId: actor.clientId ?? null,
+    allowed,
+    denialReason: allowed
+      ? null
+      : !isPaymentClientRole(actor.role)
+        ? "not_client_role"
+        : "missing_client_row"
+  });
 
-  if (actor.role !== "client" || !actor.clientId) {
+  if (!allowed || !actor.clientId) {
     throw new PaymentServiceError("Only clients can manage saved payment methods.", 403);
   }
 
-  return readClientPaymentMethodsByClientId(actor.clientId, supabase);
+  const methods = await readClientPaymentMethodsByClientId(actor.clientId, supabase);
+  console.log("[payment] payment_methods_result", {
+    reference: "payment_methods_result",
+    clientId: actor.clientId,
+    methodsCount: methods.length,
+    defaultFound: methods.some((method) => method.isDefault),
+    methodIdsPresent: methods.every((method) => Boolean(method.id))
+  });
+  return methods;
 }
 
 export async function ensureClientPaymentProfileForUser(
@@ -2802,7 +2836,7 @@ export async function ensureClientPaymentProfileForUser(
   const supabase = supabaseInput ?? getSupabaseOrThrow();
   const actor = await resolvePaymentActor(user, supabase);
 
-  if (actor.role !== "client" || !actor.clientId) {
+  if (!isPaymentClientRole(actor.role) || !actor.clientId) {
     throw new PaymentServiceError("Only clients can initialize saved payment methods.", 403);
   }
 
@@ -2831,7 +2865,7 @@ export async function syncClientPaymentSetupCustomer(
 export async function addClientPaymentMethod(user: UserAccount, input: PaymentMethodReferenceInput) {
   const supabase = getSupabaseOrThrow();
   const actor = await resolvePaymentActor(user, supabase);
-  if (actor.role !== "client" || !actor.clientId) {
+  if (!isPaymentClientRole(actor.role) || !actor.clientId) {
     throw new PaymentServiceError("Only clients can add saved payment methods.", 403);
   }
 
@@ -3021,7 +3055,7 @@ export async function setDefaultClientPaymentMethod(user: UserAccount, paymentMe
   const supabase = getSupabaseOrThrow();
   const actor = await resolvePaymentActor(user, supabase);
 
-  if (actor.role !== "client" || !actor.clientId) {
+  if (!isPaymentClientRole(actor.role) || !actor.clientId) {
     throw new PaymentServiceError("Only clients can update saved payment method defaults.", 403);
   }
 
@@ -3102,7 +3136,7 @@ export async function renameClientPaymentMethod(user: UserAccount, paymentMethod
   const supabase = getSupabaseOrThrow();
   const actor = await resolvePaymentActor(user, supabase);
 
-  if (actor.role !== "client" || !actor.clientId) {
+  if (!isPaymentClientRole(actor.role) || !actor.clientId) {
     throw new PaymentServiceError("Only clients can rename saved payment methods.", 403);
   }
 
@@ -3164,7 +3198,7 @@ export async function removeClientPaymentMethod(user: UserAccount, paymentMethod
   const supabase = getSupabaseOrThrow();
   const actor = await resolvePaymentActor(user, supabase);
 
-  if (actor.role !== "client" || !actor.clientId) {
+  if (!isPaymentClientRole(actor.role) || !actor.clientId) {
     throw new PaymentServiceError("Only clients can remove saved payment methods.", 403);
   }
 

@@ -135,7 +135,8 @@ export function InlineBookingPaymentMethod({
   const showPaymentDebugPanel = typeof window !== "undefined"
     && new URLSearchParams(window.location.search).get("debugPayments") === "1";
 
-  const showAddForm = mode === "add" || (!paymentMethods.length && !isLoading);
+  const hasPaymentMethodsLoadError = Boolean(errorMessage);
+  const showAddForm = mode === "add" || (!paymentMethods.length && !isLoading && !hasPaymentMethodsLoadError);
   const isPending = setupMutation.isPending || addMethodMutation.isPending || setupStatus === "loading";
   const canSaveCard = setupStatus === "ready"
     && cardComplete
@@ -161,6 +162,17 @@ export function InlineBookingPaymentMethod({
   useEffect(() => {
     onPendingChange?.(isPending);
   }, [isPending, onPendingChange]);
+
+  useEffect(() => {
+    console.log("[booking-ui] payment_methods_loaded", {
+      reference: "payment_methods_loaded",
+      methodsCount: paymentMethods.length,
+      defaultMethodIdPresent: paymentMethods.some((method) => method.isDefault),
+      selectedPaymentMethodIdPresent: Boolean(selectedPaymentMethodId || selectedPaymentMethod?.id),
+      addCardFormVisible: showAddForm,
+      setupIntentStarted: setupRequestStartedRef.current
+    });
+  }, [paymentMethods, selectedPaymentMethod?.id, selectedPaymentMethodId, showAddForm]);
 
   useEffect(() => () => {
     onPendingChange?.(false);
@@ -504,6 +516,15 @@ export function InlineBookingPaymentMethod({
       {isLoading ? (
         <div className="mt-4 rounded-[18px] border border-white/8 bg-black/18 p-4">
           <Skeleton className="h-12 w-full rounded-[16px]" />
+        </div>
+      ) : hasPaymentMethodsLoadError && !selectedPaymentMethod && !showAddForm ? (
+        <div className="mt-4 rounded-[18px] border border-white/10 bg-black/22 p-4">
+          <p className="text-sm leading-7 text-white/72">Saved payment method could not be loaded. Refresh or manage wallet.</p>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <Link href="/dashboard/client/profile?section=wallet" className="text-sm font-medium text-white/48 transition hover:text-[#d7ffab]">
+              Manage payment methods
+            </Link>
+          </div>
         </div>
       ) : selectedPaymentMethod && !showAddForm ? (
         <div className="mt-4 rounded-[18px] border border-white/10 bg-black/22 p-4">

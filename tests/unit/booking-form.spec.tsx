@@ -463,6 +463,62 @@ describe("booking form", () => {
     expect(screen.getByRole("button", { name: "Book Appointment" })).toBeEnabled();
   });
 
+  it("keeps the saved default card selected without starting setup intent", async () => {
+    const createSetupMock = vi.fn().mockResolvedValue({
+      provider: "stripe",
+      mode: "setup",
+      clientSecret: "seti_should_not_start",
+      customerId: "cus_should_not_start",
+      publishableKey: "pk_test_should_not_start"
+    });
+    useCreateSavedPaymentMethodSetupMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: createSetupMock
+    });
+
+    render(<BookingForm />);
+    await advanceToReview();
+
+    expect(screen.getByText("Phil Stripe Card")).toBeInTheDocument();
+    expect(screen.getByText(/4242/)).toBeInTheDocument();
+    expect(screen.getByText("Default for bookings")).toBeInTheDocument();
+    expect(screen.queryByText("Add a payment method to complete booking.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Secure card fields are unavailable until payment setup starts.")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(createSetupMock).not.toHaveBeenCalled();
+    });
+  });
+
+  it("does not auto-start setup intent when saved payment methods fail to load", async () => {
+    const createSetupMock = vi.fn().mockResolvedValue({
+      provider: "stripe",
+      mode: "setup",
+      clientSecret: "seti_should_wait_for_user",
+      customerId: "cus_should_wait_for_user",
+      publishableKey: "pk_test_should_wait_for_user"
+    });
+    usePaymentMethodsQueryMock.mockReturnValue({
+      data: { methods: [] },
+      isLoading: false,
+      error: Object.assign(new Error("Only clients can manage saved payment methods."), { status: 403 })
+    });
+    useCreateSavedPaymentMethodSetupMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: createSetupMock
+    });
+
+    render(<BookingForm />);
+    await advanceToReview();
+
+    expect(screen.getAllByText("Saved payment method could not be loaded. Refresh or manage wallet.").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Add a payment method to complete booking.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Secure card fields are unavailable until payment setup starts.")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Book Appointment" })).toBeDisabled();
+    await waitFor(() => {
+      expect(createSetupMock).not.toHaveBeenCalled();
+    });
+  });
+
   it("keeps the review receipt and summary client-facing without duplicated internal rows", async () => {
     render(<BookingForm />);
     await advanceToReview();

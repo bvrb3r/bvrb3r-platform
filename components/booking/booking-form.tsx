@@ -153,6 +153,14 @@ function buildQuickRedeemOptions(maxRedeemablePoints: number) {
     .filter((option, index, array) => array.findIndex((entry) => entry.points === option.points) === index);
 }
 
+function getBookingPaymentMethodsErrorMessage(error: unknown) {
+  if (!error) {
+    return null;
+  }
+
+  return "Saved payment method could not be loaded. Refresh or manage wallet.";
+}
+
 const bookingSteps: Array<{ id: BookingStep; label: string }> = [
   { id: "service", label: "Choose service" },
   { id: "time", label: "Pick time" },
@@ -621,7 +629,7 @@ export function BookingForm() {
   const isInitialLoading = (searchQuery.isLoading && !searchQuery.data) || (barberProfileQuery.isLoading && !barberProfileQuery.data);
   const waitlistPending = waitlistMutation.isPending;
   const formError = searchQuery.error || barberProfileQuery.error || availabilityQuery.error;
-  const paymentMethodsError = paymentMethodsQuery.error ? getReadableActionError(paymentMethodsQuery.error as Error) : null;
+  const paymentMethodsError = getBookingPaymentMethodsErrorMessage(paymentMethodsQuery.error);
   const offlineMessage = "You’re offline. Review your booking details now, then reconnect to confirm the chair or join the waitlist.";
 
   async function applyPromotion(selection: { promotionId?: string; promotionCode?: string }) {
@@ -712,6 +720,14 @@ export function BookingForm() {
           return;
         }
       }
+
+      console.log("[booking] payment_method_selected", {
+        reference: "payment_method_selected",
+        paymentMethodIdPresent: Boolean(selectedPaymentMethod.id),
+        belongsToClient: null,
+        providerPaymentMethodPresent: null,
+        providerCustomerPresent: null
+      });
 
       const result = await bookingMutation.mutateAsync({
         locationId: resolvedLocationId,

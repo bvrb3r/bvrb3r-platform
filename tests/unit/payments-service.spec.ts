@@ -1,7 +1,16 @@
-import { describe, expect, it, vi } from "vitest";
-import { PaymentServiceError, readClientPaymentMethodsByClientId } from "@/lib/payments/service";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-type TableName = "clients" | "client_preferences" | "payment_methods" | "saved_payment_methods" | "billing_customers";
+const { createSupabaseAdminClientMock } = vi.hoisted(() => ({
+  createSupabaseAdminClientMock: vi.fn()
+}));
+
+vi.mock("@/lib/supabase/admin", () => ({
+  createSupabaseAdminClient: createSupabaseAdminClientMock
+}));
+
+import { listClientPaymentMethods, PaymentServiceError, readClientPaymentMethodsByClientId } from "@/lib/payments/service";
+
+type TableName = "profiles" | "clients" | "client_preferences" | "payment_methods" | "saved_payment_methods" | "billing_customers";
 type Row = Record<string, unknown>;
 type QueryError = {
   code?: string | null;
@@ -16,6 +25,7 @@ type Seed = Partial<Record<TableName, Row[]>> & {
 
 function createPaymentResolverSupabaseStub(seed: Seed = {}) {
   const tables: Record<TableName, Row[]> = {
+    profiles: [...(seed.profiles ?? [])],
     clients: [...(seed.clients ?? [])],
     client_preferences: [...(seed.client_preferences ?? [])],
     payment_methods: [...(seed.payment_methods ?? [])],
@@ -52,6 +62,10 @@ function createPaymentResolverSupabaseStub(seed: Seed = {}) {
     }
 
     order() {
+      return this;
+    }
+
+    limit() {
       return this;
     }
 
@@ -148,6 +162,10 @@ function createPaymentResolverSupabaseStub(seed: Seed = {}) {
 }
 
 describe("payment methods service", () => {
+  beforeEach(() => {
+    createSupabaseAdminClientMock.mockReset();
+  });
+
   it("returns an empty list when a canonical client has no saved payment methods", async () => {
     const resolver = createPaymentResolverSupabaseStub();
 
@@ -390,5 +408,66 @@ describe("payment methods service", () => {
     await expect(readClientPaymentMethodsByClientId("client-jordan", resolver.supabase as never)).rejects.toBeInstanceOf(PaymentServiceError);
 
     consoleErrorSpy.mockRestore();
+  });
+
+  it("loads saved default cards for master-truth client_user accounts", async () => {
+    const resolver = createPaymentResolverSupabaseStub({
+      profiles: [{
+        id: "profile-client",
+        email: "phillipmcgeeclient@outlook.com",
+        full_name: "Phillip mcgee",
+        phone: "+18136250040",
+        role: "client_user",
+        primary_onboarding_role: "client"
+      }],
+      clients: [{
+        id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
+        reference_code: "client-1fd26b88",
+        profile_id: "profile-client"
+      }],
+      client_preferences: [{
+        client_id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
+        client_reference: "client-1fd26b88",
+        client_email: "phillipmcgeeclient@outlook.com",
+        default_payment_method_id: "pm-row-4242",
+        default_payment_method_ref: "pm_stripe_4242"
+      }],
+      payment_methods: [{
+        id: "pm-row-4242",
+        client_id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
+        provider: "stripe",
+        provider_customer_id: "cus_client_4242",
+        provider_payment_method_id: "pm_stripe_4242",
+        brand: "visa",
+        last4: "4242",
+        exp_month: 12,
+        exp_year: 2034,
+        nickname: null,
+        is_default: true,
+        created_at: "2026-05-15T12:00:00.000Z"
+      }]
+    });
+    createSupabaseAdminClientMock.mockReturnValue(resolver.supabase);
+
+    const methods = await listClientPaymentMethods({
+      id: "profile-client",
+      role: "client_user",
+      email: "phillipmcgeeclient@outlook.com",
+      password: "",
+      name: "Phillip mcgee",
+      title: "Client",
+      locationIds: []
+    });
+
+    expect(methods).toMatchObject([{
+      id: "pm-row-4242",
+      provider: "stripe",
+      brand: "visa",
+      last4: "4242",
+      expMonth: 12,
+      expYear: 2034,
+      isDefault: true,
+      label: "Visa ending in 4242"
+    }]);
   });
 });

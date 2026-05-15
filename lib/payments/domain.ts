@@ -147,7 +147,7 @@ export function formatPaymentMethodLabel(input: {
 }) {
   const brand = input.brand?.trim();
   if (brand && input.last4) {
-    return `${brand} ending in ${input.last4}`;
+    return `${brand.charAt(0).toUpperCase()}${brand.slice(1)} ending in ${input.last4}`;
   }
 
   if (input.last4) {
