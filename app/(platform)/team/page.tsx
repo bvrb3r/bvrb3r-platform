@@ -3,11 +3,12 @@ import { redirect } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { TeamWorkspace } from "@/components/operations/team-workspace";
 import { getAuthorizedUser } from "@/lib/auth/guards";
+import { isShopOwnerRole } from "@/lib/auth/roles";
 
 export default async function TeamPage() {
-  const user = await getAuthorizedUser(["owner", "manager", "front_desk"]);
+  const user = await getAuthorizedUser(["shop_owner_user", "manager", "front_desk"]);
 
-  if (user.role === "owner") {
+  if (isShopOwnerRole(user.role)) {
     redirect("/dashboard/owner/team" as Route);
   }
 

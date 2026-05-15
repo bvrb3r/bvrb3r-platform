@@ -4,7 +4,7 @@ import { BellRing, Building2, MessageSquareText, ShieldCheck, UserRound, WalletC
 import { GalleryManagerCard, ProfilePhotoManagerCard } from "@/components/profile/profile-media-manager";
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
-import { isBarberAccountRole } from "@/lib/auth/roles";
+import { isBarberAccountRole, isShopOwnerRole } from "@/lib/auth/roles";
 import { permissionMatrix } from "@/lib/config/permissions";
 import { useBarberFintechReadinessQuery } from "@/lib/fintech/client";
 import { useMutateProfileMediaMutation, useProfileMediaWorkspaceQuery } from "@/lib/profile/client";
@@ -13,24 +13,25 @@ import { useBarberTrustSummary } from "@/lib/trust/client";
 import type { UserAccount } from "@/types/domain";
 
 function getRoleProfileCopy(user: UserAccount) {
-  switch (user.role) {
-    case "owner":
-      return "Owner profile keeps identity, permissions, location scope, and protected controls close without turning this into a settings maze.";
-    case "manager":
-      return "Manager profile keeps shift visibility, communications, and operational permissions readable at a glance.";
-    case "front_desk":
-      return "Front desk profile keeps queue access, guest communication, and shop coverage visible in one clean layer.";
-    case "barber":
-      return user.barberSubtype === "commission"
-        ? "Commission barber profile keeps chair identity, payout model, and guest-facing trust signals close together."
-        : "Barber profile keeps independent chair identity, payout posture, and public-facing presence visible together.";
-    case "commission_barber":
-      return "Commission barber profile keeps chair identity, payout model, and guest-facing trust signals close together.";
-    case "booth_rent_barber":
-      return "Booth-rent profile keeps independent chair identity, payout posture, and public-facing shop presence visible together.";
-    default:
-      return "Profile workspace";
+  if (isShopOwnerRole(user.role)) {
+    return "Owner profile keeps identity, permissions, location scope, and protected controls close without turning this into a settings maze.";
   }
+
+  if (user.role === "manager") {
+    return "Manager profile keeps shift visibility, communications, and operational permissions readable at a glance.";
+  }
+
+  if (user.role === "front_desk") {
+    return "Front desk profile keeps queue access, guest communication, and shop coverage visible in one clean layer.";
+  }
+
+  if (isBarberAccountRole(user.role)) {
+    return user.barberSubtype === "commission"
+      ? "Commission barber profile keeps chair identity, payout model, and guest-facing trust signals close together."
+      : "Barber profile keeps independent chair identity, payout posture, and public-facing presence visible together.";
+  }
+
+  return "Profile workspace";
 }
 
 function initialsForName(name: string) {

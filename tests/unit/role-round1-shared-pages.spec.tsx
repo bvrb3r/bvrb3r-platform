@@ -79,20 +79,21 @@ describe("role completion round 1 shared role pages", () => {
 
     await expect(AppointmentsPage({ searchParams: Promise.resolve({}) })).rejects.toThrow("REDIRECT:/dashboard/barber");
 
-    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["owner", "manager", "front_desk", "commission_barber", "booth_rent_barber"]);
+    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["shop_owner_user", "manager", "front_desk", "barber_user"]);
   });
 
   it("keeps the appointments route owner-scoped for owner roles", async () => {
     getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("owner@bvrb3r.demo"));
 
     await expect(AppointmentsPage({ searchParams: Promise.resolve({}) })).rejects.toThrow("REDIRECT:/dashboard/owner/schedule");
+    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["shop_owner_user", "manager", "front_desk", "barber_user"]);
   });
 
   it("routes owners into the owner team lane only", async () => {
     getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("owner@bvrb3r.demo"));
 
     await expect(TeamPage()).rejects.toThrow("REDIRECT:/dashboard/owner/team");
-    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["owner", "manager", "front_desk"]);
+    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["shop_owner_user", "manager", "front_desk"]);
   });
 
   it("keeps manager and front desk views scoped to the shared team coverage lane", async () => {

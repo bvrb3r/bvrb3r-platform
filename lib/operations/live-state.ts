@@ -1,5 +1,5 @@
 import { demoAppointments, demoBarbers, demoClients, demoUsers, demoWalkIns } from "@/lib/data/demo";
-import { isBarberAccountRole } from "@/lib/auth/roles";
+import { isBarberAccountRole, isClientRole, isShopOwnerRole } from "@/lib/auth/roles";
 import {
   buildAppointmentLifecycleFields,
   canTransitionAppointmentStatus,
@@ -549,7 +549,7 @@ export function createEmptyLiveOperationsSnapshot(mode: LiveOperationsMode = "su
 }
 
 function isLocationScopedRole(role: LiveOperationsViewer["role"]) {
-  return role === "owner" || role === "manager" || role === "front_desk";
+  return isShopOwnerRole(role) || role === "manager" || role === "front_desk";
 }
 
 export function scopeLiveOperationsSnapshot(snapshot: LiveOperationsSnapshot, viewer: LiveOperationsViewer): LiveOperationsSnapshot {
@@ -574,7 +574,7 @@ export function scopeLiveOperationsSnapshot(snapshot: LiveOperationsSnapshot, vi
       return appointment.barberId === viewer.barberId;
     }
 
-    if (viewer.role === "client") {
+    if (isClientRole(viewer.role)) {
       return appointment.clientId === viewer.clientId;
     }
 
@@ -592,7 +592,7 @@ export function scopeLiveOperationsSnapshot(snapshot: LiveOperationsSnapshot, vi
       isLocationScopedRole(viewer.role)
         ? snapshot.walkIns.filter((entry) => hasLocationScope && locationIds.includes(entry.locationId))
         : [],
-    workflowEvents: viewer.role === "client"
+    workflowEvents: isClientRole(viewer.role)
       ? []
       : snapshot.workflowEvents.filter((entry) => {
         if (appointmentIds.has(entry.appointmentReference)) {
@@ -604,15 +604,15 @@ export function scopeLiveOperationsSnapshot(snapshot: LiveOperationsSnapshot, vi
     compensationSnapshots:
       isBarberAccountRole(viewer.role)
         ? snapshot.compensationSnapshots.filter((entry) => entry.barberReference === viewer.barberId)
-        : viewer.role === "owner"
+        : isShopOwnerRole(viewer.role)
           ? snapshot.compensationSnapshots.filter((entry) => hasLocationScope && locationIds.includes(entry.locationReference))
-          : viewer.role === "manager" || viewer.role === "front_desk" || viewer.role === "client"
+          : viewer.role === "manager" || viewer.role === "front_desk" || isClientRole(viewer.role)
           ? []
           : snapshot.compensationSnapshots,
     ownerAnalytics:
-      viewer.role === "owner" || viewer.role === "manager"
+      isShopOwnerRole(viewer.role) || viewer.role === "manager"
         ? snapshot.ownerAnalytics.filter((entry) => hasLocationScope && locationIds.includes(entry.locationReference))
-        : viewer.role === "front_desk" || isBarberAccountRole(viewer.role) || viewer.role === "client"
+        : viewer.role === "front_desk" || isBarberAccountRole(viewer.role) || isClientRole(viewer.role)
           ? []
           : snapshot.ownerAnalytics
   };

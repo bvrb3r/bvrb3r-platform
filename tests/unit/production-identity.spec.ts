@@ -303,7 +303,7 @@ describe("production identity provisioning", () => {
     expect(state.profiles).toHaveLength(1);
     expect(state.profiles[0]).toMatchObject({
       id: "auth-user-1",
-      role: "client",
+      role: "client_user",
       email: "fresh@bvrb3r.app",
       full_name: "Fresh User"
     });
@@ -333,7 +333,7 @@ describe("production identity provisioning", () => {
     });
     expect(state.profiles[0]).toMatchObject({
       id: "auth-role-pending",
-      role: "barber",
+      role: "barber_user",
       primary_onboarding_role: "barber",
       onboarding_state: "awaiting_contact_verification"
     });
@@ -360,7 +360,7 @@ describe("production identity provisioning", () => {
     });
     expect(state.profiles[0]).toMatchObject({
       id: "auth-role-ready",
-      role: "barber",
+      role: "barber_user",
       primary_onboarding_role: "barber"
     });
     expect(state.barbers).toHaveLength(1);
@@ -389,7 +389,7 @@ describe("production identity provisioning", () => {
     expect(state.profiles).toHaveLength(1);
     expect(state.profiles[0]).toMatchObject({
       id: "auth-user-fallback",
-      role: "client",
+      role: "client_user",
       full_name: "Fallback User",
       email: "fallback@bvrb3r.app"
     });
@@ -416,7 +416,7 @@ describe("production identity provisioning", () => {
     expect(state.clients).toHaveLength(1);
     expect(state.profiles[0]).toMatchObject({
       id: "auth-user-2",
-      role: "client",
+      role: "client_user",
       primary_onboarding_role: "client"
     });
     expect(result.user.clientId).toBeTruthy();
@@ -479,7 +479,7 @@ describe("production identity provisioning", () => {
 
     expect(state.profiles[0]).toMatchObject({
       id: "auth-owner-1",
-      role: "owner",
+      role: "shop_owner_user",
       primary_onboarding_role: "shop_owner",
       full_name: "Maya Lane",
       phone: "+18135550125"
@@ -732,7 +732,7 @@ describe("production identity provisioning", () => {
     expect(state.profiles[0]).toMatchObject({
       id: "auth-new-barber",
       primary_onboarding_role: "barber",
-      role: "barber",
+      role: "barber_user",
       onboarding_state: "active"
     });
     expect(state.barbers[0]).toMatchObject({
@@ -752,7 +752,7 @@ describe("production identity provisioning", () => {
     expect(state.clients).toHaveLength(0);
     expect(state.user_roles).toEqual([expect.objectContaining({
       user_email: "barber@bvrb3r.app",
-      role: "barber",
+      role: "barber_user",
       barber_reference: "barber-auth-new"
     })]);
     expect(result.user.primaryOnboardingRole).toBe("barber");
@@ -813,7 +813,7 @@ describe("production identity provisioning", () => {
     expect(state.profiles[0]).toMatchObject({
       id: "auth-dashboard-barber",
       primary_onboarding_role: "barber",
-      role: "barber",
+      role: "barber_user",
       onboarding_state: "active"
     });
     expect(state.barbers[0]).toMatchObject({
@@ -830,7 +830,7 @@ describe("production identity provisioning", () => {
       overall_status: "submitted"
     });
     expect(result.user.barberSubtype).toBe("commission");
-    expect(result.user.role).toBe("barber");
+    expect(result.user.role).toBe("barber_user");
     expect(result.user.accountStatus).toBe("active");
   });
 
@@ -874,7 +874,7 @@ describe("production identity provisioning", () => {
 
     expect(state.profiles[0]).toMatchObject({
       id: "auth-new-owner",
-      role: "owner",
+      role: "shop_owner_user",
       primary_onboarding_role: "shop_owner",
       onboarding_state: "active"
     });
@@ -900,11 +900,11 @@ describe("production identity provisioning", () => {
     expect(state.user_roles).toHaveLength(1);
     expect(state.user_roles[0]).toMatchObject({
       user_email: "owner-new@bvrb3r.app",
-      role: "owner",
+      role: "shop_owner_user",
       client_reference: null,
       location_references: ["shop-new-owner-shop-auth-n"]
     });
-    expect(result.user.role).toBe("owner");
+    expect(result.user.role).toBe("shop_owner_user");
     expect(result.user.primaryOnboardingRole).toBe("shop_owner");
     expect(result.user.ownedShopId).toBe("shop-new-owner-shop-auth-n");
     expect(result.user.ownedShopName).toBe("New Owner Shop");

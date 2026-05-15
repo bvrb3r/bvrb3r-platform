@@ -60,42 +60,44 @@ describe("authorized user guard", () => {
   it("returns the commission barber for the barber workspace", async () => {
     getCurrentUserFromServerMock.mockResolvedValue({ mode: "demo", user: resolveDemoUser("fade@bvrb3r.demo") });
 
-    const user = await getAuthorizedUser(["commission_barber", "booth_rent_barber"]);
+    const user = await getAuthorizedUser(["barber_user"]);
 
     expect(user.email).toBe("fade@bvrb3r.demo");
-    expect(user.role).toBe("commission_barber");
+    expect(user.role).toBe("barber_user");
+    expect(user.barberSubtype).toBe("commission");
     expect(redirectMock).not.toHaveBeenCalled();
   });
 
   it("returns the booth-rent barber for the barber workspace", async () => {
     getCurrentUserFromServerMock.mockResolvedValue({ mode: "demo", user: resolveDemoUser("blaze@bvrb3r.demo") });
 
-    const user = await getAuthorizedUser(["commission_barber", "booth_rent_barber"]);
+    const user = await getAuthorizedUser(["barber_user"]);
 
     expect(user.email).toBe("blaze@bvrb3r.demo");
-    expect(user.role).toBe("booth_rent_barber");
+    expect(user.role).toBe("barber_user");
+    expect(user.barberSubtype).toBe("booth_rent");
     expect(redirectMock).not.toHaveBeenCalled();
   });
 
   it("redirects owner away from the barber workspace", async () => {
     getCurrentUserFromServerMock.mockResolvedValue({ mode: "demo", user: resolveDemoUser("owner@bvrb3r.demo") });
 
-    await expect(getAuthorizedUser(["commission_barber", "booth_rent_barber"])).rejects.toThrow("REDIRECT:/dashboard/owner");
+    await expect(getAuthorizedUser(["barber_user"])).rejects.toThrow("REDIRECT:/dashboard/owner");
   });
 
   it("redirects the barber-manager demo account away from the barber-only workspace", async () => {
     getCurrentUserFromServerMock.mockResolvedValue({ mode: "demo", user: resolveDemoUser("wave@bvrb3r.demo") });
 
-    await expect(getAuthorizedUser(["commission_barber", "booth_rent_barber"])).rejects.toThrow("REDIRECT:/dashboard/manager");
+    await expect(getAuthorizedUser(["barber_user"])).rejects.toThrow("REDIRECT:/dashboard/manager");
   });
 
   it("returns the client for the client workspace", async () => {
     getCurrentUserFromServerMock.mockResolvedValue({ mode: "demo", user: resolveDemoUser("client@bvrb3r.demo") });
 
-    const user = await getAuthorizedUser(["client"]);
+    const user = await getAuthorizedUser(["client_user"]);
 
     expect(user.email).toBe("client@bvrb3r.demo");
-    expect(user.role).toBe("client");
+    expect(user.role).toBe("client_user");
     expect(redirectMock).not.toHaveBeenCalled();
   });
 
@@ -115,13 +117,13 @@ describe("authorized user guard", () => {
       }
     });
 
-    await expect(getAuthorizedUser(["client"])).rejects.toThrow("REDIRECT:/login");
+    await expect(getAuthorizedUser(["client_user"])).rejects.toThrow("REDIRECT:/login");
   });
 
   it("redirects owner away from the client workspace", async () => {
     getCurrentUserFromServerMock.mockResolvedValue({ mode: "demo", user: resolveDemoUser("owner@bvrb3r.demo") });
 
-    await expect(getAuthorizedUser(["client"])).rejects.toThrow("REDIRECT:/dashboard/owner");
+    await expect(getAuthorizedUser(["client_user"])).rejects.toThrow("REDIRECT:/dashboard/owner");
   });
 
   it("returns the founder for the hidden architect route", async () => {

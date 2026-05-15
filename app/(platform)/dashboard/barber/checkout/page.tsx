@@ -8,7 +8,7 @@ export default async function BarberCheckoutPage({
 }: {
   searchParams: Promise<{ section?: string }>;
 }) {
-  const user = await getAuthorizedUser(["commission_barber", "booth_rent_barber"]);
+  const user = await getAuthorizedUser(["barber_user"]);
   const params = await searchParams;
 
   return (
@@ -20,7 +20,7 @@ export default async function BarberCheckoutPage({
     >
       <BarberCheckoutScreen
         barberName={user.name}
-        barberRole={user.role as Extract<Role, "barber" | "commission_barber" | "booth_rent_barber">}
+        barberRole={user.role as Extract<Role, "barber_user" | "barber" | "freelance_barber" | "commission_barber" | "booth_rent_barber">}
         initialSection={params.section}
       />
     </DashboardShell>

@@ -1,4 +1,5 @@
 import { hasEmailDeliveryConfig, hasTwilioDeliveryConfig, runtimeConfig } from "@/lib/config/runtime";
+import { isBarberAccountRole, isClientRole, isShopOwnerRole } from "@/lib/auth/roles";
 import { buildMobileActivationLink } from "@/lib/mobile/links";
 import { resolveNotificationDestination } from "@/lib/engagement/live-delivery";
 import type { NotificationDeliveryRecord } from "@/types/activation";
@@ -38,20 +39,22 @@ function getStatus(channel: NotificationDeliveryRecord["channel"]): Notification
 }
 
 function roleHomeRoute(role: Role) {
-  switch (role) {
-    case "owner":
-      return "/dashboard/owner";
-    case "manager":
-      return "/dashboard/manager";
-    case "front_desk":
-      return "/dashboard/front-desk";
-    case "commission_barber":
-    case "booth_rent_barber":
-      return "/dashboard/barber";
-    case "client":
-    default:
-      return "/dashboard/client";
+  if (isShopOwnerRole(role)) {
+    return "/dashboard/owner";
   }
+  if (isBarberAccountRole(role)) {
+    return "/dashboard/barber";
+  }
+  if (role === "manager") {
+    return "/dashboard/manager";
+  }
+  if (role === "front_desk") {
+    return "/dashboard/front-desk";
+  }
+  if (isClientRole(role)) {
+    return "/dashboard/client";
+  }
+  return "/dashboard/client";
 }
 
 function resolveNotificationRoute(notification: EngagementNotificationRecord) {
@@ -65,7 +68,7 @@ function resolveNotificationRoute(notification: EngagementNotificationRecord) {
       return "/booking/new";
     case "boost_update":
     case "featured_placement_update":
-      return notification.role === "owner" ? "/dashboard/owner" : "/dashboard/barber";
+      return isShopOwnerRole(notification.role) ? "/dashboard/owner" : "/dashboard/barber";
     default:
       return roleHomeRoute(notification.role);
   }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { isBarberAccountRole, normalizeAccountRole } from "@/lib/auth/roles";
+import { isBarberAccountRole, isShopOwnerRole, normalizeAccountRole } from "@/lib/auth/roles";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
 import { getMarketplaceActivationProvider } from "@/lib/marketplace/activation-provider";
 
@@ -22,7 +22,7 @@ export async function GET() {
   const provider = await getMarketplaceActivationProvider();
   const state = await provider.readState();
 
-  if (user.role === "owner") {
+  if (isShopOwnerRole(user.role)) {
     return NextResponse.json({ campaigns: state.boostCampaigns });
   }
 

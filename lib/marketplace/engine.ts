@@ -26,7 +26,7 @@ import type { TrustState } from "@/types/trust";
 import { buildPublicTrustSignal } from "@/lib/trust/engine";
 import { buildMarketplaceBookingHref } from "@/lib/marketplace/links";
 import { getClientFacingBarberName } from "@/lib/marketplace/client-facing";
-import { isBarberAccountRole } from "@/lib/auth/roles";
+import { isBarberAccountRole, isShopOwnerRole } from "@/lib/auth/roles";
 import {
   filterVisibleMarketplaceBarbers,
   isBarberMarketplaceVisible,
@@ -252,17 +252,17 @@ export function createInitialMarketplaceState(): MarketplaceState {
 }
 
 function isCommissionBarberRelationship(actor: MarketplaceActor) {
-  return actor.barberSubtype === "commission" || actor.role === "commission_barber";
+  return actor.barberSubtype === "commission";
 }
 
 export function canCreateServiceDefinition(actor: MarketplaceActor) {
-  return actor.role === "owner" || (isBarberAccountRole(actor.role) && !isCommissionBarberRelationship(actor));
+  return isShopOwnerRole(actor.role) || (isBarberAccountRole(actor.role) && !isCommissionBarberRelationship(actor));
 }
 
 export function canEditServiceDefinition(actor: MarketplaceActor, service: Service) {
   const normalizedService = normalizeService(service);
 
-  if (actor.role === "owner") {
+  if (isShopOwnerRole(actor.role)) {
     return normalizedService.ownerType === "shop";
   }
 
@@ -345,7 +345,7 @@ export function getServiceCatalogView(state: MarketplaceState, actor: Marketplac
   const popularityMap = getServicePopularity(state);
   const services = getNormalizedServices(state);
 
-  if (actor.role === "owner") {
+  if (isShopOwnerRole(actor.role)) {
     const editableServices = services
       .filter((service) => service.ownerType === "shop")
       .map((service) => ({ ...toCatalogItem(service, state, actor), popularity: popularityMap.get(service.id)! }))
@@ -433,7 +433,7 @@ function validateServiceMutation(input: ServiceMutationInput) {
 }
 
 function getPreferredShopId(state: MarketplaceState, actor: MarketplaceActor, requestedShopId?: string) {
-  if (actor.role === "owner") {
+  if (isShopOwnerRole(actor.role)) {
     return requestedShopId ?? state.shops[0]?.id;
   }
 
@@ -452,7 +452,7 @@ export function createServiceDefinition(state: MarketplaceState, actor: Marketpl
 
   validateServiceMutation(input);
 
-  const ownerType: ServiceOwnerType = actor.role === "owner" ? "shop" : "barber";
+  const ownerType: ServiceOwnerType = isShopOwnerRole(actor.role) ? "shop" : "barber";
   const nextService: Service = normalizeService({
     id: `srv-${slugify(`${input.name}-${Date.now()}`)}`,
     category: input.category,

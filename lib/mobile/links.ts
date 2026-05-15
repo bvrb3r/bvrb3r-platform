@@ -1,16 +1,21 @@
 import { runtimeConfig } from "@/lib/config/runtime";
+import { isBarberAccountRole, isClientRole, isShopOwnerRole } from "@/lib/auth/roles";
 import type { Role } from "@/types/domain";
 import type { MobileActivationLink } from "@/types/mobile";
 
 const ROLE_HOME_ROUTE: Record<Role, string> = {
   platform_admin: "/architect",
   architect: "/architect",
+  shop_owner_user: "/dashboard/owner",
   owner: "/dashboard/owner",
   manager: "/dashboard/manager",
   front_desk: "/dashboard/front-desk",
+  barber_user: "/dashboard/barber",
   barber: "/dashboard/barber",
+  freelance_barber: "/dashboard/barber",
   commission_barber: "/dashboard/barber",
   booth_rent_barber: "/dashboard/barber",
+  client_user: "/dashboard/client",
   client: "/dashboard/client"
 };
 
@@ -111,15 +116,15 @@ export function buildDefaultDeepLinks(role: Role) {
     buildRoleHomeLink(role)
   ];
 
-  if (role === "client") {
+  if (isClientRole(role)) {
     return [...base, buildMobileActivationLink("/referrals", "Open referrals")];
   }
 
-  if (role === "owner") {
+  if (isShopOwnerRole(role)) {
     return [...base, buildMobileActivationLink("/leaderboards", "Marketplace leaderboards")];
   }
 
-  if (role === "commission_barber" || role === "booth_rent_barber") {
+  if (isBarberAccountRole(role)) {
     return [...base, buildMobileActivationLink("/barber/wave", "Public barber profile")];
   }
 

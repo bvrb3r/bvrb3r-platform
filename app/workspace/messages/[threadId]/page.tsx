@@ -4,7 +4,7 @@ import { MessagingInboxScreen } from "@/components/messages/messaging-inbox-scre
 import { getAuthorizedUser } from "@/lib/auth/guards";
 
 export default async function BarberMessageThreadPage({ params }: { params: Promise<{ threadId: string }> }) {
-  const user = await getAuthorizedUser(["owner", "manager", "front_desk", "commission_barber", "booth_rent_barber"]);
+  const user = await getAuthorizedUser(["shop_owner_user", "manager", "front_desk", "barber_user"]);
   const { threadId } = await params;
   const isShopSurface = user.role === "owner" || user.role === "manager" || user.role === "front_desk";
 

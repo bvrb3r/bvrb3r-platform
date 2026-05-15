@@ -1,8 +1,10 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { isBarberAccountRole } from "@/lib/auth/roles";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 
 type BarberRoleLike =
+  | "barber_user"
   | "barber"
   | "commission_barber"
   | "booth_rent_barber"
@@ -221,10 +223,7 @@ function fallbackBarberSlug(barberReference: string) {
 }
 
 function isBarberRole(value?: string | null): value is BarberRoleLike {
-  return value === "barber"
-    || value === "commission_barber"
-    || value === "booth_rent_barber"
-    || value === "freelance_barber";
+  return isBarberAccountRole(value);
 }
 
 function normalizeUsernameCandidate(value?: string | null) {
@@ -575,7 +574,7 @@ async function upsertUserRole(
     .from("user_roles")
     .upsert({
       user_email: input.email,
-      role: "barber",
+      role: "barber_user",
       client_reference: null,
       barber_reference: input.barberReference,
       location_references: []

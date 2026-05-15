@@ -22,7 +22,7 @@ const createServiceSchema = z.object({
 
 export async function GET() {
   try {
-    const actor = await requireMarketplaceActor(["owner", "commission_barber", "booth_rent_barber"]);
+    const actor = await requireMarketplaceActor(["shop_owner_user", "barber_user"]);
     const marketplaceProvider = await getMarketplaceProvider();
     const runtime = await marketplaceProvider.readRuntime();
     return NextResponse.json(buildServiceCatalogPayload(runtime, actor));
@@ -33,7 +33,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const actor = await requireMarketplaceActor(["owner", "booth_rent_barber"]);
+    const actor = await requireMarketplaceActor(["shop_owner_user", "barber_user"]);
     const payload = createServiceSchema.parse(await request.json());
     const marketplaceProvider = await getMarketplaceProvider();
     const result = await marketplaceProvider.createService(actor, payload satisfies ServiceMutationInput);

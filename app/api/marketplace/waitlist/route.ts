@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { isClientRole } from "@/lib/auth/roles";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
 import { getEngagementProvider } from "@/lib/engagement/provider";
 import { getMarketplaceProvider } from "@/lib/marketplace/provider";
@@ -22,7 +23,7 @@ export async function POST(request: Request) {
     getMarketplaceProvider(),
     getEngagementProvider()
   ]);
-  const clientId = session.user.role === "client" ? session.user.clientId : undefined;
+  const clientId = isClientRole(session.user.role) ? session.user.clientId : undefined;
   const waitlist = await marketplaceProvider.joinWaitlist({
     barberId: parsed.data.barberId,
     serviceId: parsed.data.serviceId,

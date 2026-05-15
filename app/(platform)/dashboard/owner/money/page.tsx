@@ -9,7 +9,7 @@ export default async function OwnerMoneyPage({
 }: {
   searchParams: Promise<{ view?: string; section?: string }>;
 }) {
-  const user = await getAuthorizedUser(["owner"]);
+  const user = await getAuthorizedUser(["shop_owner_user"]);
   const params = await searchParams;
   const growthRequested = params.view === "growth";
   const fintechRequested = params.view === "fintech";

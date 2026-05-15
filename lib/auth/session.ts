@@ -9,7 +9,7 @@ import type { UserAccount } from "@/types/domain";
 
 const unauthenticatedUser: UserAccount = {
   id: "guest-user",
-  role: "client",
+  role: "client_user",
   email: "guest@bvrb3r.local",
   password: "",
   name: "Guest",

@@ -22,6 +22,7 @@ import {
 } from "@/lib/points/redemption";
 import { getPointsState, setPointsState } from "@/lib/points/state";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { isBarberAccountRole, isClientRole, isShopOwnerRole } from "@/lib/auth/roles";
 import type { AppointmentFinancialQuote } from "@/lib/appointments/domain";
 import type { UserAccount } from "@/types/domain";
 import type {
@@ -260,15 +261,15 @@ function isMissingTableError(error: { code?: string | null; message?: string | n
 }
 
 function toPointsRole(role: UserAccount["role"]): PointsRole | null {
-  if (role === "client") {
+  if (isClientRole(role)) {
     return "client";
   }
 
-  if (role === "commission_barber" || role === "booth_rent_barber") {
+  if (isBarberAccountRole(role)) {
     return "barber";
   }
 
-  if (role === "owner") {
+  if (isShopOwnerRole(role)) {
     return "owner";
   }
 

@@ -14,7 +14,7 @@ import { getTrustProvider } from "@/lib/trust/provider";
 
 export async function GET() {
   try {
-    const actor = await requireEngagementActor(["commission_barber", "booth_rent_barber"]);
+    const actor = await requireEngagementActor(["barber_user"]);
     if (!actor.barberId) throw new EngagementValidationError("A barber profile is required for this engagement summary.");
     const [engagementProvider, operationsProvider, marketplaceProvider, trustProvider, activationProvider, deliveryProvider] = await Promise.all([
       getEngagementProvider(),

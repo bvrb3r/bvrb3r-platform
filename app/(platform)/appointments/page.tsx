@@ -3,14 +3,14 @@ import { redirect } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { Card } from "@/components/ui/card";
 import { getAuthorizedUser } from "@/lib/auth/guards";
-import { isBarberAccountRole } from "@/lib/auth/roles";
+import { isBarberAccountRole, isShopOwnerRole } from "@/lib/auth/roles";
 
 export default async function AppointmentsPage({
   searchParams
 }: {
   searchParams: Promise<{ view?: string; date?: string }>;
 }) {
-  const user = await getAuthorizedUser(["owner", "manager", "front_desk", "commission_barber", "booth_rent_barber"]);
+  const user = await getAuthorizedUser(["shop_owner_user", "manager", "front_desk", "barber_user"]);
   const isBarber = isBarberAccountRole(user.role);
 
   if (isBarber) {
@@ -25,7 +25,7 @@ export default async function AppointmentsPage({
     redirect(`/dashboard/barber${query.size ? `?${query.toString()}` : ""}` as Route);
   }
 
-  if (user.role === "owner") {
+  if (isShopOwnerRole(user.role)) {
     const params = await searchParams;
     const query = new URLSearchParams();
     if (params.view) {

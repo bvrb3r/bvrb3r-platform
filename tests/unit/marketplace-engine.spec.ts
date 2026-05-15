@@ -12,7 +12,7 @@ import { approvedMarketplaceTrustState, visibleMarketplaceState } from "@/tests/
 describe("marketplace engine", () => {
   it("lets the owner update a shop-owned commission service", () => {
     const state = visibleMarketplaceState();
-    const result = updateServiceDefinition(state, { role: "owner" }, "srv-shop-real", {
+    const result = updateServiceDefinition(state, { role: "shop_owner_user" }, "srv-shop-real", {
       price: 59,
       description: "Sharper premium cut experience."
     });
@@ -24,7 +24,7 @@ describe("marketplace engine", () => {
 
   it("lets a booth-rent barber create and edit a self-owned service", () => {
     const state = visibleMarketplaceState();
-    const created = createServiceDefinition(state, { role: "booth_rent_barber", barberId: "barber-real" }, {
+    const created = createServiceDefinition(state, { role: "barber_user", barberSubtype: "booth_rent", barberId: "barber-real" }, {
       category: "Haircuts",
       name: "Late Night Detail",
       description: "After-hours premium cleanup.",
@@ -35,7 +35,7 @@ describe("marketplace engine", () => {
       fullPrepay: false,
       styleTagIds: ["style-executive"]
     });
-    const updated = updateServiceDefinition(created.state, { role: "booth_rent_barber", barberId: "barber-real" }, created.service.id, {
+    const updated = updateServiceDefinition(created.state, { role: "barber_user", barberSubtype: "booth_rent", barberId: "barber-real" }, created.service.id, {
       price: 76,
       description: "After-hours premium cleanup with hot towel finish."
     });
@@ -49,7 +49,7 @@ describe("marketplace engine", () => {
   it("blocks commission barbers from creating services", () => {
     const state = visibleMarketplaceState();
 
-    expect(() => createServiceDefinition(state, { role: "commission_barber", barberId: "barber-real" }, {
+    expect(() => createServiceDefinition(state, { role: "barber_user", barberSubtype: "commission", barberId: "barber-real" }, {
       category: "Haircuts",
       name: "Unauthorized Service",
       description: "Should not be allowed.",

@@ -2,7 +2,7 @@ import type { Route } from "next";
 import { isCanonicalContactComplete } from "@/lib/auth/contact-policy";
 import { isPlatformAdminUser } from "@/lib/auth/demo-auth";
 import { initializeProductionRoleSelection } from "@/lib/auth/production-identity";
-import { isBarberAccountRole, normalizeBarberSubtype } from "@/lib/auth/roles";
+import { isBarberAccountRole, isClientRole, isShopOwnerRole, normalizeBarberSubtype } from "@/lib/auth/roles";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import { getTrustState, setTrustState } from "@/lib/trust/state";
@@ -309,7 +309,7 @@ function isRoleActive(user: UserAccount, role: OnboardingRole, verificationProfi
     );
   }
 
-  return Boolean(user.role === "owner" && verificationProfile?.canCreateShopListing && verificationProfile?.canReceivePayouts);
+  return Boolean(isShopOwnerRole(user.role) && verificationProfile?.canCreateShopListing && verificationProfile?.canReceivePayouts);
 }
 
 function resolveLaneActivationState(
@@ -374,7 +374,7 @@ function getCanonicalRoleDestination(user: UserAccount): OnboardingRole | null {
     return "barber";
   }
 
-  if (!user.primaryOnboardingRole && user.role === "owner" && user.ownedShopId) {
+  if (!user.primaryOnboardingRole && isShopOwnerRole(user.role) && user.ownedShopId) {
     return "shop_owner";
   }
 
@@ -634,14 +634,14 @@ function isRuntimeRoleAllowedForOnboarding(user: UserAccount, role: OnboardingRo
   }
 
   if (role === "client") {
-    return user.role === "client";
+    return isClientRole(user.role);
   }
 
   if (role === "barber") {
     return isBarberAccountRole(user.role);
   }
 
-  return user.role === "owner";
+  return isShopOwnerRole(user.role);
 }
 
 function getOfficialLaneConflict(

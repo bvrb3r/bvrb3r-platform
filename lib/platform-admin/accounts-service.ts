@@ -5,6 +5,7 @@ import { BarberProfileRepairError, ensureBarberProfileForIdentifier, type Barber
 import { getCanonicalMarketplaceEligibility, type MarketplaceBarberEligibilityDiagnostic } from "@/lib/booking/intelligence";
 import { syncAllOnboardingBarberServices, syncCheckoutLibraryServicesForBarber } from "@/lib/marketplace/service-sync";
 import { readClientPaymentMethodsByClientId } from "@/lib/payments/service";
+import { getCanonicalAccountRole, isBarberAccountRole, isClientRole, isShopOwnerRole } from "@/lib/auth/roles";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getStripeConnectEnvironment } from "@/lib/stripe/connect";
@@ -546,10 +547,12 @@ function normalizeRole(profile: ProfileRow, data: AccountData): ArchitectAccount
   const barber = data.barbers.find((row) => row.profile_id === profile.id);
   const shop = data.shops.find((row) => row.owner_profile_id === profile.id);
   const primary = profile.primary_onboarding_role;
+  const canonicalRole = getCanonicalAccountRole(profile.role);
 
   if (primary === "platform_admin" || profile.role === "platform_admin") return "platform_admin";
-  if (primary === "shop_owner" || profile.role === "shop_owner" || shop) return "shop_owner";
-  if (primary === "barber" || barber || profile.role === "commission_barber" || profile.role === "booth_rent_barber") return "barber";
+  if (primary === "shop_owner" || isShopOwnerRole(canonicalRole) || shop) return "shop_owner";
+  if (primary === "barber" || barber || isBarberAccountRole(canonicalRole)) return "barber";
+  if (isClientRole(canonicalRole)) return "client";
   return "client";
 }
 

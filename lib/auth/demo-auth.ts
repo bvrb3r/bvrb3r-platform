@@ -1,7 +1,7 @@
 import type { Route } from "next";
 import { demoUsers } from "@/lib/data/demo";
 import { runtimeConfig } from "@/lib/config/runtime";
-import { isBarberAccountRole } from "@/lib/auth/roles";
+import { getCanonicalAccountRole, isBarberAccountRole, isClientRole, isShopOwnerRole } from "@/lib/auth/roles";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import type { Role, UserAccount } from "@/types/domain";
 
@@ -94,7 +94,7 @@ export function findDemoUserByEmail(email?: string) {
 }
 
 export function findDemoUserByRole(role?: Role) {
-  return demoUsers.find((user) => user.role === role);
+  return demoUsers.find((user) => getCanonicalAccountRole(user.role) === getCanonicalAccountRole(role));
 }
 
 export function isPlatformAdminUser(
@@ -116,22 +116,18 @@ export function getDemoUser(email?: string) {
 }
 
 export function getRoleLabel(role: Role) {
-  switch (role) {
+  switch (getCanonicalAccountRole(role)) {
     case "platform_admin":
       return "Platform admin";
-    case "owner":
+    case "shop_owner_user":
       return "Shop owner";
     case "manager":
       return "Shop manager";
     case "front_desk":
       return "Front desk";
-    case "barber":
+    case "barber_user":
       return "Barber";
-    case "commission_barber":
-      return "Commission barber";
-    case "booth_rent_barber":
-      return "Booth-rent barber";
-    case "client":
+    case "client_user":
       return "Client";
     default:
       return "User";
@@ -150,6 +146,12 @@ export function getUserRoleLabel(user: UserAccount) {
   if (user.barberSubtype === "freelance" || user.email === "lux@bvrb3r.demo") {
     return "Freelance barber";
   }
+  if (user.barberSubtype === "booth_rent") {
+    return "Booth-rent barber";
+  }
+  if (user.barberSubtype === "commission") {
+    return "Commission barber";
+  }
 
   return getRoleLabel(user.role);
 }
@@ -163,24 +165,29 @@ export function getDefaultRouteForUser(user: UserAccount): Route {
     return "/architect";
   }
 
-  switch (user.role) {
+  const canonicalRole = getCanonicalAccountRole(user.role);
+  switch (canonicalRole) {
     case "platform_admin":
       return "/post-auth";
-    case "owner":
+    case "shop_owner_user":
       return "/dashboard/owner";
     case "manager":
       return "/dashboard/manager";
     case "front_desk":
       return "/dashboard/front-desk";
-    case "barber":
-    case "commission_barber":
-    case "booth_rent_barber":
+    case "barber_user":
       return "/dashboard/barber";
-    case "client":
+    case "client_user":
       return "/dashboard/client";
     default:
       if (isBarberAccountRole(user.role)) {
         return "/dashboard/barber";
+      }
+      if (isShopOwnerRole(user.role)) {
+        return "/dashboard/owner";
+      }
+      if (isClientRole(user.role)) {
+        return "/dashboard/client";
       }
       return "/";
   }

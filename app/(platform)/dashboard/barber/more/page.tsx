@@ -7,7 +7,7 @@ export default async function BarberMorePage({
 }: {
   searchParams: Promise<{ section?: string; stripe?: string }>;
 }) {
-  const user = await getAuthorizedUser(["commission_barber", "booth_rent_barber"]);
+  const user = await getAuthorizedUser(["barber_user"]);
   const params = await searchParams;
   const stripeReturnState = params.stripe === "return" || params.stripe === "refresh" ? params.stripe : null;
 

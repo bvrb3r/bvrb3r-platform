@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { isClientRole } from "@/lib/auth/roles";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
 import { buildHaircutNowPayload, getMarketplaceProvider } from "@/lib/marketplace/provider";
 import { getTrustProvider } from "@/lib/trust/provider";
@@ -28,7 +29,7 @@ export async function GET(request: NextRequest) {
     trustProvider.readState(),
     getCurrentUserFromServer()
   ]);
-  const clientId = parsed.data.clientId ?? (session.user.role === "client" ? session.user.clientId : undefined);
+  const clientId = parsed.data.clientId ?? (isClientRole(session.user.role) ? session.user.clientId : undefined);
   const match = buildHaircutNowPayload(runtime, clientId, parsed.data.locationId, trustState);
 
   try {

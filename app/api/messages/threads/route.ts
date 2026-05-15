@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionUser } from "@/lib/booking/route-auth";
+import { isClientRole } from "@/lib/auth/roles";
 import { isBarberRole, isShopRole } from "@/lib/messages/domain";
 import { createMessagingThread, getMessagingInboxPayload, MessagingServiceError } from "@/lib/messages/service";
 
@@ -19,7 +20,7 @@ const createThreadSchema = z.union([
 ]);
 
 function isSupportedMessagingRole(role: Awaited<ReturnType<typeof getSessionUser>>["role"]) {
-  return role === "client" || isBarberRole(role) || isShopRole(role);
+  return isClientRole(role) || isBarberRole(role) || isShopRole(role);
 }
 
 function toErrorResponse(error: unknown) {

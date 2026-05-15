@@ -41,7 +41,7 @@ describe("barber More Stripe return routing", () => {
       })
     );
 
-    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["commission_barber", "booth_rent_barber"]);
+    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["barber_user"]);
     expect(screen.getByTestId("barber-more-screen-stub")).toHaveTextContent("Blaze King|none|return");
   });
 });

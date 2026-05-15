@@ -5,7 +5,7 @@ import { getEngagementProvider } from "@/lib/engagement/provider";
 import { engagementErrorResponse } from "@/lib/engagement/http";
 import { getDeliveryProviderHealth } from "@/lib/engagement/live-delivery";
 
-const allowedRoles = ["owner", "manager", "front_desk", "commission_barber", "booth_rent_barber", "client"] as const;
+const allowedRoles = ["shop_owner_user", "manager", "front_desk", "barber_user", "client_user"] as const;
 
 function buildSummary(statuses: string[]) {
   return {
@@ -25,14 +25,14 @@ export async function GET() {
       deliveryProvider.readAttempts()
     ]);
 
-    const scopedDeliveries = actor.role === "owner"
+    const scopedDeliveries = actor.role === "shop_owner_user"
       ? deliveries
       : deliveries.filter((delivery) => {
         const audience = typeof delivery.metadata.userEmail === "string" ? delivery.metadata.userEmail : undefined;
         return audience === actor.userEmail || delivery.destination === actor.userEmail;
       });
     const scopedDeliveryIds = new Set(scopedDeliveries.map((delivery) => delivery.id));
-    const scopedAttempts = actor.role === "owner"
+    const scopedAttempts = actor.role === "shop_owner_user"
       ? attempts
       : attempts.filter((attempt) => attempt.userEmail === actor.userEmail || scopedDeliveryIds.has(attempt.deliveryId));
 
@@ -52,7 +52,7 @@ export async function GET() {
 
 export async function POST() {
   try {
-    await requireEngagementActor(["owner"]);
+    await requireEngagementActor(["shop_owner_user"]);
     const engagementProvider = await getEngagementProvider();
     const deliveryProvider = await getNotificationDeliveryProvider();
     const state = await engagementProvider.readState();

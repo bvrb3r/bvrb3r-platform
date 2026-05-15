@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isClientRole } from "@/lib/auth/roles";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
 import { getBarberDetailsPayload } from "@/lib/booking/platform-service";
 import { getMarketplaceActivationProvider } from "@/lib/marketplace/activation-provider";
@@ -19,7 +20,7 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ us
     await marketplaceProvider.recordProfileView({
       barberId: profile.barber.id,
       username,
-      clientId: session.user.role === "client" ? session.user.clientId : undefined
+      clientId: isClientRole(session.user.role) ? session.user.clientId : undefined
     });
   } catch {}
 

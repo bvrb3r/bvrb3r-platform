@@ -10,7 +10,12 @@ import {
   isSignupRoleIntent,
   type SignupRoleIntent
 } from "@/lib/auth/signup-role-intent";
-import { isBarberAccountRole, normalizeBarberSubtype } from "@/lib/auth/roles";
+import {
+  getCanonicalAccountRole,
+  isBarberAccountRole,
+  isShopOwnerRole,
+  normalizeBarberSubtype
+} from "@/lib/auth/roles";
 import type {
   ApprovalStatus,
   BarberSubtype,
@@ -517,23 +522,25 @@ function toRuntimeRole(input: {
     return "platform_admin" as const;
   }
 
-  if (input.primaryRole === "shop_owner" || input.profileRole === "owner" || input.profileRole === "shop_owner") {
-    return "owner" as const;
+  if (input.primaryRole === "shop_owner" || isShopOwnerRole(getCanonicalAccountRole(input.profileRole))) {
+    return "shop_owner_user" as const;
   }
 
   if (input.primaryRole === "barber" || isBarberAccountRole(input.profileRole)) {
-    return "barber" as const;
+    return "barber_user" as const;
   }
 
-  return "client" as const;
+  return "client_user" as const;
 }
 
 function getTitle(role: Role, subtype?: BarberSubtype | null) {
-  if (role === "owner") {
+  const canonicalRole = getCanonicalAccountRole(role);
+
+  if (canonicalRole === "shop_owner_user") {
     return "Shop Owner";
   }
 
-  if (isBarberAccountRole(role)) {
+  if (isBarberAccountRole(canonicalRole)) {
     if (subtype === "freelance") {
       return "Freelance Barber";
     }
@@ -546,15 +553,15 @@ function getTitle(role: Role, subtype?: BarberSubtype | null) {
     return "Barber";
   }
 
-  if (role === "platform_admin") {
+  if (canonicalRole === "platform_admin") {
     return "Platform Admin";
   }
 
-  if (role === "manager") {
+  if (canonicalRole === "manager") {
     return "Manager";
   }
 
-  if (role === "front_desk") {
+  if (canonicalRole === "front_desk") {
     return "Front Desk";
   }
 
@@ -598,7 +605,7 @@ function buildMinimalRuntimeUser(authUser: AuthUserLike): UserAccount {
 
   return {
     id: authUser.id,
-    role: "client",
+    role: "client_user",
     email: requiredContact.email,
     password: "",
     name: getDisplayName(authUser),
@@ -651,12 +658,12 @@ async function syncProfileFromAuth(authUser: AuthUserLike) {
   const payload = getProfileSyncPayload(authUser, profile);
   const signupRoleIntent = getSignupRoleIntentFromMetadata(authUser.user_metadata);
   const nextPrimaryOnboardingRole = profile?.primary_onboarding_role ?? signupRoleIntent ?? null;
-  const existingProfileRole = profile?.role === "shop_owner" ? "owner" : profile?.role ?? null;
+  const existingProfileRole = profile?.role ? getCanonicalAccountRole(profile.role) : null;
   const nextProfileRole = profile?.primary_onboarding_role
-    ? existingProfileRole ?? "client"
+    ? existingProfileRole ?? "client_user"
     : signupRoleIntent
       ? getRuntimeRoleForSignupIntent(signupRoleIntent)
-      : existingProfileRole ?? "client";
+      : existingProfileRole ?? "client_user";
   const nextPhoneVerifiedAt = profile?.phone_verified_at ?? (payload.phoneVerified ? new Date().toISOString() : null);
   const nextFullName = profile?.full_name?.trim()
     ? profile.full_name.trim()
@@ -736,7 +743,7 @@ async function syncProfileFromAuth(authUser: AuthUserLike) {
       .from("profiles")
       .upsert({
         id: authUser.id,
-        role: "client",
+        role: "client_user",
         full_name: payload.fullName,
         email: payload.email,
         phone: payload.phone || null
@@ -981,7 +988,7 @@ async function persistResolvedProfileState(input: {
     : input.profile?.phone_verified_at ?? null;
   const nextFullName = input.fullName.trim();
   const nextEmail = input.email.trim();
-  const currentRole = input.profile?.role === "shop_owner" ? "owner" : input.profile?.role ?? null;
+  const currentRole = input.profile?.role ? getCanonicalAccountRole(input.profile.role) : null;
   const currentPrimaryRole = input.profile?.primary_onboarding_role ?? null;
   const currentOnboardingState = input.profile?.onboarding_state ?? null;
   const needsSync = currentRole !== input.runtimeRole
@@ -1562,7 +1569,7 @@ export async function buildRuntimeUserFromProductionAuth(authUser: AuthUserLike)
       barberSubtype: barber?.barber_subtype ?? undefined,
       ownedShopId: shop?.id ?? undefined,
       ownedShopName: shop?.name ?? undefined,
-      appApprovalStatus: runtimeRole === "owner"
+      appApprovalStatus: runtimeRole === "shop_owner_user"
         ? (shop?.app_approval_status ?? "pending")
         : barber?.app_approval_status ?? undefined,
       shopApprovalStatus: barber?.shop_approval_status ?? undefined
@@ -1624,9 +1631,7 @@ export async function updateContactVerificationProfile(
 
   if (supabase) {
     const existingProfile = await readProfile(profileId);
-    const nextRole = existingProfile?.role === "shop_owner"
-      ? "owner"
-      : existingProfile?.role ?? "client";
+    const nextRole = getCanonicalAccountRole(existingProfile?.role ?? "client_user");
     const writePayload = {
       id: profileId,
       role: nextRole,
@@ -2324,10 +2329,10 @@ async function ensureClientLane(profileId: string, identity: { email: string; na
   }
 
   const userRoleUpsert = await supabase
-    .from("user_roles")
-    .upsert({
-      user_email: identity.email,
-      role: "client",
+      .from("user_roles")
+      .upsert({
+        user_email: identity.email,
+        role: "client_user",
       client_reference: clientId,
       barber_reference: null,
       location_references: []
@@ -2432,7 +2437,7 @@ async function ensureBarberLaneBootstrap(
   await ensureBarberProfileForUser({
     userId: profileId,
     barberId: effectiveBarberReference,
-    role: "barber",
+    role: "barber_user",
     email: identity.email,
     fullName: identity.name,
     phone: identity.phone,
@@ -2471,7 +2476,7 @@ async function ensureBarberLane(
   const barberReference = `barber-${profileId.slice(0, 8)}`;
   const compensationModel = toBarberCompensation(subtype);
   const normalizedSubtype = normalizeBarberSubtype(subtype);
-  const runtimeRole: Role = "barber";
+  const runtimeRole: Role = "barber_user";
   console.info("[auth] barber subtype lane bootstrap requested", {
     profileId,
     subtype: normalizedSubtype,
@@ -2832,7 +2837,7 @@ async function ensureOwnerLane(profileId: string, identity: { email: string; nam
     .from("user_roles")
     .upsert({
       user_email: identity.email,
-      role: "owner",
+      role: "shop_owner_user",
       client_reference: null,
       barber_reference: null,
       location_references: [effectiveShopId]
@@ -2970,7 +2975,7 @@ export async function initializeProductionRoleSelection(
   if (input.role === "client") {
     await upsertProfileForLane({
       profileId,
-      role: "client",
+      role: "client_user",
       primaryOnboardingRole: "client",
       onboardingState: "active",
       fullName: identity.name,
@@ -2997,7 +3002,7 @@ export async function initializeProductionRoleSelection(
     if (!input.barberSubtype) {
       await upsertProfileForLane({
         profileId,
-        role: "barber",
+        role: "barber_user",
         primaryOnboardingRole: "barber",
         onboardingState: "active",
         fullName: identity.name,
@@ -3060,7 +3065,7 @@ export async function initializeProductionRoleSelection(
 
   await upsertProfileForLane({
     profileId,
-    role: "owner",
+    role: "shop_owner_user",
     primaryOnboardingRole: "shop_owner",
     onboardingState: "active",
     fullName: identity.name,
@@ -3080,7 +3085,7 @@ export async function initializeProductionRoleSelection(
   return {
     user: {
       ...user,
-      role: "owner",
+      role: "shop_owner_user",
       ownedShopId: lane.ownedShopId,
       appApprovalStatus: lane.appApprovalStatus
     },

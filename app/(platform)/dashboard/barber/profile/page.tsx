@@ -10,7 +10,7 @@ export default async function BarberProfilePage({
 }: {
   searchParams: Promise<{ section?: string }>;
 }) {
-  const user = await getAuthorizedUser(["commission_barber", "booth_rent_barber"]);
+  const user = await getAuthorizedUser(["barber_user"]);
   const params = await searchParams;
   const repairResult = await ensureBarberProfileForUser({
     userId: user.id,

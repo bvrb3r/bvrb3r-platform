@@ -2,6 +2,7 @@ import { ClientAppShell } from "@/components/client-experience/client-app-shell"
 import { ClientProfileScreen } from "@/components/client-experience/client-profile-screen";
 import { StripeDebugCard } from "@/components/debug/stripe-debug-card";
 import { ensureClientProfileForUser, getClientProfilePayload } from "@/lib/booking/platform-service";
+import { isClientRole } from "@/lib/auth/roles";
 import { getClientExperienceContext } from "@/lib/client-experience/session";
 
 export default async function ClientProfileDashboardPage({
@@ -20,7 +21,7 @@ export default async function ClientProfileDashboardPage({
   }
 
   let clientId = context.clientId;
-  if (context.isSignedInClient && context.viewer.role === "client") {
+  if (context.isSignedInClient && isClientRole(context.viewer.role)) {
     const repair = await ensureClientProfileForUser({
       userId: context.viewer.id,
       clientId: context.clientId || undefined,

@@ -1,5 +1,6 @@
 import { demoBarbers, demoLocations } from "@/lib/data/demo";
 import { demoShops } from "@/lib/data/marketplace";
+import { isBarberAccountRole, isClientRole, isShopOwnerRole } from "@/lib/auth/roles";
 import {
   demoBarberVerifications,
   demoVerificationProfiles,
@@ -53,12 +54,16 @@ const BARBER_CATEGORIES: BarberVerificationCategory[] = [
 const REPORT_SUBJECTS: Record<Role, readonly SafetyReportRecord["subjectType"][]> = {
   platform_admin: ["client", "barber", "shop", "review", "booking"],
   architect: ["client", "barber", "shop", "review", "booking"],
+  shop_owner_user: ["client", "barber", "shop", "review", "booking"],
   owner: ["client", "barber", "shop", "review", "booking"],
   manager: ["booking"],
   front_desk: ["booking"],
+  barber_user: ["client", "review", "booking"],
   barber: ["client", "review", "booking"],
+  freelance_barber: ["client", "review", "booking"],
   commission_barber: ["client", "review", "booking"],
   booth_rent_barber: ["client", "review", "booking"],
+  client_user: ["barber", "shop", "review", "booking"],
   client: ["barber", "shop", "review", "booking"]
 };
 
@@ -1026,7 +1031,7 @@ export function getOwnerTrustSummary(state: TrustState, locationIds: string[]): 
 }
 
 export function submitBarberVerification(state: TrustState, actor: TrustActor, input: SubmitBarberVerificationInput) {
-  if (!actor.barberId || !["commission_barber", "booth_rent_barber"].includes(actor.role)) {
+  if (!actor.barberId || !isBarberAccountRole(actor.role)) {
     throw new TrustPermissionError("Only a barber can submit their own verification updates.");
   }
   if (!input.legalName.trim()) {
@@ -1087,7 +1092,7 @@ export function submitBarberVerification(state: TrustState, actor: TrustActor, i
 }
 
 export function submitShopVerification(state: TrustState, actor: TrustActor, input: SubmitShopVerificationInput) {
-  if (actor.role !== "owner") {
+  if (!isShopOwnerRole(actor.role)) {
     throw new TrustPermissionError("Only the owner can submit shop verification updates.");
   }
   if (!input.businessName.trim()) {
@@ -1139,7 +1144,7 @@ export function submitShopVerification(state: TrustState, actor: TrustActor, inp
 }
 
 export function submitSafetyReport(state: TrustState, actor: TrustActor, input: SubmitSafetyReportInput) {
-  if (!["client", "commission_barber", "booth_rent_barber", "owner"].includes(actor.role)) {
+  if (!isClientRole(actor.role) && !isBarberAccountRole(actor.role) && !isShopOwnerRole(actor.role)) {
     throw new TrustPermissionError("You do not have access to submit a safety report.");
   }
   if (!REPORT_SUBJECTS[actor.role].includes(input.subjectType)) {
@@ -1214,7 +1219,7 @@ export function submitSafetyReport(state: TrustState, actor: TrustActor, input: 
 }
 
 export function submitDispute(state: TrustState, actor: TrustActor, input: SubmitDisputeInput) {
-  if (!["client", "commission_barber", "booth_rent_barber", "owner"].includes(actor.role)) {
+  if (!isClientRole(actor.role) && !isBarberAccountRole(actor.role) && !isShopOwnerRole(actor.role)) {
     throw new TrustPermissionError("You do not have access to submit a dispute.");
   }
   if (input.summary.trim().length < 12) {

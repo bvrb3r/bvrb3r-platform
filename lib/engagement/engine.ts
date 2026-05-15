@@ -23,6 +23,7 @@ import {
   buildClientIntelligenceSnapshot,
   buildLocationIntelligenceSnapshot
 } from "@/lib/engagement/intelligence";
+import { isClientRole } from "@/lib/auth/roles";
 import { buildEmptyOwnerMonetizationSummary } from "@/lib/monetization/domain";
 import { appendEngagementNotification } from "@/lib/engagement/notifications";
 import type { LiveOperationsSnapshot } from "@/lib/operations/live-state";
@@ -62,12 +63,16 @@ const EVENT_POINTS: Partial<Record<EngagementEventType, number>> = {
 const ALLOWED_EVENT_TYPES: Record<Role, readonly EngagementEventType[]> = {
   platform_admin: ["payout_released", "appointment_booked"],
   architect: ["payout_released", "appointment_booked"],
+  shop_owner_user: ["payout_released", "appointment_booked"],
   owner: ["payout_released", "appointment_booked"],
   manager: ["appointment_booked"],
   front_desk: ["appointment_booked", "waitlist_joined"],
+  barber_user: ["service_completed", "review_received", "profile_updated", "portfolio_updated", "booking_accepted", "payout_released"],
   barber: ["service_completed", "review_received", "profile_updated", "portfolio_updated", "booking_accepted", "payout_released"],
+  freelance_barber: ["service_completed", "review_received", "profile_updated", "portfolio_updated", "booking_accepted", "payout_released"],
   commission_barber: ["service_completed", "review_received", "profile_updated", "portfolio_updated", "booking_accepted", "payout_released"],
   booth_rent_barber: ["service_completed", "review_received", "profile_updated", "portfolio_updated", "booking_accepted", "payout_released"],
+  client_user: ["appointment_booked", "appointment_rebooked", "waitlist_joined", "barber_followed", "barber_reviewed", "reward_redeemed"],
   client: ["appointment_booked", "appointment_rebooked", "waitlist_joined", "barber_followed", "barber_reviewed", "reward_redeemed"]
 };
 
@@ -544,7 +549,7 @@ function awardLoyaltyRuleTransactions(
     ).state;
 
     nextState = appendEngagementNotification(nextState, {
-      role: "client",
+      role: "client_user",
       clientId: input.clientId,
       userEmail: getClient(input.clientId)?.email ?? `${input.clientId}@client.bvrb3r.local`,
       type: "loyalty_milestone",
@@ -909,7 +914,7 @@ export function getOwnerIntelligenceSummary(
       .sort((left, right) => right.completedVisits - left.completedVisits || right.lifetimeValue - left.lifetimeValue)
       .slice(0, 5),
     barberRetention: [...barberRetentionMap.values()].sort((left, right) => right.rebookingOpportunities - left.rebookingOpportunities || right.repeatClients - left.repeatClients).slice(0, 5),
-    recentNotifications: getRecentNotificationsForRole(state, viewer?.role === "manager" ? "manager" : "owner", {
+    recentNotifications: getRecentNotificationsForRole(state, viewer?.role === "manager" ? "manager" : "shop_owner_user", {
       userEmail: viewer?.userEmail ?? (viewer?.role === "manager" ? "manager@bvrb3r.demo" : "owner@bvrb3r.demo")
     }),
     automation: buildEmptyOwnerAutomationSummary(),
@@ -942,7 +947,7 @@ export function followBarber(
   actor: EngagementActor,
   input: Pick<BarberFollowRecord, "barberId" | "notifyOnAvailability" | "notifyOnPortfolio">
 ) {
-  if (actor.role !== "client" || !actor.clientId) {
+  if (!isClientRole(actor.role) || !actor.clientId) {
     throw new EngagementPermissionError("Only clients can follow barbers.");
   }
 
@@ -1001,7 +1006,7 @@ export function followBarber(
 }
 
 export function unfollowBarber(state: EngagementState, actor: EngagementActor, barberId: string) {
-  if (actor.role !== "client" || !actor.clientId) {
+  if (!isClientRole(actor.role) || !actor.clientId) {
     throw new EngagementPermissionError("Only clients can unfollow barbers.");
   }
 
@@ -1020,7 +1025,7 @@ export function unfollowBarber(state: EngagementState, actor: EngagementActor, b
 }
 
 export function createReferralInvite(state: EngagementState, actor: EngagementActor, input: { referredClientEmail: string }) {
-  if (actor.role !== "client" || !actor.clientId) {
+  if (!isClientRole(actor.role) || !actor.clientId) {
     throw new EngagementPermissionError("Only clients can send referral invites.");
   }
 
@@ -1052,7 +1057,7 @@ export function createReferralInvite(state: EngagementState, actor: EngagementAc
     ...state,
     referralEvents: sortByNewest([referralEvent, ...state.referralEvents])
   }, {
-    role: "client",
+    role: "client_user",
     clientId: actor.clientId,
     userEmail: getClient(actor.clientId)?.email ?? `${actor.clientId}@client.bvrb3r.local`,
     type: "loyalty_milestone",
@@ -1212,7 +1217,7 @@ export function processCompletedBookingGrowth(
       nextState = rewardResult.state;
       creditedTransactionId = rewardResult.transaction.id;
       nextState = appendEngagementNotification(nextState, {
-        role: "client",
+        role: "client_user",
         clientId: referralEvent.referrerClientId,
         userEmail: getClient(referralEvent.referrerClientId)?.email ?? `${referralEvent.referrerClientId}@client.bvrb3r.local`,
         type: "referral_reward",
@@ -1242,7 +1247,7 @@ export function processCompletedBookingGrowth(
   });
 
   nextState = appendEngagementNotification(nextState, {
-    role: "client",
+    role: "client_user",
     clientId: input.clientId,
     userEmail: getClient(input.clientId)?.email ?? `${input.clientId}@client.bvrb3r.local`,
     type: "referral_prompt",
@@ -1252,7 +1257,7 @@ export function processCompletedBookingGrowth(
   }).state;
 
   nextState = appendEngagementNotification(nextState, {
-    role: "client",
+    role: "client_user",
     clientId: input.clientId,
     userEmail: getClient(input.clientId)?.email ?? `${input.clientId}@client.bvrb3r.local`,
     type: "rebooking_reminder",
@@ -1320,7 +1325,7 @@ export function recordEngagementEvent(state: EngagementState, actor: EngagementA
       event.id
     ).state;
     nextState = appendEngagementNotification(nextState, {
-      role: "client",
+      role: "client_user",
       clientId: actor.clientId,
       userEmail: getClient(actor.clientId)?.email ?? `${actor.clientId}@client.bvrb3r.local`,
       type: "reward_follow_up",
@@ -1339,7 +1344,7 @@ export function recordEngagementEvent(state: EngagementState, actor: EngagementA
 
   if (input.eventType === "barber_reviewed" && input.targetType === "barber") {
     nextState = appendEngagementNotification(nextState, {
-      role: getBarber(input.targetId)?.role ?? "commission_barber",
+      role: getBarber(input.targetId)?.role ?? "barber_user",
       barberId: input.targetId,
       userEmail: getBarberEmail(input.targetId),
       type: "review_alert",
@@ -1350,7 +1355,7 @@ export function recordEngagementEvent(state: EngagementState, actor: EngagementA
 
   if (input.eventType === "payout_released" && input.targetType === "barber") {
     nextState = appendEngagementNotification(nextState, {
-      role: getBarber(input.targetId)?.role ?? "commission_barber",
+      role: getBarber(input.targetId)?.role ?? "barber_user",
       barberId: input.targetId,
       userEmail: getBarberEmail(input.targetId),
       type: "payout_alert",

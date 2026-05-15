@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getClientExperienceContext } from "@/lib/client-experience/session";
 import { ensureClientProfileForUser, saveClientLocation } from "@/lib/booking/platform-service";
+import { isClientRole } from "@/lib/auth/roles";
 
 const clientLocationSchema = z.object({
   city: z.string().trim().min(1, "City is required.").max(80),
@@ -51,7 +52,7 @@ function getClientLocationSaveFailureReason(error: unknown): ClientLocationSaveF
 export async function POST(request: Request) {
   const context = await getClientExperienceContext();
 
-  const isClientUser = context.viewer.role === "client" && context.viewer.id !== "guest-user";
+  const isClientUser = isClientRole(context.viewer.role) && context.viewer.id !== "guest-user";
   if (!isClientUser) {
     logClientLocationSaveFailure("auth_missing", {
       clientId: context.clientId || null,

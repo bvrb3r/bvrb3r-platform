@@ -5,6 +5,7 @@ import { queueBookingCreatedNotifications } from "@/lib/booking/notifications";
 import { recordReferralBookingProgress } from "@/lib/referrals/service";
 import { getClientExperienceContext } from "@/lib/client-experience/session";
 import { recordBookingCreatedPlatformEvent } from "@/lib/core/booking-events";
+import { isClientRole } from "@/lib/auth/roles";
 import { getMarketplaceProvider } from "@/lib/marketplace/provider";
 import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
 import { LiveOperationConflictError, LiveOperationValidationError } from "@/lib/operations/live-state";
@@ -182,10 +183,10 @@ export async function POST(request: NextRequest) {
     const result = await provider.createBooking({
       ...bookingInput,
       clientId: clientContext.clientId || undefined,
-      pointsUserId: clientContext.viewer.role === "client" ? clientContext.viewer.id : undefined,
+      pointsUserId: isClientRole(clientContext.viewer.role) ? clientContext.viewer.id : undefined,
       actorRole: "client",
       actorEmail: clientContext.activeClient?.email ?? clientContext.viewer.email,
-      actorProfileId: clientContext.viewer.role === "client" ? clientContext.viewer.id : undefined,
+      actorProfileId: isClientRole(clientContext.viewer.role) ? clientContext.viewer.id : undefined,
       createdBy: clientContext.viewer.id,
       bookingSource: sourceKind ?? "booking"
     });

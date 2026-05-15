@@ -104,12 +104,12 @@ export function toOnboardingErrorResponse(error: unknown) {
 
 export function roleToRuntimeRole(role: OnboardingRole): UserAccount["role"] {
   if (role === "client") {
-    return "client";
+    return "client_user";
   }
 
   if (role === "shop_owner") {
-    return "owner";
+    return "shop_owner_user";
   }
 
-  return "barber";
+  return "barber_user";
 }

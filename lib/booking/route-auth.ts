@@ -1,4 +1,4 @@
-import { isBarberAccountRole, normalizeAccountRole } from "@/lib/auth/roles";
+import { isBarberAccountRole, isClientRole, isShopOwnerRole } from "@/lib/auth/roles";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
 import type { LiveActorRole, LiveOperationsViewer } from "@/lib/operations/live-state";
 import type { UserAccount } from "@/types/domain";
@@ -13,7 +13,15 @@ export function toLifecycleActorRole(role: UserAccount["role"]): LiveActorRole |
     return "barber";
   }
 
-  if (role === "owner" || role === "manager" || role === "front_desk" || role === "client") {
+  if (isShopOwnerRole(role)) {
+    return "owner";
+  }
+
+  if (isClientRole(role)) {
+    return "client";
+  }
+
+  if (role === "manager" || role === "front_desk") {
     return role;
   }
 
@@ -26,7 +34,7 @@ export function toBarberViewer(user: UserAccount): LiveOperationsViewer | null {
   }
 
   return {
-    role: normalizeAccountRole(user.role),
+    role: "barber",
     barberId: user.barberId,
     clientId: user.clientId,
     locationIds: user.locationIds,
@@ -35,12 +43,12 @@ export function toBarberViewer(user: UserAccount): LiveOperationsViewer | null {
 }
 
 export function toShopViewer(user: UserAccount): LiveOperationsViewer | null {
-  if (!(user.role === "owner" || user.role === "manager")) {
+  if (!(isShopOwnerRole(user.role) || user.role === "manager")) {
     return null;
   }
 
   return {
-    role: user.role,
+    role: isShopOwnerRole(user.role) ? "owner" : user.role,
     barberId: user.barberId,
     clientId: user.clientId,
     locationIds: user.locationIds,
@@ -49,7 +57,7 @@ export function toShopViewer(user: UserAccount): LiveOperationsViewer | null {
 }
 
 export function toBookingViewer(user: UserAccount): LiveOperationsViewer | null {
-  if (user.role === "client" && user.clientId) {
+  if (isClientRole(user.role) && user.clientId) {
     return {
       role: "client",
       clientId: user.clientId,
@@ -59,16 +67,16 @@ export function toBookingViewer(user: UserAccount): LiveOperationsViewer | null 
 
   if (isBarberAccountRole(user.role)) {
     return {
-      role: normalizeAccountRole(user.role),
+      role: "barber",
       barberId: user.barberId,
       locationIds: user.locationIds,
       email: user.email
     };
   }
 
-  if (user.role === "owner" || user.role === "manager" || user.role === "front_desk") {
+  if (isShopOwnerRole(user.role) || user.role === "manager" || user.role === "front_desk") {
     return {
-      role: user.role,
+      role: isShopOwnerRole(user.role) ? "owner" : user.role,
       locationIds: user.locationIds,
       email: user.email
     };

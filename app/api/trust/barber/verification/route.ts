@@ -26,7 +26,7 @@ const verificationSchema = z.object({
 
 export async function GET() {
   try {
-    const actor = await requireTrustActor(["commission_barber", "booth_rent_barber"]);
+    const actor = await requireTrustActor(["barber_user"]);
     if (!actor.barberId) {
       throw new TrustValidationError("A barber profile is required for trust verification.");
     }
@@ -41,7 +41,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const actor = await requireTrustActor(["commission_barber", "booth_rent_barber"]);
+    const actor = await requireTrustActor(["barber_user"]);
     const payload = verificationSchema.parse(await request.json());
     const trustProvider = await getTrustProvider();
     const result = await trustProvider.submitBarberVerification(actor, payload);

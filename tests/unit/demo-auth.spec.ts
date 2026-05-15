@@ -3,14 +3,14 @@ import { CANONICAL_PLATFORM_ADMIN_EMAIL, findDemoUserByEmail, getDefaultRouteFor
 describe("demo account mapping", () => {
   it.each([
     ["architect@bvrb3r.demo", "platform_admin", "/post-auth", "Platform admin"],
-    ["client@bvrb3r.demo", "client", "/dashboard/client", "Client"],
-    ["lux@bvrb3r.demo", "booth_rent_barber", "/dashboard/barber", "Freelance barber"],
-    ["blaze@bvrb3r.demo", "booth_rent_barber", "/dashboard/barber", "Booth-rent barber"],
-    ["fade@bvrb3r.demo", "commission_barber", "/dashboard/barber", "Commission barber"],
+    ["client@bvrb3r.demo", "client_user", "/dashboard/client", "Client"],
+    ["lux@bvrb3r.demo", "barber_user", "/dashboard/barber", "Freelance barber"],
+    ["blaze@bvrb3r.demo", "barber_user", "/dashboard/barber", "Booth-rent barber"],
+    ["fade@bvrb3r.demo", "barber_user", "/dashboard/barber", "Commission barber"],
     ["wave@bvrb3r.demo", "manager", "/dashboard/manager", "Barber manager"],
     ["frontdesk@bvrb3r.demo", "front_desk", "/dashboard/front-desk", "Front desk"],
     ["manager@bvrb3r.demo", "manager", "/dashboard/manager", "Shop manager"],
-    ["owner@bvrb3r.demo", "owner", "/dashboard/owner", "Shop owner"]
+    ["owner@bvrb3r.demo", "shop_owner_user", "/dashboard/owner", "Shop owner"]
   ])("maps %s to %s and %s", (email, role, route, roleLabel) => {
     const user = findDemoUserByEmail(email);
 

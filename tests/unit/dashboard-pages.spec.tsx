@@ -138,7 +138,7 @@ describe("dashboard role pages", () => {
 
     render(await OwnerDashboardPage());
 
-    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["owner"]);
+    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["shop_owner_user"]);
     expect(screen.getByRole("heading", { name: "Overview" })).toBeInTheDocument();
     expect(screen.getByTestId("owner-overview-stub")).toBeInTheDocument();
   });
@@ -178,7 +178,7 @@ describe("dashboard role pages", () => {
 
     render(await BarberDashboardPage());
 
-    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["commission_barber", "booth_rent_barber"]);
+    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["barber_user"]);
     expect(screen.getByRole("heading", { name: "Calendar" })).toBeInTheDocument();
     expect(screen.getByTestId("barber-schedule-workspace-stub")).toHaveTextContent("Blaze King");
     expect(screen.getByTestId("shell-identity-name")).toHaveTextContent("Blaze King");
@@ -190,7 +190,7 @@ describe("dashboard role pages", () => {
 
     render(await BarberCalendarPage());
 
-    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["commission_barber", "booth_rent_barber"]);
+    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["barber_user"]);
     expect(screen.getByRole("heading", { name: "Calendar" })).toBeInTheDocument();
     expect(screen.getByTestId("barber-schedule-workspace-stub")).toHaveTextContent("Blaze King");
     expect(screen.getByTestId("shell-identity-name")).toHaveTextContent("Blaze King");
@@ -205,7 +205,7 @@ describe("dashboard role pages", () => {
       })
     );
 
-    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["commission_barber", "booth_rent_barber"]);
+    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["barber_user"]);
     expect(screen.getByRole("heading", { name: "Checkout" })).toBeInTheDocument();
     expect(screen.getByTestId("barber-checkout-screen-stub")).toHaveTextContent("Blaze King|services");
   });
@@ -219,7 +219,7 @@ describe("dashboard role pages", () => {
       })
     );
 
-    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["commission_barber", "booth_rent_barber"]);
+    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["barber_user"]);
     expect(screen.getByRole("heading", { name: "Profile" })).toBeInTheDocument();
     expect(screen.getByTestId("barber-profile-screen-stub")).toHaveTextContent("Blaze King|reviews");
   });
@@ -229,7 +229,7 @@ describe("dashboard role pages", () => {
 
     render(await BarberMessagesPage());
 
-    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["commission_barber", "booth_rent_barber"]);
+    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["barber_user"]);
     expect(screen.getAllByRole("heading", { name: "Messages" }).length).toBeGreaterThan(0);
     expect(screen.getByTestId("messages-screen-stub")).toHaveTextContent("/dashboard/barber/messages|none|false");
   });
@@ -243,7 +243,7 @@ describe("dashboard role pages", () => {
       })
     );
 
-    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["commission_barber", "booth_rent_barber"]);
+    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["barber_user"]);
     expect(screen.getByRole("heading", { name: "More" })).toBeInTheDocument();
     expect(screen.getByTestId("barber-more-screen-stub")).toHaveTextContent("Blaze King|payouts");
   });
@@ -267,7 +267,7 @@ describe("dashboard role pages", () => {
 
     render(await ClientDashboardPage());
 
-    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["client"]);
+    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["client_user"]);
     expect(screen.getByTestId("client-app-shell-stub")).toBeInTheDocument();
     expect(screen.getByTestId("client-home-screen-stub")).toHaveTextContent("Jordan Ellis|true");
     expect(screen.queryByText("Owner control center")).not.toBeInTheDocument();
@@ -282,7 +282,7 @@ describe("dashboard role pages", () => {
       })
     );
 
-    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["client"]);
+    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["client_user"]);
     expect(screen.getAllByRole("heading", { name: "Messages" }).length).toBeGreaterThan(0);
     expect(screen.getByTestId("messages-screen-stub")).toHaveTextContent("/dashboard/client/messages|none|true");
   });
@@ -296,7 +296,7 @@ describe("dashboard role pages", () => {
       })
     );
 
-    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["client"]);
+    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["client_user"]);
     expect(screen.getAllByRole("heading", { name: "Messages" }).length).toBeGreaterThan(0);
     expect(screen.getByTestId("messages-screen-stub")).toHaveTextContent("/dashboard/client/messages|thread-support-1|false");
   });
@@ -310,8 +310,7 @@ describe("dashboard role pages", () => {
       })
     );
 
-    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["owner"]);
-    expect(screen.getAllByTestId("account-session-workspace-stub").length).toBeGreaterThan(0);
+    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["shop_owner_user"]);
     expect(screen.getByTestId("owner-settings-workspace-stub")).toBeInTheDocument();
   });
 

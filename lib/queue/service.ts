@@ -25,6 +25,7 @@ import {
   type QueueStatus
 } from "@/lib/queue/domain";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
+import { isBarberAccountRole, isShopOwnerRole } from "@/lib/auth/roles";
 import type { UserAccount } from "@/types/domain";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
@@ -223,11 +224,11 @@ function getSupabaseOrThrow() {
 }
 
 function isQueueManager(role: UserAccount["role"]) {
-  return role === "owner" || role === "manager" || role === "front_desk";
+  return isShopOwnerRole(role) || role === "manager" || role === "front_desk";
 }
 
 function isBarberQueueOperator(role: UserAccount["role"]) {
-  return role === "commission_barber" || role === "booth_rent_barber";
+  return isBarberAccountRole(role);
 }
 
 function canUseQueueCreationFlow(role: UserAccount["role"]) {
@@ -320,7 +321,7 @@ function assertQueueManagerRole(user: UserAccount) {
 }
 
 function assertLocationScope(actor: QueueActorContext, shopReference: string) {
-  if (actor.user.role === "owner") {
+  if (isShopOwnerRole(actor.user.role)) {
     return;
   }
 
@@ -478,7 +479,7 @@ async function resolveOrCreateQueueClient(
   const profileId = (matchingProfile?.id as string | undefined) ?? canonicalProfileUuid(email);
   const profileResult = await supabase.from("profiles").upsert({
     id: profileId,
-    role: "client",
+    role: "client_user",
     full_name: input.clientName,
     email,
     phone: input.clientPhone

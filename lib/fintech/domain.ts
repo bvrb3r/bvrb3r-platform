@@ -13,7 +13,16 @@ export type PayoutExecutionType = "transfer" | "reversal";
 export type PayoutExecutionStatus = "pending" | "blocked" | "executed" | "failed" | "reversed";
 export type PayoutExecutionReconciliationStatus = "open" | "settled" | "partially_reversed" | "reversed" | "manual_review";
 export type AgreementType = "platform_terms" | "barber_agreement" | "shop_agreement" | "payout_tax_acknowledgment";
-export type FintechParticipantRole = "owner" | "manager" | "front_desk" | "commission_barber" | "booth_rent_barber" | "client";
+export type FintechParticipantRole =
+  | "shop_owner_user"
+  | "owner"
+  | "manager"
+  | "front_desk"
+  | "barber_user"
+  | "commission_barber"
+  | "booth_rent_barber"
+  | "client_user"
+  | "client";
 export type BoothRentFrequency = "weekly" | "monthly";
 export type PayoutRecipientType = "barber" | "shop" | "split";
 export const PLATFORM_FEE_RATE = 0.05;

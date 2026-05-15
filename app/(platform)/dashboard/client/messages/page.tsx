@@ -7,7 +7,7 @@ export default async function ClientMessagesDashboardPage({
 }: {
   searchParams: Promise<{ thread?: string }>;
 }) {
-  await getAuthorizedUser(["client"]);
+  await getAuthorizedUser(["client_user"]);
   const params = await searchParams;
 
   return (

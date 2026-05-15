@@ -3,7 +3,7 @@ import { ClientHomeScreen } from "@/components/client-experience/client-home-scr
 import { getAuthorizedUser } from "@/lib/auth/guards";
 
 export default async function ClientDashboardPage() {
-  const user = await getAuthorizedUser(["client"]);
+  const user = await getAuthorizedUser(["client_user"]);
 
   return (
     <ClientAppShell activeTab="home" mode="client">

@@ -12,6 +12,7 @@ import {
   type MessagingMessageType,
   type MessagingThreadType
 } from "@/lib/messages/domain";
+import { isClientRole } from "@/lib/auth/roles";
 import type { AppointmentStatus, Role, UserAccount } from "@/types/domain";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
@@ -271,7 +272,7 @@ function getSupabase() {
 }
 
 function isMessagingRole(role: Role) {
-  return role === "client" || isBarberRole(role) || isShopRole(role);
+  return isClientRole(role) || isBarberRole(role) || isShopRole(role);
 }
 
 function isUuidLike(value: string) {
@@ -309,7 +310,7 @@ function shopRolePriority(role: Role) {
   if (role === "manager") {
     return 1;
   }
-  if (role === "owner") {
+  if (isShopRole(role)) {
     return 2;
   }
   return 3;
@@ -469,7 +470,7 @@ async function resolveMessagingActor(user: UserAccount, supabase: SupabaseClient
 
   const profile = profileResult.data as ProfileRow;
 
-  if (user.role === "client") {
+  if (isClientRole(user.role)) {
     const clientResult = await supabase
       .from("clients")
       .select("id, profile_id")
@@ -772,7 +773,7 @@ async function readEligibleAppointments(
     .map((context) => ({
       kind: "appointment" as const,
       appointmentId: context.appointmentId,
-      counterpart: actor.profile.role === "client"
+      counterpart: isClientRole(actor.profile.role)
         ? {
             profileId: context.barberProfileId,
             fullName: context.barberName,
@@ -781,7 +782,7 @@ async function readEligibleAppointments(
         : {
             profileId: context.clientProfileId,
             fullName: context.clientName,
-            role: "client" as const
+            role: "client_user" as const
           },
       appointmentContext: {
         appointmentId: context.appointmentId,
@@ -850,7 +851,7 @@ async function readEligibleContacts(
         eligibleContacts.set(clientKey, {
           kind: "contact",
           profileId: context.clientProfileId,
-          role: "client",
+          role: "client_user",
           fullName: context.clientName,
           threadType: "client_shop",
           locationId: context.locationId,
@@ -1465,7 +1466,7 @@ export async function createMessagingThread(user: UserAccount, input: MessagingC
         barberProfileId: appointment.barberProfileId,
         clientName: appointment.clientName,
         barberName: appointment.barberName,
-        barberRole: appointment.barberRole as Extract<Role, "commission_barber" | "booth_rent_barber">,
+        barberRole: appointment.barberRole as Extract<Role, "barber_user" | "barber" | "freelance_barber" | "commission_barber" | "booth_rent_barber">,
         serviceName: appointment.serviceName,
         startsAt: appointment.startsAt
       }
@@ -1494,7 +1495,7 @@ export async function createMessagingThread(user: UserAccount, input: MessagingC
         {
           thread_id: threadId,
           profile_id: appointment.clientProfileId,
-          thread_role: "client"
+          thread_role: "client_user"
         },
         {
           thread_id: threadId,
@@ -1518,7 +1519,7 @@ export async function createMessagingThread(user: UserAccount, input: MessagingC
           barberProfileId: appointment.barberProfileId,
           clientName: appointment.clientName,
           barberName: appointment.barberName,
-          barberRole: appointment.barberRole as Extract<Role, "commission_barber" | "booth_rent_barber">,
+          barberRole: appointment.barberRole as Extract<Role, "barber_user" | "barber" | "freelance_barber" | "commission_barber" | "booth_rent_barber">,
           serviceName: appointment.serviceName,
           startsAt: appointment.startsAt
         }),

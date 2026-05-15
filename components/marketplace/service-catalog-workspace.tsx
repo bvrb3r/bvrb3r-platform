@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useCreateMarketplaceServiceMutation, useMarketplaceServiceCatalog, useUpdateMarketplaceServiceMutation } from "@/lib/marketplace/client";
 import { getReadableActionError } from "@/lib/utils/feedback";
 import { currency } from "@/lib/utils";
+import { isBarberAccountRole, isShopOwnerRole } from "@/lib/auth/roles";
 import type { Role } from "@/types/domain";
 
 interface ServiceCatalogWorkspaceProps {
@@ -61,7 +62,7 @@ export function ServiceCatalogWorkspace({ role, barberSubtype }: ServiceCatalogW
   const [statusUpdate, setStatusUpdate] = useState<{ tone: "success" | "info" | "error"; message: string } | null>(null);
   const [createDraft, setCreateDraft] = useState<ServiceDraft>({
     name: "",
-    category: role === "owner" ? "Haircuts" : "Signature",
+    category: isShopOwnerRole(role) ? "Haircuts" : "Signature",
     description: "",
     durationMin: "60",
     bufferMin: "10",
@@ -71,9 +72,9 @@ export function ServiceCatalogWorkspace({ role, barberSubtype }: ServiceCatalogW
   });
 
   const isInitialLoading = catalogQuery.isLoading && !catalogQuery.data;
-  const canOwnBarberServices = role === "barber"
+  const canOwnBarberServices = isBarberAccountRole(role)
     ? barberSubtype !== "commission"
-    : role === "booth_rent_barber";
+    : false;
 
   function updateDraft(serviceId: string, field: keyof ServiceDraft, value: string) {
     setDrafts((current) => ({

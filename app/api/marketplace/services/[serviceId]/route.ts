@@ -19,7 +19,7 @@ const updateServiceSchema = z.object({
 
 export async function PATCH(request: Request, context: { params: Promise<{ serviceId: string }> }) {
   try {
-    const actor = await requireMarketplaceActor(["owner", "booth_rent_barber"]);
+    const actor = await requireMarketplaceActor(["shop_owner_user", "barber_user"]);
     const { serviceId } = await context.params;
     const payload = updateServiceSchema.parse(await request.json());
     const marketplaceProvider = await getMarketplaceProvider();
@@ -36,7 +36,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ servi
 
 export async function DELETE(_request: Request, context: { params: Promise<{ serviceId: string }> }) {
   try {
-    const actor = await requireMarketplaceActor(["owner", "booth_rent_barber"]);
+    const actor = await requireMarketplaceActor(["shop_owner_user", "barber_user"]);
     const { serviceId } = await context.params;
     const marketplaceProvider = await getMarketplaceProvider();
     const result = await marketplaceProvider.deleteService(actor, serviceId);

@@ -1,5 +1,5 @@
 import { readBookingTransactionBreakdown } from "@/lib/fintech/breakdown";
-import { isBarberAccountRole, normalizeAccountRole } from "@/lib/auth/roles";
+import { isBarberAccountRole, isShopOwnerRole, normalizeAccountRole } from "@/lib/auth/roles";
 import { buildTaxSummary } from "@/lib/fintech/tax";
 import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
 import { listPayoutQueue } from "@/lib/payments/service";
@@ -53,8 +53,8 @@ export async function readFintechTaxSummaryExport(input: {
   }
 
   return buildTaxSummary({
-    role: input.user.role === "owner" ? "owner" : "shop",
-    subjectId: input.user.role === "owner" ? input.user.id : input.user.locationIds[0] ?? input.user.id,
+    role: isShopOwnerRole(input.user.role) ? "owner" : "shop",
+    subjectId: isShopOwnerRole(input.user.role) ? input.user.id : input.user.locationIds[0] ?? input.user.id,
     year: input.year,
     appointments: snapshot.appointments,
     userId: input.user.id
@@ -79,7 +79,7 @@ export async function readPayoutExport(input: {
       .map((appointment) => appointment.id)
   );
   const queue = await listPayoutQueue({
-    locationIds: input.user.role === "owner" || input.user.role === "manager" ? input.user.locationIds : undefined
+    locationIds: isShopOwnerRole(input.user.role) || input.user.role === "manager" ? input.user.locationIds : undefined
   }).catch(() => []);
   const rows = queue.filter((entry) => entry.appointmentId && appointmentIds.has(entry.appointmentId));
 
@@ -141,7 +141,7 @@ export async function readIncentivesExport(input: {
   const transactions = pointsState.transactions.filter((transaction) =>
     isInRange(transaction.createdAt, start, end)
     && (
-      input.user.role === "owner"
+      isShopOwnerRole(input.user.role)
       || input.user.role === "manager"
       || transaction.userId === input.user.id
     )
@@ -149,7 +149,7 @@ export async function readIncentivesExport(input: {
   const cashoutRequests = pointsState.cashoutRequests.filter((request) =>
     isInRange(request.createdAt, start, end)
     && (
-      input.user.role === "owner"
+      isShopOwnerRole(input.user.role)
       || input.user.role === "manager"
       || request.userId === input.user.id
     )

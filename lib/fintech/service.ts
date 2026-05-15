@@ -58,6 +58,7 @@ import { processStripeBillingWebhookEvent } from "@/lib/monetization/service";
 import { syncStripeConnectVerificationLane } from "@/lib/trust/provider-sync";
 import { buildPublicTrustSignal, computeShopVerificationDecision, getVerificationGateDecision } from "@/lib/trust/engine";
 import { getTrustProvider } from "@/lib/trust/provider";
+import { isBarberAccountRole, isShopOwnerRole } from "@/lib/auth/roles";
 import { calculateInstantPayoutAmounts } from "@/lib/wallet/domain";
 import { syncWalletBalancesForPayment } from "@/lib/wallet/service";
 import type { UserAccount } from "@/types/domain";
@@ -711,7 +712,7 @@ async function readTrustStateSafe() {
 }
 
 function isManagementRole(role: UserAccount["role"]) {
-  return role === "owner" || role === "manager";
+  return isShopOwnerRole(role) || role === "manager";
 }
 
 function formatShopLabel(location: Pick<LocationRow, "name" | "neighborhood" | "city" | "state">) {
@@ -743,7 +744,7 @@ async function resolveActor(user: UserAccount, supabase: SupabaseClient): Promis
   }
 
   let barber: BarberRow | null = null;
-  if (user.role === "commission_barber" || user.role === "booth_rent_barber") {
+  if (isBarberAccountRole(user.role)) {
     const barberResult = await supabase
       .from("barbers")
       .select("id, reference_code, profile_id, compensation_model, commission_rate, booth_rent_amount, booth_rent_frequency")
@@ -776,13 +777,13 @@ function assertManagementActor(actor: FintechActorContext) {
 }
 
 function assertBarberActor(actor: FintechActorContext) {
-  if (!(actor.role === "commission_barber" || actor.role === "booth_rent_barber") || !actor.barber) {
+  if (!isBarberAccountRole(actor.role) || !actor.barber) {
     throw new FintechServiceError("Only barbers can access payout readiness.", 403);
   }
 }
 
 function isLocationReadableByActor(actor: FintechActorContext, locationId: string) {
-  return actor.role === "owner" || actor.locationIds.length === 0 || actor.locationIds.includes(locationId);
+  return isShopOwnerRole(actor.role) || actor.locationIds.length === 0 || actor.locationIds.includes(locationId);
 }
 
 type StripeConnectSubjectResolution = {
@@ -817,7 +818,7 @@ async function resolveStripeConnectSubject(
     shopId?: string | null;
   }
 ): Promise<StripeConnectSubjectResolution> {
-  if (actor.role === "commission_barber" || actor.role === "booth_rent_barber") {
+  if (isBarberAccountRole(actor.role)) {
     assertBarberActor(actor);
 
     if (input?.subjectType && input.subjectType !== "barber") {
@@ -873,7 +874,7 @@ async function resolveStripeConnectSubject(
 }
 
 async function loadLocationsInScope(actor: FintechActorContext, supabase: SupabaseClient) {
-  const query = actor.role === "owner" || actor.locationIds.length === 0
+  const query = isShopOwnerRole(actor.role) || actor.locationIds.length === 0
     ? supabase.from("locations").select("id, reference_code, name, neighborhood, city, state").order("name")
     : supabase.from("locations").select("id, reference_code, name, neighborhood, city, state").in("id", actor.locationIds).order("name");
 
@@ -3669,7 +3670,7 @@ export async function recordLegalAcceptance(
 
   let barberId: string | null = null;
   let shopId: string | null = null;
-  if (actor.role === "commission_barber" || actor.role === "booth_rent_barber") {
+  if (isBarberAccountRole(actor.role)) {
     assertBarberActor(actor);
     barberId = actor.barber!.id;
     if (!(normalized.agreementType === "platform_terms" || normalized.agreementType === "barber_agreement" || normalized.agreementType === "payout_tax_acknowledgment")) {

@@ -58,14 +58,14 @@ export const demoServices: Service[] = [
 
 export const demoUsers: UserAccount[] = [
   { id: "user-architect", role: "platform_admin", email: "architect@bvrb3r.demo", password: "DevOnly!123", name: "Avery Stone", title: "Retired Demo Admin", locationIds: ["loc-ybor", "loc-hyde"], primaryOnboardingRole: "platform_admin" },
-  { id: "user-owner", role: "owner", email: "owner@bvrb3r.demo", password: "DevOnly!123", name: "Brandon Rivers", title: "Shop Owner", locationIds: ["loc-ybor", "loc-hyde"] },
+  { id: "user-owner", role: "shop_owner_user", email: "owner@bvrb3r.demo", password: "DevOnly!123", name: "Brandon Rivers", title: "Shop Owner", locationIds: ["loc-ybor", "loc-hyde"] },
   { id: "user-manager", role: "manager", email: "manager@bvrb3r.demo", password: "DevOnly!123", name: "Mia Torres", title: "Shop Manager", locationIds: ["loc-ybor"] },
   { id: "user-frontdesk", role: "front_desk", email: "frontdesk@bvrb3r.demo", password: "DevOnly!123", name: "Kayla Brooks", title: "Front Desk / Kiosk Ops", locationIds: ["loc-ybor"] },
   { id: "user-wave", role: "manager", email: "wave@bvrb3r.demo", password: "DevOnly!123", name: "Wave Carter", title: "Barber Manager", locationIds: ["loc-ybor"], barberId: "barber-wave" },
-  { id: "user-fade", role: "commission_barber", email: "fade@bvrb3r.demo", password: "DevOnly!123", name: "Fade Monroe", title: "Commission Barber", locationIds: ["loc-hyde"], barberId: "barber-fade" },
-  { id: "user-blaze", role: "booth_rent_barber", email: "blaze@bvrb3r.demo", password: "DevOnly!123", name: "Blaze King", title: "Booth-Rent Barber", locationIds: ["loc-ybor"], barberId: "barber-blaze" },
-  { id: "user-luxe", role: "booth_rent_barber", email: "lux@bvrb3r.demo", password: "DevOnly!123", name: "Luxe Reed", title: "Freelance Barber", locationIds: ["loc-hyde"], barberId: "barber-luxe" },
-  { id: "user-client", role: "client", email: "client@bvrb3r.demo", password: "DevOnly!123", name: "Jordan Ellis", title: "Client", locationIds: ["loc-ybor"], clientId: "client-jordan" }
+  { id: "user-fade", role: "barber_user", email: "fade@bvrb3r.demo", password: "DevOnly!123", name: "Fade Monroe", title: "Commission Barber", locationIds: ["loc-hyde"], barberId: "barber-fade", barberSubtype: "commission" },
+  { id: "user-blaze", role: "barber_user", email: "blaze@bvrb3r.demo", password: "DevOnly!123", name: "Blaze King", title: "Booth-Rent Barber", locationIds: ["loc-ybor"], barberId: "barber-blaze", barberSubtype: "booth_rent" },
+  { id: "user-luxe", role: "barber_user", email: "lux@bvrb3r.demo", password: "DevOnly!123", name: "Luxe Reed", title: "Freelance Barber", locationIds: ["loc-hyde"], barberId: "barber-luxe", barberSubtype: "freelance" },
+  { id: "user-client", role: "client_user", email: "client@bvrb3r.demo", password: "DevOnly!123", name: "Jordan Ellis", title: "Client", locationIds: ["loc-ybor"], clientId: "client-jordan" }
 ];
 
 export const demoBarbers: Barber[] = [
@@ -73,7 +73,7 @@ export const demoBarbers: Barber[] = [
     id: "barber-wave",
     userId: "user-wave",
     name: "Wave Carter",
-    role: "commission_barber",
+    role: "barber_user",
     locationIds: ["loc-ybor"],
     specialties: ["precision fades", "beard architecture", "VIP clients"],
     rating: 4.9,
@@ -90,7 +90,7 @@ export const demoBarbers: Barber[] = [
     id: "barber-fade",
     userId: "user-fade",
     name: "Fade Monroe",
-    role: "commission_barber",
+    role: "barber_user",
     locationIds: ["loc-hyde"],
     specialties: ["texture work", "design lines", "kids cuts"],
     rating: 4.8,
@@ -107,7 +107,7 @@ export const demoBarbers: Barber[] = [
     id: "barber-blaze",
     userId: "user-blaze",
     name: "Blaze King",
-    role: "booth_rent_barber",
+    role: "barber_user",
     locationIds: ["loc-ybor"],
     specialties: ["executive grooming", "razor detail", "mobile clients"],
     rating: 5,
@@ -125,7 +125,7 @@ export const demoBarbers: Barber[] = [
     id: "barber-luxe",
     userId: "user-luxe",
     name: "Luxe Reed",
-    role: "booth_rent_barber",
+    role: "barber_user",
     locationIds: ["loc-hyde"],
     specialties: ["premium finish", "color work", "camera-ready cuts"],
     rating: 4.9,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { isClientRole } from "@/lib/auth/roles";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
 import { searchBarbersAndShopsPayload } from "@/lib/booking/platform-service";
 import { getMarketplaceProvider } from "@/lib/marketplace/provider";
@@ -76,7 +77,7 @@ export async function GET(request: NextRequest) {
     sessionUserId = session.user.id;
     sessionClientId = session.user.clientId;
     sessionRole = session.user.role;
-    const clientId = parsed.data.clientId ?? (session.user.role === "client" ? session.user.clientId : undefined);
+    const clientId = parsed.data.clientId ?? (isClientRole(session.user.role) ? session.user.clientId : undefined);
     const filters = {
       query: parsed.data.query,
       category: parsed.data.category,

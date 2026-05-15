@@ -7,7 +7,7 @@ export default async function ClientMessageThreadDashboardPage({
 }: {
   params: Promise<{ threadId: string }>;
 }) {
-  await getAuthorizedUser(["client"]);
+  await getAuthorizedUser(["client_user"]);
   const { threadId } = await params;
 
   return (

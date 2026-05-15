@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { isShopOwnerRole, normalizeAccountRole } from "@/lib/auth/roles";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
 import { getMarketplaceActivationProvider } from "@/lib/marketplace/activation-provider";
 
@@ -19,7 +20,7 @@ export async function GET() {
   const { user } = await getCurrentUserFromServer();
   const provider = await getMarketplaceActivationProvider();
   const state = await provider.readState();
-  if (user.role === "owner") {
+  if (isShopOwnerRole(user.role)) {
     return NextResponse.json({ placements: state.featuredPlacements });
   }
 
@@ -35,7 +36,7 @@ export async function POST(request: NextRequest) {
   const { user } = await getCurrentUserFromServer();
   const provider = await getMarketplaceActivationProvider();
   try {
-    const result = await provider.createFeaturedPlacement({ role: user.role, barberId: user.barberId, userEmail: user.email }, parsed.data);
+    const result = await provider.createFeaturedPlacement({ role: normalizeAccountRole(user.role), barberId: user.barberId, userEmail: user.email }, parsed.data);
     return NextResponse.json({ placement: result.placement });
   } catch (error) {
     const status = typeof error === "object" && error && "status" in error ? Number((error as { status?: number }).status ?? 500) : 500;

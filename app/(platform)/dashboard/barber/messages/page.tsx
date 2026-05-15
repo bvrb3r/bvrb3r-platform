@@ -3,7 +3,7 @@ import { MessagingInboxScreen } from "@/components/messages/messaging-inbox-scre
 import { getAuthorizedUser } from "@/lib/auth/guards";
 
 export default async function BarberMessagesPage() {
-  const user = await getAuthorizedUser(["commission_barber", "booth_rent_barber"]);
+  const user = await getAuthorizedUser(["barber_user"]);
 
   return (
     <DashboardShell

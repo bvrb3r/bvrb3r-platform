@@ -1,4 +1,5 @@
 import type { Role } from "@/types/domain";
+import { isBarberAccountRole, isClientRole, isShopOwnerRole } from "@/lib/auth/roles";
 
 export type MessagingThreadType = "client_barber" | "client_shop" | "barber_shop" | "support" | "shop_team";
 export type MessagingMessageType = "text" | "system";
@@ -41,7 +42,7 @@ export type MessagingAppointmentContext = {
   barberProfileId: string;
   clientName: string;
   barberName: string;
-  barberRole?: Extract<Role, "commission_barber" | "booth_rent_barber">;
+  barberRole?: Extract<Role, "barber_user" | "barber" | "freelance_barber" | "commission_barber" | "booth_rent_barber">;
   serviceName: string;
   startsAt: string;
 };
@@ -62,11 +63,11 @@ export function normalizeMessageBody(body: string) {
 }
 
 export function isShopRole(role: Role) {
-  return role === "owner" || role === "manager" || role === "front_desk";
+  return isShopOwnerRole(role) || role === "manager" || role === "front_desk";
 }
 
 export function isBarberRole(role: Role) {
-  return role === "commission_barber" || role === "booth_rent_barber";
+  return isBarberAccountRole(role);
 }
 
 export function assertActorCanCreateClientBarberThread(input: {
@@ -75,7 +76,7 @@ export function assertActorCanCreateClientBarberThread(input: {
   appointment: MessagingAppointmentContext;
 }) {
   const { actorProfileId, actorRole, appointment } = input;
-  const isClientActor = actorRole === "client" && actorProfileId === appointment.clientProfileId;
+  const isClientActor = isClientRole(actorRole) && actorProfileId === appointment.clientProfileId;
   const isBarberActor = isBarberRole(actorRole) && actorProfileId === appointment.barberProfileId;
 
   if (!isClientActor && !isBarberActor) {
@@ -89,12 +90,12 @@ export function assertActorCanCreateShopThread(input: {
   counterpartRole: Role;
 }) {
   if (input.threadType === "client_shop") {
-    const validActor = input.actorRole === "client" || isShopRole(input.actorRole);
-    const validCounterpart = input.counterpartRole === "client" || isShopRole(input.counterpartRole);
+    const validActor = isClientRole(input.actorRole) || isShopRole(input.actorRole);
+    const validCounterpart = isClientRole(input.counterpartRole) || isShopRole(input.counterpartRole);
     if (!validActor || !validCounterpart) {
       throw new MessagingDomainError("Client-to-shop threads must stay between a client and a shop-facing role.");
     }
-    if ((input.actorRole === "client") === (input.counterpartRole === "client")) {
+    if (isClientRole(input.actorRole) === isClientRole(input.counterpartRole)) {
       throw new MessagingDomainError("Client-to-shop threads must connect one client side and one shop side.");
     }
     return;
@@ -230,14 +231,14 @@ export function createClientBarberThreadInSnapshot(input: {
       id: `participant-${input.snapshot.participants.length + 1}`,
       threadId,
       profileId: input.appointment.clientProfileId,
-      threadRole: "client",
+      threadRole: "client_user",
       createdAt
     },
     {
       id: `participant-${input.snapshot.participants.length + 2}`,
       threadId,
       profileId: input.appointment.barberProfileId,
-      threadRole: input.appointment.barberRole ?? "commission_barber",
+      threadRole: input.appointment.barberRole ?? "barber_user",
       createdAt
     }
   ];

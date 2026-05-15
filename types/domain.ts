@@ -1,12 +1,16 @@
 ﻿export type Role =
   | "platform_admin"
   | "architect"
+  | "shop_owner_user"
   | "owner"
   | "manager"
   | "front_desk"
+  | "barber_user"
   | "barber"
+  | "freelance_barber"
   | "commission_barber"
   | "booth_rent_barber"
+  | "client_user"
   | "client";
 
 export type CompensationModel = "commission" | "booth_rent";
@@ -179,7 +183,7 @@ export interface Barber {
   id: string;
   userId: string;
   name: string;
-  role: Extract<Role, "barber" | "commission_barber" | "booth_rent_barber">;
+  role: Extract<Role, "barber_user" | "barber" | "freelance_barber" | "commission_barber" | "booth_rent_barber">;
   barberSubtype?: BarberSubtype;
   appApprovalStatus?: ApprovalStatus;
   shopApprovalStatus?: ApprovalStatus;

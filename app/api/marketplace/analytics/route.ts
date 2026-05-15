@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { isClientRole } from "@/lib/auth/roles";
 import { getCurrentUserFromServer } from "@/lib/auth/session";
 import { buildMonetizationAnalytics, getMonetizationAttribution } from "@/lib/marketplace/activation";
 import { getMarketplaceActivationProvider } from "@/lib/marketplace/activation-provider";
@@ -32,7 +33,7 @@ export async function POST(request: Request) {
   const marketplaceProvider = await getMarketplaceProvider();
   const activationProvider = await getMarketplaceActivationProvider();
   const session = await getCurrentUserFromServer();
-  const clientId = session.user.role === "client" ? session.user.clientId : undefined;
+  const clientId = isClientRole(session.user.role) ? session.user.clientId : undefined;
 
   if (parsed.data.eventType === "booking_cta_clicked") {
     await marketplaceProvider.recordBookingCtaClick({

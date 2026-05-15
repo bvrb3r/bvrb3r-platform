@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireMobileActor } from "@/lib/mobile/auth";
 import { getMobileProvider } from "@/lib/mobile/provider";
 
-const roleSafeRoles = ["owner", "manager", "front_desk", "commission_barber", "booth_rent_barber", "client"] as const;
+const roleSafeRoles = ["shop_owner_user", "manager", "front_desk", "barber_user", "client_user"] as const;
 
 const nativeTokenSchema = z.object({
   deviceId: z.string().min(1),

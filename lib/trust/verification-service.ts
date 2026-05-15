@@ -12,6 +12,7 @@ import {
   verifyStripeIdentityWebhookEvent
 } from "@/lib/stripe/identity";
 import { createStripeConnectOnboardingSession } from "@/lib/fintech/service";
+import { isRoleAllowed } from "@/lib/auth/roles";
 import type { UserAccount } from "@/types/domain";
 import type {
   TrustState,
@@ -365,7 +366,7 @@ async function readVerificationState(warnings: string[]) {
 }
 
 function requireSubjectRole(user: UserAccount, roles: UserAccount["role"][]) {
-  if (!roles.includes(user.role)) {
+  if (!isRoleAllowed(user.role, roles)) {
     throw new VerificationFlowError("You do not have access to this verification action.", 403, "verification_forbidden");
   }
 }
@@ -596,7 +597,7 @@ export async function getVerificationMePayload(user: UserAccount): Promise<Verif
 }
 
 export async function startBarberIdentityVerificationSession(user: UserAccount): Promise<VerificationSessionLaunchResult> {
-  requireSubjectRole(user, ["commission_barber", "booth_rent_barber"]);
+  requireSubjectRole(user, ["barber_user"]);
   if (!user.barberId) {
     throw new VerificationFlowError("A barber lane is required before starting identity verification.", 409, "barber_lane_required");
   }
@@ -667,7 +668,7 @@ export async function startBarberIdentityVerificationSession(user: UserAccount):
 }
 
 export async function startBarberConnectVerificationOnboarding(user: UserAccount): Promise<ConnectOnboardingLaunchResult> {
-  requireSubjectRole(user, ["commission_barber", "booth_rent_barber"]);
+  requireSubjectRole(user, ["barber_user"]);
   if (!user.barberId) {
     throw new VerificationFlowError("A barber lane is required before starting payouts onboarding.", 409, "barber_lane_required");
   }
@@ -698,7 +699,7 @@ export async function startOwnerConnectVerificationOnboarding(
   user: UserAccount,
   input?: { shopId?: string | null }
 ): Promise<ConnectOnboardingLaunchResult> {
-  requireSubjectRole(user, ["owner"]);
+  requireSubjectRole(user, ["shop_owner_user"]);
   const state = await readVerificationState([]);
   const shopId = getFirstShopIdForUser(state, user, input?.shopId);
   if (!shopId) {

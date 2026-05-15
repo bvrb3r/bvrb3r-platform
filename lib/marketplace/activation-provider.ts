@@ -2,7 +2,7 @@
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import { createEmptyMarketplaceActivationState, getMonetizationEligibility, type MarketplaceActivationState } from "@/lib/marketplace/activation";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { isBarberAccountRole } from "@/lib/auth/roles";
+import { isBarberAccountRole, isShopOwnerRole } from "@/lib/auth/roles";
 import { buildPublicTrustSignal, computeShopVerificationDecision, getVerificationGateDecision } from "@/lib/trust/engine";
 import { getTrustProvider } from "@/lib/trust/provider";
 import type {
@@ -376,7 +376,7 @@ function createSupabaseProvider(supabase: SupabaseClient): MarketplaceActivation
       return { upload };
     },
     async createBoostCampaign(actor, input) {
-      if (!(actor.role === "owner" || isBarberAccountRole(actor.role))) {
+      if (!(isShopOwnerRole(actor.role) || isBarberAccountRole(actor.role))) {
         throw new ActivationPermissionError("Only owner or barber roles can launch boosted visibility.");
       }
       const scopeType = input.scopeType;
@@ -384,7 +384,7 @@ function createSupabaseProvider(supabase: SupabaseClient): MarketplaceActivation
       if (!scopeId) {
         throw new ActivationValidationError("A marketplace scope is required for this boost.");
       }
-      if (actor.role !== "owner" && (scopeType !== "barber" || scopeId !== actor.barberId)) {
+      if (!isShopOwnerRole(actor.role) && (scopeType !== "barber" || scopeId !== actor.barberId)) {
         throw new ActivationPermissionError("Barbers can only boost their own public profile.");
       }
       const trustSignal = await getTrustSignal(scopeType, scopeId);

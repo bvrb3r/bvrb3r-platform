@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { isBarberAccountRole } from "@/lib/auth/roles";
+import { isBarberAccountRole, isClientRole, isShopOwnerRole } from "@/lib/auth/roles";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { runtimeConfig } from "@/lib/config/runtime";
 import { canonicalClientUuid } from "@/lib/booking/canonical-booking";
@@ -1116,7 +1116,11 @@ async function syncLegacyPaymentMethodsIntoCanonical(
 }
 
 function isShopStaff(role: UserAccount["role"]) {
-  return role === "owner" || role === "manager" || role === "front_desk";
+  return isShopOwnerRole(role) || role === "manager" || role === "front_desk";
+}
+
+function isPaymentClientRole(role: UserAccount["role"]) {
+  return isClientRole(role);
 }
 
 function mapPaymentMethodRow(row: PaymentMethodRow): ClientPaymentMethodView {
@@ -1266,7 +1270,7 @@ async function resolvePaymentActor(user: UserAccount, supabase: SupabaseClient):
     role: user.role
   };
 
-  if (user.role === "client") {
+  if (isPaymentClientRole(user.role)) {
     const clientResult = await supabase
       .from("clients")
       .select("id, reference_code, profile_id")
@@ -1993,13 +1997,13 @@ async function loadPaymentOrThrow(supabase: SupabaseClient, paymentId: string) {
 }
 
 function assertClientOwnsAppointment(actor: PaymentActorContext, appointment: AppointmentRow) {
-  if (actor.role !== "client" || !actor.clientId || actor.clientId !== appointment.client_id) {
+  if (!isPaymentClientRole(actor.role) || !actor.clientId || actor.clientId !== appointment.client_id) {
     throw new PaymentServiceError("Only the owning client can access this appointment payment.", 403);
   }
 }
 
 function assertClientOwnsPaymentMethod(actor: PaymentActorContext, paymentMethod: PaymentMethodRow) {
-  if (actor.role !== "client" || !actor.clientId || actor.clientId !== paymentMethod.client_id) {
+  if (!isPaymentClientRole(actor.role) || !actor.clientId || actor.clientId !== paymentMethod.client_id) {
     throw new PaymentServiceError("Only the owning client can manage this payment method.", 403);
   }
 }
@@ -2009,7 +2013,7 @@ function assertShopAccess(role: UserAccount["role"], locationIds: string[], shop
     throw new PaymentServiceError("Only owner, manager, or front desk can manage this payment action.", 403);
   }
 
-  if (role === "owner") {
+  if (isShopOwnerRole(role)) {
     return;
   }
 
@@ -3243,7 +3247,7 @@ export async function createAppointmentPayment(user: UserAccount, input: {
   const actor = await resolvePaymentActor(user, supabase);
   const appointment = await loadAppointmentOrThrow(supabase, input.appointmentId);
 
-  if (actor.role === "client") {
+  if (isPaymentClientRole(actor.role)) {
     assertClientOwnsAppointment(actor, appointment);
   } else {
     assertShopAccess(actor.role, actor.locationIds, appointment.shop_id, appointment.location_id);
@@ -3269,7 +3273,7 @@ export async function createAppointmentPayment(user: UserAccount, input: {
   });
 
   let paymentMethod: PaymentMethodRow | null = null;
-  if (actor.role === "client") {
+  if (isPaymentClientRole(actor.role)) {
     paymentMethod = await loadStripePaymentMethodOrThrow(supabase, actor.clientId ?? "", input.paymentMethodId);
     assertClientOwnsPaymentMethod(actor, paymentMethod);
   }
@@ -3295,7 +3299,7 @@ export async function createAppointmentPayment(user: UserAccount, input: {
     metadata: {
       appointmentStatus: appointment.status,
       paymentStage: paymentIntent.stage,
-      source: actor.role === "client" ? "client_payment_surface" : "shop_payment_surface"
+      source: isPaymentClientRole(actor.role) ? "client_payment_surface" : "shop_payment_surface"
     }
   });
 
@@ -3526,7 +3530,7 @@ export async function createAppointmentTip(user: UserAccount, input: {
   const actor = await resolvePaymentActor(user, supabase);
   const appointment = await loadAppointmentOrThrow(supabase, input.appointmentId);
 
-  if (actor.role === "client") {
+  if (isPaymentClientRole(actor.role)) {
     assertClientOwnsAppointment(actor, appointment);
   } else {
     assertShopAccess(actor.role, actor.locationIds, appointment.shop_id, appointment.location_id);
@@ -3565,7 +3569,7 @@ export async function createAppointmentTip(user: UserAccount, input: {
       idempotencyKey: `tip:${appointment.id}:${input.amount.toFixed(2)}`,
       description: `BVRB3R tip ${appointment.id}`,
       metadata: {
-        source: actor.role === "client" ? "client_tip_surface" : "shop_tip_surface"
+        source: isPaymentClientRole(actor.role) ? "client_tip_surface" : "shop_tip_surface"
       }
     });
     paymentId = payment.id;

@@ -7,7 +7,7 @@ export default async function BarberMessageThreadPage({
 }: {
   params: Promise<{ threadId: string }>;
 }) {
-  const user = await getAuthorizedUser(["commission_barber", "booth_rent_barber"]);
+  const user = await getAuthorizedUser(["barber_user"]);
   const { threadId } = await params;
 
   return (

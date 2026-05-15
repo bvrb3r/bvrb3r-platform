@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { isPlatformAdminUser } from "@/lib/auth/demo-auth";
+import { isBarberAccountRole, isClientRole, isShopOwnerRole, normalizeBarberSubtype } from "@/lib/auth/roles";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import { isUpcomingAppointmentStatus } from "@/lib/appointments/domain";
 import { buildPlatformEventIdempotencyKey, recordRequiredPlatformEvent } from "@/lib/core/platform-events";
@@ -1005,15 +1006,15 @@ function isShopControlEnabled(snapshot: PlatformAdminControlSnapshot, shopId: st
 }
 
 function getPointsRoleForUser(user: UserAccount): "client" | "barber" | "owner" | null {
-  if (user.role === "client") {
+  if (isClientRole(user.role)) {
     return "client";
   }
 
-  if (user.role === "commission_barber" || user.role === "booth_rent_barber" || (user.role === "manager" && user.barberId)) {
+  if (isBarberAccountRole(user.role) || (user.role === "manager" && user.barberId)) {
     return "barber";
   }
 
-  if (user.role === "owner") {
+  if (isShopOwnerRole(user.role)) {
     return "owner";
   }
 
@@ -1025,15 +1026,19 @@ function getRuntimeRoleForProductionProfile(profile: ProductionProfileRow, barbe
     return "platform_admin";
   }
 
-  if (profile.primary_onboarding_role === "shop_owner" || profile.role === "shop_owner") {
-    return "owner";
+  if (profile.primary_onboarding_role === "shop_owner" || isShopOwnerRole(profile.role)) {
+    return "shop_owner_user";
   }
 
   if (profile.primary_onboarding_role === "barber" || barber) {
-    return barber?.compensation_model === "booth_rent" ? "booth_rent_barber" : "commission_barber";
+    return "barber_user";
   }
 
-  return (profile.role ?? "client") as Role;
+  if (isClientRole(profile.role)) {
+    return "client_user";
+  }
+
+  return (profile.role ?? "client_user") as Role;
 }
 
 function getProfileTitle(role: Role, primaryRole?: IdentityLane | null) {
@@ -1061,7 +1066,7 @@ function buildProductionUserAccount(profile: ProductionProfileRow, directory: Pr
     primaryOnboardingRole: profile.primary_onboarding_role ?? undefined,
     onboardingState: profile.onboarding_state ?? undefined,
     barberId: productionBarberReference(barber) || undefined,
-    barberSubtype: barber?.barber_subtype as UserAccount["barberSubtype"],
+    barberSubtype: normalizeBarberSubtype(barber?.barber_subtype),
     clientId: client?.reference_code ?? client?.id,
     ownedShopId: ownedShop?.id,
     ownedShopName: ownedShop?.name ?? undefined,
@@ -1104,7 +1109,11 @@ function getRoleLabel(user: UserAccount) {
   }
 
   if (user.primaryOnboardingRole === "barber") {
-    return user.role === "booth_rent_barber" ? "Booth-rent barber" : "Commission barber";
+    return user.barberSubtype === "booth_rent"
+      ? "Booth-rent barber"
+      : user.barberSubtype === "commission"
+        ? "Commission barber"
+        : "Freelance barber";
   }
 
   return user.role.replaceAll("_", " ");

@@ -3,7 +3,7 @@ import { OwnerOverview } from "@/components/operations/owner-overview";
 import { getAuthorizedUser } from "@/lib/auth/guards";
 
 export default async function OwnerDashboardPage() {
-  const user = await getAuthorizedUser(["owner"]);
+  const user = await getAuthorizedUser(["shop_owner_user"]);
   return (
     <DashboardShell
       user={user}

@@ -7,7 +7,7 @@ export default async function OwnerSettingsPage({
 }: {
   searchParams: Promise<{ section?: string }>;
 }) {
-  const user = await getAuthorizedUser(["owner"]);
+  const user = await getAuthorizedUser(["shop_owner_user"]);
   const params = await searchParams;
 
   return (

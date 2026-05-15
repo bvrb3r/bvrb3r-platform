@@ -74,6 +74,7 @@ import { buildCanonicalBarberProfile } from "@/lib/booking/intelligence";
 import { getBarberAvailabilityPayload, getClientHomePayload, searchBarbersAndShopsPayload } from "@/lib/booking/platform-service";
 import { getBarberOverviewPayload, getBarberSchedulePayload } from "@/lib/barber/service";
 import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
+import { getCanonicalAccountRole, normalizeBarberSubtype } from "@/lib/auth/roles";
 import type { UserAccount } from "@/types/domain";
 
 type Row = Record<string, unknown>;
@@ -104,6 +105,7 @@ function createTables() {
       reference_code: "barber-43b3cda2",
       profile_id: BARBER_PROFILE_ID,
       compensation_model: "freelance",
+      barber_subtype: "freelance",
       app_approval_status: "approved",
       shop_approval_status: "not_required",
       commission_rate: null,
@@ -132,14 +134,14 @@ function createTables() {
       full_name: "Phillip mcgee",
       email: "phillipmcgeeclient@outlook.com",
       phone: "+18136250040",
-      role: "client",
+      role: "client_user",
       primary_onboarding_role: "client"
     }, {
       id: BARBER_PROFILE_ID,
       full_name: "Phillip mcgee",
       email: "philforsure@example.com",
       phone: "8135550101",
-      role: "barber",
+      role: "booth_rent_barber",
       primary_onboarding_role: "barber"
     }],
     clients: [{
@@ -499,7 +501,7 @@ describe("freelance client booking loop", () => {
     });
     const barberUser: UserAccount = {
       id: BARBER_PROFILE_ID,
-      role: "barber",
+      role: "barber_user",
       email: "philforsure@example.com",
       password: "DevOnly!123",
       name: "philforsure",
@@ -508,6 +510,9 @@ describe("freelance client booking loop", () => {
       barberId: "barber-43b3cda2",
       barberSubtype: "freelance"
     };
+
+    expect(getCanonicalAccountRole(tables.profiles[1].role as string)).toBe("barber_user");
+    expect(normalizeBarberSubtype(tables.barbers[0].barber_subtype as string)).toBe("freelance");
 
     const home = await getClientHomePayload("client-1fd26b88");
     const search = await searchBarbersAndShopsPayload({ query: "philforsure", clientId: "client-1fd26b88" });
@@ -526,6 +531,7 @@ describe("freelance client booking loop", () => {
     expect(availability?.slots.length).toBeGreaterThan(0);
     expect(beforeMore.workingHours.length).toBeGreaterThan(0);
     expect(beforeMore.activationSetup.hasAvailabilityDraft).toBe(true);
+    expect(beforeMore.activationSetup.hasServiceLocation).toBe(true);
     expect(beforeMore.status.liveStatus).toBe("available");
     expect(beforeMore.status.isOnline).toBe(true);
     expect(beforeCalendar.shops).toEqual([expect.objectContaining({

@@ -55,12 +55,12 @@ export function getSignupRoleIntentFromMetadata(metadata?: Record<string, unknow
 
 export function getRuntimeRoleForSignupIntent(role: SignupRoleIntent): Role {
   if (role === "shop_owner") {
-    return "owner";
+    return "shop_owner_user";
   }
 
   if (role === "barber") {
-    return "barber";
+    return "barber_user";
   }
 
-  return "client";
+  return "client_user";
 }

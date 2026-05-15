@@ -26,7 +26,7 @@ const eventSchema = z.object({
 
 export async function POST(request: Request) {
   try {
-    const actor = await requireEngagementActor(["owner", "manager", "front_desk", "commission_barber", "booth_rent_barber", "client"]);
+    const actor = await requireEngagementActor(["shop_owner_user", "manager", "front_desk", "barber_user", "client_user"]);
     const payload = eventSchema.parse(await request.json());
     const engagementProvider = await getEngagementProvider();
     const result = await engagementProvider.recordEvent(actor, payload);

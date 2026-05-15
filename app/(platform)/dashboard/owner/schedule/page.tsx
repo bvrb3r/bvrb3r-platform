@@ -3,7 +3,7 @@ import { OwnerScheduleWorkspace } from "@/components/operations/owner-schedule-w
 import { getAuthorizedUser } from "@/lib/auth/guards";
 
 export default async function OwnerSchedulePage() {
-  const user = await getAuthorizedUser(["owner"]);
+  const user = await getAuthorizedUser(["shop_owner_user"]);
 
   return (
     <DashboardShell

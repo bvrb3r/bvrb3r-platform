@@ -1,4 +1,5 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { isBarberAccountRole, isShopOwnerRole } from "@/lib/auth/roles";
 import type { UserAccount } from "@/types/domain";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
@@ -153,13 +154,13 @@ function getSupabaseOrThrow() {
 }
 
 function requireOwner(user: UserAccount) {
-  if (!(user.role === "owner" || user.role === "manager")) {
+  if (!(isShopOwnerRole(user.role) || user.role === "manager")) {
     throw new ShopTeamInviteServiceError("Only shop owners and managers can manage team invites.", 403);
   }
 }
 
 function requireBarber(user: UserAccount) {
-  if (!(user.role === "commission_barber" || user.role === "booth_rent_barber") || !user.barberId) {
+  if (!isBarberAccountRole(user.role) || !user.barberId) {
     throw new ShopTeamInviteServiceError("Only barbers can respond to shop invitations.", 403);
   }
 }

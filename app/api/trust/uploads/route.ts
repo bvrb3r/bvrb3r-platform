@@ -17,7 +17,7 @@ const uploadSchema = z.object({
 
 export async function POST(request: Request) {
   try {
-    const actor = await requireTrustActor(["owner", "commission_barber", "booth_rent_barber"]);
+    const actor = await requireTrustActor(["shop_owner_user", "barber_user"]);
     const payload = uploadSchema.parse(await request.json());
     const provider = await getMarketplaceActivationProvider();
     const result = await provider.createVerificationUpload(actor, payload);

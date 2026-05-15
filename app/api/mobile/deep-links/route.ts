@@ -27,16 +27,16 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const route = normalizeAppRoute(searchParams.get("route") ?? "/");
   const label = searchParams.get("label") ?? "BVRB3R link";
-  const role = z.enum(["owner", "manager", "front_desk", "commission_barber", "booth_rent_barber", "client"]).safeParse(searchParams.get("role"));
+  const role = z.enum(["shop_owner_user", "manager", "front_desk", "barber_user", "client_user"]).safeParse(searchParams.get("role"));
   return NextResponse.json({
     bundle: buildDeepLinkPayload(route, label),
-    bootstrap: buildNativeBootstrapSummary(role.success ? role.data : "client")
+    bootstrap: buildNativeBootstrapSummary(role.success ? role.data : "client_user")
   });
 }
 
 export async function POST(request: Request) {
   try {
-    const actor = await requireMobileActor(["owner", "manager", "front_desk", "commission_barber", "booth_rent_barber", "client"]);
+    const actor = await requireMobileActor(["shop_owner_user", "manager", "front_desk", "barber_user", "client_user"]);
     const payload = recordSchema.parse(await request.json());
     const provider = await getMobileProvider();
     const record = await provider.recordDeepLink(actor, {
