@@ -218,6 +218,10 @@ function matchesReference(value: string, row: { id: string; reference_code: stri
   return row.id === value || row.reference_code === value;
 }
 
+function matchesLiveAppointmentIdentifier(appointment: LiveAppointmentRecord, identifier: string) {
+  return appointment.id === identifier || canonicalAppointmentUuid(appointment.id) === canonicalAppointmentUuid(identifier);
+}
+
 function normalizePhone(value: string) {
   return value.replace(/\D/g, "");
 }
@@ -1820,6 +1824,43 @@ async function syncAppointmentStatusHistory(
   }
 }
 
+async function updateAppointmentForLifecycleTransition(
+  supabase: SupabaseClient,
+  appointment: LiveAppointmentRecord,
+  appointmentIdentifier: string,
+  expectedRevision: number
+) {
+  const row = appointmentUpsertRow(appointment);
+  const byReference = await supabase
+    .from("appointments")
+    .update(row)
+    .eq("reference_code", appointmentIdentifier)
+    .eq("lifecycle_revision", expectedRevision)
+    .select("id, reference_code")
+    .maybeSingle();
+
+  if (byReference.error) {
+    throw byReference.error;
+  }
+  if (byReference.data) {
+    return byReference.data;
+  }
+
+  const byId = await supabase
+    .from("appointments")
+    .update(row)
+    .eq("id", canonicalAppointmentUuid(appointmentIdentifier))
+    .eq("lifecycle_revision", expectedRevision)
+    .select("id, reference_code")
+    .maybeSingle();
+
+  if (byId.error) {
+    throw byId.error;
+  }
+
+  return byId.data;
+}
+
 async function insertAppointmentCheckInEvent(
   supabase: SupabaseClient,
   appointment: LiveAppointmentRecord,
@@ -2191,7 +2232,7 @@ async function persistArtifactsForAppointment(
 
 async function getLatestAppointmentOrThrow(supabase: SupabaseClient, appointmentId: string) {
   const snapshot = await readCanonicalOperationsSnapshot(supabase);
-  const appointment = snapshot.appointments.find((entry) => entry.id === appointmentId);
+  const appointment = snapshot.appointments.find((entry) => matchesLiveAppointmentIdentifier(entry, appointmentId));
   if (!appointment) {
     throw new Error(`Appointment ${appointmentId} was not found.`);
   }
@@ -2974,20 +3015,20 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
     },
     async transitionAppointment(input) {
       const fullSnapshot = await readFullSupabaseSnapshot(supabase);
-      const previousAppointment = fullSnapshot.appointments.find((entry) => entry.id === input.appointmentId);
-      const result = transitionAppointmentInSnapshot(fullSnapshot, input);
-      const updateResult = await supabase
-        .from("appointments")
-        .update(appointmentUpsertRow(result.appointment))
-        .eq("reference_code", input.appointmentId)
-        .eq("lifecycle_revision", input.expectedRevision)
-        .select("reference_code")
-        .maybeSingle();
+      const previousAppointment = fullSnapshot.appointments.find((entry) => matchesLiveAppointmentIdentifier(entry, input.appointmentId));
+      const transitionInput = previousAppointment
+        ? { ...input, appointmentId: previousAppointment.id }
+        : input;
+      const result = transitionAppointmentInSnapshot(fullSnapshot, transitionInput);
+      const actorProfileId = await resolveProfileIdByEmail(supabase, input.actorEmail);
+      const updatedRow = await updateAppointmentForLifecycleTransition(
+        supabase,
+        result.appointment,
+        previousAppointment?.id ?? input.appointmentId,
+        input.expectedRevision
+      );
 
-      if (updateResult.error) {
-        throw updateResult.error;
-      }
-      if (!updateResult.data) {
+      if (!updatedRow) {
         throw new LiveOperationConflictError(
           `Appointment ${input.appointmentId} changed before your update completed.`,
           await getLatestAppointmentOrThrow(supabase, input.appointmentId),
@@ -2995,28 +3036,36 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
         );
       }
 
-      const actorProfileId = await resolveProfileIdByEmail(supabase, input.actorEmail);
       await syncAppointmentStatusHistory(supabase, result.appointment, {
         previousStatus: previousAppointment?.status,
         actorProfileId,
         reason:
           input.action === "check_in"
-            ? "appointment_checked_in"
+            ? "barber_checked_in_client"
             : input.action === "service_start"
-              ? "service_started"
-              : "service_completed"
+              ? "barber_started_service"
+              : "barber_completed_service"
       });
-      await insertAppointmentCheckInEvent(
-        supabase,
-        result.appointment,
-        input.action === "check_in"
-          ? "checked_in"
-          : input.action === "service_start"
-            ? "started"
-            : "completed",
-        actorProfileId,
-        result.appointment.note
-      );
+      try {
+        await insertAppointmentCheckInEvent(
+          supabase,
+          result.appointment,
+          input.action === "check_in"
+            ? "checked_in"
+            : input.action === "service_start"
+              ? "started"
+              : "completed",
+          actorProfileId,
+          result.appointment.note
+        );
+      } catch (eventError) {
+        console.warn("[barber-appointment] check_in_event_insert_failed", {
+          appointmentId: canonicalAppointmentUuid(result.appointment.id),
+          lifecycleAction: input.action,
+          errorName: eventError instanceof Error ? eventError.name : "UnknownError",
+          errorMessage: eventError instanceof Error ? eventError.message : String(eventError)
+        });
+      }
       if (input.action === "service_complete") {
         await completePromotionRedemptionsForAppointment(supabase, result.appointment.id, result.appointment.updatedAt);
         try {

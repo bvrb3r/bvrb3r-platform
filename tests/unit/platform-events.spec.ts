@@ -183,7 +183,7 @@ describe("platform events core", () => {
       clientId: "client-live",
       barberId: "barber-live"
     });
-    expect(completed.map((event) => event.eventType)).toEqual(["booking_updated", "booking_completed"]);
+    expect(completed.map((event) => event.eventType)).toEqual(["booking_updated", "booking_completed", "appointment_completed"]);
     expect(completed[0]?.idempotencyKey).toBe(buildPlatformEventIdempotencyKey([
       "booking",
       "appt-live-2",

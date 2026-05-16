@@ -369,4 +369,63 @@ describe("payout completion flow", () => {
       message: "Appointment does not belong to this barber."
     });
   });
+
+  it("resolves a barber-owned appointment from the real appointment UUID", async () => {
+    const tables = createTables({
+      appointments: [{
+        ...createTables().appointments[0],
+        status: "confirmed"
+      }]
+    });
+    const supabase = createSupabaseStub(tables);
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const context = await resolveBarberAppointmentActionContext({
+      user: {
+        id: BARBER_PROFILE_ID,
+        role: "barber_user",
+        email: "phillipmcgee813@gmail.com",
+        password: "DevOnly!123",
+        name: "Phillip mcgee",
+        title: "Freelance Barber",
+        locationIds: [],
+        barberId: "barber-43b3cda2",
+        barberSubtype: "freelance"
+      },
+      appointmentId: APPOINTMENT_ID,
+      allowedStatuses: ["confirmed"]
+    });
+
+    expect(context.appointment.id).toBe(APPOINTMENT_ID);
+    expect(context.providerAppointmentId).toBe(APPOINTMENT_REFERENCE);
+  });
+
+  it("rejects check-in from the wrong appointment status", async () => {
+    const tables = createTables({
+      appointments: [{
+        ...createTables().appointments[0],
+        status: "completed"
+      }]
+    });
+    const supabase = createSupabaseStub(tables);
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    await expect(resolveBarberAppointmentActionContext({
+      user: {
+        id: BARBER_PROFILE_ID,
+        role: "barber_user",
+        email: "phillipmcgee813@gmail.com",
+        password: "DevOnly!123",
+        name: "Phillip mcgee",
+        title: "Freelance Barber",
+        locationIds: [],
+        barberId: "barber-43b3cda2",
+        barberSubtype: "freelance"
+      },
+      appointmentId: APPOINTMENT_ID,
+      allowedStatuses: ["confirmed"]
+    })).rejects.toMatchObject({
+      status: 409
+    });
+  });
 });

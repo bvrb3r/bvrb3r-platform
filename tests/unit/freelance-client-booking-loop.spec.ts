@@ -79,6 +79,7 @@ import { getBarberAvailabilityPayload, getClientBookingsPayload, getClientHomePa
 import { getBarberOverviewPayload, getBarberSchedulePayload } from "@/lib/barber/service";
 import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
 import { getCanonicalAccountRole, normalizeBarberSubtype } from "@/lib/auth/roles";
+import { canonicalAppointmentUuid } from "@/lib/booking/canonical-booking";
 import type { UserAccount } from "@/types/domain";
 
 type Row = Record<string, unknown>;
@@ -646,7 +647,7 @@ describe("freelance client booking loop", () => {
     const afterCalendar = await getBarberSchedulePayload(barberUser, { viewMode: "day", anchorDate: "2026-05-15" });
     expect(afterCalendar.timeline.appointments).toHaveLength(1);
     expect(afterCalendar.timeline.appointments[0]).toMatchObject({
-      id: insertedAppointment.reference_code,
+      id: canonicalAppointmentUuid(insertedAppointment.reference_code as string),
       barberId: "barber-43b3cda2",
       clientId: "client-1fd26b88",
       serviceId: SERVICE_REFERENCE,

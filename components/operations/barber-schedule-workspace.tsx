@@ -756,13 +756,36 @@ export function BarberScheduleWorkspace({
     setPendingAppointmentId(appointment.id);
 
     try {
-      await lifecycleMutation.mutateAsync({
+      const result = await lifecycleMutation.mutateAsync({
         appointmentId: appointment.id,
         expectedRevision: appointment.revision,
         action: nextAction.action
       });
+      let refetchSucceeded = false;
+      try {
+        await scheduleQuery.refetch();
+        refetchSucceeded = true;
+      } catch {}
+      console.info("[barber-calendar] appointment_action_result", {
+        action: nextAction.action,
+        appointmentId: appointment.id,
+        ok: true,
+        previousStatus: appointment.status,
+        nextStatus: result.appointment.status,
+        refetchStarted: true,
+        refetchSucceeded
+      });
       setStatusUpdate({ tone: "success", message: nextAction.successMessage });
     } catch (error) {
+      console.warn("[barber-calendar] appointment_action_result", {
+        action: nextAction.action,
+        appointmentId: appointment.id,
+        ok: false,
+        previousStatus: appointment.status,
+        nextStatus: null,
+        refetchStarted: false,
+        refetchSucceeded: false
+      });
       setStatusUpdate({ tone: "error", message: getReadableActionError(error as BarberApiError) });
     } finally {
       setPendingAppointmentId(null);

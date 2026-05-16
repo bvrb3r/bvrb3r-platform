@@ -34,16 +34,25 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       actorRole,
       actorEmail: user.email
     });
-    await recordBookingUpdatedPlatformEvents({
-      appointment: result.appointment,
-      actorId: user.id,
-      actorRole,
-      source: "api",
-      route: "/api/barber/appointments/[id]/complete",
-      lifecycleEvent: "completed"
-    });
+    try {
+      await recordBookingUpdatedPlatformEvents({
+        appointment: result.appointment,
+        actorId: user.id,
+        actorRole,
+        source: "api",
+        route: "/api/barber/appointments/[id]/complete",
+        lifecycleEvent: "completed"
+      });
+    } catch (eventError) {
+      console.warn("[barber-appointment] platform_event_failed", {
+        appointmentId: actionContext.appointment.id,
+        eventType: "appointment_completed",
+        errorName: eventError instanceof Error ? eventError.name : "UnknownError",
+        errorMessage: eventError instanceof Error ? eventError.message : String(eventError)
+      });
+    }
 
-    return NextResponse.json({ appointment: result.appointment });
+    return NextResponse.json({ ok: true, appointment: result.appointment });
   } catch (error) {
     if (error instanceof BarberAppointmentActionError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
@@ -52,6 +61,6 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       return NextResponse.json({ error: error.message, code: error.code, latestAppointment: error.latestAppointment }, { status: error.status });
     }
 
-    throw error;
+    return NextResponse.json({ error: "Appointment could not be completed. Refresh and try again." }, { status: 500 });
   }
 }

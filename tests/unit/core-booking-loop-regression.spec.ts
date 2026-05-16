@@ -326,9 +326,10 @@ function createSupabaseMock(tables: Record<string, Row[]>) {
       tables[this.table] ??= [];
       if (this.operation === "insert" && this.payload) {
         const entries = Array.isArray(this.payload) ? this.payload : [this.payload];
+        const shouldAddCreatedAt = this.table !== "appointment_status_history";
         const inserted = entries.map((entry) => ({
           id: entry.id ?? `${this.table}-${tables[this.table].length + 1}`,
-          created_at: entry.created_at ?? "2026-05-16T14:30:00.000Z",
+          ...(shouldAddCreatedAt ? { created_at: entry.created_at ?? "2026-05-16T14:30:00.000Z" } : {}),
           ...entry
         }));
         tables[this.table].push(...inserted);
@@ -534,5 +535,77 @@ describe("core booking loop regression", () => {
       chair: "Phils chair",
       status: "confirmed"
     });
+
+    const checkedIn = await provider.transitionAppointment({
+      appointmentId: appointment.id as string,
+      expectedRevision: Number(appointment.lifecycle_revision),
+      action: "check_in",
+      actorRole: "barber",
+      actorEmail: "phillipmcgee813@gmail.com"
+    });
+    expect(tables.appointments[0]).toMatchObject({
+      id: appointment.id,
+      status: "checked_in",
+      checked_in_at: expect.any(String)
+    });
+    expect(tables.appointment_status_history).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        appointment_id: appointment.id,
+        status: "checked_in",
+        old_status: "confirmed",
+        new_status: "checked_in",
+        change_reason: "barber_checked_in_client",
+        changed_by: BARBER_PROFILE_ID,
+        changed_at: expect.any(String)
+      })
+    ]));
+    const checkedInHistory = tables.appointment_status_history.find((row) => row.new_status === "checked_in")!;
+    expect(Object.keys(checkedInHistory)).not.toContain("changed_by_profile_id");
+    expect(Object.keys(checkedInHistory)).not.toContain("created_at");
+    expect(Object.keys(checkedInHistory)).not.toContain("reason");
+
+    const started = await provider.transitionAppointment({
+      appointmentId: appointment.id as string,
+      expectedRevision: checkedIn.appointment.revision,
+      action: "service_start",
+      actorRole: "barber",
+      actorEmail: "phillipmcgee813@gmail.com"
+    });
+    expect(tables.appointments[0]).toMatchObject({
+      status: "in_service",
+      service_started_at: expect.any(String)
+    });
+    expect(tables.appointment_status_history).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        appointment_id: appointment.id,
+        status: "in_service",
+        old_status: "checked_in",
+        new_status: "in_service",
+        change_reason: "barber_started_service",
+        changed_by: BARBER_PROFILE_ID
+      })
+    ]));
+
+    await provider.transitionAppointment({
+      appointmentId: appointment.id as string,
+      expectedRevision: started.appointment.revision,
+      action: "service_complete",
+      actorRole: "barber",
+      actorEmail: "phillipmcgee813@gmail.com"
+    });
+    expect(tables.appointments[0]).toMatchObject({
+      status: "completed",
+      completed_at: expect.any(String)
+    });
+    expect(tables.appointment_status_history).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        appointment_id: appointment.id,
+        status: "completed",
+        old_status: "in_service",
+        new_status: "completed",
+        change_reason: "barber_completed_service",
+        changed_by: BARBER_PROFILE_ID
+      })
+    ]));
   });
 });

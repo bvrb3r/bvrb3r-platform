@@ -1366,6 +1366,10 @@ export async function getBarberSchedulePayload(
   const locationReferences = Array.from(new Set(appointments.map((appointment) => appointment.locationId)));
   const locationMap = supabase ? await readLocationMapForBarberCalendar(supabase, locationReferences, context) : new Map<string, { id: string; label: string }>();
   const displayAppointments = enrichBarberAppointmentDisplayLabels(appointments, dashboard.clients, locationMap);
+  const calendarActionAppointments = displayAppointments.map((appointment) => ({
+    ...appointment,
+    id: canonicalAppointmentUuid(appointment.id)
+  }));
   const canonicalBarberId = context?.barber.reference_code ?? context?.barber.id ?? viewer.barberId!;
   const [status, workingHours, blockedTimes] = await Promise.all([
     buildStatusView(user, displayAppointments, supabase, context),
@@ -1375,8 +1379,8 @@ export async function getBarberSchedulePayload(
   console.info("[barber-calendar] appointment_read_result", {
     reference: "appointment_read_result",
     barberId: context?.barber.id ?? viewer.barberId,
-    appointmentCount: displayAppointments.length,
-    latestAppointmentId: displayAppointments[0]?.id ?? null,
+    appointmentCount: calendarActionAppointments.length,
+    latestAppointmentId: calendarActionAppointments[0]?.id ?? null,
     shopLabelRequired: !isFreelanceBarberContext(context),
     shopLabelErrorSuppressed: false
   });
@@ -1387,15 +1391,15 @@ export async function getBarberSchedulePayload(
     businessDate: dashboard.summary.businessDate,
     shops: context ? buildShopScopeView(context.locations) : [],
     status,
-    todayAppointments: displayAppointments
+    todayAppointments: calendarActionAppointments
       .filter((appointment) => appointment.start.slice(0, 10) === dashboard.summary.businessDate)
       .sort((left, right) => new Date(left.start).getTime() - new Date(right.start).getTime()),
-    upcomingAppointments: displayAppointments
+    upcomingAppointments: calendarActionAppointments
       .filter((appointment) => isUpcomingAppointmentStatus(appointment.status))
       .sort((left, right) => new Date(left.start).getTime() - new Date(right.start).getTime()),
     timeline: {
       ...timelineRange,
-      appointments: filterAppointmentsForBarberScheduleRange(displayAppointments, timelineRange)
+      appointments: filterAppointmentsForBarberScheduleRange(calendarActionAppointments, timelineRange)
     },
     workingHours,
     blockedTimes

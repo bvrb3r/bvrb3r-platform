@@ -39,6 +39,7 @@ vi.mock("@/lib/booking/canonical-booking", async () => {
 });
 
 import { getBarberSchedulePayload } from "@/lib/barber/service";
+import { canonicalAppointmentUuid } from "@/lib/booking/canonical-booking";
 
 const freelanceBarber = {
   id: "12345678-1234-5123-9234-123456789abc",
@@ -219,7 +220,7 @@ describe("freelance barber calendar", () => {
     }, { viewMode: "day", anchorDate: "2026-05-14" });
 
     expect(payload.timeline.appointments).toHaveLength(1);
-    expect(payload.timeline.appointments[0].id).toBe("appt-phil-1");
+    expect(payload.timeline.appointments[0].id).toBe(canonicalAppointmentUuid("appt-phil-1"));
     expect(payload.upcomingAppointments).toHaveLength(1);
   });
 
