@@ -1,19 +1,19 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionUser } from "@/lib/booking/route-auth";
 import { BarberAppointmentActionError, resolveBarberAppointmentActionContext } from "@/lib/barber/appointment-actions";
-import { recordBookingUpdatedPlatformEvents } from "@/lib/core/booking-events";
 import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
 import { LiveOperationConflictError } from "@/lib/operations/live-state";
 
 const bodySchema = z.object({
-  expectedRevision: z.number().int().positive()
+  expectedRevision: z.number().int().positive(),
+  reason: z.string().trim().min(2).max(240).optional()
 });
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const parsed = bodySchema.safeParse(await request.json());
+  const parsed = bodySchema.safeParse(await request.json().catch(() => ({})));
   if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid service-complete payload." }, { status: 400 });
+    return NextResponse.json({ error: "Invalid no-show payload." }, { status: 400 });
   }
 
   const user = await getSessionUser();
@@ -24,58 +24,42 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     const actionContext = await resolveBarberAppointmentActionContext({
       user,
       appointmentId: id,
-      allowedStatuses: ["confirmed", "checked_in", "in_service"]
+      allowedStatuses: ["confirmed", "checked_in"]
     });
     console.info("[barber-appointment] action_started", {
       appointmentId: actionContext.appointment.id,
-      action: "complete",
+      action: "no_show",
       profileId: actionContext.profile.id,
       barberId: actionContext.barber.id,
       oldStatus: actionContext.appointment.status,
-      newStatus: "completed",
+      newStatus: "no_show",
       ownershipVerified: true
     });
+
     const provider = await getLiveOperationsProvider();
-    const result = await provider.transitionAppointment({
+    const result = await provider.noShowAppointment({
       appointmentId: actionContext.providerAppointmentId,
       expectedRevision: parsed.data.expectedRevision,
-      action: "service_complete",
       actorRole,
-      actorEmail: user.email
+      actorEmail: user.email,
+      reason: parsed.data.reason ?? "Marked no-show by barber"
     });
-    try {
-      await recordBookingUpdatedPlatformEvents({
-        appointment: result.appointment,
-        actorId: user.id,
-        actorRole,
-        source: "api",
-        route: "/api/barber/appointments/[id]/complete",
-        lifecycleEvent: "completed"
-      });
-    } catch (eventError) {
-      console.warn("[barber-appointment] platform_event_failed", {
-        appointmentId: actionContext.appointment.id,
-        eventType: "appointment_completed",
-        errorName: eventError instanceof Error ? eventError.name : "UnknownError",
-        errorMessage: eventError instanceof Error ? eventError.message : String(eventError)
-      });
-    }
 
     console.info("[barber-appointment] action_succeeded", {
       appointmentId: actionContext.appointment.id,
-      action: "complete",
+      action: "no_show",
       profileId: actionContext.profile.id,
       barberId: actionContext.barber.id,
       oldStatus: actionContext.appointment.status,
       newStatus: result.appointment.status,
       ownershipVerified: true
     });
-    return NextResponse.json({ ok: true, appointment: result.appointment, routing: result.routing ?? null });
+    return NextResponse.json({ ok: true, appointment: result.appointment });
   } catch (error) {
     if (error instanceof BarberAppointmentActionError) {
       console.warn("[barber-appointment] action_failed", {
         appointmentId: id,
-        action: "complete",
+        action: "no_show",
         stage: "validation",
         errorName: error.name,
         errorMessage: error.message,
@@ -92,7 +76,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
 
     console.error("[barber-appointment] action_failed", {
       appointmentId: id,
-      action: "complete",
+      action: "no_show",
       stage: "database_update",
       errorName: error instanceof Error ? error.name : "UnknownError",
       errorMessage: error instanceof Error ? error.message : String(error),
@@ -101,6 +85,6 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       barberId: null,
       ownershipVerified: null
     });
-    return NextResponse.json({ error: "Appointment could not be completed. Refresh and try again." }, { status: 500 });
+    return NextResponse.json({ error: "Action could not be completed. Refresh and try again." }, { status: 500 });
   }
 }

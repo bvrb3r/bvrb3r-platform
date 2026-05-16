@@ -3,13 +3,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  ArrowLeft,
   CalendarCheck2,
   CalendarDays,
   ChevronDown,
   CircleDollarSign,
   Clock3,
+  CreditCard,
+  FileText,
   MessageSquareText,
   Plus,
+  ReceiptText,
   Search,
   SlidersHorizontal,
   UsersRound
@@ -70,6 +74,12 @@ const currencyFormatter = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
   maximumFractionDigits: 0
+});
+const currencyWithCentsFormatter = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2
 });
 
 function getDateKey(date: Date) {
@@ -137,6 +147,10 @@ function formatTimeRange(start: string | Date, end: string | Date) {
 
 function formatMoney(amount: number) {
   return currencyFormatter.format(amount);
+}
+
+function formatMoneyWithCents(amount: number) {
+  return currencyWithCentsFormatter.format(amount);
 }
 
 function formatDuration(minutes: number) {
@@ -364,39 +378,8 @@ function getUtilization({
   };
 }
 
-function getLifecycleAction(appointment: BarberOperationalAppointment) {
-  if (appointment.status === "booked" || appointment.status === "confirmed") {
-    return {
-      action: "check_in" as const,
-      label: "Check in",
-      pendingLabel: "Checking in...",
-      successMessage: "Client checked in and moved into the live chair flow."
-    };
-  }
-
-  if (appointment.status === "checked_in") {
-    return {
-      action: "service_start" as const,
-      label: "Start service",
-      pendingLabel: "Starting...",
-      successMessage: "Service is now marked in progress."
-    };
-  }
-
-  if (appointment.status === "in_service") {
-    return {
-      action: "service_complete" as const,
-      label: "Complete",
-      pendingLabel: "Completing...",
-      successMessage: "Service completed and posted to earnings and shop reporting."
-    };
-  }
-
-  return null;
-}
-
 function getStatusTone(status: string): "green" | "neutral" | "danger" {
-  if (status === "cancelled" || status === "no_show" || status === "refunded") {
+  if (status === "cancelled" || status === "canceled" || status === "no_show" || status === "refunded") {
     return "danger";
   }
 
@@ -405,6 +388,55 @@ function getStatusTone(status: string): "green" | "neutral" | "danger" {
   }
 
   return "green";
+}
+
+function getTier1StatusLabel(status: string) {
+  if (status === "cancelled" || status === "canceled") {
+    return "Canceled";
+  }
+  if (status === "no_show") {
+    return "No-show";
+  }
+  if (status === "checked_in") {
+    return "Checked in";
+  }
+  if (status === "in_service") {
+    return "In service";
+  }
+  return status
+    .split("_")
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(" ");
+}
+
+function formatFullDate(iso: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric"
+  }).format(new Date(iso));
+}
+
+function formatCardLabel(appointment: BarberOperationalAppointment) {
+  const brand = appointment.financial.paymentMethodBrand;
+  const last4 = appointment.financial.paymentMethodLast4;
+  if (brand && last4) {
+    return `${brand.charAt(0).toUpperCase()}${brand.slice(1)} ${last4}`;
+  }
+  return "Card on file";
+}
+
+function canCompleteAppointment(appointment: BarberOperationalAppointment) {
+  return appointment.status === "confirmed" || appointment.status === "checked_in" || appointment.status === "in_service";
+}
+
+function canCancelAppointment(appointment: BarberOperationalAppointment) {
+  return appointment.status === "confirmed" || appointment.status === "checked_in" || appointment.status === "in_service";
+}
+
+function canNoShowAppointment(appointment: BarberOperationalAppointment) {
+  return appointment.status === "confirmed" || appointment.status === "checked_in";
 }
 
 function ScheduleSkeleton() {
@@ -421,28 +453,34 @@ function AppointmentCard({
   appointment,
   viewMode,
   highlighted,
-  onLifecycleAction,
+  onViewDetails,
   onMessage,
-  isLifecyclePending,
   isMessagePending
 }: {
   appointment: BarberOperationalAppointment;
   viewMode: BarberScheduleViewMode;
   highlighted: boolean;
-  onLifecycleAction: (appointment: BarberOperationalAppointment) => Promise<void>;
+  onViewDetails: (appointment: BarberOperationalAppointment) => void;
   onMessage: (appointment: BarberOperationalAppointment) => Promise<void>;
-  isLifecyclePending: boolean;
   isMessagePending: boolean;
 }) {
-  const lifecycleAction = getLifecycleAction(appointment);
-
   return (
     <GlassCard
       active={highlighted}
+      role="button"
+      tabIndex={0}
+      aria-label={`Open appointment details for ${appointment.display.clientName}`}
       className={cn(
-        "p-4",
+        "cursor-pointer p-4",
         highlighted && "border-l-4 border-l-[#a3ff12] shadow-[0_18px_55px_rgba(163,255,18,0.10)]"
       )}
+      onClick={() => onViewDetails(appointment)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onViewDetails(appointment);
+        }
+      }}
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 items-center gap-3">
@@ -474,24 +512,25 @@ function AppointmentCard({
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2 border-t border-white/8 pt-4">
-        {lifecycleAction ? (
-          <ActionButton
-            type="button"
-            className="min-h-10 px-4"
-            disabled={isLifecyclePending}
-            onClick={() => void onLifecycleAction(appointment)}
-          >
-            {isLifecyclePending ? lifecycleAction.pendingLabel : lifecycleAction.label}
-          </ActionButton>
-        ) : (
-          <span className="status-pill text-white/62">{appointment.display.lifecycleDetail}</span>
-        )}
+        <ActionButton
+          type="button"
+          className="min-h-10 px-4"
+          onClick={(event) => {
+            event.stopPropagation();
+            onViewDetails(appointment);
+          }}
+        >
+          View Details
+        </ActionButton>
         <ActionButton
           type="button"
           className="min-h-10 px-4"
           variant="secondary"
           disabled={isMessagePending}
-          onClick={() => void onMessage(appointment)}
+          onClick={(event) => {
+            event.stopPropagation();
+            void onMessage(appointment);
+          }}
         >
           <MessageSquareText className="h-4 w-4" />
           {isMessagePending ? "Opening..." : "Message"}
@@ -532,6 +571,214 @@ function OpenSlotCard({ slot, onBookSlot }: { slot: OpenSlotView; onBookSlot: (s
   );
 }
 
+type AppointmentDetailAction = "service_complete" | "cancel" | "no_show";
+
+function AppointmentDetailsModal({
+  appointment,
+  view,
+  pendingAction,
+  onViewChange,
+  onClose,
+  onAction,
+  onMessage,
+  onBookNext,
+  isMessagePending
+}: {
+  appointment: BarberOperationalAppointment;
+  view: "details" | "transaction";
+  pendingAction: AppointmentDetailAction | null;
+  onViewChange: (view: "details" | "transaction") => void;
+  onClose: () => void;
+  onAction: (action: AppointmentDetailAction) => Promise<void>;
+  onMessage: (appointment: BarberOperationalAppointment) => Promise<void>;
+  onBookNext: (appointment: BarberOperationalAppointment) => void;
+  isMessagePending: boolean;
+}) {
+  const [confirmAction, setConfirmAction] = useState<"cancel" | "no_show" | null>(null);
+  const [transactionNotice, setTransactionNotice] = useState<string | null>(null);
+  const isPaid = appointment.financial.capturedAmount > 0 || appointment.balanceDue <= 0;
+  const serviceComplete = appointment.status === "completed";
+  const cardLabel = formatCardLabel(appointment);
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/72 px-4 py-5 backdrop-blur-sm sm:px-6" role="dialog" aria-modal="true" aria-label={view === "transaction" ? "Transaction Details" : "Appointment Details"}>
+      <div className="mx-auto w-full max-w-2xl rounded-[28px] border border-white/10 bg-[#070707] p-5 shadow-[0_28px_90px_rgba(0,0,0,0.55)] sm:p-6">
+        <div className="flex items-center justify-between gap-3">
+          <button
+            type="button"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-white transition hover:border-[#a3ff12]/35"
+            aria-label={view === "transaction" ? "Back to appointment details" : "Back to Calendar"}
+            onClick={() => {
+              if (view === "transaction") {
+                onViewChange("details");
+                return;
+              }
+              onClose();
+            }}
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <div className="min-w-0 flex-1">
+            <p className="bvr-section-label">{view === "transaction" ? "Transaction Details" : "Appointment Details"}</p>
+            <h3 className="mt-2 truncate text-2xl font-extrabold tracking-[-0.03em] text-white">{appointment.display.clientName}</h3>
+          </div>
+          <StatusBadge tone={getStatusTone(appointment.status)}>{getTier1StatusLabel(appointment.status)}</StatusBadge>
+        </div>
+
+        {view === "transaction" ? (
+          <div className="mt-6 space-y-4">
+            {transactionNotice ? <FeedbackBanner tone="info" message={transactionNotice} /> : null}
+            <div className="rounded-[22px] border border-white/8 bg-white/[0.025] p-4">
+              <div className="flex items-center gap-3">
+                <CreditCard className="h-5 w-5 text-[#a3ff12]" />
+                <div>
+                  <p className="text-base font-extrabold text-white">Card Payment</p>
+                  <p className="mt-1 text-sm text-white/58">{cardLabel} · Card on file payment</p>
+                </div>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-[16px] border border-white/8 bg-black/24 p-3">
+                  <p className="surface-label">Receipt</p>
+                  <p className="mt-2 text-sm font-semibold text-white">{appointment.financial.receiptNumber ?? `Receipt ${appointment.id.slice(-6).toUpperCase()}`}</p>
+                </div>
+                <div className="rounded-[16px] border border-white/8 bg-black/24 p-3">
+                  <p className="surface-label">Paid</p>
+                  <p className="mt-2 text-sm font-semibold text-white">{appointment.financial.paidAt ? formatDateTime(appointment.financial.paidAt) : appointment.financial.latestStatusLabel}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[22px] border border-white/8 bg-white/[0.025] p-4">
+              <p className="surface-label text-[#d7ffab]">Items</p>
+              <div className="mt-4 flex items-center justify-between gap-3 text-sm">
+                <span className="font-semibold text-white">{appointment.display.serviceName}</span>
+                <span className="font-extrabold text-white">{formatMoneyWithCents(appointment.serviceTotal || appointment.totalAmount)}</span>
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-3 border-t border-white/8 pt-3 text-sm text-white/62">
+                <span>Tip</span>
+                <span>{formatMoneyWithCents(appointment.tipAmount)}</span>
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-3 border-t border-white/8 pt-3 text-base">
+                <span className="font-extrabold text-white">Total</span>
+                <span className="font-extrabold text-[#a3ff12]">{formatMoneyWithCents(appointment.grandTotal || appointment.totalAmount)}</span>
+              </div>
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              <ActionButton type="button" variant="secondary" className="min-h-11 px-4" onClick={() => setTransactionNotice("Receipt resend is coming soon.")}>
+                <ReceiptText className="h-4 w-4" />
+                New Receipt
+              </ActionButton>
+              <ActionButton type="button" variant="secondary" className="min-h-11 px-4" onClick={() => setTransactionNotice("Refunds are not available from this screen yet.")}>
+                <FileText className="h-4 w-4" />
+                Issue Refund
+              </ActionButton>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-6 space-y-4">
+            <div className="rounded-[22px] border border-[#a3ff12]/20 bg-[#a3ff12]/[0.045] p-4">
+              <p className="text-2xl font-extrabold text-white">{formatMoneyWithCents(appointment.grandTotal || appointment.totalAmount)} pre-paid</p>
+              <p className="mt-2 text-sm font-semibold text-[#d7ffab]">{serviceComplete ? "Service complete" : isPaid ? "Service not complete" : appointment.financial.latestStatusLabel}</p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-[20px] border border-white/8 bg-white/[0.025] p-4">
+                <p className="surface-label">Client</p>
+                <p className="mt-2 text-base font-extrabold text-white">{appointment.display.clientName}</p>
+              </div>
+              <div className="rounded-[20px] border border-white/8 bg-white/[0.025] p-4">
+                <p className="surface-label">Date & Time</p>
+                <p className="mt-2 text-base font-extrabold text-white">{formatFullDate(appointment.start)}</p>
+                <p className="mt-1 text-sm text-white/58">{formatTimeRange(appointment.start, appointment.end)} · {formatDuration(getAppointmentMinutes(appointment))}</p>
+              </div>
+              <div className="rounded-[20px] border border-white/8 bg-white/[0.025] p-4">
+                <p className="surface-label">Services & Items</p>
+                <p className="mt-2 text-base font-extrabold text-white">{appointment.display.serviceName}</p>
+                <p className="mt-1 text-sm text-white/58">{formatDuration(getAppointmentMinutes(appointment))} · {formatMoneyWithCents(appointment.serviceTotal || appointment.totalAmount)}</p>
+              </div>
+              <div className="rounded-[20px] border border-white/8 bg-white/[0.025] p-4">
+                <p className="surface-label">Location</p>
+                <p className="mt-2 text-base font-extrabold text-white">{appointment.display.locationLabel}</p>
+                <p className="mt-1 text-sm text-white/58">{appointment.chair}</p>
+              </div>
+            </div>
+
+            <div className="rounded-[22px] border border-white/8 bg-white/[0.025] p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="surface-label">Payments</p>
+                  <p className="mt-2 text-base font-extrabold text-white">{cardLabel}</p>
+                  <p className="mt-1 text-sm text-white/58">{formatMoneyWithCents(appointment.financial.capturedAmount || appointment.totalAmount)} paid · {appointment.financial.latestStatusLabel}</p>
+                </div>
+                <ActionButton type="button" variant="secondary" className="min-h-10 px-4" onClick={() => onViewChange("transaction")}>
+                  View Transaction
+                </ActionButton>
+              </div>
+            </div>
+
+            <div className="rounded-[22px] border border-white/8 bg-white/[0.025] p-4">
+              <p className="surface-label">Appointment Notes</p>
+              <p className="mt-2 min-h-12 text-sm leading-6 text-white/62">{appointment.note?.trim() || "No notes yet."}</p>
+            </div>
+
+            {confirmAction ? (
+              <div className="rounded-[22px] border border-rose-300/20 bg-rose-400/[0.06] p-4">
+                <p className="text-base font-extrabold text-white">{confirmAction === "cancel" ? "Cancel this appointment?" : "Mark this client as a no-show?"}</p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <ActionButton type="button" variant="secondary" className="min-h-10 px-4" onClick={() => setConfirmAction(null)}>
+                    Keep appointment
+                  </ActionButton>
+                  <ActionButton
+                    type="button"
+                    className="min-h-10 px-4"
+                    disabled={pendingAction === confirmAction}
+                    onClick={() => void onAction(confirmAction)}
+                  >
+                    {pendingAction === confirmAction
+                      ? "Saving..."
+                      : confirmAction === "cancel"
+                        ? "Cancel appointment"
+                        : "Mark no-show"}
+                  </ActionButton>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              {canCompleteAppointment(appointment) ? (
+                <ActionButton type="button" className="min-h-11 px-4" disabled={pendingAction === "service_complete"} onClick={() => void onAction("service_complete")}>
+                  {pendingAction === "service_complete" ? "Completing..." : "Complete Service"}
+                </ActionButton>
+              ) : null}
+              {canCancelAppointment(appointment) ? (
+                <ActionButton type="button" variant="secondary" className="min-h-11 px-4" disabled={Boolean(pendingAction)} onClick={() => setConfirmAction("cancel")}>
+                  Cancel Appointment
+                </ActionButton>
+              ) : null}
+              {canNoShowAppointment(appointment) ? (
+                <ActionButton type="button" variant="secondary" className="min-h-11 px-4" disabled={Boolean(pendingAction)} onClick={() => setConfirmAction("no_show")}>
+                  Mark as No-Show
+                </ActionButton>
+              ) : null}
+              <ActionButton type="button" variant="secondary" className="min-h-11 px-4" onClick={() => onBookNext(appointment)}>
+                Book Next
+              </ActionButton>
+              <ActionButton type="button" variant="secondary" className="min-h-11 px-4" disabled={isMessagePending} onClick={() => void onMessage(appointment)}>
+                <MessageSquareText className="h-4 w-4" />
+                {isMessagePending ? "Opening..." : "Message"}
+              </ActionButton>
+              <ActionButton type="button" variant="secondary" className="min-h-11 px-4" onClick={onClose}>
+                Back to Calendar
+              </ActionButton>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export type BarberScheduleWorkspaceSurface = "full" | "calendar" | "availability";
 
 export function BarberScheduleWorkspace({
@@ -550,7 +797,7 @@ export function BarberScheduleWorkspace({
     anchorDate: anchorDate || undefined
   });
   const scheduleMutation = useUpdateBarberScheduleMutation();
-  const lifecycleMutation = useBarberLifecycleMutation();
+  const appointmentActionMutation = useBarberLifecycleMutation();
   const createThreadMutation = useCreateMessageThreadMutation();
   const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
   const [workingHoursForm, setWorkingHoursForm] = useState<WorkingHoursFormRow[]>(() => buildWorkingHoursForm([], null));
@@ -558,6 +805,9 @@ export function BarberScheduleWorkspace({
   const [blockedEndsAt, setBlockedEndsAt] = useState("");
   const [blockedReason, setBlockedReason] = useState("");
   const [pendingAppointmentId, setPendingAppointmentId] = useState<string | null>(null);
+  const [pendingDetailAction, setPendingDetailAction] = useState<AppointmentDetailAction | null>(null);
+  const [selectedAppointmentId, setSelectedAppointmentId] = useState<string | null>(null);
+  const [appointmentDetailView, setAppointmentDetailView] = useState<"details" | "transaction">("details");
   const [statusUpdate, setStatusUpdate] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const showCalendar = surface !== "availability";
   const showAvailability = surface !== "calendar";
@@ -638,6 +888,9 @@ export function BarberScheduleWorkspace({
     ?? visibleAppointments.find((appointment) => new Date(appointment.start).getTime() >= Date.now())?.id
     ?? visibleAppointments[0]?.id
     ?? null;
+  const selectedAppointment = selectedAppointmentId
+    ? timelineAppointments.find((appointment) => appointment.id === selectedAppointmentId) ?? null
+    : null;
   const errorMessage = scheduleQuery.error ? getReadableActionError(scheduleQuery.error as BarberApiError) : null;
 
   useEffect(() => {
@@ -746,20 +999,37 @@ export function BarberScheduleWorkspace({
     }
   }
 
-  async function handleLifecycleAction(appointment: BarberOperationalAppointment) {
-    const nextAction = getLifecycleAction(appointment);
-    if (!nextAction) {
+  function handleViewDetails(appointment: BarberOperationalAppointment) {
+    setSelectedAppointmentId(appointment.id);
+    setAppointmentDetailView("details");
+  }
+
+  async function handleAppointmentDetailAction(action: AppointmentDetailAction) {
+    const appointment = selectedAppointment;
+    if (!appointment) {
       return;
     }
 
+    const successMessage = action === "service_complete"
+      ? "Service completed. Payout eligibility was refreshed."
+      : action === "cancel"
+        ? "Appointment canceled."
+        : "Appointment marked as no-show.";
+
     setStatusUpdate(null);
     setPendingAppointmentId(appointment.id);
+    setPendingDetailAction(action);
 
     try {
-      const result = await lifecycleMutation.mutateAsync({
+      const result = await appointmentActionMutation.mutateAsync({
         appointmentId: appointment.id,
         expectedRevision: appointment.revision,
-        action: nextAction.action
+        action,
+        reason: action === "cancel"
+          ? "Canceled by barber"
+          : action === "no_show"
+            ? "Marked no-show by barber"
+            : undefined
       });
       let refetchSucceeded = false;
       try {
@@ -767,7 +1037,7 @@ export function BarberScheduleWorkspace({
         refetchSucceeded = true;
       } catch {}
       console.info("[barber-calendar] appointment_action_result", {
-        action: nextAction.action,
+        action,
         appointmentId: appointment.id,
         ok: true,
         previousStatus: appointment.status,
@@ -775,10 +1045,10 @@ export function BarberScheduleWorkspace({
         refetchStarted: true,
         refetchSucceeded
       });
-      setStatusUpdate({ tone: "success", message: nextAction.successMessage });
-    } catch (error) {
+      setStatusUpdate({ tone: "success", message: successMessage });
+    } catch {
       console.warn("[barber-calendar] appointment_action_result", {
-        action: nextAction.action,
+        action,
         appointmentId: appointment.id,
         ok: false,
         previousStatus: appointment.status,
@@ -786,9 +1056,10 @@ export function BarberScheduleWorkspace({
         refetchStarted: false,
         refetchSucceeded: false
       });
-      setStatusUpdate({ tone: "error", message: getReadableActionError(error as BarberApiError) });
+      setStatusUpdate({ tone: "error", message: "Action could not be completed. Refresh and try again." });
     } finally {
       setPendingAppointmentId(null);
+      setPendingDetailAction(null);
     }
   }
 
@@ -821,8 +1092,30 @@ export function BarberScheduleWorkspace({
     router.push(`/booking/new?${params.toString()}`);
   }
 
+  function handleBookNext() {
+    setStatusUpdate({ tone: "success", message: "Book Next is coming soon." });
+    setSelectedAppointmentId(null);
+    setAppointmentDetailView("details");
+  }
+
   return (
     <div className="space-y-6" data-testid="barber-schedule-workspace">
+      {selectedAppointment ? (
+        <AppointmentDetailsModal
+          appointment={selectedAppointment}
+          view={appointmentDetailView}
+          pendingAction={pendingAppointmentId === selectedAppointment.id ? pendingDetailAction : null}
+          onViewChange={setAppointmentDetailView}
+          onClose={() => {
+            setSelectedAppointmentId(null);
+            setAppointmentDetailView("details");
+          }}
+          onAction={handleAppointmentDetailAction}
+          onMessage={handleMessage}
+          onBookNext={handleBookNext}
+          isMessagePending={createThreadMutation.isPending}
+        />
+      ) : null}
       {!showCalendar && statusUpdate ? <FeedbackBanner tone={statusUpdate.tone} message={statusUpdate.message} /> : null}
       {!showCalendar && errorMessage ? <FeedbackBanner tone="error" message={errorMessage} /> : null}
 
@@ -1042,9 +1335,8 @@ export function BarberScheduleWorkspace({
                         appointment={entry.appointment}
                         viewMode={scheduleView}
                         highlighted={entry.appointment.id === currentOrNextAppointmentId}
-                        onLifecycleAction={handleLifecycleAction}
+                        onViewDetails={handleViewDetails}
                         onMessage={handleMessage}
-                        isLifecyclePending={lifecycleMutation.isPending && pendingAppointmentId === entry.appointment.id}
                         isMessagePending={createThreadMutation.isPending}
                       />
                     ) : (
@@ -1070,9 +1362,8 @@ export function BarberScheduleWorkspace({
                   appointment={entry.appointment}
                   viewMode={scheduleView}
                   highlighted={entry.appointment.id === currentOrNextAppointmentId}
-                  onLifecycleAction={handleLifecycleAction}
+                  onViewDetails={handleViewDetails}
                   onMessage={handleMessage}
-                  isLifecyclePending={lifecycleMutation.isPending && pendingAppointmentId === entry.appointment.id}
                   isMessagePending={createThreadMutation.isPending}
                 />
               ) : (

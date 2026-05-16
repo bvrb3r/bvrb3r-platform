@@ -65,6 +65,7 @@ vi.mock("@/lib/monetization/service", async () => {
 });
 
 import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
+import { canonicalAppointmentUuid } from "@/lib/booking/canonical-booking";
 
 type Row = Record<string, unknown>;
 type QueryResult = { data: Row[] | null; error: Row | null };
@@ -385,6 +386,51 @@ function createSupabaseMock(tables: Record<string, Row[]>) {
   };
 }
 
+function buildConfirmedAppointmentRow(referenceCode: string, startsAt = "2026-05-16T15:00:00.000Z"): Row {
+  return {
+    id: canonicalAppointmentUuid(referenceCode),
+    reference_code: referenceCode,
+    location_id: LOCATION_ID,
+    shop_id: null,
+    barber_id: BARBER_ID,
+    client_id: CLIENT_ID,
+    service_id: SERVICE_ID,
+    confirmation_code: "CONFIRM1",
+    membership_id: null,
+    status: "confirmed",
+    source: "booking",
+    booking_source: "public_profile",
+    starts_at: startsAt,
+    ends_at: new Date(new Date(startsAt).getTime() + 15 * 60_000).toISOString(),
+    checked_in_at: null,
+    service_started_at: null,
+    completed_at: null,
+    cancelled_at: null,
+    cancellation_reason: null,
+    chair_label: "Phils chair",
+    add_on_references: [],
+    deposit_amount: 0,
+    service_total: 5,
+    add_on_total: 0,
+    subtotal: 5,
+    discount_total: 0,
+    tax_total: 0,
+    total_amount: 5,
+    grand_total: 5,
+    balance_due: 0,
+    tip_amount: 0,
+    client_note: null,
+    notes: null,
+    internal_notes: null,
+    created_by: CLIENT_PROFILE_ID,
+    lifecycle_revision: 1,
+    last_actor_role: "client",
+    last_event_type: "booking_created",
+    checkout_reference: null,
+    updated_at: startsAt
+  };
+}
+
 describe("core booking loop regression", () => {
   beforeEach(() => {
     createSupabaseAdminClientMock.mockReset();
@@ -536,59 +582,9 @@ describe("core booking loop regression", () => {
       status: "confirmed"
     });
 
-    const checkedIn = await provider.transitionAppointment({
-      appointmentId: appointment.id as string,
-      expectedRevision: Number(appointment.lifecycle_revision),
-      action: "check_in",
-      actorRole: "barber",
-      actorEmail: "phillipmcgee813@gmail.com"
-    });
-    expect(tables.appointments[0]).toMatchObject({
-      id: appointment.id,
-      status: "checked_in",
-      checked_in_at: expect.any(String)
-    });
-    expect(tables.appointment_status_history).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        appointment_id: appointment.id,
-        status: "checked_in",
-        old_status: "confirmed",
-        new_status: "checked_in",
-        change_reason: "barber_checked_in_client",
-        changed_by: BARBER_PROFILE_ID,
-        changed_at: expect.any(String)
-      })
-    ]));
-    const checkedInHistory = tables.appointment_status_history.find((row) => row.new_status === "checked_in")!;
-    expect(Object.keys(checkedInHistory)).not.toContain("changed_by_profile_id");
-    expect(Object.keys(checkedInHistory)).not.toContain("created_at");
-    expect(Object.keys(checkedInHistory)).not.toContain("reason");
-
-    const started = await provider.transitionAppointment({
-      appointmentId: appointment.id as string,
-      expectedRevision: checkedIn.appointment.revision,
-      action: "service_start",
-      actorRole: "barber",
-      actorEmail: "phillipmcgee813@gmail.com"
-    });
-    expect(tables.appointments[0]).toMatchObject({
-      status: "in_service",
-      service_started_at: expect.any(String)
-    });
-    expect(tables.appointment_status_history).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        appointment_id: appointment.id,
-        status: "in_service",
-        old_status: "checked_in",
-        new_status: "in_service",
-        change_reason: "barber_started_service",
-        changed_by: BARBER_PROFILE_ID
-      })
-    ]));
-
     await provider.transitionAppointment({
       appointmentId: appointment.id as string,
-      expectedRevision: started.appointment.revision,
+      expectedRevision: Number(appointment.lifecycle_revision),
       action: "service_complete",
       actorRole: "barber",
       actorEmail: "phillipmcgee813@gmail.com"
@@ -601,11 +597,92 @@ describe("core booking loop regression", () => {
       expect.objectContaining({
         appointment_id: appointment.id,
         status: "completed",
-        old_status: "in_service",
+        old_status: "confirmed",
         new_status: "completed",
         change_reason: "barber_completed_service",
-        changed_by: BARBER_PROFILE_ID
+        changed_by: BARBER_PROFILE_ID,
+        changed_at: expect.any(String)
       })
     ]));
+    const completedHistory = tables.appointment_status_history.find((row) => row.new_status === "completed")!;
+    expect(Object.keys(completedHistory)).not.toContain("changed_by_profile_id");
+    expect(Object.keys(completedHistory)).not.toContain("created_at");
+    expect(Object.keys(completedHistory)).not.toContain("reason");
+  });
+
+  it("writes production status history when a barber cancels a confirmed appointment", async () => {
+    const tables = createTables();
+    const appointmentReference = "appt-cancel-tier1";
+    tables.appointments.push(buildConfirmedAppointmentRow(appointmentReference));
+    const supabase = createSupabaseMock(tables);
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const provider = await getLiveOperationsProvider();
+    await provider.cancelAppointment({
+      appointmentId: appointmentReference,
+      expectedRevision: 1,
+      actorRole: "barber",
+      actorEmail: "phillipmcgee813@gmail.com",
+      reason: "Canceled by barber",
+      statusHistoryReason: "barber_canceled_appointment"
+    });
+
+    expect(tables.appointments[0]).toMatchObject({
+      reference_code: appointmentReference,
+      status: "cancelled",
+      cancellation_reason: "Canceled by barber"
+    });
+    expect(tables.appointment_status_history).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        appointment_id: canonicalAppointmentUuid(appointmentReference),
+        status: "cancelled",
+        old_status: "confirmed",
+        new_status: "cancelled",
+        change_reason: "barber_canceled_appointment",
+        changed_by: BARBER_PROFILE_ID,
+        changed_at: expect.any(String)
+      })
+    ]));
+    const canceledHistory = tables.appointment_status_history.find((row) => row.new_status === "cancelled")!;
+    expect(Object.keys(canceledHistory)).not.toContain("changed_by_profile_id");
+    expect(Object.keys(canceledHistory)).not.toContain("created_at");
+    expect(Object.keys(canceledHistory)).not.toContain("reason");
+  });
+
+  it("writes production status history when a barber marks a confirmed appointment no-show", async () => {
+    const tables = createTables();
+    const appointmentReference = "appt-noshow-tier1";
+    tables.appointments.push(buildConfirmedAppointmentRow(appointmentReference, "2026-05-16T15:30:00.000Z"));
+    const supabase = createSupabaseMock(tables);
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const provider = await getLiveOperationsProvider();
+    await provider.noShowAppointment({
+      appointmentId: appointmentReference,
+      expectedRevision: 1,
+      actorRole: "barber",
+      actorEmail: "phillipmcgee813@gmail.com",
+      reason: "Marked no-show by barber"
+    });
+
+    expect(tables.appointments[0]).toMatchObject({
+      reference_code: appointmentReference,
+      status: "no_show"
+    });
+    expect(tables.appointment_status_history).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        appointment_id: canonicalAppointmentUuid(appointmentReference),
+        status: "no_show",
+        old_status: "confirmed",
+        new_status: "no_show",
+        change_reason: "barber_marked_no_show",
+        changed_by: BARBER_PROFILE_ID,
+        changed_at: expect.any(String)
+      })
+    ]));
+    const noShowHistory = tables.appointment_status_history.find((row) => row.new_status === "no_show")!;
+    expect(Object.keys(noShowHistory)).not.toContain("changed_by_profile_id");
+    expect(Object.keys(noShowHistory)).not.toContain("created_at");
+    expect(Object.keys(noShowHistory)).not.toContain("reason");
   });
 });

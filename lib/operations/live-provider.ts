@@ -53,12 +53,14 @@ import {
   LiveOperationsSnapshot,
   LiveOperationsViewer,
   LiveAppointmentRecord,
+  NoShowAppointmentMutationInput,
   RescheduleAppointmentMutationInput,
   createEmptyLiveOperationsSnapshot,
   bookAppointmentInSnapshot,
   cancelAppointmentInSnapshot,
   checkoutAppointmentInSnapshot,
   createInitialLiveOperationsSnapshot,
+  noShowAppointmentInSnapshot,
   rescheduleAppointmentInSnapshot,
   scopeLiveOperationsSnapshot,
   transitionAppointmentInSnapshot
@@ -1268,6 +1270,7 @@ interface LiveOperationsProvider {
   createBooking(input: BookingMutationInput): Promise<LiveMutationSuccess>;
   rescheduleAppointment(input: RescheduleAppointmentMutationInput): Promise<LiveMutationSuccess>;
   cancelAppointment(input: CancelAppointmentMutationInput): Promise<LiveMutationSuccess>;
+  noShowAppointment(input: NoShowAppointmentMutationInput): Promise<LiveMutationSuccess>;
   transitionAppointment(input: AppointmentLifecycleMutationInput): Promise<LiveMutationSuccess>;
   checkoutAppointment(input: CheckoutMutationInput): Promise<LiveMutationSuccess>;
 }
@@ -2057,6 +2060,11 @@ function createDemoProvider(): LiveOperationsProvider {
       setDemoSnapshot(result.snapshot);
       return result;
     },
+    async noShowAppointment(input) {
+      const result = noShowAppointmentInSnapshot(getDemoSnapshot(), input);
+      setDemoSnapshot(result.snapshot);
+      return result;
+    },
     async transitionAppointment(input) {
       const result = transitionAppointmentInSnapshot(getDemoSnapshot(), input);
       setDemoSnapshot(result.snapshot);
@@ -2092,6 +2100,9 @@ function createUnavailableSupabaseProvider(): LiveOperationsProvider {
       return unavailable();
     },
     async cancelAppointment() {
+      return unavailable();
+    },
+    async noShowAppointment() {
       return unavailable();
     },
     async transitionAppointment() {
@@ -2968,20 +2979,19 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
     },
     async cancelAppointment(input) {
       const fullSnapshot = await readFullSupabaseSnapshot(supabase);
-      const previousAppointment = fullSnapshot.appointments.find((entry) => entry.id === input.appointmentId);
-      const result = cancelAppointmentInSnapshot(fullSnapshot, input);
-      const updateResult = await supabase
-        .from("appointments")
-        .update(appointmentUpsertRow(result.appointment))
-        .eq("reference_code", input.appointmentId)
-        .eq("lifecycle_revision", input.expectedRevision)
-        .select("reference_code")
-        .maybeSingle();
+      const previousAppointment = fullSnapshot.appointments.find((entry) => matchesLiveAppointmentIdentifier(entry, input.appointmentId));
+      const mutationInput = previousAppointment
+        ? { ...input, appointmentId: previousAppointment.id }
+        : input;
+      const result = cancelAppointmentInSnapshot(fullSnapshot, mutationInput);
+      const updatedRow = await updateAppointmentForLifecycleTransition(
+        supabase,
+        result.appointment,
+        previousAppointment?.id ?? input.appointmentId,
+        input.expectedRevision
+      );
 
-      if (updateResult.error) {
-        throw updateResult.error;
-      }
-      if (!updateResult.data) {
+      if (!updatedRow) {
         throw new LiveOperationConflictError(
           `Appointment ${input.appointmentId} changed before cancellation completed.`,
           await getLatestAppointmentOrThrow(supabase, input.appointmentId),
@@ -2993,7 +3003,7 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
       await syncAppointmentStatusHistory(supabase, result.appointment, {
         previousStatus: previousAppointment?.status,
         actorProfileId,
-        reason: input.reason ?? "appointment_cancelled"
+        reason: input.statusHistoryReason ?? input.reason ?? "appointment_cancelled"
       });
 
       const paymentUpdate = await supabase
@@ -3009,6 +3019,40 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
       await voidPromotionRedemptionsForAppointment(supabase, result.appointment.id, result.appointment.updatedAt);
       await persistArtifactsForAppointment(supabase, result.snapshot, result.appointment, {
         activityType: "cancel",
+        actorRole: input.actorRole
+      });
+      return result;
+    },
+    async noShowAppointment(input) {
+      const fullSnapshot = await readFullSupabaseSnapshot(supabase);
+      const previousAppointment = fullSnapshot.appointments.find((entry) => matchesLiveAppointmentIdentifier(entry, input.appointmentId));
+      const mutationInput = previousAppointment
+        ? { ...input, appointmentId: previousAppointment.id }
+        : input;
+      const result = noShowAppointmentInSnapshot(fullSnapshot, mutationInput);
+      const updatedRow = await updateAppointmentForLifecycleTransition(
+        supabase,
+        result.appointment,
+        previousAppointment?.id ?? input.appointmentId,
+        input.expectedRevision
+      );
+
+      if (!updatedRow) {
+        throw new LiveOperationConflictError(
+          `Appointment ${input.appointmentId} changed before no-show completed.`,
+          await getLatestAppointmentOrThrow(supabase, input.appointmentId),
+          "stale_revision"
+        );
+      }
+
+      const actorProfileId = await resolveProfileIdByEmail(supabase, input.actorEmail);
+      await syncAppointmentStatusHistory(supabase, result.appointment, {
+        previousStatus: previousAppointment?.status,
+        actorProfileId,
+        reason: "barber_marked_no_show"
+      });
+      await persistArtifactsForAppointment(supabase, result.snapshot, result.appointment, {
+        activityType: "no_show",
         actorRole: input.actorRole
       });
       return result;
@@ -3070,6 +3114,7 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
         await completePromotionRedemptionsForAppointment(supabase, result.appointment.id, result.appointment.updatedAt);
         try {
           const payoutEvaluation = await evaluatePayoutEligibilityForAppointment(supabase, canonicalAppointmentUuid(result.appointment.id));
+          result.routing = payoutEvaluation;
           console.log("[barber-appointment] status_transition", {
             appointmentId: canonicalAppointmentUuid(result.appointment.id),
             oldStatus: previousAppointment?.status ?? null,

@@ -18,7 +18,7 @@ export interface CheckoutRecord {
 export interface FlowActivity {
   id: string;
   appointmentId: string;
-  type: "booking" | "reschedule" | "check_in" | "service_start" | "service_complete" | "checkout" | "cancel";
+  type: "booking" | "reschedule" | "check_in" | "service_start" | "service_complete" | "checkout" | "cancel" | "no_show";
   actorRole: string;
   title: string;
   detail: string;

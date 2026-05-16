@@ -72,10 +72,17 @@ type LocationRow = {
 
 type PaymentRow = {
   appointment_id: string | null;
+  payment_method_id?: string | null;
   payment_status: string;
   payment_type: string;
   amount: number | string;
   created_at: string;
+};
+
+type PaymentMethodRow = {
+  id: string;
+  brand: string | null;
+  last4: string | null;
 };
 
 type TipRow = {
@@ -138,6 +145,10 @@ export type BarberPaymentSummaryView = {
   refundedAmount: number;
   tipAmount: number;
   outstandingBalance: number;
+  paymentMethodBrand?: string | null;
+  paymentMethodLast4?: string | null;
+  receiptNumber?: string | null;
+  paidAt?: string | null;
 };
 
 export type BarberOperationalAppointmentView = BaseBarberAppointment & {
@@ -731,7 +742,11 @@ function buildFallbackPaymentSummary(appointment: LiveAppointmentRecord): Barber
     capturedAmount,
     refundedAmount: appointment.status === "refunded" ? appointment.totalAmount : 0,
     tipAmount: appointment.tipAmount,
-    outstandingBalance: appointment.balanceDue
+    outstandingBalance: appointment.balanceDue,
+    paymentMethodBrand: null,
+    paymentMethodLast4: null,
+    receiptNumber: null,
+    paidAt: null
   };
 }
 
@@ -757,7 +772,7 @@ async function readPaymentSummaryMap(
   const [paymentsResult, tipsResult] = await Promise.all([
     supabase
       .from("payments")
-      .select("appointment_id, payment_status, payment_type, amount, created_at")
+      .select("appointment_id, payment_method_id, payment_status, payment_type, amount, created_at")
       .in("appointment_id", appointmentIds)
       .order("created_at", { ascending: false }),
     supabase
@@ -773,6 +788,24 @@ async function readPaymentSummaryMap(
 
   const payments = (paymentsResult.data ?? []) as PaymentRow[];
   const tips = (tipsResult.data ?? []) as TipRow[];
+  const paymentMethodIds = Array.from(new Set(payments.map((payment) => payment.payment_method_id).filter((value): value is string => Boolean(value))));
+  const paymentMethodsById = new Map<string, PaymentMethodRow>();
+  if (paymentMethodIds.length) {
+    const paymentMethodsResult = await supabase
+      .from("payment_methods")
+      .select("id, brand, last4")
+      .in("id", paymentMethodIds);
+    if (paymentMethodsResult.error) {
+      console.warn("[barber-calendar] payment_method_label_read_failed", {
+        methodCount: paymentMethodIds.length,
+        errorMessage: paymentMethodsResult.error.message
+      });
+    } else {
+      for (const row of (paymentMethodsResult.data ?? []) as PaymentMethodRow[]) {
+        paymentMethodsById.set(row.id, row);
+      }
+    }
+  }
   const groupedPayments = new Map<string, PaymentRow[]>();
   const groupedTips = new Map<string, TipRow[]>();
 
@@ -815,7 +848,11 @@ async function readPaymentSummaryMap(
       capturedAmount,
       refundedAmount,
       tipAmount,
-      outstandingBalance: appointment.balanceDue
+      outstandingBalance: appointment.balanceDue,
+      paymentMethodBrand: latestBooking?.payment_method_id ? paymentMethodsById.get(latestBooking.payment_method_id)?.brand ?? null : null,
+      paymentMethodLast4: latestBooking?.payment_method_id ? paymentMethodsById.get(latestBooking.payment_method_id)?.last4 ?? null : null,
+      receiptNumber: latestBooking ? `Receipt ${appointment.id.slice(-6).toUpperCase()}` : null,
+      paidAt: latestBooking?.created_at ?? null
     });
   }
 

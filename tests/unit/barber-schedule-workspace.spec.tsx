@@ -76,6 +76,15 @@ function buildSchedulePayload() {
 }
 
 function buildAppointment(status = "confirmed") {
+  const statusLabel = status === "checked_in"
+    ? "Checked in"
+    : status === "completed"
+      ? "Completed"
+      : status === "no_show"
+        ? "No-show"
+        : status === "cancelled"
+          ? "Canceled"
+          : "Confirmed";
   return {
     id: "172b11d3-9319-536c-adb5-f548ae8fc775",
     locationId: "loc-ybor",
@@ -108,7 +117,7 @@ function buildAppointment(status = "confirmed") {
       serviceName: "test cut",
       locationName: "Phils chair",
       locationLabel: "Phils chair",
-      statusLabel: status === "checked_in" ? "Checked in" : "Confirmed",
+      statusLabel,
       lifecycleDetail: "Ready"
     },
     serviceSnapshot: null,
@@ -119,7 +128,11 @@ function buildAppointment(status = "confirmed") {
       capturedAmount: 5,
       refundedAmount: 0,
       tipAmount: 0,
-      outstandingBalance: 0
+      outstandingBalance: 0,
+      paymentMethodBrand: "visa",
+      paymentMethodLast4: "4242",
+      receiptNumber: "Receipt 4242",
+      paidAt: "2026-04-27T13:55:00.000Z"
     }
   };
 }
@@ -206,7 +219,38 @@ describe("BarberScheduleWorkspace", () => {
     expect(pushMock).toHaveBeenCalledWith(expect.stringContaining("appointmentTime="));
   });
 
-  it("updates the calendar action after a successful check-in", async () => {
+  it("opens appointment details from the calendar card", async () => {
+    const payload = {
+      ...buildSchedulePayload(),
+      timeline: {
+        ...buildSchedulePayload().timeline,
+        appointments: [buildAppointment("confirmed")]
+      }
+    };
+    useBarberScheduleQueryMock.mockReturnValue({
+      data: payload,
+      isLoading: false,
+      error: null,
+      refetch: vi.fn()
+    });
+
+    render(<BarberScheduleWorkspace barberName="Blaze King" surface="calendar" />);
+
+    expect(screen.queryByRole("button", { name: /Check in/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /View Details/i }));
+
+    expect(await screen.findByText("Appointment Details")).toBeInTheDocument();
+    expect(screen.getAllByText("Phillip mcgee")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("test cut")[0]).toBeInTheDocument();
+    expect(screen.getByText("Visa 4242")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /View Transaction/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Complete Service/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Cancel Appointment/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Mark as No-Show/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Book Next/i })).toBeInTheDocument();
+  });
+
+  it("completes service directly from a confirmed appointment", async () => {
     let payload = {
       ...buildSchedulePayload(),
       timeline: {
@@ -219,7 +263,7 @@ describe("BarberScheduleWorkspace", () => {
         ...buildSchedulePayload(),
         timeline: {
           ...buildSchedulePayload().timeline,
-          appointments: [buildAppointment("checked_in")]
+          appointments: [buildAppointment("completed")]
         }
       };
       return { data: payload };
@@ -229,10 +273,10 @@ describe("BarberScheduleWorkspace", () => {
         ...buildSchedulePayload(),
         timeline: {
           ...buildSchedulePayload().timeline,
-          appointments: [buildAppointment("checked_in")]
+          appointments: [buildAppointment("completed")]
         }
       };
-      return { ok: true, appointment: buildAppointment("checked_in") };
+      return { ok: true, appointment: buildAppointment("completed") };
     });
     useBarberScheduleQueryMock.mockImplementation(() => ({
       data: payload,
@@ -247,18 +291,20 @@ describe("BarberScheduleWorkspace", () => {
 
     render(<BarberScheduleWorkspace barberName="Blaze King" surface="calendar" />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Check in/i }));
+    fireEvent.click(screen.getByRole("button", { name: /View Details/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /Complete Service/i }));
 
     await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith({
       appointmentId: "172b11d3-9319-536c-adb5-f548ae8fc775",
       expectedRevision: 1,
-      action: "check_in"
+      action: "service_complete",
+      reason: undefined
     }));
     await waitFor(() => expect(refetchMock).toHaveBeenCalled());
-    expect(await screen.findByRole("button", { name: /Start service/i })).toBeInTheDocument();
+    expect(await screen.findByText("Service completed. Payout eligibility was refreshed.")).toBeInTheDocument();
   });
 
-  it("shows a visible error when check-in fails", async () => {
+  it("shows a visible error when a details action fails", async () => {
     const payload = {
       ...buildSchedulePayload(),
       timeline: {
@@ -279,8 +325,101 @@ describe("BarberScheduleWorkspace", () => {
 
     render(<BarberScheduleWorkspace barberName="Blaze King" surface="calendar" />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Check in/i }));
+    fireEvent.click(screen.getByRole("button", { name: /View Details/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /Complete Service/i }));
 
-    expect(await screen.findByText("Check-in could not be completed. Refresh and try again.")).toBeInTheDocument();
+    expect(await screen.findByText("Action could not be completed. Refresh and try again.")).toBeInTheDocument();
+  });
+
+  it("opens transaction details with safe receipt and refund placeholders", async () => {
+    const payload = {
+      ...buildSchedulePayload(),
+      timeline: {
+        ...buildSchedulePayload().timeline,
+        appointments: [buildAppointment("confirmed")]
+      }
+    };
+    useBarberScheduleQueryMock.mockReturnValue({
+      data: payload,
+      isLoading: false,
+      error: null,
+      refetch: vi.fn()
+    });
+
+    render(<BarberScheduleWorkspace barberName="Blaze King" surface="calendar" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /View Details/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /View Transaction/i }));
+
+    expect(await screen.findByText("Transaction Details")).toBeInTheDocument();
+    expect(screen.getByText("Card Payment")).toBeInTheDocument();
+    expect(screen.getByText(/Visa 4242/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /New Receipt/i }));
+    expect(await screen.findByText("Receipt resend is coming soon.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Issue Refund/i }));
+    expect(await screen.findByText("Refunds are not available from this screen yet.")).toBeInTheDocument();
+  });
+
+  it("confirms cancel from details", async () => {
+    const payload = {
+      ...buildSchedulePayload(),
+      timeline: {
+        ...buildSchedulePayload().timeline,
+        appointments: [buildAppointment("confirmed")]
+      }
+    };
+    const mutateAsync = vi.fn(async (input: { action: string }) => ({ ok: true, appointment: buildAppointment(input.action === "cancel" ? "cancelled" : "no_show") }));
+    useBarberScheduleQueryMock.mockReturnValue({
+      data: payload,
+      isLoading: false,
+      error: null,
+      refetch: vi.fn()
+    });
+    useBarberLifecycleMutationMock.mockReturnValue({
+      mutateAsync,
+      isPending: false
+    });
+
+    render(<BarberScheduleWorkspace barberName="Blaze King" surface="calendar" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /View Details/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /Cancel Appointment/i }));
+    const cancelButtons = screen.getAllByRole("button", { name: /^Cancel appointment$/i });
+    fireEvent.click(cancelButtons[0]);
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({
+      action: "cancel",
+      reason: "Canceled by barber"
+    })));
+  });
+
+  it("confirms no-show from details", async () => {
+    const payload = {
+      ...buildSchedulePayload(),
+      timeline: {
+        ...buildSchedulePayload().timeline,
+        appointments: [buildAppointment("confirmed")]
+      }
+    };
+    const mutateAsync = vi.fn(async () => ({ ok: true, appointment: buildAppointment("no_show") }));
+    useBarberScheduleQueryMock.mockReturnValue({
+      data: payload,
+      isLoading: false,
+      error: null,
+      refetch: vi.fn()
+    });
+    useBarberLifecycleMutationMock.mockReturnValue({
+      mutateAsync,
+      isPending: false
+    });
+
+    render(<BarberScheduleWorkspace barberName="Blaze King" surface="calendar" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /View Details/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /Mark as No-Show/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Mark no-show$/i }));
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({
+      action: "no_show",
+      reason: "Marked no-show by barber"
+    })));
   });
 });

@@ -98,6 +98,15 @@ export interface CancelAppointmentMutationInput {
   actorRole: Extract<LiveActorRole, "owner" | "manager" | "front_desk" | "client" | "barber">;
   actorEmail?: string;
   reason?: string;
+  statusHistoryReason?: string;
+}
+
+export interface NoShowAppointmentMutationInput {
+  appointmentId: string;
+  expectedRevision: number;
+  actorRole: Extract<LiveActorRole, "owner" | "manager" | "front_desk" | "barber">;
+  actorEmail?: string;
+  reason?: string;
 }
 
 export interface RescheduleAppointmentMutationInput {
@@ -112,6 +121,16 @@ export interface RescheduleAppointmentMutationInput {
 export interface LiveMutationSuccess {
   appointment: LiveAppointmentRecord;
   snapshot: LiveOperationsSnapshot;
+  routing?: {
+    appointmentId: string;
+    paymentId: string | null;
+    routingRecordId: string | null;
+    relationshipType: string;
+    status: string;
+    barberAmountCents: number;
+    shopAmountCents: number;
+    platformAmountCents: number;
+  };
 }
 
 export class LiveOperationConflictError extends Error {
@@ -419,6 +438,16 @@ function assertCancelable(appointment: LiveAppointmentRecord) {
   }
 }
 
+function assertNoShowable(appointment: LiveAppointmentRecord) {
+  if (appointment.status !== "confirmed" && appointment.status !== "checked_in") {
+    throw new LiveOperationConflictError(
+      `Appointment ${appointment.id} is ${appointment.status.replaceAll("_", " ")} and cannot be marked no-show.`,
+      appointment,
+      "invalid_transition"
+    );
+  }
+}
+
 function assertReschedulable(appointment: LiveAppointmentRecord) {
   if (!isScheduledAppointmentStatus(appointment.status)) {
     throw new LiveOperationConflictError(
@@ -432,7 +461,7 @@ function assertReschedulable(appointment: LiveAppointmentRecord) {
 function createMutationActivity(
   appointment: LiveAppointmentRecord,
   actorRole: LiveActorRole,
-  action: AppointmentLifecycleAction | "booking" | "reschedule" | "checkout" | "cancel",
+  action: AppointmentLifecycleAction | "booking" | "reschedule" | "checkout" | "cancel" | "no_show",
   createdAt: string,
   amountCollected = 0,
   tipAmount = 0
@@ -500,6 +529,15 @@ function createMutationActivity(
         `${appointment.id} was cancelled before service began`,
         createdAt,
         "Appointment cancelled"
+      );
+    case "no_show":
+      return createWorkflowActivity(
+        appointment,
+        actorRole,
+        "no_show",
+        `${appointment.id} was marked no-show`,
+        createdAt,
+        "Appointment marked no-show"
       );
     default:
       return createWorkflowActivity(appointment, actorRole, "booking", `${appointment.id} updated`, createdAt, "Workflow updated");
@@ -957,6 +995,44 @@ export function cancelAppointmentInSnapshot(snapshot: LiveOperationsSnapshot, in
     lastEventType: "cancel"
   };
   const activity = createMutationActivity(nextAppointment, input.actorRole, "cancel", now);
+  const nextSnapshot = applyPersistenceArtifacts(
+    {
+      ...snapshot,
+      fetchedAt: now,
+      appointments: sortAppointments(
+        snapshot.appointments.map((entry) => (entry.id === nextAppointment.id ? nextAppointment : entry))
+      )
+    },
+    nextAppointment,
+    activity
+  );
+
+  return {
+    appointment: nextAppointment,
+    snapshot: nextSnapshot
+  };
+}
+
+export function noShowAppointmentInSnapshot(snapshot: LiveOperationsSnapshot, input: NoShowAppointmentMutationInput): LiveMutationSuccess {
+  const appointment = snapshot.appointments.find((entry) => entry.id === input.appointmentId);
+  if (!appointment) {
+    throw new Error(`Appointment ${input.appointmentId} was not found.`);
+  }
+
+  assertRevision(appointment, input.expectedRevision);
+  assertNoShowable(appointment);
+
+  const now = new Date().toISOString();
+  const nextAppointment: LiveAppointmentRecord = {
+    ...appointment,
+    status: "no_show",
+    revision: appointment.revision + 1,
+    updatedAt: now,
+    note: input.reason ? `No-show: ${input.reason}` : "Client marked no-show",
+    lastActorRole: input.actorRole,
+    lastEventType: "no_show"
+  };
+  const activity = createMutationActivity(nextAppointment, input.actorRole, "no_show", now);
   const nextSnapshot = applyPersistenceArtifacts(
     {
       ...snapshot,

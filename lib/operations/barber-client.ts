@@ -59,6 +59,10 @@ export type BarberOperationalAppointment = BarberDashboardAppointment & {
     refundedAmount: number;
     tipAmount: number;
     outstandingBalance: number;
+    paymentMethodBrand?: string | null;
+    paymentMethodLast4?: string | null;
+    receiptNumber?: string | null;
+    paidAt?: string | null;
   };
 };
 
@@ -878,23 +882,29 @@ export function useBarberLifecycleMutation() {
     mutationFn: ({
       appointmentId,
       expectedRevision,
-      action
+      action,
+      reason
     }: {
       appointmentId: string;
       expectedRevision: number;
-      action: "check_in" | "service_start" | "service_complete";
+      action: "check_in" | "service_start" | "service_complete" | "cancel" | "no_show";
+      reason?: string;
     }) =>
       runGuardedAction(`barber:lifecycle:${action}:${appointmentId}:${expectedRevision}`, () => {
-      const route = action === "check_in"
-        ? `/api/barber/appointments/${appointmentId}/check-in`
-        : action === "service_start"
-          ? `/api/barber/appointments/${appointmentId}/start`
-          : `/api/barber/appointments/${appointmentId}/complete`;
+        const route = action === "check_in"
+          ? `/api/barber/appointments/${appointmentId}/check-in`
+          : action === "service_start"
+            ? `/api/barber/appointments/${appointmentId}/start`
+            : action === "service_complete"
+              ? `/api/barber/appointments/${appointmentId}/complete`
+              : action === "cancel"
+                ? `/api/barber/appointments/${appointmentId}/cancel`
+                : `/api/barber/appointments/${appointmentId}/no-show`;
 
-      return requestJson<{ appointment: LiveAppointmentRecord }>(route, {
-        method: "POST",
-        body: JSON.stringify({ expectedRevision })
-      });
+        return requestJson<{ appointment: LiveAppointmentRecord }>(route, {
+          method: "POST",
+          body: JSON.stringify({ expectedRevision, reason })
+        });
       }),
     onSuccess: async ({ appointment }) => {
       queryClient.setQueryData<BarberDashboardResponse | undefined>(["barber-dashboard"], (current) => {
