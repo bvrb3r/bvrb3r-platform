@@ -26,20 +26,33 @@ function clean(value?: string | null) {
   return value?.trim() || "";
 }
 
+function isInternalPublicReference(value: string) {
+  return /^(barber|client|independent-barber|srv)-/i.test(value);
+}
+
+function cleanDisplayName(value?: string | null) {
+  const cleaned = clean(value);
+  return cleaned && !isInternalPublicReference(cleaned) ? cleaned : "";
+}
+
 export function normalizePublicBarberHandle(value?: string | null) {
   return clean(value).replace(/^@+/, "");
 }
 
 export function getClientFacingBarberName(barber: ClientFacingBarberIdentity) {
-  return normalizePublicBarberHandle(barber.publicUsername)
-    || normalizePublicBarberHandle(barber.username)
-    || normalizePublicBarberHandle(barber.handle)
-    || clean(barber.publicDisplayName)
-    || clean(barber.displayName)
-    || clean(barber.businessName)
-    || clean(barber.stageName)
-    || clean(barber.barberName)
-    || clean(barber.name)
+  const publicUsername = normalizePublicBarberHandle(barber.publicUsername);
+  const username = normalizePublicBarberHandle(barber.username);
+  const handle = normalizePublicBarberHandle(barber.handle);
+
+  return (publicUsername && !isInternalPublicReference(publicUsername) ? publicUsername : "")
+    || (username && !isInternalPublicReference(username) ? username : "")
+    || (handle && !isInternalPublicReference(handle) ? handle : "")
+    || cleanDisplayName(barber.publicDisplayName)
+    || cleanDisplayName(barber.displayName)
+    || cleanDisplayName(barber.businessName)
+    || cleanDisplayName(barber.stageName)
+    || cleanDisplayName(barber.barberName)
+    || cleanDisplayName(barber.name)
     || "BVRB3R barber";
 }
 

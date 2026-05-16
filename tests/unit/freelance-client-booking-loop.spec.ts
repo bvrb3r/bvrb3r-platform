@@ -71,7 +71,7 @@ vi.mock("@/lib/booking/platform-service", async () => {
 });
 
 import { buildCanonicalBarberProfile } from "@/lib/booking/intelligence";
-import { getBarberAvailabilityPayload, getClientHomePayload, searchBarbersAndShopsPayload } from "@/lib/booking/platform-service";
+import { getBarberAvailabilityPayload, getClientBookingsPayload, getClientHomePayload, searchBarbersAndShopsPayload } from "@/lib/booking/platform-service";
 import { getBarberOverviewPayload, getBarberSchedulePayload } from "@/lib/barber/service";
 import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
 import { getCanonicalAccountRole, normalizeBarberSubtype } from "@/lib/auth/roles";
@@ -576,6 +576,7 @@ describe("freelance client booking loop", () => {
       service_id: SERVICE_ID,
       location_id: LOCATION_ID,
       shop_id: null,
+      chair_label: "Phils chair",
       status: "confirmed"
     });
     expect(insertedPayment).toMatchObject({
@@ -623,8 +624,20 @@ describe("freelance client booking loop", () => {
       barberId: "barber-43b3cda2",
       clientId: "client-1fd26b88",
       serviceId: SERVICE_REFERENCE,
+      chair: "Phils chair",
       status: "confirmed"
     });
+
+    const clientActivity = await getClientBookingsPayload("client-1fd26b88");
+    expect(clientActivity.upcoming).toHaveLength(1);
+    expect(clientActivity.upcoming[0]).toMatchObject({
+      id: insertedAppointment.reference_code,
+      status: "confirmed",
+      chair: "Phils chair"
+    });
+    expect(clientActivity.upcoming[0].view.barber?.name).toBe("Phillip mcgee");
+    expect(clientActivity.upcoming[0].view.service?.name).toBe("test cut");
+    expect(clientActivity.upcoming[0].view.location?.name).toBe("Phils chair");
 
     const afterCalendar = await getBarberSchedulePayload(barberUser, { viewMode: "day", anchorDate: "2026-05-15" });
     expect(afterCalendar.timeline.appointments).toHaveLength(1);
@@ -633,8 +646,12 @@ describe("freelance client booking loop", () => {
       barberId: "barber-43b3cda2",
       clientId: "client-1fd26b88",
       serviceId: SERVICE_REFERENCE,
+      chair: "Phils chair",
       status: "confirmed"
     });
+    expect(afterCalendar.timeline.appointments[0].display.clientName).toBe("Phillip mcgee");
+    expect(afterCalendar.timeline.appointments[0].display.serviceName).toBe("test cut");
+    expect(afterCalendar.timeline.appointments[0].display.locationName).toBe("Phils chair");
 
     expect(JSON.stringify(tables.appointments)).not.toContain("independent-barber-43b3cda2");
     expect(JSON.stringify(tables.appointments)).not.toContain("client-1fd26b88");

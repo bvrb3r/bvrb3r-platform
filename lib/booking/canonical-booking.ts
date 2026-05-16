@@ -48,6 +48,10 @@ type CanonicalReferenceRow = {
   reference_code: string | null;
 };
 
+type CanonicalLocationReferenceRow = CanonicalReferenceRow & {
+  name?: string | null;
+};
+
 type CanonicalServiceReferenceRow = CanonicalReferenceRow & {
   name: string;
 };
@@ -471,6 +475,42 @@ export async function readCanonicalAppointmentServiceSnapshots(supabase: Supabas
   );
 }
 
+function isMissingReferenceCodeColumn(error: unknown) {
+  const candidate = error && typeof error === "object"
+    ? error as { code?: string | null; message?: string | null }
+    : null;
+  const message = `${candidate?.message ?? ""}`.toLowerCase();
+  return candidate?.code === "42703"
+    || message.includes("reference_code")
+    || message.includes("schema cache");
+}
+
+async function readCanonicalLocationReferences(supabase: SupabaseClient) {
+  const withReference = await supabase
+    .from("locations")
+    .select("id, reference_code, name");
+
+  if (!withReference.error) {
+    return withReference;
+  }
+
+  if (!isMissingReferenceCodeColumn(withReference.error)) {
+    return withReference;
+  }
+
+  const withoutReference = await supabase
+    .from("locations")
+    .select("id, name");
+
+  return {
+    ...withoutReference,
+    data: ((withoutReference.data ?? []) as Array<{ id: string; name?: string | null }>).map((row) => ({
+      ...row,
+      reference_code: null
+    }))
+  };
+}
+
 export async function readCanonicalOperationsSnapshot(supabase: SupabaseClient): Promise<LiveOperationsSnapshot> {
   await ensureCanonicalBookingData(supabase);
 
@@ -490,7 +530,7 @@ export async function readCanonicalOperationsSnapshot(supabase: SupabaseClient):
     supabase.from("appointments").select("*").order("starts_at", { ascending: true }),
     supabase.from("clients").select("*"),
     supabase.from("barbers").select("id, reference_code"),
-    supabase.from("locations").select("id, reference_code"),
+    readCanonicalLocationReferences(supabase),
     supabase.from("services").select("id, reference_code, name"),
     supabase.from("profiles").select("id, full_name, email, phone"),
     supabase
@@ -522,7 +562,9 @@ export async function readCanonicalOperationsSnapshot(supabase: SupabaseClient):
     }
   }
 
-  const locationsById = new Map(((locationsResult.data ?? []) as CanonicalReferenceRow[]).map((row) => [row.id, row.reference_code ?? row.id]));
+  const locationRows = (locationsResult.data ?? []) as CanonicalLocationReferenceRow[];
+  const locationsById = new Map(locationRows.map((row) => [row.id, row.reference_code ?? row.id]));
+  const locationNamesById = new Map(locationRows.map((row) => [row.id, row.name ?? row.reference_code ?? row.id]));
   const barbersById = new Map(((barbersResult.data ?? []) as CanonicalReferenceRow[]).map((row) => [row.id, row.reference_code ?? row.id]));
   const servicesById = new Map(((servicesResult.data ?? []) as CanonicalServiceReferenceRow[]).map((row) => [row.id, row.reference_code ?? row.id]));
   const serviceNamesById = new Map(((servicesResult.data ?? []) as CanonicalServiceReferenceRow[]).map((row) => [row.id, row.name]));
@@ -548,7 +590,7 @@ export async function readCanonicalOperationsSnapshot(supabase: SupabaseClient):
   const appointments = ((appointmentsResult.data ?? []) as CanonicalAppointmentRow[]).map((row) => ({
     id: row.reference_code ?? row.id,
     locationId: locationsById.get(row.location_id) ?? row.location_id,
-    shopId: locationsById.get(row.shop_id ?? row.location_id) ?? row.shop_id ?? row.location_id,
+    shopId: row.shop_id ? locationsById.get(row.shop_id) ?? row.shop_id : undefined,
     barberId: barbersById.get(row.barber_id) ?? row.barber_id,
     clientId: clientsById.get(row.client_id)?.reference_code ?? row.client_id,
     serviceId: servicesById.get(row.service_id) ?? row.service_id,
@@ -563,7 +605,7 @@ export async function readCanonicalOperationsSnapshot(supabase: SupabaseClient):
     completedAt: row.completed_at ?? undefined,
     cancelledAt: row.cancelled_at ?? undefined,
     cancellationReason: row.cancellation_reason ?? undefined,
-    chair: row.chair_label ?? "Front desk assign",
+    chair: row.chair_label ?? locationNamesById.get(row.location_id) ?? "Freelance location",
     addOnIds: row.add_on_references ?? [],
     depositAmount: numeric(row.deposit_amount),
     serviceTotal: numeric(row.service_total),

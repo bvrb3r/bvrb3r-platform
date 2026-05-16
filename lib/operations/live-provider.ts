@@ -2475,6 +2475,15 @@ function appointmentUpsertRow(appointment: LiveAppointmentRecord) {
   };
 }
 
+function resolveAppointmentChairLabel(location: CanonicalLocationRow, input: BookingMutationInput) {
+  const locationName = location.name?.trim();
+  if (input.actorRole === "front_desk" && !locationName) {
+    return "Front desk assign";
+  }
+
+  return locationName || "Freelance location";
+}
+
 function withCapturedBookingSettlement(appointment: LiveAppointmentRecord) {
   const capturedAmount = Math.max(appointment.grandTotal ?? appointment.totalAmount, 0);
   return {
@@ -2607,9 +2616,11 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
         createdBy: context.actorProfileId ?? undefined,
         pricingSnapshot: context.quote
       });
-      const bookedAppointment = context.resolvedBarber.isFreelance
-        ? { ...result.appointment, shopId: undefined }
-        : result.appointment;
+      const bookedAppointment = {
+        ...result.appointment,
+        chair: resolveAppointmentChairLabel(context.location, input),
+        shopId: context.resolvedBarber.isFreelance ? undefined : result.appointment.shopId
+      };
       const bookingSnapshot = bookedAppointment === result.appointment
         ? result.snapshot
         : replaceAppointmentInSnapshot(result.snapshot, bookedAppointment);

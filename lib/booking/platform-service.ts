@@ -123,7 +123,7 @@ type BarberDirectoryRecord = {
   id: string;
   reference_code: string | null;
   profile_id: string;
-  compensation_model: string;
+  compensation_model?: string | null;
 };
 
 type ProfileDirectoryRecord = {
@@ -135,7 +135,7 @@ type ServiceDirectoryRecord = {
   id: string;
   reference_code: string | null;
   name: string;
-  category: string;
+  category?: string | null;
 };
 
 type LocationAssignmentRecord = {
@@ -490,16 +490,72 @@ function buildEmptyOperationalDirectories(): OperationalDirectories {
   };
 }
 
+function isSchemaColumnError(error: unknown) {
+  const candidate = error && typeof error === "object"
+    ? error as { code?: string | null; message?: string | null }
+    : null;
+  const message = `${candidate?.message ?? ""}`.toLowerCase();
+  return candidate?.code === "42703" || message.includes("schema cache") || message.includes("does not exist");
+}
+
+async function readBarberDirectoryRows(supabase: SupabaseClient) {
+  const result = await supabase.from("barbers").select("id, reference_code, profile_id, compensation_model");
+  if (!result.error || !isSchemaColumnError(result.error)) {
+    return result;
+  }
+
+  const fallback = await supabase.from("barbers").select("id, reference_code, profile_id");
+  return {
+    ...fallback,
+    data: ((fallback.data ?? []) as Array<Omit<BarberDirectoryRecord, "compensation_model">>).map((row) => ({
+      ...row,
+      compensation_model: "freelance"
+    }))
+  };
+}
+
+async function readServiceDirectoryRows(supabase: SupabaseClient) {
+  const result = await supabase.from("services").select("id, reference_code, name, category");
+  if (!result.error || !isSchemaColumnError(result.error)) {
+    return result;
+  }
+
+  const fallback = await supabase.from("services").select("id, reference_code, name");
+  return {
+    ...fallback,
+    data: ((fallback.data ?? []) as Array<Omit<ServiceDirectoryRecord, "category">>).map((row) => ({
+      ...row,
+      category: "Service"
+    }))
+  };
+}
+
+async function readLocationDirectoryRows(supabase: SupabaseClient) {
+  const result = await supabase.from("locations").select("id, reference_code, name, neighborhood, city, state");
+  if (!result.error || !isSchemaColumnError(result.error)) {
+    return result;
+  }
+
+  const fallback = await supabase.from("locations").select("id, name, neighborhood, city, state");
+  return {
+    ...fallback,
+    data: ((fallback.data ?? []) as Array<Omit<LocationRecord, "reference_code">>).map((row) => ({
+      ...row,
+      reference_code: null
+    }))
+  };
+}
+
 async function readOperationalDirectories(supabase: SupabaseClient | null): Promise<OperationalDirectories> {
   if (!supabase) {
     return buildEmptyOperationalDirectories();
   }
 
   const [barbersResult, profilesResult, servicesResult, locationsResult, assignmentsResult] = await Promise.all([
-    supabase.from("barbers").select("id, reference_code, profile_id, compensation_model"),
+    readBarberDirectoryRows(supabase),
     supabase.from("profiles").select("id, full_name"),
-    supabase.from("services").select("id, reference_code, name, category"),
-    supabase.from("locations").select("id, reference_code, name, neighborhood, city, state"),
+    readServiceDirectoryRows(supabase),
+    readLocationDirectoryRows(supabase),
     supabase.from("staff_locations").select("profile_id, location_id")
   ]);
 
@@ -524,48 +580,42 @@ async function readOperationalDirectories(supabase: SupabaseClient | null): Prom
 
   const barberReferenceByProfileId = new Map(barberRows.map((row) => [row.profile_id, row.reference_code ?? row.id]));
   const locationReferenceByUuid = new Map(locationRows.map((row) => [row.id, row.reference_code ?? row.id]));
-  const barbersByReference = new Map(
-    barberRows.map((row) => {
+  const barbersByReference = new Map<string, OperationalBarberIdentity>();
+  for (const row of barberRows) {
       const reference = row.reference_code ?? row.id;
-      return [
-        reference,
-        {
-          id: reference,
-          name: profileNamesById.get(row.profile_id) ?? reference,
-          compensationModel: row.compensation_model
-        } satisfies OperationalBarberIdentity
-      ];
-    })
-  );
-  const servicesByReference = new Map(
-    serviceRows.map((row) => {
+    const identity = {
+      id: reference,
+      name: profileNamesById.get(row.profile_id) ?? reference,
+      compensationModel: row.compensation_model ?? "freelance"
+    } satisfies OperationalBarberIdentity;
+    barbersByReference.set(reference, identity);
+    barbersByReference.set(row.id, identity);
+  }
+  const servicesByReference = new Map<string, OperationalServiceIdentity>();
+  for (const row of serviceRows) {
       const reference = row.reference_code ?? row.id;
-      return [
-        reference,
-        {
-          id: reference,
-          name: row.name,
-          category: row.category
-        } satisfies OperationalServiceIdentity
-      ];
-    })
-  );
-  const locationsByReference = new Map(
-    locationRows.map((row) => {
+    const identity = {
+      id: reference,
+      name: row.name,
+      category: row.category ?? "Service"
+    } satisfies OperationalServiceIdentity;
+    servicesByReference.set(reference, identity);
+    servicesByReference.set(row.id, identity);
+  }
+  const locationsByReference = new Map<string, OperationalLocationIdentity>();
+  for (const row of locationRows) {
       const reference = row.reference_code ?? row.id;
-      return [
-        reference,
-        {
-          id: reference,
-          name: row.name,
-          neighborhood: row.neighborhood,
-          city: row.city,
-          state: row.state,
-          label: formatOperationalLocationLabel(row)
-        } satisfies OperationalLocationIdentity
-      ];
-    })
-  );
+    const identity = {
+      id: reference,
+      name: row.name,
+      neighborhood: row.neighborhood,
+      city: row.city,
+      state: row.state,
+      label: formatOperationalLocationLabel(row)
+    } satisfies OperationalLocationIdentity;
+    locationsByReference.set(reference, identity);
+    locationsByReference.set(row.id, identity);
+  }
   const barberAssignmentsByLocation = new Map<string, Set<string>>();
 
   for (const row of assignmentRows) {
@@ -1523,13 +1573,69 @@ async function readAppointmentServiceSnapshots(supabase: SupabaseClient | null, 
 function hydrateAppointments(
   appointments: LiveAppointmentRecord[],
   clients: Client[],
-  appointmentServices: Map<string, AppointmentServiceRecord>
+  appointmentServices: Map<string, AppointmentServiceRecord>,
+  directories: OperationalDirectories = buildEmptyOperationalDirectories()
 ) {
-  return appointments.map((appointment) => ({
-    ...appointment,
-    serviceSnapshot: appointmentServices.get(appointment.id) ?? null,
-    view: getAppointmentViewModel(appointment, clients)
-  }));
+  return appointments.map((appointment) => {
+    const serviceSnapshot = appointmentServices.get(appointment.id) ?? null;
+    const barber = directories.barbersByReference.get(appointment.barberId);
+    const service = directories.servicesByReference.get(appointment.serviceId);
+    const location = directories.locationsByReference.get(appointment.locationId);
+    const view = getAppointmentViewModel(appointment, clients);
+
+    return {
+      ...appointment,
+      serviceSnapshot,
+      view: {
+        ...view,
+        barber: barber
+          ? ({
+              id: barber.id,
+              userId: barber.id,
+              name: barber.name,
+              role: "barber_user",
+              locationIds: [],
+              specialties: [],
+              rating: 0,
+              reviewCount: 0,
+              compensationModel: barber.compensationModel,
+              todayEarnings: 0,
+              upcomingPayout: 0,
+              availabilityLabel: "",
+              bio: "",
+              bookingLink: ""
+            } as NonNullable<typeof view.barber>)
+          : view.barber,
+        service: service
+          ? ({
+              id: service.id,
+              name: serviceSnapshot?.service_name ?? service.name,
+              category: service.category,
+              description: serviceSnapshot?.description ?? "",
+              durationMin: serviceSnapshot?.duration_min ?? 0,
+              bufferMin: serviceSnapshot?.buffer_min ?? 0,
+              price: Number(serviceSnapshot?.price ?? appointment.totalAmount),
+              deposit: Number(serviceSnapshot?.deposit_amount ?? appointment.depositAmount),
+              fullPrepay: serviceSnapshot?.full_prepay_required ?? false,
+              addOnIds: serviceSnapshot?.add_on_references ?? []
+            } as NonNullable<typeof view.service>)
+          : view.service,
+        location: location
+          ? ({
+              id: location.id,
+              name: appointment.chair && appointment.chair !== "Front desk assign" ? appointment.chair : location.name,
+              neighborhood: location.neighborhood,
+              city: location.city,
+              state: location.state,
+              phone: "",
+              hours: "",
+              chairs: 1,
+              taxRate: 0
+            } as NonNullable<typeof view.location>)
+          : view.location
+      }
+    };
+  });
 }
 
 function getBarberLifecycleDetail(status: LiveAppointmentRecord["status"], balanceDue: number) {
@@ -2499,11 +2605,24 @@ export async function getBarberAvailabilityPayload(barberId: string, options: { 
 export async function getClientBookingsPayload(clientId: string) {
   const supabase = getSupabase();
   const provider = await getLiveOperationsProvider();
+  console.info("[client-activity] appointment_read_started", {
+    reference: "appointment_read_started",
+    clientId,
+    statusFilter: ["confirmed", "pending", "pending_payment", "checked_in", "in_service", "booked", "paid", "completed"]
+  });
   const snapshot = await provider.readSnapshot({ role: "client", clientId } as LiveOperationsViewer);
   const clientProfile = await readClientProfile(supabase, clientId);
   const appointments = [...snapshot.appointments];
+  console.info("[client-activity] appointment_read_result", {
+    reference: "appointment_read_result",
+    clientId,
+    appointmentCount: appointments.length,
+    latestAppointmentId: appointments[0]?.id ?? null,
+    errorSuppressed: false
+  });
   const appointmentServices = await readAppointmentServiceSnapshots(supabase, appointments.map((entry) => entry.id));
-  const hydratedAppointments = hydrateAppointments(appointments, snapshot.clients, appointmentServices);
+  const directories = await readOperationalDirectories(supabase);
+  const hydratedAppointments = hydrateAppointments(appointments, snapshot.clients, appointmentServices, directories);
   const upcomingAppointments = hydratedAppointments
     .filter((appointment) => isUpcomingAppointmentStatus(appointment.status))
     .sort((left, right) => new Date(left.start).getTime() - new Date(right.start).getTime());
@@ -2520,9 +2639,20 @@ export async function getClientBookingsPayload(clientId: string) {
     clientId,
     favoriteBarberProfile?.barber.id ?? clientProfile?.favoriteBarberReference
   );
-  const nextAppointmentPayment = nextAppointment && supabase
-    ? await readAppointmentPaymentSummary(nextAppointment.id, supabase)
-    : null;
+  let nextAppointmentPayment = null;
+  if (nextAppointment && supabase) {
+    try {
+      nextAppointmentPayment = await readAppointmentPaymentSummary(nextAppointment.id, supabase);
+    } catch (error) {
+      console.warn("[client-activity] payment_summary_read_failed", {
+        reference: "payment_summary_read_failed",
+        appointmentId: nextAppointment.id,
+        errorName: error instanceof Error ? error.name : null,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorSuppressed: true
+      });
+    }
+  }
   const reviewMap = await readAppointmentReviewMap(
     supabase,
     clientId,

@@ -57,6 +57,7 @@ type BarberRow = {
 
 type AppointmentRow = {
   id: string;
+  reference_code?: string | null;
   client_id: string;
   barber_id: string;
   shop_id: string | null;
@@ -1379,11 +1380,20 @@ async function resolvePaymentActor(user: UserAccount, supabase: SupabaseClient):
 }
 
 async function loadAppointmentOrThrow(supabase: SupabaseClient, appointmentId: string) {
-  const result = await supabase
+  const appointmentSelect = "id, reference_code, client_id, barber_id, shop_id, location_id, service_id, status, deposit_amount, balance_due, grand_total, tip_amount, lifecycle_revision, completed_at, updated_at";
+  let result = await supabase
     .from("appointments")
-    .select("id, client_id, barber_id, shop_id, location_id, service_id, status, deposit_amount, balance_due, grand_total, tip_amount, lifecycle_revision, completed_at, updated_at")
+    .select(appointmentSelect)
     .eq("id", appointmentId)
     .maybeSingle();
+
+  if (!result.error && !result.data && !UUID_PATTERN.test(appointmentId)) {
+    result = await supabase
+      .from("appointments")
+      .select(appointmentSelect)
+      .eq("reference_code", appointmentId)
+      .maybeSingle();
+  }
 
   if (result.error) {
     throw new PaymentServiceError("Unable to load the appointment payment context.", 500);
@@ -2320,10 +2330,11 @@ export async function readAppointmentPaymentSummary(
 ): Promise<AppointmentPaymentSummaryView | null> {
   const supabase = supabaseInput ?? getSupabaseOrThrow();
   const appointment = await loadAppointmentOrThrow(supabase, appointmentId);
+  const canonicalAppointmentId = appointment.id;
   const paymentsResult = await supabase
     .from("payments")
     .select("id, appointment_id, client_id, shop_id, barber_id, payment_method_id, provider, provider_payment_intent_id, amount, currency, payment_status, payment_type, paid_at, created_at")
-    .eq("appointment_id", appointmentId)
+    .eq("appointment_id", canonicalAppointmentId)
     .order("created_at", { ascending: false });
 
   if (paymentsResult.error) {
@@ -2342,7 +2353,7 @@ export async function readAppointmentPaymentSummary(
   const tipsResult = await supabase
     .from("tips")
     .select("id, appointment_id, payment_id, client_id, barber_id, amount, created_at")
-    .eq("appointment_id", appointmentId);
+    .eq("appointment_id", canonicalAppointmentId);
 
   if (refundsResult.error || tipsResult.error) {
     throw new PaymentServiceError("Unable to load payment adjustments.", 500);
@@ -2363,7 +2374,7 @@ export async function readAppointmentPaymentSummary(
   const latestBookingPayment = bookingPayments[0] ? mapPaymentRow(bookingPayments[0]) : null;
 
   return {
-    appointmentId,
+    appointmentId: appointment.reference_code ?? appointmentId,
     outstandingBalance: roundCurrency(Math.max(numeric(appointment.balance_due), 0)),
     authorizedAmount: roundCurrency(authorizedAmount),
     capturedAmount: roundCurrency(capturedAmount),
