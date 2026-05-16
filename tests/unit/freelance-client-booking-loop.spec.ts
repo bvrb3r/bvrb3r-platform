@@ -49,6 +49,10 @@ vi.mock("@/lib/stripe/connect", () => ({
 }));
 
 vi.mock("@/lib/fintech/service", () => ({
+  evaluatePayoutEligibilityForAppointment: vi.fn().mockResolvedValue({
+    status: "eligible",
+    routingRecordId: "routing-freelance-test"
+  }),
   syncPaymentRoutingRecord: syncPaymentRoutingRecordMock,
   syncStripeSettlementForPayment: syncStripeSettlementForPaymentMock,
   reconcilePaymentPayoutExecutions: reconcilePaymentPayoutExecutionsMock

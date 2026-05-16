@@ -1,7 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { isBarberAccountRole } from "@/lib/auth/roles";
 import { getSessionUser } from "@/lib/booking/route-auth";
+import { BarberAppointmentActionError, resolveBarberAppointmentActionContext } from "@/lib/barber/appointment-actions";
 import { recordBookingUpdatedPlatformEvents } from "@/lib/core/booking-events";
 import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
 import { LiveOperationConflictError } from "@/lib/operations/live-state";
@@ -17,17 +17,18 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   }
 
   const user = await getSessionUser();
-  if (!(user.role === "owner" || user.role === "manager" || isBarberAccountRole(user.role))) {
-    return NextResponse.json({ error: "You do not have access to complete this service." }, { status: 403 });
-  }
-
-  const actorRole = user.role === "owner" || user.role === "manager" ? user.role : "barber";
+  const actorRole = "barber";
 
   try {
     const { id } = await context.params;
+    const actionContext = await resolveBarberAppointmentActionContext({
+      user,
+      appointmentId: id,
+      allowedStatuses: ["confirmed", "checked_in", "in_service"]
+    });
     const provider = await getLiveOperationsProvider();
     const result = await provider.transitionAppointment({
-      appointmentId: id,
+      appointmentId: actionContext.providerAppointmentId,
       expectedRevision: parsed.data.expectedRevision,
       action: "service_complete",
       actorRole,
@@ -44,6 +45,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
 
     return NextResponse.json({ appointment: result.appointment });
   } catch (error) {
+    if (error instanceof BarberAppointmentActionError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     if (error instanceof LiveOperationConflictError) {
       return NextResponse.json({ error: error.message, code: error.code, latestAppointment: error.latestAppointment }, { status: error.status });
     }

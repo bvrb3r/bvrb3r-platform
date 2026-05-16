@@ -136,7 +136,7 @@ describe("phase 13 fintech domain", () => {
     expect(result.moneyRoutingStatus).toBe("ready_for_payout");
   });
 
-  it("blocks routing when required payout readiness is missing", () => {
+  it("keeps money eligible after completion while payout execution waits on readiness", () => {
     const result = calculatePaymentRouting({
       paymentType: "booking",
       paymentStatus: "captured",
@@ -149,11 +149,11 @@ describe("phase 13 fintech domain", () => {
     });
 
     expect(result.payoutReadinessStatus).toBe("blocked");
-    expect(result.moneyRoutingStatus).toBe("blocked");
+    expect(result.moneyRoutingStatus).toBe("ready_for_payout");
     expect(result.blockedReason).toMatch(/barber payout readiness/i);
   });
 
-  it("prefers canonical verification blockers before provider-ready payout routing", () => {
+  it("keeps canonical verification blockers on payout execution without blocking completed money routing", () => {
     const result = calculatePaymentRouting({
       paymentType: "booking",
       paymentStatus: "captured",
@@ -167,11 +167,11 @@ describe("phase 13 fintech domain", () => {
     });
 
     expect(result.payoutReadinessStatus).toBe("blocked");
-    expect(result.moneyRoutingStatus).toBe("blocked");
+    expect(result.moneyRoutingStatus).toBe("ready_for_payout");
     expect(result.blockedReason).toMatch(/verification is incomplete for payout/i);
   });
 
-  it("keeps routing blocked if the barber record disappears before payout execution", () => {
+  it("keeps payout execution blocked if the barber payout setup is missing", () => {
     const result = calculatePaymentRouting({
       paymentType: "booking",
       paymentStatus: "captured",
@@ -182,11 +182,11 @@ describe("phase 13 fintech domain", () => {
       appointmentCompleted: true
     });
 
-    expect(result.moneyRoutingStatus).toBe("blocked");
+    expect(result.moneyRoutingStatus).toBe("ready_for_payout");
     expect(result.blockedReason).toMatch(/barber payout readiness/i);
   });
 
-  it("keeps commission routing blocked if the shop disappears before payout execution", () => {
+  it("keeps commission payout execution blocked if shop payout setup is missing", () => {
     const result = calculatePaymentRouting({
       paymentType: "booking",
       paymentStatus: "captured",
@@ -198,11 +198,11 @@ describe("phase 13 fintech domain", () => {
       appointmentCompleted: true
     });
 
-    expect(result.moneyRoutingStatus).toBe("blocked");
+    expect(result.moneyRoutingStatus).toBe("ready_for_payout");
     expect(result.blockedReason).toMatch(/shop payout readiness/i);
   });
 
-  it("blocks routing until the service is completed and when disputes are active", () => {
+  it("keeps booking routing pending until service completion and held when disputes are active", () => {
     const incomplete = calculatePaymentRouting({
       paymentType: "booking",
       paymentStatus: "captured",
@@ -223,8 +223,8 @@ describe("phase 13 fintech domain", () => {
       disputeHold: true
     });
 
-    expect(incomplete.moneyRoutingStatus).toBe("blocked");
-    expect(incomplete.blockedReason).toMatch(/service must be completed/i);
+    expect(incomplete.moneyRoutingStatus).toBe("pending");
+    expect(incomplete.blockedReason).toBeNull();
     expect(disputed.moneyRoutingStatus).toBe("blocked");
     expect(disputed.blockedReason).toMatch(/dispute or chargeback/i);
   });

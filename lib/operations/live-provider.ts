@@ -26,7 +26,7 @@ import {
   createTipLedgerEntry,
   PaymentServiceError
 } from "@/lib/payments/service";
-import { syncPaymentRoutingRecord } from "@/lib/fintech/service";
+import { evaluatePayoutEligibilityForAppointment, syncPaymentRoutingRecord } from "@/lib/fintech/service";
 import {
   applyMembershipPricingAdjustmentToQuote,
   buildMembershipPricingAdjustment
@@ -3019,6 +3019,25 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
       );
       if (input.action === "service_complete") {
         await completePromotionRedemptionsForAppointment(supabase, result.appointment.id, result.appointment.updatedAt);
+        try {
+          const payoutEvaluation = await evaluatePayoutEligibilityForAppointment(supabase, canonicalAppointmentUuid(result.appointment.id));
+          console.log("[barber-appointment] status_transition", {
+            appointmentId: canonicalAppointmentUuid(result.appointment.id),
+            oldStatus: previousAppointment?.status ?? null,
+            newStatus: result.appointment.status,
+            actorProfileIdPresent: Boolean(actorProfileId),
+            barberId: result.appointment.barberId,
+            ownershipVerified: input.actorRole === "barber",
+            payoutStatus: payoutEvaluation.status,
+            routingRecordIdPresent: Boolean(payoutEvaluation.routingRecordId)
+          });
+        } catch (error) {
+          console.error("[payout] eligibility_evaluation_failed", {
+            appointmentId: canonicalAppointmentUuid(result.appointment.id),
+            errorName: error instanceof Error ? error.name : "UnknownError",
+            errorMessage: error instanceof Error ? error.message : String(error)
+          });
+        }
       }
       await persistArtifactsForAppointment(supabase, result.snapshot, result.appointment, {
         activityType:

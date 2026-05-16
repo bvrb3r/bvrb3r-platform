@@ -5,6 +5,7 @@ import { runtimeConfig } from "@/lib/config/runtime";
 import { canonicalClientUuid } from "@/lib/booking/canonical-booking";
 import {
   buildPlatformEventIdempotencyKey,
+  recordPlatformEvent,
   recordRequiredPlatformEvent,
   type PlatformEventType
 } from "@/lib/core/platform-events";
@@ -2774,6 +2775,25 @@ export async function createPaymentLedgerEntry(
     logBookingPaymentStageFailure("payment_routing_sync_failed", error, {
       appointmentId: paymentRow.appointment_id,
       paymentId: paymentRow.id
+    });
+    await recordPlatformEvent(supabase, {
+      eventType: "routing_repair_required",
+      entityType: "payment",
+      entityId: paymentRow.id,
+      actorId: paymentRow.barber_id ?? paymentRow.client_id ?? paymentRow.shop_id ?? null,
+      source: "system",
+      relatedIds: {
+        paymentId: paymentRow.id,
+        appointmentId: paymentRow.appointment_id,
+        clientId: paymentRow.client_id,
+        barberId: paymentRow.barber_id,
+        shopId: paymentRow.shop_id
+      },
+      payload: {
+        reason: "payment_routing_sync_failed",
+        errorMessage: error instanceof Error ? error.message : String(error)
+      },
+      idempotencyKey: buildPlatformEventIdempotencyKey(["payment", paymentRow.id, "routing-repair-required"])
     });
   }
 

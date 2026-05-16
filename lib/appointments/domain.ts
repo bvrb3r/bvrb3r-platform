@@ -47,9 +47,9 @@ export type AppointmentFinancialQuote = {
 
 const transitionMap: Record<AppointmentTransitionTarget, AppointmentTransitionTarget[]> = {
   pending: ["confirmed", "cancelled"],
-  confirmed: ["checked_in", "cancelled", "no_show", "refunded"],
+  confirmed: ["checked_in", "completed", "cancelled", "no_show", "refunded"],
   booked: ["confirmed", "checked_in", "cancelled", "no_show"],
-  checked_in: ["in_service", "cancelled"],
+  checked_in: ["in_service", "completed", "cancelled"],
   in_service: ["completed", "cancelled"],
   completed: ["refunded"],
   cancelled: [],
@@ -142,6 +142,10 @@ export function canTransitionAppointmentStatus(
   currentStatus: AppointmentStatus | AppointmentTransitionTarget,
   nextStatus: AppointmentTransitionTarget
 ) {
+  if (currentStatus === "booked" && nextStatus === "completed") {
+    return false;
+  }
+
   return transitionMap[normalizeAppointmentStatus(currentStatus)]?.includes(nextStatus) ?? false;
 }
 

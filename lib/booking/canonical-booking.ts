@@ -272,6 +272,10 @@ export function canonicalProfileUuid(email: string) {
 }
 
 export function canonicalAppointmentUuid(reference: string) {
+  if (isUuid(reference)) {
+    return reference;
+  }
+
   return stableUuid(`appointment:${reference}`);
 }
 

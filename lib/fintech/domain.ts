@@ -427,41 +427,41 @@ export function calculatePaymentRouting(input: PaymentRoutingCalculationInput): 
     barberPayoutAmount = distributableAmount;
   }
 
-  let blockedReason: string | null = null;
+  let moneyBlockedReason: string | null = null;
+  let readinessBlockedReason: string | null = null;
   if (input.paymentStatus === "failed" || input.paymentStatus === "voided") {
-    blockedReason = "Payment was not captured successfully.";
+    moneyBlockedReason = "Payment was not captured successfully.";
   } else if (input.paymentStatus === "refunded") {
-    blockedReason = null;
+    moneyBlockedReason = null;
   } else if (disputeHold) {
-    blockedReason = "An active dispute or chargeback is blocking payout.";
-  } else if (input.paymentType !== "subscription" && !appointmentCompleted) {
-    blockedReason = "Service must be completed before payout is eligible.";
+    moneyBlockedReason = "An active dispute or chargeback is blocking payout.";
   } else if (payoutRecipientType === "split") {
     if (input.barberVerificationAllowed === false && input.shopVerificationAllowed === false) {
-      blockedReason = input.barberVerificationReason ?? input.shopVerificationReason ?? "Barber and shop verification are incomplete.";
+      readinessBlockedReason = input.barberVerificationReason ?? input.shopVerificationReason ?? "Barber and shop verification are incomplete.";
     } else if (input.barberVerificationAllowed === false) {
-      blockedReason = input.barberVerificationReason ?? "Barber verification is incomplete for payout.";
+      readinessBlockedReason = input.barberVerificationReason ?? "Barber verification is incomplete for payout.";
     } else if (input.shopVerificationAllowed === false) {
-      blockedReason = input.shopVerificationReason ?? "Shop verification is incomplete for payout.";
+      readinessBlockedReason = input.shopVerificationReason ?? "Shop verification is incomplete for payout.";
     } else if (!input.barberReady && !input.shopReady) {
-      blockedReason = "Barber and shop payout readiness are incomplete.";
+      readinessBlockedReason = "Barber and shop payout readiness are incomplete.";
     } else if (!input.barberReady) {
-      blockedReason = "Barber payout readiness is incomplete.";
+      readinessBlockedReason = "Barber payout readiness is incomplete.";
     } else if (!input.shopReady) {
-      blockedReason = "Shop payout readiness is incomplete.";
+      readinessBlockedReason = "Shop payout readiness is incomplete.";
     }
   } else if (payoutRecipientType === "barber" && input.barberVerificationAllowed === false) {
-    blockedReason = input.barberVerificationReason ?? "Barber verification is incomplete for payout.";
+    readinessBlockedReason = input.barberVerificationReason ?? "Barber verification is incomplete for payout.";
   } else if (payoutRecipientType === "barber" && !input.barberReady) {
-    blockedReason = "Barber payout readiness is incomplete.";
+    readinessBlockedReason = "Barber payout readiness is incomplete.";
   } else if (payoutRecipientType === "shop" && input.shopVerificationAllowed === false) {
-    blockedReason = input.shopVerificationReason ?? "Shop verification is incomplete for payout.";
+    readinessBlockedReason = input.shopVerificationReason ?? "Shop verification is incomplete for payout.";
   } else if (payoutRecipientType === "shop" && !input.shopReady) {
-    blockedReason = "Shop payout readiness is incomplete.";
+    readinessBlockedReason = "Shop payout readiness is incomplete.";
   }
 
+  const blockedReason = moneyBlockedReason ?? readinessBlockedReason;
   const payoutReadinessStatus: FintechPayoutReadinessStatus =
-    blockedReason
+    moneyBlockedReason || readinessBlockedReason
       ? "blocked"
       : (payoutRecipientType === "split"
         ? (input.barberReady && input.shopReady)
@@ -472,7 +472,7 @@ export function calculatePaymentRouting(input: PaymentRoutingCalculationInput): 
   let moneyRoutingStatus: MoneyRoutingStatus;
   if (input.paymentStatus === "refunded") {
     moneyRoutingStatus = "refunded";
-  } else if (blockedReason) {
+  } else if (moneyBlockedReason) {
     moneyRoutingStatus = "blocked";
   } else if ((input.paymentStatus === "captured" || input.paymentStatus === "partially_refunded") && appointmentCompleted && !disputeHold) {
     moneyRoutingStatus = "ready_for_payout";

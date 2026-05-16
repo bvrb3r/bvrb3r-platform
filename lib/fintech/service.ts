@@ -3,8 +3,10 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import {
   buildPlatformEventIdempotencyKey,
+  recordPlatformEvent,
   recordRequiredPlatformEvent
 } from "@/lib/core/platform-events";
+import { canonicalAppointmentUuid } from "@/lib/booking/canonical-booking";
 import {
   calculatePaymentRouting,
   createPayoutExecutionIdempotencyKey,
@@ -206,6 +208,11 @@ type PaymentRoutingRow = {
   payout_readiness_status: FintechPayoutReadinessStatus;
   money_routing_status: MoneyRoutingStatus;
   blocked_reason: string | null;
+  hold_reason: string | null;
+  eligible_at: string | null;
+  held_at: string | null;
+  released_at: string | null;
+  reversed_at: string | null;
   processor_charge_id: string | null;
   processor_balance_transaction_id: string | null;
   reconciliation_status: PayoutExecutionReconciliationStatus;
@@ -496,7 +503,7 @@ export class FintechServiceError extends Error {
 
 const CONNECTED_ACCOUNT_SELECT = "id, subject_type, barber_id, shop_id, provider, provider_account_id, onboarding_status, payout_readiness_status, legal_readiness_status, tax_readiness_status, requirements_currently_due, requirements_eventually_due, requirements_past_due, disabled_reason, charges_enabled, payouts_enabled, last_checked_at, onboarding_started_at, onboarding_completed_at, processor_last_synced_at, processor_last_event_id, processor_last_event_type, dashboard_last_accessed_at, created_by, created_at, updated_at";
 const PAYMENT_SELECT = "id, appointment_id, client_id, shop_id, barber_id, provider, provider_payment_intent_id, amount, currency, payment_status, payment_type, paid_at, created_at, updated_at";
-const PAYMENT_ROUTING_SELECT = "id, payment_id, appointment_id, membership_id, routing_model, payout_recipient_type, provider_gross_amount, refunded_amount, provider_fee_amount, provider_net_amount, platform_fee_amount, barber_payout_amount, shop_split_amount, currency, payout_readiness_status, money_routing_status, blocked_reason, processor_charge_id, processor_balance_transaction_id, reconciliation_status, last_reconciled_at, metadata, created_at, updated_at";
+const PAYMENT_ROUTING_SELECT = "id, payment_id, appointment_id, membership_id, routing_model, payout_recipient_type, provider_gross_amount, refunded_amount, provider_fee_amount, provider_net_amount, platform_fee_amount, barber_payout_amount, shop_split_amount, currency, payout_readiness_status, money_routing_status, blocked_reason, hold_reason, eligible_at, held_at, released_at, reversed_at, processor_charge_id, processor_balance_transaction_id, reconciliation_status, last_reconciled_at, metadata, created_at, updated_at";
 const PAYOUT_EXECUTION_SELECT = "id, routing_record_id, payment_id, appointment_id, membership_id, target_subject_type, execution_type, target_connected_account_id, target_provider_account_id, amount, currency, execution_status, blocked_reason, failure_reason, processor_transfer_id, processor_reversal_id, idempotency_key, source_execution_id, source_refund_id, payout_reference, payout_speed, instant_payout_fee_amount, net_transfer_amount, processor_payout_id, reconciliation_status, metadata, initiated_by, attempt_count, last_attempted_at, executed_at, failed_at, reversed_at, created_at, updated_at";
 
 function numeric(value: number | string | null | undefined) {
@@ -1622,7 +1629,7 @@ async function hasActiveDisputeHold(
     .from("disputes")
     .select("id")
     .eq("appointment_reference", appointmentReference)
-    .in("dispute_status", ["open", "under_review", "escalated"])
+    .in("dispute_status", ["open", "needs_response", "under_review", "warning_needs_response", "warning_under_review", "escalated"])
     .limit(1)
     .maybeSingle();
 
@@ -1631,6 +1638,81 @@ async function hasActiveDisputeHold(
   }
 
   return Boolean(disputeResult.data);
+}
+
+async function recordRoutingLifecycleEvents(
+  supabase: SupabaseClient,
+  input: {
+    routing: PaymentRoutingRow;
+    payment: PaymentRow;
+    appointment: AppointmentRow | null;
+    existingRouting: PaymentRoutingRow | null;
+    relationshipType: RoutingModel;
+    disputeHold: boolean;
+  }
+) {
+  const baseRelatedIds = {
+    routingRecordId: input.routing.id,
+    paymentId: input.payment.id,
+    appointmentId: input.routing.appointment_id,
+    clientId: input.payment.client_id,
+    barberId: input.payment.barber_id,
+    shopId: input.payment.shop_id ?? input.appointment?.shop_id ?? null
+  };
+  const basePayload = {
+    relationshipType: input.relationshipType,
+    routingModel: input.routing.routing_model,
+    moneyRoutingStatus: input.routing.money_routing_status,
+    payoutReadinessStatus: input.routing.payout_readiness_status,
+    providerGrossAmount: numeric(input.routing.provider_gross_amount),
+    platformFeeAmount: numeric(input.routing.platform_fee_amount),
+    barberPayoutAmount: numeric(input.routing.barber_payout_amount),
+    shopSplitAmount: numeric(input.routing.shop_split_amount),
+    currency: input.routing.currency
+  };
+  const events = [
+    !input.existingRouting
+      ? {
+          eventType: "payment_routing_created" as const,
+          idempotencyKey: buildPlatformEventIdempotencyKey(["payment-routing", input.routing.id, "created"])
+        }
+      : null,
+    input.routing.money_routing_status === "ready_for_payout"
+      && input.existingRouting?.money_routing_status !== "ready_for_payout"
+      ? {
+          eventType: "payout_eligible" as const,
+          idempotencyKey: buildPlatformEventIdempotencyKey(["payment-routing", input.routing.id, "eligible"])
+        }
+      : null,
+    input.disputeHold
+      && input.routing.money_routing_status === "blocked"
+      && input.existingRouting?.money_routing_status !== "blocked"
+      ? {
+          eventType: "payout_held" as const,
+          idempotencyKey: buildPlatformEventIdempotencyKey(["payment-routing", input.routing.id, "held"])
+        }
+      : null
+  ].filter((event): event is NonNullable<typeof event> => Boolean(event));
+
+  for (const event of events) {
+    const result = await recordPlatformEvent(supabase, {
+      eventType: event.eventType,
+      entityType: "payment_routing_record",
+      entityId: input.routing.id,
+      actorId: input.payment.barber_id ?? input.payment.client_id ?? input.payment.shop_id ?? null,
+      source: "system",
+      relatedIds: baseRelatedIds,
+      payload: basePayload,
+      idempotencyKey: event.idempotencyKey
+    });
+    if (!result.ok) {
+      console.warn("[payment-routing] platform_event_write_failed", {
+        eventType: event.eventType,
+        routingRecordId: input.routing.id,
+        paymentId: input.payment.id
+      });
+    }
+  }
 }
 
 function mapRoutingView(
@@ -1723,7 +1805,7 @@ export async function syncPaymentRoutingRecord(
   }
 ) {
   const { payment, appointment, refundedAmount } = await loadPaymentAndContext(supabase, paymentId);
-  const shopId = payment.shop_id ?? appointment?.shop_id ?? appointment?.location_id ?? null;
+  const shopId = payment.shop_id ?? appointment?.shop_id ?? null;
   const barberId = payment.barber_id ?? appointment?.barber_id ?? null;
 
   if (!barberId && !shopId) {
@@ -1877,9 +1959,7 @@ export async function syncPaymentRoutingRecord(
   const moneyRoutingStatus: MoneyRoutingStatus =
     payment.payment_status === "refunded"
       ? "refunded"
-      : blockedReason
-        ? "blocked"
-        : calculated.moneyRoutingStatus;
+      : calculated.moneyRoutingStatus;
   const now = new Date().toISOString();
   const reconciliationStatus =
     options?.reconciliationStatus
@@ -1889,6 +1969,19 @@ export async function syncPaymentRoutingRecord(
     options?.lastReconciledAt
     ?? existingRouting?.last_reconciled_at
     ?? null;
+  const disputeHoldReason = disputeHold ? "dispute" : null;
+  const nextEligibleAt = moneyRoutingStatus === "ready_for_payout"
+    ? existingRouting?.eligible_at ?? now
+    : existingRouting?.eligible_at ?? null;
+  const nextHeldAt = disputeHold && moneyRoutingStatus === "blocked"
+    ? existingRouting?.held_at ?? now
+    : existingRouting?.held_at ?? null;
+  const nextReleasedAt = moneyRoutingStatus === "paid_out"
+    ? existingRouting?.released_at ?? now
+    : existingRouting?.released_at ?? null;
+  const nextReversedAt = moneyRoutingStatus === "refunded"
+    ? existingRouting?.reversed_at ?? now
+    : existingRouting?.reversed_at ?? null;
 
   const upsertResult = await supabase
     .from("payment_routing_records")
@@ -1910,6 +2003,11 @@ export async function syncPaymentRoutingRecord(
         payout_readiness_status: payoutReadinessStatus,
         money_routing_status: moneyRoutingStatus,
         blocked_reason: blockedReason,
+        hold_reason: disputeHoldReason ?? existingRouting?.hold_reason ?? null,
+        eligible_at: nextEligibleAt,
+        held_at: nextHeldAt,
+        released_at: nextReleasedAt,
+        reversed_at: nextReversedAt,
         processor_charge_id: options?.processorChargeId ?? existingRouting?.processor_charge_id ?? null,
         processor_balance_transaction_id: options?.processorBalanceTransactionId ?? existingRouting?.processor_balance_transaction_id ?? null,
         reconciliation_status: reconciliationStatus,
@@ -1941,8 +2039,168 @@ export async function syncPaymentRoutingRecord(
     throw new FintechServiceError("Unable to write the payment routing ledger.", 500);
   }
 
+  const routingRow = upsertResult.data as PaymentRoutingRow;
+  await recordRoutingLifecycleEvents(supabase, {
+    routing: routingRow,
+    payment,
+    appointment,
+    existingRouting,
+    relationshipType: routingModel,
+    disputeHold
+  });
   await syncWalletBalancesForPayment(supabase, payment.id);
-  return upsertResult.data as PaymentRoutingRow;
+  return routingRow;
+}
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
+
+function mapRoutingLifecycleStatus(routing: PaymentRoutingRow | null) {
+  if (!routing) {
+    return "repair_required" as const;
+  }
+
+  if (routing.money_routing_status === "ready_for_payout") {
+    return "eligible" as const;
+  }
+
+  if (routing.money_routing_status === "blocked" && (routing.hold_reason === "dispute" || routing.blocked_reason?.toLowerCase().includes("dispute"))) {
+    return "held" as const;
+  }
+
+  if (routing.money_routing_status === "paid_out") {
+    return "released" as const;
+  }
+
+  if (routing.money_routing_status === "refunded") {
+    return "reversed" as const;
+  }
+
+  return "pending" as const;
+}
+
+async function loadAppointmentForPayoutEligibility(supabase: SupabaseClient, appointmentIdentifier: string) {
+  const trimmed = appointmentIdentifier.trim();
+  const primary = UUID_PATTERN.test(trimmed)
+    ? await supabase
+      .from("appointments")
+      .select("id, reference_code, status, membership_id, barber_id, shop_id, location_id, client_id")
+      .eq("id", trimmed)
+      .maybeSingle()
+    : await supabase
+      .from("appointments")
+      .select("id, reference_code, status, membership_id, barber_id, shop_id, location_id, client_id")
+      .eq("reference_code", trimmed)
+      .maybeSingle();
+
+  if (primary.error) {
+    throw new FintechServiceError("Unable to load the appointment for payout eligibility.", 500);
+  }
+
+  if (primary.data) {
+    return primary.data as AppointmentRow;
+  }
+
+  if (!UUID_PATTERN.test(trimmed)) {
+    const canonicalResult = await supabase
+      .from("appointments")
+      .select("id, reference_code, status, membership_id, barber_id, shop_id, location_id, client_id")
+      .eq("id", canonicalAppointmentUuid(trimmed))
+      .maybeSingle();
+
+    if (canonicalResult.error) {
+      throw new FintechServiceError("Unable to load the canonical appointment for payout eligibility.", 500);
+    }
+
+    if (canonicalResult.data) {
+      return canonicalResult.data as AppointmentRow;
+    }
+  }
+
+  throw new FintechServiceError("Appointment not found for payout eligibility.", 404);
+}
+
+export async function evaluatePayoutEligibilityForAppointment(
+  supabase: SupabaseClient,
+  appointmentIdentifier: string
+) {
+  const appointment = await loadAppointmentForPayoutEligibility(supabase, appointmentIdentifier);
+  console.log("[payout] eligibility_evaluation_started", {
+    appointmentId: appointment.id,
+    appointmentStatus: appointment.status
+  });
+
+  const paymentResult = await supabase
+    .from("payments")
+    .select(PAYMENT_SELECT)
+    .eq("appointment_id", appointment.id)
+    .in("payment_status", ["captured", "partially_refunded", "failed", "voided", "refunded"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (paymentResult.error) {
+    throw new FintechServiceError("Unable to load the appointment payment for payout eligibility.", 500);
+  }
+
+  const payment = (paymentResult.data as PaymentRow | null) ?? null;
+  if (!payment) {
+    await recordPlatformEvent(supabase, {
+      eventType: "routing_repair_required",
+      entityType: "appointment",
+      entityId: appointment.id,
+      actorId: appointment.barber_id,
+      source: "system",
+      relatedIds: {
+        appointmentId: appointment.id,
+        barberId: appointment.barber_id,
+        clientId: appointment.client_id
+      },
+      payload: {
+        reason: "missing_payment",
+        appointmentStatus: appointment.status
+      },
+      idempotencyKey: buildPlatformEventIdempotencyKey(["appointment", appointment.id, "routing-repair", "missing-payment"])
+    });
+    console.warn("[payout] eligibility_evaluation_result", {
+      appointmentId: appointment.id,
+      routingStatus: "repair_required",
+      eligible: false,
+      held: false,
+      holdReason: "missing_payment"
+    });
+    return {
+      appointmentId: appointment.id,
+      paymentId: null,
+      routingRecordId: null,
+      relationshipType: "freelance" as RoutingModel,
+      status: "repair_required" as const,
+      barberAmountCents: 0,
+      shopAmountCents: 0,
+      platformAmountCents: 0
+    };
+  }
+
+  const routing = await syncPaymentRoutingRecord(supabase, payment.id);
+  const status = mapRoutingLifecycleStatus(routing);
+  console.log("[payout] eligibility_evaluation_result", {
+    appointmentId: appointment.id,
+    paymentStatus: payment.payment_status,
+    routingStatus: routing?.money_routing_status ?? "missing",
+    eligible: status === "eligible",
+    held: status === "held",
+    holdReason: routing?.hold_reason ?? routing?.blocked_reason ?? null
+  });
+
+  return {
+    appointmentId: appointment.id,
+    paymentId: payment.id,
+    routingRecordId: routing?.id ?? null,
+    relationshipType: routing?.routing_model ?? "freelance",
+    status,
+    barberAmountCents: Math.round(numeric(routing?.barber_payout_amount) * 100),
+    shopAmountCents: Math.round(numeric(routing?.shop_split_amount) * 100),
+    platformAmountCents: Math.round(numeric(routing?.platform_fee_amount) * 100)
+  };
 }
 
 type RoutingExecutionTarget = {

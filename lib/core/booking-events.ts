@@ -77,14 +77,21 @@ export function buildBookingCreatedPlatformEvent(input: BookingEventInput) {
 }
 
 export function buildBookingUpdatedPlatformEvents(
-  input: BookingEventInput & { lifecycleEvent?: "updated" | "canceled" | "completed" | "rescheduled" }
+  input: BookingEventInput & { lifecycleEvent?: "updated" | "checked_in" | "started" | "canceled" | "completed" | "rescheduled" }
 ) {
   const events = [buildBookingEvent("booking_updated", input)];
+  if (input.lifecycleEvent === "checked_in") {
+    events.push(buildBookingEvent("appointment_checked_in", input));
+  }
+  if (input.lifecycleEvent === "started") {
+    events.push(buildBookingEvent("appointment_started", input));
+  }
   if (input.lifecycleEvent === "canceled") {
     events.push(buildBookingEvent("booking_canceled", input));
   }
   if (input.lifecycleEvent === "completed") {
     events.push(buildBookingEvent("booking_completed", input));
+    events.push(buildBookingEvent("appointment_completed", input));
   }
   if (input.lifecycleEvent === "rescheduled") {
     events.push(buildBookingEvent("booking_rescheduled", input));
@@ -98,7 +105,7 @@ export async function recordBookingCreatedPlatformEvent(input: BookingEventInput
 }
 
 export async function recordBookingUpdatedPlatformEvents(
-  input: BookingEventInput & { lifecycleEvent?: "updated" | "canceled" | "completed" | "rescheduled" }
+  input: BookingEventInput & { lifecycleEvent?: "updated" | "checked_in" | "started" | "canceled" | "completed" | "rescheduled" }
 ) {
   await recordBookingEventInputs(buildBookingUpdatedPlatformEvents(input));
 }
