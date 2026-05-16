@@ -212,6 +212,22 @@ function createSupabaseStub(seed: {
   };
 }
 
+function expectExplicitCardPaymentIntent(
+  stripeCreateMock: ReturnType<typeof vi.fn>,
+  expected: Record<string, unknown>
+) {
+  const payload = stripeCreateMock.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+
+  expect(payload).toMatchObject({
+    ...expected,
+    confirm: true,
+    off_session: true,
+    payment_method_types: ["card"]
+  });
+  expect(payload).not.toHaveProperty("error_on_requires_action");
+  expect(payload).not.toHaveProperty("automatic_payment_methods");
+}
+
 describe("stripe payment record creation", () => {
   beforeEach(() => {
     syncPaymentRoutingRecordMock.mockReset();
@@ -261,6 +277,12 @@ describe("stripe payment record creation", () => {
       }),
       undefined
     );
+    expectExplicitCardPaymentIntent(stripeCreateMock, {
+      amount: 5500,
+      currency: "usd",
+      customer: "cus_live_1",
+      payment_method: "pm_stripe_1"
+    });
     expect(syncPaymentRoutingRecordMock).toHaveBeenCalledWith(expect.anything(), "pay-live-1");
   });
 
@@ -315,6 +337,12 @@ describe("stripe payment record creation", () => {
       }),
       undefined
     );
+    expectExplicitCardPaymentIntent(stripeCreateMock, {
+      amount: 500,
+      currency: "usd",
+      customer: "cus_default_1",
+      payment_method: "pm_default_4242"
+    });
     expect(supabase.state.tables.payment_methods[0]).toMatchObject({
       id: "pm-single-default",
       is_default: true
@@ -356,6 +384,12 @@ describe("stripe payment record creation", () => {
       }),
       undefined
     );
+    expectExplicitCardPaymentIntent(stripeCreateMock, {
+      amount: 2500,
+      currency: "usd",
+      customer: "cus_live_1",
+      payment_method: "pm_stripe_1"
+    });
   });
 
   it("does not fail the booking payment when payout-routing sync fails after the ledger row is saved", async () => {
@@ -439,6 +473,55 @@ describe("stripe payment record creation", () => {
       }),
       undefined
     );
+    expectExplicitCardPaymentIntent(stripeCreateMock, {
+      amount: 500,
+      currency: "usd",
+      customer: "cus_live_1",
+      payment_method: "pm_stripe_1"
+    });
+  });
+
+  it("returns a safe booking payment message when Stripe requires additional confirmation", async () => {
+    const stripeCreateMock = vi.fn().mockResolvedValue({
+      id: "pi_requires_action",
+      status: "requires_action"
+    });
+    getStripeConnectClientMock.mockReturnValue({
+      paymentIntents: {
+        create: stripeCreateMock
+      }
+    });
+
+    const supabase = createSupabaseStub();
+
+    await expect(createCapturedStripePaymentRecord(supabase as never, {
+      appointmentId: "appt-requires-action",
+      clientId: "client-live-1",
+      shopId: null,
+      barberId: "barber-live-1",
+      serviceId: "service-live-1",
+      amount: 5,
+      paymentType: "booking",
+      paymentMethodId: "pm-local-1",
+      createdAt: "2026-04-21T12:30:00.000Z"
+    })).rejects.toMatchObject({
+      message: "Payment needs additional confirmation. Please use another card or re-add this card.",
+      bookingPaymentDiagnostics: {
+        stage: "payment_intent_create_failed",
+        safeMessage: "Payment needs additional confirmation. Please use another card or re-add this card.",
+        paymentMethodResolved: true,
+        paymentIntentCreateStarted: true,
+        paymentIntentCreateSucceeded: false,
+        stripePaymentIntentIdPresent: true
+      }
+    });
+    expectExplicitCardPaymentIntent(stripeCreateMock, {
+      amount: 500,
+      currency: "usd",
+      customer: "cus_live_1",
+      payment_method: "pm_stripe_1"
+    });
+    expect(supabase.state.insertedPayment).toBeNull();
   });
 
   it("refunds the Stripe intent when the canonical payment ledger cannot be written", async () => {
@@ -555,6 +638,12 @@ describe("stripe payment record creation", () => {
       }),
       undefined
     );
+    expectExplicitCardPaymentIntent(stripeCreateMock, {
+      amount: 2500,
+      currency: "usd",
+      customer: "cus_preference_4242",
+      payment_method: "pm_preference_4242"
+    });
   });
 
   it("does not charge a selected saved card that belongs to another client", async () => {

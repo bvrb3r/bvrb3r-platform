@@ -391,6 +391,8 @@ function mergeBookingPaymentDiagnostics(
   const paymentDiagnostics = error && typeof error === "object"
     ? (error as {
         bookingPaymentDiagnostics?: {
+          stage?: string;
+          safeMessage?: string;
           paymentMethodResolved?: boolean;
           stripePaymentIntentIdPresent?: boolean;
           providerPaymentMethodIdPresent?: boolean;
@@ -413,6 +415,24 @@ function mergeBookingPaymentDiagnostics(
   diagnostics.paymentIntentCreateStarted = Boolean(paymentDiagnostics.paymentIntentCreateStarted);
   diagnostics.paymentIntentCreateSucceeded = Boolean(paymentDiagnostics.paymentIntentCreateSucceeded);
   diagnostics.refundAttempted = Boolean(paymentDiagnostics.refundAttempted);
+}
+
+function getBookingPaymentFailureStage(error: unknown) {
+  const stage = error && typeof error === "object"
+    ? (error as { bookingPaymentDiagnostics?: { stage?: string } }).bookingPaymentDiagnostics?.stage
+    : null;
+
+  return stage === "payment_intent_create_failed" || stage === "payment_record_insert_failed"
+    ? stage
+    : "payment_record_insert_failed";
+}
+
+function getBookingPaymentFailureSafeMessage(error: unknown) {
+  const safeMessage = error && typeof error === "object"
+    ? (error as { bookingPaymentDiagnostics?: { safeMessage?: string } }).bookingPaymentDiagnostics?.safeMessage
+    : null;
+
+  return safeMessage?.trim() || "Payment could not be completed.";
 }
 
 function describePublicReference(value?: string | null) {
@@ -2718,28 +2738,34 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
         }
       } catch (error) {
         mergeBookingPaymentDiagnostics(diagnostics, error);
+        const paymentFailureStage = getBookingPaymentFailureStage(error);
+        const paymentFailureSafeMessage = getBookingPaymentFailureSafeMessage(error);
+        if (paymentFailureStage === "payment_intent_create_failed") {
+          diagnostics.paymentRecordInsertStarted = false;
+          diagnostics.paymentRecordInsertSucceeded = false;
+        }
         diagnostics.rollbackAttempted = true;
         await supabase.from("appointments").delete().eq("reference_code", appointmentForPayment.id);
-        logBookingTransactionStageFailure("payment_record_insert_failed", error, {
+        logBookingTransactionStageFailure(paymentFailureStage, error, {
           table: "payments",
           appointmentId: appointmentForPayment.id,
           rollback: "appointment_deleted",
-          safeMessage: "Payment could not be completed.",
+          safeMessage: paymentFailureSafeMessage,
           ...bookingTransactionLogDiagnostics(diagnostics)
         });
         if (error instanceof PaymentServiceError) {
-          throw new LiveOperationValidationError("Payment could not be completed.", "invalid_booking_selection", {
+          throw new LiveOperationValidationError(paymentFailureSafeMessage, "invalid_booking_selection", {
             transaction: {
-              stage: "payment_record_insert_failed",
-              safeMessage: "Payment could not be completed.",
+              stage: paymentFailureStage,
+              safeMessage: paymentFailureSafeMessage,
               ...publicBookingTransactionDiagnostics(diagnostics)
             }
           });
         }
         attachBookingTransactionDiagnostics(
           error,
-          "payment_record_insert_failed",
-          "Payment could not be completed.",
+          paymentFailureStage,
+          paymentFailureSafeMessage,
           diagnostics
         );
         throw error;

@@ -336,6 +336,8 @@ export class PaymentServiceError extends Error {
 }
 
 type BookingPaymentDiagnostics = {
+  stage?: "payment_intent_create_failed" | "payment_record_insert_failed";
+  safeMessage?: string;
   paymentMethodResolved: boolean;
   stripePaymentIntentIdPresent: boolean;
   providerPaymentMethodIdPresent?: boolean;
@@ -362,6 +364,7 @@ function roundCurrency(amount: number) {
 }
 
 const DEFAULT_PAYOUT_THRESHOLD = 25;
+const BOOKING_PAYMENT_REQUIRES_ACTION_MESSAGE = "Payment needs additional confirmation. Please use another card or re-add this card.";
 
 function uniqueStrings(values: Array<string | null | undefined>) {
   return [...new Set(values.map((value) => value?.trim()).filter(Boolean) as string[])];
@@ -1851,7 +1854,7 @@ export async function createCapturedStripePaymentRecord(
       payment_method: paymentMethod.provider_payment_method_id,
       confirm: true,
       off_session: true,
-      error_on_requires_action: true,
+      payment_method_types: ["card"],
       metadata: normalizeStripeMetadata({
         ...(input.metadata ?? {}),
         appointment_id: input.appointmentId,
@@ -1884,6 +1887,8 @@ export async function createCapturedStripePaymentRecord(
     throw withBookingPaymentDiagnostics(
       toStripePaymentServiceError(error, "Unable to collect the required Stripe card payment."),
       {
+        stage: "payment_intent_create_failed",
+        safeMessage: "Payment could not be completed.",
         ...baseDiagnostics,
         stripePaymentIntentIdPresent: false,
         paymentIntentCreateSucceeded: false
@@ -1892,15 +1897,21 @@ export async function createCapturedStripePaymentRecord(
   }
 
   if (intent.status !== "succeeded") {
-    logBookingPaymentStageFailure("payment_intent_create_failed", new PaymentServiceError("Stripe did not confirm this payment successfully.", 409), {
+    const requiresClientAction = intent.status === "requires_action" || intent.status === "requires_payment_method";
+    const safeMessage = requiresClientAction
+      ? BOOKING_PAYMENT_REQUIRES_ACTION_MESSAGE
+      : "Payment could not be completed.";
+    logBookingPaymentStageFailure("payment_intent_create_failed", new PaymentServiceError(safeMessage, 409), {
       appointmentId: input.appointmentId,
       clientId: input.clientId,
       paymentIntentIdPresent: Boolean(intent.id),
       status: intent.status
     });
     throw withBookingPaymentDiagnostics(
-      new PaymentServiceError("Stripe did not confirm this payment successfully.", 409),
+      new PaymentServiceError(safeMessage, 409),
       {
+        stage: "payment_intent_create_failed",
+        safeMessage,
         ...baseDiagnostics,
         stripePaymentIntentIdPresent: Boolean(intent.id),
         paymentIntentCreateSucceeded: false

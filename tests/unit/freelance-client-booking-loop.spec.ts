@@ -600,6 +600,8 @@ describe("freelance client booking loop", () => {
         customer: "cus_phil_4242",
         payment_method: "pm_phil_4242",
         confirm: true,
+        off_session: true,
+        payment_method_types: ["card"],
         metadata: expect.objectContaining({
           barber_id: BARBER_ID,
           service_id: SERVICE_ID,
@@ -611,6 +613,9 @@ describe("freelance client booking loop", () => {
         idempotencyKey: expect.stringContaining("booking:")
       })
     );
+    const stripePayload = stripeCreateMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(stripePayload).not.toHaveProperty("error_on_requires_action");
+    expect(stripePayload).not.toHaveProperty("automatic_payment_methods");
 
     const clientSnapshot = await provider.readSnapshot({ role: "client", clientId: "client-1fd26b88" });
     expect(clientSnapshot.appointments).toHaveLength(1);
@@ -686,5 +691,54 @@ describe("freelance client booking loop", () => {
     expect(tables.appointments).toHaveLength(0);
     expect(tables.payments).toHaveLength(0);
     expect(stripeCreateMock).not.toHaveBeenCalled();
+  });
+
+  it("propagates Stripe PaymentIntent failures without relabeling them as payment record failures", async () => {
+    const tables = createTables();
+    const supabase = createSupabaseMock(tables);
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+    getBarberDashboardPayloadMock.mockImplementation(async () => appointmentRowsToDashboard(tables));
+    const stripeCreateMock = vi.fn().mockRejectedValue(
+      new Error("The `error_on_requires_action` parameter can't be used with Dashboard-managed payment methods.")
+    );
+    getStripeConnectClientMock.mockReturnValue({
+      paymentIntents: { create: stripeCreateMock },
+      refunds: { create: vi.fn() }
+    });
+
+    const provider = await getLiveOperationsProvider();
+
+    await expect(provider.createBooking({
+      locationId: "independent-barber-43b3cda2",
+      barberId: "barber-43b3cda2",
+      serviceId: SERVICE_REFERENCE,
+      addOnIds: [],
+      appointmentTime: "2026-05-15T14:00:00.000Z",
+      clientName: "Phillip mcgee",
+      clientPhone: "+18136250040",
+      clientId: "client-1fd26b88",
+      actorRole: "client",
+      actorEmail: "phillipmcgeeclient@outlook.com",
+      actorProfileId: CLIENT_PROFILE_ID,
+      paymentMethodId: PAYMENT_METHOD_ID
+    })).rejects.toMatchObject({
+      message: "Payment could not be completed.",
+      details: {
+        transaction: {
+          stage: "payment_intent_create_failed",
+          safeMessage: "Payment could not be completed.",
+          appointmentInsertStarted: true,
+          appointmentInsertSucceeded: true,
+          paymentIntentCreateStarted: true,
+          paymentIntentCreateSucceeded: false,
+          paymentRecordInsertStarted: false,
+          paymentRecordInsertSucceeded: false
+        }
+      }
+    });
+
+    expect(stripeCreateMock).toHaveBeenCalled();
+    expect(tables.appointments).toHaveLength(0);
+    expect(tables.payments).toHaveLength(0);
   });
 });
