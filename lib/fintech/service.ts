@@ -21,6 +21,7 @@ import {
   normalizeLegalAcceptance,
   normalizeRequirementList,
   normalizeRoutingModel,
+  PLATFORM_FEE_RATE,
   roundCurrency,
   type AgreementType,
   type BoothRentFrequency,
@@ -2162,6 +2163,143 @@ function mapRoutingLifecycleStatus(routing: PaymentRoutingRow | null) {
   return "pending" as const;
 }
 
+async function repairCompletedFreelanceAppointmentRoutingRecord(
+  supabase: SupabaseClient,
+  appointment: AppointmentRow,
+  payment: PaymentRow
+) {
+  const existingRoutingResult = await supabase
+    .from("payment_routing_records")
+    .select(PAYMENT_ROUTING_SELECT)
+    .eq("appointment_id", appointment.id)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (existingRoutingResult.error) {
+    throw new FintechServiceError("Unable to inspect the existing payment routing ledger.", 500);
+  }
+
+  const existingRouting = (existingRoutingResult.data as PaymentRoutingRow | null) ?? null;
+  console.info("[barber-appointment] complete_routing_lookup_result", {
+    appointmentId: appointment.id,
+    routingFound: Boolean(existingRouting)
+  });
+
+  const now = new Date().toISOString();
+  const disputeHold = await hasActiveDisputeHold(supabase, appointment.reference_code ?? null);
+  const paymentSucceeded = isCompletionPaymentSuccessful(payment);
+  const providerGrossAmount = roundCurrency(numeric(payment.amount));
+  const refundedAmount = 0;
+  const providerFeeAmount = 0;
+  const providerNetAmount = providerGrossAmount;
+  const platformFeeAmount = roundCurrency(providerGrossAmount * PLATFORM_FEE_RATE);
+  const barberPayoutAmount = roundCurrency(Math.max(providerGrossAmount - platformFeeAmount, 0));
+  const shopSplitAmount = 0;
+  const blockedReason = !paymentSucceeded
+    ? "Payment was not captured successfully."
+    : disputeHold
+      ? "An active dispute or chargeback is blocking payout."
+      : null;
+  const eligibleAt = paymentSucceeded && !disputeHold ? existingRouting?.eligible_at ?? now : existingRouting?.eligible_at ?? null;
+  const heldAt = disputeHold ? existingRouting?.held_at ?? now : existingRouting?.held_at ?? null;
+  const routingPayload = {
+    payment_id: payment.id,
+    appointment_id: appointment.id,
+    membership_id: appointment.membership_id ?? null,
+    routing_model: "freelance" as RoutingModel,
+    payout_recipient_type: "barber" as const,
+    provider_gross_amount: providerGrossAmount,
+    refunded_amount: refundedAmount,
+    provider_fee_amount: providerFeeAmount,
+    provider_net_amount: providerNetAmount,
+    platform_fee_amount: platformFeeAmount,
+    barber_payout_amount: barberPayoutAmount,
+    shop_split_amount: shopSplitAmount,
+    currency: (payment.currency || "usd").toLowerCase(),
+    payout_readiness_status: blockedReason ? "blocked" as const : "eligible" as const,
+    money_routing_status: blockedReason ? "blocked" as const : "pending" as const,
+    blocked_reason: blockedReason,
+    eligible_at: eligibleAt,
+    held_at: heldAt,
+    released_at: existingRouting?.released_at ?? null,
+    reversed_at: existingRouting?.reversed_at ?? null,
+    processor_charge_id: existingRouting?.processor_charge_id ?? payment.provider_payment_intent_id ?? null,
+    processor_balance_transaction_id: existingRouting?.processor_balance_transaction_id ?? null,
+    reconciliation_status: existingRouting?.reconciliation_status ?? "open" as const,
+    metadata: {
+      ...(existingRouting?.metadata && typeof existingRouting.metadata === "object" ? existingRouting.metadata : {}),
+      repairReason: "missing_routing_record_on_completion",
+      source: "barber_complete_service",
+      relationshipType: "freelance",
+      appointmentId: appointment.id,
+      paymentId: payment.id,
+      barberId: appointment.barber_id,
+      clientId: appointment.client_id
+    },
+    created_at: existingRouting?.created_at ?? now,
+    updated_at: now
+  };
+  const payloadKeys = Object.keys(routingPayload);
+
+  if (!existingRouting) {
+    console.info("[barber-appointment] complete_routing_repair_started", {
+      appointmentId: appointment.id,
+      paymentId: payment.id,
+      payloadKeys,
+      providerGrossAmount,
+      platformFeeAmount,
+      barberPayoutAmount,
+      shopSplitAmount
+    });
+  }
+
+  const writeResult = existingRouting
+    ? await supabase
+      .from("payment_routing_records")
+      .update(routingPayload)
+      .eq("id", existingRouting.id)
+      .select(PAYMENT_ROUTING_SELECT)
+      .single()
+    : await supabase
+      .from("payment_routing_records")
+      .insert(routingPayload)
+      .select(PAYMENT_ROUTING_SELECT)
+      .single();
+
+  if (writeResult.error) {
+    console.error("[barber-appointment] complete_routing_repair_failed", {
+      appointmentId: appointment.id,
+      postgresCode: "code" in writeResult.error ? writeResult.error.code : null,
+      postgresDetails: "details" in writeResult.error ? writeResult.error.details : null,
+      errorMessage: "message" in writeResult.error ? writeResult.error.message : String(writeResult.error),
+      payloadKeys
+    });
+    throw new FintechServiceError("Unable to write the payment routing ledger.", 500);
+  }
+
+  const routing = writeResult.data as PaymentRoutingRow;
+  if (!existingRouting) {
+    console.info("[barber-appointment] complete_routing_repair_succeeded", {
+      appointmentId: routing.appointment_id,
+      routingId: routing.id,
+      payoutReadinessStatus: routing.payout_readiness_status,
+      eligibleAtPresent: Boolean(routing.eligible_at)
+    });
+  }
+
+  await recordRoutingLifecycleEvents(supabase, {
+    routing,
+    payment,
+    appointment,
+    existingRouting,
+    relationshipType: "freelance",
+    disputeHold
+  });
+  await syncWalletBalancesForPayment(supabase, payment.id);
+  return routing;
+}
+
 async function loadAppointmentForPayoutEligibility(supabase: SupabaseClient, appointmentIdentifier: string) {
   const trimmed = appointmentIdentifier.trim();
   const primary = UUID_PATTERN.test(trimmed)
@@ -2273,11 +2411,14 @@ export async function evaluatePayoutEligibilityForAppointment(
     };
   }
 
-  const routing = await syncPaymentRoutingRecord(supabase, payment.id, {
-    forceCompletionEligibility: appointment.status === "completed" && isCompletionPaymentSuccessful(payment),
-    repairReason: "missing_routing_record_on_completion",
-    source: "barber_complete_service"
-  });
+  const shouldRepairCompletedFreelanceRouting = appointment.status === "completed" && !appointment.shop_id;
+  const routing = shouldRepairCompletedFreelanceRouting
+    ? await repairCompletedFreelanceAppointmentRoutingRecord(supabase, appointment, payment)
+    : await syncPaymentRoutingRecord(supabase, payment.id, {
+      forceCompletionEligibility: appointment.status === "completed" && isCompletionPaymentSuccessful(payment),
+      repairReason: "missing_routing_record_on_completion",
+      source: "barber_complete_service"
+    });
   const status = mapRoutingLifecycleStatus(routing);
   console.log("[payout] eligibility_evaluation_result", {
     appointmentId: appointment.id,

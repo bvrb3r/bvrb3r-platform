@@ -259,7 +259,18 @@ describe("payout completion flow", () => {
       platform_fee_amount: 0.25,
       barber_payout_amount: 4.75,
       shop_split_amount: 0,
-      eligible_at: expect.any(String)
+      eligible_at: expect.any(String),
+      released_at: null,
+      processor_charge_id: "pi_test_paid",
+      metadata: expect.objectContaining({
+        repairReason: "missing_routing_record_on_completion",
+        source: "barber_complete_service",
+        relationshipType: "freelance",
+        appointmentId: APPOINTMENT_ID,
+        paymentId: PAYMENT_ID,
+        barberId: BARBER_ID,
+        clientId: CLIENT_ID
+      })
     });
     expect(Object.keys(tables.payment_routing_records[0])).not.toEqual(expect.arrayContaining([
       "total_cents",
@@ -302,6 +313,55 @@ describe("payout completion flow", () => {
       payout_readiness_status: "eligible",
       money_routing_status: "pending",
       eligible_at: expect.any(String)
+    });
+  });
+
+  it("uses appointment_id to find and update an existing routing repair row", async () => {
+    const tables = createTables({
+      payment_routing_records: [{
+        id: "routing-existing-by-appointment",
+        payment_id: "old-payment-id",
+        appointment_id: APPOINTMENT_ID,
+        membership_id: null,
+        routing_model: "freelance",
+        payout_recipient_type: "barber",
+        provider_gross_amount: 5,
+        refunded_amount: 0,
+        provider_fee_amount: 0,
+        provider_net_amount: 5,
+        platform_fee_amount: 0,
+        barber_payout_amount: 0,
+        shop_split_amount: 0,
+        currency: "usd",
+        payout_readiness_status: "needs_attention",
+        money_routing_status: "pending",
+        blocked_reason: null,
+        eligible_at: null,
+        held_at: null,
+        released_at: null,
+        reversed_at: null,
+        processor_charge_id: null,
+        processor_balance_transaction_id: null,
+        reconciliation_status: "open",
+        metadata: {},
+        created_at: "2026-05-16T14:30:00.000Z",
+        updated_at: "2026-05-16T14:30:00.000Z"
+      }]
+    });
+    const supabase = createSupabaseStub(tables);
+
+    const result = await evaluatePayoutEligibilityForAppointment(supabase as never, APPOINTMENT_ID);
+
+    expect(result.routingRecordId).toBe("routing-existing-by-appointment");
+    expect(tables.payment_routing_records).toHaveLength(1);
+    expect(tables.payment_routing_records[0]).toMatchObject({
+      id: "routing-existing-by-appointment",
+      payment_id: PAYMENT_ID,
+      appointment_id: APPOINTMENT_ID,
+      payout_readiness_status: "eligible",
+      platform_fee_amount: 0.25,
+      barber_payout_amount: 4.75,
+      shop_split_amount: 0
     });
   });
 
