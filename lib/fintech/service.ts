@@ -1910,23 +1910,28 @@ export async function syncPaymentRoutingRecord(
       : numeric(barber.commission_rate)
     : numeric(membership.commission_rate);
 
-  await ensureConnectedAccounts(supabase, {
-    barberIds: barberId ? [barberId] : [],
-    shopIds: shopId ? [shopId] : [],
-    createdBy: barber?.profile_id ?? null
-  });
+  const bypassPayoutSetupForFreelanceCompletion = Boolean(options?.forceCompletionEligibility && !shopId);
+  let syncedStates: ConnectedAccountState[] = [];
 
-  const [accounts, acceptances] = await Promise.all([
-    loadConnectedAccountsForScope(supabase, {
+  if (!bypassPayoutSetupForFreelanceCompletion) {
+    await ensureConnectedAccounts(supabase, {
       barberIds: barberId ? [barberId] : [],
-      shopIds: shopId ? [shopId] : []
-    }),
-    loadLegalAcceptancesForScope(supabase, {
-      barberIds: barberId ? [barberId] : [],
-      shopIds: shopId ? [shopId] : []
-    })
-  ]);
-  const syncedStates = await Promise.all(accounts.map((account) => syncConnectedAccountState(supabase, account, acceptances)));
+      shopIds: shopId ? [shopId] : [],
+      createdBy: barber?.profile_id ?? null
+    });
+
+    const [accounts, acceptances] = await Promise.all([
+      loadConnectedAccountsForScope(supabase, {
+        barberIds: barberId ? [barberId] : [],
+        shopIds: shopId ? [shopId] : []
+      }),
+      loadLegalAcceptancesForScope(supabase, {
+        barberIds: barberId ? [barberId] : [],
+        shopIds: shopId ? [shopId] : []
+      })
+    ]);
+    syncedStates = await Promise.all(accounts.map((account) => syncConnectedAccountState(supabase, account, acceptances)));
+  }
   const barberAccountState = syncedStates.find((state) => state.row.subject_type === "barber" && state.row.barber_id === barberId) ?? null;
   const shopAccountState = syncedStates.find((state) => state.row.subject_type === "shop" && state.row.shop_id === shopId) ?? null;
   const existingRoutingResult = await supabase
@@ -1949,12 +1954,6 @@ export async function syncPaymentRoutingRecord(
   const providerFeeAmount = options?.providerFeeAmount ?? (existingRouting ? numeric(existingRouting.provider_fee_amount) : 0);
   const disputeHold = await hasActiveDisputeHold(supabase, appointment?.reference_code ?? null);
   const completionEligibilityForced = Boolean(options?.forceCompletionEligibility && appointment?.status === "completed" && isCompletionPaymentSuccessful(payment) && !disputeHold);
-  if (completionEligibilityForced && !existingRouting) {
-    console.info("[barber-appointment] complete_routing_repair_started", {
-      appointmentId: payment.appointment_id,
-      paymentId: payment.id
-    });
-  }
   const trustState = await readTrustStateSafe();
   const barberPayoutGate = trustState && barberReference
     ? getVerificationGateDecision(
@@ -2027,64 +2026,96 @@ export async function syncPaymentRoutingRecord(
     ? existingRouting?.reversed_at ?? now
     : existingRouting?.reversed_at ?? null;
 
-  const upsertResult = await supabase
-    .from("payment_routing_records")
-    .upsert(
-      {
-        payment_id: payment.id,
-        appointment_id: payment.appointment_id,
-        membership_id: membership?.id ?? appointment?.membership_id ?? null,
-        routing_model: routingModel,
-        payout_recipient_type: calculated.payoutRecipientType,
-        provider_gross_amount: calculated.providerGrossAmount,
-        refunded_amount: calculated.refundedAmount,
-        provider_fee_amount: calculated.providerFeeAmount,
-        provider_net_amount: calculated.providerNetAmount,
-        platform_fee_amount: calculated.platformFeeAmount,
-        barber_payout_amount: calculated.barberPayoutAmount,
-        shop_split_amount: calculated.shopSplitAmount,
-        currency: payment.currency.toLowerCase(),
-        payout_readiness_status: payoutReadinessStatus,
-        money_routing_status: moneyRoutingStatus,
-        blocked_reason: completionEligibilityForced ? null : blockedReason,
-        eligible_at: nextEligibleAt,
-        held_at: nextHeldAt,
-        released_at: nextReleasedAt,
-        reversed_at: nextReversedAt,
-        processor_charge_id: options?.processorChargeId ?? existingRouting?.processor_charge_id ?? null,
-        processor_balance_transaction_id: options?.processorBalanceTransactionId ?? existingRouting?.processor_balance_transaction_id ?? null,
-        reconciliation_status: reconciliationStatus,
-        metadata: {
-          paymentType: payment.payment_type,
-          paymentStatus: payment.payment_status,
-          status: payment.status ?? null,
-          provider: payment.provider,
-          providerPaymentIntentId: payment.provider_payment_intent_id,
-          shopId,
-          barberId,
-          barberReference,
-          shopVerificationScopeId,
-          appointmentStatus: appointment?.status ?? null,
-          disputeHold,
-          subscriptionBlockedReasons,
-          barberPayoutGate,
-          shopPayoutGate,
-          repairReason: options?.repairReason ?? null,
-          source: options?.source ?? null
-        },
-        created_at: existingRouting?.created_at ?? now,
-        updated_at: now
-      },
-      { onConflict: "payment_id" }
-    )
-    .select(PAYMENT_ROUTING_SELECT)
-    .single();
+  const routingPayload = {
+    payment_id: payment.id,
+    appointment_id: payment.appointment_id,
+    membership_id: membership?.id ?? appointment?.membership_id ?? null,
+    routing_model: routingModel,
+    payout_recipient_type: calculated.payoutRecipientType,
+    provider_gross_amount: calculated.providerGrossAmount,
+    refunded_amount: calculated.refundedAmount,
+    provider_fee_amount: calculated.providerFeeAmount,
+    provider_net_amount: calculated.providerNetAmount,
+    platform_fee_amount: calculated.platformFeeAmount,
+    barber_payout_amount: calculated.barberPayoutAmount,
+    shop_split_amount: calculated.shopSplitAmount,
+    currency: payment.currency.toLowerCase(),
+    payout_readiness_status: payoutReadinessStatus,
+    money_routing_status: moneyRoutingStatus,
+    blocked_reason: completionEligibilityForced ? null : blockedReason,
+    eligible_at: nextEligibleAt,
+    held_at: nextHeldAt,
+    released_at: nextReleasedAt,
+    reversed_at: nextReversedAt,
+    processor_charge_id: options?.processorChargeId ?? existingRouting?.processor_charge_id ?? null,
+    processor_balance_transaction_id: options?.processorBalanceTransactionId ?? existingRouting?.processor_balance_transaction_id ?? null,
+    reconciliation_status: reconciliationStatus,
+    metadata: {
+      paymentType: payment.payment_type,
+      paymentStatus: payment.payment_status,
+      status: payment.status ?? null,
+      provider: payment.provider,
+      providerPaymentIntentId: payment.provider_payment_intent_id,
+      shopId,
+      barberId,
+      barberReference,
+      shopVerificationScopeId,
+      appointmentStatus: appointment?.status ?? null,
+      disputeHold,
+      subscriptionBlockedReasons,
+      barberPayoutGate,
+      shopPayoutGate,
+      repairReason: options?.repairReason ?? null,
+      source: options?.source ?? null,
+      relationshipType: routingModel,
+      appointmentId: payment.appointment_id,
+      paymentId: payment.id,
+      clientId: payment.client_id
+    },
+    created_at: existingRouting?.created_at ?? now,
+    updated_at: now
+  };
+  const routingPayloadKeys = Object.keys(routingPayload);
 
-  if (upsertResult.error) {
+  if (completionEligibilityForced && !existingRouting) {
+    console.info("[barber-appointment] complete_routing_repair_started", {
+      appointmentId: payment.appointment_id,
+      paymentId: payment.id,
+      payloadKeys: routingPayloadKeys,
+      providerGrossAmount: routingPayload.provider_gross_amount,
+      platformFeeAmount: routingPayload.platform_fee_amount,
+      barberPayoutAmount: routingPayload.barber_payout_amount,
+      shopSplitAmount: routingPayload.shop_split_amount
+    });
+  }
+
+  const writeResult = existingRouting
+    ? await supabase
+      .from("payment_routing_records")
+      .update(routingPayload)
+      .eq("id", existingRouting.id)
+      .select(PAYMENT_ROUTING_SELECT)
+      .single()
+    : await supabase
+      .from("payment_routing_records")
+      .insert(routingPayload)
+      .select(PAYMENT_ROUTING_SELECT)
+      .single();
+
+  if (writeResult.error) {
+    if (completionEligibilityForced) {
+      console.error("[barber-appointment] complete_routing_repair_failed", {
+        appointmentId: payment.appointment_id,
+        postgresCode: "code" in writeResult.error ? writeResult.error.code : null,
+        postgresDetails: "details" in writeResult.error ? writeResult.error.details : null,
+        errorMessage: "message" in writeResult.error ? writeResult.error.message : String(writeResult.error),
+        payloadKeys: routingPayloadKeys
+      });
+    }
     throw new FintechServiceError("Unable to write the payment routing ledger.", 500);
   }
 
-  const routingRow = upsertResult.data as PaymentRoutingRow;
+  const routingRow = writeResult.data as PaymentRoutingRow;
   if (completionEligibilityForced && !existingRouting) {
     console.info("[barber-appointment] complete_routing_repair_succeeded", {
       appointmentId: routingRow.appointment_id,

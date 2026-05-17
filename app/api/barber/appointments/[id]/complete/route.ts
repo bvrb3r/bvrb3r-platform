@@ -51,7 +51,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     const actionContext = await resolveBarberAppointmentActionContext({
       user,
       appointmentId: id,
-      allowedStatuses: ["confirmed", "checked_in", "in_service"]
+      allowedStatuses: ["confirmed", "checked_in", "in_service", "completed"]
     });
     console.info("[barber-appointment] complete_started", {
       appointmentId: actionContext.appointment.id,

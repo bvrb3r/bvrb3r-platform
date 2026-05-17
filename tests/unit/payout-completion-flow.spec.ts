@@ -74,6 +74,7 @@ function createTables(overrides: Partial<Record<string, Row[]>> = {}) {
       provider_payment_intent_id: "pi_test_paid",
       amount: 5,
       currency: "usd",
+      status: "captured",
       payment_status: "captured",
       payment_type: "booking",
       paid_at: "2026-05-16T14:30:00.000Z",
@@ -276,10 +277,39 @@ describe("payout completion flow", () => {
     ]));
   });
 
+  it("accepts captured payment from the legacy status column during routing repair", async () => {
+    const tables = createTables({
+      payments: [{
+        ...createTables().payments[0],
+        status: "captured",
+        payment_status: "pending"
+      }]
+    });
+    const supabase = createSupabaseStub(tables);
+
+    const result = await evaluatePayoutEligibilityForAppointment(supabase as never, APPOINTMENT_ID);
+
+    expect(result).toMatchObject({
+      status: "eligible",
+      payoutReadinessStatus: "eligible",
+      barberAmountCents: 475,
+      platformAmountCents: 25,
+      shopAmountCents: 0
+    });
+    expect(tables.payment_routing_records[0]).toMatchObject({
+      payment_id: PAYMENT_ID,
+      appointment_id: APPOINTMENT_ID,
+      payout_readiness_status: "eligible",
+      money_routing_status: "pending",
+      eligible_at: expect.any(String)
+    });
+  });
+
   it("does not make failed payments payout eligible", async () => {
     const tables = createTables({
       payments: [{
         ...createTables().payments[0],
+        status: "failed",
         payment_status: "failed"
       }]
     });
@@ -408,6 +438,31 @@ describe("payout completion flow", () => {
     });
 
     expect(context.appointment.id).toBe(APPOINTMENT_ID);
+    expect(context.providerAppointmentId).toBe(APPOINTMENT_REFERENCE);
+  });
+
+  it("allows complete action context for already completed appointments so routing can be repaired", async () => {
+    const tables = createTables();
+    const supabase = createSupabaseStub(tables);
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const context = await resolveBarberAppointmentActionContext({
+      user: {
+        id: BARBER_PROFILE_ID,
+        role: "barber_user",
+        email: "phillipmcgee813@gmail.com",
+        password: "DevOnly!123",
+        name: "Phillip mcgee",
+        title: "Freelance Barber",
+        locationIds: [],
+        barberId: "barber-43b3cda2",
+        barberSubtype: "freelance"
+      },
+      appointmentId: APPOINTMENT_ID,
+      allowedStatuses: ["confirmed", "checked_in", "in_service", "completed"]
+    });
+
+    expect(context.appointment.status).toBe("completed");
     expect(context.providerAppointmentId).toBe(APPOINTMENT_REFERENCE);
   });
 

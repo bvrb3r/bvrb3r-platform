@@ -3184,6 +3184,63 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
         ? { ...input, appointmentId: previousAppointment.id }
         : input;
       if (input.action === "service_complete" && previousAppointment) {
+        const alreadyCompleted = previousAppointment.status === "completed";
+        console.info("[barber-appointment] routing_repair_idempotent_check", {
+          appointmentId: canonicalAppointmentUuid(previousAppointment.id),
+          appointmentStatus: previousAppointment.status,
+          alreadyCompleted,
+          shouldCheckRouting: alreadyCompleted
+        });
+        if (alreadyCompleted) {
+          const idempotentResult: LiveMutationSuccess = {
+            appointment: previousAppointment,
+            snapshot: fullSnapshot
+          };
+          try {
+            const payoutEvaluation = await evaluatePayoutEligibilityForAppointment(supabase, canonicalAppointmentUuid(previousAppointment.id));
+            idempotentResult.routing = payoutEvaluation;
+            console.log("[barber-appointment] status_transition", {
+              appointmentId: canonicalAppointmentUuid(previousAppointment.id),
+              oldStatus: previousAppointment.status,
+              newStatus: previousAppointment.status,
+              actorProfileIdPresent: false,
+              barberId: previousAppointment.barberId,
+              ownershipVerified: input.actorRole === "barber",
+              payoutStatus: payoutEvaluation.status,
+              routingRecordIdPresent: Boolean(payoutEvaluation.routingRecordId)
+            });
+          } catch (error) {
+            idempotentResult.warning = "Service completed. Payout routing requires review.";
+            idempotentResult.routing = {
+              appointmentId: canonicalAppointmentUuid(previousAppointment.id),
+              paymentId: null,
+              routingRecordId: null,
+              relationshipType: "freelance",
+              status: "repair_required",
+              payoutReadinessStatus: "repair_required",
+              moneyRoutingStatus: "manual_review",
+              eligibleAt: null,
+              releasedAt: null,
+              barberAmountCents: 0,
+              shopAmountCents: 0,
+              platformAmountCents: 0
+            };
+            console.error("[barber-appointment] complete_failed", {
+              stage: "routing_repair",
+              appointmentId: canonicalAppointmentUuid(previousAppointment.id),
+              paymentFound: null,
+              paymentId: null,
+              paymentStatus: null,
+              routingFound: false,
+              routingRepairAttempted: true,
+              errorName: error instanceof Error ? error.name : "UnknownError",
+              errorMessage: error instanceof Error ? error.message : String(error),
+              postgresCode: typeof error === "object" && error !== null && "code" in error ? error.code : null,
+              postgresDetails: typeof error === "object" && error !== null && "details" in error ? error.details : null
+            });
+          }
+          return idempotentResult;
+        }
         await assertCompletionPaymentCaptured(supabase, previousAppointment, input.appointmentId);
       }
       const result = transitionAppointmentInSnapshot(fullSnapshot, transitionInput);

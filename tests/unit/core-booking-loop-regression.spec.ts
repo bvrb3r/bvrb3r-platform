@@ -2,12 +2,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   createSupabaseAdminClientMock,
+  evaluatePayoutEligibilityForAppointmentMock,
   getStripeConnectClientMock,
   syncPaymentRoutingRecordMock,
   syncStripeSettlementForPaymentMock,
   reconcilePaymentPayoutExecutionsMock
 } = vi.hoisted(() => ({
   createSupabaseAdminClientMock: vi.fn(),
+  evaluatePayoutEligibilityForAppointmentMock: vi.fn(),
   getStripeConnectClientMock: vi.fn(),
   syncPaymentRoutingRecordMock: vi.fn(),
   syncStripeSettlementForPaymentMock: vi.fn(),
@@ -47,10 +49,7 @@ vi.mock("@/lib/stripe/connect", () => ({
 }));
 
 vi.mock("@/lib/fintech/service", () => ({
-  evaluatePayoutEligibilityForAppointment: vi.fn().mockResolvedValue({
-    status: "eligible",
-    routingRecordId: "routing-freelance-1"
-  }),
+  evaluatePayoutEligibilityForAppointment: evaluatePayoutEligibilityForAppointmentMock,
   syncPaymentRoutingRecord: syncPaymentRoutingRecordMock,
   syncStripeSettlementForPayment: syncStripeSettlementForPaymentMock,
   reconcilePaymentPayoutExecutions: reconcilePaymentPayoutExecutionsMock
@@ -446,6 +445,27 @@ function buildConfirmedAppointmentRow(referenceCode: string, startsAt = "2026-05
   };
 }
 
+function buildCapturedPaymentRow(appointmentId: string): Row {
+  return {
+    id: "e681ffde-7a67-4277-96c0-a35519ba4acd",
+    appointment_id: appointmentId,
+    client_id: CLIENT_ID,
+    shop_id: null,
+    barber_id: BARBER_ID,
+    provider: "stripe",
+    provider_payment_intent_id: "pi_test_paid",
+    amount: 5,
+    currency: "usd",
+    status: "captured",
+    payment_status: "captured",
+    payment_type: "booking",
+    payment_method_id: PAYMENT_METHOD_ID,
+    paid_at: "2026-05-16T14:30:00.000Z",
+    created_at: "2026-05-16T14:30:00.000Z",
+    updated_at: "2026-05-16T14:30:00.000Z"
+  };
+}
+
 function findAppointmentUpdatePayload(tables: Record<string, Row[]>, status: string) {
   return tables.__updates?.find((row) => row.table === "appointments" && (row.payload as Row).status === status)?.payload as Row | undefined;
 }
@@ -473,6 +493,11 @@ function expectNoImmutableAppointmentFields(payload: Row | undefined) {
 describe("core booking loop regression", () => {
   beforeEach(() => {
     createSupabaseAdminClientMock.mockReset();
+    evaluatePayoutEligibilityForAppointmentMock.mockReset();
+    evaluatePayoutEligibilityForAppointmentMock.mockResolvedValue({
+      status: "eligible",
+      routingRecordId: "routing-freelance-1"
+    });
     getStripeConnectClientMock.mockReset();
     syncPaymentRoutingRecordMock.mockReset();
     syncStripeSettlementForPaymentMock.mockReset();
@@ -653,6 +678,131 @@ describe("core booking loop regression", () => {
     expect(Object.keys(completedHistory)).not.toContain("changed_by_profile_id");
     expect(Object.keys(completedHistory)).not.toContain("created_at");
     expect(Object.keys(completedHistory)).not.toContain("reason");
+  });
+
+  it("repairs missing routing for an already completed appointment without rewriting lifecycle history", async () => {
+    const tables = createTables();
+    const appointmentReference = "appt-already-completed";
+    const appointment = {
+      ...buildConfirmedAppointmentRow(appointmentReference),
+      status: "completed",
+      completed_at: "2026-05-16T15:20:00.000Z",
+      lifecycle_revision: 2
+    } as Row;
+    const appointmentId = appointment.id as string;
+    tables.appointments.push(appointment);
+    tables.payments.push(buildCapturedPaymentRow(appointmentId));
+    tables.appointment_status_history.push(
+      {
+        appointment_id: appointmentId,
+        status: "confirmed",
+        old_status: null,
+        new_status: "confirmed",
+        change_reason: "appointment_booked",
+        changed_by: CLIENT_PROFILE_ID,
+        changed_at: "2026-05-16T14:30:00.000Z"
+      },
+      {
+        appointment_id: appointmentId,
+        status: "completed",
+        old_status: "confirmed",
+        new_status: "completed",
+        change_reason: "barber_completed_service",
+        changed_by: BARBER_PROFILE_ID,
+        changed_at: "2026-05-16T15:20:00.000Z"
+      }
+    );
+    evaluatePayoutEligibilityForAppointmentMock.mockImplementation(async (_supabase: unknown, appointmentId: string) => {
+      const payment = tables.payments.find((row) => row.appointment_id === appointmentId)!;
+      if (!tables.payment_routing_records.some((row) => row.appointment_id === appointmentId)) {
+        tables.payment_routing_records.push({
+          id: "routing-repaired-1",
+          payment_id: payment.id,
+          appointment_id: appointmentId,
+          membership_id: null,
+          routing_model: "freelance",
+          payout_recipient_type: "barber",
+          provider_gross_amount: 5,
+          refunded_amount: 0,
+          provider_fee_amount: 0,
+          provider_net_amount: 5,
+          platform_fee_amount: 0.25,
+          barber_payout_amount: 4.75,
+          shop_split_amount: 0,
+          currency: "usd",
+          payout_readiness_status: "eligible",
+          money_routing_status: "pending",
+          blocked_reason: null,
+          eligible_at: "2026-05-16T15:21:00.000Z",
+          released_at: null,
+          held_at: null,
+          reversed_at: null,
+          processor_charge_id: null,
+          processor_balance_transaction_id: null,
+          reconciliation_status: "open",
+          metadata: {
+            repairReason: "missing_routing_record_on_completion",
+            source: "barber_complete_service",
+            relationshipType: "freelance",
+            appointmentId,
+            paymentId: payment.id,
+            barberId: BARBER_ID,
+            clientId: CLIENT_ID
+          },
+          created_at: "2026-05-16T15:21:00.000Z",
+          updated_at: "2026-05-16T15:21:00.000Z"
+        });
+      }
+      return {
+        appointmentId,
+        paymentId: payment.id,
+        routingRecordId: "routing-repaired-1",
+        relationshipType: "freelance",
+        status: "eligible",
+        payoutReadinessStatus: "eligible",
+        moneyRoutingStatus: "pending",
+        eligibleAt: "2026-05-16T15:21:00.000Z",
+        releasedAt: null,
+        barberAmountCents: 475,
+        shopAmountCents: 0,
+        platformAmountCents: 25
+      };
+    });
+    const historyCount = tables.appointment_status_history.length;
+    const supabase = createSupabaseMock(tables);
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const provider = await getLiveOperationsProvider();
+    const result = await provider.transitionAppointment({
+      appointmentId: appointmentReference,
+      expectedRevision: 1,
+      action: "service_complete",
+      actorRole: "barber",
+      actorEmail: "phillipmcgee813@gmail.com"
+    });
+
+    expect(result.appointment.status).toBe("completed");
+    expect(result.routing).toMatchObject({
+      status: "eligible",
+      payoutReadinessStatus: "eligible",
+      barberAmountCents: 475,
+      platformAmountCents: 25,
+      shopAmountCents: 0
+    });
+    expect(tables.appointment_status_history).toHaveLength(historyCount);
+    expect(findAppointmentUpdatePayload(tables, "completed")).toBeUndefined();
+    expect(tables.payment_routing_records).toHaveLength(1);
+    expect(tables.payment_routing_records[0]).toMatchObject({
+      payment_id: "e681ffde-7a67-4277-96c0-a35519ba4acd",
+      appointment_id: appointmentId,
+      routing_model: "freelance",
+      payout_readiness_status: "eligible",
+      eligible_at: expect.any(String),
+      released_at: null,
+      barber_payout_amount: 4.75,
+      platform_fee_amount: 0.25,
+      shop_split_amount: 0
+    });
   });
 
   it("writes production status history when a barber cancels a confirmed appointment", async () => {
