@@ -1851,13 +1851,14 @@ async function updateAppointmentForLifecycleTransition(
   appointmentIdentifier: string,
   expectedRevision: number
 ) {
-  const row = appointmentUpsertRow(appointment);
+  const row = appointmentLifecyclePatch(appointment);
+  logCompleteLifecyclePatch(appointment, row);
   const byReference = await supabase
     .from("appointments")
     .update(row)
     .eq("reference_code", appointmentIdentifier)
     .eq("lifecycle_revision", expectedRevision)
-    .select("id, reference_code")
+    .select("id, reference_code, status, completed_at, updated_at")
     .maybeSingle();
 
   if (byReference.error) {
@@ -1872,7 +1873,7 @@ async function updateAppointmentForLifecycleTransition(
     .update(row)
     .eq("id", canonicalAppointmentUuid(appointmentIdentifier))
     .eq("lifecycle_revision", expectedRevision)
-    .select("id, reference_code")
+    .select("id, reference_code, status, completed_at, updated_at")
     .maybeSingle();
 
   if (byId.error) {
@@ -1880,6 +1881,45 @@ async function updateAppointmentForLifecycleTransition(
   }
 
   return byId.data;
+}
+
+function appointmentLifecyclePatch(appointment: LiveAppointmentRecord) {
+  const patch: Record<string, string | null> = {
+    status: appointment.status
+  };
+
+  if (appointment.status === "checked_in") {
+    patch.checked_in_at = appointment.checkedInAt ?? appointment.updatedAt;
+  }
+  if (appointment.status === "in_service") {
+    patch.service_started_at = appointment.serviceStartedAt ?? appointment.updatedAt;
+  }
+  if (appointment.status === "completed") {
+    patch.completed_at = appointment.completedAt ?? appointment.updatedAt;
+  }
+  if (appointment.status === "cancelled") {
+    patch.cancelled_at = appointment.cancelledAt ?? appointment.updatedAt;
+  }
+  patch.updated_at = appointment.updatedAt;
+
+  return patch;
+}
+
+function logCompleteLifecyclePatch(appointment: LiveAppointmentRecord, patch: Record<string, string | null>) {
+  if (appointment.status !== "completed") {
+    return;
+  }
+
+  const patchKeys = Object.keys(patch);
+  console.info("[barber-appointment] complete_update_payload", {
+    appointmentId: canonicalAppointmentUuid(appointment.id),
+    patchKeys,
+    includesLocationId: patchKeys.includes("location_id"),
+    includesClientId: patchKeys.includes("client_id"),
+    includesBarberId: patchKeys.includes("barber_id"),
+    includesServiceId: patchKeys.includes("service_id"),
+    includesShopId: patchKeys.includes("shop_id")
+  });
 }
 
 async function insertAppointmentCheckInEvent(

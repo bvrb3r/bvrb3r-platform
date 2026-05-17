@@ -337,8 +337,23 @@ function createSupabaseMock(tables: Record<string, Row[]>) {
         return Promise.resolve({ data: inserted, error: null });
       }
       if (this.operation === "update" && this.payload && !Array.isArray(this.payload)) {
+        const updatePayload = this.payload as Row;
+        tables.__updates ??= [];
+        tables.__updates.push({
+          table: this.table,
+          payload: { ...updatePayload }
+        });
+        if (this.table === "appointments" && updatePayload.location_id && !tables.locations.some((row) => row.id === updatePayload.location_id)) {
+          return Promise.resolve({
+            data: null,
+            error: {
+              code: "23503",
+              details: `Key (location_id)=(${String(updatePayload.location_id)}) is not present in table "locations".`
+            }
+          });
+        }
         const rows = this.filteredRows();
-        rows.forEach((row) => Object.assign(row, this.payload));
+        rows.forEach((row) => Object.assign(row, updatePayload));
         return Promise.resolve({ data: rows, error: null });
       }
       if (this.operation === "delete") {
@@ -429,6 +444,30 @@ function buildConfirmedAppointmentRow(referenceCode: string, startsAt = "2026-05
     checkout_reference: null,
     updated_at: startsAt
   };
+}
+
+function findAppointmentUpdatePayload(tables: Record<string, Row[]>, status: string) {
+  return tables.__updates?.find((row) => row.table === "appointments" && (row.payload as Row).status === status)?.payload as Row | undefined;
+}
+
+function expectNoImmutableAppointmentFields(payload: Row | undefined) {
+  expect(payload).toBeDefined();
+  expect(Object.keys(payload ?? {})).not.toEqual(expect.arrayContaining([
+    "location_id",
+    "client_id",
+    "barber_id",
+    "service_id",
+    "shop_id",
+    "starts_at",
+    "ends_at",
+    "chair_label",
+    "total_amount",
+    "grand_total",
+    "balance_due",
+    "source",
+    "booking_source",
+    "created_at"
+  ]));
 }
 
 describe("core booking loop regression", () => {
@@ -588,6 +627,13 @@ describe("core booking loop regression", () => {
       actorRole: "barber",
       actorEmail: "phillipmcgee813@gmail.com"
     });
+    const completePatch = findAppointmentUpdatePayload(tables, "completed");
+    expect(completePatch).toEqual({
+      status: "completed",
+      completed_at: expect.any(String),
+      updated_at: expect.any(String)
+    });
+    expectNoImmutableAppointmentFields(completePatch);
     expect(tables.appointments[0]).toMatchObject({
       status: "completed",
       completed_at: expect.any(String)
@@ -628,9 +674,15 @@ describe("core booking loop regression", () => {
 
     expect(tables.appointments[0]).toMatchObject({
       reference_code: appointmentReference,
-      status: "cancelled",
-      cancellation_reason: "Canceled by barber"
+      status: "cancelled"
     });
+    const cancelPatch = findAppointmentUpdatePayload(tables, "cancelled");
+    expect(cancelPatch).toEqual({
+      status: "cancelled",
+      cancelled_at: expect.any(String),
+      updated_at: expect.any(String)
+    });
+    expectNoImmutableAppointmentFields(cancelPatch);
     expect(tables.appointment_status_history).toEqual(expect.arrayContaining([
       expect.objectContaining({
         appointment_id: canonicalAppointmentUuid(appointmentReference),
@@ -668,6 +720,12 @@ describe("core booking loop regression", () => {
       reference_code: appointmentReference,
       status: "no_show"
     });
+    const noShowPatch = findAppointmentUpdatePayload(tables, "no_show");
+    expect(noShowPatch).toEqual({
+      status: "no_show",
+      updated_at: expect.any(String)
+    });
+    expectNoImmutableAppointmentFields(noShowPatch);
     expect(tables.appointment_status_history).toEqual(expect.arrayContaining([
       expect.objectContaining({
         appointment_id: canonicalAppointmentUuid(appointmentReference),
