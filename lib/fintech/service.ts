@@ -2197,6 +2197,10 @@ export async function evaluatePayoutEligibilityForAppointment(
     routingRecordId: routing?.id ?? null,
     relationshipType: routing?.routing_model ?? "freelance",
     status,
+    payoutReadinessStatus: routing?.payout_readiness_status ?? null,
+    moneyRoutingStatus: routing?.money_routing_status ?? null,
+    eligibleAt: routing?.eligible_at ?? null,
+    releasedAt: routing?.released_at ?? null,
     barberAmountCents: Math.round(numeric(routing?.barber_payout_amount) * 100),
     shopAmountCents: Math.round(numeric(routing?.shop_split_amount) * 100),
     platformAmountCents: Math.round(numeric(routing?.platform_fee_amount) * 100)

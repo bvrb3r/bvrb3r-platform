@@ -76,6 +76,7 @@ function buildSchedulePayload() {
 }
 
 function buildAppointment(status = "confirmed") {
+  const payoutEligible = status === "completed";
   const statusLabel = status === "checked_in"
     ? "Checked in"
     : status === "completed"
@@ -132,7 +133,14 @@ function buildAppointment(status = "confirmed") {
       paymentMethodBrand: "visa",
       paymentMethodLast4: "4242",
       receiptNumber: "Receipt 4242",
-      paidAt: "2026-04-27T13:55:00.000Z"
+      paidAt: "2026-04-27T13:55:00.000Z",
+      payoutReadinessStatus: payoutEligible ? "ready" : "needs_attention",
+      moneyRoutingStatus: payoutEligible ? "ready_for_payout" : "pending",
+      eligibleAt: payoutEligible ? "2026-04-27T14:16:00.000Z" : null,
+      releasedAt: null,
+      barberPayoutAmount: payoutEligible ? 4.75 : null,
+      platformFeeAmount: payoutEligible ? 0.25 : null,
+      shopSplitAmount: 0
     }
   };
 }
@@ -276,7 +284,23 @@ describe("BarberScheduleWorkspace", () => {
           appointments: [buildAppointment("completed")]
         }
       };
-      return { ok: true, appointment: buildAppointment("completed") };
+      return {
+        ok: true,
+        appointment: buildAppointment("completed"),
+        routing: {
+          status: "eligible",
+          payoutReadinessStatus: "ready",
+          moneyRoutingStatus: "ready_for_payout",
+          eligibleAt: "2026-04-27T14:16:00.000Z",
+          releasedAt: null,
+          barberAmountCents: 475,
+          platformAmountCents: 25,
+          shopAmountCents: 0,
+          barberPayoutAmount: 4.75,
+          platformFeeAmount: 0.25,
+          shopSplitAmount: 0
+        }
+      };
     });
     useBarberScheduleQueryMock.mockImplementation(() => ({
       data: payload,
@@ -301,7 +325,10 @@ describe("BarberScheduleWorkspace", () => {
       reason: undefined
     }));
     await waitFor(() => expect(refetchMock).toHaveBeenCalled());
-    expect(await screen.findByText("Service completed. Payout eligibility was refreshed.")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText("Appointment Details")).not.toBeInTheDocument());
+    expect(await screen.findByText("Service completed. Payout is now eligible.")).toBeInTheDocument();
+    expect(screen.getByText("Completed")).toBeInTheDocument();
+    expect(screen.getByText("Payout eligible")).toBeInTheDocument();
   });
 
   it("shows a visible error when a details action fails", async () => {
@@ -328,7 +355,34 @@ describe("BarberScheduleWorkspace", () => {
     fireEvent.click(screen.getByRole("button", { name: /View Details/i }));
     fireEvent.click(await screen.findByRole("button", { name: /Complete Service/i }));
 
-    expect(await screen.findByText("Action could not be completed. Refresh and try again.")).toBeInTheDocument();
+    expect(await screen.findByText("Service could not be completed. Refresh and try again.")).toBeInTheDocument();
+    expect(screen.getByText("Appointment Details")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Complete Service/i })).toBeInTheDocument();
+  });
+
+  it("hides Complete Service and shows payout state for completed details", async () => {
+    const payload = {
+      ...buildSchedulePayload(),
+      timeline: {
+        ...buildSchedulePayload().timeline,
+        appointments: [buildAppointment("completed")]
+      }
+    };
+    useBarberScheduleQueryMock.mockReturnValue({
+      data: payload,
+      isLoading: false,
+      error: null,
+      refetch: vi.fn()
+    });
+
+    render(<BarberScheduleWorkspace barberName="Blaze King" surface="calendar" />);
+
+    expect(screen.getByText("Payout eligible")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /View Details/i }));
+
+    expect(await screen.findByText("Service complete")).toBeInTheDocument();
+    expect(screen.getByText("Payout eligible - Expected payout $4.75")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Complete Service/i })).not.toBeInTheDocument();
   });
 
   it("opens transaction details with safe receipt and refund placeholders", async () => {

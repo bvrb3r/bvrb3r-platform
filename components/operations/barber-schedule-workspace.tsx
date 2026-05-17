@@ -508,6 +508,7 @@ function AppointmentCard({
       <div className="mt-3 flex flex-wrap gap-2 text-sm text-white/58">
         <span className="status-pill text-white/68">{appointment.display.locationLabel}</span>
         <span className="status-pill text-white/68">{appointment.financial.latestStatusLabel}</span>
+        {appointment.status === "completed" && isPayoutEligible(appointment) ? <span className="status-pill text-[#d7ffab]">Payout eligible</span> : null}
         {appointment.note?.trim() ? <span className="status-pill text-[#d7ffab]">Notes</span> : null}
       </div>
 
@@ -573,6 +574,47 @@ function OpenSlotCard({ slot, onBookSlot }: { slot: OpenSlotView; onBookSlot: (s
 
 type AppointmentDetailAction = "service_complete" | "cancel" | "no_show";
 
+type AppointmentLocalOverride = {
+  status?: BarberOperationalAppointment["status"];
+  completedAt?: string;
+  updatedAt?: string;
+  revision?: number;
+  balanceDue?: number;
+  display?: Partial<BarberOperationalAppointment["display"]>;
+  financial?: Partial<BarberOperationalAppointment["financial"]>;
+};
+
+function mergeAppointmentOverride(appointment: BarberOperationalAppointment, override?: AppointmentLocalOverride) {
+  if (!override) {
+    return appointment;
+  }
+
+  return {
+    ...appointment,
+    ...override,
+    display: {
+      ...appointment.display,
+      ...override.display
+    },
+    financial: {
+      ...appointment.financial,
+      ...override.financial
+    }
+  };
+}
+
+function isPayoutEligible(appointment: BarberOperationalAppointment) {
+  return appointment.financial.moneyRoutingStatus === "ready_for_payout"
+    || appointment.financial.payoutReadinessStatus === "eligible"
+    || (appointment.financial.payoutReadinessStatus === "ready" && Boolean(appointment.financial.eligibleAt));
+}
+
+function getExpectedPayoutLabel(appointment: BarberOperationalAppointment) {
+  return appointment.financial.barberPayoutAmount == null
+    ? null
+    : `Expected payout ${formatMoneyWithCents(appointment.financial.barberPayoutAmount)}`;
+}
+
 function AppointmentDetailsModal({
   appointment,
   view,
@@ -599,6 +641,8 @@ function AppointmentDetailsModal({
   const isPaid = appointment.financial.capturedAmount > 0 || appointment.balanceDue <= 0;
   const serviceComplete = appointment.status === "completed";
   const cardLabel = formatCardLabel(appointment);
+  const payoutEligible = isPayoutEligible(appointment);
+  const expectedPayoutLabel = getExpectedPayoutLabel(appointment);
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/72 px-4 py-5 backdrop-blur-sm sm:px-6" role="dialog" aria-modal="true" aria-label={view === "transaction" ? "Transaction Details" : "Appointment Details"}>
@@ -680,6 +724,11 @@ function AppointmentDetailsModal({
             <div className="rounded-[22px] border border-[#a3ff12]/20 bg-[#a3ff12]/[0.045] p-4">
               <p className="text-2xl font-extrabold text-white">{formatMoneyWithCents(appointment.grandTotal || appointment.totalAmount)} pre-paid</p>
               <p className="mt-2 text-sm font-semibold text-[#d7ffab]">{serviceComplete ? "Service complete" : isPaid ? "Service not complete" : appointment.financial.latestStatusLabel}</p>
+              {serviceComplete && payoutEligible ? (
+                <p className="mt-2 text-sm font-semibold text-white/72">
+                  Payout eligible{expectedPayoutLabel ? ` - ${expectedPayoutLabel}` : ""}
+                </p>
+              ) : null}
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
@@ -808,6 +857,7 @@ export function BarberScheduleWorkspace({
   const [pendingDetailAction, setPendingDetailAction] = useState<AppointmentDetailAction | null>(null);
   const [selectedAppointmentId, setSelectedAppointmentId] = useState<string | null>(null);
   const [appointmentDetailView, setAppointmentDetailView] = useState<"details" | "transaction">("details");
+  const [appointmentOverrides, setAppointmentOverrides] = useState<Record<string, AppointmentLocalOverride>>({});
   const [statusUpdate, setStatusUpdate] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const showCalendar = surface !== "availability";
   const showAvailability = surface !== "calendar";
@@ -817,8 +867,10 @@ export function BarberScheduleWorkspace({
   const timeline = payload?.timeline;
   const selectedDateKey = anchorDate || timeline?.anchorDate || payload?.businessDate || getTodayDateKey();
   const timelineAppointments = useMemo(
-    () => [...(timeline?.appointments ?? payload?.todayAppointments ?? [])].sort((left, right) => new Date(left.start).getTime() - new Date(right.start).getTime()),
-    [payload?.todayAppointments, timeline?.appointments]
+    () => [...(timeline?.appointments ?? payload?.todayAppointments ?? [])]
+      .map((appointment) => mergeAppointmentOverride(appointment, appointmentOverrides[appointment.id]))
+      .sort((left, right) => new Date(left.start).getTime() - new Date(right.start).getTime()),
+    [appointmentOverrides, payload?.todayAppointments, timeline?.appointments]
   );
   const visibleAppointments = useMemo(
     () => scheduleView === "day"
@@ -1011,7 +1063,7 @@ export function BarberScheduleWorkspace({
     }
 
     const successMessage = action === "service_complete"
-      ? "Service completed. Payout eligibility was refreshed."
+      ? "Service completed. Payout is now eligible."
       : action === "cancel"
         ? "Appointment canceled."
         : "Appointment marked as no-show.";
@@ -1031,32 +1083,77 @@ export function BarberScheduleWorkspace({
             ? "Marked no-show by barber"
             : undefined
       });
+      const routing = result.routing ?? null;
+      const nextStatus = result.appointment.status;
+      const financialOverride = routing
+        ? {
+            payoutReadinessStatus: routing.status === "eligible" ? "eligible" : routing.payoutReadinessStatus ?? null,
+            moneyRoutingStatus: routing.moneyRoutingStatus ?? (routing.status === "eligible" ? "ready_for_payout" : routing.status ?? null),
+            eligibleAt: routing.eligibleAt ?? null,
+            releasedAt: routing.releasedAt ?? null,
+            barberPayoutAmount: routing.barberPayoutAmount ?? (routing.barberAmountCents == null ? null : routing.barberAmountCents / 100),
+            platformFeeAmount: routing.platformFeeAmount ?? (routing.platformAmountCents == null ? null : routing.platformAmountCents / 100),
+            shopSplitAmount: routing.shopSplitAmount ?? (routing.shopAmountCents == null ? null : routing.shopAmountCents / 100)
+          }
+        : undefined;
+      setAppointmentOverrides((current) => ({
+        ...current,
+        [appointment.id]: {
+          status: nextStatus,
+          completedAt: result.appointment.completedAt,
+          updatedAt: result.appointment.updatedAt,
+          revision: result.appointment.revision,
+          balanceDue: result.appointment.balanceDue,
+          display: {
+            statusLabel: getTier1StatusLabel(nextStatus),
+            lifecycleDetail: nextStatus === "completed"
+              ? "Service completed and payout eligibility refreshed."
+              : appointment.display.lifecycleDetail
+          },
+          financial: financialOverride
+        }
+      }));
+      let modalClosed = false;
+      if (action === "service_complete") {
+        setSelectedAppointmentId(null);
+        setAppointmentDetailView("details");
+        modalClosed = true;
+      }
       let refetchSucceeded = false;
       try {
         await scheduleQuery.refetch();
         refetchSucceeded = true;
       } catch {}
-      console.info("[barber-calendar] appointment_action_result", {
+      console.info(action === "service_complete" ? "[barber-calendar] complete_action_result" : "[barber-calendar] appointment_action_result", {
         action,
         appointmentId: appointment.id,
         ok: true,
         previousStatus: appointment.status,
-        nextStatus: result.appointment.status,
+        nextStatus,
+        modalClosed,
         refetchStarted: true,
         refetchSucceeded
       });
-      setStatusUpdate({ tone: "success", message: successMessage });
+      setStatusUpdate(refetchSucceeded
+        ? { tone: "success", message: successMessage }
+        : { tone: "error", message: action === "service_complete" ? "Service completed, but calendar refresh failed. Refresh the page." : successMessage });
     } catch {
-      console.warn("[barber-calendar] appointment_action_result", {
+      console.warn(action === "service_complete" ? "[barber-calendar] complete_action_result" : "[barber-calendar] appointment_action_result", {
         action,
         appointmentId: appointment.id,
         ok: false,
         previousStatus: appointment.status,
         nextStatus: null,
+        modalClosed: false,
         refetchStarted: false,
         refetchSucceeded: false
       });
-      setStatusUpdate({ tone: "error", message: "Action could not be completed. Refresh and try again." });
+      setStatusUpdate({
+        tone: "error",
+        message: action === "service_complete"
+          ? "Service could not be completed. Refresh and try again."
+          : "Action could not be completed. Refresh and try again."
+      });
     } finally {
       setPendingAppointmentId(null);
       setPendingDetailAction(null);

@@ -63,6 +63,13 @@ export type BarberOperationalAppointment = BarberDashboardAppointment & {
     paymentMethodLast4?: string | null;
     receiptNumber?: string | null;
     paidAt?: string | null;
+    payoutReadinessStatus?: string | null;
+    moneyRoutingStatus?: string | null;
+    eligibleAt?: string | null;
+    releasedAt?: string | null;
+    barberPayoutAmount?: number | null;
+    platformFeeAmount?: number | null;
+    shopSplitAmount?: number | null;
   };
 };
 
@@ -878,6 +885,23 @@ export function useCreateBarberShopJoinRequestMutation() {
 export function useBarberLifecycleMutation() {
   const queryClient = useQueryClient();
 
+  type BarberLifecycleActionResult = {
+    appointment: LiveAppointmentRecord;
+    routing?: {
+      status?: string | null;
+      payoutReadinessStatus?: string | null;
+      moneyRoutingStatus?: string | null;
+      eligibleAt?: string | null;
+      releasedAt?: string | null;
+      barberAmountCents?: number | null;
+      shopAmountCents?: number | null;
+      platformAmountCents?: number | null;
+      barberPayoutAmount?: number | null;
+      shopSplitAmount?: number | null;
+      platformFeeAmount?: number | null;
+    } | null;
+  };
+
   return useMutation({
     mutationFn: ({
       appointmentId,
@@ -901,10 +925,16 @@ export function useBarberLifecycleMutation() {
                 ? `/api/barber/appointments/${appointmentId}/cancel`
                 : `/api/barber/appointments/${appointmentId}/no-show`;
 
-        return requestJson<{ appointment: LiveAppointmentRecord }>(route, {
+        return requestJson<BarberLifecycleActionResult>(route, {
           method: "POST",
           body: JSON.stringify({ expectedRevision, reason })
-        });
+        }).then((result) => ({
+          ...result,
+          appointment: {
+            ...result.appointment,
+            id: appointmentId
+          }
+        }));
       }),
     onSuccess: async ({ appointment }) => {
       queryClient.setQueryData<BarberDashboardResponse | undefined>(["barber-dashboard"], (current) => {

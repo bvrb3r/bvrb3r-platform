@@ -85,6 +85,18 @@ type PaymentMethodRow = {
   last4: string | null;
 };
 
+type PaymentRoutingRow = {
+  appointment_id: string | null;
+  payout_readiness_status: string | null;
+  money_routing_status: string | null;
+  barber_payout_amount: number | string | null;
+  platform_fee_amount: number | string | null;
+  shop_split_amount: number | string | null;
+  eligible_at: string | null;
+  released_at: string | null;
+  updated_at: string | null;
+};
+
 type TipRow = {
   appointment_id: string;
   amount: number | string;
@@ -149,6 +161,13 @@ export type BarberPaymentSummaryView = {
   paymentMethodLast4?: string | null;
   receiptNumber?: string | null;
   paidAt?: string | null;
+  payoutReadinessStatus?: string | null;
+  moneyRoutingStatus?: string | null;
+  eligibleAt?: string | null;
+  releasedAt?: string | null;
+  barberPayoutAmount?: number | null;
+  platformFeeAmount?: number | null;
+  shopSplitAmount?: number | null;
 };
 
 export type BarberOperationalAppointmentView = BaseBarberAppointment & {
@@ -746,7 +765,14 @@ function buildFallbackPaymentSummary(appointment: LiveAppointmentRecord): Barber
     paymentMethodBrand: null,
     paymentMethodLast4: null,
     receiptNumber: null,
-    paidAt: null
+    paidAt: null,
+    payoutReadinessStatus: null,
+    moneyRoutingStatus: null,
+    eligibleAt: null,
+    releasedAt: null,
+    barberPayoutAmount: null,
+    platformFeeAmount: null,
+    shopSplitAmount: null
   };
 }
 
@@ -788,6 +814,24 @@ async function readPaymentSummaryMap(
 
   const payments = (paymentsResult.data ?? []) as PaymentRow[];
   const tips = (tipsResult.data ?? []) as TipRow[];
+  const routingRowsByAppointmentId = new Map<string, PaymentRoutingRow>();
+  const routingResult = await supabase
+    .from("payment_routing_records")
+    .select("appointment_id, payout_readiness_status, money_routing_status, barber_payout_amount, platform_fee_amount, shop_split_amount, eligible_at, released_at, updated_at")
+    .in("appointment_id", appointmentIds)
+    .order("updated_at", { ascending: false });
+  if (routingResult.error) {
+    console.warn("[barber-calendar] payment_routing_read_failed", {
+      appointmentCount: appointmentIds.length,
+      errorMessage: routingResult.error.message
+    });
+  } else {
+    for (const row of (routingResult.data ?? []) as PaymentRoutingRow[]) {
+      if (row.appointment_id && !routingRowsByAppointmentId.has(row.appointment_id)) {
+        routingRowsByAppointmentId.set(row.appointment_id, row);
+      }
+    }
+  }
   const paymentMethodIds = Array.from(new Set(payments.map((payment) => payment.payment_method_id).filter((value): value is string => Boolean(value))));
   const paymentMethodsById = new Map<string, PaymentMethodRow>();
   if (paymentMethodIds.length) {
@@ -840,6 +884,7 @@ async function readPaymentSummaryMap(
       .filter((row) => row.payment_status === "partially_refunded" || row.payment_status === "refunded")
       .reduce((sum, row) => sum + toNumber(row.amount), 0);
     const tipAmount = tipRows.reduce((sum, row) => sum + toNumber(row.amount), 0);
+    const routingRow = routingRowsByAppointmentId.get(appointmentId) ?? null;
 
     map.set(appointmentIdToReference.get(appointmentId) ?? appointment.id, {
       latestStatus: latestBooking?.payment_status ?? null,
@@ -852,7 +897,14 @@ async function readPaymentSummaryMap(
       paymentMethodBrand: latestBooking?.payment_method_id ? paymentMethodsById.get(latestBooking.payment_method_id)?.brand ?? null : null,
       paymentMethodLast4: latestBooking?.payment_method_id ? paymentMethodsById.get(latestBooking.payment_method_id)?.last4 ?? null : null,
       receiptNumber: latestBooking ? `Receipt ${appointment.id.slice(-6).toUpperCase()}` : null,
-      paidAt: latestBooking?.created_at ?? null
+      paidAt: latestBooking?.created_at ?? null,
+      payoutReadinessStatus: routingRow?.payout_readiness_status ?? null,
+      moneyRoutingStatus: routingRow?.money_routing_status ?? null,
+      eligibleAt: routingRow?.eligible_at ?? null,
+      releasedAt: routingRow?.released_at ?? null,
+      barberPayoutAmount: routingRow ? toNumber(routingRow.barber_payout_amount) : null,
+      platformFeeAmount: routingRow ? toNumber(routingRow.platform_fee_amount) : null,
+      shopSplitAmount: routingRow ? toNumber(routingRow.shop_split_amount) : null
     });
   }
 

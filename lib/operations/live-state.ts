@@ -127,6 +127,10 @@ export interface LiveMutationSuccess {
     routingRecordId: string | null;
     relationshipType: string;
     status: string;
+    payoutReadinessStatus?: string | null;
+    moneyRoutingStatus?: string | null;
+    eligibleAt?: string | null;
+    releasedAt?: string | null;
     barberAmountCents: number;
     shopAmountCents: number;
     platformAmountCents: number;
