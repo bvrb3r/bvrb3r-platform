@@ -121,6 +121,7 @@ export interface RescheduleAppointmentMutationInput {
 export interface LiveMutationSuccess {
   appointment: LiveAppointmentRecord;
   snapshot: LiveOperationsSnapshot;
+  warning?: string;
   routing?: {
     appointmentId: string;
     paymentId: string | null;

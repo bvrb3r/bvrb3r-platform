@@ -135,6 +135,24 @@ type CanonicalServiceRow = {
   shop_reference?: string | null;
 };
 
+type CompletionPaymentRow = {
+  id: string;
+  appointment_id: string | null;
+  amount: number | string | null;
+  currency: string | null;
+  status?: string | null;
+  payment_status?: string | null;
+  payment_type?: string | null;
+};
+
+const COMPLETION_PAYMENT_SUCCESS_STATUSES = new Set(["captured", "succeeded", "paid", "completed"]);
+
+function isCompletionPaymentSuccessful(payment: CompletionPaymentRow | null | undefined) {
+  const status = String(payment?.status ?? "").toLowerCase();
+  const paymentStatus = String(payment?.payment_status ?? "").toLowerCase();
+  return COMPLETION_PAYMENT_SUCCESS_STATUSES.has(status) || COMPLETION_PAYMENT_SUCCESS_STATUSES.has(paymentStatus);
+}
+
 type SupabaseListResult = {
   data: unknown[] | null;
   error: {
@@ -1884,6 +1902,68 @@ async function insertAppointmentCheckInEvent(
   }
 }
 
+async function loadCompletionPaymentForAppointment(
+  supabase: SupabaseClient,
+  appointmentId: string
+) {
+  const paymentResult = await supabase
+    .from("payments")
+    .select("id, appointment_id, amount, currency, status, payment_status, payment_type, created_at")
+    .eq("appointment_id", canonicalAppointmentUuid(appointmentId))
+    .order("created_at", { ascending: false })
+    .limit(10);
+
+  if (paymentResult.error) {
+    throw paymentResult.error;
+  }
+
+  const payments = ((paymentResult.data ?? []) as CompletionPaymentRow[]);
+  return payments.find(isCompletionPaymentSuccessful) ?? payments[0] ?? null;
+}
+
+async function assertCompletionPaymentCaptured(
+  supabase: SupabaseClient,
+  appointment: LiveAppointmentRecord,
+  requestedAppointmentId: string
+) {
+  const payment = await loadCompletionPaymentForAppointment(supabase, appointment.id);
+  const paymentFound = Boolean(payment);
+  const paymentStatus = String(payment?.payment_status ?? payment?.status ?? "").toLowerCase();
+  console.info("[barber-appointment] complete_payment_lookup_result", {
+    appointmentId: canonicalAppointmentUuid(appointment.id),
+    paymentFound,
+    paymentId: payment?.id ?? null,
+    paymentStatus,
+    status: payment?.status ?? null,
+    paymentStatusColumn: payment?.payment_status ?? null,
+    amount: payment?.amount ?? null,
+    currency: payment?.currency ?? null
+  });
+
+  if (!payment || !isCompletionPaymentSuccessful(payment)) {
+    console.warn("[barber-appointment] complete_failed", {
+      stage: "payment_lookup",
+      appointmentId: canonicalAppointmentUuid(appointment.id),
+      paymentFound,
+      paymentId: payment?.id ?? null,
+      paymentStatus,
+      routingFound: null,
+      routingRepairAttempted: false,
+      errorName: "PaymentNotCaptured",
+      errorMessage: "Appointment cannot be completed for payout until payment is confirmed.",
+      postgresCode: null,
+      postgresDetails: null
+    });
+    throw new LiveOperationConflictError(
+      "Appointment cannot be completed for payout until payment is confirmed.",
+      await getLatestAppointmentOrThrow(supabase, requestedAppointmentId),
+      "invalid_transition"
+    );
+  }
+
+  return payment;
+}
+
 export function resolveOperationalPaymentRecordAttributes(type: string) {
   const paymentStage = type === "checkout" ? "checkout" : "booking";
   return {
@@ -3063,6 +3143,9 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
       const transitionInput = previousAppointment
         ? { ...input, appointmentId: previousAppointment.id }
         : input;
+      if (input.action === "service_complete" && previousAppointment) {
+        await assertCompletionPaymentCaptured(supabase, previousAppointment, input.appointmentId);
+      }
       const result = transitionAppointmentInSnapshot(fullSnapshot, transitionInput);
       const actorProfileId = await resolveProfileIdByEmail(supabase, input.actorEmail);
       const updatedRow = await updateAppointmentForLifecycleTransition(
@@ -3126,6 +3209,34 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
             routingRecordIdPresent: Boolean(payoutEvaluation.routingRecordId)
           });
         } catch (error) {
+          result.warning = "Service completed. Payout routing requires review.";
+          result.routing = {
+            appointmentId: canonicalAppointmentUuid(result.appointment.id),
+            paymentId: null,
+            routingRecordId: null,
+            relationshipType: "freelance",
+            status: "repair_required",
+            payoutReadinessStatus: "repair_required",
+            moneyRoutingStatus: "manual_review",
+            eligibleAt: null,
+            releasedAt: null,
+            barberAmountCents: 0,
+            shopAmountCents: 0,
+            platformAmountCents: 0
+          };
+          console.error("[barber-appointment] complete_failed", {
+            stage: "routing_repair",
+            appointmentId: canonicalAppointmentUuid(result.appointment.id),
+            paymentFound: null,
+            paymentId: null,
+            paymentStatus: null,
+            routingFound: false,
+            routingRepairAttempted: true,
+            errorName: error instanceof Error ? error.name : "UnknownError",
+            errorMessage: error instanceof Error ? error.message : String(error),
+            postgresCode: typeof error === "object" && error !== null && "code" in error ? error.code : null,
+            postgresDetails: typeof error === "object" && error !== null && "details" in error ? error.details : null
+          });
           console.error("[payout] eligibility_evaluation_failed", {
             appointmentId: canonicalAppointmentUuid(result.appointment.id),
             errorName: error instanceof Error ? error.name : "UnknownError",

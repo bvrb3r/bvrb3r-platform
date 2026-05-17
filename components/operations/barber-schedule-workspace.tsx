@@ -1083,6 +1083,9 @@ export function BarberScheduleWorkspace({
             ? "Marked no-show by barber"
             : undefined
       });
+      const completionWarning = action === "service_complete" && result.warning
+        ? "Service completed. Payout routing requires review."
+        : null;
       const routing = result.routing ?? null;
       const nextStatus = result.appointment.status;
       const financialOverride = routing
@@ -1135,7 +1138,7 @@ export function BarberScheduleWorkspace({
         refetchSucceeded
       });
       setStatusUpdate(refetchSucceeded
-        ? { tone: "success", message: successMessage }
+        ? { tone: completionWarning ? "error" : "success", message: completionWarning ?? successMessage }
         : { tone: "error", message: action === "service_complete" ? "Service completed, but calendar refresh failed. Refresh the page." : successMessage });
     } catch {
       console.warn(action === "service_complete" ? "[barber-calendar] complete_action_result" : "[barber-calendar] appointment_action_result", {

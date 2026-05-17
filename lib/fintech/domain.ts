@@ -3,7 +3,7 @@ import type { InternalPaymentStatus, InternalPaymentType } from "@/lib/payments/
 export type FintechSubjectType = "barber" | "shop";
 export type FintechProvider = "stripe_connect" | "manual";
 export type FintechOnboardingStatus = "not_started" | "invited" | "pending" | "submitted" | "restricted" | "verified";
-export type FintechPayoutReadinessStatus = "not_ready" | "needs_attention" | "ready" | "blocked";
+export type FintechPayoutReadinessStatus = "not_ready" | "needs_attention" | "ready" | "eligible" | "blocked";
 export type FintechLegalReadinessStatus = "pending" | "accepted" | "outdated";
 export type FintechTaxReadinessStatus = "pending" | "submitted" | "verified";
 export type FintechOperationalStatus = "not_started" | "onboarding_required" | "pending_verification" | "action_required" | "payout_ready" | "blocked";
@@ -237,7 +237,7 @@ export function deriveOperationalFintechStatus(input: {
     return "blocked" as const;
   }
 
-  if (input.payoutReadinessStatus === "ready") {
+  if (input.payoutReadinessStatus === "ready" || input.payoutReadinessStatus === "eligible") {
     return "payout_ready" as const;
   }
 
@@ -516,7 +516,7 @@ export function determinePayoutExecutionBlockReason(input: PayoutExecutionEligib
     return input.blockedReason?.trim() || "Routing is not ready for payout execution.";
   }
 
-  if (input.payoutReadinessStatus !== "ready") {
+  if (input.payoutReadinessStatus !== "ready" && input.payoutReadinessStatus !== "eligible") {
     return input.blockedReason?.trim() || "Payout readiness is incomplete.";
   }
 

@@ -253,12 +253,23 @@ describe("payout completion flow", () => {
       payment_id: PAYMENT_ID,
       appointment_id: APPOINTMENT_ID,
       routing_model: "freelance",
-      money_routing_status: "ready_for_payout",
+      payout_readiness_status: "eligible",
+      money_routing_status: "pending",
       platform_fee_amount: 0.25,
       barber_payout_amount: 4.75,
       shop_split_amount: 0,
       eligible_at: expect.any(String)
     });
+    expect(Object.keys(tables.payment_routing_records[0])).not.toEqual(expect.arrayContaining([
+      "total_cents",
+      "relationship_type",
+      "gross_amount_cents",
+      "platform_fee_cents",
+      "barber_amount_cents",
+      "shop_amount_cents",
+      "status",
+      "hold_reason"
+    ]));
     expect(tables.platform_events).toEqual(expect.arrayContaining([
       expect.objectContaining({ event_type: "payment_routing_created" }),
       expect.objectContaining({ event_type: "payout_eligible" })
@@ -298,7 +309,7 @@ describe("payout completion flow", () => {
     expect(result.status).toBe("held");
     expect(tables.payment_routing_records[0]).toMatchObject({
       money_routing_status: "blocked",
-      hold_reason: "dispute",
+      blocked_reason: "An active dispute or chargeback is blocking payout.",
       held_at: expect.any(String)
     });
     expect(tables.platform_events).toEqual(expect.arrayContaining([

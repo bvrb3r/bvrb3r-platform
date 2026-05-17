@@ -27,6 +27,16 @@ function normalizeCompleteRouting(routing: LiveMutationSuccess["routing"] | unde
   };
 }
 
+function getCompleteWarning(result: LiveMutationSuccess, routing: ReturnType<typeof normalizeCompleteRouting>) {
+  if (result.warning) {
+    return result.warning;
+  }
+
+  return routing?.status === "repair_required" || routing?.payoutReadinessStatus === "repair_required"
+    ? "Service completed. Payout routing requires review."
+    : null;
+}
+
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const parsed = bodySchema.safeParse(await request.json());
   if (!parsed.success) {
@@ -90,6 +100,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       id: actionContext.appointment.id
     };
     const responseRouting = normalizeCompleteRouting(result.routing);
+    const warning = getCompleteWarning(result, responseRouting);
     console.info("[barber-appointment] complete_succeeded", {
       appointmentId: actionContext.appointment.id,
       oldStatus: actionContext.appointment.status,
@@ -98,7 +109,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       statusHistoryInserted: true,
       routingUpdated: Boolean(responseRouting),
       payoutReadinessStatus: responseRouting?.payoutReadinessStatus ?? responseRouting?.status ?? null,
-      eligibleAtPresent: Boolean(responseRouting?.eligibleAt)
+      eligibleAtPresent: Boolean(responseRouting?.eligibleAt),
+      warning
     });
     console.info("[barber-appointment] action_succeeded", {
       appointmentId: actionContext.appointment.id,
@@ -109,7 +121,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       newStatus: result.appointment.status,
       ownershipVerified: true
     });
-    return NextResponse.json({ ok: true, appointment: responseAppointment, routing: responseRouting });
+    return NextResponse.json({ ok: true, appointment: responseAppointment, routing: responseRouting, warning });
   } catch (error) {
     if (error instanceof BarberAppointmentActionError) {
       console.warn("[barber-appointment] complete_failed", {

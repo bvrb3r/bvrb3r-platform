@@ -887,6 +887,7 @@ export function useBarberLifecycleMutation() {
 
   type BarberLifecycleActionResult = {
     appointment: LiveAppointmentRecord;
+    warning?: string | null;
     routing?: {
       status?: string | null;
       payoutReadinessStatus?: string | null;

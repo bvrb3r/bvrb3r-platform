@@ -134,8 +134,8 @@ function buildAppointment(status = "confirmed") {
       paymentMethodLast4: "4242",
       receiptNumber: "Receipt 4242",
       paidAt: "2026-04-27T13:55:00.000Z",
-      payoutReadinessStatus: payoutEligible ? "ready" : "needs_attention",
-      moneyRoutingStatus: payoutEligible ? "ready_for_payout" : "pending",
+      payoutReadinessStatus: payoutEligible ? "eligible" : "needs_attention",
+      moneyRoutingStatus: "pending",
       eligibleAt: payoutEligible ? "2026-04-27T14:16:00.000Z" : null,
       releasedAt: null,
       barberPayoutAmount: payoutEligible ? 4.75 : null,
@@ -289,8 +289,8 @@ describe("BarberScheduleWorkspace", () => {
         appointment: buildAppointment("completed"),
         routing: {
           status: "eligible",
-          payoutReadinessStatus: "ready",
-          moneyRoutingStatus: "ready_for_payout",
+          payoutReadinessStatus: "eligible",
+          moneyRoutingStatus: "pending",
           eligibleAt: "2026-04-27T14:16:00.000Z",
           releasedAt: null,
           barberAmountCents: 475,
@@ -329,6 +329,50 @@ describe("BarberScheduleWorkspace", () => {
     expect(await screen.findByText("Service completed. Payout is now eligible.")).toBeInTheDocument();
     expect(screen.getByText("Completed")).toBeInTheDocument();
     expect(screen.getByText("Payout eligible")).toBeInTheDocument();
+  });
+
+  it("closes details and shows a routing review warning when completion needs repair", async () => {
+    const payload = {
+      ...buildSchedulePayload(),
+      timeline: {
+        ...buildSchedulePayload().timeline,
+        appointments: [buildAppointment("confirmed")]
+      }
+    };
+    const refetchMock = vi.fn(async () => ({ data: payload }));
+    useBarberScheduleQueryMock.mockReturnValue({
+      data: payload,
+      isLoading: false,
+      error: null,
+      refetch: refetchMock
+    });
+    useBarberLifecycleMutationMock.mockReturnValue({
+      mutateAsync: vi.fn(async () => ({
+        ok: true,
+        warning: "Service completed. Payout routing requires review.",
+        appointment: buildAppointment("completed"),
+        routing: {
+          status: "repair_required",
+          payoutReadinessStatus: "repair_required",
+          moneyRoutingStatus: "manual_review",
+          eligibleAt: null,
+          releasedAt: null,
+          barberAmountCents: 0,
+          platformAmountCents: 0,
+          shopAmountCents: 0
+        }
+      })),
+      isPending: false
+    });
+
+    render(<BarberScheduleWorkspace barberName="Blaze King" surface="calendar" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /View Details/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /Complete Service/i }));
+
+    await waitFor(() => expect(screen.queryByText("Appointment Details")).not.toBeInTheDocument());
+    await waitFor(() => expect(refetchMock).toHaveBeenCalled());
+    expect(await screen.findByText("Service completed. Payout routing requires review.")).toBeInTheDocument();
   });
 
   it("shows a visible error when a details action fails", async () => {

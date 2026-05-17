@@ -464,7 +464,6 @@ describe("core booking loop regression", () => {
         payout_readiness_status: "needs_attention",
         money_routing_status: "pending",
         blocked_reason: null,
-        hold_reason: null,
         eligible_at: null
       };
       if (!existing) {
@@ -684,5 +683,30 @@ describe("core booking loop regression", () => {
     expect(Object.keys(noShowHistory)).not.toContain("changed_by_profile_id");
     expect(Object.keys(noShowHistory)).not.toContain("created_at");
     expect(Object.keys(noShowHistory)).not.toContain("reason");
+  });
+
+  it("refuses completion when no captured booking payment exists", async () => {
+    const tables = createTables();
+    const appointmentReference = "appt-unpaid-tier1";
+    tables.appointments.push(buildConfirmedAppointmentRow(appointmentReference));
+    const supabase = createSupabaseMock(tables);
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const provider = await getLiveOperationsProvider();
+
+    await expect(provider.transitionAppointment({
+      appointmentId: appointmentReference,
+      expectedRevision: 1,
+      action: "service_complete",
+      actorRole: "barber",
+      actorEmail: "phillipmcgee813@gmail.com"
+    })).rejects.toMatchObject({
+      status: 409,
+      message: "Appointment cannot be completed for payout until payment is confirmed."
+    });
+    expect(tables.appointments[0]).toMatchObject({
+      status: "confirmed",
+      completed_at: null
+    });
   });
 });
