@@ -1,0 +1,31 @@
+import { NextResponse } from "next/server";
+import { buildBookingLoopDebugPacket } from "@/lib/architect/debug/booking-loop-debug";
+import { requireArchitectDebugAccess } from "@/lib/architect/debug/guards";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+
+export async function GET(request: Request) {
+  const access = await requireArchitectDebugAccess();
+  if (!access.ok) return access.response;
+
+  const appointmentId = new URL(request.url).searchParams.get("appointmentId")?.trim();
+  if (!appointmentId) {
+    return NextResponse.json({ ok: false, error: "appointmentId is required.", safeMessage: "Enter an appointment id.", stage: "input" }, { status: 400 });
+  }
+
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) {
+    return NextResponse.json({ ok: false, error: "Supabase admin client is unavailable.", safeMessage: "Production database access is unavailable.", stage: "supabase" }, { status: 503 });
+  }
+
+  try {
+    const packet = await buildBookingLoopDebugPacket(supabase, appointmentId, access.actor);
+    return NextResponse.json(packet);
+  } catch (error) {
+    return NextResponse.json({
+      ok: false,
+      error: error instanceof Error ? error.message : "Unable to build booking-loop debug packet.",
+      safeMessage: "Booking-loop debug could not be completed.",
+      stage: "booking_loop_debug"
+    }, { status: 500 });
+  }
+}
