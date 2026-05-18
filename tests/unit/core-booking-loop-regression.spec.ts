@@ -850,6 +850,82 @@ describe("core booking loop regression", () => {
     expect(Object.keys(canceledHistory)).not.toContain("reason");
   });
 
+  it("lets a client cancel their own confirmed appointment without deleting payment or releasing payout", async () => {
+    const tables = createTables();
+    const appointmentReference = "appt-client-cancel-tier1";
+    const appointmentId = canonicalAppointmentUuid(appointmentReference);
+    tables.appointments.push(buildConfirmedAppointmentRow(appointmentReference));
+    tables.payments.push(buildCapturedPaymentRow(appointmentId));
+    tables.payment_routing_records.push({
+      id: "routing-client-cancel",
+      payment_id: "e681ffde-7a67-4277-96c0-a35519ba4acd",
+      appointment_id: appointmentId,
+      routing_model: "freelance",
+      payout_recipient_type: "barber",
+      provider_gross_amount: 5,
+      platform_fee_amount: 0.25,
+      barber_payout_amount: 4.75,
+      shop_split_amount: 0,
+      payout_readiness_status: "pending",
+      money_routing_status: "pending",
+      eligible_at: null,
+      released_at: null
+    });
+    const paymentCount = tables.payments.length;
+    const routingCount = tables.payment_routing_records.length;
+    const supabase = createSupabaseMock(tables);
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const provider = await getLiveOperationsProvider();
+    const result = await provider.cancelAppointment({
+      appointmentId: appointmentReference,
+      expectedRevision: 1,
+      actorRole: "client",
+      actorEmail: "phillipmcgeeclient@outlook.com",
+      reason: "Client cancelled from Activity",
+      statusHistoryReason: "client_cancelled_appointment"
+    });
+
+    expect(result.appointment.status).toBe("cancelled");
+    const cancelPatch = findAppointmentUpdatePayload(tables, "cancelled");
+    expect(cancelPatch).toEqual({
+      status: "cancelled",
+      cancelled_at: expect.any(String),
+      updated_at: expect.any(String)
+    });
+    expectNoImmutableAppointmentFields(cancelPatch);
+    expect(tables.appointment_status_history).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        appointment_id: appointmentId,
+        status: "cancelled",
+        old_status: "confirmed",
+        new_status: "cancelled",
+        change_reason: "client_cancelled_appointment",
+        changed_by: CLIENT_PROFILE_ID,
+        changed_at: expect.any(String)
+      })
+    ]));
+    expect(tables.payments).toHaveLength(paymentCount);
+    expect(tables.payments[0]).toMatchObject({
+      appointment_id: appointmentId,
+      status: "captured",
+      payment_status: "captured"
+    });
+    expect(tables.payment_routing_records).toHaveLength(routingCount);
+    expect(tables.payment_routing_records[0]).toMatchObject({
+      appointment_id: appointmentId,
+      payout_readiness_status: "pending",
+      released_at: null
+    });
+    const clientSnapshot = await provider.readSnapshot({ role: "client", clientId: "client-1fd26b88" });
+    expect(clientSnapshot.appointments).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: appointmentReference,
+        status: "cancelled"
+      })
+    ]));
+  });
+
   it("writes production status history when a barber marks a confirmed appointment no-show", async () => {
     const tables = createTables();
     const appointmentReference = "appt-noshow-tier1";

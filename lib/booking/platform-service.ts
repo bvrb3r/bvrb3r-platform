@@ -2628,7 +2628,7 @@ export async function getClientBookingsPayload(clientId: string) {
     .sort((left, right) => new Date(left.start).getTime() - new Date(right.start).getTime());
   const nextAppointment = upcomingAppointments[0] ?? null;
   const history = hydratedAppointments
-    .filter((appointment) => appointment.status === "completed")
+    .filter((appointment) => ["completed", "cancelled", "no_show", "refunded"].includes(appointment.status))
     .sort((left, right) => new Date(right.start).getTime() - new Date(left.start).getTime())
     .slice(0, 6);
   const favoriteBarberProfile = clientProfile?.favoriteBarberReference
@@ -2671,7 +2671,7 @@ export async function getClientBookingsPayload(clientId: string) {
   const reviewHistory = history.map((appointment) => ({
     ...appointment,
     review: reviewMap.get(appointment.id) ?? null,
-    canReview: !reviewMap.has(appointment.id),
+    canReview: appointment.status === "completed" && !reviewMap.has(appointment.id),
     receipt: receiptMap.get(appointment.id)?.receipt ?? null,
     breakdown: receiptMap.get(appointment.id)?.breakdown ?? null,
     moneyTimeline: receiptMap.get(appointment.id)?.moneyTimeline ?? null

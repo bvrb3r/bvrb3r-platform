@@ -12,7 +12,7 @@ const cancelSchema = z.object({
 });
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const parsed = cancelSchema.safeParse(await request.json());
+  const parsed = cancelSchema.safeParse(await request.json().catch(() => ({})));
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid cancellation payload." }, { status: 400 });
   }
@@ -39,7 +39,12 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       expectedRevision: parsed.data.expectedRevision,
       actorRole,
       actorEmail: user.email,
-      reason: parsed.data.reason
+      reason: parsed.data.reason,
+      statusHistoryReason: actorRole === "client"
+        ? "client_cancelled_appointment"
+        : actorRole === "barber"
+          ? "barber_canceled_appointment"
+          : "appointment_cancelled"
     });
     await recordBookingUpdatedPlatformEvents({
       appointment: result.appointment,
@@ -59,7 +64,11 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       });
     } catch {}
 
-    return NextResponse.json({ appointment: result.appointment });
+    return NextResponse.json({
+      ok: true,
+      appointment: result.appointment,
+      refund_status: "not_applied"
+    });
   } catch (error) {
     if (error instanceof LiveOperationValidationError) {
       return NextResponse.json({ error: error.message, code: error.code, details: error.details ?? null }, { status: error.status });

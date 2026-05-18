@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ComponentProps, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -278,5 +278,58 @@ describe("client bookings screen", () => {
     expect(screen.getByRole("button", { name: "Get a Cut Now" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Add Location" })).not.toBeInTheDocument();
     expect(screen.getByText("No past visits yet.")).toBeInTheDocument();
+  });
+
+  it("confirms cancellation, hides the upcoming appointment, and shows success", async () => {
+    const mutateAsync = vi.fn().mockResolvedValue({
+      ok: true,
+      refund_status: "not_applied",
+      appointment: {
+        id: "appt-next",
+        revision: 4,
+        status: "cancelled",
+        cancelledAt: "2026-04-28T13:30:00.000Z",
+        updatedAt: "2026-04-28T13:30:00.000Z"
+      }
+    });
+    useCancelBookingMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync
+    });
+
+    render(<ClientBookingsScreen />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByText("Cancel this appointment?")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm Cancel" }));
+
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledWith({
+        appointmentId: "appt-next",
+        expectedRevision: 3
+      });
+    });
+    await waitFor(() => expect(screen.getByText("Appointment cancelled.")).toBeInTheDocument());
+    expect(screen.queryByText("Cancel this appointment?")).not.toBeInTheDocument();
+    expect(screen.getByText("No upcoming appointments")).toBeInTheDocument();
+  });
+
+  it("keeps the confirmation panel open and shows a visible error when cancellation fails", async () => {
+    const mutateAsync = vi.fn().mockRejectedValue(new Error("database exploded"));
+    useCancelBookingMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync
+    });
+
+    render(<ClientBookingsScreen />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm Cancel" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Appointment could not be cancelled. Refresh and try again.")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Cancel this appointment?")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Confirm Cancel" })).toBeInTheDocument();
   });
 });

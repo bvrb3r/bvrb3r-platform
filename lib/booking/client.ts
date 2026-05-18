@@ -17,6 +17,12 @@ export interface BookingApiError extends Error {
   latestAppointment?: LiveAppointmentRecord;
 }
 
+export interface CancelBookingResponse {
+  ok: true;
+  appointment: LiveAppointmentRecord;
+  refund_status: "not_applied" | "pending_review" | "refunded" | "partially_refunded";
+}
+
 export interface ClientHomeResponse {
   client: {
     clientReference: string;
@@ -426,12 +432,44 @@ export function useCancelBookingMutation() {
     mutationFn: ({ appointmentId, expectedRevision }: { appointmentId: string; expectedRevision: number }) =>
       runGuardedAction(
         `booking:cancel:${appointmentId}:${expectedRevision}`,
-        () => requestJson<{ appointment: LiveAppointmentRecord }>(`/api/bookings/${appointmentId}/cancel`, {
+        () => requestJson<CancelBookingResponse>(`/api/bookings/${appointmentId}/cancel`, {
           method: "POST",
           body: JSON.stringify({ expectedRevision })
         })
       ),
-    onSuccess: async () => {
+    onSuccess: async (result) => {
+      queryClient.setQueryData<ClientBookingsResponse | undefined>(["client-bookings"], (current) => {
+        if (!current) {
+          return current;
+        }
+
+        const cancelledAppointmentId = result.appointment.id;
+        const removedUpcoming = current.upcoming.find((appointment) => appointment.id === cancelledAppointmentId)
+          ?? (current.nextAppointment?.id === cancelledAppointmentId ? current.nextAppointment : null);
+        const nextUpcoming = current.upcoming.filter((appointment) => appointment.id !== cancelledAppointmentId);
+        const nextHistory = current.history.some((appointment) => appointment.id === cancelledAppointmentId)
+          ? current.history.map((appointment) => (
+            appointment.id === cancelledAppointmentId
+              ? { ...appointment, ...result.appointment, review: appointment.review, canReview: false }
+              : appointment
+          ))
+          : removedUpcoming
+            ? [{
+              ...removedUpcoming,
+              ...result.appointment,
+              review: null,
+              canReview: false
+            }, ...current.history]
+            : current.history;
+
+        return {
+          ...current,
+          upcoming: nextUpcoming,
+          nextAppointment: current.nextAppointment?.id === cancelledAppointmentId ? null : current.nextAppointment,
+          history: nextHistory,
+          nextAppointmentPayment: current.nextAppointment?.id === cancelledAppointmentId ? null : current.nextAppointmentPayment
+        };
+      });
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["client-bookings"] }),
         queryClient.invalidateQueries({ queryKey: ["client-home"] }),

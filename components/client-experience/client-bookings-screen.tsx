@@ -145,9 +145,11 @@ export function ClientBookingsScreen() {
   const payload = bookingsQuery.data;
   const favoriteBarber = payload?.favoriteBarber ?? null;
   const nextAppointment = payload?.nextAppointment ?? null;
+  const [cancelledAppointmentIds, setCancelledAppointmentIds] = useState<ReadonlySet<string>>(() => new Set());
   const upcomingAppointments = useMemo(
-    () => payload?.upcoming ?? (nextAppointment ? [nextAppointment] : []),
-    [nextAppointment, payload?.upcoming]
+    () => (payload?.upcoming ?? (nextAppointment ? [nextAppointment] : []))
+      .filter((appointment) => !cancelledAppointmentIds.has(appointment.id)),
+    [cancelledAppointmentIds, nextAppointment, payload?.upcoming]
   );
   const history = payload?.history ?? [];
   const nextAppointmentPayment = payload?.nextAppointmentPayment ?? null;
@@ -289,15 +291,16 @@ export function ClientBookingsScreen() {
         appointmentId,
         expectedRevision: revision
       });
+      setCancelledAppointmentIds((current) => new Set(current).add(appointmentId));
       setCancelTargetId(null);
       setCancelFeedback({
         tone: "success",
-        message: "Appointment cancelled. The current platform cancellation policy has been applied."
+        message: "Appointment cancelled."
       });
-    } catch (error) {
+    } catch {
       setCancelFeedback({
         tone: "error",
-        message: getReadableActionError(error as BookingApiError)
+        message: "Appointment could not be cancelled. Refresh and try again."
       });
     }
   }

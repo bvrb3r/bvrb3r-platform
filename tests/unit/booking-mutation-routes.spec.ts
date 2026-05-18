@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { LiveOperationConflictError } from "@/lib/operations/live-state";
+import { LiveOperationConflictError, type LiveAppointmentRecord } from "@/lib/operations/live-state";
 
 const {
   getSessionUserMock,
@@ -137,6 +137,36 @@ describe("booking mutation routes", () => {
     expect(cancelAppointmentMock).not.toHaveBeenCalled();
   });
 
+  it("allows a client to cancel their own booking with client status history reason", async () => {
+    const response = await postCancel(
+      new NextRequest("https://bvrb3r.app/api/bookings/appt-live-1/cancel", {
+        method: "POST",
+        body: JSON.stringify({
+          expectedRevision: 3
+        })
+      }),
+      { params: Promise.resolve({ id: "appt-live-1" }) }
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      ok: true,
+      refund_status: "not_applied",
+      appointment: expect.objectContaining({
+        id: "appt-live-1",
+        status: "cancelled"
+      })
+    });
+    expect(cancelAppointmentMock).toHaveBeenCalledWith(expect.objectContaining({
+      appointmentId: "appt-live-1",
+      expectedRevision: 3,
+      actorRole: "client",
+      actorEmail: "client@bvrb3r.app",
+      statusHistoryReason: "client_cancelled_appointment"
+    }));
+  });
+
   it("allows a barber to cancel through the canonical booking route", async () => {
     getSessionUserMock.mockResolvedValueOnce({
       id: "profile-barber",
@@ -162,7 +192,8 @@ describe("booking mutation routes", () => {
       appointmentId: "appt-live-1",
       expectedRevision: 3,
       actorRole: "barber",
-      actorEmail: "barber@bvrb3r.app"
+      actorEmail: "barber@bvrb3r.app",
+      statusHistoryReason: "barber_canceled_appointment"
     }));
   });
 
@@ -228,7 +259,7 @@ describe("booking mutation routes", () => {
 
   it("preserves live conflict responses for reschedule collisions", async () => {
     rescheduleAppointmentMock.mockRejectedValueOnce(
-      new LiveOperationConflictError("The selected time is no longer available with this barber.", appointmentFixture as any, "schedule_conflict")
+      new LiveOperationConflictError("The selected time is no longer available with this barber.", appointmentFixture as unknown as LiveAppointmentRecord, "schedule_conflict")
     );
 
     const response = await postReschedule(
