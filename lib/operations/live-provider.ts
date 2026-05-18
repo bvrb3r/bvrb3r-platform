@@ -5,7 +5,8 @@ import {
   type AppointmentCheckInEventType,
   type BookableServiceSnapshot,
   calculateAppointmentQuote,
-  generateAppointmentConfirmationCode
+  generateAppointmentConfirmationCode,
+  isAvailabilityBlockingAppointmentStatus
 } from "@/lib/appointments/domain";
 import {
   canonicalAppointmentUuid,
@@ -2414,7 +2415,7 @@ async function assertCanonicalSlotAvailability(
     if (appointment.reference_code === params.appointment.id) {
       return false;
     }
-    return appointment.status !== "cancelled" && appointment.status !== "no_show";
+    return isAvailabilityBlockingAppointmentStatus(appointment.status);
   });
 
   if (conflictingAppointment) {

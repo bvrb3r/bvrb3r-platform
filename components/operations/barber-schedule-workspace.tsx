@@ -21,6 +21,7 @@ import {
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ActionButton, Avatar, DataStatCard, GlassCard, StatusBadge } from "@/design/components";
+import { isAvailabilityBlockingAppointmentStatus } from "@/lib/appointments/domain";
 import { shiftBarberScheduleAnchorDate } from "@/lib/barber/domain";
 import { useCreateMessageThreadMutation } from "@/lib/messages/client";
 import {
@@ -275,6 +276,7 @@ function buildOpenSlots({
   const busyWindows = [
     ...appointments
       .filter((appointment) => getDateKeyFromIso(appointment.start) === anchorDateKey)
+      .filter((appointment) => isAvailabilityBlockingAppointmentStatus(appointment.status))
       .map((appointment) => ({
         startsAt: new Date(appointment.start),
         endsAt: new Date(appointment.end)
@@ -348,6 +350,7 @@ function getUtilization({
   const workingMinutes = Math.round((workingWindow.endsAt.getTime() - workingWindow.startsAt.getTime()) / 60000);
   const appointmentMinutes = appointments
     .filter((appointment) => getDateKeyFromIso(appointment.start) === anchorDateKey)
+    .filter((appointment) => isAvailabilityBlockingAppointmentStatus(appointment.status))
     .reduce((sum, appointment) => sum + getAppointmentMinutes(appointment), 0);
   const blockedMinutes = blockedTimes
     .filter((blockedTime) => getDateKeyFromIso(blockedTime.startsAt) === anchorDateKey)

@@ -133,6 +133,44 @@ function AppointmentAvatar({
 type ActivityAppointment =
   | ClientBookingsResponse["history"][number]
   | NonNullable<ClientBookingsResponse["nextAppointment"]>;
+type UpcomingAppointment = ClientBookingsResponse["upcoming"][number];
+type HistoryAppointment = ClientBookingsResponse["history"][number];
+
+function isCancelledAppointmentStatus(status?: string | null) {
+  return status === "cancelled" || status === "canceled";
+}
+
+function isCancellationSuccess(result?: {
+  ok?: boolean;
+  status?: string | null;
+  appointment?: { status?: string | null } | null;
+} | null) {
+  return result?.ok === true
+    || isCancelledAppointmentStatus(result?.status)
+    || isCancelledAppointmentStatus(result?.appointment?.status);
+}
+
+function toOptimisticCancelledHistory(
+  appointment: UpcomingAppointment | HistoryAppointment,
+  cancelledAppointment?: Partial<UpcomingAppointment | HistoryAppointment> | null
+): HistoryAppointment {
+  return {
+    ...appointment,
+    ...cancelledAppointment,
+    id: appointment.id,
+    status: "cancelled",
+    review: "review" in appointment ? appointment.review : null,
+    canReview: false
+  } as HistoryAppointment;
+}
+
+function findAppointmentById(payload: ClientBookingsResponse | undefined, appointmentId: string) {
+  return [
+    ...(payload?.upcoming ?? []),
+    ...(payload?.nextAppointment ? [payload.nextAppointment] : []),
+    ...(payload?.history ?? [])
+  ].find((appointment) => appointment.id === appointmentId);
+}
 
 export function ClientBookingsScreen() {
   const searchParams = useSearchParams();
@@ -146,12 +184,26 @@ export function ClientBookingsScreen() {
   const favoriteBarber = payload?.favoriteBarber ?? null;
   const nextAppointment = payload?.nextAppointment ?? null;
   const [cancelledAppointmentIds, setCancelledAppointmentIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [optimisticCancelledAppointments, setOptimisticCancelledAppointments] = useState<Record<string, HistoryAppointment>>({});
   const upcomingAppointments = useMemo(
     () => (payload?.upcoming ?? (nextAppointment ? [nextAppointment] : []))
-      .filter((appointment) => !cancelledAppointmentIds.has(appointment.id)),
+      .filter((appointment) => !cancelledAppointmentIds.has(appointment.id) && !isCancelledAppointmentStatus(appointment.status)),
     [cancelledAppointmentIds, nextAppointment, payload?.upcoming]
   );
-  const history = payload?.history ?? [];
+  const history = useMemo(() => {
+    const payloadHistory = payload?.history ?? [];
+    const optimisticHistory = Object.values(optimisticCancelledAppointments);
+    const optimisticById = new Map(optimisticHistory.map((appointment) => [appointment.id, appointment]));
+    const mergedHistory = payloadHistory.map((appointment) => {
+      const optimisticAppointment = optimisticById.get(appointment.id);
+      return optimisticAppointment ? { ...appointment, ...optimisticAppointment } : appointment;
+    });
+    const payloadHistoryIds = new Set(payloadHistory.map((appointment) => appointment.id));
+    return [
+      ...optimisticHistory.filter((appointment) => !payloadHistoryIds.has(appointment.id)),
+      ...mergedHistory
+    ];
+  }, [optimisticCancelledAppointments, payload?.history]);
   const nextAppointmentPayment = payload?.nextAppointmentPayment ?? null;
   const latestBookingPayment = nextAppointmentPayment?.latestBookingPayment ?? null;
   const defaultPaymentMethod = nextAppointmentPayment?.defaultPaymentMethod ?? null;
@@ -286,18 +338,61 @@ export function ClientBookingsScreen() {
       return;
     }
 
-    try {
-      await cancelBookingMutation.mutateAsync({
-        appointmentId,
-        expectedRevision: revision
-      });
+    const appointmentBeforeCancel = findAppointmentById(payload, appointmentId);
+    const applyLocalCancellationSuccess = (cancelledAppointment?: Partial<UpcomingAppointment | HistoryAppointment> | null) => {
       setCancelledAppointmentIds((current) => new Set(current).add(appointmentId));
+      if (appointmentBeforeCancel) {
+        setOptimisticCancelledAppointments((current) => ({
+          ...current,
+          [appointmentId]: toOptimisticCancelledHistory(appointmentBeforeCancel, cancelledAppointment)
+        }));
+      }
       setCancelTargetId(null);
       setCancelFeedback({
         tone: "success",
         message: "Appointment cancelled."
       });
-    } catch {
+    };
+
+    applyLocalCancellationSuccess();
+
+    try {
+      const result = await cancelBookingMutation.mutateAsync({
+        appointmentId,
+        expectedRevision: revision
+      });
+      if (isCancellationSuccess(result)) {
+        applyLocalCancellationSuccess(result.appointment);
+        return;
+      }
+      throw new Error("Cancellation response did not confirm cancelled status.");
+    } catch (error) {
+      const bookingError = error as BookingApiError;
+      if (isCancelledAppointmentStatus(bookingError.latestAppointment?.status)) {
+        applyLocalCancellationSuccess(bookingError.latestAppointment as Partial<UpcomingAppointment | HistoryAppointment>);
+        return;
+      }
+
+      const refetched = bookingsQuery.refetch
+        ? await bookingsQuery.refetch().catch(() => null)
+        : null;
+      const refetchedAppointment = findAppointmentById(refetched?.data, appointmentId);
+      if (isCancelledAppointmentStatus(refetchedAppointment?.status)) {
+        applyLocalCancellationSuccess(refetchedAppointment);
+        return;
+      }
+
+      setCancelledAppointmentIds((current) => {
+        const next = new Set(current);
+        next.delete(appointmentId);
+        return next;
+      });
+      setOptimisticCancelledAppointments((current) => {
+        const next = { ...current };
+        delete next[appointmentId];
+        return next;
+      });
+      setCancelTargetId(appointmentId);
       setCancelFeedback({
         tone: "error",
         message: "Appointment could not be cancelled. Refresh and try again."

@@ -227,6 +227,42 @@ describe("BarberScheduleWorkspace", () => {
     expect(pushMock).toHaveBeenCalledWith(expect.stringContaining("appointmentTime="));
   });
 
+  it("keeps cancelled appointments visible while releasing their calendar slot", () => {
+    useBarberScheduleQueryMock.mockReturnValue({
+      data: {
+        ...buildSchedulePayload(),
+        workingHours: [
+          {
+            locationId: "loc-ybor",
+            locationLabel: "The BVRB3R Shop",
+            weekday: 1,
+            startTime: "10:00",
+            endTime: "10:15"
+          }
+        ],
+        timeline: {
+          ...buildSchedulePayload().timeline,
+          appointments: [buildAppointment("cancelled")]
+        }
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn()
+    });
+
+    render(
+      <BarberScheduleWorkspace
+        barberName="Blaze King"
+        surface="calendar"
+      />
+    );
+
+    expect(screen.getByText("Canceled")).toBeInTheDocument();
+    expect(screen.getAllByText("Available").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: /Book this slot/i })).toBeInTheDocument();
+    expect(screen.getAllByText("10:00 AM - 10:15 AM")).toHaveLength(2);
+  });
+
   it("opens appointment details from the calendar card", async () => {
     const payload = {
       ...buildSchedulePayload(),

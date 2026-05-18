@@ -926,6 +926,71 @@ describe("core booking loop regression", () => {
     ]));
   });
 
+  it("releases a cancelled appointment slot for a new booking at the same time", async () => {
+    const tables = createTables();
+    tables.availability_rules = Array.from({ length: 7 }, (_, weekday) => ({
+      barber_id: BARBER_ID,
+      location_id: LOCATION_ID,
+      weekday,
+      start_time: "08:00:00",
+      end_time: "09:00:00"
+    }));
+    const appointmentReference = "appt-cancelled-eight";
+    const appointmentTime = "2026-05-16T08:00:00.000Z";
+    tables.appointments.push(buildConfirmedAppointmentRow(appointmentReference, appointmentTime));
+    const supabase = createSupabaseMock(tables);
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+    getStripeConnectClientMock.mockReturnValue({
+      paymentIntents: { create: vi.fn().mockResolvedValue({ id: "pi_rebook_same_slot", status: "succeeded" }) },
+      refunds: { create: vi.fn() }
+    });
+    syncPaymentRoutingRecordMock.mockResolvedValue({
+      id: "routing-same-slot",
+      appointment_id: "unused",
+      payout_readiness_status: "pending"
+    });
+
+    const provider = await getLiveOperationsProvider();
+    await provider.cancelAppointment({
+      appointmentId: appointmentReference,
+      expectedRevision: 1,
+      actorRole: "client",
+      actorEmail: "phillipmcgeeclient@outlook.com",
+      reason: "Client cancelled from Activity",
+      statusHistoryReason: "client_cancelled_appointment"
+    });
+
+    expect(tables.appointments[0]).toMatchObject({
+      reference_code: appointmentReference,
+      status: "cancelled"
+    });
+
+    const booking = await provider.createBooking({
+      barberId: "barber-43b3cda2",
+      locationId: "independent-barber-43b3cda2",
+      serviceId: SERVICE_REFERENCE,
+      addOnIds: [],
+      appointmentTime,
+      clientName: "Phillip mcgee",
+      clientPhone: "+18136250040",
+      clientId: "client-1fd26b88",
+      actorRole: "client",
+      actorEmail: "phillipmcgeeclient@outlook.com",
+      actorProfileId: CLIENT_PROFILE_ID,
+      paymentMethodId: PAYMENT_METHOD_ID
+    });
+
+    expect(booking.appointment).toMatchObject({
+      status: "confirmed",
+      start: appointmentTime,
+      barberId: BARBER_ID
+    });
+    expect(tables.appointments.filter((appointment) => appointment.starts_at === appointmentTime)).toEqual([
+      expect.objectContaining({ reference_code: appointmentReference, status: "cancelled" }),
+      expect.objectContaining({ status: "confirmed", barber_id: BARBER_ID })
+    ]);
+  });
+
   it("writes production status history when a barber marks a confirmed appointment no-show", async () => {
     const tables = createTables();
     const appointmentReference = "appt-noshow-tier1";

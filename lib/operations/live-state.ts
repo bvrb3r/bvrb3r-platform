@@ -3,6 +3,7 @@ import { isBarberAccountRole, isClientRole, isShopOwnerRole } from "@/lib/auth/r
 import {
   buildAppointmentLifecycleFields,
   canTransitionAppointmentStatus,
+  isAvailabilityBlockingAppointmentStatus,
   isScheduledAppointmentStatus,
   type AppointmentFinancialQuote
 } from "@/lib/appointments/domain";
@@ -401,7 +402,7 @@ function hasSchedulingConflict(
     if (appointment.id === appointmentId) {
       return false;
     }
-    if (appointment.status === "cancelled" || appointment.status === "no_show") {
+    if (!isAvailabilityBlockingAppointmentStatus(appointment.status)) {
       return false;
     }
 

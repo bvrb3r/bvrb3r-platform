@@ -310,8 +310,38 @@ describe("client bookings screen", () => {
       });
     });
     await waitFor(() => expect(screen.getByText("Appointment cancelled.")).toBeInTheDocument());
+    expect(screen.queryByText("Appointment could not be cancelled. Refresh and try again.")).not.toBeInTheDocument();
     expect(screen.queryByText("Cancel this appointment?")).not.toBeInTheDocument();
     expect(screen.getByText("No upcoming appointments")).toBeInTheDocument();
+    expect(screen.getByText("cancelled")).toBeInTheDocument();
+  });
+
+  it("does not show a false cancellation error when the latest appointment is already cancelled", async () => {
+    const cancellationError = Object.assign(new Error("background refetch failed"), {
+      latestAppointment: {
+        id: "appt-next",
+        revision: 4,
+        status: "cancelled",
+        cancelledAt: "2026-04-28T13:30:00.000Z",
+        updatedAt: "2026-04-28T13:30:00.000Z"
+      }
+    });
+    const mutateAsync = vi.fn().mockRejectedValue(cancellationError);
+    useCancelBookingMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync
+    });
+
+    render(<ClientBookingsScreen />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm Cancel" }));
+
+    await waitFor(() => expect(screen.getByText("Appointment cancelled.")).toBeInTheDocument());
+    expect(screen.queryByText("Appointment could not be cancelled. Refresh and try again.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Cancel this appointment?")).not.toBeInTheDocument();
+    expect(screen.getByText("No upcoming appointments")).toBeInTheDocument();
+    expect(screen.getByText("cancelled")).toBeInTheDocument();
   });
 
   it("keeps the confirmation panel open and shows a visible error when cancellation fails", async () => {

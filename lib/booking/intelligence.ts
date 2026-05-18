@@ -2,6 +2,7 @@
 import { buildMarketplaceBookingHref } from "@/lib/marketplace/links";
 import { getClientFacingBarberName } from "@/lib/marketplace/client-facing";
 import { getCanonicalAccountRole, isBarberAccountRole } from "@/lib/auth/roles";
+import { isAvailabilityBlockingAppointmentStatus } from "@/lib/appointments/domain";
 import {
   buildPublicTrustSignal,
   computeShopVerificationDecision,
@@ -1806,8 +1807,7 @@ function listAvailabilitySlotsForBarber(params: {
   const unavailableAppointments = appointments
     .filter((entry) =>
       matchesCanonicalBarberIdentity(entry.barber_id, barberReference, barberUuid, params.profileId)
-      && entry.status !== "cancelled"
-      && entry.status !== "no_show"
+      && isAvailabilityBlockingAppointmentStatus(entry.status)
     )
     .map((entry) => ({ startsAt: entry.starts_at, endsAt: entry.ends_at }));
   const blockedRanges = blockedTimes

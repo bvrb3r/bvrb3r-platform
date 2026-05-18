@@ -69,6 +69,12 @@ const SCHEDULED_APPOINTMENT_STATUSES = new Set<AppointmentTransitionTarget>([
   "booked"
 ]);
 
+const AVAILABILITY_BLOCKING_APPOINTMENT_STATUSES = new Set<string>([
+  "confirmed",
+  "checked_in",
+  "in_service"
+]);
+
 function roundCurrency(value: number) {
   return Number(value.toFixed(2));
 }
@@ -174,6 +180,10 @@ export function isScheduledAppointmentStatus(
   status: AppointmentStatus | AppointmentTransitionTarget
 ) {
   return SCHEDULED_APPOINTMENT_STATUSES.has(status as AppointmentTransitionTarget);
+}
+
+export function isAvailabilityBlockingAppointmentStatus(status?: string | null) {
+  return AVAILABILITY_BLOCKING_APPOINTMENT_STATUSES.has(status ?? "");
 }
 
 export function buildAppointmentLifecycleFields(

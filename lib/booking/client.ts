@@ -23,6 +23,11 @@ export interface CancelBookingResponse {
   refund_status: "not_applied" | "pending_review" | "refunded" | "partially_refunded";
 }
 
+type RawCancelBookingResponse = Partial<Omit<CancelBookingResponse, "appointment">> & {
+  status?: string | null;
+  appointment?: Partial<LiveAppointmentRecord> | null;
+};
+
 export interface ClientHomeResponse {
   client: {
     clientReference: string;
@@ -296,6 +301,44 @@ function toQueryString(values: Record<string, string | number | undefined>) {
   return params.toString();
 }
 
+function isCancelledAppointmentStatus(status?: string | null) {
+  return status === "cancelled" || status === "canceled";
+}
+
+function normalizeCancelBookingResponse(result: RawCancelBookingResponse, appointmentId: string): CancelBookingResponse {
+  const appointment = result.appointment ?? {};
+  const status = appointment.status ?? result.status ?? "cancelled";
+
+  return {
+    ok: true,
+    appointment: {
+      ...appointment,
+      id: appointment.id ?? appointmentId,
+      status: isCancelledAppointmentStatus(status) ? "cancelled" : status
+    } as LiveAppointmentRecord,
+    refund_status: result.refund_status ?? "not_applied"
+  };
+}
+
+function refreshClientCancellationViews(queryClient: ReturnType<typeof useQueryClient>) {
+  for (const queryKey of [
+    ["client-bookings"],
+    ["client-home"],
+    ["points"],
+    ["ai", "client", "summary"],
+    ["ai", "barber", "summary"],
+    ["operations"]
+  ]) {
+    void queryClient.invalidateQueries({ queryKey }).catch((error) => {
+      console.warn("[client-bookings] cancellation_refetch_failed", {
+        queryKey,
+        errorName: error instanceof Error ? error.name : null,
+        errorMessage: error instanceof Error ? error.message : String(error)
+      });
+    });
+  }
+}
+
 export function useClientHomeQuery() {
   return useQuery({
     queryKey: ["client-home"],
@@ -432,12 +475,12 @@ export function useCancelBookingMutation() {
     mutationFn: ({ appointmentId, expectedRevision }: { appointmentId: string; expectedRevision: number }) =>
       runGuardedAction(
         `booking:cancel:${appointmentId}:${expectedRevision}`,
-        () => requestJson<CancelBookingResponse>(`/api/bookings/${appointmentId}/cancel`, {
+        () => requestJson<RawCancelBookingResponse>(`/api/bookings/${appointmentId}/cancel`, {
           method: "POST",
           body: JSON.stringify({ expectedRevision })
-        })
+        }).then((result) => normalizeCancelBookingResponse(result, appointmentId))
       ),
-    onSuccess: async (result) => {
+    onSuccess: (result) => {
       queryClient.setQueryData<ClientBookingsResponse | undefined>(["client-bookings"], (current) => {
         if (!current) {
           return current;
@@ -470,14 +513,7 @@ export function useCancelBookingMutation() {
           nextAppointmentPayment: current.nextAppointment?.id === cancelledAppointmentId ? null : current.nextAppointmentPayment
         };
       });
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["client-bookings"] }),
-        queryClient.invalidateQueries({ queryKey: ["client-home"] }),
-        queryClient.invalidateQueries({ queryKey: ["points"] }),
-        queryClient.invalidateQueries({ queryKey: ["ai", "client", "summary"] }),
-        queryClient.invalidateQueries({ queryKey: ["ai", "barber", "summary"] }),
-        queryClient.invalidateQueries({ queryKey: ["operations"] })
-      ]);
+      refreshClientCancellationViews(queryClient);
     }
   });
 }

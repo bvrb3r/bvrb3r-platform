@@ -1,4 +1,5 @@
 import { demoAppointments, demoBarbers, demoClients, demoServices } from "@/lib/data/demo";
+import { isAvailabilityBlockingAppointmentStatus } from "@/lib/appointments/domain";
 import { Appointment, Barber, Service } from "@/types/domain";
 
 export interface BookingDraft {
@@ -74,7 +75,7 @@ export function hasScheduleConflict(draft: BookingDraft, existingAppointments: A
     if (appointment.barberId !== draft.barberId) {
       return false;
     }
-    if (appointment.status === "cancelled" || appointment.status === "no_show") {
+    if (!isAvailabilityBlockingAppointmentStatus(appointment.status)) {
       return false;
     }
 
