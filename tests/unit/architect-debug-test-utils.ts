@@ -19,7 +19,36 @@ export function createArchitectDebugTables(overrides: Partial<Tables> = {}): Tab
   const schemaRows: Row[] = [
     ...["status", "completed_at", "updated_at"].map((column_name, ordinal_position) => ({ table_name: "appointments", column_name, data_type: "text", is_nullable: "YES", ordinal_position })),
     ...["amount", "payment_status", "status"].map((column_name, ordinal_position) => ({ table_name: "payments", column_name, data_type: "text", is_nullable: "YES", ordinal_position })),
-    ...["provider_gross_amount", "barber_payout_amount", "payout_readiness_status"].map((column_name, ordinal_position) => ({ table_name: "payment_routing_records", column_name, data_type: "text", is_nullable: "YES", ordinal_position })),
+    ...[
+      "payment_id",
+      "appointment_id",
+      "barber_id",
+      "shop_id",
+      "membership_id",
+      "routing_model",
+      "payout_recipient_type",
+      "provider_gross_amount",
+      "refunded_amount",
+      "provider_fee_amount",
+      "provider_net_amount",
+      "platform_fee_amount",
+      "barber_payout_amount",
+      "shop_split_amount",
+      "currency",
+      "payout_readiness_status",
+      "money_routing_status",
+      "blocked_reason",
+      "metadata",
+      "created_at",
+      "updated_at",
+      "processor_charge_id",
+      "processor_balance_transaction_id",
+      "reconciliation_status",
+      "eligible_at",
+      "released_at",
+      "held_at",
+      "reversed_at"
+    ].map((column_name, ordinal_position) => ({ table_name: "payment_routing_records", column_name, data_type: "text", is_nullable: "YES", ordinal_position })),
     ...["changed_at", "change_reason"].map((column_name, ordinal_position) => ({ table_name: "appointment_status_history", column_name, data_type: "text", is_nullable: "YES", ordinal_position }))
   ];
 

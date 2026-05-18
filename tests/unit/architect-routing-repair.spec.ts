@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { buildAppointmentDebugPacket } from "@/lib/architect/debug/appointment-debug";
 import { buildFreelancePaymentRoutingRepairPayload, repairMissingPaymentRouting } from "@/lib/architect/repairs/payment-routing-repair";
-import { APPOINTMENT_ID, ARCHITECT_USER, createArchitectDebugTables, createSupabaseStub } from "@/tests/unit/architect-debug-test-utils";
+import { APPOINTMENT_ID, ARCHITECT_USER, BARBER_ID, createArchitectDebugTables, createSupabaseStub } from "@/tests/unit/architect-debug-test-utils";
 
 describe("architect routing repair", () => {
   it("repairs missing routing with production columns only", async () => {
@@ -9,10 +10,13 @@ describe("architect routing repair", () => {
 
     expect(result.ok).toBe(true);
     expect(result.repaired).toBe(true);
+    expect(result.routingFound).toBe(true);
     expect(tables.payment_routing_records).toHaveLength(1);
     expect(tables.payment_routing_records[0]).toMatchObject({
       payment_id: "e681ffde-7a67-4277-96c0-a35519ba4acd",
       appointment_id: APPOINTMENT_ID,
+      barber_id: BARBER_ID,
+      shop_id: null,
       routing_model: "freelance",
       payout_recipient_type: "barber",
       provider_gross_amount: 5,
@@ -56,8 +60,35 @@ describe("architect routing repair", () => {
 
     expect(result.ok).toBe(true);
     expect(result.repaired).toBe(false);
+    expect(result.routingFound).toBe(true);
     expect(result.result).toBe("skipped");
     expect(tables.payment_routing_records).toHaveLength(1);
+  });
+
+  it("relinks an orphan routing row by payment id instead of duplicating", async () => {
+    const tables = createArchitectDebugTables({
+      payment_routing_records: [{
+        id: "routing-orphan",
+        appointment_id: null,
+        payment_id: "e681ffde-7a67-4277-96c0-a35519ba4acd",
+        payout_readiness_status: "not_ready",
+        created_at: "2026-05-17T12:00:00.000Z"
+      }]
+    });
+
+    const result = await repairMissingPaymentRouting(createSupabaseStub(tables) as never, ARCHITECT_USER, APPOINTMENT_ID);
+
+    expect(result.ok).toBe(true);
+    expect(result.repaired).toBe(true);
+    expect(result.routingId).toBe("routing-orphan");
+    expect(tables.payment_routing_records).toHaveLength(1);
+    expect(tables.payment_routing_records[0]).toMatchObject({
+      id: "routing-orphan",
+      appointment_id: APPOINTMENT_ID,
+      payment_id: "e681ffde-7a67-4277-96c0-a35519ba4acd",
+      payout_readiness_status: "ready",
+      released_at: null
+    });
   });
 
   it("uses eligible only when production constraints allow eligible", async () => {
@@ -84,6 +115,62 @@ describe("architect routing repair", () => {
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/completed appointment/i);
     expect(tables.payment_routing_records).toHaveLength(0);
+  });
+
+  it("repairs the production incident shape with captured payment and missing routing", async () => {
+    const incidentAppointmentId = "f996f06e-6e3e-592d-b02c-f8e4f778a087";
+    const tables = createArchitectDebugTables({
+      appointments: [{
+        ...createArchitectDebugTables().appointments[0],
+        id: incidentAppointmentId,
+        status: "completed",
+        completed_at: "2026-05-18T14:55:00.000Z",
+        shop_id: null
+      }],
+      payments: [{
+        ...createArchitectDebugTables().payments[0],
+        id: "4c907b0a-af2e-4727-8da2-8097392667e6",
+        appointment_id: incidentAppointmentId,
+        amount: 5,
+        status: "captured",
+        payment_status: "captured"
+      }],
+      appointment_status_history: [{
+        ...createArchitectDebugTables().appointment_status_history[0],
+        appointment_id: incidentAppointmentId
+      }]
+    });
+
+    const result = await repairMissingPaymentRouting(createSupabaseStub(tables) as never, ARCHITECT_USER, incidentAppointmentId);
+
+    expect(result.ok).toBe(true);
+    expect(result.repaired).toBe(true);
+    expect(tables.payment_routing_records).toHaveLength(1);
+    expect(tables.payment_routing_records[0]).toMatchObject({
+      appointment_id: incidentAppointmentId,
+      payment_id: "4c907b0a-af2e-4727-8da2-8097392667e6",
+      barber_id: BARBER_ID,
+      shop_id: null,
+      provider_gross_amount: 5,
+      platform_fee_amount: 0.25,
+      barber_payout_amount: 4.75,
+      shop_split_amount: 0,
+      released_at: null
+    });
+  });
+
+  it("changes architect debug from routing fail to routing pass after repair", async () => {
+    const tables = createArchitectDebugTables();
+    const supabase = createSupabaseStub(tables) as never;
+
+    const before = await buildAppointmentDebugPacket(supabase, APPOINTMENT_ID, ARCHITECT_USER, { persistSession: false });
+    await repairMissingPaymentRouting(supabase, ARCHITECT_USER, APPOINTMENT_ID);
+    const after = await buildAppointmentDebugPacket(supabase, APPOINTMENT_ID, ARCHITECT_USER, { persistSession: false });
+
+    expect(before.summary.diagnosisCode).toBe("completed_but_routing_missing");
+    expect(after.validationChecklist.find((item) => item.stage === "routing_row_exists")).toMatchObject({ status: "pass" });
+    expect(after.validationChecklist.find((item) => item.stage === "routing_eligible")).toMatchObject({ status: "pass" });
+    expect(after.summary.diagnosisCode).toBe("payout_eligible_not_released");
   });
 
   it("builds five percent freelance routing math", () => {

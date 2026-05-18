@@ -135,4 +135,6 @@ export type ArchitectRepairResult = {
   auditId: string | null;
   warning?: string;
   error?: string;
+  routingFound?: boolean;
+  routingId?: string | null;
 };

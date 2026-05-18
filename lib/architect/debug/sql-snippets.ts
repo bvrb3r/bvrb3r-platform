@@ -17,7 +17,7 @@ export function buildAppointmentSqlSnippets(appointmentId: string): ArchitectSql
     },
     {
       label: "Payment routing",
-      sql: `select appointment_id,routing_model,payout_readiness_status,eligible_at,released_at,barber_payout_amount,platform_fee_amount,shop_split_amount from payment_routing_records where appointment_id = '${id}';`
+      sql: `select id,appointment_id,payment_id,barber_id,shop_id,routing_model,payout_recipient_type,provider_gross_amount,platform_fee_amount,barber_payout_amount,shop_split_amount,payout_readiness_status,money_routing_status,eligible_at,released_at,blocked_reason from payment_routing_records where appointment_id = '${id}';`
     },
     {
       label: "Status history",
@@ -26,6 +26,10 @@ export function buildAppointmentSqlSnippets(appointmentId: string): ArchitectSql
     {
       label: "Routing schema",
       sql: "select column_name,data_type,is_nullable from information_schema.columns where table_name = 'payment_routing_records' order by ordinal_position;"
+    },
+    {
+      label: "Routing constraints",
+      sql: "select constraint_name,check_clause from information_schema.check_constraints where constraint_name like 'payment_routing_records%';"
     }
   ];
 }
