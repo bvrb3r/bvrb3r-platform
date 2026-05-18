@@ -1,5 +1,5 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { isUpcomingAppointmentStatus } from "@/lib/appointments/domain";
+import { isAppointmentRevenueEligible, isUpcomingAppointmentStatus } from "@/lib/appointments/domain";
 import { findCanonicalBookableSlot } from "@/lib/booking/intelligence";
 import { canonicalAppointmentUuid, canonicalBarberUuid, canonicalLocationUuid, readCanonicalWorkingHours } from "@/lib/booking/canonical-booking";
 import { getBarberAppointmentsPayload, getBarberDashboardPayload } from "@/lib/booking/platform-service";
@@ -1355,6 +1355,7 @@ function buildEarningsSummary(
   appointments: BarberOperationalAppointmentView[]
 ) {
   const todayAppointments = appointments.filter((appointment) => appointment.start.slice(0, 10) === businessDate);
+  const revenueEligibleToday = todayAppointments.filter((appointment) => isAppointmentRevenueEligible(appointment.status));
   const completedToday = todayAppointments.filter((appointment) => appointment.status === "completed");
   const clientsRebookedToday = new Set(
     completedToday
@@ -1368,19 +1369,19 @@ function buildEarningsSummary(
       )
       .map((appointment) => appointment.clientId)
   ).size;
-  const grossSales = completedToday.reduce((sum, appointment) => sum + appointment.totalAmount, 0);
-  const tips = completedToday.reduce((sum, appointment) => sum + appointment.financial.tipAmount, 0);
+  const grossSales = revenueEligibleToday.reduce((sum, appointment) => sum + appointment.totalAmount, 0);
+  const tips = revenueEligibleToday.reduce((sum, appointment) => sum + appointment.financial.tipAmount, 0);
   const completedServices = completedToday.length;
 
   return {
     businessDate,
-    todayBookings: todayAppointments.length,
+    todayBookings: revenueEligibleToday.length,
     clientsRebookedToday,
     upcomingBookings: appointments.filter((appointment) => isUpcomingAppointmentStatus(appointment.status)).length,
     completedServices,
     grossSales,
     tips,
-    averageTicket: completedServices ? grossSales / completedServices : 0,
+    averageTicket: revenueEligibleToday.length ? grossSales / revenueEligibleToday.length : 0,
     outstandingCheckoutCount: todayAppointments.filter((appointment) => appointment.status === "completed" && appointment.balanceDue > 0).length
   } satisfies BarberEarningsSummaryView;
 }

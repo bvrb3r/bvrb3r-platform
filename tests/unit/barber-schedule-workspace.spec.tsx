@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BarberScheduleWorkspace } from "@/components/operations/barber-schedule-workspace";
 
@@ -75,7 +75,19 @@ function buildSchedulePayload() {
   };
 }
 
-function buildAppointment(status = "confirmed") {
+function buildAppointment(
+  status = "confirmed",
+  overrides: {
+    id?: string;
+    start?: string;
+    end?: string;
+    totalAmount?: number;
+    grandTotal?: number;
+    status?: string;
+    display?: Record<string, unknown>;
+    financial?: Record<string, unknown>;
+  } = {}
+) {
   const payoutEligible = status === "completed";
   const statusLabel = status === "checked_in"
     ? "Checked in"
@@ -86,7 +98,7 @@ function buildAppointment(status = "confirmed") {
         : status === "cancelled"
           ? "Canceled"
           : "Confirmed";
-  return {
+  const appointment = {
     id: "172b11d3-9319-536c-adb5-f548ae8fc775",
     locationId: "loc-ybor",
     barberId: "barber-1",
@@ -143,6 +155,25 @@ function buildAppointment(status = "confirmed") {
       shopSplitAmount: 0
     }
   };
+
+  return {
+    ...appointment,
+    ...overrides,
+    display: {
+      ...appointment.display,
+      ...overrides.display
+    },
+    financial: {
+      ...appointment.financial,
+      ...overrides.financial
+    }
+  };
+}
+
+function getStatCard(label: string) {
+  const card = screen.getByText(label).closest(".bvr-glass-card");
+  expect(card).not.toBeNull();
+  return within(card as HTMLElement);
 }
 
 describe("BarberScheduleWorkspace", () => {
@@ -261,6 +292,82 @@ describe("BarberScheduleWorkspace", () => {
     expect(screen.getAllByText("Available").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: /Book this slot/i })).toBeInTheDocument();
     expect(screen.getAllByText("10:00 AM - 10:15 AM")).toHaveLength(2);
+    expect(getStatCard("Appointments").getByText("0")).toBeInTheDocument();
+    expect(getStatCard("Day Utilization").getByText("0%")).toBeInTheDocument();
+  });
+
+  it("shows zero estimated earnings when every appointment is cancelled", () => {
+    useBarberScheduleQueryMock.mockReturnValue({
+      data: {
+        ...buildSchedulePayload(),
+        timeline: {
+          ...buildSchedulePayload().timeline,
+          appointments: [
+            buildAppointment("cancelled", { id: "appt-cancelled-1", start: "2026-04-27T14:00:00.000Z", end: "2026-04-27T14:15:00.000Z" }),
+            buildAppointment("cancelled", { id: "appt-cancelled-2", start: "2026-04-27T15:00:00.000Z", end: "2026-04-27T15:15:00.000Z" })
+          ]
+        }
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn()
+    });
+
+    render(<BarberScheduleWorkspace barberName="Blaze King" surface="calendar" />);
+
+    expect(screen.getAllByText("Canceled")).toHaveLength(2);
+    expect(getStatCard("Est. Earnings").getByText("$0")).toBeInTheDocument();
+    expect(getStatCard("Appointments").getByText("0")).toBeInTheDocument();
+  });
+
+  it("counts completed earnings while excluding cancelled appointments", () => {
+    useBarberScheduleQueryMock.mockReturnValue({
+      data: {
+        ...buildSchedulePayload(),
+        timeline: {
+          ...buildSchedulePayload().timeline,
+          appointments: [
+            buildAppointment("completed", { id: "appt-completed-1", start: "2026-04-27T14:00:00.000Z", end: "2026-04-27T14:15:00.000Z" }),
+            buildAppointment("cancelled", { id: "appt-cancelled-1", start: "2026-04-27T15:00:00.000Z", end: "2026-04-27T15:15:00.000Z" })
+          ]
+        }
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn()
+    });
+
+    render(<BarberScheduleWorkspace barberName="Blaze King" surface="calendar" />);
+
+    expect(screen.getByText("Completed")).toBeInTheDocument();
+    expect(screen.getByText("Canceled")).toBeInTheDocument();
+    expect(getStatCard("Est. Earnings").getByText("$5")).toBeInTheDocument();
+    expect(getStatCard("Appointments").getByText("1")).toBeInTheDocument();
+  });
+
+  it("counts confirmed earnings while excluding cancelled appointments", () => {
+    useBarberScheduleQueryMock.mockReturnValue({
+      data: {
+        ...buildSchedulePayload(),
+        timeline: {
+          ...buildSchedulePayload().timeline,
+          appointments: [
+            buildAppointment("confirmed", { id: "appt-confirmed-1", start: "2026-04-27T14:00:00.000Z", end: "2026-04-27T14:15:00.000Z" }),
+            buildAppointment("cancelled", { id: "appt-cancelled-1", start: "2026-04-27T15:00:00.000Z", end: "2026-04-27T15:15:00.000Z" })
+          ]
+        }
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn()
+    });
+
+    render(<BarberScheduleWorkspace barberName="Blaze King" surface="calendar" />);
+
+    expect(screen.getByText("Confirmed")).toBeInTheDocument();
+    expect(screen.getByText("Canceled")).toBeInTheDocument();
+    expect(getStatCard("Est. Earnings").getByText("$5")).toBeInTheDocument();
+    expect(getStatCard("Appointments").getByText("1")).toBeInTheDocument();
   });
 
   it("opens appointment details from the calendar card", async () => {

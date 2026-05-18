@@ -21,7 +21,7 @@ import {
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ActionButton, Avatar, DataStatCard, GlassCard, StatusBadge } from "@/design/components";
-import { isAvailabilityBlockingAppointmentStatus } from "@/lib/appointments/domain";
+import { isAppointmentRevenueEligible, isAvailabilityBlockingAppointmentStatus } from "@/lib/appointments/domain";
 import { shiftBarberScheduleAnchorDate } from "@/lib/barber/domain";
 import { useCreateMessageThreadMutation } from "@/lib/messages/client";
 import {
@@ -885,6 +885,10 @@ export function BarberScheduleWorkspace({
     () => timelineAppointments.filter((appointment) => getDateKeyFromIso(appointment.start) === selectedDateKey),
     [selectedDateKey, timelineAppointments]
   );
+  const revenueEligibleDayAppointments = useMemo(
+    () => selectedDayAppointments.filter((appointment) => isAppointmentRevenueEligible(appointment.status)),
+    [selectedDayAppointments]
+  );
   const openSlots = useMemo(
     () => scheduleView === "day"
       ? buildOpenSlots({
@@ -938,10 +942,10 @@ export function BarberScheduleWorkspace({
     return grouped;
   }, [timelineEntries]);
   const weekStrip = useMemo(() => buildWeekStrip(selectedDateKey), [selectedDateKey]);
-  const estimatedEarnings = selectedDayAppointments.reduce((sum, appointment) => sum + appointment.totalAmount, 0);
+  const estimatedEarnings = revenueEligibleDayAppointments.reduce((sum, appointment) => sum + appointment.totalAmount, 0);
   const currentOrNextAppointmentId = visibleAppointments.find((appointment) => appointment.status === "checked_in" || appointment.status === "in_service")?.id
-    ?? visibleAppointments.find((appointment) => new Date(appointment.start).getTime() >= Date.now())?.id
-    ?? visibleAppointments[0]?.id
+    ?? visibleAppointments.find((appointment) => isAppointmentRevenueEligible(appointment.status) && new Date(appointment.start).getTime() >= Date.now())?.id
+    ?? revenueEligibleDayAppointments[0]?.id
     ?? null;
   const selectedAppointment = selectedAppointmentId
     ? timelineAppointments.find((appointment) => appointment.id === selectedAppointmentId) ?? null
@@ -1315,7 +1319,7 @@ export function BarberScheduleWorkspace({
             <DataStatCard
               className="min-h-[140px] rounded-[22px]"
               label="Appointments"
-              value={selectedDayAppointments.length}
+              value={revenueEligibleDayAppointments.length}
               detail="Today"
               icon={<CalendarCheck2 className="h-4 w-4" />}
             />

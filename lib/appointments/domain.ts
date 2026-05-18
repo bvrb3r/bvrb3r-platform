@@ -75,6 +75,13 @@ const AVAILABILITY_BLOCKING_APPOINTMENT_STATUSES = new Set<string>([
   "in_service"
 ]);
 
+const APPOINTMENT_REVENUE_ELIGIBLE_STATUSES = new Set<string>([
+  "confirmed",
+  "checked_in",
+  "in_service",
+  "completed"
+]);
+
 function roundCurrency(value: number) {
   return Number(value.toFixed(2));
 }
@@ -184,6 +191,10 @@ export function isScheduledAppointmentStatus(
 
 export function isAvailabilityBlockingAppointmentStatus(status?: string | null) {
   return AVAILABILITY_BLOCKING_APPOINTMENT_STATUSES.has(status ?? "");
+}
+
+export function isAppointmentRevenueEligible(status?: string | null) {
+  return APPOINTMENT_REVENUE_ELIGIBLE_STATUSES.has(status ?? "");
 }
 
 export function buildAppointmentLifecycleFields(
