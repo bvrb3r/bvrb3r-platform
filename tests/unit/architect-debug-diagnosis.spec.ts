@@ -29,4 +29,18 @@ describe("architect debug diagnosis", () => {
     expect(diagnosis.diagnosisCode).toBe("payout_eligible_not_released");
     expect(diagnosis.health).toBe("healthy");
   });
+
+  it("treats production ready status as business eligible", () => {
+    const diagnosis = diagnoseAppointment({
+      entities: {
+        appointment: { id: "appt", status: "completed" },
+        payment: { id: "payment", status: "captured" },
+        routing: { id: "routing", payout_readiness_status: "ready", released_at: null },
+        statusHistory: [{ status: "completed" }]
+      }
+    } as never);
+
+    expect(diagnosis.diagnosisCode).toBe("payout_eligible_not_released");
+    expect(diagnosis.health).toBe("healthy");
+  });
 });

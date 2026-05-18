@@ -4,6 +4,7 @@ import { diagnoseAppointment, evidence } from "@/lib/architect/debug/diagnosis";
 import { readArchitectDebugEnvironment } from "@/lib/architect/debug/env";
 import { buildAppointmentSqlSnippets } from "@/lib/architect/debug/sql-snippets";
 import type { ArchitectActor, ArchitectDebugPacket, JsonRecord } from "@/lib/architect/debug/types";
+import { isPayoutReadinessEligible } from "@/lib/architect/mission-control/schema-constraints";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 
@@ -121,8 +122,8 @@ function buildValidationChecklist(packet: Pick<ArchitectDebugPacket, "entities">
     },
     {
       stage: "routing_eligible",
-      status: String(routing?.payout_readiness_status ?? "").toLowerCase() === "eligible" ? "pass" as const : "fail" as const,
-      reason: routing ? "routing not eligible" : "routing missing"
+      status: isPayoutReadinessEligible(routing?.payout_readiness_status) ? "pass" as const : "fail" as const,
+      reason: isPayoutReadinessEligible(routing?.payout_readiness_status) ? undefined : routing ? "routing not eligible" : "routing missing"
     },
     {
       stage: "payout_not_released",

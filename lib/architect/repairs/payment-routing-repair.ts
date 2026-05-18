@@ -1,6 +1,14 @@
 import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { isPaymentSuccessful, numberValue, roundMoney } from "@/lib/architect/debug/diagnosis";
 import type { ArchitectActor, ArchitectRepairResult, JsonRecord } from "@/lib/architect/debug/types";
+import {
+  DEFAULT_PAYMENT_ROUTING_CONSTRAINTS,
+  loadPaymentRoutingConstraintEvidence,
+  moneyRoutingDbValueForPending,
+  paymentRoutingConstraintEvidenceToJson,
+  readinessDbValueForBusinessMeaning,
+  reconciliationDbValueForOpen
+} from "@/lib/architect/mission-control/schema-constraints";
 import { writeArchitectRepairAudit } from "@/lib/architect/repairs/audit";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
@@ -30,11 +38,16 @@ export function buildFreelancePaymentRoutingRepairPayload(input: {
   appointment: JsonRecord;
   payment: JsonRecord;
   nowIso?: string;
+  constraintEvidence?: typeof DEFAULT_PAYMENT_ROUTING_CONSTRAINTS;
 }) {
   const now = input.nowIso ?? new Date().toISOString();
   const gross = roundMoney(numberValue(input.payment.amount));
   const platformFee = roundMoney(gross * 0.05);
   const barberPayout = roundMoney(Math.max(gross - platformFee, 0));
+  const constraintEvidence = input.constraintEvidence ?? DEFAULT_PAYMENT_ROUTING_CONSTRAINTS;
+  const payoutReadinessStatus = readinessDbValueForBusinessMeaning(constraintEvidence, "eligible");
+  const moneyRoutingStatus = moneyRoutingDbValueForPending(constraintEvidence);
+  const reconciliationStatus = reconciliationDbValueForOpen(constraintEvidence);
 
   return {
     payment_id: input.payment.id,
@@ -50,13 +63,17 @@ export function buildFreelancePaymentRoutingRepairPayload(input: {
     barber_payout_amount: barberPayout,
     shop_split_amount: 0,
     currency: String(input.payment.currency ?? "usd").toLowerCase(),
-    payout_readiness_status: "eligible",
-    money_routing_status: "pending",
+    payout_readiness_status: payoutReadinessStatus,
+    money_routing_status: moneyRoutingStatus,
     blocked_reason: null,
     metadata: {
       repairReason: "missing_routing_record_on_completion",
       source: "architect_payment_routing_repair",
       relationshipType: "freelance",
+      readinessMeaning: "eligible",
+      payoutReadinessDbValue: payoutReadinessStatus,
+      moneyRoutingDbValue: moneyRoutingStatus,
+      constraintSource: constraintEvidence.source,
       appointmentId: input.appointment.id,
       paymentId: input.payment.id,
       barberId: input.appointment.barber_id,
@@ -66,7 +83,7 @@ export function buildFreelancePaymentRoutingRepairPayload(input: {
     updated_at: now,
     processor_charge_id: input.payment.provider_payment_intent_id ?? null,
     processor_balance_transaction_id: null,
-    reconciliation_status: "open",
+    reconciliation_status: reconciliationStatus,
     eligible_at: now,
     released_at: null,
     held_at: null,
@@ -165,14 +182,17 @@ export async function repairMissingPaymentRouting(
       };
     }
 
-    const payload = buildFreelancePaymentRoutingRepairPayload({ appointment, payment });
+    const constraintEvidence = await loadPaymentRoutingConstraintEvidence(supabase);
+    const payload = buildFreelancePaymentRoutingRepairPayload({ appointment, payment, constraintEvidence });
     console.info("[architect-repair] payment_routing_repair_started", {
       appointmentId,
       payloadKeys: Object.keys(payload),
       providerGrossAmount: payload.provider_gross_amount,
       platformFeeAmount: payload.platform_fee_amount,
       barberPayoutAmount: payload.barber_payout_amount,
-      shopSplitAmount: payload.shop_split_amount
+      shopSplitAmount: payload.shop_split_amount,
+      payoutReadinessStatus: payload.payout_readiness_status,
+      allowedPayoutReadinessStatus: constraintEvidence.allowedValues.payout_readiness_status
     });
 
     const insertResult = await supabase
@@ -207,7 +227,10 @@ export async function repairMissingPaymentRouting(
       safetyClass,
       beforeSnapshot: before,
       afterSnapshot: { routing },
-      payload,
+      payload: {
+        ...payload,
+        constraintEvidence: paymentRoutingConstraintEvidenceToJson(constraintEvidence)
+      },
       result: "succeeded"
     });
 

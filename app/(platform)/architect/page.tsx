@@ -1,8 +1,8 @@
-import { ArchitectConsole } from "@/components/operations/architect-console";
-import { loadArchitectConsoleInitialData } from "@/app/(platform)/architect/_console-data";
+import { ArchitectMissionControl } from "@/components/architect/mission-control/mission-control";
+import { getPlatformAdminUser } from "@/lib/auth/guards";
 
 export default async function ArchitectPage() {
-  const initialData = await loadArchitectConsoleInitialData();
+  await getPlatformAdminUser();
 
-  return <ArchitectConsole initialData={initialData} mode="home" />;
+  return <ArchitectMissionControl />;
 }

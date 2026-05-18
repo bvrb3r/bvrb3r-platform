@@ -36,6 +36,9 @@ export function createArchitectDebugTables(overrides: Partial<Tables> = {}): Tab
       reference_code: "barber-43b3cda2",
       booking_slug: "barber-43b3cda2",
       barber_subtype: "freelance",
+      app_approval_status: "approved",
+      is_bookable: true,
+      is_discoverable: true,
       status: "active"
     }],
     services: [{
@@ -47,6 +50,14 @@ export function createArchitectDebugTables(overrides: Partial<Tables> = {}): Tab
       location_id: LOCATION_ID,
       service_owner: "barber",
       barber_reference: "barber-43b3cda2"
+    }],
+    availability_rules: [{
+      id: "availability-rule-1",
+      barber_id: BARBER_ID,
+      location_id: LOCATION_ID,
+      weekday: 0,
+      start_time: "12:00:00",
+      end_time: "19:00:00"
     }],
     appointments: [{
       id: APPOINTMENT_ID,
@@ -101,7 +112,21 @@ export function createArchitectDebugTables(overrides: Partial<Tables> = {}): Tab
     platform_events: [],
     architect_debug_sessions: [],
     architect_repair_audit_logs: [],
+    architect_validation_runs: [],
     "information_schema.columns": schemaRows,
+    "information_schema.check_constraints": [{
+      constraint_name: "payment_routing_records_payout_readiness_status_check",
+      check_clause: "CHECK ((payout_readiness_status = ANY (ARRAY['not_ready'::text, 'needs_attention'::text, 'ready'::text, 'blocked'::text])))"
+    }, {
+      constraint_name: "payment_routing_records_money_routing_status_check",
+      check_clause: "CHECK ((money_routing_status = ANY (ARRAY['pending'::text, 'ready_for_payout'::text, 'blocked'::text, 'manual_review'::text, 'paid_out'::text, 'refunded'::text])))"
+    }, {
+      constraint_name: "payment_routing_records_routing_model_check",
+      check_clause: "CHECK ((routing_model = ANY (ARRAY['freelance'::text, 'commission'::text, 'booth_rent'::text])))"
+    }, {
+      constraint_name: "payment_routing_records_payout_recipient_type_check",
+      check_clause: "CHECK ((payout_recipient_type = ANY (ARRAY['barber'::text, 'shop'::text, 'split'::text])))"
+    }],
     ...overrides
   };
 }

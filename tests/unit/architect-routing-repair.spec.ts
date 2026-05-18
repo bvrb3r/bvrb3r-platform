@@ -21,9 +21,13 @@ describe("architect routing repair", () => {
       platform_fee_amount: 0.25,
       barber_payout_amount: 4.75,
       shop_split_amount: 0,
-      payout_readiness_status: "eligible",
+      payout_readiness_status: "ready",
       money_routing_status: "pending",
       released_at: null
+    });
+    expect(tables.payment_routing_records[0].metadata).toMatchObject({
+      readinessMeaning: "eligible",
+      payoutReadinessDbValue: "ready"
     });
     expect(Object.keys(tables.payment_routing_records[0])).not.toEqual(expect.arrayContaining([
       "relationship_type",
@@ -54,6 +58,20 @@ describe("architect routing repair", () => {
     expect(result.repaired).toBe(false);
     expect(result.result).toBe("skipped");
     expect(tables.payment_routing_records).toHaveLength(1);
+  });
+
+  it("uses eligible only when production constraints allow eligible", async () => {
+    const tables = createArchitectDebugTables({
+      "information_schema.check_constraints": [{
+        constraint_name: "payment_routing_records_payout_readiness_status_check",
+        check_clause: "CHECK ((payout_readiness_status = ANY (ARRAY['pending'::text, 'eligible'::text, 'blocked'::text])))"
+      }]
+    });
+
+    const result = await repairMissingPaymentRouting(createSupabaseStub(tables) as never, ARCHITECT_USER, APPOINTMENT_ID);
+
+    expect(result.ok).toBe(true);
+    expect(tables.payment_routing_records[0].payout_readiness_status).toBe("eligible");
   });
 
   it("rejects non-completed appointments", async () => {

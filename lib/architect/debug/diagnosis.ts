@@ -1,4 +1,5 @@
 import type { ArchitectDebugPacket, ArchitectEvidenceItem, JsonRecord } from "@/lib/architect/debug/types";
+import { isPayoutReadinessEligible } from "@/lib/architect/mission-control/schema-constraints";
 
 const PAYMENT_SUCCESS_STATUSES = new Set(["captured", "succeeded", "paid", "completed"]);
 
@@ -110,7 +111,7 @@ export function diagnoseAppointment(packet: Pick<ArchitectDebugPacket, "entities
     };
   }
 
-  if (appointmentStatus === "completed" && routing && String(routing.payout_readiness_status ?? "").toLowerCase() !== "eligible") {
+  if (appointmentStatus === "completed" && routing && !isPayoutReadinessEligible(routing.payout_readiness_status)) {
     return {
       health: "broken" as const,
       diagnosisCode: "routing_exists_but_not_eligible",
@@ -129,7 +130,7 @@ export function diagnoseAppointment(packet: Pick<ArchitectDebugPacket, "entities
   if (
     appointmentStatus === "completed"
     && routing
-    && String(routing.payout_readiness_status ?? "").toLowerCase() === "eligible"
+    && isPayoutReadinessEligible(routing.payout_readiness_status)
     && !routing.released_at
   ) {
     return {
