@@ -4,24 +4,12 @@ import type { Route } from "next";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  ArrowLeft,
-  CalendarDays,
-  ChevronRight,
-  MessageSquarePlus,
-  MessageSquareText,
-  Pin,
-  Plus,
-  RadioTower,
-  Send,
-  ShieldCheck,
-  SlidersHorizontal
-} from "lucide-react";
+import { ArrowLeft, MessageSquarePlus, MessageSquareText, Plus, RadioTower, Send } from "lucide-react";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ActionButton, Avatar, FilterChip, GlassCard, PageHeader, SearchBar, StatusBadge } from "@/design/components";
+import { Avatar, FilterChip, SearchBar } from "@/design/components";
+import { isBarberAccountRole } from "@/lib/auth/roles";
 import {
   useCreateMessageThreadMutation,
   useMessageThreadQuery,
@@ -29,14 +17,41 @@ import {
   useSendMessageBroadcastMutation,
   useSendMessageMutation
 } from "@/lib/messages/client";
-import { isBarberAccountRole } from "@/lib/auth/roles";
 import type {
   MessagingBroadcastAudience,
   MessagingContactCandidate,
   MessagingCreateThreadInput,
   MessagingInboxCandidate,
+  MessagingThreadPayload,
   MessagingThreadSummary
 } from "@/lib/messages/service";
+
+type MessagingSurface = "client" | "barber" | "shop";
+type ThreadFilter = "all" | "barbers" | "shops" | "support" | "other";
+type BarberInboxTab = "primary" | "requests" | "bookings" | "general";
+type ActiveThread = MessagingThreadPayload["thread"];
+
+const threadFilters: { key: ThreadFilter; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "barbers", label: "Barbers" },
+  { key: "shops", label: "Shops" },
+  { key: "support", label: "Support" },
+  { key: "other", label: "Other" }
+];
+
+const barberThreadFilters: { key: ThreadFilter; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "other", label: "Clients" },
+  { key: "shops", label: "Shops" },
+  { key: "support", label: "Support" }
+];
+
+const barberInboxTabs: { key: BarberInboxTab; label: string }[] = [
+  { key: "primary", label: "Primary" },
+  { key: "requests", label: "Requests" },
+  { key: "bookings", label: "Bookings" },
+  { key: "general", label: "General" }
+];
 
 function formatThreadTime(iso: string) {
   const date = new Date(iso);
@@ -52,14 +67,49 @@ function formatThreadTime(iso: string) {
   }).format(date);
 }
 
-function ThreadSkeleton() {
-  return (
-    <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-      <Skeleton className="h-5 w-32" />
-      <Skeleton className="mt-3 h-4 w-48" />
-      <Skeleton className="mt-3 h-4 w-24" />
-    </div>
-  );
+function formatCompactThreadTime(iso: string) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const now = new Date();
+  const sameDay = date.toDateString() === now.toDateString();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+
+  if (sameDay) {
+    return new Intl.DateTimeFormat("en-US", {
+      hour: "numeric",
+      minute: "2-digit"
+    }).format(date);
+  }
+
+  if (date.toDateString() === yesterday.toDateString()) {
+    return "Yesterday";
+  }
+
+  const diffDays = Math.floor((now.getTime() - date.getTime()) / 86_400_000);
+  if (diffDays > 0 && diffDays < 7) {
+    return `${diffDays}d`;
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric"
+  }).format(date);
+}
+
+function formatContextDate(iso: string) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric"
+  }).format(date);
 }
 
 function readableError(error: unknown, fallback: string) {
@@ -70,30 +120,26 @@ function readableError(error: unknown, fallback: string) {
   return fallback;
 }
 
-function getSurfaceCopy(surface: "client" | "barber" | "shop") {
+function getSurfaceCopy(surface: MessagingSurface) {
   if (surface === "shop") {
     return {
-      shellLabel: "Shop communication",
-      participantCopy: "Shop conversations stay tied to assigned locations, real participants, and the existing thread system.",
-      inboxCopy: "Client, barber, and broadcast threads stay inside assigned shop scope.",
-      starterTitle: "Direct lines",
-      starterCopy: "Open a direct shop thread with a real client or barber already connected to this location.",
-      composerPlaceholder: "Send a clear operational message to the current conversation.",
-      emptyThreadCopy: "Select a conversation to respond, or open a new shop thread from the location starters below.",
-      broadcastTitle: "Shop broadcast",
-      broadcastCopy: "Broadcasts reuse the same canonical thread system by delivering into client-shop and barber-shop conversations."
+      shellLabel: "Shop messages",
+      composerPlaceholder: "Message this thread.",
+      emptyThreadCopy: "Pick a conversation or open a direct shop line.",
+      starterTitle: "New lines",
+      starterCopy: "Open a real client or barber thread tied to this location.",
+      broadcastTitle: "Broadcast",
+      broadcastCopy: "Send one update into the existing shop conversation network."
     };
   }
 
   if (surface === "barber") {
     return {
-      shellLabel: "Chair communication",
-      participantCopy: "Barber messaging stays scoped to appointment threads and shop relationships you already own.",
-      inboxCopy: "Appointment-linked conversations first, with direct shop contact available from real chair history.",
-      starterTitle: "Thread starters",
-      starterCopy: "Open new appointment-linked or shop-linked threads only from relationships already grounded in the platform.",
-      composerPlaceholder: "Reply with clear appointment guidance for the client or shop.",
-      emptyThreadCopy: "Select a conversation to read the context and send a message, or start a new thread from an eligible appointment or shop below.",
+      shellLabel: "Client messages",
+      composerPlaceholder: "Message the client.",
+      emptyThreadCopy: "Pick a client conversation or open one from a booked appointment.",
+      starterTitle: "New messages",
+      starterCopy: "Start from appointment-linked clients or connected shop lines.",
       broadcastTitle: "",
       broadcastCopy: ""
     };
@@ -101,12 +147,10 @@ function getSurfaceCopy(surface: "client" | "barber" | "shop") {
 
   return {
     shellLabel: "Messages",
-    participantCopy: "Client messaging stays tied to real barber, shop, and support relationships only.",
-    inboxCopy: "Appointment-linked conversations stay first, with shop contact and support available when you need help.",
-    starterTitle: "Thread starters",
-    starterCopy: "Open a real appointment or shop thread, or start a support conversation when you need help from BVRB3R.",
-    composerPlaceholder: "Ask your barber, the shop, or support about the appointment, timing, payment, or visit details.",
-    emptyThreadCopy: "Select a conversation to read the appointment or support context and send a message, or start one below.",
+    composerPlaceholder: "Message your barber, shop, or support.",
+    emptyThreadCopy: "Pick a conversation or start one from an appointment.",
+    starterTitle: "New messages",
+    starterCopy: "Start from a booked appointment, shop line, or support.",
     broadcastTitle: "",
     broadcastCopy: ""
   };
@@ -140,23 +184,6 @@ function getRoleBadgeLabel(role?: string | null, threadType?: string) {
   return null;
 }
 
-type ThreadFilter = "all" | "barbers" | "shops" | "support" | "other";
-
-const threadFilters: { key: ThreadFilter; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "barbers", label: "Barbers" },
-  { key: "shops", label: "Shops" },
-  { key: "support", label: "Support" },
-  { key: "other", label: "Other" }
-];
-
-const barberThreadFilters: { key: ThreadFilter; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "other", label: "Clients" },
-  { key: "shops", label: "Shops" },
-  { key: "support", label: "Support" }
-];
-
 function getThreadFilter(role?: string | null, threadType?: string): ThreadFilter {
   if (threadType === "support" || role === "platform_admin") {
     return "support";
@@ -181,15 +208,6 @@ function getInitials(name: string) {
     .slice(0, 2)
     .toUpperCase();
 }
-
-type BarberInboxTab = "primary" | "requests" | "bookings" | "general";
-
-const barberInboxTabs: { key: BarberInboxTab; label: string }[] = [
-  { key: "primary", label: "Primary" },
-  { key: "requests", label: "Requests" },
-  { key: "bookings", label: "Bookings" },
-  { key: "general", label: "General" }
-];
 
 function isBookingRequestThread(thread: MessagingThreadSummary) {
   const statusText = `${thread.appointmentContext?.status ?? ""} ${thread.appointmentContext?.statusLabel ?? ""}`.toLowerCase();
@@ -232,58 +250,65 @@ function getThreadPreview(thread: MessagingThreadSummary) {
   return "No messages yet.";
 }
 
-function filterBarberThreads(threads: MessagingThreadSummary[], activeTab: BarberInboxTab, query: string) {
+function getDisplayName(thread: MessagingThreadSummary | ActiveThread) {
+  return thread?.counterpart?.fullName ?? "Conversation";
+}
+
+function getAppointmentLine(thread: MessagingThreadSummary | ActiveThread) {
+  if (!thread?.appointmentContext) {
+    return null;
+  }
+
+  return `${thread.appointmentContext.serviceName} • ${thread.appointmentContext.statusLabel}`;
+}
+
+function getConversationContextLine(thread: ActiveThread) {
+  if (!thread) {
+    return "";
+  }
+
+  if (thread.appointmentContext) {
+    const date = formatContextDate(thread.appointmentContext.startsAt);
+    return [
+      thread.appointmentContext.serviceName,
+      date,
+      thread.appointmentContext.statusLabel
+    ].filter(Boolean).join(" • ");
+  }
+
+  if (thread.threadType === "support") {
+    return "BVRB3R Support";
+  }
+
+  return thread.locationContext?.locationLabel ?? "Direct conversation";
+}
+
+function filterThreads(threads: MessagingThreadSummary[], activeFilter: ThreadFilter, query: string) {
   const normalizedQuery = query.trim().toLowerCase();
 
   return threads.filter((thread) => {
-    const matchesTab = activeTab === "primary" || getBarberInboxCategory(thread) === activeTab;
+    const filterKey = getThreadFilter(thread.counterpart?.role, thread.threadType);
+    const matchesFilter = activeFilter === "all" || filterKey === activeFilter;
     const searchable = [
       thread.counterpart?.fullName,
+      getRoleBadgeLabel(thread.counterpart?.role, thread.threadType),
       thread.appointmentContext?.serviceName,
       thread.appointmentContext?.locationLabel,
       thread.locationContext?.locationLabel,
-      getThreadPreview(thread)
+      thread.lastMessage?.body
     ]
       .filter(Boolean)
       .join(" ")
       .toLowerCase();
 
-    return matchesTab && (!normalizedQuery || searchable.includes(normalizedQuery));
+    return matchesFilter && (!normalizedQuery || searchable.includes(normalizedQuery));
   });
 }
 
-function formatCompactThreadTime(iso: string) {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
+function filterBarberThreads(threads: MessagingThreadSummary[], activeTab: BarberInboxTab, activeFilter: ThreadFilter, query: string) {
+  const filtered = filterThreads(threads, activeFilter, query);
 
-  const now = new Date();
-  const sameDay = date.toDateString() === now.toDateString();
-  const yesterday = new Date(now);
-  yesterday.setDate(now.getDate() - 1);
-
-  if (sameDay) {
-    return new Intl.DateTimeFormat("en-US", {
-      hour: "numeric",
-      minute: "2-digit"
-    }).format(date);
-  }
-
-  if (date.toDateString() === yesterday.toDateString()) {
-    return "Yesterday";
-  }
-
-  const diffMs = now.getTime() - date.getTime();
-  const diffDays = Math.floor(diffMs / 86_400_000);
-  if (diffDays > 0 && diffDays < 7) {
-    return `${diffDays}d ago`;
-  }
-
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric"
-  }).format(date);
+  return filtered.filter((thread) => activeTab === "primary" || getBarberInboxCategory(thread) === activeTab);
 }
 
 function buildQuickContacts(
@@ -315,7 +340,306 @@ function buildQuickContacts(
     }
   }
 
-  return Array.from(contacts.values()).slice(0, 8);
+  return Array.from(contacts.values()).slice(0, 10);
+}
+
+function ThreadSkeleton() {
+  return (
+    <div className="flex min-h-20 items-center gap-3 rounded-lg border border-white/8 bg-white/[0.025] px-3 py-2">
+      <Skeleton className="h-11 w-11 rounded-full" />
+      <div className="min-w-0 flex-1">
+        <Skeleton className="h-4 w-32" />
+        <Skeleton className="mt-2 h-3 w-48" />
+      </div>
+      <Skeleton className="h-3 w-10" />
+    </div>
+  );
+}
+
+function RolePill({ label }: { label: string }) {
+  return (
+    <span className="inline-flex h-5 items-center rounded-md border border-white/10 bg-white/[0.035] px-1.5 text-[10px] font-bold uppercase text-[#d7ffab]">
+      {label}
+    </span>
+  );
+}
+
+function ThreadStoryRail({
+  basePath,
+  contacts,
+  onNewMessage
+}: {
+  basePath: string;
+  contacts: ReturnType<typeof buildQuickContacts>;
+  onNewMessage: () => void;
+}) {
+  return (
+    <div className="-mx-1 overflow-x-auto px-1 pb-1">
+      <div className="flex min-w-max gap-3">
+        <button
+          type="button"
+          className="group w-16 shrink-0 text-center"
+          onClick={onNewMessage}
+        >
+          <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-[#a3ff12]/50 bg-[#a3ff12]/10 text-[#a3ff12] transition group-hover:bg-[#a3ff12] group-hover:text-[#050505]">
+            <Plus className="h-5 w-5" aria-hidden="true" />
+          </span>
+          <span className="mt-1 block truncate text-[11px] font-semibold text-white/64">New</span>
+        </button>
+
+        {contacts.map((contact) => {
+          const avatar = (
+            <>
+              <Avatar
+                alt={contact.label}
+                initials={getInitials(contact.label)}
+                className={[
+                  "mx-auto h-12 w-12 text-sm",
+                  contact.active ? "border-2 border-[#a3ff12]/80 shadow-[0_0_18px_rgba(163,255,18,0.18)]" : "border-white/12"
+                ].join(" ")}
+              />
+              <span className="mt-1 block truncate text-[11px] font-semibold text-white/64 group-hover:text-white">
+                {contact.label}
+              </span>
+            </>
+          );
+
+          if (contact.threadId) {
+            return (
+              <Link key={contact.id} href={`${basePath}/${contact.threadId}` as Route} className="group w-16 shrink-0 text-center">
+                {avatar}
+              </Link>
+            );
+          }
+
+          return (
+            <button key={contact.id} type="button" className="group w-16 shrink-0 text-center" onClick={onNewMessage}>
+              {avatar}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ThinThreadRow({
+  thread,
+  basePath,
+  active
+}: {
+  thread: MessagingThreadSummary;
+  basePath: string;
+  active: boolean;
+}) {
+  const displayName = getDisplayName(thread);
+  const roleBadgeLabel = getRoleBadgeLabel(thread.counterpart?.role, thread.threadType);
+  const appointmentLine = getAppointmentLine(thread);
+  const contextDetail = appointmentLine ?? getThreadStatusLabel(thread.threadType);
+  const preview = getThreadPreview(thread);
+
+  return (
+    <Link
+      href={`${basePath}/${thread.id}` as Route}
+      className={[
+        "group grid min-h-[74px] grid-cols-[auto_1fr_auto] items-center gap-3 rounded-lg border px-3 py-2 transition",
+        active
+          ? "border-[#a3ff12]/35 bg-[#a3ff12]/10"
+          : "border-white/8 bg-white/[0.022] hover:border-[#a3ff12]/24 hover:bg-white/[0.04]"
+      ].join(" ")}
+    >
+      <Avatar
+        alt={displayName}
+        initials={getInitials(displayName)}
+        className="h-11 w-11 text-sm"
+      />
+      <div className="min-w-0">
+        <div className="flex min-w-0 items-center gap-2">
+          <p className="truncate text-sm font-bold text-white">{displayName}</p>
+          {roleBadgeLabel ? <RolePill label={roleBadgeLabel} /> : null}
+        </div>
+        <p className="mt-0.5 truncate text-xs font-medium text-white/54">{contextDetail}</p>
+        <p className="mt-0.5 truncate text-xs text-white/42">{preview}</p>
+      </div>
+      <div className="flex h-full flex-col items-end justify-between py-1">
+        <span className="text-[11px] font-medium text-white/42">
+          {formatCompactThreadTime(thread.lastMessage?.createdAt ?? thread.updatedAt)}
+        </span>
+        {thread.appointmentContext ? (
+          <span className="rounded-md border border-[#a3ff12]/18 bg-[#a3ff12]/8 px-1.5 py-0.5 text-[10px] font-bold text-[#d7ffab]">
+            {thread.appointmentContext.statusLabel}
+          </span>
+        ) : null}
+      </div>
+    </Link>
+  );
+}
+
+function ConversationPanel({
+  activeThread,
+  activeThreadId,
+  basePath,
+  copy,
+  composerBody,
+  isLoading,
+  messages,
+  selectedThreadId,
+  sendPending,
+  surface,
+  threadError,
+  onComposerChange,
+  onSend
+}: {
+  activeThread: ActiveThread;
+  activeThreadId?: string;
+  basePath: string;
+  copy: ReturnType<typeof getSurfaceCopy>;
+  composerBody: string;
+  isLoading: boolean;
+  messages: MessagingThreadPayload["messages"];
+  selectedThreadId?: string;
+  sendPending: boolean;
+  surface: MessagingSurface;
+  threadError: unknown;
+  onComposerChange: (value: string) => void;
+  onSend: () => void;
+}) {
+  const participantSummary = activeThread?.participants
+    .filter((participant) => !participant.isSelf)
+    .map((participant) => participant.fullName)
+    .join(", ") ?? "";
+  const displayName = participantSummary || activeThread?.counterpart?.fullName || "Conversation";
+  const roleBadgeLabel = getRoleBadgeLabel(activeThread?.counterpart?.role, activeThread?.threadType);
+  const hasAppointment = Boolean(activeThread?.appointmentContext);
+
+  return (
+    <section className="flex min-h-[34rem] flex-col rounded-lg border border-white/8 bg-[#070707]/92 shadow-[0_20px_60px_rgba(0,0,0,0.38)]">
+      <div className="border-b border-white/8 px-3 py-3 sm:px-4">
+        {selectedThreadId ? (
+          <Link href={basePath as Route} className="mb-3 inline-flex items-center gap-2 text-xs font-semibold text-white/56 transition hover:text-[#d7ffab] xl:hidden">
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+            Back
+          </Link>
+        ) : null}
+
+        {threadError ? (
+          <FeedbackBanner tone="error" message={readableError(threadError, "Unable to load the selected conversation.")} />
+        ) : null}
+
+        {isLoading && activeThreadId ? (
+          <div className="space-y-3">
+            <ThreadSkeleton />
+            <ThreadSkeleton />
+          </div>
+        ) : activeThread ? (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <Avatar
+                  alt={displayName}
+                  initials={getInitials(displayName)}
+                  className="h-12 w-12 border-2 border-[#a3ff12]/65 text-sm"
+                />
+                <div className="min-w-0">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <h3 className="truncate text-base font-black text-white">{displayName}</h3>
+                    {roleBadgeLabel ? <RolePill label={roleBadgeLabel} /> : null}
+                  </div>
+                  <p className="mt-0.5 text-xs text-white/46">
+                    {activeThread.threadType === "support" ? "Support" : "Active soon"}
+                  </p>
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  className="h-8 rounded-lg border border-white/10 px-3 text-xs font-bold text-white/72 transition hover:border-[#a3ff12]/28 hover:text-white disabled:opacity-45"
+                  disabled={activeThread.threadType === "support"}
+                >
+                  View Profile
+                </button>
+                {surface !== "shop" && activeThread.threadType !== "support" ? (
+                  <Link
+                    href="/booking/new"
+                    className="inline-flex h-8 items-center rounded-lg bg-[#a3ff12] px-3 text-xs font-black text-[#050505] transition hover:bg-[#d7ffab]"
+                  >
+                    Book Now
+                  </Link>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-[#a3ff12]/18 bg-[#a3ff12]/8 px-3 py-2 text-xs font-semibold text-[#d7ffab]">
+              {getConversationContextLine(activeThread)}
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      {activeThread ? (
+        <>
+          <div className="flex-1 space-y-3 overflow-y-auto px-3 py-4 scroll-smooth sm:px-4">
+            {messages.length ? messages.map((message) => (
+              <div key={message.id} className={message.isOwn ? "flex justify-end" : "flex justify-start"}>
+                <div
+                  className={[
+                    "max-w-[82%] rounded-lg px-3 py-2 text-sm leading-6 shadow-[0_10px_28px_rgba(0,0,0,0.24)]",
+                    message.messageType === "system"
+                      ? "border border-white/8 bg-white/[0.025] text-white/56"
+                      : message.isOwn
+                        ? "bg-[#a3ff12] text-[#050505]"
+                        : "border border-white/8 bg-white/[0.06] text-white"
+                  ].join(" ")}
+                >
+                  <p className="font-medium">{message.body}</p>
+                  <p className={["mt-1 text-[10px] font-bold", message.isOwn ? "text-black/52" : "text-white/38"].join(" ")}>
+                    {message.messageType === "system" ? "System" : message.senderName ?? "Participant"} • {formatThreadTime(message.createdAt)}
+                  </p>
+                </div>
+              </div>
+            )) : (
+              <div className="flex min-h-40 items-center justify-center rounded-lg border border-dashed border-white/10 bg-white/[0.025] p-4 text-center text-sm text-white/54">
+                No messages yet.
+              </div>
+            )}
+          </div>
+
+          <div className="border-t border-white/8 p-3">
+            <label className="sr-only" htmlFor={`${surface}-message-composer`}>Reply</label>
+            <div className="flex items-end gap-2 rounded-lg border border-white/10 bg-black/35 p-2">
+              <textarea
+                id={`${surface}-message-composer`}
+                value={composerBody}
+                onChange={(event) => onComposerChange(event.target.value)}
+                rows={1}
+                className="max-h-28 min-h-10 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-white outline-none placeholder:text-white/34"
+                placeholder={copy.composerPlaceholder}
+              />
+              <button
+                type="button"
+                aria-label="Send message"
+                disabled={sendPending || !composerBody.trim()}
+                onClick={onSend}
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#a3ff12] text-[#050505] transition active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
+              >
+                <Send className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="flex flex-1 items-center justify-center p-4 text-center">
+          <div className="max-w-sm">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-[#a3ff12]/28 bg-[#a3ff12]/10 text-[#a3ff12]">
+              <MessageSquareText className="h-5 w-5" aria-hidden="true" />
+            </div>
+            <p className="mt-3 text-sm font-semibold text-white">{hasAppointment ? "Open this appointment thread." : "Pick a conversation"}</p>
+            <p className="mt-1 text-sm leading-6 text-white/54">{copy.emptyThreadCopy}</p>
+          </div>
+        </div>
+      )}
+    </section>
+  );
 }
 
 export function MessagingInboxScreen({
@@ -326,7 +650,7 @@ export function MessagingInboxScreen({
   title,
   subtitle
 }: {
-  surface: "client" | "barber" | "shop";
+  surface: MessagingSurface;
   basePath: string;
   selectedThreadId?: string;
   startSupportIntent?: boolean;
@@ -335,7 +659,6 @@ export function MessagingInboxScreen({
 }) {
   const router = useRouter();
   const copy = getSurfaceCopy(surface);
-  const isShopSurface = surface === "shop";
   const threadsQuery = useMessageThreadsQuery();
   const createThreadMutation = useCreateMessageThreadMutation();
   const broadcastMutation = useSendMessageBroadcastMutation();
@@ -350,8 +673,7 @@ export function MessagingInboxScreen({
   const [threadSearch, setThreadSearch] = useState("");
   const [threadFilter, setThreadFilter] = useState<ThreadFilter>("all");
   const [barberInboxTab, setBarberInboxTab] = useState<BarberInboxTab>("primary");
-  const barberStartersRef = useRef<HTMLDivElement | null>(null);
-  const barberFiltersRef = useRef<HTMLDivElement | null>(null);
+  const startersRef = useRef<HTMLDivElement | null>(null);
   const hasTriggeredSupportIntentRef = useRef(false);
 
   const available = threadsQuery.data?.available ?? false;
@@ -365,43 +687,16 @@ export function MessagingInboxScreen({
     () => threads.find((thread) => thread.threadType === "support") ?? null,
     [threads]
   );
-  const displayedThreads = useMemo(() => {
-    const query = threadSearch.trim().toLowerCase();
-
-    return threads.filter((thread) => {
-      const filterKey = getThreadFilter(thread.counterpart?.role, thread.threadType);
-      const matchesFilter = threadFilter === "all" || filterKey === threadFilter;
-      const searchable = [
-        thread.counterpart?.fullName,
-        getRoleBadgeLabel(thread.counterpart?.role, thread.threadType),
-        thread.appointmentContext?.serviceName,
-        thread.appointmentContext?.locationLabel,
-        thread.locationContext?.locationLabel,
-        thread.lastMessage?.body
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-
-      return matchesFilter && (!query || searchable.includes(query));
-    });
-  }, [threadFilter, threadSearch, threads]);
-  const displayedBarberThreads = useMemo(
-    () => filterBarberThreads(threads, barberInboxTab, threadSearch),
-    [barberInboxTab, threadSearch, threads]
-  );
-  const barberQuickContacts = useMemo(
+  const quickContacts = useMemo(
     () => buildQuickContacts(threads, appointmentStarters, contactStarters),
     [appointmentStarters, contactStarters, threads]
   );
   const activeThreadFilters = surface === "barber" ? barberThreadFilters : threadFilters;
-  const participantSummary = useMemo(
-    () =>
-      activeThread?.participants
-        .filter((participant) => !participant.isSelf)
-        .map((participant) => participant.fullName)
-        .join(", ") ?? "",
-    [activeThread]
+  const displayedThreads = useMemo(
+    () => surface === "barber"
+      ? filterBarberThreads(threads, barberInboxTab, threadFilter, threadSearch)
+      : filterThreads(threads, threadFilter, threadSearch),
+    [barberInboxTab, surface, threadFilter, threadSearch, threads]
   );
 
   useEffect(() => {
@@ -496,834 +791,280 @@ export function MessagingInboxScreen({
     await handleStartThread({ threadType: "support" }, "Support conversation ready.");
   }
 
-  if (surface === "barber") {
-    return (
-      <div
-        className="relative isolate overflow-hidden rounded-[34px] border border-white/8 bg-[radial-gradient(circle_at_top_right,rgba(163,255,18,0.10),transparent_30%),radial-gradient(circle_at_bottom_center,rgba(163,255,18,0.06),transparent_28%),#050505] p-4 pb-8 shadow-[0_24px_70px_rgba(0,0,0,0.48)] sm:p-6"
-        data-testid="messaging-inbox-barber"
-      >
-        <div className="pointer-events-none absolute inset-x-10 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(163,255,18,0.55),transparent)]" />
+  const handleNewMessage = () => {
+    startersRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
-        <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <p className="surface-label text-[#a3ff12]">Client inbox</p>
-            <h2 className="mt-3 text-[clamp(2.6rem,7vw,4rem)] font-black leading-none tracking-[-0.045em] text-white" data-display="true">
-              Messages
-            </h2>
-            <p className="mt-3 text-[17px] font-medium leading-snug text-white/68">
-              Connect with clients & manage conversations.
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              aria-label="Start a new real conversation"
-              className="inline-flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-white transition hover:border-[#a3ff12]/35 hover:text-[#a3ff12] hover:shadow-[0_0_24px_rgba(163,255,18,0.12)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a3ff12]/45"
-              onClick={() => barberStartersRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
-            >
-              <MessageSquarePlus className="h-6 w-6" aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              aria-label="Open message filters"
-              className="inline-flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-white transition hover:border-[#a3ff12]/35 hover:text-[#a3ff12] hover:shadow-[0_0_24px_rgba(163,255,18,0.12)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a3ff12]/45"
-              onClick={() => barberFiltersRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })}
-            >
-              <SlidersHorizontal className="h-6 w-6" aria-hidden="true" />
-            </button>
-          </div>
+  return (
+    <div
+      className="relative isolate overflow-hidden rounded-lg border border-white/8 bg-[radial-gradient(circle_at_top_right,rgba(163,255,18,0.10),transparent_28%),#050505] p-3 shadow-[0_24px_70px_rgba(0,0,0,0.42)] sm:p-4"
+      data-testid={`messaging-inbox-${surface}`}
+    >
+      <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(163,255,18,0.55),transparent)]" />
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <p className="text-xs font-bold uppercase text-[#a3ff12]">{copy.shellLabel}</p>
+          <h2 className="mt-1 text-2xl font-black text-white sm:text-3xl" data-display="true">{title}</h2>
+          <p className="mt-1 max-w-xl truncate text-sm text-white/54">{subtitle}</p>
         </div>
+        <Button
+          className="h-10 rounded-lg px-4 normal-case tracking-normal"
+          disabled={surface === "client" ? createThreadMutation.isPending : false}
+          onClick={surface === "client" && !appointmentStarters.length && !contactStarters.length ? () => void handleSupportThread() : handleNewMessage}
+        >
+          <MessageSquarePlus className="h-4 w-4" aria-hidden="true" />
+          {createThreadMutation.isPending ? "Opening..." : "New Message"}
+        </Button>
+      </div>
 
-        <div className="mt-6 space-y-3">
-          {statusUpdate ? <FeedbackBanner tone={statusUpdate.tone} message={statusUpdate.message} /> : null}
-          {threadsQuery.error ? <FeedbackBanner tone="error" message={readableError(threadsQuery.error, "Unable to load the messaging inbox.")} /> : null}
+      <div className="mt-3 space-y-2">
+        {statusUpdate ? <FeedbackBanner tone={statusUpdate.tone} message={statusUpdate.message} /> : null}
+        {threadsQuery.error ? <FeedbackBanner tone="error" message={readableError(threadsQuery.error, "Unable to load the messaging inbox.")} /> : null}
+      </div>
+
+      {!available ? (
+        <div className="mt-4 rounded-lg border border-dashed border-white/10 bg-white/[0.025] p-4 text-sm leading-6 text-white/58">
+          Messaging becomes available when the live thread environment is connected.
         </div>
+      ) : null}
 
-        {!available ? (
-          <GlassCard className="mt-6 p-6">
-            <div className="flex flex-col items-start gap-4 rounded-[26px] border border-dashed border-white/10 bg-black/24 p-6 sm:flex-row sm:items-center">
-              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border border-[#a3ff12]/30 bg-[#a3ff12]/10 text-[#a3ff12] shadow-[0_0_24px_rgba(163,255,18,0.16)]">
-                <MessageSquareText className="h-7 w-7" aria-hidden="true" />
-              </div>
-              <div>
-                <h3 className="text-2xl font-black tracking-[-0.03em] text-white">Messages are not connected yet.</h3>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-white/60">
-                  Client conversations and booking threads appear when the live messaging environment is available.
-                </p>
-              </div>
-            </div>
-          </GlassCard>
-        ) : null}
-
-        {available ? (
-          <div className="mt-7 grid gap-5 xl:grid-cols-[0.92fr_1.08fr]">
-            <div className="min-w-0 space-y-5">
+      {available ? (
+        <div className="mt-4 grid gap-4 xl:grid-cols-[0.88fr_1.12fr]">
+          <aside className="min-w-0 space-y-3">
+            <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
               <SearchBar
-                aria-label="Search clients or conversations"
-                placeholder="Search clients or conversations"
+                aria-label="Search messages"
+                placeholder="Search"
                 value={threadSearch}
                 onChange={(event) => setThreadSearch(event.target.value)}
-                className="h-[76px] rounded-[18px] border-white/10 bg-white/[0.035] px-5 text-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] [&_input]:placeholder:text-white/42 [&_svg]:h-7 [&_svg]:w-7"
+                className="h-11 rounded-lg border-white/10 bg-white/[0.035] text-sm [&_input]:min-h-10"
               />
-
-              <div className="-mx-1 overflow-x-auto px-1 pb-1">
-                <div className="flex min-w-max gap-5">
-                  <button
-                    type="button"
-                    className="group w-28 shrink-0 text-center"
-                    onClick={() => barberStartersRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
-                  >
-                    <span className="flex h-28 w-28 items-center justify-center rounded-full border-[3px] border-white/16 bg-white/[0.018] text-[#a3ff12] transition group-hover:border-[#a3ff12]/50 group-hover:shadow-[0_0_24px_rgba(163,255,18,0.14)]">
-                      <Plus className="h-9 w-9" aria-hidden="true" />
-                    </span>
-                    <span className="mt-3 block text-sm font-semibold text-white/72">New Message</span>
-                  </button>
-
-                  {barberQuickContacts.map((contact) => (
-                    <Link
-                      key={contact.id}
-                      href={contact.threadId ? (`${basePath}/${contact.threadId}` as Route) : (basePath as Route)}
-                      className="group w-28 shrink-0 text-center"
-                    >
-                      <Avatar
-                        alt={contact.label}
-                        initials={getInitials(contact.label)}
-                        className={[
-                          "h-28 w-28 border-[3px] text-2xl",
-                          contact.active
-                            ? "border-[#a3ff12]/75 shadow-[0_0_24px_rgba(163,255,18,0.16)]"
-                            : "border-white/16"
-                        ].join(" ")}
-                      />
-                      <span className="mt-3 block truncate text-sm font-semibold text-white/72 group-hover:text-white">
-                        {contact.label}
-                      </span>
-                    </Link>
-                  ))}
-                </div>
-              </div>
-
-              <div
-                ref={barberFiltersRef}
-                className="grid min-h-[70px] grid-cols-2 gap-1 rounded-[18px] border border-white/10 bg-white/[0.025] p-1 sm:grid-cols-4"
+              <button
+                type="button"
+                className="hidden h-11 rounded-lg border border-white/10 px-3 text-xs font-bold text-white/68 transition hover:border-[#a3ff12]/28 hover:text-white sm:inline-flex sm:items-center sm:justify-center"
+                onClick={handleNewMessage}
               >
+                New
+              </button>
+            </div>
+
+            <ThreadStoryRail basePath={basePath} contacts={quickContacts} onNewMessage={handleNewMessage} />
+
+            {surface === "barber" ? (
+              <div className="grid grid-cols-4 gap-1 rounded-lg border border-white/8 bg-white/[0.025] p-1">
                 {barberInboxTabs.map((tab) => {
                   const active = barberInboxTab === tab.key;
-                  const count = getBarberTabCount(tab.key, threads);
-
                   return (
                     <button
                       key={tab.key}
                       type="button"
                       onClick={() => setBarberInboxTab(tab.key)}
                       className={[
-                        "flex min-h-14 items-center justify-center gap-2 rounded-[14px] px-3 text-sm font-black transition sm:text-base",
-                        active
-                          ? "bg-[linear-gradient(135deg,#A3FF12,#7DCE00)] text-[#050505] shadow-[0_0_28px_rgba(163,255,18,0.24)]"
-                          : "text-white/84 hover:bg-white/[0.04]"
+                        "min-h-9 rounded-lg px-2 text-[11px] font-bold transition",
+                        active ? "bg-[#a3ff12] text-[#050505]" : "text-white/62 hover:bg-white/[0.04] hover:text-white"
                       ].join(" ")}
                     >
-                      <span>{tab.label}</span>
-                      <span
-                        className={[
-                          "inline-flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-xs font-black",
-                          active ? "bg-black/12 text-[#050505]" : "bg-[#a3ff12]/85 text-[#050505]"
-                        ].join(" ")}
-                      >
-                        {count}
-                      </span>
+                      {tab.label} <span className={active ? "text-black/58" : "text-white/36"}>{getBarberTabCount(tab.key, threads)}</span>
                     </button>
                   );
                 })}
               </div>
+            ) : null}
 
-              <div className="space-y-3">
-                {threadsQuery.isLoading && !threadsQuery.data ? (
-                  <>
-                    <ThreadSkeleton />
-                    <ThreadSkeleton />
-                    <ThreadSkeleton />
-                  </>
-                ) : displayedBarberThreads.length ? displayedBarberThreads.map((thread, index) => {
-                  const isActive = thread.id === activeThreadId;
-                  const displayName = thread.counterpart?.fullName ?? "Conversation";
-                  const preview = getThreadPreview(thread);
-                  const threadTime = formatCompactThreadTime(thread.lastMessage?.createdAt ?? thread.updatedAt);
-                  const isBooking = Boolean(thread.appointmentContext);
-                  const isRequest = isBookingRequestThread(thread);
-
-                  return (
-                    <Link
-                      key={thread.id}
-                      href={`${basePath}/${thread.id}` as Route}
-                      className={[
-                        "grid min-h-[116px] grid-cols-[auto_1fr] items-center gap-4 rounded-[18px] border p-4 transition sm:grid-cols-[auto_1fr_auto]",
-                        isActive || index === 0
-                          ? "border-[#a3ff12]/24 bg-[linear-gradient(180deg,rgba(163,255,18,0.08),rgba(255,255,255,0.018))] shadow-[0_0_0_1px_rgba(163,255,18,0.08),0_14px_42px_rgba(163,255,18,0.06)]"
-                          : "border-white/9 bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.018))] shadow-[0_14px_42px_rgba(0,0,0,0.38),inset_0_1px_0_rgba(255,255,255,0.04)] hover:border-[#a3ff12]/25"
-                      ].join(" ")}
-                    >
-                      <Avatar
-                        alt={displayName}
-                        initials={getInitials(displayName)}
-                        className={[
-                          "h-[78px] w-[78px] text-xl",
-                          isActive || index === 0
-                            ? "border-2 border-[#a3ff12] shadow-[0_0_20px_rgba(163,255,18,0.20)]"
-                            : "border-white/14"
-                        ].join(" ")}
-                      />
-                      <div className="min-w-0">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <h3 className="truncate text-[22px] font-black tracking-[-0.02em] text-white">{displayName}</h3>
-                          {index === 0 ? <Pin className="h-4 w-4 shrink-0 fill-[#a3ff12] text-[#a3ff12]" aria-hidden="true" /> : null}
-                        </div>
-                        <p className="mt-1 line-clamp-2 text-[18px] font-medium leading-tight text-white/66">{preview}</p>
-                        {isBooking ? (
-                          <span className="mt-3 inline-flex h-7 items-center rounded-full border border-[#a3ff12]/28 bg-[#a3ff12]/9 px-3 text-xs font-black text-[#a3ff12]">
-                            {isRequest ? "Booking Request" : "Booking Thread"}
-                          </span>
-                        ) : null}
-                      </div>
-                      <div className="col-span-2 flex items-center justify-between gap-3 text-right sm:col-span-1 sm:flex-col sm:items-end">
-                        <span className="text-sm font-medium text-white/62">{threadTime}</span>
-                        <ChevronRight className="h-5 w-5 text-white/44" aria-hidden="true" />
-                      </div>
-                    </Link>
-                  );
-                }) : (
-                  <GlassCard className="p-6">
-                    <div className="flex flex-col items-start gap-4 rounded-[24px] border border-dashed border-white/10 bg-black/22 p-6 sm:flex-row sm:items-center">
-                      <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border border-[#a3ff12]/28 bg-[#a3ff12]/10 text-[#a3ff12]">
-                        <MessageSquareText className="h-7 w-7" aria-hidden="true" />
-                      </div>
-                      <div>
-                        <h3 className="text-2xl font-black tracking-[-0.03em] text-white">
-                          {threads.length ? "No matching conversations" : "No messages yet"}
-                        </h3>
-                        <p className="mt-2 text-sm leading-6 text-white/60">
-                          {threads.length
-                            ? "Try another client name or inbox category."
-                            : "Client conversations and booking requests will appear here."}
-                        </p>
-                      </div>
-                    </div>
-                  </GlassCard>
-                )}
-              </div>
-
-              <div ref={barberStartersRef}>
-                <GlassCard className="p-5">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="surface-label text-[#a3ff12]">{copy.starterTitle}</p>
-                    <p className="mt-2 text-sm leading-6 text-white/58">{copy.starterCopy}</p>
-                  </div>
-                  <MessageSquarePlus className="h-5 w-5 text-[#a3ff12]" aria-hidden="true" />
-                </div>
-                <div className="mt-5 space-y-3">
-                  {appointmentStarters.map((starter) => (
-                    <div key={starter.appointmentId} className="rounded-[22px] border border-white/8 bg-black/22 p-4">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="text-lg font-black text-white">{starter.counterpart.fullName}</p>
-                          <p className="mt-1 text-sm text-white/58">
-                            {starter.appointmentContext.serviceName} | {starter.appointmentContext.statusLabel}
-                          </p>
-                        </div>
-                        <ActionButton
-                          className="min-h-10 px-4 text-xs"
-                          disabled={createThreadMutation.isPending}
-                          onClick={() =>
-                            void handleStartThread(
-                              { appointmentId: starter.appointmentId },
-                              "Appointment conversation ready."
-                            )
-                          }
-                        >
-                          {createThreadMutation.isPending ? "Opening..." : "Open thread"}
-                        </ActionButton>
-                      </div>
-                      <p className="mt-3 text-sm text-white/58">{starter.appointmentContext.locationLabel}</p>
-                      <p className="mt-2 text-sm text-white/58">{formatThreadTime(starter.appointmentContext.startsAt)}</p>
-                    </div>
-                  ))}
-
-                  {contactStarters.map((starter) => (
-                    <div key={`${starter.threadType}-${starter.locationId}-${starter.profileId}`} className="rounded-[22px] border border-white/8 bg-black/22 p-4">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="text-lg font-black text-white">{starter.fullName}</p>
-                          <p className="mt-1 text-sm text-white/58">
-                            {starter.threadType === "client_shop" ? "Shop support line" : "Shop-team collaboration"}
-                          </p>
-                        </div>
-                        <ActionButton
-                          className="min-h-10 px-4 text-xs"
-                          disabled={createThreadMutation.isPending}
-                          onClick={() =>
-                            void handleStartThread(
-                              {
-                                threadType: starter.threadType,
-                                profileId: starter.profileId,
-                                locationId: starter.locationId
-                              },
-                              "Conversation ready."
-                            )
-                          }
-                        >
-                          {createThreadMutation.isPending ? "Opening..." : "Open thread"}
-                        </ActionButton>
-                      </div>
-                      <p className="mt-3 text-sm text-white/58">{starter.locationLabel}</p>
-                      {starter.appointmentContext ? (
-                        <p className="mt-2 text-sm text-white/58">
-                          {starter.appointmentContext.serviceName} | {formatThreadTime(starter.appointmentContext.startsAt)}
-                        </p>
-                      ) : null}
-                    </div>
-                  ))}
-
-                  {!appointmentStarters.length && !contactStarters.length ? (
-                    <div className="rounded-[22px] border border-dashed border-white/10 bg-black/22 p-5 text-sm leading-7 text-white/58">
-                      No real thread starters are available right now.
-                    </div>
-                  ) : null}
-                </div>
-                </GlassCard>
-              </div>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {activeThreadFilters.map((filter) => (
+                <FilterChip
+                  key={filter.key}
+                  type="button"
+                  active={threadFilter === filter.key}
+                  className="h-8 rounded-lg px-3 text-xs"
+                  onClick={() => setThreadFilter(filter.key)}
+                >
+                  {filter.label}
+                </FilterChip>
+              ))}
             </div>
 
-            <GlassCard className="min-h-[32rem] p-5">
-              {selectedThreadId ? (
-                <Link href={basePath as Route} className="mb-4 inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.22em] text-white/56 transition hover:text-[#a3ff12] xl:hidden">
-                  <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-                  Back to inbox
-                </Link>
-              ) : null}
-              {threadQuery.error ? (
-                <FeedbackBanner tone="error" message={readableError(threadQuery.error, "Unable to load the selected conversation.")} />
-              ) : null}
-              {threadQuery.isLoading && activeThreadId ? (
-                <div className="space-y-3">
+            <div className="space-y-2">
+              {threadsQuery.isLoading && !threadsQuery.data ? (
+                <>
                   <ThreadSkeleton />
                   <ThreadSkeleton />
                   <ThreadSkeleton />
-                </div>
-              ) : activeThread ? (
-                <div className="flex min-h-[30rem] flex-col gap-5">
-                  <div className="flex flex-wrap items-center justify-between gap-4">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <Avatar
-                        alt={participantSummary || activeThread.counterpart?.fullName || "Conversation"}
-                        initials={getInitials(participantSummary || activeThread.counterpart?.fullName || "Conversation")}
-                        className="h-16 w-16 border-2 border-[#a3ff12]/65 text-lg shadow-[0_0_22px_rgba(163,255,18,0.14)]"
-                      />
-                      <div className="min-w-0">
-                        <h3 className="truncate text-2xl font-black tracking-[-0.03em] text-white">
-                          {participantSummary || activeThread.counterpart?.fullName || "Conversation"}
-                        </h3>
-                        <p className="mt-1 text-sm text-white/58">
-                          {getRoleBadgeLabel(activeThread.counterpart?.role, activeThread.threadType) ?? "Conversation"}
-                          {activeThread.appointmentContext ? ` | ${activeThread.appointmentContext.statusLabel}` : ""}
-                        </p>
-                      </div>
-                    </div>
-                    {getRoleBadgeLabel(activeThread.counterpart?.role, activeThread.threadType) ? (
-                      <StatusBadge>{getRoleBadgeLabel(activeThread.counterpart?.role, activeThread.threadType)}</StatusBadge>
-                    ) : null}
-                  </div>
-
-                  {activeThread.appointmentContext ? (
-                    <div className="rounded-[22px] border border-[#a3ff12]/22 bg-[linear-gradient(180deg,rgba(163,255,18,0.10),rgba(255,255,255,0.018))] p-5">
-                      <div className="flex flex-wrap items-start justify-between gap-4">
-                        <div>
-                          <p className="surface-label text-[#a3ff12]">Appointment context</p>
-                          <p className="mt-3 text-xl font-black text-white">{activeThread.appointmentContext.serviceName}</p>
-                          <p className="mt-2 text-sm text-white/60">{activeThread.appointmentContext.locationLabel}</p>
-                        </div>
-                        <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/24 px-3 py-2 text-sm font-bold text-white/72">
-                          <CalendarDays className="h-4 w-4 text-[#a3ff12]" aria-hidden="true" />
-                          {formatThreadTime(activeThread.appointmentContext.startsAt)}
-                        </div>
-                      </div>
-                    </div>
-                  ) : activeThread.threadType === "support" ? (
-                    <div className="rounded-[22px] border border-white/9 bg-white/[0.025] p-5 text-sm leading-6 text-white/62">
-                      Support conversation for account, booking, or payment help.
-                    </div>
-                  ) : null}
-
-                  <div className="flex-1 space-y-4">
-                    {messages.length ? messages.map((message) => (
-                      <div key={message.id} className={message.isOwn ? "flex justify-end" : "flex justify-start"}>
-                        <div
-                          className={[
-                            "max-w-[88%] px-4 py-3 text-sm leading-6 shadow-[0_12px_30px_rgba(0,0,0,0.28)]",
-                            message.messageType === "system"
-                              ? "rounded-[20px] border border-white/8 bg-black/24 text-white/58"
-                              : message.isOwn
-                                ? "rounded-[20px_20px_6px_20px] bg-[linear-gradient(135deg,#A3FF12,#7DCE00)] text-[#050505]"
-                                : "rounded-[20px_20px_20px_6px] border border-white/8 bg-white/[0.055] text-white"
-                          ].join(" ")}
-                        >
-                          <p className="font-medium">{message.body}</p>
-                          <p className={["mt-2 text-[11px] font-bold uppercase tracking-[0.18em]", message.isOwn ? "text-black/52" : "text-white/42"].join(" ")}>
-                            {message.messageType === "system" ? "System" : message.senderName ?? "Participant"} | {formatThreadTime(message.createdAt)}
-                          </p>
-                        </div>
-                      </div>
-                    )) : (
-                      <div className="rounded-[22px] border border-dashed border-white/10 bg-black/22 p-5 text-sm leading-7 text-white/58">
-                        No messages yet.
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="rounded-[28px] border border-white/10 bg-white/[0.035] p-3">
-                    <label className="sr-only" htmlFor="barber-message-composer">Message reply</label>
-                    <div className="flex items-end gap-3">
-                      <textarea
-                        id="barber-message-composer"
-                        value={composerBody}
-                        onChange={(event) => setComposerBody(event.target.value)}
-                        rows={1}
-                        className="min-h-14 flex-1 resize-none rounded-full border border-white/8 bg-black/25 px-5 py-4 text-sm text-white outline-none transition placeholder:text-white/34 focus:border-[#a3ff12]/35"
-                        placeholder={copy.composerPlaceholder}
-                      />
-                      <button
-                        type="button"
-                        aria-label="Send message"
-                        disabled={sendMessageMutation.isPending || !composerBody.trim()}
-                        onClick={() => void handleSendMessage()}
-                        className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(135deg,#A3FF12,#7DCE00)] text-[#050505] shadow-[0_12px_32px_rgba(163,255,18,0.24)] transition active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
-                      >
-                        <Send className="h-5 w-5" aria-hidden="true" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex min-h-[28rem] items-center justify-center rounded-[24px] border border-dashed border-white/10 bg-black/22 p-6 text-center">
-                  <div>
-                    <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-[#a3ff12]/28 bg-[#a3ff12]/10 text-[#a3ff12]">
-                      <MessageSquareText className="h-7 w-7" aria-hidden="true" />
-                    </div>
-                    <h3 className="mt-5 text-2xl font-black tracking-[-0.03em] text-white">Pick a conversation</h3>
-                    <p className="mt-2 max-w-sm text-sm leading-6 text-white/60">{copy.emptyThreadCopy}</p>
-                  </div>
-                </div>
-              )}
-            </GlassCard>
-          </div>
-        ) : null}
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4" data-testid={`messaging-inbox-${surface}`}>
-      <Card className="rounded-[32px] p-6">
-        <PageHeader
-          label={copy.shellLabel}
-          title={title}
-          subtitle={subtitle}
-          action={
-            surface === "client" ? (
-              <Button
-                className="h-12 px-5"
-                disabled={createThreadMutation.isPending}
-                onClick={() => void handleSupportThread()}
-              >
-                <MessageSquareText className="h-4 w-4" />
-                {createThreadMutation.isPending ? "Opening..." : "New message"}
-              </Button>
-            ) : (
-              <StatusBadge>
-                <ShieldCheck className="h-3.5 w-3.5" />
-                Participant-only
-              </StatusBadge>
-            )
-          }
-        />
-        <div className="mt-5 space-y-3">
-          {statusUpdate ? <FeedbackBanner tone={statusUpdate.tone} message={statusUpdate.message} /> : null}
-          {threadsQuery.error ? <FeedbackBanner tone="error" message={readableError(threadsQuery.error, "Unable to load the messaging inbox.")} /> : null}
-        </div>
-      </Card>
-
-      {!available ? (
-        <Card className="rounded-[28px] p-6">
-          <div className="empty-state-panel rounded-[24px] p-6 text-sm leading-7 text-white/58">
-            Messaging becomes available when the app is connected to the live Supabase environment with profile-backed threads and appointment data.
-          </div>
-        </Card>
-      ) : null}
-
-      {available ? (
-        <div className="grid gap-4 xl:grid-cols-[0.92fr_1.08fr]">
-          <div className="space-y-4">
-            <Card className="rounded-[32px] p-6">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="surface-label">Inbox</p>
-                  <p className="mt-2 text-sm text-white/58">{copy.inboxCopy}</p>
-                </div>
-                <span className="status-pill text-[#d7ffab]">{threads.length} threads</span>
-              </div>
-              <div className="mt-5 space-y-4">
-                <SearchBar
-                  aria-label="Search messages"
-                  placeholder="Search messages"
-                  value={threadSearch}
-                  onChange={(event) => setThreadSearch(event.target.value)}
+                </>
+              ) : displayedThreads.length ? displayedThreads.map((thread) => (
+                <ThinThreadRow
+                  key={thread.id}
+                  thread={thread}
+                  basePath={basePath}
+                  active={thread.id === activeThreadId}
                 />
-                <div className="flex gap-2 overflow-x-auto pb-1">
-                  {activeThreadFilters.map((filter) => (
-                    <FilterChip
-                      key={filter.key}
-                      type="button"
-                      active={threadFilter === filter.key}
-                      onClick={() => setThreadFilter(filter.key)}
-                    >
-                      {filter.label}
-                    </FilterChip>
-                  ))}
-                </div>
-              </div>
-              <div className="mt-5 space-y-3">
-                {threadsQuery.isLoading && !threadsQuery.data ? (
-                  <>
-                    <ThreadSkeleton />
-                    <ThreadSkeleton />
-                    <ThreadSkeleton />
-                  </>
-                ) : displayedThreads.length ? displayedThreads.map((thread) => {
-                  const isActive = thread.id === activeThreadId;
-                  const roleBadgeLabel = getRoleBadgeLabel(thread.counterpart?.role, thread.threadType);
-                  const contextDetail = thread.appointmentContext?.serviceName
-                    ? `${thread.appointmentContext.serviceName} | ${thread.appointmentContext.statusLabel}`
-                    : getThreadStatusLabel(thread.threadType);
-                  const displayName = thread.counterpart?.fullName ?? "Conversation";
-
-                  return (
-                    <Link
-                      key={thread.id}
-                      href={`${basePath}/${thread.id}` as Route}
-                      className={[
-                        "block rounded-[24px] border p-4 transition",
-                        isActive
-                          ? "border-[#7CFF00]/24 bg-[linear-gradient(135deg,rgba(124,255,0,0.12),rgba(10,10,10,0.96))]"
-                          : "border-white/8 bg-black/20 hover:border-[#7CFF00]/18 hover:bg-black/30"
-                      ].join(" ")}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex min-w-0 items-start gap-3">
-                          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-[linear-gradient(135deg,rgba(124,255,0,0.18),rgba(12,12,12,0.96))] text-sm font-semibold text-[#d7ffab]">
-                            {getInitials(displayName)}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <p className="text-lg font-semibold text-white">{displayName}</p>
-                              {roleBadgeLabel ? (
-                                <span className="rounded-full border border-white/10 bg-black/22 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-[#d7ffab]">
-                                  {roleBadgeLabel}
-                                </span>
-                              ) : null}
-                            </div>
-                            <p className="mt-1 text-sm text-white/55">{contextDetail}</p>
-                          </div>
-                        </div>
-                        <p className="text-[11px] uppercase tracking-[0.18em] text-white/42">
-                          {formatThreadTime(thread.lastMessage?.createdAt ?? thread.updatedAt)}
-                        </p>
-                      </div>
-                      <p className="mt-3 text-sm text-white/62">
-                        {thread.appointmentContext?.locationLabel ?? thread.locationContext?.locationLabel ?? "Conversation"}
-                      </p>
-                      <p className="mt-2 text-sm text-white/58">
-                        {thread.lastMessage?.body ?? "No messages yet."}
-                      </p>
-                    </Link>
-                  );
-                }) : (
-                  <div className="empty-state-panel rounded-[24px] p-6 text-sm leading-7 text-white/58">
-                    <p>{threads.length ? "No matching messages." : "No messages yet."}</p>
-                    {surface === "client" ? (
-                      <div className="mt-4">
-                        <Button
-                          className="h-10 px-4"
-                          disabled={createThreadMutation.isPending}
-                          onClick={() => void handleSupportThread()}
-                        >
-                          {createThreadMutation.isPending ? "Opening..." : "Start a support message"}
-                        </Button>
-                      </div>
-                    ) : null}
-                  </div>
-                )}
-              </div>
-            </Card>
-
-            <Card className="rounded-[32px] p-6">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="surface-label">{copy.starterTitle}</p>
-                  <p className="mt-2 text-sm text-white/58">{copy.starterCopy}</p>
-                </div>
-                <MessageSquareText className="h-5 w-5 text-[#baff69]" />
-              </div>
-              <div className="mt-5 space-y-3">
-                {surface === "client" ? (
-                  <div className="rounded-[24px] border border-[#7CFF00]/18 bg-[linear-gradient(180deg,rgba(124,255,0,0.12),rgba(10,10,10,0.94))] p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <p className="text-lg font-semibold text-white">BVRB3R Support</p>
-                        <p className="mt-2 text-sm leading-7 text-white/60">
-                          Start a support message for booking, payment, or account help without leaving the client lane.
-                        </p>
-                      </div>
+              )) : (
+                <div className="rounded-lg border border-dashed border-white/10 bg-white/[0.025] p-4 text-sm leading-6 text-white/58">
+                  <p>{threads.length ? "No matching messages." : "No messages yet."}</p>
+                  {surface === "client" ? (
+                    <div className="mt-3">
                       <Button
-                        className="h-10 px-4"
+                        className="h-9 rounded-lg px-3 normal-case tracking-normal"
                         disabled={createThreadMutation.isPending}
                         onClick={() => void handleSupportThread()}
                       >
-                        {createThreadMutation.isPending ? "Opening..." : "Message Support"}
+                        {createThreadMutation.isPending ? "Opening..." : "Start a support message"}
                       </Button>
                     </div>
+                  ) : null}
+                </div>
+              )}
+            </div>
+
+            <div ref={startersRef} className="rounded-lg border border-white/8 bg-white/[0.025] p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-bold uppercase text-[#a3ff12]">{copy.starterTitle}</p>
+                  <p className="mt-1 text-xs text-white/48">{copy.starterCopy}</p>
+                </div>
+                <MessageSquareText className="h-4 w-4 text-[#d7ffab]" aria-hidden="true" />
+              </div>
+              <div className="mt-3 space-y-2">
+                {surface === "client" ? (
+                  <div className="flex items-center justify-between gap-3 rounded-lg border border-[#a3ff12]/18 bg-[#a3ff12]/8 p-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold text-white">BVRB3R Support</p>
+                      <p className="truncate text-xs text-white/50">Booking, payment, or account help.</p>
+                    </div>
+                    <Button
+                      className="h-8 rounded-lg px-3 text-xs normal-case tracking-normal"
+                      disabled={createThreadMutation.isPending}
+                      onClick={() => void handleSupportThread()}
+                    >
+                      {createThreadMutation.isPending ? "Opening..." : "Message Support"}
+                    </Button>
                   </div>
                 ) : null}
 
                 {appointmentStarters.map((starter) => (
-                  <div key={starter.appointmentId} className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <p className="text-lg font-semibold text-white">{starter.counterpart.fullName}</p>
-                        <p className="mt-1 text-sm text-white/56">{starter.appointmentContext.serviceName} | {starter.appointmentContext.statusLabel}</p>
-                      </div>
-                      <Button
-                        className="h-10 px-4"
-                        disabled={createThreadMutation.isPending}
-                        onClick={() =>
-                          void handleStartThread(
-                            { appointmentId: starter.appointmentId },
-                            "Appointment conversation ready."
-                          )
-                        }
-                      >
-                        {createThreadMutation.isPending ? "Opening..." : "Open thread"}
-                      </Button>
+                  <div key={starter.appointmentId} className="flex items-center justify-between gap-3 rounded-lg border border-white/8 bg-black/24 p-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold text-white">{starter.counterpart.fullName}</p>
+                      <p className="truncate text-xs text-white/50">
+                        {starter.appointmentContext.serviceName} • {starter.appointmentContext.statusLabel}
+                      </p>
                     </div>
-                    <p className="mt-3 text-sm text-white/58">{starter.appointmentContext.locationLabel}</p>
-                    <p className="mt-2 text-sm text-white/58">{formatThreadTime(starter.appointmentContext.startsAt)}</p>
+                    <Button
+                      className="h-8 rounded-lg px-3 text-xs normal-case tracking-normal"
+                      disabled={createThreadMutation.isPending}
+                      onClick={() =>
+                        void handleStartThread(
+                          { appointmentId: starter.appointmentId },
+                          "Appointment conversation ready."
+                        )
+                      }
+                    >
+                      {createThreadMutation.isPending ? "Opening..." : "Open"}
+                    </Button>
                   </div>
                 ))}
 
                 {contactStarters.map((starter) => (
-                  <div key={`${starter.threadType}-${starter.locationId}-${starter.profileId}`} className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <p className="text-lg font-semibold text-white">{starter.fullName}</p>
-                        <p className="mt-1 text-sm text-white/56">
-                          {starter.threadType === "client_shop" ? "Shop support line" : "Shop-team collaboration"}
-                        </p>
-                      </div>
-                      <Button
-                        className="h-10 px-4"
-                        disabled={createThreadMutation.isPending}
-                        onClick={() =>
-                          void handleStartThread(
-                            {
-                              threadType: starter.threadType,
-                              profileId: starter.profileId,
-                              locationId: starter.locationId
-                            },
-                            "Conversation ready."
-                          )
-                        }
-                      >
-                        {createThreadMutation.isPending ? "Opening..." : "Open thread"}
-                      </Button>
+                  <div key={`${starter.threadType}-${starter.locationId}-${starter.profileId}`} className="flex items-center justify-between gap-3 rounded-lg border border-white/8 bg-black/24 p-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold text-white">{starter.fullName}</p>
+                      <p className="truncate text-xs text-white/50">{starter.locationLabel}</p>
                     </div>
-                    <p className="mt-3 text-sm text-white/58">{starter.locationLabel}</p>
-                    {starter.appointmentContext ? (
-                      <p className="mt-2 text-sm text-white/58">
-                        {starter.appointmentContext.serviceName} | {formatThreadTime(starter.appointmentContext.startsAt)}
-                      </p>
-                    ) : null}
+                    <Button
+                      className="h-8 rounded-lg px-3 text-xs normal-case tracking-normal"
+                      disabled={createThreadMutation.isPending}
+                      onClick={() =>
+                        void handleStartThread(
+                          {
+                            threadType: starter.threadType,
+                            profileId: starter.profileId,
+                            locationId: starter.locationId
+                          },
+                          "Conversation ready."
+                        )
+                      }
+                    >
+                      {createThreadMutation.isPending ? "Opening..." : "Open"}
+                    </Button>
                   </div>
                 ))}
 
-                {!appointmentStarters.length && !contactStarters.length ? (
-                  <div className="rounded-[24px] border border-dashed border-white/10 bg-black/20 p-5 text-sm leading-7 text-white/58">
-                    {surface === "client"
-                      ? "No additional thread starters are available right now."
-                      : "No additional thread starters are available right now."}
+                {!appointmentStarters.length && !contactStarters.length && surface !== "client" ? (
+                  <div className="rounded-lg border border-dashed border-white/10 bg-black/24 p-3 text-sm leading-6 text-white/52">
+                    No additional thread starters are available right now.
                   </div>
                 ) : null}
               </div>
-            </Card>
+            </div>
 
-            {isShopSurface ? (
-              <Card className="rounded-[32px] p-6">
-                <div className="flex flex-wrap items-center justify-between gap-3">
+            {surface === "shop" ? (
+              <div className="rounded-lg border border-white/8 bg-white/[0.025] p-3">
+                <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="surface-label">{copy.broadcastTitle}</p>
-                    <p className="mt-2 text-sm text-white/58">{copy.broadcastCopy}</p>
+                    <p className="text-xs font-bold uppercase text-[#a3ff12]">{copy.broadcastTitle}</p>
+                    <p className="mt-1 text-xs text-white/48">{copy.broadcastCopy}</p>
                   </div>
-                  <RadioTower className="h-5 w-5 text-[#d7ffab]" />
+                  <RadioTower className="h-4 w-4 text-[#d7ffab]" aria-hidden="true" />
                 </div>
-                <div className="mt-5 space-y-4">
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <select
-                      className="h-12 rounded-[18px] border border-white/10 bg-black/25 px-4 text-sm text-white outline-none transition focus:border-[#7cff00]/30"
-                      value={broadcastLocationId}
-                      onChange={(event) => setBroadcastLocationId(event.target.value)}
-                    >
-                      <option value="">Choose location</option>
-                      {broadcastTargets.map((target) => (
-                        <option key={target.locationId} value={target.locationId}>{target.locationLabel}</option>
-                      ))}
-                    </select>
-                    <select
-                      className="h-12 rounded-[18px] border border-white/10 bg-black/25 px-4 text-sm text-white outline-none transition focus:border-[#7cff00]/30"
-                      value={broadcastAudience}
-                      onChange={(event) => setBroadcastAudience(event.target.value as MessagingBroadcastAudience)}
-                    >
-                      <option value="all">Clients and barbers</option>
-                      <option value="clients">Clients only</option>
-                      <option value="barbers">Barbers only</option>
-                    </select>
-                    <div className="rounded-[18px] border border-white/10 bg-black/18 px-4 py-3 text-sm text-white/68">
-                      {broadcastTargets.find((target) => target.locationId === broadcastLocationId)
-                        ? `${broadcastTargets.find((target) => target.locationId === broadcastLocationId)?.clientCount ?? 0} clients | ${broadcastTargets.find((target) => target.locationId === broadcastLocationId)?.barberCount ?? 0} barbers`
-                        : "Choose a location to see audience counts."}
-                    </div>
-                  </div>
-
-                  <textarea
-                    value={broadcastBody}
-                    onChange={(event) => setBroadcastBody(event.target.value)}
-                    rows={4}
-                    className="w-full rounded-[20px] border border-white/10 bg-[#090909] px-4 py-3 text-sm text-white outline-none transition focus:border-[#7CFF00]/28"
-                    placeholder="Send a shop-wide update about arrivals, changes, chair readiness, or guest communication."
-                  />
-
-                  <div className="flex justify-end">
-                    <Button
-                      className="h-11 px-4"
-                      disabled={broadcastMutation.isPending || !broadcastLocationId || !broadcastBody.trim()}
-                      onClick={() => void handleBroadcast()}
-                    >
-                      <RadioTower className="mr-2 h-4 w-4" />
-                      {broadcastMutation.isPending ? "Sending..." : "Send broadcast"}
-                    </Button>
-                  </div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <select
+                    className="h-10 rounded-lg border border-white/10 bg-black/25 px-3 text-xs text-white outline-none transition focus:border-[#7cff00]/30"
+                    value={broadcastLocationId}
+                    onChange={(event) => setBroadcastLocationId(event.target.value)}
+                  >
+                    <option value="">Choose location</option>
+                    {broadcastTargets.map((target) => (
+                      <option key={target.locationId} value={target.locationId}>{target.locationLabel}</option>
+                    ))}
+                  </select>
+                  <select
+                    className="h-10 rounded-lg border border-white/10 bg-black/25 px-3 text-xs text-white outline-none transition focus:border-[#7cff00]/30"
+                    value={broadcastAudience}
+                    onChange={(event) => setBroadcastAudience(event.target.value as MessagingBroadcastAudience)}
+                  >
+                    <option value="all">Clients and barbers</option>
+                    <option value="clients">Clients only</option>
+                    <option value="barbers">Barbers only</option>
+                  </select>
                 </div>
-              </Card>
-            ) : null}
-          </div>
-
-          <Card className="rounded-[32px] p-6">
-            {selectedThreadId ? (
-              <Link href={basePath as Route} className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/56 transition hover:text-[#d7ffab] xl:hidden">
-                <ArrowLeft className="h-4 w-4" />
-                Back to inbox
-              </Link>
-            ) : null}
-            {threadQuery.error ? (
-              <FeedbackBanner tone="error" message={readableError(threadQuery.error, "Unable to load the selected conversation.")} />
-            ) : null}
-            {threadQuery.isLoading && activeThreadId ? (
-              <div className="space-y-3">
-                <ThreadSkeleton />
-                <ThreadSkeleton />
-                <ThreadSkeleton />
-              </div>
-            ) : activeThread ? (
-              <div className="space-y-4">
-                <div className="rounded-[24px] border border-[#7CFF00]/18 bg-[linear-gradient(180deg,rgba(124,255,0,0.12),rgba(10,10,10,0.94))] p-5">
-                  <p className="surface-label text-[#d7ffab]">Conversation</p>
-                  <div className="mt-3 flex flex-wrap items-center gap-3">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/10 bg-[linear-gradient(135deg,rgba(124,255,0,0.18),rgba(12,12,12,0.96))] text-sm font-semibold text-[#d7ffab]">
-                      {getInitials(participantSummary || activeThread.counterpart?.fullName || "Conversation")}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="text-2xl font-semibold text-white">{participantSummary || activeThread.counterpart?.fullName || "Conversation"}</h3>
-                        {getRoleBadgeLabel(activeThread.counterpart?.role, activeThread.threadType) ? (
-                          <span className="rounded-full border border-white/10 bg-black/22 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-[#d7ffab]">
-                            {getRoleBadgeLabel(activeThread.counterpart?.role, activeThread.threadType)}
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-                  <p className="mt-2 text-sm text-white/60">
-                    {activeThread.appointmentContext
-                      ? `${activeThread.appointmentContext.serviceName} | ${activeThread.appointmentContext.locationLabel}`
-                      : activeThread.threadType === "support"
-                        ? "Support conversation for account, booking, or payment help."
-                        : activeThread.locationContext?.locationLabel ?? "Thread stays limited to its participants only."}
-                  </p>
-                  {activeThread.appointmentContext ? (
-                    <p className="mt-3 text-sm text-white/58">
-                      {activeThread.appointmentContext.statusLabel} | {formatThreadTime(activeThread.appointmentContext.startsAt)}
-                      {activeThread.appointmentContext.confirmationCode ? ` | ${activeThread.appointmentContext.confirmationCode}` : ""}
-                    </p>
-                  ) : null}
-                </div>
-
-                <div className="space-y-3">
-                  {messages.length ? messages.map((message) => (
-                    <div key={message.id} className={message.isOwn ? "flex justify-end" : "flex justify-start"}>
-                      <div
-                        className={[
-                          "max-w-[88%] rounded-[22px] border px-4 py-3 text-sm leading-6",
-                          message.messageType === "system"
-                            ? "border-white/8 bg-black/20 text-white/58"
-                            : message.isOwn
-                              ? "border-[#7CFF00]/24 bg-[linear-gradient(135deg,rgba(124,255,0,0.18),rgba(12,12,12,0.96))] text-white"
-                              : "border-white/8 bg-black/24 text-white/82"
-                        ].join(" ")}
-                      >
-                        <p>{message.body}</p>
-                        <p className="mt-2 text-[11px] uppercase tracking-[0.18em] text-white/42">
-                          {message.messageType === "system" ? "System" : message.senderName ?? "Participant"} | {formatThreadTime(message.createdAt)}
-                        </p>
-                      </div>
-                    </div>
-                  )) : (
-                    <div className="rounded-[24px] border border-dashed border-white/10 bg-black/20 p-5 text-sm leading-7 text-white/58">
-                      No messages yet.
-                    </div>
-                  )}
-                </div>
-
-                <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                  <label className="surface-label" htmlFor="message-composer">Reply</label>
-                  <textarea
-                    id="message-composer"
-                    value={composerBody}
-                    onChange={(event) => setComposerBody(event.target.value)}
-                    rows={4}
-                    className="mt-3 w-full rounded-[20px] border border-white/10 bg-[#090909] px-4 py-3 text-sm text-white outline-none transition focus:border-[#7CFF00]/28"
-                    placeholder={copy.composerPlaceholder}
-                  />
-                  <div className="mt-4 flex justify-end">
-                    <Button className="h-11 px-4" disabled={sendMessageMutation.isPending || !composerBody.trim()} onClick={() => void handleSendMessage()}>
-                      <Send className="mr-2 h-4 w-4" />
-                      {sendMessageMutation.isPending ? "Sending..." : "Send message"}
-                    </Button>
-                  </div>
+                <textarea
+                  value={broadcastBody}
+                  onChange={(event) => setBroadcastBody(event.target.value)}
+                  rows={2}
+                  className="mt-2 w-full resize-none rounded-lg border border-white/10 bg-[#090909] px-3 py-2 text-sm text-white outline-none transition placeholder:text-white/34 focus:border-[#7CFF00]/28"
+                  placeholder="Send a shop update."
+                />
+                <div className="mt-2 flex justify-end">
+                  <Button
+                    className="h-9 rounded-lg px-3 text-xs normal-case tracking-normal"
+                    disabled={broadcastMutation.isPending || !broadcastLocationId || !broadcastBody.trim()}
+                    onClick={() => void handleBroadcast()}
+                  >
+                    <RadioTower className="h-4 w-4" aria-hidden="true" />
+                    {broadcastMutation.isPending ? "Sending..." : "Send broadcast"}
+                  </Button>
                 </div>
               </div>
-            ) : (
-              <div className="empty-state-panel rounded-[24px] p-6 text-sm leading-7 text-white/58">
-                {copy.emptyThreadCopy}
-              </div>
-            )}
-          </Card>
+            ) : null}
+          </aside>
+
+          <ConversationPanel
+            activeThread={activeThread}
+            activeThreadId={activeThreadId}
+            basePath={basePath}
+            copy={copy}
+            composerBody={composerBody}
+            isLoading={threadQuery.isLoading}
+            messages={messages}
+            selectedThreadId={selectedThreadId}
+            sendPending={sendMessageMutation.isPending}
+            surface={surface}
+            threadError={threadQuery.error}
+            onComposerChange={setComposerBody}
+            onSend={() => void handleSendMessage()}
+          />
         </div>
       ) : null}
     </div>
