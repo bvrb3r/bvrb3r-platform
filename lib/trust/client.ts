@@ -182,7 +182,8 @@ export function useSubmitSafetyReportMutation() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["engagement", "owner", "intelligence"] }),
         queryClient.invalidateQueries({ queryKey: ["engagement", "barber", "summary"] }),
-        queryClient.invalidateQueries({ queryKey: ["marketplace"] })
+        queryClient.invalidateQueries({ queryKey: ["marketplace"] }),
+        queryClient.invalidateQueries({ queryKey: ["messages", "threads"] })
       ]);
     }
   });

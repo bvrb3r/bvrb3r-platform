@@ -314,9 +314,57 @@ export type MessagingBroadcastResult = {
   threadIds: string[];
 };
 
+export type TrustReportSupportMessageInput = {
+  reportId: string;
+  subjectType: "client" | "barber" | "shop" | "review" | "booking";
+  subjectId: string;
+  category: string;
+  details: string;
+  createdAt?: string;
+};
+
+export type TrustReportSupportMessageResult = {
+  threadId: string;
+  messageId: string;
+  createdAt: string;
+};
+
+export type ArchitectSupportThreadSummary = MessagingThreadSummary & {
+  client: {
+    profileId: string;
+    fullName: string;
+    role: Role;
+  } | null;
+  reportContext: {
+    present: boolean;
+    preview: string | null;
+  };
+  status: "open" | "pending" | "resolved";
+};
+
+export type ArchitectSupportInboxPayload = {
+  available: boolean;
+  viewer: {
+    profileId: string | null;
+    fullName: string;
+    role: Role;
+  };
+  threads: ArchitectSupportThreadSummary[];
+};
+
+export type ArchitectSupportThreadPayload = {
+  available: boolean;
+  viewer: ArchitectSupportInboxPayload["viewer"];
+  thread: (ArchitectSupportThreadSummary & {
+    participants: MessagingThreadParticipantView[];
+  }) | null;
+  messages: MessagingMessageView[];
+};
+
 type ThreadBundle = {
   threads: MessageThreadRow[];
   participants: ThreadParticipantRow[];
+  messages: MessageRow[];
   profilesById: Map<string, ProfileRow>;
   publicMetadataByProfileId: Map<string, PublicMessagingMetadata>;
   latestMessageByThreadId: Map<string, MessageRow>;
@@ -860,6 +908,7 @@ async function readThreadBundle(supabase: SupabaseClient, currentProfileId: stri
     return {
       threads: [],
       participants: [],
+      messages: [],
       profilesById: new Map<string, ProfileRow>(),
       publicMetadataByProfileId: new Map<string, PublicMessagingMetadata>(),
       latestMessageByThreadId: new Map<string, MessageRow>(),
@@ -934,6 +983,7 @@ async function readThreadBundle(supabase: SupabaseClient, currentProfileId: stri
   return {
     threads,
     participants,
+    messages,
     profilesById,
     publicMetadataByProfileId,
     latestMessageByThreadId,
@@ -1765,6 +1815,164 @@ async function createOrGetSupportThread(input: {
   return threadId;
 }
 
+function formatTrustReportCategory(category: string) {
+  return category
+    .split("_")
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(" ");
+}
+
+function truncateSupportText(value: string, maxLength: number) {
+  const normalized = value.trim().replace(/\s+/g, " ");
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, Math.max(0, maxLength - 1)).trim()}...`;
+}
+
+async function readBarberSubjectLabel(supabase: SupabaseClient, subjectId: string) {
+  const lookupColumns: Array<"id" | "reference_code" | "booking_slug" | "profile_id"> = [
+    "id",
+    "reference_code",
+    "booking_slug",
+    "profile_id"
+  ];
+
+  let barber: BarberRow | null = null;
+  for (const column of lookupColumns) {
+    const result = await supabase
+      .from("barbers")
+      .select("id, profile_id, reference_code, booking_slug")
+      .eq(column, subjectId)
+      .maybeSingle();
+
+    if (result.error) {
+      throw new MessagingServiceError("Unable to resolve the reported barber for support messaging.", 500);
+    }
+
+    if (result.data) {
+      barber = result.data as BarberRow;
+      break;
+    }
+  }
+
+  if (!barber) {
+    return subjectId;
+  }
+
+  const profileResult = await supabase
+    .from("profiles")
+    .select("id, full_name, email, role")
+    .eq("id", barber.profile_id)
+    .maybeSingle();
+
+  if (profileResult.error) {
+    throw new MessagingServiceError("Unable to resolve the reported barber profile for support messaging.", 500);
+  }
+
+  const profile = profileResult.data as ProfileRow | null;
+  return profile ? (profile.full_name ?? profile.email) : (barber.reference_code ?? barber.booking_slug ?? barber.id);
+}
+
+async function readReportSubjectLabel(supabase: SupabaseClient, input: Pick<TrustReportSupportMessageInput, "subjectType" | "subjectId">) {
+  if (input.subjectType === "barber") {
+    return readBarberSubjectLabel(supabase, input.subjectId);
+  }
+
+  return input.subjectId;
+}
+
+function buildTrustReportSupportMessage(input: {
+  reportId: string;
+  subjectLabel: string;
+  subjectId: string;
+  category: string;
+  details: string;
+  createdAt: string;
+}) {
+  const concern = formatTrustReportCategory(input.category);
+  const notes = truncateSupportText(input.details, 520);
+  const submittedAt = new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(new Date(input.createdAt));
+
+  return [
+    `Report submitted for ${input.subjectLabel}.`,
+    `Reported ID: ${input.subjectId}.`,
+    `Concern: ${concern}.`,
+    `Notes: ${notes}.`,
+    `Submitted: ${submittedAt}.`,
+    "Status: BVRB3R Support received this report.",
+    `Report ID: ${input.reportId}.`
+  ].join("\n");
+}
+
+export async function appendTrustReportToSupportThread(
+  user: UserAccount,
+  input: TrustReportSupportMessageInput
+): Promise<TrustReportSupportMessageResult> {
+  const supabase = getSupabase();
+  if (!supabase) {
+    throw new MessagingServiceError("Messaging is available when Supabase is configured.", 503);
+  }
+
+  const actor = await resolveMessagingActor(user, supabase);
+  const supportProfile = await readPrimarySupportProfile(supabase);
+  const threadId = await createOrGetSupportThread({
+    supabase,
+    actorProfile: actor.profile,
+    supportProfile
+  });
+  const createdAt = input.createdAt ?? new Date().toISOString();
+  const subjectLabel = await readReportSubjectLabel(supabase, input);
+  const body = buildTrustReportSupportMessage({
+    reportId: input.reportId,
+    subjectLabel,
+    subjectId: input.subjectId,
+    category: input.category,
+    details: input.details,
+    createdAt
+  });
+
+  const [messageInsert, threadUpdate] = await Promise.all([
+    supabase
+      .from("messages")
+      .insert({
+        thread_id: threadId,
+        sender_profile_id: null,
+        body,
+        message_type: "system",
+        created_at: createdAt
+      })
+      .select("id")
+      .single(),
+    supabase
+      .from("message_threads")
+      .update({ updated_at: createdAt })
+      .eq("id", threadId)
+  ]);
+
+  if (messageInsert.error) {
+    throw new MessagingServiceError("Unable to write the support report message.", 500);
+  }
+
+  if (threadUpdate.error) {
+    throw new MessagingServiceError("Unable to update support thread activity.", 500);
+  }
+
+  return {
+    threadId,
+    messageId: messageInsert.data.id as string,
+    createdAt
+  };
+}
+
 export async function getMessagingInboxPayload(user: UserAccount): Promise<MessagingInboxPayload> {
   const supabase = getSupabase();
   if (!supabase || !isMessagingRole(user.role)) {
@@ -2537,6 +2745,285 @@ export async function sendThreadMessage(user: UserAccount, threadId: string, inp
       createdAt: message.created_at,
       senderName: actor.profile.full_name ?? actor.profile.email,
       senderRole: actor.profile.role,
+      isOwn: true
+    }
+  };
+}
+
+type ArchitectMessagingActor = Pick<UserAccount, "id" | "email" | "name" | "role">;
+
+function buildArchitectSupportThreadSummary(input: {
+  thread: MessageThreadRow;
+  supportProfileId: string;
+  participants: ThreadParticipantRow[];
+  profilesById: Map<string, ProfileRow>;
+  publicMetadataByProfileId: Map<string, PublicMessagingMetadata>;
+  latestMessageByThreadId: Map<string, MessageRow>;
+  appointmentContexts: Map<string, HydratedAppointmentContext>;
+  locationLabels: Map<string, string>;
+  messages: MessageRow[];
+}): ArchitectSupportThreadSummary {
+  const summary = buildThreadSummary({
+    thread: input.thread,
+    currentProfileId: input.supportProfileId,
+    participants: input.participants,
+    profilesById: input.profilesById,
+    publicMetadataByProfileId: input.publicMetadataByProfileId,
+    latestMessageByThreadId: input.latestMessageByThreadId,
+    appointmentContexts: input.appointmentContexts,
+    locationLabels: input.locationLabels
+  });
+  const supportParticipants = input.participants.filter((participant) => participant.thread_id === input.thread.id);
+  const clientParticipant = supportParticipants.find((participant) => participant.profile_id !== input.supportProfileId) ?? null;
+  const clientProfile = clientParticipant ? input.profilesById.get(clientParticipant.profile_id) ?? null : null;
+  const latestReportMessage = input.messages
+    .filter((message) => message.thread_id === input.thread.id && message.body.toLowerCase().includes("report submitted"))
+    .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime())[0] ?? null;
+
+  return {
+    ...summary,
+    client: clientParticipant && clientProfile
+      ? {
+          profileId: clientParticipant.profile_id,
+          fullName: clientProfile.full_name ?? clientProfile.email,
+          role: clientProfile.role
+        }
+      : null,
+    reportContext: {
+      present: Boolean(latestReportMessage),
+      preview: latestReportMessage ? truncateSupportText(latestReportMessage.body, 180) : null
+    },
+    status: "open"
+  };
+}
+
+export async function getArchitectSupportInboxPayload(actor: ArchitectMessagingActor): Promise<ArchitectSupportInboxPayload> {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return {
+      available: false,
+      viewer: {
+        profileId: actor.id,
+        fullName: actor.name,
+        role: actor.role
+      },
+      threads: []
+    };
+  }
+
+  const supportProfile = await readPrimarySupportProfile(supabase);
+  const threadsResult = await supabase
+    .from("message_threads")
+    .select("id, thread_type, appointment_id, location_id, created_at, updated_at, created_by_profile_id")
+    .eq("thread_type", "support")
+    .order("updated_at", { ascending: false })
+    .limit(75);
+
+  if (threadsResult.error) {
+    throw new MessagingServiceError("Unable to load Architect support conversations.", 500);
+  }
+
+  const threadIds = ((threadsResult.data ?? []) as MessageThreadRow[]).map((thread) => thread.id);
+  const bundle = await readThreadBundle(supabase, supportProfile.id, threadIds);
+
+  return {
+    available: true,
+    viewer: {
+      profileId: supportProfile.id,
+      fullName: supportProfile.full_name ?? "BVRB3R Support",
+      role: supportProfile.role
+    },
+    threads: bundle.threads.map((thread) =>
+      buildArchitectSupportThreadSummary({
+        thread,
+        supportProfileId: supportProfile.id,
+        participants: bundle.participants,
+        profilesById: bundle.profilesById,
+        publicMetadataByProfileId: bundle.publicMetadataByProfileId,
+        latestMessageByThreadId: bundle.latestMessageByThreadId,
+        appointmentContexts: bundle.appointmentContexts,
+        locationLabels: bundle.locationLabels,
+        messages: bundle.messages
+      })
+    )
+  };
+}
+
+export async function getArchitectSupportThreadPayload(
+  actor: ArchitectMessagingActor,
+  threadId: string
+): Promise<ArchitectSupportThreadPayload> {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return {
+      available: false,
+      viewer: {
+        profileId: actor.id,
+        fullName: actor.name,
+        role: actor.role
+      },
+      thread: null,
+      messages: []
+    };
+  }
+
+  const supportProfile = await readPrimarySupportProfile(supabase);
+  const threadResult = await supabase
+    .from("message_threads")
+    .select("id, thread_type, appointment_id, location_id, created_at, updated_at, created_by_profile_id")
+    .eq("id", threadId)
+    .eq("thread_type", "support")
+    .maybeSingle();
+
+  if (threadResult.error) {
+    throw new MessagingServiceError("Unable to load the support conversation.", 500);
+  }
+
+  if (!threadResult.data) {
+    throw new MessagingServiceError("Support conversation not found.", 404);
+  }
+
+  const bundle = await readThreadBundle(supabase, supportProfile.id, [threadId]);
+  const thread = bundle.threads[0] ?? (threadResult.data as MessageThreadRow);
+  const threadParticipants = bundle.participants.filter((participant) => participant.thread_id === threadId);
+  const threadSummary = buildArchitectSupportThreadSummary({
+    thread,
+    supportProfileId: supportProfile.id,
+    participants: bundle.participants,
+    profilesById: bundle.profilesById,
+    publicMetadataByProfileId: bundle.publicMetadataByProfileId,
+    latestMessageByThreadId: bundle.latestMessageByThreadId,
+    appointmentContexts: bundle.appointmentContexts,
+    locationLabels: bundle.locationLabels,
+    messages: bundle.messages
+  });
+
+  return {
+    available: true,
+    viewer: {
+      profileId: supportProfile.id,
+      fullName: supportProfile.full_name ?? "BVRB3R Support",
+      role: supportProfile.role
+    },
+    thread: {
+      ...threadSummary,
+      participants: threadParticipants.map((participant) => {
+        const profile = bundle.profilesById.get(participant.profile_id);
+        const metadata = bundle.publicMetadataByProfileId.get(participant.profile_id) ?? null;
+        return {
+          profileId: participant.profile_id,
+          fullName: profile?.full_name ?? profile?.email ?? participant.profile_id,
+          role: participant.thread_role,
+          isSelf: participant.profile_id === supportProfile.id,
+          avatarUrl: metadata?.avatarUrl ?? null,
+          publicProfileHref: metadata?.publicProfileHref ?? null,
+          bookingHref: metadata?.bookingHref ?? null
+        };
+      })
+    },
+    messages: [...bundle.messages]
+      .filter((message) => message.thread_id === threadId)
+      .sort((left, right) => new Date(left.created_at).getTime() - new Date(right.created_at).getTime())
+      .map((message) => {
+        const sender = message.sender_profile_id ? bundle.profilesById.get(message.sender_profile_id) ?? null : null;
+        return {
+          id: message.id,
+          body: message.body,
+          messageType: message.message_type,
+          createdAt: message.created_at,
+          senderName: sender ? (sender.full_name ?? sender.email) : null,
+          senderRole: sender?.role ?? null,
+          isOwn: message.sender_profile_id === supportProfile.id
+        };
+      })
+  };
+}
+
+export async function sendArchitectSupportThreadReply(
+  actor: ArchitectMessagingActor,
+  threadId: string,
+  input: { body: string }
+) {
+  const supabase = getSupabase();
+  if (!supabase) {
+    throw new MessagingServiceError("Messaging is available when Supabase is configured.", 503);
+  }
+
+  const supportProfile = await readPrimarySupportProfile(supabase);
+  const threadResult = await supabase
+    .from("message_threads")
+    .select("id, thread_type, appointment_id, location_id, created_at, updated_at, created_by_profile_id")
+    .eq("id", threadId)
+    .eq("thread_type", "support")
+    .maybeSingle();
+
+  if (threadResult.error) {
+    throw new MessagingServiceError("Unable to verify the support conversation.", 500);
+  }
+
+  if (!threadResult.data) {
+    throw new MessagingServiceError("Support conversation not found.", 404);
+  }
+
+  const participantsResult = await supabase
+    .from("thread_participants")
+    .select("id, thread_id, profile_id, thread_role, created_at")
+    .eq("thread_id", threadId);
+
+  if (participantsResult.error) {
+    throw new MessagingServiceError("Unable to verify support participants.", 500);
+  }
+
+  await ensureThreadParticipants(
+    supabase,
+    threadId,
+    (participantsResult.data ?? []) as ThreadParticipantRow[],
+    [supportProfile]
+  );
+
+  const normalizedBody = normalizeMessageBody(input.body);
+  const createdAt = new Date().toISOString();
+  const insertResult = await supabase
+    .from("messages")
+    .insert({
+      thread_id: threadId,
+      sender_profile_id: supportProfile.id,
+      body: normalizedBody,
+      message_type: "text",
+      created_at: createdAt
+    })
+    .select("id, thread_id, sender_profile_id, body, message_type, created_at")
+    .single();
+
+  if (insertResult.error) {
+    throw new MessagingServiceError("Unable to send the support reply.", 500);
+  }
+
+  const updateResult = await supabase
+    .from("message_threads")
+    .update({ updated_at: createdAt })
+    .eq("id", threadId);
+
+  if (updateResult.error) {
+    throw new MessagingServiceError("Unable to update the support thread activity.", 500);
+  }
+
+  const message = insertResult.data as MessageRow;
+  console.info("[architect-messages] support_reply_sent", {
+    threadId,
+    actorProfileIdPresent: Boolean(actor.id),
+    supportProfileIdPresent: Boolean(supportProfile.id),
+    messageId: message.id
+  });
+
+  return {
+    message: {
+      id: message.id,
+      body: message.body,
+      messageType: message.message_type,
+      createdAt: message.created_at,
+      senderName: supportProfile.full_name ?? supportProfile.email,
+      senderRole: supportProfile.role,
       isOwn: true
     }
   };

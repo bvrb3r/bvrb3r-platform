@@ -52,6 +52,7 @@ describe("architect layout", () => {
     expect(screen.getByRole("link", { name: "Users" })).toHaveAttribute("href", "/architect/users");
     expect(screen.getByRole("link", { name: "Verifications" })).toHaveAttribute("href", "/architect/verifications");
     expect(screen.getByRole("link", { name: "Money" })).toHaveAttribute("href", "/architect/money");
+    expect(screen.getByRole("link", { name: "Messages" })).toHaveAttribute("href", "/architect/messages");
     expect(screen.getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/architect/settings");
     expect(screen.queryByRole("link", { name: "Accounts" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Overview" })).not.toBeInTheDocument();

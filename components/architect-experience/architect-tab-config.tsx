@@ -1,4 +1,4 @@
-import { Bug, Home, ShieldCheck, UserCog, WalletCards, Settings2 } from "lucide-react";
+import { Bug, Home, MessageCircle, ShieldCheck, UserCog, WalletCards, Settings2 } from "lucide-react";
 
 export const ARCHITECT_PRIMARY_NAV_ITEMS = [
   {
@@ -30,6 +30,12 @@ export const ARCHITECT_PRIMARY_NAV_ITEMS = [
     label: "Debug",
     href: "/architect/debug",
     icon: Bug
+  },
+  {
+    id: "messages",
+    label: "Messages",
+    href: "/architect/messages",
+    icon: MessageCircle
   },
   {
     id: "settings",
