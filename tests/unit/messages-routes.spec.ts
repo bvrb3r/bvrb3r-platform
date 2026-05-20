@@ -7,6 +7,7 @@ const {
   getSessionUserMock,
   getMessagingInboxPayloadMock,
   getMessagingThreadPayloadMock,
+  searchMessagingParticipantsMock,
   createMessagingThreadMock,
   sendThreadMessageMock,
   sendMessagingBroadcastMock
@@ -14,6 +15,7 @@ const {
   getSessionUserMock: vi.fn(),
   getMessagingInboxPayloadMock: vi.fn(),
   getMessagingThreadPayloadMock: vi.fn(),
+  searchMessagingParticipantsMock: vi.fn(),
   createMessagingThreadMock: vi.fn(),
   sendThreadMessageMock: vi.fn(),
   sendMessagingBroadcastMock: vi.fn()
@@ -29,6 +31,7 @@ vi.mock("@/lib/messages/service", async () => {
     ...actual,
     getMessagingInboxPayload: getMessagingInboxPayloadMock,
     getMessagingThreadPayload: getMessagingThreadPayloadMock,
+    searchMessagingParticipants: searchMessagingParticipantsMock,
     createMessagingThread: createMessagingThreadMock,
     sendThreadMessage: sendThreadMessageMock,
     sendMessagingBroadcast: sendMessagingBroadcastMock
@@ -36,6 +39,7 @@ vi.mock("@/lib/messages/service", async () => {
 });
 
 import { GET as getThreads, POST as postThreads } from "@/app/api/messages/threads/route";
+import { GET as searchParticipants } from "@/app/api/messages/participants/search/route";
 import { GET as getThread } from "@/app/api/messages/threads/[id]/route";
 import { POST as postMessage } from "@/app/api/messages/threads/[id]/messages/route";
 import { POST as postBroadcast } from "@/app/api/messages/broadcasts/route";
@@ -45,6 +49,7 @@ describe("phase 8 messaging routes", () => {
     getSessionUserMock.mockReset();
     getMessagingInboxPayloadMock.mockReset();
     getMessagingThreadPayloadMock.mockReset();
+    searchMessagingParticipantsMock.mockReset();
     createMessagingThreadMock.mockReset();
     sendThreadMessageMock.mockReset();
     sendMessagingBroadcastMock.mockReset();
@@ -185,6 +190,76 @@ describe("phase 8 messaging routes", () => {
     expect(response.status).toBe(201);
     expect(body.thread.threadType).toBe("support");
     expect(createMessagingThreadMock).toHaveBeenCalledWith(expect.anything(), { threadType: "support" });
+  });
+
+  it("creates or resumes a direct client barber thread from participant search", async () => {
+    getSessionUserMock.mockResolvedValue(resolveDemoUser("client@bvrb3r.demo"));
+    createMessagingThreadMock.mockResolvedValue({
+      available: true,
+      viewer: {
+        profileId: "profile-client",
+        fullName: "Jordan Ellis",
+        role: "client"
+      },
+      thread: {
+        id: "thread-barber-1",
+        threadType: "client_barber",
+        appointmentId: null,
+        locationId: null,
+        locationContext: null,
+        createdAt: "2026-03-20T12:00:00.000Z",
+        updatedAt: "2026-03-20T12:00:00.000Z",
+        counterpart: {
+          profileId: "profile-barber",
+          fullName: "Phillip mcgee",
+          role: "barber_user"
+        },
+        appointmentContext: null,
+        lastMessage: null,
+        participants: []
+      },
+      messages: []
+    });
+    const request = new NextRequest("https://bvrb3r.demo/api/messages/threads", {
+      method: "POST",
+      body: JSON.stringify({ threadType: "client_barber", profileId: "profile-barber" })
+    });
+
+    const response = await postThreads(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(body.thread.threadType).toBe("client_barber");
+    expect(createMessagingThreadMock).toHaveBeenCalledWith(expect.anything(), {
+      threadType: "client_barber",
+      profileId: "profile-barber"
+    });
+  });
+
+  it("searches message participants through the canonical route", async () => {
+    getSessionUserMock.mockResolvedValue(resolveDemoUser("client@bvrb3r.demo"));
+    searchMessagingParticipantsMock.mockResolvedValue({
+      results: [
+        {
+          id: "profile-barber",
+          displayName: "Phillip mcgee",
+          resultType: "barber",
+          role: "barber_user",
+          existingThreadId: "thread-barber-1",
+          createThreadInput: {
+            threadType: "client_barber",
+            profileId: "profile-barber"
+          }
+        }
+      ]
+    });
+
+    const response = await searchParticipants(new NextRequest("https://bvrb3r.demo/api/messages/participants/search?query=phillip"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.results[0].displayName).toBe("Phillip mcgee");
+    expect(searchMessagingParticipantsMock).toHaveBeenCalledWith(expect.anything(), "phillip");
   });
 
   it("creates a shop conversation thread from a location starter", async () => {

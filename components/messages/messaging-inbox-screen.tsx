@@ -4,7 +4,7 @@ import type { Route } from "next";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, MessageSquarePlus, MessageSquareText, Plus, RadioTower, Send } from "lucide-react";
+import { ArrowLeft, MessageSquarePlus, MessageSquareText, RadioTower, Search, Send, X } from "lucide-react";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -12,6 +12,7 @@ import { Avatar, FilterChip, SearchBar } from "@/design/components";
 import { isBarberAccountRole } from "@/lib/auth/roles";
 import {
   useCreateMessageThreadMutation,
+  useMessageParticipantSearchQuery,
   useMessageThreadQuery,
   useMessageThreadsQuery,
   useSendMessageBroadcastMutation,
@@ -19,9 +20,8 @@ import {
 } from "@/lib/messages/client";
 import type {
   MessagingBroadcastAudience,
-  MessagingContactCandidate,
   MessagingCreateThreadInput,
-  MessagingInboxCandidate,
+  MessagingParticipantSearchResult,
   MessagingThreadPayload,
   MessagingThreadSummary
 } from "@/lib/messages/service";
@@ -391,11 +391,7 @@ function orderAndDedupeThreads(threads: MessagingThreadSummary[], surface: Messa
   };
 }
 
-function buildQuickContacts(
-  threads: MessagingThreadSummary[],
-  appointmentStarters: MessagingInboxCandidate[],
-  contactStarters: MessagingContactCandidate[]
-) {
+function buildQuickContacts(threads: MessagingThreadSummary[]) {
   const contacts = new Map<string, {
     id: string;
     label: string;
@@ -419,25 +415,6 @@ function buildQuickContacts(
         threadType: thread.threadType,
         avatarUrl: thread.counterpart?.avatarUrl ?? null
       });
-    }
-  }
-
-  for (const starter of appointmentStarters) {
-    const id = starter.counterpart.profileId;
-    if (!contacts.has(id)) {
-      contacts.set(id, {
-        id,
-        label: starter.counterpart.fullName,
-        role: starter.counterpart.role,
-        avatarUrl: starter.counterpart.avatarUrl ?? null
-      });
-    }
-  }
-
-  for (const starter of contactStarters) {
-    const id = starter.profileId;
-    if (!contacts.has(id)) {
-      contacts.set(id, { id, label: starter.fullName, role: starter.role, threadType: starter.threadType });
     }
   }
 
@@ -468,28 +445,19 @@ function RolePill({ label }: { label: string }) {
 function ThreadStoryRail({
   basePath,
   contacts,
-  onNewMessage,
   onOpenThread
 }: {
   basePath: string;
   contacts: ReturnType<typeof buildQuickContacts>;
-  onNewMessage: () => void;
   onOpenThread?: (threadId: string) => void;
 }) {
+  if (!contacts.length) {
+    return null;
+  }
+
   return (
     <div className="-mx-1 overflow-x-auto px-1 pb-1">
       <div className="flex min-w-max gap-3">
-        <button
-          type="button"
-          className="group w-16 shrink-0 text-center"
-          onClick={onNewMessage}
-        >
-          <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-[#a3ff12]/50 bg-[#a3ff12]/10 text-[#a3ff12] transition group-hover:bg-[#a3ff12] group-hover:text-[#050505]">
-            <Plus className="h-5 w-5" aria-hidden="true" />
-          </span>
-          <span className="mt-1 block truncate text-[11px] font-semibold text-white/64">New</span>
-        </button>
-
         {contacts.map((contact) => {
           const avatar = (
             <>
@@ -525,9 +493,9 @@ function ThreadStoryRail({
           }
 
           return (
-            <button key={contact.id} type="button" className="group w-16 shrink-0 text-center" onClick={onNewMessage}>
+            <div key={contact.id} className="group w-16 shrink-0 text-center">
               {avatar}
-            </button>
+            </div>
           );
         })}
       </div>
@@ -883,6 +851,128 @@ function ConversationModal({
   );
 }
 
+function ComposeModal({
+  error,
+  isLoading,
+  onClose,
+  onQueryChange,
+  onSelect,
+  query,
+  results,
+  selectPending
+}: {
+  error: unknown;
+  isLoading: boolean;
+  onClose: () => void;
+  onQueryChange: (value: string) => void;
+  onSelect: (result: MessagingParticipantSearchResult) => void;
+  query: string;
+  results: MessagingParticipantSearchResult[];
+  selectPending: boolean;
+}) {
+  const hasSearch = query.trim().length >= 2;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/72 backdrop-blur-sm sm:items-center sm:p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="New message"
+      data-testid="message-compose-modal"
+    >
+      <button
+        type="button"
+        className="absolute inset-0 cursor-default"
+        aria-label="Close new message"
+        onClick={onClose}
+      />
+      <section className="relative z-10 flex h-[100dvh] w-full flex-col rounded-none border border-white/8 bg-[#070707]/96 shadow-[0_20px_60px_rgba(0,0,0,0.38)] sm:h-[min(80vh,38rem)] sm:max-w-xl sm:rounded-lg">
+        <div className="border-b border-white/8 px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold uppercase text-[#a3ff12]">New Message</p>
+              <h3 className="mt-1 text-lg font-black text-white">Choose a conversation</h3>
+            </div>
+            <button
+              type="button"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-white/60 transition hover:border-[#a3ff12]/28 hover:text-white"
+              aria-label="Close new message"
+              onClick={onClose}
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
+
+          <label className="sr-only" htmlFor="message-participant-search">Search barbers, shops, or clients</label>
+          <div className="mt-3 flex h-11 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 focus-within:border-[#a3ff12]/30">
+            <Search className="h-4 w-4 text-white/36" aria-hidden="true" />
+            <input
+              id="message-participant-search"
+              autoFocus
+              value={query}
+              onChange={(event) => onQueryChange(event.target.value)}
+              placeholder="Search barbers, shops, or clients"
+              className="min-w-0 flex-1 bg-transparent text-sm font-medium text-white outline-none placeholder:text-white/34"
+            />
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-4 py-3">
+          {error ? (
+            <FeedbackBanner tone="error" message={readableError(error, "Unable to search message participants.")} />
+          ) : null}
+
+          {!hasSearch ? (
+            <div className="rounded-lg border border-dashed border-white/10 bg-white/[0.025] p-4 text-sm leading-6 text-white/56">
+              Search for a barber, shop, or support line to start a message.
+            </div>
+          ) : isLoading ? (
+            <div className="space-y-2">
+              <ThreadSkeleton />
+              <ThreadSkeleton />
+            </div>
+          ) : results.length ? (
+            <div className="space-y-2">
+              {results.map((result) => (
+                <button
+                  key={`${result.resultType}-${result.id}`}
+                  type="button"
+                  className="grid min-h-[68px] w-full grid-cols-[auto_1fr_auto] items-center gap-3 rounded-lg border border-white/8 bg-white/[0.025] px-3 py-2 text-left transition hover:border-[#a3ff12]/28 hover:bg-white/[0.05] disabled:opacity-55"
+                  disabled={selectPending}
+                  onClick={() => onSelect(result)}
+                >
+                  <Avatar
+                    src={getAvatarImageUrl(result.avatarUrl, result.role, result.resultType === "support" ? "support" : undefined)}
+                    alt={result.displayName}
+                    initials={getAvatarInitials(result.displayName, result.role, result.resultType === "support" ? "support" : undefined)}
+                    className="h-11 w-11 text-sm"
+                  />
+                  <span className="min-w-0">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="truncate text-sm font-bold text-white">{result.displayName}</span>
+                      <RolePill label={result.resultType === "support" ? "Support" : result.resultType === "shop" ? "Shop" : "Barber"} />
+                    </span>
+                    <span className="mt-0.5 block truncate text-xs text-white/48">
+                      {result.existingThreadId ? "Existing conversation" : result.subtitle ?? "Start a conversation"}
+                    </span>
+                  </span>
+                  <span className="rounded-lg border border-[#a3ff12]/20 bg-[#a3ff12]/10 px-2.5 py-1 text-[11px] font-black text-[#d7ffab]">
+                    {result.existingThreadId ? "Open" : "Start"}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed border-white/10 bg-white/[0.025] p-4 text-sm leading-6 text-white/56">
+              No messageable matches yet.
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export function MessagingInboxScreen({
   surface,
   basePath,
@@ -905,6 +995,8 @@ export function MessagingInboxScreen({
   const broadcastMutation = useSendMessageBroadcastMutation();
   const clientUsesModal = surface === "client";
   const [modalThreadId, setModalThreadId] = useState<string | null>(selectedThreadId ?? null);
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [participantSearch, setParticipantSearch] = useState("");
   const [composerBody, setComposerBody] = useState("");
   const [statusUpdate, setStatusUpdate] = useState<{ tone: "success" | "info" | "error"; message: string } | null>(null);
   const [broadcastLocationId, setBroadcastLocationId] = useState("");
@@ -939,6 +1031,7 @@ export function MessagingInboxScreen({
   const broadcastTargets = useMemo(() => threadsQuery.data?.broadcastTargets ?? [], [threadsQuery.data?.broadcastTargets]);
   const activeThreadId = clientUsesModal ? modalThreadId ?? undefined : selectedThreadId ?? threads[0]?.id;
   const threadQuery = useMessageThreadQuery(activeThreadId);
+  const participantSearchQuery = useMessageParticipantSearchQuery(participantSearch, composeOpen && available);
   const sendMessageMutation = useSendMessageMutation(activeThreadId);
   const activeThread = threadQuery.data?.thread ?? null;
   const messages = threadQuery.data?.messages ?? [];
@@ -952,8 +1045,8 @@ export function MessagingInboxScreen({
     [threads]
   );
   const quickContacts = useMemo(
-    () => buildQuickContacts(threads, uniqueAppointmentStarters, contactStarters),
-    [contactStarters, threads, uniqueAppointmentStarters]
+    () => buildQuickContacts(threads),
+    [threads]
   );
   const activeThreadFilters = surface === "barber" ? barberThreadFilters : threadFilters;
   const displayedThreads = useMemo(
@@ -992,10 +1085,16 @@ export function MessagingInboxScreen({
   const handleOpenThread = useCallback((threadId: string) => {
     if (clientUsesModal) {
       setComposerBody("");
+      setComposeOpen(false);
       setModalThreadId(threadId);
       router.push(`${basePath}/${threadId}` as Route, { scroll: false });
     }
   }, [basePath, clientUsesModal, router]);
+
+  const handleCloseCompose = useCallback(() => {
+    setComposeOpen(false);
+    setParticipantSearch("");
+  }, []);
 
   const handleCloseThread = useCallback(() => {
     if (!clientUsesModal) {
@@ -1076,18 +1175,33 @@ export function MessagingInboxScreen({
     }
   }
 
-  async function handleSupportThread() {
-    if (supportThread?.id) {
-      handleOpenThread(supportThread.id);
-      return;
-    }
+  async function handleSelectParticipant(result: MessagingParticipantSearchResult) {
+    setStatusUpdate(null);
+    try {
+      if (result.existingThreadId) {
+        handleCloseCompose();
+        handleOpenThread(result.existingThreadId);
+        return;
+      }
 
-    await handleStartThread({ threadType: "support" }, "Support conversation ready.");
+      const threadPayload = await createThreadMutation.mutateAsync(result.createThreadInput);
+      if (threadPayload.thread?.id) {
+        handleCloseCompose();
+        setComposerBody("");
+        setModalThreadId(threadPayload.thread.id);
+        setStatusUpdate({ tone: "success", message: "Conversation ready." });
+        router.push(`${basePath}/${threadPayload.thread.id}` as Route, { scroll: false });
+      }
+    } catch (error) {
+      setStatusUpdate({ tone: "error", message: readableError(error, "Unable to open the conversation.") });
+    }
   }
 
   const handleNewMessage = () => {
     if (clientUsesModal) {
-      void handleSupportThread();
+      setStatusUpdate(null);
+      setComposeOpen(true);
+      setParticipantSearch("");
       return;
     }
 
@@ -1110,7 +1224,7 @@ export function MessagingInboxScreen({
         <Button
           className="h-10 rounded-lg px-4 normal-case tracking-normal"
           disabled={surface === "client" ? createThreadMutation.isPending : false}
-          onClick={surface === "client" && !uniqueAppointmentStarters.length && !contactStarters.length ? () => void handleSupportThread() : handleNewMessage}
+          onClick={handleNewMessage}
         >
           <MessageSquarePlus className="h-4 w-4" aria-hidden="true" />
           {createThreadMutation.isPending ? "Opening..." : "New Message"}
@@ -1131,7 +1245,7 @@ export function MessagingInboxScreen({
       {available ? (
         <div className={clientUsesModal ? "mt-4" : "mt-4 grid gap-4 xl:grid-cols-[0.88fr_1.12fr]"}>
           <aside className={clientUsesModal ? "mx-auto w-full max-w-3xl space-y-3" : "min-w-0 space-y-3"}>
-            <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+            <div>
               <SearchBar
                 aria-label="Search messages"
                 placeholder="Search"
@@ -1139,19 +1253,11 @@ export function MessagingInboxScreen({
                 onChange={(event) => setThreadSearch(event.target.value)}
                 className="h-11 rounded-lg border-white/10 bg-white/[0.035] text-sm [&_input]:min-h-10"
               />
-              <button
-                type="button"
-                className="hidden h-11 rounded-lg border border-white/10 px-3 text-xs font-bold text-white/68 transition hover:border-[#a3ff12]/28 hover:text-white sm:inline-flex sm:items-center sm:justify-center"
-                onClick={handleNewMessage}
-              >
-                New
-              </button>
             </div>
 
             <ThreadStoryRail
               basePath={basePath}
               contacts={quickContacts}
-              onNewMessage={handleNewMessage}
               onOpenThread={clientUsesModal ? handleOpenThread : undefined}
             />
 
@@ -1367,6 +1473,19 @@ export function MessagingInboxScreen({
           onClose={handleCloseThread}
           onComposerChange={setComposerBody}
           onSend={() => void handleSendMessage()}
+        />
+      ) : null}
+
+      {available && clientUsesModal && composeOpen ? (
+        <ComposeModal
+          error={participantSearchQuery.error}
+          isLoading={participantSearchQuery.isLoading}
+          onClose={handleCloseCompose}
+          onQueryChange={setParticipantSearch}
+          onSelect={(result) => void handleSelectParticipant(result)}
+          query={participantSearch}
+          results={participantSearchQuery.data?.results ?? []}
+          selectPending={createThreadMutation.isPending}
         />
       ) : null}
     </div>

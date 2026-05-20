@@ -6,6 +6,7 @@ import type {
   MessagingBroadcastResult,
   MessagingCreateThreadInput,
   MessagingInboxPayload,
+  MessagingParticipantSearchResult,
   MessagingThreadPayload
 } from "@/lib/messages/service";
 
@@ -44,6 +45,19 @@ export function useMessageThreadQuery(threadId?: string) {
     queryKey: ["messages", "threads", threadId],
     queryFn: () => requestJson<MessagingThreadPayload>(`/api/messages/threads/${threadId}`),
     enabled: Boolean(threadId)
+  });
+}
+
+export function useMessageParticipantSearchQuery(query: string, enabled = true) {
+  const normalizedQuery = query.trim();
+
+  return useQuery({
+    queryKey: ["messages", "participants", normalizedQuery],
+    queryFn: () =>
+      requestJson<{ results: MessagingParticipantSearchResult[] }>(
+        `/api/messages/participants/search?query=${encodeURIComponent(normalizedQuery)}`
+      ),
+    enabled: enabled && normalizedQuery.length >= 2
   });
 }
 

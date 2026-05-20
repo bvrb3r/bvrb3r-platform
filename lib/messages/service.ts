@@ -35,13 +35,19 @@ type BarberRow = {
   profile_id: string;
   reference_code: string | null;
   booking_slug: string | null;
+  app_approval_status?: string | null;
+  status?: string | null;
+  is_bookable?: boolean | null;
+  is_discoverable?: boolean | null;
 };
 
 type BarberPublicProfileRow = {
   barber_reference: string;
   username: string | null;
+  display_name: string | null;
   profile_photo_path: string | null;
   profile_photo_url: string | null;
+  visibility_state?: string | null;
 };
 
 type StaffLocationRow = {
@@ -214,6 +220,19 @@ export type MessagingInboxCandidate = {
   };
 };
 
+export type MessagingParticipantSearchResult = {
+  id: string;
+  displayName: string;
+  resultType: "barber" | "shop" | "support";
+  role: Role;
+  avatarUrl?: string | null;
+  publicProfileHref?: string | null;
+  bookingHref?: string | null;
+  existingThreadId?: string | null;
+  createThreadInput: MessagingCreateThreadInput;
+  subtitle?: string | null;
+};
+
 export type MessagingContactCandidate = {
   kind: "contact";
   profileId: string;
@@ -258,6 +277,10 @@ export type MessagingThreadPayload = {
 export type MessagingCreateThreadInput =
   | {
       appointmentId: string;
+    }
+  | {
+      threadType: "client_barber";
+      profileId: string;
     }
   | {
       threadType: "support";
@@ -338,6 +361,43 @@ function cleanText(value?: string | null) {
   return trimmed ? trimmed : null;
 }
 
+function normalizeSearchText(value: string) {
+  return value.trim().replace(/[%_,]/g, " ").replace(/\s+/g, " ");
+}
+
+function searchMatches(value: string | null | undefined, query: string) {
+  return Boolean(value?.toLowerCase().includes(query.toLowerCase()));
+}
+
+function getThreadSearchKey(thread: MessagingThreadSummary) {
+  if (thread.threadType === "support") {
+    return `support:${thread.counterpart?.profileId ?? "bvrb3r"}`;
+  }
+
+  if (thread.threadType === "client_barber" && thread.counterpart?.profileId) {
+    return `barber:${thread.counterpart.profileId}`;
+  }
+
+  if (thread.threadType === "client_shop" && thread.locationId) {
+    return `shop:${thread.locationId}`;
+  }
+
+  return null;
+}
+
+function buildExistingThreadLookup(threads: MessagingThreadSummary[]) {
+  const lookup = new Map<string, string>();
+
+  for (const thread of threads) {
+    const key = getThreadSearchKey(thread);
+    if (key && !lookup.has(key)) {
+      lookup.set(key, thread.id);
+    }
+  }
+
+  return lookup;
+}
+
 function getPublicProfileMediaUrl(row?: BarberPublicProfileRow | null) {
   return cleanText(row?.profile_photo_url) ?? cleanText(row?.profile_photo_path);
 }
@@ -391,7 +451,7 @@ async function readPublicMessagingMetadataByProfileIds(
   const publicProfilesResult = publicReferenceCandidates.length
     ? await supabase
         .from("barber_profiles")
-        .select("barber_reference, username, profile_photo_path, profile_photo_url")
+        .select("barber_reference, username, display_name, profile_photo_path, profile_photo_url")
         .in("barber_reference", publicReferenceCandidates)
     : { data: [], error: null };
 
@@ -1386,6 +1446,91 @@ async function createOrGetClientBarberThread(input: {
   return threadId;
 }
 
+async function createOrGetDirectClientBarberThread(input: {
+  supabase: SupabaseClient;
+  clientProfile: ProfileRow;
+  barberProfile: ProfileRow;
+  createdByProfileId: string;
+}) {
+  const sharedThreadIds = await findSharedParticipantThreadIds({
+    supabase: input.supabase,
+    actorProfileId: input.clientProfile.id,
+    counterpartProfileId: input.barberProfile.id
+  });
+
+  if (sharedThreadIds.length) {
+    const threadLookupResult = await input.supabase
+      .from("message_threads")
+      .select("id, thread_type, appointment_id, location_id, created_at, updated_at, created_by_profile_id")
+      .in("id", sharedThreadIds)
+      .eq("thread_type", "client_barber")
+      .order("updated_at", { ascending: false })
+      .limit(1);
+
+    if (threadLookupResult.error) {
+      throw new MessagingServiceError("Unable to look up the barber conversation.", 500);
+    }
+
+    const existingThread = ((threadLookupResult.data ?? []) as MessageThreadRow[])[0] ?? null;
+    if (existingThread) {
+      return existingThread.id;
+    }
+  }
+
+  const createdAt = new Date().toISOString();
+  const threadInsert = await input.supabase
+    .from("message_threads")
+    .insert({
+      thread_type: "client_barber",
+      appointment_id: null,
+      location_id: null,
+      created_by_profile_id: input.createdByProfileId,
+      updated_at: createdAt
+    })
+    .select("id")
+    .single();
+
+  if (threadInsert.error) {
+    throw new MessagingServiceError("Unable to create the barber conversation.", 500);
+  }
+
+  const threadId = threadInsert.data.id as string;
+  const participantInsert = await input.supabase
+    .from("thread_participants")
+    .insert([
+      {
+        thread_id: threadId,
+        profile_id: input.clientProfile.id,
+        thread_role: input.clientProfile.role
+      },
+      {
+        thread_id: threadId,
+        profile_id: input.barberProfile.id,
+        thread_role: input.barberProfile.role
+      }
+    ]);
+
+  if (participantInsert.error) {
+    throw new MessagingServiceError("Unable to attach messaging participants.", 500);
+  }
+
+  const systemMessageInsert = await input.supabase
+    .from("messages")
+    .insert({
+      thread_id: threadId,
+      sender_profile_id: null,
+      body: `Conversation opened with ${input.barberProfile.full_name ?? input.barberProfile.email}.`,
+      message_type: "system",
+      created_at: createdAt
+    });
+
+  if (systemMessageInsert.error) {
+    throw new MessagingServiceError("Unable to write the barber conversation system message.", 500);
+  }
+
+  return threadId;
+}
+
 async function writeAppointmentSystemMessageIfMissing(
   supabase: SupabaseClient,
   threadId: string,
@@ -1776,6 +1921,172 @@ export async function getMessagingThreadPayload(user: UserAccount, threadId: str
   };
 }
 
+export async function searchMessagingParticipants(user: UserAccount, query: string): Promise<{ results: MessagingParticipantSearchResult[] }> {
+  const supabase = getSupabase();
+  if (!supabase || !isMessagingRole(user.role)) {
+    return { results: [] };
+  }
+
+  const actor = await resolveMessagingActor(user, supabase);
+  const normalizedQuery = normalizeSearchText(query);
+  if (normalizedQuery.length < 2) {
+    return { results: [] };
+  }
+
+  const participantResult = await supabase
+    .from("thread_participants")
+    .select("thread_id")
+    .eq("profile_id", actor.profile.id);
+
+  if (participantResult.error) {
+    throw new MessagingServiceError("Unable to load existing messaging conversations.", 500);
+  }
+
+  const threadIds = unique((participantResult.data ?? []).map((row) => row.thread_id as string));
+  const bundle = await readThreadBundle(supabase, actor.profile.id, threadIds);
+  const threadLookup = buildExistingThreadLookup(bundle.threads.map((thread) =>
+    buildThreadSummary({
+      thread,
+      currentProfileId: actor.profile.id,
+      participants: bundle.participants,
+      profilesById: bundle.profilesById,
+      publicMetadataByProfileId: bundle.publicMetadataByProfileId,
+      latestMessageByThreadId: bundle.latestMessageByThreadId,
+      appointmentContexts: bundle.appointmentContexts,
+      locationLabels: bundle.locationLabels
+    })
+  ));
+  const results = new Map<string, MessagingParticipantSearchResult>();
+  const supportMatches = ["support", "bvrb3r", "help"].some((term) => term.includes(normalizedQuery.toLowerCase()) || normalizedQuery.toLowerCase().includes(term));
+
+  if (supportMatches) {
+    const supportProfile = await readPrimarySupportProfile(supabase);
+    results.set(`support:${supportProfile.id}`, {
+      id: supportProfile.id,
+      displayName: supportProfile.full_name ?? "BVRB3R Support",
+      resultType: "support",
+      role: supportProfile.role,
+      avatarUrl: null,
+      publicProfileHref: null,
+      bookingHref: null,
+      existingThreadId: threadLookup.get(`support:${supportProfile.id}`) ?? null,
+      createThreadInput: { threadType: "support" },
+      subtitle: "BVRB3R Support"
+    });
+  }
+
+  const barberProfileResult = await supabase
+    .from("barber_profiles")
+    .select("barber_reference, username, display_name, profile_photo_path, profile_photo_url, visibility_state")
+    .or(`display_name.ilike.%${normalizedQuery}%,username.ilike.%${normalizedQuery}%,barber_reference.ilike.%${normalizedQuery}%`)
+    .limit(12);
+
+  if (barberProfileResult.error) {
+    throw new MessagingServiceError("Unable to search barber profiles.", 500);
+  }
+
+  const publicProfiles = ((barberProfileResult.data ?? []) as BarberPublicProfileRow[])
+    .filter((profile) => !profile.visibility_state || profile.visibility_state === "public" || profile.visibility_state === "featured");
+  const publicReferences = unique(publicProfiles.map((profile) => profile.barber_reference).filter(Boolean));
+  const [barbersByReferenceResult, barbersBySlugResult] = await Promise.all([
+    publicReferences.length
+      ? supabase
+          .from("barbers")
+          .select("id, profile_id, reference_code, booking_slug, app_approval_status, status, is_bookable, is_discoverable")
+          .in("reference_code", publicReferences)
+      : Promise.resolve({ data: [], error: null }),
+    publicReferences.length
+      ? supabase
+          .from("barbers")
+          .select("id, profile_id, reference_code, booking_slug, app_approval_status, status, is_bookable, is_discoverable")
+          .in("booking_slug", publicReferences)
+      : Promise.resolve({ data: [], error: null })
+  ]);
+
+  if (barbersByReferenceResult.error || barbersBySlugResult.error) {
+    throw new MessagingServiceError("Unable to resolve barber messaging results.", 500);
+  }
+
+  const barbersById = new Map<string, BarberRow>();
+  for (const barber of [...((barbersByReferenceResult.data ?? []) as BarberRow[]), ...((barbersBySlugResult.data ?? []) as BarberRow[])]) {
+    barbersById.set(barber.id, barber);
+  }
+
+  const barberRows = [...barbersById.values()];
+  const barberProfilesByReference = new Map(publicProfiles.map((profile) => [profile.barber_reference, profile]));
+  const barberIdentityProfiles = await readProfilesByIds(supabase, barberRows.map((barber) => barber.profile_id));
+
+  for (const barber of barberRows) {
+    const profile = barberIdentityProfiles.get(barber.profile_id);
+    if (!profile || !isBarberRole(profile.role)) {
+      continue;
+    }
+
+    const publicProfile = [barber.reference_code, barber.booking_slug, barber.id, barber.profile_id]
+      .map((value) => (value ? barberProfilesByReference.get(value) ?? null : null))
+      .find((row): row is BarberPublicProfileRow => Boolean(row)) ?? null;
+    const displayName = cleanText(publicProfile?.display_name) ?? profile.full_name ?? profile.email;
+    if (!searchMatches(displayName, normalizedQuery) && !searchMatches(publicProfile?.username, normalizedQuery) && !searchMatches(barber.reference_code, normalizedQuery)) {
+      continue;
+    }
+
+    const metadata = buildBarberMessagingMetadata(barber, publicProfile);
+    results.set(`barber:${profile.id}`, {
+      id: profile.id,
+      displayName,
+      resultType: "barber",
+      role: profile.role,
+      avatarUrl: metadata.avatarUrl,
+      publicProfileHref: metadata.publicProfileHref,
+      bookingHref: metadata.bookingHref,
+      existingThreadId: threadLookup.get(`barber:${profile.id}`) ?? null,
+      createThreadInput: {
+        threadType: "client_barber",
+        profileId: profile.id
+      },
+      subtitle: "Barber"
+    });
+  }
+
+  const shopResult = await supabase
+    .from("locations")
+    .select("id, reference_code, name, neighborhood, city, state, profile_photo_url, profile_photo_path")
+    .or(`name.ilike.%${normalizedQuery}%,neighborhood.ilike.%${normalizedQuery}%,city.ilike.%${normalizedQuery}%,reference_code.ilike.%${normalizedQuery}%`)
+    .limit(8);
+
+  if (shopResult.error) {
+    throw new MessagingServiceError("Unable to search shop messaging results.", 500);
+  }
+
+  const shopRows = (shopResult.data ?? []) as (LocationRow & { profile_photo_url?: string | null; profile_photo_path?: string | null })[];
+  const shopParticipantsByLocation = await readShopParticipantsByLocationIds(supabase, shopRows.map((row) => row.id));
+  for (const shop of shopRows) {
+    const primaryShopProfile = pickPrimaryShopProfile(shopParticipantsByLocation.get(shop.id) ?? []);
+    if (!primaryShopProfile) {
+      continue;
+    }
+
+    results.set(`shop:${shop.id}`, {
+      id: shop.id,
+      displayName: shop.name,
+      resultType: "shop",
+      role: primaryShopProfile.role,
+      avatarUrl: cleanText(shop.profile_photo_url) ?? cleanText(shop.profile_photo_path),
+      publicProfileHref: `/shop/${encodeURIComponent(shop.reference_code ?? shop.id)}`,
+      bookingHref: null,
+      existingThreadId: threadLookup.get(`shop:${shop.id}`) ?? null,
+      createThreadInput: {
+        threadType: "client_shop",
+        profileId: primaryShopProfile.id,
+        locationId: shop.id
+      },
+      subtitle: [shop.neighborhood, shop.city].filter(Boolean).join(" | ") || "Shop"
+    });
+  }
+
+  return { results: Array.from(results.values()).slice(0, 12) };
+}
+
 export async function createMessagingThread(user: UserAccount, input: MessagingCreateThreadInput) {
   const supabase = getSupabase();
   if (!supabase) {
@@ -1790,6 +2101,40 @@ export async function createMessagingThread(user: UserAccount, input: MessagingC
       supabase,
       actorProfile: actor.profile,
       supportProfile
+    });
+
+    return getMessagingThreadPayload(user, threadId);
+  }
+
+  if ("threadType" in input && input.threadType === "client_barber") {
+    if (actor.kind !== "client") {
+      throw new MessagingServiceError("Only clients can start a barber conversation from search.", 403);
+    }
+
+    const barberProfile = await readProfileById(supabase, input.profileId);
+    if (!isBarberRole(barberProfile.role)) {
+      throw new MessagingServiceError("Selected participant is not a barber.", 400);
+    }
+
+    const barberResult = await supabase
+      .from("barbers")
+      .select("id, profile_id, reference_code, booking_slug")
+      .eq("profile_id", barberProfile.id)
+      .maybeSingle();
+
+    if (barberResult.error) {
+      throw new MessagingServiceError("Unable to resolve the barber for messaging.", 500);
+    }
+
+    if (!barberResult.data) {
+      throw new MessagingServiceError("Selected barber is not available for messaging.", 404);
+    }
+
+    const threadId = await createOrGetDirectClientBarberThread({
+      supabase,
+      clientProfile: actor.profile,
+      barberProfile,
+      createdByProfileId: actor.profile.id
     });
 
     return getMessagingThreadPayload(user, threadId);

@@ -10,6 +10,10 @@ const createThreadSchema = z.union([
     appointmentId: z.string().trim().min(1)
   }),
   z.object({
+    threadType: z.literal("client_barber"),
+    profileId: z.string().trim().min(1)
+  }),
+  z.object({
     threadType: z.literal("support")
   }),
   z.object({

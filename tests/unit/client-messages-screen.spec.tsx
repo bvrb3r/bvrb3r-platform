@@ -6,6 +6,7 @@ const {
   useRouterMock,
   useMessageThreadsQueryMock,
   useMessageThreadQueryMock,
+  useMessageParticipantSearchQueryMock,
   useCreateMessageThreadMutationMock,
   useSendMessageMutationMock,
   useSendMessageBroadcastMutationMock
@@ -13,6 +14,7 @@ const {
   useRouterMock: vi.fn(),
   useMessageThreadsQueryMock: vi.fn(),
   useMessageThreadQueryMock: vi.fn(),
+  useMessageParticipantSearchQueryMock: vi.fn(),
   useCreateMessageThreadMutationMock: vi.fn(),
   useSendMessageMutationMock: vi.fn(),
   useSendMessageBroadcastMutationMock: vi.fn()
@@ -48,6 +50,7 @@ vi.mock("next/link", () => ({
 vi.mock("@/lib/messages/client", () => ({
   useMessageThreadsQuery: useMessageThreadsQueryMock,
   useMessageThreadQuery: useMessageThreadQueryMock,
+  useMessageParticipantSearchQuery: useMessageParticipantSearchQueryMock,
   useCreateMessageThreadMutation: useCreateMessageThreadMutationMock,
   useSendMessageMutation: useSendMessageMutationMock,
   useSendMessageBroadcastMutation: useSendMessageBroadcastMutationMock
@@ -146,6 +149,7 @@ describe("client messages screen", () => {
     useRouterMock.mockReset();
     useMessageThreadsQueryMock.mockReset();
     useMessageThreadQueryMock.mockReset();
+    useMessageParticipantSearchQueryMock.mockReset();
     useCreateMessageThreadMutationMock.mockReset();
     useSendMessageMutationMock.mockReset();
     useSendMessageBroadcastMutationMock.mockReset();
@@ -184,6 +188,13 @@ describe("client messages screen", () => {
       isLoading: false,
       error: null
     });
+    useMessageParticipantSearchQueryMock.mockReturnValue({
+      data: {
+        results: []
+      },
+      isLoading: false,
+      error: null
+    });
     useCreateMessageThreadMutationMock.mockReturnValue({
       isPending: false,
       mutateAsync: vi.fn()
@@ -210,11 +221,169 @@ describe("client messages screen", () => {
 
     expect(screen.getByText("No messages yet.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "New Message" })).toBeInTheDocument();
-    expect(screen.getAllByText("New").length).toBeGreaterThan(0);
+    expect(screen.queryByText("New")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Start a support message" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Message Support" })).not.toBeInTheDocument();
     expect(screen.queryByText("New messages")).not.toBeInTheDocument();
     expect(screen.queryByText("Start from a booked appointment, shop line, or support.")).not.toBeInTheDocument();
+  });
+
+  it("opens an empty compose modal from the top New Message button without auto-selecting support", () => {
+    const mutateAsync = vi.fn();
+    useCreateMessageThreadMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="client"
+        basePath="/dashboard/client/messages"
+        title="Messages"
+        subtitle="Your conversations, appointments, and support."
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "New Message" }));
+
+    const composeModal = screen.getByTestId("message-compose-modal");
+    expect(within(composeModal).getByPlaceholderText("Search barbers, shops, or clients")).toBeInTheDocument();
+    expect(within(composeModal).queryByText("BVRB3R Support")).not.toBeInTheDocument();
+    expect(mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("renders participant search results and opens an existing barber thread", () => {
+    const push = vi.fn();
+    const mutateAsync = vi.fn();
+    useRouterMock.mockReturnValue({
+      push,
+      replace: vi.fn()
+    });
+    useCreateMessageThreadMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync
+    });
+    useMessageParticipantSearchQueryMock.mockReturnValue({
+      data: {
+        results: [
+          {
+            id: "profile-barber",
+            displayName: "Phillip mcgee",
+            resultType: "barber",
+            role: "barber_user",
+            avatarUrl: "https://cdn.bvrb3r.test/phillip.jpg",
+            publicProfileHref: "/barber/phillipmcgee",
+            bookingHref: "/booking/new?barber=phillipmcgee&barberId=barber-43b3cda2",
+            existingThreadId: "thread-appointment-1",
+            createThreadInput: {
+              threadType: "client_barber",
+              profileId: "profile-barber"
+            },
+            subtitle: "Barber"
+          },
+          {
+            id: "profile-support",
+            displayName: "BVRB3R Support",
+            resultType: "support",
+            role: "platform_admin",
+            avatarUrl: null,
+            existingThreadId: null,
+            createThreadInput: {
+              threadType: "support"
+            },
+            subtitle: "BVRB3R Support"
+          }
+        ]
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="client"
+        basePath="/dashboard/client/messages"
+        title="Messages"
+        subtitle="Your conversations, appointments, and support."
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "New Message" }));
+    fireEvent.change(screen.getByPlaceholderText("Search barbers, shops, or clients"), {
+      target: { value: "phillip" }
+    });
+
+    const composeModal = screen.getByTestId("message-compose-modal");
+    expect(within(composeModal).getByText("Phillip mcgee")).toBeInTheDocument();
+    expect(within(composeModal).getAllByText("BVRB3R Support").length).toBeGreaterThan(0);
+    fireEvent.click(within(composeModal).getByText("Phillip mcgee"));
+
+    expect(mutateAsync).not.toHaveBeenCalled();
+    expect(push).toHaveBeenCalledWith("/dashboard/client/messages/thread-appointment-1", { scroll: false });
+  });
+
+  it("creates one thread when selecting a new barber search result", async () => {
+    const push = vi.fn();
+    const mutateAsync = vi.fn().mockResolvedValue({
+      thread: {
+        id: "thread-new-barber"
+      }
+    });
+    useRouterMock.mockReturnValue({
+      push,
+      replace: vi.fn()
+    });
+    useCreateMessageThreadMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync
+    });
+    useMessageParticipantSearchQueryMock.mockReturnValue({
+      data: {
+        results: [
+          {
+            id: "profile-new-barber",
+            displayName: "Nova Blades",
+            resultType: "barber",
+            role: "barber_user",
+            avatarUrl: null,
+            publicProfileHref: "/barber/nova-blades",
+            bookingHref: "/booking/new?barber=nova-blades&barberId=barber-nova",
+            existingThreadId: null,
+            createThreadInput: {
+              threadType: "client_barber",
+              profileId: "profile-new-barber"
+            },
+            subtitle: "Barber"
+          }
+        ]
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="client"
+        basePath="/dashboard/client/messages"
+        title="Messages"
+        subtitle="Your conversations, appointments, and support."
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "New Message" }));
+    fireEvent.change(screen.getByPlaceholderText("Search barbers, shops, or clients"), {
+      target: { value: "nova" }
+    });
+    fireEvent.click(screen.getByText("Nova Blades"));
+
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledTimes(1);
+    });
+    expect(mutateAsync).toHaveBeenCalledWith({
+      threadType: "client_barber",
+      profileId: "profile-new-barber"
+    });
+    expect(push).toHaveBeenCalledWith("/dashboard/client/messages/thread-new-barber", { scroll: false });
   });
 
   it("routes straight into an existing support thread when requested", async () => {
