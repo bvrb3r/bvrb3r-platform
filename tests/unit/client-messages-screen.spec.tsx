@@ -268,11 +268,14 @@ describe("client messages screen", () => {
         results: [
           {
             id: "profile-barber",
+            participantId: "profile-barber",
             displayName: "Phillip mcgee",
             resultType: "barber",
+            participantType: "barber",
             role: "barber_user",
             avatarUrl: "https://cdn.bvrb3r.test/phillip.jpg",
             publicProfileHref: "/barber/phillipmcgee",
+            profileHref: "/barber/phillipmcgee",
             bookingHref: "/booking/new?barber=phillipmcgee&barberId=barber-43b3cda2",
             existingThreadId: "thread-appointment-1",
             createThreadInput: {
@@ -283,10 +286,14 @@ describe("client messages screen", () => {
           },
           {
             id: "profile-support",
+            participantId: "profile-support",
             displayName: "BVRB3R Support",
             resultType: "support",
+            participantType: "support",
             role: "platform_admin",
             avatarUrl: null,
+            publicProfileHref: null,
+            profileHref: null,
             existingThreadId: null,
             createThreadInput: {
               threadType: "support"
@@ -322,6 +329,59 @@ describe("client messages screen", () => {
     expect(push).toHaveBeenCalledWith("/dashboard/client/messages/thread-appointment-1", { scroll: false });
   });
 
+  it("keeps barber results visible when shop participant search returns a warning", () => {
+    useMessageParticipantSearchQueryMock.mockReturnValue({
+      data: {
+        results: [
+          {
+            id: "profile-barber",
+            participantId: "profile-barber",
+            displayName: "Phillip mcgee",
+            resultType: "barber",
+            participantType: "barber",
+            role: "barber_user",
+            avatarUrl: null,
+            publicProfileHref: "/barber/phillipmcgee",
+            profileHref: "/barber/phillipmcgee",
+            bookingHref: "/booking/new?barber=phillipmcgee&barberId=barber-43b3cda2",
+            existingThreadId: "thread-appointment-1",
+            createThreadInput: {
+              threadType: "client_barber",
+              profileId: "profile-barber"
+            },
+            subtitle: "Barber"
+          }
+        ],
+        warnings: [
+          {
+            branch: "shop",
+            message: "Unable to search shop messaging results."
+          }
+        ]
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="client"
+        basePath="/dashboard/client/messages"
+        title="Messages"
+        subtitle="Your conversations, appointments, and support."
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "New Message" }));
+    fireEvent.change(screen.getByPlaceholderText("Search barbers, shops, or clients"), {
+      target: { value: "phillip" }
+    });
+
+    const composeModal = screen.getByTestId("message-compose-modal");
+    expect(within(composeModal).getByText("Phillip mcgee")).toBeInTheDocument();
+    expect(within(composeModal).queryByText("Unable to search shop messaging results.")).not.toBeInTheDocument();
+  });
+
   it("creates one thread when selecting a new barber search result", async () => {
     const push = vi.fn();
     const mutateAsync = vi.fn().mockResolvedValue({
@@ -342,11 +402,14 @@ describe("client messages screen", () => {
         results: [
           {
             id: "profile-new-barber",
+            participantId: "profile-new-barber",
             displayName: "Nova Blades",
             resultType: "barber",
+            participantType: "barber",
             role: "barber_user",
             avatarUrl: null,
             publicProfileHref: "/barber/nova-blades",
+            profileHref: "/barber/nova-blades",
             bookingHref: "/booking/new?barber=nova-blades&barberId=barber-nova",
             existingThreadId: null,
             createThreadInput: {

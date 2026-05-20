@@ -6,7 +6,7 @@ import type {
   MessagingBroadcastResult,
   MessagingCreateThreadInput,
   MessagingInboxPayload,
-  MessagingParticipantSearchResult,
+  MessagingParticipantSearchPayload,
   MessagingThreadPayload
 } from "@/lib/messages/service";
 
@@ -54,7 +54,7 @@ export function useMessageParticipantSearchQuery(query: string, enabled = true) 
   return useQuery({
     queryKey: ["messages", "participants", normalizedQuery],
     queryFn: () =>
-      requestJson<{ results: MessagingParticipantSearchResult[] }>(
+      requestJson<MessagingParticipantSearchPayload>(
         `/api/messages/participants/search?query=${encodeURIComponent(normalizedQuery)}`
       ),
     enabled: enabled && normalizedQuery.length >= 2

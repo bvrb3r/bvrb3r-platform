@@ -242,9 +242,15 @@ describe("phase 8 messaging routes", () => {
       results: [
         {
           id: "profile-barber",
+          participantId: "profile-barber",
           displayName: "Phillip mcgee",
           resultType: "barber",
+          participantType: "barber",
           role: "barber_user",
+          avatarUrl: null,
+          publicProfileHref: "/barber/phillipmcgee",
+          profileHref: "/barber/phillipmcgee",
+          bookingHref: "/booking/new?barber=phillipmcgee&barberId=barber-43b3cda2",
           existingThreadId: "thread-barber-1",
           createThreadInput: {
             threadType: "client_barber",
