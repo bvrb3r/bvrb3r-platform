@@ -30,6 +30,7 @@ type MessagingSurface = "client" | "barber" | "shop";
 type ThreadFilter = "all" | "barbers" | "shops" | "support" | "other";
 type BarberInboxTab = "primary" | "requests" | "bookings" | "general";
 type ActiveThread = MessagingThreadPayload["thread"];
+type AppointmentContextView = NonNullable<MessagingThreadSummary["appointmentContext"]>;
 
 const threadFilters: { key: ThreadFilter; label: string }[] = [
   { key: "all", label: "All" },
@@ -325,17 +326,61 @@ function getThreadActivityTime(thread: MessagingThreadSummary) {
   return Number.isNaN(activityTime) ? 0 : activityTime;
 }
 
-function orderAndDedupeThreads(threads: MessagingThreadSummary[]) {
-  const threadMap = new Map<string, MessagingThreadSummary>();
+function getClientConversationKey(thread: MessagingThreadSummary) {
+  if (thread.threadType === "support" || thread.counterpart?.role === "platform_admin") {
+    return `support:${thread.counterpart?.profileId ?? "bvrb3r"}`;
+  }
+
+  if (thread.threadType === "client_barber" && thread.counterpart?.profileId) {
+    return `barber:${thread.counterpart.profileId}`;
+  }
+
+  if (thread.threadType === "client_shop") {
+    return `shop:${thread.locationId ?? thread.counterpart?.profileId ?? thread.id}`;
+  }
+
+  return `thread:${thread.id}`;
+}
+
+function getUniqueAppointmentContexts(threads: MessagingThreadSummary[]) {
+  const contexts = new Map<string, AppointmentContextView>();
 
   for (const thread of threads) {
-    const existingThread = threadMap.get(thread.id);
-    if (!existingThread || getThreadActivityTime(thread) > getThreadActivityTime(existingThread)) {
-      threadMap.set(thread.id, thread);
+    if (thread.appointmentContext && !contexts.has(thread.appointmentContext.appointmentId)) {
+      contexts.set(thread.appointmentContext.appointmentId, thread.appointmentContext);
     }
   }
 
-  return Array.from(threadMap.values()).sort((left, right) => getThreadActivityTime(right) - getThreadActivityTime(left));
+  return Array.from(contexts.values()).sort(
+    (left, right) => new Date(right.startsAt).getTime() - new Date(left.startsAt).getTime()
+  );
+}
+
+function orderAndDedupeThreads(threads: MessagingThreadSummary[], surface: MessagingSurface) {
+  const threadMap = new Map<string, MessagingThreadSummary[]>();
+
+  for (const thread of threads) {
+    const key = surface === "client" ? getClientConversationKey(thread) : `thread:${thread.id}`;
+    threadMap.set(key, [...(threadMap.get(key) ?? []), thread]);
+  }
+
+  const relatedAppointmentContextsByThreadId = new Map<string, AppointmentContextView[]>();
+  const aggregatedThreads = Array.from(threadMap.values()).map((group) => {
+    const sortedGroup = [...group].sort((left, right) => getThreadActivityTime(right) - getThreadActivityTime(left));
+    const primaryThread = sortedGroup[0] as MessagingThreadSummary;
+    const relatedAppointmentContexts = getUniqueAppointmentContexts(sortedGroup);
+    relatedAppointmentContextsByThreadId.set(primaryThread.id, relatedAppointmentContexts);
+
+    return {
+      ...primaryThread,
+      appointmentContext: relatedAppointmentContexts[0] ?? primaryThread.appointmentContext
+    };
+  });
+
+  return {
+    threads: aggregatedThreads.sort((left, right) => getThreadActivityTime(right) - getThreadActivityTime(left)),
+    relatedAppointmentContextsByThreadId
+  };
 }
 
 function buildQuickContacts(
@@ -536,6 +581,7 @@ function ConversationPanel({
   messages,
   mode = "panel",
   onClose,
+  relatedAppointmentContexts = [],
   selectedThreadId,
   sendPending,
   surface,
@@ -552,6 +598,7 @@ function ConversationPanel({
   messages: MessagingThreadPayload["messages"];
   mode?: "panel" | "modal";
   onClose?: () => void;
+  relatedAppointmentContexts?: AppointmentContextView[];
   selectedThreadId?: string;
   sendPending: boolean;
   surface: MessagingSurface;
@@ -644,6 +691,19 @@ function ConversationPanel({
             <div className="rounded-lg border border-[#a3ff12]/18 bg-[#a3ff12]/8 px-3 py-2 text-xs font-semibold text-[#d7ffab]">
               {getConversationContextLine(activeThread)}
             </div>
+
+            {relatedAppointmentContexts.length > 1 ? (
+              <div className="flex gap-2 overflow-x-auto pb-1" data-testid="related-appointment-contexts">
+                {relatedAppointmentContexts.map((context) => (
+                  <span
+                    key={context.appointmentId}
+                    className="shrink-0 rounded-lg border border-white/10 bg-white/[0.035] px-2.5 py-1.5 text-[11px] font-bold text-white/68"
+                  >
+                    {context.serviceName} • {formatContextDate(context.startsAt)} • {context.statusLabel}
+                  </span>
+                ))}
+              </div>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -725,6 +785,7 @@ function ConversationModal({
   onClose,
   onComposerChange,
   onSend,
+  relatedAppointmentContexts,
   sendPending,
   surface,
   threadError
@@ -739,6 +800,7 @@ function ConversationModal({
   onClose: () => void;
   onComposerChange: (value: string) => void;
   onSend: () => void;
+  relatedAppointmentContexts: AppointmentContextView[];
   sendPending: boolean;
   surface: MessagingSurface;
   threadError: unknown;
@@ -771,6 +833,7 @@ function ConversationModal({
           messages={messages}
           mode="modal"
           onClose={onClose}
+          relatedAppointmentContexts={relatedAppointmentContexts}
           sendPending={sendPending}
           surface={surface}
           threadError={threadError}
@@ -816,7 +879,11 @@ export function MessagingInboxScreen({
   const hasTriggeredSupportIntentRef = useRef(false);
 
   const available = threadsQuery.data?.available ?? false;
-  const threads = useMemo(() => orderAndDedupeThreads(threadsQuery.data?.threads ?? []), [threadsQuery.data?.threads]);
+  const threadAggregation = useMemo(
+    () => orderAndDedupeThreads(threadsQuery.data?.threads ?? [], surface),
+    [surface, threadsQuery.data?.threads]
+  );
+  const threads = threadAggregation.threads;
   const appointmentStarters = useMemo(() => threadsQuery.data?.eligibleAppointments ?? [], [threadsQuery.data?.eligibleAppointments]);
   const uniqueAppointmentStarters = useMemo(() => {
     const seen = new Set<string>();
@@ -837,6 +904,11 @@ export function MessagingInboxScreen({
   const sendMessageMutation = useSendMessageMutation(activeThreadId);
   const activeThread = threadQuery.data?.thread ?? null;
   const messages = threadQuery.data?.messages ?? [];
+  const relatedAppointmentContexts = threadQuery.data?.relatedAppointmentContexts?.length
+    ? threadQuery.data.relatedAppointmentContexts
+    : activeThreadId
+      ? threadAggregation.relatedAppointmentContextsByThreadId.get(activeThreadId) ?? []
+      : [];
   const supportThread = useMemo(
     () => threads.find((thread) => thread.threadType === "support") ?? null,
     [threads]
@@ -1229,6 +1301,7 @@ export function MessagingInboxScreen({
               composerBody={composerBody}
               isLoading={threadQuery.isLoading}
               messages={messages}
+              relatedAppointmentContexts={relatedAppointmentContexts}
               selectedThreadId={selectedThreadId}
               sendPending={sendMessageMutation.isPending}
               surface={surface}
@@ -1249,6 +1322,7 @@ export function MessagingInboxScreen({
           composerBody={composerBody}
           isLoading={threadQuery.isLoading}
           messages={messages}
+          relatedAppointmentContexts={relatedAppointmentContexts}
           sendPending={sendMessageMutation.isPending}
           surface={surface}
           threadError={threadQuery.error}

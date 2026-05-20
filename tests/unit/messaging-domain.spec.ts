@@ -96,6 +96,48 @@ describe("phase 8 messaging domain", () => {
     expect(second.thread.id).toBe(first.thread.id);
   });
 
+  it("reuses one client barber thread across multiple appointments", () => {
+    const first = createClientBarberThreadInSnapshot({
+      snapshot: createEmptySnapshot(),
+      actorProfileId: "profile-client",
+      actorRole: "client",
+      appointment: {
+        appointmentId: "appt-1",
+        clientProfileId: "profile-client",
+        barberProfileId: "profile-barber",
+        clientName: "Jordan Ellis",
+        barberName: "Blaze King",
+        serviceName: "Signature Precision Cut",
+        startsAt: "2026-03-21T14:00:00.000Z"
+      },
+      createdAt: "2026-03-20T12:00:00.000Z"
+    });
+    const second = createClientBarberThreadInSnapshot({
+      snapshot: first.snapshot,
+      actorProfileId: "profile-client",
+      actorRole: "client",
+      appointment: {
+        appointmentId: "appt-2",
+        clientProfileId: "profile-client",
+        barberProfileId: "profile-barber",
+        clientName: "Jordan Ellis",
+        barberName: "Blaze King",
+        serviceName: "Beard Detail",
+        startsAt: "2026-03-28T14:00:00.000Z"
+      },
+      createdAt: "2026-03-20T12:10:00.000Z"
+    });
+
+    expect(second.snapshot.threads).toHaveLength(1);
+    expect(second.thread.id).toBe(first.thread.id);
+    expect(second.snapshot.messages).toHaveLength(2);
+    expect(second.snapshot.messages.map((message) => message.body)).toEqual([
+      expect.stringContaining("Signature Precision Cut"),
+      expect.stringContaining("Beard Detail")
+    ]);
+    expect(second.snapshot.threads[0]?.updatedAt).toBe("2026-03-20T12:10:00.000Z");
+  });
+
   it("lets a participant read thread messages in chronological order", () => {
     const created = createClientBarberThreadInSnapshot({
       snapshot: createEmptySnapshot(),

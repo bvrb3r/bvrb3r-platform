@@ -224,6 +224,7 @@ export type MessagingThreadPayload = {
     participants: MessagingThreadParticipantView[];
   }) | null;
   messages: MessagingMessageView[];
+  relatedAppointmentContexts?: NonNullable<MessagingThreadSummary["appointmentContext"]>[];
 };
 
 export type MessagingCreateThreadInput =
@@ -301,6 +302,18 @@ function baseViewer(user: UserAccount, profileId: string | null = null): Messagi
 
 function unique<T>(values: T[]) {
   return Array.from(new Set(values));
+}
+
+function toAppointmentContextView(context: HydratedAppointmentContext): NonNullable<MessagingThreadSummary["appointmentContext"]> {
+  return {
+    appointmentId: context.appointmentId,
+    confirmationCode: context.confirmationCode,
+    status: context.status,
+    statusLabel: context.statusLabel,
+    startsAt: context.startsAt,
+    serviceName: context.serviceName,
+    locationLabel: context.locationLabel
+  };
 }
 
 function shopRolePriority(role: Role) {
@@ -633,17 +646,7 @@ function buildThreadSummary(input: {
           role: counterpartProfile.role
         }
       : null,
-    appointmentContext: appointmentContext
-      ? {
-          appointmentId: appointmentContext.appointmentId,
-          confirmationCode: appointmentContext.confirmationCode,
-          status: appointmentContext.status,
-          statusLabel: appointmentContext.statusLabel,
-          startsAt: appointmentContext.startsAt,
-          serviceName: appointmentContext.serviceName,
-          locationLabel: appointmentContext.locationLabel
-        }
-      : null,
+    appointmentContext: appointmentContext ? toAppointmentContextView(appointmentContext) : null,
     lastMessage: latestMessage
       ? {
           id: latestMessage.id,
@@ -1096,6 +1099,215 @@ async function ensureThreadParticipants(
   }
 }
 
+async function findSharedParticipantThreadIds(input: {
+  supabase: SupabaseClient;
+  actorProfileId: string;
+  counterpartProfileId: string;
+}) {
+  const [actorRowsResult, counterpartRowsResult] = await Promise.all([
+    input.supabase
+      .from("thread_participants")
+      .select("thread_id")
+      .eq("profile_id", input.actorProfileId),
+    input.supabase
+      .from("thread_participants")
+      .select("thread_id")
+      .eq("profile_id", input.counterpartProfileId)
+  ]);
+
+  if (actorRowsResult.error || counterpartRowsResult.error) {
+    throw new MessagingServiceError("Unable to resolve related messaging participants.", 500);
+  }
+
+  const actorThreadIds = new Set((actorRowsResult.data ?? []).map((row) => row.thread_id as string));
+  return unique((counterpartRowsResult.data ?? [])
+    .map((row) => row.thread_id as string)
+    .filter((threadId) => actorThreadIds.has(threadId)));
+}
+
+async function readRelatedConversationThreadIds(input: {
+  supabase: SupabaseClient;
+  actorProfileId: string;
+  thread: MessageThreadRow;
+  threadParticipants: ThreadParticipantRow[];
+}) {
+  const counterpartParticipant = input.threadParticipants.find((participant) => participant.profile_id !== input.actorProfileId);
+  if (!counterpartParticipant) {
+    return [input.thread.id];
+  }
+
+  if (
+    input.thread.thread_type !== "client_barber"
+    && input.thread.thread_type !== "client_shop"
+    && input.thread.thread_type !== "barber_shop"
+    && input.thread.thread_type !== "support"
+  ) {
+    return [input.thread.id];
+  }
+
+  const sharedThreadIds = await findSharedParticipantThreadIds({
+    supabase: input.supabase,
+    actorProfileId: input.actorProfileId,
+    counterpartProfileId: counterpartParticipant.profile_id
+  });
+
+  if (!sharedThreadIds.length) {
+    return [input.thread.id];
+  }
+
+  const relatedThreadsResult = await input.supabase
+    .from("message_threads")
+    .select("id, thread_type, appointment_id, location_id, created_at, updated_at, created_by_profile_id")
+    .in("id", sharedThreadIds)
+    .eq("thread_type", input.thread.thread_type)
+    .order("updated_at", { ascending: false });
+
+  if (relatedThreadsResult.error) {
+    throw new MessagingServiceError("Unable to load related conversation threads.", 500);
+  }
+
+  const relatedThreadIds = ((relatedThreadsResult.data ?? []) as MessageThreadRow[])
+    .filter((thread) => {
+      if (input.thread.thread_type === "client_shop" || input.thread.thread_type === "barber_shop") {
+        return thread.location_id === input.thread.location_id;
+      }
+
+      return true;
+    })
+    .map((thread) => thread.id);
+
+  return unique([input.thread.id, ...relatedThreadIds]);
+}
+
+async function createOrGetClientBarberThread(input: {
+  supabase: SupabaseClient;
+  appointment: HydratedAppointmentContext;
+  createdByProfileId: string;
+}) {
+  const sharedThreadIds = await findSharedParticipantThreadIds({
+    supabase: input.supabase,
+    actorProfileId: input.appointment.clientProfileId,
+    counterpartProfileId: input.appointment.barberProfileId
+  });
+
+  if (sharedThreadIds.length) {
+    const threadLookupResult = await input.supabase
+      .from("message_threads")
+      .select("id, thread_type, appointment_id, location_id, created_at, updated_at, created_by_profile_id")
+      .in("id", sharedThreadIds)
+      .eq("thread_type", "client_barber")
+      .order("updated_at", { ascending: false })
+      .limit(1);
+
+    if (threadLookupResult.error) {
+      throw new MessagingServiceError("Unable to look up the appointment conversation.", 500);
+    }
+
+    const existingThread = ((threadLookupResult.data ?? []) as MessageThreadRow[])[0] ?? null;
+    if (existingThread) {
+      await writeAppointmentSystemMessageIfMissing(input.supabase, existingThread.id, input.appointment);
+      return existingThread.id;
+    }
+  }
+
+  const createdAt = new Date().toISOString();
+  const threadInsert = await input.supabase
+    .from("message_threads")
+    .insert({
+      thread_type: "client_barber",
+      appointment_id: input.appointment.appointmentId,
+      location_id: input.appointment.locationId,
+      created_by_profile_id: input.createdByProfileId,
+      updated_at: createdAt
+    })
+    .select("id")
+    .single();
+
+  if (threadInsert.error) {
+    throw new MessagingServiceError("Unable to create the appointment conversation.", 500);
+  }
+
+  const threadId = threadInsert.data.id as string;
+  const participantInsert = await input.supabase
+    .from("thread_participants")
+    .insert([
+      {
+        thread_id: threadId,
+        profile_id: input.appointment.clientProfileId,
+        thread_role: "client_user"
+      },
+      {
+        thread_id: threadId,
+        profile_id: input.appointment.barberProfileId,
+        thread_role: input.appointment.barberRole
+      }
+    ]);
+
+  if (participantInsert.error) {
+    throw new MessagingServiceError("Unable to attach messaging participants.", 500);
+  }
+
+  await writeAppointmentSystemMessageIfMissing(input.supabase, threadId, input.appointment);
+  return threadId;
+}
+
+async function writeAppointmentSystemMessageIfMissing(
+  supabase: SupabaseClient,
+  threadId: string,
+  appointment: HydratedAppointmentContext
+) {
+  const body = buildAppointmentThreadSystemMessage({
+    appointmentId: appointment.appointmentId,
+    clientProfileId: appointment.clientProfileId,
+    barberProfileId: appointment.barberProfileId,
+    clientName: appointment.clientName,
+    barberName: appointment.barberName,
+    barberRole: appointment.barberRole as Extract<Role, "barber_user" | "barber" | "freelance_barber" | "commission_barber" | "booth_rent_barber">,
+    serviceName: appointment.serviceName,
+    startsAt: appointment.startsAt
+  });
+  const existingMessageResult = await supabase
+    .from("messages")
+    .select("id")
+    .eq("thread_id", threadId)
+    .eq("message_type", "system")
+    .eq("body", body)
+    .maybeSingle();
+
+  if (existingMessageResult.error) {
+    throw new MessagingServiceError("Unable to look up appointment thread context.", 500);
+  }
+
+  if (existingMessageResult.data) {
+    return;
+  }
+
+  const createdAt = new Date().toISOString();
+  const [systemMessageInsert, threadUpdate] = await Promise.all([
+    supabase
+      .from("messages")
+      .insert({
+        thread_id: threadId,
+        sender_profile_id: null,
+        body,
+        message_type: "system",
+        created_at: createdAt
+      }),
+    supabase
+      .from("message_threads")
+      .update({ updated_at: createdAt })
+      .eq("id", threadId)
+  ]);
+
+  if (systemMessageInsert.error) {
+    throw new MessagingServiceError("Unable to write the appointment system message.", 500);
+  }
+
+  if (threadUpdate.error) {
+    throw new MessagingServiceError("Unable to update appointment conversation activity.", 500);
+  }
+}
+
 async function createOrGetShopThread(input: {
   supabase: SupabaseClient;
   threadType: Extract<MessagingThreadType, "client_shop" | "barber_shop">;
@@ -1342,24 +1554,36 @@ export async function getMessagingThreadPayload(user: UserAccount, threadId: str
     throw new MessagingServiceError("Only thread participants can view this conversation.", 403);
   }
 
-  const bundle = await readThreadBundle(supabase, actor.profile.id, [threadId]);
-  const thread = bundle.threads[0];
+  const initialBundle = await readThreadBundle(supabase, actor.profile.id, [threadId]);
+  const initialThread = initialBundle.threads[0];
 
-  if (!thread) {
+  if (!initialThread) {
     throw new MessagingServiceError("Message thread not found.", 404);
   }
+
+  const initialParticipants = initialBundle.participants.filter((participant) => participant.thread_id === threadId);
+  const relatedThreadIds = await readRelatedConversationThreadIds({
+    supabase,
+    actorProfileId: actor.profile.id,
+    thread: initialThread,
+    threadParticipants: initialParticipants
+  });
+  const bundle = relatedThreadIds.length === 1
+    ? initialBundle
+    : await readThreadBundle(supabase, actor.profile.id, relatedThreadIds);
+  const thread = bundle.threads.find((row) => row.id === threadId) ?? initialThread;
 
   const messagesResult = await supabase
     .from("messages")
     .select("id, thread_id, sender_profile_id, body, message_type, created_at")
-    .eq("thread_id", threadId)
+    .in("thread_id", relatedThreadIds)
     .order("created_at", { ascending: true });
 
   if (messagesResult.error) {
     throw new MessagingServiceError("Unable to load thread messages.", 500);
   }
 
-  const threadParticipants = bundle.participants.filter((participant) => participant.thread_id === threadId);
+  const threadParticipants = bundle.participants.filter((participant) => participant.thread_id === thread.id);
   const threadSummary = buildThreadSummary({
     thread,
     currentProfileId: actor.profile.id,
@@ -1369,6 +1593,16 @@ export async function getMessagingThreadPayload(user: UserAccount, threadId: str
     appointmentContexts: bundle.appointmentContexts,
     locationLabels: bundle.locationLabels
   });
+
+  const relatedAppointmentContexts = unique(
+    bundle.threads
+      .map((row) => row.appointment_id)
+      .filter((value): value is string => Boolean(value))
+  )
+    .map((appointmentId) => bundle.appointmentContexts.get(appointmentId) ?? null)
+    .filter((context): context is HydratedAppointmentContext => Boolean(context))
+    .sort((left, right) => new Date(right.startsAt).getTime() - new Date(left.startsAt).getTime())
+    .map(toAppointmentContextView);
 
   return {
     available: true,
@@ -1396,7 +1630,8 @@ export async function getMessagingThreadPayload(user: UserAccount, threadId: str
         senderRole: sender?.role ?? null,
         isOwn: message.sender_profile_id === actor.profile.id
       };
-    })
+    }),
+    relatedAppointmentContexts
   };
 }
 
@@ -1435,21 +1670,6 @@ export async function createMessagingThread(user: UserAccount, input: MessagingC
     }
 
     const canonicalAppointmentId = (appointmentResult.data as AppointmentRow).id;
-    const existingThreadResult = await supabase
-      .from("message_threads")
-      .select("id")
-      .eq("appointment_id", canonicalAppointmentId)
-      .eq("thread_type", "client_barber")
-      .maybeSingle();
-
-    if (existingThreadResult.error) {
-      throw new MessagingServiceError("Unable to look up the appointment conversation.", 500);
-    }
-
-    if (existingThreadResult.data) {
-      return getMessagingThreadPayload(user, existingThreadResult.data.id as string);
-    }
-
     const appointmentContexts = await readAppointmentContexts(supabase, [appointmentResult.data as AppointmentRow]);
     const appointment = appointmentContexts.get(canonicalAppointmentId);
 
@@ -1472,64 +1692,11 @@ export async function createMessagingThread(user: UserAccount, input: MessagingC
       }
     });
 
-    const threadInsert = await supabase
-      .from("message_threads")
-      .insert({
-        thread_type: "client_barber",
-        appointment_id: appointment.appointmentId,
-        location_id: appointment.locationId,
-        created_by_profile_id: actor.profile.id,
-        updated_at: new Date().toISOString()
-      })
-      .select("id")
-      .single();
-
-    if (threadInsert.error) {
-      throw new MessagingServiceError("Unable to create the appointment conversation.", 500);
-    }
-
-    const threadId = threadInsert.data.id as string;
-    const participantInsert = await supabase
-      .from("thread_participants")
-      .insert([
-        {
-          thread_id: threadId,
-          profile_id: appointment.clientProfileId,
-          thread_role: "client_user"
-        },
-        {
-          thread_id: threadId,
-          profile_id: appointment.barberProfileId,
-          thread_role: appointment.barberRole
-        }
-      ]);
-
-    if (participantInsert.error) {
-      throw new MessagingServiceError("Unable to attach messaging participants.", 500);
-    }
-
-    const systemMessageInsert = await supabase
-      .from("messages")
-      .insert({
-        thread_id: threadId,
-        sender_profile_id: null,
-        body: buildAppointmentThreadSystemMessage({
-          appointmentId: appointment.appointmentId,
-          clientProfileId: appointment.clientProfileId,
-          barberProfileId: appointment.barberProfileId,
-          clientName: appointment.clientName,
-          barberName: appointment.barberName,
-          barberRole: appointment.barberRole as Extract<Role, "barber_user" | "barber" | "freelance_barber" | "commission_barber" | "booth_rent_barber">,
-          serviceName: appointment.serviceName,
-          startsAt: appointment.startsAt
-        }),
-        message_type: "system"
-      });
-
-    if (systemMessageInsert.error) {
-      throw new MessagingServiceError("Unable to write the appointment system message.", 500);
-    }
-
+    const threadId = await createOrGetClientBarberThread({
+      supabase,
+      appointment,
+      createdByProfileId: actor.profile.id
+    });
     return getMessagingThreadPayload(user, threadId);
   }
 

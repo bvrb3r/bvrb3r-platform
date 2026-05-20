@@ -161,6 +161,49 @@ export function readMessagesForParticipant(snapshot: MessagingSnapshot, threadId
     .sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime());
 }
 
+function findClientBarberThreadByParticipants(snapshot: MessagingSnapshot, clientProfileId: string, barberProfileId: string) {
+  return snapshot.threads.find((thread) => {
+    if (thread.threadType !== "client_barber") {
+      return false;
+    }
+
+    const participants = snapshot.participants.filter((participant) => participant.threadId === thread.id);
+    return participants.some((participant) => participant.profileId === clientProfileId)
+      && participants.some((participant) => participant.profileId === barberProfileId);
+  });
+}
+
+function appendAppointmentSystemMessageIfMissing(input: {
+  snapshot: MessagingSnapshot;
+  thread: MessagingThreadRecord;
+  appointment: MessagingAppointmentContext;
+  createdAt: string;
+}) {
+  const body = buildAppointmentThreadSystemMessage(input.appointment);
+  const existingMessage = input.snapshot.messages.some(
+    (message) => message.threadId === input.thread.id && message.messageType === "system" && message.body === body
+  );
+
+  if (existingMessage) {
+    return input.snapshot;
+  }
+
+  const message: MessagingMessageRecord = {
+    id: `msg-${input.snapshot.messages.length + 1}`,
+    threadId: input.thread.id,
+    senderProfileId: null,
+    body,
+    messageType: "system",
+    createdAt: input.createdAt
+  };
+
+  return {
+    ...input.snapshot,
+    threads: input.snapshot.threads.map((thread) => thread.id === input.thread.id ? { ...thread, updatedAt: input.createdAt } : thread),
+    messages: [...input.snapshot.messages, message]
+  };
+}
+
 export function sendMessageInSnapshot(input: {
   snapshot: MessagingSnapshot;
   threadId: string;
@@ -206,18 +249,25 @@ export function createClientBarberThreadInSnapshot(input: {
     appointment: input.appointment
   });
 
-  const existingThread = input.snapshot.threads.find(
-    (thread) => thread.threadType === "client_barber" && thread.appointmentId === input.appointment.appointmentId
+  const createdAt = input.createdAt ?? new Date().toISOString();
+  const existingThread = findClientBarberThreadByParticipants(
+    input.snapshot,
+    input.appointment.clientProfileId,
+    input.appointment.barberProfileId
   );
 
   if (existingThread) {
     return {
-      snapshot: input.snapshot,
+      snapshot: appendAppointmentSystemMessageIfMissing({
+        snapshot: input.snapshot,
+        thread: existingThread,
+        appointment: input.appointment,
+        createdAt
+      }),
       thread: existingThread
     };
   }
 
-  const createdAt = input.createdAt ?? new Date().toISOString();
   const threadId = `thread-${input.snapshot.threads.length + 1}`;
   const thread: MessagingThreadRecord = {
     id: threadId,

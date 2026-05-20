@@ -363,6 +363,163 @@ describe("client messages screen", () => {
     ]);
   });
 
+  it("dedupes multiple appointment threads by barber and opens combined context", () => {
+    const firstBarberThread = buildThread({
+      id: "thread-appointment-1",
+      appointmentId: "appointment-1",
+      updatedAt: "2026-05-19T13:30:00.000Z",
+      lastMessage: {
+        id: "message-barber-old",
+        body: "First appointment follow-up",
+        messageType: "text",
+        createdAt: "2026-05-19T13:30:00.000Z",
+        senderName: "Phillip mcgee"
+      }
+    });
+    const secondAppointmentContext = {
+      appointmentId: "appointment-2",
+      confirmationCode: "2T7CIYH15O",
+      status: "completed",
+      statusLabel: "Completed",
+      startsAt: "2026-05-21T13:30:00.000Z",
+      serviceName: "beard detail",
+      locationLabel: "Phils chair"
+    };
+    const secondBarberThread = buildThread({
+      id: "thread-appointment-2",
+      appointmentId: "appointment-2",
+      appointmentContext: secondAppointmentContext,
+      updatedAt: "2026-05-19T14:20:00.000Z",
+      lastMessage: {
+        id: "message-barber-new",
+        body: "Second appointment update",
+        messageType: "text",
+        createdAt: "2026-05-19T14:20:00.000Z",
+        senderName: "Phillip mcgee"
+      }
+    });
+    const otherBarberThread = buildThread({
+      id: "thread-wave-1",
+      counterpart: {
+        profileId: "profile-wave",
+        fullName: "Wave Carter",
+        role: "barber_user"
+      },
+      appointmentId: "appointment-wave",
+      appointmentContext: {
+        appointmentId: "appointment-wave",
+        confirmationCode: "WAVE1",
+        status: "confirmed",
+        statusLabel: "Confirmed",
+        startsAt: "2026-05-22T15:00:00.000Z",
+        serviceName: "razor fade",
+        locationLabel: "Wave chair"
+      },
+      updatedAt: "2026-05-19T14:00:00.000Z",
+      lastMessage: {
+        id: "message-wave-1",
+        body: "Wave is ready.",
+        messageType: "text",
+        createdAt: "2026-05-19T14:00:00.000Z",
+        senderName: "Wave Carter"
+      }
+    });
+    const supportThread = buildSupportThread({
+      updatedAt: "2026-05-19T12:00:00.000Z",
+      lastMessage: {
+        id: "message-support-1",
+        body: "Support check-in.",
+        messageType: "text",
+        createdAt: "2026-05-19T12:00:00.000Z",
+        senderName: "BVRB3R Support"
+      }
+    });
+
+    useMessageThreadsQueryMock.mockReturnValue({
+      data: {
+        available: true,
+        viewer: {
+          profileId: "profile-client",
+          fullName: "Jordan Ellis",
+          role: "client"
+        },
+        threads: [firstBarberThread, otherBarberThread, secondBarberThread, supportThread],
+        eligibleAppointments: [],
+        eligibleContacts: [],
+        broadcastTargets: []
+      },
+      isLoading: false,
+      error: null
+    });
+    useMessageThreadQueryMock.mockReturnValue({
+      data: {
+        available: true,
+        viewer: {
+          profileId: "profile-client",
+          fullName: "Jordan Ellis",
+          role: "client"
+        },
+        thread: buildThreadDetail(secondBarberThread),
+        messages: [
+          {
+            id: "message-barber-old",
+            body: "First appointment follow-up",
+            messageType: "text",
+            createdAt: "2026-05-19T13:30:00.000Z",
+            senderName: "Phillip mcgee",
+            senderRole: "barber_user",
+            isOwn: false
+          },
+          {
+            id: "message-barber-new",
+            body: "Second appointment update",
+            messageType: "text",
+            createdAt: "2026-05-19T14:20:00.000Z",
+            senderName: "Phillip mcgee",
+            senderRole: "barber_user",
+            isOwn: false
+          }
+        ],
+        relatedAppointmentContexts: [
+          secondAppointmentContext,
+          firstBarberThread.appointmentContext
+        ]
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="client"
+        basePath="/dashboard/client/messages"
+        title="Messages"
+        subtitle="Your conversations, appointments, and support."
+      />
+    );
+
+    expect(screen.getByTestId("message-thread-row-thread-appointment-2")).toBeInTheDocument();
+    expect(screen.queryByTestId("message-thread-row-thread-appointment-1")).not.toBeInTheDocument();
+    expect(screen.getByTestId("message-thread-row-thread-wave-1")).toBeInTheDocument();
+    expect(screen.getByTestId("message-thread-row-thread-support-1")).toBeInTheDocument();
+    expect(screen.getAllByText("Phillip mcgee")).toHaveLength(2);
+
+    const rows = screen.getAllByTestId(/message-thread-row-/);
+    expect(rows.map((row) => row.getAttribute("data-testid"))).toEqual([
+      "message-thread-row-thread-appointment-2",
+      "message-thread-row-thread-wave-1",
+      "message-thread-row-thread-support-1"
+    ]);
+
+    fireEvent.click(screen.getByTestId("message-thread-row-thread-appointment-2"));
+
+    const modal = screen.getByTestId("message-thread-modal");
+    expect(within(modal).getByText("First appointment follow-up")).toBeInTheDocument();
+    expect(within(modal).getByText("Second appointment update")).toBeInTheDocument();
+    expect(within(modal).getByTestId("related-appointment-contexts")).toHaveTextContent("beard detail");
+    expect(within(modal).getByTestId("related-appointment-contexts")).toHaveTextContent("test cut");
+  });
+
   it("renders a thin appointment-linked client inbox row and modal conversation shell", () => {
     const thread = buildThread();
     useMessageThreadsQueryMock.mockReturnValue({
