@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ComponentProps, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -237,7 +237,7 @@ describe("client messages screen", () => {
     });
   });
 
-  it("renders a thin appointment-linked client inbox row and conversation shell", () => {
+  it("renders a thin appointment-linked client inbox row and modal conversation shell", () => {
     const thread = buildThread();
     useMessageThreadsQueryMock.mockReturnValue({
       data: {
@@ -291,9 +291,12 @@ describe("client messages screen", () => {
     );
 
     expect(screen.getByTestId("messaging-inbox-client")).toBeInTheDocument();
+    expect(screen.queryByTestId("message-thread-panel")).not.toBeInTheDocument();
+    expect(screen.getByTestId("message-thread-modal")).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Search messages" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "New Message" })).toBeInTheDocument();
     expect(screen.getAllByText("Phillip mcgee").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("PM").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Barber").length).toBeGreaterThan(0);
     expect(screen.getAllByText("test cut • Cancelled").length).toBeGreaterThan(0);
     expect(screen.getByText("test cut • May 19 • Cancelled")).toBeInTheDocument();
@@ -303,6 +306,167 @@ describe("client messages screen", () => {
 
     const row = screen.getAllByText("Conversation opened...")[0]?.closest("a");
     expect(row?.className).toContain("min-h-[74px]");
+  });
+
+  it("opens a barber appointment thread in a modal and closes back to the inbox", () => {
+    const push = vi.fn();
+    const thread = buildThread();
+    useRouterMock.mockReturnValue({
+      push,
+      replace: vi.fn()
+    });
+    useMessageThreadsQueryMock.mockReturnValue({
+      data: {
+        available: true,
+        viewer: {
+          profileId: "profile-client",
+          fullName: "Jordan Ellis",
+          role: "client"
+        },
+        threads: [thread],
+        eligibleAppointments: [],
+        eligibleContacts: [],
+        broadcastTargets: []
+      },
+      isLoading: false,
+      error: null
+    });
+    useMessageThreadQueryMock.mockReturnValue({
+      data: {
+        available: true,
+        viewer: {
+          profileId: "profile-client",
+          fullName: "Jordan Ellis",
+          role: "client"
+        },
+        thread: buildThreadDetail(thread),
+        messages: [
+          {
+            id: "message-1",
+            body: "Conversation opened...",
+            messageType: "system",
+            createdAt: "2026-05-19T13:30:00.000Z",
+            senderName: "BVRB3R",
+            senderRole: "platform_admin",
+            isOwn: false
+          }
+        ]
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="client"
+        basePath="/dashboard/client/messages"
+        title="Messages"
+        subtitle="Your conversations, appointments, and support."
+      />
+    );
+
+    expect(screen.queryByTestId("message-thread-panel")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("message-thread-modal")).not.toBeInTheDocument();
+
+    const threadRow = screen.getByText("Conversation opened...").closest("a");
+    expect(threadRow).not.toBeNull();
+    fireEvent.click(threadRow as HTMLAnchorElement);
+
+    expect(push).toHaveBeenCalledWith("/dashboard/client/messages/thread-appointment-1", { scroll: false });
+    const modal = screen.getByTestId("message-thread-modal");
+    expect(within(modal).getByText("Phillip mcgee")).toBeInTheDocument();
+    expect(within(modal).getByRole("textbox", { name: "Reply" })).toBeInTheDocument();
+    expect(within(modal).getByRole("button", { name: "Send message" })).toBeInTheDocument();
+    expect(within(modal).getByRole("button", { name: "View Profile" })).toBeInTheDocument();
+    expect(within(modal).getByRole("link", { name: "Book Now" })).toBeInTheDocument();
+
+    fireEvent.click(within(modal).getByRole("button", { name: "Back" }));
+
+    expect(push).toHaveBeenCalledWith("/dashboard/client/messages", { scroll: false });
+    expect(screen.queryByTestId("message-thread-modal")).not.toBeInTheDocument();
+    expect(screen.getByText("Conversation opened...")).toBeInTheDocument();
+  });
+
+  it("opens a support thread in the same modal without booking actions", () => {
+    const supportThread = buildThread({
+      id: "thread-support-1",
+      threadType: "support",
+      appointmentId: null,
+      locationId: null,
+      locationContext: null,
+      counterpart: {
+        profileId: "profile-support",
+        fullName: "BVRB3R Support",
+        role: "platform_admin"
+      },
+      appointmentContext: null,
+      lastMessage: {
+        id: "message-support-1",
+        body: "How can we help?",
+        messageType: "text",
+        createdAt: "2026-05-19T13:40:00.000Z",
+        senderName: "BVRB3R Support"
+      }
+    });
+    useMessageThreadsQueryMock.mockReturnValue({
+      data: {
+        available: true,
+        viewer: {
+          profileId: "profile-client",
+          fullName: "Jordan Ellis",
+          role: "client"
+        },
+        threads: [supportThread],
+        eligibleAppointments: [],
+        eligibleContacts: [],
+        broadcastTargets: []
+      },
+      isLoading: false,
+      error: null
+    });
+    useMessageThreadQueryMock.mockReturnValue({
+      data: {
+        available: true,
+        viewer: {
+          profileId: "profile-client",
+          fullName: "Jordan Ellis",
+          role: "client"
+        },
+        thread: buildThreadDetail(supportThread),
+        messages: [
+          {
+            id: "message-support-1",
+            body: "How can we help?",
+            messageType: "text",
+            createdAt: "2026-05-19T13:40:00.000Z",
+            senderName: "BVRB3R Support",
+            senderRole: "platform_admin",
+            isOwn: false
+          }
+        ]
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="client"
+        basePath="/dashboard/client/messages"
+        title="Messages"
+        subtitle="Your conversations, appointments, and support."
+      />
+    );
+
+    const supportRow = screen.getByText("How can we help?").closest("a");
+    expect(supportRow).not.toBeNull();
+    fireEvent.click(supportRow as HTMLAnchorElement);
+
+    const modal = screen.getByTestId("message-thread-modal");
+    expect(within(modal).getAllByText("BVRB3R Support").length).toBeGreaterThan(0);
+    expect(within(modal).getAllByText("B").length).toBeGreaterThan(0);
+    expect(within(modal).queryByRole("link", { name: "Book Now" })).not.toBeInTheDocument();
+    expect(within(modal).getByRole("textbox", { name: "Reply" })).toBeInTheDocument();
   });
 
   it("renders the barber inbox with the same compact conversation system", () => {
@@ -452,7 +616,10 @@ describe("client messages screen", () => {
       />
     );
 
+    expect(screen.queryByTestId("message-thread-panel")).not.toBeInTheDocument();
+    expect(screen.getByTestId("message-thread-modal")).toBeInTheDocument();
     expect(screen.getAllByText("BVRB3R Support").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("B").length).toBeGreaterThan(0);
     expect(screen.getAllByText("How can we help?").length).toBeGreaterThan(1);
     expect(screen.getAllByText("Support").length).toBeGreaterThan(0);
     expect(screen.queryByRole("link", { name: "Book Now" })).not.toBeInTheDocument();

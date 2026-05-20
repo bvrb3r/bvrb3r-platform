@@ -209,6 +209,14 @@ function getInitials(name: string) {
     .toUpperCase();
 }
 
+function getAvatarInitials(name: string, role?: string | null, threadType?: string | null) {
+  if (threadType === "support" || role === "platform_admin") {
+    return "B";
+  }
+
+  return getInitials(name);
+}
+
 function isBookingRequestThread(thread: MessagingThreadSummary) {
   const statusText = `${thread.appointmentContext?.status ?? ""} ${thread.appointmentContext?.statusLabel ?? ""}`.toLowerCase();
   return Boolean(thread.appointmentContext && (statusText.includes("pending") || statusText.includes("request")));
@@ -316,27 +324,34 @@ function buildQuickContacts(
   appointmentStarters: MessagingInboxCandidate[],
   contactStarters: MessagingContactCandidate[]
 ) {
-  const contacts = new Map<string, { id: string; label: string; active?: boolean; threadId?: string }>();
+  const contacts = new Map<string, { id: string; label: string; active?: boolean; role?: string | null; threadId?: string; threadType?: string }>();
 
   for (const thread of threads) {
     const id = thread.counterpart?.profileId ?? thread.id;
     const label = thread.counterpart?.fullName ?? "Conversation";
     if (!contacts.has(id)) {
-      contacts.set(id, { id, label, active: Boolean(thread.lastMessage || thread.appointmentContext), threadId: thread.id });
+      contacts.set(id, {
+        id,
+        label,
+        active: Boolean(thread.lastMessage || thread.appointmentContext),
+        role: thread.counterpart?.role,
+        threadId: thread.id,
+        threadType: thread.threadType
+      });
     }
   }
 
   for (const starter of appointmentStarters) {
     const id = starter.counterpart.profileId;
     if (!contacts.has(id)) {
-      contacts.set(id, { id, label: starter.counterpart.fullName });
+      contacts.set(id, { id, label: starter.counterpart.fullName, role: starter.counterpart.role });
     }
   }
 
   for (const starter of contactStarters) {
     const id = starter.profileId;
     if (!contacts.has(id)) {
-      contacts.set(id, { id, label: starter.fullName });
+      contacts.set(id, { id, label: starter.fullName, role: starter.role, threadType: starter.threadType });
     }
   }
 
@@ -367,11 +382,13 @@ function RolePill({ label }: { label: string }) {
 function ThreadStoryRail({
   basePath,
   contacts,
-  onNewMessage
+  onNewMessage,
+  onOpenThread
 }: {
   basePath: string;
   contacts: ReturnType<typeof buildQuickContacts>;
   onNewMessage: () => void;
+  onOpenThread?: (threadId: string) => void;
 }) {
   return (
     <div className="-mx-1 overflow-x-auto px-1 pb-1">
@@ -392,7 +409,7 @@ function ThreadStoryRail({
             <>
               <Avatar
                 alt={contact.label}
-                initials={getInitials(contact.label)}
+                initials={getAvatarInitials(contact.label, contact.role, contact.threadType)}
                 className={[
                   "mx-auto h-12 w-12 text-sm",
                   contact.active ? "border-2 border-[#a3ff12]/80 shadow-[0_0_18px_rgba(163,255,18,0.18)]" : "border-white/12"
@@ -406,7 +423,15 @@ function ThreadStoryRail({
 
           if (contact.threadId) {
             return (
-              <Link key={contact.id} href={`${basePath}/${contact.threadId}` as Route} className="group w-16 shrink-0 text-center">
+              <Link
+                key={contact.id}
+                href={`${basePath}/${contact.threadId}` as Route}
+                className="group w-16 shrink-0 text-center"
+                onClick={onOpenThread ? (event) => {
+                  event.preventDefault();
+                  onOpenThread(contact.threadId as string);
+                } : undefined}
+              >
                 {avatar}
               </Link>
             );
@@ -426,11 +451,13 @@ function ThreadStoryRail({
 function ThinThreadRow({
   thread,
   basePath,
-  active
+  active,
+  onOpen
 }: {
   thread: MessagingThreadSummary;
   basePath: string;
   active: boolean;
+  onOpen?: (threadId: string) => void;
 }) {
   const displayName = getDisplayName(thread);
   const roleBadgeLabel = getRoleBadgeLabel(thread.counterpart?.role, thread.threadType);
@@ -441,6 +468,10 @@ function ThinThreadRow({
   return (
     <Link
       href={`${basePath}/${thread.id}` as Route}
+      onClick={onOpen ? (event) => {
+        event.preventDefault();
+        onOpen(thread.id);
+      } : undefined}
       className={[
         "group grid min-h-[74px] grid-cols-[auto_1fr_auto] items-center gap-3 rounded-lg border px-3 py-2 transition",
         active
@@ -450,7 +481,7 @@ function ThinThreadRow({
     >
       <Avatar
         alt={displayName}
-        initials={getInitials(displayName)}
+        initials={getAvatarInitials(displayName, thread.counterpart?.role, thread.threadType)}
         className="h-11 w-11 text-sm"
       />
       <div className="min-w-0">
@@ -483,6 +514,8 @@ function ConversationPanel({
   composerBody,
   isLoading,
   messages,
+  mode = "panel",
+  onClose,
   selectedThreadId,
   sendPending,
   surface,
@@ -497,6 +530,8 @@ function ConversationPanel({
   composerBody: string;
   isLoading: boolean;
   messages: MessagingThreadPayload["messages"];
+  mode?: "panel" | "modal";
+  onClose?: () => void;
   selectedThreadId?: string;
   sendPending: boolean;
   surface: MessagingSurface;
@@ -513,9 +548,26 @@ function ConversationPanel({
   const hasAppointment = Boolean(activeThread?.appointmentContext);
 
   return (
-    <section className="flex min-h-[34rem] flex-col rounded-lg border border-white/8 bg-[#070707]/92 shadow-[0_20px_60px_rgba(0,0,0,0.38)]">
+    <section
+      className={[
+        "flex flex-col border border-white/8 bg-[#070707]/96 shadow-[0_20px_60px_rgba(0,0,0,0.38)]",
+        mode === "modal"
+          ? "h-[100dvh] w-full rounded-none sm:h-[min(92vh,48rem)] sm:max-w-2xl sm:rounded-lg"
+          : "min-h-[34rem] rounded-lg"
+      ].join(" ")}
+      data-testid={mode === "modal" ? "message-thread-modal" : "message-thread-panel"}
+    >
       <div className="border-b border-white/8 px-3 py-3 sm:px-4">
-        {selectedThreadId ? (
+        {onClose ? (
+          <button
+            type="button"
+            className="mb-3 inline-flex items-center gap-2 text-xs font-semibold text-white/56 transition hover:text-[#d7ffab]"
+            onClick={onClose}
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+            Back
+          </button>
+        ) : selectedThreadId ? (
           <Link href={basePath as Route} className="mb-3 inline-flex items-center gap-2 text-xs font-semibold text-white/56 transition hover:text-[#d7ffab] xl:hidden">
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             Back
@@ -537,7 +589,7 @@ function ConversationPanel({
               <div className="flex min-w-0 items-center gap-3">
                 <Avatar
                   alt={displayName}
-                  initials={getInitials(displayName)}
+                  initials={getAvatarInitials(displayName, activeThread?.counterpart?.role, activeThread?.threadType)}
                   className="h-12 w-12 border-2 border-[#a3ff12]/65 text-sm"
                 />
                 <div className="min-w-0">
@@ -550,7 +602,7 @@ function ConversationPanel({
                   </p>
                 </div>
               </div>
-              <div className="flex shrink-0 items-center gap-2">
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
                 <button
                   type="button"
                   className="h-8 rounded-lg border border-white/10 px-3 text-xs font-bold text-white/72 transition hover:border-[#a3ff12]/28 hover:text-white disabled:opacity-45"
@@ -642,6 +694,74 @@ function ConversationPanel({
   );
 }
 
+function ConversationModal({
+  activeThread,
+  activeThreadId,
+  basePath,
+  copy,
+  composerBody,
+  isLoading,
+  messages,
+  onClose,
+  onComposerChange,
+  onSend,
+  sendPending,
+  surface,
+  threadError
+}: {
+  activeThread: ActiveThread;
+  activeThreadId?: string;
+  basePath: string;
+  copy: ReturnType<typeof getSurfaceCopy>;
+  composerBody: string;
+  isLoading: boolean;
+  messages: MessagingThreadPayload["messages"];
+  onClose: () => void;
+  onComposerChange: (value: string) => void;
+  onSend: () => void;
+  sendPending: boolean;
+  surface: MessagingSurface;
+  threadError: unknown;
+}) {
+  if (!activeThreadId) {
+    return null;
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/72 backdrop-blur-sm sm:items-center sm:p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Message conversation"
+    >
+      <button
+        type="button"
+        className="absolute inset-0 cursor-default"
+        aria-label="Close conversation"
+        onClick={onClose}
+      />
+      <div className="relative z-10 w-full sm:max-w-2xl">
+        <ConversationPanel
+          activeThread={activeThread}
+          activeThreadId={activeThreadId}
+          basePath={basePath}
+          copy={copy}
+          composerBody={composerBody}
+          isLoading={isLoading}
+          messages={messages}
+          mode="modal"
+          onClose={onClose}
+          sendPending={sendPending}
+          surface={surface}
+          threadError={threadError}
+          onComposerChange={onComposerChange}
+          onSend={onSend}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function MessagingInboxScreen({
   surface,
   basePath,
@@ -662,7 +782,9 @@ export function MessagingInboxScreen({
   const threadsQuery = useMessageThreadsQuery();
   const createThreadMutation = useCreateMessageThreadMutation();
   const broadcastMutation = useSendMessageBroadcastMutation();
-  const activeThreadId = selectedThreadId ?? threadsQuery.data?.threads[0]?.id;
+  const clientUsesModal = surface === "client";
+  const [modalThreadId, setModalThreadId] = useState<string | null>(selectedThreadId ?? null);
+  const activeThreadId = clientUsesModal ? modalThreadId ?? undefined : selectedThreadId ?? threadsQuery.data?.threads[0]?.id;
   const threadQuery = useMessageThreadQuery(activeThreadId);
   const sendMessageMutation = useSendMessageMutation(activeThreadId);
   const [composerBody, setComposerBody] = useState("");
@@ -679,6 +801,18 @@ export function MessagingInboxScreen({
   const available = threadsQuery.data?.available ?? false;
   const threads = useMemo(() => threadsQuery.data?.threads ?? [], [threadsQuery.data?.threads]);
   const appointmentStarters = useMemo(() => threadsQuery.data?.eligibleAppointments ?? [], [threadsQuery.data?.eligibleAppointments]);
+  const uniqueAppointmentStarters = useMemo(() => {
+    const seen = new Set<string>();
+    return appointmentStarters.filter((starter) => {
+      const key = `${starter.appointmentId}:${starter.counterpart.profileId}:${starter.appointmentContext.status}`;
+      if (seen.has(key)) {
+        return false;
+      }
+
+      seen.add(key);
+      return true;
+    });
+  }, [appointmentStarters]);
   const contactStarters = useMemo(() => threadsQuery.data?.eligibleContacts ?? [], [threadsQuery.data?.eligibleContacts]);
   const broadcastTargets = useMemo(() => threadsQuery.data?.broadcastTargets ?? [], [threadsQuery.data?.broadcastTargets]);
   const activeThread = threadQuery.data?.thread ?? null;
@@ -688,8 +822,8 @@ export function MessagingInboxScreen({
     [threads]
   );
   const quickContacts = useMemo(
-    () => buildQuickContacts(threads, appointmentStarters, contactStarters),
-    [appointmentStarters, contactStarters, threads]
+    () => buildQuickContacts(threads, uniqueAppointmentStarters, contactStarters),
+    [contactStarters, threads, uniqueAppointmentStarters]
   );
   const activeThreadFilters = surface === "barber" ? barberThreadFilters : threadFilters;
   const displayedThreads = useMemo(
@@ -698,6 +832,10 @@ export function MessagingInboxScreen({
       : filterThreads(threads, threadFilter, threadSearch),
     [barberInboxTab, surface, threadFilter, threadSearch, threads]
   );
+
+  useEffect(() => {
+    setModalThreadId(selectedThreadId ?? null);
+  }, [selectedThreadId]);
 
   useEffect(() => {
     if (!broadcastLocationId && broadcastTargets[0]?.locationId) {
@@ -711,12 +849,33 @@ export function MessagingInboxScreen({
       const threadPayload = await createThreadMutation.mutateAsync(payload);
       if (threadPayload.thread?.id) {
         setStatusUpdate({ tone: "success", message: successMessage });
-        router.push(`${basePath}/${threadPayload.thread.id}` as Route);
+        if (clientUsesModal) {
+          setModalThreadId(threadPayload.thread.id);
+        }
+        router.push(`${basePath}/${threadPayload.thread.id}` as Route, { scroll: false });
       }
     } catch (error) {
       setStatusUpdate({ tone: "error", message: readableError(error, "Unable to open the conversation.") });
     }
-  }, [basePath, createThreadMutation, router]);
+  }, [basePath, clientUsesModal, createThreadMutation, router]);
+
+  const handleOpenThread = useCallback((threadId: string) => {
+    if (clientUsesModal) {
+      setComposerBody("");
+      setModalThreadId(threadId);
+      router.push(`${basePath}/${threadId}` as Route, { scroll: false });
+    }
+  }, [basePath, clientUsesModal, router]);
+
+  const handleCloseThread = useCallback(() => {
+    if (!clientUsesModal) {
+      return;
+    }
+
+    setComposerBody("");
+    setModalThreadId(null);
+    router.push(basePath as Route, { scroll: false });
+  }, [basePath, clientUsesModal, router]);
 
   useEffect(() => {
     if (
@@ -811,7 +970,7 @@ export function MessagingInboxScreen({
         <Button
           className="h-10 rounded-lg px-4 normal-case tracking-normal"
           disabled={surface === "client" ? createThreadMutation.isPending : false}
-          onClick={surface === "client" && !appointmentStarters.length && !contactStarters.length ? () => void handleSupportThread() : handleNewMessage}
+          onClick={surface === "client" && !uniqueAppointmentStarters.length && !contactStarters.length ? () => void handleSupportThread() : handleNewMessage}
         >
           <MessageSquarePlus className="h-4 w-4" aria-hidden="true" />
           {createThreadMutation.isPending ? "Opening..." : "New Message"}
@@ -830,8 +989,8 @@ export function MessagingInboxScreen({
       ) : null}
 
       {available ? (
-        <div className="mt-4 grid gap-4 xl:grid-cols-[0.88fr_1.12fr]">
-          <aside className="min-w-0 space-y-3">
+        <div className={clientUsesModal ? "mt-4" : "mt-4 grid gap-4 xl:grid-cols-[0.88fr_1.12fr]"}>
+          <aside className={clientUsesModal ? "mx-auto w-full max-w-3xl space-y-3" : "min-w-0 space-y-3"}>
             <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
               <SearchBar
                 aria-label="Search messages"
@@ -849,7 +1008,12 @@ export function MessagingInboxScreen({
               </button>
             </div>
 
-            <ThreadStoryRail basePath={basePath} contacts={quickContacts} onNewMessage={handleNewMessage} />
+            <ThreadStoryRail
+              basePath={basePath}
+              contacts={quickContacts}
+              onNewMessage={handleNewMessage}
+              onOpenThread={clientUsesModal ? handleOpenThread : undefined}
+            />
 
             {surface === "barber" ? (
               <div className="grid grid-cols-4 gap-1 rounded-lg border border-white/8 bg-white/[0.025] p-1">
@@ -899,6 +1063,7 @@ export function MessagingInboxScreen({
                   thread={thread}
                   basePath={basePath}
                   active={thread.id === activeThreadId}
+                  onOpen={clientUsesModal ? handleOpenThread : undefined}
                 />
               )) : (
                 <div className="rounded-lg border border-dashed border-white/10 bg-white/[0.025] p-4 text-sm leading-6 text-white/58">
@@ -943,7 +1108,7 @@ export function MessagingInboxScreen({
                   </div>
                 ) : null}
 
-                {appointmentStarters.map((starter) => (
+                {uniqueAppointmentStarters.map((starter) => (
                   <div key={starter.appointmentId} className="flex items-center justify-between gap-3 rounded-lg border border-white/8 bg-black/24 p-3">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-bold text-white">{starter.counterpart.fullName}</p>
@@ -991,7 +1156,7 @@ export function MessagingInboxScreen({
                   </div>
                 ))}
 
-                {!appointmentStarters.length && !contactStarters.length && surface !== "client" ? (
+                {!uniqueAppointmentStarters.length && !contactStarters.length && surface !== "client" ? (
                   <div className="rounded-lg border border-dashed border-white/10 bg-black/24 p-3 text-sm leading-6 text-white/52">
                     No additional thread starters are available right now.
                   </div>
@@ -1050,22 +1215,42 @@ export function MessagingInboxScreen({
             ) : null}
           </aside>
 
-          <ConversationPanel
-            activeThread={activeThread}
-            activeThreadId={activeThreadId}
-            basePath={basePath}
-            copy={copy}
-            composerBody={composerBody}
-            isLoading={threadQuery.isLoading}
-            messages={messages}
-            selectedThreadId={selectedThreadId}
-            sendPending={sendMessageMutation.isPending}
-            surface={surface}
-            threadError={threadQuery.error}
-            onComposerChange={setComposerBody}
-            onSend={() => void handleSendMessage()}
-          />
+          {!clientUsesModal ? (
+            <ConversationPanel
+              activeThread={activeThread}
+              activeThreadId={activeThreadId}
+              basePath={basePath}
+              copy={copy}
+              composerBody={composerBody}
+              isLoading={threadQuery.isLoading}
+              messages={messages}
+              selectedThreadId={selectedThreadId}
+              sendPending={sendMessageMutation.isPending}
+              surface={surface}
+              threadError={threadQuery.error}
+              onComposerChange={setComposerBody}
+              onSend={() => void handleSendMessage()}
+            />
+          ) : null}
         </div>
+      ) : null}
+
+      {available && clientUsesModal ? (
+        <ConversationModal
+          activeThread={activeThread}
+          activeThreadId={activeThreadId}
+          basePath={basePath}
+          copy={copy}
+          composerBody={composerBody}
+          isLoading={threadQuery.isLoading}
+          messages={messages}
+          sendPending={sendMessageMutation.isPending}
+          surface={surface}
+          threadError={threadQuery.error}
+          onClose={handleCloseThread}
+          onComposerChange={setComposerBody}
+          onSend={() => void handleSendMessage()}
+        />
       ) : null}
     </div>
   );
