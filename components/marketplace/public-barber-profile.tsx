@@ -84,21 +84,6 @@ function getPolicyNotes(profile: PublicBarberProfileView) {
   ].filter(Boolean) as string[];
 }
 
-function buildHighlightChips(profile: PublicBarberProfileView) {
-  const serviceTags = profile.services.flatMap((item) => (item.styleTags ?? []).map((tag) => tag.name));
-  const serviceNames = profile.services.map((item) => item.service.category || item.service.name);
-  const chips = [...profile.profile.specialties, ...serviceTags, ...serviceNames]
-    .map((item) => item.trim())
-    .filter(Boolean);
-  const unique = Array.from(new Set(chips));
-
-  if (!unique.length) {
-    return ["Haircuts"];
-  }
-
-  return unique.slice(0, 7);
-}
-
 function getPrimarySpecialty(profile: PublicBarberProfileView) {
   return profile.profile.specialties[0] || profile.services[0]?.service.category || "Barber";
 }
@@ -200,7 +185,6 @@ export function PublicBarberProfile({
   const isVerified = verificationBadges.length > 0;
   const serviceLocation = getServiceLocation(profile);
   const nextOpening = safeDateLabel(profile.nextAvailableAt);
-  const highlights = buildHighlightChips(profile);
   const policyNotes = getPolicyNotes(profile);
   const bio = cleanPublicText(profile.barber.bio) || cleanPublicText(profile.profile.headline) || "Fresh work, sharp details, and clean appointments.";
   const primarySpecialty = getPrimarySpecialty(profile);
@@ -302,17 +286,6 @@ export function PublicBarberProfile({
         <TrustItem icon={<MapPin className="h-4 w-4" aria-hidden="true" />} label="Location" value={serviceLocation} />
         <TrustItem icon={<CreditCard className="h-4 w-4" aria-hidden="true" />} label="Payments" value="Card-on-file supported" />
         <TrustItem icon={<Star className="h-4 w-4 fill-current" aria-hidden="true" />} label="Rating" value={`${reviewScore.toFixed(1)} from ${reviewCount} reviews`} />
-      </section>
-
-      <section className="flex gap-3 overflow-x-auto pb-1" aria-label="Profile highlights">
-        {highlights.map((highlight) => (
-          <span
-            key={highlight}
-            className="inline-flex h-20 w-20 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.035] px-2 text-center text-xs font-bold leading-4 text-white/78"
-          >
-            {highlight}
-          </span>
-        ))}
       </section>
 
       <section className="space-y-3">

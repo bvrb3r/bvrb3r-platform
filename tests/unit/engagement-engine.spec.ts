@@ -32,6 +32,24 @@ describe("engagement engine", () => {
     expect(result.notification.type).toBe("new_follower");
   });
 
+  it("allows a validated production public barber reference to be followed", () => {
+    const state = createInitialEngagementState();
+    const result = followBarber(state, {
+      role: "client_user",
+      clientId: "client-jordan",
+      userEmail: "client@bvrb3r.demo",
+      locationIds: []
+    }, {
+      barberId: "barber-43b3cda2",
+      notifyOnAvailability: true,
+      notifyOnPortfolio: true
+    });
+
+    expect(result.follow.barberId).toBe("barber-43b3cda2");
+    expect(result.state.barberFollows.some((follow) => follow.clientId === "client-jordan" && follow.barberId === "barber-43b3cda2")).toBe(true);
+    expect(result.notification.type).toBe("new_follower");
+  });
+
   it("awards loyalty points for a barber review event", () => {
     const state = createInitialEngagementState();
     const result = recordEngagementEvent(state, {

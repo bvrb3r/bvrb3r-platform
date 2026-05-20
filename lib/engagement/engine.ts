@@ -184,6 +184,28 @@ function getBarber(barberId: string) {
   return demoBarbers.find((barber) => barber.id === barberId);
 }
 
+function isPublicBarberReference(barberId: string) {
+  return /^barber-[a-z0-9-]+$/i.test(barberId);
+}
+
+function getFollowTargetBarber(barberId: string) {
+  const barber = getBarber(barberId);
+  if (barber) {
+    return barber;
+  }
+
+  if (!isPublicBarberReference(barberId)) {
+    return null;
+  }
+
+  return {
+    id: barberId,
+    userId: barberId,
+    name: barberId,
+    role: "barber_user" as const
+  };
+}
+
 function getClient(clientId: string, snapshot?: LiveOperationsSnapshot) {
   return snapshot?.clients.find((client) => client.id === clientId) ?? demoClients.find((client) => client.id === clientId);
 }
@@ -951,7 +973,7 @@ export function followBarber(
     throw new EngagementPermissionError("Only clients can follow barbers.");
   }
 
-  const barber = getBarber(input.barberId);
+  const barber = getFollowTargetBarber(input.barberId);
   if (!barber) {
     throw new EngagementNotFoundError("Barber could not be found.");
   }

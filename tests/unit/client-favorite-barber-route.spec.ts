@@ -45,7 +45,7 @@ describe("client favorite barber route", () => {
 
     getClientExperienceContextMock.mockResolvedValue({
       viewer: {
-        role: "client",
+        role: "client_user",
         email: "client@bvrb3r.demo"
       },
       clientId: "client-jordan",
@@ -95,28 +95,28 @@ describe("client favorite barber route", () => {
         fullName: "Jordan Ellis",
         phone: "8135550190",
         email: "client@bvrb3r.demo",
-        favoriteBarberReference: "barber-blaze",
+        favoriteBarberReference: "barber-43b3cda2",
         favoriteShopReference: "loc-ybor",
         loyaltyPoints: 125,
         retentionTag: "repeat",
         notes: []
       },
       favoriteBarber: {
-        barber: { id: "barber-blaze", name: "Blaze King" },
-        profile: { username: "blaze" }
+        barber: { id: "barber-43b3cda2", name: "Phillip mcgee" },
+        profile: { username: "barber-43b3cda2" }
       }
     });
 
     const response = await postFavoriteBarber(new Request("http://localhost:3000/api/client/favorite-barber", {
       method: "POST",
-      body: JSON.stringify({ barberReference: "barber-blaze" })
+      body: JSON.stringify({ barberReference: "barber-43b3cda2" })
     }));
     const body = await response.json();
 
     expect(response.status).toBe(200);
     expect(saveClientFavoriteBarberMock).toHaveBeenCalledWith({
       clientId: "client-jordan",
-      barberReference: "barber-blaze"
+      barberReference: "barber-43b3cda2"
     });
     expect(followBarberMock).toHaveBeenCalledWith(
       {
@@ -125,16 +125,16 @@ describe("client favorite barber route", () => {
         clientId: "client-jordan"
       },
       {
-        barberId: "barber-blaze",
+        barberId: "barber-43b3cda2",
         notifyOnAvailability: true,
         notifyOnPortfolio: true
       }
     );
     expect(recordFollowCreatedMock).toHaveBeenCalledWith({
-      barberId: "barber-blaze",
-      username: "blaze",
+      barberId: "barber-43b3cda2",
+      username: "barber-43b3cda2",
       clientId: "client-jordan"
     });
-    expect(body.client.favoriteBarberReference).toBe("barber-blaze");
+    expect(body.client.favoriteBarberReference).toBe("barber-43b3cda2");
   });
 });

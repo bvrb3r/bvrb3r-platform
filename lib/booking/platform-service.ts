@@ -250,6 +250,11 @@ type ClientFavoriteShopInput = {
   shopReference: string;
 };
 
+type ResolvedFavoriteBarberIdentity = {
+  barberReference: string;
+  barberUuid: string;
+};
+
 type ClientLocationInput = {
   clientId: string;
   city: string;
@@ -1373,6 +1378,49 @@ export async function saveClientLocation(input: ClientLocationInput) {
   };
 }
 
+async function resolveFavoriteBarberIdentity(
+  supabase: SupabaseClient,
+  barberProfile: NonNullable<Awaited<ReturnType<typeof getBarberDetailsPayload>>>
+): Promise<ResolvedFavoriteBarberIdentity> {
+  const barberReference = barberProfile.barber.id;
+  const profileId = barberProfile.barber.userId;
+
+  const readByProfile = await supabase
+    .from("barbers")
+    .select("id, reference_code, profile_id")
+    .eq("profile_id", profileId)
+    .limit(1);
+
+  if (readByProfile.error) {
+    throw readByProfile.error;
+  }
+
+  const profileMatch = readByProfile.data?.[0] as { id: string; reference_code?: string | null } | undefined;
+  if (profileMatch?.id) {
+    return {
+      barberReference: profileMatch.reference_code ?? barberReference,
+      barberUuid: profileMatch.id
+    };
+  }
+
+  const readByReference = await supabase
+    .from("barbers")
+    .select("id, reference_code, profile_id")
+    .eq("reference_code", barberReference)
+    .limit(1);
+
+  if (readByReference.error) {
+    throw readByReference.error;
+  }
+
+  const referenceMatch = readByReference.data?.[0] as { id: string; reference_code?: string | null } | undefined;
+
+  return {
+    barberReference: referenceMatch?.reference_code ?? barberReference,
+    barberUuid: referenceMatch?.id ?? canonicalBarberUuid(barberReference)
+  };
+}
+
 export async function saveClientFavoriteBarber(input: ClientFavoriteBarberInput) {
   const supabase = getSupabase();
   const barberProfile = await getBarberDetailsPayload(input.barberReference);
@@ -1388,7 +1436,7 @@ export async function saveClientFavoriteBarber(input: ClientFavoriteBarberInput)
       client: clientProfile
         ? {
             ...clientProfile,
-            favoriteBarberReference: input.barberReference,
+            favoriteBarberReference: barberProfile.barber.id,
             favoriteShopReference: favoriteShopReference ?? clientProfile.favoriteShopReference
           }
         : null,
@@ -1401,16 +1449,23 @@ export async function saveClientFavoriteBarber(input: ClientFavoriteBarberInput)
     throw new Error("Client profile could not be found.");
   }
 
+  const resolvedBarber = await resolveFavoriteBarberIdentity(supabase, barberProfile);
   const updatedAt = new Date().toISOString();
   const clientWrite = await supabase
     .from("clients")
     .update({
-      favorite_barber_id: canonicalBarberUuid(input.barberReference)
+      favorite_barber_id: resolvedBarber.barberUuid
     })
-    .eq("reference_code", input.clientId);
+    .or(`id.eq.${canonicalClientUuid(input.clientId)},reference_code.eq.${input.clientId}`)
+    .select("id")
+    .limit(1);
 
   if (clientWrite.error) {
     throw clientWrite.error;
+  }
+
+  if (!(clientWrite.data ?? []).length) {
+    throw new Error("Client profile could not be updated.");
   }
 
   const preferenceResult = await supabase
@@ -1468,7 +1523,7 @@ export async function saveClientFavoriteBarber(input: ClientFavoriteBarberInput)
       fullName: clientProfile.fullName,
       phone: clientProfile.phone,
       email: clientProfile.email,
-      favoriteBarberReference: input.barberReference,
+      favoriteBarberReference: resolvedBarber.barberReference,
       favoriteShopReference: effectiveFavoriteShopReference ?? undefined,
       loyaltyPoints: clientProfile.loyaltyPoints,
       retentionTag: clientProfile.retentionTag,

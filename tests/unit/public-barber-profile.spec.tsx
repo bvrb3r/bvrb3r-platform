@@ -13,7 +13,9 @@ vi.mock("@/components/client-experience/marketplace-tracked-action-link", () => 
 }));
 
 vi.mock("@/components/marketplace/public-barber-growth-actions", () => ({
-  PublicBarberGrowthActions: () => <button type="button">Follow</button>
+  PublicBarberGrowthActions: ({ barberId }: { barberId: string }) => (
+    <button type="button" data-barber-id={barberId}>Follow</button>
+  )
 }));
 
 vi.mock("@/components/marketplace/public-barber-message-action", () => ({
@@ -95,7 +97,7 @@ describe("public barber profile", () => {
     expect(within(header).getByText("3")).toBeInTheDocument();
     expect(within(header).getByText("bookings")).toBeInTheDocument();
     expect(within(header).getByRole("button", { name: "Message" })).toHaveAttribute("data-profile-id", "profile-wave");
-    expect(within(header).getByRole("button", { name: "Follow" })).toBeInTheDocument();
+    expect(within(header).getByRole("button", { name: "Follow" })).toHaveAttribute("data-barber-id", "barber-wave");
     expect(within(screen.getByTestId("barber-profile-header-actions")).getAllByRole("link", { name: "Book" })).toHaveLength(1);
     expect(screen.getByText(/2172 University Square Mall, Tampa, FL 33612/)).toBeInTheDocument();
     expect(screen.queryByText("Verified license")).not.toBeInTheDocument();
@@ -108,6 +110,7 @@ describe("public barber profile", () => {
     expect(screen.getByText("Card on file is required when the selected service policy needs it.")).toBeInTheDocument();
     expect(screen.getByText("No work posted yet.")).toBeInTheDocument();
     expect(screen.getAllByText("Reviews building.").length).toBeGreaterThan(0);
+    expect(screen.queryByLabelText("Profile highlights")).not.toBeInTheDocument();
     expect(screen.queryByText(/shared service system/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/approved marketplace supply/i)).not.toBeInTheDocument();
   });

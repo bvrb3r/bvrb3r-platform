@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { isClientRole } from "@/lib/auth/roles";
 import { getClientExperienceContext } from "@/lib/client-experience/session";
 import { saveClientFavoriteBarber } from "@/lib/booking/platform-service";
 import { getEngagementProvider } from "@/lib/engagement/provider";
@@ -12,7 +13,7 @@ const favoriteBarberSchema = z.object({
 export async function POST(request: Request) {
   const context = await getClientExperienceContext();
 
-  if (!context.isSignedInClient || !context.clientId || context.viewer.role !== "client") {
+  if (!context.isSignedInClient || !context.clientId || !isClientRole(context.viewer.role)) {
     return NextResponse.json({ error: "Only signed-in clients can save a favorite barber." }, { status: 403 });
   }
 
@@ -26,6 +27,7 @@ export async function POST(request: Request) {
       clientId: context.clientId,
       barberReference: parsed.data.barberReference
     });
+    const resolvedBarberReference = result.favoriteBarber?.barber.id ?? parsed.data.barberReference;
 
     try {
       const engagementProvider = await getEngagementProvider();
@@ -36,7 +38,7 @@ export async function POST(request: Request) {
           clientId: context.clientId
         },
         {
-          barberId: parsed.data.barberReference,
+          barberId: resolvedBarberReference,
           notifyOnAvailability: true,
           notifyOnPortfolio: true
         }
@@ -48,7 +50,7 @@ export async function POST(request: Request) {
     try {
       const marketplaceProvider = await getMarketplaceProvider();
       await marketplaceProvider.recordFollowCreated({
-        barberId: parsed.data.barberReference,
+        barberId: resolvedBarberReference,
         username: result.favoriteBarber?.profile?.username,
         clientId: context.clientId
       });
