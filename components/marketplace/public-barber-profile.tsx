@@ -1,12 +1,19 @@
 import Link from "next/link";
 import type { Route } from "next";
-import { CalendarDays, Clock3, CreditCard, MapPin, ShieldCheck, Star } from "lucide-react";
+import type { ReactNode } from "react";
+import { BadgeCheck, CalendarDays, Clock3, CreditCard, MapPin, Scissors, ShieldCheck, Star } from "lucide-react";
 import { MarketplaceTrackedActionLink } from "@/components/client-experience/marketplace-tracked-action-link";
 import { PublicBarberGrowthActions } from "@/components/marketplace/public-barber-growth-actions";
-import { Card } from "@/components/ui/card";
-import { getBookingLocationSummary, getClientFacingBarberName } from "@/lib/marketplace/client-facing";
+import { PublicBarberMessageAction } from "@/components/marketplace/public-barber-message-action";
+import { PublicBarberPortfolioGrid } from "@/components/marketplace/public-barber-portfolio-grid";
+import { getBookingLocationSummary } from "@/lib/marketplace/client-facing";
 import { currency, dateLabel } from "@/lib/utils";
-import type { PublicBarberProfileView } from "@/lib/marketplace/engine";
+import type { PublicBarberProfileView, ServiceCatalogItem } from "@/lib/marketplace/engine";
+
+const compactPanelClass = "rounded-lg border border-white/8 bg-white/[0.035] shadow-[0_18px_60px_rgba(0,0,0,0.32)] backdrop-blur-xl";
+const quietPanelClass = "rounded-lg border border-white/8 bg-black/25";
+const labelClass = "text-xs font-bold uppercase text-white/48";
+const primaryButtonClass = "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-[#a3ff12]/45 bg-[#a3ff12] px-5 py-2 text-sm font-black text-black shadow-[0_16px_40px_rgba(163,255,18,0.22)] transition hover:bg-[#d7ffab]";
 
 function getBadgeLabel(badge: string) {
   switch (badge) {
@@ -48,6 +55,23 @@ function serviceBookingHref(baseHref: string | null | undefined, serviceId: stri
   return `${path || "/booking/new"}?${params.toString()}` as Route;
 }
 
+function isInternalPublicReference(value: string) {
+  return /^(barber|client|independent-barber|srv)-/i.test(value);
+}
+
+function cleanPublicText(value?: string | null) {
+  const cleaned = value?.trim() ?? "";
+  return cleaned && !isInternalPublicReference(cleaned) ? cleaned : "";
+}
+
+function getDisplayName(profile: PublicBarberProfileView) {
+  return cleanPublicText(profile.barber.name) || cleanPublicText(profile.profile.username) || "BVRB3R barber";
+}
+
+function getHandle(username: string) {
+  return username.startsWith("@") ? username : `@${username}`;
+}
+
 function getPolicyNotes(profile: PublicBarberProfileView) {
   const deposits = profile.services
     .map((item) => item.service.deposit)
@@ -60,293 +84,322 @@ function getPolicyNotes(profile: PublicBarberProfileView) {
   ].filter(Boolean) as string[];
 }
 
+function buildHighlightChips(profile: PublicBarberProfileView) {
+  const serviceTags = profile.services.flatMap((item) => (item.styleTags ?? []).map((tag) => tag.name));
+  const serviceNames = profile.services.map((item) => item.service.category || item.service.name);
+  const chips = [...profile.profile.specialties, ...serviceTags, ...serviceNames]
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const unique = Array.from(new Set(chips));
+
+  if (!unique.length) {
+    return ["Haircuts"];
+  }
+
+  return unique.slice(0, 7);
+}
+
+function getPrimarySpecialty(profile: PublicBarberProfileView) {
+  return profile.profile.specialties[0] || profile.services[0]?.service.category || "Barber";
+}
+
+function getServiceLocation(profile: PublicBarberProfileView) {
+  return profile.shopLocations[0]
+    ? getBookingLocationSummary(profile.shopLocations[0])
+    : profile.shop?.name ?? "Independent barber";
+}
+
+function Stat({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-base font-black text-white">{value}</p>
+      <p className="mt-0.5 text-xs text-white/50">{label}</p>
+    </div>
+  );
+}
+
+function TrustItem({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
+  return (
+    <div className="inline-flex min-h-12 items-center gap-3 rounded-lg border border-white/8 bg-black/30 px-3 py-2">
+      <span className="text-[#d7ffab]">{icon}</span>
+      <span>
+        <span className="block text-xs font-bold text-white">{label}</span>
+        <span className="block text-xs text-white/50">{value}</span>
+      </span>
+    </div>
+  );
+}
+
+function ServiceRow({
+  item,
+  bookingHref,
+  profile,
+  nextOpening
+}: {
+  item: ServiceCatalogItem;
+  bookingHref: Route;
+  profile: PublicBarberProfileView;
+  nextOpening: string;
+}) {
+  return (
+    <article className={`${quietPanelClass} p-4`}>
+      <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-center">
+        <div className="min-w-0">
+          <h3 className="truncate text-base font-black text-white">{item.service.name}</h3>
+          <p className="mt-1 line-clamp-2 text-sm leading-6 text-white/58">{item.service.description || "Clean barber service."}</p>
+          <div className="mt-3 flex flex-wrap gap-2 text-xs text-white/56">
+            <span>{item.service.durationMin} min</span>
+            <span>{currency(item.service.price)}</span>
+            <span>{nextOpening}</span>
+          </div>
+        </div>
+        <MarketplaceTrackedActionLink
+          href={bookingHref}
+          className="min-h-11 rounded-lg px-4 text-sm"
+          analytics={{
+            eventType: "booking_cta_clicked",
+            barberId: profile.barber.id,
+            username: profile.profile.username,
+            locationId: profile.shopLocations[0]?.id,
+            sourceKind: "public_profile",
+            sourceReference: "service_row",
+            metadata: {
+              serviceId: item.service.id
+            }
+          }}
+        >
+          Book
+        </MarketplaceTrackedActionLink>
+      </div>
+    </article>
+  );
+}
+
 export function PublicBarberProfile({
   profile,
   viewerCanFollow = false,
-  viewerCanReport = false
+  viewerCanReport = false,
+  viewerCanMessage = false
 }: {
   profile: PublicBarberProfileView;
   viewerCanFollow?: boolean;
   viewerCanReport?: boolean;
+  viewerCanMessage?: boolean;
 }) {
-  const clientFacingName = getClientFacingBarberName({
-    username: profile.profile.username,
-    barberName: profile.barber.name
-  });
-  const initials = getInitials(clientFacingName);
+  const displayName = getDisplayName(profile);
+  const handle = getHandle(profile.profile.username);
+  const initials = getInitials(displayName);
   const reviewCount = profile.proof?.reviewCount ?? profile.reviews.length;
   const reviewScore = profile.proof?.reviewScore ?? profile.barber.rating;
+  const followerCount = profile.proof?.followCount ?? 0;
+  const completedBookings = profile.proof?.bookingsCompleted ?? 0;
   const verificationBadges = [
     ...profile.profile.badges.map(getBadgeLabel),
     ...(profile.proof?.verificationLabels ?? [])
-  ].slice(0, 6);
-  const serviceLocations = profile.shopLocations.length
-    ? profile.shopLocations.map((location) => getBookingLocationSummary(location)).join(" | ")
-    : profile.shop?.name ?? "Independent barber";
+  ].slice(0, 4);
+  const isVerified = verificationBadges.length > 0;
+  const serviceLocation = getServiceLocation(profile);
+  const nextOpening = safeDateLabel(profile.nextAvailableAt);
+  const highlights = buildHighlightChips(profile);
   const policyNotes = getPolicyNotes(profile);
+  const bio = cleanPublicText(profile.barber.bio) || cleanPublicText(profile.profile.headline) || "Fresh work, sharp details, and clean appointments.";
+  const primarySpecialty = getPrimarySpecialty(profile);
 
   return (
-    <div className="space-y-4">
-      <section className="grid gap-4 lg:grid-cols-[1.08fr_0.92fr]">
-        <Card id="barber-profile-services" className="rounded-[36px] scroll-mt-6 p-6 sm:p-8">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+    <div className="mx-auto max-w-6xl space-y-6 pb-12">
+      <section className={`${compactPanelClass} p-4 sm:p-6`} data-testid="public-barber-profile-header">
+        <div className="grid gap-5 sm:grid-cols-[auto_1fr] sm:items-start">
+          <div className="mx-auto sm:mx-0">
             {profile.profile.profilePhotoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={profile.profile.profilePhotoUrl}
-                alt={clientFacingName}
-                className="h-24 w-24 rounded-[28px] border border-white/10 object-cover shadow-[0_20px_42px_rgba(124,255,0,0.14)] sm:h-32 sm:w-32 sm:rounded-[32px]"
+                alt={displayName}
+                className="h-28 w-28 rounded-lg border border-white/10 object-cover shadow-[0_18px_46px_rgba(0,0,0,0.4)] sm:h-36 sm:w-36"
+                data-testid="barber-profile-photo"
               />
             ) : (
               <div
-                className="flex h-24 w-24 items-center justify-center rounded-[28px] border border-white/10 text-3xl font-semibold text-black shadow-[0_20px_42px_rgba(124,255,0,0.14)] sm:h-32 sm:w-32 sm:rounded-[32px] sm:text-4xl"
-                style={{ background: `linear-gradient(135deg, ${profile.profile.photoAccent}, #f4ffd1)` }}
+                className="flex h-28 w-28 items-center justify-center rounded-lg border border-white/10 text-3xl font-black text-black shadow-[0_18px_46px_rgba(0,0,0,0.4)] sm:h-36 sm:w-36 sm:text-4xl"
+                style={{ background: `linear-gradient(135deg, ${profile.profile.photoAccent}, #d7ffab)` }}
+                data-testid="barber-profile-initials"
               >
                 {initials}
               </div>
             )}
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="surface-label text-[#d7ffab]">@{profile.profile.username}</p>
+          </div>
+
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-start">
+              <h1 className="text-center text-3xl font-black text-white sm:text-left sm:text-4xl" data-display="true">
+                {displayName}
+              </h1>
+              {isVerified ? <BadgeCheck className="h-5 w-5 text-[#a3ff12]" aria-label="Verified barber" /> : null}
+            </div>
+            <p className="mt-1 text-center text-sm font-semibold text-white/58 sm:text-left">{handle}</p>
+            <p className="mt-2 text-center text-sm text-white/62 sm:text-left">
+              {primarySpecialty} - {profile.profile.serviceAreaLabel || profile.shopLocations[0]?.city || "Tampa, FL"}
+            </p>
+            <p className="mt-1 text-center text-sm text-white/48 sm:text-left">{profile.shop?.name ?? profile.shopLocations[0]?.name ?? "Phil's chair"}</p>
+            {verificationBadges.length ? (
+              <div className="mt-3 flex flex-wrap justify-center gap-2 sm:justify-start">
                 {verificationBadges.map((badge) => (
-                  <span key={badge} className="status-pill text-[#d7ffab]">{badge}</span>
-                ))}
-              </div>
-              <h1 className="mt-3 text-3xl font-semibold sm:text-5xl" data-display="true">{clientFacingName}</h1>
-              <p className="mt-3 max-w-2xl text-sm leading-7 text-white/66">{profile.profile.headline}</p>
-              <div className="mt-5 flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.18em] text-white/58">
-                {profile.profile.specialties.slice(0, 4).map((specialty) => (
-                  <span key={specialty} className="rounded-full border border-white/10 bg-black/18 px-3 py-2 text-white/78">
-                    {specialty}
+                  <span key={badge} className="rounded-lg border border-[#a3ff12]/20 bg-[#a3ff12]/10 px-2.5 py-1 text-xs font-bold text-[#d7ffab]">
+                    {badge}
                   </span>
                 ))}
               </div>
-              <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-                  <p className="surface-label">Rating</p>
-                  <p className="mt-3 text-2xl font-semibold">{reviewScore.toFixed(1)}</p>
-                </div>
-                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-                  <p className="surface-label">Reviews</p>
-                  <p className="mt-3 text-2xl font-semibold">{reviewCount}</p>
-                </div>
-                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-                  <p className="surface-label">From</p>
-                  <p className="mt-3 text-2xl font-semibold">{currency(profile.priceRange[0])}</p>
-                </div>
-                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-                  <p className="surface-label">Availability</p>
-                  <p className="mt-3 text-lg font-semibold">{safeDateLabel(profile.nextAvailableAt)}</p>
-                </div>
-              </div>
-            </div>
-          </div>
+            ) : null}
 
-          <div className="mt-6 rounded-[28px] border border-white/8 bg-black/20 p-5">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="max-w-2xl">
-                <p className="surface-label">Ready to book</p>
-                <div className="mt-3 space-y-2 text-sm leading-7 text-white/68">
-                  <p className="inline-flex items-center gap-2"><MapPin className="h-4 w-4 text-[#baff69]" />{serviceLocations}</p>
-                  <p className="inline-flex items-center gap-2"><CalendarDays className="h-4 w-4 text-[#d7ffab]" />Next opening {safeDateLabel(profile.nextAvailableAt)}</p>
-                  <p className="inline-flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-[#d7ffab]" />Verified barber</p>
-                </div>
-              </div>
-              <div className="grid w-full gap-3 sm:w-auto">
-                <MarketplaceTrackedActionLink
-                  href={(profile.bookingCtaHref ?? "/booking/new") as Route}
-                  className="h-12 px-6"
-                  analytics={{
-                    eventType: "booking_cta_clicked",
-                    barberId: profile.barber.id,
-                    username: profile.profile.username,
-                    locationId: profile.shopLocations[0]?.id,
-                    sourceKind: "public_profile",
-                    sourceReference: "hero_cta",
-                    metadata: {
-                      reviewCount,
-                      rating: reviewScore
-                    }
-                  }}
-                >
-                  Book
-                </MarketplaceTrackedActionLink>
-                <Link href={(profile.bookingCtaHref ?? `/booking/new?barberId=${profile.barber.id}&locationId=${profile.shopLocations[0]?.id ?? ""}`) as Route} className="inline-flex h-12 items-center justify-center rounded-full border border-white/10 bg-black/25 px-5 text-[11px] font-semibold uppercase tracking-[0.22em] text-white transition hover:border-[#7CFF00]/24 hover:text-[#d7ffab]">
-                  Choose service
-                </Link>
-              </div>
+            <div className="mt-5 grid grid-cols-4 gap-3 border-y border-white/8 py-4 text-center sm:max-w-xl sm:text-left">
+              <Stat label="followers" value={followerCount} />
+              <Stat label="reviews" value={reviewCount} />
+              <Stat label="bookings" value={completedBookings} />
+              <Stat label="posts" value={profile.portfolio.length} />
             </div>
-            <div className="mt-5">
+
+            <p className="mt-4 max-w-2xl text-sm leading-6 text-white/72">{bio}</p>
+
+            <div className="mt-5 flex flex-wrap gap-3" data-testid="barber-profile-header-actions">
+              <MarketplaceTrackedActionLink
+                href={(profile.bookingCtaHref ?? "/booking/new") as Route}
+                className="min-h-11 rounded-lg px-5 text-sm"
+                analytics={{
+                  eventType: "booking_cta_clicked",
+                  barberId: profile.barber.id,
+                  username: profile.profile.username,
+                  locationId: profile.shopLocations[0]?.id,
+                  sourceKind: "public_profile",
+                  sourceReference: "profile_header",
+                  metadata: {
+                    reviewCount,
+                    rating: reviewScore
+                  }
+                }}
+              >
+                Book
+              </MarketplaceTrackedActionLink>
+              <PublicBarberMessageAction
+                barberProfileId={profile.barber.userId}
+                canMessage={viewerCanMessage}
+                username={profile.profile.username}
+              />
               <PublicBarberGrowthActions
                 barberId={profile.barber.id}
                 username={profile.profile.username}
                 canFollow={viewerCanFollow}
                 canReport={viewerCanReport}
-                initialFollowerCount={profile.proof?.followCount ?? 0}
+                initialFollowerCount={followerCount}
               />
             </div>
           </div>
-        </Card>
+        </div>
+      </section>
 
-        <Card id="barber-profile-reviews" className="rounded-[36px] scroll-mt-6 p-6 sm:p-8">
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <TrustItem icon={<ShieldCheck className="h-4 w-4" aria-hidden="true" />} label={isVerified ? "Verified barber" : "Profile active"} value={isVerified ? verificationBadges[0] : "BVRB3R profile"} />
+        <TrustItem icon={<CalendarDays className="h-4 w-4" aria-hidden="true" />} label="Next opening" value={nextOpening} />
+        <TrustItem icon={<MapPin className="h-4 w-4" aria-hidden="true" />} label="Location" value={serviceLocation} />
+        <TrustItem icon={<CreditCard className="h-4 w-4" aria-hidden="true" />} label="Payments" value="Card-on-file supported" />
+        <TrustItem icon={<Star className="h-4 w-4 fill-current" aria-hidden="true" />} label="Rating" value={`${reviewScore.toFixed(1)} from ${reviewCount} reviews`} />
+      </section>
+
+      <section className="flex gap-3 overflow-x-auto pb-1" aria-label="Profile highlights">
+        {highlights.map((highlight) => (
+          <span
+            key={highlight}
+            className="inline-flex h-20 w-20 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.035] px-2 text-center text-xs font-bold leading-4 text-white/78"
+          >
+            {highlight}
+          </span>
+        ))}
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            <p className={labelClass}>Portfolio</p>
+            <h2 className="mt-1 text-2xl font-black text-white">Work grid</h2>
+          </div>
+          <span className="text-sm font-bold text-white/54">{profile.portfolio.length} posts</span>
+        </div>
+        <PublicBarberPortfolioGrid assets={profile.portfolio} barberName={displayName} />
+      </section>
+
+      <section className="grid gap-6 lg:grid-cols-[1fr_0.78fr]">
+        <div id="barber-profile-services" className={`${compactPanelClass} scroll-mt-6 p-4 sm:p-5`}>
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="surface-label">Services</p>
-              <p className="mt-2 text-sm text-white/58">Choose a service to start booking.</p>
+              <p className={labelClass}>Book a service</p>
+              <h2 className="mt-1 text-2xl font-black text-white">Choose your cut</h2>
             </div>
-            <Clock3 className="h-5 w-5 text-[#baff69]" />
+            <Scissors className="h-5 w-5 text-[#d7ffab]" aria-hidden="true" />
           </div>
           <div className="mt-4 space-y-3">
             {profile.services.length ? profile.services.map((item) => (
-              <div key={item.service.id} className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-lg font-semibold text-white">{item.service.name}</p>
-                    <p className="mt-2 text-sm text-white/62">{item.service.description}</p>
-                  </div>
-                  <span className="status-pill text-[#d7ffab]">{currency(item.service.price)}</span>
-                </div>
-                <div className="mt-4 grid gap-3 text-sm text-white/68 sm:grid-cols-3">
-                  <div className="rounded-[18px] border border-white/8 bg-black/25 px-3 py-3">{item.service.durationMin} min</div>
-                  <div className="rounded-[18px] border border-white/8 bg-black/25 px-3 py-3">
-                    {item.service.deposit > 0 ? `Deposit ${currency(item.service.deposit)}` : "No deposit"}
-                  </div>
-                  <div className="rounded-[18px] border border-white/8 bg-black/25 px-3 py-3">
-                    {item.service.fullPrepay ? "Prepay required" : "Card-on-file supported"}
-                  </div>
-                </div>
-                <div className="mt-4">
-                  <MarketplaceTrackedActionLink
-                    href={serviceBookingHref(profile.bookingCtaHref, item.service.id)}
-                    className="h-11 px-5 text-sm"
-                    analytics={{
-                      eventType: "booking_cta_clicked",
-                      barberId: profile.barber.id,
-                      username: profile.profile.username,
-                      locationId: profile.shopLocations[0]?.id,
-                      sourceKind: "public_profile",
-                      sourceReference: "service_card",
-                      metadata: {
-                        serviceId: item.service.id
-                      }
-                    }}
-                  >
-                    Book
-                  </MarketplaceTrackedActionLink>
-                </div>
-              </div>
+              <ServiceRow
+                key={item.service.id}
+                item={item}
+                bookingHref={serviceBookingHref(profile.bookingCtaHref, item.service.id)}
+                profile={profile}
+                nextOpening={nextOpening}
+              />
             )) : (
-              <div className="empty-state-panel rounded-[24px] p-5 text-sm text-white/55">
+              <div className="rounded-lg border border-dashed border-white/10 bg-white/[0.025] p-5 text-sm text-white/55">
                 Services are not available yet.
               </div>
             )}
           </div>
 
           {policyNotes.length ? (
-            <div className="mt-5 rounded-[28px] border border-white/8 bg-black/20 p-5">
-              <div className="flex items-center gap-2 text-[#d7ffab]">
-                <CreditCard className="h-4 w-4" />
-                <p className="surface-label">Payment policy</p>
-              </div>
-              <div className="mt-4 space-y-3 text-sm leading-7 text-white/68">
-                {policyNotes.map((note) => (
-                  <p key={note}>{note}</p>
-                ))}
-              </div>
-            </div>
-          ) : null}
-        </Card>
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
-        {profile.portfolio.length ? (
-          <Card className="rounded-[36px] p-6 sm:p-8">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="surface-label">Portfolio</p>
-                <p className="mt-2 text-sm text-white/58">Public haircut work.</p>
-              </div>
-              <span className="status-pill text-white/72">{profile.portfolio.length} images</span>
-            </div>
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
-              {profile.portfolio.map((asset) => (
-                <div key={asset.id} className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                  {asset.imageUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={asset.imageUrl}
-                      alt={asset.caption || clientFacingName}
-                      className="h-40 w-full rounded-[20px] border border-white/8 object-cover"
-                    />
-                  ) : null}
-                  <p className="mt-4 text-sm leading-7 text-white/68">{asset.caption || "Fresh work from this barber."}</p>
-                </div>
+            <div className="mt-4 space-y-2 rounded-lg border border-white/8 bg-black/25 p-4 text-sm leading-6 text-white/62">
+              {policyNotes.map((note) => (
+                <p key={note}>{note}</p>
               ))}
             </div>
-          </Card>
-        ) : (
-          <Card className="rounded-[36px] p-6 sm:p-8">
-            <p className="surface-label">Portfolio</p>
-            <p className="mt-3 text-lg font-semibold text-white">Portfolio coming soon.</p>
-            <p className="mt-3 text-sm leading-7 text-white/62">
-              Public haircut images will appear here when they are added.
-            </p>
-          </Card>
-        )}
+          ) : null}
+        </div>
 
-        <Card className="rounded-[36px] p-6 sm:p-8">
+        <aside className={`${compactPanelClass} p-4 sm:p-5`}>
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="surface-label">Reviews</p>
-              <p className="mt-2 text-sm text-white/58">{profile.reviews.length ? "Client feedback" : "Reviews building"}</p>
+              <p className={labelClass}>Reviews</p>
+              <h2 className="mt-1 text-2xl font-black text-white">{reviewScore.toFixed(1)} rating</h2>
             </div>
-            <div className="inline-flex items-center gap-2 text-[#d7ffab]">
-              <Star className="h-4 w-4 fill-current" />
-              <span className="text-sm font-semibold text-white">{reviewScore.toFixed(1)}</span>
+            <div className="inline-flex items-center gap-1 text-[#d7ffab]">
+              <Star className="h-4 w-4 fill-current" aria-hidden="true" />
+              <span className="text-sm font-black">{reviewCount}</span>
             </div>
           </div>
           {profile.reviews.length ? (
             <div className="mt-4 space-y-3">
               {profile.reviews.slice(0, 4).map((review) => (
-                <div key={review.id} className="rounded-[22px] border border-white/8 bg-black/25 p-4">
+                <article key={review.id} className={`${quietPanelClass} p-4`}>
                   <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2 text-[#d7ffab]">
-                      <Star className="h-4 w-4 fill-current" />
+                    <span className="inline-flex items-center gap-1 text-sm font-black text-[#d7ffab]">
+                      <Star className="h-4 w-4 fill-current" aria-hidden="true" />
                       {review.rating.toFixed(1)}
-                    </div>
-                    <span className="text-[11px] uppercase tracking-[0.18em] text-white/38">{review.createdAt}</span>
+                    </span>
+                    <span className="text-xs text-white/38">{review.createdAt}</span>
                   </div>
-                  <p className="mt-3 text-sm leading-7 text-white/68">{review.message}</p>
-                </div>
+                  <p className="mt-3 text-sm leading-6 text-white/68">{review.message}</p>
+                </article>
               ))}
             </div>
           ) : (
-            <div className="mt-4 rounded-[24px] border border-dashed border-white/10 bg-black/18 p-5 text-sm leading-7 text-white/58">
+            <div className="mt-4 rounded-lg border border-dashed border-white/10 bg-white/[0.025] p-5 text-sm leading-6 text-white/58">
               Reviews building.
             </div>
           )}
-          <div className="mt-5">
-            <MarketplaceTrackedActionLink
-              href={(profile.bookingCtaHref ?? "/booking/new") as Route}
-              className="h-12 px-6"
-              analytics={{
-                eventType: "booking_cta_clicked",
-                barberId: profile.barber.id,
-                username: profile.profile.username,
-                locationId: profile.shopLocations[0]?.id,
-                sourceKind: "public_profile",
-                sourceReference: "reviews_cta",
-                metadata: {
-                  reviewCount,
-                  rating: reviewScore
-                }
-              }}
-            >
-              Book
-            </MarketplaceTrackedActionLink>
-          </div>
-        </Card>
+        </aside>
       </section>
+
+      <div className="sticky bottom-3 z-20 mx-auto flex max-w-sm justify-center sm:hidden">
+        <Link href="#barber-profile-services" className={primaryButtonClass}>
+          <Clock3 className="h-4 w-4" aria-hidden="true" />
+          Book a service
+        </Link>
+      </div>
     </div>
   );
 }

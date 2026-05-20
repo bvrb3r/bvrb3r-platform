@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -13,19 +13,26 @@ vi.mock("@/components/client-experience/marketplace-tracked-action-link", () => 
 }));
 
 vi.mock("@/components/marketplace/public-barber-growth-actions", () => ({
-  PublicBarberGrowthActions: () => <div data-testid="growth-actions">Growth actions</div>
+  PublicBarberGrowthActions: () => <button type="button">Follow</button>
+}));
+
+vi.mock("@/components/marketplace/public-barber-message-action", () => ({
+  PublicBarberMessageAction: ({ barberProfileId }: { barberProfileId: string }) => (
+    <button type="button" data-profile-id={barberProfileId}>Message</button>
+  )
 }));
 
 import { PublicBarberProfile } from "@/components/marketplace/public-barber-profile";
 import type { PublicBarberProfileView } from "@/lib/marketplace/engine";
 
 describe("public barber profile", () => {
-  it("renders the client-facing hero, services, policies, and clean empty sections", () => {
+  it("renders the client-facing IG-style header, actions, services, policies, and clean empty sections", () => {
     render(
       <PublicBarberProfile
         profile={{
           barber: {
             id: "barber-wave",
+            userId: "profile-wave",
             name: "Wave Carter",
             rating: 4.9
           },
@@ -41,7 +48,8 @@ describe("public barber profile", () => {
             reviewScore: 4.9,
             reviewCount: 120,
             verificationLabels: ["Verified shop"],
-            followCount: 18
+            followCount: 18,
+            bookingsCompleted: 3
           },
           priceRange: [55, 70],
           nextAvailableAt: "2026-04-28T14:00:00.000Z",
@@ -79,37 +87,45 @@ describe("public barber profile", () => {
       />
     );
 
-    expect(screen.getByText("wave")).toBeInTheDocument();
-    expect(screen.queryByText("Wave Carter")).not.toBeInTheDocument();
+    const header = screen.getByTestId("public-barber-profile-header");
+    expect(within(header).getByText("Wave Carter")).toBeInTheDocument();
+    expect(within(header).getByText("@wave")).toBeInTheDocument();
+    expect(within(header).getByText("18")).toBeInTheDocument();
+    expect(within(header).getByText("followers")).toBeInTheDocument();
+    expect(within(header).getByText("3")).toBeInTheDocument();
+    expect(within(header).getByText("bookings")).toBeInTheDocument();
+    expect(within(header).getByRole("button", { name: "Message" })).toHaveAttribute("data-profile-id", "profile-wave");
+    expect(within(header).getByRole("button", { name: "Follow" })).toBeInTheDocument();
+    expect(within(screen.getByTestId("barber-profile-header-actions")).getAllByRole("link", { name: "Book" })).toHaveLength(1);
     expect(screen.getByText(/2172 University Square Mall, Tampa, FL 33612/)).toBeInTheDocument();
     expect(screen.queryByText("Verified license")).not.toBeInTheDocument();
-    expect(screen.getByText("Verified identity")).toBeInTheDocument();
+    expect(screen.getAllByText("Verified identity").length).toBeGreaterThan(0);
     expect(screen.getByText("Verified shop")).toBeInTheDocument();
-    expect(screen.getByText("@wave")).toBeInTheDocument();
-    expect(screen.getByText("Services")).toBeInTheDocument();
-    expect(screen.getByText("Signature Precision Cut")).toBeInTheDocument();
+    expect(screen.getAllByText("Book a service").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Signature Precision Cut").length).toBeGreaterThan(0);
     expect(screen.getAllByRole("link", { name: "Book" }).length).toBeGreaterThan(0);
     expect(screen.getByText(/Deposits apply to select services starting at \$15/)).toBeInTheDocument();
     expect(screen.getByText("Card on file is required when the selected service policy needs it.")).toBeInTheDocument();
-    expect(screen.getByText("Portfolio coming soon.")).toBeInTheDocument();
-    expect(screen.getAllByText("Reviews building").length).toBeGreaterThan(0);
+    expect(screen.getByText("No work posted yet.")).toBeInTheDocument();
+    expect(screen.getAllByText("Reviews building.").length).toBeGreaterThan(0);
     expect(screen.queryByText(/shared service system/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/approved marketplace supply/i)).not.toBeInTheDocument();
   });
 
-  it("renders canonical portfolio media when real assets exist", () => {
+  it("renders a real profile photo and opens canonical portfolio media in a gallery", () => {
     render(
       <PublicBarberProfile
         profile={{
           barber: {
             id: "barber-wave",
+            userId: "profile-wave",
             name: "Wave Carter",
             rating: 4.9
           },
           profile: {
             username: "wave",
             headline: "Precision fades that hold their shape.",
-            profilePhotoUrl: null,
+            profilePhotoUrl: "https://cdn.bvrb3r.app/barbers/wave/avatar.jpg",
             photoAccent: "#7cff00",
             specialties: ["Precision fades"],
             badges: []
@@ -136,7 +152,10 @@ describe("public barber profile", () => {
       />
     );
 
+    expect(screen.getByTestId("barber-profile-photo")).toHaveAttribute("src", "https://cdn.bvrb3r.app/barbers/wave/avatar.jpg");
     expect(screen.getByRole("img", { name: /sharp taper finish/i })).toBeInTheDocument();
-    expect(screen.queryByText("Portfolio coming soon.")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("img", { name: /sharp taper finish/i }));
+    expect(screen.getByTestId("portfolio-lightbox")).toBeInTheDocument();
+    expect(screen.queryByText("No work posted yet.")).not.toBeInTheDocument();
   });
 });

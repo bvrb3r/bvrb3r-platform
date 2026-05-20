@@ -16,7 +16,12 @@ export default async function PublicBarberProfilePage({ params }: { params: Prom
 
   return (
     <ClientAppShell activeTab="search" mode={context.isGuest ? "guest" : "client"}>
-      <PublicBarberProfile profile={profile} viewerCanFollow={context.isSignedInClient} viewerCanReport={canReport} />
+      <PublicBarberProfile
+        profile={profile}
+        viewerCanFollow={context.isSignedInClient}
+        viewerCanMessage={context.isSignedInClient}
+        viewerCanReport={canReport}
+      />
     </ClientAppShell>
   );
 }

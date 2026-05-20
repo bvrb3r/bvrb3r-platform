@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { BookmarkCheck, Heart, Link2, ShieldAlert, Sparkles } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Select } from "@/components/ui/select";
 import { useSaveFavoriteBarberMutation, type BookingApiError } from "@/lib/booking/client";
@@ -12,6 +11,9 @@ import { useBarberFollowState, useFollowBarberMutation, useUnfollowBarberMutatio
 import { useMarketplaceAnalyticsMutation, type MarketplaceApiError } from "@/lib/marketplace/client";
 import { useSubmitSafetyReportMutation, type TrustApiError } from "@/lib/trust/client";
 import { getReadableActionError } from "@/lib/utils/feedback";
+
+const actionButtonClass = "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.045] px-4 py-2 text-sm font-bold text-white transition hover:border-[#a3ff12]/35 hover:bg-white/[0.075] hover:text-[#d7ffab] disabled:pointer-events-none disabled:opacity-55";
+const primaryActionButtonClass = "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-[#a3ff12]/45 bg-[#a3ff12] px-4 py-2 text-sm font-black text-black shadow-[0_14px_36px_rgba(163,255,18,0.2)] transition hover:bg-[#d7ffab] disabled:pointer-events-none disabled:opacity-55";
 
 export function PublicBarberGrowthActions({ barberId, username, canFollow, canReport = false, initialFollowerCount }: { barberId: string; username: string; canFollow: boolean; canReport?: boolean; initialFollowerCount: number; }) {
   const followStateQuery = useBarberFollowState(barberId, canFollow);
@@ -34,12 +36,12 @@ export function PublicBarberGrowthActions({ barberId, username, canFollow, canRe
     try {
       if (isFollowing) {
         await unfollowMutation.mutateAsync({ barberId });
-        setFeedback({ tone: "info", message: "You will stop getting activity and availability updates for this barber." });
+        setFeedback({ tone: "info", message: "Follow removed." });
         return;
       }
 
       await followMutation.mutateAsync({ barberId, notifyOnAvailability: true, notifyOnPortfolio: true });
-      setFeedback({ tone: "success", message: "You are now following this barber. Availability and profile momentum can feed your client experience." });
+      setFeedback({ tone: "success", message: "Following." });
     } catch (error) {
       setFeedback({ tone: "error", message: getReadableActionError(error as EngagementApiError) });
     }
@@ -49,7 +51,7 @@ export function PublicBarberGrowthActions({ barberId, username, canFollow, canRe
     setFeedback(null);
     try {
       await favoriteMutation.mutateAsync({ barberReference: barberId });
-      setFeedback({ tone: "success", message: "This barber is now your favorite. Client discovery and repeat booking surfaces will prioritize this real profile." });
+      setFeedback({ tone: "success", message: "Saved." });
     } catch (error) {
       setFeedback({ tone: "error", message: getReadableActionError(error as BookingApiError) });
     }
@@ -97,7 +99,7 @@ export function PublicBarberGrowthActions({ barberId, username, canFollow, canRe
         // Share should still succeed even if the viewer is not signed into a role-safe mobile session.
       }
 
-      setFeedback({ tone: "success", message: "Profile link ready to share. Web and app-link routing are both prepared for marketplace growth." });
+      setFeedback({ tone: "success", message: "Profile link ready." });
     } catch (error) {
       setFeedback({ tone: "error", message: getReadableActionError(error as MarketplaceApiError) });
     }
@@ -107,7 +109,7 @@ export function PublicBarberGrowthActions({ barberId, username, canFollow, canRe
     setFeedback(null);
     try {
       await reportMutation.mutateAsync({ subjectType: "barber", subjectId: barberId, category: reportCategory, details: reportDetails });
-      setFeedback({ tone: "success", message: "Your report was sent to the trust and safety queue. Sensitive details stay out of public view." });
+      setFeedback({ tone: "success", message: "Report sent." });
       setReportOpen(false);
     } catch (error) {
       setFeedback({ tone: "error", message: getReadableActionError(error as TrustApiError) });
@@ -119,41 +121,41 @@ export function PublicBarberGrowthActions({ barberId, username, canFollow, canRe
       {feedback ? <FeedbackBanner tone={feedback.tone} message={feedback.message} /> : null}
       <div className="flex flex-wrap gap-3">
         {canFollow ? (
-          <Button type="button" variant={isFollowing ? "secondary" : "primary"} className="h-11 rounded-full px-5" disabled={isPending} onClick={() => void handleFollowToggle()}>
+          <button type="button" className={isFollowing ? actionButtonClass : primaryActionButtonClass} disabled={isPending} onClick={() => void handleFollowToggle()}>
             <Heart className={`h-4 w-4 ${isFollowing ? "fill-current" : ""}`} />
-            {isFollowing ? "Following" : "Follow barber"}
-          </Button>
+            {isFollowing ? "Following" : "Follow"}
+          </button>
         ) : (
-          <span className="status-pill text-white/72">Follow from a client account</span>
+          <span className="inline-flex min-h-11 items-center rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm font-bold text-white/72">Follow from a client account</span>
         )}
-        <Button type="button" variant="secondary" className="h-11 rounded-full px-5" disabled={isPending} onClick={() => void handleShare()}>
+        <button type="button" className={actionButtonClass} disabled={isPending} onClick={() => void handleShare()}>
           <Link2 className="h-4 w-4" />
-          Share profile
-        </Button>
+          Share
+        </button>
         {canFollow ? (
-          <Button type="button" variant="secondary" className="h-11 rounded-full px-5" disabled={isPending} onClick={() => void handleFavorite()}>
+          <button type="button" className={actionButtonClass} disabled={isPending} onClick={() => void handleFavorite()}>
             <BookmarkCheck className="h-4 w-4" />
-            {favoriteMutation.isPending ? "Saving..." : "Favorite barber"}
-          </Button>
+            {favoriteMutation.isPending ? "Saving..." : "Save"}
+          </button>
         ) : null}
         {canReport ? (
-          <Button type="button" variant="secondary" className="h-11 rounded-full px-5" disabled={isPending} onClick={() => setReportOpen((open) => !open)}>
+          <button type="button" className={actionButtonClass} disabled={isPending} onClick={() => setReportOpen((open) => !open)}>
             <ShieldAlert className="h-4 w-4" />
-            {reportOpen ? "Hide report" : "Report concern"}
-          </Button>
+            {reportOpen ? "Hide report" : "Report"}
+          </button>
         ) : null}
-        <span className="status-pill text-[#d7ffab]">
+        <span className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-[#a3ff12]/20 bg-[#a3ff12]/10 px-4 text-sm font-bold text-[#d7ffab]">
           <Sparkles className="h-4 w-4" />
           {followerCount} following
         </span>
       </div>
       {reportOpen ? (
-        <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-          <p className="surface-label">Trust and safety intake</p>
+        <div className="rounded-lg border border-white/8 bg-black/20 p-4">
+          <p className="text-xs font-bold uppercase text-white/48">Trust and safety intake</p>
           <p className="mt-2 text-sm text-white/60">Only moderation-safe details are sent. Public profile visitors will not see this report.</p>
           <div className="mt-4 grid gap-3 md:grid-cols-[0.48fr_0.52fr]">
             <div>
-              <label className="mb-3 block surface-label">Concern type</label>
+              <label className="mb-3 block text-xs font-bold uppercase text-white/48">Concern type</label>
               <Select value={reportCategory} onChange={(event) => setReportCategory(event.target.value)}>
                 <option value="fake_profile">Fake profile</option>
                 <option value="unsafe_conduct">Unsafe conduct</option>
@@ -163,15 +165,15 @@ export function PublicBarberGrowthActions({ barberId, username, canFollow, canRe
               </Select>
             </div>
             <div>
-              <label className="mb-3 block surface-label">Notes</label>
-              <textarea value={reportDetails} onChange={(event) => setReportDetails(event.target.value)} className="min-h-[110px] w-full rounded-[22px] border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none transition focus:border-[#7CFF00]/30 focus:ring-2 focus:ring-[#7CFF00]/12" />
+              <label className="mb-3 block text-xs font-bold uppercase text-white/48">Notes</label>
+              <textarea value={reportDetails} onChange={(event) => setReportDetails(event.target.value)} className="min-h-[110px] w-full rounded-lg border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none transition focus:border-[#7CFF00]/30 focus:ring-2 focus:ring-[#7CFF00]/12" />
             </div>
           </div>
           <div className="mt-4 flex flex-wrap gap-3">
-            <Button type="button" className="h-11 px-5" disabled={isPending || reportDetails.trim().length < 12} onClick={() => void handleReport()}>
+            <button type="button" className={primaryActionButtonClass} disabled={isPending || reportDetails.trim().length < 12} onClick={() => void handleReport()}>
               {reportMutation.isPending ? "Sending report..." : "Send report"}
-            </Button>
-            <span className="status-pill text-white/62">Trust-safe intake only</span>
+            </button>
+            <span className="inline-flex min-h-11 items-center rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm font-bold text-white/62">Trust-safe intake only</span>
           </div>
         </div>
       ) : null}
