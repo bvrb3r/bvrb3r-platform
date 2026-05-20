@@ -319,6 +319,25 @@ function filterBarberThreads(threads: MessagingThreadSummary[], activeTab: Barbe
   return filtered.filter((thread) => activeTab === "primary" || getBarberInboxCategory(thread) === activeTab);
 }
 
+function getThreadActivityTime(thread: MessagingThreadSummary) {
+  const activityIso = thread.lastMessage?.createdAt ?? thread.updatedAt ?? thread.createdAt;
+  const activityTime = new Date(activityIso).getTime();
+  return Number.isNaN(activityTime) ? 0 : activityTime;
+}
+
+function orderAndDedupeThreads(threads: MessagingThreadSummary[]) {
+  const threadMap = new Map<string, MessagingThreadSummary>();
+
+  for (const thread of threads) {
+    const existingThread = threadMap.get(thread.id);
+    if (!existingThread || getThreadActivityTime(thread) > getThreadActivityTime(existingThread)) {
+      threadMap.set(thread.id, thread);
+    }
+  }
+
+  return Array.from(threadMap.values()).sort((left, right) => getThreadActivityTime(right) - getThreadActivityTime(left));
+}
+
 function buildQuickContacts(
   threads: MessagingThreadSummary[],
   appointmentStarters: MessagingInboxCandidate[],
@@ -468,6 +487,7 @@ function ThinThreadRow({
   return (
     <Link
       href={`${basePath}/${thread.id}` as Route}
+      data-testid={`message-thread-row-${thread.id}`}
       onClick={onOpen ? (event) => {
         event.preventDefault();
         onOpen(thread.id);
@@ -784,9 +804,6 @@ export function MessagingInboxScreen({
   const broadcastMutation = useSendMessageBroadcastMutation();
   const clientUsesModal = surface === "client";
   const [modalThreadId, setModalThreadId] = useState<string | null>(selectedThreadId ?? null);
-  const activeThreadId = clientUsesModal ? modalThreadId ?? undefined : selectedThreadId ?? threadsQuery.data?.threads[0]?.id;
-  const threadQuery = useMessageThreadQuery(activeThreadId);
-  const sendMessageMutation = useSendMessageMutation(activeThreadId);
   const [composerBody, setComposerBody] = useState("");
   const [statusUpdate, setStatusUpdate] = useState<{ tone: "success" | "info" | "error"; message: string } | null>(null);
   const [broadcastLocationId, setBroadcastLocationId] = useState("");
@@ -799,7 +816,7 @@ export function MessagingInboxScreen({
   const hasTriggeredSupportIntentRef = useRef(false);
 
   const available = threadsQuery.data?.available ?? false;
-  const threads = useMemo(() => threadsQuery.data?.threads ?? [], [threadsQuery.data?.threads]);
+  const threads = useMemo(() => orderAndDedupeThreads(threadsQuery.data?.threads ?? []), [threadsQuery.data?.threads]);
   const appointmentStarters = useMemo(() => threadsQuery.data?.eligibleAppointments ?? [], [threadsQuery.data?.eligibleAppointments]);
   const uniqueAppointmentStarters = useMemo(() => {
     const seen = new Set<string>();
@@ -815,6 +832,9 @@ export function MessagingInboxScreen({
   }, [appointmentStarters]);
   const contactStarters = useMemo(() => threadsQuery.data?.eligibleContacts ?? [], [threadsQuery.data?.eligibleContacts]);
   const broadcastTargets = useMemo(() => threadsQuery.data?.broadcastTargets ?? [], [threadsQuery.data?.broadcastTargets]);
+  const activeThreadId = clientUsesModal ? modalThreadId ?? undefined : selectedThreadId ?? threads[0]?.id;
+  const threadQuery = useMessageThreadQuery(activeThreadId);
+  const sendMessageMutation = useSendMessageMutation(activeThreadId);
   const activeThread = threadQuery.data?.thread ?? null;
   const messages = threadQuery.data?.messages ?? [];
   const supportThread = useMemo(
@@ -947,10 +967,20 @@ export function MessagingInboxScreen({
   }
 
   async function handleSupportThread() {
+    if (supportThread?.id) {
+      handleOpenThread(supportThread.id);
+      return;
+    }
+
     await handleStartThread({ threadType: "support" }, "Support conversation ready.");
   }
 
   const handleNewMessage = () => {
+    if (clientUsesModal) {
+      void handleSupportThread();
+      return;
+    }
+
     startersRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
@@ -1068,22 +1098,12 @@ export function MessagingInboxScreen({
               )) : (
                 <div className="rounded-lg border border-dashed border-white/10 bg-white/[0.025] p-4 text-sm leading-6 text-white/58">
                   <p>{threads.length ? "No matching messages." : "No messages yet."}</p>
-                  {surface === "client" ? (
-                    <div className="mt-3">
-                      <Button
-                        className="h-9 rounded-lg px-3 normal-case tracking-normal"
-                        disabled={createThreadMutation.isPending}
-                        onClick={() => void handleSupportThread()}
-                      >
-                        {createThreadMutation.isPending ? "Opening..." : "Start a support message"}
-                      </Button>
-                    </div>
-                  ) : null}
                 </div>
               )}
             </div>
 
-            <div ref={startersRef} className="rounded-lg border border-white/8 bg-white/[0.025] p-3">
+            {surface !== "client" ? (
+              <div ref={startersRef} className="rounded-lg border border-white/8 bg-white/[0.025] p-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-xs font-bold uppercase text-[#a3ff12]">{copy.starterTitle}</p>
@@ -1092,22 +1112,6 @@ export function MessagingInboxScreen({
                 <MessageSquareText className="h-4 w-4 text-[#d7ffab]" aria-hidden="true" />
               </div>
               <div className="mt-3 space-y-2">
-                {surface === "client" ? (
-                  <div className="flex items-center justify-between gap-3 rounded-lg border border-[#a3ff12]/18 bg-[#a3ff12]/8 p-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-bold text-white">BVRB3R Support</p>
-                      <p className="truncate text-xs text-white/50">Booking, payment, or account help.</p>
-                    </div>
-                    <Button
-                      className="h-8 rounded-lg px-3 text-xs normal-case tracking-normal"
-                      disabled={createThreadMutation.isPending}
-                      onClick={() => void handleSupportThread()}
-                    >
-                      {createThreadMutation.isPending ? "Opening..." : "Message Support"}
-                    </Button>
-                  </div>
-                ) : null}
-
                 {uniqueAppointmentStarters.map((starter) => (
                   <div key={starter.appointmentId} className="flex items-center justify-between gap-3 rounded-lg border border-white/8 bg-black/24 p-3">
                     <div className="min-w-0">
@@ -1156,13 +1160,14 @@ export function MessagingInboxScreen({
                   </div>
                 ))}
 
-                {!uniqueAppointmentStarters.length && !contactStarters.length && surface !== "client" ? (
+                {!uniqueAppointmentStarters.length && !contactStarters.length ? (
                   <div className="rounded-lg border border-dashed border-white/10 bg-black/24 p-3 text-sm leading-6 text-white/52">
                     No additional thread starters are available right now.
                   </div>
                 ) : null}
               </div>
-            </div>
+              </div>
+            ) : null}
 
             {surface === "shop" ? (
               <div className="rounded-lg border border-white/8 bg-white/[0.025] p-3">

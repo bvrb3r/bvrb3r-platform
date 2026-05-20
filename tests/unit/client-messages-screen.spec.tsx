@@ -89,6 +89,32 @@ function buildThread(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function buildSupportThread(overrides: Record<string, unknown> = {}) {
+  return buildThread({
+    id: "thread-support-1",
+    threadType: "support",
+    appointmentId: null,
+    locationId: null,
+    locationContext: null,
+    createdAt: "2026-05-19T13:20:00.000Z",
+    updatedAt: "2026-05-19T13:40:00.000Z",
+    counterpart: {
+      profileId: "profile-support",
+      fullName: "BVRB3R Support",
+      role: "platform_admin"
+    },
+    appointmentContext: null,
+    lastMessage: {
+      id: "message-support-1",
+      body: "How can we help?",
+      messageType: "text",
+      createdAt: "2026-05-19T13:40:00.000Z",
+      senderName: "BVRB3R Support"
+    },
+    ...overrides
+  });
+}
+
 function buildThreadDetail(thread: ReturnType<typeof buildThread>, selfRole = "client") {
   return {
     ...thread,
@@ -166,7 +192,7 @@ describe("client messages screen", () => {
     });
   });
 
-  it("renders the client inbox empty state and support entry", () => {
+  it("renders the client inbox empty state without the redundant starter section", () => {
     render(
       <MessagingInboxScreen
         surface="client"
@@ -177,9 +203,12 @@ describe("client messages screen", () => {
     );
 
     expect(screen.getByText("No messages yet.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Start a support message" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Message Support" })).toBeInTheDocument();
-    expect(screen.getByText("BVRB3R Support")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "New Message" })).toBeInTheDocument();
+    expect(screen.getAllByText("New").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "Start a support message" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Message Support" })).not.toBeInTheDocument();
+    expect(screen.queryByText("New messages")).not.toBeInTheDocument();
+    expect(screen.queryByText("Start from a booked appointment, shop line, or support.")).not.toBeInTheDocument();
   });
 
   it("routes straight into an existing support thread when requested", async () => {
@@ -235,6 +264,103 @@ describe("client messages screen", () => {
     await waitFor(() => {
       expect(replace).toHaveBeenCalledWith("/dashboard/client/messages/thread-support-1");
     });
+  });
+
+  it("renders one sorted thread list for barber and support conversations", () => {
+    const barberThread = buildThread({
+      updatedAt: "2026-05-19T13:30:00.000Z",
+      lastMessage: {
+        id: "message-barber-1",
+        body: "Barber thread",
+        messageType: "text",
+        createdAt: "2026-05-19T13:30:00.000Z",
+        senderName: "Phillip mcgee"
+      }
+    });
+    const supportThread = buildSupportThread({
+      updatedAt: "2026-05-19T14:05:00.000Z",
+      lastMessage: {
+        id: "message-support-1",
+        body: "Latest support reply",
+        messageType: "text",
+        createdAt: "2026-05-19T14:05:00.000Z",
+        senderName: "BVRB3R Support"
+      }
+    });
+    const staleDuplicateSupportThread = buildSupportThread({
+      updatedAt: "2026-05-19T12:05:00.000Z",
+      lastMessage: {
+        id: "message-support-old",
+        body: "Old support reply",
+        messageType: "text",
+        createdAt: "2026-05-19T12:05:00.000Z",
+        senderName: "BVRB3R Support"
+      }
+    });
+
+    useMessageThreadsQueryMock.mockReturnValue({
+      data: {
+        available: true,
+        viewer: {
+          profileId: "profile-client",
+          fullName: "Jordan Ellis",
+          role: "client"
+        },
+        threads: [barberThread, staleDuplicateSupportThread, supportThread],
+        eligibleAppointments: [
+          {
+            kind: "appointment",
+            appointmentId: "appointment-1",
+            counterpart: {
+              profileId: "profile-barber",
+              fullName: "Phillip mcgee",
+              role: "barber_user"
+            },
+            appointmentContext: barberThread.appointmentContext
+          },
+          {
+            kind: "appointment",
+            appointmentId: "appointment-1",
+            counterpart: {
+              profileId: "profile-barber",
+              fullName: "Phillip mcgee",
+              role: "barber_user"
+            },
+            appointmentContext: barberThread.appointmentContext
+          }
+        ],
+        eligibleContacts: [],
+        broadcastTargets: []
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="client"
+        basePath="/dashboard/client/messages"
+        title="Messages"
+        subtitle="Your conversations, appointments, and support."
+      />
+    );
+
+    expect(screen.queryByText("New messages")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Message Support" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open" })).not.toBeInTheDocument();
+    expect(screen.getByTestId("message-thread-row-thread-appointment-1")).toBeInTheDocument();
+    expect(screen.getByTestId("message-thread-row-thread-support-1")).toBeInTheDocument();
+    expect(screen.getByText("Barber thread")).toBeInTheDocument();
+    expect(screen.getByText("Latest support reply")).toBeInTheDocument();
+    expect(screen.queryByText("Old support reply")).not.toBeInTheDocument();
+    expect(screen.getAllByText("PM").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("B").length).toBeGreaterThan(0);
+
+    const rows = screen.getAllByTestId(/message-thread-row-/);
+    expect(rows.map((row) => row.getAttribute("data-testid"))).toEqual([
+      "message-thread-row-thread-support-1",
+      "message-thread-row-thread-appointment-1"
+    ]);
   });
 
   it("renders a thin appointment-linked client inbox row and modal conversation shell", () => {
