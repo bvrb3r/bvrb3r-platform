@@ -28,6 +28,31 @@ async function resolvePublicBarberIdentity(barberId: string) {
   };
 }
 
+type FollowStateSource = Awaited<ReturnType<Awaited<ReturnType<typeof getEngagementProvider>>["readState"]>>;
+
+function buildFollowState(state: FollowStateSource, clientId: string, barberId: string) {
+  const follow = state.barberFollows.find((entry) => entry.clientId === clientId && entry.barberId === barberId);
+  return {
+    follow,
+    followState: {
+      barberId,
+      isFollowing: Boolean(follow),
+      notifyOnAvailability: follow?.notifyOnAvailability ?? true,
+      notifyOnPortfolio: follow?.notifyOnPortfolio ?? true,
+      followerCount: state.barberFollows.filter((entry) => entry.barberId === barberId).length
+    }
+  };
+}
+
+async function readFollowStateAfterMutation(
+  engagementProvider: Awaited<ReturnType<typeof getEngagementProvider>>,
+  clientId: string,
+  barberId: string
+) {
+  const state = await engagementProvider.readState();
+  return buildFollowState(state, clientId, barberId);
+}
+
 export async function GET(request: NextRequest) {
   try {
     const actor = await requireEngagementActor(["client"]);
@@ -45,18 +70,11 @@ export async function GET(request: NextRequest) {
     }
 
     const engagementProvider = await getEngagementProvider();
-    const state = await engagementProvider.readState();
-    const follow = state.barberFollows.find((entry) => entry.clientId === actor.clientId && entry.barberId === barberIdentity.barberId);
-    const followerCount = state.barberFollows.filter((entry) => entry.barberId === barberIdentity.barberId).length;
+    const { followState } = await readFollowStateAfterMutation(engagementProvider, actor.clientId, barberIdentity.barberId);
 
     return NextResponse.json({
-      followState: {
-        barberId: barberIdentity.barberId,
-        isFollowing: Boolean(follow),
-        notifyOnAvailability: follow?.notifyOnAvailability ?? true,
-        notifyOnPortfolio: follow?.notifyOnPortfolio ?? true,
-        followerCount
-      }
+      ok: true,
+      followState
     });
   } catch (error) {
     return engagementErrorResponse(error);
@@ -75,10 +93,41 @@ export async function POST(request: Request) {
     if (!barberIdentity) {
       return NextResponse.json({ error: "Barber could not be found." }, { status: 404 });
     }
-    const result = await engagementProvider.followBarber(actor, {
-      ...payload,
-      barberId: barberIdentity.barberId
-    });
+
+    if (!actor.clientId) {
+      return NextResponse.json({ error: "A client profile is required to follow a barber." }, { status: 400 });
+    }
+
+    const current = await readFollowStateAfterMutation(engagementProvider, actor.clientId, barberIdentity.barberId);
+    if (current.follow) {
+      return NextResponse.json({
+        ok: true,
+        action: "already_following",
+        follow: current.follow,
+        followState: current.followState
+      });
+    }
+
+    let result: Awaited<ReturnType<typeof engagementProvider.followBarber>>;
+    try {
+      result = await engagementProvider.followBarber(actor, {
+        ...payload,
+        barberId: barberIdentity.barberId
+      });
+    } catch (error) {
+      const recovered = await readFollowStateAfterMutation(engagementProvider, actor.clientId, barberIdentity.barberId).catch(() => null);
+      if (recovered?.follow) {
+        return NextResponse.json({
+          ok: true,
+          action: "followed",
+          follow: recovered.follow,
+          followState: recovered.followState,
+          warning: "Follow was saved, but a non-blocking engagement side effect needs review."
+        });
+      }
+
+      throw error;
+    }
 
     try {
       await marketplaceProvider.recordFollowCreated({
@@ -90,7 +139,24 @@ export async function POST(request: Request) {
       // Follow relationship is primary; marketplace analytics are best effort.
     }
 
-    return NextResponse.json({ follow: result.follow, notification: result.notification });
+    const next = await readFollowStateAfterMutation(engagementProvider, actor.clientId, barberIdentity.barberId).catch(() => ({
+      follow: result.follow,
+      followState: {
+        barberId: barberIdentity.barberId,
+        isFollowing: true,
+        notifyOnAvailability: result.follow.notifyOnAvailability,
+        notifyOnPortfolio: result.follow.notifyOnPortfolio,
+        followerCount: current.followState.followerCount + 1
+      }
+    }));
+
+    return NextResponse.json({
+      ok: true,
+      action: "followed",
+      follow: result.follow,
+      followState: next.followState,
+      notification: result.notification
+    });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: "Invalid barber follow request." }, { status: 400 });
@@ -117,8 +183,35 @@ export async function DELETE(request: NextRequest) {
     }
 
     const engagementProvider = await getEngagementProvider();
+    if (!actor.clientId) {
+      return NextResponse.json({ error: "A client profile is required to unfollow a barber." }, { status: 400 });
+    }
+
+    const before = await readFollowStateAfterMutation(engagementProvider, actor.clientId, barberIdentity.barberId);
+    if (!before.follow) {
+      return NextResponse.json({
+        ok: true,
+        action: "already_not_following",
+        unfollowedBarberId: barberIdentity.barberId,
+        followState: before.followState
+      });
+    }
+
     const result = await engagementProvider.unfollowBarber(actor, barberIdentity.barberId);
-    return NextResponse.json(result);
+    const after = await readFollowStateAfterMutation(engagementProvider, actor.clientId, barberIdentity.barberId).catch(() => ({
+      followState: {
+        ...before.followState,
+        isFollowing: false,
+        followerCount: Math.max(0, before.followState.followerCount - 1)
+      }
+    }));
+
+    return NextResponse.json({
+      ok: true,
+      action: "unfollowed",
+      ...result,
+      followState: after.followState
+    });
   } catch (error) {
     return engagementErrorResponse(error);
   }

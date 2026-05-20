@@ -29,7 +29,7 @@ describe("engagement engine", () => {
 
     expect(result.follow.barberId).toBe("barber-fade");
     expect(result.state.barberFollows.some((follow) => follow.clientId === "client-jordan" && follow.barberId === "barber-fade")).toBe(true);
-    expect(result.notification.type).toBe("new_follower");
+    expect(result.notification?.type).toBe("new_follower");
   });
 
   it("allows a validated production public barber reference to be followed", () => {
@@ -47,7 +47,35 @@ describe("engagement engine", () => {
 
     expect(result.follow.barberId).toBe("barber-43b3cda2");
     expect(result.state.barberFollows.some((follow) => follow.clientId === "client-jordan" && follow.barberId === "barber-43b3cda2")).toBe(true);
-    expect(result.notification.type).toBe("new_follower");
+    expect(result.notification?.type).toBe("new_follower");
+  });
+
+  it("treats duplicate follow requests as idempotent success", () => {
+    const state = createInitialEngagementState();
+    const first = followBarber(state, {
+      role: "client_user",
+      clientId: "client-jordan",
+      userEmail: "client@bvrb3r.demo",
+      locationIds: []
+    }, {
+      barberId: "barber-43b3cda2",
+      notifyOnAvailability: true,
+      notifyOnPortfolio: true
+    });
+    const duplicate = followBarber(first.state, {
+      role: "client_user",
+      clientId: "client-jordan",
+      userEmail: "client@bvrb3r.demo",
+      locationIds: []
+    }, {
+      barberId: "barber-43b3cda2",
+      notifyOnAvailability: true,
+      notifyOnPortfolio: true
+    });
+
+    expect(duplicate.follow.id).toBe(first.follow.id);
+    expect(duplicate.notification).toBeUndefined();
+    expect(duplicate.state.barberFollows.filter((follow) => follow.clientId === "client-jordan" && follow.barberId === "barber-43b3cda2")).toHaveLength(1);
   });
 
   it("awards loyalty points for a barber review event", () => {

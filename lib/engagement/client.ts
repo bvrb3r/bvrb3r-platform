@@ -30,12 +30,15 @@ interface ProcessAutomationResponse {
   };
 }
 
-interface FollowBarberResponse {
-  follow: {
+interface FollowMutationResponse {
+  ok: true;
+  follow?: {
     barberId: string;
     notifyOnAvailability: boolean;
     notifyOnPortfolio: boolean;
   };
+  followState: ClientBarberFollowState;
+  action?: "followed" | "already_following" | "unfollowed" | "already_not_following";
 }
 
 interface FollowStateResponse {
@@ -77,6 +80,18 @@ async function requestJson<T>(input: RequestInfo, init?: RequestInit): Promise<T
   }
 
   return body as T;
+}
+
+function invalidateQueriesQuietly(queryClient: ReturnType<typeof useQueryClient>, queryKeys: unknown[][]) {
+  for (const queryKey of queryKeys) {
+    void queryClient.invalidateQueries({ queryKey }).catch((error) => {
+      console.warn("[engagement-client] cache_refresh_failed", {
+        queryKey,
+        errorName: error instanceof Error ? error.name : null,
+        errorMessage: error instanceof Error ? error.message : String(error)
+      });
+    });
+  }
 }
 
 export function useClientEngagementSummary(enabled = true) {
@@ -129,7 +144,7 @@ export function useProcessOwnerAutomationMutation() {
 export function useBarberFollowState(barberId?: string, enabled = true) {
   return useQuery({
     queryKey: ["engagement", "client", "follow-state", barberId],
-    queryFn: () => requestJson<FollowStateResponse>(`/api/engagement/follows?barberId=${barberId}`),
+    queryFn: () => requestJson<FollowStateResponse>(`/api/engagement/follows?barberId=${encodeURIComponent(barberId ?? "")}`),
     select: (data) => data.followState,
     enabled: enabled && Boolean(barberId),
     staleTime: 15_000
@@ -151,18 +166,21 @@ export function useFollowBarberMutation() {
 
   return useMutation({
     mutationFn: (input: { barberId: string; notifyOnAvailability?: boolean; notifyOnPortfolio?: boolean }) =>
-      requestJson<FollowBarberResponse>("/api/engagement/follows", {
+      requestJson<FollowMutationResponse>("/api/engagement/follows", {
         method: "POST",
         body: JSON.stringify(input)
       }),
-    onSuccess: async (_data, variables) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["engagement", "client", "summary"] }),
-        queryClient.invalidateQueries({ queryKey: ["engagement", "client", "referrals"] }),
-        queryClient.invalidateQueries({ queryKey: ["engagement", "client", "follow-state", variables.barberId] }),
-        queryClient.invalidateQueries({ queryKey: ["engagement", "barber", "summary"] }),
-        queryClient.invalidateQueries({ queryKey: ["engagement", "owner", "intelligence"] }),
-        queryClient.invalidateQueries({ queryKey: ["marketplace"] })
+    onSuccess: (data, variables) => {
+      queryClient.setQueryData<FollowStateResponse>(["engagement", "client", "follow-state", variables.barberId], {
+        followState: data.followState
+      });
+      invalidateQueriesQuietly(queryClient, [
+        ["engagement", "client", "summary"],
+        ["engagement", "client", "referrals"],
+        ["engagement", "client", "follow-state", variables.barberId],
+        ["engagement", "barber", "summary"],
+        ["engagement", "owner", "intelligence"],
+        ["marketplace"]
       ]);
     }
   });
@@ -173,16 +191,19 @@ export function useUnfollowBarberMutation() {
 
   return useMutation({
     mutationFn: (input: { barberId: string }) =>
-      requestJson<{ unfollowedBarberId: string }>(`/api/engagement/follows?barberId=${input.barberId}`, {
+      requestJson<FollowMutationResponse & { unfollowedBarberId: string }>(`/api/engagement/follows?barberId=${encodeURIComponent(input.barberId)}`, {
         method: "DELETE"
       }),
-    onSuccess: async (_data, variables) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["engagement", "client", "summary"] }),
-        queryClient.invalidateQueries({ queryKey: ["engagement", "client", "follow-state", variables.barberId] }),
-        queryClient.invalidateQueries({ queryKey: ["engagement", "barber", "summary"] }),
-        queryClient.invalidateQueries({ queryKey: ["engagement", "owner", "intelligence"] }),
-        queryClient.invalidateQueries({ queryKey: ["marketplace"] })
+    onSuccess: (data, variables) => {
+      queryClient.setQueryData<FollowStateResponse>(["engagement", "client", "follow-state", variables.barberId], {
+        followState: data.followState
+      });
+      invalidateQueriesQuietly(queryClient, [
+        ["engagement", "client", "summary"],
+        ["engagement", "client", "follow-state", variables.barberId],
+        ["engagement", "barber", "summary"],
+        ["engagement", "owner", "intelligence"],
+        ["marketplace"]
       ]);
     }
   });

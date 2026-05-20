@@ -255,6 +255,11 @@ type ResolvedFavoriteBarberIdentity = {
   barberUuid: string;
 };
 
+type ResolvedFavoriteClientIdentity = {
+  clientReference: string;
+  clientUuid: string;
+};
+
 type ClientLocationInput = {
   clientId: string;
   city: string;
@@ -1414,10 +1419,56 @@ async function resolveFavoriteBarberIdentity(
   }
 
   const referenceMatch = readByReference.data?.[0] as { id: string; reference_code?: string | null } | undefined;
+  if (!referenceMatch?.id) {
+    throw new Error("Barber could not be found.");
+  }
 
   return {
-    barberReference: referenceMatch?.reference_code ?? barberReference,
-    barberUuid: referenceMatch?.id ?? canonicalBarberUuid(barberReference)
+    barberReference: referenceMatch.reference_code ?? barberReference,
+    barberUuid: referenceMatch.id
+  };
+}
+
+async function resolveFavoriteClientIdentity(
+  supabase: SupabaseClient,
+  clientReference: string
+): Promise<ResolvedFavoriteClientIdentity> {
+  const readById = await supabase
+    .from("clients")
+    .select("id, reference_code")
+    .eq("id", canonicalClientUuid(clientReference))
+    .limit(1);
+
+  if (readById.error) {
+    throw readById.error;
+  }
+
+  const idMatch = readById.data?.[0] as { id: string; reference_code?: string | null } | undefined;
+  if (idMatch?.id) {
+    return {
+      clientReference: idMatch.reference_code ?? idMatch.id,
+      clientUuid: idMatch.id
+    };
+  }
+
+  const readByReference = await supabase
+    .from("clients")
+    .select("id, reference_code")
+    .eq("reference_code", clientReference)
+    .limit(1);
+
+  if (readByReference.error) {
+    throw readByReference.error;
+  }
+
+  const referenceMatch = readByReference.data?.[0] as { id: string; reference_code?: string | null } | undefined;
+  if (!referenceMatch?.id) {
+    throw new Error("Client profile could not be found.");
+  }
+
+  return {
+    clientReference: referenceMatch.reference_code ?? referenceMatch.id,
+    clientUuid: referenceMatch.id
   };
 }
 
@@ -1449,6 +1500,7 @@ export async function saveClientFavoriteBarber(input: ClientFavoriteBarberInput)
     throw new Error("Client profile could not be found.");
   }
 
+  const resolvedClient = await resolveFavoriteClientIdentity(supabase, input.clientId);
   const resolvedBarber = await resolveFavoriteBarberIdentity(supabase, barberProfile);
   const updatedAt = new Date().toISOString();
   const clientWrite = await supabase
@@ -1456,7 +1508,7 @@ export async function saveClientFavoriteBarber(input: ClientFavoriteBarberInput)
     .update({
       favorite_barber_id: resolvedBarber.barberUuid
     })
-    .or(`id.eq.${canonicalClientUuid(input.clientId)},reference_code.eq.${input.clientId}`)
+    .eq("id", resolvedClient.clientUuid)
     .select("id")
     .limit(1);
 
@@ -1471,7 +1523,7 @@ export async function saveClientFavoriteBarber(input: ClientFavoriteBarberInput)
   const preferenceResult = await supabase
     .from("client_preferences")
     .select("client_reference, client_email, favorite_shop_reference, preferred_location_reference, prefers_instant_booking")
-    .eq("client_reference", input.clientId)
+    .eq("client_reference", resolvedClient.clientReference)
     .order("updated_at", { ascending: false })
     .limit(1);
 
@@ -1486,7 +1538,7 @@ export async function saveClientFavoriteBarber(input: ClientFavoriteBarberInput)
     ?? (isClientLocationReference(existingPreferredLocationReference) ? null : existingPreferredLocationReference)
     ?? null;
   const preferenceRow = {
-    client_reference: input.clientId,
+    client_reference: resolvedClient.clientReference,
     client_email: clientProfile.email,
     favorite_shop_reference: effectiveFavoriteShopReference,
     preferred_location_reference: isClientLocationReference(existingPreferredLocationReference)
@@ -1505,7 +1557,7 @@ export async function saveClientFavoriteBarber(input: ClientFavoriteBarberInput)
           prefers_instant_booking: preferenceRow.prefers_instant_booking,
           updated_at: preferenceRow.updated_at
         })
-        .eq("client_reference", input.clientId)
+        .eq("client_reference", resolvedClient.clientReference)
     : await supabase.from("client_preferences").insert({
         ...preferenceRow,
         created_at: updatedAt
@@ -1515,11 +1567,11 @@ export async function saveClientFavoriteBarber(input: ClientFavoriteBarberInput)
     throw preferenceWrite.error;
   }
 
-  const savedProfile = await readClientProfile(supabase, input.clientId);
+  const savedProfile = await readClientProfile(supabase, resolvedClient.clientReference);
 
   return {
     client: savedProfile ?? {
-      clientReference: input.clientId,
+      clientReference: resolvedClient.clientReference,
       fullName: clientProfile.fullName,
       phone: clientProfile.phone,
       email: clientProfile.email,

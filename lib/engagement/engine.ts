@@ -978,8 +978,13 @@ export function followBarber(
     throw new EngagementNotFoundError("Barber could not be found.");
   }
 
-  if (state.barberFollows.some((follow) => follow.clientId === actor.clientId && follow.barberId === input.barberId)) {
-    throw new EngagementValidationError("You are already following this barber.");
+  const existingFollow = state.barberFollows.find((follow) => follow.clientId === actor.clientId && follow.barberId === input.barberId);
+  if (existingFollow) {
+    return {
+      state,
+      follow: existingFollow,
+      notification: undefined
+    };
   }
 
   const follow: BarberFollowRecord = {

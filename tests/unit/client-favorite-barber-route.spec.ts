@@ -120,7 +120,7 @@ describe("client favorite barber route", () => {
     });
     expect(followBarberMock).toHaveBeenCalledWith(
       {
-        role: "client",
+        role: "client_user",
         userEmail: "client@bvrb3r.demo",
         clientId: "client-jordan"
       },
@@ -135,6 +135,9 @@ describe("client favorite barber route", () => {
       username: "barber-43b3cda2",
       clientId: "client-jordan"
     });
+    expect(body.ok).toBe(true);
+    expect(body.saved).toBe(true);
+    expect(body.favoriteBarberReference).toBe("barber-43b3cda2");
     expect(body.client.favoriteBarberReference).toBe("barber-43b3cda2");
   });
 });

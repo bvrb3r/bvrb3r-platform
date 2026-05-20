@@ -290,6 +290,18 @@ async function requestJson<T>(input: RequestInfo, init?: RequestInit): Promise<T
   return body as T;
 }
 
+function invalidateBookingQueriesQuietly(queryClient: ReturnType<typeof useQueryClient>, queryKeys: unknown[][]) {
+  for (const queryKey of queryKeys) {
+    void queryClient.invalidateQueries({ queryKey }).catch((error) => {
+      console.warn("[booking-client] cache_refresh_failed", {
+        queryKey,
+        errorName: error instanceof Error ? error.name : null,
+        errorMessage: error instanceof Error ? error.message : String(error)
+      });
+    });
+  }
+}
+
 function toQueryString(values: Record<string, string | number | undefined>) {
   const params = new URLSearchParams();
   Object.entries(values).forEach(([key, value]) => {
@@ -524,19 +536,22 @@ export function useSaveFavoriteBarberMutation() {
   return useMutation({
     mutationFn: (payload: SaveFavoriteBarberPayload) =>
       requestJson<{
+        ok?: true;
+        saved?: true;
+        favoriteBarberReference?: string;
         client: ClientHomeResponse["client"];
         favoriteBarber: PublicBarberProfileView | null;
       }>("/api/client/favorite-barber", {
         method: "POST",
         body: JSON.stringify(payload)
       }),
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["client-home"] }),
-        queryClient.invalidateQueries({ queryKey: ["client-bookings"] }),
-        queryClient.invalidateQueries({ queryKey: ["barber-search"] }),
-        queryClient.invalidateQueries({ queryKey: ["engagement", "client", "summary"] }),
-        queryClient.invalidateQueries({ queryKey: ["marketplace"] })
+    onSuccess: () => {
+      invalidateBookingQueriesQuietly(queryClient, [
+        ["client-home"],
+        ["client-bookings"],
+        ["barber-search"],
+        ["engagement", "client", "summary"],
+        ["marketplace"]
       ]);
     }
   });

@@ -27,20 +27,30 @@ export function PublicBarberGrowthActions({ barberId, username, canFollow, canRe
   const [reportOpen, setReportOpen] = useState(false);
   const [reportCategory, setReportCategory] = useState("fake_profile");
   const [reportDetails, setReportDetails] = useState("This trust signal needs a closer review.");
-  const isFollowing = followStateQuery.data?.isFollowing ?? false;
-  const followerCount = followStateQuery.data?.followerCount ?? initialFollowerCount;
+  const [followOverride, setFollowOverride] = useState<{ isFollowing: boolean; followerCount: number } | null>(null);
+  const [isSaved, setIsSaved] = useState(false);
+  const isFollowing = followOverride?.isFollowing ?? followStateQuery.data?.isFollowing ?? false;
+  const followerCount = followOverride?.followerCount ?? followStateQuery.data?.followerCount ?? initialFollowerCount;
   const isPending = followMutation.isPending || unfollowMutation.isPending || analyticsMutation.isPending || reportMutation.isPending || deepLinkMutation.isPending || favoriteMutation.isPending;
 
   async function handleFollowToggle() {
     setFeedback(null);
     try {
       if (isFollowing) {
-        await unfollowMutation.mutateAsync({ barberId });
+        const result = await unfollowMutation.mutateAsync({ barberId });
+        setFollowOverride({
+          isFollowing: result.followState.isFollowing,
+          followerCount: result.followState.followerCount
+        });
         setFeedback({ tone: "info", message: "Follow removed." });
         return;
       }
 
-      await followMutation.mutateAsync({ barberId, notifyOnAvailability: true, notifyOnPortfolio: true });
+      const result = await followMutation.mutateAsync({ barberId, notifyOnAvailability: true, notifyOnPortfolio: true });
+      setFollowOverride({
+        isFollowing: result.followState.isFollowing,
+        followerCount: result.followState.followerCount
+      });
       setFeedback({ tone: "success", message: "Following." });
     } catch (error) {
       setFeedback({ tone: "error", message: getReadableActionError(error as EngagementApiError) });
@@ -51,6 +61,7 @@ export function PublicBarberGrowthActions({ barberId, username, canFollow, canRe
     setFeedback(null);
     try {
       await favoriteMutation.mutateAsync({ barberReference: barberId });
+      setIsSaved(true);
       setFeedback({ tone: "success", message: "Saved." });
     } catch (error) {
       setFeedback({ tone: "error", message: getReadableActionError(error as BookingApiError) });
@@ -135,7 +146,7 @@ export function PublicBarberGrowthActions({ barberId, username, canFollow, canRe
         {canFollow ? (
           <button type="button" className={actionButtonClass} disabled={isPending} onClick={() => void handleFavorite()}>
             <BookmarkCheck className="h-4 w-4" />
-            {favoriteMutation.isPending ? "Saving..." : "Save"}
+            {isSaved ? "Saved" : favoriteMutation.isPending ? "Saving..." : "Save"}
           </button>
         ) : null}
         {canReport ? (
@@ -146,7 +157,7 @@ export function PublicBarberGrowthActions({ barberId, username, canFollow, canRe
         ) : null}
         <span className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-[#a3ff12]/20 bg-[#a3ff12]/10 px-4 text-sm font-bold text-[#d7ffab]">
           <Sparkles className="h-4 w-4" />
-          {followerCount} following
+          {followerCount} {followerCount === 1 ? "follower" : "followers"}
         </span>
       </div>
       {reportOpen ? (

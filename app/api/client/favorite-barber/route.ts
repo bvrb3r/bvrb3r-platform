@@ -33,7 +33,7 @@ export async function POST(request: Request) {
       const engagementProvider = await getEngagementProvider();
       await engagementProvider.followBarber(
         {
-          role: "client",
+          role: "client_user",
           userEmail: context.viewer.email,
           clientId: context.clientId
         },
@@ -58,8 +58,19 @@ export async function POST(request: Request) {
       // Favorite save remains primary even if marketplace conversion tracking is unavailable.
     }
 
-    return NextResponse.json(result);
+    return NextResponse.json({
+      ok: true,
+      saved: true,
+      favoriteBarberReference: resolvedBarberReference,
+      ...result
+    });
   } catch (error) {
+    console.error("[client-favorite-barber] save_failed", {
+      errorName: error instanceof Error ? error.name : null,
+      errorMessage: error instanceof Error ? error.message : String(error),
+      postgresCode: error && typeof error === "object" && "code" in error ? error.code : null,
+      postgresDetails: error && typeof error === "object" && "details" in error ? error.details : null
+    });
     const message = error instanceof Error ? error.message : "Unable to save favorite barber.";
     return NextResponse.json({ error: message }, { status: 400 });
   }
