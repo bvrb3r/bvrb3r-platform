@@ -67,7 +67,10 @@ function buildThread(overrides: Record<string, unknown> = {}) {
     counterpart: {
       profileId: "profile-barber",
       fullName: "Phillip mcgee",
-      role: "barber_user"
+      role: "barber_user",
+      avatarUrl: null,
+      publicProfileHref: "/barber/phillipmcgee",
+      bookingHref: "/booking/new?barber=phillipmcgee&barberId=barber-43b3cda2"
     },
     appointmentContext: {
       appointmentId: "appointment-1",
@@ -101,7 +104,10 @@ function buildSupportThread(overrides: Record<string, unknown> = {}) {
     counterpart: {
       profileId: "profile-support",
       fullName: "BVRB3R Support",
-      role: "platform_admin"
+      role: "platform_admin",
+      avatarUrl: null,
+      publicProfileHref: null,
+      bookingHref: null
     },
     appointmentContext: null,
     lastMessage: {
@@ -520,6 +526,65 @@ describe("client messages screen", () => {
     expect(within(modal).getByTestId("related-appointment-contexts")).toHaveTextContent("test cut");
   });
 
+  it("renders barber profile photos in the inbox row, avatar rail, and modal header", () => {
+    const thread = buildThread({
+      counterpart: {
+        profileId: "profile-barber",
+        fullName: "Phillip mcgee",
+        role: "barber_user",
+        avatarUrl: "https://cdn.bvrb3r.test/phillip.jpg",
+        publicProfileHref: "/barber/phillipmcgee",
+        bookingHref: "/booking/new?barber=phillipmcgee&barberId=barber-43b3cda2"
+      }
+    });
+    useMessageThreadsQueryMock.mockReturnValue({
+      data: {
+        available: true,
+        viewer: {
+          profileId: "profile-client",
+          fullName: "Jordan Ellis",
+          role: "client"
+        },
+        threads: [thread],
+        eligibleAppointments: [],
+        eligibleContacts: [],
+        broadcastTargets: []
+      },
+      isLoading: false,
+      error: null
+    });
+    useMessageThreadQueryMock.mockReturnValue({
+      data: {
+        available: true,
+        viewer: {
+          profileId: "profile-client",
+          fullName: "Jordan Ellis",
+          role: "client"
+        },
+        thread: buildThreadDetail(thread),
+        messages: []
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="client"
+        basePath="/dashboard/client/messages"
+        selectedThreadId="thread-appointment-1"
+        title="Messages"
+        subtitle="Your conversations, appointments, and support."
+      />
+    );
+
+    const images = screen.getAllByRole("img", { name: "Phillip mcgee" });
+    expect(images.length).toBeGreaterThanOrEqual(3);
+    for (const image of images) {
+      expect(image).toHaveAttribute("src", "https://cdn.bvrb3r.test/phillip.jpg");
+    }
+  });
+
   it("renders a thin appointment-linked client inbox row and modal conversation shell", () => {
     const thread = buildThread();
     useMessageThreadsQueryMock.mockReturnValue({
@@ -584,8 +649,8 @@ describe("client messages screen", () => {
     expect(screen.getAllByText("test cut • Cancelled").length).toBeGreaterThan(0);
     expect(screen.getByText("test cut • May 19 • Cancelled")).toBeInTheDocument();
     expect(screen.getAllByText("Conversation opened...").length).toBeGreaterThan(1);
-    expect(screen.getByRole("button", { name: "View Profile" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Book Now" })).toHaveAttribute("href", "/booking/new");
+    expect(screen.getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/barber/phillipmcgee");
+    expect(screen.getByRole("link", { name: "Book" })).toHaveAttribute("href", "/booking/new?barber=phillipmcgee&barberId=barber-43b3cda2");
 
     const row = screen.getAllByText("Conversation opened...")[0]?.closest("a");
     expect(row?.className).toContain("min-h-[74px]");
@@ -660,8 +725,8 @@ describe("client messages screen", () => {
     expect(within(modal).getByText("Phillip mcgee")).toBeInTheDocument();
     expect(within(modal).getByRole("textbox", { name: "Reply" })).toBeInTheDocument();
     expect(within(modal).getByRole("button", { name: "Send message" })).toBeInTheDocument();
-    expect(within(modal).getByRole("button", { name: "View Profile" })).toBeInTheDocument();
-    expect(within(modal).getByRole("link", { name: "Book Now" })).toBeInTheDocument();
+    expect(within(modal).getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/barber/phillipmcgee");
+    expect(within(modal).getByRole("link", { name: "Book" })).toHaveAttribute("href", "/booking/new?barber=phillipmcgee&barberId=barber-43b3cda2");
 
     fireEvent.click(within(modal).getByRole("button", { name: "Back" }));
 
@@ -748,7 +813,7 @@ describe("client messages screen", () => {
     const modal = screen.getByTestId("message-thread-modal");
     expect(within(modal).getAllByText("BVRB3R Support").length).toBeGreaterThan(0);
     expect(within(modal).getAllByText("B").length).toBeGreaterThan(0);
-    expect(within(modal).queryByRole("link", { name: "Book Now" })).not.toBeInTheDocument();
+    expect(within(modal).queryByRole("link", { name: "Book" })).not.toBeInTheDocument();
     expect(within(modal).getByRole("textbox", { name: "Reply" })).toBeInTheDocument();
   });
 
@@ -824,7 +889,7 @@ describe("client messages screen", () => {
     expect(screen.getAllByText("Client").length).toBeGreaterThan(0);
     expect(screen.getAllByText("I am outside.").length).toBeGreaterThan(1);
     expect(screen.getByText("test cut • May 19 • Cancelled")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Book Now" })).toHaveAttribute("href", "/booking/new");
+    expect(screen.getByRole("link", { name: "Book" })).toHaveAttribute("href", "/booking/new");
   });
 
   it("keeps support conversations compact without booking actions", () => {
@@ -905,6 +970,6 @@ describe("client messages screen", () => {
     expect(screen.getAllByText("B").length).toBeGreaterThan(0);
     expect(screen.getAllByText("How can we help?").length).toBeGreaterThan(1);
     expect(screen.getAllByText("Support").length).toBeGreaterThan(0);
-    expect(screen.queryByRole("link", { name: "Book Now" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Book" })).not.toBeInTheDocument();
   });
 });

@@ -218,6 +218,14 @@ function getAvatarInitials(name: string, role?: string | null, threadType?: stri
   return getInitials(name);
 }
 
+function getAvatarImageUrl(avatarUrl?: string | null, role?: string | null, threadType?: string | null) {
+  if (threadType === "support" || role === "platform_admin") {
+    return null;
+  }
+
+  return avatarUrl ?? null;
+}
+
 function isBookingRequestThread(thread: MessagingThreadSummary) {
   const statusText = `${thread.appointmentContext?.status ?? ""} ${thread.appointmentContext?.statusLabel ?? ""}`.toLowerCase();
   return Boolean(thread.appointmentContext && (statusText.includes("pending") || statusText.includes("request")));
@@ -388,7 +396,15 @@ function buildQuickContacts(
   appointmentStarters: MessagingInboxCandidate[],
   contactStarters: MessagingContactCandidate[]
 ) {
-  const contacts = new Map<string, { id: string; label: string; active?: boolean; role?: string | null; threadId?: string; threadType?: string }>();
+  const contacts = new Map<string, {
+    id: string;
+    label: string;
+    active?: boolean;
+    role?: string | null;
+    threadId?: string;
+    threadType?: string;
+    avatarUrl?: string | null;
+  }>();
 
   for (const thread of threads) {
     const id = thread.counterpart?.profileId ?? thread.id;
@@ -400,7 +416,8 @@ function buildQuickContacts(
         active: Boolean(thread.lastMessage || thread.appointmentContext),
         role: thread.counterpart?.role,
         threadId: thread.id,
-        threadType: thread.threadType
+        threadType: thread.threadType,
+        avatarUrl: thread.counterpart?.avatarUrl ?? null
       });
     }
   }
@@ -408,7 +425,12 @@ function buildQuickContacts(
   for (const starter of appointmentStarters) {
     const id = starter.counterpart.profileId;
     if (!contacts.has(id)) {
-      contacts.set(id, { id, label: starter.counterpart.fullName, role: starter.counterpart.role });
+      contacts.set(id, {
+        id,
+        label: starter.counterpart.fullName,
+        role: starter.counterpart.role,
+        avatarUrl: starter.counterpart.avatarUrl ?? null
+      });
     }
   }
 
@@ -472,6 +494,7 @@ function ThreadStoryRail({
           const avatar = (
             <>
               <Avatar
+                src={getAvatarImageUrl(contact.avatarUrl, contact.role, contact.threadType)}
                 alt={contact.label}
                 initials={getAvatarInitials(contact.label, contact.role, contact.threadType)}
                 className={[
@@ -545,6 +568,7 @@ function ThinThreadRow({
       ].join(" ")}
     >
       <Avatar
+        src={getAvatarImageUrl(thread.counterpart?.avatarUrl, thread.counterpart?.role, thread.threadType)}
         alt={displayName}
         initials={getAvatarInitials(displayName, thread.counterpart?.role, thread.threadType)}
         className="h-11 w-11 text-sm"
@@ -613,6 +637,10 @@ function ConversationPanel({
   const displayName = participantSummary || activeThread?.counterpart?.fullName || "Conversation";
   const roleBadgeLabel = getRoleBadgeLabel(activeThread?.counterpart?.role, activeThread?.threadType);
   const hasAppointment = Boolean(activeThread?.appointmentContext);
+  const profileHref = activeThread?.threadType === "support"
+    ? null
+    : activeThread?.counterpart?.publicProfileHref ?? null;
+  const bookingHref = activeThread?.counterpart?.bookingHref ?? "/booking/new";
 
   return (
     <section
@@ -655,6 +683,7 @@ function ConversationPanel({
             <div className="flex items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-3">
                 <Avatar
+                  src={getAvatarImageUrl(activeThread?.counterpart?.avatarUrl, activeThread?.counterpart?.role, activeThread?.threadType)}
                   alt={displayName}
                   initials={getAvatarInitials(displayName, activeThread?.counterpart?.role, activeThread?.threadType)}
                   className="h-12 w-12 border-2 border-[#a3ff12]/65 text-sm"
@@ -670,19 +699,28 @@ function ConversationPanel({
                 </div>
               </div>
               <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-                <button
-                  type="button"
-                  className="h-8 rounded-lg border border-white/10 px-3 text-xs font-bold text-white/72 transition hover:border-[#a3ff12]/28 hover:text-white disabled:opacity-45"
-                  disabled={activeThread.threadType === "support"}
-                >
-                  View Profile
-                </button>
+                {profileHref ? (
+                  <Link
+                    href={profileHref as Route}
+                    className="inline-flex h-8 items-center rounded-lg border border-white/10 px-3 text-xs font-bold text-white/72 transition hover:border-[#a3ff12]/28 hover:text-white"
+                  >
+                    View Profile
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    className="h-8 rounded-lg border border-white/10 px-3 text-xs font-bold text-white/72 transition hover:border-[#a3ff12]/28 hover:text-white disabled:opacity-45"
+                    disabled
+                  >
+                    View Profile
+                  </button>
+                )}
                 {surface !== "shop" && activeThread.threadType !== "support" ? (
                   <Link
-                    href="/booking/new"
+                    href={bookingHref as Route}
                     className="inline-flex h-8 items-center rounded-lg bg-[#a3ff12] px-3 text-xs font-black text-[#050505] transition hover:bg-[#d7ffab]"
                   >
-                    Book Now
+                    Book
                   </Link>
                 ) : null}
               </div>

@@ -1,5 +1,6 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { CANONICAL_PLATFORM_ADMIN_EMAIL } from "@/lib/auth/demo-auth";
+import { buildMarketplaceBookingHref } from "@/lib/marketplace/links";
 import {
   assertActorCanCreateClientBarberThread,
   assertActorCanCreateShopThread,
@@ -32,6 +33,15 @@ type ClientRow = {
 type BarberRow = {
   id: string;
   profile_id: string;
+  reference_code: string | null;
+  booking_slug: string | null;
+};
+
+type BarberPublicProfileRow = {
+  barber_reference: string;
+  username: string | null;
+  profile_photo_path: string | null;
+  profile_photo_url: string | null;
 };
 
 type StaffLocationRow = {
@@ -114,6 +124,15 @@ type HydratedAppointmentContext = {
   clientName: string;
   barberName: string;
   barberRole: Role;
+  barberAvatarUrl: string | null;
+  barberPublicProfileHref: string | null;
+  barberBookingHref: string | null;
+};
+
+type PublicMessagingMetadata = {
+  avatarUrl: string | null;
+  publicProfileHref: string | null;
+  bookingHref: string | null;
 };
 
 export type MessagingThreadParticipantView = {
@@ -121,6 +140,9 @@ export type MessagingThreadParticipantView = {
   fullName: string;
   role: Role;
   isSelf: boolean;
+  avatarUrl?: string | null;
+  publicProfileHref?: string | null;
+  bookingHref?: string | null;
 };
 
 export type MessagingMessageView = {
@@ -148,6 +170,9 @@ export type MessagingThreadSummary = {
     profileId: string;
     fullName: string;
     role: Role;
+    avatarUrl?: string | null;
+    publicProfileHref?: string | null;
+    bookingHref?: string | null;
   } | null;
   appointmentContext: {
     appointmentId: string;
@@ -174,6 +199,9 @@ export type MessagingInboxCandidate = {
     profileId: string;
     fullName: string;
     role: Role;
+    avatarUrl?: string | null;
+    publicProfileHref?: string | null;
+    bookingHref?: string | null;
   };
   appointmentContext: {
     appointmentId: string;
@@ -254,6 +282,7 @@ type ThreadBundle = {
   threads: MessageThreadRow[];
   participants: ThreadParticipantRow[];
   profilesById: Map<string, ProfileRow>;
+  publicMetadataByProfileId: Map<string, PublicMessagingMetadata>;
   latestMessageByThreadId: Map<string, MessageRow>;
   appointmentContexts: Map<string, HydratedAppointmentContext>;
   locationLabels: Map<string, string>;
@@ -302,6 +331,88 @@ function baseViewer(user: UserAccount, profileId: string | null = null): Messagi
 
 function unique<T>(values: T[]) {
   return Array.from(new Set(values));
+}
+
+function cleanText(value?: string | null) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+function getPublicProfileMediaUrl(row?: BarberPublicProfileRow | null) {
+  return cleanText(row?.profile_photo_url) ?? cleanText(row?.profile_photo_path);
+}
+
+function buildBarberMessagingMetadata(barber: BarberRow, publicProfile?: BarberPublicProfileRow | null): PublicMessagingMetadata {
+  const barberReference = cleanText(barber.reference_code) ?? cleanText(barber.booking_slug) ?? barber.id;
+  const publicSlug = cleanText(publicProfile?.username) ?? cleanText(barber.booking_slug) ?? barberReference;
+
+  return {
+    avatarUrl: getPublicProfileMediaUrl(publicProfile),
+    publicProfileHref: `/barber/${encodeURIComponent(publicSlug)}`,
+    bookingHref: buildMarketplaceBookingHref({
+      barberId: barberReference,
+      username: publicSlug,
+      sourceKind: "client_dashboard"
+    })
+  };
+}
+
+async function readPublicMessagingMetadataByProfileIds(
+  supabase: SupabaseClient,
+  profileIds: string[]
+): Promise<Map<string, PublicMessagingMetadata>> {
+  const uniqueProfileIds = unique(profileIds.filter(Boolean));
+  if (!uniqueProfileIds.length) {
+    return new Map();
+  }
+
+  const barberResult = await supabase
+    .from("barbers")
+    .select("id, profile_id, reference_code, booking_slug")
+    .in("profile_id", uniqueProfileIds);
+
+  if (barberResult.error) {
+    throw new MessagingServiceError("Unable to resolve barber profile metadata for messaging.", 500);
+  }
+
+  const barbers = (barberResult.data ?? []) as BarberRow[];
+  if (!barbers.length) {
+    return new Map();
+  }
+
+  const publicReferenceCandidates = unique(
+    barbers.flatMap((barber) => [
+      barber.reference_code,
+      barber.booking_slug,
+      barber.id,
+      barber.profile_id
+    ]).filter((value): value is string => Boolean(cleanText(value)))
+  );
+  const publicProfilesResult = publicReferenceCandidates.length
+    ? await supabase
+        .from("barber_profiles")
+        .select("barber_reference, username, profile_photo_path, profile_photo_url")
+        .in("barber_reference", publicReferenceCandidates)
+    : { data: [], error: null };
+
+  if (publicProfilesResult.error) {
+    throw new MessagingServiceError("Unable to resolve public barber profile metadata for messaging.", 500);
+  }
+
+  const publicProfilesByReference = new Map(
+    ((publicProfilesResult.data ?? []) as BarberPublicProfileRow[]).map((row) => [row.barber_reference, row])
+  );
+  const metadataByProfileId = new Map<string, PublicMessagingMetadata>();
+
+  for (const barber of barbers) {
+    const publicProfile = [barber.reference_code, barber.booking_slug, barber.id, barber.profile_id]
+      .map((value) => (value ? publicProfilesByReference.get(value) ?? null : null))
+      .find((row): row is BarberPublicProfileRow => Boolean(row)) ?? null;
+
+    metadataByProfileId.set(barber.profile_id, buildBarberMessagingMetadata(barber, publicProfile));
+  }
+
+  return metadataByProfileId;
 }
 
 function toAppointmentContextView(context: HydratedAppointmentContext): NonNullable<MessagingThreadSummary["appointmentContext"]> {
@@ -515,7 +626,7 @@ async function resolveMessagingActor(user: UserAccount, supabase: SupabaseClient
 
   const barberResult = await supabase
     .from("barbers")
-    .select("id, profile_id")
+    .select("id, profile_id, reference_code, booking_slug")
     .eq("profile_id", profile.id)
     .maybeSingle();
 
@@ -547,7 +658,7 @@ async function readAppointmentContexts(supabase: SupabaseClient, appointments: A
 
   const [clientsResult, barbersResult, servicesResult, locationsResult] = await Promise.all([
     supabase.from("clients").select("id, profile_id").in("id", clientIds),
-    supabase.from("barbers").select("id, profile_id").in("id", barberIds),
+    supabase.from("barbers").select("id, profile_id, reference_code, booking_slug").in("id", barberIds),
     supabase.from("services").select("id, name").in("id", serviceIds),
     supabase.from("locations").select("id, name, neighborhood, city, state").in("id", locationIds)
   ]);
@@ -571,6 +682,7 @@ async function readAppointmentContexts(supabase: SupabaseClient, appointments: A
   }
 
   const profiles = (profilesResult.data ?? []) as ProfileRow[];
+  const publicMetadataByProfileId = await readPublicMessagingMetadataByProfileIds(supabase, profileIds);
   const clientsById = new Map(clientRows.map((row) => [row.id, row]));
   const barbersById = new Map(barberRows.map((row) => [row.id, row]));
   const servicesById = new Map(serviceRows.map((row) => [row.id, row]));
@@ -584,6 +696,7 @@ async function readAppointmentContexts(supabase: SupabaseClient, appointments: A
     const location = locationsById.get(appointment.location_id);
     const clientProfile = client?.profile_id ? profilesById.get(client.profile_id) : null;
     const barberProfile = barber ? profilesById.get(barber.profile_id) ?? null : null;
+    const barberMetadata = barberProfile ? publicMetadataByProfileId.get(barberProfile.id) ?? null : null;
 
     if (!client || !clientProfile || !barber || !barberProfile || !service || !location) {
       continue;
@@ -602,7 +715,10 @@ async function readAppointmentContexts(supabase: SupabaseClient, appointments: A
       barberProfileId: barberProfile.id,
       clientName: clientProfile.full_name ?? clientProfile.email,
       barberName: barberProfile.full_name ?? barberProfile.email,
-      barberRole: barberProfile.role
+      barberRole: barberProfile.role,
+      barberAvatarUrl: barberMetadata?.avatarUrl ?? null,
+      barberPublicProfileHref: barberMetadata?.publicProfileHref ?? null,
+      barberBookingHref: barberMetadata?.bookingHref ?? null
     });
   }
 
@@ -614,6 +730,7 @@ function buildThreadSummary(input: {
   currentProfileId: string;
   participants: ThreadParticipantRow[];
   profilesById: Map<string, ProfileRow>;
+  publicMetadataByProfileId: Map<string, PublicMessagingMetadata>;
   latestMessageByThreadId: Map<string, MessageRow>;
   appointmentContexts: Map<string, HydratedAppointmentContext>;
   locationLabels: Map<string, string>;
@@ -621,6 +738,9 @@ function buildThreadSummary(input: {
   const threadParticipants = input.participants.filter((participant) => participant.thread_id === input.thread.id);
   const counterpartParticipant = threadParticipants.find((participant) => participant.profile_id !== input.currentProfileId) ?? null;
   const counterpartProfile = counterpartParticipant ? input.profilesById.get(counterpartParticipant.profile_id) ?? null : null;
+  const counterpartMetadata = counterpartParticipant
+    ? input.publicMetadataByProfileId.get(counterpartParticipant.profile_id) ?? null
+    : null;
   const appointmentContext = input.thread.appointment_id ? input.appointmentContexts.get(input.thread.appointment_id) ?? null : null;
   const latestMessage = input.latestMessageByThreadId.get(input.thread.id) ?? null;
   const latestSender = latestMessage?.sender_profile_id ? input.profilesById.get(latestMessage.sender_profile_id) ?? null : null;
@@ -643,7 +763,10 @@ function buildThreadSummary(input: {
       ? {
           profileId: counterpartParticipant.profile_id,
           fullName: counterpartProfile.full_name ?? counterpartProfile.email,
-          role: counterpartProfile.role
+          role: counterpartProfile.role,
+          avatarUrl: counterpartMetadata?.avatarUrl ?? null,
+          publicProfileHref: counterpartMetadata?.publicProfileHref ?? null,
+          bookingHref: counterpartMetadata?.bookingHref ?? null
         }
       : null,
     appointmentContext: appointmentContext ? toAppointmentContextView(appointmentContext) : null,
@@ -665,6 +788,7 @@ async function readThreadBundle(supabase: SupabaseClient, currentProfileId: stri
       threads: [],
       participants: [],
       profilesById: new Map<string, ProfileRow>(),
+      publicMetadataByProfileId: new Map<string, PublicMessagingMetadata>(),
       latestMessageByThreadId: new Map<string, MessageRow>(),
       appointmentContexts: new Map<string, HydratedAppointmentContext>(),
       locationLabels: new Map<string, string>()
@@ -700,6 +824,10 @@ async function readThreadBundle(supabase: SupabaseClient, currentProfileId: stri
     messages.map((message) => message.sender_profile_id).filter((value): value is string => Boolean(value))
   );
   const profilesById = await readProfilesByIds(supabase, [...participantProfileIds, ...senderProfileIds, currentProfileId]);
+  const publicMetadataByProfileId = await readPublicMessagingMetadataByProfileIds(
+    supabase,
+    [...participantProfileIds, ...senderProfileIds, currentProfileId]
+  );
   const latestMessageByThreadId = new Map<string, MessageRow>();
 
   for (const message of messages) {
@@ -734,6 +862,7 @@ async function readThreadBundle(supabase: SupabaseClient, currentProfileId: stri
     threads,
     participants,
     profilesById,
+    publicMetadataByProfileId,
     latestMessageByThreadId,
     appointmentContexts,
     locationLabels: new Map(locationRows.rows.map((row) => [row.id, formatLocationLabel(row)]))
@@ -780,12 +909,18 @@ async function readEligibleAppointments(
         ? {
             profileId: context.barberProfileId,
             fullName: context.barberName,
-            role: context.barberRole
+            role: context.barberRole,
+            avatarUrl: context.barberAvatarUrl,
+            publicProfileHref: context.barberPublicProfileHref,
+            bookingHref: context.barberBookingHref
           }
         : {
             profileId: context.clientProfileId,
             fullName: context.clientName,
-            role: "client_user" as const
+            role: "client_user" as const,
+            avatarUrl: null,
+            publicProfileHref: null,
+            bookingHref: null
           },
       appointmentContext: {
         appointmentId: context.appointmentId,
@@ -1503,6 +1638,7 @@ export async function getMessagingInboxPayload(user: UserAccount): Promise<Messa
       currentProfileId: actor.profile.id,
       participants: bundle.participants,
       profilesById: bundle.profilesById,
+      publicMetadataByProfileId: bundle.publicMetadataByProfileId,
       latestMessageByThreadId: bundle.latestMessageByThreadId,
       appointmentContexts: bundle.appointmentContexts,
       locationLabels: bundle.locationLabels
@@ -1589,6 +1725,7 @@ export async function getMessagingThreadPayload(user: UserAccount, threadId: str
     currentProfileId: actor.profile.id,
     participants: bundle.participants,
     profilesById: bundle.profilesById,
+    publicMetadataByProfileId: bundle.publicMetadataByProfileId,
     latestMessageByThreadId: bundle.latestMessageByThreadId,
     appointmentContexts: bundle.appointmentContexts,
     locationLabels: bundle.locationLabels
@@ -1611,11 +1748,15 @@ export async function getMessagingThreadPayload(user: UserAccount, threadId: str
       ...threadSummary,
       participants: threadParticipants.map((participant) => {
         const profile = bundle.profilesById.get(participant.profile_id);
+        const metadata = bundle.publicMetadataByProfileId.get(participant.profile_id) ?? null;
         return {
           profileId: participant.profile_id,
           fullName: profile?.full_name ?? profile?.email ?? participant.profile_id,
           role: participant.thread_role,
-          isSelf: participant.profile_id === actor.profile.id
+          isSelf: participant.profile_id === actor.profile.id,
+          avatarUrl: metadata?.avatarUrl ?? null,
+          publicProfileHref: metadata?.publicProfileHref ?? null,
+          bookingHref: metadata?.bookingHref ?? null
         };
       })
     },
