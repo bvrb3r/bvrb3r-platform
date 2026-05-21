@@ -58,6 +58,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
     const result = await submitPublicBarberReview({
       clientId: clientContext.clientId,
+      clientProfileId: clientContext.viewer.id,
       barberId: profile.barber.id,
       barberAliases,
       rating: parsed.data.rating,

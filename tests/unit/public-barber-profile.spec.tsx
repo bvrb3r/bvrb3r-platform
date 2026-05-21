@@ -248,4 +248,51 @@ describe("public barber profile", () => {
     expect(await screen.findByText("Loved the fade.")).toBeInTheDocument();
     expect(screen.getByText("Jordan")).toBeInTheDocument();
   });
+
+  it("renders server review eligibility errors in the review modal", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({
+      ok: false,
+      error: "Complete an appointment before leaving a review."
+    }), { status: 409 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <PublicBarberProfile
+        viewerCanReview
+        profile={{
+          barber: {
+            id: "barber-wave",
+            userId: "profile-wave",
+            name: "Wave Carter",
+            rating: 5
+          },
+          profile: {
+            username: "wave",
+            headline: "Precision fades.",
+            profilePhotoUrl: null,
+            photoAccent: "#7cff00",
+            specialties: ["Precision fades"],
+            badges: []
+          },
+          proof: {
+            reviewScore: 0,
+            reviewCount: 0,
+            verificationLabels: []
+          },
+          priceRange: [55, 70],
+          nextAvailableAt: "2026-04-28T14:00:00.000Z",
+          shopLocations: [],
+          bookingCtaHref: "/booking/new?barberId=barber-wave",
+          services: [],
+          reviews: [],
+          portfolio: []
+        } as unknown as PublicBarberProfileView}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Leave a Review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit review" }));
+
+    expect(await screen.findByText("Complete an appointment before leaving a review.")).toBeInTheDocument();
+  });
 });

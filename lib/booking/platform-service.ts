@@ -295,6 +295,7 @@ type ClientReviewInput = {
 
 type PublicBarberReviewInput = {
   clientId: string;
+  clientProfileId?: string;
   barberId: string;
   barberAliases?: string[];
   rating: number;
@@ -304,9 +305,36 @@ type PublicBarberReviewInput = {
 type ReviewRecordRow = {
   id: string;
   appointment_id: string;
+  barber_id?: string;
+  client_id?: string;
+  location_id?: string;
   rating: number;
   message: string | null;
   created_at: string;
+};
+
+type ReviewClientIdentityRow = {
+  id: string;
+  reference_code: string | null;
+  profile_id: string;
+};
+
+type ReviewBarberIdentityRow = {
+  id: string;
+  reference_code: string | null;
+  profile_id: string | null;
+  booking_slug?: string | null;
+};
+
+type ReviewEligibleAppointmentRow = {
+  id: string;
+  client_id: string;
+  barber_id: string;
+  location_id: string;
+  status: string;
+  completed_at: string | null;
+  starts_at?: string | null;
+  ends_at?: string | null;
 };
 
 export class ClientReviewError extends Error {
@@ -1098,6 +1126,123 @@ function summarizeReviews(reviews: Array<{ rating: number }>) {
     averageRating,
     reviewCount
   };
+}
+
+function isUuidLike(value?: string | null) {
+  return Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value));
+}
+
+function postgresErrorMeta(error: unknown) {
+  const candidate = error as { code?: string; details?: string; message?: string } | null;
+  return {
+    postgresCode: candidate?.code,
+    postgresDetails: candidate?.details,
+    errorMessage: candidate?.message ?? (error instanceof Error ? error.message : String(error))
+  };
+}
+
+async function readReviewClientIdentity(
+  supabase: SupabaseClient,
+  input: { clientId: string; clientProfileId?: string }
+) {
+  const candidates: Array<() => Promise<{ data: ReviewClientIdentityRow | null; error: unknown }>> = [];
+
+  if (isUuidLike(input.clientId)) {
+    candidates.push(async () => {
+      const result = await supabase
+        .from("clients")
+        .select("id, reference_code, profile_id")
+        .eq("id", input.clientId)
+        .maybeSingle();
+      return result as { data: ReviewClientIdentityRow | null; error: unknown };
+    });
+  }
+
+  if (input.clientId) {
+    candidates.push(async () => {
+      const result = await supabase
+        .from("clients")
+        .select("id, reference_code, profile_id")
+        .eq("reference_code", input.clientId)
+        .maybeSingle();
+      return result as { data: ReviewClientIdentityRow | null; error: unknown };
+    });
+  }
+
+  if (isUuidLike(input.clientProfileId)) {
+    candidates.push(async () => {
+      const result = await supabase
+        .from("clients")
+        .select("id, reference_code, profile_id")
+        .eq("profile_id", input.clientProfileId)
+        .maybeSingle();
+      return result as { data: ReviewClientIdentityRow | null; error: unknown };
+    });
+  }
+
+  for (const readCandidate of candidates) {
+    const result = await readCandidate();
+    if (result.error) {
+      throw result.error;
+    }
+
+    if (result.data?.id) {
+      return result.data;
+    }
+  }
+
+  return null;
+}
+
+async function readReviewBarberIdentity(supabase: SupabaseClient, aliases: string[]) {
+  const uniqueAliases = Array.from(new Set(aliases.filter(Boolean)));
+
+  for (const alias of uniqueAliases) {
+    const filters: Array<[string, string]> = [["reference_code", alias], ["booking_slug", alias]];
+    if (isUuidLike(alias)) {
+      filters.unshift(["id", alias]);
+      filters.push(["profile_id", alias]);
+    }
+
+    for (const [column, value] of filters) {
+      const result = await supabase
+        .from("barbers")
+        .select("id, reference_code, profile_id, booking_slug")
+        .eq(column, value)
+        .maybeSingle() as { data: ReviewBarberIdentityRow | null; error: unknown };
+
+      if (result.error) {
+        throw result.error;
+      }
+
+      if (result.data?.id) {
+        return result.data;
+      }
+    }
+  }
+
+  return null;
+}
+
+async function readReviewableAppointment(
+  supabase: SupabaseClient,
+  input: { clientId: string; barberId: string }
+) {
+  const result = await supabase
+    .from("appointments")
+    .select("id, client_id, barber_id, location_id, status, completed_at, starts_at, ends_at")
+    .eq("client_id", input.clientId)
+    .eq("barber_id", input.barberId)
+    .order("completed_at", { ascending: false })
+    .limit(50);
+
+  if (result.error) {
+    throw result.error;
+  }
+
+  return ((result.data ?? []) as ReviewEligibleAppointmentRow[]).filter((appointment) =>
+    appointment.status === "completed" || Boolean(appointment.completed_at)
+  );
 }
 
 async function readAppointmentReviewMap(
@@ -3059,9 +3204,116 @@ export async function submitClientReview(input: ClientReviewInput) {
 }
 
 export async function submitPublicBarberReview(input: PublicBarberReviewInput) {
+  const supabase = getSupabase();
+  const rating = Math.max(1, Math.min(5, Math.round(input.rating)));
+  const message = input.message.trim();
+  const aliases = Array.from(new Set([input.barberId, ...(input.barberAliases ?? [])].filter(Boolean)));
+
+  console.info("[public-barber-review] submit_started", {
+    barberReference: input.barberId,
+    clientIdPresent: Boolean(input.clientId),
+    clientProfileIdPresent: Boolean(input.clientProfileId),
+    rating
+  });
+
+  if (supabase) {
+    const [clientIdentity, barberIdentity] = await Promise.all([
+      readReviewClientIdentity(supabase, {
+        clientId: input.clientId,
+        clientProfileId: input.clientProfileId
+      }),
+      readReviewBarberIdentity(supabase, aliases)
+    ]);
+
+    if (!clientIdentity?.id) {
+      throw new ClientReviewError("Only signed-in clients can leave reviews.", 403, "client_not_found");
+    }
+
+    if (!barberIdentity?.id) {
+      throw new ClientReviewError("Barber could not be found.", 404, "barber_not_found");
+    }
+
+    const completedAppointments = await readReviewableAppointment(supabase, {
+      clientId: clientIdentity.id,
+      barberId: barberIdentity.id
+    });
+
+    console.info("[public-barber-review] eligibility_result", {
+      canonicalBarberId: barberIdentity.id,
+      resolvedClientId: clientIdentity.id,
+      eligibleAppointmentCount: completedAppointments.length,
+      eligibleAppointmentId: completedAppointments[0]?.id ?? null
+    });
+
+    if (!completedAppointments.length) {
+      throw new ClientReviewError("Complete an appointment before leaving a review.", 409, "review_not_eligible");
+    }
+
+    const existingReviews = await readAppointmentReviewMap(
+      supabase,
+      clientIdentity.id,
+      completedAppointments.map((appointment) => appointment.id)
+    );
+    const reviewableAppointment = completedAppointments.find((appointment) => !existingReviews.has(appointment.id));
+
+    if (!reviewableAppointment) {
+      throw new ClientReviewError("You already reviewed this appointment.", 409, "review_already_exists");
+    }
+
+    const createdAt = new Date().toISOString();
+    const insertPayload = {
+      appointment_id: reviewableAppointment.id,
+      barber_id: barberIdentity.id,
+      client_id: clientIdentity.id,
+      location_id: reviewableAppointment.location_id,
+      rating,
+      message: message || null,
+      created_at: createdAt
+    };
+
+    console.info("[public-barber-review] insert_prepared", {
+      canonicalBarberId: barberIdentity.id,
+      resolvedClientId: clientIdentity.id,
+      eligibleAppointmentId: reviewableAppointment.id,
+      insertPayloadKeys: Object.keys(insertPayload)
+    });
+
+    const insertResult = await supabase
+      .from("reviews")
+      .insert(insertPayload)
+      .select("id, appointment_id, barber_id, client_id, location_id, rating, message, created_at")
+      .single();
+
+    if (insertResult.error) {
+      const errorMeta = postgresErrorMeta(insertResult.error);
+      console.error("[public-barber-review] insert_failed", {
+        canonicalBarberId: barberIdentity.id,
+        resolvedClientId: clientIdentity.id,
+        eligibleAppointmentId: reviewableAppointment.id,
+        insertPayloadKeys: Object.keys(insertPayload),
+        ...errorMeta
+      });
+
+      if (insertResult.error.code === "23505") {
+        throw new ClientReviewError("You already reviewed this appointment.", 409, "review_already_exists");
+      }
+
+      throw new ClientReviewError("Unable to save this review right now.", 500, "review_persist_failed");
+    }
+
+    const row = insertResult.data as ReviewRecordRow;
+    return {
+      review: {
+        id: row.id,
+        rating: Number(row.rating ?? rating),
+        message: row.message ?? "",
+        createdAt: row.created_at
+      }
+    };
+  }
+
   const provider = await getLiveOperationsProvider();
   const snapshot = await provider.readSnapshot({ role: "client", clientId: input.clientId } as LiveOperationsViewer);
-  const aliases = Array.from(new Set([input.barberId, ...(input.barberAliases ?? [])].filter(Boolean)));
   const completedAppointments = snapshot.appointments
     .filter((appointment) =>
       appointment.clientId === input.clientId
@@ -3074,23 +3326,22 @@ export async function submitPublicBarberReview(input: PublicBarberReviewInput) {
     throw new ClientReviewError("Complete an appointment before leaving a review.", 409, "review_not_eligible");
   }
 
-  const supabase = getSupabase();
   const existingReviews = await readAppointmentReviewMap(
-    supabase,
+    null,
     input.clientId,
     completedAppointments.map((appointment) => appointment.id)
   );
   const reviewableAppointment = completedAppointments.find((appointment) => !existingReviews.has(appointment.id));
 
   if (!reviewableAppointment) {
-    throw new ClientReviewError("A review has already been submitted for this appointment.", 409, "review_already_exists");
+    throw new ClientReviewError("You already reviewed this appointment.", 409, "review_already_exists");
   }
 
   return submitClientReview({
     clientId: input.clientId,
     appointmentId: reviewableAppointment.id,
-    rating: input.rating,
-    message: input.message
+    rating,
+    message
   });
 }
 

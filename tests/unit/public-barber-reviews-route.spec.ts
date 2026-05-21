@@ -59,6 +59,7 @@ describe("public barber reviews route", () => {
       clientId: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
       isSignedInClient: true,
       viewer: {
+        id: "1fd26b88-3c68-465f-8a71-f09e614b1bd4",
         role: "client_user"
       }
     });
@@ -152,6 +153,7 @@ describe("public barber reviews route", () => {
     expect(body.ok).toBe(true);
     expect(submitPublicBarberReviewMock).toHaveBeenCalledWith({
       clientId: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
+      clientProfileId: "1fd26b88-3c68-465f-8a71-f09e614b1bd4",
       barberId: "455c2930-7255-418b-bd2b-cc64bc0fc9b7",
       barberAliases: [
         "barber-43b3cda2",
