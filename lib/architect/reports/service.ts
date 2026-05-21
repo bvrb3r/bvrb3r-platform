@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { CANONICAL_PLATFORM_ADMIN_EMAIL } from "@/lib/auth/demo-auth";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { ArchitectActor } from "@/lib/architect/debug/types";
+import { resolveBarberReportTarget } from "@/lib/trust/report-targets";
 import type { Role } from "@/types/domain";
 import type { SafetyReportCategory, SafetyReportStatus, SafetyReportSubjectType } from "@/types/trust";
 
@@ -46,19 +47,6 @@ type ClientRow = {
   profile_id: string | null;
 };
 
-type BarberRow = {
-  id: string;
-  profile_id: string;
-  reference_code: string | null;
-  booking_slug: string | null;
-};
-
-type BarberPublicProfileRow = {
-  barber_reference: string;
-  username: string | null;
-  display_name: string | null;
-};
-
 type LocationRow = {
   id: string;
   reference_code: string | null;
@@ -78,6 +66,13 @@ type ThreadParticipantRow = {
   profile_id: string;
 };
 
+type ResolvedReportTarget = {
+  name: string;
+  href: string | null;
+  resolution: "resolved" | "unresolved";
+  reference: string;
+};
+
 export type ArchitectReportSummary = {
   total: number;
   received: number;
@@ -93,6 +88,8 @@ export type ArchitectReportView = {
   targetId: string;
   targetName: string;
   targetHref: string | null;
+  targetResolution: "resolved" | "unresolved";
+  targetReference: string;
   reporterName: string;
   reporterId: string | null;
   reporterEmail: string | null;
@@ -209,6 +206,46 @@ function viewerForActor(actor: ArchitectActor): ArchitectReportsPayload["viewer"
     profileId: actor.id,
     fullName: actor.name,
     role: actor.role
+  };
+}
+
+function safeErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "unknown error";
+}
+
+function logOptionalResolutionFailure(input: {
+  reportId?: string | null;
+  stage: string;
+  subjectType?: string | null;
+  subjectReference?: string | null;
+  error: unknown;
+}) {
+  console.warn("[architect-reports] optional_resolution_failed", {
+    reportId: input.reportId ?? null,
+    stage: input.stage,
+    subjectType: input.subjectType ?? null,
+    subjectReference: input.subjectReference ?? null,
+    errorName: input.error instanceof Error ? input.error.name : "UnknownError",
+    errorMessage: safeErrorMessage(input.error)
+  });
+}
+
+function fallbackTarget(report: SafetyReportRow): ResolvedReportTarget {
+  const subjectType = report.subject_type ?? "unknown";
+  const subjectReference = report.subject_reference ?? "unknown";
+  const fallbackName = subjectType === "barber"
+    ? "Unknown barber"
+    : subjectType === "shop"
+      ? "Unknown shop"
+      : subjectType === "client"
+        ? "Unknown client"
+        : "Unknown target";
+
+  return {
+    name: fallbackName,
+    href: null,
+    resolution: "unresolved" as const,
+    reference: subjectReference
   };
 }
 
@@ -343,62 +380,37 @@ async function readSupportThreadIdForReporter(supabase: SupabaseClient, reporter
   return thread?.id ?? null;
 }
 
-async function resolveBarberTarget(supabase: SupabaseClient, subjectId: string) {
-  const lookupColumns: Array<"id" | "reference_code" | "booking_slug" | "profile_id"> = [
-    "id",
-    "reference_code",
-    "booking_slug",
-    "profile_id"
-  ];
-  let barber: BarberRow | null = null;
-
-  for (const column of lookupColumns) {
-    const result = await supabase
-      .from("barbers")
-      .select("id, profile_id, reference_code, booking_slug")
-      .eq(column, subjectId)
-      .maybeSingle();
-
-    if (result.error) {
-      throw new ArchitectReportsError("Unable to resolve reported barber.", 500);
-    }
-
-    if (result.data) {
-      barber = result.data as BarberRow;
-      break;
-    }
+async function resolveBarberTarget(supabase: SupabaseClient, subjectId: string): Promise<ResolvedReportTarget> {
+  const target = await resolveBarberReportTarget(subjectId, supabase);
+  if (target.warnings.length) {
+    console.warn("[architect-reports] barber_target_resolution_warnings", {
+      subjectId,
+      resolution: target.resolution,
+      warnings: target.warnings
+    });
   }
 
-  if (!barber) {
+  if (target.resolution !== "resolved") {
     return {
-      name: subjectId,
-      href: null
+      name: "Unknown barber",
+      href: null,
+      resolution: "unresolved" as const,
+      reference: target.rawSubjectId || subjectId
     };
   }
 
-  const [profile, publicProfilesResult] = await Promise.all([
-    readProfileById(supabase, barber.profile_id),
-    supabase
-      .from("barber_profiles")
-      .select("barber_reference, username, display_name")
-      .in("barber_reference", [barber.reference_code, barber.booking_slug, barber.id, barber.profile_id].filter(Boolean))
-  ]);
-
-  if (publicProfilesResult.error) {
-    throw new ArchitectReportsError("Unable to resolve reported barber public profile.", 500);
-  }
-
-  const publicProfile = ((publicProfilesResult.data ?? []) as BarberPublicProfileRow[])[0] ?? null;
-  const slug = publicProfile?.username ?? barber.booking_slug ?? barber.reference_code ?? barber.id;
-
   return {
-    name: publicProfile?.display_name ?? profile?.full_name ?? profile?.email ?? barber.reference_code ?? barber.id,
-    href: `/barber/${encodeURIComponent(slug)}`
+    name: target.displayName ?? target.publicReference ?? target.subjectId,
+    href: target.publicHref,
+    resolution: "resolved" as const,
+    reference: target.subjectId
   };
 }
 
-async function resolveShopTarget(supabase: SupabaseClient, subjectId: string) {
-  const lookupColumns: Array<"id" | "reference_code"> = ["id", "reference_code"];
+async function resolveShopTarget(supabase: SupabaseClient, subjectId: string): Promise<ResolvedReportTarget> {
+  const lookupColumns: Array<"id" | "reference_code"> = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(subjectId)
+    ? ["id", "reference_code"]
+    : ["reference_code"];
   for (const column of lookupColumns) {
     const result = await supabase
       .from("locations")
@@ -407,25 +419,35 @@ async function resolveShopTarget(supabase: SupabaseClient, subjectId: string) {
       .maybeSingle();
 
     if (result.error) {
-      throw new ArchitectReportsError("Unable to resolve reported shop.", 500);
+      console.warn("[architect-reports] shop_target_resolution_warning", {
+        subjectId,
+        column,
+        errorName: result.error.name ?? "PostgrestError",
+        errorMessage: result.error.message ?? result.error.code ?? "lookup_failed"
+      });
+      continue;
     }
 
     const location = result.data as LocationRow | null;
     if (location) {
       return {
         name: location.name ?? subjectId,
-        href: `/shop/${encodeURIComponent(location.reference_code ?? location.id)}`
+        href: `/shop/${encodeURIComponent(location.reference_code ?? location.id)}`,
+        resolution: "resolved" as const,
+        reference: location.id
       };
     }
   }
 
   return {
-    name: subjectId,
-    href: null
+    name: "Unknown shop",
+    href: null,
+    resolution: "unresolved" as const,
+    reference: subjectId
   };
 }
 
-async function resolveTarget(supabase: SupabaseClient, report: SafetyReportRow) {
+async function resolveTarget(supabase: SupabaseClient, report: SafetyReportRow): Promise<ResolvedReportTarget> {
   const subjectId = report.subject_reference ?? "unknown";
   if (report.subject_type === "barber") {
     return resolveBarberTarget(supabase, subjectId);
@@ -439,22 +461,59 @@ async function resolveTarget(supabase: SupabaseClient, report: SafetyReportRow) 
     const profile = await readClientReporterProfile(supabase, subjectId, null);
     return {
       name: profile?.full_name ?? profile?.email ?? subjectId,
-      href: null
+      href: null,
+      resolution: profile ? "resolved" as const : "unresolved" as const,
+      reference: subjectId
     };
   }
 
   return {
     name: subjectId,
-    href: null
+    href: null,
+    resolution: "unresolved" as const,
+    reference: subjectId
   };
 }
 
 async function toReportView(supabase: SupabaseClient, report: SafetyReportRow): Promise<ArchitectReportView> {
-  const [target, reporterProfile] = await Promise.all([
-    resolveTarget(supabase, report),
-    readClientReporterProfile(supabase, report.reporter_reference, report.reporter_email)
-  ]);
-  const supportThreadId = await readSupportThreadIdForReporter(supabase, reporterProfile);
+  let target: ResolvedReportTarget = fallbackTarget(report);
+  try {
+    target = await resolveTarget(supabase, report);
+  } catch (error) {
+    logOptionalResolutionFailure({
+      reportId: report.id,
+      stage: "target",
+      subjectType: report.subject_type,
+      subjectReference: report.subject_reference,
+      error
+    });
+  }
+
+  let reporterProfile: ProfileRow | null = null;
+  try {
+    reporterProfile = await readClientReporterProfile(supabase, report.reporter_reference, report.reporter_email);
+  } catch (error) {
+    logOptionalResolutionFailure({
+      reportId: report.id,
+      stage: "reporter",
+      subjectType: report.subject_type,
+      subjectReference: report.subject_reference,
+      error
+    });
+  }
+
+  let supportThreadId: string | null = null;
+  try {
+    supportThreadId = await readSupportThreadIdForReporter(supabase, reporterProfile);
+  } catch (error) {
+    logOptionalResolutionFailure({
+      reportId: report.id,
+      stage: "support_thread",
+      subjectType: report.subject_type,
+      subjectReference: report.subject_reference,
+      error
+    });
+  }
   const dbStatus = report.status ?? "open";
 
   return {
@@ -464,6 +523,8 @@ async function toReportView(supabase: SupabaseClient, report: SafetyReportRow): 
     targetId: report.subject_reference ?? "unknown",
     targetName: target.name,
     targetHref: target.href,
+    targetResolution: target.resolution,
+    targetReference: target.reference,
     reporterName: reporterProfile?.full_name ?? reporterProfile?.email ?? report.reporter_email ?? report.reporter_reference ?? "Unknown reporter",
     reporterId: report.reporter_reference,
     reporterEmail: report.reporter_email,

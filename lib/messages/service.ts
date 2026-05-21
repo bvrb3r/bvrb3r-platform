@@ -1,4 +1,5 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { resolveBarberReportTarget } from "@/lib/trust/report-targets";
 import { CANONICAL_PLATFORM_ADMIN_EMAIL } from "@/lib/auth/demo-auth";
 import { buildMarketplaceBookingHref } from "@/lib/marketplace/links";
 import {
@@ -1833,47 +1834,16 @@ function truncateSupportText(value: string, maxLength: number) {
 }
 
 async function readBarberSubjectLabel(supabase: SupabaseClient, subjectId: string) {
-  const lookupColumns: Array<"id" | "reference_code" | "booking_slug" | "profile_id"> = [
-    "id",
-    "reference_code",
-    "booking_slug",
-    "profile_id"
-  ];
-
-  let barber: BarberRow | null = null;
-  for (const column of lookupColumns) {
-    const result = await supabase
-      .from("barbers")
-      .select("id, profile_id, reference_code, booking_slug")
-      .eq(column, subjectId)
-      .maybeSingle();
-
-    if (result.error) {
-      throw new MessagingServiceError("Unable to resolve the reported barber for support messaging.", 500);
-    }
-
-    if (result.data) {
-      barber = result.data as BarberRow;
-      break;
-    }
+  const target = await resolveBarberReportTarget(subjectId, supabase);
+  if (target.warnings.length) {
+    console.warn("[messages] support_report_barber_resolution_warnings", {
+      subjectId,
+      resolution: target.resolution,
+      warnings: target.warnings
+    });
   }
 
-  if (!barber) {
-    return subjectId;
-  }
-
-  const profileResult = await supabase
-    .from("profiles")
-    .select("id, full_name, email, role")
-    .eq("id", barber.profile_id)
-    .maybeSingle();
-
-  if (profileResult.error) {
-    throw new MessagingServiceError("Unable to resolve the reported barber profile for support messaging.", 500);
-  }
-
-  const profile = profileResult.data as ProfileRow | null;
-  return profile ? (profile.full_name ?? profile.email) : (barber.reference_code ?? barber.booking_slug ?? barber.id);
+  return target.displayName ?? target.publicReference ?? target.subjectId ?? subjectId;
 }
 
 async function readReportSubjectLabel(supabase: SupabaseClient, input: Pick<TrustReportSupportMessageInput, "subjectType" | "subjectId">) {

@@ -79,6 +79,9 @@ function ReportCard({
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/42">{report.concernType}</p>
           <h3 className="mt-2 truncate text-lg font-semibold text-white">{report.targetName}</h3>
           <p className="mt-1 text-sm text-white/58">Reporter: {report.reporterName}</p>
+          {report.targetResolution === "unresolved" ? (
+            <p className="mt-1 font-mono text-xs text-amber-100/72">Unresolved target: {report.targetReference}</p>
+          ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
           <span className={cn("rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]", severityClass(report.severity))}>
@@ -276,7 +279,8 @@ export function ArchitectReportsWorkspace() {
                   <div className="rounded-lg border border-white/10 bg-black/20 p-4">
                     <p className="text-xs uppercase tracking-[0.18em] text-white/42">Target</p>
                     <p className="mt-2 text-sm font-semibold text-white">{activeReport.targetName}</p>
-                    <p className="mt-1 text-xs text-white/50">{activeReport.targetId}</p>
+                    <p className="mt-1 text-xs text-white/50">Reference: {activeReport.targetReference}</p>
+                    <p className="mt-1 text-xs text-white/50">Resolution: {activeReport.targetResolution}</p>
                     {activeReport.targetHref ? (
                       <Link href={activeReport.targetHref as Route} className="mt-3 inline-flex text-sm font-semibold text-[#d7ffab]">View target profile</Link>
                     ) : null}

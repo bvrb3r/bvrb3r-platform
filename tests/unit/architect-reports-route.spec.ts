@@ -41,6 +41,8 @@ const reportView = {
   targetId: "455c2930-7255-418b-bd2b-cc64bc0fc9b7",
   targetName: "Phillip mcgee",
   targetHref: "/barber/barber-43b3cda2",
+  targetResolution: "resolved",
+  targetReference: "455c2930-7255-418b-bd2b-cc64bc0fc9b7",
   reporterName: "Phillip mcgee",
   reporterId: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
   reporterEmail: "phillipmcgeeclient@outlook.com",
