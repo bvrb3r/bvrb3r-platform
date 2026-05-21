@@ -163,12 +163,10 @@ function ServiceRow({
 export function PublicBarberProfile({
   profile,
   viewerCanFollow = false,
-  viewerCanReport = false,
   viewerCanMessage = false
 }: {
   profile: PublicBarberProfileView;
   viewerCanFollow?: boolean;
-  viewerCanReport?: boolean;
   viewerCanMessage?: boolean;
 }) {
   const displayName = getDisplayName(profile);
@@ -272,7 +270,6 @@ export function PublicBarberProfile({
                 barberId={profile.barber.id}
                 username={profile.profile.username}
                 canFollow={viewerCanFollow}
-                canReport={viewerCanReport}
                 initialFollowerCount={followerCount}
               />
             </div>

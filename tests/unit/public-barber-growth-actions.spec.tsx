@@ -39,10 +39,6 @@ vi.mock("@/lib/marketplace/client", () => ({
   useMarketplaceAnalyticsMutation: () => ({ mutateAsync: noopMutateAsyncMock, isPending: false })
 }));
 
-vi.mock("@/lib/trust/client", () => ({
-  useSubmitSafetyReportMutation: () => ({ mutateAsync: noopMutateAsyncMock, isPending: false })
-}));
-
 import { PublicBarberGrowthActions } from "@/components/marketplace/public-barber-growth-actions";
 
 describe("public barber growth actions", () => {
@@ -122,5 +118,13 @@ describe("public barber growth actions", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Saved" })).toBeInTheDocument());
     expect(screen.getByText("Saved.")).toBeInTheDocument();
     expect(screen.queryByText(/unable to save favorite barber/i)).not.toBeInTheDocument();
+  });
+
+  it("does not render the temporary public report entry point", () => {
+    render(<PublicBarberGrowthActions barberId="barber-43b3cda2" username="barber-43b3cda2" canFollow initialFollowerCount={18} />);
+
+    expect(screen.queryByRole("button", { name: /report/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/trust and safety intake/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /send report/i })).not.toBeInTheDocument();
   });
 });
