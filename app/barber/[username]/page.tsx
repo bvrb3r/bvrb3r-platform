@@ -18,6 +18,7 @@ export default async function PublicBarberProfilePage({ params }: { params: Prom
         profile={profile}
         viewerCanFollow={context.isSignedInClient}
         viewerCanMessage={context.isSignedInClient}
+        viewerCanReview={context.isSignedInClient}
       />
     </ClientAppShell>
   );

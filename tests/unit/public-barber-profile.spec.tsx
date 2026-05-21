@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/components/client-experience/marketplace-tracked-action-link", () => ({
   MarketplaceTrackedActionLink: ({
@@ -27,8 +27,12 @@ vi.mock("@/components/marketplace/public-barber-message-action", () => ({
 import { PublicBarberProfile } from "@/components/marketplace/public-barber-profile";
 import type { PublicBarberProfileView } from "@/lib/marketplace/engine";
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 describe("public barber profile", () => {
-  it("renders the client-facing IG-style header, actions, services, policies, and clean empty sections", () => {
+  it("renders the client-facing IG-style header, actions, portfolio, and community reviews without the lower booking card", () => {
     render(
       <PublicBarberProfile
         profile={{
@@ -103,13 +107,15 @@ describe("public barber profile", () => {
     expect(screen.queryByText("Verified license")).not.toBeInTheDocument();
     expect(screen.getAllByText("Verified identity").length).toBeGreaterThan(0);
     expect(screen.getByText("Verified shop")).toBeInTheDocument();
-    expect(screen.getAllByText("Book a service").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Signature Precision Cut").length).toBeGreaterThan(0);
-    expect(screen.getAllByRole("link", { name: "Book" }).length).toBeGreaterThan(0);
-    expect(screen.getByText(/Deposits apply to select services starting at \$15/)).toBeInTheDocument();
-    expect(screen.getByText("Card on file is required when the selected service policy needs it.")).toBeInTheDocument();
+    expect(screen.queryByText("Book a service")).not.toBeInTheDocument();
+    expect(screen.queryByText("Choose your cut")).not.toBeInTheDocument();
+    expect(screen.queryByText("Signature Precision Cut")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Deposits apply to select services starting at \$15/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Card on file is required when the selected service policy needs it.")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "Book" })).toHaveLength(1);
     expect(screen.getByText("No work posted yet.")).toBeInTheDocument();
     expect(screen.getAllByText("Reviews building.").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Leave a Review" })).toBeInTheDocument();
     expect(screen.queryByLabelText("Profile highlights")).not.toBeInTheDocument();
     expect(screen.queryByText(/shared service system/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/approved marketplace supply/i)).not.toBeInTheDocument();
@@ -160,5 +166,86 @@ describe("public barber profile", () => {
     fireEvent.click(screen.getByRole("img", { name: /sharp taper finish/i }));
     expect(screen.getByTestId("portfolio-lightbox")).toBeInTheDocument();
     expect(screen.queryByText("No work posted yet.")).not.toBeInTheDocument();
+  });
+
+  it("posts a public barber review from the review modal and refreshes the community proof", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        ok: true,
+        review: {
+          id: "review-new",
+          rating: 5,
+          message: "Loved the fade.",
+          createdAt: "2026-05-20T12:00:00.000Z"
+        }
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        ok: true,
+        averageRating: 5,
+        reviewCount: 1,
+        reviews: [
+          {
+            id: "review-new",
+            barberId: "barber-wave",
+            clientId: "client-wave",
+            locationId: "loc-ybor",
+            rating: 5,
+            sentiment: "great",
+            message: "Loved the fade.",
+            createdAt: "2026-05-20T12:00:00.000Z",
+            reviewerName: "Jordan"
+          }
+        ]
+      }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <PublicBarberProfile
+        viewerCanReview
+        profile={{
+          barber: {
+            id: "barber-wave",
+            userId: "profile-wave",
+            name: "Wave Carter",
+            rating: 5
+          },
+          profile: {
+            username: "wave",
+            headline: "Precision fades.",
+            profilePhotoUrl: null,
+            photoAccent: "#7cff00",
+            specialties: ["Precision fades"],
+            badges: []
+          },
+          proof: {
+            reviewScore: 0,
+            reviewCount: 0,
+            verificationLabels: []
+          },
+          priceRange: [55, 70],
+          nextAvailableAt: "2026-04-28T14:00:00.000Z",
+          shopLocations: [],
+          bookingCtaHref: "/booking/new?barberId=barber-wave",
+          services: [],
+          reviews: [],
+          portfolio: []
+        } as unknown as PublicBarberProfileView}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Leave a Review" }));
+    fireEvent.change(screen.getByPlaceholderText("Share your experience"), {
+      target: { value: "Loved the fade." }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Submit review" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/barbers/barber-wave/reviews", expect.objectContaining({
+        method: "POST"
+      }));
+    });
+    expect(await screen.findByText("Review posted.")).toBeInTheDocument();
+    expect(await screen.findByText("Loved the fade.")).toBeInTheDocument();
+    expect(screen.getByText("Jordan")).toBeInTheDocument();
   });
 });

@@ -1,19 +1,17 @@
-import Link from "next/link";
 import type { Route } from "next";
 import type { ReactNode } from "react";
-import { BadgeCheck, CalendarDays, Clock3, CreditCard, MapPin, Scissors, ShieldCheck, Star } from "lucide-react";
+import { BadgeCheck, CalendarDays, CreditCard, MapPin, ShieldCheck, Star } from "lucide-react";
 import { MarketplaceTrackedActionLink } from "@/components/client-experience/marketplace-tracked-action-link";
 import { PublicBarberGrowthActions } from "@/components/marketplace/public-barber-growth-actions";
 import { PublicBarberMessageAction } from "@/components/marketplace/public-barber-message-action";
 import { PublicBarberPortfolioGrid } from "@/components/marketplace/public-barber-portfolio-grid";
+import { PublicBarberReviewsSection } from "@/components/marketplace/public-barber-reviews-section";
 import { getBookingLocationSummary } from "@/lib/marketplace/client-facing";
-import { currency, dateLabel } from "@/lib/utils";
-import type { PublicBarberProfileView, ServiceCatalogItem } from "@/lib/marketplace/engine";
+import { dateLabel } from "@/lib/utils";
+import type { PublicBarberProfileView } from "@/lib/marketplace/engine";
 
 const compactPanelClass = "rounded-lg border border-white/8 bg-white/[0.035] shadow-[0_18px_60px_rgba(0,0,0,0.32)] backdrop-blur-xl";
-const quietPanelClass = "rounded-lg border border-white/8 bg-black/25";
 const labelClass = "text-xs font-bold uppercase text-white/48";
-const primaryButtonClass = "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-[#a3ff12]/45 bg-[#a3ff12] px-5 py-2 text-sm font-black text-black shadow-[0_16px_40px_rgba(163,255,18,0.22)] transition hover:bg-[#d7ffab]";
 
 function getBadgeLabel(badge: string) {
   switch (badge) {
@@ -48,13 +46,6 @@ function safeDateLabel(iso?: string | null) {
   return dateLabel(iso);
 }
 
-function serviceBookingHref(baseHref: string | null | undefined, serviceId: string) {
-  const [path, query = ""] = (baseHref ?? "/booking/new").split("?");
-  const params = new URLSearchParams(query);
-  params.set("serviceId", serviceId);
-  return `${path || "/booking/new"}?${params.toString()}` as Route;
-}
-
 function isInternalPublicReference(value: string) {
   return /^(barber|client|independent-barber|srv)-/i.test(value);
 }
@@ -70,18 +61,6 @@ function getDisplayName(profile: PublicBarberProfileView) {
 
 function getHandle(username: string) {
   return username.startsWith("@") ? username : `@${username}`;
-}
-
-function getPolicyNotes(profile: PublicBarberProfileView) {
-  const deposits = profile.services
-    .map((item) => item.service.deposit)
-    .filter((amount) => amount > 0);
-  const requiresCardOnFile = profile.services.some((item) => item.service.deposit > 0 || item.service.fullPrepay);
-
-  return [
-    deposits.length ? `Deposits apply to select services starting at ${currency(Math.min(...deposits))}.` : null,
-    requiresCardOnFile ? "Card on file is required when the selected service policy needs it." : null
-  ].filter(Boolean) as string[];
 }
 
 function getPrimarySpecialty(profile: PublicBarberProfileView) {
@@ -115,59 +94,16 @@ function TrustItem({ icon, label, value }: { icon: ReactNode; label: string; val
   );
 }
 
-function ServiceRow({
-  item,
-  bookingHref,
-  profile,
-  nextOpening
-}: {
-  item: ServiceCatalogItem;
-  bookingHref: Route;
-  profile: PublicBarberProfileView;
-  nextOpening: string;
-}) {
-  return (
-    <article className={`${quietPanelClass} p-4`}>
-      <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-center">
-        <div className="min-w-0">
-          <h3 className="truncate text-base font-black text-white">{item.service.name}</h3>
-          <p className="mt-1 line-clamp-2 text-sm leading-6 text-white/58">{item.service.description || "Clean barber service."}</p>
-          <div className="mt-3 flex flex-wrap gap-2 text-xs text-white/56">
-            <span>{item.service.durationMin} min</span>
-            <span>{currency(item.service.price)}</span>
-            <span>{nextOpening}</span>
-          </div>
-        </div>
-        <MarketplaceTrackedActionLink
-          href={bookingHref}
-          className="min-h-11 rounded-lg px-4 text-sm"
-          analytics={{
-            eventType: "booking_cta_clicked",
-            barberId: profile.barber.id,
-            username: profile.profile.username,
-            locationId: profile.shopLocations[0]?.id,
-            sourceKind: "public_profile",
-            sourceReference: "service_row",
-            metadata: {
-              serviceId: item.service.id
-            }
-          }}
-        >
-          Book
-        </MarketplaceTrackedActionLink>
-      </div>
-    </article>
-  );
-}
-
 export function PublicBarberProfile({
   profile,
   viewerCanFollow = false,
-  viewerCanMessage = false
+  viewerCanMessage = false,
+  viewerCanReview = viewerCanFollow
 }: {
   profile: PublicBarberProfileView;
   viewerCanFollow?: boolean;
   viewerCanMessage?: boolean;
+  viewerCanReview?: boolean;
 }) {
   const displayName = getDisplayName(profile);
   const handle = getHandle(profile.profile.username);
@@ -183,7 +119,6 @@ export function PublicBarberProfile({
   const isVerified = verificationBadges.length > 0;
   const serviceLocation = getServiceLocation(profile);
   const nextOpening = safeDateLabel(profile.nextAvailableAt);
-  const policyNotes = getPolicyNotes(profile);
   const bio = cleanPublicText(profile.barber.bio) || cleanPublicText(profile.profile.headline) || "Fresh work, sharp details, and clean appointments.";
   const primarySpecialty = getPrimarySpecialty(profile);
 
@@ -296,80 +231,13 @@ export function PublicBarberProfile({
         <PublicBarberPortfolioGrid assets={profile.portfolio} barberName={displayName} />
       </section>
 
-      <section className="grid gap-6 lg:grid-cols-[1fr_0.78fr]">
-        <div id="barber-profile-services" className={`${compactPanelClass} scroll-mt-6 p-4 sm:p-5`}>
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className={labelClass}>Book a service</p>
-              <h2 className="mt-1 text-2xl font-black text-white">Choose your cut</h2>
-            </div>
-            <Scissors className="h-5 w-5 text-[#d7ffab]" aria-hidden="true" />
-          </div>
-          <div className="mt-4 space-y-3">
-            {profile.services.length ? profile.services.map((item) => (
-              <ServiceRow
-                key={item.service.id}
-                item={item}
-                bookingHref={serviceBookingHref(profile.bookingCtaHref, item.service.id)}
-                profile={profile}
-                nextOpening={nextOpening}
-              />
-            )) : (
-              <div className="rounded-lg border border-dashed border-white/10 bg-white/[0.025] p-5 text-sm text-white/55">
-                Services are not available yet.
-              </div>
-            )}
-          </div>
-
-          {policyNotes.length ? (
-            <div className="mt-4 space-y-2 rounded-lg border border-white/8 bg-black/25 p-4 text-sm leading-6 text-white/62">
-              {policyNotes.map((note) => (
-                <p key={note}>{note}</p>
-              ))}
-            </div>
-          ) : null}
-        </div>
-
-        <aside className={`${compactPanelClass} p-4 sm:p-5`}>
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className={labelClass}>Reviews</p>
-              <h2 className="mt-1 text-2xl font-black text-white">{reviewScore.toFixed(1)} rating</h2>
-            </div>
-            <div className="inline-flex items-center gap-1 text-[#d7ffab]">
-              <Star className="h-4 w-4 fill-current" aria-hidden="true" />
-              <span className="text-sm font-black">{reviewCount}</span>
-            </div>
-          </div>
-          {profile.reviews.length ? (
-            <div className="mt-4 space-y-3">
-              {profile.reviews.slice(0, 4).map((review) => (
-                <article key={review.id} className={`${quietPanelClass} p-4`}>
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="inline-flex items-center gap-1 text-sm font-black text-[#d7ffab]">
-                      <Star className="h-4 w-4 fill-current" aria-hidden="true" />
-                      {review.rating.toFixed(1)}
-                    </span>
-                    <span className="text-xs text-white/38">{review.createdAt}</span>
-                  </div>
-                  <p className="mt-3 text-sm leading-6 text-white/68">{review.message}</p>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <div className="mt-4 rounded-lg border border-dashed border-white/10 bg-white/[0.025] p-5 text-sm leading-6 text-white/58">
-              Reviews building.
-            </div>
-          )}
-        </aside>
-      </section>
-
-      <div className="sticky bottom-3 z-20 mx-auto flex max-w-sm justify-center sm:hidden">
-        <Link href="#barber-profile-services" className={primaryButtonClass}>
-          <Clock3 className="h-4 w-4" aria-hidden="true" />
-          Book a service
-        </Link>
-      </div>
+      <PublicBarberReviewsSection
+        barberId={profile.barber.id}
+        initialAverageRating={reviewScore}
+        initialReviewCount={reviewCount}
+        initialReviews={profile.reviews}
+        viewerCanReview={viewerCanReview}
+      />
     </div>
   );
 }

@@ -293,6 +293,14 @@ type ClientReviewInput = {
   message: string;
 };
 
+type PublicBarberReviewInput = {
+  clientId: string;
+  barberId: string;
+  barberAliases?: string[];
+  rating: number;
+  message: string;
+};
+
 type ReviewRecordRow = {
   id: string;
   appointment_id: string;
@@ -1070,6 +1078,26 @@ function resolveReviewSentiment(rating: number): ReviewSentiment {
   }
 
   return "watch";
+}
+
+function barberReferenceMatches(value: string, aliases: string[]) {
+  return aliases.some((alias) => {
+    if (value === alias) {
+      return true;
+    }
+
+    return canonicalBarberUuid(value) === canonicalBarberUuid(alias);
+  });
+}
+
+function summarizeReviews(reviews: Array<{ rating: number }>) {
+  const reviewCount = reviews.length;
+  const averageRating = Number((reviewCount ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviewCount : 0).toFixed(1));
+
+  return {
+    averageRating,
+    reviewCount
+  };
 }
 
 async function readAppointmentReviewMap(
@@ -2586,6 +2614,19 @@ export async function getBarberDetailsPayload(barberIdOrUsername: string) {
   return mergeProfileMedia(decoratePublicProfileWithActivation(profile, bundle.activationState));
 }
 
+export async function getPublicBarberReviewsPayload(barberIdOrUsername: string) {
+  const profile = await getBarberDetailsPayload(barberIdOrUsername);
+
+  if (!profile) {
+    throw new ClientReviewError("Barber could not be found.", 404, "barber_not_found");
+  }
+
+  return {
+    ...summarizeReviews(profile.reviews),
+    reviews: profile.reviews
+  };
+}
+
 export type PublicShopProfilePayload = {
   shop: RecommendedShopView & {
     phone?: string;
@@ -3015,6 +3056,42 @@ export async function submitClientReview(input: ClientReviewInput) {
       createdAt: row.created_at
     }
   };
+}
+
+export async function submitPublicBarberReview(input: PublicBarberReviewInput) {
+  const provider = await getLiveOperationsProvider();
+  const snapshot = await provider.readSnapshot({ role: "client", clientId: input.clientId } as LiveOperationsViewer);
+  const aliases = Array.from(new Set([input.barberId, ...(input.barberAliases ?? [])].filter(Boolean)));
+  const completedAppointments = snapshot.appointments
+    .filter((appointment) =>
+      appointment.clientId === input.clientId
+      && appointment.status === "completed"
+      && barberReferenceMatches(appointment.barberId, aliases)
+    )
+    .sort((left, right) => new Date(right.end).getTime() - new Date(left.end).getTime());
+
+  if (!completedAppointments.length) {
+    throw new ClientReviewError("Complete an appointment before leaving a review.", 409, "review_not_eligible");
+  }
+
+  const supabase = getSupabase();
+  const existingReviews = await readAppointmentReviewMap(
+    supabase,
+    input.clientId,
+    completedAppointments.map((appointment) => appointment.id)
+  );
+  const reviewableAppointment = completedAppointments.find((appointment) => !existingReviews.has(appointment.id));
+
+  if (!reviewableAppointment) {
+    throw new ClientReviewError("A review has already been submitted for this appointment.", 409, "review_already_exists");
+  }
+
+  return submitClientReview({
+    clientId: input.clientId,
+    appointmentId: reviewableAppointment.id,
+    rating: input.rating,
+    message: input.message
+  });
 }
 
 export async function getBarberDashboardPayload(viewer: LiveOperationsViewer) {

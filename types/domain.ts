@@ -349,6 +349,8 @@ export interface Review {
   sentiment: ReviewSentiment;
   message: string;
   createdAt: string;
+  reviewerName?: string;
+  serviceName?: string;
 }
 
 export interface TaskItem {
