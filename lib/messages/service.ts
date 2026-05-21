@@ -1903,12 +1903,12 @@ function buildTrustReportSupportMessage(input: {
   }).format(new Date(input.createdAt));
 
   return [
-    `Report submitted for ${input.subjectLabel}.`,
+    `Report received for ${input.subjectLabel}.`,
     `Reported ID: ${input.subjectId}.`,
     `Concern: ${concern}.`,
     `Notes: ${notes}.`,
     `Submitted: ${submittedAt}.`,
-    "Status: BVRB3R Support received this report.",
+    "Status: received.",
     `Report ID: ${input.reportId}.`
   ].join("\n");
 }
@@ -2777,7 +2777,10 @@ function buildArchitectSupportThreadSummary(input: {
   const clientParticipant = supportParticipants.find((participant) => participant.profile_id !== input.supportProfileId) ?? null;
   const clientProfile = clientParticipant ? input.profilesById.get(clientParticipant.profile_id) ?? null : null;
   const latestReportMessage = input.messages
-    .filter((message) => message.thread_id === input.thread.id && message.body.toLowerCase().includes("report submitted"))
+    .filter((message) => {
+      const body = message.body.toLowerCase();
+      return message.thread_id === input.thread.id && (body.includes("report received") || body.includes("report submitted"));
+    })
     .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime())[0] ?? null;
 
   return {

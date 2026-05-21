@@ -50,6 +50,14 @@ function initials(name?: string | null) {
   return (parts[0]?.[0] ?? "B") + (parts[1]?.[0] ?? "");
 }
 
+function readThreadIdFromLocation() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  return new URLSearchParams(window.location.search).get("threadId");
+}
+
 function ThreadRow({
   thread,
   selected,
@@ -103,7 +111,7 @@ export function ArchitectMessagesWorkspace() {
     try {
       const payload = await requestJson<ArchitectSupportInboxPayload>("/api/architect/messages");
       setInbox(payload);
-      setSelectedThreadId((currentThreadId) => preferredThreadId ?? currentThreadId ?? payload.threads[0]?.id ?? null);
+      setSelectedThreadId((currentThreadId) => preferredThreadId ?? currentThreadId ?? readThreadIdFromLocation() ?? payload.threads[0]?.id ?? null);
       setStatus(null);
     } catch (error) {
       setStatus({ tone: "error", message: error instanceof Error ? error.message : "Architect messages could not load." });
