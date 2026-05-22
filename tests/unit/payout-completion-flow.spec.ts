@@ -254,7 +254,7 @@ describe("payout completion flow", () => {
       payment_id: PAYMENT_ID,
       appointment_id: APPOINTMENT_ID,
       routing_model: "freelance",
-      payout_readiness_status: "eligible",
+      payout_readiness_status: "ready",
       money_routing_status: "pending",
       platform_fee_amount: 0.25,
       barber_payout_amount: 4.75,
@@ -266,6 +266,9 @@ describe("payout completion flow", () => {
         repairReason: "missing_routing_record_on_completion",
         source: "barber_complete_service",
         relationshipType: "freelance",
+        readinessMeaning: "eligible",
+        payoutReadinessDbValue: "ready",
+        moneyRoutingDbValue: "pending",
         appointmentId: APPOINTMENT_ID,
         paymentId: PAYMENT_ID,
         barberId: BARBER_ID,
@@ -302,7 +305,7 @@ describe("payout completion flow", () => {
 
     expect(result).toMatchObject({
       status: "eligible",
-      payoutReadinessStatus: "eligible",
+      payoutReadinessStatus: "ready",
       barberAmountCents: 475,
       platformAmountCents: 25,
       shopAmountCents: 0
@@ -310,9 +313,40 @@ describe("payout completion flow", () => {
     expect(tables.payment_routing_records[0]).toMatchObject({
       payment_id: PAYMENT_ID,
       appointment_id: APPOINTMENT_ID,
-      payout_readiness_status: "eligible",
+      payout_readiness_status: "ready",
       money_routing_status: "pending",
       eligible_at: expect.any(String)
+    });
+  });
+
+  it("uses eligible directly when the payment routing constraint allows it", async () => {
+    const tables = createTables({
+      "information_schema.check_constraints": [{
+        constraint_name: "payment_routing_records_payout_readiness_status_check",
+        check_clause: "CHECK ((payout_readiness_status = ANY (ARRAY['not_ready'::text, 'eligible'::text, 'blocked'::text])))"
+      }, {
+        constraint_name: "payment_routing_records_money_routing_status_check",
+        check_clause: "CHECK ((money_routing_status = ANY (ARRAY['pending'::text, 'ready_for_payout'::text, 'blocked'::text, 'refunded'::text])))"
+      }, {
+        constraint_name: "payment_routing_records_reconciliation_status_check",
+        check_clause: "CHECK ((reconciliation_status = ANY (ARRAY['open'::text, 'manual_review'::text])))"
+      }]
+    });
+    const supabase = createSupabaseStub(tables);
+
+    const result = await evaluatePayoutEligibilityForAppointment(supabase as never, APPOINTMENT_ID);
+
+    expect(result).toMatchObject({
+      status: "eligible",
+      payoutReadinessStatus: "eligible"
+    });
+    expect(tables.payment_routing_records[0]).toMatchObject({
+      payout_readiness_status: "eligible",
+      money_routing_status: "pending",
+      metadata: expect.objectContaining({
+        readinessMeaning: "eligible",
+        payoutReadinessDbValue: "eligible"
+      })
     });
   });
 
@@ -358,7 +392,7 @@ describe("payout completion flow", () => {
       id: "routing-existing-by-appointment",
       payment_id: PAYMENT_ID,
       appointment_id: APPOINTMENT_ID,
-      payout_readiness_status: "eligible",
+      payout_readiness_status: "ready",
       platform_fee_amount: 0.25,
       barber_payout_amount: 4.75,
       shop_split_amount: 0

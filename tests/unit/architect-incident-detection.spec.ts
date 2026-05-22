@@ -42,4 +42,36 @@ describe("architect mission incident detection", () => {
       canRepair: false
     });
   });
+
+  it("classifies captured appointment-scoped payments without appointment ids as unsafe orphans", async () => {
+    const tables = createArchitectDebugTables({
+      payments: [{
+        id: "payment-orphaned-booking",
+        appointment_id: null,
+        client_id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
+        barber_id: "455c2930-7255-418b-bd2b-cc64bc0fc9b7",
+        amount: 5,
+        provider: "stripe",
+        status: "captured",
+        payment_status: "captured",
+        payment_type: "booking",
+        provider_payment_intent_id: "pi_orphaned",
+        currency: "usd",
+        paid_at: "2026-05-17T13:40:00.000Z",
+        created_at: "2026-05-17T13:40:00.000Z"
+      }]
+    });
+
+    const incidents = await detectArchitectMissionIncidents(createSupabaseStub(tables) as never);
+    const orphanIncident = incidents.find((incident) => incident.diagnosisCode === "orphaned_captured_payment");
+
+    expect(orphanIncident).toMatchObject({
+      targetId: "payment-orphaned-booking",
+      severity: "critical",
+      canRepair: false,
+      repairType: null,
+      codexRequired: true
+    });
+    expect(orphanIncident?.evidence.join("\n")).toContain("payment.appointment_id is empty");
+  });
 });

@@ -58,6 +58,15 @@ import {
   type StripeConnectEnvironmentView
 } from "@/lib/stripe/connect";
 import { processStripeBillingWebhookEvent } from "@/lib/monetization/service";
+import {
+  isPayoutReadinessEligible,
+  loadPaymentRoutingConstraintEvidence,
+  moneyRoutingDbValueForPending,
+  payoutReadinessMeaning,
+  readinessDbValueForBusinessMeaning,
+  reconciliationDbValueForOpen,
+  type PaymentRoutingConstraintEvidence
+} from "@/lib/architect/mission-control/schema-constraints";
 import { syncStripeConnectVerificationLane } from "@/lib/trust/provider-sync";
 import { buildPublicTrustSignal, computeShopVerificationDecision, getVerificationGateDecision } from "@/lib/trust/engine";
 import { getTrustProvider } from "@/lib/trust/provider";
@@ -508,6 +517,65 @@ const PAYOUT_EXECUTION_SELECT = "id, routing_record_id, payment_id, appointment_
 
 function numeric(value: number | string | null | undefined) {
   return Number(value ?? 0);
+}
+
+function routingAllowedValues(evidence: PaymentRoutingConstraintEvidence, column: keyof PaymentRoutingConstraintEvidence["allowedValues"]) {
+  return new Set(evidence.allowedValues[column].map((value) => value.toLowerCase()));
+}
+
+function readinessDbValueForStatus(
+  evidence: PaymentRoutingConstraintEvidence,
+  status: FintechPayoutReadinessStatus
+): FintechPayoutReadinessStatus {
+  const allowed = routingAllowedValues(evidence, "payout_readiness_status");
+  const normalized = String(status ?? "").toLowerCase();
+  if (allowed.has(normalized)) {
+    return normalized as FintechPayoutReadinessStatus;
+  }
+
+  if (normalized === "eligible" || normalized === "ready") {
+    return readinessDbValueForBusinessMeaning(evidence, "eligible") as FintechPayoutReadinessStatus;
+  }
+
+  if (normalized === "blocked" || normalized === "needs_attention") {
+    return readinessDbValueForBusinessMeaning(evidence, "blocked") as FintechPayoutReadinessStatus;
+  }
+
+  return readinessDbValueForBusinessMeaning(evidence, "pending") as FintechPayoutReadinessStatus;
+}
+
+function moneyRoutingDbValueForStatus(
+  evidence: PaymentRoutingConstraintEvidence,
+  status: MoneyRoutingStatus
+): MoneyRoutingStatus {
+  const allowed = routingAllowedValues(evidence, "money_routing_status");
+  const normalized = String(status ?? "").toLowerCase();
+  if (allowed.has(normalized)) {
+    return normalized as MoneyRoutingStatus;
+  }
+
+  if (normalized === "refunded" && allowed.has("manual_review")) {
+    return "manual_review";
+  }
+
+  if (normalized === "blocked" && allowed.has("blocked")) {
+    return "blocked";
+  }
+
+  return moneyRoutingDbValueForPending(evidence) as MoneyRoutingStatus;
+}
+
+function reconciliationDbValueForStatus(
+  evidence: PaymentRoutingConstraintEvidence,
+  status: PayoutExecutionReconciliationStatus | string
+): PayoutExecutionReconciliationStatus {
+  const allowed = routingAllowedValues(evidence, "reconciliation_status");
+  const normalized = String(status ?? "").toLowerCase();
+  if (allowed.has(normalized)) {
+    return normalized as PayoutExecutionReconciliationStatus;
+  }
+
+  return reconciliationDbValueForOpen(evidence) as PayoutExecutionReconciliationStatus;
 }
 
 const COMPLETION_PAYMENT_SUCCESS_STATUSES = new Set(["captured", "succeeded", "paid", "completed"]);
@@ -1703,8 +1771,8 @@ async function recordRoutingLifecycleEvents(
           idempotencyKey: buildPlatformEventIdempotencyKey(["payment-routing", input.routing.id, "created"])
         }
       : null,
-    (input.routing.payout_readiness_status === "eligible" || input.routing.money_routing_status === "ready_for_payout")
-      && input.existingRouting?.payout_readiness_status !== "eligible"
+    (isPayoutReadinessEligible(input.routing.payout_readiness_status) || input.routing.money_routing_status === "ready_for_payout")
+      && !isPayoutReadinessEligible(input.existingRouting?.payout_readiness_status)
       && input.existingRouting?.money_routing_status !== "ready_for_payout"
       ? {
           eventType: "payout_eligible" as const,
@@ -2009,21 +2077,26 @@ export async function syncPaymentRoutingRecord(
       : completionEligibilityForced
         ? "pending"
         : calculated.moneyRoutingStatus;
+  const constraintEvidence = await loadPaymentRoutingConstraintEvidence(supabase);
+  const payoutReadinessDbStatus = readinessDbValueForStatus(constraintEvidence, payoutReadinessStatus);
+  const moneyRoutingDbStatus = moneyRoutingDbValueForStatus(constraintEvidence, moneyRoutingStatus);
   const now = new Date().toISOString();
-  const reconciliationStatus =
+  const reconciliationStatus = reconciliationDbValueForStatus(
+    constraintEvidence,
     options?.reconciliationStatus
-    ?? existingRouting?.reconciliation_status
-    ?? "open";
-  const nextEligibleAt = completionEligibilityForced || moneyRoutingStatus === "ready_for_payout"
+      ?? existingRouting?.reconciliation_status
+      ?? "open"
+  );
+  const nextEligibleAt = completionEligibilityForced || moneyRoutingDbStatus === "ready_for_payout"
     ? existingRouting?.eligible_at ?? now
     : existingRouting?.eligible_at ?? null;
-  const nextHeldAt = disputeHold && moneyRoutingStatus === "blocked"
+  const nextHeldAt = disputeHold && moneyRoutingDbStatus === "blocked"
     ? existingRouting?.held_at ?? now
     : existingRouting?.held_at ?? null;
-  const nextReleasedAt = moneyRoutingStatus === "paid_out"
+  const nextReleasedAt = moneyRoutingDbStatus === "paid_out"
     ? existingRouting?.released_at ?? now
     : existingRouting?.released_at ?? null;
-  const nextReversedAt = moneyRoutingStatus === "refunded"
+  const nextReversedAt = moneyRoutingDbStatus === "refunded"
     ? existingRouting?.reversed_at ?? now
     : existingRouting?.reversed_at ?? null;
 
@@ -2041,8 +2114,8 @@ export async function syncPaymentRoutingRecord(
     barber_payout_amount: calculated.barberPayoutAmount,
     shop_split_amount: calculated.shopSplitAmount,
     currency: payment.currency.toLowerCase(),
-    payout_readiness_status: payoutReadinessStatus,
-    money_routing_status: moneyRoutingStatus,
+    payout_readiness_status: payoutReadinessDbStatus,
+    money_routing_status: moneyRoutingDbStatus,
     blocked_reason: completionEligibilityForced ? null : blockedReason,
     eligible_at: nextEligibleAt,
     held_at: nextHeldAt,
@@ -2069,6 +2142,10 @@ export async function syncPaymentRoutingRecord(
       repairReason: options?.repairReason ?? null,
       source: options?.source ?? null,
       relationshipType: routingModel,
+      readinessMeaning: payoutReadinessMeaning(payoutReadinessDbStatus),
+      payoutReadinessDbValue: payoutReadinessDbStatus,
+      moneyRoutingDbValue: moneyRoutingDbStatus,
+      constraintSource: constraintEvidence.source,
       appointmentId: payment.appointment_id,
       paymentId: payment.id,
       clientId: payment.client_id
@@ -2144,7 +2221,7 @@ function mapRoutingLifecycleStatus(routing: PaymentRoutingRow | null) {
     return "repair_required" as const;
   }
 
-  if (routing.payout_readiness_status === "eligible" || routing.money_routing_status === "ready_for_payout") {
+  if (isPayoutReadinessEligible(routing.payout_readiness_status) || routing.money_routing_status === "ready_for_payout") {
     return "eligible" as const;
   }
 
@@ -2201,6 +2278,17 @@ async function repairCompletedFreelanceAppointmentRoutingRecord(
     : disputeHold
       ? "An active dispute or chargeback is blocking payout."
       : null;
+  const constraintEvidence = await loadPaymentRoutingConstraintEvidence(supabase);
+  const payoutReadinessStatus = blockedReason
+    ? readinessDbValueForBusinessMeaning(constraintEvidence, "blocked") as FintechPayoutReadinessStatus
+    : readinessDbValueForBusinessMeaning(constraintEvidence, "eligible") as FintechPayoutReadinessStatus;
+  const moneyRoutingStatus = blockedReason
+    ? moneyRoutingDbValueForStatus(constraintEvidence, "blocked")
+    : moneyRoutingDbValueForPending(constraintEvidence) as MoneyRoutingStatus;
+  const reconciliationStatus = reconciliationDbValueForStatus(
+    constraintEvidence,
+    existingRouting?.reconciliation_status ?? "open"
+  );
   const eligibleAt = paymentSucceeded && !disputeHold ? existingRouting?.eligible_at ?? now : existingRouting?.eligible_at ?? null;
   const heldAt = disputeHold ? existingRouting?.held_at ?? now : existingRouting?.held_at ?? null;
   const routingPayload = {
@@ -2217,8 +2305,8 @@ async function repairCompletedFreelanceAppointmentRoutingRecord(
     barber_payout_amount: barberPayoutAmount,
     shop_split_amount: shopSplitAmount,
     currency: (payment.currency || "usd").toLowerCase(),
-    payout_readiness_status: blockedReason ? "blocked" as const : "eligible" as const,
-    money_routing_status: blockedReason ? "blocked" as const : "pending" as const,
+    payout_readiness_status: payoutReadinessStatus,
+    money_routing_status: moneyRoutingStatus,
     blocked_reason: blockedReason,
     eligible_at: eligibleAt,
     held_at: heldAt,
@@ -2226,12 +2314,16 @@ async function repairCompletedFreelanceAppointmentRoutingRecord(
     reversed_at: existingRouting?.reversed_at ?? null,
     processor_charge_id: existingRouting?.processor_charge_id ?? payment.provider_payment_intent_id ?? null,
     processor_balance_transaction_id: existingRouting?.processor_balance_transaction_id ?? null,
-    reconciliation_status: existingRouting?.reconciliation_status ?? "open" as const,
+    reconciliation_status: reconciliationStatus,
     metadata: {
       ...(existingRouting?.metadata && typeof existingRouting.metadata === "object" ? existingRouting.metadata : {}),
       repairReason: "missing_routing_record_on_completion",
       source: "barber_complete_service",
       relationshipType: "freelance",
+      readinessMeaning: payoutReadinessMeaning(payoutReadinessStatus),
+      payoutReadinessDbValue: payoutReadinessStatus,
+      moneyRoutingDbValue: moneyRoutingStatus,
+      constraintSource: constraintEvidence.source,
       appointmentId: appointment.id,
       paymentId: payment.id,
       barberId: appointment.barber_id,

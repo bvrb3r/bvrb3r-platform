@@ -84,6 +84,13 @@ function appointmentLabel(appointment: JsonRecord) {
   return `appointment ${String(appointment.id ?? "unknown")}`;
 }
 
+const APPOINTMENT_SCOPED_PAYMENT_TYPES = new Set(["booking", "tip", "add_on"]);
+
+function isAppointmentScopedPayment(payment: JsonRecord) {
+  const paymentType = String(payment.payment_type ?? payment.type ?? "").toLowerCase();
+  return APPOINTMENT_SCOPED_PAYMENT_TYPES.has(paymentType);
+}
+
 export async function detectArchitectMissionIncidents(supabase: SupabaseClient) {
   const [appointments, payments, barbers, services, availabilityRules, audits] = await Promise.all([
     selectRows<JsonRecord>(supabase, "appointments", { orderColumn: "updated_at", limit: 80, optional: true }),
@@ -232,6 +239,42 @@ export async function detectArchitectMissionIncidents(supabase: SupabaseClient) 
 
   for (const payment of payments) {
     if (!isPaymentSuccessful(payment)) continue;
+    if (isAppointmentScopedPayment(payment) && !payment.appointment_id) {
+      incidents.push(buildIncident({
+        diagnosisCode: "orphaned_captured_payment",
+        affectedEntity: `payment ${String(payment.id ?? "unknown")}`,
+        affectedRole: "barber",
+        affectedTable: "payments",
+        affectedRoute: "/api/payments/[paymentId]/capture",
+        severity: "critical",
+        confidence: "high",
+        recommendedAction: "Place payment under manual review; do not repair into appointment routing without a valid appointment or POS sale.",
+        canRepair: false,
+        repairType: null,
+        codexRequired: true,
+        targetType: "payment",
+        targetId: String(payment.id ?? ""),
+        headline: "Captured appointment-scoped payment has no business object.",
+        evidence: [
+          `payment.status=${String(payment.status ?? payment.payment_status ?? "unknown")}`,
+          `payment.payment_type=${String(payment.payment_type ?? payment.type ?? "unknown")}`,
+          "payment.appointment_id is empty",
+          "No POS/walk-in sale record is linked for Role 1."
+        ],
+        analysis: {
+          likelyRootCause: "A payment capture path allowed appointment-scoped money without an appointment relation.",
+          confidence: 92,
+          affectedLayer: "payment capture",
+          failedInvariant: "No captured money without appointment, walk-in/POS sale, subscription, booth rent, product order, refund, or dispute object.",
+          supportingEvidence: [`paymentId=${String(payment.id ?? "unknown")}`],
+          ruledOut: ["safe routing repair is not allowed for orphan payments"],
+          safeRepairAvailable: false,
+          codexRequired: true,
+          nextBestAction: "Generate Codex Patch or manually classify and hold the payment."
+        }
+      }));
+      continue;
+    }
     const appointment = appointments.find((row) => row.id === payment.appointment_id);
     const appointmentStatus = String(appointment?.status ?? "").toLowerCase();
     if (!appointment || !["confirmed", "completed", "checked_in", "in_service"].includes(appointmentStatus)) {

@@ -55,6 +55,20 @@ describe("BarberCheckoutScreen", () => {
     expect(screen.getByText("$125.00")).toBeInTheDocument();
   });
 
+  it("blocks standalone keypad capture until an appointment or POS sale object exists", () => {
+    render(
+      <BarberCheckoutScreen
+        barberName="Blaze King"
+        barberRole="booth_rent_barber"
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /5\s*JKL/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Review Sale/ }));
+
+    expect(screen.getByText("Attach this sale to an appointment before capturing payment. Standalone POS sales are coming soon.")).toBeInTheDocument();
+  });
+
   it("keeps paid appointments and money posture out of the Checkout tab", () => {
     render(
       <BarberCheckoutScreen

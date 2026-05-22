@@ -236,6 +236,30 @@ describe("stripe payment record creation", () => {
     getStripeConnectClientMock.mockReset();
   });
 
+  it("blocks captured booking charges before Stripe when no appointment business object exists", async () => {
+    const stripeCreateMock = vi.fn();
+    getStripeConnectClientMock.mockReturnValue({
+      paymentIntents: {
+        create: stripeCreateMock
+      }
+    });
+    const supabase = createSupabaseStub();
+
+    await expect(createCapturedStripePaymentRecord(supabase as never, {
+      appointmentId: null,
+      clientId: "client-live-1",
+      shopId: null,
+      barberId: "barber-live-1",
+      serviceId: "service-live-1",
+      amount: 25,
+      paymentType: "booking",
+      paymentMethodId: "pm-local-1",
+      createdAt: "2026-04-21T12:30:00.000Z"
+    })).rejects.toThrow("Appointment payments require an appointment before card capture.");
+    expect(stripeCreateMock).not.toHaveBeenCalled();
+    expect(supabase.state.insertedPayment).toBeNull();
+  });
+
   it("attaches canonical appointment, barber, shop, and service metadata to Stripe payment intents", async () => {
     const stripeCreateMock = vi.fn().mockResolvedValue({
       id: "pi_live_1",

@@ -166,10 +166,9 @@ export function BarberCheckoutScreen({
     }
 
     setPanelFeedback({
-      tone: "info",
-      message: "Review is ready."
+      tone: "error",
+      message: "Attach this sale to an appointment before capturing payment. Standalone POS sales are coming soon."
     });
-    openDetailSection("appointments");
   }
 
   function handleLoadService(service: (typeof serviceShortcuts)[number]["service"]) {

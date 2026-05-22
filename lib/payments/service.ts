@@ -265,6 +265,24 @@ type CreateTipLedgerInput = {
   createdAt?: string;
 };
 
+const APPOINTMENT_SCOPED_PAYMENT_TYPES = new Set<InternalPaymentType>(["booking", "tip", "add_on"]);
+
+function requiresAppointmentBusinessObject(paymentType: InternalPaymentType) {
+  return APPOINTMENT_SCOPED_PAYMENT_TYPES.has(paymentType);
+}
+
+function assertCapturedPaymentHasBusinessObject(input: {
+  paymentType: InternalPaymentType;
+  appointmentId?: string | null;
+  paymentStatus?: InternalPaymentStatus | string | null;
+}) {
+  const status = String(input.paymentStatus ?? "").toLowerCase();
+  const isCapturedMoney = status === "captured" || status === "succeeded" || status === "paid" || status === "completed";
+  if (isCapturedMoney && requiresAppointmentBusinessObject(input.paymentType) && !input.appointmentId?.trim()) {
+    throw new PaymentServiceError("Appointment payments require an appointment before card capture.", 409);
+  }
+}
+
 export type ClientPaymentMethodView = {
   id: string;
   provider: InternalPaymentProvider;
@@ -1816,6 +1834,11 @@ export async function createCapturedStripePaymentRecord(
   if (normalizedAmount <= 0) {
     throw new PaymentServiceError("A positive Stripe payment amount is required.", 400);
   }
+  assertCapturedPaymentHasBusinessObject({
+    paymentType: input.paymentType,
+    appointmentId: input.appointmentId,
+    paymentStatus: "captured"
+  });
 
   let paymentMethod: PaymentMethodRow;
   try {
@@ -2699,6 +2722,11 @@ export async function createPaymentLedgerEntry(
   supabase: SupabaseClient,
   input: CreatePaymentLedgerInput
 ) {
+  assertCapturedPaymentHasBusinessObject({
+    paymentType: input.paymentType,
+    appointmentId: input.appointmentId,
+    paymentStatus: input.paymentStatus
+  });
   const createdAt = input.createdAt ?? new Date().toISOString();
   const providerPaymentIntentId = input.providerPaymentIntentId ?? `${input.provider}_pay_${randomUUID()}`;
   const paymentPayload = {
@@ -3390,6 +3418,11 @@ export async function capturePayment(user: UserAccount, paymentId: string) {
   const actor = await resolvePaymentActor(user, supabase);
   const payment = await loadPaymentOrThrow(supabase, paymentId);
   const appointment = payment.appointment_id ? await loadAppointmentOrThrow(supabase, payment.appointment_id) : null;
+  assertCapturedPaymentHasBusinessObject({
+    paymentType: payment.payment_type,
+    appointmentId: payment.appointment_id,
+    paymentStatus: "captured"
+  });
   assertShopAccess(actor.role, actor.locationIds, payment.shop_id ?? appointment?.shop_id ?? null, appointment?.location_id);
   assertPaymentStatusTransition(payment.payment_status, "captured");
 
