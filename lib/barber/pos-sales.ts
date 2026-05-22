@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { isBarberAccountRole } from "@/lib/auth/roles";
+import { canonicalBarberUuid } from "@/lib/booking/canonical-booking";
 import { createPaymentLedgerEntry } from "@/lib/payments/service";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { PLATFORM_FEE_RATE, roundCurrency } from "@/lib/fintech/domain";
@@ -11,9 +12,24 @@ type BarberRow = {
   id: string;
   profile_id: string;
   reference_code: string | null;
+  barber_subtype?: string | null;
   compensation_model?: string | null;
+  default_money_relationship?: string | null;
   commission_rate?: number | string | null;
 };
+
+type ProfileRow = {
+  id: string;
+  email: string | null;
+  role: string | null;
+};
+
+type BarberLookupAttempt = {
+  column: "id" | "reference_code" | "profile_id";
+  value: string;
+};
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
 
 type PosSaleRow = {
   id: string;
@@ -99,6 +115,86 @@ function normalizeRelationshipType(value: string | null | undefined): BarberPosS
   return "freelance";
 }
 
+function uniqueLookupAttempts(attempts: Array<BarberLookupAttempt | null | undefined>) {
+  const seen = new Set<string>();
+  return attempts.filter((attempt): attempt is BarberLookupAttempt => {
+    const value = attempt?.value?.trim();
+    if (!attempt || !value) return false;
+
+    const key = `${attempt.column}:${value}`;
+    if (seen.has(key)) return false;
+
+    seen.add(key);
+    attempt.value = value;
+    return true;
+  });
+}
+
+async function maybeLoadProfileForPosUser(supabase: SupabaseClient, user: UserAccount) {
+  const byId = await supabase
+    .from("profiles")
+    .select("id, email, role")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (byId.data) {
+    return byId.data as ProfileRow;
+  }
+
+  if (!user.email) {
+    return null;
+  }
+
+  const byEmail = await supabase
+    .from("profiles")
+    .select("id, email, role")
+    .eq("email", user.email)
+    .maybeSingle();
+
+  return (byEmail.data as ProfileRow | null) ?? null;
+}
+
+async function loadBarberByAttempt(supabase: SupabaseClient, attempt: BarberLookupAttempt) {
+  const fullSelect = "id, profile_id, reference_code, compensation_model, commission_rate, barber_subtype, default_money_relationship";
+  const result = await supabase
+    .from("barbers")
+    .select(fullSelect)
+    .eq(attempt.column, attempt.value)
+    .maybeSingle();
+
+  if (!result.error) {
+    return result;
+  }
+
+  const fallbackResult = await supabase
+    .from("barbers")
+    .select("id, profile_id, reference_code")
+    .eq(attempt.column, attempt.value)
+    .maybeSingle();
+
+  return fallbackResult;
+}
+
+function logBarberPosResolveFailed(input: {
+  user: UserAccount;
+  profile: ProfileRow | null;
+  attempts: BarberLookupAttempt[];
+  error?: unknown;
+}) {
+  const error = input.error as { code?: string; details?: string; message?: string; name?: string } | undefined;
+  console.warn("[barber-pos] resolve_failed", {
+    viewerProfileId: input.profile?.id ?? input.user.id,
+    role: input.user.role,
+    email: input.user.email,
+    barberId: input.user.barberId ?? null,
+    lookupAttempted: input.attempts.map((attempt) => `${attempt.column}:${attempt.value}`),
+    errorName: error?.name ?? null,
+    errorMessage: error?.message ?? null,
+    postgresCode: error?.code ?? null,
+    postgresDetails: error?.details ?? null
+  });
+}
+
 function normalizeItem(input: PosSaleItemInput | null | undefined, fallbackAmountCents: number) {
   const itemType = input?.itemType ?? (input?.serviceId ? "service" : "custom_amount");
   const quantity = Math.max(1, Math.round(Number(input?.quantity ?? 1)));
@@ -178,31 +274,50 @@ async function resolveBarberActor(supabase: SupabaseClient, user: UserAccount) {
     throw new BarberPosSaleError("Only barber accounts can run POS sales.", 403);
   }
 
-  const query = user.barberId
-    ? supabase
-      .from("barbers")
-      .select("id, profile_id, reference_code, compensation_model, commission_rate")
-      .eq("id", user.barberId)
-      .maybeSingle()
-    : supabase
-      .from("barbers")
-      .select("id, profile_id, reference_code, compensation_model, commission_rate")
-      .eq("profile_id", user.id)
-      .maybeSingle();
+  const profile = await maybeLoadProfileForPosUser(supabase, user);
+  const barberReference = user.barberId?.trim();
+  const canonicalReference = barberReference ? canonicalBarberUuid(barberReference) : null;
+  const attempts = uniqueLookupAttempts([
+    barberReference && UUID_PATTERN.test(barberReference) ? { column: "id", value: barberReference } : null,
+    barberReference ? { column: "reference_code", value: barberReference } : null,
+    canonicalReference ? { column: "id", value: canonicalReference } : null,
+    profile?.id ? { column: "profile_id", value: profile.id } : null,
+    { column: "profile_id", value: user.id }
+  ]);
 
-  const barberResult = await query;
-  if (barberResult.error) {
-    throw new BarberPosSaleError("Unable to resolve the barber POS account.", 500);
+  let lastError: unknown = null;
+  let barber: BarberRow | null = null;
+
+  for (const attempt of attempts) {
+    const barberResult = await loadBarberByAttempt(supabase, attempt);
+    if (barberResult.error) {
+      lastError = barberResult.error;
+      continue;
+    }
+
+    if (barberResult.data) {
+      barber = barberResult.data as BarberRow;
+      break;
+    }
   }
 
-  if (!barberResult.data) {
-    throw new BarberPosSaleError("Barber account not found for POS sale.", 404);
+  if (!barber) {
+    logBarberPosResolveFailed({ user, profile, attempts, error: lastError ?? undefined });
+    throw new BarberPosSaleError(
+      lastError ? "Unable to resolve the barber POS account." : "Barber account not found for POS sale.",
+      lastError ? 500 : 404
+    );
   }
 
-  const barber = barberResult.data as BarberRow;
-  const relationshipType = normalizeRelationshipType(barber.compensation_model ?? user.barberSubtype ?? "freelance");
+  const relationshipType = normalizeRelationshipType(
+    barber.compensation_model
+      ?? barber.default_money_relationship
+      ?? barber.barber_subtype
+      ?? user.barberSubtype
+      ?? "freelance"
+  );
   return {
-    profileId: user.id,
+    profileId: profile?.id ?? barber.profile_id ?? user.id,
     barber,
     relationshipType,
     shopId: relationshipType === "freelance" ? null : user.locationIds[0] ?? null
@@ -425,4 +540,3 @@ export async function listBarberPosSales(user: UserAccount) {
     sales: (result.data ?? []) as PosSaleRow[]
   };
 }
-
