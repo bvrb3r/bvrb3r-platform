@@ -29,7 +29,7 @@ vi.mock("@/lib/trust/provider", async () => {
 
 import { resolveBarberAppointmentActionContext } from "@/lib/barber/appointment-actions";
 import { calculatePaymentRouting } from "@/lib/fintech/domain";
-import { evaluatePayoutEligibilityForAppointment, getBarberPayouts } from "@/lib/fintech/service";
+import { evaluatePayoutEligibilityForAppointment, getBarberPayouts, syncPaymentRoutingRecord } from "@/lib/fintech/service";
 
 type Row = Record<string, unknown>;
 type QueryResult = { data: Row[] | null; error: Row | null };
@@ -41,6 +41,8 @@ const APPOINTMENT_ID = "37cdb825-a65d-5cda-b58d-5b5efaedbfc0";
 const APPOINTMENT_REFERENCE = "appt-1778939666238-vgukd";
 const LOCATION_ID = "67ad0d9b-4f60-44e6-a213-86f665324574";
 const PAYMENT_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const POS_SALE_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const POS_PAYMENT_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 
 function createTables(overrides: Partial<Record<string, Row[]>> = {}) {
   return {
@@ -93,6 +95,7 @@ function createTables(overrides: Partial<Record<string, Row[]>> = {}) {
     legal_acceptances: [],
     billing_subscriptions: [],
     payment_routing_records: [],
+    pos_sales: [],
     platform_events: [],
     ...overrides
   } satisfies Record<string, Row[]>;
@@ -326,6 +329,76 @@ describe("payout completion flow", () => {
     });
   });
 
+  it("creates eligible routing for a paid standalone POS sale without an appointment", async () => {
+    const tables = createTables({
+      pos_sales: [{
+        id: POS_SALE_ID,
+        barber_id: BARBER_ID,
+        shop_id: null,
+        client_id: null,
+        customer_name: "Walk-in client",
+        source: "barber_keypad",
+        status: "paid",
+        subtotal_cents: 3500,
+        discount_cents: 0,
+        tip_cents: 0,
+        platform_fee_cents: 175,
+        client_fee_cents: 0,
+        total_cents: 3500,
+        payment_id: POS_PAYMENT_ID,
+        note: null,
+        created_by_profile_id: BARBER_PROFILE_ID,
+        created_at: "2026-05-16T14:30:00.000Z",
+        updated_at: "2026-05-16T14:30:00.000Z"
+      }],
+      payments: [{
+        id: POS_PAYMENT_ID,
+        appointment_id: null,
+        pos_sale_id: POS_SALE_ID,
+        client_id: null,
+        shop_id: null,
+        barber_id: BARBER_ID,
+        provider: "stripe",
+        provider_payment_intent_id: "pi_pos_paid",
+        amount: 35,
+        currency: "usd",
+        status: "captured",
+        payment_status: "captured",
+        payment_type: "pos_sale",
+        paid_at: "2026-05-16T14:30:00.000Z",
+        created_at: "2026-05-16T14:30:00.000Z",
+        updated_at: "2026-05-16T14:30:00.000Z"
+      }]
+    });
+    const supabase = createSupabaseStub(tables);
+
+    const routing = await syncPaymentRoutingRecord(supabase as never, POS_PAYMENT_ID);
+
+    expect(routing).toMatchObject({
+      payment_id: POS_PAYMENT_ID,
+      appointment_id: null,
+      pos_sale_id: POS_SALE_ID,
+      routing_model: "freelance",
+      payout_readiness_status: "ready",
+      money_routing_status: "pending",
+      platform_fee_amount: 1.75,
+      barber_payout_amount: 33.25,
+      shop_split_amount: 0,
+      eligible_at: expect.any(String),
+      released_at: null
+    });
+    expect(Object.keys(tables.payment_routing_records[0])).not.toEqual(expect.arrayContaining([
+      "relationship_type",
+      "gross_amount_cents",
+      "platform_fee_cents",
+      "barber_amount_cents",
+      "shop_amount_cents",
+      "status",
+      "hold_reason",
+      "total_cents"
+    ]));
+  });
+
   it("uses eligible directly when the payment routing constraint allows it", async () => {
     const tables = createTables({
       "information_schema.check_constraints": [{
@@ -499,6 +572,89 @@ describe("payout completion flow", () => {
       eligiblePayoutAmount: 4.75,
       executableRoutingRecords: 0,
       readyForPayoutAmount: 0,
+      executedAmount: 0
+    });
+  });
+
+  it("includes paid POS sale routing in barber eligible payout balance", async () => {
+    const tables = createTables({
+      pos_sales: [{
+        id: POS_SALE_ID,
+        barber_id: BARBER_ID,
+        shop_id: null,
+        client_id: null,
+        customer_name: "Walk-in client",
+        source: "barber_keypad",
+        status: "paid",
+        subtotal_cents: 3500,
+        discount_cents: 0,
+        tip_cents: 0,
+        platform_fee_cents: 175,
+        client_fee_cents: 0,
+        total_cents: 3500,
+        payment_id: POS_PAYMENT_ID,
+        note: null,
+        created_by_profile_id: BARBER_PROFILE_ID,
+        created_at: "2026-05-16T14:30:00.000Z",
+        updated_at: "2026-05-16T14:30:00.000Z"
+      }],
+      payments: [{
+        ...createTables().payments[0],
+        id: POS_PAYMENT_ID,
+        appointment_id: null,
+        pos_sale_id: POS_SALE_ID,
+        amount: 35,
+        provider_payment_intent_id: "pi_pos_paid",
+        payment_type: "pos_sale"
+      }],
+      payment_routing_records: [{
+        id: "routing-pos-ready-balance",
+        payment_id: POS_PAYMENT_ID,
+        appointment_id: null,
+        pos_sale_id: POS_SALE_ID,
+        membership_id: null,
+        routing_model: "freelance",
+        payout_recipient_type: "barber",
+        provider_gross_amount: 35,
+        refunded_amount: 0,
+        provider_fee_amount: 0,
+        provider_net_amount: 35,
+        platform_fee_amount: 1.75,
+        barber_payout_amount: 33.25,
+        shop_split_amount: 0,
+        currency: "usd",
+        payout_readiness_status: "ready",
+        money_routing_status: "pending",
+        blocked_reason: null,
+        eligible_at: "2026-05-16T14:30:00.000Z",
+        held_at: null,
+        released_at: null,
+        reversed_at: null,
+        processor_charge_id: "pi_pos_paid",
+        processor_balance_transaction_id: null,
+        reconciliation_status: "open",
+        metadata: {},
+        created_at: "2026-05-16T14:30:00.000Z",
+        updated_at: "2026-05-16T14:30:00.000Z"
+      }]
+    });
+    createSupabaseAdminClientMock.mockReturnValue(createSupabaseStub(tables));
+
+    const result = await getBarberPayouts({
+      id: BARBER_PROFILE_ID,
+      role: "barber_user",
+      email: "phillipmcgee813@gmail.com",
+      password: "DevOnly!123",
+      name: "Phillip mcgee",
+      title: "Freelance Barber",
+      locationIds: [],
+      barberId: "barber-43b3cda2",
+      barberSubtype: "freelance"
+    });
+
+    expect(result.summary).toMatchObject({
+      eligibleRoutingRecords: 1,
+      eligiblePayoutAmount: 33.25,
       executedAmount: 0
     });
   });

@@ -92,9 +92,10 @@ function isAppointmentScopedPayment(payment: JsonRecord) {
 }
 
 export async function detectArchitectMissionIncidents(supabase: SupabaseClient) {
-  const [appointments, payments, barbers, services, availabilityRules, audits] = await Promise.all([
+  const [appointments, payments, posSales, barbers, services, availabilityRules, audits] = await Promise.all([
     selectRows<JsonRecord>(supabase, "appointments", { orderColumn: "updated_at", limit: 80, optional: true }),
     selectRows<JsonRecord>(supabase, "payments", { orderColumn: "created_at", limit: 80, optional: true }),
+    selectRows<JsonRecord>(supabase, "pos_sales", { orderColumn: "updated_at", limit: 80, optional: true }),
     selectRows<JsonRecord>(supabase, "barbers", { orderColumn: "updated_at", limit: 80, optional: true }),
     selectRows<JsonRecord>(supabase, "services", { orderColumn: "updated_at", limit: 200, optional: true }),
     selectRows<JsonRecord>(supabase, "availability_rules", { limit: 200, optional: true }),
@@ -275,6 +276,45 @@ export async function detectArchitectMissionIncidents(supabase: SupabaseClient) 
       }));
       continue;
     }
+    const paymentType = String(payment.payment_type ?? payment.type ?? "").toLowerCase();
+    if (paymentType === "pos_sale" && !payment.pos_sale_id) {
+      incidents.push(buildIncident({
+        diagnosisCode: "orphaned_captured_payment",
+        affectedEntity: `payment ${String(payment.id ?? "unknown")}`,
+        affectedRole: "barber",
+        affectedTable: "payments",
+        affectedRoute: "/api/barber/pos-sales/[id]/charge",
+        severity: "critical",
+        confidence: "high",
+        recommendedAction: "Place payment under manual review; do not repair into appointment routing without a valid POS sale.",
+        canRepair: false,
+        repairType: null,
+        codexRequired: true,
+        targetType: "payment",
+        targetId: String(payment.id ?? ""),
+        headline: "Captured POS sale payment has no POS sale business object.",
+        evidence: [
+          `payment.status=${String(payment.status ?? payment.payment_status ?? "unknown")}`,
+          "payment.payment_type=pos_sale",
+          "payment.pos_sale_id is empty"
+        ],
+        analysis: {
+          likelyRootCause: "A POS payment capture path allowed money without a POS sale relation.",
+          confidence: 92,
+          affectedLayer: "POS payment capture",
+          failedInvariant: "No captured money without appointment, POS sale, subscription, booth rent, product order, refund, or dispute object.",
+          supportingEvidence: [`paymentId=${String(payment.id ?? "unknown")}`],
+          ruledOut: ["safe appointment routing repair is not allowed for POS orphans"],
+          safeRepairAvailable: false,
+          codexRequired: true,
+          nextBestAction: "Generate Codex Patch or manually classify and hold the payment."
+        }
+      }));
+      continue;
+    }
+    if (paymentType === "pos_sale" && payment.pos_sale_id) {
+      continue;
+    }
     const appointment = appointments.find((row) => row.id === payment.appointment_id);
     const appointmentStatus = String(appointment?.status ?? "").toLowerCase();
     if (!appointment || !["confirmed", "completed", "checked_in", "in_service"].includes(appointmentStatus)) {
@@ -307,6 +347,65 @@ export async function detectArchitectMissionIncidents(supabase: SupabaseClient) 
           safeRepairAvailable: false,
           codexRequired: true,
           nextBestAction: "Generate Codex Patch."
+        }
+      }));
+    }
+  }
+
+  for (const posSale of posSales) {
+    const status = String(posSale.status ?? "").toLowerCase();
+    if (status !== "paid") continue;
+
+    const saleId = String(posSale.id ?? "");
+    const payment = latest(payments.filter((row) => row.pos_sale_id === posSale.id || row.id === posSale.payment_id));
+    if (!isPaymentSuccessful(payment)) continue;
+
+    const routingRows = await selectRows<JsonRecord>(supabase, "payment_routing_records", {
+      column: "pos_sale_id",
+      value: posSale.id,
+      orderColumn: "updated_at",
+      optional: true
+    });
+
+    if (!latest(routingRows)) {
+      const grossAmount = Number(posSale.total_cents ?? 0) / 100;
+      incidents.push(buildIncident({
+        diagnosisCode: "paid_pos_sale_missing_routing",
+        affectedEntity: `POS sale ${saleId}`,
+        affectedRole: "barber",
+        affectedTable: "payment_routing_records",
+        affectedRoute: "/api/barber/pos-sales/[id]/charge",
+        severity: "critical",
+        confidence: "high",
+        recommendedAction: "Repair POS sale routing or rerun POS payment routing sync.",
+        canRepair: false,
+        repairType: null,
+        codexRequired: true,
+        targetType: "pos_sale",
+        targetId: saleId,
+        headline: "Paid POS sale is missing payment routing.",
+        evidence: [
+          "pos_sales.status = paid",
+          `payment.status = ${String(payment?.status ?? payment?.payment_status ?? "unknown")}`,
+          "payment_routing_records lookup by pos_sale_id returned 0 rows",
+          `gross amount = ${grossAmount.toFixed(2)}`,
+          `expected platform fee = ${(grossAmount * 0.05).toFixed(2)}`,
+          `expected barber payout = ${(grossAmount - grossAmount * 0.05).toFixed(2)}`
+        ],
+        analysis: {
+          likelyRootCause: "The POS payment ledger succeeded without a corresponding routing ledger row.",
+          confidence: 90,
+          affectedLayer: "POS payment routing",
+          failedInvariant: "paid POS sale + captured payment must have payment_routing_records.pos_sale_id.",
+          supportingEvidence: [
+            `posSaleId=${saleId}`,
+            `paymentId=${String(payment?.id ?? "missing")}`,
+            `barberId=${String(posSale.barber_id ?? payment?.barber_id ?? "unknown")}`
+          ],
+          ruledOut: ["draft/payment_pending POS sales are ignored"],
+          safeRepairAvailable: false,
+          codexRequired: true,
+          nextBestAction: "Open Deep Debug and repair POS sale routing."
         }
       }));
     }

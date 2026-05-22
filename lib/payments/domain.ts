@@ -7,7 +7,7 @@ export type InternalPaymentStatus =
   | "refunded"
   | "partially_refunded"
   | "voided";
-export type InternalPaymentType = "booking" | "tip" | "add_on" | "booth_rent" | "subscription";
+export type InternalPaymentType = "booking" | "tip" | "add_on" | "booth_rent" | "subscription" | "pos_sale";
 
 export interface PaymentMethodReferenceInput {
   provider: InternalPaymentProvider;

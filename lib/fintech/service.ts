@@ -170,6 +170,7 @@ type LegalAcceptanceRow = {
 type PaymentRow = {
   id: string;
   appointment_id: string | null;
+  pos_sale_id?: string | null;
   client_id: string | null;
   shop_id: string | null;
   barber_id: string | null;
@@ -197,6 +198,18 @@ type AppointmentRow = {
   client_id: string;
 };
 
+type PosSaleRow = {
+  id: string;
+  status: string;
+  barber_id: string;
+  shop_id: string | null;
+  client_id: string | null;
+  payment_id: string | null;
+  total_cents: number | string;
+  created_at: string;
+  updated_at: string;
+};
+
 type RefundRow = {
   id: string;
   amount: number | string;
@@ -206,6 +219,7 @@ type PaymentRoutingRow = {
   id: string;
   payment_id: string;
   appointment_id: string | null;
+  pos_sale_id?: string | null;
   membership_id: string | null;
   routing_model: RoutingModel;
   payout_recipient_type: "barber" | "shop" | "split";
@@ -354,6 +368,7 @@ export type FintechRoutingView = {
   id: string;
   paymentId: string;
   appointmentId: string | null;
+  posSaleId?: string | null;
   barberName: string | null;
   shopLabel: string | null;
   routingModel: RoutingModel;
@@ -516,8 +531,8 @@ export class FintechServiceError extends Error {
 }
 
 const CONNECTED_ACCOUNT_SELECT = "id, subject_type, barber_id, shop_id, provider, provider_account_id, onboarding_status, payout_readiness_status, legal_readiness_status, tax_readiness_status, requirements_currently_due, requirements_eventually_due, requirements_past_due, disabled_reason, charges_enabled, payouts_enabled, last_checked_at, onboarding_started_at, onboarding_completed_at, processor_last_synced_at, processor_last_event_id, processor_last_event_type, dashboard_last_accessed_at, created_by, created_at, updated_at";
-const PAYMENT_SELECT = "id, appointment_id, client_id, shop_id, barber_id, provider, provider_payment_intent_id, amount, currency, status, payment_status, payment_type, paid_at, created_at, updated_at";
-const PAYMENT_ROUTING_SELECT = "id, payment_id, appointment_id, membership_id, routing_model, payout_recipient_type, provider_gross_amount, refunded_amount, provider_fee_amount, provider_net_amount, platform_fee_amount, barber_payout_amount, shop_split_amount, currency, payout_readiness_status, money_routing_status, blocked_reason, eligible_at, held_at, released_at, reversed_at, processor_charge_id, processor_balance_transaction_id, reconciliation_status, metadata, created_at, updated_at";
+const PAYMENT_SELECT = "id, appointment_id, pos_sale_id, client_id, shop_id, barber_id, provider, provider_payment_intent_id, amount, currency, status, payment_status, payment_type, paid_at, created_at, updated_at";
+const PAYMENT_ROUTING_SELECT = "id, payment_id, appointment_id, pos_sale_id, membership_id, routing_model, payout_recipient_type, provider_gross_amount, refunded_amount, provider_fee_amount, provider_net_amount, platform_fee_amount, barber_payout_amount, shop_split_amount, currency, payout_readiness_status, money_routing_status, blocked_reason, eligible_at, held_at, released_at, reversed_at, processor_charge_id, processor_balance_transaction_id, reconciliation_status, metadata, created_at, updated_at";
 const PAYOUT_EXECUTION_SELECT = "id, routing_record_id, payment_id, appointment_id, membership_id, target_subject_type, execution_type, target_connected_account_id, target_provider_account_id, amount, currency, execution_status, blocked_reason, failure_reason, processor_transfer_id, processor_reversal_id, idempotency_key, source_execution_id, source_refund_id, payout_reference, payout_speed, instant_payout_fee_amount, net_transfer_amount, processor_payout_id, reconciliation_status, metadata, initiated_by, attempt_count, last_attempted_at, executed_at, failed_at, reversed_at, created_at, updated_at";
 
 function numeric(value: number | string | null | undefined) {
@@ -1700,6 +1715,18 @@ async function loadPaymentAndContext(supabase: SupabaseClient, paymentId: string
     throw new FintechServiceError("Unable to load the payment appointment context.", 500);
   }
 
+  const posSale = payment.pos_sale_id
+    ? await supabase
+      .from("pos_sales")
+      .select("id, status, barber_id, shop_id, client_id, payment_id, total_cents, created_at, updated_at")
+      .eq("id", payment.pos_sale_id)
+      .maybeSingle()
+    : { data: null, error: null };
+
+  if (posSale.error) {
+    throw new FintechServiceError("Unable to load the POS sale payment context.", 500);
+  }
+
   const refundsResult = await supabase
     .from("refunds")
     .select("id, amount")
@@ -1712,6 +1739,7 @@ async function loadPaymentAndContext(supabase: SupabaseClient, paymentId: string
   return {
     payment,
     appointment: (appointment.data as AppointmentRow | null) ?? null,
+    posSale: (posSale.data as PosSaleRow | null) ?? null,
     refundedAmount: ((refundsResult.data ?? []) as RefundRow[]).reduce((sum, row) => sum + numeric(row.amount), 0)
   };
 }
@@ -1745,6 +1773,7 @@ async function recordRoutingLifecycleEvents(
     routing: PaymentRoutingRow;
     payment: PaymentRow;
     appointment: AppointmentRow | null;
+    posSale?: PosSaleRow | null;
     existingRouting: PaymentRoutingRow | null;
     relationshipType: RoutingModel;
     disputeHold: boolean;
@@ -1754,9 +1783,10 @@ async function recordRoutingLifecycleEvents(
     routingRecordId: input.routing.id,
     paymentId: input.payment.id,
     appointmentId: input.routing.appointment_id,
-    clientId: input.payment.client_id,
+    posSaleId: input.routing.pos_sale_id ?? null,
+    clientId: input.payment.client_id ?? input.posSale?.client_id ?? null,
     barberId: input.payment.barber_id,
-    shopId: input.payment.shop_id ?? input.appointment?.shop_id ?? null
+    shopId: input.payment.shop_id ?? input.appointment?.shop_id ?? input.posSale?.shop_id ?? null
   };
   const basePayload = {
     relationshipType: input.relationshipType,
@@ -1767,7 +1797,8 @@ async function recordRoutingLifecycleEvents(
     platformFeeAmount: numeric(input.routing.platform_fee_amount),
     barberPayoutAmount: numeric(input.routing.barber_payout_amount),
     shopSplitAmount: numeric(input.routing.shop_split_amount),
-    currency: input.routing.currency
+    currency: input.routing.currency,
+    posSaleStatus: input.posSale?.status ?? null
   };
   const events = [
     !input.existingRouting
@@ -1825,6 +1856,7 @@ function mapRoutingView(
     id: row.id,
     paymentId: row.payment_id,
     appointmentId: row.appointment_id,
+    posSaleId: row.pos_sale_id ?? null,
     barberName,
     shopLabel,
     routingModel: row.routing_model,
@@ -1973,9 +2005,9 @@ export async function syncPaymentRoutingRecord(
     source?: string | null;
   }
 ) {
-  const { payment, appointment, refundedAmount } = await loadPaymentAndContext(supabase, paymentId);
-  const shopId = payment.shop_id ?? appointment?.shop_id ?? null;
-  const barberId = payment.barber_id ?? appointment?.barber_id ?? null;
+  const { payment, appointment, posSale, refundedAmount } = await loadPaymentAndContext(supabase, paymentId);
+  const shopId = payment.shop_id ?? appointment?.shop_id ?? posSale?.shop_id ?? null;
+  const barberId = payment.barber_id ?? appointment?.barber_id ?? posSale?.barber_id ?? null;
 
   if (!barberId && !shopId) {
     return null;
@@ -2050,7 +2082,8 @@ export async function syncPaymentRoutingRecord(
       : numeric(barber.commission_rate)
     : numeric(membership.commission_rate);
 
-  const bypassPayoutSetupForFreelanceCompletion = Boolean(options?.forceCompletionEligibility && !shopId);
+  const posSalePaidSuccessful = Boolean(payment.payment_type === "pos_sale" && posSale?.status === "paid" && isCompletionPaymentSuccessful(payment));
+  const bypassPayoutSetupForFreelanceCompletion = Boolean((options?.forceCompletionEligibility || posSalePaidSuccessful) && !shopId);
   let syncedStates: ConnectedAccountState[] = [];
 
   if (!bypassPayoutSetupForFreelanceCompletion) {
@@ -2099,6 +2132,20 @@ export async function syncPaymentRoutingRecord(
     }
     existingRouting = (existingByAppointmentResult.data as PaymentRoutingRow | null) ?? null;
   }
+  if (!existingRouting && payment.pos_sale_id) {
+    const existingByPosSaleResult = await supabase
+      .from("payment_routing_records")
+      .select(PAYMENT_ROUTING_SELECT)
+      .eq("pos_sale_id", payment.pos_sale_id)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (existingByPosSaleResult.error) {
+      throw new FintechServiceError("Unable to inspect the POS sale payment routing ledger.", 500);
+    }
+    existingRouting = (existingByPosSaleResult.data as PaymentRoutingRow | null) ?? null;
+  }
   if (options?.forceCompletionEligibility) {
     console.info("[barber-appointment] complete_routing_lookup_result", {
       appointmentId: payment.appointment_id,
@@ -2107,7 +2154,13 @@ export async function syncPaymentRoutingRecord(
   }
   const providerFeeAmount = options?.providerFeeAmount ?? (existingRouting ? numeric(existingRouting.provider_fee_amount) : 0);
   const disputeHold = await hasActiveDisputeHold(supabase, appointment?.reference_code ?? null);
-  const completionEligibilityForced = Boolean(options?.forceCompletionEligibility && appointment?.status === "completed" && isCompletionPaymentSuccessful(payment) && !disputeHold);
+  const posSaleEligibilityForced = Boolean(posSalePaidSuccessful && !disputeHold);
+  const completionEligibilityForced = Boolean(
+    (
+      (options?.forceCompletionEligibility && appointment?.status === "completed")
+      || posSaleEligibilityForced
+    ) && isCompletionPaymentSuccessful(payment) && !disputeHold
+  );
   const trustState = await readTrustStateSafe();
   const barberPayoutGate = trustState && barberReference
     ? getVerificationGateDecision(
@@ -2135,7 +2188,7 @@ export async function syncPaymentRoutingRecord(
     barberVerificationReason: barberPayoutGate?.reasons[0] ?? null,
     shopVerificationAllowed: shopPayoutGate?.allowed,
     shopVerificationReason: shopPayoutGate?.reasons[0] ?? null,
-    appointmentCompleted: appointment?.status === "completed" || appointment?.status === "refunded",
+    appointmentCompleted: appointment?.status === "completed" || appointment?.status === "refunded" || posSaleEligibilityForced,
     disputeHold
   });
   const subscriptionBlockedReasons = await readPlatformBillingBlockers(supabase, {
@@ -2188,6 +2241,7 @@ export async function syncPaymentRoutingRecord(
   const routingPayload = {
     payment_id: payment.id,
     appointment_id: payment.appointment_id,
+    pos_sale_id: payment.pos_sale_id ?? null,
     membership_id: membership?.id ?? appointment?.membership_id ?? null,
     routing_model: routingModel,
     payout_recipient_type: calculated.payoutRecipientType,
@@ -2206,7 +2260,7 @@ export async function syncPaymentRoutingRecord(
     held_at: nextHeldAt,
     released_at: nextReleasedAt,
     reversed_at: nextReversedAt,
-    processor_charge_id: options?.processorChargeId ?? existingRouting?.processor_charge_id ?? null,
+    processor_charge_id: options?.processorChargeId ?? existingRouting?.processor_charge_id ?? payment.provider_payment_intent_id ?? null,
     processor_balance_transaction_id: options?.processorBalanceTransactionId ?? existingRouting?.processor_balance_transaction_id ?? null,
     reconciliation_status: reconciliationStatus,
     metadata: {
@@ -2220,6 +2274,8 @@ export async function syncPaymentRoutingRecord(
       barberReference,
       shopVerificationScopeId,
       appointmentStatus: appointment?.status ?? null,
+      posSaleId: payment.pos_sale_id ?? null,
+      posSaleStatus: posSale?.status ?? null,
       disputeHold,
       subscriptionBlockedReasons,
       barberPayoutGate,
@@ -2233,7 +2289,7 @@ export async function syncPaymentRoutingRecord(
       constraintSource: constraintEvidence.source,
       appointmentId: payment.appointment_id,
       paymentId: payment.id,
-      clientId: payment.client_id
+      clientId: payment.client_id ?? appointment?.client_id ?? posSale?.client_id ?? null
     },
     created_at: existingRouting?.created_at ?? now,
     updated_at: now
@@ -2321,6 +2377,7 @@ export async function syncPaymentRoutingRecord(
     routing: routingRow,
     payment,
     appointment,
+    posSale,
     existingRouting,
     relationshipType: routingModel,
     disputeHold
@@ -2744,12 +2801,17 @@ function isAppointmentPayoutEligible(appointment: Pick<AppointmentRow, "status" 
   return appointment.status === "completed" || Boolean(appointment.completed_at);
 }
 
+function isPosSalePayoutEligible(posSale: Pick<PosSaleRow, "status"> | null | undefined) {
+  return posSale?.status === "paid";
+}
+
 function isRoutingEligibleForAvailablePayout(
   routing: PaymentRoutingRow,
   payment: PaymentRow | undefined,
-  appointment: Pick<AppointmentRow, "status" | "completed_at"> | null | undefined
+  appointment: Pick<AppointmentRow, "status" | "completed_at"> | null | undefined,
+  posSale?: Pick<PosSaleRow, "status"> | null | undefined
 ) {
-  if (!payment || !isCompletionPaymentSuccessful(payment) || !isAppointmentPayoutEligible(appointment)) {
+  if (!payment || !isCompletionPaymentSuccessful(payment) || !(isAppointmentPayoutEligible(appointment) || isPosSalePayoutEligible(posSale))) {
     return false;
   }
 
@@ -3419,20 +3481,35 @@ async function buildPayoutExecutionScope(
 
   const routingData = (routingRows.data ?? []) as PaymentRoutingRow[];
   const appointmentIds = [...new Set(routingData.map((row) => row.appointment_id).filter(Boolean) as string[])];
+  const posSaleIds = [...new Set(routingData.map((row) => row.pos_sale_id).filter(Boolean) as string[])];
   const appointmentsResult = appointmentIds.length
     ? await supabase
       .from("appointments")
       .select("id, status, completed_at")
       .in("id", appointmentIds)
     : { data: [], error: null };
+  const posSalesResult = posSaleIds.length
+    ? await supabase
+      .from("pos_sales")
+      .select("id, status")
+      .in("id", posSaleIds)
+    : { data: [], error: null };
 
   if (appointmentsResult.error) {
     throw new FintechServiceError("Unable to load payout appointment state.", 500);
   }
 
+  if (posSalesResult.error) {
+    throw new FintechServiceError("Unable to load payout POS sale state.", 500);
+  }
+
   const appointmentById = new Map(
     ((appointmentsResult.data ?? []) as Array<Pick<AppointmentRow, "id" | "status" | "completed_at">>)
       .map((appointment) => [appointment.id, appointment])
+  );
+  const posSaleById = new Map(
+    ((posSalesResult.data ?? []) as Array<Pick<PosSaleRow, "id" | "status">>)
+      .map((sale) => [sale.id, sale])
   );
   const payoutExecutions = await loadPayoutExecutionsForPaymentIds(supabase, paymentIds);
   const barbers = await loadBarbersByIds(
@@ -3485,7 +3562,8 @@ async function buildPayoutExecutionScope(
     .filter((row) => {
       const payment = paymentById.get(row.payment_id);
       const appointment = row.appointment_id ? appointmentById.get(row.appointment_id) : null;
-      return isRoutingEligibleForAvailablePayout(row, payment, appointment);
+      const posSale = row.pos_sale_id ? posSaleById.get(row.pos_sale_id) : null;
+      return isRoutingEligibleForAvailablePayout(row, payment, appointment, posSale);
     })
     .slice(0, 12)
     .map((row) => {
@@ -3773,20 +3851,35 @@ export async function getBarberFintechReadiness(user: UserAccount): Promise<Barb
 
   const routingRows = (routingResult.data ?? []) as PaymentRoutingRow[];
   const appointmentIds = [...new Set(routingRows.map((row) => row.appointment_id).filter(Boolean) as string[])];
+  const posSaleIds = [...new Set(routingRows.map((row) => row.pos_sale_id).filter(Boolean) as string[])];
   const appointmentsResult = appointmentIds.length
     ? await supabase
       .from("appointments")
       .select("id, status, completed_at")
       .in("id", appointmentIds)
     : { data: [], error: null };
+  const posSalesResult = posSaleIds.length
+    ? await supabase
+      .from("pos_sales")
+      .select("id, status")
+      .in("id", posSaleIds)
+    : { data: [], error: null };
 
   if (appointmentsResult.error) {
     throw new FintechServiceError("Unable to load the barber payout appointment state.", 500);
   }
 
+  if (posSalesResult.error) {
+    throw new FintechServiceError("Unable to load the barber payout POS sale state.", 500);
+  }
+
   const appointmentById = new Map(
     ((appointmentsResult.data ?? []) as Array<Pick<AppointmentRow, "id" | "status" | "completed_at">>)
       .map((appointment) => [appointment.id, appointment])
+  );
+  const posSaleById = new Map(
+    ((posSalesResult.data ?? []) as Array<Pick<PosSaleRow, "id" | "status">>)
+      .map((sale) => [sale.id, sale])
   );
   const locationById = new Map(locations.map((location) => [location.id, location]));
   const paymentById = new Map(payments.map((payment) => [payment.id, payment]));
@@ -3830,7 +3923,8 @@ export async function getBarberFintechReadiness(user: UserAccount): Promise<Barb
     .filter((row) => {
       const payment = paymentById.get(row.payment_id);
       const appointment = row.appointment_id ? appointmentById.get(row.appointment_id) : null;
-      return isRoutingEligibleForAvailablePayout(row, payment, appointment);
+      const posSale = row.pos_sale_id ? posSaleById.get(row.pos_sale_id) : null;
+      return isRoutingEligibleForAvailablePayout(row, payment, appointment, posSale);
     });
   const readyForPayoutAmount = eligibleRoutingRows
     .reduce((sum, row) => sum + numeric(row.barber_payout_amount), 0);
@@ -3922,20 +4016,35 @@ export async function listFintechManagementPayload(user: UserAccount): Promise<F
   const routingRows = (routingResult.data ?? []) as PaymentRoutingRow[];
   const paymentById = new Map(payments.map((payment) => [payment.id, payment]));
   const appointmentIds = [...new Set(routingRows.map((row) => row.appointment_id).filter(Boolean) as string[])];
+  const posSaleIds = [...new Set(routingRows.map((row) => row.pos_sale_id).filter(Boolean) as string[])];
   const appointmentsResult = appointmentIds.length
     ? await supabase
       .from("appointments")
       .select("id, status, completed_at")
       .in("id", appointmentIds)
     : { data: [], error: null };
+  const posSalesResult = posSaleIds.length
+    ? await supabase
+      .from("pos_sales")
+      .select("id, status")
+      .in("id", posSaleIds)
+    : { data: [], error: null };
 
   if (appointmentsResult.error) {
     throw new FintechServiceError("Unable to load payment routing appointment state.", 500);
   }
 
+  if (posSalesResult.error) {
+    throw new FintechServiceError("Unable to load payment routing POS sale state.", 500);
+  }
+
   const appointmentById = new Map(
     ((appointmentsResult.data ?? []) as Array<Pick<AppointmentRow, "id" | "status" | "completed_at">>)
       .map((appointment) => [appointment.id, appointment])
+  );
+  const posSaleById = new Map(
+    ((posSalesResult.data ?? []) as Array<Pick<PosSaleRow, "id" | "status">>)
+      .map((sale) => [sale.id, sale])
   );
 
   const membershipsView = memberships.flatMap((membership) => {
@@ -4023,7 +4132,8 @@ export async function listFintechManagementPayload(user: UserAccount): Promise<F
           .filter((row) => {
             const payment = paymentById.get(row.payment_id);
             const appointment = row.appointment_id ? appointmentById.get(row.appointment_id) : null;
-            return isRoutingEligibleForAvailablePayout(row, payment, appointment);
+            const posSale = row.pos_sale_id ? posSaleById.get(row.pos_sale_id) : null;
+            return isRoutingEligibleForAvailablePayout(row, payment, appointment, posSale);
           })
           .reduce((sum, row) => sum + numeric(row.barber_payout_amount) + numeric(row.shop_split_amount), 0)
       )

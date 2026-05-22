@@ -1,8 +1,9 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BarberCheckoutScreen } from "@/components/barber-experience/barber-checkout-screen";
 
-const { useBarberOverviewQueryMock, useMarketplaceServiceCatalogMock } = vi.hoisted(() => ({
+const { overviewRefetchMock, useBarberOverviewQueryMock, useMarketplaceServiceCatalogMock } = vi.hoisted(() => ({
+  overviewRefetchMock: vi.fn(),
   useBarberOverviewQueryMock: vi.fn(),
   useMarketplaceServiceCatalogMock: vi.fn()
 }));
@@ -18,6 +19,8 @@ vi.mock("@/lib/marketplace/client", () => ({
 describe("BarberCheckoutScreen", () => {
   beforeEach(() => {
     Element.prototype.scrollIntoView = vi.fn();
+    overviewRefetchMock.mockReset();
+    overviewRefetchMock.mockResolvedValue({});
     useBarberOverviewQueryMock.mockReturnValue({
       data: {
         todayAppointments: [],
@@ -25,7 +28,8 @@ describe("BarberCheckoutScreen", () => {
           grossSales: 0
         }
       },
-      error: null
+      error: null,
+      refetch: overviewRefetchMock
     });
     useMarketplaceServiceCatalogMock.mockReturnValue({
       data: {
@@ -33,6 +37,10 @@ describe("BarberCheckoutScreen", () => {
         readOnlyServices: []
       }
     });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("formats keypad digits as whole-dollar checkout amounts immediately", () => {
@@ -55,7 +63,23 @@ describe("BarberCheckoutScreen", () => {
     expect(screen.getByText("$125.00")).toBeInTheDocument();
   });
 
-  it("blocks standalone keypad capture until an appointment or POS sale object exists", () => {
+  it("opens a POS sale review quote from the standalone keypad", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({
+      ok: true,
+      quote: {
+        subtotalCents: 500,
+        platformFeeCents: 25,
+        clientFeeCents: 0,
+        discountCents: 0,
+        tipCents: 0,
+        totalCents: 500,
+        barberPayoutCents: 475,
+        shopSplitCents: 0,
+        relationshipType: "freelance"
+      }
+    }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
     render(
       <BarberCheckoutScreen
         barberName="Blaze King"
@@ -66,7 +90,55 @@ describe("BarberCheckoutScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: /5\s*JKL/ }));
     fireEvent.click(screen.getByRole("button", { name: /Review Sale/ }));
 
-    expect(screen.getByText("Attach this sale to an appointment before capturing payment. Standalone POS sales are coming soon.")).toBeInTheDocument();
+    expect(await screen.findByText("Estimated barber payout")).toBeInTheDocument();
+    expect(screen.getByText("$4.75")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Charge $5.00" })).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith("/api/barber/pos-sales/quote", expect.objectContaining({
+      method: "POST"
+    }));
+  });
+
+  it("charges a POS sale and refreshes checkout state", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        ok: true,
+        quote: {
+          subtotalCents: 3500,
+          platformFeeCents: 175,
+          clientFeeCents: 0,
+          discountCents: 0,
+          tipCents: 0,
+          totalCents: 3500,
+          barberPayoutCents: 3325,
+          shopSplitCents: 0,
+          relationshipType: "freelance"
+        }
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        ok: true,
+        sale: { id: "sale-1" }
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        ok: true,
+        payment: { id: "payment-1", posSaleId: "sale-1" },
+        routing: { pos_sale_id: "sale-1", payout_readiness_status: "ready" }
+      }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <BarberCheckoutScreen
+        barberName="Blaze King"
+        barberRole="booth_rent_barber"
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "$35.00" }));
+    fireEvent.click(screen.getByRole("button", { name: /Review Sale/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Charge $35.00" }));
+
+    await waitFor(() => expect(screen.getByText("POS sale paid. Payout is now eligible.")).toBeInTheDocument());
+    expect(overviewRefetchMock).toHaveBeenCalled();
+    expect(screen.getByText("$0.00")).toBeInTheDocument();
   });
 
   it("keeps paid appointments and money posture out of the Checkout tab", () => {

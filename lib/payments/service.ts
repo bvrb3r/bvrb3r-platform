@@ -134,6 +134,7 @@ export type ClientPaymentProfileRepairView = ClientPaymentContext & {
 type PaymentRow = {
   id: string;
   appointment_id: string | null;
+  pos_sale_id?: string | null;
   client_id: string | null;
   shop_id: string | null;
   barber_id: string | null;
@@ -221,6 +222,7 @@ export type AppointmentRetentionQualificationView = {
 
 type CapturedStripePaymentInput = {
   appointmentId: string | null;
+  posSaleId?: string | null;
   clientId: string;
   shopId: string | null;
   barberId: string | null;
@@ -239,6 +241,7 @@ type CapturedStripePaymentInput = {
 
 type CreatePaymentLedgerInput = {
   appointmentId?: string | null;
+  posSaleId?: string | null;
   clientId?: string | null;
   shopId?: string | null;
   barberId?: string | null;
@@ -274,12 +277,17 @@ function requiresAppointmentBusinessObject(paymentType: InternalPaymentType) {
 function assertCapturedPaymentHasBusinessObject(input: {
   paymentType: InternalPaymentType;
   appointmentId?: string | null;
+  posSaleId?: string | null;
   paymentStatus?: InternalPaymentStatus | string | null;
 }) {
   const status = String(input.paymentStatus ?? "").toLowerCase();
   const isCapturedMoney = status === "captured" || status === "succeeded" || status === "paid" || status === "completed";
   if (isCapturedMoney && requiresAppointmentBusinessObject(input.paymentType) && !input.appointmentId?.trim()) {
     throw new PaymentServiceError("Appointment payments require an appointment before card capture.", 409);
+  }
+
+  if (isCapturedMoney && input.paymentType === "pos_sale" && !input.posSaleId?.trim()) {
+    throw new PaymentServiceError("POS sale payments require a POS sale before card capture.", 409);
   }
 }
 
@@ -319,6 +327,7 @@ export type AppointmentPaymentSummaryView = {
 export type PaymentRecordView = {
   id: string;
   appointmentId: string | null;
+  posSaleId?: string | null;
   amount: number;
   currency: string;
   provider: InternalPaymentProvider | null;
@@ -1170,6 +1179,7 @@ function mapPaymentRow(row: PaymentRow): PaymentRecordView {
   return {
     id: row.id,
     appointmentId: row.appointment_id,
+    posSaleId: row.pos_sale_id ?? null,
     amount: numeric(row.amount),
     currency: row.currency,
     provider: row.provider,
@@ -1837,6 +1847,7 @@ export async function createCapturedStripePaymentRecord(
   assertCapturedPaymentHasBusinessObject({
     paymentType: input.paymentType,
     appointmentId: input.appointmentId,
+    posSaleId: input.posSaleId,
     paymentStatus: "captured"
   });
 
@@ -1892,6 +1903,7 @@ export async function createCapturedStripePaymentRecord(
       metadata: normalizeStripeMetadata({
         ...(input.metadata ?? {}),
         appointment_id: input.appointmentId,
+        pos_sale_id: input.posSaleId ?? null,
         client_id: input.clientId,
         barber_id: input.barberId,
         shop_id: input.shopId,
@@ -1956,6 +1968,7 @@ export async function createCapturedStripePaymentRecord(
   try {
     return await createPaymentLedgerEntry(supabase, {
       appointmentId: input.appointmentId,
+      posSaleId: input.posSaleId,
       clientId: input.clientId,
       shopId: input.shopId,
       barberId: input.barberId,
@@ -1978,6 +1991,7 @@ export async function createCapturedStripePaymentRecord(
   } catch (error) {
     logBookingPaymentStageFailure("payment_record_insert_failed", error, {
       appointmentId: input.appointmentId,
+      posSaleId: input.posSaleId ?? null,
       clientId: input.clientId,
       paymentIntentIdPresent: Boolean(intent.id)
     });
@@ -1985,6 +1999,7 @@ export async function createCapturedStripePaymentRecord(
       baseDiagnostics.refundAttempted = true;
       logBookingPaymentStage("payment_intent_refund_started", {
         appointmentId: input.appointmentId,
+        posSaleId: input.posSaleId ?? null,
         clientId: input.clientId,
         paymentIntentIdPresent: Boolean(intent.id)
       });
@@ -2002,6 +2017,7 @@ export async function createCapturedStripePaymentRecord(
       }, input.idempotencyKey ? { idempotencyKey: `refund:${input.idempotencyKey}` } : undefined);
       logBookingPaymentStage("payment_intent_refund_succeeded", {
         appointmentId: input.appointmentId,
+        posSaleId: input.posSaleId ?? null,
         clientId: input.clientId,
         paymentIntentIdPresent: Boolean(intent.id)
       });
@@ -2018,6 +2034,7 @@ export async function createCapturedStripePaymentRecord(
       }
       logBookingPaymentStageFailure("payment_intent_refund_failed", refundError, {
         appointmentId: input.appointmentId,
+        posSaleId: input.posSaleId ?? null,
         clientId: input.clientId,
         paymentIntentIdPresent: Boolean(intent.id)
       });
@@ -2035,7 +2052,7 @@ export async function createCapturedStripePaymentRecord(
 async function loadPaymentOrThrow(supabase: SupabaseClient, paymentId: string) {
   const result = await supabase
     .from("payments")
-    .select("id, appointment_id, client_id, shop_id, barber_id, payment_method_id, provider, provider_payment_intent_id, amount, currency, payment_status, payment_type, paid_at, created_at")
+    .select("id, appointment_id, pos_sale_id, client_id, shop_id, barber_id, payment_method_id, provider, provider_payment_intent_id, amount, currency, payment_status, payment_type, paid_at, created_at")
     .eq("id", paymentId)
     .maybeSingle();
 
@@ -2357,7 +2374,7 @@ export async function readAppointmentPaymentSummary(
   const canonicalAppointmentId = appointment.id;
   const paymentsResult = await supabase
     .from("payments")
-    .select("id, appointment_id, client_id, shop_id, barber_id, payment_method_id, provider, provider_payment_intent_id, amount, currency, payment_status, payment_type, paid_at, created_at")
+    .select("id, appointment_id, pos_sale_id, client_id, shop_id, barber_id, payment_method_id, provider, provider_payment_intent_id, amount, currency, payment_status, payment_type, paid_at, created_at")
     .eq("appointment_id", canonicalAppointmentId)
     .order("created_at", { ascending: false });
 
@@ -2725,12 +2742,14 @@ export async function createPaymentLedgerEntry(
   assertCapturedPaymentHasBusinessObject({
     paymentType: input.paymentType,
     appointmentId: input.appointmentId,
+    posSaleId: input.posSaleId,
     paymentStatus: input.paymentStatus
   });
   const createdAt = input.createdAt ?? new Date().toISOString();
   const providerPaymentIntentId = input.providerPaymentIntentId ?? `${input.provider}_pay_${randomUUID()}`;
   const paymentPayload = {
     appointment_id: input.appointmentId ?? null,
+    pos_sale_id: input.posSaleId ?? null,
     client_id: input.clientId ?? null,
     shop_id: input.shopId ?? null,
     barber_id: input.barberId ?? null,
@@ -2750,6 +2769,7 @@ export async function createPaymentLedgerEntry(
   };
   logBookingPaymentStage("payment_record_insert_started", {
     appointmentId: input.appointmentId ?? null,
+    posSaleId: input.posSaleId ?? null,
     clientId: input.clientId ?? null,
     barberId: input.barberId ?? null,
     shopId: input.shopId ?? null,
@@ -2763,13 +2783,14 @@ export async function createPaymentLedgerEntry(
   const paymentInsert = await supabase
     .from("payments")
     .insert(paymentPayload)
-    .select("id, appointment_id, client_id, shop_id, barber_id, payment_method_id, provider, provider_payment_intent_id, amount, currency, payment_status, payment_type, paid_at, created_at")
+    .select("id, appointment_id, pos_sale_id, client_id, shop_id, barber_id, payment_method_id, provider, provider_payment_intent_id, amount, currency, payment_status, payment_type, paid_at, created_at")
     .single();
 
   if (paymentInsert.error) {
     logBookingPaymentStageFailure("payment_record_insert_failed", paymentInsert.error, {
       table: "payments",
       appointmentId: input.appointmentId ?? null,
+      posSaleId: input.posSaleId ?? null,
       clientId: input.clientId ?? null,
       barberId: input.barberId ?? null,
       shopId: input.shopId ?? null,
@@ -2788,6 +2809,7 @@ export async function createPaymentLedgerEntry(
   const paymentRow = paymentInsert.data as PaymentRow;
   logBookingPaymentStage("payment_record_insert_succeeded", {
     appointmentId: paymentRow.appointment_id,
+    posSaleId: paymentRow.pos_sale_id ?? null,
     clientId: paymentRow.client_id,
     paymentId: paymentRow.id,
     providerPaymentIntentIdPresent: Boolean(paymentRow.provider_payment_intent_id)
@@ -2797,11 +2819,13 @@ export async function createPaymentLedgerEntry(
     await syncPaymentRoutingRecord(supabase, paymentRow.id);
     logBookingPaymentStage("payment_routing_sync_succeeded", {
       appointmentId: paymentRow.appointment_id,
+      posSaleId: paymentRow.pos_sale_id ?? null,
       paymentId: paymentRow.id
     });
   } catch (error) {
     logBookingPaymentStageFailure("payment_routing_sync_failed", error, {
       appointmentId: paymentRow.appointment_id,
+      posSaleId: paymentRow.pos_sale_id ?? null,
       paymentId: paymentRow.id
     });
     await recordPlatformEvent(supabase, {
@@ -2813,6 +2837,7 @@ export async function createPaymentLedgerEntry(
       relatedIds: {
         paymentId: paymentRow.id,
         appointmentId: paymentRow.appointment_id,
+        posSaleId: paymentRow.pos_sale_id ?? null,
         clientId: paymentRow.client_id,
         barberId: paymentRow.barber_id,
         shopId: paymentRow.shop_id
@@ -2832,6 +2857,7 @@ export async function createPaymentLedgerEntry(
   } catch (error) {
     logBookingPaymentStageFailure("payment_status_platform_event_failed", error, {
       appointmentId: paymentRow.appointment_id,
+      posSaleId: paymentRow.pos_sale_id ?? null,
       paymentId: paymentRow.id
     });
   }
@@ -3421,6 +3447,7 @@ export async function capturePayment(user: UserAccount, paymentId: string) {
   assertCapturedPaymentHasBusinessObject({
     paymentType: payment.payment_type,
     appointmentId: payment.appointment_id,
+    posSaleId: payment.pos_sale_id ?? null,
     paymentStatus: "captured"
   });
   assertShopAccess(actor.role, actor.locationIds, payment.shop_id ?? appointment?.shop_id ?? null, appointment?.location_id);
@@ -3447,7 +3474,7 @@ export async function capturePayment(user: UserAccount, paymentId: string) {
       updated_at: paidAt
     })
     .eq("id", payment.id)
-    .select("id, appointment_id, client_id, shop_id, barber_id, payment_method_id, provider, provider_payment_intent_id, amount, currency, payment_status, payment_type, paid_at, created_at")
+    .select("id, appointment_id, pos_sale_id, client_id, shop_id, barber_id, payment_method_id, provider, provider_payment_intent_id, amount, currency, payment_status, payment_type, paid_at, created_at")
     .single();
 
   if (result.error) {
@@ -3512,6 +3539,7 @@ export async function refundPayment(user: UserAccount, input: {
         reason: "requested_by_customer",
         metadata: normalizeStripeMetadata({
           appointmentId: payment.appointment_id,
+          posSaleId: payment.pos_sale_id ?? null,
           paymentId: payment.id,
           actorRole: actor.role,
           refundReason: input.reason ?? null
@@ -3551,7 +3579,7 @@ export async function refundPayment(user: UserAccount, input: {
       updated_at: refundedAt
     })
     .eq("id", payment.id)
-    .select("id, appointment_id, client_id, shop_id, barber_id, payment_method_id, provider, provider_payment_intent_id, amount, currency, payment_status, payment_type, paid_at, created_at")
+    .select("id, appointment_id, pos_sale_id, client_id, shop_id, barber_id, payment_method_id, provider, provider_payment_intent_id, amount, currency, payment_status, payment_type, paid_at, created_at")
     .single();
 
   if (paymentUpdate.error) {

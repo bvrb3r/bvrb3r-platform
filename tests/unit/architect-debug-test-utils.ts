@@ -22,6 +22,7 @@ export function createArchitectDebugTables(overrides: Partial<Tables> = {}): Tab
     ...[
       "payment_id",
       "appointment_id",
+      "pos_sale_id",
       "barber_id",
       "shop_id",
       "membership_id",
@@ -107,6 +108,7 @@ export function createArchitectDebugTables(overrides: Partial<Tables> = {}): Tab
     payments: [{
       id: PAYMENT_ID,
       appointment_id: APPOINTMENT_ID,
+      pos_sale_id: null,
       client_id: CLIENT_ID,
       barber_id: BARBER_ID,
       amount: 5,
@@ -128,6 +130,7 @@ export function createArchitectDebugTables(overrides: Partial<Tables> = {}): Tab
       provider_payment_method_id: "pm_test_4242"
     }],
     payment_routing_records: [],
+    pos_sales: [],
     appointment_status_history: [{
       id: "history-completed",
       appointment_id: APPOINTMENT_ID,

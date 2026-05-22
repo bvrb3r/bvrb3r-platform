@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { detectArchitectMissionIncidents } from "@/lib/architect/mission-control/incident-detection";
-import { APPOINTMENT_ID, createArchitectDebugTables, createSupabaseStub } from "@/tests/unit/architect-debug-test-utils";
+import { APPOINTMENT_ID, BARBER_ID, createArchitectDebugTables, createSupabaseStub } from "@/tests/unit/architect-debug-test-utils";
 
 describe("architect mission incident detection", () => {
   it("detects completed captured appointments with missing routing", async () => {
@@ -73,5 +73,65 @@ describe("architect mission incident detection", () => {
       codexRequired: true
     });
     expect(orphanIncident?.evidence.join("\n")).toContain("payment.appointment_id is empty");
+  });
+
+  it("detects paid POS sales with captured payment and missing routing", async () => {
+    const tables = createArchitectDebugTables({
+      appointments: [],
+      pos_sales: [{
+        id: "pos-sale-missing-routing",
+        barber_id: BARBER_ID,
+        shop_id: null,
+        status: "paid",
+        total_cents: 3500,
+        payment_id: "payment-pos-sale",
+        updated_at: "2026-05-22T14:00:00.000Z"
+      }],
+      payments: [{
+        id: "payment-pos-sale",
+        appointment_id: null,
+        pos_sale_id: "pos-sale-missing-routing",
+        barber_id: BARBER_ID,
+        amount: 35,
+        provider: "stripe",
+        status: "captured",
+        payment_status: "captured",
+        payment_type: "pos_sale",
+        provider_payment_intent_id: "pi_pos",
+        currency: "usd",
+        paid_at: "2026-05-22T14:00:00.000Z",
+        created_at: "2026-05-22T14:00:00.000Z"
+      }]
+    });
+
+    const incidents = await detectArchitectMissionIncidents(createSupabaseStub(tables) as never);
+    const posIncident = incidents.find((incident) => incident.diagnosisCode === "paid_pos_sale_missing_routing");
+
+    expect(posIncident).toMatchObject({
+      targetType: "pos_sale",
+      targetId: "pos-sale-missing-routing",
+      severity: "critical"
+    });
+    expect(posIncident?.evidence.join("\n")).toContain("payment_routing_records lookup by pos_sale_id returned 0 rows");
+  });
+
+  it("does not flag draft POS sales as missing routing incidents", async () => {
+    const tables = createArchitectDebugTables({
+      appointments: [],
+      pos_sales: [{
+        id: "pos-sale-draft",
+        barber_id: BARBER_ID,
+        shop_id: null,
+        status: "payment_pending",
+        total_cents: 3500,
+        payment_id: null,
+        updated_at: "2026-05-22T14:00:00.000Z"
+      }],
+      payments: []
+    });
+
+    const incidents = await detectArchitectMissionIncidents(createSupabaseStub(tables) as never);
+
+    expect(incidents.some((incident) => incident.diagnosisCode === "paid_pos_sale_missing_routing")).toBe(false);
   });
 });

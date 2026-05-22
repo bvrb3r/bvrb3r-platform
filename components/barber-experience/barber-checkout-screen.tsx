@@ -54,6 +54,17 @@ const keypadButtons = [
 
 type CheckoutSectionKey = keyof typeof sectionIdMap;
 type CheckoutPanelKey = (typeof checkoutPanels)[number]["key"];
+type PosSaleQuote = {
+  subtotalCents: number;
+  platformFeeCents: number;
+  clientFeeCents: number;
+  discountCents: number;
+  tipCents: number;
+  totalCents: number;
+  barberPayoutCents: number;
+  shopSplitCents: number;
+  relationshipType: string;
+};
 
 function normalizeCheckoutSection(section?: string): CheckoutSectionKey | null {
   return section && section in sectionIdMap ? (section as CheckoutSectionKey) : null;
@@ -83,6 +94,10 @@ function formatCheckoutAmount(amount: number) {
   return checkoutCurrencyFormatter.format(amount);
 }
 
+function formatCheckoutCents(amountCents: number) {
+  return checkoutCurrencyFormatter.format(amountCents / 100);
+}
+
 function formatDateTime(iso: string) {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
@@ -109,6 +124,11 @@ export function BarberCheckoutScreen({
   const [chargeDigits, setChargeDigits] = useState("0");
   const [selectedServiceLabel, setSelectedServiceLabel] = useState<string | null>(null);
   const [panelFeedback, setPanelFeedback] = useState<{ tone: "info" | "error"; message: string } | null>(null);
+  const [saleNote, setSaleNote] = useState("");
+  const [reviewQuote, setReviewQuote] = useState<PosSaleQuote | null>(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [chargeLoading, setChargeLoading] = useState(false);
   const keypadAmount = digitsToAmount(chargeDigits);
   const serviceShortcuts = useMemo(
     () => [...(serviceCatalogQuery.data?.editableServices ?? []), ...(serviceCatalogQuery.data?.readOnlyServices ?? [])].slice(0, 8),
@@ -146,6 +166,7 @@ export function BarberCheckoutScreen({
     setChargeDigits("0");
     setSelectedServiceLabel(null);
     setPanelFeedback(null);
+    setSaleNote("");
   }
 
   function openDetailSection(section: CheckoutSectionKey) {
@@ -159,16 +180,97 @@ export function BarberCheckoutScreen({
     setPanelFeedback(null);
   }
 
-  function handleReviewSale() {
+  async function readJsonResponse(response: Response) {
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok || body?.ok === false) {
+      throw new Error(typeof body?.error === "string" ? body.error : "Unable to process this POS sale.");
+    }
+    return body;
+  }
+
+  async function handleReviewSale() {
     if (keypadAmount <= 0) {
       setPanelFeedback({ tone: "error", message: "Enter an amount or load a service before opening checkout." });
       return;
     }
 
-    setPanelFeedback({
-      tone: "error",
-      message: "Attach this sale to an appointment before capturing payment. Standalone POS sales are coming soon."
-    });
+    setReviewLoading(true);
+    setPanelFeedback(null);
+    try {
+      const amountCents = Math.round(keypadAmount * 100);
+      const response = await fetch("/api/barber/pos-sales/quote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amountCents,
+          note: saleNote,
+          items: [{
+            itemType: selectedServiceLabel ? "service" : "custom_amount",
+            name: selectedServiceLabel ?? "Custom Amount",
+            quantity: 1,
+            unitAmountCents: amountCents
+          }]
+        })
+      });
+      const body = await readJsonResponse(response);
+      setReviewQuote(body.quote as PosSaleQuote);
+      setReviewOpen(true);
+    } catch (error) {
+      setPanelFeedback({
+        tone: "error",
+        message: error instanceof Error ? error.message : "Unable to review this POS sale."
+      });
+    } finally {
+      setReviewLoading(false);
+    }
+  }
+
+  async function handleChargeSale() {
+    if (!reviewQuote || chargeLoading) {
+      return;
+    }
+
+    setChargeLoading(true);
+    setPanelFeedback(null);
+    try {
+      const amountCents = Math.round(keypadAmount * 100);
+      const saleResponse = await fetch("/api/barber/pos-sales", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amountCents,
+          note: saleNote,
+          items: [{
+            itemType: selectedServiceLabel ? "service" : "custom_amount",
+            name: selectedServiceLabel ?? "Custom Amount",
+            quantity: 1,
+            unitAmountCents: amountCents
+          }]
+        })
+      });
+      const saleBody = await readJsonResponse(saleResponse);
+      const saleId = saleBody?.sale?.id;
+      if (!saleId) {
+        throw new Error("POS sale was created without a sale id.");
+      }
+
+      const chargeResponse = await fetch(`/api/barber/pos-sales/${saleId}/charge`, {
+        method: "POST"
+      });
+      await readJsonResponse(chargeResponse);
+      setReviewOpen(false);
+      setReviewQuote(null);
+      clearQuickCharge();
+      setPanelFeedback({ tone: "info", message: "POS sale paid. Payout is now eligible." });
+      await overviewQuery.refetch();
+    } catch (error) {
+      setPanelFeedback({
+        tone: "error",
+        message: error instanceof Error ? error.message : "Unable to charge this POS sale."
+      });
+    } finally {
+      setChargeLoading(false);
+    }
   }
 
   function handleLoadService(service: (typeof serviceShortcuts)[number]["service"]) {
@@ -182,10 +284,7 @@ export function BarberCheckoutScreen({
   }
 
   function handleNoteAction() {
-    setPanelFeedback({
-      tone: "info",
-      message: "Add a sale note during review."
-    });
+    setPanelFeedback({ tone: "info", message: "Add an optional note before Review Sale." });
   }
 
   function handleSecondaryMoneyAction(label: string) {
@@ -247,6 +346,15 @@ export function BarberCheckoutScreen({
                   {formatCheckoutAmount(keypadAmount)}
                 </p>
                 {selectedServiceLabel ? <p className="mt-3 text-sm font-semibold text-white/60">{selectedServiceLabel} loaded into the sale.</p> : null}
+                <label className="mt-5 block">
+                  <span className="text-xs font-black uppercase tracking-[0.28em] text-white/34">Sale note</span>
+                  <input
+                    value={saleNote}
+                    onChange={(event) => setSaleNote(event.target.value)}
+                    placeholder="Optional customer or sale note"
+                    className="mt-2 h-12 w-full rounded-[8px] border border-white/10 bg-black/28 px-4 text-sm font-semibold text-white outline-none transition placeholder:text-white/30 focus:border-[#a3ff12]/45"
+                  />
+                </label>
               </section>
 
               <section className="mt-7 grid grid-cols-4 gap-2 sm:gap-3">
@@ -340,10 +448,11 @@ export function BarberCheckoutScreen({
 
               <button
                 type="button"
-                className="mt-[22px] flex min-h-[86px] w-full items-center justify-center rounded-[14px] bg-[linear-gradient(135deg,#a3ff12,#7dce00)] px-6 text-[22px] font-black text-[#050505] shadow-[0_16px_46px_rgba(163,255,18,0.30),inset_0_1px_0_rgba(255,255,255,0.28)] transition active:scale-[0.98]"
+                disabled={reviewLoading}
+                className="mt-[22px] flex min-h-[86px] w-full items-center justify-center rounded-[14px] bg-[linear-gradient(135deg,#a3ff12,#7dce00)] px-6 text-[22px] font-black text-[#050505] shadow-[0_16px_46px_rgba(163,255,18,0.30),inset_0_1px_0_rgba(255,255,255,0.28)] transition active:scale-[0.98] disabled:cursor-wait disabled:opacity-70"
                 onClick={handleReviewSale}
               >
-                <span>Review Sale</span>
+                <span>{reviewLoading ? "Building Quote..." : "Review Sale"}</span>
                 <ArrowRight className="ml-auto h-8 w-8" />
               </button>
 
@@ -447,6 +556,65 @@ export function BarberCheckoutScreen({
           ) : null}
         </div>
       </GlassCard>
+      {reviewOpen && reviewQuote ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/72 px-4 pb-4 backdrop-blur-md sm:items-center sm:pb-0" role="dialog" aria-modal="true" aria-label="Review POS sale">
+          <div className="w-full max-w-[520px] rounded-[18px] border border-white/10 bg-[#080808] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.65)]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="bvr-section-label">Review sale</p>
+                <h3 className="mt-3 text-3xl font-black tracking-[-0.04em] text-white">{selectedServiceLabel ?? "Custom Amount"}</h3>
+                {saleNote.trim() ? <p className="mt-2 text-sm font-medium text-white/55">{saleNote.trim()}</p> : null}
+              </div>
+              <button
+                type="button"
+                className="rounded-[8px] border border-white/10 px-3 py-2 text-xs font-black uppercase tracking-[0.18em] text-white/60 transition hover:text-white"
+                onClick={() => setReviewOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-6 space-y-3 rounded-[14px] border border-white/10 bg-white/[0.035] p-4">
+              <div className="flex justify-between gap-4 text-sm font-semibold text-white/62">
+                <span>Subtotal</span>
+                <span>{formatCheckoutCents(reviewQuote.subtotalCents)}</span>
+              </div>
+              <div className="flex justify-between gap-4 text-sm font-semibold text-white/62">
+                <span>Platform fee</span>
+                <span>{formatCheckoutCents(reviewQuote.platformFeeCents)}</span>
+              </div>
+              <div className="flex justify-between gap-4 text-sm font-semibold text-white/62">
+                <span>Estimated barber payout</span>
+                <span>{formatCheckoutCents(reviewQuote.barberPayoutCents)}</span>
+              </div>
+              {reviewQuote.shopSplitCents > 0 ? (
+                <div className="flex justify-between gap-4 text-sm font-semibold text-white/62">
+                  <span>Shop split</span>
+                  <span>{formatCheckoutCents(reviewQuote.shopSplitCents)}</span>
+                </div>
+              ) : null}
+              <div className="border-t border-white/10 pt-3">
+                <div className="flex justify-between gap-4 text-lg font-black text-white">
+                  <span>Total charge</span>
+                  <span className="text-[#a3ff12]">{formatCheckoutCents(reviewQuote.totalCents)}</span>
+                </div>
+                <p className="mt-2 text-xs font-semibold text-white/40">
+                  {reviewQuote.relationshipType.replace("_", " ")} sale. Payout becomes eligible after successful payment.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              disabled={chargeLoading}
+              className="mt-5 flex min-h-[58px] w-full items-center justify-center rounded-[10px] bg-[linear-gradient(135deg,#a3ff12,#7dce00)] px-5 text-lg font-black text-[#050505] transition active:scale-[0.99] disabled:cursor-wait disabled:opacity-70"
+              onClick={handleChargeSale}
+            >
+              {chargeLoading ? "Charging..." : `Charge ${formatCheckoutCents(reviewQuote.totalCents)}`}
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
