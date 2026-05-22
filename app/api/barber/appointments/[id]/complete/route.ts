@@ -7,7 +7,10 @@ import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
 import { LiveOperationConflictError, type LiveMutationSuccess } from "@/lib/operations/live-state";
 
 const bodySchema = z.object({
-  expectedRevision: z.number().int().positive()
+  expectedRevision: z.preprocess(
+    (value) => value === null || value === undefined || value === "" ? undefined : value,
+    z.coerce.number().int().positive().optional()
+  )
 });
 
 function normalizeCompleteRouting(routing: LiveMutationSuccess["routing"] | undefined) {
@@ -38,7 +41,8 @@ function getCompleteWarning(result: LiveMutationSuccess, routing: ReturnType<typ
 }
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const parsed = bodySchema.safeParse(await request.json());
+  const payload = await request.json().catch(() => ({}));
+  const parsed = bodySchema.safeParse(payload);
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid service-complete payload." }, { status: 400 });
   }
@@ -52,6 +56,15 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       user,
       appointmentId: id,
       allowedStatuses: ["confirmed", "checked_in", "in_service", "completed"]
+    });
+    const expectedRevision = parsed.data.expectedRevision ?? actionContext.appointment.lifecycle_revision ?? 1;
+    console.info("[appointment-complete] started", {
+      appointmentId: actionContext.appointment.id,
+      expectedRevision,
+      authUserIdPresent: Boolean(user.id),
+      profileId: actionContext.profile.id,
+      barberId: actionContext.barber.id,
+      currentStatus: actionContext.appointment.status
     });
     console.info("[barber-appointment] complete_started", {
       appointmentId: actionContext.appointment.id,
@@ -72,7 +85,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     const provider = await getLiveOperationsProvider();
     const result = await provider.transitionAppointment({
       appointmentId: actionContext.providerAppointmentId,
-      expectedRevision: parsed.data.expectedRevision,
+      expectedRevision,
       action: "service_complete",
       actorRole,
       actorEmail: user.email
@@ -110,6 +123,17 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       routingUpdated: Boolean(responseRouting),
       payoutReadinessStatus: responseRouting?.payoutReadinessStatus ?? responseRouting?.status ?? null,
       eligibleAtPresent: Boolean(responseRouting?.eligibleAt),
+      warning
+    });
+    console.info("[appointment-complete] completion_success", {
+      appointmentId: actionContext.appointment.id,
+      oldStatus: actionContext.appointment.status,
+      newStatus: responseAppointment.status,
+      routingRecordIdPresent: Boolean(result.routing?.routingRecordId),
+      payoutReadinessStatus: responseRouting?.payoutReadinessStatus ?? responseRouting?.status ?? null,
+      moneyRoutingStatus: responseRouting?.moneyRoutingStatus ?? null,
+      eligibleAtPresent: Boolean(responseRouting?.eligibleAt),
+      releasedAtPresent: Boolean(responseRouting?.releasedAt),
       warning
     });
     console.info("[barber-appointment] action_succeeded", {
@@ -188,6 +212,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       barberId: null,
       ownershipVerified: null
     });
-    return NextResponse.json({ error: "Appointment could not be completed. Refresh and try again." }, { status: 500 });
+    const safeMessage = error instanceof Error && error.message.trim()
+      ? error.message
+      : "Appointment could not be completed. Refresh and try again.";
+    return NextResponse.json({ error: safeMessage }, { status: 500 });
   }
 }

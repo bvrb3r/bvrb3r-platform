@@ -12,6 +12,7 @@ type BarberAppointmentActionRow = {
   reference_code: string | null;
   barber_id: string;
   status: string;
+  lifecycle_revision: number | null;
 };
 
 export class BarberAppointmentActionError extends Error {
@@ -58,11 +59,11 @@ async function resolveAppointment(supabase: SupabaseClient, appointmentId: strin
   const query = UUID_PATTERN.test(trimmed)
     ? supabase
       .from("appointments")
-      .select("id, reference_code, barber_id, status")
+      .select("id, reference_code, barber_id, status, lifecycle_revision")
       .eq("id", trimmed)
     : supabase
       .from("appointments")
-      .select("id, reference_code, barber_id, status")
+      .select("id, reference_code, barber_id, status, lifecycle_revision")
       .eq("reference_code", trimmed);
   const primary = await query.maybeSingle();
 
@@ -76,7 +77,7 @@ async function resolveAppointment(supabase: SupabaseClient, appointmentId: strin
   if (!UUID_PATTERN.test(trimmed)) {
     const canonical = await supabase
       .from("appointments")
-      .select("id, reference_code, barber_id, status")
+      .select("id, reference_code, barber_id, status, lifecycle_revision")
       .eq("id", canonicalAppointmentUuid(trimmed))
       .maybeSingle();
 

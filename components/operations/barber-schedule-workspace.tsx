@@ -1147,7 +1147,8 @@ export function BarberScheduleWorkspace({
       setStatusUpdate(refetchSucceeded
         ? { tone: completionWarning ? "error" : "success", message: completionWarning ?? successMessage }
         : { tone: "error", message: action === "service_complete" ? "Service completed, but calendar refresh failed. Refresh the page." : successMessage });
-    } catch {
+    } catch (error) {
+      const actionErrorMessage = getReadableActionError(error as BarberApiError);
       console.warn(action === "service_complete" ? "[barber-calendar] complete_action_result" : "[barber-calendar] appointment_action_result", {
         action,
         appointmentId: appointment.id,
@@ -1160,9 +1161,7 @@ export function BarberScheduleWorkspace({
       });
       setStatusUpdate({
         tone: "error",
-        message: action === "service_complete"
-          ? "Service could not be completed. Refresh and try again."
-          : "Action could not be completed. Refresh and try again."
+        message: actionErrorMessage
       });
     } finally {
       setPendingAppointmentId(null);

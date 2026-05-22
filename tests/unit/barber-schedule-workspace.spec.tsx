@@ -533,7 +533,7 @@ describe("BarberScheduleWorkspace", () => {
       refetch: vi.fn()
     });
     useBarberLifecycleMutationMock.mockReturnValue({
-      mutateAsync: vi.fn().mockRejectedValue(new Error("Check-in could not be completed. Refresh and try again.")),
+      mutateAsync: vi.fn().mockRejectedValue(new Error("Unable to write the payment routing ledger.")),
       isPending: false
     });
 
@@ -542,7 +542,7 @@ describe("BarberScheduleWorkspace", () => {
     fireEvent.click(screen.getByRole("button", { name: /View Details/i }));
     fireEvent.click(await screen.findByRole("button", { name: /Complete Service/i }));
 
-    expect(await screen.findByText("Service could not be completed. Refresh and try again.")).toBeInTheDocument();
+    expect(await screen.findByText("Unable to write the payment routing ledger.")).toBeInTheDocument();
     expect(screen.getByText("Appointment Details")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Complete Service/i })).toBeInTheDocument();
   });

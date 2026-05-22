@@ -1841,6 +1841,72 @@ function mapRoutingView(
   };
 }
 
+function routingWritePostgresField(error: unknown, field: "code" | "details" | "message") {
+  return typeof error === "object" && error !== null && field in error
+    ? String((error as Record<string, unknown>)[field] ?? "")
+    : null;
+}
+
+function logAppointmentCompleteRoutingWrite(input: {
+  operation: "insert" | "update";
+  appointmentId: string | null;
+  paymentId: string;
+  payloadKeys: string[];
+  providerGrossAmount: number;
+  platformFeeAmount: number;
+  barberPayoutAmount: number;
+  shopSplitAmount: number;
+  payoutReadinessStatus: string | null;
+  moneyRoutingStatus: string | null;
+  reconciliationStatus: string | null;
+}) {
+  console.info(`[appointment-complete] routing_${input.operation}`, {
+    appointmentId: input.appointmentId,
+    paymentId: input.paymentId,
+    payloadKeys: input.payloadKeys,
+    providerGrossAmount: input.providerGrossAmount,
+    platformFeeAmount: input.platformFeeAmount,
+    barberPayoutAmount: input.barberPayoutAmount,
+    shopSplitAmount: input.shopSplitAmount,
+    payoutReadinessStatus: input.payoutReadinessStatus,
+    moneyRoutingStatus: input.moneyRoutingStatus,
+    reconciliationStatus: input.reconciliationStatus
+  });
+}
+
+function logAppointmentCompleteRoutingConstraintFailure(input: {
+  stage: string;
+  appointmentId: string | null;
+  paymentId: string;
+  error: unknown;
+  payloadKeys: string[];
+  payoutReadinessStatus: string | null;
+  moneyRoutingStatus: string | null;
+  reconciliationStatus: string | null;
+}) {
+  const postgresCode = routingWritePostgresField(input.error, "code");
+  const postgresDetails = routingWritePostgresField(input.error, "details");
+  const errorMessage = input.error instanceof Error
+    ? input.error.message
+    : routingWritePostgresField(input.error, "message") ?? String(input.error);
+  const haystack = `${postgresCode ?? ""} ${postgresDetails ?? ""} ${errorMessage}`.toLowerCase();
+
+  if (postgresCode === "23514" || haystack.includes("constraint") || haystack.includes("check")) {
+    console.error("[appointment-complete] constraint_failure", {
+      stage: input.stage,
+      appointmentId: input.appointmentId,
+      paymentId: input.paymentId,
+      postgresCode,
+      postgresDetails,
+      errorMessage,
+      payloadKeys: input.payloadKeys,
+      payoutReadinessStatus: input.payoutReadinessStatus,
+      moneyRoutingStatus: input.moneyRoutingStatus,
+      reconciliationStatus: input.reconciliationStatus
+    });
+  }
+}
+
 async function readPlatformBillingBlockers(
   supabase: SupabaseClient,
   input: {
@@ -2013,7 +2079,21 @@ export async function syncPaymentRoutingRecord(
     throw new FintechServiceError("Unable to inspect the existing payment routing ledger.", 500);
   }
 
-  const existingRouting = (existingRoutingResult.data as PaymentRoutingRow | null) ?? null;
+  let existingRouting = (existingRoutingResult.data as PaymentRoutingRow | null) ?? null;
+  if (!existingRouting && payment.appointment_id) {
+    const existingByAppointmentResult = await supabase
+      .from("payment_routing_records")
+      .select(PAYMENT_ROUTING_SELECT)
+      .eq("appointment_id", payment.appointment_id)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (existingByAppointmentResult.error) {
+      throw new FintechServiceError("Unable to inspect the appointment payment routing ledger.", 500);
+    }
+    existingRouting = (existingByAppointmentResult.data as PaymentRoutingRow | null) ?? null;
+  }
   if (options?.forceCompletionEligibility) {
     console.info("[barber-appointment] complete_routing_lookup_result", {
       appointmentId: payment.appointment_id,
@@ -2154,6 +2234,9 @@ export async function syncPaymentRoutingRecord(
     updated_at: now
   };
   const routingPayloadKeys = Object.keys(routingPayload);
+  const isCompletionRoutingWrite = completionEligibilityForced
+    || options?.source === "barber_complete_service"
+    || options?.repairReason === "missing_routing_record_on_completion";
 
   if (completionEligibilityForced && !existingRouting) {
     console.info("[barber-appointment] complete_routing_repair_started", {
@@ -2164,6 +2247,21 @@ export async function syncPaymentRoutingRecord(
       platformFeeAmount: routingPayload.platform_fee_amount,
       barberPayoutAmount: routingPayload.barber_payout_amount,
       shopSplitAmount: routingPayload.shop_split_amount
+    });
+  }
+  if (isCompletionRoutingWrite) {
+    logAppointmentCompleteRoutingWrite({
+      operation: existingRouting ? "update" : "insert",
+      appointmentId: payment.appointment_id,
+      paymentId: payment.id,
+      payloadKeys: routingPayloadKeys,
+      providerGrossAmount: routingPayload.provider_gross_amount,
+      platformFeeAmount: routingPayload.platform_fee_amount,
+      barberPayoutAmount: routingPayload.barber_payout_amount,
+      shopSplitAmount: routingPayload.shop_split_amount,
+      payoutReadinessStatus: routingPayload.payout_readiness_status,
+      moneyRoutingStatus: routingPayload.money_routing_status,
+      reconciliationStatus: routingPayload.reconciliation_status
     });
   }
 
@@ -2181,6 +2279,18 @@ export async function syncPaymentRoutingRecord(
       .single();
 
   if (writeResult.error) {
+    if (isCompletionRoutingWrite) {
+      logAppointmentCompleteRoutingConstraintFailure({
+        stage: existingRouting ? "routing_update" : "routing_insert",
+        appointmentId: payment.appointment_id,
+        paymentId: payment.id,
+        error: writeResult.error,
+        payloadKeys: routingPayloadKeys,
+        payoutReadinessStatus: routingPayload.payout_readiness_status,
+        moneyRoutingStatus: routingPayload.money_routing_status,
+        reconciliationStatus: routingPayload.reconciliation_status
+      });
+    }
     if (completionEligibilityForced) {
       console.error("[barber-appointment] complete_routing_repair_failed", {
         appointmentId: payment.appointment_id,
@@ -2345,6 +2455,19 @@ async function repairCompletedFreelanceAppointmentRoutingRecord(
       shopSplitAmount
     });
   }
+  logAppointmentCompleteRoutingWrite({
+    operation: existingRouting ? "update" : "insert",
+    appointmentId: appointment.id,
+    paymentId: payment.id,
+    payloadKeys,
+    providerGrossAmount,
+    platformFeeAmount,
+    barberPayoutAmount,
+    shopSplitAmount,
+    payoutReadinessStatus: routingPayload.payout_readiness_status,
+    moneyRoutingStatus: routingPayload.money_routing_status,
+    reconciliationStatus: routingPayload.reconciliation_status
+  });
 
   const writeResult = existingRouting
     ? await supabase
@@ -2360,6 +2483,16 @@ async function repairCompletedFreelanceAppointmentRoutingRecord(
       .single();
 
   if (writeResult.error) {
+    logAppointmentCompleteRoutingConstraintFailure({
+      stage: existingRouting ? "routing_update" : "routing_insert",
+      appointmentId: appointment.id,
+      paymentId: payment.id,
+      error: writeResult.error,
+      payloadKeys,
+      payoutReadinessStatus: routingPayload.payout_readiness_status,
+      moneyRoutingStatus: routingPayload.money_routing_status,
+      reconciliationStatus: routingPayload.reconciliation_status
+    });
     console.error("[barber-appointment] complete_routing_repair_failed", {
       appointmentId: appointment.id,
       postgresCode: "code" in writeResult.error ? writeResult.error.code : null,

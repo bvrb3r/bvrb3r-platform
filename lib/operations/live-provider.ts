@@ -1923,6 +1923,35 @@ function logCompleteLifecyclePatch(appointment: LiveAppointmentRecord, patch: Re
   });
 }
 
+function postgresField(error: unknown, field: "code" | "details" | "message") {
+  return typeof error === "object" && error !== null && field in error
+    ? String((error as Record<string, unknown>)[field] ?? "")
+    : null;
+}
+
+function logAppointmentCompleteConstraintFailure(input: {
+  stage: string;
+  appointmentId: string;
+  error: unknown;
+}) {
+  const postgresCode = postgresField(input.error, "code");
+  const postgresDetails = postgresField(input.error, "details");
+  const errorMessage = input.error instanceof Error
+    ? input.error.message
+    : postgresField(input.error, "message") ?? String(input.error);
+  const haystack = `${postgresCode ?? ""} ${postgresDetails ?? ""} ${errorMessage}`.toLowerCase();
+
+  if (postgresCode === "23514" || haystack.includes("constraint") || haystack.includes("check")) {
+    console.error("[appointment-complete] constraint_failure", {
+      stage: input.stage,
+      appointmentId: canonicalAppointmentUuid(input.appointmentId),
+      postgresCode,
+      postgresDetails,
+      errorMessage
+    });
+  }
+}
+
 async function insertAppointmentCheckInEvent(
   supabase: SupabaseClient,
   appointment: LiveAppointmentRecord,
@@ -3185,6 +3214,13 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
         ? { ...input, appointmentId: previousAppointment.id }
         : input;
       if (input.action === "service_complete" && previousAppointment) {
+        console.info("[appointment-complete] started", {
+          appointmentId: canonicalAppointmentUuid(previousAppointment.id),
+          requestedAppointmentId: input.appointmentId,
+          expectedRevision: input.expectedRevision,
+          currentRevision: previousAppointment.revision,
+          currentStatus: previousAppointment.status
+        });
         const alreadyCompleted = previousAppointment.status === "completed";
         console.info("[barber-appointment] routing_repair_idempotent_check", {
           appointmentId: canonicalAppointmentUuid(previousAppointment.id),
@@ -3200,6 +3236,17 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
           try {
             const payoutEvaluation = await evaluatePayoutEligibilityForAppointment(supabase, canonicalAppointmentUuid(previousAppointment.id));
             idempotentResult.routing = payoutEvaluation;
+            console.info("[appointment-complete] completion_success", {
+              appointmentId: canonicalAppointmentUuid(previousAppointment.id),
+              oldStatus: previousAppointment.status,
+              newStatus: previousAppointment.status,
+              routingRecordIdPresent: Boolean(payoutEvaluation.routingRecordId),
+              payoutReadinessStatus: payoutEvaluation.payoutReadinessStatus ?? payoutEvaluation.status,
+              moneyRoutingStatus: payoutEvaluation.moneyRoutingStatus ?? null,
+              eligibleAtPresent: Boolean(payoutEvaluation.eligibleAt),
+              releasedAtPresent: Boolean(payoutEvaluation.releasedAt),
+              warning: null
+            });
             console.log("[barber-appointment] status_transition", {
               appointmentId: canonicalAppointmentUuid(previousAppointment.id),
               oldStatus: previousAppointment.status,
@@ -3238,6 +3285,11 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
               errorMessage: error instanceof Error ? error.message : String(error),
               postgresCode: typeof error === "object" && error !== null && "code" in error ? error.code : null,
               postgresDetails: typeof error === "object" && error !== null && "details" in error ? error.details : null
+            });
+            logAppointmentCompleteConstraintFailure({
+              stage: "idempotent_routing_repair",
+              appointmentId: previousAppointment.id,
+              error
             });
           }
           return idempotentResult;
@@ -3292,7 +3344,22 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
         });
       }
       if (input.action === "service_complete") {
-        await completePromotionRedemptionsForAppointment(supabase, result.appointment.id, result.appointment.updatedAt);
+        try {
+          await completePromotionRedemptionsForAppointment(supabase, result.appointment.id, result.appointment.updatedAt);
+        } catch (promotionError) {
+          console.warn("[appointment-complete] promotion_completion_failed_nonfatal", {
+            appointmentId: canonicalAppointmentUuid(result.appointment.id),
+            errorName: promotionError instanceof Error ? promotionError.name : "UnknownError",
+            errorMessage: promotionError instanceof Error ? promotionError.message : String(promotionError),
+            postgresCode: postgresField(promotionError, "code"),
+            postgresDetails: postgresField(promotionError, "details")
+          });
+          logAppointmentCompleteConstraintFailure({
+            stage: "promotion_completion",
+            appointmentId: result.appointment.id,
+            error: promotionError
+          });
+        }
         try {
           const payoutEvaluation = await evaluatePayoutEligibilityForAppointment(supabase, canonicalAppointmentUuid(result.appointment.id));
           result.routing = payoutEvaluation;
@@ -3335,6 +3402,11 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
             postgresCode: typeof error === "object" && error !== null && "code" in error ? error.code : null,
             postgresDetails: typeof error === "object" && error !== null && "details" in error ? error.details : null
           });
+          logAppointmentCompleteConstraintFailure({
+            stage: "routing_repair",
+            appointmentId: result.appointment.id,
+            error
+          });
           console.error("[payout] eligibility_evaluation_failed", {
             appointmentId: canonicalAppointmentUuid(result.appointment.id),
             errorName: error instanceof Error ? error.name : "UnknownError",
@@ -3342,15 +3414,35 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
           });
         }
       }
-      await persistArtifactsForAppointment(supabase, result.snapshot, result.appointment, {
+      const artifactPersistenceInput = {
         activityType:
           input.action === "check_in"
-            ? "check_in"
+            ? "check_in" as const
             : input.action === "service_start"
-              ? "service_start"
-              : "service_complete",
+              ? "service_start" as const
+              : "service_complete" as const,
         actorRole: input.actorRole
-      });
+      };
+      if (input.action === "service_complete") {
+        try {
+          await persistArtifactsForAppointment(supabase, result.snapshot, result.appointment, artifactPersistenceInput);
+        } catch (artifactError) {
+          console.warn("[appointment-complete] artifact_persist_failed_nonfatal", {
+            appointmentId: canonicalAppointmentUuid(result.appointment.id),
+            errorName: artifactError instanceof Error ? artifactError.name : "UnknownError",
+            errorMessage: artifactError instanceof Error ? artifactError.message : String(artifactError),
+            postgresCode: postgresField(artifactError, "code"),
+            postgresDetails: postgresField(artifactError, "details")
+          });
+          logAppointmentCompleteConstraintFailure({
+            stage: "artifact_persist",
+            appointmentId: result.appointment.id,
+            error: artifactError
+          });
+        }
+      } else {
+        await persistArtifactsForAppointment(supabase, result.snapshot, result.appointment, artifactPersistenceInput);
+      }
       if (input.action === "service_complete") {
         try {
           await ensureRecurringBooking(supabase, {
@@ -3365,6 +3457,17 @@ function createSupabaseProvider(supabase: SupabaseClient): LiveOperationsProvide
             }
           });
         } catch {}
+        console.info("[appointment-complete] completion_success", {
+          appointmentId: canonicalAppointmentUuid(result.appointment.id),
+          oldStatus: previousAppointment?.status ?? null,
+          newStatus: result.appointment.status,
+          routingRecordIdPresent: Boolean(result.routing?.routingRecordId),
+          payoutReadinessStatus: result.routing?.payoutReadinessStatus ?? result.routing?.status ?? null,
+          moneyRoutingStatus: result.routing?.moneyRoutingStatus ?? null,
+          eligibleAtPresent: Boolean(result.routing?.eligibleAt),
+          releasedAtPresent: Boolean(result.routing?.releasedAt),
+          warning: result.warning ?? null
+        });
       }
       return result;
     },
