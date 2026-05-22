@@ -21,6 +21,7 @@ import {
   listClientMembershipPlans
 } from "@/lib/monetization/membership";
 import type { LiveOperationsSnapshot } from "@/lib/operations/live-state";
+import { isClientRole } from "@/lib/auth/roles";
 import {
   cancelStripeMembershipSubscription,
   createStripeRecurringSubscription,
@@ -785,12 +786,17 @@ function buildFallbackClientMembershipExecution(input: {
   unlockedRewardCount: number;
   nextDueAt?: string | null;
 }) {
+  void input;
   const plans = listClientMembershipPlans();
   const activePlan = plans.find((plan) => plan.highlighted) ?? plans[0] ?? null;
 
   return {
     subscription: null,
     value: null,
+    membershipStatus: "none",
+    tier: "none",
+    active: false,
+    points: 0,
     plans,
     activePlan,
     pricingAdjustment: null,
@@ -1520,6 +1526,10 @@ function buildClientMembershipExecutionFromSubscription(input: {
   return {
     subscription: input.subscription,
     value,
+    membershipStatus: input.subscription.subscriptionStatus,
+    tier: input.subscription.planName || input.subscription.planCode || "none",
+    active: input.subscription.subscriptionStatus === "active" || input.subscription.subscriptionStatus === "trialing",
+    points: input.pointsBalance,
     plans,
     activePlan,
     pricingAdjustment,
@@ -1615,7 +1625,7 @@ export async function createClientMembershipSubscriptionSession(input: {
   user: UserAccount;
   planCode: string;
 }) {
-  if (input.user.role !== "client" || !input.user.clientId) {
+  if (!isClientRole(input.user.role) || !input.user.clientId) {
     throw new MonetizationServiceError("Only clients can start a membership subscription.", 403);
   }
   const clientId = input.user.clientId;
@@ -1709,7 +1719,7 @@ export async function createClientMembershipSubscriptionSession(input: {
 export async function cancelClientMembershipSubscription(input: {
   user: UserAccount;
 }) {
-  if (input.user.role !== "client" || !input.user.clientId) {
+  if (!isClientRole(input.user.role) || !input.user.clientId) {
     throw new MonetizationServiceError("Only clients can cancel a membership subscription.", 403);
   }
 

@@ -72,6 +72,10 @@ export interface MembershipPricingAdjustmentView {
 export interface ClientMembershipExecutionView {
   subscription: SubscriptionSummaryView | null;
   value: ClientMembershipValueView | null;
+  membershipStatus?: "none" | SubscriptionStatus;
+  tier?: string;
+  active?: boolean;
+  points?: number;
   plans: ClientMembershipPlanView[];
   activePlan: ClientMembershipPlanView | null;
   pricingAdjustment: MembershipPricingAdjustmentView | null;

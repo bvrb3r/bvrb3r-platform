@@ -44,6 +44,10 @@ describe("monetization service", () => {
 
     expect(membership.subscription).toBeNull();
     expect(membership.value).toBeNull();
+    expect(membership.membershipStatus).toBe("none");
+    expect(membership.tier).toBe("none");
+    expect(membership.active).toBe(false);
+    expect(membership.points).toBe(0);
     expect(membership.canSubscribe).toBe(true);
     expect(mock.insert).not.toHaveBeenCalled();
   });

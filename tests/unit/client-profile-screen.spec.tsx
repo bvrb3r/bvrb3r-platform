@@ -353,7 +353,42 @@ describe("client profile screen", () => {
 
     expect(screen.getByText("No preferred barbers yet")).toBeInTheDocument();
     expect(screen.getByText("No preferred shops yet")).toBeInTheDocument();
+    expect(screen.getByText("No membership")).toBeInTheDocument();
+    expect(screen.getByText("Membership updates appear here when active.")).toBeInTheDocument();
     expect(screen.getByText("No rewards activity yet.")).toBeInTheDocument();
+    expect(screen.queryByText("Membership status could not be loaded right now.")).not.toBeInTheDocument();
+  });
+
+  it("keeps membership failures visible without blocking the rest of profile", () => {
+    useClientMembershipQueryMock.mockReturnValue({
+      data: null,
+      error: new Error("billing_subscriptions query failed")
+    });
+
+    render(
+      <ClientProfileScreen
+        isSignedInClient
+        authEmail="jordan@bvrb3r.app"
+        authPhone="8135550190"
+        payload={({
+          client: {
+            clientReference: "client-jordan",
+            fullName: "Jordan Ellis",
+            email: "jordan@bvrb3r.app",
+            phone: "8135550190"
+          },
+          favoriteBarber: null,
+          preferredShops: [],
+          notificationPreference: null,
+          routine: null,
+          paymentMethods: []
+        } as unknown as ClientProfilePayload)}
+      />
+    );
+
+    expect(screen.getByText("Membership status could not be loaded right now.")).toBeInTheDocument();
+    expect(screen.getByText("No membership")).toBeInTheDocument();
+    expect(screen.getByText("Membership updates appear here when active.")).toBeInTheDocument();
   });
 
   it("shows the auth email when the client payload email is missing", () => {

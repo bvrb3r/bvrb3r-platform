@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   getClientExperienceContextMock,
@@ -48,7 +48,10 @@ import { DELETE as deleteMembership, GET as getMembership, POST as postMembershi
 import { MonetizationServiceError } from "@/lib/monetization/service";
 
 describe("client membership route", () => {
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+
   beforeEach(() => {
+    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     getClientExperienceContextMock.mockReset();
     createSupabaseAdminClientMock.mockReset();
     readPointsBalanceForClientReferenceMock.mockReset();
@@ -59,7 +62,7 @@ describe("client membership route", () => {
 
     getClientExperienceContextMock.mockResolvedValue({
       viewer: {
-        role: "client",
+        role: "client_user",
         email: "client@bvrb3r.demo",
         name: "Jordan Ellis",
         clientId: "client-jordan"
@@ -118,6 +121,10 @@ describe("client membership route", () => {
     });
   });
 
+  afterEach(() => {
+    warnSpy.mockRestore();
+  });
+
   it("rejects non-client access", async () => {
     getClientExperienceContextMock.mockResolvedValue({
       viewer: {
@@ -160,6 +167,76 @@ describe("client membership route", () => {
     expect(body.membership.plans).toHaveLength(1);
   });
 
+  it("allows legacy client role membership hydration", async () => {
+    getClientExperienceContextMock.mockResolvedValue({
+      viewer: {
+        role: "client",
+        email: "client@bvrb3r.demo",
+        name: "Jordan Ellis",
+        clientId: "client-jordan"
+      },
+      clientId: "client-jordan",
+      activeClient: {
+        name: "Jordan Ellis"
+      },
+      isSignedInClient: true
+    });
+
+    const response = await getMembership();
+
+    expect(response.status).toBe(200);
+  });
+
+  it("returns no membership as a safe default without an error response", async () => {
+    buildClientMembershipExecutionSummaryMock.mockResolvedValue({
+      subscription: null,
+      value: null,
+      membershipStatus: "none",
+      tier: "none",
+      active: false,
+      points: 0,
+      plans: [],
+      activePlan: null,
+      pricingAdjustment: null,
+      canSubscribe: true,
+      canCancel: false
+    });
+
+    const response = await getMembership();
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.membership).toMatchObject({
+      subscription: null,
+      membershipStatus: "none",
+      tier: "none",
+      active: false,
+      points: 0
+    });
+    expect(warnSpy).toHaveBeenCalledWith("[client-profile] membership_status_defaulted", expect.objectContaining({
+      membershipStatus: "none",
+      tier: "none",
+      active: false,
+      points: 0
+    }));
+    expect(warnSpy).not.toHaveBeenCalledWith("[client-profile] membership_status_failed", expect.anything());
+  });
+
+  it("returns a warning response only when membership hydration fails", async () => {
+    buildClientMembershipExecutionSummaryMock.mockRejectedValue(new Error("billing_subscriptions query failed"));
+
+    const response = await getMembership();
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body.error).toBe("billing_subscriptions query failed");
+    expect(warnSpy).toHaveBeenCalledWith("[client-profile] membership_status_failed", expect.objectContaining({
+      stage: "read_execution_summary",
+      role: "client_user",
+      message: "billing_subscriptions query failed"
+    }));
+  });
+
   it("starts a Stripe-backed membership checkout session for a valid plan", async () => {
     createClientMembershipSubscriptionSessionMock.mockResolvedValue({
       checkoutUrl: "https://checkout.stripe.test/session_123",
@@ -177,7 +254,7 @@ describe("client membership route", () => {
     expect(response.status).toBe(200);
     expect(createClientMembershipSubscriptionSessionMock).toHaveBeenCalledWith({
       user: {
-        role: "client",
+        role: "client_user",
         email: "client@bvrb3r.demo",
         name: "Jordan Ellis",
         clientId: "client-jordan"
@@ -232,7 +309,7 @@ describe("client membership route", () => {
     expect(response.status).toBe(200);
     expect(cancelClientMembershipSubscriptionMock).toHaveBeenCalledWith({
       user: {
-        role: "client",
+        role: "client_user",
         email: "client@bvrb3r.demo",
         name: "Jordan Ellis",
         clientId: "client-jordan"
