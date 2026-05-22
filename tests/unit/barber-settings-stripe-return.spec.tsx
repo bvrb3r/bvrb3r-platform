@@ -328,4 +328,27 @@ describe("BarberSettingsScreen Stripe return sync", () => {
 
     await waitFor(() => expect(refreshStripeMock).toHaveBeenCalledWith({}));
   });
+
+  it("shows eligible payout balance separately from released balance", async () => {
+    useBarberPayoutsQueryMock.mockReturnValue({
+      data: {
+        summary: {
+          eligiblePayoutAmount: 4.75,
+          eligibleRoutingRecords: 1,
+          readyForPayoutAmount: 0,
+          executableRoutingRecords: 0,
+          executedAmount: 0
+        }
+      },
+      error: null,
+      refetch: payoutsRefetchMock
+    });
+
+    render(<BarberSettingsScreen user={resolveDemoUser("blaze@bvrb3r.demo")} embedded />);
+
+    expect(screen.getByText("Eligible balance")).toBeInTheDocument();
+    expect(screen.getByText("$4.75")).toBeInTheDocument();
+    expect(screen.getByText("1 payout-ready routing records")).toBeInTheDocument();
+    expect(screen.getByText("Released balance $0.00")).toBeInTheDocument();
+  });
 });

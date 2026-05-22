@@ -1,12 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { createSupabaseAdminClientMock, syncWalletBalancesForPaymentMock } = vi.hoisted(() => ({
+const { createSupabaseAdminClientMock, isSupabaseEnabledMock, syncWalletBalancesForPaymentMock } = vi.hoisted(() => ({
   createSupabaseAdminClientMock: vi.fn(),
+  isSupabaseEnabledMock: vi.fn(() => true),
   syncWalletBalancesForPaymentMock: vi.fn()
 }));
 
 vi.mock("@/lib/supabase/admin", () => ({
   createSupabaseAdminClient: createSupabaseAdminClientMock
+}));
+
+vi.mock("@/lib/config/runtime", () => ({
+  isSupabaseEnabled: isSupabaseEnabledMock
 }));
 
 vi.mock("@/lib/wallet/service", () => ({
@@ -24,7 +29,7 @@ vi.mock("@/lib/trust/provider", async () => {
 
 import { resolveBarberAppointmentActionContext } from "@/lib/barber/appointment-actions";
 import { calculatePaymentRouting } from "@/lib/fintech/domain";
-import { evaluatePayoutEligibilityForAppointment } from "@/lib/fintech/service";
+import { evaluatePayoutEligibilityForAppointment, getBarberPayouts } from "@/lib/fintech/service";
 
 type Row = Record<string, unknown>;
 type QueryResult = { data: Row[] | null; error: Row | null };
@@ -231,6 +236,8 @@ function createSupabaseStub(tables: Record<string, Row[]>) {
 describe("payout completion flow", () => {
   beforeEach(() => {
     createSupabaseAdminClientMock.mockReset();
+    isSupabaseEnabledMock.mockReset();
+    isSupabaseEnabledMock.mockReturnValue(true);
     syncWalletBalancesForPaymentMock.mockReset();
     syncWalletBalancesForPaymentMock.mockResolvedValue({ transactions: [], balances: [] });
   });
@@ -439,6 +446,244 @@ describe("payout completion flow", () => {
     expect(tables.platform_events).toEqual(expect.arrayContaining([
       expect.objectContaining({ event_type: "payout_held" })
     ]));
+  });
+
+  it("counts completed captured ready routing as barber eligible balance before release", async () => {
+    const tables = createTables({
+      payment_routing_records: [{
+        id: "routing-ready-balance",
+        payment_id: PAYMENT_ID,
+        appointment_id: APPOINTMENT_ID,
+        membership_id: null,
+        routing_model: "freelance",
+        payout_recipient_type: "barber",
+        provider_gross_amount: 5,
+        refunded_amount: 0,
+        provider_fee_amount: 0,
+        provider_net_amount: 5,
+        platform_fee_amount: 0.25,
+        barber_payout_amount: 4.75,
+        shop_split_amount: 0,
+        currency: "usd",
+        payout_readiness_status: "ready",
+        money_routing_status: "pending",
+        blocked_reason: null,
+        eligible_at: "2026-05-16T14:30:00.000Z",
+        held_at: null,
+        released_at: null,
+        reversed_at: null,
+        processor_charge_id: "pi_test_paid",
+        processor_balance_transaction_id: null,
+        reconciliation_status: "open",
+        metadata: {},
+        created_at: "2026-05-16T14:30:00.000Z",
+        updated_at: "2026-05-16T14:30:00.000Z"
+      }]
+    });
+    createSupabaseAdminClientMock.mockReturnValue(createSupabaseStub(tables));
+
+    const result = await getBarberPayouts({
+      id: BARBER_PROFILE_ID,
+      role: "barber_user",
+      email: "phillipmcgee813@gmail.com",
+      password: "DevOnly!123",
+      name: "Phillip mcgee",
+      title: "Freelance Barber",
+      locationIds: [],
+      barberId: "barber-43b3cda2",
+      barberSubtype: "freelance"
+    });
+
+    expect(result.summary).toMatchObject({
+      eligibleRoutingRecords: 1,
+      eligiblePayoutAmount: 4.75,
+      executableRoutingRecords: 0,
+      readyForPayoutAmount: 0,
+      executedAmount: 0
+    });
+  });
+
+  it("counts eligible status and excludes released, refunded, blocked, and incomplete routing rows", async () => {
+    const base = createTables();
+    const tables = createTables({
+      appointments: [
+        base.appointments[0],
+        { ...base.appointments[0], id: "appointment-released", status: "completed" },
+        { ...base.appointments[0], id: "appointment-refunded", status: "completed" },
+        { ...base.appointments[0], id: "appointment-blocked", status: "completed" },
+        { ...base.appointments[0], id: "appointment-confirmed", status: "confirmed" }
+      ],
+      payments: [
+        base.payments[0],
+        { ...base.payments[0], id: "payment-released", appointment_id: "appointment-released" },
+        { ...base.payments[0], id: "payment-refunded", appointment_id: "appointment-refunded", payment_status: "refunded", status: "refunded" },
+        { ...base.payments[0], id: "payment-blocked", appointment_id: "appointment-blocked" },
+        { ...base.payments[0], id: "payment-confirmed", appointment_id: "appointment-confirmed" }
+      ],
+      payment_routing_records: [
+        {
+          id: "routing-eligible-balance",
+          payment_id: PAYMENT_ID,
+          appointment_id: APPOINTMENT_ID,
+          membership_id: null,
+          routing_model: "freelance",
+          payout_recipient_type: "barber",
+          provider_gross_amount: 5,
+          refunded_amount: 0,
+          provider_fee_amount: 0,
+          provider_net_amount: 5,
+          platform_fee_amount: 0.25,
+          barber_payout_amount: 4.75,
+          shop_split_amount: 0,
+          currency: "usd",
+          payout_readiness_status: "eligible",
+          money_routing_status: "pending",
+          blocked_reason: null,
+          eligible_at: "2026-05-16T14:30:00.000Z",
+          held_at: null,
+          released_at: null,
+          reversed_at: null,
+          processor_charge_id: null,
+          processor_balance_transaction_id: null,
+          reconciliation_status: "open",
+          metadata: {},
+          created_at: "2026-05-16T14:30:00.000Z",
+          updated_at: "2026-05-16T14:30:00.000Z"
+        },
+        {
+          id: "routing-released",
+          payment_id: "payment-released",
+          appointment_id: "appointment-released",
+          membership_id: null,
+          routing_model: "freelance",
+          payout_recipient_type: "barber",
+          provider_gross_amount: 5,
+          refunded_amount: 0,
+          provider_fee_amount: 0,
+          provider_net_amount: 5,
+          platform_fee_amount: 0.25,
+          barber_payout_amount: 4.75,
+          shop_split_amount: 0,
+          currency: "usd",
+          payout_readiness_status: "eligible",
+          money_routing_status: "pending",
+          blocked_reason: null,
+          eligible_at: "2026-05-16T14:30:00.000Z",
+          held_at: null,
+          released_at: "2026-05-16T15:30:00.000Z",
+          reversed_at: null,
+          processor_charge_id: null,
+          processor_balance_transaction_id: null,
+          reconciliation_status: "open",
+          metadata: {},
+          created_at: "2026-05-16T14:30:00.000Z",
+          updated_at: "2026-05-16T14:30:00.000Z"
+        },
+        {
+          id: "routing-refunded",
+          payment_id: "payment-refunded",
+          appointment_id: "appointment-refunded",
+          membership_id: null,
+          routing_model: "freelance",
+          payout_recipient_type: "barber",
+          provider_gross_amount: 5,
+          refunded_amount: 5,
+          provider_fee_amount: 0,
+          provider_net_amount: 0,
+          platform_fee_amount: 0,
+          barber_payout_amount: 0,
+          shop_split_amount: 0,
+          currency: "usd",
+          payout_readiness_status: "eligible",
+          money_routing_status: "refunded",
+          blocked_reason: null,
+          eligible_at: "2026-05-16T14:30:00.000Z",
+          held_at: null,
+          released_at: null,
+          reversed_at: null,
+          processor_charge_id: null,
+          processor_balance_transaction_id: null,
+          reconciliation_status: "open",
+          metadata: {},
+          created_at: "2026-05-16T14:30:00.000Z",
+          updated_at: "2026-05-16T14:30:00.000Z"
+        },
+        {
+          id: "routing-blocked",
+          payment_id: "payment-blocked",
+          appointment_id: "appointment-blocked",
+          membership_id: null,
+          routing_model: "freelance",
+          payout_recipient_type: "barber",
+          provider_gross_amount: 5,
+          refunded_amount: 0,
+          provider_fee_amount: 0,
+          provider_net_amount: 5,
+          platform_fee_amount: 0.25,
+          barber_payout_amount: 4.75,
+          shop_split_amount: 0,
+          currency: "usd",
+          payout_readiness_status: "blocked",
+          money_routing_status: "blocked",
+          blocked_reason: "An active dispute or chargeback is blocking payout.",
+          eligible_at: null,
+          held_at: "2026-05-16T14:30:00.000Z",
+          released_at: null,
+          reversed_at: null,
+          processor_charge_id: null,
+          processor_balance_transaction_id: null,
+          reconciliation_status: "open",
+          metadata: {},
+          created_at: "2026-05-16T14:30:00.000Z",
+          updated_at: "2026-05-16T14:30:00.000Z"
+        },
+        {
+          id: "routing-confirmed",
+          payment_id: "payment-confirmed",
+          appointment_id: "appointment-confirmed",
+          membership_id: null,
+          routing_model: "freelance",
+          payout_recipient_type: "barber",
+          provider_gross_amount: 5,
+          refunded_amount: 0,
+          provider_fee_amount: 0,
+          provider_net_amount: 5,
+          platform_fee_amount: 0.25,
+          barber_payout_amount: 4.75,
+          shop_split_amount: 0,
+          currency: "usd",
+          payout_readiness_status: "eligible",
+          money_routing_status: "pending",
+          blocked_reason: null,
+          eligible_at: "2026-05-16T14:30:00.000Z",
+          held_at: null,
+          released_at: null,
+          reversed_at: null,
+          processor_charge_id: null,
+          processor_balance_transaction_id: null,
+          reconciliation_status: "open",
+          metadata: {},
+          created_at: "2026-05-16T14:30:00.000Z",
+          updated_at: "2026-05-16T14:30:00.000Z"
+        }
+      ]
+    });
+    createSupabaseAdminClientMock.mockReturnValue(createSupabaseStub(tables));
+
+    const result = await getBarberPayouts({
+      id: BARBER_PROFILE_ID,
+      role: "barber_user",
+      email: "phillipmcgee813@gmail.com",
+      password: "DevOnly!123",
+      name: "Phillip mcgee",
+      title: "Freelance Barber",
+      locationIds: [],
+      barberId: "barber-43b3cda2",
+      barberSubtype: "freelance"
+    });
+
+    expect(result.summary.eligibleRoutingRecords).toBe(1);
+    expect(result.summary.eligiblePayoutAmount).toBe(4.75);
   });
 
   it("routes booth rent appointment money to the barber, not the shop", () => {

@@ -189,6 +189,7 @@ type AppointmentRow = {
   id: string;
   reference_code: string | null;
   status: string;
+  completed_at?: string | null;
   membership_id: string | null;
   barber_id: string;
   shop_id: string | null;
@@ -452,7 +453,9 @@ export type PayoutExecutionView = {
 export type FintechPayoutsPayload = {
   summary: {
     executableRoutingRecords: number;
+    eligibleRoutingRecords: number;
     readyForPayoutAmount: number;
+    eligiblePayoutAmount: number;
     blockedExecutionRecords: number;
     failedExecutionRecords: number;
     executedTransferCount: number;
@@ -468,7 +471,9 @@ export type FintechPayoutsPayload = {
 export type BarberPayoutsPayload = {
   summary: {
     executableRoutingRecords: number;
+    eligibleRoutingRecords: number;
     readyForPayoutAmount: number;
+    eligiblePayoutAmount: number;
     blockedExecutionRecords: number;
     failedExecutionRecords: number;
     executedTransferCount: number;
@@ -2731,6 +2736,42 @@ function evaluateRoutingExecutionReadiness(
   };
 }
 
+function isAppointmentPayoutEligible(appointment: Pick<AppointmentRow, "status" | "completed_at"> | null | undefined) {
+  if (!appointment) {
+    return false;
+  }
+
+  return appointment.status === "completed" || Boolean(appointment.completed_at);
+}
+
+function isRoutingEligibleForAvailablePayout(
+  routing: PaymentRoutingRow,
+  payment: PaymentRow | undefined,
+  appointment: Pick<AppointmentRow, "status" | "completed_at"> | null | undefined
+) {
+  if (!payment || !isCompletionPaymentSuccessful(payment) || !isAppointmentPayoutEligible(appointment)) {
+    return false;
+  }
+
+  if (!isPayoutReadinessEligible(routing.payout_readiness_status)) {
+    return false;
+  }
+
+  if (routing.released_at || routing.reversed_at) {
+    return false;
+  }
+
+  if (routing.blocked_reason?.trim()) {
+    return false;
+  }
+
+  if (routing.money_routing_status === "blocked" || routing.money_routing_status === "manual_review" || routing.money_routing_status === "refunded" || routing.money_routing_status === "paid_out") {
+    return false;
+  }
+
+  return numeric(routing.barber_payout_amount) > 0 || numeric(routing.shop_split_amount) > 0;
+}
+
 async function loadPayoutExecutionsForPaymentIds(supabase: SupabaseClient, paymentIds: string[]) {
   if (!paymentIds.length) {
     return [] as PayoutExecutionRow[];
@@ -2962,11 +3003,23 @@ function mapPayoutExecutionView(
   };
 }
 
-function summarizeExecutionViews(executions: PayoutExecutionView[], readyRouting: FintechRoutingView[]) {
+function summarizeExecutionViews(
+  executions: PayoutExecutionView[],
+  readyRouting: FintechRoutingView[],
+  eligibleRouting: FintechRoutingView[] = readyRouting,
+  options: { includeShopSplit?: boolean } = {}
+) {
+  const includeShopSplit = options.includeShopSplit !== false;
+  const routedAmount = (row: FintechRoutingView) => row.barberPayoutAmount + (includeShopSplit ? row.shopSplitAmount : 0);
+
   return {
     executableRoutingRecords: readyRouting.length,
+    eligibleRoutingRecords: eligibleRouting.length,
     readyForPayoutAmount: roundCurrency(
-      readyRouting.reduce((sum, row) => sum + row.barberPayoutAmount + row.shopSplitAmount, 0)
+      readyRouting.reduce((sum, row) => sum + routedAmount(row), 0)
+    ),
+    eligiblePayoutAmount: roundCurrency(
+      eligibleRouting.reduce((sum, row) => sum + routedAmount(row), 0)
     ),
     blockedExecutionRecords: executions.filter((row) => row.executionStatus === "blocked").length,
     failedExecutionRecords: executions.filter((row) => row.executionStatus === "failed").length,
@@ -3365,6 +3418,22 @@ async function buildPayoutExecutionScope(
   }
 
   const routingData = (routingRows.data ?? []) as PaymentRoutingRow[];
+  const appointmentIds = [...new Set(routingData.map((row) => row.appointment_id).filter(Boolean) as string[])];
+  const appointmentsResult = appointmentIds.length
+    ? await supabase
+      .from("appointments")
+      .select("id, status, completed_at")
+      .in("id", appointmentIds)
+    : { data: [], error: null };
+
+  if (appointmentsResult.error) {
+    throw new FintechServiceError("Unable to load payout appointment state.", 500);
+  }
+
+  const appointmentById = new Map(
+    ((appointmentsResult.data ?? []) as Array<Pick<AppointmentRow, "id" | "status" | "completed_at">>)
+      .map((appointment) => [appointment.id, appointment])
+  );
   const payoutExecutions = await loadPayoutExecutionsForPaymentIds(supabase, paymentIds);
   const barbers = await loadBarbersByIds(
     [...new Set(payments.map((payment) => payment.barber_id).filter(Boolean) as string[])],
@@ -3412,6 +3481,25 @@ async function buildPayoutExecutionScope(
       );
     });
 
+  const eligibleRouting = routingData
+    .filter((row) => {
+      const payment = paymentById.get(row.payment_id);
+      const appointment = row.appointment_id ? appointmentById.get(row.appointment_id) : null;
+      return isRoutingEligibleForAvailablePayout(row, payment, appointment);
+    })
+    .slice(0, 12)
+    .map((row) => {
+      const payment = paymentById.get(row.payment_id);
+      const barber = payment?.barber_id ? barberById.get(payment.barber_id) : undefined;
+      const shop = payment?.shop_id ? locationById.get(payment.shop_id) : undefined;
+      return mapRoutingView(
+        row,
+        payment,
+        barber ? profileNameById.get(barber.profile_id) ?? barber.reference_code ?? barber.id : null,
+        shop ? formatShopLabel(shop) : null
+      );
+    });
+
   const allExecutions = payoutExecutions
     .map((execution) => {
       const routing = routingById.get(execution.routing_record_id);
@@ -3433,6 +3521,7 @@ async function buildPayoutExecutionScope(
     payoutExecutions,
     allExecutions,
     readyRouting,
+    eligibleRouting,
     recentExecutions,
     paymentById,
     accountByBarberId,
@@ -3462,7 +3551,7 @@ export async function listFintechPayouts(user: UserAccount): Promise<FintechPayo
   const scope = await buildPayoutExecutionScope(supabase, payments, locations);
 
   return {
-    summary: summarizeExecutionViews(scope.allExecutions, scope.readyRouting),
+    summary: summarizeExecutionViews(scope.allExecutions, scope.readyRouting, scope.eligibleRouting),
     readyRouting: scope.readyRouting,
     recentExecutions: scope.recentExecutions
   };
@@ -3497,12 +3586,14 @@ export async function getBarberPayouts(user: UserAccount): Promise<BarberPayouts
   }
 
   const scope = await buildPayoutExecutionScope(supabase, payments, (locationsResult.data ?? []) as LocationRow[]);
-  const summary = summarizeExecutionViews(scope.allExecutions, scope.readyRouting);
+  const summary = summarizeExecutionViews(scope.allExecutions, scope.readyRouting, scope.eligibleRouting, { includeShopSplit: false });
 
   return {
     summary: {
       executableRoutingRecords: summary.executableRoutingRecords,
+      eligibleRoutingRecords: summary.eligibleRoutingRecords,
       readyForPayoutAmount: summary.readyForPayoutAmount,
+      eligiblePayoutAmount: summary.eligiblePayoutAmount,
       blockedExecutionRecords: summary.blockedExecutionRecords,
       failedExecutionRecords: summary.failedExecutionRecords,
       executedTransferCount: summary.executedTransferCount,
@@ -3681,6 +3772,22 @@ export async function getBarberFintechReadiness(user: UserAccount): Promise<Barb
   }
 
   const routingRows = (routingResult.data ?? []) as PaymentRoutingRow[];
+  const appointmentIds = [...new Set(routingRows.map((row) => row.appointment_id).filter(Boolean) as string[])];
+  const appointmentsResult = appointmentIds.length
+    ? await supabase
+      .from("appointments")
+      .select("id, status, completed_at")
+      .in("id", appointmentIds)
+    : { data: [], error: null };
+
+  if (appointmentsResult.error) {
+    throw new FintechServiceError("Unable to load the barber payout appointment state.", 500);
+  }
+
+  const appointmentById = new Map(
+    ((appointmentsResult.data ?? []) as Array<Pick<AppointmentRow, "id" | "status" | "completed_at">>)
+      .map((appointment) => [appointment.id, appointment])
+  );
   const locationById = new Map(locations.map((location) => [location.id, location]));
   const paymentById = new Map(payments.map((payment) => [payment.id, payment]));
   const shopStateById = new Map(
@@ -3719,8 +3826,13 @@ export async function getBarberFintechReadiness(user: UserAccount): Promise<Barb
         shop ? formatShopLabel(shop) : null
       );
     });
-  const readyForPayoutAmount = routingRows
-    .filter((row) => row.money_routing_status === "ready_for_payout")
+  const eligibleRoutingRows = routingRows
+    .filter((row) => {
+      const payment = paymentById.get(row.payment_id);
+      const appointment = row.appointment_id ? appointmentById.get(row.appointment_id) : null;
+      return isRoutingEligibleForAvailablePayout(row, payment, appointment);
+    });
+  const readyForPayoutAmount = eligibleRoutingRows
     .reduce((sum, row) => sum + numeric(row.barber_payout_amount), 0);
 
   return {
@@ -3809,6 +3921,22 @@ export async function listFintechManagementPayload(user: UserAccount): Promise<F
 
   const routingRows = (routingResult.data ?? []) as PaymentRoutingRow[];
   const paymentById = new Map(payments.map((payment) => [payment.id, payment]));
+  const appointmentIds = [...new Set(routingRows.map((row) => row.appointment_id).filter(Boolean) as string[])];
+  const appointmentsResult = appointmentIds.length
+    ? await supabase
+      .from("appointments")
+      .select("id, status, completed_at")
+      .in("id", appointmentIds)
+    : { data: [], error: null };
+
+  if (appointmentsResult.error) {
+    throw new FintechServiceError("Unable to load payment routing appointment state.", 500);
+  }
+
+  const appointmentById = new Map(
+    ((appointmentsResult.data ?? []) as Array<Pick<AppointmentRow, "id" | "status" | "completed_at">>)
+      .map((appointment) => [appointment.id, appointment])
+  );
 
   const membershipsView = memberships.flatMap((membership) => {
     const barber = barberByProfileId.get(membership.profile_id);
@@ -3892,7 +4020,11 @@ export async function listFintechManagementPayload(user: UserAccount): Promise<F
       blockedRoutingRecords: routingRows.filter((row) => row.money_routing_status === "blocked" || row.money_routing_status === "manual_review").length,
       readyForPayoutAmount: roundCurrency(
         routingRows
-          .filter((row) => row.money_routing_status === "ready_for_payout")
+          .filter((row) => {
+            const payment = paymentById.get(row.payment_id);
+            const appointment = row.appointment_id ? appointmentById.get(row.appointment_id) : null;
+            return isRoutingEligibleForAvailablePayout(row, payment, appointment);
+          })
           .reduce((sum, row) => sum + numeric(row.barber_payout_amount) + numeric(row.shop_split_amount), 0)
       )
     },

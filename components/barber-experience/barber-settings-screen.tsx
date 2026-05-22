@@ -83,6 +83,17 @@ const subtypeOptions: Array<{ subtype: BarberSubtype; label: string; description
   { subtype: "booth_rent", label: "Booth rent", description: "Booth-rent model with independent revenue posture." }
 ];
 
+const payoutCurrencyFormatter = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2
+});
+
+function payoutCurrency(value: number) {
+  return payoutCurrencyFormatter.format(value);
+}
+
 const sectionIdMap = {
   account: "barber-settings-account",
   availability: "barber-settings-availability",
@@ -362,8 +373,16 @@ export function BarberSettingsScreen({
   const payoutsRequiredForActivation = selectedSubtype !== "freelance";
   const payoutsClearForActivation = !payoutsRequiredForActivation || payoutsReady;
   const payoutReadinessLabel = getStripePayoutReadinessLabel(payoutsReady, stripeEnvironment);
-  const readyForPayoutAmount = payoutsPayload?.summary.readyForPayoutAmount ?? readinessPayload?.routingSummary.readyForPayoutAmount;
-  const hasPayoutAmount = typeof readyForPayoutAmount === "number";
+  const eligiblePayoutAmount =
+    payoutsPayload?.summary.eligiblePayoutAmount
+    ?? payoutsPayload?.summary.readyForPayoutAmount
+    ?? readinessPayload?.routingSummary.readyForPayoutAmount;
+  const eligibleRoutingRecords =
+    payoutsPayload?.summary.eligibleRoutingRecords
+    ?? payoutsPayload?.summary.executableRoutingRecords
+    ?? 0;
+  const releasedPayoutAmount = payoutsPayload?.summary.executedAmount ?? 0;
+  const hasPayoutAmount = typeof eligiblePayoutAmount === "number";
   const subtypeLabel = subtypeOptions.find((option) => option.subtype === selectedSubtype)?.label ?? "Freelance";
   const showOnboardingAction = Boolean(connectedAccount && connectedAccount.operationalStatus !== "payout_ready");
   const readyForCheckout = overviewPayload?.todayAppointments.filter((appointment) => appointment.status === "completed" && appointment.financial.outstandingBalance > 0) ?? [];
@@ -1053,12 +1072,15 @@ export function BarberSettingsScreen({
                 <SectionLabel>Payouts</SectionLabel>
                 {hasPayoutAmount ? (
                   <>
-                    <p className="mt-4 text-sm font-semibold text-white/54">Available Balance</p>
+                    <p className="mt-4 text-sm font-semibold text-white/54">Eligible balance</p>
                     <p className="mt-2 text-4xl font-black tracking-[-0.05em] text-[#a3ff12] drop-shadow-[0_0_24px_rgba(163,255,18,0.22)]">
-                      {currency(readyForPayoutAmount)}
+                      {payoutCurrency(eligiblePayoutAmount)}
                     </p>
                     <p className="mt-2 text-sm text-white/48">
-                      {payoutsPayload?.summary.executableRoutingRecords ?? 0} payout-ready routing records
+                      {eligibleRoutingRecords} payout-ready routing records
+                    </p>
+                    <p className="mt-1 text-sm text-white/48">
+                      Released balance {payoutCurrency(releasedPayoutAmount)}
                     </p>
                   </>
                 ) : (
