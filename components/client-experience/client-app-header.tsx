@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BellDot, MessageSquareText, UserRound } from "lucide-react";
+import { Images, MessageSquareText, UserRound } from "lucide-react";
 import {
   CLIENT_PRIMARY_TAB_HREFS,
   type ClientAppMode
@@ -34,8 +34,8 @@ export function ClientAppHeader({ mode = "client" }: { mode?: ClientAppMode }) {
           </div>
         ) : (
           <div className="flex items-center gap-2">
-            <Link href={CLIENT_PRIMARY_TAB_HREFS.activity} aria-label="Open activity" className="relative inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/25 text-white/74 transition hover:border-[#7CFF00]/20 hover:text-white">
-              <BellDot className="h-5 w-5" />
+            <Link href={CLIENT_PRIMARY_TAB_HREFS.culture} aria-label="Open culture" className="relative inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/25 text-white/74 transition hover:border-[#7CFF00]/20 hover:text-white">
+              <Images className="h-5 w-5" />
             </Link>
             <Link href={CLIENT_PRIMARY_TAB_HREFS.messages} aria-label="Open messages" className="relative inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/25 text-white/74 transition hover:border-[#7CFF00]/20 hover:text-white">
               <MessageSquareText className="h-5 w-5" />

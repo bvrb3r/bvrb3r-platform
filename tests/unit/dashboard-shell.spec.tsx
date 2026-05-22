@@ -10,7 +10,7 @@ describe("dashboard shell identity and navigation", () => {
     ["wave@bvrb3r.demo", "Wave Carter", "Barber Manager", "Active role: Barber manager", ["Dashboard", "Schedule", "Team", "Queue", "Profile"]],
     ["blaze@bvrb3r.demo", "Blaze King", "Booth-Rent Barber", null, ["Calendar", "Checkout", "Profile", "Messages", "More"]],
     ["lux@bvrb3r.demo", "Luxe Reed", "Freelance Barber", null, ["Calendar", "Checkout", "Profile", "Messages", "More"]],
-    ["client@bvrb3r.demo", "Jordan Ellis", "Client", "Active role: Client", ["Home", "Search", "Activity", "Messages", "Profile"]]
+    ["client@bvrb3r.demo", "Jordan Ellis", "Client", "Active role: Client", ["Home", "Search", "Culture", "Messages", "Profile"]]
   ])("renders the selected identity for %s", (email, name, title, roleLabel, navLabels) => {
     const user = resolveDemoUser(email);
     const activeHref = getDefaultRouteForUser(user);
@@ -126,10 +126,11 @@ describe("dashboard shell identity and navigation", () => {
       </DashboardShell>
     );
 
-    ["Home", "Search", "Activity", "Messages", "Profile"].forEach((label) => {
+    ["Home", "Search", "Culture", "Messages", "Profile"].forEach((label) => {
       expect(screen.getAllByRole("link", { name: new RegExp(label, "i") }).length).toBeGreaterThan(0);
     });
 
+    expect(screen.queryByRole("link", { name: /activity/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /wallet/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /rewards/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /referrals/i })).not.toBeInTheDocument();

@@ -13,7 +13,7 @@ export function ClientSidebar({ activeTab }: { activeTab?: ClientAppTab }) {
           <p className="text-[10px] uppercase tracking-[0.24em] text-[#d7ffab]">Client navigation</p>
           <p className="mt-3 text-xl font-semibold text-white">Book, track, message, repeat.</p>
           <p className="mt-3 text-sm leading-7 text-white/58">
-            Keep the client lane simple: Home for action, Search for discovery, Activity for appointments, Messages for support, Profile for account control.
+            Keep the client lane simple: Home for action, Search for discovery, Culture for community, Messages for support, Profile for account control.
           </p>
         </div>
 
@@ -49,15 +49,7 @@ export function ClientSidebar({ activeTab }: { activeTab?: ClientAppTab }) {
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-white">{item.label}</p>
                     <p className="mt-1 text-[10px] uppercase tracking-[0.18em] text-white/40">
-                      {item.key === "home"
-                        ? "Book fast"
-                        : item.key === "search"
-                          ? "Discover"
-                          : item.key === "activity"
-                            ? "Manage visits"
-                            : item.key === "messages"
-                              ? "DMs & support"
-                            : "Account controls"}
+                      {item.subtitle}
                     </p>
                   </div>
                 </Link>

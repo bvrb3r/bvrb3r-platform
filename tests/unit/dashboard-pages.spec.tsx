@@ -3,8 +3,9 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveDemoUser } from "@/lib/auth/demo-auth";
 
-const { getAuthorizedUserMock, redirectMock } = vi.hoisted(() => ({
+const { getAuthorizedUserMock, getClientExperienceContextMock, redirectMock } = vi.hoisted(() => ({
   getAuthorizedUserMock: vi.fn(),
+  getClientExperienceContextMock: vi.fn(),
   redirectMock: vi.fn((path: string) => {
     throw new Error(`REDIRECT:${path}`);
   })
@@ -12,6 +13,10 @@ const { getAuthorizedUserMock, redirectMock } = vi.hoisted(() => ({
 
 vi.mock("@/lib/auth/guards", () => ({
   getAuthorizedUser: getAuthorizedUserMock
+}));
+
+vi.mock("@/lib/client-experience/session", () => ({
+  getClientExperienceContext: getClientExperienceContextMock
 }));
 
 vi.mock("next/navigation", () => ({
@@ -102,6 +107,14 @@ vi.mock("@/components/client-experience/client-home-screen", () => ({
   )
 }));
 
+vi.mock("@/components/client-experience/client-culture-screen", () => ({
+  ClientCultureScreen: () => <div data-testid="client-culture-screen-stub">Culture</div>
+}));
+
+vi.mock("@/components/client-experience/client-bookings-screen", () => ({
+  ClientBookingsScreen: () => <div data-testid="client-bookings-screen-stub">Activity</div>
+}));
+
 vi.mock("@/components/auth/account-session-workspace", () => ({
   AccountSessionWorkspace: () => <div data-testid="account-session-workspace-stub">Account session</div>
 }));
@@ -123,6 +136,8 @@ import BarberProfilePage from "@/app/(platform)/dashboard/barber/profile/page";
 import BarberSettingsPage from "@/app/(platform)/dashboard/barber/settings/page";
 import BarberCommandPage from "@/app/(platform)/command/page";
 import ClientDashboardPage from "@/app/(platform)/dashboard/client/page";
+import ClientActivityDashboardPage from "@/app/(platform)/dashboard/client/activity/page";
+import ClientCultureDashboardPage from "@/app/(platform)/dashboard/client/culture/page";
 import ClientMessagesDashboardPage from "@/app/(platform)/dashboard/client/messages/page";
 import ClientMessageThreadDashboardPage from "@/app/(platform)/dashboard/client/messages/[threadId]/page";
 import SettingsPage from "@/app/(platform)/settings/page";
@@ -130,7 +145,14 @@ import SettingsPage from "@/app/(platform)/settings/page";
 describe("dashboard role pages", () => {
   beforeEach(() => {
     getAuthorizedUserMock.mockReset();
+    getClientExperienceContextMock.mockReset();
     redirectMock.mockClear();
+    getClientExperienceContextMock.mockResolvedValue({
+      isGuest: false,
+      isSignedInClient: true,
+      clientId: "client-jordan",
+      viewer: resolveDemoUser("client@bvrb3r.demo")
+    });
   });
 
   it("renders the owner control center for the owner route", async () => {
@@ -271,6 +293,22 @@ describe("dashboard role pages", () => {
     expect(screen.getByTestId("client-app-shell-stub")).toBeInTheDocument();
     expect(screen.getByTestId("client-home-screen-stub")).toHaveTextContent("Jordan Ellis|true");
     expect(screen.queryByText("Owner control center")).not.toBeInTheDocument();
+  });
+
+  it("renders the client culture route", async () => {
+    getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("client@bvrb3r.demo"));
+
+    render(await ClientCultureDashboardPage());
+
+    expect(screen.getByTestId("client-app-shell-stub")).toBeInTheDocument();
+    expect(screen.getByTestId("client-culture-screen-stub")).toHaveTextContent("Culture");
+  });
+
+  it("keeps the client activity route available by direct URL", async () => {
+    render(await ClientActivityDashboardPage());
+
+    expect(screen.getByTestId("client-app-shell-stub")).toBeInTheDocument();
+    expect(screen.getByTestId("client-bookings-screen-stub")).toHaveTextContent("Activity");
   });
 
   it("renders the client messages route and support intent", async () => {

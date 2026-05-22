@@ -6,6 +6,7 @@ import type { ClientProfilePayload } from "@/lib/booking/platform-service";
 const {
   useProfileMediaWorkspaceQueryMock,
   useMutateProfileMediaMutationMock,
+  useClientBookingsQueryMock,
   useClientMembershipQueryMock,
   usePointsBalanceQueryMock,
   usePointsHistoryQueryMock,
@@ -15,6 +16,7 @@ const {
 } = vi.hoisted(() => ({
   useProfileMediaWorkspaceQueryMock: vi.fn(),
   useMutateProfileMediaMutationMock: vi.fn(),
+  useClientBookingsQueryMock: vi.fn(),
   useClientMembershipQueryMock: vi.fn(),
   usePointsBalanceQueryMock: vi.fn(),
   usePointsHistoryQueryMock: vi.fn(),
@@ -34,6 +36,7 @@ vi.mock("@tanstack/react-query", async () => {
 });
 
 vi.mock("@/lib/booking/client", () => ({
+  useClientBookingsQuery: useClientBookingsQueryMock,
   useClientMembershipQuery: useClientMembershipQueryMock
 }));
 
@@ -96,6 +99,7 @@ describe("client profile screen", () => {
     Element.prototype.scrollIntoView = vi.fn();
     useProfileMediaWorkspaceQueryMock.mockReset();
     useMutateProfileMediaMutationMock.mockReset();
+    useClientBookingsQueryMock.mockReset();
     useClientMembershipQueryMock.mockReset();
     usePointsBalanceQueryMock.mockReset();
     usePointsHistoryQueryMock.mockReset();
@@ -123,6 +127,32 @@ describe("client profile screen", () => {
     useMutateProfileMediaMutationMock.mockReturnValue({
       isPending: false,
       mutateAsync: vi.fn()
+    });
+    useClientBookingsQueryMock.mockReturnValue({
+      data: {
+        upcoming: [
+          {
+            id: "appt-next",
+            status: "confirmed",
+            start: "2026-04-28T14:00:00.000Z",
+            view: {
+              barber: { name: "Wave Carter" }
+            }
+          }
+        ],
+        history: [
+          {
+            id: "appt-past",
+            status: "completed",
+            start: "2026-04-18T14:00:00.000Z",
+            view: {
+              barber: { name: "Receipt Barber" }
+            }
+          }
+        ]
+      },
+      isLoading: false,
+      error: null
     });
     useClientMembershipQueryMock.mockReturnValue({
       data: {
@@ -256,6 +286,7 @@ describe("client profile screen", () => {
 
     const headings = [
       screen.getAllByText("Account")[0],
+      screen.getAllByText("Activity")[0],
       screen.getAllByText("Preferences")[0],
       screen.getAllByText("Wallet")[0],
       screen.getAllByText("Rewards")[0],
@@ -270,6 +301,11 @@ describe("client profile screen", () => {
 
     expect(screen.getByLabelText("Edit profile photo")).toBeInTheDocument();
     expect(screen.queryByText("Quick profile sections")).not.toBeInTheDocument();
+    expect(screen.getByText("View appointments")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View appointments" })).toHaveAttribute("href", "/dashboard/client/activity");
+    expect(screen.getByText("Rebook")).toBeInTheDocument();
+    expect(screen.getByText("View receipts")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View receipts" })).toHaveAttribute("href", "/dashboard/client/activity");
     expect(screen.queryByText("Preferred barber")).not.toBeInTheDocument();
     expect(screen.queryByText("Standing routine")).not.toBeInTheDocument();
     expect(screen.getByText("Preferred Barbers")).toBeInTheDocument();
@@ -353,6 +389,7 @@ describe("client profile screen", () => {
 
     expect(screen.getByText("No preferred barbers yet")).toBeInTheDocument();
     expect(screen.getByText("No preferred shops yet")).toBeInTheDocument();
+    expect(screen.getByText("View appointments")).toBeInTheDocument();
     expect(screen.getByText("No membership")).toBeInTheDocument();
     expect(screen.getByText("Membership updates appear here when active.")).toBeInTheDocument();
     expect(screen.getByText("No rewards activity yet.")).toBeInTheDocument();

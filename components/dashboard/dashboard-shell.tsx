@@ -132,7 +132,7 @@ function getPrimaryActionTitle(role: Role) {
       return "Calendar, Checkout, Profile, Messages, and More stay focused by job.";
     case "client_user":
     case "client":
-      return "Home keeps fast booking close, Search keeps discovery precise, Activity owns appointments and receipts, Messages keeps support visible, and Profile holds account controls.";
+      return "Home keeps fast booking close, Search keeps discovery precise, Culture keeps community visible, Messages keeps support open, and Profile holds account controls.";
     default:
       return "Stay oriented and move on the next action fast.";
   }
@@ -156,7 +156,7 @@ function getBoundaryCopy(role: Role) {
       return "Barber tools stay separated so schedule, payment, profile, messages, and setup stay easy to scan.";
     case "client_user":
     case "client":
-      return "Client mode keeps Home, Search, Activity, Messages, and Profile separated cleanly so booking, communication, and account controls stay obvious.";
+      return "Client mode keeps Home, Search, Culture, Messages, and Profile separated cleanly so booking, community, communication, and account controls stay obvious.";
     default:
       return "Relevant tools only.";
   }
@@ -266,9 +266,9 @@ function getUtilityCards(user: UserAccount): UtilityCard[] {
     case "client_user":
     case "client":
       return [
-        { label: "Client tabs", value: "5", detail: "Home, Search, Activity, Messages, and Profile stay tied to this authenticated client account only.", icon: CalendarDays },
+        { label: "Client tabs", value: "5", detail: "Home, Search, Culture, Messages, and Profile stay tied to this authenticated client account only.", icon: CalendarDays },
         { label: "Discovery", value: "Live", detail: "Barber and shop recommendations build from real activity, not seeded client data.", icon: Sparkles },
-        { label: "Profile", value: "Connected", detail: "Wallet, rewards, referrals, and settings stay inside Profile instead of the primary nav.", icon: UserRound }
+        { label: "Profile", value: "Connected", detail: "Activity, wallet, rewards, referrals, and settings stay inside Profile instead of the primary nav.", icon: UserRound }
       ];
     default:
       return [{ label: "Workspace", value: "Ready", detail: "Role-aware view", icon: Sparkles }];
@@ -419,7 +419,7 @@ export function DashboardShell({
 }) {
   const nav = getNavigation(user);
   const activeRole = getUserRoleLabel(user);
-  const ownerShopName = user.role === "owner" ? user.ownedShopName?.trim() || null : null;
+  const ownerShopName = isShopOwnerRole(user.role) ? user.ownedShopName?.trim() || null : null;
   const primaryShellIdentity = ownerShopName ?? "BVRB3R Platform";
   const mobileWorkspaceLabel = ownerShopName ?? `${activeRole} workspace`;
   const visibleLocations = user.locationIds.map((locationId) => ({

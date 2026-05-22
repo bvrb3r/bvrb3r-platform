@@ -383,10 +383,11 @@ export function useBarberAvailabilityQuery(params: { barberId?: string; serviceI
   });
 }
 
-export function useClientBookingsQuery() {
+export function useClientBookingsQuery(enabled = true) {
   return useQuery({
     queryKey: ["client-bookings"],
-    queryFn: () => requestJson<ClientBookingsResponse>("/api/client/bookings")
+    queryFn: () => requestJson<ClientBookingsResponse>("/api/client/bookings"),
+    enabled
   });
 }
 

@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   BellRing,
   Camera,
+  CalendarDays,
   Copy,
   CreditCard,
   Gift,
@@ -14,6 +15,8 @@ import {
   LifeBuoy,
   MailPlus,
   MapPinned,
+  ReceiptText,
+  Repeat2,
   ShieldCheck,
   Store,
   Trash2,
@@ -29,7 +32,7 @@ import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Input } from "@/components/ui/input";
 import { Avatar, DataStatCard, PageHeader, StatusBadge } from "@/design/components";
-import { useClientMembershipQuery } from "@/lib/booking/client";
+import { useClientBookingsQuery, useClientMembershipQuery } from "@/lib/booking/client";
 import type { ClientProfilePayload } from "@/lib/booking/platform-service";
 import { useCreateReferralInviteMutation, useClientReferralSummary } from "@/lib/engagement/client";
 import { getClientFacingBarberName } from "@/lib/marketplace/client-facing";
@@ -44,6 +47,7 @@ type PickerInput = HTMLInputElement & {
 };
 
 const sectionIdMap = {
+  activity: "profile-activity",
   preferences: "profile-preferences",
   location: "profile-account",
   wallet: "profile-wallet",
@@ -170,6 +174,7 @@ export function ClientProfileScreen({
   const queryClient = useQueryClient();
   const mediaQuery = useProfileMediaWorkspaceQuery(isSignedInClient);
   const mediaMutation = useMutateProfileMediaMutation();
+  const bookingsQuery = useClientBookingsQuery(isSignedInClient);
   const membershipQuery = useClientMembershipQuery(isSignedInClient);
   const pointsBalanceQuery = usePointsBalanceQuery(isSignedInClient);
   const pointsHistoryQuery = usePointsHistoryQuery(isSignedInClient);
@@ -208,6 +213,11 @@ export function ClientProfileScreen({
   const pointsBalance = pointsBalanceQuery.data ?? null;
   const pointsHistory = pointsHistoryQuery.data ?? null;
   const recentPointsActivity = pointsHistory?.activity.slice(0, 3) ?? [];
+  const bookingsPayload = bookingsQuery.data ?? null;
+  const upcomingAppointments = bookingsPayload?.upcoming ?? [];
+  const pastAppointments = bookingsPayload?.history ?? [];
+  const lastVisit = pastAppointments.find((appointment) => appointment.status === "completed") ?? pastAppointments[0] ?? null;
+  const lastVisitLabel = formatOccurredAt(lastVisit?.start);
   const membership = membershipQuery.data ?? null;
   const activeMembership = membership?.subscription ?? null;
   const membershipValue = membership?.value ?? null;
@@ -604,6 +614,57 @@ export function ClientProfileScreen({
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      </ClientSectionBlock>
+
+      <ClientSectionBlock
+        eyebrow="Activity"
+        title="Activity"
+        subtitle="Appointments, receipts, history, and rebooking stay close to your account."
+      >
+        <div id="profile-activity" className="scroll-mt-6 rounded-[30px] border border-white/10 bg-black/20 p-5">
+          <div className="grid gap-4 md:grid-cols-3">
+            <DataStatCard
+              label="Upcoming"
+              value={bookingsQuery.isLoading && !bookingsPayload ? "..." : String(upcomingAppointments.length)}
+              detail="Appointments still ahead."
+              icon={<CalendarDays className="h-4 w-4" />}
+            />
+            <DataStatCard
+              label="Past"
+              value={bookingsQuery.isLoading && !bookingsPayload ? "..." : String(pastAppointments.length)}
+              detail="Receipts and completed records."
+              icon={<ReceiptText className="h-4 w-4" />}
+            />
+            <DataStatCard
+              label="Last visit"
+              value={lastVisitLabel ?? "No visits yet"}
+              detail={lastVisit?.view?.barber?.name ?? "Completed visits appear here."}
+              icon={<Repeat2 className="h-4 w-4" />}
+            />
+          </div>
+
+          {bookingsQuery.error ? (
+            <div className="mt-4 rounded-[22px] border border-[#ffd166]/18 bg-[#ffd166]/8 px-4 py-3 text-sm text-[#ffe7a3]">
+              Appointment activity could not refresh here. Your appointment detail page is still available.
+            </div>
+          ) : null}
+
+          <div className="mt-5 flex flex-wrap gap-3">
+            <ClientActionLink href={CLIENT_PRIMARY_TAB_HREFS.activity} size="md">
+              View appointments
+            </ClientActionLink>
+            <ClientActionLink
+              href={(favoriteBarber?.bookingCtaHref ?? `${CLIENT_PRIMARY_TAB_HREFS.search}?type=barbers`) as Route}
+              size="md"
+              variant="secondary"
+            >
+              Rebook
+            </ClientActionLink>
+            <ClientActionLink href={CLIENT_PRIMARY_TAB_HREFS.activity} size="md" variant="secondary">
+              View receipts
+            </ClientActionLink>
           </div>
         </div>
       </ClientSectionBlock>

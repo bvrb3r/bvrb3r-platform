@@ -2,18 +2,20 @@ import type { Route } from "next";
 import {
   CalendarDays,
   Home,
+  Images,
   MessageSquareText,
   Search,
   UserRound,
   type LucideIcon
 } from "lucide-react";
 
-export type ClientAppTab = "home" | "search" | "activity" | "messages" | "profile";
+export type ClientAppTab = "home" | "search" | "culture" | "activity" | "messages" | "profile";
 export type ClientAppMode = "client" | "guest";
 
 export const CLIENT_PRIMARY_TAB_HREFS = {
   home: "/dashboard/client",
   search: "/dashboard/client/search",
+  culture: "/dashboard/client/culture",
   activity: "/dashboard/client/activity",
   messages: "/dashboard/client/messages",
   profile: "/dashboard/client/profile"
@@ -23,13 +25,14 @@ export const CLIENT_PRIMARY_NAV_ITEMS: Array<{
   key: ClientAppTab;
   href: Route;
   label: string;
+  subtitle: string;
   icon: LucideIcon;
 }> = [
-  { key: "home", href: CLIENT_PRIMARY_TAB_HREFS.home, label: "Home", icon: Home },
-  { key: "search", href: CLIENT_PRIMARY_TAB_HREFS.search, label: "Search", icon: Search },
-  { key: "activity", href: CLIENT_PRIMARY_TAB_HREFS.activity, label: "Activity", icon: CalendarDays },
-  { key: "messages", href: CLIENT_PRIMARY_TAB_HREFS.messages, label: "Messages", icon: MessageSquareText },
-  { key: "profile", href: CLIENT_PRIMARY_TAB_HREFS.profile, label: "Profile", icon: UserRound }
+  { key: "home", href: CLIENT_PRIMARY_TAB_HREFS.home, label: "Home", subtitle: "Book fast", icon: Home },
+  { key: "search", href: CLIENT_PRIMARY_TAB_HREFS.search, label: "Search", subtitle: "Discover", icon: Search },
+  { key: "culture", href: CLIENT_PRIMARY_TAB_HREFS.culture, label: "Culture", subtitle: "Feed / Community / Discover", icon: Images },
+  { key: "messages", href: CLIENT_PRIMARY_TAB_HREFS.messages, label: "Messages", subtitle: "DMs & support", icon: MessageSquareText },
+  { key: "profile", href: CLIENT_PRIMARY_TAB_HREFS.profile, label: "Profile", subtitle: "Account controls", icon: UserRound }
 ];
 
 export const GUEST_CLIENT_NAV_ITEMS: Array<{
