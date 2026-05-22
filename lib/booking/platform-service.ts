@@ -44,6 +44,7 @@ import { readBarberProfileMedia, readShopProfileMedia } from "@/lib/profile/serv
 import type { LiveAppointmentRecord, LiveOperationsViewer } from "@/lib/operations/live-state";
 import { getBarberCompensationSummary, getManagerOperationsSummary, getOwnerAnalyticsSummary } from "@/lib/operations/metrics";
 import { getAppointmentViewModel } from "@/lib/utils/operations";
+import { CLIENT_ACCOUNT_ROLE, isClientRole } from "@/lib/auth/roles";
 import type { Client, DiscoveryResult, RecommendedShopView, ReviewSentiment } from "@/types/domain";
 import type { TrustState } from "@/types/trust";
 
@@ -918,7 +919,7 @@ async function upsertClientProfileMirror(
 
 export async function ensureClientProfileForUser(input: ClientProfileRepairInput): Promise<ClientProfileRepairStatus> {
   let clientReference = resolveClientRepairReference(input);
-  if (input.role !== "client") {
+  if (!isClientRole(input.role)) {
     throw new Error("Only client accounts can repair client profile rows.");
   }
 
@@ -954,7 +955,7 @@ export async function ensureClientProfileForUser(input: ClientProfileRepairInput
   if (!profileLookup.data) {
     const profilePayload = {
       id: input.userId,
-      role: "client",
+      role: CLIENT_ACCOUNT_ROLE,
       full_name: fullName,
       email,
       phone: phone || null,
@@ -966,7 +967,7 @@ export async function ensureClientProfileForUser(input: ClientProfileRepairInput
     if (profileWrite.error && isClientProfileRepairSchemaError(profileWrite.error)) {
       profileWrite = await supabase.from("profiles").upsert({
         id: input.userId,
-        role: "client",
+        role: CLIENT_ACCOUNT_ROLE,
         full_name: fullName,
         email,
         phone: phone || null
@@ -3029,17 +3030,63 @@ export async function getClientBookingsPayload(clientId: string) {
 
 export async function getClientProfilePayload(clientId: string): Promise<ClientProfilePayload> {
   const supabase = getSupabase();
-  const [shops, clientProfile] = await Promise.all([
+  const [shopsResult, clientProfileResult] = await Promise.allSettled([
     readShops(supabase),
     readClientProfile(supabase, clientId)
   ]);
+  const shops = shopsResult.status === "fulfilled" ? shopsResult.value : [];
+  const clientProfile = clientProfileResult.status === "fulfilled" ? clientProfileResult.value : undefined;
+
+  if (shopsResult.status === "rejected") {
+    console.warn("[client-profile] repair_failed_nonfatal", {
+      stage: "read_shops",
+      clientIdPresent: Boolean(clientId),
+      message: shopsResult.reason instanceof Error ? shopsResult.reason.message : String(shopsResult.reason)
+    });
+  }
+
+  if (clientProfileResult.status === "rejected") {
+    console.warn("[client-profile] repair_failed_nonfatal", {
+      stage: "read_client_profile",
+      clientIdPresent: Boolean(clientId),
+      message: clientProfileResult.reason instanceof Error ? clientProfileResult.reason.message : String(clientProfileResult.reason)
+    });
+  }
+
   const favoriteBarber = clientProfile?.favoriteBarberReference
-    ? await getBarberDetailsPayload(clientProfile.favoriteBarberReference)
+    ? await getBarberDetailsPayload(clientProfile.favoriteBarberReference).catch((error) => {
+        console.warn("[client-profile] repair_failed_nonfatal", {
+          stage: "favorite_barber",
+          clientIdPresent: Boolean(clientId),
+          favoriteBarberReference: clientProfile.favoriteBarberReference,
+          message: error instanceof Error ? error.message : String(error)
+        });
+        return null;
+      })
     : null;
-  const [notificationPreference, routine] = await Promise.all([
+  const [notificationPreferenceResult, routineResult] = await Promise.allSettled([
     readNotificationPreference(supabase, clientProfile?.email),
     readClientRoutine(supabase, clientId, favoriteBarber?.barber.id ?? clientProfile?.favoriteBarberReference)
   ]);
+  const notificationPreference = notificationPreferenceResult.status === "fulfilled" ? notificationPreferenceResult.value : null;
+  const routine = routineResult.status === "fulfilled" ? routineResult.value : null;
+
+  if (notificationPreferenceResult.status === "rejected") {
+    console.warn("[client-profile] repair_failed_nonfatal", {
+      stage: "notification_preference",
+      clientIdPresent: Boolean(clientId),
+      message: notificationPreferenceResult.reason instanceof Error ? notificationPreferenceResult.reason.message : String(notificationPreferenceResult.reason)
+    });
+  }
+
+  if (routineResult.status === "rejected") {
+    console.warn("[client-profile] repair_failed_nonfatal", {
+      stage: "routine",
+      clientIdPresent: Boolean(clientId),
+      message: routineResult.reason instanceof Error ? routineResult.reason.message : String(routineResult.reason)
+    });
+  }
+
   let paymentMethods: ClientPaymentMethodView[] = [];
   if (supabase) {
     try {

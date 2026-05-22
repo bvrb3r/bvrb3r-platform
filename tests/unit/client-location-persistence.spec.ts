@@ -295,6 +295,30 @@ describe("client location canonical persistence", () => {
     });
   });
 
+  it("repairs missing client rows for canonical client_user accounts", async () => {
+    const repairSupabase = createClientProfileRepairSupabaseMock();
+    createSupabaseAdminClientMock.mockReturnValue(repairSupabase.supabase);
+
+    const repair = await ensureClientProfileForUser({
+      userId: "profile-client",
+      clientId: undefined,
+      email: "jordan@bvrb3r.app",
+      fullName: "Jordan Ellis",
+      phone: "8135550190",
+      role: "client_user"
+    });
+
+    expect(repair.clientProfileRowExists).toBe(true);
+    expect(repair.repaired).toBe(true);
+    expect(repairSupabase.tables.profiles[0]).toMatchObject({
+      id: "profile-client",
+      role: "client_user"
+    });
+    expect(repairSupabase.tables.clients[0]).toMatchObject({
+      profile_id: "profile-client"
+    });
+  });
+
   it("does not duplicate an existing client profile row", async () => {
     const repairSupabase = createClientProfileRepairSupabaseMock({
       profiles: [{

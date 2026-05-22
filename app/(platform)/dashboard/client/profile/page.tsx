@@ -1,9 +1,24 @@
 import { ClientAppShell } from "@/components/client-experience/client-app-shell";
 import { ClientProfileScreen } from "@/components/client-experience/client-profile-screen";
 import { StripeDebugCard } from "@/components/debug/stripe-debug-card";
-import { ensureClientProfileForUser, getClientProfilePayload } from "@/lib/booking/platform-service";
+import { ensureClientProfileForUser, getClientProfilePayload, type ClientProfilePayload } from "@/lib/booking/platform-service";
 import { isClientRole } from "@/lib/auth/roles";
 import { getClientExperienceContext } from "@/lib/client-experience/session";
+
+function emptyClientProfilePayload(): ClientProfilePayload {
+  return {
+    client: null,
+    favoriteBarber: null,
+    preferredShops: [],
+    notificationPreference: null,
+    routine: null,
+    paymentMethods: []
+  };
+}
+
+function safeErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
 
 export default async function ClientProfileDashboardPage({
   searchParams
@@ -22,17 +37,54 @@ export default async function ClientProfileDashboardPage({
 
   let clientId = context.clientId;
   if (context.isSignedInClient && isClientRole(context.viewer.role)) {
-    const repair = await ensureClientProfileForUser({
-      userId: context.viewer.id,
-      clientId: context.clientId || undefined,
-      email: context.viewer.email,
-      fullName: context.viewer.canonicalFullName ?? context.viewer.name,
-      phone: context.viewer.phone,
+    try {
+      const repair = await ensureClientProfileForUser({
+        userId: context.viewer.id,
+        clientId: context.clientId || undefined,
+        email: context.viewer.email,
+        fullName: context.viewer.canonicalFullName ?? context.viewer.name,
+        phone: context.viewer.phone,
+        role: context.viewer.role
+      });
+      clientId = repair.clientId;
+    } catch (error) {
+      console.warn("[client-profile] repair_failed_nonfatal", {
+        stage: "ensure_client_profile",
+        profileIdPresent: Boolean(context.viewer.id),
+        clientIdPresent: Boolean(context.clientId),
+        role: context.viewer.role,
+        message: safeErrorMessage(error)
+      });
+    }
+  } else if (context.isSignedInClient) {
+    console.warn("[client-profile] repair_skipped", {
+      stage: "role_guard",
+      profileIdPresent: Boolean(context.viewer.id),
+      clientIdPresent: Boolean(context.clientId),
       role: context.viewer.role
     });
-    clientId = repair.clientId;
+  } else {
+    console.warn("[client-profile] repair_skipped", {
+      stage: "not_signed_in_client",
+      profileIdPresent: Boolean(context.viewer.id),
+      clientIdPresent: Boolean(context.clientId),
+      role: context.viewer.role
+    });
   }
-  const payload = await getClientProfilePayload(clientId);
+
+  let payload: ClientProfilePayload;
+  try {
+    payload = await getClientProfilePayload(clientId);
+  } catch (error) {
+    console.warn("[client-profile] repair_failed_nonfatal", {
+      stage: "profile_payload",
+      profileIdPresent: Boolean(context.viewer.id),
+      clientIdPresent: Boolean(clientId),
+      role: context.viewer.role,
+      message: safeErrorMessage(error)
+    });
+    payload = emptyClientProfilePayload();
+  }
 
   return (
     <ClientAppShell activeTab="profile">
