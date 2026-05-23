@@ -160,6 +160,8 @@ describe("BarberCheckoutScreen", () => {
     expect(screen.getByText("Tap to Pay")).toBeInTheDocument();
     expect(screen.getByText("Cash")).toBeInTheDocument();
     expect(screen.getByText("Card on File")).toBeInTheDocument();
+    expect(screen.getByText("Search for a BVRB3R client to request payment.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Jordan Client/ })).not.toBeInTheDocument();
     expect(screen.queryByText("Invoice / Payment Link")).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
@@ -215,13 +217,10 @@ describe("BarberCheckoutScreen", () => {
       }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         ok: true,
-        sale: { id: "sale-1" }
-      }), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({
-        ok: true,
         sale: { id: "sale-1", status: "paid", payment_method: "cash" },
         payment: null,
-        routing: null
+        routing: null,
+        message: "Cash sale recorded. No platform payout created."
       }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -240,15 +239,12 @@ describe("BarberCheckoutScreen", () => {
     await waitFor(() => expect(screen.getByText("Cash sale recorded. No platform payout created.")).toBeInTheDocument());
     expect(overviewRefetchMock).toHaveBeenCalled();
     expect(screen.getByText("$0.00")).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/barber/pos-sales", expect.objectContaining({
-      method: "POST"
-    }));
-    expect(fetchMock).toHaveBeenNthCalledWith(3, "/api/barber/pos-sales/sale-1/cash", expect.objectContaining({
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/barber/pos-sales/cash", expect.objectContaining({
       method: "POST"
     }));
   });
 
-  it("requires a selected client before charging card on file", async () => {
+  it("requires a selected client before sending a card-on-file payment request", async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({
       ok: true,
       quote: {
@@ -275,13 +271,13 @@ describe("BarberCheckoutScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "$35.00" }));
     fireEvent.click(screen.getByRole("button", { name: /Review Sale/ }));
     fireEvent.click(await screen.findByRole("button", { name: "Charge $35.00" }));
-    fireEvent.click(await screen.findByRole("button", { name: /Card on File/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Send payment request/ }));
 
-    expect(await screen.findByText("Select a client before charging card on file.")).toBeInTheDocument();
+    expect(await screen.findByText("Select a client before sending payment request.")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("searches clients and sends canonical client id for card on file", async () => {
+  it("searches clients and sends a payment request with the canonical client id", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({
         ok: true,
@@ -298,14 +294,23 @@ describe("BarberCheckoutScreen", () => {
         }
       }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
+        clients: [{
+          clientId: TEST_CLIENT_ID,
+          clientName: "Jordan Client",
+          email: "jordan@example.com",
+          phone: "8135550101"
+        }]
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
         ok: true,
         sale: { id: "sale-card-1" }
       }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         ok: true,
-        sale: { id: "sale-card-1", status: "paid", payment_method: "card_on_file" },
-        payment: { id: "payment-card-1", posSaleId: "sale-card-1" },
-        routing: { pos_sale_id: "sale-card-1", payout_readiness_status: "ready" }
+        sale: { id: "sale-card-1", status: "payment_pending", payment_method: "card_on_file" },
+        request: { id: "request-1", status: "pending" },
+        payment: null,
+        routing: null
       }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -322,10 +327,10 @@ describe("BarberCheckoutScreen", () => {
     const search = await screen.findByPlaceholderText("Search clients by name, phone, or email");
     fireEvent.change(search, { target: { value: "Jordan" } });
     fireEvent.click(await screen.findByRole("button", { name: /Jordan Client/ }));
-    fireEvent.click(screen.getByRole("button", { name: /Card on File/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Send payment request/ }));
 
-    await waitFor(() => expect(screen.getByText("Payment successful. Payout is now eligible.")).toBeInTheDocument());
-    const salePayload = JSON.parse(String((fetchMock.mock.calls[1]?.[1] as RequestInit).body));
+    await waitFor(() => expect(screen.getByText("Payment request sent. Client approval is required before payout.")).toBeInTheDocument());
+    const salePayload = JSON.parse(String((fetchMock.mock.calls[2]?.[1] as RequestInit).body));
     expect(salePayload).toMatchObject({
       amountCents: 3500,
       subtotalCents: 3500,
@@ -333,7 +338,7 @@ describe("BarberCheckoutScreen", () => {
       clientId: TEST_CLIENT_ID,
       customerName: "Jordan Client"
     });
-    expect(fetchMock).toHaveBeenNthCalledWith(3, "/api/barber/pos-sales/sale-card-1/charge", expect.objectContaining({
+    expect(fetchMock).toHaveBeenNthCalledWith(4, "/api/barber/pos-sales/sale-card-1/payment-request", expect.objectContaining({
       method: "POST"
     }));
   });

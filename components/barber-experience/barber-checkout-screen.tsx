@@ -66,6 +66,12 @@ type PosSaleQuote = {
   shopSplitCents: number;
   relationshipType: string;
 };
+type PosClientCandidate = {
+  clientId: string;
+  clientName: string;
+  email?: string | null;
+  phone?: string | null;
+};
 
 function normalizeCheckoutSection(section?: string): CheckoutSectionKey | null {
   return section && section in sectionIdMap ? (section as CheckoutSectionKey) : null;
@@ -134,31 +140,69 @@ export function BarberCheckoutScreen({
   const [paymentMethodLoading, setPaymentMethodLoading] = useState<PosPaymentMethodKey | null>(null);
   const [paymentFeedback, setPaymentFeedback] = useState<string | null>(null);
   const [clientSearch, setClientSearch] = useState("");
+  const [clientSearchResults, setClientSearchResults] = useState<PosClientCandidate[]>([]);
+  const [clientSearchLoading, setClientSearchLoading] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const keypadAmount = digitsToAmount(chargeDigits);
   const serviceShortcuts = useMemo(
     () => [...(serviceCatalogQuery.data?.editableServices ?? []), ...(serviceCatalogQuery.data?.readOnlyServices ?? [])].slice(0, 8),
     [serviceCatalogQuery.data]
   );
-  const filteredClients = useMemo(() => {
+  const searchableClients = useMemo(() => {
+    const byId = new Map<string, PosClientCandidate>();
+    [...clientSearchResults, ...quickClients].forEach((client) => {
+      byId.set(client.clientId, client);
+    });
+    return Array.from(byId.values());
+  }, [clientSearchResults, quickClients]);
+  const selectedClient = searchableClients.find((client) => client.clientId === selectedClientId) ?? null;
+
+  useEffect(() => {
+    setActivePanel(normalizeCheckoutPanel(initialSection));
+  }, [initialSection]);
+
+  useEffect(() => {
     const query = clientSearch.trim().toLowerCase();
-    if (!query) {
-      return quickClients.slice(0, 4);
+    if (query.length < 2) {
+      setClientSearchResults([]);
+      setClientSearchLoading(false);
+      if (!query) {
+        setSelectedClientId(null);
+      }
+      return;
     }
 
-    return quickClients.filter((client) =>
+    let cancelled = false;
+    const filterClients = (clients: PosClientCandidate[]) => clients.filter((client) =>
       [
         client.clientName,
         client.email,
         client.phone
       ].some((value) => value?.toLowerCase().includes(query))
     ).slice(0, 6);
-  }, [clientSearch, quickClients]);
-  const selectedClient = quickClients.find((client) => client.clientId === selectedClientId) ?? null;
 
-  useEffect(() => {
-    setActivePanel(normalizeCheckoutPanel(initialSection));
-  }, [initialSection]);
+    setClientSearchLoading(true);
+    fetch(`/api/barber/clients?query=${encodeURIComponent(query)}`)
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("client_search_failed")))
+      .then((body) => {
+        if (cancelled) return;
+        const clients = Array.isArray(body?.clients) ? body.clients as PosClientCandidate[] : quickClients;
+        setClientSearchResults(filterClients(clients));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setClientSearchResults(filterClients(quickClients));
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setClientSearchLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clientSearch, quickClients]);
 
   useEffect(() => {
     if (!selectedSection) {
@@ -190,6 +234,8 @@ export function BarberCheckoutScreen({
     setSaleNote("");
     setPaymentFeedback(null);
     setClientSearch("");
+    setClientSearchResults([]);
+    setClientSearchLoading(false);
     setSelectedClientId(null);
   }
 
@@ -306,7 +352,7 @@ export function BarberCheckoutScreen({
     }
 
     if (method === "card_on_file" && !selectedClient) {
-      setPaymentFeedback("Select a client before charging card on file.");
+      setPaymentFeedback("Select a client before sending payment request.");
       return;
     }
 
@@ -314,13 +360,12 @@ export function BarberCheckoutScreen({
     setPaymentFeedback(null);
     setPanelFeedback(null);
     try {
-      const saleId = await createPendingSale(method, {
-        clientId: method === "card_on_file" ? selectedClient?.clientId : null,
-        customerName: method === "card_on_file" ? selectedClient?.clientName : null
-      });
-
       if (method === "cash") {
-        const cashResponse = await fetch(`/api/barber/pos-sales/${saleId}/cash`, { method: "POST" });
+        const cashResponse = await fetch("/api/barber/pos-sales/cash", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(buildPosSalePayload("cash"))
+        });
         await readJsonResponse(cashResponse);
         setPaymentMethodOpen(false);
         setReviewQuote(null);
@@ -330,18 +375,20 @@ export function BarberCheckoutScreen({
         return;
       }
 
-      const chargeResponse = await fetch(`/api/barber/pos-sales/${saleId}/charge`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paymentMethod: method })
+      const saleId = await createPendingSale(method, {
+        clientId: selectedClient?.clientId,
+        customerName: selectedClient?.clientName
       });
-      await readJsonResponse(chargeResponse);
+      const requestResponse = await fetch(`/api/barber/pos-sales/${saleId}/payment-request`, {
+        method: "POST",
+      });
+      await readJsonResponse(requestResponse);
       setPaymentMethodOpen(false);
       setReviewQuote(null);
       clearQuickCharge();
       setPanelFeedback({
         tone: "info",
-        message: "Payment successful. Payout is now eligible."
+        message: "Payment request sent. Client approval is required before payout."
       });
       await overviewQuery.refetch();
     } catch (error) {
@@ -739,15 +786,10 @@ export function BarberCheckoutScreen({
               </button>
 
               <div className="rounded-[12px] border border-white/10 bg-white/[0.035] p-4">
-                <button
-                  type="button"
-                  disabled={Boolean(paymentMethodLoading)}
-                  className="w-full text-left disabled:cursor-wait disabled:opacity-70"
-                  onClick={() => handlePaymentMethod("card_on_file")}
-                >
+                <div className="w-full text-left">
                   <span className="block text-lg font-black text-white">Card on File</span>
-                  <span className="mt-1 block text-sm font-semibold text-white/55">Search BVRB3R client and charge saved card.</span>
-                </button>
+                  <span className="mt-1 block text-sm font-semibold text-white/55">Search a BVRB3R client and send an approval request.</span>
+                </div>
                 <input
                   value={clientSearch}
                   onChange={(event) => setClientSearch(event.target.value)}
@@ -755,7 +797,11 @@ export function BarberCheckoutScreen({
                   className="mt-3 h-11 w-full rounded-[8px] border border-white/10 bg-black/35 px-3 text-sm font-semibold text-white outline-none placeholder:text-white/30 focus:border-[#a3ff12]/45"
                 />
                 <div className="mt-3 grid gap-2">
-                  {filteredClients.length ? filteredClients.map((client) => (
+                  {clientSearch.trim().length < 2 ? (
+                    <p className="rounded-[8px] border border-dashed border-white/10 bg-black/20 px-3 py-2 text-sm font-semibold text-white/45">Search for a BVRB3R client to request payment.</p>
+                  ) : clientSearchLoading ? (
+                    <p className="rounded-[8px] border border-white/10 bg-black/20 px-3 py-2 text-sm font-semibold text-white/55">Searching...</p>
+                  ) : clientSearchResults.length ? clientSearchResults.map((client) => (
                     <button
                       key={client.clientId}
                       type="button"
@@ -769,12 +815,26 @@ export function BarberCheckoutScreen({
                     >
                       <span className="block font-black">{client.clientName}</span>
                       <span className="mt-0.5 block text-xs text-white/45">{client.email || client.phone || "Client"}</span>
-                      {selectedClientId === client.clientId ? <span className="mt-1 block text-xs font-semibold text-[#a3ff12]/75">Default saved card checked before charge.</span> : null}
+                      {selectedClientId === client.clientId ? <span className="mt-1 block text-xs font-semibold text-[#a3ff12]/75">Ready to request card approval.</span> : null}
                     </button>
                   )) : (
-                    <p className="rounded-[8px] border border-dashed border-white/10 bg-black/20 px-3 py-2 text-sm font-semibold text-white/45">No matching client yet.</p>
+                    <p className="rounded-[8px] border border-dashed border-white/10 bg-black/20 px-3 py-2 text-sm font-semibold text-white/45">No matching clients yet.</p>
                   )}
                 </div>
+                {selectedClient ? (
+                  <div className="mt-3 rounded-[10px] border border-[#a3ff12]/35 bg-[#a3ff12]/10 px-3 py-2">
+                    <p className="text-sm font-black text-white">{selectedClient.clientName}</p>
+                    <p className="mt-1 text-xs font-semibold text-white/55">{selectedClient.email || selectedClient.phone || "Selected client"}</p>
+                  </div>
+                ) : null}
+                <button
+                  type="button"
+                  disabled={Boolean(paymentMethodLoading)}
+                  className="mt-3 flex min-h-11 w-full items-center justify-center rounded-[8px] border border-[#a3ff12]/45 bg-[#a3ff12]/10 px-4 text-sm font-black text-[#a3ff12] transition hover:bg-[#a3ff12]/15 disabled:cursor-wait disabled:opacity-70"
+                  onClick={() => handlePaymentMethod("card_on_file")}
+                >
+                  Send payment request
+                </button>
               </div>
             </div>
 

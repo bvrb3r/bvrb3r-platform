@@ -19,9 +19,10 @@ import {
   chargeBarberPosSale,
   createBarberPosSale,
   createBarberPosSaleInvoice,
+  createCashBarberPosSale,
   quoteBarberPosSale,
   quoteBarberPosSaleForUser,
-  recordCashBarberPosSale
+  requestBarberPosSalePayment
 } from "@/lib/barber/pos-sales";
 
 type FakeRow = Record<string, unknown>;
@@ -32,6 +33,7 @@ type FakeOptions = {
 
 class FakeQueryBuilder {
   private filters: Array<{ column: string; value: unknown }> = [];
+  private inFilters: Array<{ column: string; values: unknown[] }> = [];
   private pendingInsert: FakeRow | FakeRow[] | null = null;
   private pendingUpdate: FakeRow | null = null;
   private rowLimit: number | null = null;
@@ -48,6 +50,11 @@ class FakeQueryBuilder {
 
   eq(column: string, value: unknown) {
     this.filters.push({ column, value });
+    return this;
+  }
+
+  in(column: string, values: unknown[]) {
+    this.inFilters.push({ column, values });
     return this;
   }
 
@@ -122,6 +129,7 @@ class FakeQueryBuilder {
     const rows = this.tables[this.table] ?? [];
     return rows.filter((row) =>
       this.filters.every((filter) => row[filter.column] === filter.value)
+      && this.inFilters.every((filter) => filter.values.includes(row[filter.column]))
     );
   }
 
@@ -317,11 +325,10 @@ describe("barber POS sales", () => {
     };
     createSupabaseAdminClientMock.mockReturnValue(createSupabaseMock(tables));
 
-    const created = await createBarberPosSale(barberUser(), {
+    const recorded = await createCashBarberPosSale(barberUser(), {
       amountCents: 3500,
       paymentMethod: "cash"
     });
-    const recorded = await recordCashBarberPosSale(barberUser(), created.sale.id);
 
     expect(recorded).toMatchObject({
       ok: true,
@@ -331,7 +338,8 @@ describe("barber POS sales", () => {
     });
     expect(tables.pos_sales[0]).toMatchObject({
       status: "paid",
-      payment_method: "cash"
+      payment_method: "cash",
+      platform_fee_cents: 0
     });
     expect(createPaymentLedgerEntryMock).not.toHaveBeenCalled();
     expect(tables.payment_routing_records).toHaveLength(0);
@@ -470,6 +478,64 @@ describe("barber POS sales", () => {
       } satisfies Partial<BarberPosSaleError>);
   });
 
+  it("creates a pending client-approved card request without payment or routing", async () => {
+    const tables: FakeTables = {
+      profiles: [
+        { id: "profile-phillip", email: "phillip@example.com", role: "barber_user", full_name: "Phillip mcgee" },
+        { id: "profile-client", email: "client@example.com", role: "client_user", full_name: "Jordan Client" }
+      ],
+      barbers: [{
+        id: "455c2930-7255-418b-bd2b-cc64bc0fc9b7",
+        profile_id: "profile-phillip",
+        reference_code: "barber-43b3cda2",
+        compensation_model: "freelance",
+        commission_rate: null
+      }],
+      clients: [{
+        id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
+        profile_id: "profile-client",
+        reference_code: "client-phillip"
+      }],
+      pos_sales: [],
+      pos_sale_items: [],
+      pos_payment_requests: [],
+      message_threads: [],
+      thread_participants: [],
+      messages: [],
+      payment_routing_records: []
+    };
+    createSupabaseAdminClientMock.mockReturnValue(createSupabaseMock(tables));
+
+    const created = await createBarberPosSale(barberUser(), {
+      amountCents: 3500,
+      paymentMethod: "card_on_file",
+      clientId: "6607bce8-3636-46e8-9bbd-eabd9e5ad065"
+    });
+    const request = await requestBarberPosSalePayment(barberUser(), created.sale.id);
+
+    expect(request).toMatchObject({
+      ok: true,
+      payment: null,
+      routing: null,
+      alreadyRequested: false,
+      message: "Payment request sent. Client approval is required before payout."
+    });
+    expect(tables.pos_payment_requests[0]).toMatchObject({
+      pos_sale_id: created.sale.id,
+      barber_id: "455c2930-7255-418b-bd2b-cc64bc0fc9b7",
+      client_id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
+      amount_cents: 3500,
+      status: "pending"
+    });
+    expect(tables.messages[0]).toMatchObject({
+      sender_profile_id: "profile-phillip",
+      message_type: "system"
+    });
+    expect(String(tables.messages[0]?.body)).toContain("Phillip mcgee requested $35.00");
+    expect(createPaymentLedgerEntryMock).not.toHaveBeenCalled();
+    expect(tables.payment_routing_records).toHaveLength(0);
+  });
+
   it("falls back to legacy POS columns when payment method columns are not migrated yet", async () => {
     const tables: FakeTables = {
       profiles: [{ id: "profile-phillip", email: "phillip@example.com", role: "barber_user" }],
@@ -487,11 +553,10 @@ describe("barber POS sales", () => {
       unsupportedPosSaleColumns: ["payment_method", "cash_recorded_at", "customer_phone", "customer_email", "invoice_status"]
     }));
 
-    const created = await createBarberPosSale(barberUser(), {
+    const recorded = await createCashBarberPosSale(barberUser(), {
       amountCents: 3500,
       paymentMethod: "cash"
     });
-    const recorded = await recordCashBarberPosSale(barberUser(), created.sale.id);
 
     expect(recorded.sale).toMatchObject({
       status: "paid"
