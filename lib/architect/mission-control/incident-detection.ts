@@ -355,6 +355,8 @@ export async function detectArchitectMissionIncidents(supabase: SupabaseClient) 
   for (const posSale of posSales) {
     const status = String(posSale.status ?? "").toLowerCase();
     if (status !== "paid") continue;
+    const paymentMethod = String(posSale.payment_method ?? "").toLowerCase();
+    if (paymentMethod === "cash") continue;
 
     const saleId = String(posSale.id ?? "");
     const payment = latest(payments.filter((row) => row.pos_sale_id === posSale.id || row.id === posSale.payment_id));

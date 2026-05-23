@@ -134,4 +134,25 @@ describe("architect mission incident detection", () => {
 
     expect(incidents.some((incident) => incident.diagnosisCode === "paid_pos_sale_missing_routing")).toBe(false);
   });
+
+  it("does not flag paid cash POS sales as missing routing incidents", async () => {
+    const tables = createArchitectDebugTables({
+      appointments: [],
+      pos_sales: [{
+        id: "pos-sale-cash",
+        barber_id: BARBER_ID,
+        shop_id: null,
+        status: "paid",
+        payment_method: "cash",
+        total_cents: 3500,
+        payment_id: null,
+        updated_at: "2026-05-23T14:00:00.000Z"
+      }],
+      payments: []
+    });
+
+    const incidents = await detectArchitectMissionIncidents(createSupabaseStub(tables) as never);
+
+    expect(incidents.some((incident) => incident.diagnosisCode === "paid_pos_sale_missing_routing")).toBe(false);
+  });
 });

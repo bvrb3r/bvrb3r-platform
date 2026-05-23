@@ -37,6 +37,7 @@ const checkoutCurrencyFormatter = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2
 });
+type PosPaymentMethodKey = "tap_to_pay" | "cash" | "card_on_file" | "invoice";
 const keypadButtons = [
   { key: "1", label: "1" },
   { key: "2", label: "2", sublabel: "ABC" },
@@ -118,6 +119,7 @@ export function BarberCheckoutScreen({
   const serviceCatalogQuery = useMarketplaceServiceCatalog();
   const payload = overviewQuery.data;
   const todayAppointments = payload?.todayAppointments ?? [];
+  const quickClients = useMemo(() => payload?.quickClients ?? [], [payload?.quickClients]);
   const readyForCheckout = todayAppointments.filter((appointment) => appointment.status === "completed" && appointment.financial.outstandingBalance > 0);
   const selectedSection = normalizeCheckoutSection(initialSection);
   const [activePanel, setActivePanel] = useState<CheckoutPanelKey>(() => normalizeCheckoutPanel(initialSection));
@@ -128,12 +130,32 @@ export function BarberCheckoutScreen({
   const [reviewQuote, setReviewQuote] = useState<PosSaleQuote | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewLoading, setReviewLoading] = useState(false);
-  const [chargeLoading, setChargeLoading] = useState(false);
+  const [paymentMethodOpen, setPaymentMethodOpen] = useState(false);
+  const [paymentMethodLoading, setPaymentMethodLoading] = useState<PosPaymentMethodKey | null>(null);
+  const [paymentFeedback, setPaymentFeedback] = useState<string | null>(null);
+  const [clientSearch, setClientSearch] = useState("");
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const [invoiceContact, setInvoiceContact] = useState("");
   const keypadAmount = digitsToAmount(chargeDigits);
   const serviceShortcuts = useMemo(
     () => [...(serviceCatalogQuery.data?.editableServices ?? []), ...(serviceCatalogQuery.data?.readOnlyServices ?? [])].slice(0, 8),
     [serviceCatalogQuery.data]
   );
+  const filteredClients = useMemo(() => {
+    const query = clientSearch.trim().toLowerCase();
+    if (!query) {
+      return quickClients.slice(0, 4);
+    }
+
+    return quickClients.filter((client) =>
+      [
+        client.clientName,
+        client.email,
+        client.phone
+      ].some((value) => value?.toLowerCase().includes(query))
+    ).slice(0, 6);
+  }, [clientSearch, quickClients]);
+  const selectedClient = quickClients.find((client) => client.clientId === selectedClientId) ?? null;
 
   useEffect(() => {
     setActivePanel(normalizeCheckoutPanel(initialSection));
@@ -167,6 +189,10 @@ export function BarberCheckoutScreen({
     setSelectedServiceLabel(null);
     setPanelFeedback(null);
     setSaleNote("");
+    setPaymentFeedback(null);
+    setClientSearch("");
+    setSelectedClientId(null);
+    setInvoiceContact("");
   }
 
   function openDetailSection(section: CheckoutSectionKey) {
@@ -225,51 +251,125 @@ export function BarberCheckoutScreen({
     }
   }
 
-  async function handleChargeSale() {
-    if (!reviewQuote || chargeLoading) {
+  function handleChoosePaymentMethod() {
+    if (!reviewQuote) {
       return;
     }
 
-    setChargeLoading(true);
+    setReviewOpen(false);
+    setPaymentMethodOpen(true);
+    setPaymentFeedback(null);
+  }
+
+  async function createPendingSale(paymentMethod: PosPaymentMethodKey, extra?: {
+    clientId?: string | null;
+    customerName?: string | null;
+    customerPhone?: string | null;
+    customerEmail?: string | null;
+  }) {
+    const amountCents = Math.round(keypadAmount * 100);
+    const saleResponse = await fetch("/api/barber/pos-sales", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        amountCents,
+        note: saleNote,
+        paymentMethod,
+        clientId: extra?.clientId ?? null,
+        customerName: extra?.customerName ?? null,
+        customerPhone: extra?.customerPhone ?? null,
+        customerEmail: extra?.customerEmail ?? null,
+        items: [{
+          itemType: selectedServiceLabel ? "service" : "custom_amount",
+          name: selectedServiceLabel ?? "Custom Amount",
+          quantity: 1,
+          unitAmountCents: amountCents
+        }]
+      })
+    });
+    const saleBody = await readJsonResponse(saleResponse);
+    const saleId = saleBody?.sale?.id;
+    if (!saleId) {
+      throw new Error("POS sale was created without a sale id.");
+    }
+
+    return saleId as string;
+  }
+
+  async function handlePaymentMethod(method: PosPaymentMethodKey) {
+    if (!reviewQuote || paymentMethodLoading) {
+      return;
+    }
+
+    if (method === "card_on_file" && !selectedClient) {
+      setPaymentFeedback("Select a client before charging card on file.");
+      return;
+    }
+
+    if (method === "invoice" && !invoiceContact.trim()) {
+      setPaymentFeedback("Add a phone or email before sending a payment link.");
+      return;
+    }
+
+    setPaymentMethodLoading(method);
+    setPaymentFeedback(null);
     setPanelFeedback(null);
     try {
-      const amountCents = Math.round(keypadAmount * 100);
-      const saleResponse = await fetch("/api/barber/pos-sales", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          amountCents,
-          note: saleNote,
-          items: [{
-            itemType: selectedServiceLabel ? "service" : "custom_amount",
-            name: selectedServiceLabel ?? "Custom Amount",
-            quantity: 1,
-            unitAmountCents: amountCents
-          }]
-        })
+      const contact = invoiceContact.trim();
+      const saleId = await createPendingSale(method, {
+        clientId: method === "card_on_file" ? selectedClient?.clientId : null,
+        customerName: method === "card_on_file" ? selectedClient?.clientName : null,
+        customerPhone: method === "invoice" && !contact.includes("@") ? contact : null,
+        customerEmail: method === "invoice" && contact.includes("@") ? contact : null
       });
-      const saleBody = await readJsonResponse(saleResponse);
-      const saleId = saleBody?.sale?.id;
-      if (!saleId) {
-        throw new Error("POS sale was created without a sale id.");
+
+      if (method === "cash") {
+        const cashResponse = await fetch(`/api/barber/pos-sales/${saleId}/cash`, { method: "POST" });
+        await readJsonResponse(cashResponse);
+        setPaymentMethodOpen(false);
+        setReviewQuote(null);
+        clearQuickCharge();
+        setPanelFeedback({ tone: "info", message: "Cash sale recorded. No platform payout created." });
+        await overviewQuery.refetch();
+        return;
+      }
+
+      if (method === "invoice") {
+        const invoiceResponse = await fetch(`/api/barber/pos-sales/${saleId}/invoice`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            customerPhone: contact.includes("@") ? null : contact,
+            customerEmail: contact.includes("@") ? contact : null
+          })
+        });
+        await readJsonResponse(invoiceResponse);
+        setPaymentMethodOpen(false);
+        setReviewQuote(null);
+        clearQuickCharge();
+        setPanelFeedback({ tone: "info", message: "Payment link created. Sale remains pending until paid." });
+        await overviewQuery.refetch();
+        return;
       }
 
       const chargeResponse = await fetch(`/api/barber/pos-sales/${saleId}/charge`, {
-        method: "POST"
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paymentMethod: method })
       });
       await readJsonResponse(chargeResponse);
-      setReviewOpen(false);
+      setPaymentMethodOpen(false);
       setReviewQuote(null);
       clearQuickCharge();
-      setPanelFeedback({ tone: "info", message: "POS sale paid. Payout is now eligible." });
+      setPanelFeedback({
+        tone: "info",
+        message: method === "tap_to_pay" ? "Payment successful. Payout is now eligible." : "Payment successful. Payout is now eligible."
+      });
       await overviewQuery.refetch();
     } catch (error) {
-      setPanelFeedback({
-        tone: "error",
-        message: error instanceof Error ? error.message : "Unable to charge this POS sale."
-      });
+      setPaymentFeedback(error instanceof Error ? error.message : "Unable to process this payment method.");
     } finally {
-      setChargeLoading(false);
+      setPaymentMethodLoading(null);
     }
   }
 
@@ -606,12 +706,114 @@ export function BarberCheckoutScreen({
 
             <button
               type="button"
-              disabled={chargeLoading}
               className="mt-5 flex min-h-[58px] w-full items-center justify-center rounded-[10px] bg-[linear-gradient(135deg,#a3ff12,#7dce00)] px-5 text-lg font-black text-[#050505] transition active:scale-[0.99] disabled:cursor-wait disabled:opacity-70"
-              onClick={handleChargeSale}
+              onClick={handleChoosePaymentMethod}
             >
-              {chargeLoading ? "Charging..." : `Charge ${formatCheckoutCents(reviewQuote.totalCents)}`}
+              {`Charge ${formatCheckoutCents(reviewQuote.totalCents)}`}
             </button>
+          </div>
+        </div>
+      ) : null}
+      {paymentMethodOpen && reviewQuote ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/72 px-4 pb-4 backdrop-blur-md sm:items-center sm:pb-0" role="dialog" aria-modal="true" aria-label="Choose payment method">
+          <div className="w-full max-w-[560px] rounded-[18px] border border-white/10 bg-[#080808] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.65)]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="bvr-section-label">Current sale</p>
+                <h3 className="mt-3 text-3xl font-black tracking-[-0.04em] text-white">Choose payment method</h3>
+                <p className="mt-2 text-lg font-black text-[#a3ff12]">Sale amount: {formatCheckoutCents(reviewQuote.totalCents)}</p>
+              </div>
+              <button
+                type="button"
+                className="rounded-[8px] border border-white/10 px-3 py-2 text-xs font-black uppercase tracking-[0.18em] text-white/60 transition hover:text-white"
+                onClick={() => setPaymentMethodOpen(false)}
+              >
+                Back
+              </button>
+            </div>
+
+            {paymentFeedback ? <div className="mt-4 rounded-[10px] border border-[#ff2d2d]/35 bg-[#ff2d2d]/10 px-4 py-3 text-sm font-semibold text-[#ff9b9b]">{paymentFeedback}</div> : null}
+
+            <div className="mt-5 grid gap-3">
+              <button
+                type="button"
+                disabled={Boolean(paymentMethodLoading)}
+                className="rounded-[12px] border border-white/10 bg-white/[0.035] p-4 text-left transition hover:border-[#a3ff12]/35 disabled:cursor-wait disabled:opacity-70"
+                onClick={() => handlePaymentMethod("tap_to_pay")}
+              >
+                <span className="block text-lg font-black text-white">Tap to Pay</span>
+                <span className="mt-1 block text-sm font-semibold text-white/55">Accept contactless card / Apple Pay / Google Pay.</span>
+                <span className="mt-2 block text-xs font-semibold text-[#a3ff12]/75">Tap to Pay setup required. Uses the test charge adapter for now.</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={Boolean(paymentMethodLoading)}
+                className="rounded-[12px] border border-white/10 bg-white/[0.035] p-4 text-left transition hover:border-[#a3ff12]/35 disabled:cursor-wait disabled:opacity-70"
+                onClick={() => handlePaymentMethod("cash")}
+              >
+                <span className="block text-lg font-black text-white">Cash</span>
+                <span className="mt-1 block text-sm font-semibold text-white/55">Record cash sale. No platform payout.</span>
+              </button>
+
+              <div className="rounded-[12px] border border-white/10 bg-white/[0.035] p-4">
+                <button
+                  type="button"
+                  disabled={Boolean(paymentMethodLoading)}
+                  className="w-full text-left disabled:cursor-wait disabled:opacity-70"
+                  onClick={() => handlePaymentMethod("card_on_file")}
+                >
+                  <span className="block text-lg font-black text-white">Card on File</span>
+                  <span className="mt-1 block text-sm font-semibold text-white/55">Search BVRB3R client and charge saved card.</span>
+                </button>
+                <input
+                  value={clientSearch}
+                  onChange={(event) => setClientSearch(event.target.value)}
+                  placeholder="Search clients by name, phone, or email"
+                  className="mt-3 h-11 w-full rounded-[8px] border border-white/10 bg-black/35 px-3 text-sm font-semibold text-white outline-none placeholder:text-white/30 focus:border-[#a3ff12]/45"
+                />
+                <div className="mt-3 grid gap-2">
+                  {filteredClients.length ? filteredClients.map((client) => (
+                    <button
+                      key={client.clientId}
+                      type="button"
+                      className={cn(
+                        "rounded-[8px] border px-3 py-2 text-left text-sm transition",
+                        selectedClientId === client.clientId
+                          ? "border-[#a3ff12]/55 bg-[#a3ff12]/10 text-white"
+                          : "border-white/10 bg-black/20 text-white/70 hover:text-white"
+                      )}
+                      onClick={() => setSelectedClientId(client.clientId)}
+                    >
+                      <span className="block font-black">{client.clientName}</span>
+                      <span className="mt-0.5 block text-xs text-white/45">{client.email || client.phone || "Client"}</span>
+                    </button>
+                  )) : (
+                    <p className="rounded-[8px] border border-dashed border-white/10 bg-black/20 px-3 py-2 text-sm font-semibold text-white/45">No matching client yet.</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-[12px] border border-white/10 bg-white/[0.035] p-4">
+                <button
+                  type="button"
+                  disabled={Boolean(paymentMethodLoading)}
+                  className="w-full text-left disabled:cursor-wait disabled:opacity-70"
+                  onClick={() => handlePaymentMethod("invoice")}
+                >
+                  <span className="block text-lg font-black text-white">Invoice / Payment Link</span>
+                  <span className="mt-1 block text-sm font-semibold text-white/55">Send link by phone or email.</span>
+                </button>
+                <input
+                  value={invoiceContact}
+                  onChange={(event) => setInvoiceContact(event.target.value)}
+                  placeholder="Phone or email"
+                  className="mt-3 h-11 w-full rounded-[8px] border border-white/10 bg-black/35 px-3 text-sm font-semibold text-white outline-none placeholder:text-white/30 focus:border-[#a3ff12]/45"
+                />
+              </div>
+            </div>
+
+            {paymentMethodLoading ? <p className="mt-4 text-center text-sm font-black uppercase tracking-[0.22em] text-[#a3ff12]">Processing {paymentMethodLoading.replace("_", " ")}...</p> : null}
           </div>
         </div>
       ) : null}

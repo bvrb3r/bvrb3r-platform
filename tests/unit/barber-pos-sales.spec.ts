@@ -14,17 +14,28 @@ vi.mock("@/lib/payments/service", () => ({
   createPaymentLedgerEntry: createPaymentLedgerEntryMock
 }));
 
-import { BarberPosSaleError, quoteBarberPosSale, quoteBarberPosSaleForUser } from "@/lib/barber/pos-sales";
+import {
+  BarberPosSaleError,
+  chargeBarberPosSale,
+  createBarberPosSale,
+  createBarberPosSaleInvoice,
+  quoteBarberPosSale,
+  quoteBarberPosSaleForUser,
+  recordCashBarberPosSale
+} from "@/lib/barber/pos-sales";
 
 type FakeRow = Record<string, unknown>;
 type FakeTables = Record<string, FakeRow[]>;
 
 class FakeQueryBuilder {
   private filters: Array<{ column: string; value: unknown }> = [];
+  private pendingInsert: FakeRow | FakeRow[] | null = null;
+  private pendingUpdate: FakeRow | null = null;
+  private rowLimit: number | null = null;
 
   constructor(
     private readonly table: string,
-    private readonly rows: FakeRow[]
+    private readonly tables: FakeTables
   ) {}
 
   select() {
@@ -36,24 +47,91 @@ class FakeQueryBuilder {
     return this;
   }
 
+  insert(payload: FakeRow | FakeRow[]) {
+    this.pendingInsert = payload;
+    return this;
+  }
+
+  update(payload: FakeRow) {
+    this.pendingUpdate = payload;
+    return this;
+  }
+
+  order() {
+    return this;
+  }
+
+  limit(value: number) {
+    this.rowLimit = value;
+    return this;
+  }
+
   maybeSingle() {
+    if (this.pendingInsert) {
+      const inserted = this.insertRows();
+      return Promise.resolve({ data: inserted[0] ?? null, error: null });
+    }
+
+    if (this.pendingUpdate) {
+      const updated = this.updateRows();
+      return Promise.resolve({ data: updated[0] ?? null, error: null });
+    }
+
     return Promise.resolve({
       data: this.filteredRows()[0] ?? null,
       error: null
     });
   }
 
+  single() {
+    return this.maybeSingle();
+  }
+
+  then<TResult1 = { data: FakeRow[]; error: null }, TResult2 = never>(
+    onfulfilled?: ((value: { data: FakeRow[]; error: null }) => TResult1 | PromiseLike<TResult1>) | null,
+    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
+  ) {
+    const rows = this.pendingInsert
+      ? this.insertRows()
+      : this.pendingUpdate
+        ? this.updateRows()
+        : this.filteredRows();
+    const data = this.rowLimit === null ? rows : rows.slice(0, this.rowLimit);
+    return Promise.resolve({ data, error: null }).then(onfulfilled, onrejected);
+  }
+
   private filteredRows() {
-    return this.rows.filter((row) =>
+    const rows = this.tables[this.table] ?? [];
+    return rows.filter((row) =>
       this.filters.every((filter) => row[filter.column] === filter.value)
     );
+  }
+
+  private insertRows() {
+    const rows = Array.isArray(this.pendingInsert) ? this.pendingInsert : [this.pendingInsert];
+    const tableRows = this.tables[this.table] ?? [];
+    this.tables[this.table] = tableRows;
+    const inserted = rows.filter((row): row is FakeRow => Boolean(row)).map((row) => ({
+      id: row.id ?? `${this.table}-${tableRows.length + 1}`,
+      ...row
+    }));
+    tableRows.push(...inserted);
+    this.pendingInsert = null;
+    return inserted;
+  }
+
+  private updateRows() {
+    const rows = this.filteredRows();
+    rows.forEach((row) => Object.assign(row, this.pendingUpdate));
+    this.pendingUpdate = null;
+    return rows;
   }
 }
 
 function createSupabaseMock(tables: FakeTables) {
   return {
     from(table: string) {
-      return new FakeQueryBuilder(table, tables[table] ?? []);
+      return new FakeQueryBuilder(table, tables);
     }
   };
 }
@@ -193,5 +271,127 @@ describe("barber POS sales", () => {
       email: "phillip@example.com"
     }));
     warnSpy.mockRestore();
+  });
+
+  it("records cash POS sales without creating payment routing", async () => {
+    const tables: FakeTables = {
+      profiles: [{ id: "profile-phillip", email: "phillip@example.com", role: "barber_user" }],
+      barbers: [{
+        id: "455c2930-7255-418b-bd2b-cc64bc0fc9b7",
+        profile_id: "profile-phillip",
+        reference_code: "barber-43b3cda2",
+        compensation_model: "freelance",
+        commission_rate: null
+      }],
+      pos_sales: [],
+      pos_sale_items: [],
+      payment_routing_records: []
+    };
+    createSupabaseAdminClientMock.mockReturnValue(createSupabaseMock(tables));
+
+    const created = await createBarberPosSale(barberUser(), {
+      amountCents: 3500,
+      paymentMethod: "cash"
+    });
+    const recorded = await recordCashBarberPosSale(barberUser(), created.sale.id);
+
+    expect(recorded).toMatchObject({
+      ok: true,
+      payment: null,
+      routing: null,
+      cashRecorded: true
+    });
+    expect(tables.pos_sales[0]).toMatchObject({
+      status: "paid",
+      payment_method: "cash"
+    });
+    expect(createPaymentLedgerEntryMock).not.toHaveBeenCalled();
+    expect(tables.payment_routing_records).toHaveLength(0);
+  });
+
+  it("charges card POS sales through the payment ledger with a POS sale id", async () => {
+    const tables: FakeTables = {
+      profiles: [{ id: "profile-phillip", email: "phillip@example.com", role: "barber_user" }],
+      barbers: [{
+        id: "455c2930-7255-418b-bd2b-cc64bc0fc9b7",
+        profile_id: "profile-phillip",
+        reference_code: "barber-43b3cda2",
+        compensation_model: "freelance",
+        commission_rate: null
+      }],
+      pos_sales: [],
+      pos_sale_items: [],
+      payment_routing_records: [{
+        id: "routing-pos-1",
+        payment_id: "payment-pos-1",
+        pos_sale_id: "pos_sales-1",
+        payout_readiness_status: "ready",
+        money_routing_status: "pending",
+        eligible_at: "2026-05-23T12:00:00.000Z",
+        released_at: null,
+        barber_payout_amount: 33.25,
+        platform_fee_amount: 1.75,
+        shop_split_amount: 0
+      }]
+    };
+    createSupabaseAdminClientMock.mockReturnValue(createSupabaseMock(tables));
+    createPaymentLedgerEntryMock.mockResolvedValue({
+      id: "payment-pos-1",
+      posSaleId: "pos_sales-1"
+    });
+
+    const created = await createBarberPosSale(barberUser(), {
+      amountCents: 3500,
+      paymentMethod: "card_on_file",
+      clientId: "6607bce8-3636-46e8-9bbd-eabd9e5ad065"
+    });
+    const charged = await chargeBarberPosSale(barberUser(), created.sale.id, { paymentMethod: "card_on_file" });
+
+    expect(createPaymentLedgerEntryMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      posSaleId: created.sale.id,
+      paymentType: "pos_sale",
+      paymentStatus: "captured",
+      metadata: expect.objectContaining({
+        paymentMethod: "card_on_file"
+      })
+    }));
+    expect(charged.routing).toMatchObject({
+      pos_sale_id: created.sale.id,
+      payout_readiness_status: "ready"
+    });
+  });
+
+  it("keeps invoice POS sales pending without payment routing until paid", async () => {
+    const tables: FakeTables = {
+      profiles: [{ id: "profile-phillip", email: "phillip@example.com", role: "barber_user" }],
+      barbers: [{
+        id: "455c2930-7255-418b-bd2b-cc64bc0fc9b7",
+        profile_id: "profile-phillip",
+        reference_code: "barber-43b3cda2",
+        compensation_model: "freelance",
+        commission_rate: null
+      }],
+      pos_sales: [],
+      pos_sale_items: [],
+      payment_routing_records: []
+    };
+    createSupabaseAdminClientMock.mockReturnValue(createSupabaseMock(tables));
+
+    const created = await createBarberPosSale(barberUser(), {
+      amountCents: 3500,
+      paymentMethod: "invoice",
+      customerEmail: "client@example.com"
+    });
+    const invoice = await createBarberPosSaleInvoice(barberUser(), created.sale.id, {
+      customerEmail: "client@example.com"
+    });
+
+    expect(invoice.sale).toMatchObject({
+      status: "payment_pending",
+      payment_method: "invoice",
+      invoice_status: "pending"
+    });
+    expect(createPaymentLedgerEntryMock).not.toHaveBeenCalled();
+    expect(tables.payment_routing_records).toHaveLength(0);
   });
 });

@@ -10,6 +10,9 @@ const saleSchema = z.object({
   note: z.string().max(500).optional().nullable(),
   clientId: z.string().uuid().optional().nullable(),
   customerName: z.string().max(120).optional().nullable(),
+  customerPhone: z.string().max(32).optional().nullable(),
+  customerEmail: z.string().email().optional().nullable(),
+  paymentMethod: z.enum(["tap_to_pay", "card_on_file", "cash", "invoice", "test"]).optional().nullable(),
   items: z.array(z.object({
     itemType: z.enum(["custom_amount", "service", "product", "tip", "discount"]).optional(),
     serviceId: z.string().uuid().optional().nullable(),
@@ -52,4 +55,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Unable to create this POS sale." }, { status: 500 });
   }
 }
-

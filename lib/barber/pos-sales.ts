@@ -39,6 +39,12 @@ type PosSaleRow = {
   customer_name: string | null;
   source: string;
   status: "draft" | "payment_pending" | "paid" | "refunded" | "voided";
+  payment_method?: "tap_to_pay" | "card_on_file" | "cash" | "invoice" | "test" | null;
+  cash_recorded_at?: string | null;
+  invoice_url?: string | null;
+  invoice_status?: string | null;
+  customer_phone?: string | null;
+  customer_email?: string | null;
   subtotal_cents: number;
   discount_cents: number;
   tip_cents: number;
@@ -67,7 +73,19 @@ export type BarberPosSaleQuoteInput = {
   note?: string | null;
   clientId?: string | null;
   customerName?: string | null;
+  customerPhone?: string | null;
+  customerEmail?: string | null;
+  paymentMethod?: "tap_to_pay" | "card_on_file" | "cash" | "invoice" | "test" | null;
   items?: PosSaleItemInput[] | null;
+};
+
+export type BarberPosSaleChargeInput = {
+  paymentMethod?: "tap_to_pay" | "card_on_file" | "test" | null;
+};
+
+export type BarberPosSaleInvoiceInput = {
+  customerPhone?: string | null;
+  customerEmail?: string | null;
 };
 
 export type BarberPosSaleQuote = {
@@ -207,6 +225,14 @@ function normalizeItem(input: PosSaleItemInput | null | undefined, fallbackAmoun
     unit_amount_cents: unitAmountCents,
     total_amount_cents: unitAmountCents * quantity
   };
+}
+
+function normalizePaymentMethod(value: BarberPosSaleQuoteInput["paymentMethod"]) {
+  if (value === "tap_to_pay" || value === "card_on_file" || value === "cash" || value === "invoice" || value === "test") {
+    return value;
+  }
+
+  return null;
 }
 
 function calculateSplit(input: {
@@ -368,6 +394,10 @@ export async function createBarberPosSale(user: UserAccount, input: BarberPosSal
       shop_id: actor.shopId,
       client_id: input.clientId?.trim() || null,
       customer_name: input.customerName?.trim() || null,
+      customer_phone: input.customerPhone?.trim() || null,
+      customer_email: input.customerEmail?.trim() || null,
+      payment_method: normalizePaymentMethod(input.paymentMethod),
+      invoice_status: input.paymentMethod === "invoice" ? "pending" : null,
       source: "barber_keypad",
       status: "payment_pending",
       subtotal_cents: quote.subtotalCents,
@@ -413,9 +443,109 @@ export async function createBarberPosSale(user: UserAccount, input: BarberPosSal
   };
 }
 
-export async function chargeBarberPosSale(user: UserAccount, saleId: string) {
+export async function recordCashBarberPosSale(user: UserAccount, saleId: string) {
   const supabase = getSupabaseOrThrow();
   const { actor, sale } = await loadPosSaleForActor(supabase, user, saleId);
+
+  if (sale.status === "paid" && sale.payment_method === "cash") {
+    return {
+      ok: true,
+      sale,
+      payment: null,
+      routing: null,
+      cashRecorded: true,
+      alreadyPaid: true
+    };
+  }
+
+  if (sale.status !== "payment_pending" && sale.status !== "draft") {
+    throw new BarberPosSaleError("This POS sale cannot be recorded as cash in its current state.", 409);
+  }
+
+  const paidAt = new Date().toISOString();
+  const cashUpdate = await supabase
+    .from("pos_sales")
+    .update({
+      status: "paid",
+      payment_method: "cash",
+      cash_recorded_at: paidAt,
+      updated_at: paidAt
+    })
+    .eq("id", sale.id)
+    .eq("barber_id", actor.barber.id)
+    .select("*")
+    .single();
+
+  if (cashUpdate.error) {
+    throw new BarberPosSaleError("Unable to record this cash sale.", 500);
+  }
+
+  return {
+    ok: true,
+    sale: cashUpdate.data as PosSaleRow,
+    payment: null,
+    routing: null,
+    cashRecorded: true,
+    alreadyPaid: false
+  };
+}
+
+export async function createBarberPosSaleInvoice(user: UserAccount, saleId: string, input: BarberPosSaleInvoiceInput = {}) {
+  const supabase = getSupabaseOrThrow();
+  const { actor, sale } = await loadPosSaleForActor(supabase, user, saleId);
+
+  if (sale.status === "paid") {
+    throw new BarberPosSaleError("This POS sale is already paid.", 409);
+  }
+
+  const now = new Date().toISOString();
+  const invoiceUrl = sale.invoice_url
+    ?? `${process.env.NEXT_PUBLIC_APP_URL ?? "https://bvrb3r.com"}/pay/pos/${sale.id}`;
+  const updateResult = await supabase
+    .from("pos_sales")
+    .update({
+      status: "payment_pending",
+      payment_method: "invoice",
+      invoice_url: invoiceUrl,
+      invoice_status: "pending",
+      customer_phone: input.customerPhone?.trim() || sale.customer_phone || null,
+      customer_email: input.customerEmail?.trim() || sale.customer_email || null,
+      updated_at: now
+    })
+    .eq("id", sale.id)
+    .eq("barber_id", actor.barber.id)
+    .select("*")
+    .single();
+
+  if (updateResult.error) {
+    throw new BarberPosSaleError("Unable to create this payment link.", 500);
+  }
+
+  return {
+    ok: true,
+    sale: updateResult.data as PosSaleRow,
+    invoice: {
+      url: invoiceUrl,
+      status: "pending"
+    }
+  };
+}
+
+export async function chargeBarberPosSale(user: UserAccount, saleId: string, input: BarberPosSaleChargeInput = {}) {
+  const supabase = getSupabaseOrThrow();
+  const { actor, sale } = await loadPosSaleForActor(supabase, user, saleId);
+  const paymentMethod = input.paymentMethod ?? sale.payment_method ?? "test";
+
+  if (sale.status === "paid" && sale.payment_method === "cash") {
+    return {
+      ok: true,
+      sale,
+      payment: null,
+      routing: null,
+      cashRecorded: true,
+      alreadyPaid: true
+    };
+  }
 
   if (sale.status === "paid" && sale.payment_id) {
     const existingRouting = await supabase
@@ -438,10 +568,18 @@ export async function chargeBarberPosSale(user: UserAccount, saleId: string) {
     throw new BarberPosSaleError("This POS sale cannot be charged in its current state.", 409);
   }
 
+  if (paymentMethod === "card_on_file" && !sale.client_id) {
+    throw new BarberPosSaleError("Select a client before charging card on file.", 409);
+  }
+
+  if (paymentMethod === "invoice") {
+    throw new BarberPosSaleError("Send the invoice link and wait for payment before capturing.", 409);
+  }
+
   const paidAt = new Date().toISOString();
   const paidUpdate = await supabase
     .from("pos_sales")
-    .update({ status: "paid", updated_at: paidAt })
+    .update({ status: "paid", payment_method: paymentMethod, updated_at: paidAt })
     .eq("id", sale.id)
     .eq("barber_id", actor.barber.id)
     .select("*")
@@ -470,6 +608,7 @@ export async function chargeBarberPosSale(user: UserAccount, saleId: string) {
       paidAt,
       metadata: {
         source: "barber_keypad_pos",
+        paymentMethod,
         posSaleId: sale.id,
         barberId: sale.barber_id,
         shopId: sale.shop_id,
