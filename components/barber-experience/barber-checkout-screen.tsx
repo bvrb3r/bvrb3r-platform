@@ -37,7 +37,7 @@ const checkoutCurrencyFormatter = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2
 });
-type PosPaymentMethodKey = "tap_to_pay" | "cash" | "card_on_file" | "invoice";
+type PosPaymentMethodKey = "cash" | "card_on_file";
 const keypadButtons = [
   { key: "1", label: "1" },
   { key: "2", label: "2", sublabel: "ABC" },
@@ -135,7 +135,6 @@ export function BarberCheckoutScreen({
   const [paymentFeedback, setPaymentFeedback] = useState<string | null>(null);
   const [clientSearch, setClientSearch] = useState("");
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
-  const [invoiceContact, setInvoiceContact] = useState("");
   const keypadAmount = digitsToAmount(chargeDigits);
   const serviceShortcuts = useMemo(
     () => [...(serviceCatalogQuery.data?.editableServices ?? []), ...(serviceCatalogQuery.data?.readOnlyServices ?? [])].slice(0, 8),
@@ -192,7 +191,6 @@ export function BarberCheckoutScreen({
     setPaymentFeedback(null);
     setClientSearch("");
     setSelectedClientId(null);
-    setInvoiceContact("");
   }
 
   function openDetailSection(section: CheckoutSectionKey) {
@@ -261,31 +259,37 @@ export function BarberCheckoutScreen({
     setPaymentFeedback(null);
   }
 
+  function buildPosSalePayload(paymentMethod: PosPaymentMethodKey, extra?: {
+    clientId?: string | null;
+    customerName?: string | null;
+  }) {
+    const amountCents = Math.round(keypadAmount * 100);
+    return {
+      amountCents,
+      subtotalCents: amountCents,
+      discountCents: reviewQuote?.discountCents ?? 0,
+      tipCents: reviewQuote?.tipCents ?? 0,
+      note: saleNote,
+      paymentMethod,
+      clientId: extra?.clientId ?? null,
+      customerName: extra?.customerName ?? null,
+      items: [{
+        itemType: selectedServiceLabel ? "service" : "custom_amount",
+        name: selectedServiceLabel ?? "Custom Amount",
+        quantity: 1,
+        unitAmountCents: amountCents
+      }]
+    };
+  }
+
   async function createPendingSale(paymentMethod: PosPaymentMethodKey, extra?: {
     clientId?: string | null;
     customerName?: string | null;
-    customerPhone?: string | null;
-    customerEmail?: string | null;
   }) {
-    const amountCents = Math.round(keypadAmount * 100);
     const saleResponse = await fetch("/api/barber/pos-sales", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        amountCents,
-        note: saleNote,
-        paymentMethod,
-        clientId: extra?.clientId ?? null,
-        customerName: extra?.customerName ?? null,
-        customerPhone: extra?.customerPhone ?? null,
-        customerEmail: extra?.customerEmail ?? null,
-        items: [{
-          itemType: selectedServiceLabel ? "service" : "custom_amount",
-          name: selectedServiceLabel ?? "Custom Amount",
-          quantity: 1,
-          unitAmountCents: amountCents
-        }]
-      })
+      body: JSON.stringify(buildPosSalePayload(paymentMethod, extra))
     });
     const saleBody = await readJsonResponse(saleResponse);
     const saleId = saleBody?.sale?.id;
@@ -306,21 +310,13 @@ export function BarberCheckoutScreen({
       return;
     }
 
-    if (method === "invoice" && !invoiceContact.trim()) {
-      setPaymentFeedback("Add a phone or email before sending a payment link.");
-      return;
-    }
-
     setPaymentMethodLoading(method);
     setPaymentFeedback(null);
     setPanelFeedback(null);
     try {
-      const contact = invoiceContact.trim();
       const saleId = await createPendingSale(method, {
         clientId: method === "card_on_file" ? selectedClient?.clientId : null,
-        customerName: method === "card_on_file" ? selectedClient?.clientName : null,
-        customerPhone: method === "invoice" && !contact.includes("@") ? contact : null,
-        customerEmail: method === "invoice" && contact.includes("@") ? contact : null
+        customerName: method === "card_on_file" ? selectedClient?.clientName : null
       });
 
       if (method === "cash") {
@@ -330,24 +326,6 @@ export function BarberCheckoutScreen({
         setReviewQuote(null);
         clearQuickCharge();
         setPanelFeedback({ tone: "info", message: "Cash sale recorded. No platform payout created." });
-        await overviewQuery.refetch();
-        return;
-      }
-
-      if (method === "invoice") {
-        const invoiceResponse = await fetch(`/api/barber/pos-sales/${saleId}/invoice`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            customerPhone: contact.includes("@") ? null : contact,
-            customerEmail: contact.includes("@") ? contact : null
-          })
-        });
-        await readJsonResponse(invoiceResponse);
-        setPaymentMethodOpen(false);
-        setReviewQuote(null);
-        clearQuickCharge();
-        setPanelFeedback({ tone: "info", message: "Payment link created. Sale remains pending until paid." });
         await overviewQuery.refetch();
         return;
       }
@@ -363,7 +341,7 @@ export function BarberCheckoutScreen({
       clearQuickCharge();
       setPanelFeedback({
         tone: "info",
-        message: method === "tap_to_pay" ? "Payment successful. Payout is now eligible." : "Payment successful. Payout is now eligible."
+        message: "Payment successful. Payout is now eligible."
       });
       await overviewQuery.refetch();
     } catch (error) {
@@ -392,6 +370,10 @@ export function BarberCheckoutScreen({
       tone: "info",
       message: `${label} opens during payment review.`
     });
+  }
+
+  function handleTapToPayUnavailable() {
+    setPaymentFeedback("Tap to Pay is not connected yet. Use Cash or Card on File.");
   }
 
   return (
@@ -737,13 +719,13 @@ export function BarberCheckoutScreen({
             <div className="mt-5 grid gap-3">
               <button
                 type="button"
-                disabled={Boolean(paymentMethodLoading)}
-                className="rounded-[12px] border border-white/10 bg-white/[0.035] p-4 text-left transition hover:border-[#a3ff12]/35 disabled:cursor-wait disabled:opacity-70"
-                onClick={() => handlePaymentMethod("tap_to_pay")}
+                aria-disabled="true"
+                className="rounded-[12px] border border-white/10 bg-white/[0.02] p-4 text-left opacity-70 transition hover:border-white/20"
+                onClick={handleTapToPayUnavailable}
               >
                 <span className="block text-lg font-black text-white">Tap to Pay</span>
                 <span className="mt-1 block text-sm font-semibold text-white/55">Accept contactless card / Apple Pay / Google Pay.</span>
-                <span className="mt-2 block text-xs font-semibold text-[#a3ff12]/75">Tap to Pay setup required. Uses the test charge adapter for now.</span>
+                <span className="mt-2 block text-xs font-semibold text-[#a3ff12]/75">Tap to Pay setup required.</span>
               </button>
 
               <button
@@ -787,29 +769,12 @@ export function BarberCheckoutScreen({
                     >
                       <span className="block font-black">{client.clientName}</span>
                       <span className="mt-0.5 block text-xs text-white/45">{client.email || client.phone || "Client"}</span>
+                      {selectedClientId === client.clientId ? <span className="mt-1 block text-xs font-semibold text-[#a3ff12]/75">Default saved card checked before charge.</span> : null}
                     </button>
                   )) : (
                     <p className="rounded-[8px] border border-dashed border-white/10 bg-black/20 px-3 py-2 text-sm font-semibold text-white/45">No matching client yet.</p>
                   )}
                 </div>
-              </div>
-
-              <div className="rounded-[12px] border border-white/10 bg-white/[0.035] p-4">
-                <button
-                  type="button"
-                  disabled={Boolean(paymentMethodLoading)}
-                  className="w-full text-left disabled:cursor-wait disabled:opacity-70"
-                  onClick={() => handlePaymentMethod("invoice")}
-                >
-                  <span className="block text-lg font-black text-white">Invoice / Payment Link</span>
-                  <span className="mt-1 block text-sm font-semibold text-white/55">Send link by phone or email.</span>
-                </button>
-                <input
-                  value={invoiceContact}
-                  onChange={(event) => setInvoiceContact(event.target.value)}
-                  placeholder="Phone or email"
-                  className="mt-3 h-11 w-full rounded-[8px] border border-white/10 bg-black/35 px-3 text-sm font-semibold text-white outline-none placeholder:text-white/30 focus:border-[#a3ff12]/45"
-                />
               </div>
             </div>
 

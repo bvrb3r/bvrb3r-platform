@@ -26,6 +26,9 @@ import {
 
 type FakeRow = Record<string, unknown>;
 type FakeTables = Record<string, FakeRow[]>;
+type FakeOptions = {
+  unsupportedPosSaleColumns?: string[];
+};
 
 class FakeQueryBuilder {
   private filters: Array<{ column: string; value: unknown }> = [];
@@ -35,7 +38,8 @@ class FakeQueryBuilder {
 
   constructor(
     private readonly table: string,
-    private readonly tables: FakeTables
+    private readonly tables: FakeTables,
+    private readonly options: FakeOptions = {}
   ) {}
 
   select() {
@@ -67,6 +71,20 @@ class FakeQueryBuilder {
   }
 
   maybeSingle() {
+    if (this.pendingInsert && this.hasUnsupportedPosSaleColumn(this.pendingInsert)) {
+      return Promise.resolve({
+        data: null,
+        error: { code: "42703", message: "column payment_method does not exist" }
+      });
+    }
+
+    if (this.pendingUpdate && this.hasUnsupportedPosSaleColumn(this.pendingUpdate)) {
+      return Promise.resolve({
+        data: null,
+        error: { code: "42703", message: "column payment_method does not exist" }
+      });
+    }
+
     if (this.pendingInsert) {
       const inserted = this.insertRows();
       return Promise.resolve({ data: inserted[0] ?? null, error: null });
@@ -126,12 +144,21 @@ class FakeQueryBuilder {
     this.pendingUpdate = null;
     return rows;
   }
+
+  private hasUnsupportedPosSaleColumn(payload: FakeRow | FakeRow[] | null) {
+    if (this.table !== "pos_sales" || !payload || !this.options.unsupportedPosSaleColumns?.length) {
+      return false;
+    }
+
+    const rows = Array.isArray(payload) ? payload : [payload];
+    return rows.some((row) => this.options.unsupportedPosSaleColumns?.some((column) => column in row));
+  }
 }
 
-function createSupabaseMock(tables: FakeTables) {
+function createSupabaseMock(tables: FakeTables, options: FakeOptions = {}) {
   return {
     from(table: string) {
-      return new FakeQueryBuilder(table, tables);
+      return new FakeQueryBuilder(table, tables, options);
     }
   };
 }
@@ -283,6 +310,7 @@ describe("barber POS sales", () => {
         compensation_model: "freelance",
         commission_rate: null
       }],
+      clients: [],
       pos_sales: [],
       pos_sale_items: [],
       payment_routing_records: []
@@ -319,6 +347,19 @@ describe("barber POS sales", () => {
         compensation_model: "freelance",
         commission_rate: null
       }],
+      clients: [{
+        id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
+        profile_id: "profile-client",
+        reference_code: "client-phillip"
+      }],
+      payment_methods: [{
+        id: "payment-method-1",
+        client_id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
+        provider_payment_method_id: "pm_test_4242",
+        brand: "visa",
+        last4: "4242",
+        is_default: true
+      }],
       pos_sales: [],
       pos_sale_items: [],
       payment_routing_records: [{
@@ -351,6 +392,7 @@ describe("barber POS sales", () => {
       posSaleId: created.sale.id,
       paymentType: "pos_sale",
       paymentStatus: "captured",
+      paymentMethodId: "payment-method-1",
       metadata: expect.objectContaining({
         paymentMethod: "card_on_file"
       })
@@ -359,6 +401,103 @@ describe("barber POS sales", () => {
       pos_sale_id: created.sale.id,
       payout_readiness_status: "ready"
     });
+  });
+
+  it("resolves profile ids to canonical client ids for card POS sales", async () => {
+    const tables: FakeTables = {
+      profiles: [{ id: "profile-phillip", email: "phillip@example.com", role: "barber_user" }],
+      barbers: [{
+        id: "455c2930-7255-418b-bd2b-cc64bc0fc9b7",
+        profile_id: "profile-phillip",
+        reference_code: "barber-43b3cda2",
+        compensation_model: "freelance",
+        commission_rate: null
+      }],
+      clients: [{
+        id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
+        profile_id: "43b3cda2-3fe0-4632-95bb-56c005b5a3cf",
+        reference_code: "client-phillip"
+      }],
+      pos_sales: [],
+      pos_sale_items: []
+    };
+    createSupabaseAdminClientMock.mockReturnValue(createSupabaseMock(tables));
+
+    await createBarberPosSale(barberUser(), {
+      amountCents: 3500,
+      paymentMethod: "card_on_file",
+      clientId: "43b3cda2-3fe0-4632-95bb-56c005b5a3cf"
+    });
+
+    expect(tables.pos_sales[0]).toMatchObject({
+      client_id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065"
+    });
+  });
+
+  it("blocks card POS charges when the selected client has no saved card", async () => {
+    const tables: FakeTables = {
+      profiles: [{ id: "profile-phillip", email: "phillip@example.com", role: "barber_user" }],
+      barbers: [{
+        id: "455c2930-7255-418b-bd2b-cc64bc0fc9b7",
+        profile_id: "profile-phillip",
+        reference_code: "barber-43b3cda2",
+        compensation_model: "freelance",
+        commission_rate: null
+      }],
+      clients: [{
+        id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
+        profile_id: "profile-client",
+        reference_code: "client-phillip"
+      }],
+      payment_methods: [],
+      pos_sales: [],
+      pos_sale_items: []
+    };
+    createSupabaseAdminClientMock.mockReturnValue(createSupabaseMock(tables));
+
+    const created = await createBarberPosSale(barberUser(), {
+      amountCents: 3500,
+      paymentMethod: "card_on_file",
+      clientId: "6607bce8-3636-46e8-9bbd-eabd9e5ad065"
+    });
+
+    await expect(chargeBarberPosSale(barberUser(), created.sale.id, { paymentMethod: "card_on_file" }))
+      .rejects
+      .toMatchObject({
+        name: "BarberPosSaleError",
+        status: 409,
+        message: "Client has no saved card. Use cash or send link later."
+      } satisfies Partial<BarberPosSaleError>);
+  });
+
+  it("falls back to legacy POS columns when payment method columns are not migrated yet", async () => {
+    const tables: FakeTables = {
+      profiles: [{ id: "profile-phillip", email: "phillip@example.com", role: "barber_user" }],
+      barbers: [{
+        id: "455c2930-7255-418b-bd2b-cc64bc0fc9b7",
+        profile_id: "profile-phillip",
+        reference_code: "barber-43b3cda2",
+        compensation_model: "freelance",
+        commission_rate: null
+      }],
+      pos_sales: [],
+      pos_sale_items: []
+    };
+    createSupabaseAdminClientMock.mockReturnValue(createSupabaseMock(tables, {
+      unsupportedPosSaleColumns: ["payment_method", "cash_recorded_at", "customer_phone", "customer_email", "invoice_status"]
+    }));
+
+    const created = await createBarberPosSale(barberUser(), {
+      amountCents: 3500,
+      paymentMethod: "cash"
+    });
+    const recorded = await recordCashBarberPosSale(barberUser(), created.sale.id);
+
+    expect(recorded.sale).toMatchObject({
+      status: "paid"
+    });
+    expect(tables.pos_sales[0]).not.toHaveProperty("payment_method");
+    expect(createPaymentLedgerEntryMock).not.toHaveBeenCalled();
   });
 
   it("keeps invoice POS sales pending without payment routing until paid", async () => {

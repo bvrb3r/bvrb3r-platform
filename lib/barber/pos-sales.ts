@@ -24,12 +24,26 @@ type ProfileRow = {
   role: string | null;
 };
 
+type ClientRow = {
+  id: string;
+  profile_id?: string | null;
+  reference_code?: string | null;
+};
+
+type PaymentMethodRow = {
+  id: string;
+  provider_payment_method_id?: string | null;
+  brand?: string | null;
+  last4?: string | null;
+  is_default?: boolean | null;
+};
+
 type BarberLookupAttempt = {
   column: "id" | "reference_code" | "profile_id";
   value: string;
 };
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 type PosSaleRow = {
   id: string;
@@ -235,6 +249,22 @@ function normalizePaymentMethod(value: BarberPosSaleQuoteInput["paymentMethod"])
   return null;
 }
 
+function isUndefinedColumnError(error: unknown) {
+  const candidate = error as { code?: string; message?: string } | null | undefined;
+  return candidate?.code === "42703" || /column .* does not exist/i.test(candidate?.message ?? "");
+}
+
+function logPosSaleSchemaFallback(stage: string, error: unknown, payload: Record<string, unknown>) {
+  const candidate = error as { code?: string; details?: string; message?: string } | null | undefined;
+  console.warn("[barber-pos] schema_fallback", {
+    stage,
+    payloadKeys: Object.keys(payload),
+    postgresCode: candidate?.code ?? null,
+    postgresDetails: candidate?.details ?? null,
+    errorMessage: candidate?.message ?? null
+  });
+}
+
 function calculateSplit(input: {
   grossCents: number;
   relationshipType: BarberPosSaleQuote["relationshipType"];
@@ -370,6 +400,71 @@ async function loadPosSaleForActor(supabase: SupabaseClient, user: UserAccount, 
   return { actor, sale: result.data as PosSaleRow };
 }
 
+async function resolvePosSaleClientId(supabase: SupabaseClient, clientReference?: string | null) {
+  const reference = clientReference?.trim();
+  if (!reference) {
+    return null;
+  }
+
+  const attempts: Array<{ column: "id" | "profile_id" | "reference_code"; value: string }> = [
+    UUID_PATTERN.test(reference) ? { column: "id", value: reference } : null,
+    UUID_PATTERN.test(reference) ? { column: "profile_id", value: reference } : null,
+    { column: "reference_code", value: reference }
+  ].filter((attempt): attempt is { column: "id" | "profile_id" | "reference_code"; value: string } => Boolean(attempt));
+
+  for (const attempt of attempts) {
+    const result = await supabase
+      .from("clients")
+      .select("id, profile_id, reference_code")
+      .eq(attempt.column, attempt.value)
+      .maybeSingle();
+
+    if (result.error) {
+      if (attempt.column === "reference_code" && isUndefinedColumnError(result.error)) {
+        continue;
+      }
+
+      throw new BarberPosSaleError("Unable to resolve the selected client for POS sale.", 500);
+    }
+
+    if (result.data) {
+      return (result.data as ClientRow).id;
+    }
+  }
+
+  throw new BarberPosSaleError("Selected client could not be resolved for POS sale.", 409);
+}
+
+async function readDefaultPaymentMethodForClient(supabase: SupabaseClient, clientId: string) {
+  const defaultResult = await supabase
+    .from("payment_methods")
+    .select("id, provider_payment_method_id, brand, last4, is_default")
+    .eq("client_id", clientId)
+    .eq("is_default", true)
+    .maybeSingle();
+
+  if (defaultResult.error) {
+    throw new BarberPosSaleError("Unable to load the client's saved card.", 500);
+  }
+
+  if (defaultResult.data) {
+    return defaultResult.data as PaymentMethodRow;
+  }
+
+  const fallbackResult = await supabase
+    .from("payment_methods")
+    .select("id, provider_payment_method_id, brand, last4, is_default")
+    .eq("client_id", clientId)
+    .limit(1)
+    .maybeSingle();
+
+  if (fallbackResult.error) {
+    throw new BarberPosSaleError("Unable to load the client's saved card.", 500);
+  }
+
+  return (fallbackResult.data as PaymentMethodRow | null) ?? null;
+}
+
 export async function quoteBarberPosSaleForUser(user: UserAccount, input: BarberPosSaleQuoteInput) {
   const supabase = getSupabaseOrThrow();
   const actor = await resolveBarberActor(supabase, user);
@@ -382,38 +477,53 @@ export async function quoteBarberPosSaleForUser(user: UserAccount, input: Barber
 export async function createBarberPosSale(user: UserAccount, input: BarberPosSaleQuoteInput) {
   const supabase = getSupabaseOrThrow();
   const actor = await resolveBarberActor(supabase, user);
+  const clientId = await resolvePosSaleClientId(supabase, input.clientId);
   const quote = quoteBarberPosSale(input, {
     relationshipType: actor.relationshipType,
     commissionRate: actor.barber.commission_rate
   });
   const now = new Date().toISOString();
-  const saleInsert = await supabase
+  const normalizedPaymentMethod = normalizePaymentMethod(input.paymentMethod);
+  const baseSalePayload = {
+    barber_id: actor.barber.id,
+    shop_id: actor.shopId,
+    client_id: clientId,
+    customer_name: input.customerName?.trim() || null,
+    source: "barber_keypad",
+    status: "payment_pending",
+    subtotal_cents: quote.subtotalCents,
+    discount_cents: quote.discountCents,
+    tip_cents: quote.tipCents,
+    platform_fee_cents: quote.platformFeeCents,
+    client_fee_cents: quote.clientFeeCents,
+    total_cents: quote.totalCents,
+    payment_id: null,
+    note: input.note?.trim() || null,
+    created_by_profile_id: actor.profileId,
+    created_at: now,
+    updated_at: now
+  };
+  const salePayload = {
+    ...baseSalePayload,
+    customer_phone: input.customerPhone?.trim() || null,
+    customer_email: input.customerEmail?.trim() || null,
+    payment_method: normalizedPaymentMethod,
+    invoice_status: normalizedPaymentMethod === "invoice" ? "pending" : null
+  };
+  let saleInsert = await supabase
     .from("pos_sales")
-    .insert({
-      barber_id: actor.barber.id,
-      shop_id: actor.shopId,
-      client_id: input.clientId?.trim() || null,
-      customer_name: input.customerName?.trim() || null,
-      customer_phone: input.customerPhone?.trim() || null,
-      customer_email: input.customerEmail?.trim() || null,
-      payment_method: normalizePaymentMethod(input.paymentMethod),
-      invoice_status: input.paymentMethod === "invoice" ? "pending" : null,
-      source: "barber_keypad",
-      status: "payment_pending",
-      subtotal_cents: quote.subtotalCents,
-      discount_cents: quote.discountCents,
-      tip_cents: quote.tipCents,
-      platform_fee_cents: quote.platformFeeCents,
-      client_fee_cents: quote.clientFeeCents,
-      total_cents: quote.totalCents,
-      payment_id: null,
-      note: input.note?.trim() || null,
-      created_by_profile_id: actor.profileId,
-      created_at: now,
-      updated_at: now
-    })
+    .insert(salePayload)
     .select("*")
     .single();
+
+  if (saleInsert.error && isUndefinedColumnError(saleInsert.error)) {
+    logPosSaleSchemaFallback("pos_sale_insert", saleInsert.error, salePayload);
+    saleInsert = await supabase
+      .from("pos_sales")
+      .insert(baseSalePayload)
+      .select("*")
+      .single();
+  }
 
   if (saleInsert.error) {
     throw new BarberPosSaleError("Unable to create the POS sale.", 500);
@@ -463,18 +573,30 @@ export async function recordCashBarberPosSale(user: UserAccount, saleId: string)
   }
 
   const paidAt = new Date().toISOString();
-  const cashUpdate = await supabase
+  const cashPayload = {
+    status: "paid",
+    payment_method: "cash",
+    cash_recorded_at: paidAt,
+    updated_at: paidAt
+  };
+  let cashUpdate = await supabase
     .from("pos_sales")
-    .update({
-      status: "paid",
-      payment_method: "cash",
-      cash_recorded_at: paidAt,
-      updated_at: paidAt
-    })
+    .update(cashPayload)
     .eq("id", sale.id)
     .eq("barber_id", actor.barber.id)
     .select("*")
     .single();
+
+  if (cashUpdate.error && isUndefinedColumnError(cashUpdate.error)) {
+    logPosSaleSchemaFallback("cash_sale_update", cashUpdate.error, cashPayload);
+    cashUpdate = await supabase
+      .from("pos_sales")
+      .update({ status: "paid", updated_at: paidAt })
+      .eq("id", sale.id)
+      .eq("barber_id", actor.barber.id)
+      .select("*")
+      .single();
+  }
 
   if (cashUpdate.error) {
     throw new BarberPosSaleError("Unable to record this cash sale.", 500);
@@ -572,18 +694,38 @@ export async function chargeBarberPosSale(user: UserAccount, saleId: string, inp
     throw new BarberPosSaleError("Select a client before charging card on file.", 409);
   }
 
+  const savedCard = paymentMethod === "card_on_file" && sale.client_id
+    ? await readDefaultPaymentMethodForClient(supabase, sale.client_id)
+    : null;
+
+  if (paymentMethod === "card_on_file" && !savedCard) {
+    throw new BarberPosSaleError("Client has no saved card. Use cash or send link later.", 409);
+  }
+
   if (paymentMethod === "invoice") {
     throw new BarberPosSaleError("Send the invoice link and wait for payment before capturing.", 409);
   }
 
   const paidAt = new Date().toISOString();
-  const paidUpdate = await supabase
+  const paidPayload = { status: "paid", payment_method: paymentMethod, updated_at: paidAt };
+  let paidUpdate = await supabase
     .from("pos_sales")
-    .update({ status: "paid", payment_method: paymentMethod, updated_at: paidAt })
+    .update(paidPayload)
     .eq("id", sale.id)
     .eq("barber_id", actor.barber.id)
     .select("*")
     .single();
+
+  if (paidUpdate.error && isUndefinedColumnError(paidUpdate.error)) {
+    logPosSaleSchemaFallback("card_sale_update", paidUpdate.error, paidPayload);
+    paidUpdate = await supabase
+      .from("pos_sales")
+      .update({ status: "paid", updated_at: paidAt })
+      .eq("id", sale.id)
+      .eq("barber_id", actor.barber.id)
+      .select("*")
+      .single();
+  }
 
   if (paidUpdate.error) {
     throw new BarberPosSaleError("Unable to mark the POS sale paid.", 500);
@@ -596,7 +738,7 @@ export async function chargeBarberPosSale(user: UserAccount, saleId: string, inp
       clientId: sale.client_id,
       shopId: sale.shop_id,
       barberId: sale.barber_id,
-      paymentMethodId: null,
+      paymentMethodId: savedCard?.id ?? null,
       provider: "stripe",
       providerPaymentIntentId: `pi_pos_${sale.id.replace(/-/g, "").slice(0, 24)}_${randomUUID().slice(0, 8)}`,
       amount: decimalFromCents(sale.total_cents),
@@ -609,6 +751,7 @@ export async function chargeBarberPosSale(user: UserAccount, saleId: string, inp
       metadata: {
         source: "barber_keypad_pos",
         paymentMethod,
+        savedCardId: savedCard?.id ?? null,
         posSaleId: sale.id,
         barberId: sale.barber_id,
         shopId: sale.shop_id,

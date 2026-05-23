@@ -2,6 +2,8 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BarberCheckoutScreen } from "@/components/barber-experience/barber-checkout-screen";
 
+const TEST_CLIENT_ID = "6607bce8-3636-46e8-9bbd-eabd9e5ad065";
+
 const { overviewRefetchMock, useBarberOverviewQueryMock, useMarketplaceServiceCatalogMock } = vi.hoisted(() => ({
   overviewRefetchMock: vi.fn(),
   useBarberOverviewQueryMock: vi.fn(),
@@ -25,7 +27,7 @@ describe("BarberCheckoutScreen", () => {
       data: {
         todayAppointments: [],
         quickClients: [{
-          clientId: "client-1",
+          clientId: TEST_CLIENT_ID,
           clientName: "Jordan Client",
           email: "jordan@example.com",
           phone: "8135550101",
@@ -158,7 +160,40 @@ describe("BarberCheckoutScreen", () => {
     expect(screen.getByText("Tap to Pay")).toBeInTheDocument();
     expect(screen.getByText("Cash")).toBeInTheDocument();
     expect(screen.getByText("Card on File")).toBeInTheDocument();
-    expect(screen.getByText("Invoice / Payment Link")).toBeInTheDocument();
+    expect(screen.queryByText("Invoice / Payment Link")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps Tap to Pay setup-required without creating a POS sale", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({
+      ok: true,
+      quote: {
+        subtotalCents: 3500,
+        platformFeeCents: 175,
+        clientFeeCents: 0,
+        discountCents: 0,
+        tipCents: 0,
+        totalCents: 3500,
+        barberPayoutCents: 3325,
+        shopSplitCents: 0,
+        relationshipType: "freelance"
+      }
+    }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <BarberCheckoutScreen
+        barberName="Blaze King"
+        barberRole="booth_rent_barber"
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "$35.00" }));
+    fireEvent.click(screen.getByRole("button", { name: /Review Sale/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Charge $35.00" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Tap to Pay/ }));
+
+    expect(await screen.findByText("Tap to Pay is not connected yet. Use Cash or Card on File.")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -246,21 +281,32 @@ describe("BarberCheckoutScreen", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("collects phone or email for invoice payment links", async () => {
-    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({
-      ok: true,
-      quote: {
-        subtotalCents: 3500,
-        platformFeeCents: 175,
-        clientFeeCents: 0,
-        discountCents: 0,
-        tipCents: 0,
-        totalCents: 3500,
-        barberPayoutCents: 3325,
-        shopSplitCents: 0,
-        relationshipType: "freelance"
-      }
-    }), { status: 200 }));
+  it("searches clients and sends canonical client id for card on file", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        ok: true,
+        quote: {
+          subtotalCents: 3500,
+          platformFeeCents: 175,
+          clientFeeCents: 0,
+          discountCents: 0,
+          tipCents: 0,
+          totalCents: 3500,
+          barberPayoutCents: 3325,
+          shopSplitCents: 0,
+          relationshipType: "freelance"
+        }
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        ok: true,
+        sale: { id: "sale-card-1" }
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        ok: true,
+        sale: { id: "sale-card-1", status: "paid", payment_method: "card_on_file" },
+        payment: { id: "payment-card-1", posSaleId: "sale-card-1" },
+        routing: { pos_sale_id: "sale-card-1", payout_readiness_status: "ready" }
+      }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
     render(
@@ -273,10 +319,23 @@ describe("BarberCheckoutScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "$35.00" }));
     fireEvent.click(screen.getByRole("button", { name: /Review Sale/ }));
     fireEvent.click(await screen.findByRole("button", { name: "Charge $35.00" }));
+    const search = await screen.findByPlaceholderText("Search clients by name, phone, or email");
+    fireEvent.change(search, { target: { value: "Jordan" } });
+    fireEvent.click(await screen.findByRole("button", { name: /Jordan Client/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Card on File/ }));
 
-    expect(await screen.findByPlaceholderText("Phone or email")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Invoice \/ Payment Link/ }));
-    expect(await screen.findByText("Add a phone or email before sending a payment link.")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Payment successful. Payout is now eligible.")).toBeInTheDocument());
+    const salePayload = JSON.parse(String((fetchMock.mock.calls[1]?.[1] as RequestInit).body));
+    expect(salePayload).toMatchObject({
+      amountCents: 3500,
+      subtotalCents: 3500,
+      paymentMethod: "card_on_file",
+      clientId: TEST_CLIENT_ID,
+      customerName: "Jordan Client"
+    });
+    expect(fetchMock).toHaveBeenNthCalledWith(3, "/api/barber/pos-sales/sale-card-1/charge", expect.objectContaining({
+      method: "POST"
+    }));
   });
 
   it("keeps paid appointments and money posture out of the Checkout tab", () => {

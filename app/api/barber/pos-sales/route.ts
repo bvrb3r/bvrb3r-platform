@@ -5,10 +5,11 @@ import { BarberPosSaleError, createBarberPosSale, listBarberPosSales } from "@/l
 
 const saleSchema = z.object({
   amountCents: z.coerce.number().int().positive(),
+  subtotalCents: z.coerce.number().int().positive().optional().nullable(),
   tipCents: z.coerce.number().int().nonnegative().optional().nullable(),
   discountCents: z.coerce.number().int().nonnegative().optional().nullable(),
   note: z.string().max(500).optional().nullable(),
-  clientId: z.string().uuid().optional().nullable(),
+  clientId: z.string().min(1).max(120).optional().nullable(),
   customerName: z.string().max(120).optional().nullable(),
   customerPhone: z.string().max(32).optional().nullable(),
   customerEmail: z.string().email().optional().nullable(),
