@@ -67,6 +67,11 @@ type BarberLookupAttempt = {
 };
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+export const POS_SCHEMA_TABLES = {
+  sales: "pos_sales",
+  saleItems: "pos_sale_items",
+  paymentRequests: "pos_payment_requests"
+} as const;
 
 type PosSaleRow = {
   id: string;
@@ -363,7 +368,7 @@ async function insertPosSaleWithFallbacks(input: {
   role: string | null;
 }) {
   const insertPayload = (payload: PosSaleInsertPayload) => input.supabase
-    .from("pos_sales")
+    .from(POS_SCHEMA_TABLES.sales)
     .insert(payload)
     .select("*")
     .single();
@@ -539,6 +544,70 @@ function buildPosSaleDebug(error: unknown, table: string, fallback = "pos_sale_c
     failedConstraint: failedConstraintFromError(error),
     failedColumn: failedColumnFromError(error)
   };
+}
+
+function logPosSaleSchemaVerification(input: {
+  route: string;
+  table: string;
+  error?: unknown;
+}) {
+  const parts = postgresErrorParts(input.error);
+  console.warn("[barber-pos] schema_verification_failed", {
+    route: input.route,
+    table: input.table,
+    postgresCode: parts.postgresCode,
+    postgresMessage: parts.postgresMessage,
+    postgresDetails: parts.postgresDetails,
+    postgresHint: parts.postgresHint,
+    debugCode: input.error ? debugCodeFromPostgresError(input.error, "pos_schema_verification_failed") : null
+  });
+}
+
+function logPosSaleSchemaVerificationSucceeded(input: {
+  route: string;
+  tables: string[];
+}) {
+  if (process.env.NODE_ENV !== "production") {
+    return;
+  }
+
+  console.info("[barber-pos] schema_verification_succeeded", {
+    route: input.route,
+    tables: input.tables
+  });
+}
+
+async function verifyPosStorageSchema(input: {
+  supabase: SupabaseClient;
+  route: string;
+  tables: string[];
+  failureMessage?: string;
+}) {
+  for (const table of input.tables) {
+    const result = await input.supabase
+      .from(table)
+      .select("id")
+      .limit(1);
+
+    if (result.error) {
+      logPosSaleSchemaVerification({
+        route: input.route,
+        table,
+        error: result.error
+      });
+
+      throw new BarberPosSaleError(
+        input.failureMessage ?? "Unable to create the POS sale.",
+        500,
+        buildPosSaleDebug(result.error, table, "pos_schema_verification_failed")
+      );
+    }
+  }
+
+  logPosSaleSchemaVerificationSucceeded({
+    route: input.route,
+    tables: input.tables
+  });
 }
 
 function logPosSaleCreateFailed(input: {
@@ -804,14 +873,19 @@ async function resolveBarberActor(supabase: SupabaseClient, user: UserAccount) {
 async function loadPosSaleForActor(supabase: SupabaseClient, user: UserAccount, saleId: string) {
   const actor = await resolveBarberActor(supabase, user);
   const result = await supabase
-    .from("pos_sales")
+    .from(POS_SCHEMA_TABLES.sales)
     .select("*")
     .eq("id", saleId)
     .eq("barber_id", actor.barber.id)
     .maybeSingle();
 
   if (result.error) {
-    throw new BarberPosSaleError("Unable to load the POS sale.", 500);
+    logPosSaleSchemaVerification({
+      route: "POS sale load",
+      table: POS_SCHEMA_TABLES.sales,
+      error: result.error
+    });
+    throw new BarberPosSaleError("Unable to load the POS sale.", 500, buildPosSaleDebug(result.error, POS_SCHEMA_TABLES.sales, "pos_sale_load_failed"));
   }
 
   if (!result.data) {
@@ -1045,6 +1119,12 @@ export async function createBarberPosSale(user: UserAccount, input: BarberPosSal
     relationshipType: actor.relationshipType,
     commissionRate: actor.barber.commission_rate
   });
+  await verifyPosStorageSchema({
+    supabase,
+    route: "POST /api/barber/pos-sales",
+    tables: [POS_SCHEMA_TABLES.sales],
+    failureMessage: "Unable to create the POS sale."
+  });
   const now = new Date().toISOString();
   const normalizedPaymentMethod = normalizePaymentMethod(input.paymentMethod);
   const baseSalePayload: PosSaleInsertPayload = {
@@ -1093,13 +1173,13 @@ export async function createBarberPosSale(user: UserAccount, input: BarberPosSal
       paymentMethod: normalizedPaymentMethod,
       payload: salePayload,
       error: saleInsert.error,
-      table: "pos_sales",
+      table: POS_SCHEMA_TABLES.sales,
       barberId: actor.barber.id,
       profileId: actor.profileId,
       clientId,
       amountCents: quote.totalCents
     });
-    throw new BarberPosSaleError("Unable to create the POS sale.", 500, buildPosSaleDebug(saleInsert.error, "pos_sales"));
+    throw new BarberPosSaleError("Unable to create the POS sale.", 500, buildPosSaleDebug(saleInsert.error, POS_SCHEMA_TABLES.sales));
   }
 
   const sale = saleInsert.data as PosSaleRow;
@@ -1107,7 +1187,7 @@ export async function createBarberPosSale(user: UserAccount, input: BarberPosSal
     ? input.items.map((item) => normalizeItem(item, quote.subtotalCents))
     : [normalizeItem(null, quote.subtotalCents)];
   const itemInsert = await supabase
-    .from("pos_sale_items")
+    .from(POS_SCHEMA_TABLES.saleItems)
     .insert(baseItems.map((item) => ({
       ...item,
       pos_sale_id: sale.id,
@@ -1121,7 +1201,7 @@ export async function createBarberPosSale(user: UserAccount, input: BarberPosSal
       paymentMethod: normalizedPaymentMethod,
       payload: { itemCount: baseItems.length, pos_sale_id: sale.id },
       error: itemInsert.error,
-      table: "pos_sale_items",
+      table: POS_SCHEMA_TABLES.saleItems,
       barberId: actor.barber.id,
       profileId: actor.profileId,
       clientId,
@@ -1129,8 +1209,8 @@ export async function createBarberPosSale(user: UserAccount, input: BarberPosSal
     });
 
     if (!isOptionalPosSaleItemInsertError(itemInsert.error)) {
-      await supabase.from("pos_sales").update({ status: "voided", updated_at: new Date().toISOString() }).eq("id", sale.id);
-      throw new BarberPosSaleError("Unable to create the POS sale items.", 500, buildPosSaleDebug(itemInsert.error, "pos_sale_items"));
+      await supabase.from(POS_SCHEMA_TABLES.sales).update({ status: "voided", updated_at: new Date().toISOString() }).eq("id", sale.id);
+      throw new BarberPosSaleError("Unable to create the POS sale items.", 500, buildPosSaleDebug(itemInsert.error, POS_SCHEMA_TABLES.saleItems));
     }
   }
 
@@ -1148,6 +1228,12 @@ export async function createCashBarberPosSale(user: UserAccount, input: BarberPo
   const quote = quoteBarberPosSale(input, {
     relationshipType: actor.relationshipType,
     commissionRate: actor.barber.commission_rate
+  });
+  await verifyPosStorageSchema({
+    supabase,
+    route: "POST /api/barber/pos-sales/cash",
+    tables: [POS_SCHEMA_TABLES.sales],
+    failureMessage: "Unable to create the POS sale."
   });
   const now = new Date().toISOString();
   const baseSalePayload: PosSaleInsertPayload = {
@@ -1197,7 +1283,7 @@ export async function createCashBarberPosSale(user: UserAccount, input: BarberPo
       paymentMethod: "cash",
       payload: cashSalePayload,
       error: saleInsert.error,
-      table: "pos_sales",
+      table: POS_SCHEMA_TABLES.sales,
       barberId: actor.barber.id,
       profileId: actor.profileId,
       clientId,
@@ -1210,7 +1296,7 @@ export async function createCashBarberPosSale(user: UserAccount, input: BarberPo
       barberId: actor.barber.id,
       role: user.role
     });
-    throw new BarberPosSaleError("Unable to create the POS sale.", 500, buildPosSaleDebug(saleInsert.error, "pos_sales"));
+    throw new BarberPosSaleError("Unable to create the POS sale.", 500, buildPosSaleDebug(saleInsert.error, POS_SCHEMA_TABLES.sales));
   }
 
   const sale = saleInsert.data as PosSaleRow;
@@ -1223,7 +1309,7 @@ export async function createCashBarberPosSale(user: UserAccount, input: BarberPo
     created_at: now
   }));
   const itemInsert = await supabase
-    .from("pos_sale_items")
+    .from(POS_SCHEMA_TABLES.saleItems)
     .insert(itemPayload);
 
   if (itemInsert.error) {
@@ -1233,7 +1319,7 @@ export async function createCashBarberPosSale(user: UserAccount, input: BarberPo
       paymentMethod: "cash",
       payload: { itemCount: itemPayload.length, pos_sale_id: sale.id },
       error: itemInsert.error,
-      table: "pos_sale_items",
+      table: POS_SCHEMA_TABLES.saleItems,
       barberId: actor.barber.id,
       profileId: actor.profileId,
       clientId,
@@ -1247,8 +1333,8 @@ export async function createCashBarberPosSale(user: UserAccount, input: BarberPo
       role: user.role
     });
     if (!isOptionalPosSaleItemInsertError(itemInsert.error)) {
-      await supabase.from("pos_sales").update({ status: "voided", updated_at: new Date().toISOString() }).eq("id", sale.id);
-      throw new BarberPosSaleError("Unable to create the POS sale items.", 500, buildPosSaleDebug(itemInsert.error, "pos_sale_items"));
+      await supabase.from(POS_SCHEMA_TABLES.sales).update({ status: "voided", updated_at: new Date().toISOString() }).eq("id", sale.id);
+      throw new BarberPosSaleError("Unable to create the POS sale items.", 500, buildPosSaleDebug(itemInsert.error, POS_SCHEMA_TABLES.saleItems));
     }
   }
 
@@ -1290,7 +1376,7 @@ export async function recordCashBarberPosSale(user: UserAccount, saleId: string)
     updated_at: paidAt
   };
   let cashUpdate = await supabase
-    .from("pos_sales")
+    .from(POS_SCHEMA_TABLES.sales)
     .update(cashPayload)
     .eq("id", sale.id)
     .eq("barber_id", actor.barber.id)
@@ -1300,7 +1386,7 @@ export async function recordCashBarberPosSale(user: UserAccount, saleId: string)
   if (cashUpdate.error && isOptionalPosSaleColumnError(cashUpdate.error)) {
     logPosSaleSchemaFallback("cash_sale_update", cashUpdate.error, cashPayload);
     cashUpdate = await supabase
-      .from("pos_sales")
+      .from(POS_SCHEMA_TABLES.sales)
       .update({ status: "paid", updated_at: paidAt })
       .eq("id", sale.id)
       .eq("barber_id", actor.barber.id)
@@ -1334,7 +1420,7 @@ export async function createBarberPosSaleInvoice(user: UserAccount, saleId: stri
   const invoiceUrl = sale.invoice_url
     ?? `${process.env.NEXT_PUBLIC_APP_URL ?? "https://bvrb3r.com"}/pay/pos/${sale.id}`;
   const updateResult = await supabase
-    .from("pos_sales")
+    .from(POS_SCHEMA_TABLES.sales)
     .update({
       status: "payment_pending",
       payment_method: "invoice",
@@ -1366,6 +1452,12 @@ export async function createBarberPosSaleInvoice(user: UserAccount, saleId: stri
 export async function requestBarberPosSalePayment(user: UserAccount, saleId: string) {
   const supabase = getSupabaseOrThrow();
   const { actor, sale } = await loadPosSaleForActor(supabase, user, saleId);
+  await verifyPosStorageSchema({
+    supabase,
+    route: "POST /api/barber/pos-sales/[id]/payment-request",
+    tables: [POS_SCHEMA_TABLES.sales, POS_SCHEMA_TABLES.paymentRequests],
+    failureMessage: "Unable to create the POS payment request."
+  });
 
   if (sale.status === "paid") {
     throw new BarberPosSaleError("This POS sale is already paid.", 409);
@@ -1380,7 +1472,7 @@ export async function requestBarberPosSalePayment(user: UserAccount, saleId: str
   }
 
   const existingRequest = await supabase
-    .from("pos_payment_requests")
+    .from(POS_SCHEMA_TABLES.paymentRequests)
     .select("*")
     .eq("pos_sale_id", sale.id)
     .order("updated_at", { ascending: false })
@@ -1422,7 +1514,7 @@ export async function requestBarberPosSalePayment(user: UserAccount, saleId: str
   const requestBody = `${barberName} requested ${formatUsdFromCents(sale.total_cents)} for a walk-in service.\nApprove Payment or Decline in BVRB3R.`;
 
   const requestInsert = await supabase
-    .from("pos_payment_requests")
+    .from(POS_SCHEMA_TABLES.paymentRequests)
     .insert({
       pos_sale_id: sale.id,
       barber_id: actor.barber.id,
@@ -1452,13 +1544,13 @@ export async function requestBarberPosSalePayment(user: UserAccount, saleId: str
         status: "pending"
       },
       error: requestInsert.error,
-      table: "pos_payment_requests",
+      table: POS_SCHEMA_TABLES.paymentRequests,
       barberId: actor.barber.id,
       profileId: actor.profileId,
       clientId: sale.client_id,
       amountCents: sale.total_cents
     });
-    throw new BarberPosSaleError("Unable to create the POS payment request.", 500, buildPosSaleDebug(requestInsert.error, "pos_payment_requests", "pos_payment_request_create_failed"));
+    throw new BarberPosSaleError("Unable to create the POS payment request.", 500, buildPosSaleDebug(requestInsert.error, POS_SCHEMA_TABLES.paymentRequests, "pos_payment_request_create_failed"));
   }
 
   const messageInsert = await supabase
@@ -1567,7 +1659,7 @@ export async function chargeBarberPosSale(user: UserAccount, saleId: string, inp
   const paidAt = new Date().toISOString();
   const paidPayload = { status: "paid", payment_method: paymentMethod, updated_at: paidAt };
   let paidUpdate = await supabase
-    .from("pos_sales")
+    .from(POS_SCHEMA_TABLES.sales)
     .update(paidPayload)
     .eq("id", sale.id)
     .eq("barber_id", actor.barber.id)
@@ -1577,7 +1669,7 @@ export async function chargeBarberPosSale(user: UserAccount, saleId: string, inp
   if (paidUpdate.error && isOptionalPosSaleColumnError(paidUpdate.error)) {
     logPosSaleSchemaFallback("card_sale_update", paidUpdate.error, paidPayload);
     paidUpdate = await supabase
-      .from("pos_sales")
+      .from(POS_SCHEMA_TABLES.sales)
       .update({ status: "paid", updated_at: paidAt })
       .eq("id", sale.id)
       .eq("barber_id", actor.barber.id)
@@ -1621,7 +1713,7 @@ export async function chargeBarberPosSale(user: UserAccount, saleId: string, inp
     });
 
     const finalizedSale = await supabase
-      .from("pos_sales")
+      .from(POS_SCHEMA_TABLES.sales)
       .update({ payment_id: payment.id, updated_at: new Date().toISOString() })
       .eq("id", sale.id)
       .select("*")
@@ -1653,7 +1745,7 @@ export async function chargeBarberPosSale(user: UserAccount, saleId: string, inp
   } catch (error) {
     if (!(error instanceof BarberPosSaleError)) {
       await supabase
-        .from("pos_sales")
+        .from(POS_SCHEMA_TABLES.sales)
         .update({ status: "payment_pending", updated_at: new Date().toISOString() })
         .eq("id", sale.id);
     }
@@ -1665,7 +1757,7 @@ export async function listBarberPosSales(user: UserAccount) {
   const supabase = getSupabaseOrThrow();
   const actor = await resolveBarberActor(supabase, user);
   const result = await supabase
-    .from("pos_sales")
+    .from(POS_SCHEMA_TABLES.sales)
     .select("*")
     .eq("barber_id", actor.barber.id)
     .order("created_at", { ascending: false })

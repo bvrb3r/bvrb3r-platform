@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "fs";
+import { join } from "path";
 import type { UserAccount } from "@/types/domain";
 
 const { createSupabaseAdminClientMock, createPaymentLedgerEntryMock } = vi.hoisted(() => ({
@@ -20,6 +22,7 @@ import {
   createBarberPosSale,
   createBarberPosSaleInvoice,
   createCashBarberPosSale,
+  POS_SCHEMA_TABLES,
   quoteBarberPosSale,
   quoteBarberPosSaleForUser,
   requestBarberPosSalePayment
@@ -30,13 +33,14 @@ type FakeTables = Record<string, FakeRow[]>;
 type FakePostgresError = {
   code?: string;
   message?: string;
-  details?: string;
-  hint?: string;
+  details?: string | null;
+  hint?: string | null;
 };
 type FakeOptions = {
   unsupportedPosSaleColumns?: string[];
   rejectPosSaleShopId?: boolean;
   posSaleInsertError?: FakePostgresError;
+  missingTables?: string[];
 };
 
 class FakeQueryBuilder {
@@ -86,6 +90,13 @@ class FakeQueryBuilder {
   }
 
   maybeSingle() {
+    if (this.isMissingTable()) {
+      return Promise.resolve({
+        data: null,
+        error: this.missingTableError()
+      });
+    }
+
     if (this.pendingInsert && this.table === "pos_sales" && this.options.posSaleInsertError) {
       return Promise.resolve({
         data: null,
@@ -138,10 +149,14 @@ class FakeQueryBuilder {
     return this.maybeSingle();
   }
 
-  then<TResult1 = { data: FakeRow[]; error: null }, TResult2 = never>(
-    onfulfilled?: ((value: { data: FakeRow[]; error: null }) => TResult1 | PromiseLike<TResult1>) | null,
+  then<TResult1 = { data: FakeRow[]; error: FakePostgresError | null }, TResult2 = never>(
+    onfulfilled?: ((value: { data: FakeRow[]; error: FakePostgresError | null }) => TResult1 | PromiseLike<TResult1>) | null,
     onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
   ) {
+    if (this.isMissingTable()) {
+      return Promise.resolve({ data: [], error: this.missingTableError() }).then(onfulfilled, onrejected);
+    }
+
     const rows = this.pendingInsert
       ? this.insertRows()
       : this.pendingUpdate
@@ -196,6 +211,19 @@ class FakeQueryBuilder {
     const rows = Array.isArray(payload) ? payload : [payload];
     return rows.some((row) => Boolean(row.shop_id));
   }
+
+  private isMissingTable() {
+    return Boolean(this.options.missingTables?.includes(this.table));
+  }
+
+  private missingTableError(): FakePostgresError {
+    return {
+      code: "PGRST205",
+      message: `Could not find the table 'public.${this.table}' in the schema cache`,
+      details: null,
+      hint: "Maybe the table was not created or PostgREST needs a schema reload."
+    } as FakePostgresError;
+  }
 }
 
 function createSupabaseMock(tables: FakeTables, options: FakeOptions = {}) {
@@ -225,6 +253,29 @@ describe("barber POS sales", () => {
   beforeEach(() => {
     createSupabaseAdminClientMock.mockReset();
     createPaymentLedgerEntryMock.mockReset();
+  });
+
+  it("keeps POS table names aligned with production migrations", () => {
+    const initialMigration = readFileSync(
+      join(process.cwd(), "supabase/migrations/20260522160000_add_barber_pos_sales.sql"),
+      "utf8"
+    );
+    const ensureMigration = readFileSync(
+      join(process.cwd(), "supabase/migrations/20260524110000_ensure_pos_sales_schema.sql"),
+      "utf8"
+    );
+    const migrationSql = `${initialMigration}\n${ensureMigration}`;
+
+    expect(POS_SCHEMA_TABLES).toEqual({
+      sales: "pos_sales",
+      saleItems: "pos_sale_items",
+      paymentRequests: "pos_payment_requests"
+    });
+    expect(migrationSql).toContain("create table if not exists public.pos_sales");
+    expect(migrationSql).toContain("create table if not exists public.pos_sale_items");
+    expect(migrationSql).toContain("create table if not exists public.pos_payment_requests");
+    expect(migrationSql).toContain("notify pgrst, 'reload schema'");
+    expect(migrationSql).not.toContain("barber_pos_sales");
   });
 
   it("calculates the freelance POS quote platform fee and barber payout", () => {
@@ -512,6 +563,47 @@ describe("barber POS sales", () => {
     warnSpy.mockRestore();
   });
 
+  it("returns missing-table diagnostics when PostgREST cannot find pos_sales", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const tables: FakeTables = {
+      profiles: [{ id: "profile-phillip", email: "phillip@example.com", role: "barber_user" }],
+      barbers: [{
+        id: "455c2930-7255-418b-bd2b-cc64bc0fc9b7",
+        profile_id: "profile-phillip",
+        reference_code: "barber-43b3cda2",
+        compensation_model: "freelance",
+        commission_rate: null
+      }],
+      clients: []
+    };
+    createSupabaseAdminClientMock.mockReturnValue(createSupabaseMock(tables, {
+      missingTables: [POS_SCHEMA_TABLES.sales]
+    }));
+
+    await expect(createCashBarberPosSale(barberUser(), {
+      amountCents: 3500,
+      paymentMethod: "cash"
+    }))
+      .rejects
+      .toMatchObject({
+        name: "BarberPosSaleError",
+        status: 500,
+        message: "Unable to create the POS sale.",
+        debugCode: "missing_table",
+        failedTable: "pos_sales",
+        failedConstraint: null,
+        failedColumn: null
+      } satisfies Partial<BarberPosSaleError>);
+
+    expect(warnSpy).toHaveBeenCalledWith("[barber-pos] schema_verification_failed", expect.objectContaining({
+      route: "POST /api/barber/pos-sales/cash",
+      table: "pos_sales",
+      postgresCode: "PGRST205",
+      debugCode: "missing_table"
+    }));
+    warnSpy.mockRestore();
+  });
+
   it("charges card POS sales through the payment ledger with a POS sale id", async () => {
     const tables: FakeTables = {
       profiles: [{ id: "profile-phillip", email: "phillip@example.com", role: "barber_user" }],
@@ -701,6 +793,58 @@ describe("barber POS sales", () => {
     expect(String(tables.messages[0]?.body)).toContain("Phillip mcgee requested $35.00");
     expect(createPaymentLedgerEntryMock).not.toHaveBeenCalled();
     expect(tables.payment_routing_records).toHaveLength(0);
+  });
+
+  it("returns missing-table diagnostics when PostgREST cannot find pos_payment_requests", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const tables: FakeTables = {
+      profiles: [
+        { id: "profile-phillip", email: "phillip@example.com", role: "barber_user", full_name: "Phillip mcgee" },
+        { id: "profile-client", email: "client@example.com", role: "client_user", full_name: "Jordan Client" }
+      ],
+      barbers: [{
+        id: "455c2930-7255-418b-bd2b-cc64bc0fc9b7",
+        profile_id: "profile-phillip",
+        reference_code: "barber-43b3cda2",
+        compensation_model: "freelance",
+        commission_rate: null
+      }],
+      clients: [{
+        id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
+        profile_id: "profile-client",
+        reference_code: "client-phillip"
+      }],
+      pos_sales: [],
+      pos_sale_items: [],
+      pos_payment_requests: []
+    };
+    createSupabaseAdminClientMock.mockReturnValue(createSupabaseMock(tables, {
+      missingTables: [POS_SCHEMA_TABLES.paymentRequests]
+    }));
+
+    const created = await createBarberPosSale(barberUser(), {
+      amountCents: 3500,
+      paymentMethod: "card_on_file",
+      clientId: "6607bce8-3636-46e8-9bbd-eabd9e5ad065"
+    });
+
+    await expect(requestBarberPosSalePayment(barberUser(), created.sale.id))
+      .rejects
+      .toMatchObject({
+        name: "BarberPosSaleError",
+        status: 500,
+        message: "Unable to create the POS payment request.",
+        debugCode: "missing_table",
+        failedTable: "pos_payment_requests"
+      } satisfies Partial<BarberPosSaleError>);
+
+    expect(warnSpy).toHaveBeenCalledWith("[barber-pos] schema_verification_failed", expect.objectContaining({
+      route: "POST /api/barber/pos-sales/[id]/payment-request",
+      table: "pos_payment_requests",
+      postgresCode: "PGRST205",
+      debugCode: "missing_table"
+    }));
+    warnSpy.mockRestore();
   });
 
   it("creates a card request after retrying POS sale creation without rejected shop scope", async () => {
