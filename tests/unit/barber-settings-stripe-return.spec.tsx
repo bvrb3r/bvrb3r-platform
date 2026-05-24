@@ -515,6 +515,10 @@ describe("BarberSettingsScreen Stripe return sync", () => {
 
     render(<BarberSettingsScreen user={resolveDemoUser("blaze@bvrb3r.demo")} embedded />);
 
+    expect(screen.queryByText("Paid appointments and receipts")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("business-tool-transactions"));
+
+    expect(screen.getByRole("dialog", { name: "Transactions" })).toBeInTheDocument();
     expect(screen.getByText("Jordan Client")).toBeInTheDocument();
     expect(screen.getByText("Walk-in customer")).toBeInTheDocument();
     expect(screen.getByText("Riley Client")).toBeInTheDocument();
@@ -523,5 +527,25 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     expect(screen.getAllByText("Pending approval").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "Message unavailable" })).toBeDisabled();
     expect(screen.getAllByRole("button", { name: "Message client" })).toHaveLength(2);
+  });
+
+  it("opens Manage Your Business tiles in focused modals", () => {
+    render(<BarberSettingsScreen user={resolveDemoUser("blaze@bvrb3r.demo")} embedded />);
+
+    expect(screen.getByTestId("business-tool-services")).toBeInTheDocument();
+    expect(screen.getByTestId("business-tool-availability")).toBeInTheDocument();
+    expect(screen.getByTestId("business-tool-transactions")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByText("Paid appointments and receipts")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("business-tool-services"));
+    expect(screen.getByRole("dialog", { name: "Services" })).toBeInTheDocument();
+    expect(screen.getAllByText("Haircut").length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByLabelText("Close business tool"));
+    fireEvent.click(screen.getByTestId("business-tool-availability"));
+
+    expect(screen.getByRole("dialog", { name: "Availability" })).toBeInTheDocument();
+    expect(screen.getByTestId("schedule-workspace")).toBeInTheDocument();
   });
 });

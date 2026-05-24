@@ -112,6 +112,16 @@ type SettingsSectionKey = keyof typeof sectionIdMap;
 type Tone = "green" | "amber" | "danger" | "neutral";
 type LinkHref = ComponentProps<typeof Link>["href"];
 type BarberQuickSetupModal = "service" | "availability" | "visibility" | "booking" | "invites" | null;
+type BusinessToolKey =
+  | "services"
+  | "availability"
+  | "booking"
+  | "notifications"
+  | "transactions"
+  | "reports"
+  | "verification"
+  | "legal"
+  | "account";
 type AvailabilityLocationMode = "custom" | "shop" | "later";
 
 const defaultActivationWorkingDays = [1, 2, 3, 4, 5, 6];
@@ -234,19 +244,23 @@ function HeaderIconLink({ href, label, icon: Icon }: { href: LinkHref; label: st
 }
 
 function BusinessControlCard({
-  href,
   icon: Icon,
   title,
-  subtitle
+  subtitle,
+  toolKey,
+  onOpen
 }: {
-  href: LinkHref;
   icon: LucideIcon;
   title: string;
   subtitle: string;
+  toolKey: BusinessToolKey;
+  onOpen: (tool: BusinessToolKey) => void;
 }) {
   return (
-    <Link
-      href={href}
+    <button
+      type="button"
+      data-testid={`business-tool-${toolKey}`}
+      onClick={() => onOpen(toolKey)}
       className="group flex min-h-[136px] flex-col justify-between rounded-[22px] border border-white/10 bg-white/[0.035] p-5 text-left shadow-[0_18px_50px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.04)] transition hover:-translate-y-0.5 hover:border-[#a3ff12]/35 hover:shadow-[0_0_24px_rgba(163,255,18,0.12),0_18px_50px_rgba(0,0,0,0.34)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a3ff12]/55"
     >
       <div className="flex items-start justify-between gap-4">
@@ -259,8 +273,80 @@ function BusinessControlCard({
         <h3 className="text-lg font-extrabold tracking-[-0.02em] text-white">{title}</h3>
         <p className="mt-2 text-sm leading-5 text-white/56">{subtitle}</p>
       </div>
-    </Link>
+    </button>
   );
+}
+
+function BusinessToolModal({
+  title,
+  subtitle,
+  description,
+  onClose,
+  children
+}: {
+  title: string;
+  subtitle: string;
+  description?: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/72 px-4 py-5 backdrop-blur-sm sm:items-center"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="business-tool-modal-title"
+      data-testid="business-tool-modal"
+    >
+      <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-t-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(4,4,4,0.98))] p-5 shadow-[0_24px_70px_rgba(0,0,0,0.58),0_0_34px_rgba(163,255,18,0.12)] sm:rounded-[28px] sm:p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <SectionLabel>{subtitle}</SectionLabel>
+            <h2 id="business-tool-modal-title" className="mt-3 text-3xl font-black tracking-[-0.04em] text-white">
+              {title}
+            </h2>
+            {description ? <p className="mt-2 max-w-2xl text-sm leading-6 text-white/56">{description}</p> : null}
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/72 transition hover:border-[#a3ff12]/35 hover:text-[#a3ff12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a3ff12]/55"
+            aria-label="Close business tool"
+          >
+            <XCircle className="h-5 w-5" aria-hidden="true" />
+          </button>
+        </div>
+        <div className="mt-6">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function getBusinessToolDescription(tool: BusinessToolKey | null) {
+  switch (tool) {
+    case "transactions":
+      return "Completed bookings and payment status stay connected to appointment records.";
+    case "reports":
+      return "Gross, cash, card/app, booking, and payout posture in one focused view.";
+    case "availability":
+      return "Working hours and blocked time stay powered by the existing calendar engine.";
+    case "booking":
+      return "Online booking preferences, business model, and appointment location settings.";
+    case "services":
+      return "Active services, pricing, duration, and add-service actions.";
+    case "verification":
+      return "Identity, license, approval, and trust status live in the verification lane.";
+    case "legal":
+      return "Agreements, payout tax acknowledgments, and verification documents.";
+    case "notifications":
+      return "Choose how BVRB3R alerts you about bookings, messages, and account events.";
+    case "account":
+      return "Private account controls, contact information, password, profile, and security.";
+    default:
+      return undefined;
+  }
 }
 
 function QuickActionLink({ href, icon: Icon, children }: { href: LinkHref; icon: LucideIcon; children: ReactNode }) {
@@ -272,6 +358,19 @@ function QuickActionLink({ href, icon: Icon, children }: { href: LinkHref; icon:
       <Icon className="h-4 w-4" aria-hidden="true" />
       {children}
     </Link>
+  );
+}
+
+function QuickActionButton({ icon: Icon, children, onClick }: { icon: LucideIcon; children: ReactNode; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-[#a3ff12]/35 bg-[#a3ff12]/8 px-5 text-sm font-extrabold text-[#a3ff12] transition hover:border-[#a3ff12]/60 hover:bg-[#a3ff12]/12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a3ff12]/55"
+    >
+      <Icon className="h-4 w-4" aria-hidden="true" />
+      {children}
+    </button>
   );
 }
 
@@ -321,6 +420,7 @@ export function BarberSettingsScreen({
   const [feedback, setFeedback] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(null);
   const stripeReturnSyncRef = useRef(false);
   const [quickSetupModal, setQuickSetupModal] = useState<BarberQuickSetupModal>(null);
+  const [activeBusinessTool, setActiveBusinessTool] = useState<BusinessToolKey | null>(null);
   const [serviceDraft, setServiceDraft] = useState({
     name: "Haircut",
     price: "35",
@@ -460,16 +560,17 @@ export function BarberSettingsScreen({
   ] satisfies Array<{ label: string; value: string; icon: LucideIcon; tone: Tone }>;
 
   const businessControls = [
-    { title: "Services", subtitle: "Manage pricing & offerings", href: "/dashboard/barber/checkout?section=services", icon: Scissors },
-    { title: "Availability", subtitle: "Working hours & blocked time", href: "#barber-settings-availability", icon: Clock3 },
-    { title: "Booking Settings", subtitle: "Online booking preferences", href: "/dashboard/barber/calendar", icon: CalendarDays },
-    { title: "Notifications", subtitle: "Alerts & reminders", href: "#barber-settings-account", icon: BellRing },
-    { title: "Transactions", subtitle: "Sales & receipts", href: "#barber-settings-transactions", icon: ArrowLeftRight },
-    { title: "Reports", subtitle: "Performance overview", href: "#barber-settings-money", icon: BarChart3 },
-    { title: "Verification", subtitle: "Identity & license status", href: "#barber-settings-verification", icon: ShieldCheck },
-    { title: "Legal", subtitle: "Agreements & policies", href: "#barber-settings-legal", icon: FileText },
-    { title: "Account Settings", subtitle: "Password, profile & security", href: "#barber-settings-account", icon: Settings2 }
-  ] satisfies Array<{ title: string; subtitle: string; href: LinkHref; icon: LucideIcon }>;
+    { key: "services", title: "Services", subtitle: "Manage pricing & offerings", icon: Scissors },
+    { key: "availability", title: "Availability", subtitle: "Working hours & blocked time", icon: Clock3 },
+    { key: "booking", title: "Booking Settings", subtitle: "Online booking preferences", icon: CalendarDays },
+    { key: "notifications", title: "Notifications", subtitle: "Alerts & reminders", icon: BellRing },
+    { key: "transactions", title: "Transactions", subtitle: "Sales & receipts", icon: ArrowLeftRight },
+    { key: "reports", title: "Reports", subtitle: "Performance overview", icon: BarChart3 },
+    { key: "verification", title: "Verification", subtitle: "Identity & license status", icon: ShieldCheck },
+    { key: "legal", title: "Legal", subtitle: "Agreements & policies", icon: FileText },
+    { key: "account", title: "Account Settings", subtitle: "Password, profile & security", icon: Settings2 }
+  ] satisfies Array<{ key: BusinessToolKey; title: string; subtitle: string; icon: LucideIcon }>;
+  const activeBusinessControl = businessControls.find((item) => item.key === activeBusinessTool) ?? null;
 
   useEffect(() => {
     if (!selectedSection) {
@@ -1181,24 +1282,145 @@ export function BarberSettingsScreen({
           </div>
         </GlassCard>
 
+        <GlassCard id="barber-settings-money" className="scroll-mt-6 p-5 sm:p-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <SectionLabel>Money Posture</SectionLabel>
+              <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-white">Today at a glance</h2>
+              <p className="mt-2 text-sm leading-6 text-white/56">Cash stays separate from BVRB3R-collected card/app payout eligibility.</p>
+            </div>
+            <CircleIcon icon={WalletCards} className="h-11 w-11 rounded-2xl" />
+          </div>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
+              <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-white/40">Cash Collected Today</p>
+              <p className="mt-3 text-2xl font-black text-white">{currency(cashCollectedToday)}</p>
+              <p className="mt-2 text-sm text-white/56">No platform payout.</p>
+            </div>
+            <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
+              <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-white/40">Card/App Collected Today</p>
+              <p className="mt-3 text-2xl font-black text-white">{currency(cardAppCollectedToday)}</p>
+              <p className="mt-2 text-sm text-white/56">Collected through BVRB3R.</p>
+            </div>
+            <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
+              <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-white/40">App Payout Eligible</p>
+              <p className="mt-3 text-2xl font-black text-[#a3ff12]">{currency(appPayoutEligible)}</p>
+              <p className="mt-2 text-sm text-white/56">Eligible balance excludes cash.</p>
+            </div>
+            <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
+              <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-white/40">Gross Total Today</p>
+              <p className="mt-3 text-2xl font-black text-white">{currency(grossTotalToday)}</p>
+              <p className="mt-2 text-sm text-white/56">Cash + app collected.</p>
+            </div>
+          </div>
+        </GlassCard>
+
         <section id="barber-settings-business" className="scroll-mt-6 space-y-4">
           <SectionLabel>Manage Your Business</SectionLabel>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {businessControls.map((item) => (
-              <BusinessControlCard key={item.title} {...item} />
+              <BusinessControlCard
+                key={item.key}
+                toolKey={item.key}
+                title={item.title}
+                subtitle={item.subtitle}
+                icon={item.icon}
+                onOpen={setActiveBusinessTool}
+              />
             ))}
           </div>
 
-          <div className="grid gap-4 xl:grid-cols-2">
+          <GlassCard className="p-5 sm:p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <SectionLabel>Account Summary</SectionLabel>
+                <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-white">Private barber setup</h2>
+                <p className="mt-2 text-sm leading-6 text-white/56">Contact, operating mode, payout posture, and support stay one tap away.</p>
+              </div>
+              <CircleIcon icon={Settings2} className="h-11 w-11 rounded-2xl" />
+            </div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {[
+                ["Email", user.email],
+                ["Phone", user.phone ?? "Not set"],
+                ["Operating Mode", subtypeLabel],
+                ["Payout Mode", connectedAccount?.payoutsEnabled ? "Ready" : formatStatusLabel(payoutStatus)]
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-[20px] border border-white/8 bg-black/24 p-4">
+                  <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-white/40">{label}</p>
+                  <p className="mt-2 truncate text-sm font-bold text-white">{value}</p>
+                </div>
+              ))}
+            </div>
+          </GlassCard>
+
+          {activeBusinessControl ? (
+            <BusinessToolModal
+              title={activeBusinessControl.title}
+              subtitle={activeBusinessControl.subtitle}
+              description={getBusinessToolDescription(activeBusinessTool)}
+              onClose={() => setActiveBusinessTool(null)}
+            >
+              {activeBusinessTool === "services" ? (
+                <GlassCard className="p-5 sm:p-6">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <SectionLabel>Services</SectionLabel>
+                      <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-white">Active services</h2>
+                      <p className="mt-2 text-sm leading-6 text-white/56">Pricing and offerings stay connected to the marketplace service catalog.</p>
+                    </div>
+                    <CircleIcon icon={Scissors} className="h-11 w-11 rounded-2xl" />
+                  </div>
+                  <div className="mt-5 space-y-3">
+                    {[...(serviceCatalogQuery.data?.editableServices ?? []), ...(serviceCatalogQuery.data?.readOnlyServices ?? [])].length ? (
+                      [...(serviceCatalogQuery.data?.editableServices ?? []), ...(serviceCatalogQuery.data?.readOnlyServices ?? [])].map((item) => (
+                        <div key={item.service.id} className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-white/8 bg-black/24 p-4">
+                          <div>
+                            <p className="text-lg font-black text-white">{item.service.name}</p>
+                            <p className="mt-1 text-sm text-white/52">
+                              {item.service.isActive === false ? "Inactive" : "Active"} {item.service.isBookable === false ? "| Not bookable" : "| Bookable"}
+                            </p>
+                          </div>
+                          <StatusPill tone={item.service.isActive === false || item.service.isBookable === false ? "amber" : "green"}>
+                            {item.service.isActive === false || item.service.isBookable === false ? "Needs review" : "Live"}
+                          </StatusPill>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="rounded-[24px] border border-dashed border-white/10 bg-black/24 p-5 text-sm leading-7 text-white/58">
+                        Add a service so clients can book a cut from your public profile.
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-5 flex flex-wrap gap-3">
+                    <Link href="/dashboard/barber/checkout?section=services" className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#a3ff12]/35 bg-[#a3ff12]/10 px-5 text-sm font-extrabold text-[#a3ff12] transition hover:border-[#a3ff12]/60 hover:bg-[#a3ff12]/14">
+                      Edit services
+                    </Link>
+                    <Button type="button" variant="secondary" className="h-11 px-5" onClick={() => setQuickSetupModal("service")}>
+                      Add service
+                    </Button>
+                  </div>
+                </GlassCard>
+              ) : null}
+
+              <div className="grid gap-4 xl:grid-cols-2">
+            {activeBusinessTool === "account" || activeBusinessTool === "notifications" ? (
             <GlassCard id="barber-settings-account" className="scroll-mt-6 p-5 sm:p-6">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <SectionLabel>Account Settings</SectionLabel>
-                  <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-white">Private account controls</h2>
-                  <p className="mt-2 text-sm leading-6 text-white/56">Name, phone, alerts, and security recovery stay tied to the existing account flow.</p>
+                  <SectionLabel>{activeBusinessTool === "notifications" ? "Notifications" : "Account Settings"}</SectionLabel>
+                  <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-white">
+                    {activeBusinessTool === "notifications" ? "Alerts and reminders" : "Private account controls"}
+                  </h2>
+                  <p className="mt-2 text-sm leading-6 text-white/56">
+                    {activeBusinessTool === "notifications"
+                      ? "App, email, SMS, and push preferences stay tied to the existing account flow."
+                      : "Name, phone, alerts, and security recovery stay tied to the existing account flow."}
+                  </p>
                 </div>
                 <CircleIcon icon={Settings2} className="h-11 w-11 rounded-2xl" />
               </div>
+              {activeBusinessTool === "account" ? (
               <div className="mt-5 grid gap-3 sm:grid-cols-2">
                 <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
                   <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-white/40">Email</p>
@@ -1209,6 +1431,7 @@ export function BarberSettingsScreen({
                   <p className="mt-2 truncate text-sm font-bold text-white">{user.phone ?? "Not set"}</p>
                 </div>
               </div>
+              ) : null}
               <div className="mt-5 grid gap-3">
                 {[
                   { key: "inAppEnabled", label: "App notifications" },
@@ -1233,7 +1456,9 @@ export function BarberSettingsScreen({
                 })}
               </div>
             </GlassCard>
+            ) : null}
 
+            {activeBusinessTool === "booking" ? (
             <GlassCard className="p-5 sm:p-6">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -1267,7 +1492,9 @@ export function BarberSettingsScreen({
                 </Button>
               </div>
             </GlassCard>
+            ) : null}
 
+            {activeBusinessTool === "booking" ? (
             <GlassCard id="barber-settings-booking-location" className="scroll-mt-6 p-5 sm:p-6 xl:col-span-2">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -1315,7 +1542,9 @@ export function BarberSettingsScreen({
                 </Button>
               </div>
             </GlassCard>
+            ) : null}
 
+            {activeBusinessTool === "verification" ? (
             <GlassCard id="barber-settings-verification" className="scroll-mt-6 p-5 sm:p-6">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -1344,7 +1573,9 @@ export function BarberSettingsScreen({
                 </Link>
               </div>
             </GlassCard>
+            ) : null}
 
+            {activeBusinessTool === "legal" ? (
             <GlassCard id="barber-settings-legal" className="scroll-mt-6 p-5 sm:p-6">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -1395,8 +1626,10 @@ export function BarberSettingsScreen({
                 </Button>
               </div>
             </GlassCard>
+            ) : null}
           </div>
 
+          {activeBusinessTool === "account" ? (
           <GlassCard id="barber-settings-system" className="scroll-mt-6 p-5 sm:p-6">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -1422,12 +1655,16 @@ export function BarberSettingsScreen({
               ))}
             </div>
           </GlassCard>
+          ) : null}
 
+          {activeBusinessTool === "availability" ? (
           <div id="barber-settings-availability" className="scroll-mt-6">
             <BarberScheduleWorkspace barberName={user.name} surface="availability" />
           </div>
+          ) : null}
 
-          <GlassCard id="barber-settings-money" className="scroll-mt-6 p-5 sm:p-6">
+          {activeBusinessTool === "reports" ? (
+          <GlassCard id="barber-settings-reports" className="scroll-mt-6 p-5 sm:p-6">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <SectionLabel>Money Posture</SectionLabel>
@@ -1474,7 +1711,9 @@ export function BarberSettingsScreen({
               ))}
             </div>
           </GlassCard>
+          ) : null}
 
+          {activeBusinessTool === "transactions" ? (
           <GlassCard id="barber-settings-transactions" className="scroll-mt-6 p-5 sm:p-6">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -1580,17 +1819,22 @@ export function BarberSettingsScreen({
               )}
             </div>
           </GlassCard>
+          ) : null}
 
+          {activeBusinessTool === "reports" ? (
           <div className="scroll-mt-6">
             <BarberEarningsWorkspace barberName={user.name} />
           </div>
+          ) : null}
+            </BusinessToolModal>
+          ) : null}
         </section>
 
         <section className="space-y-4">
           <SectionLabel>Quick Actions</SectionLabel>
           <div className="flex flex-wrap gap-3">
             <QuickActionLink href="/dashboard/barber/checkout?section=services" icon={Plus}>Add Service</QuickActionLink>
-            <QuickActionLink href="#barber-settings-availability" icon={Clock3}>Update Availability</QuickActionLink>
+            <QuickActionButton icon={Clock3} onClick={() => setActiveBusinessTool("availability")}>Update Availability</QuickActionButton>
             <QuickActionLink href="/dashboard/barber/messages" icon={LifeBuoy}>Contact Support</QuickActionLink>
           </div>
         </section>
