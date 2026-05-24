@@ -27,9 +27,16 @@ import {
 
 type FakeRow = Record<string, unknown>;
 type FakeTables = Record<string, FakeRow[]>;
+type FakePostgresError = {
+  code?: string;
+  message?: string;
+  details?: string;
+  hint?: string;
+};
 type FakeOptions = {
   unsupportedPosSaleColumns?: string[];
   rejectPosSaleShopId?: boolean;
+  posSaleInsertError?: FakePostgresError;
 };
 
 class FakeQueryBuilder {
@@ -79,6 +86,13 @@ class FakeQueryBuilder {
   }
 
   maybeSingle() {
+    if (this.pendingInsert && this.table === "pos_sales" && this.options.posSaleInsertError) {
+      return Promise.resolve({
+        data: null,
+        error: this.options.posSaleInsertError
+      });
+    }
+
     if (this.pendingInsert && this.hasRejectedPosSaleShopId(this.pendingInsert)) {
       return Promise.resolve({
         data: null,
@@ -445,6 +459,55 @@ describe("barber POS sales", () => {
     expect(warnSpy).toHaveBeenCalledWith("[barber-pos] shop_scope_defaulted", expect.objectContaining({
       stage: "cash_sale_insert",
       attemptedShopId: "67ad0d9b-4f60-44e6-a213-86f665324574"
+    }));
+    warnSpy.mockRestore();
+  });
+
+  it("returns debug metadata when production rejects POS sale constraints", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const tables: FakeTables = {
+      profiles: [{ id: "profile-phillip", email: "phillip@example.com", role: "barber_user" }],
+      barbers: [{
+        id: "455c2930-7255-418b-bd2b-cc64bc0fc9b7",
+        profile_id: "profile-phillip",
+        reference_code: "barber-43b3cda2",
+        compensation_model: "freelance",
+        commission_rate: null
+      }],
+      clients: [],
+      pos_sales: [],
+      pos_sale_items: []
+    };
+    createSupabaseAdminClientMock.mockReturnValue(createSupabaseMock(tables, {
+      posSaleInsertError: {
+        code: "23514",
+        message: "new row for relation \"pos_sales\" violates check constraint \"pos_sales_status_ck\"",
+        details: "Failing row contains a status rejected by production.",
+        hint: "Use a production-legal POS status."
+      }
+    }));
+
+    await expect(createCashBarberPosSale(barberUser(), {
+      amountCents: 3500,
+      paymentMethod: "cash"
+    }))
+      .rejects
+      .toMatchObject({
+        name: "BarberPosSaleError",
+        status: 500,
+        message: "Unable to create the POS sale.",
+        debugCode: "check_constraint_violation",
+        failedTable: "pos_sales",
+        failedConstraint: "pos_sales_status_ck",
+        failedColumn: null
+      } satisfies Partial<BarberPosSaleError>);
+
+    expect(warnSpy).toHaveBeenCalledWith("[barber-pos] create_failed", expect.objectContaining({
+      route: "POST /api/barber/pos-sales/cash",
+      payment_method: "cash",
+      failedTable: "pos_sales",
+      failedConstraint: "pos_sales_status_ck",
+      debugCode: "check_constraint_violation"
     }));
     warnSpy.mockRestore();
   });

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionUser } from "@/lib/booking/route-auth";
-import { BarberPosSaleError, createBarberPosSale, listBarberPosSales } from "@/lib/barber/pos-sales";
+import { BarberPosSaleError, createBarberPosSale, listBarberPosSales, serializeBarberPosSaleError } from "@/lib/barber/pos-sales";
 
 const saleSchema = z.object({
   amountCents: z.coerce.number().int().positive(),
@@ -30,7 +30,7 @@ export async function GET() {
     return NextResponse.json(payload);
   } catch (error) {
     if (error instanceof BarberPosSaleError) {
-      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
+      return NextResponse.json(serializeBarberPosSaleError(error), { status: error.status });
     }
 
     return NextResponse.json({ ok: false, error: "Unable to load POS sales." }, { status: 500 });
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(payload);
   } catch (error) {
     if (error instanceof BarberPosSaleError) {
-      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
+      return NextResponse.json(serializeBarberPosSaleError(error), { status: error.status });
     }
 
     return NextResponse.json({ ok: false, error: "Unable to create this POS sale." }, { status: 500 });

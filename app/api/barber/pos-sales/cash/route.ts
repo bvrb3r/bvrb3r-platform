@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionUser } from "@/lib/booking/route-auth";
-import { BarberPosSaleError, createCashBarberPosSale } from "@/lib/barber/pos-sales";
+import { BarberPosSaleError, createCashBarberPosSale, serializeBarberPosSaleError } from "@/lib/barber/pos-sales";
 
 const cashSaleSchema = z.object({
   amountCents: z.coerce.number().int().positive(),
@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(payload);
   } catch (error) {
     if (error instanceof BarberPosSaleError) {
-      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
+      return NextResponse.json(serializeBarberPosSaleError(error), { status: error.status });
     }
 
     return NextResponse.json({ ok: false, error: "Unable to create the POS sale." }, { status: 500 });

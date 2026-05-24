@@ -118,6 +118,11 @@ type PosSaleInsertPayload = {
   payment_method?: "tap_to_pay" | "card_on_file" | "cash" | "invoice" | "test" | null;
   cash_recorded_at?: string | null;
   invoice_status?: string | null;
+  amount_cents?: number;
+  total_amount_cents?: number;
+  payment_status?: "pending" | "pending_client_approval" | "paid" | "captured" | "failed" | "refunded" | null;
+  routing_required?: boolean;
+  completed_at?: string | null;
 };
 
 type PosSaleItemInput = {
@@ -162,14 +167,40 @@ export type BarberPosSaleQuote = {
   relationshipType: "freelance" | "booth_rent" | "commission";
 };
 
+export type BarberPosSaleDebug = {
+  debugCode: string;
+  failedTable: string | null;
+  failedConstraint: string | null;
+  failedColumn: string | null;
+};
+
 export class BarberPosSaleError extends Error {
   status: number;
+  debugCode: string | null;
+  failedTable: string | null;
+  failedConstraint: string | null;
+  failedColumn: string | null;
 
-  constructor(message: string, status = 500) {
+  constructor(message: string, status = 500, debug?: Partial<BarberPosSaleDebug>) {
     super(message);
     this.name = "BarberPosSaleError";
     this.status = status;
+    this.debugCode = debug?.debugCode ?? null;
+    this.failedTable = debug?.failedTable ?? null;
+    this.failedConstraint = debug?.failedConstraint ?? null;
+    this.failedColumn = debug?.failedColumn ?? null;
   }
+}
+
+export function serializeBarberPosSaleError(error: BarberPosSaleError) {
+  return {
+    ok: false,
+    error: error.message,
+    debugCode: error.debugCode,
+    failedTable: error.failedTable,
+    failedConstraint: error.failedConstraint,
+    failedColumn: error.failedColumn
+  };
 }
 
 function getSupabaseOrThrow() {
@@ -339,67 +370,63 @@ async function insertPosSaleWithFallbacks(input: {
 
   const fingerprint = (payload: PosSaleInsertPayload) =>
     JSON.stringify(Object.entries(payload).sort(([left], [right]) => left.localeCompare(right)));
-  const attempted = new Set<string>([fingerprint(input.primaryPayload)]);
-  const candidates: Array<{
-    reason: "optional_columns" | "shop_scope" | "optional_columns_and_shop_scope";
-    payload: PosSaleInsertPayload;
-  }> = [];
-  const addCandidate = (
-    reason: "optional_columns" | "shop_scope" | "optional_columns_and_shop_scope",
-    payload: PosSaleInsertPayload
-  ) => {
-    const key = fingerprint(payload);
+  const attempted = new Set<string>();
+  const optionalColumns = new Set([
+    "amount_cents",
+    "total_amount_cents",
+    "payment_method",
+    "payment_status",
+    "routing_required",
+    "cash_recorded_at",
+    "completed_at",
+    "customer_phone",
+    "customer_email",
+    "invoice_status"
+  ]);
+
+  let payload = input.primaryPayload;
+  let result = await insertPayload(payload);
+  attempted.add(fingerprint(payload));
+
+  for (let attempt = 0; result.error && attempt < 14; attempt += 1) {
+    let nextPayload: PosSaleInsertPayload | null = null;
+    const missingColumn = missingColumnName(result.error);
+
+    if (missingColumn && optionalColumns.has(missingColumn) && missingColumn in payload) {
+      logPosSaleSchemaFallback(input.stage, result.error, payload);
+      nextPayload = { ...payload };
+      delete nextPayload[missingColumn as keyof PosSaleInsertPayload];
+    } else if (isOptionalPosSaleColumnError(result.error)) {
+      logPosSaleSchemaFallback(input.stage, result.error, payload);
+      nextPayload = { ...input.basePayload };
+      for (const column of optionalColumns) {
+        if (column in nextPayload && !(column in input.basePayload)) {
+          delete nextPayload[column as keyof PosSaleInsertPayload];
+        }
+      }
+    } else if (isShopScopeInsertError(result.error, payload)) {
+      logPosSaleShopScopeDefaulted({
+        stage: input.stage,
+        barberId: input.barberId,
+        role: input.role,
+        attemptedShopId: payload.shop_id,
+        error: result.error
+      });
+      nextPayload = { ...payload, shop_id: null };
+    }
+
+    if (!nextPayload) {
+      break;
+    }
+
+    const key = fingerprint(nextPayload);
     if (attempted.has(key)) {
-      return;
+      break;
     }
 
+    payload = nextPayload;
     attempted.add(key);
-    candidates.push({ reason, payload });
-  };
-
-  let result = await insertPayload(input.primaryPayload);
-  if (!result.error) {
-    return result;
-  }
-
-  if (isOptionalPosSaleColumnError(result.error)) {
-    addCandidate("optional_columns", input.basePayload);
-    if (input.basePayload.shop_id) {
-      addCandidate("optional_columns_and_shop_scope", { ...input.basePayload, shop_id: null });
-    }
-  }
-
-  if (isShopScopeInsertError(result.error, input.primaryPayload)) {
-    addCandidate("shop_scope", { ...input.primaryPayload, shop_id: null });
-    addCandidate("optional_columns_and_shop_scope", { ...input.basePayload, shop_id: null });
-  }
-
-  for (const candidate of candidates) {
-    if (candidate.reason === "optional_columns") {
-      logPosSaleSchemaFallback(input.stage, result.error, input.primaryPayload);
-    } else if (candidate.reason === "shop_scope") {
-      logPosSaleShopScopeDefaulted({
-        stage: input.stage,
-        barberId: input.barberId,
-        role: input.role,
-        attemptedShopId: input.primaryPayload.shop_id,
-        error: result.error
-      });
-    } else {
-      logPosSaleSchemaFallback(input.stage, result.error, input.primaryPayload);
-      logPosSaleShopScopeDefaulted({
-        stage: input.stage,
-        barberId: input.barberId,
-        role: input.role,
-        attemptedShopId: input.basePayload.shop_id,
-        error: result.error
-      });
-    }
-
-    result = await insertPayload(candidate.payload);
-    if (!result.error) {
-      return result;
-    }
+    result = await insertPayload(payload);
   }
 
   return result;
@@ -457,6 +484,101 @@ function isUndefinedColumnError(error: unknown) {
     || /schema cache/i.test(message);
 }
 
+function isMissingRelationError(error: unknown) {
+  const candidate = error as { code?: string; message?: string } | null | undefined;
+  const message = candidate?.message ?? "";
+  return candidate?.code === "42P01"
+    || candidate?.code === "PGRST205"
+    || /relation .* does not exist/i.test(message)
+    || /could not find .* table/i.test(message)
+    || /table .* does not exist/i.test(message);
+}
+
+function postgresErrorParts(error: unknown) {
+  const candidate = error as { code?: string; details?: string; hint?: string; message?: string } | null | undefined;
+  return {
+    postgresCode: candidate?.code ?? null,
+    postgresMessage: candidate?.message ?? null,
+    postgresDetails: candidate?.details ?? null,
+    postgresHint: candidate?.hint ?? null
+  };
+}
+
+function failedConstraintFromError(error: unknown) {
+  const parts = postgresErrorParts(error);
+  const haystack = `${parts.postgresMessage ?? ""} ${parts.postgresDetails ?? ""}`;
+  return haystack.match(/constraint "([^"]+)"/i)?.[1] ?? null;
+}
+
+function failedColumnFromError(error: unknown) {
+  const parts = postgresErrorParts(error);
+  const haystack = `${parts.postgresMessage ?? ""} ${parts.postgresDetails ?? ""}`;
+  return haystack.match(/Key \(([^)]+)\)=/i)?.[1]
+    ?? haystack.match(/column ['"]?([a-z0-9_]+)['"]? does not exist/i)?.[1]
+    ?? haystack.match(/Could not find the ['"]([^'"]+)['"] column/i)?.[1]
+    ?? haystack.match(/null value in column "([^"]+)"/i)?.[1]
+    ?? null;
+}
+
+function debugCodeFromPostgresError(error: unknown, fallback = "pos_sale_create_failed") {
+  const parts = postgresErrorParts(error);
+  if (isMissingRelationError(error)) return "missing_table";
+  if (isUndefinedColumnError(error)) return "missing_column";
+  if (parts.postgresCode === "23502") return "not_null_violation";
+  if (parts.postgresCode === "23503") return "foreign_key_violation";
+  if (parts.postgresCode === "23505") return "unique_violation";
+  if (parts.postgresCode === "23514") return "check_constraint_violation";
+  if (parts.postgresCode === "22P02") return "invalid_uuid";
+  return parts.postgresCode ? `postgres_${parts.postgresCode}` : fallback;
+}
+
+function buildPosSaleDebug(error: unknown, table: string, fallback = "pos_sale_create_failed"): BarberPosSaleDebug {
+  return {
+    debugCode: debugCodeFromPostgresError(error, fallback),
+    failedTable: table,
+    failedConstraint: failedConstraintFromError(error),
+    failedColumn: failedColumnFromError(error)
+  };
+}
+
+function logPosSaleCreateFailed(input: {
+  route: string;
+  stage: string;
+  paymentMethod: string | null;
+  payload: Record<string, unknown>;
+  error: unknown;
+  table: string;
+  barberId: string | null;
+  profileId: string | null;
+  clientId: string | null;
+  amountCents: number | null;
+}) {
+  const parts = postgresErrorParts(input.error);
+  const debug = buildPosSaleDebug(input.error, input.table);
+  console.warn("[barber-pos] create_failed", {
+    route: input.route,
+    stage: input.stage,
+    payment_method: input.paymentMethod,
+    barber_id: input.barberId,
+    profile_id: input.profileId,
+    client_id: input.clientId,
+    amount_cents: input.amountCents,
+    payloadKeys: Object.keys(input.payload),
+    postgresCode: parts.postgresCode,
+    postgresMessage: parts.postgresMessage,
+    postgresDetails: parts.postgresDetails,
+    postgresHint: parts.postgresHint,
+    failedTable: debug.failedTable,
+    failedConstraint: debug.failedConstraint,
+    failedColumn: debug.failedColumn,
+    debugCode: debug.debugCode
+  });
+}
+
+function missingColumnName(error: unknown) {
+  return failedColumnFromError(error);
+}
+
 function logPosSaleSchemaFallback(stage: string, error: unknown, payload: Record<string, unknown>) {
   const candidate = error as { code?: string; details?: string; message?: string } | null | undefined;
   console.warn("[barber-pos] schema_fallback", {
@@ -500,12 +622,23 @@ function isOptionalPosSaleColumnError(error: unknown) {
   const haystack = `${candidate.message ?? ""} ${candidate.details ?? ""}`.toLowerCase();
   return [
     "payment_method",
+    "payment_status",
+    "amount_cents",
+    "total_amount_cents",
+    "routing_required",
+    "completed_at",
     "cash_recorded_at",
     "customer_phone",
     "customer_email",
     "invoice_status",
-    "pos_sales_payment_method_ck"
+    "pos_sales_payment_method_ck",
+    "pos_sales_payment_status_ck",
+    "pos_sales_routing_required_ck"
   ].some((value) => haystack.includes(value));
+}
+
+function isOptionalPosSaleItemInsertError(error: unknown) {
+  return isMissingRelationError(error) || isUndefinedColumnError(error);
 }
 
 function isShopScopeInsertError(error: unknown, payload: PosSaleInsertPayload) {
@@ -538,25 +671,6 @@ function logCashCreateFailed(input: {
 }) {
   const candidate = input.error as { code?: string; details?: string; message?: string } | null | undefined;
   console.warn("[barber-pos] cash_create_failed", {
-    stage: input.stage,
-    payloadKeys: Object.keys(input.payload),
-    barberId: input.barberId,
-    role: input.role,
-    postgresCode: candidate?.code ?? null,
-    postgresDetails: candidate?.details ?? null,
-    errorMessage: candidate?.message ?? null
-  });
-}
-
-function logPosSaleCreateFailed(input: {
-  stage: string;
-  payload: Record<string, unknown>;
-  error: unknown;
-  barberId: string | null;
-  role: string | null;
-}) {
-  const candidate = input.error as { code?: string; details?: string; message?: string } | null | undefined;
-  console.warn("[barber-pos] pos_sale_create_failed", {
     stage: input.stage,
     payloadKeys: Object.keys(input.payload),
     barberId: input.barberId,
@@ -952,11 +1066,15 @@ export async function createBarberPosSale(user: UserAccount, input: BarberPosSal
     created_at: now,
     updated_at: now
   };
-  const salePayload = {
+  const salePayload: PosSaleInsertPayload = {
     ...baseSalePayload,
     customer_phone: input.customerPhone?.trim() || null,
     customer_email: input.customerEmail?.trim() || null,
     payment_method: normalizedPaymentMethod,
+    payment_status: normalizedPaymentMethod === "card_on_file" ? "pending" : null,
+    routing_required: false,
+    amount_cents: quote.totalCents,
+    total_amount_cents: quote.totalCents,
     invoice_status: normalizedPaymentMethod === "invoice" ? "pending" : null
   };
   const saleInsert = await insertPosSaleWithFallbacks({
@@ -970,13 +1088,18 @@ export async function createBarberPosSale(user: UserAccount, input: BarberPosSal
 
   if (saleInsert.error) {
     logPosSaleCreateFailed({
+      route: "POST /api/barber/pos-sales",
       stage: "pos_sale_insert",
+      paymentMethod: normalizedPaymentMethod,
       payload: salePayload,
       error: saleInsert.error,
+      table: "pos_sales",
       barberId: actor.barber.id,
-      role: user.role
+      profileId: actor.profileId,
+      clientId,
+      amountCents: quote.totalCents
     });
-    throw new BarberPosSaleError("Unable to create the POS sale.", 500);
+    throw new BarberPosSaleError("Unable to create the POS sale.", 500, buildPosSaleDebug(saleInsert.error, "pos_sales"));
   }
 
   const sale = saleInsert.data as PosSaleRow;
@@ -992,8 +1115,23 @@ export async function createBarberPosSale(user: UserAccount, input: BarberPosSal
     })));
 
   if (itemInsert.error) {
-    await supabase.from("pos_sales").update({ status: "voided", updated_at: new Date().toISOString() }).eq("id", sale.id);
-    throw new BarberPosSaleError("Unable to create the POS sale items.", 500);
+    logPosSaleCreateFailed({
+      route: "POST /api/barber/pos-sales",
+      stage: "pos_sale_items_insert",
+      paymentMethod: normalizedPaymentMethod,
+      payload: { itemCount: baseItems.length, pos_sale_id: sale.id },
+      error: itemInsert.error,
+      table: "pos_sale_items",
+      barberId: actor.barber.id,
+      profileId: actor.profileId,
+      clientId,
+      amountCents: quote.totalCents
+    });
+
+    if (!isOptionalPosSaleItemInsertError(itemInsert.error)) {
+      await supabase.from("pos_sales").update({ status: "voided", updated_at: new Date().toISOString() }).eq("id", sale.id);
+      throw new BarberPosSaleError("Unable to create the POS sale items.", 500, buildPosSaleDebug(itemInsert.error, "pos_sale_items"));
+    }
   }
 
   return {
@@ -1036,7 +1174,12 @@ export async function createCashBarberPosSale(user: UserAccount, input: BarberPo
     customer_phone: input.customerPhone?.trim() || null,
     customer_email: input.customerEmail?.trim() || null,
     payment_method: "cash",
-    cash_recorded_at: now
+    payment_status: "paid",
+    routing_required: false,
+    amount_cents: quote.totalCents,
+    total_amount_cents: quote.totalCents,
+    cash_recorded_at: now,
+    completed_at: now
   };
   const saleInsert = await insertPosSaleWithFallbacks({
     supabase,
@@ -1048,6 +1191,18 @@ export async function createCashBarberPosSale(user: UserAccount, input: BarberPo
   });
 
   if (saleInsert.error) {
+    logPosSaleCreateFailed({
+      route: "POST /api/barber/pos-sales/cash",
+      stage: "pos_sale_insert",
+      paymentMethod: "cash",
+      payload: cashSalePayload,
+      error: saleInsert.error,
+      table: "pos_sales",
+      barberId: actor.barber.id,
+      profileId: actor.profileId,
+      clientId,
+      amountCents: quote.totalCents
+    });
     logCashCreateFailed({
       stage: "pos_sale_insert",
       payload: cashSalePayload,
@@ -1055,7 +1210,7 @@ export async function createCashBarberPosSale(user: UserAccount, input: BarberPo
       barberId: actor.barber.id,
       role: user.role
     });
-    throw new BarberPosSaleError("Unable to create the POS sale.", 500);
+    throw new BarberPosSaleError("Unable to create the POS sale.", 500, buildPosSaleDebug(saleInsert.error, "pos_sales"));
   }
 
   const sale = saleInsert.data as PosSaleRow;
@@ -1072,6 +1227,18 @@ export async function createCashBarberPosSale(user: UserAccount, input: BarberPo
     .insert(itemPayload);
 
   if (itemInsert.error) {
+    logPosSaleCreateFailed({
+      route: "POST /api/barber/pos-sales/cash",
+      stage: "pos_sale_items_insert",
+      paymentMethod: "cash",
+      payload: { itemCount: itemPayload.length, pos_sale_id: sale.id },
+      error: itemInsert.error,
+      table: "pos_sale_items",
+      barberId: actor.barber.id,
+      profileId: actor.profileId,
+      clientId,
+      amountCents: quote.totalCents
+    });
     logCashCreateFailed({
       stage: "pos_sale_items_insert",
       payload: { itemCount: itemPayload.length, pos_sale_id: sale.id },
@@ -1079,8 +1246,10 @@ export async function createCashBarberPosSale(user: UserAccount, input: BarberPo
       barberId: actor.barber.id,
       role: user.role
     });
-    await supabase.from("pos_sales").update({ status: "voided", updated_at: new Date().toISOString() }).eq("id", sale.id);
-    throw new BarberPosSaleError("Unable to create the POS sale items.", 500);
+    if (!isOptionalPosSaleItemInsertError(itemInsert.error)) {
+      await supabase.from("pos_sales").update({ status: "voided", updated_at: new Date().toISOString() }).eq("id", sale.id);
+      throw new BarberPosSaleError("Unable to create the POS sale items.", 500, buildPosSaleDebug(itemInsert.error, "pos_sale_items"));
+    }
   }
 
   return {
@@ -1271,7 +1440,25 @@ export async function requestBarberPosSalePayment(user: UserAccount, saleId: str
     .single();
 
   if (requestInsert.error) {
-    throw new BarberPosSaleError("Unable to create the POS payment request.", 500);
+    logPosSaleCreateFailed({
+      route: "POST /api/barber/pos-sales/[id]/payment-request",
+      stage: "pos_payment_request_insert",
+      paymentMethod: sale.payment_method ?? "card_on_file",
+      payload: {
+        pos_sale_id: sale.id,
+        barber_id: actor.barber.id,
+        client_id: sale.client_id,
+        amount_cents: sale.total_cents,
+        status: "pending"
+      },
+      error: requestInsert.error,
+      table: "pos_payment_requests",
+      barberId: actor.barber.id,
+      profileId: actor.profileId,
+      clientId: sale.client_id,
+      amountCents: sale.total_cents
+    });
+    throw new BarberPosSaleError("Unable to create the POS payment request.", 500, buildPosSaleDebug(requestInsert.error, "pos_payment_requests", "pos_payment_request_create_failed"));
   }
 
   const messageInsert = await supabase
@@ -1285,7 +1472,23 @@ export async function requestBarberPosSalePayment(user: UserAccount, saleId: str
     });
 
   if (messageInsert.error) {
-    throw new BarberPosSaleError("Unable to send the POS payment request message.", 500);
+    logPosSaleCreateFailed({
+      route: "POST /api/barber/pos-sales/[id]/payment-request",
+      stage: "pos_payment_request_message_insert",
+      paymentMethod: sale.payment_method ?? "card_on_file",
+      payload: {
+        thread_id: threadId,
+        sender_profile_id: barberProfile.id,
+        message_type: "system"
+      },
+      error: messageInsert.error,
+      table: "messages",
+      barberId: actor.barber.id,
+      profileId: actor.profileId,
+      clientId: sale.client_id,
+      amountCents: sale.total_cents
+    });
+    throw new BarberPosSaleError("Unable to send the POS payment request message.", 500, buildPosSaleDebug(messageInsert.error, "messages", "pos_payment_request_message_failed"));
   }
 
   const threadUpdate = await supabase
