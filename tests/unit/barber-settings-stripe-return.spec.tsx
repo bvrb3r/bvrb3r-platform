@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveDemoUser } from "@/lib/auth/demo-auth";
@@ -518,18 +518,20 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     expect(screen.queryByText("Paid appointments and receipts")).not.toBeInTheDocument();
     fireEvent.click(screen.getByTestId("business-tool-transactions"));
 
-    expect(screen.getByRole("dialog", { name: "Transactions" })).toBeInTheDocument();
-    expect(screen.getByText("Jordan Client")).toBeInTheDocument();
-    expect(screen.getByText("Walk-in customer")).toBeInTheDocument();
-    expect(screen.getByText("Riley Client")).toBeInTheDocument();
-    expect(screen.getAllByText("Cash collected directly. No platform payout.").length).toBeGreaterThan(0);
-    expect(screen.getByText("Cash collected directly")).toBeInTheDocument();
-    expect(screen.getAllByText("Pending approval").length).toBeGreaterThan(0);
+    const dialog = screen.getByRole("dialog", { name: "Transactions" });
+    expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByTestId("transactions-ledger-feed")).toBeInTheDocument();
+    expect(within(dialog).getByText("Jordan Client")).toBeInTheDocument();
+    expect(within(dialog).getByText("Walk-in customer")).toBeInTheDocument();
+    expect(within(dialog).getByText("Riley Client")).toBeInTheDocument();
+    expect(within(dialog).getByText(/Cash \| \$35/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Card\/App \| \$5/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Pending approval/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Message unavailable" })).toBeDisabled();
-    expect(screen.getAllByRole("button", { name: "Message client" })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "Message" })).toHaveLength(2);
   });
 
-  it("opens Manage Your Business tiles in focused modals", () => {
+  it("opens Manage Your Business tiles in compact modal workspaces", () => {
     render(<BarberSettingsScreen user={resolveDemoUser("blaze@bvrb3r.demo")} embedded />);
 
     expect(screen.getByTestId("business-tool-services")).toBeInTheDocument();
@@ -545,7 +547,52 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     fireEvent.click(screen.getByLabelText("Close business tool"));
     fireEvent.click(screen.getByTestId("business-tool-availability"));
 
-    expect(screen.getByRole("dialog", { name: "Availability" })).toBeInTheDocument();
-    expect(screen.getByTestId("schedule-workspace")).toBeInTheDocument();
+    const availabilityDialog = screen.getByRole("dialog", { name: "Availability" });
+    expect(availabilityDialog).toBeInTheDocument();
+    expect(within(availabilityDialog).getByRole("button", { name: "Hours" })).toBeInTheDocument();
+    expect(within(availabilityDialog).getByRole("button", { name: "Blocked Time" })).toBeInTheDocument();
+    expect(within(availabilityDialog).getByTestId("availability-hours-tab")).toBeInTheDocument();
+
+    fireEvent.click(within(availabilityDialog).getByRole("button", { name: "Blocked Time" }));
+    expect(within(availabilityDialog).getByTestId("availability-blocked-tab")).toBeInTheDocument();
+  });
+
+  it("opens booking, reports, verification, legal, and account nested workspaces", () => {
+    render(<BarberSettingsScreen user={resolveDemoUser("blaze@bvrb3r.demo")} embedded />);
+
+    fireEvent.click(screen.getByTestId("business-tool-booking"));
+    let dialog = screen.getByRole("dialog", { name: "Booking Settings" });
+    expect(within(dialog).getByText("Business Model")).toBeInTheDocument();
+    expect(within(dialog).getByText("Booking Location")).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByTestId("booking-panel-business-model"));
+    expect(within(dialog).getByRole("button", { name: "Save business model" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("Close business tool"));
+    fireEvent.click(screen.getByTestId("business-tool-reports"));
+    dialog = screen.getByRole("dialog", { name: "Reports" });
+    expect(within(dialog).getByText("Cash Collected Today")).toBeInTheDocument();
+    expect(within(dialog).getByText("Gross Total Today")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("Close business tool"));
+    fireEvent.click(screen.getByTestId("business-tool-verification"));
+    dialog = screen.getByRole("dialog", { name: "Verification" });
+    expect(within(dialog).getByText("Identity Status")).toBeInTheDocument();
+    expect(within(dialog).getByText("License Status")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("Close business tool"));
+    fireEvent.click(screen.getByTestId("business-tool-legal"));
+    dialog = screen.getByRole("dialog", { name: "Legal" });
+    expect(within(dialog).getByText("Platform Terms")).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "Upload and submit" })).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByText("License Documents"));
+    expect(within(dialog).getByRole("button", { name: "Upload and submit" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("Close business tool"));
+    fireEvent.click(screen.getByTestId("business-tool-account"));
+    dialog = screen.getByRole("dialog", { name: "Account Settings" });
+    expect(within(dialog).getByText("Profile")).toBeInTheDocument();
+    expect(within(dialog).getByText("Notifications")).toBeInTheDocument();
+    expect(within(dialog).getByText("Security")).toBeInTheDocument();
+    expect(within(dialog).getByText("System Info")).toBeInTheDocument();
   });
 });

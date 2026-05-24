@@ -122,6 +122,19 @@ type BusinessToolKey =
   | "verification"
   | "legal"
   | "account";
+type BusinessPanelKey =
+  | "booking-model"
+  | "booking-visibility"
+  | "booking-location"
+  | "booking-rules"
+  | "verification-upload"
+  | "legal-upload"
+  | "account-profile"
+  | "account-notifications"
+  | "account-security"
+  | "account-system";
+type AvailabilityTab = "hours" | "blocked";
+type TransactionFilter = "all" | "appointments" | "cash" | "card" | "requests";
 type AvailabilityLocationMode = "custom" | "shop" | "later";
 
 const defaultActivationWorkingDays = [1, 2, 3, 4, 5, 6];
@@ -164,6 +177,22 @@ function formatDateTime(iso: string) {
     hour: "numeric",
     minute: "2-digit"
   }).format(new Date(iso));
+}
+
+function formatTimeLabel(value?: string | null) {
+  if (!value) {
+    return "Not set";
+  }
+
+  const [rawHour, rawMinute = "00"] = value.split(":");
+  const hour = Number(rawHour);
+  if (!Number.isFinite(hour)) {
+    return value;
+  }
+  const minute = rawMinute.padStart(2, "0").slice(0, 2);
+  const period = hour >= 12 ? "PM" : "AM";
+  const displayHour = hour % 12 || 12;
+  return `${displayHour}:${minute} ${period}`;
 }
 
 function getStatusTone(value?: string | null): Tone {
@@ -324,6 +353,82 @@ function BusinessToolModal({
   );
 }
 
+function BusinessToolPanel({
+  title,
+  description,
+  onBack,
+  children
+}: {
+  title: string;
+  description?: string;
+  onBack: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="space-y-5">
+      <button
+        type="button"
+        onClick={onBack}
+        className="inline-flex min-h-10 items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 text-xs font-extrabold uppercase tracking-[0.16em] text-white/62 transition hover:border-[#a3ff12]/30 hover:text-[#a3ff12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a3ff12]/55"
+      >
+        <ChevronRight className="h-4 w-4 rotate-180" aria-hidden="true" />
+        Back
+      </button>
+      <div>
+        <h3 className="text-2xl font-black tracking-[-0.04em] text-white">{title}</h3>
+        {description ? <p className="mt-2 text-sm leading-6 text-white/56">{description}</p> : null}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function BusinessToolRow({
+  icon: Icon,
+  title,
+  subtitle,
+  status,
+  onClick,
+  rightAction,
+  testId
+}: {
+  icon?: LucideIcon;
+  title: string;
+  subtitle?: string;
+  status?: ReactNode;
+  onClick?: () => void;
+  rightAction?: ReactNode;
+  testId?: string;
+}) {
+  const content = (
+    <>
+      {Icon ? (
+        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-[#a3ff12]/18 bg-[#a3ff12]/10 text-[#a3ff12]">
+          <Icon className="h-4 w-4" aria-hidden="true" />
+        </span>
+      ) : null}
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-black text-white">{title}</span>
+        {subtitle ? <span className="mt-1 block text-xs leading-5 text-white/52">{subtitle}</span> : null}
+      </span>
+      {status ? <span className="shrink-0">{status}</span> : null}
+      {rightAction ?? (onClick ? <ChevronRight className="h-5 w-5 shrink-0 text-white/32" aria-hidden="true" /> : null)}
+    </>
+  );
+
+  const className = "flex min-h-16 w-full items-center gap-3 rounded-[18px] border border-white/8 bg-black/24 px-4 py-3 text-left transition hover:border-[#a3ff12]/25 hover:bg-white/[0.045] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a3ff12]/55";
+
+  return onClick ? (
+    <button type="button" data-testid={testId} onClick={onClick} className={className}>
+      {content}
+    </button>
+  ) : (
+    <div data-testid={testId} className={className}>
+      {content}
+    </div>
+  );
+}
+
 function getBusinessToolDescription(tool: BusinessToolKey | null) {
   switch (tool) {
     case "transactions":
@@ -421,6 +526,9 @@ export function BarberSettingsScreen({
   const stripeReturnSyncRef = useRef(false);
   const [quickSetupModal, setQuickSetupModal] = useState<BarberQuickSetupModal>(null);
   const [activeBusinessTool, setActiveBusinessTool] = useState<BusinessToolKey | null>(null);
+  const [activeBusinessPanel, setActiveBusinessPanel] = useState<BusinessPanelKey | null>(null);
+  const [availabilityTab, setAvailabilityTab] = useState<AvailabilityTab>("hours");
+  const [transactionFilter, setTransactionFilter] = useState<TransactionFilter>("all");
   const [serviceDraft, setServiceDraft] = useState({
     name: "Haircut",
     price: "35",
@@ -497,6 +605,34 @@ export function BarberSettingsScreen({
   const appPayoutEligible = moneyPosture?.appPayoutEligible ?? eligiblePayoutAmount ?? 0;
   const grossTotalToday = moneyPosture?.grossTotalToday ?? cashCollectedToday + cardAppCollectedToday;
   const payoutTransactions = payoutsPayload?.transactions ?? [];
+  const filteredTransactions = payoutTransactions.filter((transaction) => {
+    if (transactionFilter === "appointments") {
+      return transaction.transactionType === "appointment";
+    }
+    if (transactionFilter === "cash") {
+      return transaction.transactionType === "pos_cash";
+    }
+    if (transactionFilter === "requests") {
+      return transaction.transactionType === "pos_request";
+    }
+    if (transactionFilter === "card") {
+      return transaction.transactionType !== "pos_cash" && transaction.transactionType !== "pos_request";
+    }
+    return true;
+  });
+  const serviceItems = [
+    ...(serviceCatalogQuery.data?.editableServices ?? []),
+    ...(serviceCatalogQuery.data?.readOnlyServices ?? [])
+  ];
+  const weeklyHours = dayOptions.map((day) => {
+    const schedule = overviewPayload?.workingHours.find((entry) => entry.weekday === day.value);
+    return {
+      ...day,
+      schedule,
+      dayLabel: day.label,
+      statusLabel: schedule ? `${formatTimeLabel(schedule.startTime)} - ${formatTimeLabel(schedule.endTime)}` : "Closed"
+    };
+  });
   const pendingShopInvites = teamInvitesQuery.data?.invites ?? [];
   const activationSetup = overviewPayload?.activationSetup;
   const assignedLocationLabels = overviewPayload?.shops.length
@@ -614,6 +750,22 @@ export function BarberSettingsScreen({
 
   function closeQuickSetupModal() {
     setQuickSetupModal(null);
+  }
+
+  function openBusinessTool(tool: BusinessToolKey) {
+    setActiveBusinessTool(tool);
+    setActiveBusinessPanel(null);
+    if (tool === "availability") {
+      setAvailabilityTab("hours");
+    }
+    if (tool === "transactions") {
+      setTransactionFilter("all");
+    }
+  }
+
+  function closeBusinessTool() {
+    setActiveBusinessTool(null);
+    setActiveBusinessPanel(null);
   }
 
   function toggleActivationDay(day: number) {
@@ -1325,7 +1477,7 @@ export function BarberSettingsScreen({
                 title={item.title}
                 subtitle={item.subtitle}
                 icon={item.icon}
-                onOpen={setActiveBusinessTool}
+                onOpen={openBusinessTool}
               />
             ))}
           </div>
@@ -1359,8 +1511,337 @@ export function BarberSettingsScreen({
               title={activeBusinessControl.title}
               subtitle={activeBusinessControl.subtitle}
               description={getBusinessToolDescription(activeBusinessTool)}
-              onClose={() => setActiveBusinessTool(null)}
+              onClose={closeBusinessTool}
             >
+              {false && activeBusinessTool === "services" ? (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    {serviceItems.length ? serviceItems.map((item) => (
+                      <BusinessToolRow
+                        key={item.service.id}
+                        icon={Scissors}
+                        title={item.service.name}
+                        subtitle={`${item.service.isActive === false ? "Inactive" : "Active"} | ${item.service.isBookable === false ? "Not bookable" : "Bookable"}`}
+                        status={(
+                          <StatusPill tone={item.service.isActive === false || item.service.isBookable === false ? "amber" : "green"}>
+                            {item.service.isActive === false || item.service.isBookable === false ? "Needs review" : "Live"}
+                          </StatusPill>
+                        )}
+                      />
+                    )) : (
+                      <div className="rounded-[20px] border border-dashed border-white/10 bg-black/24 p-4 text-sm leading-6 text-white/58">
+                        Add a service so clients can book a cut from your public profile.
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    <Link href="/dashboard/barber/checkout?section=services" className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#a3ff12]/35 bg-[#a3ff12]/10 px-5 text-sm font-extrabold text-[#a3ff12] transition hover:border-[#a3ff12]/60 hover:bg-[#a3ff12]/14">
+                      Edit services
+                    </Link>
+                    <Button type="button" variant="secondary" className="h-11 px-5" onClick={() => setQuickSetupModal("service")}>
+                      Add service
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+
+              {activeBusinessTool === "availability" ? (
+                <div className="space-y-4">
+                  <div className="inline-flex rounded-full border border-white/10 bg-black/30 p-1">
+                    {(["hours", "blocked"] as const).map((tab) => (
+                      <button
+                        key={tab}
+                        type="button"
+                        onClick={() => setAvailabilityTab(tab)}
+                        className={cn(
+                          "min-h-10 rounded-full px-4 text-xs font-black uppercase tracking-[0.16em] transition",
+                          availabilityTab === tab ? "bg-[#a3ff12] text-black" : "text-white/56 hover:text-white"
+                        )}
+                      >
+                        {tab === "hours" ? "Hours" : "Blocked Time"}
+                      </button>
+                    ))}
+                  </div>
+                  {availabilityTab === "hours" ? (
+                    <div className="space-y-2" data-testid="availability-hours-tab">
+                      {weeklyHours.map((day) => (
+                        <div key={day.value} className="grid min-h-12 grid-cols-[92px_1fr_auto] items-center gap-3 rounded-[16px] border border-white/8 bg-black/24 px-4 py-3">
+                          <p className="text-sm font-black text-white">{day.dayLabel}</p>
+                          <p className={cn("text-sm font-bold", day.schedule ? "text-white/78" : "text-white/38")}>{day.statusLabel}</p>
+                          <StatusPill tone={day.schedule ? "green" : "neutral"}>{day.schedule ? "Open" : "Closed"}</StatusPill>
+                        </div>
+                      ))}
+                      <p className="text-xs leading-5 text-white/46">Detailed working-hour saves stay connected to the calendar availability workspace.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3" data-testid="availability-blocked-tab">
+                      <BusinessToolRow
+                        icon={Plus}
+                        title="Add Block"
+                        subtitle="Block vacation, breaks, or unavailable time from the booking engine."
+                        rightAction={<Button type="button" variant="secondary" className="h-9 px-3 text-xs" disabled>Add next</Button>}
+                      />
+                      <div className="rounded-[20px] border border-dashed border-white/10 bg-black/24 p-4 text-sm leading-6 text-white/58">
+                        No blocked time is shown here yet. The next pass can wire compact block creation without changing the canonical calendar engine.
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : null}
+
+              {activeBusinessTool === "booking" && !activeBusinessPanel ? (
+                <div className="space-y-2">
+                  <BusinessToolRow icon={ShieldCheck} title="Business Model" subtitle="Freelance, commission, or booth rent posture" status={<StatusPill tone="green">{subtypeLabel}</StatusPill>} onClick={() => setActiveBusinessPanel("booking-model")} testId="booking-panel-business-model" />
+                  <BusinessToolRow icon={UserCheck} title="Booking Visibility" subtitle="Public profile and accepting-bookings controls" status={<StatusPill tone={isBookingActive ? "green" : "amber"}>{isBookingActive ? "Active" : "Not active"}</StatusPill>} onClick={() => setActiveBusinessPanel("booking-visibility")} />
+                  <BusinessToolRow icon={MapPin} title="Booking Location" subtitle="Where clients go for appointments" status={<StatusPill tone={hasServiceLocation ? "green" : "amber"}>{hasServiceLocation ? "Set" : "Missing"}</StatusPill>} onClick={() => setActiveBusinessPanel("booking-location")} />
+                  <BusinessToolRow icon={SlidersHorizontal} title="Scheduling Rules" subtitle="Notice, buffers, and booking preferences" status={<StatusPill tone="neutral">Coming next</StatusPill>} onClick={() => setActiveBusinessPanel("booking-rules")} />
+                </div>
+              ) : null}
+
+              {activeBusinessTool === "booking" && activeBusinessPanel === "booking-visibility" ? (
+                <BusinessToolPanel title="Booking Visibility" description="Profile readiness and accepting-bookings controls stay tied to activation." onBack={() => setActiveBusinessPanel(null)}>
+                  <div className="space-y-2">
+                    <BusinessToolRow title="Public profile" subtitle={isProfilePublic ? "Clients can discover your profile." : "Turn on visibility when setup is ready."} status={<StatusPill tone={isProfilePublic ? "green" : "amber"}>{isProfilePublic ? "Public" : "Hidden"}</StatusPill>} />
+                    <BusinessToolRow title="Accepting bookings" subtitle={isBookingActive ? "Booking engine can consider this barber." : "Go active when services and availability are ready."} status={<StatusPill tone={isBookingActive ? "green" : "amber"}>{isBookingActive ? "Active" : "Inactive"}</StatusPill>} />
+                    <BusinessToolRow title="Service readiness" subtitle={hasActiveService ? "At least one bookable service is ready." : "Add an active bookable service."} status={<StatusPill tone={hasActiveService ? "green" : "amber"}>{hasActiveService ? "Ready" : "Needs service"}</StatusPill>} />
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    <Button type="button" variant="secondary" className="h-11 px-4" disabled={activationMutation.isPending} onClick={() => void handleQuickTurnPublic()}>Turn public</Button>
+                    <Button type="button" className="h-11 px-4" disabled={statusMutation.isPending} onClick={() => void handleQuickGoActive()}>Go active</Button>
+                  </div>
+                </BusinessToolPanel>
+              ) : null}
+
+              {activeBusinessTool === "booking" && activeBusinessPanel === "booking-rules" ? (
+                <BusinessToolPanel title="Scheduling Rules" description="Scheduling rule persistence is coming next." onBack={() => setActiveBusinessPanel(null)}>
+                  <div className="rounded-[20px] border border-dashed border-white/10 bg-black/24 p-4 text-sm leading-6 text-white/58">
+                    Scheduling rules are coming next. No placeholder preferences are saved yet.
+                  </div>
+                </BusinessToolPanel>
+              ) : null}
+
+              {activeBusinessTool === "notifications" ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {[
+                    ["Appointments", "Appointment reminders", "Schedule updates"],
+                    ["Payments", "Payment alerts", "Payout alerts"],
+                    ["Messages", "Client messages", "Support messages"],
+                    ["Marketing / App", "App notifications", "Email alerts", "SMS updates", "Push reminders"]
+                  ].map(([group, ...items]) => (
+                    <div key={group} className="rounded-[20px] border border-white/8 bg-black/24 p-4">
+                      <p className="text-sm font-black text-white">{group}</p>
+                      <div className="mt-3 space-y-2">
+                        {items.map((label) => {
+                          const key = label === "App notifications" ? "inAppEnabled" : label === "Email alerts" ? "emailEnabled" : label === "SMS updates" ? "smsEnabled" : label === "Push reminders" ? "pushEnabled" : null;
+                          const checked = key ? notificationPreference?.[key as keyof NonNullable<typeof notificationPreference>] ?? false : false;
+                          return (
+                            <label key={label} className="flex min-h-10 items-center justify-between gap-3 rounded-[14px] border border-white/8 bg-black/20 px-3 text-xs font-bold text-white/64">
+                              <span>{label}</span>
+                              {key ? (
+                                <input
+                                  type="checkbox"
+                                  checked={checked as boolean}
+                                  disabled={mediaMutation.isPending}
+                                  onChange={(event) => void handleNotificationToggle(key as "inAppEnabled" | "smsEnabled" | "emailEnabled" | "pushEnabled", event.target.checked)}
+                                  className="h-4 w-4 rounded border-white/20 bg-black accent-[#a3ff12]"
+                                  aria-label={`Toggle ${label}`}
+                                />
+                              ) : <StatusPill tone="neutral">Soon</StatusPill>}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {activeBusinessTool === "transactions" ? (
+                <div className="space-y-4">
+                  <div className="flex flex-wrap gap-2">
+                    {(["all", "appointments", "cash", "card", "requests"] as const).map((filter) => (
+                      <button
+                        key={filter}
+                        type="button"
+                        onClick={() => setTransactionFilter(filter)}
+                        className={cn(
+                          "min-h-9 rounded-full border px-3 text-[10px] font-black uppercase tracking-[0.16em] transition",
+                          transactionFilter === filter ? "border-[#a3ff12] bg-[#a3ff12] text-black" : "border-white/10 bg-black/24 text-white/56 hover:text-white"
+                        )}
+                      >
+                        {filter === "card" ? "Card/App" : formatStatusLabel(filter)}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="space-y-2" data-testid="transactions-ledger-feed">
+                    {filteredTransactions.length ? filteredTransactions.map((transaction) => (
+                      <div key={transaction.id} className="rounded-[18px] border border-white/8 bg-black/24 p-4">
+                        <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-black text-white">{transaction.customerName}</p>
+                            <p className="mt-1 text-xs font-bold text-white/58">
+                              {transaction.paymentMethodLabel} | {currency(transaction.grossAmount)} | {formatDateTime(transaction.occurredAt)}
+                            </p>
+                            <p className="mt-1 text-xs text-white/48">
+                              {transaction.transactionType === "appointment"
+                                ? `${transaction.statusLabel} | Tip ${currency(0)}`
+                                : `${transaction.statusLabel} | ${transaction.postureLabel}`}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap gap-2 sm:justify-end">
+                            {transaction.canMessage ? (
+                              <Button type="button" variant="secondary" className="h-9 px-3 text-xs" disabled={createMessageThreadMutation.isPending} onClick={() => void handleMessageTransaction({ appointmentId: transaction.appointmentId, clientProfileId: transaction.clientProfileId })}>Message</Button>
+                            ) : transaction.transactionType === "pos_cash" ? (
+                              <Button type="button" variant="secondary" className="h-9 px-3 text-xs" disabled>{transaction.customerPhone || transaction.customerEmail ? "Message unavailable" : "Add Customer"}</Button>
+                            ) : null}
+                            <Button type="button" variant="secondary" className="h-9 px-3 text-xs">{transaction.transactionType === "pos_request" ? "View request" : "Receipt"}</Button>
+                          </div>
+                        </div>
+                      </div>
+                    )) : (
+                      <div className="rounded-[20px] border border-dashed border-white/10 bg-black/24 p-4 text-sm leading-6 text-white/58">
+                        No transactions match this filter yet.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+
+              {activeBusinessTool === "reports" ? (
+                <div className="space-y-4">
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    {[
+                      ["Cash Collected Today", currency(cashCollectedToday), "Cash collected directly. No platform payout."],
+                      ["Card/App Collected Today", currency(cardAppCollectedToday), "Collected through BVRB3R."],
+                      ["App Payout Eligible", currency(appPayoutEligible), "Eligible balance excludes cash."],
+                      ["Gross Total Today", currency(grossTotalToday), "Cash + app collected today."]
+                    ].map(([label, value, detail]) => (
+                      <div key={label} className="rounded-[18px] border border-white/8 bg-black/24 p-4">
+                        <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-white/40">{label}</p>
+                        <p className="mt-3 text-2xl font-black text-white">{value}</p>
+                        <p className="mt-2 text-xs leading-5 text-white/50">{detail}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {[
+                      ["Paid appointments", moneyPosture?.paidAppointmentsCount ?? paidAppointments.length],
+                      ["Cash sales", moneyPosture?.cashSalesCount ?? 0],
+                      ["Card POS sales", moneyPosture?.cardPosSalesCount ?? 0],
+                      ["Pending requests", moneyPosture?.pendingPaymentRequestsCount ?? 0],
+                      ["Released payout", currency(moneyPosture?.releasedPayoutAmount ?? releasedPayoutAmount)],
+                      ["Ready closeout", readyForCheckout.length]
+                    ].map(([label, value]) => (
+                      <div key={label} className="rounded-[16px] border border-white/8 bg-black/18 px-3 py-3">
+                        <p className="text-[9px] font-extrabold uppercase tracking-[0.16em] text-white/36">{label}</p>
+                        <p className="mt-2 text-sm font-black text-white">{value}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {activeBusinessTool === "verification" ? (
+                <div className="space-y-2">
+                  <BusinessToolRow title="Identity Status" subtitle="Identity review and account proofing." status={<StatusPill tone={user.emailVerified || user.phoneVerified ? "green" : "amber"}>{user.emailVerified || user.phoneVerified ? "Verified" : "Pending"}</StatusPill>} />
+                  <BusinessToolRow title="License Status" subtitle="License posture for public trust signals." status={<StatusPill tone={getStatusTone(canonicalVerificationStatus)}>{formatStatusLabel(canonicalVerificationStatus)}</StatusPill>} />
+                  <BusinessToolRow title="Approval Status" subtitle="Platform approval for marketplace access." status={<StatusPill tone={getStatusTone(user.appApprovalStatus)}>{formatStatusLabel(user.appApprovalStatus)}</StatusPill>} />
+                  <BusinessToolRow title="Trust Review" subtitle={verificationDecision?.gates.badge?.allowed ? "Public trust signals are eligible to show." : verificationDecision?.gates.badge?.reasons?.[0] ?? "Verification posture is still building."} status={<StatusPill tone={verificationDecision?.gates.badge?.allowed ? "green" : "amber"}>{verificationDecision?.gates.badge?.allowed ? "Eligible" : "Review"}</StatusPill>} />
+                  <div className="flex flex-wrap gap-3 pt-3">
+                    <Button type="button" variant="secondary" className="h-11 px-4" disabled={identitySessionMutation.isPending} onClick={() => void handleIdentityLaunch()}>{identitySessionMutation.isPending ? "Opening identity..." : "Start identity review"}</Button>
+                    <Button type="button" className="h-11 px-4" onClick={() => setActiveBusinessPanel("verification-upload")}>Upload License</Button>
+                    <Link href="/activation-status" className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[10px] font-bold uppercase tracking-[0.2em] text-white transition hover:border-[#a3ff12]/25 hover:text-[#a3ff12]">Activation status</Link>
+                  </div>
+                </div>
+              ) : null}
+
+              {activeBusinessTool === "legal" && !activeBusinessPanel ? (
+                <div className="space-y-2">
+                  {(["platform_terms", "barber_agreement", "payout_tax_acknowledgment"] as const).map((agreementType) => {
+                    const missing = connectedAccount?.missingAgreements.includes(agreementType) ?? true;
+                    return (
+                      <BusinessToolRow
+                        key={agreementType}
+                        icon={FileText}
+                        title={formatStatusLabel(agreementType)}
+                        subtitle="Agreement status for platform and payout readiness."
+                        status={<StatusPill tone={missing ? "amber" : "green"}>{missing ? "Pending" : "Accepted"}</StatusPill>}
+                        rightAction={<Button type="button" variant={missing ? "primary" : "secondary"} className="h-9 px-3 text-xs" disabled={recordAcceptanceMutation.isPending && missing} onClick={() => void handleAcceptance(agreementType)}>{missing ? "Accept" : "On file"}</Button>}
+                      />
+                    );
+                  })}
+                  <BusinessToolRow icon={ShieldCheck} title="License Documents" subtitle="Upload or update license and verification documents." status={<StatusPill tone="neutral">Documents</StatusPill>} onClick={() => setActiveBusinessPanel("legal-upload")} />
+                </div>
+              ) : null}
+
+              {activeBusinessTool === "account" && !activeBusinessPanel ? (
+                <div className="space-y-2">
+                  <BusinessToolRow icon={UserCheck} title="Profile" subtitle="Name, email, phone, and profile photo reference." onClick={() => setActiveBusinessPanel("account-profile")} />
+                  <BusinessToolRow icon={BellRing} title="Notifications" subtitle="App, email, SMS, and push settings." onClick={() => setActiveBusinessPanel("account-notifications")} />
+                  <BusinessToolRow icon={ShieldCheck} title="Security" subtitle="Password, recovery, sessions, and devices." onClick={() => setActiveBusinessPanel("account-security")} />
+                  <BusinessToolRow icon={SlidersHorizontal} title="System Info" subtitle="Role, mode, approval, payout, and assigned locations." onClick={() => setActiveBusinessPanel("account-system")} />
+                </div>
+              ) : null}
+
+              {activeBusinessTool === "account" && activeBusinessPanel === "account-profile" ? (
+                <BusinessToolPanel title="Profile" description="Private profile basics and profile-photo entry points." onBack={() => setActiveBusinessPanel(null)}>
+                  <div className="grid gap-3 sm:grid-cols-[auto_1fr]">
+                    <Avatar src={barberPhotoUrl} alt={`${user.name} avatar`} initials={getInitials(user.name)} className="h-20 w-20 border border-[#a3ff12]/40" />
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <BusinessToolRow title="Name" subtitle={user.name} />
+                      <BusinessToolRow title="Email" subtitle={user.email} />
+                      <BusinessToolRow title="Phone" subtitle={user.phone ?? "Not set"} />
+                      <Link href="/dashboard/barber/profile" className="inline-flex min-h-12 items-center justify-center rounded-[18px] border border-[#a3ff12]/35 bg-[#a3ff12]/10 px-4 text-sm font-extrabold text-[#a3ff12]">Edit profile</Link>
+                    </div>
+                  </div>
+                </BusinessToolPanel>
+              ) : null}
+
+              {activeBusinessTool === "account" && activeBusinessPanel === "account-notifications" ? (
+                <BusinessToolPanel title="Notifications" description="Same notification controls, tucked inside Account Settings." onBack={() => setActiveBusinessPanel(null)}>
+                  <div className="grid gap-2">
+                    {[
+                      { key: "inAppEnabled", label: "App notifications" },
+                      { key: "emailEnabled", label: "Email alerts" },
+                      { key: "smsEnabled", label: "SMS updates" },
+                      { key: "pushEnabled", label: "Push reminders" }
+                    ].map((item) => {
+                      const checked = notificationPreference?.[item.key as keyof NonNullable<typeof notificationPreference>] ?? false;
+                      return (
+                        <label key={item.key} className="flex min-h-12 items-center justify-between gap-3 rounded-[16px] border border-white/8 bg-black/24 px-4 text-sm font-bold text-white/74">
+                          <span>{item.label}</span>
+                          <input type="checkbox" checked={checked as boolean} disabled={mediaMutation.isPending} onChange={(event) => void handleNotificationToggle(item.key as "inAppEnabled" | "smsEnabled" | "emailEnabled" | "pushEnabled", event.target.checked)} className="h-5 w-5 rounded border-white/20 bg-black accent-[#a3ff12]" aria-label={`Toggle ${item.label}`} />
+                        </label>
+                      );
+                    })}
+                  </div>
+                </BusinessToolPanel>
+              ) : null}
+
+              {activeBusinessTool === "account" && activeBusinessPanel === "account-security" ? (
+                <BusinessToolPanel title="Security" description="Security controls will stay lightweight until password/session APIs are added." onBack={() => setActiveBusinessPanel(null)}>
+                  <div className="space-y-2">
+                    <BusinessToolRow title="Password" subtitle="Use account recovery if password changes are needed." status={<StatusPill tone="neutral">Managed</StatusPill>} />
+                    <BusinessToolRow title="Recovery" subtitle="Email and phone recovery are tied to your profile contact details." status={<StatusPill tone="neutral">Ready</StatusPill>} />
+                    <BusinessToolRow title="Sessions / Devices" subtitle="Device management is coming next." status={<StatusPill tone="neutral">Soon</StatusPill>} />
+                  </div>
+                </BusinessToolPanel>
+              ) : null}
+
+              {activeBusinessTool === "account" && activeBusinessPanel === "account-system" ? (
+                <BusinessToolPanel title="System Info" description="Collapsed operational summary for support and account review." onBack={() => setActiveBusinessPanel(null)}>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {[
+                      ["Role", "Barber"],
+                      ["Mode", subtypeLabel],
+                      ["Approval", formatStatusLabel(user.appApprovalStatus)],
+                      ["Payout", connectedAccount?.payoutsEnabled ? "Ready" : formatStatusLabel(payoutStatus)],
+                      ["Chair scope", user.locationIds.length ? `${user.locationIds.length} assigned` : "Not set"],
+                      ["Assigned locations", assignedLocationLabels]
+                    ].map(([label, value]) => <BusinessToolRow key={label} title={label} subtitle={value} />)}
+                  </div>
+                </BusinessToolPanel>
+              ) : null}
               {activeBusinessTool === "services" ? (
                 <GlassCard className="p-5 sm:p-6">
                   <div className="flex items-start justify-between gap-4">
@@ -1404,7 +1885,7 @@ export function BarberSettingsScreen({
               ) : null}
 
               <div className="grid gap-4 xl:grid-cols-2">
-            {activeBusinessTool === "account" || activeBusinessTool === "notifications" ? (
+            {false && (activeBusinessTool === "account" || activeBusinessTool === "notifications") ? (
             <GlassCard id="barber-settings-account" className="scroll-mt-6 p-5 sm:p-6">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -1458,7 +1939,7 @@ export function BarberSettingsScreen({
             </GlassCard>
             ) : null}
 
-            {activeBusinessTool === "booking" ? (
+            {activeBusinessTool === "booking" && activeBusinessPanel === "booking-model" ? (
             <GlassCard className="p-5 sm:p-6">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -1494,7 +1975,7 @@ export function BarberSettingsScreen({
             </GlassCard>
             ) : null}
 
-            {activeBusinessTool === "booking" ? (
+            {activeBusinessTool === "booking" && activeBusinessPanel === "booking-location" ? (
             <GlassCard id="barber-settings-booking-location" className="scroll-mt-6 p-5 sm:p-6 xl:col-span-2">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -1544,7 +2025,7 @@ export function BarberSettingsScreen({
             </GlassCard>
             ) : null}
 
-            {activeBusinessTool === "verification" ? (
+            {false && activeBusinessTool === "verification" ? (
             <GlassCard id="barber-settings-verification" className="scroll-mt-6 p-5 sm:p-6">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -1560,7 +2041,7 @@ export function BarberSettingsScreen({
                 <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-white/40">Current requirements</p>
                 <div className="mt-3 space-y-2 text-sm text-white/58">
                   {verificationProfile?.currentRequirements.length
-                    ? verificationProfile.currentRequirements.map((item) => <p key={item}>- {item}</p>)
+                    ? verificationProfile?.currentRequirements.map((item) => <p key={item}>- {item}</p>)
                     : <p>No current requirements are blocking this barber account.</p>}
                 </div>
               </div>
@@ -1575,7 +2056,7 @@ export function BarberSettingsScreen({
             </GlassCard>
             ) : null}
 
-            {activeBusinessTool === "legal" ? (
+            {(activeBusinessTool === "legal" && activeBusinessPanel === "legal-upload") || (activeBusinessTool === "verification" && activeBusinessPanel === "verification-upload") ? (
             <GlassCard id="barber-settings-legal" className="scroll-mt-6 p-5 sm:p-6">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -1629,7 +2110,7 @@ export function BarberSettingsScreen({
             ) : null}
           </div>
 
-          {activeBusinessTool === "account" ? (
+          {false && activeBusinessTool === "account" ? (
           <GlassCard id="barber-settings-system" className="scroll-mt-6 p-5 sm:p-6">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -1657,13 +2138,13 @@ export function BarberSettingsScreen({
           </GlassCard>
           ) : null}
 
-          {activeBusinessTool === "availability" ? (
+          {false && activeBusinessTool === "availability" ? (
           <div id="barber-settings-availability" className="scroll-mt-6">
             <BarberScheduleWorkspace barberName={user.name} surface="availability" />
           </div>
           ) : null}
 
-          {activeBusinessTool === "reports" ? (
+          {false && activeBusinessTool === "reports" ? (
           <GlassCard id="barber-settings-reports" className="scroll-mt-6 p-5 sm:p-6">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -1713,7 +2194,7 @@ export function BarberSettingsScreen({
           </GlassCard>
           ) : null}
 
-          {activeBusinessTool === "transactions" ? (
+          {false && activeBusinessTool === "transactions" ? (
           <GlassCard id="barber-settings-transactions" className="scroll-mt-6 p-5 sm:p-6">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -1821,7 +2302,7 @@ export function BarberSettingsScreen({
           </GlassCard>
           ) : null}
 
-          {activeBusinessTool === "reports" ? (
+          {false && activeBusinessTool === "reports" ? (
           <div className="scroll-mt-6">
             <BarberEarningsWorkspace barberName={user.name} />
           </div>
@@ -1834,7 +2315,7 @@ export function BarberSettingsScreen({
           <SectionLabel>Quick Actions</SectionLabel>
           <div className="flex flex-wrap gap-3">
             <QuickActionLink href="/dashboard/barber/checkout?section=services" icon={Plus}>Add Service</QuickActionLink>
-            <QuickActionButton icon={Clock3} onClick={() => setActiveBusinessTool("availability")}>Update Availability</QuickActionButton>
+            <QuickActionButton icon={Clock3} onClick={() => openBusinessTool("availability")}>Update Availability</QuickActionButton>
             <QuickActionLink href="/dashboard/barber/messages" icon={LifeBuoy}>Contact Support</QuickActionLink>
           </div>
         </section>
