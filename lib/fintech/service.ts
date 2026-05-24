@@ -81,6 +81,7 @@ type ProfileRow = {
   id: string;
   email: string;
   full_name: string | null;
+  phone?: string | null;
   role: UserAccount["role"];
 };
 
@@ -191,6 +192,8 @@ type AppointmentRow = {
   reference_code: string | null;
   status: string;
   completed_at?: string | null;
+  starts_at?: string | null;
+  service_id?: string | null;
   membership_id: string | null;
   barber_id: string;
   shop_id: string | null;
@@ -201,13 +204,57 @@ type AppointmentRow = {
 type PosSaleRow = {
   id: string;
   status: string;
+  payment_method?: string | null;
   barber_id: string;
   shop_id: string | null;
   client_id: string | null;
+  customer_name?: string | null;
+  customer_phone?: string | null;
+  customer_email?: string | null;
   payment_id: string | null;
+  note?: string | null;
+  subtotal_cents?: number | string | null;
+  amount_cents?: number | string | null;
+  total_amount_cents?: number | string | null;
+  platform_fee_cents?: number | string | null;
   total_cents: number | string;
+  cash_recorded_at?: string | null;
+  payment_status?: string | null;
   created_at: string;
   updated_at: string;
+};
+
+type PosPaymentRequestRow = {
+  id: string;
+  pos_sale_id: string;
+  barber_id: string;
+  client_id: string;
+  amount_cents: number | string;
+  status: string;
+  requested_at: string | null;
+  approved_at: string | null;
+  declined_at: string | null;
+  expires_at: string | null;
+  payment_id: string | null;
+  message_thread_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type ClientDirectoryRow = {
+  id: string;
+  profile_id: string | null;
+  reference_code?: string | null;
+};
+
+type BarberTransactionAppointmentRow = Pick<
+  AppointmentRow,
+  "id" | "reference_code" | "status" | "completed_at" | "starts_at" | "service_id" | "client_id" | "barber_id" | "shop_id" | "location_id"
+>;
+
+type ServiceDirectoryRow = {
+  id: string;
+  name: string | null;
 };
 
 type RefundRow = {
@@ -496,6 +543,43 @@ export type BarberPayoutsPayload = {
     executedAmount: number;
     reversedAmount: number;
   };
+  moneyPosture: {
+    cashCollectedToday: number;
+    cardAppCollectedToday: number;
+    appPayoutEligible: number;
+    grossTotalToday: number;
+    paidAppointmentsCount: number;
+    cashSalesCount: number;
+    cardPosSalesCount: number;
+    pendingPaymentRequestsCount: number;
+    releasedPayoutAmount: number;
+  };
+  transactions: Array<{
+    id: string;
+    transactionType: "appointment" | "pos_cash" | "pos_card" | "pos_request";
+    sourceId: string;
+    appointmentId: string | null;
+    posSaleId: string | null;
+    paymentId: string | null;
+    requestId: string | null;
+    messageThreadId: string | null;
+    clientId: string | null;
+    clientProfileId: string | null;
+    customerName: string;
+    customerPhone: string | null;
+    customerEmail: string | null;
+    serviceLabel: string;
+    note: string | null;
+    occurredAt: string;
+    paymentMethodLabel: string;
+    grossAmount: number;
+    platformFeeAmount: number;
+    barberPayoutAmount: number | null;
+    status: string;
+    statusLabel: string;
+    postureLabel: string;
+    canMessage: boolean;
+  }>;
   recentExecutions: PayoutExecutionView[];
 };
 
@@ -534,6 +618,8 @@ const CONNECTED_ACCOUNT_SELECT = "id, subject_type, barber_id, shop_id, provider
 const PAYMENT_SELECT = "id, appointment_id, pos_sale_id, client_id, shop_id, barber_id, provider, provider_payment_intent_id, amount, currency, status, payment_status, payment_type, paid_at, created_at, updated_at";
 const PAYMENT_ROUTING_SELECT = "id, payment_id, appointment_id, pos_sale_id, membership_id, routing_model, payout_recipient_type, provider_gross_amount, refunded_amount, provider_fee_amount, provider_net_amount, platform_fee_amount, barber_payout_amount, shop_split_amount, currency, payout_readiness_status, money_routing_status, blocked_reason, eligible_at, held_at, released_at, reversed_at, processor_charge_id, processor_balance_transaction_id, reconciliation_status, metadata, created_at, updated_at";
 const PAYOUT_EXECUTION_SELECT = "id, routing_record_id, payment_id, appointment_id, membership_id, target_subject_type, execution_type, target_connected_account_id, target_provider_account_id, amount, currency, execution_status, blocked_reason, failure_reason, processor_transfer_id, processor_reversal_id, idempotency_key, source_execution_id, source_refund_id, payout_reference, payout_speed, instant_payout_fee_amount, net_transfer_amount, processor_payout_id, reconciliation_status, metadata, initiated_by, attempt_count, last_attempted_at, executed_at, failed_at, reversed_at, created_at, updated_at";
+const POS_SALE_SELECT = "id, barber_id, shop_id, client_id, customer_name, customer_phone, customer_email, source, status, payment_method, payment_status, subtotal_cents, discount_cents, tip_cents, platform_fee_cents, client_fee_cents, total_cents, amount_cents, total_amount_cents, payment_id, note, cash_recorded_at, created_at, updated_at";
+const POS_PAYMENT_REQUEST_SELECT = "id, pos_sale_id, barber_id, client_id, amount_cents, status, requested_at, approved_at, declined_at, expires_at, payment_id, message_thread_id, created_at, updated_at";
 
 function numeric(value: number | string | null | undefined) {
   return Number(value ?? 0);
@@ -3103,6 +3189,271 @@ function summarizeExecutionViews(
   };
 }
 
+function centsToAmount(value: number | string | null | undefined) {
+  return roundCurrency(numeric(value) / 100);
+}
+
+function isIsoOnBusinessDate(value: string | null | undefined, businessDate: string) {
+  return Boolean(value && value.slice(0, 10) === businessDate);
+}
+
+function posSaleTotalCents(sale: PosSaleRow) {
+  return numeric(sale.total_cents ?? sale.total_amount_cents ?? sale.amount_cents ?? sale.subtotal_cents);
+}
+
+function isCashPosSale(sale: PosSaleRow) {
+  return String(sale.payment_method ?? "").toLowerCase() === "cash";
+}
+
+function isPaidPosSale(sale: PosSaleRow) {
+  return String(sale.status ?? "").toLowerCase() === "paid";
+}
+
+function isPendingPaymentRequest(request: PosPaymentRequestRow) {
+  return ["pending", "payment_pending", "pending_client_approval"].includes(String(request.status ?? "").toLowerCase());
+}
+
+function profileDisplayName(profile: ProfileRow | null | undefined) {
+  return profile?.full_name?.trim() || profile?.email || null;
+}
+
+async function loadBarberMoneyReporting(input: {
+  supabase: SupabaseClient;
+  barberId: string;
+  payments: PaymentRow[];
+  routingRows: PaymentRoutingRow[];
+  eligiblePayoutAmount: number;
+  executedAmount: number;
+}) {
+  const { supabase, barberId, payments, routingRows, eligiblePayoutAmount, executedAmount } = input;
+  const today = new Date().toISOString().slice(0, 10);
+  const posSalesResult = await supabase
+    .from("pos_sales")
+    .select(POS_SALE_SELECT)
+    .eq("barber_id", barberId)
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  if (posSalesResult.error) {
+    throw new FintechServiceError("Unable to load barber POS transactions.", 500);
+  }
+
+  const posSales = (posSalesResult.data ?? []) as PosSaleRow[];
+  const posSaleIds = posSales.map((sale) => sale.id);
+  const posRequestsResult = posSaleIds.length
+    ? await supabase
+      .from("pos_payment_requests")
+      .select(POS_PAYMENT_REQUEST_SELECT)
+      .in("pos_sale_id", posSaleIds)
+      .order("created_at", { ascending: false })
+    : { data: [], error: null };
+
+  if (posRequestsResult.error) {
+    throw new FintechServiceError("Unable to load barber POS payment requests.", 500);
+  }
+
+  const posRequests = (posRequestsResult.data ?? []) as PosPaymentRequestRow[];
+  const requestBySaleId = new Map<string, PosPaymentRequestRow>();
+  for (const request of posRequests) {
+    if (!requestBySaleId.has(request.pos_sale_id)) {
+      requestBySaleId.set(request.pos_sale_id, request);
+    }
+  }
+
+  const appointmentIds = [...new Set(payments.map((payment) => payment.appointment_id).filter(Boolean) as string[])];
+  const appointmentsResult = appointmentIds.length
+    ? await supabase
+      .from("appointments")
+      .select("id, reference_code, status, completed_at, starts_at, service_id, client_id, barber_id, shop_id, location_id")
+      .in("id", appointmentIds)
+    : { data: [], error: null };
+
+  if (appointmentsResult.error) {
+    throw new FintechServiceError("Unable to load barber paid appointment transactions.", 500);
+  }
+
+  const appointments = (appointmentsResult.data ?? []) as BarberTransactionAppointmentRow[];
+  const appointmentById = new Map(appointments.map((appointment) => [appointment.id, appointment]));
+  const serviceIds = [...new Set(appointments.map((appointment) => appointment.service_id).filter(Boolean) as string[])];
+  const servicesResult = serviceIds.length
+    ? await supabase
+      .from("services")
+      .select("id, name")
+      .in("id", serviceIds)
+    : { data: [], error: null };
+
+  if (servicesResult.error) {
+    throw new FintechServiceError("Unable to load barber transaction services.", 500);
+  }
+
+  const serviceNameById = new Map(
+    ((servicesResult.data ?? []) as ServiceDirectoryRow[]).map((service) => [service.id, service.name ?? "Service"])
+  );
+  const clientIds = [...new Set([
+    ...payments.map((payment) => payment.client_id),
+    ...appointments.map((appointment) => appointment.client_id),
+    ...posSales.map((sale) => sale.client_id),
+    ...posRequests.map((request) => request.client_id)
+  ].filter(Boolean) as string[])];
+  const clientsResult = clientIds.length
+    ? await supabase
+      .from("clients")
+      .select("id, profile_id, reference_code")
+      .in("id", clientIds)
+    : { data: [], error: null };
+
+  if (clientsResult.error) {
+    throw new FintechServiceError("Unable to load barber transaction clients.", 500);
+  }
+
+  const clients = (clientsResult.data ?? []) as ClientDirectoryRow[];
+  const clientById = new Map(clients.map((client) => [client.id, client]));
+  const profileIds = [...new Set(clients.map((client) => client.profile_id).filter(Boolean) as string[])];
+  const profilesResult = profileIds.length
+    ? await supabase
+      .from("profiles")
+      .select("id, email, full_name, phone, role")
+      .in("id", profileIds)
+    : { data: [], error: null };
+
+  if (profilesResult.error) {
+    throw new FintechServiceError("Unable to load barber transaction profile details.", 500);
+  }
+
+  const profileById = new Map(((profilesResult.data ?? []) as ProfileRow[]).map((profile) => [profile.id, profile]));
+  const profileForClient = (clientId: string | null | undefined) => {
+    const client = clientId ? clientById.get(clientId) : null;
+    return client?.profile_id ? profileById.get(client.profile_id) ?? null : null;
+  };
+  const routingByPaymentId = new Map(routingRows.map((routing) => [routing.payment_id, routing]));
+  const routingByPosSaleId = new Map(
+    routingRows
+      .filter((routing) => routing.pos_sale_id)
+      .map((routing) => [routing.pos_sale_id as string, routing])
+  );
+  const paymentByPosSaleId = new Map(
+    payments
+      .filter((payment) => payment.pos_sale_id)
+      .map((payment) => [payment.pos_sale_id as string, payment])
+  );
+
+  const cashSalesToday = posSales.filter((sale) =>
+    isCashPosSale(sale)
+    && isPaidPosSale(sale)
+    && isIsoOnBusinessDate(sale.cash_recorded_at ?? sale.updated_at ?? sale.created_at, today)
+  );
+  const paidPlatformPaymentsToday = payments.filter((payment) =>
+    isCompletionPaymentSuccessful(payment)
+    && isIsoOnBusinessDate(payment.paid_at ?? payment.created_at, today)
+    && Boolean(payment.appointment_id || payment.pos_sale_id)
+  );
+  const paidCardPosSalesToday = posSales.filter((sale) =>
+    !isCashPosSale(sale)
+    && isPaidPosSale(sale)
+    && isIsoOnBusinessDate(sale.updated_at ?? sale.created_at, today)
+  );
+
+  const transactions: BarberPayoutsPayload["transactions"] = [];
+  for (const payment of payments.filter((row) => row.appointment_id && isCompletionPaymentSuccessful(row))) {
+    const appointment = payment.appointment_id ? appointmentById.get(payment.appointment_id) : null;
+    const profile = profileForClient(appointment?.client_id ?? payment.client_id);
+    const routing = routingByPaymentId.get(payment.id);
+    transactions.push({
+      id: `appointment:${payment.id}`,
+      transactionType: "appointment",
+      sourceId: payment.id,
+      appointmentId: payment.appointment_id,
+      posSaleId: null,
+      paymentId: payment.id,
+      requestId: null,
+      messageThreadId: null,
+      clientId: appointment?.client_id ?? payment.client_id,
+      clientProfileId: profile?.id ?? null,
+      customerName: profileDisplayName(profile) ?? "Client",
+      customerPhone: profile?.phone ?? null,
+      customerEmail: profile?.email ?? null,
+      serviceLabel: appointment?.service_id ? serviceNameById.get(appointment.service_id) ?? "Service" : "Service",
+      note: null,
+      occurredAt: payment.paid_at ?? appointment?.completed_at ?? appointment?.starts_at ?? payment.created_at,
+      paymentMethodLabel: "Card/App",
+      grossAmount: roundCurrency(numeric(payment.amount)),
+      platformFeeAmount: roundCurrency(numeric(routing?.platform_fee_amount)),
+      barberPayoutAmount: routing ? roundCurrency(numeric(routing.barber_payout_amount)) : null,
+      status: appointment?.status ?? payment.payment_status,
+      statusLabel: appointment?.status === "completed" ? "Completed / Paid" : "Paid",
+      postureLabel: "Collected through BVRB3R. Eligible after routing.",
+      canMessage: Boolean(profile?.id)
+    });
+  }
+
+  for (const sale of posSales) {
+    const request = requestBySaleId.get(sale.id) ?? null;
+    const payment = sale.payment_id ? payments.find((row) => row.id === sale.payment_id) ?? null : paymentByPosSaleId.get(sale.id) ?? null;
+    const routing = routingByPosSaleId.get(sale.id) ?? (payment ? routingByPaymentId.get(payment.id) : undefined);
+    const profile = profileForClient(sale.client_id ?? request?.client_id);
+    const isCash = isCashPosSale(sale);
+    const requestStatus = String(request?.status ?? "").toLowerCase();
+    const statusLabel = isCash
+      ? "Cash recorded"
+      : request && isPendingPaymentRequest(request)
+        ? "Pending approval"
+        : requestStatus === "declined"
+          ? "Declined"
+          : requestStatus === "failed"
+            ? "Failed"
+            : isPaidPosSale(sale)
+              ? "Paid"
+              : "Pending approval";
+
+    transactions.push({
+      id: `pos:${sale.id}`,
+      transactionType: isCash ? "pos_cash" : request && !isPaidPosSale(sale) ? "pos_request" : "pos_card",
+      sourceId: sale.id,
+      appointmentId: null,
+      posSaleId: sale.id,
+      paymentId: payment?.id ?? sale.payment_id ?? null,
+      requestId: request?.id ?? null,
+      messageThreadId: request?.message_thread_id ?? null,
+      clientId: sale.client_id ?? request?.client_id ?? null,
+      clientProfileId: profile?.id ?? null,
+      customerName: (profileDisplayName(profile) ?? sale.customer_name?.trim() ?? "") || "Walk-in customer",
+      customerPhone: profile?.phone ?? sale.customer_phone ?? null,
+      customerEmail: profile?.email ?? sale.customer_email ?? null,
+      serviceLabel: sale.note?.trim() || "Custom Amount",
+      note: sale.note ?? null,
+      occurredAt: isCash ? sale.cash_recorded_at ?? sale.created_at : request?.requested_at ?? payment?.paid_at ?? sale.updated_at ?? sale.created_at,
+      paymentMethodLabel: isCash ? "Cash" : "Card on File",
+      grossAmount: centsToAmount(posSaleTotalCents(sale) || request?.amount_cents),
+      platformFeeAmount: isCash ? 0 : roundCurrency(numeric(routing?.platform_fee_amount ?? sale.platform_fee_cents) / (routing ? 1 : 100)),
+      barberPayoutAmount: isCash ? null : routing ? roundCurrency(numeric(routing.barber_payout_amount)) : null,
+      status: sale.status,
+      statusLabel,
+      postureLabel: isCash ? "Cash collected directly. No platform payout." : "Collected through BVRB3R. Eligible after routing.",
+      canMessage: Boolean(profile?.id)
+    });
+  }
+
+  transactions.sort((left, right) => new Date(right.occurredAt).getTime() - new Date(left.occurredAt).getTime());
+
+  const cashCollectedToday = roundCurrency(cashSalesToday.reduce((sum, sale) => sum + centsToAmount(posSaleTotalCents(sale)), 0));
+  const cardAppCollectedToday = roundCurrency(paidPlatformPaymentsToday.reduce((sum, payment) => sum + numeric(payment.amount), 0));
+
+  return {
+    moneyPosture: {
+      cashCollectedToday,
+      cardAppCollectedToday,
+      appPayoutEligible: eligiblePayoutAmount,
+      grossTotalToday: roundCurrency(cashCollectedToday + cardAppCollectedToday),
+      paidAppointmentsCount: paidPlatformPaymentsToday.filter((payment) => Boolean(payment.appointment_id)).length,
+      cashSalesCount: cashSalesToday.length,
+      cardPosSalesCount: paidCardPosSalesToday.length,
+      pendingPaymentRequestsCount: posRequests.filter(isPendingPaymentRequest).length,
+      releasedPayoutAmount: executedAmount
+    },
+    transactions: transactions.slice(0, 30)
+  };
+}
+
 export async function syncStripeSettlementForPayment(
   supabase: SupabaseClient,
   paymentId: string,
@@ -3665,6 +4016,14 @@ export async function getBarberPayouts(user: UserAccount): Promise<BarberPayouts
 
   const scope = await buildPayoutExecutionScope(supabase, payments, (locationsResult.data ?? []) as LocationRow[]);
   const summary = summarizeExecutionViews(scope.allExecutions, scope.readyRouting, scope.eligibleRouting, { includeShopSplit: false });
+  const moneyReporting = await loadBarberMoneyReporting({
+    supabase,
+    barberId: actor.barber!.id,
+    payments,
+    routingRows: scope.routingRows,
+    eligiblePayoutAmount: summary.eligiblePayoutAmount,
+    executedAmount: summary.executedAmount
+  });
 
   return {
     summary: {
@@ -3679,6 +4038,8 @@ export async function getBarberPayouts(user: UserAccount): Promise<BarberPayouts
       executedAmount: summary.executedAmount,
       reversedAmount: summary.reversedAmount
     },
+    moneyPosture: moneyReporting.moneyPosture,
+    transactions: moneyReporting.transactions,
     recentExecutions: scope.recentExecutions
   };
 }

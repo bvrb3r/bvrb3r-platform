@@ -33,7 +33,9 @@ const {
   useUpdateBarberActivationAvailabilityMutationMock,
   useUpdateBarberActivationMutationMock,
   useUpdateBarberStatusMutationMock,
+  createMessageThreadMock,
   useCreateMarketplaceServiceMutationMock,
+  useCreateMessageThreadMutationMock,
   useMarketplaceServiceCatalogMock
 } = vi.hoisted(() => ({
   mediaRefetchMock: vi.fn(),
@@ -65,7 +67,9 @@ const {
   useUpdateBarberActivationAvailabilityMutationMock: vi.fn(),
   useUpdateBarberActivationMutationMock: vi.fn(),
   useUpdateBarberStatusMutationMock: vi.fn(),
+  createMessageThreadMock: vi.fn(),
   useCreateMarketplaceServiceMutationMock: vi.fn(),
+  useCreateMessageThreadMutationMock: vi.fn(),
   useMarketplaceServiceCatalogMock: vi.fn()
 }));
 
@@ -73,6 +77,10 @@ vi.mock("next/link", () => ({
   default: ({ children, href, ...props }: ComponentProps<"a"> & { children?: ReactNode }) => (
     <a {...props} href={typeof href === "string" ? href : "#"}>{children}</a>
   )
+}));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() })
 }));
 
 vi.mock("@/components/auth/logout-button", () => ({
@@ -124,6 +132,10 @@ vi.mock("@/lib/operations/barber-client", () => ({
 vi.mock("@/lib/marketplace/client", () => ({
   useCreateMarketplaceServiceMutation: useCreateMarketplaceServiceMutationMock,
   useMarketplaceServiceCatalog: useMarketplaceServiceCatalogMock
+}));
+
+vi.mock("@/lib/messages/client", () => ({
+  useCreateMessageThreadMutation: useCreateMessageThreadMutationMock
 }));
 
 import { BarberSettingsScreen } from "@/components/barber-experience/barber-settings-screen";
@@ -296,6 +308,8 @@ function setupHookMocks() {
   useUpdateBarberActivationAvailabilityMutationMock.mockReturnValue({ mutateAsync: vi.fn(), isPending: false });
   useUpdateBarberActivationMutationMock.mockReturnValue({ mutateAsync: vi.fn(), isPending: false });
   useUpdateBarberStatusMutationMock.mockReturnValue({ mutateAsync: vi.fn(), isPending: false });
+  createMessageThreadMock.mockResolvedValue({ thread: { id: "thread-1" } });
+  useCreateMessageThreadMutationMock.mockReturnValue({ mutateAsync: createMessageThreadMock, isPending: false });
   useCreateMarketplaceServiceMutationMock.mockReturnValue({ mutateAsync: vi.fn(), isPending: false });
   useMarketplaceServiceCatalogMock.mockReturnValue({
     data: {
@@ -347,8 +361,167 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     render(<BarberSettingsScreen user={resolveDemoUser("blaze@bvrb3r.demo")} embedded />);
 
     expect(screen.getByText("Eligible balance")).toBeInTheDocument();
-    expect(screen.getByText("$4.75")).toBeInTheDocument();
+    expect(screen.getAllByText("$4.75").length).toBeGreaterThan(0);
     expect(screen.getByText("1 payout-ready routing records")).toBeInTheDocument();
     expect(screen.getByText("Released balance $0.00")).toBeInTheDocument();
+  });
+
+  it("separates cash, card/app, payout eligible, and gross money posture", () => {
+    useBarberPayoutsQueryMock.mockReturnValue({
+      data: {
+        summary: {
+          eligiblePayoutAmount: 4.75,
+          eligibleRoutingRecords: 1,
+          readyForPayoutAmount: 0,
+          executableRoutingRecords: 0,
+          executedAmount: 0
+        },
+        moneyPosture: {
+          cashCollectedToday: 35,
+          cardAppCollectedToday: 5,
+          appPayoutEligible: 4.75,
+          grossTotalToday: 40,
+          paidAppointmentsCount: 1,
+          cashSalesCount: 1,
+          cardPosSalesCount: 0,
+          pendingPaymentRequestsCount: 1,
+          releasedPayoutAmount: 0
+        },
+        transactions: [],
+        recentExecutions: []
+      },
+      error: null,
+      refetch: payoutsRefetchMock
+    });
+
+    render(<BarberSettingsScreen user={resolveDemoUser("blaze@bvrb3r.demo")} embedded />);
+
+    expect(screen.getByText("Cash Collected Today")).toBeInTheDocument();
+    expect(screen.getByText("$35")).toBeInTheDocument();
+    expect(screen.getByText("Card/App Collected Today")).toBeInTheDocument();
+    expect(screen.getAllByText("$5").length).toBeGreaterThan(0);
+    expect(screen.getByText("App Payout Eligible")).toBeInTheDocument();
+    expect(screen.getByText("Gross Total Today")).toBeInTheDocument();
+    expect(screen.getByText("$40")).toBeInTheDocument();
+    expect(screen.getByText("Eligible balance excludes cash.")).toBeInTheDocument();
+  });
+
+  it("renders appointment, cash, and card request transactions with contact posture", () => {
+    useBarberPayoutsQueryMock.mockReturnValue({
+      data: {
+        summary: {
+          eligiblePayoutAmount: 4.75,
+          eligibleRoutingRecords: 1,
+          readyForPayoutAmount: 0,
+          executableRoutingRecords: 0,
+          executedAmount: 0
+        },
+        moneyPosture: {
+          cashCollectedToday: 35,
+          cardAppCollectedToday: 5,
+          appPayoutEligible: 4.75,
+          grossTotalToday: 40,
+          paidAppointmentsCount: 1,
+          cashSalesCount: 1,
+          cardPosSalesCount: 0,
+          pendingPaymentRequestsCount: 1,
+          releasedPayoutAmount: 0
+        },
+        transactions: [
+          {
+            id: "appointment:pay-1",
+            transactionType: "appointment",
+            sourceId: "pay-1",
+            appointmentId: "appt-1",
+            posSaleId: null,
+            paymentId: "pay-1",
+            requestId: null,
+            messageThreadId: null,
+            clientId: "client-1",
+            clientProfileId: "profile-client-1",
+            customerName: "Jordan Client",
+            customerPhone: "8135550101",
+            customerEmail: "jordan@example.com",
+            serviceLabel: "Haircut",
+            note: null,
+            occurredAt: "2026-05-24T14:00:00.000Z",
+            paymentMethodLabel: "Card/App",
+            grossAmount: 5,
+            platformFeeAmount: 0.25,
+            barberPayoutAmount: 4.75,
+            status: "completed",
+            statusLabel: "Completed / Paid",
+            postureLabel: "Collected through BVRB3R. Eligible after routing.",
+            canMessage: true
+          },
+          {
+            id: "pos:cash-1",
+            transactionType: "pos_cash",
+            sourceId: "cash-1",
+            appointmentId: null,
+            posSaleId: "cash-1",
+            paymentId: null,
+            requestId: null,
+            messageThreadId: null,
+            clientId: null,
+            clientProfileId: null,
+            customerName: "Walk-in customer",
+            customerPhone: "8135550202",
+            customerEmail: null,
+            serviceLabel: "Custom Amount",
+            note: null,
+            occurredAt: "2026-05-24T13:00:00.000Z",
+            paymentMethodLabel: "Cash",
+            grossAmount: 35,
+            platformFeeAmount: 0,
+            barberPayoutAmount: null,
+            status: "paid",
+            statusLabel: "Cash recorded",
+            postureLabel: "Cash collected directly. No platform payout.",
+            canMessage: false
+          },
+          {
+            id: "pos:request-1",
+            transactionType: "pos_request",
+            sourceId: "request-1",
+            appointmentId: null,
+            posSaleId: "sale-request-1",
+            paymentId: null,
+            requestId: "request-1",
+            messageThreadId: "thread-2",
+            clientId: "client-2",
+            clientProfileId: "profile-client-2",
+            customerName: "Riley Client",
+            customerPhone: null,
+            customerEmail: "riley@example.com",
+            serviceLabel: "Custom Amount",
+            note: null,
+            occurredAt: "2026-05-24T12:00:00.000Z",
+            paymentMethodLabel: "Card on File",
+            grossAmount: 35,
+            platformFeeAmount: 0,
+            barberPayoutAmount: null,
+            status: "payment_pending",
+            statusLabel: "Pending approval",
+            postureLabel: "Collected through BVRB3R. Eligible after routing.",
+            canMessage: true
+          }
+        ],
+        recentExecutions: []
+      },
+      error: null,
+      refetch: payoutsRefetchMock
+    });
+
+    render(<BarberSettingsScreen user={resolveDemoUser("blaze@bvrb3r.demo")} embedded />);
+
+    expect(screen.getByText("Jordan Client")).toBeInTheDocument();
+    expect(screen.getByText("Walk-in customer")).toBeInTheDocument();
+    expect(screen.getByText("Riley Client")).toBeInTheDocument();
+    expect(screen.getAllByText("Cash collected directly. No platform payout.").length).toBeGreaterThan(0);
+    expect(screen.getByText("Cash collected directly")).toBeInTheDocument();
+    expect(screen.getAllByText("Pending approval").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Message unavailable" })).toBeDisabled();
+    expect(screen.getAllByRole("button", { name: "Message client" })).toHaveLength(2);
   });
 });

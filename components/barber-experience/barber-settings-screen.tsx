@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import {
   ArrowLeftRight,
@@ -73,6 +74,7 @@ import {
   type BarberApiError
 } from "@/lib/operations/barber-client";
 import { useCreateMarketplaceServiceMutation, useMarketplaceServiceCatalog } from "@/lib/marketplace/client";
+import { useCreateMessageThreadMutation } from "@/lib/messages/client";
 import { cn, currency } from "@/lib/utils";
 import { getReadableActionError } from "@/lib/utils/feedback";
 import type { BarberSubtype, UserAccount } from "@/types/domain";
@@ -284,6 +286,7 @@ export function BarberSettingsScreen({
   stripeReturnState?: "return" | "refresh" | null;
   embedded?: boolean;
 }) {
+  const router = useRouter();
   const mediaQuery = useProfileMediaWorkspaceQuery(true);
   const mediaMutation = useMutateProfileMediaMutation();
   const trustQuery = useBarberTrustSummary(true);
@@ -306,6 +309,7 @@ export function BarberSettingsScreen({
   const uploadMutation = useCreateVerificationUploadMutation();
   const submitVerificationMutation = useSubmitBarberVerificationMutation();
   const identitySessionMutation = useStartBarberIdentitySessionMutation();
+  const createMessageThreadMutation = useCreateMessageThreadMutation();
   const serviceCatalogQuery = useMarketplaceServiceCatalog();
   const [selectedSubtype, setSelectedSubtype] = useState<BarberSubtype>(user.barberSubtype ?? "freelance");
   const [verificationCategory, setVerificationCategory] = useState<"identity_verification" | "license_verification" | "payout_verification" | "shop_affiliation_verification">("license_verification");
@@ -387,6 +391,12 @@ export function BarberSettingsScreen({
   const showOnboardingAction = Boolean(connectedAccount && connectedAccount.operationalStatus !== "payout_ready");
   const readyForCheckout = overviewPayload?.todayAppointments.filter((appointment) => appointment.status === "completed" && appointment.financial.outstandingBalance > 0) ?? [];
   const paidAppointments = overviewPayload?.todayAppointments.filter((appointment) => appointment.financial.capturedAmount > 0 || appointment.financial.tipAmount > 0) ?? [];
+  const moneyPosture = payoutsPayload?.moneyPosture;
+  const cashCollectedToday = moneyPosture?.cashCollectedToday ?? 0;
+  const cardAppCollectedToday = moneyPosture?.cardAppCollectedToday ?? overviewPayload?.earnings.grossSales ?? 0;
+  const appPayoutEligible = moneyPosture?.appPayoutEligible ?? eligiblePayoutAmount ?? 0;
+  const grossTotalToday = moneyPosture?.grossTotalToday ?? cashCollectedToday + cardAppCollectedToday;
+  const payoutTransactions = payoutsPayload?.transactions ?? [];
   const pendingShopInvites = teamInvitesQuery.data?.invites ?? [];
   const activationSetup = overviewPayload?.activationSetup;
   const assignedLocationLabels = overviewPayload?.shops.length
@@ -656,6 +666,29 @@ export function BarberSettingsScreen({
       setFeedback({ tone: "error", message: getReadableActionError(error as FintechApiError) });
     }
   }, [refreshMutation, refreshPayoutQueries]);
+
+  async function handleMessageTransaction(input: {
+    appointmentId: string | null;
+    clientProfileId: string | null;
+  }) {
+    setFeedback(null);
+    try {
+      const payload = input.appointmentId
+        ? await createMessageThreadMutation.mutateAsync({ appointmentId: input.appointmentId })
+        : input.clientProfileId
+          ? await createMessageThreadMutation.mutateAsync({ threadType: "client_barber", profileId: input.clientProfileId })
+          : null;
+
+      if (!payload?.thread?.id) {
+        setFeedback({ tone: "info", message: "This transaction does not have a messageable BVRB3R client yet." });
+        return;
+      }
+
+      router.push(`/dashboard/barber/messages/${payload.thread.id}`);
+    } catch (error) {
+      setFeedback({ tone: "error", message: readableError(error, "Unable to open this client conversation right now.") });
+    }
+  }
 
   useEffect(() => {
     if (!stripeReturnState || stripeReturnSyncRef.current) {
@@ -1403,22 +1436,42 @@ export function BarberSettingsScreen({
               </div>
               <CircleIcon icon={WalletCards} className="h-11 w-11 rounded-2xl" />
             </div>
-            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
-                <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-white/40">Ready now</p>
-                <p className="mt-3 text-2xl font-black text-white">{readyForCheckout.length}</p>
-                <p className="mt-2 text-sm text-white/56">Waiting closeout.</p>
+                <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-white/40">Cash Collected Today</p>
+                <p className="mt-3 text-2xl font-black text-white">{currency(cashCollectedToday)}</p>
+                <p className="mt-2 text-sm text-white/56">Cash collected directly. No platform payout.</p>
               </div>
               <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
-                <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-white/40">Paid today</p>
-                <p className="mt-3 text-2xl font-black text-white">{paidAppointments.length}</p>
-                <p className="mt-2 text-sm text-white/56">Captured or tipped.</p>
+                <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-white/40">Card/App Collected Today</p>
+                <p className="mt-3 text-2xl font-black text-white">{currency(cardAppCollectedToday)}</p>
+                <p className="mt-2 text-sm text-white/56">Collected through BVRB3R. Eligible after routing.</p>
               </div>
               <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
-                <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-white/40">Gross today</p>
-                <p className="mt-3 text-2xl font-black text-[#a3ff12]">{currency(overviewPayload?.earnings.grossSales ?? 0)}</p>
-                <p className="mt-2 text-sm text-white/56">{connectedAccount?.payoutsEnabled ? "Payouts ready." : "Review payout status."}</p>
+                <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-white/40">App Payout Eligible</p>
+                <p className="mt-3 text-2xl font-black text-[#a3ff12]">{currency(appPayoutEligible)}</p>
+                <p className="mt-2 text-sm text-white/56">Eligible balance excludes cash.</p>
               </div>
+              <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
+                <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-white/40">Gross Total Today</p>
+                <p className="mt-3 text-2xl font-black text-white">{currency(grossTotalToday)}</p>
+                <p className="mt-2 text-sm text-white/56">Cash + app collected today.</p>
+              </div>
+            </div>
+            <div className="mt-3 grid gap-2 sm:grid-cols-3 xl:grid-cols-6">
+              {[
+                ["Paid appointments", moneyPosture?.paidAppointmentsCount ?? paidAppointments.length],
+                ["Cash sales", moneyPosture?.cashSalesCount ?? 0],
+                ["Card POS sales", moneyPosture?.cardPosSalesCount ?? 0],
+                ["Pending requests", moneyPosture?.pendingPaymentRequestsCount ?? 0],
+                ["Released payout", currency(moneyPosture?.releasedPayoutAmount ?? releasedPayoutAmount)],
+                ["Ready closeout", readyForCheckout.length]
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-[16px] border border-white/8 bg-black/18 px-3 py-3">
+                  <p className="text-[9px] font-extrabold uppercase tracking-[0.16em] text-white/36">{label}</p>
+                  <p className="mt-2 text-sm font-black text-white">{value}</p>
+                </div>
+              ))}
             </div>
           </GlassCard>
 
@@ -1427,12 +1480,85 @@ export function BarberSettingsScreen({
               <div>
                 <SectionLabel>Transactions</SectionLabel>
                 <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-white">Paid appointments and receipts</h2>
-                <p className="mt-2 text-sm leading-6 text-white/56">Completed bookings and payment status stay connected to appointment records.</p>
+                <p className="mt-2 text-sm leading-6 text-white/56">Cash, app card payments, and POS requests stay separated so the books stay honest.</p>
               </div>
               <CircleIcon icon={ReceiptText} className="h-11 w-11 rounded-2xl" />
             </div>
             <div className="mt-5 space-y-3">
-              {paidAppointments.length ? paidAppointments.map((appointment) => (
+              {payoutTransactions.length ? payoutTransactions.map((transaction) => (
+                <div key={transaction.id} className="rounded-[24px] border border-white/8 bg-black/24 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-lg font-bold text-white">{transaction.customerName}</p>
+                        <span className={cn(
+                          "rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-[0.16em]",
+                          transaction.transactionType === "pos_cash"
+                            ? "border-amber-300/30 bg-amber-300/10 text-amber-200"
+                            : transaction.transactionType === "pos_request"
+                              ? "border-white/10 bg-white/[0.04] text-white/56"
+                              : "border-[#a3ff12]/30 bg-[#a3ff12]/10 text-[#a3ff12]"
+                        )}>
+                          {transaction.paymentMethodLabel}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-sm text-white/58">{transaction.serviceLabel} | {formatDateTime(transaction.occurredAt)}</p>
+                      {transaction.customerPhone || transaction.customerEmail ? (
+                        <p className="mt-2 text-sm text-white/48">{transaction.customerPhone ?? transaction.customerEmail}</p>
+                      ) : null}
+                      <p className="mt-2 text-sm text-white/52">{transaction.postureLabel}</p>
+                    </div>
+                    <div className="rounded-[18px] border border-white/8 bg-black/30 px-4 py-3 text-right">
+                      <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-white/40">Gross</p>
+                      <p className="mt-2 text-lg font-black text-white">{currency(transaction.grossAmount)}</p>
+                      <p className="mt-1 text-sm text-white/52">{transaction.statusLabel}</p>
+                    </div>
+                  </div>
+                  <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                    <div className="rounded-[14px] border border-white/8 bg-black/20 px-3 py-2">
+                      <p className="text-[9px] font-extrabold uppercase tracking-[0.16em] text-white/36">Platform fee</p>
+                      <p className="mt-1 text-sm font-black text-white">{currency(transaction.platformFeeAmount)}</p>
+                    </div>
+                    <div className="rounded-[14px] border border-white/8 bg-black/20 px-3 py-2">
+                      <p className="text-[9px] font-extrabold uppercase tracking-[0.16em] text-white/36">Payout</p>
+                      <p className="mt-1 text-sm font-black text-white">
+                        {transaction.transactionType === "pos_cash"
+                          ? "Cash collected directly"
+                          : transaction.barberPayoutAmount === null
+                            ? "Pending routing"
+                            : currency(transaction.barberPayoutAmount)}
+                      </p>
+                    </div>
+                    <div className="rounded-[14px] border border-white/8 bg-black/20 px-3 py-2">
+                      <p className="text-[9px] font-extrabold uppercase tracking-[0.16em] text-white/36">Status</p>
+                      <p className="mt-1 text-sm font-black text-white">{transaction.statusLabel}</p>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {transaction.canMessage ? (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="h-10 px-3 text-xs"
+                        disabled={createMessageThreadMutation.isPending}
+                        onClick={() => void handleMessageTransaction({
+                          appointmentId: transaction.appointmentId,
+                          clientProfileId: transaction.clientProfileId
+                        })}
+                      >
+                        Message client
+                      </Button>
+                    ) : transaction.transactionType === "pos_cash" ? (
+                      <Button type="button" variant="secondary" className="h-10 px-3 text-xs" disabled>
+                        {transaction.customerPhone || transaction.customerEmail ? "Message unavailable" : "Add customer"}
+                      </Button>
+                    ) : null}
+                    <Button type="button" variant="secondary" className="h-10 px-3 text-xs">
+                      {transaction.transactionType === "pos_request" ? "View request" : "View receipt"}
+                    </Button>
+                  </div>
+                </div>
+              )) : paidAppointments.length ? paidAppointments.map((appointment) => (
                 <div key={`more-paid-${appointment.id}`} className="rounded-[24px] border border-white/8 bg-black/24 p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
@@ -1449,7 +1575,7 @@ export function BarberSettingsScreen({
                 </div>
               )) : (
                 <div className="rounded-[24px] border border-dashed border-white/10 bg-black/24 p-5 text-sm leading-7 text-white/58">
-                  Paid tickets will appear here once checkout closes them.
+                  Paid tickets, cash sales, and POS payment requests will appear here once checkout closes them.
                 </div>
               )}
             </div>

@@ -143,6 +143,9 @@ export function BarberCheckoutScreen({
   const [clientSearchResults, setClientSearchResults] = useState<PosClientCandidate[]>([]);
   const [clientSearchLoading, setClientSearchLoading] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const [cashCustomerName, setCashCustomerName] = useState("");
+  const [cashCustomerPhone, setCashCustomerPhone] = useState("");
+  const [cashCustomerEmail, setCashCustomerEmail] = useState("");
   const keypadAmount = digitsToAmount(chargeDigits);
   const serviceShortcuts = useMemo(
     () => [...(serviceCatalogQuery.data?.editableServices ?? []), ...(serviceCatalogQuery.data?.readOnlyServices ?? [])].slice(0, 8),
@@ -237,6 +240,9 @@ export function BarberCheckoutScreen({
     setClientSearchResults([]);
     setClientSearchLoading(false);
     setSelectedClientId(null);
+    setCashCustomerName("");
+    setCashCustomerPhone("");
+    setCashCustomerEmail("");
   }
 
   function openDetailSection(section: CheckoutSectionKey) {
@@ -308,6 +314,8 @@ export function BarberCheckoutScreen({
   function buildPosSalePayload(paymentMethod: PosPaymentMethodKey, extra?: {
     clientId?: string | null;
     customerName?: string | null;
+    customerPhone?: string | null;
+    customerEmail?: string | null;
   }) {
     const amountCents = Math.round(keypadAmount * 100);
     return {
@@ -319,6 +327,8 @@ export function BarberCheckoutScreen({
       paymentMethod,
       clientId: extra?.clientId ?? null,
       customerName: extra?.customerName ?? null,
+      customerPhone: extra?.customerPhone ?? null,
+      customerEmail: extra?.customerEmail ?? null,
       items: [{
         itemType: selectedServiceLabel ? "service" : "custom_amount",
         name: selectedServiceLabel ?? "Custom Amount",
@@ -331,6 +341,8 @@ export function BarberCheckoutScreen({
   async function createPendingSale(paymentMethod: PosPaymentMethodKey, extra?: {
     clientId?: string | null;
     customerName?: string | null;
+    customerPhone?: string | null;
+    customerEmail?: string | null;
   }) {
     const saleResponse = await fetch("/api/barber/pos-sales", {
       method: "POST",
@@ -364,7 +376,11 @@ export function BarberCheckoutScreen({
         const cashResponse = await fetch("/api/barber/pos-sales/cash", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(buildPosSalePayload("cash"))
+          body: JSON.stringify(buildPosSalePayload("cash", {
+            customerName: cashCustomerName.trim() || null,
+            customerPhone: cashCustomerPhone.trim() || null,
+            customerEmail: cashCustomerEmail.trim() || null
+          }))
         });
         await readJsonResponse(cashResponse);
         setPaymentMethodOpen(false);
@@ -775,15 +791,38 @@ export function BarberCheckoutScreen({
                 <span className="mt-2 block text-xs font-semibold text-[#a3ff12]/75">Tap to Pay setup required.</span>
               </button>
 
-              <button
-                type="button"
-                disabled={Boolean(paymentMethodLoading)}
-                className="rounded-[12px] border border-white/10 bg-white/[0.035] p-4 text-left transition hover:border-[#a3ff12]/35 disabled:cursor-wait disabled:opacity-70"
-                onClick={() => handlePaymentMethod("cash")}
-              >
+              <div className="rounded-[12px] border border-white/10 bg-white/[0.035] p-4">
                 <span className="block text-lg font-black text-white">Cash</span>
                 <span className="mt-1 block text-sm font-semibold text-white/55">Record cash sale. No platform payout.</span>
-              </button>
+                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                  <input
+                    value={cashCustomerName}
+                    onChange={(event) => setCashCustomerName(event.target.value)}
+                    placeholder="Customer name (optional)"
+                    className="h-10 rounded-[8px] border border-white/10 bg-black/35 px-3 text-xs font-semibold text-white outline-none placeholder:text-white/30 focus:border-[#a3ff12]/45"
+                  />
+                  <input
+                    value={cashCustomerPhone}
+                    onChange={(event) => setCashCustomerPhone(event.target.value)}
+                    placeholder="Phone (optional)"
+                    className="h-10 rounded-[8px] border border-white/10 bg-black/35 px-3 text-xs font-semibold text-white outline-none placeholder:text-white/30 focus:border-[#a3ff12]/45"
+                  />
+                  <input
+                    value={cashCustomerEmail}
+                    onChange={(event) => setCashCustomerEmail(event.target.value)}
+                    placeholder="Email (optional)"
+                    className="h-10 rounded-[8px] border border-white/10 bg-black/35 px-3 text-xs font-semibold text-white outline-none placeholder:text-white/30 focus:border-[#a3ff12]/45"
+                  />
+                </div>
+                <button
+                  type="button"
+                  disabled={Boolean(paymentMethodLoading)}
+                  className="mt-3 flex min-h-11 w-full items-center justify-center rounded-[8px] border border-[#a3ff12]/35 bg-[#a3ff12]/8 px-4 text-sm font-black text-[#a3ff12] transition hover:bg-[#a3ff12]/12 disabled:cursor-wait disabled:opacity-70"
+                  onClick={() => handlePaymentMethod("cash")}
+                >
+                  Record cash
+                </button>
+              </div>
 
               <div className="rounded-[12px] border border-white/10 bg-white/[0.035] p-4">
                 <div className="w-full text-left">

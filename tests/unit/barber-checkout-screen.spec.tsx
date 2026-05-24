@@ -234,11 +234,23 @@ describe("BarberCheckoutScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "$35.00" }));
     fireEvent.click(screen.getByRole("button", { name: /Review Sale/ }));
     fireEvent.click(await screen.findByRole("button", { name: "Charge $35.00" }));
-    fireEvent.click(await screen.findByRole("button", { name: /Cash/ }));
+    fireEvent.change(await screen.findByPlaceholderText("Customer name (optional)"), {
+      target: { value: "Walk-in Jordan" }
+    });
+    fireEvent.change(screen.getByPlaceholderText("Phone (optional)"), {
+      target: { value: "8135550202" }
+    });
+    fireEvent.click(await screen.findByRole("button", { name: /Record cash/ }));
 
     await waitFor(() => expect(screen.getByText("Cash sale recorded. No platform payout created.")).toBeInTheDocument());
     expect(overviewRefetchMock).toHaveBeenCalled();
     expect(screen.getByText("$0.00")).toBeInTheDocument();
+    const cashPayload = JSON.parse(String((fetchMock.mock.calls[1]?.[1] as RequestInit).body));
+    expect(cashPayload).toMatchObject({
+      paymentMethod: "cash",
+      customerName: "Walk-in Jordan",
+      customerPhone: "8135550202"
+    });
     expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/barber/pos-sales/cash", expect.objectContaining({
       method: "POST"
     }));

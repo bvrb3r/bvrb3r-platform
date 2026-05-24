@@ -2407,15 +2407,30 @@ export async function createMessagingThread(user: UserAccount, input: MessagingC
   }
 
   if ("threadType" in input && input.threadType === "client_barber") {
+    if (actor.kind === "barber") {
+      const clientProfile = await readProfileById(supabase, input.profileId);
+      if (!isClientRole(clientProfile.role)) {
+        throw new MessagingServiceError("Selected participant is not a client.", 400);
+      }
+
+      const threadId = await createOrGetDirectClientBarberThread({
+        supabase,
+        clientProfile,
+        barberProfile: actor.profile,
+        createdByProfileId: actor.profile.id
+      });
+
+      return getMessagingThreadPayload(user, threadId);
+    }
+
     if (actor.kind !== "client") {
-      throw new MessagingServiceError("Only clients can start a barber conversation from search.", 403);
+      throw new MessagingServiceError("Only clients and barbers can start a barber conversation from search.", 403);
     }
 
     const barberProfile = await readProfileById(supabase, input.profileId);
     if (!isBarberRole(barberProfile.role)) {
       throw new MessagingServiceError("Selected participant is not a barber.", 400);
     }
-
     const barberResult = await supabase
       .from("barbers")
       .select("id, profile_id, reference_code, booking_slug")
