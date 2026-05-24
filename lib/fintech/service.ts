@@ -219,6 +219,7 @@ type PosSaleRow = {
   platform_fee_cents?: number | string | null;
   total_cents: number | string;
   cash_recorded_at?: string | null;
+  completed_at?: string | null;
   payment_status?: string | null;
   created_at: string;
   updated_at: string;
@@ -580,7 +581,20 @@ export type BarberPayoutsPayload = {
     postureLabel: string;
     canMessage: boolean;
   }>;
+  salesTrend: {
+    today: SalesTrendPoint[];
+    week: SalesTrendPoint[];
+    month: SalesTrendPoint[];
+    year: SalesTrendPoint[];
+  };
   recentExecutions: PayoutExecutionView[];
+};
+
+export type SalesTrendPoint = {
+  label: string;
+  cashCents: number;
+  cardAppCents: number;
+  grossCents: number;
 };
 
 export type ExecuteFintechPayoutsResult = {
@@ -618,7 +632,7 @@ const CONNECTED_ACCOUNT_SELECT = "id, subject_type, barber_id, shop_id, provider
 const PAYMENT_SELECT = "id, appointment_id, pos_sale_id, client_id, shop_id, barber_id, provider, provider_payment_intent_id, amount, currency, status, payment_status, payment_type, paid_at, created_at, updated_at";
 const PAYMENT_ROUTING_SELECT = "id, payment_id, appointment_id, pos_sale_id, membership_id, routing_model, payout_recipient_type, provider_gross_amount, refunded_amount, provider_fee_amount, provider_net_amount, platform_fee_amount, barber_payout_amount, shop_split_amount, currency, payout_readiness_status, money_routing_status, blocked_reason, eligible_at, held_at, released_at, reversed_at, processor_charge_id, processor_balance_transaction_id, reconciliation_status, metadata, created_at, updated_at";
 const PAYOUT_EXECUTION_SELECT = "id, routing_record_id, payment_id, appointment_id, membership_id, target_subject_type, execution_type, target_connected_account_id, target_provider_account_id, amount, currency, execution_status, blocked_reason, failure_reason, processor_transfer_id, processor_reversal_id, idempotency_key, source_execution_id, source_refund_id, payout_reference, payout_speed, instant_payout_fee_amount, net_transfer_amount, processor_payout_id, reconciliation_status, metadata, initiated_by, attempt_count, last_attempted_at, executed_at, failed_at, reversed_at, created_at, updated_at";
-const POS_SALE_SELECT = "id, barber_id, shop_id, client_id, customer_name, customer_phone, customer_email, source, status, payment_method, payment_status, subtotal_cents, discount_cents, tip_cents, platform_fee_cents, client_fee_cents, total_cents, amount_cents, total_amount_cents, payment_id, note, cash_recorded_at, created_at, updated_at";
+const POS_SALE_SELECT = "id, barber_id, shop_id, client_id, customer_name, customer_phone, customer_email, source, status, payment_method, payment_status, subtotal_cents, discount_cents, tip_cents, platform_fee_cents, client_fee_cents, total_cents, amount_cents, total_amount_cents, payment_id, note, cash_recorded_at, completed_at, created_at, updated_at";
 const POS_PAYMENT_REQUEST_SELECT = "id, pos_sale_id, barber_id, client_id, amount_cents, status, requested_at, approved_at, declined_at, expires_at, payment_id, message_thread_id, created_at, updated_at";
 
 function numeric(value: number | string | null | undefined) {
@@ -3197,6 +3211,195 @@ function isIsoOnBusinessDate(value: string | null | undefined, businessDate: str
   return Boolean(value && value.slice(0, 10) === businessDate);
 }
 
+type SalesTrendRange = "today" | "week" | "month" | "year";
+
+type SalesTrendBucket = SalesTrendPoint & {
+  startMs: number;
+  endMs: number;
+};
+
+const SALES_TREND_WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const SALES_TREND_MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function startOfUtcDay(date: Date) {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+}
+
+function addUtcHours(date: Date, hours: number) {
+  const next = new Date(date);
+  next.setUTCHours(next.getUTCHours() + hours);
+  return next;
+}
+
+function addUtcDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
+
+function addUtcMonths(date: Date, months: number) {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, 1));
+}
+
+function formatHourBucketLabel(hour: number) {
+  if (hour === 0) {
+    return "12 AM";
+  }
+  if (hour < 12) {
+    return `${hour} AM`;
+  }
+  if (hour === 12) {
+    return "12 PM";
+  }
+  return `${hour - 12} PM`;
+}
+
+function createSalesTrendBuckets(range: SalesTrendRange, now = new Date()): SalesTrendBucket[] {
+  // Sales Pulse uses server UTC boundaries until barber/shop timezone is available in this payload.
+  const todayStart = startOfUtcDay(now);
+  if (range === "today") {
+    return Array.from({ length: 24 }, (_, hour) => {
+      const start = addUtcHours(todayStart, hour);
+      return {
+        label: formatHourBucketLabel(hour),
+        cashCents: 0,
+        cardAppCents: 0,
+        grossCents: 0,
+        startMs: start.getTime(),
+        endMs: addUtcHours(start, 1).getTime()
+      };
+    });
+  }
+
+  if (range === "week") {
+    const weekStart = addUtcDays(todayStart, -todayStart.getUTCDay());
+    return Array.from({ length: 7 }, (_, day) => {
+      const start = addUtcDays(weekStart, day);
+      return {
+        label: SALES_TREND_WEEKDAY_LABELS[day],
+        cashCents: 0,
+        cardAppCents: 0,
+        grossCents: 0,
+        startMs: start.getTime(),
+        endMs: addUtcDays(start, 1).getTime()
+      };
+    });
+  }
+
+  if (range === "month") {
+    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const nextMonthStart = addUtcMonths(monthStart, 1);
+    return Array.from({ length: 5 }, (_, week) => {
+      const start = addUtcDays(monthStart, week * 7);
+      const end = week === 4 ? nextMonthStart : addUtcDays(monthStart, (week + 1) * 7);
+      return {
+        label: `Week ${week + 1}`,
+        cashCents: 0,
+        cardAppCents: 0,
+        grossCents: 0,
+        startMs: start.getTime(),
+        endMs: end.getTime()
+      };
+    });
+  }
+
+  const yearStart = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+  return Array.from({ length: 12 }, (_, month) => {
+    const start = addUtcMonths(yearStart, month);
+    return {
+      label: SALES_TREND_MONTH_LABELS[month],
+      cashCents: 0,
+      cardAppCents: 0,
+      grossCents: 0,
+      startMs: start.getTime(),
+      endMs: addUtcMonths(start, 1).getTime()
+    };
+  });
+}
+
+function timestampMs(value: string | null | undefined) {
+  const ms = value ? new Date(value).getTime() : Number.NaN;
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function addToSalesTrendBuckets(
+  buckets: SalesTrendBucket[],
+  timestamp: string | null | undefined,
+  key: "cashCents" | "cardAppCents",
+  cents: number
+) {
+  const occurredAt = timestampMs(timestamp);
+  if (!occurredAt || cents <= 0) {
+    return;
+  }
+
+  const bucket = buckets.find((entry) => occurredAt >= entry.startMs && occurredAt < entry.endMs);
+  if (!bucket) {
+    return;
+  }
+
+  bucket[key] += cents;
+  bucket.grossCents = bucket.cashCents + bucket.cardAppCents;
+}
+
+function stripSalesTrendBucketMeta(buckets: SalesTrendBucket[]): SalesTrendPoint[] {
+  return buckets.map(({ label, cashCents, cardAppCents, grossCents }) => ({
+    label,
+    cashCents,
+    cardAppCents,
+    grossCents
+  }));
+}
+
+function buildSalesTrend(input: {
+  posSales: PosSaleRow[];
+  payments: PaymentRow[];
+  now?: Date;
+}): BarberPayoutsPayload["salesTrend"] {
+  const now = input.now ?? new Date();
+  const buckets = {
+    today: createSalesTrendBuckets("today", now),
+    week: createSalesTrendBuckets("week", now),
+    month: createSalesTrendBuckets("month", now),
+    year: createSalesTrendBuckets("year", now)
+  };
+
+  const addCashSale = (timestamp: string | null | undefined, cents: number) => {
+    for (const rangeBuckets of Object.values(buckets)) {
+      addToSalesTrendBuckets(rangeBuckets, timestamp, "cashCents", cents);
+    }
+  };
+  const addCardAppSale = (timestamp: string | null | undefined, cents: number) => {
+    for (const rangeBuckets of Object.values(buckets)) {
+      addToSalesTrendBuckets(rangeBuckets, timestamp, "cardAppCents", cents);
+    }
+  };
+
+  for (const sale of input.posSales) {
+    if (!isCashPosSale(sale) || !isPaidPosSale(sale)) {
+      continue;
+    }
+    addCashSale(
+      sale.cash_recorded_at ?? sale.completed_at ?? sale.updated_at ?? sale.created_at,
+      Math.round(posSaleTotalCents(sale))
+    );
+  }
+
+  for (const payment of input.payments) {
+    if (!isCompletionPaymentSuccessful(payment) || !Boolean(payment.appointment_id || payment.pos_sale_id)) {
+      continue;
+    }
+    addCardAppSale(payment.paid_at ?? payment.created_at, Math.round(numeric(payment.amount) * 100));
+  }
+
+  return {
+    today: stripSalesTrendBucketMeta(buckets.today),
+    week: stripSalesTrendBucketMeta(buckets.week),
+    month: stripSalesTrendBucketMeta(buckets.month),
+    year: stripSalesTrendBucketMeta(buckets.year)
+  };
+}
+
 function posSaleTotalCents(sale: PosSaleRow) {
   return numeric(sale.total_cents ?? sale.total_amount_cents ?? sale.amount_cents ?? sale.subtotal_cents);
 }
@@ -3340,7 +3543,7 @@ async function loadBarberMoneyReporting(input: {
   const cashSalesToday = posSales.filter((sale) =>
     isCashPosSale(sale)
     && isPaidPosSale(sale)
-    && isIsoOnBusinessDate(sale.cash_recorded_at ?? sale.updated_at ?? sale.created_at, today)
+    && isIsoOnBusinessDate(sale.cash_recorded_at ?? sale.completed_at ?? sale.updated_at ?? sale.created_at, today)
   );
   const paidPlatformPaymentsToday = payments.filter((payment) =>
     isCompletionPaymentSuccessful(payment)
@@ -3437,6 +3640,7 @@ async function loadBarberMoneyReporting(input: {
 
   const cashCollectedToday = roundCurrency(cashSalesToday.reduce((sum, sale) => sum + centsToAmount(posSaleTotalCents(sale)), 0));
   const cardAppCollectedToday = roundCurrency(paidPlatformPaymentsToday.reduce((sum, payment) => sum + numeric(payment.amount), 0));
+  const salesTrend = buildSalesTrend({ posSales, payments });
 
   return {
     moneyPosture: {
@@ -3450,7 +3654,8 @@ async function loadBarberMoneyReporting(input: {
       pendingPaymentRequestsCount: posRequests.filter(isPendingPaymentRequest).length,
       releasedPayoutAmount: executedAmount
     },
-    transactions: transactions.slice(0, 30)
+    transactions: transactions.slice(0, 30),
+    salesTrend
   };
 }
 
@@ -4040,6 +4245,7 @@ export async function getBarberPayouts(user: UserAccount): Promise<BarberPayouts
     },
     moneyPosture: moneyReporting.moneyPosture,
     transactions: moneyReporting.transactions,
+    salesTrend: moneyReporting.salesTrend,
     recentExecutions: scope.recentExecutions
   };
 }

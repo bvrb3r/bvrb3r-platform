@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import {
   ArrowLeftRight,
   BarChart3,
@@ -136,6 +136,13 @@ type BusinessPanelKey =
 type AvailabilityTab = "hours" | "blocked";
 type TransactionFilter = "all" | "appointments" | "cash" | "card" | "requests";
 type AvailabilityLocationMode = "custom" | "shop" | "later";
+type SalesTrendRange = "today" | "week" | "month" | "year";
+type SalesTrendPoint = {
+  label: string;
+  cashCents: number;
+  cardAppCents: number;
+  grossCents: number;
+};
 
 const defaultActivationWorkingDays = [1, 2, 3, 4, 5, 6];
 const dayOptions = [
@@ -429,6 +436,160 @@ function BusinessToolRow({
   );
 }
 
+const salesTrendRangeOptions: Array<{ key: SalesTrendRange; label: string }> = [
+  { key: "today", label: "Today" },
+  { key: "week", label: "Week" },
+  { key: "month", label: "Month" },
+  { key: "year", label: "Year" }
+];
+
+function centsToDollars(cents: number) {
+  return cents / 100;
+}
+
+function SalesPulseChart({
+  points,
+  range,
+  onRangeChange
+}: {
+  points: SalesTrendPoint[];
+  range: SalesTrendRange;
+  onRangeChange: (range: SalesTrendRange) => void;
+}) {
+  const totals = useMemo(() => points.reduce(
+    (sum, point) => ({
+      cashCents: sum.cashCents + point.cashCents,
+      cardAppCents: sum.cardAppCents + point.cardAppCents,
+      grossCents: sum.grossCents + point.grossCents
+    }),
+    { cashCents: 0, cardAppCents: 0, grossCents: 0 }
+  ), [points]);
+  const hasSales = points.some((point) => point.grossCents > 0);
+  const maxCents = Math.max(100, ...points.flatMap((point) => [point.cashCents, point.cardAppCents, point.grossCents]));
+  const chart = {
+    width: 680,
+    height: 260,
+    top: 22,
+    right: 28,
+    bottom: 42,
+    left: 48
+  };
+  const plotWidth = chart.width - chart.left - chart.right;
+  const plotHeight = chart.height - chart.top - chart.bottom;
+  const xFor = (index: number) => chart.left + (points.length <= 1 ? 0 : (index / (points.length - 1)) * plotWidth);
+  const yFor = (value: number) => chart.top + plotHeight - (value / maxCents) * plotHeight;
+  const pathFor = (key: keyof Pick<SalesTrendPoint, "cashCents" | "cardAppCents" | "grossCents">) =>
+    points.map((point, index) => `${index === 0 ? "M" : "L"} ${xFor(index).toFixed(2)} ${yFor(point[key]).toFixed(2)}`).join(" ");
+  const grossAreaPath = points.length
+    ? [
+      `M ${xFor(0).toFixed(2)} ${chart.top + plotHeight}`,
+      ...points.map((point, index) => `L ${xFor(index).toFixed(2)} ${yFor(point.grossCents).toFixed(2)}`),
+      `L ${xFor(points.length - 1).toFixed(2)} ${chart.top + plotHeight}`,
+      "Z"
+    ].join(" ")
+    : "";
+  const labelStep = points.length > 12 ? Math.ceil(points.length / 6) : 1;
+  const gridLines = [0, 0.25, 0.5, 0.75, 1];
+
+  return (
+    <section
+      className="overflow-hidden rounded-[20px] border border-white/10 bg-[radial-gradient(circle_at_top_right,rgba(163,255,18,0.12),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.018))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]"
+      data-testid="sales-pulse-section"
+    >
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-[#a3ff12]">Performance</p>
+          <h3 className="mt-2 text-xl font-black text-white">Sales Pulse</h3>
+          <p className="mt-1 text-sm leading-5 text-white/56">Compare cash, card/app, and gross sales over time.</p>
+        </div>
+        <div className="grid grid-cols-4 gap-1 rounded-full border border-white/10 bg-black/30 p-1">
+          {salesTrendRangeOptions.map((option) => (
+            <button
+              key={option.key}
+              type="button"
+              aria-pressed={range === option.key}
+              onClick={() => onRangeChange(option.key)}
+              className={cn(
+                "rounded-full px-3 py-2 text-[10px] font-extrabold uppercase tracking-[0.12em] text-white/52 transition",
+                range === option.key && "bg-[#a3ff12] text-black shadow-[0_0_18px_rgba(163,255,18,0.2)]",
+                range !== option.key && "hover:bg-white/[0.06] hover:text-white"
+              )}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-2 sm:grid-cols-3">
+        <div className="rounded-[14px] border border-white/8 bg-black/24 px-3 py-2 text-sm font-black text-white/78">
+          <span className="mr-2 inline-block h-2 w-2 rounded-full bg-white/42" aria-hidden="true" />
+          Cash: {currency(centsToDollars(totals.cashCents))}
+        </div>
+        <div className="rounded-[14px] border border-white/8 bg-black/24 px-3 py-2 text-sm font-black text-white/78">
+          <span className="mr-2 inline-block h-2 w-2 rounded-full bg-[#9fd7ff]" aria-hidden="true" />
+          Card/App: {currency(centsToDollars(totals.cardAppCents))}
+        </div>
+        <div className="rounded-[14px] border border-[#a3ff12]/18 bg-[#a3ff12]/10 px-3 py-2 text-sm font-black text-[#a3ff12]">
+          <span className="mr-2 inline-block h-2 w-2 rounded-full bg-[#a3ff12]" aria-hidden="true" />
+          Gross: {currency(centsToDollars(totals.grossCents))}
+        </div>
+      </div>
+
+      {hasSales ? (
+        <div className="mt-4 overflow-x-auto rounded-[18px] border border-white/8 bg-black/34 p-2" data-testid="sales-pulse-chart">
+          <svg
+            role="img"
+            aria-label="Sales Pulse chart"
+            viewBox={`0 0 ${chart.width} ${chart.height}`}
+            className="h-[230px] min-w-[620px] w-full"
+          >
+            <defs>
+              <linearGradient id="sales-pulse-gross-fill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#a3ff12" stopOpacity="0.24" />
+                <stop offset="100%" stopColor="#a3ff12" stopOpacity="0" />
+              </linearGradient>
+              <filter id="sales-pulse-glow" x="-20%" y="-20%" width="140%" height="140%">
+                <feGaussianBlur stdDeviation="3" result="blur" />
+                <feMerge>
+                  <feMergeNode in="blur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+            </defs>
+            {gridLines.map((line) => {
+              const y = chart.top + plotHeight - line * plotHeight;
+              return (
+                <g key={line}>
+                  <line x1={chart.left} x2={chart.width - chart.right} y1={y} y2={y} stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
+                  <text x={chart.left - 10} y={y + 4} textAnchor="end" fill="rgba(255,255,255,0.32)" fontSize="10" fontWeight="800">
+                    {currency(centsToDollars(maxCents * line))}
+                  </text>
+                </g>
+              );
+            })}
+            <path d={grossAreaPath} fill="url(#sales-pulse-gross-fill)" />
+            <path d={pathFor("cashCents")} fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+            <path d={pathFor("cardAppCents")} fill="none" stroke="#9fd7ff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+            <path d={pathFor("grossCents")} fill="none" stroke="#a3ff12" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" filter="url(#sales-pulse-glow)" />
+            {points.map((point, index) => (
+              index % labelStep === 0 || index === points.length - 1 ? (
+                <text key={`${point.label}-${index}`} x={xFor(index)} y={chart.height - 14} textAnchor="middle" fill="rgba(255,255,255,0.42)" fontSize="10" fontWeight="800">
+                  {point.label}
+                </text>
+              ) : null
+            ))}
+          </svg>
+        </div>
+      ) : (
+        <div className="mt-4 rounded-[18px] border border-dashed border-white/10 bg-black/26 px-4 py-10 text-center text-sm font-bold text-white/52" data-testid="sales-pulse-empty">
+          No sales recorded for this period yet.
+        </div>
+      )}
+    </section>
+  );
+}
+
 function getBusinessToolDescription(tool: BusinessToolKey | null) {
   switch (tool) {
     case "transactions":
@@ -529,6 +690,7 @@ export function BarberSettingsScreen({
   const [activeBusinessPanel, setActiveBusinessPanel] = useState<BusinessPanelKey | null>(null);
   const [availabilityTab, setAvailabilityTab] = useState<AvailabilityTab>("hours");
   const [transactionFilter, setTransactionFilter] = useState<TransactionFilter>("all");
+  const [salesTrendRange, setSalesTrendRange] = useState<SalesTrendRange>("today");
   const [serviceDraft, setServiceDraft] = useState({
     name: "Haircut",
     price: "35",
@@ -605,6 +767,7 @@ export function BarberSettingsScreen({
   const appPayoutEligible = moneyPosture?.appPayoutEligible ?? eligiblePayoutAmount ?? 0;
   const grossTotalToday = moneyPosture?.grossTotalToday ?? cashCollectedToday + cardAppCollectedToday;
   const payoutTransactions = payoutsPayload?.transactions ?? [];
+  const selectedSalesTrend = payoutsPayload?.salesTrend?.[salesTrendRange] ?? [];
   const filteredTransactions = payoutTransactions.filter((transaction) => {
     if (transactionFilter === "appointments") {
       return transaction.transactionType === "appointment";
@@ -760,6 +923,9 @@ export function BarberSettingsScreen({
     }
     if (tool === "transactions") {
       setTransactionFilter("all");
+    }
+    if (tool === "reports") {
+      setSalesTrendRange("today");
     }
   }
 
@@ -1723,6 +1889,11 @@ export function BarberSettingsScreen({
                       </div>
                     ))}
                   </div>
+                  <SalesPulseChart
+                    points={selectedSalesTrend}
+                    range={salesTrendRange}
+                    onRangeChange={setSalesTrendRange}
+                  />
                   <div className="grid gap-2 sm:grid-cols-3">
                     {[
                       ["Paid appointments", moneyPosture?.paidAppointmentsCount ?? paidAppointments.length],

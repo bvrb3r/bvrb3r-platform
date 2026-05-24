@@ -140,6 +140,30 @@ vi.mock("@/lib/messages/client", () => ({
 
 import { BarberSettingsScreen } from "@/components/barber-experience/barber-settings-screen";
 
+const emptySalesTrend = {
+  today: [],
+  week: [],
+  month: [],
+  year: []
+};
+
+const mixedSalesTrend = {
+  today: [
+    { label: "12 AM", cashCents: 0, cardAppCents: 0, grossCents: 0 },
+    { label: "1 PM", cashCents: 3500, cardAppCents: 500, grossCents: 4000 }
+  ],
+  week: [
+    { label: "Sun", cashCents: 7000, cardAppCents: 500, grossCents: 7500 },
+    { label: "Mon", cashCents: 0, cardAppCents: 0, grossCents: 0 }
+  ],
+  month: [
+    { label: "Week 1", cashCents: 3500, cardAppCents: 500, grossCents: 4000 }
+  ],
+  year: [
+    { label: "May", cashCents: 3500, cardAppCents: 500, grossCents: 4000 }
+  ]
+};
+
 function buildConnectedAccount(overrides: Record<string, unknown> = {}) {
   return {
     id: "acct-row-1",
@@ -230,7 +254,8 @@ function setupHookMocks() {
       summary: {
         readyForPayoutAmount: 0,
         executableRoutingRecords: 0
-      }
+      },
+      salesTrend: emptySalesTrend
     },
     error: null,
     refetch: payoutsRefetchMock
@@ -388,6 +413,7 @@ describe("BarberSettingsScreen Stripe return sync", () => {
           releasedPayoutAmount: 0
         },
         transactions: [],
+        salesTrend: mixedSalesTrend,
         recentExecutions: []
       },
       error: null,
@@ -404,6 +430,75 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     expect(screen.getByText("Gross Total Today")).toBeInTheDocument();
     expect(screen.getByText("$40")).toBeInTheDocument();
     expect(screen.getByText("Eligible balance excludes cash.")).toBeInTheDocument();
+  });
+
+  it("renders a Sales Pulse chart with range totals inside Reports", () => {
+    useBarberPayoutsQueryMock.mockReturnValue({
+      data: {
+        summary: {
+          eligiblePayoutAmount: 4.75,
+          eligibleRoutingRecords: 1,
+          readyForPayoutAmount: 0,
+          executableRoutingRecords: 0,
+          executedAmount: 0
+        },
+        moneyPosture: {
+          cashCollectedToday: 35,
+          cardAppCollectedToday: 5,
+          appPayoutEligible: 4.75,
+          grossTotalToday: 40,
+          paidAppointmentsCount: 1,
+          cashSalesCount: 1,
+          cardPosSalesCount: 1,
+          pendingPaymentRequestsCount: 1,
+          releasedPayoutAmount: 0
+        },
+        transactions: [],
+        salesTrend: mixedSalesTrend,
+        recentExecutions: []
+      },
+      error: null,
+      refetch: payoutsRefetchMock
+    });
+
+    render(<BarberSettingsScreen user={resolveDemoUser("blaze@bvrb3r.demo")} embedded />);
+
+    fireEvent.click(screen.getByTestId("business-tool-reports"));
+    const dialog = screen.getByRole("dialog", { name: "Reports" });
+
+    expect(within(dialog).getByTestId("sales-pulse-section")).toBeInTheDocument();
+    expect(within(dialog).getAllByText("Sales Pulse").length).toBeGreaterThan(0);
+    expect(within(dialog).getByText("Compare cash, card/app, and gross sales over time.")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Today" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(dialog).getByRole("button", { name: "Week" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Month" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Year" })).toBeInTheDocument();
+    expect(within(dialog).getByText("Cash: $35")).toBeInTheDocument();
+    expect(within(dialog).getByText("Card/App: $5")).toBeInTheDocument();
+    expect(within(dialog).getByText("Gross: $40")).toBeInTheDocument();
+    expect(within(dialog).getByText("App Payout Eligible")).toBeInTheDocument();
+    expect(within(dialog).getByText("Pending requests")).toBeInTheDocument();
+    expect(within(dialog).queryByText("Gross: $75")).not.toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Week" }));
+
+    expect(within(dialog).getByRole("button", { name: "Week" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(dialog).getByText("Cash: $70")).toBeInTheDocument();
+    expect(within(dialog).getByText("Gross: $75")).toBeInTheDocument();
+    expect(within(dialog).getByText("Sun")).toBeInTheDocument();
+  });
+
+  it("renders the Sales Pulse empty state when a range has no sales", () => {
+    render(<BarberSettingsScreen user={resolveDemoUser("blaze@bvrb3r.demo")} embedded />);
+
+    fireEvent.click(screen.getByTestId("business-tool-reports"));
+    const dialog = screen.getByRole("dialog", { name: "Reports" });
+
+    expect(within(dialog).getByTestId("sales-pulse-section")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Today" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(dialog).getByText("No sales recorded for this period yet.")).toBeInTheDocument();
+    expect(within(dialog).getByText("Cash Collected Today")).toBeInTheDocument();
+    expect(within(dialog).getByText("Gross Total Today")).toBeInTheDocument();
   });
 
   it("renders appointment, cash, and card request transactions with contact posture", () => {
@@ -507,6 +602,7 @@ describe("BarberSettingsScreen Stripe return sync", () => {
             canMessage: true
           }
         ],
+        salesTrend: mixedSalesTrend,
         recentExecutions: []
       },
       error: null,
