@@ -31,6 +31,11 @@ type ClientRow = {
   reference_code?: string | null;
 };
 
+type LocationRow = {
+  id: string;
+  reference_code?: string | null;
+};
+
 type PaymentMethodRow = {
   id: string;
   provider_payment_method_id?: string | null;
@@ -259,6 +264,147 @@ async function loadBarberByAttempt(supabase: SupabaseClient, attempt: BarberLook
   return fallbackResult;
 }
 
+async function resolvePosSaleShopId(
+  supabase: SupabaseClient,
+  user: UserAccount,
+  input: {
+    relationshipType: BarberPosSaleQuote["relationshipType"];
+    barberId: string;
+  }
+) {
+  if (input.relationshipType === "freelance") {
+    return null;
+  }
+
+  const candidates = [...new Set((user.locationIds ?? []).map((value) => value.trim()).filter(Boolean))];
+  if (!candidates.length) {
+    return null;
+  }
+
+  let lastError: unknown = null;
+  for (const candidate of candidates) {
+    if (UUID_PATTERN.test(candidate)) {
+      const idLookup = await supabase
+        .from("locations")
+        .select("id, reference_code")
+        .eq("id", candidate)
+        .maybeSingle();
+
+      if (idLookup.error) {
+        lastError = idLookup.error;
+      } else if (idLookup.data) {
+        return (idLookup.data as LocationRow).id;
+      }
+    }
+
+    const referenceLookup = await supabase
+      .from("locations")
+      .select("id, reference_code")
+      .eq("reference_code", candidate)
+      .maybeSingle();
+
+    if (referenceLookup.error) {
+      lastError = referenceLookup.error;
+      if (isUndefinedColumnError(referenceLookup.error)) {
+        continue;
+      }
+    } else if (referenceLookup.data) {
+      return (referenceLookup.data as LocationRow).id;
+    }
+  }
+
+  logPosSaleShopScopeDefaulted({
+    stage: "resolve_shop_scope",
+    barberId: input.barberId,
+    role: user.role,
+    attemptedShopId: candidates[0] ?? null,
+    error: lastError ?? undefined
+  });
+  return null;
+}
+
+async function insertPosSaleWithFallbacks(input: {
+  supabase: SupabaseClient;
+  stage: string;
+  primaryPayload: PosSaleInsertPayload;
+  basePayload: PosSaleInsertPayload;
+  barberId: string;
+  role: string | null;
+}) {
+  const insertPayload = (payload: PosSaleInsertPayload) => input.supabase
+    .from("pos_sales")
+    .insert(payload)
+    .select("*")
+    .single();
+
+  const fingerprint = (payload: PosSaleInsertPayload) =>
+    JSON.stringify(Object.entries(payload).sort(([left], [right]) => left.localeCompare(right)));
+  const attempted = new Set<string>([fingerprint(input.primaryPayload)]);
+  const candidates: Array<{
+    reason: "optional_columns" | "shop_scope" | "optional_columns_and_shop_scope";
+    payload: PosSaleInsertPayload;
+  }> = [];
+  const addCandidate = (
+    reason: "optional_columns" | "shop_scope" | "optional_columns_and_shop_scope",
+    payload: PosSaleInsertPayload
+  ) => {
+    const key = fingerprint(payload);
+    if (attempted.has(key)) {
+      return;
+    }
+
+    attempted.add(key);
+    candidates.push({ reason, payload });
+  };
+
+  let result = await insertPayload(input.primaryPayload);
+  if (!result.error) {
+    return result;
+  }
+
+  if (isOptionalPosSaleColumnError(result.error)) {
+    addCandidate("optional_columns", input.basePayload);
+    if (input.basePayload.shop_id) {
+      addCandidate("optional_columns_and_shop_scope", { ...input.basePayload, shop_id: null });
+    }
+  }
+
+  if (isShopScopeInsertError(result.error, input.primaryPayload)) {
+    addCandidate("shop_scope", { ...input.primaryPayload, shop_id: null });
+    addCandidate("optional_columns_and_shop_scope", { ...input.basePayload, shop_id: null });
+  }
+
+  for (const candidate of candidates) {
+    if (candidate.reason === "optional_columns") {
+      logPosSaleSchemaFallback(input.stage, result.error, input.primaryPayload);
+    } else if (candidate.reason === "shop_scope") {
+      logPosSaleShopScopeDefaulted({
+        stage: input.stage,
+        barberId: input.barberId,
+        role: input.role,
+        attemptedShopId: input.primaryPayload.shop_id,
+        error: result.error
+      });
+    } else {
+      logPosSaleSchemaFallback(input.stage, result.error, input.primaryPayload);
+      logPosSaleShopScopeDefaulted({
+        stage: input.stage,
+        barberId: input.barberId,
+        role: input.role,
+        attemptedShopId: input.basePayload.shop_id,
+        error: result.error
+      });
+    }
+
+    result = await insertPayload(candidate.payload);
+    if (!result.error) {
+      return result;
+    }
+  }
+
+  return result;
+}
+
 function logBarberPosResolveFailed(input: {
   user: UserAccount;
   profile: ProfileRow | null;
@@ -322,6 +468,25 @@ function logPosSaleSchemaFallback(stage: string, error: unknown, payload: Record
   });
 }
 
+function logPosSaleShopScopeDefaulted(input: {
+  stage: string;
+  barberId: string | null;
+  role: string | null;
+  attemptedShopId: string | null;
+  error?: unknown;
+}) {
+  const candidate = input.error as { code?: string; details?: string; message?: string } | null | undefined;
+  console.warn("[barber-pos] shop_scope_defaulted", {
+    stage: input.stage,
+    barberId: input.barberId,
+    role: input.role,
+    attemptedShopId: input.attemptedShopId,
+    postgresCode: candidate?.code ?? null,
+    postgresDetails: candidate?.details ?? null,
+    errorMessage: candidate?.message ?? null
+  });
+}
+
 function isOptionalPosSaleColumnError(error: unknown) {
   if (isUndefinedColumnError(error)) {
     return true;
@@ -343,6 +508,27 @@ function isOptionalPosSaleColumnError(error: unknown) {
   ].some((value) => haystack.includes(value));
 }
 
+function isShopScopeInsertError(error: unknown, payload: PosSaleInsertPayload) {
+  if (!payload.shop_id) {
+    return false;
+  }
+
+  const candidate = error as { code?: string; details?: string; message?: string } | null | undefined;
+  const haystack = `${candidate?.message ?? ""} ${candidate?.details ?? ""}`.toLowerCase();
+  if (candidate?.code === "22P02") {
+    return haystack.includes("uuid") || haystack.includes("shop_id");
+  }
+
+  if (candidate?.code !== "23503") {
+    return false;
+  }
+
+  return haystack.includes("shop_id")
+    || haystack.includes("pos_sales")
+    || haystack.includes("locations")
+    || haystack.includes("shops");
+}
+
 function logCashCreateFailed(input: {
   stage: string;
   payload: Record<string, unknown>;
@@ -352,6 +538,25 @@ function logCashCreateFailed(input: {
 }) {
   const candidate = input.error as { code?: string; details?: string; message?: string } | null | undefined;
   console.warn("[barber-pos] cash_create_failed", {
+    stage: input.stage,
+    payloadKeys: Object.keys(input.payload),
+    barberId: input.barberId,
+    role: input.role,
+    postgresCode: candidate?.code ?? null,
+    postgresDetails: candidate?.details ?? null,
+    errorMessage: candidate?.message ?? null
+  });
+}
+
+function logPosSaleCreateFailed(input: {
+  stage: string;
+  payload: Record<string, unknown>;
+  error: unknown;
+  barberId: string | null;
+  role: string | null;
+}) {
+  const candidate = input.error as { code?: string; details?: string; message?: string } | null | undefined;
+  console.warn("[barber-pos] pos_sale_create_failed", {
     stage: input.stage,
     payloadKeys: Object.keys(input.payload),
     barberId: input.barberId,
@@ -469,11 +674,16 @@ async function resolveBarberActor(supabase: SupabaseClient, user: UserAccount) {
       ?? user.barberSubtype
       ?? "freelance"
   );
+  const shopId = await resolvePosSaleShopId(supabase, user, {
+    relationshipType,
+    barberId: barber.id
+  });
+
   return {
     profileId: profile?.id ?? barber.profile_id ?? user.id,
     barber,
     relationshipType,
-    shopId: relationshipType === "freelance" ? null : user.locationIds[0] ?? null
+    shopId
   };
 }
 
@@ -723,7 +933,7 @@ export async function createBarberPosSale(user: UserAccount, input: BarberPosSal
   });
   const now = new Date().toISOString();
   const normalizedPaymentMethod = normalizePaymentMethod(input.paymentMethod);
-  const baseSalePayload = {
+  const baseSalePayload: PosSaleInsertPayload = {
     barber_id: actor.barber.id,
     shop_id: actor.shopId,
     client_id: clientId,
@@ -749,22 +959,23 @@ export async function createBarberPosSale(user: UserAccount, input: BarberPosSal
     payment_method: normalizedPaymentMethod,
     invoice_status: normalizedPaymentMethod === "invoice" ? "pending" : null
   };
-  let saleInsert = await supabase
-    .from("pos_sales")
-    .insert(salePayload)
-    .select("*")
-    .single();
-
-  if (saleInsert.error && isOptionalPosSaleColumnError(saleInsert.error)) {
-    logPosSaleSchemaFallback("pos_sale_insert", saleInsert.error, salePayload);
-    saleInsert = await supabase
-      .from("pos_sales")
-      .insert(baseSalePayload)
-      .select("*")
-      .single();
-  }
+  const saleInsert = await insertPosSaleWithFallbacks({
+    supabase,
+    stage: "pos_sale_insert",
+    primaryPayload: salePayload,
+    basePayload: baseSalePayload,
+    barberId: actor.barber.id,
+    role: user.role
+  });
 
   if (saleInsert.error) {
+    logPosSaleCreateFailed({
+      stage: "pos_sale_insert",
+      payload: salePayload,
+      error: saleInsert.error,
+      barberId: actor.barber.id,
+      role: user.role
+    });
     throw new BarberPosSaleError("Unable to create the POS sale.", 500);
   }
 
@@ -827,20 +1038,14 @@ export async function createCashBarberPosSale(user: UserAccount, input: BarberPo
     payment_method: "cash",
     cash_recorded_at: now
   };
-  let saleInsert = await supabase
-    .from("pos_sales")
-    .insert(cashSalePayload)
-    .select("*")
-    .single();
-
-  if (saleInsert.error && isOptionalPosSaleColumnError(saleInsert.error)) {
-    logPosSaleSchemaFallback("cash_sale_insert", saleInsert.error, cashSalePayload);
-    saleInsert = await supabase
-      .from("pos_sales")
-      .insert(baseSalePayload)
-      .select("*")
-      .single();
-  }
+  const saleInsert = await insertPosSaleWithFallbacks({
+    supabase,
+    stage: "cash_sale_insert",
+    primaryPayload: cashSalePayload,
+    basePayload: baseSalePayload,
+    barberId: actor.barber.id,
+    role: user.role
+  });
 
   if (saleInsert.error) {
     logCashCreateFailed({

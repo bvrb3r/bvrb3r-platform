@@ -29,6 +29,7 @@ type FakeRow = Record<string, unknown>;
 type FakeTables = Record<string, FakeRow[]>;
 type FakeOptions = {
   unsupportedPosSaleColumns?: string[];
+  rejectPosSaleShopId?: boolean;
 };
 
 class FakeQueryBuilder {
@@ -78,6 +79,17 @@ class FakeQueryBuilder {
   }
 
   maybeSingle() {
+    if (this.pendingInsert && this.hasRejectedPosSaleShopId(this.pendingInsert)) {
+      return Promise.resolve({
+        data: null,
+        error: {
+          code: "23503",
+          details: "Key (shop_id)=(loc-ybor) is not present in table \"locations\".",
+          message: "insert or update on table \"pos_sales\" violates foreign key constraint \"pos_sales_shop_id_fkey\""
+        }
+      });
+    }
+
     if (this.pendingInsert && this.hasUnsupportedPosSaleColumn(this.pendingInsert)) {
       return Promise.resolve({
         data: null,
@@ -160,6 +172,15 @@ class FakeQueryBuilder {
 
     const rows = Array.isArray(payload) ? payload : [payload];
     return rows.some((row) => this.options.unsupportedPosSaleColumns?.some((column) => column in row));
+  }
+
+  private hasRejectedPosSaleShopId(payload: FakeRow | FakeRow[] | null) {
+    if (this.table !== "pos_sales" || !payload || !this.options.rejectPosSaleShopId) {
+      return false;
+    }
+
+    const rows = Array.isArray(payload) ? payload : [payload];
+    return rows.some((row) => Boolean(row.shop_id));
   }
 }
 
@@ -343,6 +364,89 @@ describe("barber POS sales", () => {
     });
     expect(createPaymentLedgerEntryMock).not.toHaveBeenCalled();
     expect(tables.payment_routing_records).toHaveLength(0);
+  });
+
+  it("records cash POS sales when a booth-rent shop scope cannot be resolved", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const tables: FakeTables = {
+      profiles: [{ id: "profile-phillip", email: "phillip@example.com", role: "barber_user" }],
+      barbers: [{
+        id: "455c2930-7255-418b-bd2b-cc64bc0fc9b7",
+        profile_id: "profile-phillip",
+        reference_code: "barber-43b3cda2",
+        compensation_model: "booth_rent",
+        commission_rate: null
+      }],
+      locations: [],
+      clients: [],
+      pos_sales: [],
+      pos_sale_items: [],
+      payment_routing_records: []
+    };
+    createSupabaseAdminClientMock.mockReturnValue(createSupabaseMock(tables));
+
+    const recorded = await createCashBarberPosSale(barberUser({
+      barberSubtype: "booth_rent",
+      locationIds: ["loc-ybor"]
+    }), {
+      amountCents: 3500,
+      paymentMethod: "cash"
+    });
+
+    expect(recorded.ok).toBe(true);
+    expect(tables.pos_sales[0]).toMatchObject({
+      status: "paid",
+      shop_id: null,
+      payment_method: "cash"
+    });
+    expect(warnSpy).toHaveBeenCalledWith("[barber-pos] shop_scope_defaulted", expect.objectContaining({
+      stage: "resolve_shop_scope",
+      attemptedShopId: "loc-ybor"
+    }));
+    warnSpy.mockRestore();
+  });
+
+  it("retries cash POS sale creation without shop_id when production rejects the scoped shop", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const tables: FakeTables = {
+      profiles: [{ id: "profile-phillip", email: "phillip@example.com", role: "barber_user" }],
+      barbers: [{
+        id: "455c2930-7255-418b-bd2b-cc64bc0fc9b7",
+        profile_id: "profile-phillip",
+        reference_code: "barber-43b3cda2",
+        compensation_model: "booth_rent",
+        commission_rate: null
+      }],
+      locations: [{ id: "67ad0d9b-4f60-44e6-a213-86f665324574", reference_code: "loc-ybor" }],
+      clients: [],
+      pos_sales: [],
+      pos_sale_items: [],
+      payment_routing_records: []
+    };
+    createSupabaseAdminClientMock.mockReturnValue(createSupabaseMock(tables, {
+      rejectPosSaleShopId: true
+    }));
+
+    const recorded = await createCashBarberPosSale(barberUser({
+      barberSubtype: "booth_rent",
+      locationIds: ["loc-ybor"]
+    }), {
+      amountCents: 3500,
+      paymentMethod: "cash"
+    });
+
+    expect(recorded.ok).toBe(true);
+    expect(tables.pos_sales).toHaveLength(1);
+    expect(tables.pos_sales[0]).toMatchObject({
+      status: "paid",
+      shop_id: null,
+      payment_method: "cash"
+    });
+    expect(warnSpy).toHaveBeenCalledWith("[barber-pos] shop_scope_defaulted", expect.objectContaining({
+      stage: "cash_sale_insert",
+      attemptedShopId: "67ad0d9b-4f60-44e6-a213-86f665324574"
+    }));
+    warnSpy.mockRestore();
   });
 
   it("charges card POS sales through the payment ledger with a POS sale id", async () => {
@@ -534,6 +638,71 @@ describe("barber POS sales", () => {
     expect(String(tables.messages[0]?.body)).toContain("Phillip mcgee requested $35.00");
     expect(createPaymentLedgerEntryMock).not.toHaveBeenCalled();
     expect(tables.payment_routing_records).toHaveLength(0);
+  });
+
+  it("creates a card request after retrying POS sale creation without rejected shop scope", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const tables: FakeTables = {
+      profiles: [
+        { id: "profile-phillip", email: "phillip@example.com", role: "barber_user", full_name: "Phillip mcgee" },
+        { id: "profile-client", email: "client@example.com", role: "client_user", full_name: "Jordan Client" }
+      ],
+      barbers: [{
+        id: "455c2930-7255-418b-bd2b-cc64bc0fc9b7",
+        profile_id: "profile-phillip",
+        reference_code: "barber-43b3cda2",
+        compensation_model: "booth_rent",
+        commission_rate: null
+      }],
+      locations: [{ id: "67ad0d9b-4f60-44e6-a213-86f665324574", reference_code: "loc-ybor" }],
+      clients: [{
+        id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
+        profile_id: "profile-client",
+        reference_code: "client-phillip"
+      }],
+      pos_sales: [],
+      pos_sale_items: [],
+      pos_payment_requests: [],
+      message_threads: [],
+      thread_participants: [],
+      messages: [],
+      payment_routing_records: []
+    };
+    createSupabaseAdminClientMock.mockReturnValue(createSupabaseMock(tables, {
+      rejectPosSaleShopId: true
+    }));
+
+    const created = await createBarberPosSale(barberUser({
+      barberSubtype: "booth_rent",
+      locationIds: ["loc-ybor"]
+    }), {
+      amountCents: 3500,
+      paymentMethod: "card_on_file",
+      clientId: "6607bce8-3636-46e8-9bbd-eabd9e5ad065"
+    });
+    const request = await requestBarberPosSalePayment(barberUser({
+      barberSubtype: "booth_rent",
+      locationIds: ["loc-ybor"]
+    }), created.sale.id);
+
+    expect(created.sale).toMatchObject({
+      status: "payment_pending",
+      shop_id: null,
+      payment_method: "card_on_file"
+    });
+    expect(request).toMatchObject({
+      ok: true,
+      request: expect.objectContaining({ status: "pending" }),
+      payment: null,
+      routing: null
+    });
+    expect(tables.pos_payment_requests).toHaveLength(1);
+    expect(tables.messages[0]?.body).toContain("Phillip mcgee requested $35.00");
+    expect(warnSpy).toHaveBeenCalledWith("[barber-pos] shop_scope_defaulted", expect.objectContaining({
+      stage: "pos_sale_insert",
+      attemptedShopId: "67ad0d9b-4f60-44e6-a213-86f665324574"
+    }));
+    warnSpy.mockRestore();
   });
 
   it("falls back to legacy POS columns when payment method columns are not migrated yet", async () => {
