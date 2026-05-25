@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
-import { isBarberAccountRole } from "@/lib/auth/roles";
+import { isBarberAccountRole, isClientRole } from "@/lib/auth/roles";
 import { canonicalBarberUuid } from "@/lib/booking/canonical-booking";
-import { createPaymentLedgerEntry } from "@/lib/payments/service";
+import { createCapturedStripePaymentRecord, createPaymentLedgerEntry, PaymentServiceError } from "@/lib/payments/service";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { PLATFORM_FEE_RATE, roundCurrency } from "@/lib/fintech/domain";
 import type { UserAccount } from "@/types/domain";
@@ -54,6 +54,7 @@ type PosPaymentRequestRow = {
   requested_at: string;
   approved_at: string | null;
   declined_at: string | null;
+  paid_at?: string | null;
   expires_at: string | null;
   message_thread_id: string | null;
   payment_id: string | null;
@@ -73,6 +74,14 @@ export const POS_SCHEMA_TABLES = {
   paymentRequests: "pos_payment_requests"
 } as const;
 
+type PosPaymentRequestMessageMetadata = {
+  kind: "pos_payment_request";
+  paymentRequestId: string;
+  posSaleId: string;
+  amountCents: number;
+  status: PosPaymentRequestRow["status"];
+};
+
 type PosSaleRow = {
   id: string;
   barber_id: string;
@@ -82,7 +91,11 @@ type PosSaleRow = {
   source: string;
   status: "draft" | "payment_pending" | "paid" | "refunded" | "voided";
   payment_method?: "tap_to_pay" | "card_on_file" | "cash" | "invoice" | "test" | null;
+  payment_status?: "pending" | "pending_client_approval" | "paid" | "captured" | "failed" | "refunded" | null;
   cash_recorded_at?: string | null;
+  completed_at?: string | null;
+  amount_cents?: number | null;
+  total_amount_cents?: number | null;
   invoice_url?: string | null;
   invoice_status?: string | null;
   customer_phone?: string | null;
@@ -895,6 +908,53 @@ async function loadPosSaleForActor(supabase: SupabaseClient, user: UserAccount, 
   return { actor, sale: result.data as PosSaleRow };
 }
 
+function getPosSaleAmountCents(sale: PosSaleRow) {
+  return cents(sale.total_cents ?? sale.total_amount_cents ?? sale.amount_cents ?? 0);
+}
+
+async function updatePosSaleStateWithFallbacks(input: {
+  supabase: SupabaseClient;
+  saleId: string;
+  stage: string;
+  payload: Record<string, unknown>;
+  fallbackPayload: Record<string, unknown>;
+}) {
+  let result = await input.supabase
+    .from(POS_SCHEMA_TABLES.sales)
+    .update(input.payload)
+    .eq("id", input.saleId)
+    .select("*")
+    .single();
+
+  if (result.error && isOptionalPosSaleColumnError(result.error)) {
+    logPosSaleSchemaFallback(input.stage, result.error, input.payload);
+    result = await input.supabase
+      .from(POS_SCHEMA_TABLES.sales)
+      .update(input.fallbackPayload)
+      .eq("id", input.saleId)
+      .select("*")
+      .single();
+  }
+
+  if (result.error) {
+    logPosSaleCreateFailed({
+      route: input.stage,
+      stage: "pos_sale_update",
+      paymentMethod: typeof input.payload.payment_method === "string" ? input.payload.payment_method : null,
+      payload: input.payload,
+      error: result.error,
+      table: POS_SCHEMA_TABLES.sales,
+      barberId: null,
+      profileId: null,
+      clientId: null,
+      amountCents: null
+    });
+    throw new BarberPosSaleError("Unable to update the POS sale.", 500, buildPosSaleDebug(result.error, POS_SCHEMA_TABLES.sales, "pos_sale_update_failed"));
+  }
+
+  return result.data as PosSaleRow;
+}
+
 async function resolvePosSaleClientId(supabase: SupabaseClient, clientReference?: string | null) {
   const reference = clientReference?.trim();
   if (!reference) {
@@ -994,6 +1054,55 @@ async function readClientForPosRequest(supabase: SupabaseClient, clientId: strin
     client,
     profile: profileResult.data as ProfileRow
   };
+}
+
+async function resolveClientActorForPosRequest(supabase: SupabaseClient, user: UserAccount) {
+  if (!isClientRole(user.role)) {
+    throw new BarberPosSaleError("Only client accounts can respond to POS payment requests.", 403);
+  }
+
+  const profile = await maybeLoadProfileForPosUser(supabase, user);
+  const clientReference = user.clientId?.trim();
+  const attempts = [
+    clientReference && UUID_PATTERN.test(clientReference) ? { column: "id" as const, value: clientReference } : null,
+    clientReference && UUID_PATTERN.test(clientReference) ? { column: "profile_id" as const, value: clientReference } : null,
+    clientReference ? { column: "reference_code" as const, value: clientReference } : null,
+    profile?.id ? { column: "profile_id" as const, value: profile.id } : null,
+    { column: "profile_id" as const, value: user.id }
+  ].filter((attempt): attempt is { column: "id" | "profile_id" | "reference_code"; value: string } =>
+    Boolean(attempt?.value?.trim())
+  );
+  const seen = new Set<string>();
+
+  for (const attempt of attempts) {
+    const key = `${attempt.column}:${attempt.value}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+
+    const result = await supabase
+      .from("clients")
+      .select("id, profile_id, reference_code")
+      .eq(attempt.column, attempt.value)
+      .maybeSingle();
+
+    if (result.error) {
+      if (attempt.column === "reference_code" && isUndefinedColumnError(result.error)) {
+        continue;
+      }
+      throw new BarberPosSaleError("Unable to resolve the client payment account.", 500);
+    }
+
+    if (result.data) {
+      return {
+        client: result.data as ClientRow,
+        profile: profile ?? null
+      };
+    }
+  }
+
+  throw new BarberPosSaleError("Client payment account not found.", 404);
 }
 
 async function readProfileForPosRequest(supabase: SupabaseClient, profileId: string) {
@@ -1100,6 +1209,133 @@ async function createOrGetPosPaymentRequestThread(input: {
   }
 
   return threadId;
+}
+
+function isPosPaymentRequestExpired(request: PosPaymentRequestRow) {
+  return Boolean(request.expires_at && new Date(request.expires_at).getTime() < Date.now());
+}
+
+async function loadClientPosPaymentRequest(input: {
+  supabase: SupabaseClient;
+  requestId: string;
+  clientId: string;
+}) {
+  const requestResult = await input.supabase
+    .from(POS_SCHEMA_TABLES.paymentRequests)
+    .select("*")
+    .eq("id", input.requestId)
+    .maybeSingle();
+
+  if (requestResult.error) {
+    throw new BarberPosSaleError("Unable to load this payment request.", 500, buildPosSaleDebug(requestResult.error, POS_SCHEMA_TABLES.paymentRequests, "pos_payment_request_load_failed"));
+  }
+
+  const request = requestResult.data as PosPaymentRequestRow | null;
+  if (!request) {
+    throw new BarberPosSaleError("Request not found.", 404);
+  }
+
+  if (request.client_id !== input.clientId) {
+    throw new BarberPosSaleError("This payment request belongs to another client.", 403);
+  }
+
+  const saleResult = await input.supabase
+    .from(POS_SCHEMA_TABLES.sales)
+    .select("*")
+    .eq("id", request.pos_sale_id)
+    .maybeSingle();
+
+  if (saleResult.error) {
+    throw new BarberPosSaleError("Unable to load this POS sale.", 500, buildPosSaleDebug(saleResult.error, POS_SCHEMA_TABLES.sales, "pos_sale_load_failed"));
+  }
+
+  const sale = saleResult.data as PosSaleRow | null;
+  if (!sale) {
+    throw new BarberPosSaleError("POS sale not found.", 404);
+  }
+
+  if (sale.client_id && sale.client_id !== input.clientId) {
+    throw new BarberPosSaleError("This POS sale belongs to another client.", 403);
+  }
+
+  return { request, sale };
+}
+
+function buildPosPaymentRequestMetadata(input: {
+  request: Pick<PosPaymentRequestRow, "id" | "pos_sale_id" | "amount_cents" | "status">;
+}): PosPaymentRequestMessageMetadata {
+  return {
+    kind: "pos_payment_request",
+    paymentRequestId: input.request.id,
+    posSaleId: input.request.pos_sale_id,
+    amountCents: cents(input.request.amount_cents),
+    status: input.request.status
+  };
+}
+
+async function updatePosPaymentRequestWithFallbacks(input: {
+  supabase: SupabaseClient;
+  requestId: string;
+  payload: Record<string, unknown>;
+}) {
+  let result = await input.supabase
+    .from(POS_SCHEMA_TABLES.paymentRequests)
+    .update(input.payload)
+    .eq("id", input.requestId)
+    .select("*")
+    .single();
+
+  if (result.error && isUndefinedColumnError(result.error) && "paid_at" in input.payload) {
+    const fallbackPayload = { ...input.payload };
+    delete fallbackPayload.paid_at;
+    result = await input.supabase
+      .from(POS_SCHEMA_TABLES.paymentRequests)
+      .update(fallbackPayload)
+      .eq("id", input.requestId)
+      .select("*")
+      .single();
+  }
+
+  if (result.error) {
+    throw new BarberPosSaleError("Unable to update this payment request.", 500, buildPosSaleDebug(result.error, POS_SCHEMA_TABLES.paymentRequests, "pos_payment_request_update_failed"));
+  }
+
+  return result.data as PosPaymentRequestRow;
+}
+
+async function appendPosPaymentRequestSystemMessage(input: {
+  supabase: SupabaseClient;
+  threadId: string | null;
+  body: string;
+  createdAt: string;
+}) {
+  if (!input.threadId) {
+    return;
+  }
+
+  const [messageInsert, threadUpdate] = await Promise.all([
+    input.supabase
+      .from("messages")
+      .insert({
+        thread_id: input.threadId,
+        sender_profile_id: null,
+        body: input.body,
+        message_type: "system",
+        created_at: input.createdAt
+      }),
+    input.supabase
+      .from("message_threads")
+      .update({ updated_at: input.createdAt })
+      .eq("id", input.threadId)
+  ]);
+
+  if (messageInsert.error) {
+    throw new BarberPosSaleError("Unable to write the payment request status message.", 500, buildPosSaleDebug(messageInsert.error, "messages", "pos_payment_request_message_failed"));
+  }
+
+  if (threadUpdate.error) {
+    throw new BarberPosSaleError("Unable to update the payment request conversation.", 500);
+  }
 }
 
 export async function quoteBarberPosSaleForUser(user: UserAccount, input: BarberPosSaleQuoteInput) {
@@ -1553,6 +1789,7 @@ export async function requestBarberPosSalePayment(user: UserAccount, saleId: str
     throw new BarberPosSaleError("Unable to create the POS payment request.", 500, buildPosSaleDebug(requestInsert.error, POS_SCHEMA_TABLES.paymentRequests, "pos_payment_request_create_failed"));
   }
 
+  const requestRow = requestInsert.data as PosPaymentRequestRow;
   const messageInsert = await supabase
     .from("messages")
     .insert({
@@ -1560,6 +1797,7 @@ export async function requestBarberPosSalePayment(user: UserAccount, saleId: str
       sender_profile_id: barberProfile.id,
       body: requestBody,
       message_type: "system",
+      metadata: buildPosPaymentRequestMetadata({ request: requestRow }),
       created_at: requestedAt
     });
 
@@ -1595,7 +1833,7 @@ export async function requestBarberPosSalePayment(user: UserAccount, saleId: str
   return {
     ok: true,
     sale,
-    request: requestInsert.data as PosPaymentRequestRow,
+    request: requestRow,
     payment: null,
     routing: null,
     alreadyRequested: false,
@@ -1751,6 +1989,268 @@ export async function chargeBarberPosSale(user: UserAccount, saleId: string, inp
     }
     throw error;
   }
+}
+
+export async function approveClientPosPaymentRequest(user: UserAccount, requestId: string) {
+  const supabase = getSupabaseOrThrow();
+  const actor = await resolveClientActorForPosRequest(supabase, user);
+  const { request, sale } = await loadClientPosPaymentRequest({
+    supabase,
+    requestId,
+    clientId: actor.client.id
+  });
+
+  if (request.status === "paid") {
+    throw new BarberPosSaleError("Request already paid.", 409);
+  }
+
+  if (request.status === "declined") {
+    throw new BarberPosSaleError("Request declined.", 409);
+  }
+
+  if (request.status === "expired" || isPosPaymentRequestExpired(request)) {
+    await updatePosPaymentRequestWithFallbacks({
+      supabase,
+      requestId: request.id,
+      payload: { status: "expired", updated_at: new Date().toISOString() }
+    }).catch(() => null);
+    throw new BarberPosSaleError("Request expired.", 409);
+  }
+
+  if (request.status !== "pending") {
+    throw new BarberPosSaleError("This payment request is no longer pending.", 409);
+  }
+
+  const saleAmountCents = getPosSaleAmountCents(sale);
+  if (saleAmountCents <= 0 || cents(request.amount_cents) !== saleAmountCents) {
+    throw new BarberPosSaleError("Payment request amount does not match the POS sale.", 409);
+  }
+
+  if (sale.status === "paid" || sale.payment_id) {
+    throw new BarberPosSaleError("Request already paid.", 409);
+  }
+
+  const paidAt = new Date().toISOString();
+  await updatePosSaleStateWithFallbacks({
+    supabase,
+    saleId: sale.id,
+    stage: "client_pos_payment_request_approve",
+    payload: {
+      status: "paid",
+      payment_method: "card_on_file",
+      payment_status: "paid",
+      completed_at: paidAt,
+      updated_at: paidAt
+    },
+    fallbackPayload: {
+      status: "paid",
+      updated_at: paidAt
+    }
+  });
+
+  let payment: Awaited<ReturnType<typeof createCapturedStripePaymentRecord>>;
+  try {
+    payment = await createCapturedStripePaymentRecord(supabase, {
+      appointmentId: null,
+      posSaleId: sale.id,
+      clientId: actor.client.id,
+      shopId: sale.shop_id,
+      barberId: sale.barber_id,
+      amount: decimalFromCents(saleAmountCents),
+      paymentType: "pos_sale",
+      legacyType: "pos_sale",
+      legacyStatus: "captured",
+      currency: "usd",
+      idempotencyKey: `pos-payment-request:${request.id}:approve`,
+      description: `BVRB3R walk-in POS payment request ${request.id}`,
+      metadata: {
+        source: "client_pos_payment_request_approval",
+        paymentRequestId: request.id,
+        posSaleId: sale.id,
+        barberId: sale.barber_id,
+        shopId: sale.shop_id,
+        clientId: actor.client.id
+      },
+      createdAt: paidAt
+    });
+  } catch (error) {
+    await Promise.allSettled([
+      updatePosSaleStateWithFallbacks({
+        supabase,
+        saleId: sale.id,
+        stage: "client_pos_payment_request_approve_rollback",
+        payload: {
+          status: "payment_pending",
+          payment_method: "card_on_file",
+          payment_status: "failed",
+          updated_at: new Date().toISOString()
+        },
+        fallbackPayload: {
+          status: "payment_pending",
+          updated_at: new Date().toISOString()
+        }
+      }),
+      updatePosPaymentRequestWithFallbacks({
+        supabase,
+        requestId: request.id,
+        payload: {
+          status: "failed",
+          updated_at: new Date().toISOString()
+        }
+      })
+    ]);
+
+    if (error instanceof PaymentServiceError) {
+      throw new BarberPosSaleError(error.status === 400 ? "No default payment method." : error.message, error.status);
+    }
+
+    throw error;
+  }
+
+  const finalizedAt = new Date().toISOString();
+  const [finalizedSale, finalizedRequest] = await Promise.all([
+    updatePosSaleStateWithFallbacks({
+      supabase,
+      saleId: sale.id,
+      stage: "client_pos_payment_request_finalize",
+      payload: {
+        payment_id: payment.id,
+        status: "paid",
+        payment_method: "card_on_file",
+        payment_status: "paid",
+        completed_at: paidAt,
+        updated_at: finalizedAt
+      },
+      fallbackPayload: {
+        payment_id: payment.id,
+        status: "paid",
+        updated_at: finalizedAt
+      }
+    }),
+    updatePosPaymentRequestWithFallbacks({
+      supabase,
+      requestId: request.id,
+      payload: {
+        status: "paid",
+        approved_at: paidAt,
+        paid_at: paidAt,
+        payment_id: payment.id,
+        updated_at: finalizedAt
+      }
+    })
+  ]);
+
+  const routingResult = await supabase
+    .from("payment_routing_records")
+    .select("id, payment_id, appointment_id, pos_sale_id, payout_readiness_status, money_routing_status, eligible_at, released_at, barber_payout_amount, platform_fee_amount, shop_split_amount")
+    .eq("pos_sale_id", sale.id)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (routingResult.error) {
+    console.warn("[barber-pos] approval_routing_load_failed", {
+      requestId: request.id,
+      posSaleId: sale.id,
+      postgresCode: routingResult.error.code ?? null,
+      postgresMessage: routingResult.error.message ?? null
+    });
+  }
+
+  await appendPosPaymentRequestSystemMessage({
+    supabase,
+    threadId: request.message_thread_id,
+    body: `Payment approved. ${formatUsdFromCents(saleAmountCents)} collected.`,
+    createdAt: finalizedAt
+  });
+
+  return {
+    ok: true,
+    sale: finalizedSale,
+    request: finalizedRequest,
+    payment,
+    routing: routingResult.data ?? null,
+    message: "Payment approved."
+  };
+}
+
+export async function declineClientPosPaymentRequest(user: UserAccount, requestId: string) {
+  const supabase = getSupabaseOrThrow();
+  const actor = await resolveClientActorForPosRequest(supabase, user);
+  const { request, sale } = await loadClientPosPaymentRequest({
+    supabase,
+    requestId,
+    clientId: actor.client.id
+  });
+
+  if (request.status === "paid") {
+    throw new BarberPosSaleError("Request already paid.", 409);
+  }
+
+  if (request.status === "declined") {
+    return {
+      ok: true,
+      sale,
+      request,
+      payment: null,
+      routing: null,
+      alreadyDeclined: true,
+      message: "Payment request declined."
+    };
+  }
+
+  if (request.status === "expired" || isPosPaymentRequestExpired(request)) {
+    throw new BarberPosSaleError("Request expired.", 409);
+  }
+
+  if (request.status !== "pending") {
+    throw new BarberPosSaleError("This payment request is no longer pending.", 409);
+  }
+
+  const declinedAt = new Date().toISOString();
+  const [updatedSale, updatedRequest] = await Promise.all([
+    updatePosSaleStateWithFallbacks({
+      supabase,
+      saleId: sale.id,
+      stage: "client_pos_payment_request_decline",
+      payload: {
+        status: "voided",
+        payment_method: "card_on_file",
+        payment_status: "failed",
+        updated_at: declinedAt
+      },
+      fallbackPayload: {
+        status: "voided",
+        updated_at: declinedAt
+      }
+    }),
+    updatePosPaymentRequestWithFallbacks({
+      supabase,
+      requestId: request.id,
+      payload: {
+        status: "declined",
+        declined_at: declinedAt,
+        updated_at: declinedAt
+      }
+    })
+  ]);
+
+  await appendPosPaymentRequestSystemMessage({
+    supabase,
+    threadId: request.message_thread_id,
+    body: "Payment request declined.",
+    createdAt: declinedAt
+  });
+
+  return {
+    ok: true,
+    sale: updatedSale,
+    request: updatedRequest,
+    payment: null,
+    routing: null,
+    alreadyDeclined: false,
+    message: "Payment request declined."
+  };
 }
 
 export async function listBarberPosSales(user: UserAccount) {

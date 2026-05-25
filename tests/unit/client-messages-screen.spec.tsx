@@ -9,6 +9,8 @@ const {
   useMessageParticipantSearchQueryMock,
   useCreateMessageThreadMutationMock,
   useSendMessageMutationMock,
+  useApprovePosPaymentRequestMutationMock,
+  useDeclinePosPaymentRequestMutationMock,
   useSendMessageBroadcastMutationMock
 } = vi.hoisted(() => ({
   useRouterMock: vi.fn(),
@@ -17,6 +19,8 @@ const {
   useMessageParticipantSearchQueryMock: vi.fn(),
   useCreateMessageThreadMutationMock: vi.fn(),
   useSendMessageMutationMock: vi.fn(),
+  useApprovePosPaymentRequestMutationMock: vi.fn(),
+  useDeclinePosPaymentRequestMutationMock: vi.fn(),
   useSendMessageBroadcastMutationMock: vi.fn()
 }));
 
@@ -53,6 +57,8 @@ vi.mock("@/lib/messages/client", () => ({
   useMessageParticipantSearchQuery: useMessageParticipantSearchQueryMock,
   useCreateMessageThreadMutation: useCreateMessageThreadMutationMock,
   useSendMessageMutation: useSendMessageMutationMock,
+  useApprovePosPaymentRequestMutation: useApprovePosPaymentRequestMutationMock,
+  useDeclinePosPaymentRequestMutation: useDeclinePosPaymentRequestMutationMock,
   useSendMessageBroadcastMutation: useSendMessageBroadcastMutationMock
 }));
 
@@ -152,6 +158,8 @@ describe("client messages screen", () => {
     useMessageParticipantSearchQueryMock.mockReset();
     useCreateMessageThreadMutationMock.mockReset();
     useSendMessageMutationMock.mockReset();
+    useApprovePosPaymentRequestMutationMock.mockReset();
+    useDeclinePosPaymentRequestMutationMock.mockReset();
     useSendMessageBroadcastMutationMock.mockReset();
 
     useRouterMock.mockReturnValue({
@@ -200,6 +208,14 @@ describe("client messages screen", () => {
       mutateAsync: vi.fn()
     });
     useSendMessageMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: vi.fn()
+    });
+    useApprovePosPaymentRequestMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: vi.fn()
+    });
+    useDeclinePosPaymentRequestMutationMock.mockReturnValue({
       isPending: false,
       mutateAsync: vi.fn()
     });
@@ -1047,6 +1063,100 @@ describe("client messages screen", () => {
     expect(within(modal).getAllByText("B").length).toBeGreaterThan(0);
     expect(within(modal).queryByRole("link", { name: "Book" })).not.toBeInTheDocument();
     expect(within(modal).getByRole("textbox", { name: "Reply" })).toBeInTheDocument();
+  });
+
+  it("renders a structured POS payment request card with approve and decline actions", async () => {
+    const thread = buildThread({
+      lastMessage: {
+        id: "message-pos-request",
+        body: "Phillip mcgee requested $35.00 for a walk-in service.",
+        messageType: "system",
+        createdAt: "2026-05-25T15:00:00.000Z",
+        senderName: "Phillip mcgee"
+      }
+    });
+    const approve = vi.fn().mockResolvedValue({ ok: true });
+    const decline = vi.fn().mockResolvedValue({ ok: true });
+    useApprovePosPaymentRequestMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: approve
+    });
+    useDeclinePosPaymentRequestMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: decline
+    });
+    useMessageThreadsQueryMock.mockReturnValue({
+      data: {
+        available: true,
+        viewer: {
+          profileId: "profile-client",
+          fullName: "Jordan Ellis",
+          role: "client"
+        },
+        threads: [thread],
+        eligibleAppointments: [],
+        eligibleContacts: [],
+        broadcastTargets: []
+      },
+      isLoading: false,
+      error: null
+    });
+    useMessageThreadQueryMock.mockReturnValue({
+      data: {
+        available: true,
+        viewer: {
+          profileId: "profile-client",
+          fullName: "Jordan Ellis",
+          role: "client"
+        },
+        thread: buildThreadDetail(thread),
+        messages: [
+          {
+            id: "message-pos-request",
+            body: "Phillip mcgee requested $35.00 for a walk-in service.",
+            messageType: "system",
+            metadata: {
+              kind: "pos_payment_request",
+              paymentRequestId: "request-pos-1",
+              posSaleId: "sale-pos-1",
+              amountCents: 3500,
+              status: "pending"
+            },
+            createdAt: "2026-05-25T15:00:00.000Z",
+            senderName: "Phillip mcgee",
+            senderRole: "barber_user",
+            isOwn: false
+          }
+        ]
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="client"
+        basePath="/dashboard/client/messages"
+        selectedThreadId="thread-appointment-1"
+        title="Messages"
+        subtitle="Your conversations, appointments, and support."
+      />
+    );
+
+    const modal = screen.getByTestId("message-thread-modal");
+    const card = within(modal).getByTestId("pos-payment-request-card");
+    expect(card).toHaveTextContent("Payment Request");
+    expect(card).toHaveTextContent("Phillip mcgee requested $35.00");
+
+    fireEvent.click(within(card).getByRole("button", { name: "Approve Payment" }));
+    await waitFor(() => {
+      expect(approve).toHaveBeenCalledWith("request-pos-1");
+    });
+
+    fireEvent.click(within(card).getByRole("button", { name: "Decline" }));
+    await waitFor(() => {
+      expect(decline).toHaveBeenCalledWith("request-pos-1");
+    });
   });
 
   it("renders the barber inbox with the same compact conversation system", () => {

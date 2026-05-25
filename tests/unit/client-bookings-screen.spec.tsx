@@ -280,6 +280,44 @@ describe("client bookings screen", () => {
     expect(screen.getByText("No past visits yet.")).toBeInTheDocument();
   });
 
+  it("renders approved POS card sales as client receipts", () => {
+    useClientBookingsQueryMock.mockReturnValue({
+      data: {
+        favoriteBarber: null,
+        upcoming: [],
+        nextAppointment: null,
+        nextAppointmentPayment: null,
+        history: [],
+        posReceipts: [
+          {
+            id: "pos-sale-1",
+            barberId: "barber-43b3cda2",
+            barberName: "Phillip mcgee",
+            serviceLabel: "Walk-in service",
+            paidAt: "2026-05-25T15:00:00.000Z",
+            amountCents: 3500,
+            paymentMethodLabel: "Card/App",
+            statusLabel: "Paid",
+            note: null,
+            paymentId: "payment-pos-1"
+          }
+        ]
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(<ClientBookingsScreen />);
+
+    expect(screen.getByTestId("client-pos-receipt")).toBeInTheDocument();
+    expect(screen.getByText("Phillip mcgee")).toBeInTheDocument();
+    expect(screen.getByText("Walk-in service")).toBeInTheDocument();
+    expect(screen.getAllByText("Card/App").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("$35").length).toBeGreaterThan(0);
+    expect(screen.getByText("Receipt ID: payment-pos-1")).toBeInTheDocument();
+    expect(screen.queryByText("No past visits yet.")).not.toBeInTheDocument();
+  });
+
   it("confirms cancellation, hides the upcoming appointment, and shows success", async () => {
     const mutateAsync = vi.fn().mockResolvedValue({
       ok: true,

@@ -145,6 +145,19 @@ export interface ClientAppointmentReviewSummary {
   createdAt: string;
 }
 
+export interface ClientPosReceiptView {
+  id: string;
+  barberId: string | null;
+  barberName: string;
+  serviceLabel: string;
+  paidAt: string;
+  amountCents: number;
+  paymentMethodLabel: string;
+  statusLabel: string;
+  note: string | null;
+  paymentId: string | null;
+}
+
 export interface AppointmentPaymentSummaryResponse {
   appointmentId: string;
   outstandingBalance: number;
@@ -191,6 +204,7 @@ export interface ClientBookingsResponse {
     breakdown?: BookingTransactionBreakdownView | null;
     moneyTimeline?: BookingMoneyTimelineView | null;
   }>;
+  posReceipts?: ClientPosReceiptView[];
   routine: ClientRoutineResponse | null;
   membershipValue: ClientMembershipValueView | null;
   membershipExecution: ClientMembershipExecutionView | null;

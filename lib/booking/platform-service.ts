@@ -2896,6 +2896,110 @@ export async function getBarberAvailabilityPayload(barberId: string, options: { 
     gating: getVerificationGateDecision(undefined, "booking")
   };
 }
+
+type ClientPosSaleReceiptRow = {
+  id: string;
+  barber_id: string | null;
+  client_id: string | null;
+  status: string | null;
+  payment_method?: string | null;
+  total_cents?: number | string | null;
+  total_amount_cents?: number | string | null;
+  amount_cents?: number | string | null;
+  note?: string | null;
+  payment_id?: string | null;
+  cash_recorded_at?: string | null;
+  completed_at?: string | null;
+  updated_at?: string | null;
+  created_at?: string | null;
+};
+
+function posSaleCents(row: ClientPosSaleReceiptRow) {
+  return Math.max(0, Math.round(Number(row.total_cents ?? row.total_amount_cents ?? row.amount_cents ?? 0)));
+}
+
+async function readClientPosSaleReceipts(supabase: SupabaseClient | null, clientId: string) {
+  if (!supabase) {
+    return [];
+  }
+
+  const salesResult = await supabase
+    .from("pos_sales")
+    .select("id, barber_id, client_id, status, payment_method, total_cents, total_amount_cents, amount_cents, note, payment_id, cash_recorded_at, completed_at, updated_at, created_at")
+    .eq("client_id", clientId)
+    .eq("status", "paid")
+    .order("updated_at", { ascending: false })
+    .limit(10);
+
+  if (salesResult.error) {
+    if (!isClientProfileRepairSchemaError(salesResult.error)) {
+      console.warn("[client-activity] pos_receipts_read_failed", {
+        clientId,
+        ...postgresErrorMeta(salesResult.error)
+      });
+    }
+    return [];
+  }
+
+  const sales = (salesResult.data ?? []) as ClientPosSaleReceiptRow[];
+  const barberIds = [...new Set(sales.map((sale) => sale.barber_id).filter((value): value is string => Boolean(value)))];
+  if (!barberIds.length) {
+    return sales.map((sale) => ({
+      id: sale.id,
+      barberId: sale.barber_id,
+      barberName: "BVRB3R barber",
+      serviceLabel: sale.note?.trim() || "Walk-in service",
+      paidAt: sale.completed_at ?? sale.cash_recorded_at ?? sale.updated_at ?? sale.created_at ?? new Date().toISOString(),
+      amountCents: posSaleCents(sale),
+      paymentMethodLabel: sale.payment_method === "cash" ? "Cash" : "Card/App",
+      statusLabel: sale.payment_method === "cash" ? "Cash recorded" : "Paid",
+      note: sale.note ?? null,
+      paymentId: sale.payment_id ?? null
+    }));
+  }
+
+  const barberResult = await supabase
+    .from("barbers")
+    .select("id, profile_id")
+    .in("id", barberIds);
+
+  if (barberResult.error) {
+    return [];
+  }
+
+  const barbers = (barberResult.data ?? []) as Array<{ id: string; profile_id: string | null }>;
+  const profileIds = [...new Set(barbers.map((barber) => barber.profile_id).filter((value): value is string => Boolean(value)))];
+  const profilesResult = profileIds.length
+    ? await supabase
+        .from("profiles")
+        .select("id, full_name, email")
+        .in("id", profileIds)
+    : { data: [], error: null };
+
+  const profilesById = new Map(
+    ((profilesResult.data ?? []) as Array<{ id: string; full_name: string | null; email: string | null }>)
+      .map((profile) => [profile.id, profile])
+  );
+  const barbersById = new Map(barbers.map((barber) => [barber.id, barber]));
+
+  return sales.map((sale) => {
+    const barber = sale.barber_id ? barbersById.get(sale.barber_id) ?? null : null;
+    const profile = barber?.profile_id ? profilesById.get(barber.profile_id) ?? null : null;
+    return {
+      id: sale.id,
+      barberId: sale.barber_id,
+      barberName: profile?.full_name ?? profile?.email ?? "BVRB3R barber",
+      serviceLabel: sale.note?.trim() || "Walk-in service",
+      paidAt: sale.completed_at ?? sale.cash_recorded_at ?? sale.updated_at ?? sale.created_at ?? new Date().toISOString(),
+      amountCents: posSaleCents(sale),
+      paymentMethodLabel: sale.payment_method === "cash" ? "Cash" : "Card/App",
+      statusLabel: sale.payment_method === "cash" ? "Cash recorded" : "Paid",
+      note: sale.note ?? null,
+      paymentId: sale.payment_id ?? null
+    };
+  });
+}
+
 export async function getClientBookingsPayload(clientId: string) {
   const supabase = getSupabase();
   const provider = await getLiveOperationsProvider();
@@ -2977,6 +3081,7 @@ export async function getClientBookingsPayload(clientId: string) {
     moneyTimeline: receiptMap.get(appointment.id)?.moneyTimeline ?? null
   }));
   const nextHydratedAppointment = hydratedUpcomingAppointments[0] as (typeof hydratedUpcomingAppointments)[number] | undefined;
+  const posReceipts = await readClientPosSaleReceipts(supabase, clientId);
   let membershipValue = null;
   let membershipExecution = null;
 
@@ -3021,6 +3126,7 @@ export async function getClientBookingsPayload(clientId: string) {
     upcoming: hydratedUpcomingAppointments,
     nextAppointment: nextHydratedAppointment ?? null,
     history: reviewHistory,
+    posReceipts,
     routine,
     membershipValue,
     membershipExecution,

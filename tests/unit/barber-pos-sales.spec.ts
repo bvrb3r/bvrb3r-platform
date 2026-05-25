@@ -3,9 +3,10 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import type { UserAccount } from "@/types/domain";
 
-const { createSupabaseAdminClientMock, createPaymentLedgerEntryMock } = vi.hoisted(() => ({
+const { createSupabaseAdminClientMock, createPaymentLedgerEntryMock, createCapturedStripePaymentRecordMock } = vi.hoisted(() => ({
   createSupabaseAdminClientMock: vi.fn(),
-  createPaymentLedgerEntryMock: vi.fn()
+  createPaymentLedgerEntryMock: vi.fn(),
+  createCapturedStripePaymentRecordMock: vi.fn()
 }));
 
 vi.mock("@/lib/supabase/admin", () => ({
@@ -13,15 +14,26 @@ vi.mock("@/lib/supabase/admin", () => ({
 }));
 
 vi.mock("@/lib/payments/service", () => ({
-  createPaymentLedgerEntry: createPaymentLedgerEntryMock
+  createCapturedStripePaymentRecord: createCapturedStripePaymentRecordMock,
+  createPaymentLedgerEntry: createPaymentLedgerEntryMock,
+  PaymentServiceError: class PaymentServiceError extends Error {
+    status: number;
+
+    constructor(message: string, status = 400) {
+      super(message);
+      this.status = status;
+    }
+  }
 }));
 
 import {
   BarberPosSaleError,
+  approveClientPosPaymentRequest,
   chargeBarberPosSale,
   createBarberPosSale,
   createBarberPosSaleInvoice,
   createCashBarberPosSale,
+  declineClientPosPaymentRequest,
   POS_SCHEMA_TABLES,
   quoteBarberPosSale,
   quoteBarberPosSaleForUser,
@@ -249,10 +261,25 @@ function barberUser(overrides: Partial<UserAccount> = {}): UserAccount {
   };
 }
 
+function clientUser(overrides: Partial<UserAccount> = {}): UserAccount {
+  return {
+    id: "profile-client",
+    role: "client_user",
+    email: "client@example.com",
+    password: "",
+    name: "Jordan Client",
+    title: "Client",
+    locationIds: [],
+    clientId: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
+    ...overrides
+  };
+}
+
 describe("barber POS sales", () => {
   beforeEach(() => {
     createSupabaseAdminClientMock.mockReset();
     createPaymentLedgerEntryMock.mockReset();
+    createCapturedStripePaymentRecordMock.mockReset();
   });
 
   it("keeps POS table names aligned with production migrations", () => {
@@ -264,7 +291,11 @@ describe("barber POS sales", () => {
       join(process.cwd(), "supabase/migrations/20260524110000_ensure_pos_sales_schema.sql"),
       "utf8"
     );
-    const migrationSql = `${initialMigration}\n${ensureMigration}`;
+    const actionMigration = readFileSync(
+      join(process.cwd(), "supabase/migrations/20260525120000_pos_payment_request_actions.sql"),
+      "utf8"
+    );
+    const migrationSql = `${initialMigration}\n${ensureMigration}\n${actionMigration}`;
 
     expect(POS_SCHEMA_TABLES).toEqual({
       sales: "pos_sales",
@@ -274,6 +305,8 @@ describe("barber POS sales", () => {
     expect(migrationSql).toContain("create table if not exists public.pos_sales");
     expect(migrationSql).toContain("create table if not exists public.pos_sale_items");
     expect(migrationSql).toContain("create table if not exists public.pos_payment_requests");
+    expect(migrationSql).toContain("add column if not exists metadata jsonb");
+    expect(migrationSql).toContain("add column if not exists paid_at timestamptz");
     expect(migrationSql).toContain("notify pgrst, 'reload schema'");
     expect(migrationSql).not.toContain("barber_pos_sales");
   });
@@ -788,11 +821,147 @@ describe("barber POS sales", () => {
     });
     expect(tables.messages[0]).toMatchObject({
       sender_profile_id: "profile-phillip",
-      message_type: "system"
+      message_type: "system",
+      metadata: expect.objectContaining({
+        kind: "pos_payment_request",
+        paymentRequestId: request.request.id,
+        posSaleId: created.sale.id,
+        amountCents: 3500,
+        status: "pending"
+      })
     });
     expect(String(tables.messages[0]?.body)).toContain("Phillip mcgee requested $35.00");
     expect(createPaymentLedgerEntryMock).not.toHaveBeenCalled();
     expect(tables.payment_routing_records).toHaveLength(0);
+  });
+
+  it("approves a pending client card request by charging the saved card and loading routing", async () => {
+    const tables: FakeTables = {
+      profiles: [
+        { id: "profile-phillip", email: "phillip@example.com", role: "barber_user", full_name: "Phillip mcgee" },
+        { id: "profile-client", email: "client@example.com", role: "client_user", full_name: "Jordan Client" }
+      ],
+      barbers: [{
+        id: "455c2930-7255-418b-bd2b-cc64bc0fc9b7",
+        profile_id: "profile-phillip",
+        reference_code: "barber-43b3cda2",
+        compensation_model: "freelance",
+        commission_rate: null
+      }],
+      clients: [{
+        id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
+        profile_id: "profile-client",
+        reference_code: "client-phillip"
+      }],
+      pos_sales: [],
+      pos_sale_items: [],
+      pos_payment_requests: [],
+      message_threads: [],
+      thread_participants: [],
+      messages: [],
+      payment_routing_records: []
+    };
+    createSupabaseAdminClientMock.mockReturnValue(createSupabaseMock(tables));
+    createCapturedStripePaymentRecordMock.mockResolvedValue({
+      id: "payment-pos-approved",
+      posSaleId: "pos_sales-1"
+    });
+
+    const created = await createBarberPosSale(barberUser(), {
+      amountCents: 3500,
+      paymentMethod: "card_on_file",
+      clientId: "6607bce8-3636-46e8-9bbd-eabd9e5ad065"
+    });
+    const pending = await requestBarberPosSalePayment(barberUser(), created.sale.id);
+    tables.payment_routing_records.push({
+      id: "routing-pos-approved",
+      payment_id: "payment-pos-approved",
+      pos_sale_id: created.sale.id,
+      payout_readiness_status: "ready",
+      money_routing_status: "pending",
+      eligible_at: "2026-05-25T12:00:00.000Z",
+      released_at: null,
+      barber_payout_amount: 33.25,
+      platform_fee_amount: 1.75,
+      shop_split_amount: 0,
+      updated_at: "2026-05-25T12:00:00.000Z"
+    });
+
+    const approved = await approveClientPosPaymentRequest(clientUser(), pending.request.id);
+
+    expect(createCapturedStripePaymentRecordMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      appointmentId: null,
+      posSaleId: created.sale.id,
+      clientId: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
+      paymentType: "pos_sale",
+      amount: 35,
+      metadata: expect.objectContaining({
+        source: "client_pos_payment_request_approval",
+        paymentRequestId: pending.request.id
+      })
+    }));
+    expect(approved.request).toMatchObject({
+      status: "paid",
+      payment_id: "payment-pos-approved"
+    });
+    expect(approved.sale).toMatchObject({
+      status: "paid",
+      payment_method: "card_on_file",
+      payment_id: "payment-pos-approved"
+    });
+    expect(approved.routing).toMatchObject({
+      pos_sale_id: created.sale.id,
+      payout_readiness_status: "ready"
+    });
+    expect(tables.messages.some((message) => String(message.body).includes("Payment approved. $35.00 collected."))).toBe(true);
+  });
+
+  it("declines a pending client card request without payment or routing", async () => {
+    const tables: FakeTables = {
+      profiles: [
+        { id: "profile-phillip", email: "phillip@example.com", role: "barber_user", full_name: "Phillip mcgee" },
+        { id: "profile-client", email: "client@example.com", role: "client_user", full_name: "Jordan Client" }
+      ],
+      barbers: [{
+        id: "455c2930-7255-418b-bd2b-cc64bc0fc9b7",
+        profile_id: "profile-phillip",
+        reference_code: "barber-43b3cda2",
+        compensation_model: "freelance",
+        commission_rate: null
+      }],
+      clients: [{
+        id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
+        profile_id: "profile-client",
+        reference_code: "client-phillip"
+      }],
+      pos_sales: [],
+      pos_sale_items: [],
+      pos_payment_requests: [],
+      message_threads: [],
+      thread_participants: [],
+      messages: [],
+      payment_routing_records: []
+    };
+    createSupabaseAdminClientMock.mockReturnValue(createSupabaseMock(tables));
+
+    const created = await createBarberPosSale(barberUser(), {
+      amountCents: 3500,
+      paymentMethod: "card_on_file",
+      clientId: "6607bce8-3636-46e8-9bbd-eabd9e5ad065"
+    });
+    const pending = await requestBarberPosSalePayment(barberUser(), created.sale.id);
+    const declined = await declineClientPosPaymentRequest(clientUser(), pending.request.id);
+
+    expect(declined).toMatchObject({
+      ok: true,
+      payment: null,
+      routing: null,
+      request: expect.objectContaining({ status: "declined" }),
+      sale: expect.objectContaining({ status: "voided" })
+    });
+    expect(createCapturedStripePaymentRecordMock).not.toHaveBeenCalled();
+    expect(tables.payment_routing_records).toHaveLength(0);
+    expect(tables.messages.some((message) => String(message.body).includes("Payment request declined."))).toBe(true);
   });
 
   it("returns missing-table diagnostics when PostgREST cannot find pos_payment_requests", async () => {

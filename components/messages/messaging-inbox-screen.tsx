@@ -11,7 +11,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, FilterChip, SearchBar } from "@/design/components";
 import { isBarberAccountRole } from "@/lib/auth/roles";
 import {
+  useApprovePosPaymentRequestMutation,
   useCreateMessageThreadMutation,
+  useDeclinePosPaymentRequestMutation,
   useMessageParticipantSearchQuery,
   useMessageThreadQuery,
   useMessageThreadsQuery,
@@ -22,6 +24,7 @@ import type {
   MessagingBroadcastAudience,
   MessagingCreateThreadInput,
   MessagingParticipantSearchResult,
+  PosPaymentRequestMessageMetadata,
   MessagingThreadPayload,
   MessagingThreadSummary
 } from "@/lib/messages/service";
@@ -66,6 +69,23 @@ function formatThreadTime(iso: string) {
     hour: "numeric",
     minute: "2-digit"
   }).format(date);
+}
+
+function formatMoneyFromCents(cents: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(cents / 100);
+}
+
+function getPosPaymentRequestMetadata(metadata: MessagingThreadPayload["messages"][number]["metadata"]): PosPaymentRequestMessageMetadata | null {
+  if (!metadata || metadata.kind !== "pos_payment_request") {
+    return null;
+  }
+
+  return metadata as PosPaymentRequestMessageMetadata;
 }
 
 function formatCompactThreadTime(iso: string) {
@@ -553,13 +573,106 @@ function ThinThreadRow({
         <span className="text-[11px] font-medium text-white/42">
           {formatCompactThreadTime(thread.lastMessage?.createdAt ?? thread.updatedAt)}
         </span>
-        {thread.appointmentContext ? (
+        {thread.hasUnread ? (
+          <span className="h-2.5 w-2.5 rounded-full bg-[#a3ff12] shadow-[0_0_14px_rgba(163,255,18,0.75)]" aria-label="Unread message" />
+        ) : thread.appointmentContext ? (
           <span className="rounded-md border border-[#a3ff12]/18 bg-[#a3ff12]/8 px-1.5 py-0.5 text-[10px] font-bold text-[#d7ffab]">
             {thread.appointmentContext.statusLabel}
           </span>
         ) : null}
       </div>
     </Link>
+  );
+}
+
+function PaymentRequestCard({
+  counterpartName,
+  isProcessing,
+  metadata,
+  onApprove,
+  onDecline,
+  surface
+}: {
+  counterpartName: string;
+  isProcessing: boolean;
+  metadata: PosPaymentRequestMessageMetadata;
+  onApprove: (paymentRequestId: string) => void;
+  onDecline: (paymentRequestId: string) => void;
+  surface: MessagingSurface;
+}) {
+  const status = metadata.status;
+  const isPending = status === "pending";
+  const showClientActions = surface === "client" && isPending;
+  const statusLabel = status === "paid"
+    ? "Paid"
+    : status === "declined"
+      ? "Declined"
+      : status === "failed"
+        ? "Failed"
+        : status === "expired"
+          ? "Expired"
+          : isProcessing
+            ? "Processing"
+            : "Pending";
+
+  return (
+    <div
+      className="w-full max-w-[22rem] rounded-lg border border-[#a3ff12]/24 bg-[linear-gradient(180deg,rgba(163,255,18,0.12),rgba(8,8,8,0.96))] p-3 shadow-[0_14px_34px_rgba(0,0,0,0.32)]"
+      data-testid="pos-payment-request-card"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#d7ffab]">Payment Request</p>
+          <p className="mt-2 text-sm font-black text-white">
+            {counterpartName} requested {formatMoneyFromCents(metadata.amountCents)}
+          </p>
+          <p className="mt-1 text-xs text-white/56">Walk-in service</p>
+        </div>
+        <span className={[
+          "rounded-md border px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em]",
+          status === "paid"
+            ? "border-[#a3ff12]/28 bg-[#a3ff12]/12 text-[#d7ffab]"
+            : status === "declined" || status === "failed" || status === "expired"
+              ? "border-rose-300/24 bg-rose-500/10 text-rose-100"
+              : "border-amber-200/22 bg-amber-300/10 text-amber-100"
+        ].join(" ")}>
+          {statusLabel}
+        </span>
+      </div>
+
+      {showClientActions ? (
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          <button
+            type="button"
+            className="h-9 rounded-lg bg-[#a3ff12] px-3 text-xs font-black text-[#050505] transition hover:bg-[#d7ffab] disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={isProcessing}
+            onClick={() => onApprove(metadata.paymentRequestId)}
+          >
+            {isProcessing ? "Processing..." : "Approve Payment"}
+          </button>
+          <button
+            type="button"
+            className="h-9 rounded-lg border border-white/10 px-3 text-xs font-bold text-white/72 transition hover:border-rose-200/28 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={isProcessing}
+            onClick={() => onDecline(metadata.paymentRequestId)}
+          >
+            Decline
+          </button>
+        </div>
+      ) : (
+        <p className="mt-3 text-xs leading-5 text-white/54">
+          {status === "paid"
+            ? "Payment approved and collected through BVRB3R."
+            : status === "declined"
+              ? "This request was declined. No payment was created."
+              : status === "failed"
+                ? "Payment could not be completed. Contact the barber to try again."
+                : status === "expired"
+                  ? "This request expired."
+                  : "Waiting on client approval."}
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -577,8 +690,11 @@ function ConversationPanel({
   selectedThreadId,
   sendPending,
   surface,
+  paymentRequestActionId,
   threadError,
+  onApprovePaymentRequest,
   onComposerChange,
+  onDeclinePaymentRequest,
   onSend
 }: {
   activeThread: ActiveThread;
@@ -594,8 +710,11 @@ function ConversationPanel({
   selectedThreadId?: string;
   sendPending: boolean;
   surface: MessagingSurface;
+  paymentRequestActionId?: string | null;
   threadError: unknown;
+  onApprovePaymentRequest: (paymentRequestId: string) => void;
   onComposerChange: (value: string) => void;
+  onDeclinePaymentRequest: (paymentRequestId: string) => void;
   onSend: () => void;
 }) {
   const participantSummary = activeThread?.participants
@@ -717,9 +836,21 @@ function ConversationPanel({
       {activeThread ? (
         <>
           <div className="flex-1 space-y-3 overflow-y-auto px-3 py-4 scroll-smooth sm:px-4">
-            {messages.length ? messages.map((message) => (
+            {messages.length ? messages.map((message) => {
+              const paymentRequestMetadata = getPosPaymentRequestMetadata(message.metadata);
+              return (
               <div key={message.id} className={message.isOwn ? "flex justify-end" : "flex justify-start"}>
-                <div
+                {paymentRequestMetadata ? (
+                  <PaymentRequestCard
+                    counterpartName={displayName}
+                    isProcessing={paymentRequestActionId === paymentRequestMetadata.paymentRequestId}
+                    metadata={paymentRequestMetadata}
+                    onApprove={onApprovePaymentRequest}
+                    onDecline={onDeclinePaymentRequest}
+                    surface={surface}
+                  />
+                ) : (
+                  <div
                   className={[
                     "max-w-[82%] rounded-lg px-3 py-2 text-sm leading-6 shadow-[0_10px_28px_rgba(0,0,0,0.24)]",
                     message.messageType === "system"
@@ -733,9 +864,11 @@ function ConversationPanel({
                   <p className={["mt-1 text-[10px] font-bold", message.isOwn ? "text-black/52" : "text-white/38"].join(" ")}>
                     {message.messageType === "system" ? "System" : message.senderName ?? "Participant"} • {formatThreadTime(message.createdAt)}
                   </p>
-                </div>
+                  </div>
+                )}
               </div>
-            )) : (
+              );
+            }) : (
               <div className="flex min-h-40 items-center justify-center rounded-lg border border-dashed border-white/10 bg-white/[0.025] p-4 text-center text-sm text-white/54">
                 No messages yet.
               </div>
@@ -789,8 +922,11 @@ function ConversationModal({
   isLoading,
   messages,
   onClose,
+  onApprovePaymentRequest,
   onComposerChange,
+  onDeclinePaymentRequest,
   onSend,
+  paymentRequestActionId,
   relatedAppointmentContexts,
   sendPending,
   surface,
@@ -804,8 +940,11 @@ function ConversationModal({
   isLoading: boolean;
   messages: MessagingThreadPayload["messages"];
   onClose: () => void;
+  onApprovePaymentRequest: (paymentRequestId: string) => void;
   onComposerChange: (value: string) => void;
+  onDeclinePaymentRequest: (paymentRequestId: string) => void;
   onSend: () => void;
+  paymentRequestActionId?: string | null;
   relatedAppointmentContexts: AppointmentContextView[];
   sendPending: boolean;
   surface: MessagingSurface;
@@ -839,11 +978,14 @@ function ConversationModal({
           messages={messages}
           mode="modal"
           onClose={onClose}
+          onApprovePaymentRequest={onApprovePaymentRequest}
           relatedAppointmentContexts={relatedAppointmentContexts}
+          paymentRequestActionId={paymentRequestActionId}
           sendPending={sendPending}
           surface={surface}
           threadError={threadError}
           onComposerChange={onComposerChange}
+          onDeclinePaymentRequest={onDeclinePaymentRequest}
           onSend={onSend}
         />
       </div>
@@ -1005,6 +1147,7 @@ export function MessagingInboxScreen({
   const [threadSearch, setThreadSearch] = useState("");
   const [threadFilter, setThreadFilter] = useState<ThreadFilter>("all");
   const [barberInboxTab, setBarberInboxTab] = useState<BarberInboxTab>("primary");
+  const [paymentRequestActionId, setPaymentRequestActionId] = useState<string | null>(null);
   const startersRef = useRef<HTMLDivElement | null>(null);
   const hasTriggeredSupportIntentRef = useRef(false);
 
@@ -1033,6 +1176,8 @@ export function MessagingInboxScreen({
   const threadQuery = useMessageThreadQuery(activeThreadId);
   const participantSearchQuery = useMessageParticipantSearchQuery(participantSearch, composeOpen && available);
   const sendMessageMutation = useSendMessageMutation(activeThreadId);
+  const approvePaymentRequestMutation = useApprovePosPaymentRequestMutation(activeThreadId);
+  const declinePaymentRequestMutation = useDeclinePosPaymentRequestMutation(activeThreadId);
   const activeThread = threadQuery.data?.thread ?? null;
   const messages = threadQuery.data?.messages ?? [];
   const relatedAppointmentContexts = threadQuery.data?.relatedAppointmentContexts?.length
@@ -1150,6 +1295,32 @@ export function MessagingInboxScreen({
       setStatusUpdate({ tone: "success", message: "Message sent." });
     } catch (error) {
       setStatusUpdate({ tone: "error", message: readableError(error, "Unable to send the message.") });
+    }
+  }
+
+  async function handleApprovePaymentRequest(paymentRequestId: string) {
+    setStatusUpdate(null);
+    setPaymentRequestActionId(paymentRequestId);
+    try {
+      await approvePaymentRequestMutation.mutateAsync(paymentRequestId);
+      setStatusUpdate({ tone: "success", message: "Payment approved." });
+    } catch (error) {
+      setStatusUpdate({ tone: "error", message: readableError(error, "Unable to approve this payment request.") });
+    } finally {
+      setPaymentRequestActionId(null);
+    }
+  }
+
+  async function handleDeclinePaymentRequest(paymentRequestId: string) {
+    setStatusUpdate(null);
+    setPaymentRequestActionId(paymentRequestId);
+    try {
+      await declinePaymentRequestMutation.mutateAsync(paymentRequestId);
+      setStatusUpdate({ tone: "info", message: "Payment request declined." });
+    } catch (error) {
+      setStatusUpdate({ tone: "error", message: readableError(error, "Unable to decline this payment request.") });
+    } finally {
+      setPaymentRequestActionId(null);
     }
   }
 
@@ -1445,12 +1616,15 @@ export function MessagingInboxScreen({
               composerBody={composerBody}
               isLoading={threadQuery.isLoading}
               messages={messages}
+              onApprovePaymentRequest={(paymentRequestId) => void handleApprovePaymentRequest(paymentRequestId)}
               relatedAppointmentContexts={relatedAppointmentContexts}
               selectedThreadId={selectedThreadId}
+              paymentRequestActionId={paymentRequestActionId}
               sendPending={sendMessageMutation.isPending}
               surface={surface}
               threadError={threadQuery.error}
               onComposerChange={setComposerBody}
+              onDeclinePaymentRequest={(paymentRequestId) => void handleDeclinePaymentRequest(paymentRequestId)}
               onSend={() => void handleSendMessage()}
             />
           ) : null}
@@ -1466,12 +1640,15 @@ export function MessagingInboxScreen({
           composerBody={composerBody}
           isLoading={threadQuery.isLoading}
           messages={messages}
+          onApprovePaymentRequest={(paymentRequestId) => void handleApprovePaymentRequest(paymentRequestId)}
           relatedAppointmentContexts={relatedAppointmentContexts}
+          paymentRequestActionId={paymentRequestActionId}
           sendPending={sendMessageMutation.isPending}
           surface={surface}
           threadError={threadQuery.error}
           onClose={handleCloseThread}
           onComposerChange={setComposerBody}
+          onDeclinePaymentRequest={(paymentRequestId) => void handleDeclinePaymentRequest(paymentRequestId)}
           onSend={() => void handleSendMessage()}
         />
       ) : null}

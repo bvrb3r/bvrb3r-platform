@@ -204,6 +204,7 @@ export function ClientBookingsScreen() {
       ...mergedHistory
     ];
   }, [optimisticCancelledAppointments, payload?.history]);
+  const posReceipts = payload?.posReceipts ?? [];
   const nextAppointmentPayment = payload?.nextAppointmentPayment ?? null;
   const latestBookingPayment = nextAppointmentPayment?.latestBookingPayment ?? null;
   const defaultPaymentMethod = nextAppointmentPayment?.defaultPaymentMethod ?? null;
@@ -584,8 +585,50 @@ export function ClientBookingsScreen() {
 
         {isInitialLoading ? (
           <SectionSkeleton />
-        ) : history.length ? (
+        ) : history.length || posReceipts.length ? (
           <div className="space-y-4">
+            {posReceipts.map((receipt) => (
+              <article
+                key={`pos-${receipt.id}`}
+                className="rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.96),rgba(8,8,8,0.98))] p-5 shadow-[0_16px_32px_rgba(0,0,0,0.16)]"
+                data-testid="client-pos-receipt"
+              >
+                <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
+                  <div className="flex h-20 w-20 items-center justify-center rounded-[24px] border border-[#a3ff12]/22 bg-[#a3ff12]/10 text-[#d7ffab] shadow-[0_18px_34px_rgba(0,0,0,0.22)]">
+                    <CreditCard className="h-7 w-7" aria-hidden="true" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-2xl font-semibold text-white" data-display="true">{receipt.barberName}</p>
+                        <p className="mt-2 text-lg text-white/76">{receipt.serviceLabel}</p>
+                        <p className="mt-2 text-sm text-[#d7ffab]">{receipt.paymentMethodLabel} | {currency(receipt.amountCents / 100)}</p>
+                      </div>
+                      <StatusBadge tone="green" className="uppercase tracking-[0.16em]">
+                        {receipt.statusLabel}
+                      </StatusBadge>
+                    </div>
+                    <div className="mt-4 grid gap-3 md:grid-cols-3">
+                      <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
+                        <p className="surface-label">Date</p>
+                        <p className="mt-3 text-lg font-semibold text-white">{formatAppointmentDate(receipt.paidAt)}</p>
+                      </div>
+                      <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
+                        <p className="surface-label">Payment</p>
+                        <p className="mt-3 text-lg font-semibold text-white">{receipt.paymentMethodLabel}</p>
+                      </div>
+                      <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
+                        <p className="surface-label">Total paid</p>
+                        <p className="mt-3 text-lg font-semibold text-white">{currency(receipt.amountCents / 100)}</p>
+                      </div>
+                    </div>
+                    <p className="mt-4 text-sm leading-6 text-white/54">
+                      Receipt ID: {receipt.paymentId ?? receipt.id}
+                    </p>
+                  </div>
+                </div>
+              </article>
+            ))}
             {history.map((appointment) => {
               const publicIdentity = publicBarberIdentityById.get(appointment.barberId);
               const barberName = getClientFacingBarberName({

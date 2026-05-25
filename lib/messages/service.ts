@@ -106,6 +106,7 @@ type MessageRow = {
   sender_profile_id: string | null;
   body: string;
   message_type: MessagingMessageType;
+  metadata?: MessagingMessageMetadata | null;
   created_at: string;
 };
 
@@ -156,11 +157,24 @@ export type MessagingMessageView = {
   id: string;
   body: string;
   messageType: MessagingMessageType;
+  metadata?: MessagingMessageMetadata | null;
   createdAt: string;
   senderName: string | null;
   senderRole: Role | null;
   isOwn: boolean;
 };
+
+export type PosPaymentRequestMessageMetadata = {
+  kind: "pos_payment_request";
+  paymentRequestId: string;
+  posSaleId: string;
+  amountCents: number;
+  status: "pending" | "approved" | "paid" | "declined" | "failed" | "expired";
+};
+
+export type MessagingMessageMetadata =
+  | PosPaymentRequestMessageMetadata
+  | (Record<string, unknown> & { kind?: string });
 
 export type MessagingThreadSummary = {
   id: string;
@@ -197,6 +211,7 @@ export type MessagingThreadSummary = {
     createdAt: string;
     senderName: string | null;
   } | null;
+  hasUnread?: boolean;
 };
 
 export type MessagingInboxCandidate = {
@@ -416,6 +431,83 @@ function baseViewer(user: UserAccount, profileId: string | null = null): Messagi
 
 function unique<T>(values: T[]) {
   return Array.from(new Set(values));
+}
+
+function normalizeMessageMetadata(value: unknown): MessagingMessageMetadata | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  return value as MessagingMessageMetadata;
+}
+
+function getPosPaymentRequestMetadata(value: unknown): PosPaymentRequestMessageMetadata | null {
+  const metadata = normalizeMessageMetadata(value);
+  if (metadata?.kind !== "pos_payment_request") {
+    return null;
+  }
+
+  const paymentRequestId = typeof metadata.paymentRequestId === "string" ? metadata.paymentRequestId : null;
+  const posSaleId = typeof metadata.posSaleId === "string" ? metadata.posSaleId : null;
+  const amountCents = Number(metadata.amountCents ?? 0);
+  const status = typeof metadata.status === "string" ? metadata.status : "pending";
+  if (!paymentRequestId || !posSaleId) {
+    return null;
+  }
+
+  return {
+    kind: "pos_payment_request",
+    paymentRequestId,
+    posSaleId,
+    amountCents: Number.isFinite(amountCents) ? amountCents : 0,
+    status: ["pending", "approved", "paid", "declined", "failed", "expired"].includes(status)
+      ? (status as PosPaymentRequestMessageMetadata["status"])
+      : "pending"
+  };
+}
+
+async function readPosPaymentRequestStatuses(
+  supabase: SupabaseClient,
+  requestIds: string[]
+) {
+  const ids = unique(requestIds.filter(Boolean));
+  if (!ids.length) {
+    return new Map<string, PosPaymentRequestMessageMetadata["status"]>();
+  }
+
+  const result = await supabase
+    .from("pos_payment_requests")
+    .select("id, status")
+    .in("id", ids);
+
+  if (result.error) {
+    console.warn("[messages] pos_payment_request_status_read_failed", {
+      requestCount: ids.length,
+      postgresCode: result.error.code ?? null,
+      postgresMessage: result.error.message ?? null
+    });
+    return new Map<string, PosPaymentRequestMessageMetadata["status"]>();
+  }
+
+  return new Map(
+    ((result.data ?? []) as Array<{ id: string; status: PosPaymentRequestMessageMetadata["status"] }>)
+      .map((row) => [row.id, row.status])
+  );
+}
+
+function hydrateMessageMetadata(
+  value: unknown,
+  paymentRequestStatuses: Map<string, PosPaymentRequestMessageMetadata["status"]>
+) {
+  const requestMetadata = getPosPaymentRequestMetadata(value);
+  if (requestMetadata) {
+    return {
+      ...requestMetadata,
+      status: paymentRequestStatuses.get(requestMetadata.paymentRequestId) ?? requestMetadata.status
+    };
+  }
+
+  return normalizeMessageMetadata(value);
 }
 
 function cleanText(value?: string | null) {
@@ -900,7 +992,8 @@ function buildThreadSummary(input: {
           createdAt: latestMessage.created_at,
           senderName: latestSender ? (latestSender.full_name ?? latestSender.email) : null
         }
-      : null
+      : null,
+    hasUnread: Boolean(latestMessage && latestMessage.sender_profile_id !== input.currentProfileId)
   };
 }
 
@@ -930,7 +1023,7 @@ async function readThreadBundle(supabase: SupabaseClient, currentProfileId: stri
       .in("thread_id", threadIds),
     supabase
       .from("messages")
-      .select("id, thread_id, sender_profile_id, body, message_type, created_at")
+      .select("id, thread_id, sender_profile_id, body, message_type, metadata, created_at")
       .in("thread_id", threadIds)
       .order("created_at", { ascending: false })
   ]);
@@ -2047,7 +2140,7 @@ export async function getMessagingThreadPayload(user: UserAccount, threadId: str
 
   const messagesResult = await supabase
     .from("messages")
-    .select("id, thread_id, sender_profile_id, body, message_type, created_at")
+    .select("id, thread_id, sender_profile_id, body, message_type, metadata, created_at")
     .in("thread_id", relatedThreadIds)
     .order("created_at", { ascending: true });
 
@@ -2076,6 +2169,13 @@ export async function getMessagingThreadPayload(user: UserAccount, threadId: str
     .filter((context): context is HydratedAppointmentContext => Boolean(context))
     .sort((left, right) => new Date(right.startsAt).getTime() - new Date(left.startsAt).getTime())
     .map(toAppointmentContextView);
+  const messageRows = (messagesResult.data ?? []) as MessageRow[];
+  const paymentRequestStatuses = await readPosPaymentRequestStatuses(
+    supabase,
+    messageRows
+      .map((message) => getPosPaymentRequestMetadata(message.metadata)?.paymentRequestId ?? null)
+      .filter((value): value is string => Boolean(value))
+  );
 
   return {
     available: true,
@@ -2096,12 +2196,13 @@ export async function getMessagingThreadPayload(user: UserAccount, threadId: str
         };
       })
     },
-    messages: ((messagesResult.data ?? []) as MessageRow[]).map((message) => {
+    messages: messageRows.map((message) => {
       const sender = message.sender_profile_id ? bundle.profilesById.get(message.sender_profile_id) ?? null : null;
       return {
         id: message.id,
         body: message.body,
         messageType: message.message_type,
+        metadata: hydrateMessageMetadata(message.metadata, paymentRequestStatuses),
         createdAt: message.created_at,
         senderName: sender ? (sender.full_name ?? sender.email) : null,
         senderRole: sender?.role ?? null,
@@ -2704,7 +2805,7 @@ export async function sendThreadMessage(user: UserAccount, threadId: string, inp
       message_type: "text",
       created_at: createdAt
     })
-    .select("id, thread_id, sender_profile_id, body, message_type, created_at")
+    .select("id, thread_id, sender_profile_id, body, message_type, metadata, created_at")
     .single();
 
   if (insertResult.error) {
@@ -2727,6 +2828,7 @@ export async function sendThreadMessage(user: UserAccount, threadId: string, inp
       id: message.id,
       body: message.body,
       messageType: message.message_type,
+      metadata: normalizeMessageMetadata(message.metadata),
       createdAt: message.created_at,
       senderName: actor.profile.full_name ?? actor.profile.email,
       senderRole: actor.profile.role,

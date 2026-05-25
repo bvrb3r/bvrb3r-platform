@@ -97,6 +97,47 @@ export function useSendMessageMutation(threadId?: string) {
   });
 }
 
+function invalidateMessageThreads(queryClient: ReturnType<typeof useQueryClient>, threadId?: string) {
+  return Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["messages", "threads"] }),
+    queryClient.invalidateQueries({ queryKey: ["messages", "threads", threadId] }),
+    queryClient.invalidateQueries({ queryKey: ["client-bookings"] }),
+    queryClient.invalidateQueries({ queryKey: ["fintech", "barber", "payouts"] }),
+    queryClient.invalidateQueries({ queryKey: ["barber-overview"] }),
+    queryClient.invalidateQueries({ queryKey: ["barber-earnings"] })
+  ]);
+}
+
+export function useApprovePosPaymentRequestMutation(threadId?: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (paymentRequestId: string) =>
+      requestJson<{ ok: true; message?: string }>(`/api/client/pos-payment-requests/${paymentRequestId}/approve`, {
+        method: "POST",
+        body: JSON.stringify({})
+      }),
+    onSuccess: async () => {
+      await invalidateMessageThreads(queryClient, threadId);
+    }
+  });
+}
+
+export function useDeclinePosPaymentRequestMutation(threadId?: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (paymentRequestId: string) =>
+      requestJson<{ ok: true; message?: string }>(`/api/client/pos-payment-requests/${paymentRequestId}/decline`, {
+        method: "POST",
+        body: JSON.stringify({})
+      }),
+    onSuccess: async () => {
+      await invalidateMessageThreads(queryClient, threadId);
+    }
+  });
+}
+
 export function useSendMessageBroadcastMutation() {
   const queryClient = useQueryClient();
 
