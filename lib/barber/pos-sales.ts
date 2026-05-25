@@ -1591,6 +1591,11 @@ function buildPosPaymentRequestMetadata(input: {
   };
 }
 
+function messageBodyReferencesPaymentRequest(body: unknown, requestId: string) {
+  return typeof body === "string"
+    && body.match(/Payment request ID:\s*([^\s]+)/i)?.[1] === requestId;
+}
+
 async function updatePosPaymentRequestWithFallbacks(input: {
   supabase: SupabaseClient;
   requestId: string;
@@ -1761,7 +1766,7 @@ async function findExistingPosPaymentRequestMessage(input: {
 }) {
   const existingMessages = await input.supabase
     .from("messages")
-    .select("id, metadata, created_at")
+    .select("id, body, metadata, created_at")
     .eq("thread_id", input.threadId)
     .limit(100);
 
@@ -1810,6 +1815,58 @@ async function findExistingPosPaymentRequestMessage(input: {
   return existing ?? null;
 }
 
+async function findExistingPlainPosPaymentRequestFallback(input: {
+  supabase: SupabaseClient;
+  request: PosPaymentRequestRow;
+  threadId: string;
+  route: string;
+  sale: PosSaleRow;
+  actorProfileId: string;
+}) {
+  const existingMessages = await input.supabase
+    .from("messages")
+    .select("id, body, created_at")
+    .eq("thread_id", input.threadId)
+    .limit(100);
+
+  if (existingMessages.error) {
+    logPosPaymentMessageFailure({
+      stage: "message_plain_text_duplicate_lookup",
+      route: input.route,
+      table: "messages",
+      error: existingMessages.error,
+      payload: { thread_id: input.threadId, body: "Payment request ID" },
+      posSaleId: input.sale.id,
+      paymentRequestId: input.request.id,
+      barberId: input.sale.barber_id,
+      profileId: input.actorProfileId,
+      clientId: input.sale.client_id,
+      threadId: input.threadId
+    });
+    return null;
+  }
+
+  const existing = (existingMessages.data ?? []).find((message) =>
+    messageBodyReferencesPaymentRequest((message as { body?: unknown }).body, input.request.id)
+  ) as { id: string; created_at?: string | null } | undefined;
+
+  if (existing) {
+    logPosPaymentMessageStep({
+      stage: "message_plain_text_duplicate_found",
+      route: input.route,
+      posSaleId: input.sale.id,
+      paymentRequestId: input.request.id,
+      barberId: input.sale.barber_id,
+      profileId: input.actorProfileId,
+      clientId: input.sale.client_id,
+      threadId: input.threadId,
+      result: { messageId: existing.id, createdAt: existing.created_at ?? null }
+    });
+  }
+
+  return existing ?? null;
+}
+
 async function insertPosPaymentRequestPlainTextFallback(input: {
   supabase: SupabaseClient;
   request: PosPaymentRequestRow;
@@ -1822,6 +1879,21 @@ async function insertPosPaymentRequestPlainTextFallback(input: {
   actorProfileId: string;
   originalError: unknown;
 }) {
+  const existingFallback = await findExistingPlainPosPaymentRequestFallback({
+    supabase: input.supabase,
+    request: input.request,
+    sale: input.sale,
+    threadId: input.threadId,
+    route: input.route,
+    actorProfileId: input.actorProfileId
+  });
+  if (existingFallback) {
+    return {
+      delivered: true,
+      debug: buildPosSaleDebug(input.originalError, "messages", "pos_payment_request_message_failed")
+    };
+  }
+
   const fallbackPayload = {
     thread_id: input.threadId,
     sender_profile_id: input.barberProfile.id,

@@ -441,6 +441,18 @@ function normalizeMessageMetadata(value: unknown): MessagingMessageMetadata | nu
   return value as MessagingMessageMetadata;
 }
 
+function isMessageMetadataColumnError(error: unknown) {
+  const candidate = error as { code?: string; message?: string } | null | undefined;
+  const message = candidate?.message ?? "";
+  return candidate?.code === "42703"
+    || candidate?.code === "PGRST204"
+    || (/metadata/i.test(message) && /schema cache|column|could not find/i.test(message));
+}
+
+function extractPosPaymentRequestIdFromBody(body: string | null | undefined) {
+  return body?.match(/Payment request ID:\s*([^\s]+)/i)?.[1] ?? null;
+}
+
 function getPosPaymentRequestMetadata(value: unknown): PosPaymentRequestMessageMetadata | null {
   const metadata = normalizeMessageMetadata(value);
   if (metadata?.kind !== "pos_payment_request") {
@@ -466,45 +478,116 @@ function getPosPaymentRequestMetadata(value: unknown): PosPaymentRequestMessageM
   };
 }
 
-async function readPosPaymentRequestStatuses(
+async function selectMessagesForThreads(input: {
+  supabase: SupabaseClient;
+  threadIds: string[];
+  ascending: boolean;
+  errorMessage: string;
+}) {
+  const withMetadata = await input.supabase
+    .from("messages")
+    .select("id, thread_id, sender_profile_id, body, message_type, metadata, created_at")
+    .in("thread_id", input.threadIds)
+    .order("created_at", { ascending: input.ascending });
+
+  if (!withMetadata.error) {
+    return {
+      data: (withMetadata.data ?? []) as MessageRow[],
+      error: null
+    };
+  }
+
+  if (!isMessageMetadataColumnError(withMetadata.error)) {
+    return {
+      data: [],
+      error: withMetadata.error
+    };
+  }
+
+  console.warn("[messages] metadata_column_fallback", {
+    threadCount: input.threadIds.length,
+    postgresCode: withMetadata.error.code ?? null,
+    postgresMessage: withMetadata.error.message ?? null
+  });
+
+  const withoutMetadata = await input.supabase
+    .from("messages")
+    .select("id, thread_id, sender_profile_id, body, message_type, created_at")
+    .in("thread_id", input.threadIds)
+    .order("created_at", { ascending: input.ascending });
+
+  if (withoutMetadata.error) {
+    return {
+      data: [],
+      error: withoutMetadata.error
+    };
+  }
+
+  return {
+    data: ((withoutMetadata.data ?? []) as MessageRow[]).map((message) => ({
+      ...message,
+      metadata: null
+    })),
+    error: null
+  };
+}
+
+async function readPosPaymentRequestSnapshots(
   supabase: SupabaseClient,
   requestIds: string[]
 ) {
   const ids = unique(requestIds.filter(Boolean));
   if (!ids.length) {
-    return new Map<string, PosPaymentRequestMessageMetadata["status"]>();
+    return new Map<string, PosPaymentRequestMessageMetadata>();
   }
 
   const result = await supabase
     .from("pos_payment_requests")
-    .select("id, status")
+    .select("id, pos_sale_id, amount_cents, status")
     .in("id", ids);
 
   if (result.error) {
-    console.warn("[messages] pos_payment_request_status_read_failed", {
+    console.warn("[messages] pos_payment_request_snapshot_read_failed", {
       requestCount: ids.length,
       postgresCode: result.error.code ?? null,
       postgresMessage: result.error.message ?? null
     });
-    return new Map<string, PosPaymentRequestMessageMetadata["status"]>();
+    return new Map<string, PosPaymentRequestMessageMetadata>();
   }
 
   return new Map(
-    ((result.data ?? []) as Array<{ id: string; status: PosPaymentRequestMessageMetadata["status"] }>)
-      .map((row) => [row.id, row.status])
+    ((result.data ?? []) as Array<{ id: string; pos_sale_id: string; amount_cents: number; status: PosPaymentRequestMessageMetadata["status"] }>)
+      .map((row) => [row.id, {
+        kind: "pos_payment_request" as const,
+        paymentRequestId: row.id,
+        posSaleId: row.pos_sale_id,
+        amountCents: Number(row.amount_cents ?? 0),
+        status: ["pending", "pending_message_failed", "approved", "paid", "declined", "failed", "expired"].includes(row.status)
+          ? row.status
+          : "pending"
+      }])
   );
 }
 
 function hydrateMessageMetadata(
   value: unknown,
-  paymentRequestStatuses: Map<string, PosPaymentRequestMessageMetadata["status"]>
+  paymentRequestSnapshots: Map<string, PosPaymentRequestMessageMetadata>,
+  body?: string | null
 ) {
   const requestMetadata = getPosPaymentRequestMetadata(value);
   if (requestMetadata) {
+    const snapshot = paymentRequestSnapshots.get(requestMetadata.paymentRequestId);
     return {
       ...requestMetadata,
-      status: paymentRequestStatuses.get(requestMetadata.paymentRequestId) ?? requestMetadata.status
+      posSaleId: snapshot?.posSaleId ?? requestMetadata.posSaleId,
+      amountCents: snapshot?.amountCents ?? requestMetadata.amountCents,
+      status: snapshot?.status ?? requestMetadata.status
     };
+  }
+
+  const fallbackRequestId = extractPosPaymentRequestIdFromBody(body);
+  if (fallbackRequestId) {
+    return paymentRequestSnapshots.get(fallbackRequestId) ?? null;
   }
 
   return normalizeMessageMetadata(value);
@@ -1021,11 +1104,12 @@ async function readThreadBundle(supabase: SupabaseClient, currentProfileId: stri
       .from("thread_participants")
       .select("id, thread_id, profile_id, thread_role, created_at")
       .in("thread_id", threadIds),
-    supabase
-      .from("messages")
-      .select("id, thread_id, sender_profile_id, body, message_type, metadata, created_at")
-      .in("thread_id", threadIds)
-      .order("created_at", { ascending: false })
+    selectMessagesForThreads({
+      supabase,
+      threadIds,
+      ascending: false,
+      errorMessage: "Unable to load the messaging inbox."
+    })
   ]);
 
   if (threadsResult.error || participantsResult.error || messagesResult.error) {
@@ -2138,11 +2222,12 @@ export async function getMessagingThreadPayload(user: UserAccount, threadId: str
     : await readThreadBundle(supabase, actor.profile.id, relatedThreadIds);
   const thread = bundle.threads.find((row) => row.id === threadId) ?? initialThread;
 
-  const messagesResult = await supabase
-    .from("messages")
-    .select("id, thread_id, sender_profile_id, body, message_type, metadata, created_at")
-    .in("thread_id", relatedThreadIds)
-    .order("created_at", { ascending: true });
+  const messagesResult = await selectMessagesForThreads({
+    supabase,
+    threadIds: relatedThreadIds,
+    ascending: true,
+    errorMessage: "Unable to load thread messages."
+  });
 
   if (messagesResult.error) {
     throw new MessagingServiceError("Unable to load thread messages.", 500);
@@ -2170,10 +2255,10 @@ export async function getMessagingThreadPayload(user: UserAccount, threadId: str
     .sort((left, right) => new Date(right.startsAt).getTime() - new Date(left.startsAt).getTime())
     .map(toAppointmentContextView);
   const messageRows = (messagesResult.data ?? []) as MessageRow[];
-  const paymentRequestStatuses = await readPosPaymentRequestStatuses(
+  const paymentRequestSnapshots = await readPosPaymentRequestSnapshots(
     supabase,
     messageRows
-      .map((message) => getPosPaymentRequestMetadata(message.metadata)?.paymentRequestId ?? null)
+      .map((message) => getPosPaymentRequestMetadata(message.metadata)?.paymentRequestId ?? extractPosPaymentRequestIdFromBody(message.body))
       .filter((value): value is string => Boolean(value))
   );
 
@@ -2202,7 +2287,7 @@ export async function getMessagingThreadPayload(user: UserAccount, threadId: str
         id: message.id,
         body: message.body,
         messageType: message.message_type,
-        metadata: hydrateMessageMetadata(message.metadata, paymentRequestStatuses),
+        metadata: hydrateMessageMetadata(message.metadata, paymentRequestSnapshots, message.body),
         createdAt: message.created_at,
         senderName: sender ? (sender.full_name ?? sender.email) : null,
         senderRole: sender?.role ?? null,

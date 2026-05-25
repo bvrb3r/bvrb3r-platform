@@ -1006,6 +1006,68 @@ describe("barber POS sales", () => {
     expect(String(tables.messages[0].body)).toContain(`Payment request ID: ${request.request.id}`);
   });
 
+  it("does not duplicate the plain fallback message when retry still cannot insert metadata", async () => {
+    const metadataError = {
+      code: "PGRST204",
+      message: "Could not find the 'metadata' column of 'messages' in the schema cache",
+      details: null,
+      hint: "Reload the schema cache"
+    };
+    const tables: FakeTables = {
+      profiles: [
+        { id: "profile-phillip", email: "phillip@example.com", role: "barber_user", full_name: "Phillip mcgee" },
+        { id: "profile-client", email: "client@example.com", role: "client_user", full_name: "Jordan Client" }
+      ],
+      barbers: [{
+        id: "455c2930-7255-418b-bd2b-cc64bc0fc9b7",
+        profile_id: "profile-phillip",
+        reference_code: "barber-43b3cda2",
+        compensation_model: "freelance",
+        commission_rate: null
+      }],
+      clients: [{
+        id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
+        profile_id: "profile-client",
+        reference_code: "client-phillip"
+      }],
+      pos_sales: [],
+      pos_sale_items: [],
+      pos_payment_requests: [],
+      message_threads: [],
+      thread_participants: [],
+      messages: [],
+      payment_routing_records: []
+    };
+    createSupabaseAdminClientMock.mockReturnValue(createSupabaseMock(tables, {
+      messageInsertErrors: [metadataError]
+    }));
+
+    const created = await createBarberPosSale(barberUser(), {
+      amountCents: 3500,
+      paymentMethod: "card_on_file",
+      clientId: "6607bce8-3636-46e8-9bbd-eabd9e5ad065"
+    });
+    const initial = await requestBarberPosSalePayment(barberUser(), created.sale.id);
+    expect(initial.messageDeliveryStatus).toBe("plain_text_fallback");
+    expect(tables.messages).toHaveLength(1);
+
+    createSupabaseAdminClientMock.mockReturnValue(createSupabaseMock(tables, {
+      messageInsertErrors: [metadataError]
+    }));
+    const retried = await retryBarberPosSalePaymentRequestMessage(barberUser(), created.sale.id);
+
+    expect(retried).toMatchObject({
+      ok: true,
+      messageDeliveryStatus: "plain_text_fallback",
+      request: expect.objectContaining({
+        id: initial.request.id,
+        status: "pending_message_failed"
+      })
+    });
+    expect(tables.messages).toHaveLength(1);
+    expect(String(tables.messages[0].body)).toContain(`Payment request ID: ${initial.request.id}`);
+  });
+
   it("retries a failed POS payment request message and restores pending state", async () => {
     const tables: FakeTables = {
       profiles: [
