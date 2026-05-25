@@ -601,7 +601,7 @@ function PaymentRequestCard({
   surface: MessagingSurface;
 }) {
   const status = metadata.status;
-  const isPending = status === "pending";
+  const isPending = status === "pending" || status === "pending_message_failed";
   const showClientActions = surface === "client" && isPending;
   const statusLabel = status === "paid"
     ? "Paid"

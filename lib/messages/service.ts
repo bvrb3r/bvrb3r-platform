@@ -169,7 +169,7 @@ export type PosPaymentRequestMessageMetadata = {
   paymentRequestId: string;
   posSaleId: string;
   amountCents: number;
-  status: "pending" | "approved" | "paid" | "declined" | "failed" | "expired";
+  status: "pending" | "pending_message_failed" | "approved" | "paid" | "declined" | "failed" | "expired";
 };
 
 export type MessagingMessageMetadata =
@@ -460,7 +460,7 @@ function getPosPaymentRequestMetadata(value: unknown): PosPaymentRequestMessageM
     paymentRequestId,
     posSaleId,
     amountCents: Number.isFinite(amountCents) ? amountCents : 0,
-    status: ["pending", "approved", "paid", "declined", "failed", "expired"].includes(status)
+    status: ["pending", "pending_message_failed", "approved", "paid", "declined", "failed", "expired"].includes(status)
       ? (status as PosPaymentRequestMessageMetadata["status"])
       : "pending"
   };

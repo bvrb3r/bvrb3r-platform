@@ -1159,6 +1159,89 @@ describe("client messages screen", () => {
     });
   });
 
+  it("treats payment requests with failed message delivery status as pending client actions", async () => {
+    const approve = vi.fn().mockResolvedValue({});
+    const decline = vi.fn().mockResolvedValue({});
+    const thread = buildThread({
+      id: "thread-pos-failed",
+      counterpart: {
+        profileId: "profile-barber",
+        fullName: "Phillip mcgee",
+        role: "barber_user"
+      }
+    });
+    useApprovePosPaymentRequestMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: approve
+    });
+    useDeclinePosPaymentRequestMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: decline
+    });
+    useMessageThreadsQueryMock.mockReturnValue({
+      data: {
+        available: true,
+        viewer: {
+          profileId: "profile-client",
+          fullName: "Jordan Ellis",
+          role: "client"
+        },
+        threads: [thread],
+        eligibleAppointments: [],
+        eligibleContacts: [],
+        broadcastTargets: []
+      },
+      isLoading: false,
+      error: null
+    });
+    useMessageThreadQueryMock.mockReturnValue({
+      data: {
+        available: true,
+        viewer: {
+          profileId: "profile-client",
+          fullName: "Jordan Ellis",
+          role: "client"
+        },
+        thread: buildThreadDetail(thread),
+        messages: [
+          {
+            id: "message-pos-request",
+            body: "Phillip mcgee requested $35.00 for a walk-in service.",
+            messageType: "system",
+            metadata: {
+              kind: "pos_payment_request",
+              paymentRequestId: "request-pos-1",
+              posSaleId: "sale-pos-1",
+              amountCents: 3500,
+              status: "pending_message_failed"
+            },
+            createdAt: "2026-05-25T15:00:00.000Z",
+            senderName: "Phillip mcgee",
+            senderRole: "barber_user",
+            isOwn: false
+          }
+        ]
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="client"
+        basePath="/dashboard/client/messages"
+        selectedThreadId="thread-pos-failed"
+        title="Messages"
+        subtitle="Your conversations, appointments, and support."
+      />
+    );
+
+    const card = within(screen.getByTestId("message-thread-modal")).getByTestId("pos-payment-request-card");
+    expect(card).toHaveTextContent("Pending");
+    expect(within(card).getByRole("button", { name: "Approve Payment" })).toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: "Decline" })).toBeInTheDocument();
+  });
+
   it("renders the barber inbox with the same compact conversation system", () => {
     const thread = buildThread({
       counterpart: {

@@ -50,7 +50,7 @@ type PosPaymentRequestRow = {
   barber_id: string;
   client_id: string;
   amount_cents: number;
-  status: "pending" | "approved" | "declined" | "expired" | "paid" | "failed";
+  status: "pending" | "pending_message_failed" | "approved" | "declined" | "expired" | "paid" | "failed";
   requested_at: string;
   approved_at: string | null;
   declined_at: string | null;
@@ -634,6 +634,9 @@ function logPosSaleCreateFailed(input: {
   profileId: string | null;
   clientId: string | null;
   amountCents: number | null;
+  posSaleId?: string | null;
+  paymentRequestId?: string | null;
+  threadId?: string | null;
 }) {
   const parts = postgresErrorParts(input.error);
   const debug = buildPosSaleDebug(input.error, input.table);
@@ -641,6 +644,9 @@ function logPosSaleCreateFailed(input: {
     route: input.route,
     stage: input.stage,
     payment_method: input.paymentMethod,
+    posSaleId: input.posSaleId ?? null,
+    paymentRequestId: input.paymentRequestId ?? null,
+    threadId: input.threadId ?? null,
     barber_id: input.barberId,
     profile_id: input.profileId,
     client_id: input.clientId,
@@ -1215,6 +1221,10 @@ function isPosPaymentRequestExpired(request: PosPaymentRequestRow) {
   return Boolean(request.expires_at && new Date(request.expires_at).getTime() < Date.now());
 }
 
+function isPendingPosPaymentRequestStatus(status: PosPaymentRequestRow["status"]) {
+  return status === "pending" || status === "pending_message_failed";
+}
+
 async function loadClientPosPaymentRequest(input: {
   supabase: SupabaseClient;
   requestId: string;
@@ -1330,12 +1340,203 @@ async function appendPosPaymentRequestSystemMessage(input: {
   ]);
 
   if (messageInsert.error) {
-    throw new BarberPosSaleError("Unable to write the payment request status message.", 500, buildPosSaleDebug(messageInsert.error, "messages", "pos_payment_request_message_failed"));
+    const parts = postgresErrorParts(messageInsert.error);
+    console.warn("[barber-pos] payment_request_status_message_failed", {
+      threadId: input.threadId,
+      payloadKeys: ["thread_id", "sender_profile_id", "body", "message_type", "created_at"],
+      postgresCode: parts.postgresCode,
+      postgresMessage: parts.postgresMessage,
+      postgresDetails: parts.postgresDetails,
+      postgresHint: parts.postgresHint,
+      ...buildPosSaleDebug(messageInsert.error, "messages", "pos_payment_request_status_message_failed")
+    });
   }
 
   if (threadUpdate.error) {
-    throw new BarberPosSaleError("Unable to update the payment request conversation.", 500);
+    const parts = postgresErrorParts(threadUpdate.error);
+    console.warn("[barber-pos] payment_request_thread_touch_failed", {
+      threadId: input.threadId,
+      postgresCode: parts.postgresCode,
+      postgresMessage: parts.postgresMessage,
+      postgresDetails: parts.postgresDetails,
+      postgresHint: parts.postgresHint
+    });
   }
+}
+
+function buildPosPaymentRequestBody(barberProfile: ProfileRow, amountCents: number) {
+  const barberName = barberProfile.full_name?.trim() || barberProfile.email || "Your barber";
+  return `${barberName} requested ${formatUsdFromCents(amountCents)} for a walk-in service.\nApprove Payment or Decline in BVRB3R.`;
+}
+
+async function markPosPaymentRequestMessageFailed(input: {
+  supabase: SupabaseClient;
+  request: PosPaymentRequestRow;
+  threadId: string;
+  failedAt: string;
+  error: unknown;
+}) {
+  try {
+    return await updatePosPaymentRequestWithFallbacks({
+      supabase: input.supabase,
+      requestId: input.request.id,
+      payload: {
+        status: "pending_message_failed",
+        message_thread_id: input.threadId,
+        updated_at: input.failedAt
+      }
+    });
+  } catch (statusError) {
+    const parts = postgresErrorParts(statusError);
+    console.warn("[barber-pos] payment_request_message_failed_status_update_failed", {
+      paymentRequestId: input.request.id,
+      posSaleId: input.request.pos_sale_id,
+      threadId: input.threadId,
+      originalPostgresCode: postgresErrorParts(input.error).postgresCode,
+      postgresCode: parts.postgresCode,
+      postgresMessage: parts.postgresMessage,
+      postgresDetails: parts.postgresDetails,
+      postgresHint: parts.postgresHint
+    });
+
+    return {
+      ...input.request,
+      status: "pending_message_failed" as PosPaymentRequestRow["status"],
+      message_thread_id: input.threadId,
+      updated_at: input.failedAt
+    };
+  }
+}
+
+async function markPosPaymentRequestMessageDelivered(input: {
+  supabase: SupabaseClient;
+  request: PosPaymentRequestRow;
+  threadId: string;
+  deliveredAt: string;
+}) {
+  if (input.request.status !== "pending_message_failed" && input.request.message_thread_id === input.threadId) {
+    return input.request;
+  }
+
+  try {
+    return await updatePosPaymentRequestWithFallbacks({
+      supabase: input.supabase,
+      requestId: input.request.id,
+      payload: {
+        status: "pending",
+        message_thread_id: input.threadId,
+        updated_at: input.deliveredAt
+      }
+    });
+  } catch (error) {
+    const parts = postgresErrorParts(error);
+    console.warn("[barber-pos] payment_request_message_delivered_status_update_failed", {
+      paymentRequestId: input.request.id,
+      posSaleId: input.request.pos_sale_id,
+      threadId: input.threadId,
+      postgresCode: parts.postgresCode,
+      postgresMessage: parts.postgresMessage,
+      postgresDetails: parts.postgresDetails,
+      postgresHint: parts.postgresHint
+    });
+    return input.request;
+  }
+}
+
+async function deliverPosPaymentRequestMessage(input: {
+  supabase: SupabaseClient;
+  request: PosPaymentRequestRow;
+  sale: PosSaleRow;
+  threadId: string;
+  barberProfile: ProfileRow;
+  createdAt: string;
+  route: string;
+  actorProfileId: string;
+}) {
+  const metadata = buildPosPaymentRequestMetadata({ request: input.request });
+  const messagePayload = {
+    thread_id: input.threadId,
+    sender_profile_id: input.barberProfile.id,
+    body: buildPosPaymentRequestBody(input.barberProfile, input.request.amount_cents),
+    message_type: "system",
+    metadata,
+    created_at: input.createdAt
+  };
+
+  const messageInsert = await input.supabase
+    .from("messages")
+    .insert(messagePayload);
+
+  if (messageInsert.error) {
+    logPosSaleCreateFailed({
+      route: input.route,
+      stage: "pos_payment_request_message_insert",
+      paymentMethod: input.sale.payment_method ?? "card_on_file",
+      payload: {
+        ...messagePayload,
+        metadata_kind: metadata.kind,
+        paymentRequestId: metadata.paymentRequestId,
+        posSaleId: metadata.posSaleId,
+        amountCents: metadata.amountCents,
+        status: metadata.status
+      },
+      error: messageInsert.error,
+      table: "messages",
+      barberId: input.sale.barber_id,
+      profileId: input.actorProfileId,
+      clientId: input.sale.client_id,
+      amountCents: input.sale.total_cents,
+      posSaleId: input.sale.id,
+      paymentRequestId: input.request.id,
+      threadId: input.threadId
+    });
+
+    const failedRequest = await markPosPaymentRequestMessageFailed({
+      supabase: input.supabase,
+      request: input.request,
+      threadId: input.threadId,
+      failedAt: input.createdAt,
+      error: messageInsert.error
+    });
+    return {
+      delivered: false,
+      request: failedRequest,
+      debug: buildPosSaleDebug(messageInsert.error, "messages", "pos_payment_request_message_failed")
+    };
+  }
+
+  const [deliveredRequest, threadUpdate] = await Promise.all([
+    markPosPaymentRequestMessageDelivered({
+      supabase: input.supabase,
+      request: input.request,
+      threadId: input.threadId,
+      deliveredAt: input.createdAt
+    }),
+    input.supabase
+      .from("message_threads")
+      .update({ updated_at: input.createdAt })
+      .eq("id", input.threadId)
+  ]);
+
+  if (threadUpdate.error) {
+    const parts = postgresErrorParts(threadUpdate.error);
+    console.warn("[barber-pos] payment_request_thread_touch_failed", {
+      route: input.route,
+      paymentRequestId: input.request.id,
+      posSaleId: input.sale.id,
+      threadId: input.threadId,
+      postgresCode: parts.postgresCode,
+      postgresMessage: parts.postgresMessage,
+      postgresDetails: parts.postgresDetails,
+      postgresHint: parts.postgresHint
+    });
+  }
+
+  return {
+    delivered: true,
+    request: deliveredRequest,
+    debug: null
+  };
 }
 
 export async function quoteBarberPosSaleForUser(user: UserAccount, input: BarberPosSaleQuoteInput) {
@@ -1721,6 +1922,60 @@ export async function requestBarberPosSalePayment(user: UserAccount, saleId: str
 
   if (existingRequest.data) {
     const request = existingRequest.data as PosPaymentRequestRow;
+    if (request.status === "pending_message_failed") {
+      const [{ profile: clientProfile }, barberProfile] = await Promise.all([
+        readClientForPosRequest(supabase, sale.client_id),
+        readProfileForPosRequest(supabase, actor.profileId)
+      ]);
+      const retriedAt = new Date().toISOString();
+      const threadId = request.message_thread_id ?? await createOrGetPosPaymentRequestThread({
+        supabase,
+        barberProfile,
+        clientProfile,
+        createdAt: retriedAt
+      });
+      const delivery = await deliverPosPaymentRequestMessage({
+        supabase,
+        request,
+        sale,
+        threadId,
+        barberProfile,
+        createdAt: retriedAt,
+        route: "POST /api/barber/pos-sales/[id]/payment-request",
+        actorProfileId: actor.profileId
+      });
+
+      if (!delivery.delivered) {
+        const debug = delivery.debug ?? buildPosSaleDebug(null, "messages", "pos_payment_request_message_failed");
+        return {
+          ok: true,
+          sale,
+          request: delivery.request,
+          payment: null,
+          routing: null,
+          alreadyRequested: true,
+          messageDeliveryStatus: "failed",
+          error: "Unable to send the POS payment request message.",
+          message: "Request created, but message delivery failed. Retry sending message.",
+          debugCode: debug.debugCode,
+          failedTable: debug.failedTable,
+          failedConstraint: debug.failedConstraint,
+          failedColumn: debug.failedColumn
+        };
+      }
+
+      return {
+        ok: true,
+        sale,
+        request: delivery.request,
+        payment: null,
+        routing: null,
+        alreadyRequested: true,
+        messageDeliveryStatus: "delivered",
+        message: "Payment request sent. Client approval is required before payout."
+      };
+    }
+
     if (request.status === "pending" || request.status === "approved" || request.status === "paid") {
       return {
         ok: true,
@@ -1746,8 +2001,6 @@ export async function requestBarberPosSalePayment(user: UserAccount, saleId: str
     clientProfile,
     createdAt: requestedAt
   });
-  const barberName = barberProfile.full_name?.trim() || barberProfile.email || "Your barber";
-  const requestBody = `${barberName} requested ${formatUsdFromCents(sale.total_cents)} for a walk-in service.\nApprove Payment or Decline in BVRB3R.`;
 
   const requestInsert = await supabase
     .from(POS_SCHEMA_TABLES.paymentRequests)
@@ -1790,53 +2043,124 @@ export async function requestBarberPosSalePayment(user: UserAccount, saleId: str
   }
 
   const requestRow = requestInsert.data as PosPaymentRequestRow;
-  const messageInsert = await supabase
-    .from("messages")
-    .insert({
-      thread_id: threadId,
-      sender_profile_id: barberProfile.id,
-      body: requestBody,
-      message_type: "system",
-      metadata: buildPosPaymentRequestMetadata({ request: requestRow }),
-      created_at: requestedAt
-    });
+  const delivery = await deliverPosPaymentRequestMessage({
+    supabase,
+    request: requestRow,
+    sale,
+    threadId,
+    barberProfile,
+    createdAt: requestedAt,
+    route: "POST /api/barber/pos-sales/[id]/payment-request",
+    actorProfileId: actor.profileId
+  });
 
-  if (messageInsert.error) {
-    logPosSaleCreateFailed({
-      route: "POST /api/barber/pos-sales/[id]/payment-request",
-      stage: "pos_payment_request_message_insert",
-      paymentMethod: sale.payment_method ?? "card_on_file",
-      payload: {
-        thread_id: threadId,
-        sender_profile_id: barberProfile.id,
-        message_type: "system"
-      },
-      error: messageInsert.error,
-      table: "messages",
-      barberId: actor.barber.id,
-      profileId: actor.profileId,
-      clientId: sale.client_id,
-      amountCents: sale.total_cents
-    });
-    throw new BarberPosSaleError("Unable to send the POS payment request message.", 500, buildPosSaleDebug(messageInsert.error, "messages", "pos_payment_request_message_failed"));
-  }
-
-  const threadUpdate = await supabase
-    .from("message_threads")
-    .update({ updated_at: requestedAt })
-    .eq("id", threadId);
-
-  if (threadUpdate.error) {
-    throw new BarberPosSaleError("Unable to update the POS payment request conversation.", 500);
+  if (!delivery.delivered) {
+    const debug = delivery.debug ?? buildPosSaleDebug(null, "messages", "pos_payment_request_message_failed");
+    return {
+      ok: true,
+      sale,
+      request: delivery.request,
+      payment: null,
+      routing: null,
+      alreadyRequested: false,
+      messageDeliveryStatus: "failed",
+      error: "Unable to send the POS payment request message.",
+      message: "Request created, but message delivery failed. Retry sending message.",
+      debugCode: debug.debugCode,
+      failedTable: debug.failedTable,
+      failedConstraint: debug.failedConstraint,
+      failedColumn: debug.failedColumn
+    };
   }
 
   return {
     ok: true,
     sale,
-    request: requestRow,
+    request: delivery.request,
     payment: null,
     routing: null,
     alreadyRequested: false,
+    messageDeliveryStatus: "delivered",
+    message: "Payment request sent. Client approval is required before payout."
+  };
+}
+
+export async function retryBarberPosSalePaymentRequestMessage(user: UserAccount, saleId: string) {
+  const supabase = getSupabaseOrThrow();
+  const { actor, sale } = await loadPosSaleForActor(supabase, user, saleId);
+
+  if (!sale.client_id) {
+    throw new BarberPosSaleError("Select a client before requesting card approval.", 409);
+  }
+
+  const existingRequest = await supabase
+    .from(POS_SCHEMA_TABLES.paymentRequests)
+    .select("*")
+    .eq("pos_sale_id", sale.id)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (existingRequest.error) {
+    throw new BarberPosSaleError("Unable to load existing POS payment request.", 500, buildPosSaleDebug(existingRequest.error, POS_SCHEMA_TABLES.paymentRequests, "pos_payment_request_load_failed"));
+  }
+
+  const request = existingRequest.data as PosPaymentRequestRow | null;
+  if (!request) {
+    throw new BarberPosSaleError("Payment request not found.", 404);
+  }
+
+  if (!isPendingPosPaymentRequestStatus(request.status)) {
+    throw new BarberPosSaleError("This payment request is no longer pending.", 409);
+  }
+
+  const [{ profile: clientProfile }, barberProfile] = await Promise.all([
+    readClientForPosRequest(supabase, sale.client_id),
+    readProfileForPosRequest(supabase, actor.profileId)
+  ]);
+  const retriedAt = new Date().toISOString();
+  const threadId = request.message_thread_id ?? await createOrGetPosPaymentRequestThread({
+    supabase,
+    barberProfile,
+    clientProfile,
+    createdAt: retriedAt
+  });
+  const delivery = await deliverPosPaymentRequestMessage({
+    supabase,
+    request,
+    sale,
+    threadId,
+    barberProfile,
+    createdAt: retriedAt,
+    route: "POST /api/barber/pos-sales/[id]/payment-request/retry-message",
+    actorProfileId: actor.profileId
+  });
+
+  if (!delivery.delivered) {
+    const debug = delivery.debug ?? buildPosSaleDebug(null, "messages", "pos_payment_request_message_failed");
+    return {
+      ok: false,
+      sale,
+      request: delivery.request,
+      payment: null,
+      routing: null,
+      messageDeliveryStatus: "failed",
+      error: "Unable to send the POS payment request message.",
+      message: "Request exists, but message delivery is still failing.",
+      debugCode: debug.debugCode,
+      failedTable: debug.failedTable,
+      failedConstraint: debug.failedConstraint,
+      failedColumn: debug.failedColumn
+    };
+  }
+
+  return {
+    ok: true,
+    sale,
+    request: delivery.request,
+    payment: null,
+    routing: null,
+    messageDeliveryStatus: "delivered",
     message: "Payment request sent. Client approval is required before payout."
   };
 }
@@ -2017,7 +2341,7 @@ export async function approveClientPosPaymentRequest(user: UserAccount, requestI
     throw new BarberPosSaleError("Request expired.", 409);
   }
 
-  if (request.status !== "pending") {
+  if (!isPendingPosPaymentRequestStatus(request.status)) {
     throw new BarberPosSaleError("This payment request is no longer pending.", 409);
   }
 
@@ -2203,7 +2527,7 @@ export async function declineClientPosPaymentRequest(user: UserAccount, requestI
     throw new BarberPosSaleError("Request expired.", 409);
   }
 
-  if (request.status !== "pending") {
+  if (!isPendingPosPaymentRequestStatus(request.status)) {
     throw new BarberPosSaleError("This payment request is no longer pending.", 409);
   }
 

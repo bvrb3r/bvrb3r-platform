@@ -146,6 +146,7 @@ export function BarberCheckoutScreen({
   const [cashCustomerName, setCashCustomerName] = useState("");
   const [cashCustomerPhone, setCashCustomerPhone] = useState("");
   const [cashCustomerEmail, setCashCustomerEmail] = useState("");
+  const [pendingRequestRetry, setPendingRequestRetry] = useState<{ saleId: string } | null>(null);
   const keypadAmount = digitsToAmount(chargeDigits);
   const serviceShortcuts = useMemo(
     () => [...(serviceCatalogQuery.data?.editableServices ?? []), ...(serviceCatalogQuery.data?.readOnlyServices ?? [])].slice(0, 8),
@@ -243,6 +244,7 @@ export function BarberCheckoutScreen({
     setCashCustomerName("");
     setCashCustomerPhone("");
     setCashCustomerEmail("");
+    setPendingRequestRetry(null);
   }
 
   function openDetailSection(section: CheckoutSectionKey) {
@@ -385,6 +387,7 @@ export function BarberCheckoutScreen({
         await readJsonResponse(cashResponse);
         setPaymentMethodOpen(false);
         setReviewQuote(null);
+        setPendingRequestRetry(null);
         clearQuickCharge();
         setPanelFeedback({ tone: "info", message: "Cash sale recorded. No platform payout created." });
         await overviewQuery.refetch();
@@ -398,7 +401,14 @@ export function BarberCheckoutScreen({
       const requestResponse = await fetch(`/api/barber/pos-sales/${saleId}/payment-request`, {
         method: "POST",
       });
-      await readJsonResponse(requestResponse);
+      const requestBody = await readJsonResponse(requestResponse);
+      if (requestBody?.messageDeliveryStatus === "failed") {
+        setPendingRequestRetry({ saleId });
+        setPaymentFeedback(requestBody?.message ?? "Request created, but message delivery failed. Retry sending message.");
+        await overviewQuery.refetch();
+        return;
+      }
+      setPendingRequestRetry(null);
       setPaymentMethodOpen(false);
       setReviewQuote(null);
       clearQuickCharge();
@@ -409,6 +419,38 @@ export function BarberCheckoutScreen({
       await overviewQuery.refetch();
     } catch (error) {
       setPaymentFeedback(error instanceof Error ? error.message : "Unable to process this payment method.");
+    } finally {
+      setPaymentMethodLoading(null);
+    }
+  }
+
+  async function handleRetryPaymentRequestMessage() {
+    if (!pendingRequestRetry || paymentMethodLoading) {
+      return;
+    }
+
+    setPaymentMethodLoading("card_on_file");
+    setPaymentFeedback(null);
+    try {
+      const retryResponse = await fetch(`/api/barber/pos-sales/${pendingRequestRetry.saleId}/payment-request/retry-message`, {
+        method: "POST"
+      });
+      const retryBody = await readJsonResponse(retryResponse);
+      if (retryBody?.messageDeliveryStatus === "failed") {
+        throw new Error(retryBody?.message ?? "Request exists, but message delivery is still failing.");
+      }
+
+      setPendingRequestRetry(null);
+      setPaymentMethodOpen(false);
+      setReviewQuote(null);
+      clearQuickCharge();
+      setPanelFeedback({
+        tone: "info",
+        message: retryBody?.message ?? "Payment request sent. Client approval is required before payout."
+      });
+      await overviewQuery.refetch();
+    } catch (error) {
+      setPaymentFeedback(error instanceof Error ? error.message : "Unable to retry this payment request message.");
     } finally {
       setPaymentMethodLoading(null);
     }
@@ -777,7 +819,21 @@ export function BarberCheckoutScreen({
               </button>
             </div>
 
-            {paymentFeedback ? <div className="mt-4 rounded-[10px] border border-[#ff2d2d]/35 bg-[#ff2d2d]/10 px-4 py-3 text-sm font-semibold text-[#ff9b9b]">{paymentFeedback}</div> : null}
+            {paymentFeedback ? (
+              <div className="mt-4 rounded-[10px] border border-[#ff2d2d]/35 bg-[#ff2d2d]/10 px-4 py-3 text-sm font-semibold text-[#ff9b9b]">
+                <p>{paymentFeedback}</p>
+                {pendingRequestRetry ? (
+                  <button
+                    type="button"
+                    disabled={Boolean(paymentMethodLoading)}
+                    className="mt-3 rounded-[8px] border border-[#a3ff12]/35 bg-[#a3ff12]/10 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-[#d7ffab] transition hover:bg-[#a3ff12]/15 disabled:cursor-wait disabled:opacity-70"
+                    onClick={handleRetryPaymentRequestMessage}
+                  >
+                    Retry sending message
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
 
             <div className="mt-5 grid gap-3">
               <button

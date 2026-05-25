@@ -37,7 +37,8 @@ import {
   POS_SCHEMA_TABLES,
   quoteBarberPosSale,
   quoteBarberPosSaleForUser,
-  requestBarberPosSalePayment
+  requestBarberPosSalePayment,
+  retryBarberPosSalePaymentRequestMessage
 } from "@/lib/barber/pos-sales";
 
 type FakeRow = Record<string, unknown>;
@@ -52,6 +53,7 @@ type FakeOptions = {
   unsupportedPosSaleColumns?: string[];
   rejectPosSaleShopId?: boolean;
   posSaleInsertError?: FakePostgresError;
+  messageInsertError?: FakePostgresError;
   missingTables?: string[];
 };
 
@@ -116,6 +118,13 @@ class FakeQueryBuilder {
       });
     }
 
+    if (this.pendingInsert && this.table === "messages" && this.options.messageInsertError) {
+      return Promise.resolve({
+        data: null,
+        error: this.options.messageInsertError
+      });
+    }
+
     if (this.pendingInsert && this.hasRejectedPosSaleShopId(this.pendingInsert)) {
       return Promise.resolve({
         data: null,
@@ -167,6 +176,10 @@ class FakeQueryBuilder {
   ) {
     if (this.isMissingTable()) {
       return Promise.resolve({ data: [], error: this.missingTableError() }).then(onfulfilled, onrejected);
+    }
+
+    if (this.pendingInsert && this.table === "messages" && this.options.messageInsertError) {
+      return Promise.resolve({ data: [], error: this.options.messageInsertError }).then(onfulfilled, onrejected);
     }
 
     const rows = this.pendingInsert
@@ -295,7 +308,11 @@ describe("barber POS sales", () => {
       join(process.cwd(), "supabase/migrations/20260525120000_pos_payment_request_actions.sql"),
       "utf8"
     );
-    const migrationSql = `${initialMigration}\n${ensureMigration}\n${actionMigration}`;
+    const messageHardeningMigration = readFileSync(
+      join(process.cwd(), "supabase/migrations/20260525143000_harden_pos_payment_request_messages.sql"),
+      "utf8"
+    );
+    const migrationSql = `${initialMigration}\n${ensureMigration}\n${actionMigration}\n${messageHardeningMigration}`;
 
     expect(POS_SCHEMA_TABLES).toEqual({
       sales: "pos_sales",
@@ -307,6 +324,7 @@ describe("barber POS sales", () => {
     expect(migrationSql).toContain("create table if not exists public.pos_payment_requests");
     expect(migrationSql).toContain("add column if not exists metadata jsonb");
     expect(migrationSql).toContain("add column if not exists paid_at timestamptz");
+    expect(migrationSql).toContain("pending_message_failed");
     expect(migrationSql).toContain("notify pgrst, 'reload schema'");
     expect(migrationSql).not.toContain("barber_pos_sales");
   });
@@ -833,6 +851,146 @@ describe("barber POS sales", () => {
     expect(String(tables.messages[0]?.body)).toContain("Phillip mcgee requested $35.00");
     expect(createPaymentLedgerEntryMock).not.toHaveBeenCalled();
     expect(tables.payment_routing_records).toHaveLength(0);
+  });
+
+  it("keeps a pending request when structured payment request message delivery fails", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const tables: FakeTables = {
+      profiles: [
+        { id: "profile-phillip", email: "phillip@example.com", role: "barber_user", full_name: "Phillip mcgee" },
+        { id: "profile-client", email: "client@example.com", role: "client_user", full_name: "Jordan Client" }
+      ],
+      barbers: [{
+        id: "455c2930-7255-418b-bd2b-cc64bc0fc9b7",
+        profile_id: "profile-phillip",
+        reference_code: "barber-43b3cda2",
+        compensation_model: "freelance",
+        commission_rate: null
+      }],
+      clients: [{
+        id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
+        profile_id: "profile-client",
+        reference_code: "client-phillip"
+      }],
+      pos_sales: [],
+      pos_sale_items: [],
+      pos_payment_requests: [],
+      message_threads: [],
+      thread_participants: [],
+      messages: [],
+      payment_routing_records: []
+    };
+    createSupabaseAdminClientMock.mockReturnValue(createSupabaseMock(tables, {
+      messageInsertError: {
+        code: "PGRST204",
+        message: "Could not find the 'metadata' column of 'messages' in the schema cache",
+        details: null,
+        hint: "Reload the schema cache"
+      }
+    }));
+
+    const created = await createBarberPosSale(barberUser(), {
+      amountCents: 3500,
+      paymentMethod: "card_on_file",
+      clientId: "6607bce8-3636-46e8-9bbd-eabd9e5ad065"
+    });
+    const request = await requestBarberPosSalePayment(barberUser(), created.sale.id);
+
+    expect(request).toMatchObject({
+      ok: true,
+      payment: null,
+      routing: null,
+      alreadyRequested: false,
+      messageDeliveryStatus: "failed",
+      error: "Unable to send the POS payment request message.",
+      message: "Request created, but message delivery failed. Retry sending message.",
+      debugCode: "missing_column",
+      failedTable: "messages",
+      failedColumn: "metadata"
+    });
+    expect(tables.pos_payment_requests[0]).toMatchObject({
+      status: "pending_message_failed",
+      message_thread_id: "message_threads-1"
+    });
+    expect(tables.messages).toHaveLength(0);
+    expect(warnSpy).toHaveBeenCalledWith("[barber-pos] create_failed", expect.objectContaining({
+      route: "POST /api/barber/pos-sales/[id]/payment-request",
+      stage: "pos_payment_request_message_insert",
+      posSaleId: created.sale.id,
+      paymentRequestId: request.request.id,
+      threadId: "message_threads-1",
+      failedTable: "messages",
+      failedColumn: "metadata",
+      debugCode: "missing_column"
+    }));
+    warnSpy.mockRestore();
+  });
+
+  it("retries a failed POS payment request message and restores pending state", async () => {
+    const tables: FakeTables = {
+      profiles: [
+        { id: "profile-phillip", email: "phillip@example.com", role: "barber_user", full_name: "Phillip mcgee" },
+        { id: "profile-client", email: "client@example.com", role: "client_user", full_name: "Jordan Client" }
+      ],
+      barbers: [{
+        id: "455c2930-7255-418b-bd2b-cc64bc0fc9b7",
+        profile_id: "profile-phillip",
+        reference_code: "barber-43b3cda2",
+        compensation_model: "freelance",
+        commission_rate: null
+      }],
+      clients: [{
+        id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
+        profile_id: "profile-client",
+        reference_code: "client-phillip"
+      }],
+      pos_sales: [],
+      pos_sale_items: [],
+      pos_payment_requests: [],
+      message_threads: [],
+      thread_participants: [],
+      messages: [],
+      payment_routing_records: []
+    };
+    createSupabaseAdminClientMock.mockReturnValue(createSupabaseMock(tables, {
+      messageInsertError: {
+        code: "PGRST204",
+        message: "Could not find the 'metadata' column of 'messages' in the schema cache"
+      }
+    }));
+
+    const created = await createBarberPosSale(barberUser(), {
+      amountCents: 3500,
+      paymentMethod: "card_on_file",
+      clientId: "6607bce8-3636-46e8-9bbd-eabd9e5ad065"
+    });
+    const failed = await requestBarberPosSalePayment(barberUser(), created.sale.id);
+    expect(failed.request.status).toBe("pending_message_failed");
+
+    createSupabaseAdminClientMock.mockReturnValue(createSupabaseMock(tables));
+    const retried = await retryBarberPosSalePaymentRequestMessage(barberUser(), created.sale.id);
+
+    expect(retried).toMatchObject({
+      ok: true,
+      messageDeliveryStatus: "delivered",
+      message: "Payment request sent. Client approval is required before payout.",
+      request: expect.objectContaining({
+        id: failed.request.id,
+        status: "pending"
+      })
+    });
+    expect(tables.pos_payment_requests[0]).toMatchObject({
+      status: "pending"
+    });
+    expect(tables.messages[0]).toMatchObject({
+      thread_id: "message_threads-1",
+      metadata: expect.objectContaining({
+        kind: "pos_payment_request",
+        paymentRequestId: failed.request.id,
+        posSaleId: created.sale.id,
+        amountCents: 3500
+      })
+    });
   });
 
   it("approves a pending client card request by charging the saved card and loading routing", async () => {
