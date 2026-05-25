@@ -663,6 +663,73 @@ function logPosSaleCreateFailed(input: {
   });
 }
 
+function logPosPaymentMessageStep(input: {
+  stage: string;
+  route: string;
+  posSaleId?: string | null;
+  paymentRequestId?: string | null;
+  barberId?: string | null;
+  profileId?: string | null;
+  clientId?: string | null;
+  threadId?: string | null;
+  metadata?: Record<string, unknown> | null;
+  result?: Record<string, unknown> | null;
+}) {
+  if (process.env.NODE_ENV !== "production") {
+    return;
+  }
+
+  console.info("[barber-pos] payment_request_message_step", {
+    stage: input.stage,
+    route: input.route,
+    posSaleId: input.posSaleId ?? null,
+    paymentRequestId: input.paymentRequestId ?? null,
+    barberId: input.barberId ?? null,
+    profileId: input.profileId ?? null,
+    clientId: input.clientId ?? null,
+    threadId: input.threadId ?? null,
+    metadata: input.metadata ?? null,
+    result: input.result ?? null
+  });
+}
+
+function logPosPaymentMessageFailure(input: {
+  stage: string;
+  route: string;
+  table: string;
+  error: unknown;
+  payload?: Record<string, unknown>;
+  posSaleId?: string | null;
+  paymentRequestId?: string | null;
+  barberId?: string | null;
+  profileId?: string | null;
+  clientId?: string | null;
+  threadId?: string | null;
+}) {
+  const parts = postgresErrorParts(input.error);
+  const debug = buildPosSaleDebug(input.error, input.table, "pos_payment_request_message_failed");
+  console.warn("[barber-pos] payment_request_message_failed", {
+    stage: input.stage,
+    route: input.route,
+    table: input.table,
+    posSaleId: input.posSaleId ?? null,
+    paymentRequestId: input.paymentRequestId ?? null,
+    barberId: input.barberId ?? null,
+    profileId: input.profileId ?? null,
+    clientId: input.clientId ?? null,
+    threadId: input.threadId ?? null,
+    payloadKeys: Object.keys(input.payload ?? {}),
+    postgresCode: parts.postgresCode,
+    postgresMessage: parts.postgresMessage,
+    postgresDetails: parts.postgresDetails,
+    postgresHint: parts.postgresHint,
+    failedTable: debug.failedTable,
+    failedConstraint: debug.failedConstraint,
+    failedColumn: debug.failedColumn,
+    debugCode: debug.debugCode
+  });
+}
+
 function missingColumnName(error: unknown) {
   return failedColumnFromError(error);
 }
@@ -1129,7 +1196,18 @@ async function readProfileForPosRequest(supabase: SupabaseClient, profileId: str
   return profileResult.data as ProfileRow;
 }
 
-async function findSharedThreadIds(supabase: SupabaseClient, leftProfileId: string, rightProfileId: string) {
+async function findSharedThreadIds(
+  supabase: SupabaseClient,
+  leftProfileId: string,
+  rightProfileId: string,
+  context?: {
+    route: string;
+    posSaleId?: string | null;
+    paymentRequestId?: string | null;
+    barberId?: string | null;
+    clientId?: string | null;
+  }
+) {
   const [leftRows, rightRows] = await Promise.all([
     supabase
       .from("thread_participants")
@@ -1142,13 +1220,159 @@ async function findSharedThreadIds(supabase: SupabaseClient, leftProfileId: stri
   ]);
 
   if (leftRows.error || rightRows.error) {
+    logPosPaymentMessageFailure({
+      stage: "thread_participant_lookup",
+      route: context?.route ?? "POST /api/barber/pos-sales/[id]/payment-request",
+      table: "thread_participants",
+      error: leftRows.error ?? rightRows.error,
+      payload: { leftProfileId, rightProfileId },
+      posSaleId: context?.posSaleId,
+      paymentRequestId: context?.paymentRequestId,
+      barberId: context?.barberId,
+      profileId: leftProfileId,
+      clientId: context?.clientId
+    });
     throw new BarberPosSaleError("Unable to resolve existing payment request conversation.", 500);
   }
 
   const leftIds = new Set((leftRows.data ?? []).map((row) => row.thread_id as string));
-  return (rightRows.data ?? [])
+  const sharedIds = (rightRows.data ?? [])
     .map((row) => row.thread_id as string)
     .filter((threadId) => leftIds.has(threadId));
+  logPosPaymentMessageStep({
+    stage: "thread_participant_lookup",
+    route: context?.route ?? "POST /api/barber/pos-sales/[id]/payment-request",
+    posSaleId: context?.posSaleId,
+    paymentRequestId: context?.paymentRequestId,
+    barberId: context?.barberId,
+    profileId: leftProfileId,
+    clientId: context?.clientId,
+    result: {
+      leftCount: leftRows.data?.length ?? 0,
+      rightCount: rightRows.data?.length ?? 0,
+      sharedCount: sharedIds.length
+    }
+  });
+  return sharedIds;
+}
+
+async function ensurePosPaymentRequestThreadParticipants(input: {
+  supabase: SupabaseClient;
+  threadId: string;
+  barberProfile: ProfileRow;
+  clientProfile: ProfileRow;
+  route: string;
+  posSaleId?: string | null;
+  paymentRequestId?: string | null;
+  barberId?: string | null;
+  clientId?: string | null;
+}) {
+  const participantsResult = await input.supabase
+    .from("thread_participants")
+    .select("profile_id")
+    .eq("thread_id", input.threadId);
+
+  if (participantsResult.error) {
+    logPosPaymentMessageFailure({
+      stage: "thread_participant_verify",
+      route: input.route,
+      table: "thread_participants",
+      error: participantsResult.error,
+      payload: { thread_id: input.threadId },
+      posSaleId: input.posSaleId,
+      paymentRequestId: input.paymentRequestId,
+      barberId: input.barberId,
+      profileId: input.barberProfile.id,
+      clientId: input.clientId,
+      threadId: input.threadId
+    });
+    throw new BarberPosSaleError("Unable to verify payment request conversation participants.", 500, buildPosSaleDebug(participantsResult.error, "thread_participants", "pos_payment_request_participant_verify_failed"));
+  }
+
+  const existingProfileIds = new Set((participantsResult.data ?? []).map((row) => row.profile_id as string));
+  const participantRows = [
+    {
+      thread_id: input.threadId,
+      profile_id: input.clientProfile.id,
+      thread_role: input.clientProfile.role ?? "client_user"
+    },
+    {
+      thread_id: input.threadId,
+      profile_id: input.barberProfile.id,
+      thread_role: input.barberProfile.role ?? "barber_user"
+    }
+  ].filter((row) => !existingProfileIds.has(row.profile_id));
+
+  if (!participantRows.length) {
+    logPosPaymentMessageStep({
+      stage: "thread_participants_already_present",
+      route: input.route,
+      posSaleId: input.posSaleId,
+      paymentRequestId: input.paymentRequestId,
+      barberId: input.barberId,
+      profileId: input.barberProfile.id,
+      clientId: input.clientId,
+      threadId: input.threadId,
+      result: { participantCount: existingProfileIds.size }
+    });
+    return;
+  }
+
+  const participantsInsert = await input.supabase
+    .from("thread_participants")
+    .insert(participantRows);
+
+  if (participantsInsert.error && postgresErrorParts(participantsInsert.error).postgresCode !== "23505") {
+    logPosPaymentMessageFailure({
+      stage: "thread_participant_insert",
+      route: input.route,
+      table: "thread_participants",
+      error: participantsInsert.error,
+      payload: {
+        rows: participantRows.map((row) => ({
+          thread_id: row.thread_id,
+          profile_id: row.profile_id,
+          thread_role: row.thread_role
+        }))
+      },
+      posSaleId: input.posSaleId,
+      paymentRequestId: input.paymentRequestId,
+      barberId: input.barberId,
+      profileId: input.barberProfile.id,
+      clientId: input.clientId,
+      threadId: input.threadId
+    });
+    throw new BarberPosSaleError("Unable to attach payment request conversation participants.", 500, buildPosSaleDebug(participantsInsert.error, "thread_participants", "pos_payment_request_participant_insert_failed"));
+  }
+
+  if (participantsInsert.error) {
+    logPosPaymentMessageFailure({
+      stage: "thread_participant_insert_duplicate_ignored",
+      route: input.route,
+      table: "thread_participants",
+      error: participantsInsert.error,
+      payload: { thread_id: input.threadId },
+      posSaleId: input.posSaleId,
+      paymentRequestId: input.paymentRequestId,
+      barberId: input.barberId,
+      profileId: input.barberProfile.id,
+      clientId: input.clientId,
+      threadId: input.threadId
+    });
+    return;
+  }
+
+  logPosPaymentMessageStep({
+    stage: "thread_participants_inserted",
+    route: input.route,
+    posSaleId: input.posSaleId,
+    paymentRequestId: input.paymentRequestId,
+    barberId: input.barberId,
+    profileId: input.barberProfile.id,
+    clientId: input.clientId,
+    threadId: input.threadId,
+    result: { insertedCount: participantRows.length }
+  });
 }
 
 async function createOrGetPosPaymentRequestThread(input: {
@@ -1156,8 +1380,20 @@ async function createOrGetPosPaymentRequestThread(input: {
   barberProfile: ProfileRow;
   clientProfile: ProfileRow;
   createdAt: string;
+  route?: string;
+  posSaleId?: string | null;
+  paymentRequestId?: string | null;
+  barberId?: string | null;
+  clientId?: string | null;
 }) {
-  const sharedThreadIds = await findSharedThreadIds(input.supabase, input.barberProfile.id, input.clientProfile.id);
+  const route = input.route ?? "POST /api/barber/pos-sales/[id]/payment-request";
+  const sharedThreadIds = await findSharedThreadIds(input.supabase, input.barberProfile.id, input.clientProfile.id, {
+    route,
+    posSaleId: input.posSaleId,
+    paymentRequestId: input.paymentRequestId,
+    barberId: input.barberId,
+    clientId: input.clientId
+  });
 
   if (sharedThreadIds.length) {
     const threadResult = await input.supabase
@@ -1169,51 +1405,123 @@ async function createOrGetPosPaymentRequestThread(input: {
       .limit(1);
 
     if (threadResult.error) {
-      throw new BarberPosSaleError("Unable to load existing payment request conversation.", 500);
+      logPosPaymentMessageFailure({
+        stage: "thread_reuse_lookup",
+        route,
+        table: "message_threads",
+        error: threadResult.error,
+        payload: { sharedThreadIds, thread_type: "client_barber" },
+        posSaleId: input.posSaleId,
+        paymentRequestId: input.paymentRequestId,
+        barberId: input.barberId,
+        profileId: input.barberProfile.id,
+        clientId: input.clientId
+      });
+      throw new BarberPosSaleError("Unable to load existing payment request conversation.", 500, buildPosSaleDebug(threadResult.error, "message_threads", "pos_payment_request_thread_lookup_failed"));
     }
 
     const existingThread = (threadResult.data ?? [])[0] as { id: string } | undefined;
     if (existingThread?.id) {
+      await ensurePosPaymentRequestThreadParticipants({
+        supabase: input.supabase,
+        threadId: existingThread.id,
+        barberProfile: input.barberProfile,
+        clientProfile: input.clientProfile,
+        route,
+        posSaleId: input.posSaleId,
+        paymentRequestId: input.paymentRequestId,
+        barberId: input.barberId,
+        clientId: input.clientId
+      });
+      logPosPaymentMessageStep({
+        stage: "thread_reused",
+        route,
+        posSaleId: input.posSaleId,
+        paymentRequestId: input.paymentRequestId,
+        barberId: input.barberId,
+        profileId: input.barberProfile.id,
+        clientId: input.clientId,
+        threadId: existingThread.id
+      });
       return existingThread.id;
     }
   }
 
-  const threadInsert = await input.supabase
+  const baseThreadPayload = {
+    thread_type: "client_barber",
+    appointment_id: null,
+    created_by_profile_id: input.barberProfile.id,
+    updated_at: input.createdAt
+  };
+  let threadPayload: typeof baseThreadPayload & { location_id?: null } = {
+    ...baseThreadPayload,
+    location_id: null
+  };
+  let threadInsert = await input.supabase
     .from("message_threads")
-    .insert({
-      thread_type: "client_barber",
-      appointment_id: null,
-      location_id: null,
-      created_by_profile_id: input.barberProfile.id,
-      updated_at: input.createdAt
-    })
+    .insert(threadPayload)
     .select("id")
     .single();
 
+  if (threadInsert.error && isUndefinedColumnError(threadInsert.error) && failedColumnFromError(threadInsert.error) === "location_id") {
+    logPosPaymentMessageFailure({
+      stage: "thread_create_location_column_fallback",
+      route,
+      table: "message_threads",
+      error: threadInsert.error,
+      payload: threadPayload,
+      posSaleId: input.posSaleId,
+      paymentRequestId: input.paymentRequestId,
+      barberId: input.barberId,
+      profileId: input.barberProfile.id,
+      clientId: input.clientId
+    });
+    threadPayload = baseThreadPayload;
+    threadInsert = await input.supabase
+      .from("message_threads")
+      .insert(threadPayload)
+      .select("id")
+      .single();
+  }
+
   if (threadInsert.error) {
-    throw new BarberPosSaleError("Unable to create payment request conversation.", 500);
+    logPosPaymentMessageFailure({
+      stage: "thread_create",
+      route,
+      table: "message_threads",
+      error: threadInsert.error,
+      payload: threadPayload,
+      posSaleId: input.posSaleId,
+      paymentRequestId: input.paymentRequestId,
+      barberId: input.barberId,
+      profileId: input.barberProfile.id,
+      clientId: input.clientId
+    });
+    throw new BarberPosSaleError("Unable to create payment request conversation.", 500, buildPosSaleDebug(threadInsert.error, "message_threads", "pos_payment_request_thread_create_failed"));
   }
 
   const threadId = threadInsert.data.id as string;
-  const participantsInsert = await input.supabase
-    .from("thread_participants")
-    .insert([
-      {
-        thread_id: threadId,
-        profile_id: input.clientProfile.id,
-        thread_role: input.clientProfile.role ?? "client_user"
-      },
-      {
-        thread_id: threadId,
-        profile_id: input.barberProfile.id,
-        thread_role: input.barberProfile.role ?? "barber_user"
-      }
-    ]);
-
-  if (participantsInsert.error) {
-    throw new BarberPosSaleError("Unable to attach payment request conversation participants.", 500);
-  }
-
+  await ensurePosPaymentRequestThreadParticipants({
+    supabase: input.supabase,
+    threadId,
+    barberProfile: input.barberProfile,
+    clientProfile: input.clientProfile,
+    route,
+    posSaleId: input.posSaleId,
+    paymentRequestId: input.paymentRequestId,
+    barberId: input.barberId,
+    clientId: input.clientId
+  });
+  logPosPaymentMessageStep({
+    stage: "thread_created",
+    route,
+    posSaleId: input.posSaleId,
+    paymentRequestId: input.paymentRequestId,
+    barberId: input.barberId,
+    profileId: input.barberProfile.id,
+    clientId: input.clientId,
+    threadId
+  });
   return threadId;
 }
 
@@ -1443,6 +1751,171 @@ async function markPosPaymentRequestMessageDelivered(input: {
   }
 }
 
+async function findExistingPosPaymentRequestMessage(input: {
+  supabase: SupabaseClient;
+  request: PosPaymentRequestRow;
+  threadId: string;
+  route: string;
+  sale: PosSaleRow;
+  actorProfileId: string;
+}) {
+  const existingMessages = await input.supabase
+    .from("messages")
+    .select("id, metadata, created_at")
+    .eq("thread_id", input.threadId)
+    .limit(100);
+
+  if (existingMessages.error) {
+    logPosPaymentMessageFailure({
+      stage: "message_duplicate_lookup",
+      route: input.route,
+      table: "messages",
+      error: existingMessages.error,
+      payload: { thread_id: input.threadId, metadata: "pos_payment_request" },
+      posSaleId: input.sale.id,
+      paymentRequestId: input.request.id,
+      barberId: input.sale.barber_id,
+      profileId: input.actorProfileId,
+      clientId: input.sale.client_id,
+      threadId: input.threadId
+    });
+    return null;
+  }
+
+  const existing = (existingMessages.data ?? []).find((message) => {
+    const metadata = (message as { metadata?: unknown }).metadata;
+    return Boolean(
+      metadata
+      && typeof metadata === "object"
+      && !Array.isArray(metadata)
+      && (metadata as PosPaymentRequestMessageMetadata).kind === "pos_payment_request"
+      && (metadata as PosPaymentRequestMessageMetadata).paymentRequestId === input.request.id
+    );
+  }) as { id: string; created_at?: string | null } | undefined;
+
+  if (existing) {
+    logPosPaymentMessageStep({
+      stage: "message_duplicate_found",
+      route: input.route,
+      posSaleId: input.sale.id,
+      paymentRequestId: input.request.id,
+      barberId: input.sale.barber_id,
+      profileId: input.actorProfileId,
+      clientId: input.sale.client_id,
+      threadId: input.threadId,
+      result: { messageId: existing.id, createdAt: existing.created_at ?? null }
+    });
+  }
+
+  return existing ?? null;
+}
+
+async function insertPosPaymentRequestPlainTextFallback(input: {
+  supabase: SupabaseClient;
+  request: PosPaymentRequestRow;
+  sale: PosSaleRow;
+  threadId: string;
+  barberProfile: ProfileRow;
+  body: string;
+  createdAt: string;
+  route: string;
+  actorProfileId: string;
+  originalError: unknown;
+}) {
+  const fallbackPayload = {
+    thread_id: input.threadId,
+    sender_profile_id: input.barberProfile.id,
+    body: `${input.body}\n\nPayment request ID: ${input.request.id}`,
+    message_type: "system",
+    created_at: input.createdAt
+  };
+  let fallbackInsert = await input.supabase
+    .from("messages")
+    .insert(fallbackPayload);
+
+  if (fallbackInsert.error) {
+    logPosPaymentMessageFailure({
+      stage: "message_plain_text_system_fallback",
+      route: input.route,
+      table: "messages",
+      error: fallbackInsert.error,
+      payload: fallbackPayload,
+      posSaleId: input.sale.id,
+      paymentRequestId: input.request.id,
+      barberId: input.sale.barber_id,
+      profileId: input.actorProfileId,
+      clientId: input.sale.client_id,
+      threadId: input.threadId
+    });
+
+    const textFallbackPayload = {
+      ...fallbackPayload,
+      message_type: "text"
+    };
+    fallbackInsert = await input.supabase
+      .from("messages")
+      .insert(textFallbackPayload);
+
+    if (fallbackInsert.error) {
+      logPosPaymentMessageFailure({
+        stage: "message_plain_text_text_fallback",
+        route: input.route,
+        table: "messages",
+        error: fallbackInsert.error,
+        payload: textFallbackPayload,
+        posSaleId: input.sale.id,
+        paymentRequestId: input.request.id,
+        barberId: input.sale.barber_id,
+        profileId: input.actorProfileId,
+        clientId: input.sale.client_id,
+        threadId: input.threadId
+      });
+      return {
+        delivered: false,
+        debug: buildPosSaleDebug(input.originalError, "messages", "pos_payment_request_message_failed")
+      };
+    }
+  }
+
+  logPosPaymentMessageStep({
+    stage: "message_plain_text_fallback_delivered",
+    route: input.route,
+    posSaleId: input.sale.id,
+    paymentRequestId: input.request.id,
+    barberId: input.sale.barber_id,
+    profileId: input.actorProfileId,
+    clientId: input.sale.client_id,
+    threadId: input.threadId,
+    result: { metadataAvailable: false }
+  });
+
+  const threadUpdate = await input.supabase
+    .from("message_threads")
+    .update({ updated_at: input.createdAt })
+    .eq("id", input.threadId);
+
+  if (threadUpdate.error) {
+    logPosPaymentMessageFailure({
+      stage: "message_plain_text_fallback_thread_touch",
+      route: input.route,
+      table: "message_threads",
+      error: threadUpdate.error,
+      payload: { updated_at: input.createdAt },
+      posSaleId: input.sale.id,
+      paymentRequestId: input.request.id,
+      barberId: input.sale.barber_id,
+      profileId: input.actorProfileId,
+      clientId: input.sale.client_id,
+      threadId: input.threadId
+    });
+  }
+
+  return {
+    delivered: true,
+    debug: buildPosSaleDebug(input.originalError, "messages", "pos_payment_request_message_failed")
+  };
+}
+
 async function deliverPosPaymentRequestMessage(input: {
   supabase: SupabaseClient;
   request: PosPaymentRequestRow;
@@ -1454,6 +1927,30 @@ async function deliverPosPaymentRequestMessage(input: {
   actorProfileId: string;
 }) {
   const metadata = buildPosPaymentRequestMetadata({ request: input.request });
+  const existingMessage = await findExistingPosPaymentRequestMessage({
+    supabase: input.supabase,
+    request: input.request,
+    threadId: input.threadId,
+    route: input.route,
+    sale: input.sale,
+    actorProfileId: input.actorProfileId
+  });
+  if (existingMessage) {
+    const deliveredRequest = await markPosPaymentRequestMessageDelivered({
+      supabase: input.supabase,
+      request: input.request,
+      threadId: input.threadId,
+      deliveredAt: input.createdAt
+    });
+    return {
+      delivered: true,
+      fallbackDelivered: false,
+      duplicateSkipped: true,
+      request: deliveredRequest,
+      debug: null
+    };
+  }
+
   const messagePayload = {
     thread_id: input.threadId,
     sender_profile_id: input.barberProfile.id,
@@ -1491,6 +1988,18 @@ async function deliverPosPaymentRequestMessage(input: {
       threadId: input.threadId
     });
 
+    const fallbackDelivery = await insertPosPaymentRequestPlainTextFallback({
+      supabase: input.supabase,
+      request: input.request,
+      sale: input.sale,
+      threadId: input.threadId,
+      barberProfile: input.barberProfile,
+      body: messagePayload.body,
+      createdAt: input.createdAt,
+      route: input.route,
+      actorProfileId: input.actorProfileId,
+      originalError: messageInsert.error
+    });
     const failedRequest = await markPosPaymentRequestMessageFailed({
       supabase: input.supabase,
       request: input.request,
@@ -1500,8 +2009,10 @@ async function deliverPosPaymentRequestMessage(input: {
     });
     return {
       delivered: false,
+      fallbackDelivered: fallbackDelivery.delivered,
+      duplicateSkipped: false,
       request: failedRequest,
-      debug: buildPosSaleDebug(messageInsert.error, "messages", "pos_payment_request_message_failed")
+      debug: fallbackDelivery.debug
     };
   }
 
@@ -1534,6 +2045,8 @@ async function deliverPosPaymentRequestMessage(input: {
 
   return {
     delivered: true,
+    fallbackDelivered: false,
+    duplicateSkipped: false,
     request: deliveredRequest,
     debug: null
   };
@@ -1932,7 +2445,23 @@ export async function requestBarberPosSalePayment(user: UserAccount, saleId: str
         supabase,
         barberProfile,
         clientProfile,
-        createdAt: retriedAt
+        createdAt: retriedAt,
+        route: "POST /api/barber/pos-sales/[id]/payment-request",
+        posSaleId: sale.id,
+        paymentRequestId: request.id,
+        barberId: actor.barber.id,
+        clientId: sale.client_id
+      });
+      await ensurePosPaymentRequestThreadParticipants({
+        supabase,
+        threadId,
+        barberProfile,
+        clientProfile,
+        route: "POST /api/barber/pos-sales/[id]/payment-request",
+        posSaleId: sale.id,
+        paymentRequestId: request.id,
+        barberId: actor.barber.id,
+        clientId: sale.client_id
       });
       const delivery = await deliverPosPaymentRequestMessage({
         supabase,
@@ -1947,6 +2476,7 @@ export async function requestBarberPosSalePayment(user: UserAccount, saleId: str
 
       if (!delivery.delivered) {
         const debug = delivery.debug ?? buildPosSaleDebug(null, "messages", "pos_payment_request_message_failed");
+        const messageDeliveryStatus = delivery.fallbackDelivered ? "plain_text_fallback" : "failed";
         return {
           ok: true,
           sale,
@@ -1954,9 +2484,11 @@ export async function requestBarberPosSalePayment(user: UserAccount, saleId: str
           payment: null,
           routing: null,
           alreadyRequested: true,
-          messageDeliveryStatus: "failed",
+          messageDeliveryStatus,
           error: "Unable to send the POS payment request message.",
-          message: "Request created, but message delivery failed. Retry sending message.",
+          message: delivery.fallbackDelivered
+            ? "Request created and sent as a plain message, but the payment card still needs retry."
+            : "Request created, but message delivery failed. Retry sending message.",
           debugCode: debug.debugCode,
           failedTable: debug.failedTable,
           failedConstraint: debug.failedConstraint,
@@ -1999,7 +2531,11 @@ export async function requestBarberPosSalePayment(user: UserAccount, saleId: str
     supabase,
     barberProfile,
     clientProfile,
-    createdAt: requestedAt
+    createdAt: requestedAt,
+    route: "POST /api/barber/pos-sales/[id]/payment-request",
+    posSaleId: sale.id,
+    barberId: actor.barber.id,
+    clientId: sale.client_id
   });
 
   const requestInsert = await supabase
@@ -2056,6 +2592,7 @@ export async function requestBarberPosSalePayment(user: UserAccount, saleId: str
 
   if (!delivery.delivered) {
     const debug = delivery.debug ?? buildPosSaleDebug(null, "messages", "pos_payment_request_message_failed");
+    const messageDeliveryStatus = delivery.fallbackDelivered ? "plain_text_fallback" : "failed";
     return {
       ok: true,
       sale,
@@ -2063,9 +2600,11 @@ export async function requestBarberPosSalePayment(user: UserAccount, saleId: str
       payment: null,
       routing: null,
       alreadyRequested: false,
-      messageDeliveryStatus: "failed",
+      messageDeliveryStatus,
       error: "Unable to send the POS payment request message.",
-      message: "Request created, but message delivery failed. Retry sending message.",
+      message: delivery.fallbackDelivered
+        ? "Request created and sent as a plain message, but the payment card still needs retry."
+        : "Request created, but message delivery failed. Retry sending message.",
       debugCode: debug.debugCode,
       failedTable: debug.failedTable,
       failedConstraint: debug.failedConstraint,
@@ -2123,7 +2662,23 @@ export async function retryBarberPosSalePaymentRequestMessage(user: UserAccount,
     supabase,
     barberProfile,
     clientProfile,
-    createdAt: retriedAt
+    createdAt: retriedAt,
+    route: "POST /api/barber/pos-sales/[id]/payment-request/retry-message",
+    posSaleId: sale.id,
+    paymentRequestId: request.id,
+    barberId: actor.barber.id,
+    clientId: sale.client_id
+  });
+  await ensurePosPaymentRequestThreadParticipants({
+    supabase,
+    threadId,
+    barberProfile,
+    clientProfile,
+    route: "POST /api/barber/pos-sales/[id]/payment-request/retry-message",
+    posSaleId: sale.id,
+    paymentRequestId: request.id,
+    barberId: actor.barber.id,
+    clientId: sale.client_id
   });
   const delivery = await deliverPosPaymentRequestMessage({
     supabase,
@@ -2139,14 +2694,16 @@ export async function retryBarberPosSalePaymentRequestMessage(user: UserAccount,
   if (!delivery.delivered) {
     const debug = delivery.debug ?? buildPosSaleDebug(null, "messages", "pos_payment_request_message_failed");
     return {
-      ok: false,
+      ok: Boolean(delivery.fallbackDelivered),
       sale,
       request: delivery.request,
       payment: null,
       routing: null,
-      messageDeliveryStatus: "failed",
+      messageDeliveryStatus: delivery.fallbackDelivered ? "plain_text_fallback" : "failed",
       error: "Unable to send the POS payment request message.",
-      message: "Request exists, but message delivery is still failing.",
+      message: delivery.fallbackDelivered
+        ? "Request was sent as a plain message, but the payment card still needs retry."
+        : "Request exists, but message delivery is still failing.",
       debugCode: debug.debugCode,
       failedTable: debug.failedTable,
       failedConstraint: debug.failedConstraint,

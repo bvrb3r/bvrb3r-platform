@@ -54,6 +54,7 @@ type FakeOptions = {
   rejectPosSaleShopId?: boolean;
   posSaleInsertError?: FakePostgresError;
   messageInsertError?: FakePostgresError;
+  messageInsertErrors?: FakePostgresError[];
   missingTables?: string[];
 };
 
@@ -118,10 +119,11 @@ class FakeQueryBuilder {
       });
     }
 
-    if (this.pendingInsert && this.table === "messages" && this.options.messageInsertError) {
+    const messageInsertError = this.nextMessageInsertError();
+    if (this.pendingInsert && this.table === "messages" && messageInsertError) {
       return Promise.resolve({
         data: null,
-        error: this.options.messageInsertError
+        error: messageInsertError
       });
     }
 
@@ -178,8 +180,9 @@ class FakeQueryBuilder {
       return Promise.resolve({ data: [], error: this.missingTableError() }).then(onfulfilled, onrejected);
     }
 
-    if (this.pendingInsert && this.table === "messages" && this.options.messageInsertError) {
-      return Promise.resolve({ data: [], error: this.options.messageInsertError }).then(onfulfilled, onrejected);
+    const messageInsertError = this.nextMessageInsertError();
+    if (this.pendingInsert && this.table === "messages" && messageInsertError) {
+      return Promise.resolve({ data: [], error: messageInsertError }).then(onfulfilled, onrejected);
     }
 
     const rows = this.pendingInsert
@@ -210,6 +213,14 @@ class FakeQueryBuilder {
     tableRows.push(...inserted);
     this.pendingInsert = null;
     return inserted;
+  }
+
+  private nextMessageInsertError() {
+    if (this.table !== "messages" || !this.pendingInsert) {
+      return null;
+    }
+
+    return this.options.messageInsertErrors?.shift() ?? this.options.messageInsertError ?? null;
   }
 
   private updateRows() {
@@ -312,7 +323,11 @@ describe("barber POS sales", () => {
       join(process.cwd(), "supabase/migrations/20260525143000_harden_pos_payment_request_messages.sql"),
       "utf8"
     );
-    const migrationSql = `${initialMigration}\n${ensureMigration}\n${actionMigration}\n${messageHardeningMigration}`;
+    const messageDeliveryMigration = readFileSync(
+      join(process.cwd(), "supabase/migrations/20260525153000_pos_payment_request_message_delivery_shape.sql"),
+      "utf8"
+    );
+    const migrationSql = `${initialMigration}\n${ensureMigration}\n${actionMigration}\n${messageHardeningMigration}\n${messageDeliveryMigration}`;
 
     expect(POS_SCHEMA_TABLES).toEqual({
       sales: "pos_sales",
@@ -323,6 +338,7 @@ describe("barber POS sales", () => {
     expect(migrationSql).toContain("create table if not exists public.pos_sale_items");
     expect(migrationSql).toContain("create table if not exists public.pos_payment_requests");
     expect(migrationSql).toContain("add column if not exists metadata jsonb");
+    expect(migrationSql).toContain("check (message_type in ('text', 'system'))");
     expect(migrationSql).toContain("add column if not exists paid_at timestamptz");
     expect(migrationSql).toContain("pending_message_failed");
     expect(migrationSql).toContain("notify pgrst, 'reload schema'");
@@ -926,6 +942,70 @@ describe("barber POS sales", () => {
     warnSpy.mockRestore();
   });
 
+  it("falls back to a plain text message when metadata delivery is rejected", async () => {
+    const tables: FakeTables = {
+      profiles: [
+        { id: "profile-phillip", email: "phillip@example.com", role: "barber_user", full_name: "Phillip mcgee" },
+        { id: "profile-client", email: "client@example.com", role: "client_user", full_name: "Jordan Client" }
+      ],
+      barbers: [{
+        id: "455c2930-7255-418b-bd2b-cc64bc0fc9b7",
+        profile_id: "profile-phillip",
+        reference_code: "barber-43b3cda2",
+        compensation_model: "freelance",
+        commission_rate: null
+      }],
+      clients: [{
+        id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
+        profile_id: "profile-client",
+        reference_code: "client-phillip"
+      }],
+      pos_sales: [],
+      pos_sale_items: [],
+      pos_payment_requests: [],
+      message_threads: [],
+      thread_participants: [],
+      messages: [],
+      payment_routing_records: []
+    };
+    createSupabaseAdminClientMock.mockReturnValue(createSupabaseMock(tables, {
+      messageInsertErrors: [{
+        code: "PGRST204",
+        message: "Could not find the 'metadata' column of 'messages' in the schema cache",
+        details: null,
+        hint: "Reload the schema cache"
+      }]
+    }));
+
+    const created = await createBarberPosSale(barberUser(), {
+      amountCents: 3500,
+      paymentMethod: "card_on_file",
+      clientId: "6607bce8-3636-46e8-9bbd-eabd9e5ad065"
+    });
+    const request = await requestBarberPosSalePayment(barberUser(), created.sale.id);
+
+    expect(request).toMatchObject({
+      ok: true,
+      messageDeliveryStatus: "plain_text_fallback",
+      message: "Request created and sent as a plain message, but the payment card still needs retry.",
+      debugCode: "missing_column",
+      failedTable: "messages",
+      failedColumn: "metadata"
+    });
+    expect(tables.pos_payment_requests[0]).toMatchObject({
+      status: "pending_message_failed"
+    });
+    expect(tables.messages).toHaveLength(1);
+    expect(tables.messages[0]).toMatchObject({
+      thread_id: "message_threads-1",
+      sender_profile_id: "profile-phillip",
+      message_type: "system"
+    });
+    expect(tables.messages[0].metadata).toBeUndefined();
+    expect(String(tables.messages[0].body)).toContain("Phillip mcgee requested $35.00");
+    expect(String(tables.messages[0].body)).toContain(`Payment request ID: ${request.request.id}`);
+  });
+
   it("retries a failed POS payment request message and restores pending state", async () => {
     const tables: FakeTables = {
       profiles: [
@@ -991,6 +1071,108 @@ describe("barber POS sales", () => {
         amountCents: 3500
       })
     });
+  });
+
+  it("does not duplicate a POS payment request card on retry when metadata message already exists", async () => {
+    const tables: FakeTables = {
+      profiles: [
+        { id: "profile-phillip", email: "phillip@example.com", role: "barber_user", full_name: "Phillip mcgee" },
+        { id: "profile-client", email: "client@example.com", role: "client_user", full_name: "Jordan Client" }
+      ],
+      barbers: [{
+        id: "455c2930-7255-418b-bd2b-cc64bc0fc9b7",
+        profile_id: "profile-phillip",
+        reference_code: "barber-43b3cda2",
+        compensation_model: "freelance",
+        commission_rate: null
+      }],
+      clients: [{
+        id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
+        profile_id: "profile-client",
+        reference_code: "client-phillip"
+      }],
+      pos_sales: [{
+        id: "pos-sale-existing",
+        barber_id: "455c2930-7255-418b-bd2b-cc64bc0fc9b7",
+        shop_id: null,
+        client_id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
+        customer_name: "Jordan Client",
+        source: "barber_keypad",
+        status: "payment_pending",
+        payment_method: "card_on_file",
+        payment_status: "pending_client_approval",
+        subtotal_cents: 3500,
+        discount_cents: 0,
+        tip_cents: 0,
+        platform_fee_cents: 175,
+        client_fee_cents: 0,
+        total_cents: 3500,
+        payment_id: null,
+        note: null,
+        created_by_profile_id: "profile-phillip",
+        created_at: "2026-05-25T12:00:00.000Z",
+        updated_at: "2026-05-25T12:00:00.000Z"
+      }],
+      pos_sale_items: [],
+      pos_payment_requests: [{
+        id: "request-existing",
+        pos_sale_id: "pos-sale-existing",
+        barber_id: "455c2930-7255-418b-bd2b-cc64bc0fc9b7",
+        client_id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
+        amount_cents: 3500,
+        status: "pending_message_failed",
+        requested_at: "2026-05-25T12:00:00.000Z",
+        approved_at: null,
+        declined_at: null,
+        expires_at: null,
+        message_thread_id: "thread-existing",
+        payment_id: null,
+        created_at: "2026-05-25T12:00:00.000Z",
+        updated_at: "2026-05-25T12:00:00.000Z"
+      }],
+      message_threads: [{
+        id: "thread-existing",
+        thread_type: "client_barber",
+        appointment_id: null,
+        location_id: null,
+        created_by_profile_id: "profile-phillip",
+        created_at: "2026-05-25T12:00:00.000Z",
+        updated_at: "2026-05-25T12:00:00.000Z"
+      }],
+      thread_participants: [
+        { id: "participant-client", thread_id: "thread-existing", profile_id: "profile-client", thread_role: "client_user" },
+        { id: "participant-barber", thread_id: "thread-existing", profile_id: "profile-phillip", thread_role: "barber_user" }
+      ],
+      messages: [{
+        id: "message-existing",
+        thread_id: "thread-existing",
+        sender_profile_id: "profile-phillip",
+        body: "Phillip mcgee requested $35.00 for a walk-in service.",
+        message_type: "system",
+        metadata: {
+          kind: "pos_payment_request",
+          paymentRequestId: "request-existing",
+          posSaleId: "pos-sale-existing",
+          amountCents: 3500,
+          status: "pending"
+        },
+        created_at: "2026-05-25T12:00:00.000Z"
+      }],
+      payment_routing_records: []
+    };
+    createSupabaseAdminClientMock.mockReturnValue(createSupabaseMock(tables));
+
+    const retried = await retryBarberPosSalePaymentRequestMessage(barberUser(), "pos-sale-existing");
+
+    expect(retried).toMatchObject({
+      ok: true,
+      messageDeliveryStatus: "delivered",
+      request: expect.objectContaining({
+        id: "request-existing",
+        status: "pending"
+      })
+    });
+    expect(tables.messages).toHaveLength(1);
   });
 
   it("approves a pending client card request by charging the saved card and loading routing", async () => {

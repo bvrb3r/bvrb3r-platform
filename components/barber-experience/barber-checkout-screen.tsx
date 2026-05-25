@@ -402,7 +402,7 @@ export function BarberCheckoutScreen({
         method: "POST",
       });
       const requestBody = await readJsonResponse(requestResponse);
-      if (requestBody?.messageDeliveryStatus === "failed") {
+      if (requestBody?.messageDeliveryStatus === "failed" || requestBody?.messageDeliveryStatus === "plain_text_fallback") {
         setPendingRequestRetry({ saleId });
         setPaymentFeedback(requestBody?.message ?? "Request created, but message delivery failed. Retry sending message.");
         await overviewQuery.refetch();
@@ -436,7 +436,7 @@ export function BarberCheckoutScreen({
         method: "POST"
       });
       const retryBody = await readJsonResponse(retryResponse);
-      if (retryBody?.messageDeliveryStatus === "failed") {
+      if (retryBody?.messageDeliveryStatus === "failed" || retryBody?.messageDeliveryStatus === "plain_text_fallback") {
         throw new Error(retryBody?.message ?? "Request exists, but message delivery is still failing.");
       }
 
