@@ -11,6 +11,7 @@ const {
   executeFintechPayoutsMock,
   listArchitectFreelancePayoutQueueMock,
   validateFreelancePayoutReleaseEligibilityMock,
+  approveFreelancePayoutReadinessForRoutingMock,
   releaseFreelanceRoutingPayoutMock
 } = vi.hoisted(() => ({
   getSessionUserMock: vi.fn(),
@@ -20,6 +21,7 @@ const {
   executeFintechPayoutsMock: vi.fn(),
   listArchitectFreelancePayoutQueueMock: vi.fn(),
   validateFreelancePayoutReleaseEligibilityMock: vi.fn(),
+  approveFreelancePayoutReadinessForRoutingMock: vi.fn(),
   releaseFreelanceRoutingPayoutMock: vi.fn()
 }));
 
@@ -40,6 +42,7 @@ vi.mock("@/lib/fintech/service", async () => {
     executeFintechPayouts: executeFintechPayoutsMock,
     listArchitectFreelancePayoutQueue: listArchitectFreelancePayoutQueueMock,
     validateFreelancePayoutReleaseEligibility: validateFreelancePayoutReleaseEligibilityMock,
+    approveFreelancePayoutReadinessForRouting: approveFreelancePayoutReadinessForRoutingMock,
     releaseFreelanceRoutingPayout: releaseFreelanceRoutingPayoutMock
   };
 });
@@ -49,6 +52,7 @@ import { POST as postExecutePayouts } from "@/app/api/operations/fintech/payouts
 import { GET as getBarberPayoutsRoute } from "@/app/api/fintech/payouts/route";
 import { GET as getArchitectPayoutQueue } from "@/app/api/architect/payouts/queue/route";
 import { POST as postArchitectPayoutValidate } from "@/app/api/architect/payouts/validate/route";
+import { POST as postArchitectPayoutApproveReadiness } from "@/app/api/architect/payouts/approve-readiness/route";
 import { POST as postArchitectPayoutRelease } from "@/app/api/architect/payouts/release/route";
 
 describe("phase 15 payout routes", () => {
@@ -60,6 +64,7 @@ describe("phase 15 payout routes", () => {
     executeFintechPayoutsMock.mockReset();
     listArchitectFreelancePayoutQueueMock.mockReset();
     validateFreelancePayoutReleaseEligibilityMock.mockReset();
+    approveFreelancePayoutReadinessForRoutingMock.mockReset();
     releaseFreelanceRoutingPayoutMock.mockReset();
     requireArchitectDebugAccessMock.mockResolvedValue({
       ok: true,
@@ -248,6 +253,7 @@ describe("phase 15 payout routes", () => {
         warnings: [],
         canValidate: true,
         canRelease: true,
+        canApprovePayoutSetup: false,
         releaseBlockedReason: null,
         releaseActionLabel: "Release payout"
       }]
@@ -285,6 +291,34 @@ describe("phase 15 payout routes", () => {
     expect(response.status).toBe(200);
     expect(body.eligible).toBe(true);
     expect(validateFreelancePayoutReleaseEligibilityMock).toHaveBeenCalledWith("routing-9");
+  });
+
+  it("approves Architect payout readiness review requests", async () => {
+    approveFreelancePayoutReadinessForRoutingMock.mockResolvedValue({
+      ok: true,
+      connectedAccountId: "connected-account-1",
+      barberId: "barber-1",
+      routingRecordId: "routing-9",
+      previousPayoutReadinessStatus: "needs_attention",
+      newPayoutReadinessStatus: "ready",
+      previousLegalReadinessStatus: "pending",
+      newLegalReadinessStatus: "accepted",
+      blockers: [],
+      message: "Payout setup approved. This barber can now receive BVRB3R payouts."
+    });
+
+    const response = await postArchitectPayoutApproveReadiness(new NextRequest("https://bvrb3r.demo/api/architect/payouts/approve-readiness", {
+      method: "POST",
+      body: JSON.stringify({ routingRecordId: "routing-9" })
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(approveFreelancePayoutReadinessForRoutingMock).toHaveBeenCalledWith({
+      routingRecordId: "routing-9",
+      approvedByProfileId: expect.any(String)
+    });
   });
 
   it("releases Architect freelance payout requests with the guarded actor id", async () => {

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import {
+  useApproveFreelancePayoutReadinessMutation,
   useArchitectFreelancePayoutQueueQuery,
   useReleaseFreelancePayoutMutation,
   useValidateFreelancePayoutMutation
@@ -78,11 +79,13 @@ function QueueRow({
   item,
   activeRoutingId,
   onValidate,
+  onApprovePayoutSetup,
   onRelease
 }: {
   item: FreelancePayoutQueueItem;
   activeRoutingId: string | null;
   onValidate: (item: FreelancePayoutQueueItem) => void;
+  onApprovePayoutSetup: (item: FreelancePayoutQueueItem) => void;
   onRelease: (item: FreelancePayoutQueueItem) => void;
 }) {
   const isBusy = activeRoutingId === item.routingRecordId;
@@ -165,6 +168,12 @@ function QueueRow({
         <Button type="button" variant="secondary" className="min-w-[9rem]" disabled={isBusy || item.canValidate === false} onClick={() => onValidate(item)}>
           Validate
         </Button>
+        {item.canApprovePayoutSetup ? (
+          <Button type="button" className="min-w-[12rem]" disabled={isBusy} onClick={() => onApprovePayoutSetup(item)}>
+            {isBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+            Approve payout setup
+          </Button>
+        ) : null}
         <Button
           type="button"
           variant={item.canRelease ? "primary" : "secondary"}
@@ -192,6 +201,7 @@ function QueueRow({
 export function ArchitectFreelancePayoutQueue() {
   const queueQuery = useArchitectFreelancePayoutQueueQuery();
   const validateMutation = useValidateFreelancePayoutMutation();
+  const approveReadinessMutation = useApproveFreelancePayoutReadinessMutation();
   const releaseMutation = useReleaseFreelancePayoutMutation();
   const [feedback, setFeedback] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(null);
   const [activeRoutingId, setActiveRoutingId] = useState<string | null>(null);
@@ -228,6 +238,22 @@ export function ArchitectFreelancePayoutQueue() {
     setActiveRoutingId(item.routingRecordId);
     try {
       const result = await releaseMutation.mutateAsync({ routingRecordId: item.routingRecordId });
+      setFeedback({
+        tone: result.ok ? "success" : "error",
+        message: result.message
+      });
+    } catch (error) {
+      setFeedback({ tone: "error", message: getReadableActionError(error as { message?: string; status?: number; code?: string }) });
+    } finally {
+      setActiveRoutingId(null);
+    }
+  }
+
+  async function handleApprovePayoutSetup(item: FreelancePayoutQueueItem) {
+    setFeedback(null);
+    setActiveRoutingId(item.routingRecordId);
+    try {
+      const result = await approveReadinessMutation.mutateAsync({ routingRecordId: item.routingRecordId });
       setFeedback({
         tone: result.ok ? "success" : "error",
         message: result.message
@@ -295,6 +321,7 @@ export function ArchitectFreelancePayoutQueue() {
             item={item}
             activeRoutingId={activeRoutingId}
             onValidate={(next) => void handleValidate(next)}
+            onApprovePayoutSetup={(next) => void handleApprovePayoutSetup(next)}
             onRelease={(next) => void handleRelease(next)}
           />
         )) : (

@@ -42,6 +42,7 @@ vi.mock("@/lib/stripe/connect", () => ({
 }));
 
 import {
+  approveFreelancePayoutReadinessForRouting,
   getBarberStripePayoutReadiness,
   listArchitectFreelancePayoutQueue,
   releaseFreelanceRoutingPayout,
@@ -669,6 +670,89 @@ describe("freelance payout execution", () => {
     expect(result.eligible).toBe(false);
     expect(result.reasons).toContain("Missing: external_account, business_profile.url.");
     expect(result.stripePayoutReadiness?.displayStatus).toBe("incomplete");
+  });
+
+  it("approves a Stripe-clean connected account that is pending internal payout review", async () => {
+    const tables = createBaseTables({
+      connected_accounts: [{
+        ...createBaseTables().connected_accounts[0],
+        payout_readiness_status: "needs_attention",
+        legal_readiness_status: "pending",
+        requirements_currently_due: [],
+        requirements_past_due: [],
+        disabled_reason: null,
+        charges_enabled: true,
+        payouts_enabled: true
+      }]
+    });
+    const supabase = createSupabaseStub(tables);
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const before = await listArchitectFreelancePayoutQueue();
+    expect(before.items[0]).toEqual(expect.objectContaining({
+      canRelease: false,
+      canApprovePayoutSetup: true,
+      releaseBlockedReason: "Payout setup pending BVRB3R review."
+    }));
+
+    const result = await approveFreelancePayoutReadinessForRouting({
+      routingRecordId: ROUTING_ID,
+      approvedByProfileId: "architect-profile"
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.previousPayoutReadinessStatus).toBe("needs_attention");
+    expect(result.newPayoutReadinessStatus).toBe("ready");
+    expect(result.previousLegalReadinessStatus).toBe("pending");
+    expect(result.newLegalReadinessStatus).toBe("accepted");
+    expect(tables.connected_accounts[0]).toMatchObject({
+      payout_readiness_status: "ready",
+      legal_readiness_status: "accepted"
+    });
+    expect(tables.platform_events).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        event_type: "payout_readiness_approved",
+        entity_id: CONNECTED_ACCOUNT_ID,
+        actor_id: "architect-profile"
+      })
+    ]));
+
+    const after = await listArchitectFreelancePayoutQueue();
+    expect(after.items[0]).toEqual(expect.objectContaining({
+      canRelease: true,
+      canApprovePayoutSetup: false,
+      releaseBlockedReason: null
+    }));
+  });
+
+  it("rejects final payout approval when Stripe requirements are not clean", async () => {
+    const tables = createBaseTables({
+      connected_accounts: [{
+        ...createBaseTables().connected_accounts[0],
+        payout_readiness_status: "needs_attention",
+        legal_readiness_status: "pending",
+        payouts_enabled: false,
+        requirements_currently_due: ["external_account"]
+      }]
+    });
+    const supabase = createSupabaseStub(tables);
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const result = await approveFreelancePayoutReadinessForRouting({
+      routingRecordId: ROUTING_ID,
+      approvedByProfileId: "architect-profile"
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.blockers).toEqual(expect.arrayContaining([
+      "Stripe payouts are not enabled.",
+      "Missing: external_account."
+    ]));
+    expect(tables.connected_accounts[0]).toMatchObject({
+      payout_readiness_status: "needs_attention",
+      legal_readiness_status: "pending"
+    });
+    expect(tables.platform_events).toHaveLength(0);
   });
 
   it("does not create a payout execution when release is blocked by Stripe readiness", async () => {

@@ -4,18 +4,23 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   queueHookMock,
   validateHookMock,
+  approveHookMock,
   releaseHookMock,
   validateMutateAsyncMock,
+  approveMutateAsyncMock,
   releaseMutateAsyncMock
 } = vi.hoisted(() => ({
   queueHookMock: vi.fn(),
   validateHookMock: vi.fn(),
+  approveHookMock: vi.fn(),
   releaseHookMock: vi.fn(),
   validateMutateAsyncMock: vi.fn(),
+  approveMutateAsyncMock: vi.fn(),
   releaseMutateAsyncMock: vi.fn()
 }));
 
 vi.mock("@/lib/fintech/client", () => ({
+  useApproveFreelancePayoutReadinessMutation: approveHookMock,
   useArchitectFreelancePayoutQueueQuery: queueHookMock,
   useValidateFreelancePayoutMutation: validateHookMock,
   useReleaseFreelancePayoutMutation: releaseHookMock
@@ -70,6 +75,7 @@ const queuePayload = {
     warnings: [],
     canValidate: true,
     canRelease: true,
+    canApprovePayoutSetup: false,
     releaseBlockedReason: null,
     releaseActionLabel: "Release payout"
   }]
@@ -81,6 +87,7 @@ describe("ArchitectFreelancePayoutQueue", () => {
     validateHookMock.mockReset();
     releaseHookMock.mockReset();
     validateMutateAsyncMock.mockReset();
+    approveMutateAsyncMock.mockReset();
     releaseMutateAsyncMock.mockReset();
     queueHookMock.mockReturnValue({
       data: queuePayload,
@@ -90,6 +97,9 @@ describe("ArchitectFreelancePayoutQueue", () => {
     });
     validateHookMock.mockReturnValue({
       mutateAsync: validateMutateAsyncMock
+    });
+    approveHookMock.mockReturnValue({
+      mutateAsync: approveMutateAsyncMock
     });
     releaseHookMock.mockReturnValue({
       mutateAsync: releaseMutateAsyncMock
@@ -137,6 +147,7 @@ describe("ArchitectFreelancePayoutQueue", () => {
         items: [{
           ...queuePayload.items[0],
           canRelease: false,
+          canApprovePayoutSetup: false,
           releaseBlockedReason: "Missing: external_account, business_profile.url.",
           releaseActionLabel: "Payout blocked",
           ineligibleReasons: ["Missing: external_account, business_profile.url."],
@@ -177,6 +188,7 @@ describe("ArchitectFreelancePayoutQueue", () => {
         items: [{
           ...queuePayload.items[0],
           canRelease: false,
+          canApprovePayoutSetup: false,
           releaseBlockedReason: "Barber Stripe Connect account is not payout ready.",
           releaseActionLabel: "Payout blocked",
           ineligibleReasons: ["Barber Stripe Connect account is not payout ready."],
@@ -200,6 +212,53 @@ describe("ArchitectFreelancePayoutQueue", () => {
 
     expect(releaseMutateAsyncMock).not.toHaveBeenCalled();
     expect(screen.getAllByText("Barber Stripe Connect account is not payout ready.").length).toBeGreaterThan(0);
+  });
+
+  it("approves internal payout setup review without enabling the blocked release button first", async () => {
+    approveMutateAsyncMock.mockResolvedValue({
+      ok: true,
+      message: "Payout setup approved. This barber can now receive BVRB3R payouts."
+    });
+    queueHookMock.mockReturnValue({
+      data: {
+        ...queuePayload,
+        summary: {
+          readyCount: 1,
+          readyAmount: 8.55,
+          blockedCount: 1,
+          releasedCount: 0
+        },
+        items: [{
+          ...queuePayload.items[0],
+          canRelease: false,
+          canApprovePayoutSetup: true,
+          releaseBlockedReason: "Payout setup pending BVRB3R review.",
+          releaseActionLabel: "Payout blocked",
+          ineligibleReasons: ["Payout setup pending BVRB3R review."],
+          stripePayoutReadiness: {
+            ...queuePayload.items[0].stripePayoutReadiness,
+            canReceivePayouts: false,
+            requiresOnboarding: false,
+            displayStatus: "internal_review",
+            displayMessage: "Payout setup pending BVRB3R review."
+          }
+        }]
+      },
+      isLoading: false,
+      isError: false,
+      error: null
+    });
+
+    render(<ArchitectFreelancePayoutQueue />);
+
+    expect(screen.getByRole("button", { name: "Payout blocked" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Approve payout setup" }));
+
+    await waitFor(() => {
+      expect(approveMutateAsyncMock).toHaveBeenCalledWith({ routingRecordId: "routing-9" });
+    });
+    expect(await screen.findByText("Payout setup approved. This barber can now receive BVRB3R payouts.")).toBeInTheDocument();
+    expect(releaseMutateAsyncMock).not.toHaveBeenCalled();
   });
 
   it("shows queue warnings without hiding visible ready rows", () => {

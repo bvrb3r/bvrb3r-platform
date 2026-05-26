@@ -398,6 +398,52 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     expect(screen.getByRole("button", { name: "Resume Stripe Setup" })).toBeInTheDocument();
   });
 
+  it("shows internal payout review without telling the barber to resume Stripe setup", () => {
+    useBarberFintechReadinessQueryMock.mockReturnValue({
+      data: {
+        barberId: "barber-blaze",
+        barberName: "Blaze King",
+        connectedAccount: buildConnectedAccount({
+          payoutReadinessStatus: "needs_attention",
+          legalReadinessStatus: "pending",
+          requirementsCurrentlyDue: [],
+          requirementsPastDue: [],
+          chargesEnabled: true,
+          payoutsEnabled: true
+        }),
+        stripePayoutReadiness: buildStripePayoutReadiness({
+          currentlyDue: [],
+          canReceivePayouts: false,
+          requiresOnboarding: false,
+          displayStatus: "internal_review",
+          displayMessage: "Payout setup pending BVRB3R review."
+        }),
+        stripeEnvironment: {
+          mode: "test",
+          label: "Stripe test mode - not live payouts.",
+          blocksLivePayouts: true
+        },
+        agreements: [],
+        memberships: [],
+        routingSummary: {
+          blockedPaymentsCount: 0,
+          pendingPaymentsCount: 0,
+          readyForPayoutAmount: 91.2,
+          blockedReasons: []
+        },
+        blockedPayments: []
+      },
+      error: null,
+      refetch: readinessRefetchMock
+    });
+
+    render(<BarberSettingsScreen user={resolveDemoUser("blaze@bvrb3r.demo")} embedded />);
+
+    expect(screen.getByText("Payout setup pending BVRB3R review")).toBeInTheDocument();
+    expect(screen.getByText("Payout setup pending BVRB3R review.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Resume Stripe Setup" })).not.toBeInTheDocument();
+  });
+
   it("shows eligible payout balance separately from released balance", async () => {
     useBarberPayoutsQueryMock.mockReturnValue({
       data: {

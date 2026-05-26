@@ -964,7 +964,11 @@ export function BarberSettingsScreen({
     ?? (connectedAccount && connectedAccount.operationalStatus !== "payout_ready")
   );
   const payoutSetupActionLabel = stripePayoutReadiness?.hasAccount ? "Resume Stripe Setup" : "Complete Stripe Setup";
-  const payoutSetupStatusLabel = stripePayoutReadiness?.canReceivePayouts ? "Payout account ready" : "Payout setup required";
+  const payoutSetupStatusLabel = stripePayoutReadiness?.canReceivePayouts
+    ? "Payout account ready"
+    : stripePayoutReadiness?.displayStatus === "internal_review"
+      ? "Payout setup pending BVRB3R review"
+      : "Payout setup required";
   const payoutSetupMessage = stripePayoutReadiness?.displayMessage ?? payoutReadinessLabel;
   const readyForCheckout = overviewPayload?.todayAppointments.filter((appointment) => appointment.status === "completed" && appointment.financial.outstandingBalance > 0) ?? [];
   const paidAppointments = overviewPayload?.todayAppointments.filter((appointment) => appointment.financial.capturedAmount > 0 || appointment.financial.tipAmount > 0) ?? [];

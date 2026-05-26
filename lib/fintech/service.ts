@@ -415,7 +415,7 @@ export type BarberStripePayoutReadinessView = {
   disabledReason: string | null;
   canReceivePayouts: boolean;
   requiresOnboarding: boolean;
-  displayStatus: "no_account" | "incomplete" | "payouts_disabled" | "restricted" | "ready";
+  displayStatus: "no_account" | "incomplete" | "payouts_disabled" | "restricted" | "internal_review" | "ready";
   displayMessage: string;
 };
 
@@ -559,8 +559,22 @@ export type FreelancePayoutQueueItem = {
   warnings: string[];
   canValidate: boolean;
   canRelease: boolean;
+  canApprovePayoutSetup: boolean;
   releaseBlockedReason: string | null;
   releaseActionLabel: string;
+};
+
+export type BarberPayoutReadinessApprovalResult = {
+  ok: boolean;
+  connectedAccountId: string | null;
+  barberId: string | null;
+  routingRecordId: string;
+  previousPayoutReadinessStatus: FintechPayoutReadinessStatus | null;
+  newPayoutReadinessStatus: FintechPayoutReadinessStatus | null;
+  previousLegalReadinessStatus: FintechLegalReadinessStatus | null;
+  newLegalReadinessStatus: FintechLegalReadinessStatus | null;
+  blockers: string[];
+  message: string;
 };
 
 export type FreelancePayoutQueuePayload = {
@@ -1491,9 +1505,11 @@ async function syncConnectedAccountState(
   const legalState = evaluateLegalAgreementState(account.subject_type, acceptedVersions);
   const requirementsCurrentlyDue = normalizeRequirementList(account.requirements_currently_due as string[] | string | null);
   const requirementsPastDue = normalizeRequirementList(account.requirements_past_due as string[] | string | null);
-  const payoutReadinessStatus = determinePayoutReadiness({
+  const internallyApproved = isConnectedAccountInternallyApproved(account);
+  const legalReadinessStatus = internallyApproved ? account.legal_readiness_status : legalState.legalReadinessStatus;
+  const payoutReadinessStatus = internallyApproved ? account.payout_readiness_status : determinePayoutReadiness({
     onboardingStatus: account.onboarding_status,
-    legalReadinessStatus: legalState.legalReadinessStatus,
+    legalReadinessStatus,
     taxReadinessStatus: account.tax_readiness_status,
     chargesEnabled: account.charges_enabled,
     payoutsEnabled: account.payouts_enabled,
@@ -1504,13 +1520,13 @@ async function syncConnectedAccountState(
 
   const updatedAt = new Date().toISOString();
   if (
-    account.legal_readiness_status !== legalState.legalReadinessStatus
+    account.legal_readiness_status !== legalReadinessStatus
     || account.payout_readiness_status !== payoutReadinessStatus
   ) {
     const updateResult = await supabase
       .from("connected_accounts")
       .update({
-        legal_readiness_status: legalState.legalReadinessStatus,
+        legal_readiness_status: legalReadinessStatus,
         payout_readiness_status: payoutReadinessStatus,
         updated_at: updatedAt
       })
@@ -1522,15 +1538,15 @@ async function syncConnectedAccountState(
 
     account = {
       ...account,
-      legal_readiness_status: legalState.legalReadinessStatus,
+      legal_readiness_status: legalReadinessStatus,
       payout_readiness_status: payoutReadinessStatus,
       updated_at: updatedAt
     };
   }
 
   const missingSteps = [
-    ...legalState.missingAgreements.map((agreementType) => `Legal acceptance missing: ${agreementType.replaceAll("_", " ")}`),
-    ...legalState.outdatedAgreements.map((agreementType) => `Agreement update required: ${agreementType.replaceAll("_", " ")}`),
+    ...(internallyApproved ? [] : legalState.missingAgreements.map((agreementType) => `Legal acceptance missing: ${agreementType.replaceAll("_", " ")}`)),
+    ...(internallyApproved ? [] : legalState.outdatedAgreements.map((agreementType) => `Agreement update required: ${agreementType.replaceAll("_", " ")}`)),
     ...requirementsPastDue.map((entry) => `Past due requirement: ${entry}`),
     ...requirementsCurrentlyDue.map((entry) => `Current requirement: ${entry}`)
   ];
@@ -1613,6 +1629,49 @@ function inferStripeDetailsSubmitted(account: ConnectedAccountRow | null) {
 
 function formatRequirementList(requirements: string[]) {
   return requirements.length ? `Missing: ${requirements.join(", ")}.` : null;
+}
+
+const FINAL_REVIEW_ONBOARDING_STATUSES = new Set<FintechOnboardingStatus>(["verified"]);
+
+function stripePayoutApprovalBlockers(account: ConnectedAccountRow | null) {
+  if (!account) {
+    return ["Stripe payout account has not been created."];
+  }
+
+  const blockers: string[] = [];
+  const currentlyDue = normalizeRequirementList(account.requirements_currently_due as string[] | string | null);
+  const pastDue = normalizeRequirementList(account.requirements_past_due as string[] | string | null);
+  const disabledReason = account.disabled_reason?.trim();
+
+  if (!account.provider_account_id?.trim()) {
+    blockers.push("Stripe payout account has not been created.");
+  }
+  if (!FINAL_REVIEW_ONBOARDING_STATUSES.has(account.onboarding_status)) {
+    blockers.push("Stripe onboarding is not verified yet.");
+  }
+  if (!account.charges_enabled) {
+    blockers.push("Stripe charges are not enabled.");
+  }
+  if (!account.payouts_enabled) {
+    blockers.push("Stripe payouts are not enabled.");
+  }
+  if (currentlyDue.length) {
+    blockers.push(`Missing: ${currentlyDue.join(", ")}.`);
+  }
+  if (pastDue.length) {
+    blockers.push(`Past due: ${pastDue.join(", ")}.`);
+  }
+  if (disabledReason) {
+    blockers.push(`Stripe disabled reason: ${disabledReason}.`);
+  }
+
+  return blockers;
+}
+
+function isConnectedAccountInternallyApproved(account: ConnectedAccountRow) {
+  return isPayoutReadinessEligible(account.payout_readiness_status)
+    && account.legal_readiness_status === "accepted"
+    && stripePayoutApprovalBlockers(account).length === 0;
 }
 
 function buildBarberStripePayoutReadinessView(
@@ -1734,9 +1793,9 @@ function buildBarberStripePayoutReadinessView(
       pastDue,
       disabledReason,
       canReceivePayouts: false,
-      requiresOnboarding: true,
-      displayStatus: "incomplete",
-      displayMessage: "BVRB3R payout setup needs final review before payouts can be sent."
+      requiresOnboarding: false,
+      displayStatus: "internal_review",
+      displayMessage: "Payout setup pending BVRB3R review."
     };
   }
 
@@ -4758,6 +4817,115 @@ export async function validateFreelancePayoutReleaseEligibility(
   return eligibility;
 }
 
+export async function approveFreelancePayoutReadinessForRouting(input: {
+  routingRecordId: string;
+  approvedByProfileId: string;
+}): Promise<BarberPayoutReadinessApprovalResult> {
+  const supabase = getSupabaseOrThrow();
+  const { context } = await validateFreelancePayoutReleaseEligibilityWithSupabase(supabase, input.routingRecordId, {
+    tolerateDisputeInspectionFailure: true
+  });
+  const account = context.connectedAccount;
+  const blockers = stripePayoutApprovalBlockers(account);
+
+  if (!account) {
+    return {
+      ok: false,
+      connectedAccountId: null,
+      barberId: context.payment.barber_id,
+      routingRecordId: input.routingRecordId,
+      previousPayoutReadinessStatus: null,
+      newPayoutReadinessStatus: null,
+      previousLegalReadinessStatus: null,
+      newLegalReadinessStatus: null,
+      blockers,
+      message: blockers[0] ?? "Stripe payout setup is not ready for approval."
+    };
+  }
+
+  if (blockers.length) {
+    return {
+      ok: false,
+      connectedAccountId: account.id,
+      barberId: account.barber_id,
+      routingRecordId: input.routingRecordId,
+      previousPayoutReadinessStatus: account.payout_readiness_status,
+      newPayoutReadinessStatus: account.payout_readiness_status,
+      previousLegalReadinessStatus: account.legal_readiness_status,
+      newLegalReadinessStatus: account.legal_readiness_status,
+      blockers,
+      message: blockers[0] ?? "Stripe payout setup is not ready for approval."
+    };
+  }
+
+  const now = new Date().toISOString();
+  const previousPayoutReadinessStatus = account.payout_readiness_status;
+  const previousLegalReadinessStatus = account.legal_readiness_status;
+  const newPayoutReadinessStatus: FintechPayoutReadinessStatus = "ready";
+  const newLegalReadinessStatus: FintechLegalReadinessStatus = "accepted";
+
+  if (previousPayoutReadinessStatus !== newPayoutReadinessStatus || previousLegalReadinessStatus !== newLegalReadinessStatus) {
+    const updateResult = await supabase
+      .from("connected_accounts")
+      .update({
+        payout_readiness_status: newPayoutReadinessStatus,
+        legal_readiness_status: newLegalReadinessStatus,
+        updated_at: now
+      })
+      .eq("id", account.id);
+
+    if (updateResult.error) {
+      throw new FintechServiceError("Unable to approve payout readiness.", 500);
+    }
+  }
+
+  const eventResult = await recordPlatformEvent(supabase, {
+    eventType: "payout_readiness_approved",
+    entityType: "connected_account",
+    entityId: account.id,
+    actorId: input.approvedByProfileId,
+    actorRole: "architect",
+    source: "api",
+    relatedIds: {
+      barberId: account.barber_id,
+      routingRecordId: input.routingRecordId,
+      paymentId: context.payment.id,
+      posSaleId: context.routing.pos_sale_id ?? null,
+      appointmentId: context.routing.appointment_id
+    },
+    payload: {
+      provider: account.provider,
+      providerAccountId: account.provider_account_id,
+      previousPayoutReadinessStatus,
+      newPayoutReadinessStatus,
+      previousLegalReadinessStatus,
+      newLegalReadinessStatus
+    },
+    idempotencyKey: buildPlatformEventIdempotencyKey(["connected-account", account.id, "payout-readiness-approved"])
+  });
+
+  if (!eventResult.ok) {
+    console.warn("[fintech] payout_readiness_approval_event_failed", {
+      connectedAccountId: account.id,
+      barberId: account.barber_id,
+      routingRecordId: input.routingRecordId
+    });
+  }
+
+  return {
+    ok: true,
+    connectedAccountId: account.id,
+    barberId: account.barber_id,
+    routingRecordId: input.routingRecordId,
+    previousPayoutReadinessStatus,
+    newPayoutReadinessStatus,
+    previousLegalReadinessStatus,
+    newLegalReadinessStatus,
+    blockers: [],
+    message: "Payout setup approved. This barber can now receive BVRB3R payouts."
+  };
+}
+
 function mapFreelanceQueueItem(context: FreelancePayoutReleaseContext, eligibility: FreelancePayoutReleaseEligibility): FreelancePayoutQueueItem {
   const { routing, payment, posSale } = context;
   const sourceLabel = routing.pos_sale_id
@@ -4766,6 +4934,12 @@ function mapFreelanceQueueItem(context: FreelancePayoutReleaseContext, eligibili
       ? "Booked appointment"
       : "Platform payment";
   const releaseBlockedReason = eligibility.eligible ? null : eligibility.reasons[0] ?? "This payout cannot be released yet.";
+  const canApprovePayoutSetup = Boolean(
+    !eligibility.eligible
+    && eligibility.stripePayoutReadiness?.displayStatus === "internal_review"
+    && eligibility.reasons.length === 1
+    && eligibility.reasons[0] === eligibility.stripePayoutReadiness.displayMessage
+  );
 
   return {
     routingRecordId: routing.id,
@@ -4791,6 +4965,7 @@ function mapFreelanceQueueItem(context: FreelancePayoutReleaseContext, eligibili
     warnings: context.warnings,
     canValidate: true,
     canRelease: eligibility.eligible,
+    canApprovePayoutSetup,
     releaseBlockedReason,
     releaseActionLabel: resolveFreelanceReleaseActionLabel(eligibility, releaseBlockedReason)
   };
@@ -4850,6 +5025,7 @@ function mapFreelanceQueueItemFromRoutingFallback(
     warnings,
     canValidate: true,
     canRelease: false,
+    canApprovePayoutSetup: false,
     releaseBlockedReason: reasons[0] ?? "Payout context could not be fully loaded.",
     releaseActionLabel: "Cannot release yet"
   };

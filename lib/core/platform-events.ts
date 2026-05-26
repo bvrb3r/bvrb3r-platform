@@ -20,6 +20,7 @@ export const PLATFORM_EVENT_TYPES = [
   "payout_eligible",
   "payout_held",
   "payout_released",
+  "payout_readiness_approved",
   "dispute_created",
   "dispute_resolved",
   "verification_updated",
