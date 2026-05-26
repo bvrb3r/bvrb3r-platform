@@ -15,8 +15,8 @@ const {
   useMutateProfileMediaMutationMock,
   useBarberFintechReadinessQueryMock,
   useBarberPayoutsQueryMock,
+  useCreateBarberPayoutOnboardingLinkMutationMock,
   useCreateStripeDashboardLinkMutationMock,
-  useCreateStripeOnboardingLinkMutationMock,
   useRefreshStripeConnectedAccountMutationMock,
   useRecordLegalAcceptanceMutationMock,
   useCreateVerificationUploadMutationMock,
@@ -49,8 +49,8 @@ const {
   useMutateProfileMediaMutationMock: vi.fn(),
   useBarberFintechReadinessQueryMock: vi.fn(),
   useBarberPayoutsQueryMock: vi.fn(),
+  useCreateBarberPayoutOnboardingLinkMutationMock: vi.fn(),
   useCreateStripeDashboardLinkMutationMock: vi.fn(),
-  useCreateStripeOnboardingLinkMutationMock: vi.fn(),
   useRefreshStripeConnectedAccountMutationMock: vi.fn(),
   useRecordLegalAcceptanceMutationMock: vi.fn(),
   useCreateVerificationUploadMutationMock: vi.fn(),
@@ -103,8 +103,8 @@ vi.mock("@/lib/profile/client", () => ({
 vi.mock("@/lib/fintech/client", () => ({
   useBarberFintechReadinessQuery: useBarberFintechReadinessQueryMock,
   useBarberPayoutsQuery: useBarberPayoutsQueryMock,
+  useCreateBarberPayoutOnboardingLinkMutation: useCreateBarberPayoutOnboardingLinkMutationMock,
   useCreateStripeDashboardLinkMutation: useCreateStripeDashboardLinkMutationMock,
-  useCreateStripeOnboardingLinkMutation: useCreateStripeOnboardingLinkMutationMock,
   useRefreshStripeConnectedAccountMutation: useRefreshStripeConnectedAccountMutationMock,
   useRecordLegalAcceptanceMutation: useRecordLegalAcceptanceMutationMock
 }));
@@ -197,6 +197,26 @@ function buildConnectedAccount(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function buildStripePayoutReadiness(overrides: Record<string, unknown> = {}) {
+  return {
+    barberId: "barber-blaze",
+    stripeConnectAccountId: "acct_test_123",
+    hasAccount: true,
+    chargesEnabled: true,
+    payoutsEnabled: true,
+    detailsSubmitted: true,
+    currentlyDue: ["individual.ssn_last_4"],
+    eventuallyDue: [],
+    pastDue: [],
+    disabledReason: null,
+    canReceivePayouts: false,
+    requiresOnboarding: true,
+    displayStatus: "incomplete",
+    displayMessage: "Missing: individual.ssn_last_4.",
+    ...overrides
+  };
+}
+
 function setupHookMocks() {
   mediaRefetchMock.mockResolvedValue({});
   trustRefetchMock.mockResolvedValue({});
@@ -231,6 +251,7 @@ function setupHookMocks() {
       barberId: "barber-blaze",
       barberName: "Blaze King",
       connectedAccount: buildConnectedAccount(),
+      stripePayoutReadiness: buildStripePayoutReadiness(),
       stripeEnvironment: {
         mode: "test",
         label: "Stripe test mode - not live payouts.",
@@ -261,7 +282,7 @@ function setupHookMocks() {
     refetch: payoutsRefetchMock
   });
   useCreateStripeDashboardLinkMutationMock.mockReturnValue({ mutateAsync: vi.fn(), isPending: false });
-  useCreateStripeOnboardingLinkMutationMock.mockReturnValue({ mutateAsync: vi.fn(), isPending: false });
+  useCreateBarberPayoutOnboardingLinkMutationMock.mockReturnValue({ mutateAsync: vi.fn(), isPending: false });
   useRefreshStripeConnectedAccountMutationMock.mockReturnValue({ mutateAsync: refreshStripeMock, isPending: false });
   useRecordLegalAcceptanceMutationMock.mockReturnValue({ mutateAsync: vi.fn(), isPending: false });
   useCreateVerificationUploadMutationMock.mockReturnValue({ mutateAsync: vi.fn(), isPending: false });
@@ -366,6 +387,15 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "Refresh payout status" })[0]);
 
     await waitFor(() => expect(refreshStripeMock).toHaveBeenCalledWith({}));
+  });
+
+  it("shows the Stripe payout setup reason and resume action", () => {
+    render(<BarberSettingsScreen user={resolveDemoUser("blaze@bvrb3r.demo")} embedded />);
+
+    expect(screen.getByText("Payout setup required")).toBeInTheDocument();
+    expect(screen.getAllByText("Missing: individual.ssn_last_4.").length).toBeGreaterThan(0);
+    expect(screen.getByText("individual.ssn_last_4")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Resume Stripe Setup" })).toBeInTheDocument();
   });
 
   it("shows eligible payout balance separately from released balance", async () => {

@@ -402,6 +402,23 @@ export type ConnectedAccountReadinessView = {
   updatedAt: string;
 };
 
+export type BarberStripePayoutReadinessView = {
+  barberId: string;
+  stripeConnectAccountId: string | null;
+  hasAccount: boolean;
+  chargesEnabled: boolean;
+  payoutsEnabled: boolean;
+  detailsSubmitted: boolean;
+  currentlyDue: string[];
+  eventuallyDue: string[];
+  pastDue: string[];
+  disabledReason: string | null;
+  canReceivePayouts: boolean;
+  requiresOnboarding: boolean;
+  displayStatus: "no_account" | "incomplete" | "payouts_disabled" | "restricted" | "ready";
+  displayMessage: string;
+};
+
 export type MembershipCompensationView = {
   id: string;
   barberId: string;
@@ -473,6 +490,7 @@ export type BarberFintechReadinessPayload = {
   barberId: string;
   barberName: string;
   connectedAccount: ConnectedAccountReadinessView;
+  stripePayoutReadiness: BarberStripePayoutReadinessView;
   stripeEnvironment: StripeConnectEnvironmentView;
   agreements: LegalAcceptanceView[];
   memberships: BarberFintechMembershipView[];
@@ -534,6 +552,7 @@ export type FreelancePayoutQueueItem = {
   eligibleAt: string | null;
   releasedAt: string | null;
   stripeConnectAccountId: string | null;
+  stripePayoutReadiness: BarberStripePayoutReadinessView | null;
   existingExecutionId: string | null;
   existingExecutionStatus: PayoutExecutionStatus | null;
   ineligibleReasons: string[];
@@ -581,6 +600,7 @@ export type FreelancePayoutReleaseEligibility = {
   recipientType: "barber";
   barberId: string | null;
   stripeConnectAccountId: string | null;
+  stripePayoutReadiness: BarberStripePayoutReadinessView | null;
   existingExecutionId: string | null;
   existingExecutionStatus: PayoutExecutionStatus | null;
   routingRecord: FreelancePayoutRoutingSnapshot | null;
@@ -1574,6 +1594,167 @@ function mapConnectedAccountView(state: ConnectedAccountState): ConnectedAccount
   };
 }
 
+function inferStripeDetailsSubmitted(account: ConnectedAccountRow | null) {
+  if (!account) {
+    return false;
+  }
+
+  return Boolean(
+    account.onboarding_status === "submitted"
+    || account.onboarding_status === "verified"
+    || account.charges_enabled
+    || account.payouts_enabled
+    || account.onboarding_completed_at
+  );
+}
+
+function formatRequirementList(requirements: string[]) {
+  return requirements.length ? `Missing: ${requirements.join(", ")}.` : null;
+}
+
+function buildBarberStripePayoutReadinessView(
+  barberId: string,
+  account: ConnectedAccountRow | null
+): BarberStripePayoutReadinessView {
+  const currentlyDue = normalizeRequirementList(account?.requirements_currently_due as string[] | string | null);
+  const eventuallyDue = normalizeRequirementList(account?.requirements_eventually_due as string[] | string | null);
+  const pastDue = normalizeRequirementList(account?.requirements_past_due as string[] | string | null);
+  const stripeConnectAccountId = account?.provider_account_id?.trim() || null;
+  const hasAccount = Boolean(stripeConnectAccountId);
+  const chargesEnabled = Boolean(account?.charges_enabled);
+  const payoutsEnabled = Boolean(account?.payouts_enabled);
+  const detailsSubmitted = inferStripeDetailsSubmitted(account);
+  const disabledReason = account?.disabled_reason?.trim() || null;
+  const stripeBlockers = [
+    ...pastDue,
+    ...currentlyDue,
+    ...(disabledReason ? [disabledReason] : [])
+  ];
+  const canReceivePayouts = Boolean(
+    hasAccount
+    && chargesEnabled
+    && payoutsEnabled
+    && detailsSubmitted
+    && !stripeBlockers.length
+    && account
+    && isPayoutReadinessEligible(account.payout_readiness_status)
+  );
+
+  if (!hasAccount) {
+    return {
+      barberId,
+      stripeConnectAccountId,
+      hasAccount,
+      chargesEnabled,
+      payoutsEnabled,
+      detailsSubmitted,
+      currentlyDue,
+      eventuallyDue,
+      pastDue,
+      disabledReason,
+      canReceivePayouts: false,
+      requiresOnboarding: true,
+      displayStatus: "no_account",
+      displayMessage: "Stripe payout account has not been created."
+    };
+  }
+
+  if (disabledReason || pastDue.length) {
+    const missing = formatRequirementList([...pastDue, ...(disabledReason ? [disabledReason] : [])]);
+    return {
+      barberId,
+      stripeConnectAccountId,
+      hasAccount,
+      chargesEnabled,
+      payoutsEnabled,
+      detailsSubmitted,
+      currentlyDue,
+      eventuallyDue,
+      pastDue,
+      disabledReason,
+      canReceivePayouts: false,
+      requiresOnboarding: true,
+      displayStatus: "restricted",
+      displayMessage: missing ?? "Stripe has restricted this payout account until requirements are resolved."
+    };
+  }
+
+  if (currentlyDue.length || !detailsSubmitted || !chargesEnabled) {
+    const missing = formatRequirementList(currentlyDue);
+    return {
+      barberId,
+      stripeConnectAccountId,
+      hasAccount,
+      chargesEnabled,
+      payoutsEnabled,
+      detailsSubmitted,
+      currentlyDue,
+      eventuallyDue,
+      pastDue,
+      disabledReason,
+      canReceivePayouts: false,
+      requiresOnboarding: true,
+      displayStatus: "incomplete",
+      displayMessage: missing ?? "Stripe needs more information before payouts can be sent."
+    };
+  }
+
+  if (!payoutsEnabled) {
+    return {
+      barberId,
+      stripeConnectAccountId,
+      hasAccount,
+      chargesEnabled,
+      payoutsEnabled,
+      detailsSubmitted,
+      currentlyDue,
+      eventuallyDue,
+      pastDue,
+      disabledReason,
+      canReceivePayouts: false,
+      requiresOnboarding: true,
+      displayStatus: "payouts_disabled",
+      displayMessage: "Payouts are not enabled yet."
+    };
+  }
+
+  if (!account || !isPayoutReadinessEligible(account.payout_readiness_status)) {
+    return {
+      barberId,
+      stripeConnectAccountId,
+      hasAccount,
+      chargesEnabled,
+      payoutsEnabled,
+      detailsSubmitted,
+      currentlyDue,
+      eventuallyDue,
+      pastDue,
+      disabledReason,
+      canReceivePayouts: false,
+      requiresOnboarding: true,
+      displayStatus: "incomplete",
+      displayMessage: "BVRB3R payout setup needs final review before payouts can be sent."
+    };
+  }
+
+  return {
+    barberId,
+    stripeConnectAccountId,
+    hasAccount,
+    chargesEnabled,
+    payoutsEnabled,
+    detailsSubmitted,
+    currentlyDue,
+    eventuallyDue,
+    pastDue,
+    disabledReason,
+    canReceivePayouts,
+    requiresOnboarding: !canReceivePayouts,
+    displayStatus: "ready",
+    displayMessage: "Payout account ready."
+  };
+}
+
 function getVerificationConnectProviderStatus(account: ConnectedAccountReadinessView) {
   if (account.payoutsEnabled && account.chargesEnabled && !account.requirementsCurrentlyDue.length && !account.requirementsPastDue.length && !account.disabledReason) {
     return "payouts_enabled";
@@ -1596,6 +1777,20 @@ function getVerificationConnectProviderStatus(account: ConnectedAccountReadiness
   }
 
   return "not_started";
+}
+
+async function getBarberStripePayoutReadinessWithSupabase(
+  supabase: SupabaseClient,
+  barberId: string
+) {
+  const accounts = await loadConnectedAccountsForScope(supabase, { barberIds: [barberId] });
+  const account = accounts.find((row) => row.subject_type === "barber" && row.barber_id === barberId) ?? null;
+  return buildBarberStripePayoutReadinessView(barberId, account);
+}
+
+export async function getBarberStripePayoutReadiness(barberId: string): Promise<BarberStripePayoutReadinessView> {
+  const supabase = getSupabaseOrThrow();
+  return getBarberStripePayoutReadinessWithSupabase(supabase, barberId);
 }
 
 async function syncVerificationLaneFromConnectedAccount(
@@ -4334,6 +4529,7 @@ type FreelancePayoutReleaseContext = {
   refundedAmount: number;
   disputeHold: boolean;
   connectedAccount: ConnectedAccountRow | null;
+  stripePayoutReadiness: BarberStripePayoutReadinessView;
   executions: PayoutExecutionRow[];
   barberName: string | null;
   warnings: string[];
@@ -4386,7 +4582,7 @@ function isPosSalePaidForPayoutRelease(posSale: PosSaleRow | null) {
 }
 
 function buildFreelancePayoutReleaseEligibility(context: FreelancePayoutReleaseContext): FreelancePayoutReleaseEligibility {
-  const { routing, payment, appointment, posSale, refundedAmount, disputeHold, connectedAccount, executions, barberName } = context;
+  const { routing, payment, appointment, posSale, refundedAmount, disputeHold, stripePayoutReadiness, executions, barberName } = context;
   void barberName;
   const reasons: string[] = [];
   const releaseAmount = roundCurrency(numeric(routing.barber_payout_amount));
@@ -4448,14 +4644,8 @@ function buildFreelancePayoutReleaseEligibility(context: FreelancePayoutReleaseC
   if (payment.provider !== "stripe") {
     reasons.push("Only Stripe-backed payments can be released in Phase 1.");
   }
-  if (!connectedAccount?.provider_account_id?.trim()) {
-    reasons.push("Barber Stripe Connect account is missing.");
-  }
-  if (connectedAccount && !isPayoutReadinessEligible(connectedAccount.payout_readiness_status)) {
-    reasons.push("Barber Stripe Connect account is not payout ready.");
-  }
-  if (connectedAccount && !connectedAccount.payouts_enabled) {
-    reasons.push("Barber Stripe Connect payouts are not enabled.");
+  if (!stripePayoutReadiness.canReceivePayouts) {
+    reasons.push(stripePayoutReadiness.displayMessage);
   }
   if (existingExecuted) {
     reasons.push("This routing record already has a successful payout execution.");
@@ -4471,7 +4661,8 @@ function buildFreelancePayoutReleaseEligibility(context: FreelancePayoutReleaseC
     releaseAmount,
     recipientType: "barber",
     barberId: payment.barber_id,
-    stripeConnectAccountId: connectedAccount?.provider_account_id ?? null,
+    stripeConnectAccountId: stripePayoutReadiness.stripeConnectAccountId,
+    stripePayoutReadiness,
     existingExecutionId: existingExecution?.id ?? null,
     existingExecutionStatus: existingExecution?.execution_status ?? null,
     routingRecord: mapFreelancePayoutRoutingSnapshot(routing)
@@ -4506,6 +4697,7 @@ async function loadFreelancePayoutReleaseContext(
     row.subject_type === "barber"
     && row.barber_id === payment.barber_id
   ) ?? null;
+  const stripePayoutReadiness = buildBarberStripePayoutReadinessView(payment.barber_id ?? "", connectedAccount);
   const warnings: string[] = [];
   let disputeHold = false;
   if (appointment) {
@@ -4536,6 +4728,7 @@ async function loadFreelancePayoutReleaseContext(
     refundedAmount,
     disputeHold,
     connectedAccount,
+    stripePayoutReadiness,
     executions,
     barberName: profileDisplayName(profile) ?? barber?.reference_code ?? payment.barber_id ?? null,
     warnings
@@ -4587,6 +4780,7 @@ function mapFreelanceQueueItem(context: FreelancePayoutReleaseContext, eligibili
     eligibleAt: routing.eligible_at,
     releasedAt: routing.released_at,
     stripeConnectAccountId: context.connectedAccount?.provider_account_id ?? null,
+    stripePayoutReadiness: context.stripePayoutReadiness,
     existingExecutionId: eligibility.existingExecutionId,
     existingExecutionStatus: eligibility.existingExecutionStatus,
     ineligibleReasons: eligibility.reasons,
@@ -4617,6 +4811,7 @@ function mapFreelanceQueueItemFromRoutingFallback(
     eligibleAt: routing.eligible_at,
     releasedAt: routing.released_at,
     stripeConnectAccountId: null,
+    stripePayoutReadiness: null,
     existingExecutionId: null,
     existingExecutionStatus: null,
     ineligibleReasons: reasons,
@@ -5288,10 +5483,14 @@ export async function getBarberFintechReadiness(user: UserAccount): Promise<Barb
   const readyForPayoutAmount = eligibleRoutingRows
     .reduce((sum, row) => sum + numeric(row.barber_payout_amount), 0);
 
+  const connectedAccountView = mapConnectedAccountView(connectedAccountState);
+  const stripePayoutReadiness = buildBarberStripePayoutReadinessView(barber.id, connectedAccountState.row);
+
   return {
     barberId: barber.id,
     barberName: actor.profile.full_name ?? actor.profile.email,
-    connectedAccount: mapConnectedAccountView(connectedAccountState),
+    connectedAccount: connectedAccountView,
+    stripePayoutReadiness,
     stripeEnvironment: getStripeConnectEnvironment(),
     agreements: latestBarberAcceptances,
     memberships: membershipsView,

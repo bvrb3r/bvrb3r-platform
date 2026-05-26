@@ -42,6 +42,7 @@ vi.mock("@/lib/stripe/connect", () => ({
 }));
 
 import {
+  getBarberStripePayoutReadiness,
   listArchitectFreelancePayoutQueue,
   releaseFreelanceRoutingPayout,
   validateFreelancePayoutReleaseEligibility
@@ -331,6 +332,70 @@ describe("freelance payout execution", () => {
     expect(result.eligible).toBe(true);
     expect(result.releaseAmount).toBe(95);
     expect(result.stripeConnectAccountId).toBe("acct_barber");
+    expect(result.stripePayoutReadiness?.canReceivePayouts).toBe(true);
+  });
+
+  it("returns no-account Stripe payout readiness when the barber has no Connect account", async () => {
+    const supabase = createSupabaseStub(createBaseTables({
+      connected_accounts: []
+    }));
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const result = await getBarberStripePayoutReadiness(BARBER_ID);
+
+    expect(result.displayStatus).toBe("no_account");
+    expect(result.canReceivePayouts).toBe(false);
+    expect(result.displayMessage).toBe("Stripe payout account has not been created.");
+  });
+
+  it("returns payouts-disabled Stripe readiness when payouts are not enabled", async () => {
+    const tables = createBaseTables({
+      connected_accounts: [{
+        ...createBaseTables().connected_accounts[0],
+        payouts_enabled: false,
+        payout_readiness_status: "needs_attention",
+        requirements_currently_due: [],
+        requirements_past_due: []
+      }]
+    });
+    const supabase = createSupabaseStub(tables);
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const result = await getBarberStripePayoutReadiness(BARBER_ID);
+
+    expect(result.displayStatus).toBe("payouts_disabled");
+    expect(result.canReceivePayouts).toBe(false);
+    expect(result.displayMessage).toBe("Payouts are not enabled yet.");
+  });
+
+  it("returns incomplete Stripe readiness when account requirements are due", async () => {
+    const supabase = createSupabaseStub(createBaseTables({
+      connected_accounts: [{
+        ...createBaseTables().connected_accounts[0],
+        payouts_enabled: true,
+        payout_readiness_status: "needs_attention",
+        requirements_currently_due: ["external_account", "business_profile.url"]
+      }]
+    }));
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const result = await getBarberStripePayoutReadiness(BARBER_ID);
+
+    expect(result.displayStatus).toBe("incomplete");
+    expect(result.canReceivePayouts).toBe(false);
+    expect(result.currentlyDue).toEqual(["external_account", "business_profile.url"]);
+    expect(result.displayMessage).toBe("Missing: external_account, business_profile.url.");
+  });
+
+  it("returns ready Stripe payout readiness when payouts are enabled with no blockers", async () => {
+    const supabase = createSupabaseStub(createBaseTables());
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const result = await getBarberStripePayoutReadiness(BARBER_ID);
+
+    expect(result.displayStatus).toBe("ready");
+    expect(result.canReceivePayouts).toBe(true);
+    expect(result.displayMessage).toBe("Payout account ready.");
   });
 
   it("lists ready freelance POS payouts without requiring an appointment", async () => {
@@ -582,7 +647,24 @@ describe("freelance payout execution", () => {
     const result = await validateFreelancePayoutReleaseEligibility(ROUTING_ID);
 
     expect(result.eligible).toBe(false);
-    expect(result.reasons.join(" ")).toMatch(/Stripe Connect account is missing/i);
+    expect(result.reasons.join(" ")).toMatch(/Stripe payout account has not been created/i);
+  });
+
+  it("rejects release validation with precise Stripe requirement reasons", async () => {
+    const supabase = createSupabaseStub(createBaseTables({
+      connected_accounts: [{
+        ...createBaseTables().connected_accounts[0],
+        payout_readiness_status: "needs_attention",
+        requirements_currently_due: ["external_account", "business_profile.url"]
+      }]
+    }));
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const result = await validateFreelancePayoutReleaseEligibility(ROUTING_ID);
+
+    expect(result.eligible).toBe(false);
+    expect(result.reasons).toContain("Missing: external_account, business_profile.url.");
+    expect(result.stripePayoutReadiness?.displayStatus).toBe("incomplete");
   });
 
   it("supports dry-run without creating executions or marking released", async () => {

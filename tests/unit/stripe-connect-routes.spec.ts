@@ -37,6 +37,7 @@ vi.mock("@/lib/fintech/service", async () => {
 
 import { POST as postConnect } from "@/app/api/fintech/connect/route";
 import { POST as postAccountLink } from "@/app/api/fintech/connect/account-link/route";
+import { POST as postBarberPayoutOnboardingLink } from "@/app/api/barber/payouts/onboarding-link/route";
 import { POST as postDashboardLink } from "@/app/api/fintech/connect/dashboard-link/route";
 import { POST as postSync } from "@/app/api/fintech/connect/sync/route";
 import { POST as postConnectWebhook } from "@/app/api/stripe/connect/webhook/route";
@@ -110,6 +111,52 @@ describe("phase 14 stripe connect routes", () => {
 
     expect(response.status).toBe(403);
     expect(body.error).toMatch(/outside the viewer's scope/i);
+  });
+
+  it("creates a barber payout onboarding resume link", async () => {
+    getSessionUserMock.mockResolvedValue(resolveDemoUser("blaze@bvrb3r.demo"));
+    createStripeConnectOnboardingSessionMock.mockResolvedValue({
+      account: {
+        id: "acct-row-barber",
+        subjectType: "barber",
+        provider: "stripe_connect",
+        operationalStatus: "action_required",
+        providerAccountId: "acct_barber",
+        onboardingStatus: "pending",
+        payoutReadinessStatus: "needs_attention",
+        legalReadinessStatus: "accepted",
+        taxReadinessStatus: "submitted",
+        chargesEnabled: true,
+        payoutsEnabled: false,
+        requirementsCurrentlyDue: ["external_account"],
+        requirementsEventuallyDue: [],
+        requirementsPastDue: [],
+        missingAgreements: [],
+        outdatedAgreements: [],
+        missingSteps: ["Current requirement: external_account"],
+        disabledReason: null,
+        lastCheckedAt: "2026-05-26T11:00:00.000Z",
+        onboardingStartedAt: "2026-05-26T10:00:00.000Z",
+        onboardingCompletedAt: null,
+        processorLastSyncedAt: "2026-05-26T11:00:00.000Z",
+        processorLastEventId: "evt_1",
+        processorLastEventType: "account.updated",
+        dashboardLastAccessedAt: null,
+        createdAt: "2026-05-26T09:00:00.000Z",
+        updatedAt: "2026-05-26T11:00:00.000Z"
+      },
+      url: "https://connect.stripe.com/setup/acct_barber"
+    });
+
+    const response = await postBarberPayoutOnboardingLink();
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.url).toMatch(/^https:\/\/connect\.stripe\.com/);
+    expect(createStripeConnectOnboardingSessionMock).toHaveBeenCalledWith(
+      expect.objectContaining({ email: "blaze@bvrb3r.demo" }),
+      { subjectType: "barber" }
+    );
   });
 
   it("returns a Stripe dashboard login link with a stable response shape", async () => {

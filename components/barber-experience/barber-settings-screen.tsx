@@ -46,8 +46,8 @@ import { ActionButton, Avatar, GlassCard } from "@/design/components";
 import {
   useBarberFintechReadinessQuery,
   useBarberPayoutsQuery,
+  useCreateBarberPayoutOnboardingLinkMutation,
   useCreateStripeDashboardLinkMutation,
-  useCreateStripeOnboardingLinkMutation,
   useRefreshStripeConnectedAccountMutation,
   useRecordLegalAcceptanceMutation,
   type FintechApiError
@@ -858,7 +858,7 @@ export function BarberSettingsScreen({
   const payoutsQuery = useBarberPayoutsQuery(true);
   const overviewQuery = useBarberOverviewQuery();
   const teamInvitesQuery = useBarberTeamInvitesQuery();
-  const onboardingMutation = useCreateStripeOnboardingLinkMutation();
+  const onboardingMutation = useCreateBarberPayoutOnboardingLinkMutation();
   const dashboardMutation = useCreateStripeDashboardLinkMutation();
   const refreshMutation = useRefreshStripeConnectedAccountMutation();
   const recordAcceptanceMutation = useRecordLegalAcceptanceMutation();
@@ -930,6 +930,7 @@ export function BarberSettingsScreen({
   const verificationDecision = trustQuery.data?.verificationDecision;
   const readinessPayload = readinessQuery.data;
   const connectedAccount = readinessPayload?.connectedAccount;
+  const stripePayoutReadiness = readinessPayload?.stripePayoutReadiness;
   const payoutsPayload = payoutsQuery.data;
   const overviewPayload = overviewQuery.data;
   const selectedSection = (initialSection && initialSection in sectionIdMap ? initialSection : null) as SettingsSectionKey | null;
@@ -958,7 +959,13 @@ export function BarberSettingsScreen({
   const releasedPayoutAmount = payoutsPayload?.summary.executedAmount ?? 0;
   const hasPayoutAmount = typeof eligiblePayoutAmount === "number";
   const subtypeLabel = subtypeOptions.find((option) => option.subtype === selectedSubtype)?.label ?? "Freelance";
-  const showOnboardingAction = Boolean(connectedAccount && connectedAccount.operationalStatus !== "payout_ready");
+  const showOnboardingAction = Boolean(
+    stripePayoutReadiness?.requiresOnboarding
+    ?? (connectedAccount && connectedAccount.operationalStatus !== "payout_ready")
+  );
+  const payoutSetupActionLabel = stripePayoutReadiness?.hasAccount ? "Resume Stripe Setup" : "Complete Stripe Setup";
+  const payoutSetupStatusLabel = stripePayoutReadiness?.canReceivePayouts ? "Payout account ready" : "Payout setup required";
+  const payoutSetupMessage = stripePayoutReadiness?.displayMessage ?? payoutReadinessLabel;
   const readyForCheckout = overviewPayload?.todayAppointments.filter((appointment) => appointment.status === "completed" && appointment.financial.outstandingBalance > 0) ?? [];
   const paidAppointments = overviewPayload?.todayAppointments.filter((appointment) => appointment.financial.capturedAmount > 0 || appointment.financial.tipAmount > 0) ?? [];
   const moneyPosture = payoutsPayload?.moneyPosture;
@@ -1367,7 +1374,7 @@ export function BarberSettingsScreen({
     "barber-visibility": () => setQuickSetupModal("visibility"),
     "barber-booking-status": () => setQuickSetupModal("booking"),
     "barber-payouts": () => void navigateToStripeUrl(
-      async () => (await onboardingMutation.mutateAsync({})).url,
+      async () => (await onboardingMutation.mutateAsync()).url,
       connectedAccount?.providerAccountId ? "Stripe onboarding link refreshed." : "Stripe onboarding started."
     ),
     "barber-shop-link": () => {
@@ -1787,6 +1794,16 @@ export function BarberSettingsScreen({
                     {payoutsReady ? payoutReadinessLabel : formatStatusLabel(payoutStatus)}
                   </StatusPill>
                 </div>
+                <p className="mt-3 text-sm font-black text-white">{payoutSetupStatusLabel}</p>
+                <p className="mt-2 text-xs leading-5 text-white/56">{payoutSetupMessage}</p>
+                {stripePayoutReadiness && (stripePayoutReadiness.currentlyDue.length || stripePayoutReadiness.pastDue.length) ? (
+                  <div className="mt-3 rounded-[18px] border border-amber-300/14 bg-amber-300/8 p-3">
+                    <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-amber-100/62">Stripe needs</p>
+                    <p className="mt-2 text-xs leading-5 text-amber-50/80">
+                      {[...stripePayoutReadiness.pastDue, ...stripePayoutReadiness.currentlyDue].join(", ")}
+                    </p>
+                  </div>
+                ) : null}
               </div>
               <div className="flex flex-wrap gap-2">
                 {showOnboardingAction ? (
@@ -1795,11 +1812,11 @@ export function BarberSettingsScreen({
                     className="min-h-11 px-4 text-xs"
                     disabled={onboardingMutation.isPending}
                     onClick={() => void navigateToStripeUrl(
-                      async () => (await onboardingMutation.mutateAsync({})).url,
+                      async () => (await onboardingMutation.mutateAsync()).url,
                       connectedAccount?.providerAccountId ? "Stripe onboarding link refreshed." : "Stripe onboarding started."
                     )}
                   >
-                    {connectedAccount?.providerAccountId ? "Resume onboarding" : "Manage payouts"}
+                    {payoutSetupActionLabel}
                   </ActionButton>
                 ) : null}
                 {connectedAccount?.providerAccountId ? (

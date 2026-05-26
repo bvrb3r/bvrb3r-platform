@@ -61,6 +61,19 @@ function formatStatus(value?: string | null) {
   return String(value ?? "not_set").replaceAll("_", " ").replace(/\b\w/g, (segment) => segment.toUpperCase());
 }
 
+function stripeRequirementCopy(item: FreelancePayoutQueueItem) {
+  const readiness = item.stripePayoutReadiness;
+  if (!readiness || readiness.canReceivePayouts) {
+    return null;
+  }
+
+  const due = [...readiness.pastDue, ...readiness.currentlyDue];
+  return {
+    message: readiness.displayMessage,
+    due
+  };
+}
+
 function QueueRow({
   item,
   activeRoutingId,
@@ -75,6 +88,7 @@ function QueueRow({
   const isBusy = activeRoutingId === item.routingRecordId;
   const releaseDisabled = isBusy || !item.canRelease;
   const reason = item.ineligibleReasons[0] ?? null;
+  const stripeRequirement = stripeRequirementCopy(item);
 
   return (
     <div className="rounded-[24px] border border-white/8 bg-black/24 p-4">
@@ -114,6 +128,19 @@ function QueueRow({
                   {warning}
                 </p>
               ))}
+            </div>
+          ) : null}
+          {stripeRequirement ? (
+            <div className="mt-3 rounded-[18px] border border-amber-300/14 bg-amber-300/8 p-3">
+              <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-amber-100/62">
+                Stripe payout setup incomplete
+              </p>
+              <p className="mt-2 text-xs leading-5 text-amber-50/80">{stripeRequirement.message}</p>
+              {stripeRequirement.due.length ? (
+                <p className="mt-2 text-xs leading-5 text-amber-50/70">
+                  Missing: {stripeRequirement.due.join(", ")}
+                </p>
+              ) : null}
             </div>
           ) : null}
         </div>

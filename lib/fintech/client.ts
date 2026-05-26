@@ -172,6 +172,20 @@ export function useCreateStripeOnboardingLinkMutation() {
   });
 }
 
+export function useCreateBarberPayoutOnboardingLinkMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () =>
+      requestJson<StripeConnectSessionResponse>("/api/barber/payouts/onboarding-link", {
+        method: "POST"
+      }),
+    onSuccess: async () => {
+      await invalidateFintechQueries(queryClient);
+    }
+  });
+}
+
 export function useCreateStripeDashboardLinkMutation() {
   const queryClient = useQueryClient();
 

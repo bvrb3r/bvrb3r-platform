@@ -48,6 +48,22 @@ const queuePayload = {
     eligibleAt: "2026-05-26T12:00:00.000Z",
     releasedAt: null,
     stripeConnectAccountId: "acct_barber",
+    stripePayoutReadiness: {
+      barberId: "barber-1",
+      stripeConnectAccountId: "acct_barber",
+      hasAccount: true,
+      chargesEnabled: true,
+      payoutsEnabled: true,
+      detailsSubmitted: true,
+      currentlyDue: [],
+      eventuallyDue: [],
+      pastDue: [],
+      disabledReason: null,
+      canReceivePayouts: true,
+      requiresOnboarding: false,
+      displayStatus: "ready",
+      displayMessage: "Payout account ready."
+    },
     existingExecutionId: null,
     existingExecutionStatus: null,
     ineligibleReasons: [],
@@ -101,14 +117,45 @@ describe("ArchitectFreelancePayoutQueue", () => {
   it("surfaces validation reasons for blocked payouts", async () => {
     validateMutateAsyncMock.mockResolvedValue({
       eligible: false,
-      reasons: ["Barber Stripe Connect account is missing."],
+      reasons: ["Missing: external_account, business_profile.url."],
       releaseAmount: 8.55
     });
 
     render(<ArchitectFreelancePayoutQueue />);
     fireEvent.click(screen.getByRole("button", { name: "Validate" }));
 
-    expect(await screen.findByText("Barber Stripe Connect account is missing.")).toBeInTheDocument();
+    expect(await screen.findByText("Missing: external_account, business_profile.url.")).toBeInTheDocument();
+  });
+
+  it("shows specific Stripe readiness requirements on blocked queue rows", () => {
+    queueHookMock.mockReturnValue({
+      data: {
+        ...queuePayload,
+        items: [{
+          ...queuePayload.items[0],
+          canRelease: false,
+          ineligibleReasons: ["Missing: external_account, business_profile.url."],
+          stripePayoutReadiness: {
+            ...queuePayload.items[0].stripePayoutReadiness,
+            canReceivePayouts: false,
+            requiresOnboarding: true,
+            displayStatus: "incomplete",
+            displayMessage: "Missing: external_account, business_profile.url.",
+            currentlyDue: ["external_account", "business_profile.url"]
+          }
+        }]
+      },
+      isLoading: false,
+      isError: false,
+      error: null
+    });
+
+    render(<ArchitectFreelancePayoutQueue />);
+
+    expect(screen.getByText("Stripe payout setup incomplete")).toBeInTheDocument();
+    expect(screen.getAllByText("Missing: external_account, business_profile.url.").length).toBeGreaterThan(0);
+    expect(screen.getByText("Missing: external_account, business_profile.url")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Release payout" })).toBeDisabled();
   });
 
   it("shows queue warnings without hiding visible ready rows", () => {
