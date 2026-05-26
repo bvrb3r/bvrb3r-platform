@@ -373,12 +373,18 @@ function TransactionReceiptModal({
 }) {
   const isCash = transaction?.transactionType === "pos_cash";
   const isPosSale = transaction?.transactionType === "pos_cash" || transaction?.transactionType === "pos_card";
+  const isBoothRentServicePayout = !isCash && transaction?.routingModel === "booth_rent";
   const receiptNumber = transaction?.posSaleId ?? transaction?.paymentId ?? transaction?.appointmentId ?? transaction?.sourceId ?? "Not available";
   const barberPayout = isCash
     ? "Cash collected directly"
     : transaction?.barberPayoutAmount === null || transaction?.barberPayoutAmount === undefined
       ? "Pending routing"
       : payoutCurrency(transaction.barberPayoutAmount);
+  const receiptDescription = isCash
+    ? "Cash collected directly. No platform payout."
+    : isBoothRentServicePayout
+      ? "Service payout goes to barber after BVRB3R fee. Booth rent is billed separately."
+      : "Collected through BVRB3R. Eligible after routing.";
 
   return (
     <div
@@ -396,7 +402,7 @@ function TransactionReceiptModal({
               Transaction receipt
             </h2>
             <p className="mt-2 text-sm leading-6 text-white/56">
-              {isCash ? "Cash collected directly. No platform payout." : "Collected through BVRB3R. Eligible after routing."}
+              {receiptDescription}
             </p>
           </div>
           <button
@@ -431,6 +437,15 @@ function TransactionReceiptModal({
                 </StatusPill>
               </div>
             </div>
+
+            {isBoothRentServicePayout ? (
+              <div className="rounded-[18px] border border-[#a3ff12]/18 bg-[#a3ff12]/8 p-4">
+                <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#a3ff12]">Booth rent barber</p>
+                <p className="mt-2 text-sm font-bold leading-6 text-white/72">
+                  Service payout goes to barber after BVRB3R fee. Booth rent is billed separately.
+                </p>
+              </div>
+            ) : null}
 
             <div className="grid gap-3 sm:grid-cols-2">
               {[

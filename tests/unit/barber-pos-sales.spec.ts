@@ -363,6 +363,42 @@ describe("barber POS sales", () => {
     });
   });
 
+  it("routes freelance POS card service payouts fully to the barber after the platform fee", () => {
+    const quote = quoteBarberPosSale({ amountCents: 10000 }, { relationshipType: "freelance" });
+
+    expect(quote).toMatchObject({
+      platformFeeCents: 500,
+      barberPayoutCents: 9500,
+      shopSplitCents: 0,
+      relationshipType: "freelance"
+    });
+  });
+
+  it("routes booth-rent POS card service payouts like freelance service payouts", () => {
+    const quote = quoteBarberPosSale({ amountCents: 10000 }, { relationshipType: "booth_rent" });
+
+    expect(quote).toMatchObject({
+      platformFeeCents: 500,
+      barberPayoutCents: 9500,
+      shopSplitCents: 0,
+      relationshipType: "booth_rent"
+    });
+  });
+
+  it("splits commission POS card service payouts after the platform fee", () => {
+    const quote = quoteBarberPosSale({ amountCents: 10000 }, {
+      relationshipType: "commission",
+      commissionRate: 0.7
+    });
+
+    expect(quote).toMatchObject({
+      platformFeeCents: 500,
+      barberPayoutCents: 6650,
+      shopSplitCents: 2850,
+      relationshipType: "commission"
+    });
+  });
+
   it("lets a barber_user quote by public barber reference", async () => {
     createSupabaseAdminClientMock.mockReturnValue(createSupabaseMock({
       profiles: [{

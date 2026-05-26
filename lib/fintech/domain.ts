@@ -387,6 +387,8 @@ function resolvePayoutRecipientType(
     return "barber";
   }
 
+  // Booth-rent service revenue is not rent collection. Actual rent charges are
+  // separate billing payments, while service payments route like freelance.
   if (paymentType === "subscription" || paymentType === "booth_rent") {
     return "shop";
   }

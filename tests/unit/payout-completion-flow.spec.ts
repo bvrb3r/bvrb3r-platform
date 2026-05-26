@@ -659,6 +659,104 @@ describe("payout completion flow", () => {
     });
   });
 
+  it("keeps booth-rent POS service routing as barber payout in payout reporting", async () => {
+    const tables = createTables({
+      barbers: [{
+        ...createTables().barbers[0],
+        barber_subtype: "booth_rent",
+        compensation_model: "booth_rent",
+        booth_rent_amount: 250,
+        booth_rent_frequency: "weekly"
+      }],
+      pos_sales: [{
+        id: POS_SALE_ID,
+        barber_id: BARBER_ID,
+        shop_id: LOCATION_ID,
+        client_id: null,
+        customer_name: "Booth client",
+        source: "barber_keypad",
+        status: "paid",
+        subtotal_cents: 10000,
+        discount_cents: 0,
+        tip_cents: 0,
+        platform_fee_cents: 500,
+        client_fee_cents: 0,
+        total_cents: 10000,
+        payment_id: POS_PAYMENT_ID,
+        note: null,
+        created_by_profile_id: BARBER_PROFILE_ID,
+        created_at: "2026-05-16T14:30:00.000Z",
+        updated_at: "2026-05-16T14:30:00.000Z"
+      }],
+      payments: [{
+        ...createTables().payments[0],
+        id: POS_PAYMENT_ID,
+        appointment_id: null,
+        pos_sale_id: POS_SALE_ID,
+        shop_id: LOCATION_ID,
+        amount: 100,
+        provider_payment_intent_id: "pi_pos_booth_rent_paid",
+        payment_type: "pos_sale"
+      }],
+      payment_routing_records: [{
+        id: "routing-pos-booth-rent",
+        payment_id: POS_PAYMENT_ID,
+        appointment_id: null,
+        pos_sale_id: POS_SALE_ID,
+        membership_id: null,
+        routing_model: "booth_rent",
+        payout_recipient_type: "barber",
+        provider_gross_amount: 100,
+        refunded_amount: 0,
+        provider_fee_amount: 0,
+        provider_net_amount: 100,
+        platform_fee_amount: 5,
+        barber_payout_amount: 95,
+        shop_split_amount: 0,
+        currency: "usd",
+        payout_readiness_status: "ready",
+        money_routing_status: "pending",
+        blocked_reason: null,
+        eligible_at: "2026-05-16T14:30:00.000Z",
+        held_at: null,
+        released_at: null,
+        reversed_at: null,
+        processor_charge_id: "pi_pos_booth_rent_paid",
+        processor_balance_transaction_id: null,
+        reconciliation_status: "open",
+        metadata: {},
+        created_at: "2026-05-16T14:30:00.000Z",
+        updated_at: "2026-05-16T14:30:00.000Z"
+      }]
+    });
+    createSupabaseAdminClientMock.mockReturnValue(createSupabaseStub(tables));
+
+    const result = await getBarberPayouts({
+      id: BARBER_PROFILE_ID,
+      role: "barber_user",
+      email: "phillipmcgee813@gmail.com",
+      password: "DevOnly!123",
+      name: "Phillip mcgee",
+      title: "Booth Rent Barber",
+      locationIds: [LOCATION_ID],
+      barberId: "barber-43b3cda2",
+      barberSubtype: "booth_rent"
+    });
+
+    const transaction = result.transactions.find((entry) => entry.id === `pos:${POS_SALE_ID}`);
+    expect(result.summary).toMatchObject({
+      eligibleRoutingRecords: 1,
+      eligiblePayoutAmount: 95
+    });
+    expect(transaction).toMatchObject({
+      routingModel: "booth_rent",
+      platformFeeAmount: 5,
+      barberPayoutAmount: 95,
+      shopSplitAmount: 0,
+      postureLabel: "Service payout goes to barber after BVRB3R fee. Booth rent is billed separately."
+    });
+  });
+
   it("counts eligible status and excludes released, refunded, blocked, and incomplete routing rows", async () => {
     const base = createTables();
     const tables = createTables({
@@ -856,6 +954,7 @@ describe("payout completion flow", () => {
     expect(Math.round(result.platformFeeAmount * 100)).toBe(500);
     expect(Math.round(result.barberPayoutAmount * 100)).toBe(9500);
     expect(Math.round(result.shopSplitAmount * 100)).toBe(0);
+    expect(result.payoutRecipientType).toBe("barber");
   });
 
   it("splits commission after the platform fee", () => {
@@ -873,6 +972,7 @@ describe("payout completion flow", () => {
     expect(Math.round(result.platformFeeAmount * 100)).toBe(500);
     expect(Math.round(result.barberPayoutAmount * 100)).toBe(6650);
     expect(Math.round(result.shopSplitAmount * 100)).toBe(2850);
+    expect(result.payoutRecipientType).toBe("split");
   });
 
   it("rejects completing another barber's appointment", async () => {

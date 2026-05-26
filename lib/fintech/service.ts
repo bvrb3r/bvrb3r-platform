@@ -581,6 +581,7 @@ export type BarberPayoutsPayload = {
     platformFeeAmount: number;
     barberPayoutAmount: number | null;
     shopSplitAmount: number | null;
+    routingModel: RoutingModel | null;
     payoutReadinessStatus: string | null;
     moneyRoutingStatus: string | null;
     status: string;
@@ -3590,11 +3591,14 @@ async function loadBarberMoneyReporting(input: {
       platformFeeAmount: roundCurrency(numeric(routing?.platform_fee_amount)),
       barberPayoutAmount: routing ? roundCurrency(numeric(routing.barber_payout_amount)) : null,
       shopSplitAmount: routing ? roundCurrency(numeric(routing.shop_split_amount)) : null,
+      routingModel: routing?.routing_model ?? null,
       payoutReadinessStatus: routing?.payout_readiness_status ?? null,
       moneyRoutingStatus: routing?.money_routing_status ?? null,
       status: appointment?.status ?? payment.payment_status,
       statusLabel: appointment?.status === "completed" ? "Completed / Paid" : "Paid",
-      postureLabel: "Collected through BVRB3R. Eligible after routing.",
+      postureLabel: routing?.routing_model === "booth_rent"
+        ? "Service payout goes to barber after BVRB3R fee. Booth rent is billed separately."
+        : "Collected through BVRB3R. Eligible after routing.",
       canMessage: Boolean(profile?.id)
     });
   }
@@ -3649,6 +3653,7 @@ async function loadBarberMoneyReporting(input: {
       platformFeeAmount: isCash ? 0 : roundCurrency(numeric(routing?.platform_fee_amount ?? sale.platform_fee_cents) / (routing ? 1 : 100)),
       barberPayoutAmount: isCash ? null : routing ? roundCurrency(numeric(routing.barber_payout_amount)) : null,
       shopSplitAmount: isCash ? 0 : routing ? roundCurrency(numeric(routing.shop_split_amount)) : null,
+      routingModel: isCash ? null : routing?.routing_model ?? null,
       payoutReadinessStatus: isCash ? null : routing?.payout_readiness_status ?? null,
       moneyRoutingStatus: isCash ? null : routing?.money_routing_status ?? null,
       status: sale.status,
@@ -3656,7 +3661,9 @@ async function loadBarberMoneyReporting(input: {
       postureLabel: isCash
         ? "Cash collected directly. No platform payout."
         : isPlatformCollected
-          ? "Collected through BVRB3R. Eligible after routing."
+          ? routing?.routing_model === "booth_rent"
+            ? "Service payout goes to barber after BVRB3R fee. Booth rent is billed separately."
+            : "Collected through BVRB3R. Eligible after routing."
           : isNoPaymentRequest
             ? "No payment collected."
             : "Awaiting client approval.",
