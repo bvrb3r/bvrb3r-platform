@@ -278,4 +278,44 @@ describe("ArchitectFreelancePayoutQueue", () => {
     expect(screen.getByText("Phillip mcgee")).toBeInTheDocument();
     expect(screen.queryByText("No freelance payout releases are waiting right now.")).not.toBeInTheDocument();
   });
+
+  it("shows failed release reasons and retries with the structured Stripe message", async () => {
+    releaseMutateAsyncMock.mockResolvedValue({
+      ok: false,
+      message: "Release failed: insufficient available Stripe platform balance.",
+      failedStep: "stripe_transfer",
+      errorCode: "stripe_insufficient_funds",
+      errorMessage: "Release failed: insufficient available Stripe platform balance.",
+      payoutExecutionId: "execution-failed"
+    });
+    queueHookMock.mockReturnValue({
+      data: {
+        ...queuePayload,
+        items: [{
+          ...queuePayload.items[0],
+          existingExecutionId: "execution-failed",
+          existingExecutionStatus: "failed",
+          lastFailedExecutionId: "execution-failed",
+          lastFailedExecutionReason: "You have insufficient available funds in your Stripe account.",
+          lastReleaseFailureMessage: "Release failed: insufficient available Stripe platform balance.",
+          releaseActionLabel: "Retry release"
+        }]
+      },
+      isLoading: false,
+      isError: false,
+      error: null
+    });
+
+    render(<ArchitectFreelancePayoutQueue />);
+
+    expect(screen.getByText("Last release attempt failed")).toBeInTheDocument();
+    expect(screen.getAllByText("Release failed: insufficient available Stripe platform balance.").length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry release" }));
+
+    await waitFor(() => {
+      expect(releaseMutateAsyncMock).toHaveBeenCalledWith({ routingRecordId: "routing-9" });
+    });
+    expect((await screen.findAllByText("Release failed: insufficient available Stripe platform balance.")).length).toBeGreaterThanOrEqual(2);
+  });
 });

@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
       dryRun: body.dryRun === true
     });
 
-    return NextResponse.json(payload, { status: payload.ok ? 200 : 409 });
+    return NextResponse.json(payload, { status: payload.ok || payload.failedStep ? 200 : 409 });
   } catch (error) {
     return toPayoutReleaseError(error);
   }

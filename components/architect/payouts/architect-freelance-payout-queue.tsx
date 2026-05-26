@@ -93,6 +93,7 @@ function QueueRow({
   const reason = item.releaseBlockedReason ?? item.ineligibleReasons[0] ?? null;
   const stripeRequirement = stripeRequirementCopy(item);
   const releaseLabel = isBusy ? "Processing" : item.releaseActionLabel ?? (item.canRelease ? "Release payout" : "Payout blocked");
+  const lastReleaseFailure = item.lastReleaseFailureMessage ?? item.lastFailedExecutionReason ?? null;
 
   return (
     <div className="rounded-[24px] border border-white/8 bg-black/24 p-4">
@@ -145,6 +146,14 @@ function QueueRow({
                   Missing: {stripeRequirement.due.join(", ")}
                 </p>
               ) : null}
+            </div>
+          ) : null}
+          {lastReleaseFailure ? (
+            <div className="mt-3 rounded-[18px] border border-rose-300/14 bg-rose-300/8 p-3">
+              <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-rose-100/62">
+                Last release attempt failed
+              </p>
+              <p className="mt-2 text-xs leading-5 text-rose-50/80">{lastReleaseFailure}</p>
             </div>
           ) : null}
         </div>
@@ -240,7 +249,7 @@ export function ArchitectFreelancePayoutQueue() {
       const result = await releaseMutation.mutateAsync({ routingRecordId: item.routingRecordId });
       setFeedback({
         tone: result.ok ? "success" : "error",
-        message: result.message
+        message: result.errorMessage ?? result.message
       });
     } catch (error) {
       setFeedback({ tone: "error", message: getReadableActionError(error as { message?: string; status?: number; code?: string }) });

@@ -357,4 +357,44 @@ describe("phase 15 payout routes", () => {
       dryRun: false
     });
   });
+
+  it("returns structured Stripe transfer failures from Architect freelance payout release", async () => {
+    releaseFreelanceRoutingPayoutMock.mockResolvedValue({
+      ok: false,
+      dryRun: false,
+      eligibility: {
+        eligible: true,
+        reasons: [],
+        routingRecordId: "routing-9",
+        releaseAmount: 8.55,
+        recipientType: "barber",
+        barberId: "barber-1",
+        stripeConnectAccountId: "acct_barber",
+        stripePayoutReadiness: null,
+        existingExecutionId: null,
+        existingExecutionStatus: null,
+        routingRecord: null
+      },
+      execution: null,
+      routingRecord: null,
+      message: "Release failed: insufficient available Stripe platform balance.",
+      failedStep: "stripe_transfer",
+      errorCode: "stripe_insufficient_funds",
+      errorMessage: "Release failed: insufficient available Stripe platform balance.",
+      payoutExecutionId: "execution-failed"
+    });
+
+    const response = await postArchitectPayoutRelease(new NextRequest("https://bvrb3r.demo/api/architect/payouts/release", {
+      method: "POST",
+      body: JSON.stringify({ routingRecordId: "routing-9" })
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(false);
+    expect(body.failedStep).toBe("stripe_transfer");
+    expect(body.errorCode).toBe("stripe_insufficient_funds");
+    expect(body.errorMessage).toBe("Release failed: insufficient available Stripe platform balance.");
+    expect(body.payoutExecutionId).toBe("execution-failed");
+  });
 });

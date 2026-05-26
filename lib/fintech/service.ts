@@ -555,6 +555,9 @@ export type FreelancePayoutQueueItem = {
   stripePayoutReadiness: BarberStripePayoutReadinessView | null;
   existingExecutionId: string | null;
   existingExecutionStatus: PayoutExecutionStatus | null;
+  lastFailedExecutionId: string | null;
+  lastFailedExecutionReason: string | null;
+  lastReleaseFailureMessage: string | null;
   ineligibleReasons: string[];
   warnings: string[];
   canValidate: boolean;
@@ -630,6 +633,10 @@ export type FreelancePayoutReleaseResult = {
   execution: PayoutExecutionView | null;
   routingRecord: FreelancePayoutRoutingSnapshot | null;
   message: string;
+  failedStep?: "stripe_transfer";
+  errorCode?: string;
+  errorMessage?: string;
+  payoutExecutionId?: string;
 };
 
 export type FintechPayoutsPayload = {
@@ -4619,6 +4626,16 @@ function pendingTransferExecutionForRouting(executions: PayoutExecutionRow[]) {
   ) ?? null;
 }
 
+function failedTransferExecutionForRouting(executions: PayoutExecutionRow[]) {
+  return executions
+    .filter((row) =>
+      row.execution_type === "transfer"
+      && row.target_subject_type === "barber"
+      && row.execution_status === "failed"
+    )
+    .sort((left, right) => new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime())[0] ?? null;
+}
+
 function buildFreelancePayoutReleaseIdempotencyKey(input: {
   routingRecordId: string;
   barberId: string;
@@ -4632,6 +4649,69 @@ function buildFreelancePayoutReleaseIdempotencyKey(input: {
     input.amount.toFixed(2),
     input.currency.toLowerCase()
   ].join(":");
+}
+
+function stripeErrorStringField(error: unknown, field: "code" | "message" | "decline_code") {
+  if (!error || typeof error !== "object") {
+    return null;
+  }
+
+  const record = error as Record<string, unknown>;
+  const direct = record[field];
+  if (typeof direct === "string" && direct.trim()) {
+    return direct.trim();
+  }
+
+  const raw = record.raw;
+  if (raw && typeof raw === "object") {
+    const rawValue = (raw as Record<string, unknown>)[field];
+    if (typeof rawValue === "string" && rawValue.trim()) {
+      return rawValue.trim();
+    }
+  }
+
+  return null;
+}
+
+function isInsufficientStripeBalanceMessage(value: string) {
+  const normalized = value.toLowerCase();
+  return normalized.includes("insufficient")
+    && (normalized.includes("fund") || normalized.includes("balance"));
+}
+
+function normalizeStripeTransferFailureMessage(rawMessage: string | null | undefined) {
+  const message = rawMessage?.trim();
+  if (!message) {
+    return "Release failed: Stripe transfer could not be completed.";
+  }
+
+  if (isInsufficientStripeBalanceMessage(message)) {
+    return "Release failed: insufficient available Stripe platform balance.";
+  }
+
+  return message.toLowerCase().startsWith("release failed")
+    ? message
+    : `Release failed: ${message}`;
+}
+
+function resolveStripeTransferFailure(error: unknown) {
+  const rawMessage = stripeErrorStringField(error, "message")
+    ?? (error instanceof Error ? error.message : null)
+    ?? "Stripe transfer could not be completed.";
+  const stripeCode = stripeErrorStringField(error, "code") ?? stripeErrorStringField(error, "decline_code");
+  const normalizedProbe = `${stripeCode ?? ""} ${rawMessage}`.toLowerCase();
+  const insufficientFunds = stripeCode === "balance_insufficient"
+    || stripeCode === "insufficient_funds"
+    || isInsufficientStripeBalanceMessage(normalizedProbe);
+
+  return {
+    failedStep: "stripe_transfer" as const,
+    errorCode: insufficientFunds ? "stripe_insufficient_funds" : stripeCode ? `stripe_${stripeCode}` : "stripe_transfer_failed",
+    errorMessage: insufficientFunds
+      ? "Release failed: insufficient available Stripe platform balance."
+      : normalizeStripeTransferFailureMessage(rawMessage),
+    failureReason: rawMessage
+  };
 }
 
 function isPosSalePaidForPayoutRelease(posSale: PosSaleRow | null) {
@@ -4933,6 +5013,8 @@ function mapFreelanceQueueItem(context: FreelancePayoutReleaseContext, eligibili
     : routing.appointment_id
       ? "Booked appointment"
       : "Platform payment";
+  const failedExecution = failedTransferExecutionForRouting(context.executions);
+  const failedReason = failedExecution?.failure_reason ?? failedExecution?.blocked_reason ?? null;
   const releaseBlockedReason = eligibility.eligible ? null : eligibility.reasons[0] ?? "This payout cannot be released yet.";
   const canApprovePayoutSetup = Boolean(
     !eligibility.eligible
@@ -4961,6 +5043,9 @@ function mapFreelanceQueueItem(context: FreelancePayoutReleaseContext, eligibili
     stripePayoutReadiness: context.stripePayoutReadiness,
     existingExecutionId: eligibility.existingExecutionId,
     existingExecutionStatus: eligibility.existingExecutionStatus,
+    lastFailedExecutionId: failedExecution?.id ?? null,
+    lastFailedExecutionReason: failedReason,
+    lastReleaseFailureMessage: failedExecution ? normalizeStripeTransferFailureMessage(failedReason) : null,
     ineligibleReasons: eligibility.reasons,
     warnings: context.warnings,
     canValidate: true,
@@ -4976,7 +5061,7 @@ function resolveFreelanceReleaseActionLabel(
   releaseBlockedReason: string | null
 ) {
   if (eligibility.eligible) {
-    return "Release payout";
+    return eligibility.existingExecutionStatus === "failed" ? "Retry release" : "Release payout";
   }
 
   if (eligibility.existingExecutionStatus === "pending") {
@@ -5021,6 +5106,9 @@ function mapFreelanceQueueItemFromRoutingFallback(
     stripePayoutReadiness: null,
     existingExecutionId: null,
     existingExecutionStatus: null,
+    lastFailedExecutionId: null,
+    lastFailedExecutionReason: null,
+    lastReleaseFailureMessage: null,
     ineligibleReasons: reasons,
     warnings,
     canValidate: true,
@@ -5223,11 +5311,11 @@ export async function releaseFreelanceRoutingPayout(input: {
       idempotencyKey
     });
   } catch (error) {
-    const failureMessage = error instanceof Error ? error.message : "Unable to release this payout.";
+    const failure = resolveStripeTransferFailure(error);
     const failedExecution = await persistPayoutExecutionRow(supabase, plannedExecution.id, {
       execution_status: "failed",
       blocked_reason: null,
-      failure_reason: failureMessage,
+      failure_reason: failure.failureReason,
       reconciliation_status: "manual_review",
       failed_at: now,
       last_attempted_at: now,
@@ -5249,7 +5337,9 @@ export async function releaseFreelanceRoutingPayout(input: {
       },
       payload: {
         phase: "phase_1_freelance_manual_release",
-        reason: failureMessage
+        reason: failure.failureReason,
+        errorCode: failure.errorCode,
+        failedStep: failure.failedStep
       },
       idempotencyKey: buildPlatformEventIdempotencyKey(["freelance-payout", failedExecution.id, "failed"])
     }).catch(() => undefined);
@@ -5260,7 +5350,11 @@ export async function releaseFreelanceRoutingPayout(input: {
       eligibility,
       execution: mapExecution(failedExecution),
       routingRecord: mapFreelancePayoutRoutingSnapshot(context.routing),
-      message: failureMessage
+      message: failure.errorMessage,
+      failedStep: failure.failedStep,
+      errorCode: failure.errorCode,
+      errorMessage: failure.errorMessage,
+      payoutExecutionId: failedExecution.id
     };
   }
 

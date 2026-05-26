@@ -535,6 +535,62 @@ describe("freelance payout execution", () => {
     ]));
   });
 
+  it("keeps failed release attempts visible in the payout queue while allowing safe retry", async () => {
+    const tables = createBaseTables({
+      payout_executions: [{
+        id: "execution-failed",
+        routing_record_id: ROUTING_ID,
+        payment_id: PAYMENT_ID,
+        appointment_id: null,
+        membership_id: null,
+        target_subject_type: "barber",
+        execution_type: "transfer",
+        target_connected_account_id: CONNECTED_ACCOUNT_ID,
+        target_provider_account_id: "acct_barber",
+        amount: 95,
+        currency: "usd",
+        execution_status: "failed",
+        blocked_reason: null,
+        failure_reason: "You have insufficient available funds in your Stripe account.",
+        processor_transfer_id: null,
+        processor_reversal_id: null,
+        idempotency_key: "freelance_payout_release:routing-freelance:barber-1:95.00:usd",
+        source_execution_id: null,
+        source_refund_id: null,
+        payout_reference: "payout:routing-freelance:barber",
+        payout_speed: "standard",
+        instant_payout_fee_amount: 0,
+        net_transfer_amount: 95,
+        processor_payout_id: null,
+        reconciliation_status: "manual_review",
+        metadata: {},
+        initiated_by: "architect-profile",
+        attempt_count: 1,
+        last_attempted_at: "2026-05-26T13:05:00.000Z",
+        executed_at: null,
+        failed_at: "2026-05-26T13:05:00.000Z",
+        reversed_at: null,
+        created_at: "2026-05-26T13:05:00.000Z",
+        updated_at: "2026-05-26T13:05:00.000Z"
+      }]
+    });
+    const supabase = createSupabaseStub(tables);
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const result = await listArchitectFreelancePayoutQueue();
+
+    expect(result.items[0]).toMatchObject({
+      routingRecordId: ROUTING_ID,
+      canRelease: true,
+      existingExecutionId: "execution-failed",
+      existingExecutionStatus: "failed",
+      lastFailedExecutionId: "execution-failed",
+      lastFailedExecutionReason: "You have insufficient available funds in your Stripe account.",
+      lastReleaseFailureMessage: "Release failed: insufficient available Stripe platform balance.",
+      releaseActionLabel: "Retry release"
+    });
+  });
+
   it("blocks only rows with a confirmed active dispute", async () => {
     const appointmentId = "appointment-disputed";
     const base = createBaseTables();
@@ -844,6 +900,95 @@ describe("freelance payout execution", () => {
       failure_reason: "Stripe account rejected transfer."
     });
     expect(tables.payment_routing_records[0].released_at).toBeNull();
+  });
+
+  it("surfaces insufficient Stripe platform balance without marking routing released", async () => {
+    const stripeError = Object.assign(
+      new Error("You have insufficient available funds in your Stripe account."),
+      { code: "balance_insufficient" }
+    );
+    createStripeTransferMock.mockRejectedValue(stripeError);
+    const tables = createBaseTables();
+    const supabase = createSupabaseStub(tables);
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const result = await releaseFreelanceRoutingPayout({
+      routingRecordId: ROUTING_ID,
+      requestedByProfileId: "architect-profile"
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.failedStep).toBe("stripe_transfer");
+    expect(result.errorCode).toBe("stripe_insufficient_funds");
+    expect(result.errorMessage).toBe("Release failed: insufficient available Stripe platform balance.");
+    expect(result.payoutExecutionId).toBe((tables.payout_executions[0] as Row).id);
+    expect(tables.payout_executions[0]).toMatchObject({
+      execution_status: "failed",
+      failure_reason: "You have insufficient available funds in your Stripe account."
+    });
+    expect(tables.payment_routing_records[0]).toMatchObject({
+      money_routing_status: "pending",
+      released_at: null
+    });
+  });
+
+  it("retries a failed release without creating a duplicate successful execution", async () => {
+    const tables = createBaseTables({
+      payout_executions: [{
+        id: "execution-failed",
+        routing_record_id: ROUTING_ID,
+        payment_id: PAYMENT_ID,
+        appointment_id: null,
+        membership_id: null,
+        target_subject_type: "barber",
+        execution_type: "transfer",
+        target_connected_account_id: CONNECTED_ACCOUNT_ID,
+        target_provider_account_id: "acct_barber",
+        amount: 95,
+        currency: "usd",
+        execution_status: "failed",
+        blocked_reason: null,
+        failure_reason: "You have insufficient available funds in your Stripe account.",
+        processor_transfer_id: null,
+        processor_reversal_id: null,
+        idempotency_key: "freelance_payout_release:routing-freelance:barber-1:95.00:usd",
+        source_execution_id: null,
+        source_refund_id: null,
+        payout_reference: "payout:routing-freelance:barber",
+        payout_speed: "standard",
+        instant_payout_fee_amount: 0,
+        net_transfer_amount: 95,
+        processor_payout_id: null,
+        reconciliation_status: "manual_review",
+        metadata: {},
+        initiated_by: "architect-profile",
+        attempt_count: 1,
+        last_attempted_at: "2026-05-26T13:00:00.000Z",
+        executed_at: null,
+        failed_at: "2026-05-26T13:00:00.000Z",
+        reversed_at: null,
+        created_at: "2026-05-26T13:00:00.000Z",
+        updated_at: "2026-05-26T13:00:00.000Z"
+      }]
+    });
+    const supabase = createSupabaseStub(tables);
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const result = await releaseFreelanceRoutingPayout({
+      routingRecordId: ROUTING_ID,
+      requestedByProfileId: "architect-profile"
+    });
+
+    expect(result.ok).toBe(true);
+    expect(tables.payout_executions).toHaveLength(1);
+    expect(tables.payout_executions[0]).toMatchObject({
+      id: "execution-failed",
+      execution_status: "executed",
+      failure_reason: null,
+      attempt_count: 2,
+      processor_transfer_id: "tr_freelance"
+    });
+    expect(tables.payment_routing_records[0].released_at).toBeTruthy();
   });
 
   it("does not double-release an already executed routing record", async () => {
