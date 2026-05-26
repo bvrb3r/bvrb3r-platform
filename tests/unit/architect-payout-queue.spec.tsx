@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
+  diagnosticsHookMock,
   queueHookMock,
   validateHookMock,
   approveHookMock,
@@ -10,6 +11,7 @@ const {
   approveMutateAsyncMock,
   releaseMutateAsyncMock
 } = vi.hoisted(() => ({
+  diagnosticsHookMock: vi.fn(),
   queueHookMock: vi.fn(),
   validateHookMock: vi.fn(),
   approveHookMock: vi.fn(),
@@ -22,6 +24,7 @@ const {
 vi.mock("@/lib/fintech/client", () => ({
   useApproveFreelancePayoutReadinessMutation: approveHookMock,
   useArchitectFreelancePayoutQueueQuery: queueHookMock,
+  useArchitectStripePlatformDiagnosticsQuery: diagnosticsHookMock,
   useValidateFreelancePayoutMutation: validateHookMock,
   useReleaseFreelancePayoutMutation: releaseHookMock
 }));
@@ -83,6 +86,7 @@ const queuePayload = {
 
 describe("ArchitectFreelancePayoutQueue", () => {
   beforeEach(() => {
+    diagnosticsHookMock.mockReset();
     queueHookMock.mockReset();
     validateHookMock.mockReset();
     releaseHookMock.mockReset();
@@ -91,6 +95,29 @@ describe("ArchitectFreelancePayoutQueue", () => {
     releaseMutateAsyncMock.mockReset();
     queueHookMock.mockReturnValue({
       data: queuePayload,
+      isLoading: false,
+      isError: false,
+      error: null
+    });
+    diagnosticsHookMock.mockReturnValue({
+      data: {
+        ok: true,
+        platformAccountId: "acct_1L0nesLDU3d4YToG",
+        country: "US",
+        defaultCurrency: "usd",
+        chargesEnabled: true,
+        payoutsEnabled: true,
+        dashboardDisplayName: "BVRB3R Platform",
+        livemode: false,
+        availableBalances: [{ currency: "usd", amount: 100 }],
+        pendingBalances: [{ currency: "usd", amount: 0 }],
+        stripeKeyMode: "test",
+        expectedPlatformAccountId: "acct_1L0nesLDU3d4YToG",
+        accountMatchesExpected: true,
+        mismatchWarning: null,
+        warnings: [],
+        checkedAt: "2026-05-26T15:00:00.000Z"
+      },
       isLoading: false,
       isError: false,
       error: null
@@ -125,6 +152,46 @@ describe("ArchitectFreelancePayoutQueue", () => {
       expect(releaseMutateAsyncMock).toHaveBeenCalledWith({ routingRecordId: "routing-9" });
     });
     expect(await screen.findByText("Payout released to the barber payout account.")).toBeInTheDocument();
+  });
+
+  it("renders Stripe platform diagnostics for the app server key", () => {
+    render(<ArchitectFreelancePayoutQueue />);
+
+    const diagnostics = screen.getByTestId("architect-stripe-platform-diagnostics");
+    expect(within(diagnostics).getByText("Stripe platform used by app")).toBeInTheDocument();
+    expect(within(diagnostics).getByText("acct_1L0nesLDU3d4YToG")).toBeInTheDocument();
+    expect(within(diagnostics).getByText("$100.00 USD")).toBeInTheDocument();
+    expect(within(diagnostics).getByText("Mode: test")).toBeInTheDocument();
+  });
+
+  it("shows Stripe account mismatch warnings in diagnostics", () => {
+    diagnosticsHookMock.mockReturnValue({
+      data: {
+        ok: true,
+        platformAccountId: "acct_actual",
+        country: "US",
+        defaultCurrency: "usd",
+        chargesEnabled: true,
+        payoutsEnabled: true,
+        dashboardDisplayName: "Unexpected Platform",
+        livemode: false,
+        availableBalances: [{ currency: "usd", amount: 0 }],
+        pendingBalances: [],
+        stripeKeyMode: "test",
+        expectedPlatformAccountId: "acct_expected",
+        accountMatchesExpected: false,
+        mismatchWarning: "Stripe account mismatch: the app is using acct_actual, but expected acct_expected.",
+        warnings: ["Stripe account mismatch: the app is using acct_actual, but expected acct_expected."],
+        checkedAt: "2026-05-26T15:00:00.000Z"
+      },
+      isLoading: false,
+      isError: false,
+      error: null
+    });
+
+    render(<ArchitectFreelancePayoutQueue />);
+
+    expect(screen.getByText("Stripe account mismatch: the app is using acct_actual, but expected acct_expected.")).toBeInTheDocument();
   });
 
   it("surfaces validation reasons for blocked payouts", async () => {

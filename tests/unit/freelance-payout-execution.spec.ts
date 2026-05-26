@@ -4,11 +4,17 @@ const {
   createSupabaseAdminClientMock,
   isSupabaseEnabledMock,
   createStripeTransferMock,
+  getStripeConnectEnvironmentMock,
+  retrieveStripePlatformAccountMock,
+  retrieveStripePlatformBalanceMock,
   syncWalletBalancesForPaymentMock
 } = vi.hoisted(() => ({
   createSupabaseAdminClientMock: vi.fn(),
   isSupabaseEnabledMock: vi.fn(() => true),
   createStripeTransferMock: vi.fn(),
+  getStripeConnectEnvironmentMock: vi.fn(),
+  retrieveStripePlatformAccountMock: vi.fn(),
+  retrieveStripePlatformBalanceMock: vi.fn(),
   syncWalletBalancesForPaymentMock: vi.fn()
 }));
 
@@ -32,17 +38,20 @@ vi.mock("@/lib/stripe/connect", () => ({
   createStripeConnectedAccount: vi.fn(),
   createStripeDashboardLoginLink: vi.fn(),
   createStripeOnboardingLink: vi.fn(),
-  getStripeConnectEnvironment: vi.fn(),
+  getStripeConnectEnvironment: getStripeConnectEnvironmentMock,
   getStripeConnectOnboardingPath: vi.fn(),
   createStripeTransfer: createStripeTransferMock,
   createStripeTransferReversal: vi.fn(),
   retrieveStripeConnectedAccount: vi.fn(),
+  retrieveStripePlatformAccount: retrieveStripePlatformAccountMock,
+  retrieveStripePlatformBalance: retrieveStripePlatformBalanceMock,
   retrieveStripePaymentIntentSettlement: vi.fn(),
   verifyStripeWebhookEvent: vi.fn()
 }));
 
 import {
   approveFreelancePayoutReadinessForRouting,
+  getArchitectStripePlatformDiagnostics,
   getBarberStripePayoutReadiness,
   listArchitectFreelancePayoutQueue,
   releaseFreelanceRoutingPayout,
@@ -319,9 +328,33 @@ describe("freelance payout execution", () => {
   beforeEach(() => {
     createSupabaseAdminClientMock.mockReset();
     createStripeTransferMock.mockReset();
+    getStripeConnectEnvironmentMock.mockReset();
+    retrieveStripePlatformAccountMock.mockReset();
+    retrieveStripePlatformBalanceMock.mockReset();
     syncWalletBalancesForPaymentMock.mockReset();
     isSupabaseEnabledMock.mockReturnValue(true);
     createStripeTransferMock.mockResolvedValue({ id: "tr_freelance" });
+    getStripeConnectEnvironmentMock.mockReturnValue({
+      mode: "test",
+      label: "Stripe test mode.",
+      blocksLivePayouts: true
+    });
+    retrieveStripePlatformAccountMock.mockResolvedValue({
+      id: "acct_1L0nesLDU3d4YToG",
+      country: "US",
+      default_currency: "usd",
+      charges_enabled: true,
+      payouts_enabled: true,
+      business_profile: { name: "BVRB3R Platform" },
+      settings: { dashboard: { display_name: "BVRB3R Dashboard" } },
+      livemode: false
+    });
+    retrieveStripePlatformBalanceMock.mockResolvedValue({
+      available: [{ amount: 10000, currency: "usd" }],
+      pending: [{ amount: 425, currency: "usd" }]
+    });
+    delete process.env.STRIPE_SECRET_KEY;
+    delete process.env.STRIPE_EXPECTED_PLATFORM_ACCOUNT_ID;
   });
 
   it("validates a ready freelance POS routing record as eligible", async () => {
@@ -334,6 +367,41 @@ describe("freelance payout execution", () => {
     expect(result.releaseAmount).toBe(95);
     expect(result.stripeConnectAccountId).toBe("acct_barber");
     expect(result.stripePayoutReadiness?.canReceivePayouts).toBe(true);
+  });
+
+  it("returns safe Stripe platform diagnostics for the server key account", async () => {
+    process.env.STRIPE_SECRET_KEY = "sk_test_hidden";
+    process.env.STRIPE_EXPECTED_PLATFORM_ACCOUNT_ID = "acct_1L0nesLDU3d4YToG";
+
+    const result = await getArchitectStripePlatformDiagnostics();
+
+    expect(result).toMatchObject({
+      ok: true,
+      platformAccountId: "acct_1L0nesLDU3d4YToG",
+      country: "US",
+      defaultCurrency: "usd",
+      chargesEnabled: true,
+      payoutsEnabled: true,
+      dashboardDisplayName: "BVRB3R Platform",
+      livemode: false,
+      availableBalances: [{ currency: "usd", amount: 100 }],
+      pendingBalances: [{ currency: "usd", amount: 4.25 }],
+      stripeKeyMode: "test",
+      expectedPlatformAccountId: "acct_1L0nesLDU3d4YToG",
+      accountMatchesExpected: true,
+      mismatchWarning: null
+    });
+    expect(JSON.stringify(result)).not.toContain("sk_test_hidden");
+  });
+
+  it("warns when the expected Stripe platform account does not match the server key account", async () => {
+    process.env.STRIPE_EXPECTED_PLATFORM_ACCOUNT_ID = "acct_expected";
+
+    const result = await getArchitectStripePlatformDiagnostics();
+
+    expect(result.accountMatchesExpected).toBe(false);
+    expect(result.mismatchWarning).toBe("Stripe account mismatch: the app is using acct_1L0nesLDU3d4YToG, but expected acct_expected.");
+    expect(result.warnings).toContain("Stripe account mismatch: the app is using acct_1L0nesLDU3d4YToG, but expected acct_expected.");
   });
 
   it("returns no-account Stripe payout readiness when the barber has no Connect account", async () => {
@@ -851,6 +919,35 @@ describe("freelance payout execution", () => {
     expect(tables.payout_executions).toHaveLength(0);
     expect(tables.payment_routing_records[0].released_at).toBeNull();
     expect(createStripeTransferMock).not.toHaveBeenCalled();
+  });
+
+  it("blocks release before transfer when Stripe platform available balance is too low", async () => {
+    retrieveStripePlatformBalanceMock.mockResolvedValue({
+      available: [{ amount: 9000, currency: "usd" }],
+      pending: []
+    });
+    const tables = createBaseTables();
+    const supabase = createSupabaseStub(tables);
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const result = await releaseFreelanceRoutingPayout({
+      routingRecordId: ROUTING_ID,
+      requestedByProfileId: "architect-profile"
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.failedStep).toBe("platform_balance_preflight");
+    expect(result.errorCode).toBe("stripe_platform_balance_insufficient");
+    expect(result.errorMessage).toBe("Release blocked: Stripe platform available balance is below payout amount.");
+    expect(createStripeTransferMock).not.toHaveBeenCalled();
+    expect(tables.payout_executions[0]).toMatchObject({
+      execution_status: "failed",
+      failure_reason: "Release blocked: Stripe platform available balance is below payout amount."
+    });
+    expect(tables.payment_routing_records[0]).toMatchObject({
+      money_routing_status: "pending",
+      released_at: null
+    });
   });
 
   it("releases a ready freelance routing record through Stripe and marks routing paid out", async () => {

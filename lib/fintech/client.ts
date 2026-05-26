@@ -8,6 +8,7 @@ import type {
   ExecuteFintechPayoutsResult,
   FintechManagementPayload,
   FintechPayoutsPayload,
+  ArchitectStripePlatformDiagnosticsPayload,
   BarberPayoutReadinessApprovalResult,
   FreelancePayoutQueuePayload,
   FreelancePayoutReleaseEligibility,
@@ -32,6 +33,7 @@ type BarberPayoutsResponse = BarberPayoutsPayload;
 type FintechManagementResponse = FintechManagementPayload;
 type FintechPayoutsResponse = FintechPayoutsPayload;
 type FreelancePayoutQueueResponse = FreelancePayoutQueuePayload;
+type ArchitectStripePlatformDiagnosticsResponse = ArchitectStripePlatformDiagnosticsPayload;
 type FreelancePayoutValidationResponse = FreelancePayoutReleaseEligibility;
 type FreelancePayoutReleaseResponse = FreelancePayoutReleaseResult;
 type BarberPayoutReadinessApprovalResponse = BarberPayoutReadinessApprovalResult;
@@ -136,6 +138,15 @@ export function useArchitectFreelancePayoutQueueQuery(enabled = true) {
     queryFn: () => requestJson<FreelancePayoutQueueResponse>("/api/architect/payouts/queue"),
     enabled,
     staleTime: 10_000
+  });
+}
+
+export function useArchitectStripePlatformDiagnosticsQuery(enabled = true) {
+  return useQuery({
+    queryKey: ["fintech", "architect", "stripe-platform-diagnostics"],
+    queryFn: () => requestJson<ArchitectStripePlatformDiagnosticsResponse>("/api/architect/stripe/platform-diagnostics"),
+    enabled,
+    staleTime: 30_000
   });
 }
 

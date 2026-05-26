@@ -152,6 +152,16 @@ export async function retrieveStripeConnectedAccount(accountId: string) {
   return stripe.accounts.retrieve(accountId);
 }
 
+export async function retrieveStripePlatformAccount() {
+  const stripe = getStripeConnectClient();
+  return stripe.accounts.retrieve();
+}
+
+export async function retrieveStripePlatformBalance() {
+  const stripe = getStripeConnectClient();
+  return stripe.balance.retrieve();
+}
+
 export async function createStripeOnboardingLink(input: {
   accountId: string;
   refreshUrl: string;

@@ -8,10 +8,11 @@ import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import {
   useApproveFreelancePayoutReadinessMutation,
   useArchitectFreelancePayoutQueueQuery,
+  useArchitectStripePlatformDiagnosticsQuery,
   useReleaseFreelancePayoutMutation,
   useValidateFreelancePayoutMutation
 } from "@/lib/fintech/client";
-import type { FreelancePayoutQueueItem } from "@/lib/fintech/service";
+import type { ArchitectStripePlatformDiagnosticsPayload, FreelancePayoutQueueItem, StripePlatformBalanceView } from "@/lib/fintech/service";
 import { cn } from "@/lib/utils";
 import { getReadableActionError } from "@/lib/utils/feedback";
 
@@ -24,6 +25,16 @@ const payoutCurrencyFormatter = new Intl.NumberFormat("en-US", {
 
 function payoutCurrency(value: number) {
   return payoutCurrencyFormatter.format(value);
+}
+
+function formatBalanceList(balances: StripePlatformBalanceView[]) {
+  if (!balances.length) {
+    return "$0.00";
+  }
+
+  return balances
+    .map((balance) => `${payoutCurrency(balance.amount)} ${balance.currency.toUpperCase()}`)
+    .join(" / ");
 }
 
 function formatDateTime(value?: string | null) {
@@ -73,6 +84,94 @@ function stripeRequirementCopy(item: FreelancePayoutQueueItem) {
     message: readiness.displayMessage,
     due
   };
+}
+
+function StripePlatformDiagnosticsCard() {
+  const diagnosticsQuery = useArchitectStripePlatformDiagnosticsQuery();
+  const diagnostics = diagnosticsQuery.data;
+
+  return (
+    <div className="mt-5 rounded-[24px] border border-white/8 bg-black/24 p-4" data-testid="architect-stripe-platform-diagnostics">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-white/36">
+            Stripe platform used by app
+          </p>
+          <p className="mt-2 text-sm leading-6 text-white/58">
+            This reads the same server Stripe key used for payout release.
+          </p>
+        </div>
+        <span className={cn(
+          "rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em]",
+          diagnostics?.mismatchWarning
+            ? "border-rose-400/20 bg-rose-400/10 text-rose-100"
+            : "border-[#7CFF00]/20 bg-[#7CFF00]/10 text-[#d7ffab]"
+        )}>
+          {diagnostics?.stripeKeyMode ?? "checking"}
+        </span>
+      </div>
+
+      {diagnosticsQuery.isLoading ? (
+        <div className="mt-4 rounded-[18px] border border-white/8 bg-black/24 p-3 text-xs font-bold text-white/58">
+          Checking Stripe platform account...
+        </div>
+      ) : diagnosticsQuery.isError ? (
+        <FeedbackBanner
+          className="mt-4"
+          tone="error"
+          message={getReadableActionError(diagnosticsQuery.error as { message?: string; status?: number; code?: string })}
+        />
+      ) : diagnostics ? (
+        <StripePlatformDiagnosticsSummary diagnostics={diagnostics} />
+      ) : null}
+    </div>
+  );
+}
+
+function StripePlatformDiagnosticsSummary({ diagnostics }: { diagnostics: ArchitectStripePlatformDiagnosticsPayload }) {
+  return (
+    <div className="mt-4 space-y-3">
+      {diagnostics.mismatchWarning ? (
+        <FeedbackBanner className="border-rose-300/18 bg-rose-300/10" tone="error" message={diagnostics.mismatchWarning} />
+      ) : null}
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {[
+          ["Account", diagnostics.platformAccountId ?? "Unknown"],
+          ["Available balance", formatBalanceList(diagnostics.availableBalances)],
+          ["Pending balance", formatBalanceList(diagnostics.pendingBalances)],
+          ["Last checked", formatDateTime(diagnostics.checkedAt)]
+        ].map(([label, value]) => (
+          <div key={label} className="rounded-[18px] border border-white/8 bg-black/24 p-3">
+            <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-white/36">{label}</p>
+            <p className="mt-2 break-words text-sm font-black text-white">{value}</p>
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {[
+          `Mode: ${diagnostics.stripeKeyMode}`,
+          `Country: ${diagnostics.country ?? "unknown"}`,
+          `Currency: ${diagnostics.defaultCurrency?.toUpperCase() ?? "unknown"}`,
+          `Charges: ${diagnostics.chargesEnabled ? "enabled" : "not enabled"}`,
+          `Payouts: ${diagnostics.payoutsEnabled ? "enabled" : "not enabled"}`
+        ].map((detail) => (
+          <span key={detail} className="rounded-full border border-white/10 bg-black/24 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-white/52">
+            {detail}
+          </span>
+        ))}
+      </div>
+      {diagnostics.expectedPlatformAccountId ? (
+        <p className="text-xs leading-5 text-white/52">
+          Expected account: {diagnostics.expectedPlatformAccountId}
+        </p>
+      ) : null}
+      {diagnostics.dashboardDisplayName ? (
+        <p className="text-xs leading-5 text-white/52">
+          Dashboard label: {diagnostics.dashboardDisplayName}
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 function QueueRow({
@@ -301,6 +400,8 @@ export function ArchitectFreelancePayoutQueue() {
           </div>
         ))}
       </div>
+
+      <StripePlatformDiagnosticsCard />
 
       {feedback ? <FeedbackBanner className="mt-5" tone={feedback.tone} message={feedback.message} /> : null}
       {payload?.warnings?.length ? payload.warnings.map((warning) => (

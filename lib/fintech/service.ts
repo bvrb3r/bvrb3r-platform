@@ -53,6 +53,8 @@ import {
   createStripeTransfer,
   createStripeTransferReversal,
   retrieveStripeConnectedAccount,
+  retrieveStripePlatformAccount,
+  retrieveStripePlatformBalance,
   retrieveStripePaymentIntentSettlement,
   verifyStripeWebhookEvent,
   type StripeConnectEnvironmentView
@@ -580,6 +582,30 @@ export type BarberPayoutReadinessApprovalResult = {
   message: string;
 };
 
+export type StripePlatformBalanceView = {
+  currency: string;
+  amount: number;
+};
+
+export type ArchitectStripePlatformDiagnosticsPayload = {
+  ok: boolean;
+  platformAccountId: string | null;
+  country: string | null;
+  defaultCurrency: string | null;
+  chargesEnabled: boolean | null;
+  payoutsEnabled: boolean | null;
+  dashboardDisplayName: string | null;
+  livemode: boolean | null;
+  availableBalances: StripePlatformBalanceView[];
+  pendingBalances: StripePlatformBalanceView[];
+  stripeKeyMode: "test" | "live" | "unknown";
+  expectedPlatformAccountId: string | null;
+  accountMatchesExpected: boolean | null;
+  mismatchWarning: string | null;
+  warnings: string[];
+  checkedAt: string;
+};
+
 export type FreelancePayoutQueuePayload = {
   summary: {
     readyCount: number;
@@ -633,7 +659,7 @@ export type FreelancePayoutReleaseResult = {
   execution: PayoutExecutionView | null;
   routingRecord: FreelancePayoutRoutingSnapshot | null;
   message: string;
-  failedStep?: "stripe_transfer";
+  failedStep?: "platform_balance_preflight" | "stripe_transfer";
   errorCode?: string;
   errorMessage?: string;
   payoutExecutionId?: string;
@@ -4714,6 +4740,136 @@ function resolveStripeTransferFailure(error: unknown) {
   };
 }
 
+function stripeKeyModeForDiagnostics() {
+  const environment = getStripeConnectEnvironment();
+  if (environment.mode === "live" || environment.mode === "test") {
+    return environment.mode;
+  }
+
+  return "unknown" as const;
+}
+
+function expectedStripePlatformAccountId() {
+  return process.env.STRIPE_EXPECTED_PLATFORM_ACCOUNT_ID?.trim() || null;
+}
+
+function normalizeStripeBalanceList(balances: Array<{ amount: number; currency: string }>) {
+  return balances.map((balance) => ({
+    currency: balance.currency.toLowerCase(),
+    amount: roundCurrency(balance.amount / 100)
+  }));
+}
+
+function stripeDashboardDisplayName(account: Stripe.Account) {
+  const settings = account.settings as Stripe.Account.Settings | null | undefined;
+  return account.business_profile?.name
+    ?? settings?.dashboard?.display_name
+    ?? account.email
+    ?? null;
+}
+
+function findStripeAvailableBalanceCents(
+  diagnostics: ArchitectStripePlatformDiagnosticsPayload,
+  currency: string
+) {
+  const targetCurrency = currency.toLowerCase();
+  return Math.round((diagnostics.availableBalances.find((balance) => balance.currency === targetCurrency)?.amount ?? 0) * 100);
+}
+
+export async function getArchitectStripePlatformDiagnostics(): Promise<ArchitectStripePlatformDiagnosticsPayload> {
+  const [account, balance] = await Promise.all([
+    retrieveStripePlatformAccount(),
+    retrieveStripePlatformBalance()
+  ]);
+  const accountRecord = account as Stripe.Account & { livemode?: boolean };
+  const expectedAccountId = expectedStripePlatformAccountId();
+  const actualAccountId = account.id ?? null;
+  const accountMatchesExpected = expectedAccountId ? actualAccountId === expectedAccountId : null;
+  const mismatchWarning = expectedAccountId && actualAccountId !== expectedAccountId
+    ? `Stripe account mismatch: the app is using ${actualAccountId ?? "unknown account"}, but expected ${expectedAccountId}.`
+    : null;
+  const warnings = mismatchWarning ? [mismatchWarning] : [];
+
+  return {
+    ok: true,
+    platformAccountId: actualAccountId,
+    country: account.country ?? null,
+    defaultCurrency: account.default_currency ?? null,
+    chargesEnabled: account.charges_enabled ?? null,
+    payoutsEnabled: account.payouts_enabled ?? null,
+    dashboardDisplayName: stripeDashboardDisplayName(account),
+    livemode: accountRecord.livemode ?? null,
+    availableBalances: normalizeStripeBalanceList(balance.available ?? []),
+    pendingBalances: normalizeStripeBalanceList(balance.pending ?? []),
+    stripeKeyMode: stripeKeyModeForDiagnostics(),
+    expectedPlatformAccountId: expectedAccountId,
+    accountMatchesExpected,
+    mismatchWarning,
+    warnings,
+    checkedAt: new Date().toISOString()
+  };
+}
+
+type PlatformBalancePreflightResult = {
+  ok: boolean;
+  failedStep?: "platform_balance_preflight";
+  errorCode?: string;
+  errorMessage?: string;
+  failureReason?: string;
+  diagnostics?: ArchitectStripePlatformDiagnosticsPayload;
+  availableAmount?: number;
+};
+
+async function inspectPlatformBalanceBeforeRelease(input: {
+  amount: number;
+  currency: string;
+}): Promise<PlatformBalancePreflightResult> {
+  let diagnostics: ArchitectStripePlatformDiagnosticsPayload;
+  try {
+    diagnostics = await getArchitectStripePlatformDiagnostics();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Stripe platform balance could not be verified.";
+    return {
+      ok: false,
+      failedStep: "platform_balance_preflight",
+      errorCode: "stripe_platform_balance_check_failed",
+      errorMessage: "Release blocked: Stripe platform balance could not be verified.",
+      failureReason: message
+    };
+  }
+
+  if (diagnostics.mismatchWarning) {
+    return {
+      ok: false,
+      failedStep: "platform_balance_preflight",
+      errorCode: "stripe_platform_account_mismatch",
+      errorMessage: diagnostics.mismatchWarning,
+      failureReason: diagnostics.mismatchWarning,
+      diagnostics
+    };
+  }
+
+  const requiredCents = Math.round(input.amount * 100);
+  const availableCents = findStripeAvailableBalanceCents(diagnostics, input.currency);
+  if (availableCents < requiredCents) {
+    return {
+      ok: false,
+      failedStep: "platform_balance_preflight",
+      errorCode: "stripe_platform_balance_insufficient",
+      errorMessage: "Release blocked: Stripe platform available balance is below payout amount.",
+      failureReason: "Release blocked: Stripe platform available balance is below payout amount.",
+      diagnostics,
+      availableAmount: roundCurrency(availableCents / 100)
+    };
+  }
+
+  return {
+    ok: true,
+    diagnostics,
+    availableAmount: roundCurrency(availableCents / 100)
+  };
+}
+
 function isPosSalePaidForPayoutRelease(posSale: PosSaleRow | null) {
   if (!posSale || String(posSale.status ?? "").toLowerCase() !== "paid") {
     return false;
@@ -5291,6 +5447,68 @@ export async function releaseFreelanceRoutingPayout(input: {
     created_at: reusableFailedExecution?.created_at ?? now,
     updated_at: now
   });
+
+  const preflight = await inspectPlatformBalanceBeforeRelease({
+    amount: eligibility.releaseAmount,
+    currency: context.routing.currency
+  });
+
+  if (!preflight.ok) {
+    const failedExecution = await persistPayoutExecutionRow(supabase, plannedExecution.id, {
+      execution_status: "failed",
+      blocked_reason: null,
+      failure_reason: preflight.failureReason ?? preflight.errorMessage ?? "Release blocked by platform balance preflight.",
+      reconciliation_status: "manual_review",
+      failed_at: now,
+      last_attempted_at: now,
+      metadata: {
+        ...(plannedExecution.metadata ?? {}),
+        failedStep: preflight.failedStep,
+        errorCode: preflight.errorCode,
+        platformAccountId: preflight.diagnostics?.platformAccountId ?? null,
+        expectedPlatformAccountId: preflight.diagnostics?.expectedPlatformAccountId ?? null,
+        availableAmount: preflight.availableAmount ?? null,
+        requiredAmount: eligibility.releaseAmount,
+        currency: context.routing.currency.toLowerCase()
+      },
+      updated_at: now
+    });
+
+    await recordPlatformEvent(supabase, {
+      eventType: "payout_held",
+      entityType: "payout_execution",
+      entityId: failedExecution.id,
+      actorId: input.requestedByProfileId,
+      source: "api",
+      relatedIds: {
+        payoutExecutionId: failedExecution.id,
+        routingRecordId: context.routing.id,
+        paymentId: context.routing.payment_id,
+        posSaleId: context.routing.pos_sale_id ?? null,
+        barberId: eligibility.barberId
+      },
+      payload: {
+        phase: "phase_1_freelance_manual_release",
+        reason: preflight.failureReason ?? preflight.errorMessage,
+        errorCode: preflight.errorCode,
+        failedStep: preflight.failedStep
+      },
+      idempotencyKey: buildPlatformEventIdempotencyKey(["freelance-payout", failedExecution.id, "preflight-failed"])
+    }).catch(() => undefined);
+
+    return {
+      ok: false,
+      dryRun: false,
+      eligibility,
+      execution: mapExecution(failedExecution),
+      routingRecord: mapFreelancePayoutRoutingSnapshot(context.routing),
+      message: preflight.errorMessage ?? "Release blocked before Stripe transfer.",
+      failedStep: preflight.failedStep,
+      errorCode: preflight.errorCode,
+      errorMessage: preflight.errorMessage,
+      payoutExecutionId: failedExecution.id
+    };
+  }
 
   let transfer: { id: string };
   try {

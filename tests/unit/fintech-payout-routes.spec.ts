@@ -9,6 +9,7 @@ const {
   listFintechPayoutsMock,
   getBarberPayoutsMock,
   executeFintechPayoutsMock,
+  getArchitectStripePlatformDiagnosticsMock,
   listArchitectFreelancePayoutQueueMock,
   validateFreelancePayoutReleaseEligibilityMock,
   approveFreelancePayoutReadinessForRoutingMock,
@@ -19,6 +20,7 @@ const {
   listFintechPayoutsMock: vi.fn(),
   getBarberPayoutsMock: vi.fn(),
   executeFintechPayoutsMock: vi.fn(),
+  getArchitectStripePlatformDiagnosticsMock: vi.fn(),
   listArchitectFreelancePayoutQueueMock: vi.fn(),
   validateFreelancePayoutReleaseEligibilityMock: vi.fn(),
   approveFreelancePayoutReadinessForRoutingMock: vi.fn(),
@@ -40,6 +42,7 @@ vi.mock("@/lib/fintech/service", async () => {
     listFintechPayouts: listFintechPayoutsMock,
     getBarberPayouts: getBarberPayoutsMock,
     executeFintechPayouts: executeFintechPayoutsMock,
+    getArchitectStripePlatformDiagnostics: getArchitectStripePlatformDiagnosticsMock,
     listArchitectFreelancePayoutQueue: listArchitectFreelancePayoutQueueMock,
     validateFreelancePayoutReleaseEligibility: validateFreelancePayoutReleaseEligibilityMock,
     approveFreelancePayoutReadinessForRouting: approveFreelancePayoutReadinessForRoutingMock,
@@ -51,6 +54,7 @@ import { GET as getManagementPayouts } from "@/app/api/operations/fintech/payout
 import { POST as postExecutePayouts } from "@/app/api/operations/fintech/payouts/execute/route";
 import { GET as getBarberPayoutsRoute } from "@/app/api/fintech/payouts/route";
 import { GET as getArchitectPayoutQueue } from "@/app/api/architect/payouts/queue/route";
+import { GET as getArchitectStripePlatformDiagnostics } from "@/app/api/architect/stripe/platform-diagnostics/route";
 import { POST as postArchitectPayoutValidate } from "@/app/api/architect/payouts/validate/route";
 import { POST as postArchitectPayoutApproveReadiness } from "@/app/api/architect/payouts/approve-readiness/route";
 import { POST as postArchitectPayoutRelease } from "@/app/api/architect/payouts/release/route";
@@ -62,6 +66,7 @@ describe("phase 15 payout routes", () => {
     listFintechPayoutsMock.mockReset();
     getBarberPayoutsMock.mockReset();
     executeFintechPayoutsMock.mockReset();
+    getArchitectStripePlatformDiagnosticsMock.mockReset();
     listArchitectFreelancePayoutQueueMock.mockReset();
     validateFreelancePayoutReleaseEligibilityMock.mockReset();
     approveFreelancePayoutReadinessForRoutingMock.mockReset();
@@ -265,6 +270,35 @@ describe("phase 15 payout routes", () => {
     expect(response.status).toBe(200);
     expect(body.summary.readyAmount).toBe(8.55);
     expect(body.items[0].sourceLabel).toBe("POS Card-on-File");
+  });
+
+  it("returns Architect Stripe platform diagnostics without exposing secrets", async () => {
+    getArchitectStripePlatformDiagnosticsMock.mockResolvedValue({
+      ok: true,
+      platformAccountId: "acct_1L0nesLDU3d4YToG",
+      country: "US",
+      defaultCurrency: "usd",
+      chargesEnabled: true,
+      payoutsEnabled: true,
+      dashboardDisplayName: "BVRB3R Platform",
+      livemode: false,
+      availableBalances: [{ currency: "usd", amount: 100 }],
+      pendingBalances: [{ currency: "usd", amount: 4.25 }],
+      stripeKeyMode: "test",
+      expectedPlatformAccountId: "acct_1L0nesLDU3d4YToG",
+      accountMatchesExpected: true,
+      mismatchWarning: null,
+      warnings: [],
+      checkedAt: "2026-05-26T15:00:00.000Z"
+    });
+
+    const response = await getArchitectStripePlatformDiagnostics();
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.platformAccountId).toBe("acct_1L0nesLDU3d4YToG");
+    expect(body.availableBalances).toEqual([{ currency: "usd", amount: 100 }]);
+    expect(JSON.stringify(body)).not.toContain("sk_");
   });
 
   it("validates Architect freelance payout release requests", async () => {
