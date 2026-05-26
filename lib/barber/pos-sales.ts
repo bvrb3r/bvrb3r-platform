@@ -2356,6 +2356,22 @@ async function deliverPosPaymentRequestMessage(input: {
       actorProfileId: input.actorProfileId,
       originalError: messageInsert.error
     });
+    if (fallbackDelivery.delivered) {
+      const deliveredRequest = await markPosPaymentRequestMessageDelivered({
+        supabase: input.supabase,
+        request: input.request,
+        threadId: input.threadId,
+        deliveredAt: input.createdAt
+      });
+      return {
+        delivered: true,
+        fallbackDelivered: true,
+        duplicateSkipped: false,
+        request: deliveredRequest,
+        debug: fallbackDelivery.debug
+      };
+    }
+
     const failedRequest = await markPosPaymentRequestMessageFailed({
       supabase: input.supabase,
       request: input.request,
@@ -2823,7 +2839,6 @@ export async function requestBarberPosSalePayment(user: UserAccount, saleId: str
 
       if (!delivery.delivered) {
         const debug = delivery.debug ?? buildPosSaleDebug(null, "messages", "pos_payment_request_message_failed");
-        const messageDeliveryStatus = delivery.fallbackDelivered ? "plain_text_fallback" : "failed";
         return {
           ok: true,
           sale,
@@ -2831,11 +2846,16 @@ export async function requestBarberPosSalePayment(user: UserAccount, saleId: str
           payment: null,
           routing: null,
           alreadyRequested: true,
-          messageDeliveryStatus,
+          requestId: delivery.request.id,
+          posSaleId: sale.id,
+          messageThreadId: delivery.request.message_thread_id ?? threadId,
+          paymentCardDelivered: false,
+          fallbackPlainMessageSent: delivery.fallbackDelivered,
+          reusedExistingRequest: true,
+          duplicateSaleVoided: false,
+          messageDeliveryStatus: "failed",
           error: "Unable to send the POS payment request message.",
-          message: delivery.fallbackDelivered
-            ? "Request created and sent as a plain message, but the payment card still needs retry."
-            : "Request created, but message delivery failed. Retry sending message.",
+          message: "Request created, but message delivery failed. Retry sending message.",
           debugCode: debug.debugCode,
           failedTable: debug.failedTable,
           failedConstraint: debug.failedConstraint,
@@ -2850,6 +2870,13 @@ export async function requestBarberPosSalePayment(user: UserAccount, saleId: str
         payment: null,
         routing: null,
         alreadyRequested: true,
+        requestId: delivery.request.id,
+        posSaleId: sale.id,
+        messageThreadId: delivery.request.message_thread_id ?? threadId,
+        paymentCardDelivered: true,
+        fallbackPlainMessageSent: delivery.fallbackDelivered,
+        reusedExistingRequest: true,
+        duplicateSaleVoided: false,
         messageDeliveryStatus: "delivered",
         message: "Payment request sent. Client approval is required before payout."
       };
@@ -2863,6 +2890,14 @@ export async function requestBarberPosSalePayment(user: UserAccount, saleId: str
         payment: null,
         routing: null,
         alreadyRequested: true,
+        requestId: request.id,
+        posSaleId: sale.id,
+        messageThreadId: request.message_thread_id,
+        paymentCardDelivered: true,
+        fallbackPlainMessageSent: false,
+        reusedExistingRequest: true,
+        duplicateSaleVoided: false,
+        messageDeliveryStatus: "delivered",
         message: "Payment request already sent. Client approval is required before payout."
       };
     }
@@ -2923,13 +2958,18 @@ export async function requestBarberPosSalePayment(user: UserAccount, saleId: str
         payment: null,
         routing: null,
         alreadyRequested: true,
-        messageDeliveryStatus: delivery.delivered ? "delivered" : delivery.fallbackDelivered ? "plain_text_fallback" : "failed",
+        requestId: delivery.request.id,
+        posSaleId: duplicateSale.id,
+        messageThreadId: delivery.request.message_thread_id ?? threadId,
+        paymentCardDelivered: delivery.delivered,
+        fallbackPlainMessageSent: delivery.fallbackDelivered,
+        reusedExistingRequest: true,
+        duplicateSaleVoided: true,
+        messageDeliveryStatus: delivery.delivered ? "delivered" : "failed",
         error: delivery.delivered ? undefined : "Unable to send the POS payment request message.",
         message: delivery.delivered
           ? "Payment request sent. Client approval is required before payout."
-          : delivery.fallbackDelivered
-            ? "Payment request already exists, but the payment card still needs retry."
-            : "Request exists, but message delivery is still failing.",
+          : "Request exists, but message delivery is still failing.",
         debugCode: delivery.debug?.debugCode,
         failedTable: delivery.debug?.failedTable,
         failedConstraint: delivery.debug?.failedConstraint,
@@ -2944,9 +2984,16 @@ export async function requestBarberPosSalePayment(user: UserAccount, saleId: str
       payment: null,
       routing: null,
       alreadyRequested: true,
-      messageDeliveryStatus: duplicateRequest.status === "pending_message_failed" ? "plain_text_fallback" : "delivered",
+      requestId: duplicateRequest.id,
+      posSaleId: duplicateRequest.pos_sale_id,
+      messageThreadId: duplicateRequest.message_thread_id,
+      paymentCardDelivered: duplicateRequest.status !== "pending_message_failed",
+      fallbackPlainMessageSent: false,
+      reusedExistingRequest: true,
+      duplicateSaleVoided: true,
+      messageDeliveryStatus: duplicateRequest.status === "pending_message_failed" ? "failed" : "delivered",
       message: duplicateRequest.status === "pending_message_failed"
-        ? "Payment request already exists, but the payment card still needs retry."
+        ? "Request exists, but message delivery is still failing."
         : "Payment request already sent. Client approval is required before payout."
     };
   }
@@ -3022,7 +3069,6 @@ export async function requestBarberPosSalePayment(user: UserAccount, saleId: str
 
   if (!delivery.delivered) {
     const debug = delivery.debug ?? buildPosSaleDebug(null, "messages", "pos_payment_request_message_failed");
-    const messageDeliveryStatus = delivery.fallbackDelivered ? "plain_text_fallback" : "failed";
     return {
       ok: true,
       sale,
@@ -3030,11 +3076,16 @@ export async function requestBarberPosSalePayment(user: UserAccount, saleId: str
       payment: null,
       routing: null,
       alreadyRequested: false,
-      messageDeliveryStatus,
+      requestId: delivery.request.id,
+      posSaleId: sale.id,
+      messageThreadId: delivery.request.message_thread_id ?? threadId,
+      paymentCardDelivered: false,
+      fallbackPlainMessageSent: delivery.fallbackDelivered,
+      reusedExistingRequest: false,
+      duplicateSaleVoided: false,
+      messageDeliveryStatus: "failed",
       error: "Unable to send the POS payment request message.",
-      message: delivery.fallbackDelivered
-        ? "Request created and sent as a plain message, but the payment card still needs retry."
-        : "Request created, but message delivery failed. Retry sending message.",
+      message: "Request created, but message delivery failed. Retry sending message.",
       debugCode: debug.debugCode,
       failedTable: debug.failedTable,
       failedConstraint: debug.failedConstraint,
@@ -3049,6 +3100,13 @@ export async function requestBarberPosSalePayment(user: UserAccount, saleId: str
     payment: null,
     routing: null,
     alreadyRequested: false,
+    requestId: delivery.request.id,
+    posSaleId: sale.id,
+    messageThreadId: delivery.request.message_thread_id ?? threadId,
+    paymentCardDelivered: true,
+    fallbackPlainMessageSent: delivery.fallbackDelivered,
+    reusedExistingRequest: false,
+    duplicateSaleVoided: false,
     messageDeliveryStatus: "delivered",
     message: "Payment request sent. Client approval is required before payout."
   };
@@ -3112,16 +3170,21 @@ export async function retryBarberPosSalePaymentRequestMessage(user: UserAccount,
   if (!delivery.delivered) {
     const debug = delivery.debug ?? buildPosSaleDebug(null, "messages", "pos_payment_request_message_failed");
     return {
-      ok: Boolean(delivery.fallbackDelivered),
+      ok: false,
       sale,
       request: delivery.request,
       payment: null,
       routing: null,
-      messageDeliveryStatus: delivery.fallbackDelivered ? "plain_text_fallback" : "failed",
+      requestId: delivery.request.id,
+      posSaleId: sale.id,
+      messageThreadId: delivery.request.message_thread_id ?? threadId,
+      paymentCardDelivered: false,
+      fallbackPlainMessageSent: delivery.fallbackDelivered,
+      reusedExistingRequest: true,
+      duplicateSaleVoided: false,
+      messageDeliveryStatus: "failed",
       error: "Unable to send the POS payment request message.",
-      message: delivery.fallbackDelivered
-        ? "Request was sent as a plain message, but the payment card still needs retry."
-        : "Request exists, but message delivery is still failing.",
+      message: "Request exists, but message delivery is still failing.",
       debugCode: debug.debugCode,
       failedTable: debug.failedTable,
       failedConstraint: debug.failedConstraint,
@@ -3135,6 +3198,13 @@ export async function retryBarberPosSalePaymentRequestMessage(user: UserAccount,
     request: delivery.request,
     payment: null,
     routing: null,
+    requestId: delivery.request.id,
+    posSaleId: sale.id,
+    messageThreadId: delivery.request.message_thread_id ?? threadId,
+    paymentCardDelivered: true,
+    fallbackPlainMessageSent: delivery.fallbackDelivered,
+    reusedExistingRequest: true,
+    duplicateSaleVoided: false,
     messageDeliveryStatus: "delivered",
     message: "Payment request sent. Client approval is required before payout."
   };

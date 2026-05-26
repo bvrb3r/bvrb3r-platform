@@ -388,6 +388,8 @@ describe("BarberCheckoutScreen", () => {
         request: { id: "request-1", status: "pending_message_failed" },
         payment: null,
         routing: null,
+        paymentCardDelivered: false,
+        fallbackPlainMessageSent: false,
         messageDeliveryStatus: "failed",
         message: "Request created, but message delivery failed. Retry sending message.",
         debugCode: "missing_column",
@@ -427,6 +429,71 @@ describe("BarberCheckoutScreen", () => {
     expect(fetchMock).toHaveBeenNthCalledWith(5, "/api/barber/pos-sales/sale-card-1/payment-request/retry-message", expect.objectContaining({
       method: "POST"
     }));
+  });
+
+  it("does not show a retry warning when fallback delivery still produced the payment card", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        ok: true,
+        quote: {
+          subtotalCents: 3500,
+          platformFeeCents: 175,
+          clientFeeCents: 0,
+          discountCents: 0,
+          tipCents: 0,
+          totalCents: 3500,
+          barberPayoutCents: 3325,
+          shopSplitCents: 0,
+          relationshipType: "freelance"
+        }
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        clients: [{
+          clientId: TEST_CLIENT_ID,
+          clientName: "Jordan Client",
+          email: "jordan@example.com"
+        }]
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        ok: true,
+        sale: { id: "sale-card-2" }
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        ok: true,
+        sale: { id: "sale-card-2", status: "payment_pending", payment_method: "card_on_file" },
+        request: { id: "request-2", status: "pending" },
+        payment: null,
+        routing: null,
+        requestId: "request-2",
+        posSaleId: "sale-card-2",
+        messageThreadId: "thread-2",
+        paymentCardDelivered: true,
+        fallbackPlainMessageSent: true,
+        reusedExistingRequest: false,
+        duplicateSaleVoided: false,
+        messageDeliveryStatus: "delivered",
+        message: "Payment request sent. Client approval is required before payout."
+      }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <BarberCheckoutScreen
+        barberName="Blaze King"
+        barberRole="booth_rent_barber"
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "$35.00" }));
+    fireEvent.click(screen.getByRole("button", { name: /Review Sale/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Charge $35.00" }));
+    const search = await screen.findByPlaceholderText("Search clients by name, phone, or email");
+    fireEvent.change(search, { target: { value: "Jordan" } });
+    fireEvent.click(await screen.findByRole("button", { name: /Jordan Client/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Send payment request/ }));
+
+    await waitFor(() => expect(screen.getByText("Payment request sent. Client approval is required before payout.")).toBeInTheDocument());
+    expect(screen.queryByText(/payment card still needs retry/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Retry sending message/ })).not.toBeInTheDocument();
   });
 
   it("keeps paid appointments and money posture out of the Checkout tab", () => {

@@ -1864,10 +1864,10 @@ export function BarberSettingsScreen({
                               type="button"
                               variant="secondary"
                               className="h-9 px-3 text-xs"
-                              disabled={transaction.transactionType === "pos_request" && ["Superseded", "Canceled"].includes(transaction.statusLabel)}
+                              disabled={transaction.transactionType === "pos_request" && ["Closed duplicate", "Canceled", "Declined", "Expired", "Failed"].includes(transaction.statusLabel)}
                             >
                               {transaction.transactionType === "pos_request"
-                                ? ["Superseded", "Canceled"].includes(transaction.statusLabel) ? "Request closed" : "View request"
+                                ? ["Closed duplicate", "Canceled", "Declined", "Expired", "Failed"].includes(transaction.statusLabel) ? "Request closed" : "View request"
                                 : "Receipt"}
                             </Button>
                           </div>
@@ -2457,10 +2457,10 @@ export function BarberSettingsScreen({
                       type="button"
                       variant="secondary"
                       className="h-10 px-3 text-xs"
-                      disabled={transaction.transactionType === "pos_request" && ["Superseded", "Canceled"].includes(transaction.statusLabel)}
+                      disabled={transaction.transactionType === "pos_request" && ["Closed duplicate", "Canceled", "Declined", "Expired", "Failed"].includes(transaction.statusLabel)}
                     >
                       {transaction.transactionType === "pos_request"
-                        ? ["Superseded", "Canceled"].includes(transaction.statusLabel) ? "Request closed" : "View request"
+                        ? ["Closed duplicate", "Canceled", "Declined", "Expired", "Failed"].includes(transaction.statusLabel) ? "Request closed" : "View request"
                         : "View receipt"}
                     </Button>
                   </div>

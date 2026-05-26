@@ -598,7 +598,33 @@ describe("BarberSettingsScreen Stripe return sync", () => {
             barberPayoutAmount: null,
             status: "payment_pending",
             statusLabel: "Pending approval",
-            postureLabel: "Collected through BVRB3R. Eligible after routing.",
+            postureLabel: "Awaiting client approval.",
+            canMessage: true
+          },
+          {
+            id: "pos:request-declined",
+            transactionType: "pos_request",
+            sourceId: "request-declined",
+            appointmentId: null,
+            posSaleId: "sale-request-declined",
+            paymentId: null,
+            requestId: "request-declined",
+            messageThreadId: "thread-declined",
+            clientId: "client-3",
+            clientProfileId: "profile-client-3",
+            customerName: "Avery Client",
+            customerPhone: null,
+            customerEmail: "avery@example.com",
+            serviceLabel: "Custom Amount",
+            note: null,
+            occurredAt: "2026-05-24T11:30:00.000Z",
+            paymentMethodLabel: "Card on File",
+            grossAmount: 35,
+            platformFeeAmount: 0,
+            barberPayoutAmount: null,
+            status: "voided",
+            statusLabel: "Declined",
+            postureLabel: "No payment collected.",
             canMessage: true
           }
         ],
@@ -620,11 +646,14 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     expect(within(dialog).getByText("Jordan Client")).toBeInTheDocument();
     expect(within(dialog).getByText("Walk-in customer")).toBeInTheDocument();
     expect(within(dialog).getByText("Riley Client")).toBeInTheDocument();
+    expect(within(dialog).getByText("Avery Client")).toBeInTheDocument();
     expect(within(dialog).getByText(/Cash \| \$35/)).toBeInTheDocument();
     expect(within(dialog).getByText(/Card\/App \| \$5/)).toBeInTheDocument();
     expect(within(dialog).getByText(/Pending approval/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Declined \| No payment collected\./)).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Request closed" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Message unavailable" })).toBeDisabled();
-    expect(screen.getAllByRole("button", { name: "Message" })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "Message" })).toHaveLength(3);
   });
 
   it("opens Manage Your Business tiles in compact modal workspaces", () => {

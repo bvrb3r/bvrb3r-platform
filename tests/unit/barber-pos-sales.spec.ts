@@ -850,6 +850,14 @@ describe("barber POS sales", () => {
       payment: null,
       routing: null,
       alreadyRequested: false,
+      requestId: request.request.id,
+      posSaleId: created.sale.id,
+      messageThreadId: "message_threads-1",
+      paymentCardDelivered: true,
+      fallbackPlainMessageSent: false,
+      reusedExistingRequest: false,
+      duplicateSaleVoided: false,
+      messageDeliveryStatus: "delivered",
       message: "Payment request sent. Client approval is required before payout."
     });
     expect(tables.pos_payment_requests[0]).toMatchObject({
@@ -914,7 +922,10 @@ describe("barber POS sales", () => {
     expect(second).toMatchObject({
       ok: true,
       alreadyRequested: true,
-      request: expect.objectContaining({ id: first.request.id })
+      request: expect.objectContaining({ id: first.request.id }),
+      paymentCardDelivered: true,
+      reusedExistingRequest: true,
+      duplicateSaleVoided: false
     });
     expect(tables.pos_payment_requests).toHaveLength(1);
     expect(tables.messages.filter((message) => {
@@ -968,7 +979,10 @@ describe("barber POS sales", () => {
       ok: true,
       alreadyRequested: true,
       request: expect.objectContaining({ id: firstRequest.request.id }),
-      sale: expect.objectContaining({ id: firstSale.sale.id })
+      sale: expect.objectContaining({ id: firstSale.sale.id }),
+      paymentCardDelivered: true,
+      reusedExistingRequest: true,
+      duplicateSaleVoided: true
     });
     expect(tables.pos_payment_requests).toHaveLength(1);
     expect(tables.pos_sales.find((sale) => sale.id === secondSale.sale.id)).toMatchObject({
@@ -1093,14 +1107,19 @@ describe("barber POS sales", () => {
 
     expect(request).toMatchObject({
       ok: true,
-      messageDeliveryStatus: "plain_text_fallback",
-      message: "Request created and sent as a plain message, but the payment card still needs retry.",
-      debugCode: "missing_column",
-      failedTable: "messages",
-      failedColumn: "metadata"
+      requestId: request.request.id,
+      posSaleId: created.sale.id,
+      messageThreadId: "message_threads-1",
+      paymentCardDelivered: true,
+      fallbackPlainMessageSent: true,
+      reusedExistingRequest: false,
+      duplicateSaleVoided: false,
+      messageDeliveryStatus: "delivered",
+      message: "Payment request sent. Client approval is required before payout."
     });
     expect(tables.pos_payment_requests[0]).toMatchObject({
-      status: "pending_message_failed"
+      status: "pending",
+      message_thread_id: "message_threads-1"
     });
     expect(tables.messages).toHaveLength(1);
     expect(tables.messages[0]).toMatchObject({
@@ -1155,7 +1174,9 @@ describe("barber POS sales", () => {
       clientId: "6607bce8-3636-46e8-9bbd-eabd9e5ad065"
     });
     const initial = await requestBarberPosSalePayment(barberUser(), created.sale.id);
-    expect(initial.messageDeliveryStatus).toBe("plain_text_fallback");
+    expect(initial.messageDeliveryStatus).toBe("delivered");
+    expect(initial.paymentCardDelivered).toBe(true);
+    expect(initial.fallbackPlainMessageSent).toBe(true);
     expect(tables.messages).toHaveLength(1);
 
     createSupabaseAdminClientMock.mockReturnValue(createSupabaseMock(tables, {
@@ -1165,10 +1186,13 @@ describe("barber POS sales", () => {
 
     expect(retried).toMatchObject({
       ok: true,
-      messageDeliveryStatus: "plain_text_fallback",
+      messageDeliveryStatus: "delivered",
+      paymentCardDelivered: true,
+      fallbackPlainMessageSent: true,
+      reusedExistingRequest: true,
       request: expect.objectContaining({
         id: initial.request.id,
-        status: "pending_message_failed"
+        status: "pending"
       })
     });
     expect(tables.messages).toHaveLength(1);
