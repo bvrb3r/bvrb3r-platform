@@ -68,7 +68,10 @@ const queuePayload = {
     existingExecutionStatus: null,
     ineligibleReasons: [],
     warnings: [],
-    canRelease: true
+    canValidate: true,
+    canRelease: true,
+    releaseBlockedReason: null,
+    releaseActionLabel: "Release payout"
   }]
 };
 
@@ -134,6 +137,8 @@ describe("ArchitectFreelancePayoutQueue", () => {
         items: [{
           ...queuePayload.items[0],
           canRelease: false,
+          releaseBlockedReason: "Missing: external_account, business_profile.url.",
+          releaseActionLabel: "Payout blocked",
           ineligibleReasons: ["Missing: external_account, business_profile.url."],
           stripePayoutReadiness: {
             ...queuePayload.items[0].stripePayoutReadiness,
@@ -155,7 +160,46 @@ describe("ArchitectFreelancePayoutQueue", () => {
     expect(screen.getByText("Stripe payout setup incomplete")).toBeInTheDocument();
     expect(screen.getAllByText("Missing: external_account, business_profile.url.").length).toBeGreaterThan(0);
     expect(screen.getByText("Missing: external_account, business_profile.url")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Release payout" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Payout blocked" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Validate" })).not.toBeDisabled();
+  });
+
+  it("does not trigger release for a Stripe-blocked row", () => {
+    queueHookMock.mockReturnValue({
+      data: {
+        ...queuePayload,
+        summary: {
+          readyCount: 1,
+          readyAmount: 8.55,
+          blockedCount: 1,
+          releasedCount: 0
+        },
+        items: [{
+          ...queuePayload.items[0],
+          canRelease: false,
+          releaseBlockedReason: "Barber Stripe Connect account is not payout ready.",
+          releaseActionLabel: "Payout blocked",
+          ineligibleReasons: ["Barber Stripe Connect account is not payout ready."],
+          stripePayoutReadiness: {
+            ...queuePayload.items[0].stripePayoutReadiness,
+            canReceivePayouts: false,
+            requiresOnboarding: true,
+            displayStatus: "payouts_disabled",
+            displayMessage: "Barber Stripe Connect account is not payout ready."
+          }
+        }]
+      },
+      isLoading: false,
+      isError: false,
+      error: null
+    });
+
+    render(<ArchitectFreelancePayoutQueue />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Payout blocked" }));
+
+    expect(releaseMutateAsyncMock).not.toHaveBeenCalled();
+    expect(screen.getAllByText("Barber Stripe Connect account is not payout ready.").length).toBeGreaterThan(0);
   });
 
   it("shows queue warnings without hiding visible ready rows", () => {

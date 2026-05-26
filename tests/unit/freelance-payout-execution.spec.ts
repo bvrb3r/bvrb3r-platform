@@ -527,6 +527,8 @@ describe("freelance payout execution", () => {
       expect.objectContaining({
         routingRecordId: "routing-missing-payment",
         canRelease: false,
+        releaseBlockedReason: "Payout context could not be fully loaded. Validate this row before release.",
+        releaseActionLabel: "Cannot release yet",
         ineligibleReasons: ["Payout context could not be fully loaded. Validate this row before release."]
       })
     ]));
@@ -576,7 +578,7 @@ describe("freelance payout execution", () => {
     const result = await listArchitectFreelancePayoutQueue();
 
     expect(result.items).toHaveLength(2);
-    expect(result.summary.readyCount).toBe(1);
+    expect(result.summary.readyCount).toBe(2);
     expect(result.summary.blockedCount).toBe(1);
     expect(result.items).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -586,6 +588,8 @@ describe("freelance payout execution", () => {
       expect.objectContaining({
         routingRecordId: "routing-disputed-appointment",
         canRelease: false,
+        releaseBlockedReason: "An active dispute hold blocks payout release.",
+        releaseActionLabel: "Cannot release yet",
         ineligibleReasons: expect.arrayContaining(["An active dispute hold blocks payout release."])
       })
     ]));
@@ -665,6 +669,30 @@ describe("freelance payout execution", () => {
     expect(result.eligible).toBe(false);
     expect(result.reasons).toContain("Missing: external_account, business_profile.url.");
     expect(result.stripePayoutReadiness?.displayStatus).toBe("incomplete");
+  });
+
+  it("does not create a payout execution when release is blocked by Stripe readiness", async () => {
+    const tables = createBaseTables({
+      connected_accounts: [{
+        ...createBaseTables().connected_accounts[0],
+        payout_readiness_status: "needs_attention",
+        requirements_currently_due: ["external_account"]
+      }]
+    });
+    const supabase = createSupabaseStub(tables);
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const result = await releaseFreelanceRoutingPayout({
+      routingRecordId: ROUTING_ID,
+      requestedByProfileId: "architect-profile"
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toBe("Missing: external_account.");
+    expect(result.eligibility.reasons).toContain("Missing: external_account.");
+    expect(tables.payout_executions).toHaveLength(0);
+    expect(tables.payment_routing_records[0].released_at).toBeNull();
+    expect(createStripeTransferMock).not.toHaveBeenCalled();
   });
 
   it("supports dry-run without creating executions or marking released", async () => {

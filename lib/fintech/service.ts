@@ -557,7 +557,10 @@ export type FreelancePayoutQueueItem = {
   existingExecutionStatus: PayoutExecutionStatus | null;
   ineligibleReasons: string[];
   warnings: string[];
+  canValidate: boolean;
   canRelease: boolean;
+  releaseBlockedReason: string | null;
+  releaseActionLabel: string;
 };
 
 export type FreelancePayoutQueuePayload = {
@@ -4762,6 +4765,7 @@ function mapFreelanceQueueItem(context: FreelancePayoutReleaseContext, eligibili
     : routing.appointment_id
       ? "Booked appointment"
       : "Platform payment";
+  const releaseBlockedReason = eligibility.eligible ? null : eligibility.reasons[0] ?? "This payout cannot be released yet.";
 
   return {
     routingRecordId: routing.id,
@@ -4785,8 +4789,36 @@ function mapFreelanceQueueItem(context: FreelancePayoutReleaseContext, eligibili
     existingExecutionStatus: eligibility.existingExecutionStatus,
     ineligibleReasons: eligibility.reasons,
     warnings: context.warnings,
-    canRelease: eligibility.eligible
+    canValidate: true,
+    canRelease: eligibility.eligible,
+    releaseBlockedReason,
+    releaseActionLabel: resolveFreelanceReleaseActionLabel(eligibility, releaseBlockedReason)
   };
+}
+
+function resolveFreelanceReleaseActionLabel(
+  eligibility: FreelancePayoutReleaseEligibility,
+  releaseBlockedReason: string | null
+) {
+  if (eligibility.eligible) {
+    return "Release payout";
+  }
+
+  if (eligibility.existingExecutionStatus === "pending") {
+    return "Release pending";
+  }
+
+  const stripeStatus = eligibility.stripePayoutReadiness?.displayStatus;
+  if (stripeStatus && stripeStatus !== "ready") {
+    return "Payout blocked";
+  }
+
+  const normalizedReason = String(releaseBlockedReason ?? "").toLowerCase();
+  if (normalizedReason.includes("stripe") || normalizedReason.includes("missing:")) {
+    return "Payout blocked";
+  }
+
+  return "Cannot release yet";
 }
 
 function mapFreelanceQueueItemFromRoutingFallback(
@@ -4816,20 +4848,11 @@ function mapFreelanceQueueItemFromRoutingFallback(
     existingExecutionStatus: null,
     ineligibleReasons: reasons,
     warnings,
-    canRelease: false
+    canValidate: true,
+    canRelease: false,
+    releaseBlockedReason: reasons[0] ?? "Payout context could not be fully loaded.",
+    releaseActionLabel: "Cannot release yet"
   };
-}
-
-function isConfirmedBlockedFreelanceQueueItem(item: FreelancePayoutQueueItem) {
-  if (item.payoutReadinessStatus === "blocked" || item.moneyRoutingStatus === "blocked" || item.moneyRoutingStatus === "manual_review") {
-    return true;
-  }
-
-  const reasons = item.ineligibleReasons.join(" ").toLowerCase();
-  return reasons.includes("active dispute hold")
-    || reasons.includes("on hold")
-    || reasons.includes("has been reversed")
-    || reasons.includes("refunded payments cannot be released");
 }
 
 export async function listArchitectFreelancePayoutQueue(): Promise<FreelancePayoutQueuePayload> {
@@ -4880,13 +4903,12 @@ export async function listArchitectFreelancePayoutQueue(): Promise<FreelancePayo
       ));
     }
   }
-  const blockedItems = items.filter(isConfirmedBlockedFreelanceQueueItem);
-  const readyItems = items.filter((item) => !isConfirmedBlockedFreelanceQueueItem(item));
+  const blockedItems = items.filter((item) => !item.canRelease);
 
   return {
     summary: {
-      readyCount: readyItems.length,
-      readyAmount: roundCurrency(readyItems.reduce((sum, item) => sum + item.barberPayoutAmount, 0)),
+      readyCount: items.length,
+      readyAmount: roundCurrency(items.reduce((sum, item) => sum + item.barberPayoutAmount, 0)),
       blockedCount: blockedItems.length,
       releasedCount: items.filter((item) => item.releasedAt || item.moneyRoutingStatus === "paid_out" || item.existingExecutionStatus === "executed").length
     },

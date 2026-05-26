@@ -246,7 +246,10 @@ describe("phase 15 payout routes", () => {
         existingExecutionStatus: null,
         ineligibleReasons: [],
         warnings: [],
-        canRelease: true
+        canValidate: true,
+        canRelease: true,
+        releaseBlockedReason: null,
+        releaseActionLabel: "Release payout"
       }]
     });
 

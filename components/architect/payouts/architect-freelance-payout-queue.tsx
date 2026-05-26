@@ -87,8 +87,9 @@ function QueueRow({
 }) {
   const isBusy = activeRoutingId === item.routingRecordId;
   const releaseDisabled = isBusy || !item.canRelease;
-  const reason = item.ineligibleReasons[0] ?? null;
+  const reason = item.releaseBlockedReason ?? item.ineligibleReasons[0] ?? null;
   const stripeRequirement = stripeRequirementCopy(item);
+  const releaseLabel = isBusy ? "Processing" : item.releaseActionLabel ?? (item.canRelease ? "Release payout" : "Payout blocked");
 
   return (
     <div className="rounded-[24px] border border-white/8 bg-black/24 p-4">
@@ -161,12 +162,27 @@ function QueueRow({
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
-        <Button type="button" variant="secondary" className="min-w-[9rem]" disabled={isBusy} onClick={() => onValidate(item)}>
+        <Button type="button" variant="secondary" className="min-w-[9rem]" disabled={isBusy || item.canValidate === false} onClick={() => onValidate(item)}>
           Validate
         </Button>
-        <Button type="button" className="min-w-[10rem]" disabled={releaseDisabled} onClick={() => onRelease(item)}>
+        <Button
+          type="button"
+          variant={item.canRelease ? "primary" : "secondary"}
+          className={cn(
+            "min-w-[10rem]",
+            !item.canRelease ? "border-amber-300/16 bg-amber-300/8 text-amber-50/72 shadow-none hover:translate-y-0 hover:border-amber-300/16 hover:bg-amber-300/8 hover:text-amber-50/72" : null
+          )}
+          disabled={releaseDisabled}
+          aria-disabled={releaseDisabled}
+          title={releaseDisabled && reason ? reason : undefined}
+          onClick={() => {
+            if (item.canRelease) {
+              onRelease(item);
+            }
+          }}
+        >
           {isBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : null}
-          Release payout
+          {releaseLabel}
         </Button>
       </div>
     </div>
@@ -200,6 +216,14 @@ export function ArchitectFreelancePayoutQueue() {
   }
 
   async function handleRelease(item: FreelancePayoutQueueItem) {
+    if (!item.canRelease) {
+      setFeedback({
+        tone: "info",
+        message: item.releaseBlockedReason ?? item.ineligibleReasons[0] ?? "This payout cannot be released yet."
+      });
+      return;
+    }
+
     setFeedback(null);
     setActiveRoutingId(item.routingRecordId);
     try {
