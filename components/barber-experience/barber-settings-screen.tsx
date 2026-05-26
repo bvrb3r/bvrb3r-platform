@@ -52,6 +52,7 @@ import {
   useRecordLegalAcceptanceMutation,
   type FintechApiError
 } from "@/lib/fintech/client";
+import type { BarberPayoutsPayload } from "@/lib/fintech/service";
 import { getStripePayoutReadinessLabel, isStripeConnectReadyForActivation } from "@/lib/fintech/payout-readiness";
 import { useMutateProfileMediaMutation, useProfileMediaWorkspaceQuery } from "@/lib/profile/client";
 import {
@@ -137,6 +138,7 @@ type AvailabilityTab = "hours" | "blocked";
 type TransactionFilter = "all" | "appointments" | "cash" | "card" | "requests";
 type AvailabilityLocationMode = "custom" | "shop" | "later";
 type SalesTrendRange = "today" | "week" | "month" | "year";
+type BarberPayoutTransaction = BarberPayoutsPayload["transactions"][number];
 type SalesTrendPoint = {
   label: string;
   cashCents: number;
@@ -355,6 +357,101 @@ function BusinessToolModal({
         <div className="mt-6">
           {children}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function TransactionReceiptModal({
+  transaction,
+  error,
+  onClose
+}: {
+  transaction: BarberPayoutTransaction | null;
+  error: string | null;
+  onClose: () => void;
+}) {
+  const isCash = transaction?.transactionType === "pos_cash";
+  const isPosSale = transaction?.transactionType === "pos_cash" || transaction?.transactionType === "pos_card";
+  const receiptNumber = transaction?.posSaleId ?? transaction?.paymentId ?? transaction?.appointmentId ?? transaction?.sourceId ?? "Not available";
+  const barberPayout = isCash
+    ? "Cash collected directly"
+    : transaction?.barberPayoutAmount === null || transaction?.barberPayoutAmount === undefined
+      ? "Pending routing"
+      : payoutCurrency(transaction.barberPayoutAmount);
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-end justify-center bg-black/76 px-4 py-5 backdrop-blur-sm sm:items-center"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="transaction-receipt-title"
+      data-testid="transaction-receipt-modal"
+    >
+      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-t-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(4,4,4,0.98))] p-5 shadow-[0_24px_70px_rgba(0,0,0,0.58),0_0_34px_rgba(163,255,18,0.12)] sm:rounded-[28px] sm:p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <SectionLabel>Receipt</SectionLabel>
+            <h2 id="transaction-receipt-title" className="mt-3 text-3xl font-black tracking-[-0.04em] text-white">
+              Transaction receipt
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-white/56">
+              {isCash ? "Cash collected directly. No platform payout." : "Collected through BVRB3R. Eligible after routing."}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/72 transition hover:border-[#a3ff12]/35 hover:text-[#a3ff12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a3ff12]/55"
+            aria-label="Close receipt"
+          >
+            <XCircle className="h-5 w-5" aria-hidden="true" />
+          </button>
+        </div>
+
+        {error ? (
+          <div className="mt-5 rounded-[18px] border border-red-400/25 bg-red-500/10 p-4 text-sm font-bold text-red-100">
+            {error}
+          </div>
+        ) : null}
+
+        {transaction ? (
+          <div className="mt-5 space-y-4">
+            <div className="rounded-[22px] border border-white/8 bg-black/28 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-lg font-black text-white">{transaction.customerName}</p>
+                  <p className="mt-2 text-sm text-white/56">{transaction.serviceLabel} | {formatDateTime(transaction.occurredAt)}</p>
+                  {transaction.customerPhone || transaction.customerEmail ? (
+                    <p className="mt-2 text-sm text-white/44">{transaction.customerPhone ?? transaction.customerEmail}</p>
+                  ) : null}
+                </div>
+                <StatusPill tone={isCash ? "amber" : transaction.statusLabel === "Paid" ? "green" : "neutral"}>
+                  {transaction.statusLabel}
+                </StatusPill>
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              {[
+                ["Payment method", transaction.paymentMethodLabel],
+                ["Gross amount", payoutCurrency(transaction.grossAmount)],
+                ["Platform fee", payoutCurrency(transaction.platformFeeAmount)],
+                ["Barber payout", barberPayout],
+                ["Shop split", payoutCurrency(transaction.shopSplitAmount ?? 0)],
+                ["Payment status", isCash ? "Cash recorded" : transaction.statusLabel],
+                ["Payout readiness", isCash ? "No platform payout" : formatStatusLabel(transaction.payoutReadinessStatus ?? "pending")],
+                ["Money routing", isCash ? "No routing required" : formatStatusLabel(transaction.moneyRoutingStatus ?? "pending")],
+                [isPosSale ? "POS sale ID" : "Receipt number", receiptNumber]
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-[16px] border border-white/8 bg-black/24 p-4">
+                  <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-white/40">{label}</p>
+                  <p className="mt-2 break-words text-sm font-black text-white">{value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -690,6 +787,8 @@ export function BarberSettingsScreen({
   const [activeBusinessPanel, setActiveBusinessPanel] = useState<BusinessPanelKey | null>(null);
   const [availabilityTab, setAvailabilityTab] = useState<AvailabilityTab>("hours");
   const [transactionFilter, setTransactionFilter] = useState<TransactionFilter>("all");
+  const [receiptTransactionId, setReceiptTransactionId] = useState<string | null>(null);
+  const [receiptError, setReceiptError] = useState<string | null>(null);
   const [salesTrendRange, setSalesTrendRange] = useState<SalesTrendRange>("today");
   const [serviceDraft, setServiceDraft] = useState({
     name: "Haircut",
@@ -766,7 +865,14 @@ export function BarberSettingsScreen({
   const cardAppCollectedToday = moneyPosture?.cardAppCollectedToday ?? overviewPayload?.earnings.grossSales ?? 0;
   const appPayoutEligible = moneyPosture?.appPayoutEligible ?? eligiblePayoutAmount ?? 0;
   const grossTotalToday = moneyPosture?.grossTotalToday ?? cashCollectedToday + cardAppCollectedToday;
-  const payoutTransactions = payoutsPayload?.transactions ?? [];
+  const payoutTransactions = useMemo(
+    () => payoutsPayload?.transactions ?? [],
+    [payoutsPayload?.transactions]
+  );
+  const receiptTransaction = useMemo(
+    () => payoutTransactions.find((transaction) => transaction.id === receiptTransactionId) ?? null,
+    [payoutTransactions, receiptTransactionId]
+  );
   const selectedSalesTrend = payoutsPayload?.salesTrend?.[salesTrendRange] ?? [];
   const filteredTransactions = payoutTransactions.filter((transaction) => {
     if (transactionFilter === "appointments") {
@@ -1107,6 +1213,32 @@ export function BarberSettingsScreen({
     } catch (error) {
       setFeedback({ tone: "error", message: readableError(error, "Unable to open this client conversation right now.") });
     }
+  }
+
+  function handleOpenTransactionReceipt(transaction: BarberPayoutTransaction) {
+    const isPosReceipt = transaction.transactionType === "pos_cash" || transaction.transactionType === "pos_card";
+    const missingPosSaleId = isPosReceipt && !transaction.posSaleId;
+    const missingAppointmentId = transaction.transactionType === "appointment" && !transaction.appointmentId && !transaction.paymentId;
+    setReceiptTransactionId(transaction.id);
+    setReceiptError(
+      missingPosSaleId || missingAppointmentId
+        ? "Receipt data could not be loaded for this sale."
+        : null
+    );
+  }
+
+  function handleTransactionSecondaryAction(transaction: BarberPayoutTransaction) {
+    if (transaction.transactionType === "pos_request") {
+      setFeedback({ tone: "info", message: "Receipt appears after the client approves payment." });
+      return;
+    }
+
+    handleOpenTransactionReceipt(transaction);
+  }
+
+  function closeReceiptModal() {
+    setReceiptTransactionId(null);
+    setReceiptError(null);
   }
 
   useEffect(() => {
@@ -1841,7 +1973,7 @@ export function BarberSettingsScreen({
                   </div>
                   <div className="space-y-2" data-testid="transactions-ledger-feed">
                     {filteredTransactions.length ? filteredTransactions.map((transaction) => (
-                      <div key={transaction.id} className="rounded-[18px] border border-white/8 bg-black/24 p-4">
+                      <div key={transaction.id} data-testid={`transaction-row-${transaction.id}`} className="rounded-[18px] border border-white/8 bg-black/24 p-4">
                         <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center">
                           <div className="min-w-0">
                             <p className="truncate text-sm font-black text-white">{transaction.customerName}</p>
@@ -1865,6 +1997,7 @@ export function BarberSettingsScreen({
                               variant="secondary"
                               className="h-9 px-3 text-xs"
                               disabled={transaction.transactionType === "pos_request" && ["Closed duplicate", "Canceled", "Declined", "Expired", "Failed"].includes(transaction.statusLabel)}
+                              onClick={() => handleTransactionSecondaryAction(transaction)}
                             >
                               {transaction.transactionType === "pos_request"
                                 ? ["Closed duplicate", "Canceled", "Declined", "Expired", "Failed"].includes(transaction.statusLabel) ? "Request closed" : "View request"
@@ -2386,7 +2519,7 @@ export function BarberSettingsScreen({
             </div>
             <div className="mt-5 space-y-3">
               {payoutTransactions.length ? payoutTransactions.map((transaction) => (
-                <div key={transaction.id} className="rounded-[24px] border border-white/8 bg-black/24 p-4">
+                <div key={transaction.id} data-testid={`transaction-row-${transaction.id}`} className="rounded-[24px] border border-white/8 bg-black/24 p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
@@ -2458,6 +2591,7 @@ export function BarberSettingsScreen({
                       variant="secondary"
                       className="h-10 px-3 text-xs"
                       disabled={transaction.transactionType === "pos_request" && ["Closed duplicate", "Canceled", "Declined", "Expired", "Failed"].includes(transaction.statusLabel)}
+                      onClick={() => handleTransactionSecondaryAction(transaction)}
                     >
                       {transaction.transactionType === "pos_request"
                         ? ["Closed duplicate", "Canceled", "Declined", "Expired", "Failed"].includes(transaction.statusLabel) ? "Request closed" : "View request"
@@ -2536,6 +2670,14 @@ export function BarberSettingsScreen({
           />
         </GlassCard>
       </div>
+
+      {receiptTransactionId ? (
+        <TransactionReceiptModal
+          transaction={receiptTransaction}
+          error={receiptError ?? (receiptTransaction ? null : "Receipt data could not be loaded for this sale.")}
+          onClose={closeReceiptModal}
+        />
+      ) : null}
 
       {quickSetupModal ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/72 px-4 py-5 backdrop-blur-sm sm:items-center" role="dialog" aria-modal="true">

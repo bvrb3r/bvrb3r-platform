@@ -576,6 +576,35 @@ describe("BarberSettingsScreen Stripe return sync", () => {
             canMessage: false
           },
           {
+            id: "pos:card-9",
+            transactionType: "pos_card",
+            sourceId: "card-9",
+            appointmentId: null,
+            posSaleId: "pos-sale-card-9",
+            paymentId: "payment-card-9",
+            requestId: "request-card-9",
+            messageThreadId: "thread-card-9",
+            clientId: "client-phillip",
+            clientProfileId: "profile-client-phillip",
+            customerName: "Phillip mcgee",
+            customerPhone: "8135550909",
+            customerEmail: "phillip@example.com",
+            serviceLabel: "Custom Amount",
+            note: null,
+            occurredAt: "2026-05-24T12:30:00.000Z",
+            paymentMethodLabel: "Card on File",
+            grossAmount: 9,
+            platformFeeAmount: 0.45,
+            barberPayoutAmount: 8.55,
+            shopSplitAmount: 0,
+            payoutReadinessStatus: "ready",
+            moneyRoutingStatus: "pending",
+            status: "paid",
+            statusLabel: "Paid",
+            postureLabel: "Collected through BVRB3R. Eligible after routing.",
+            canMessage: true
+          },
+          {
             id: "pos:request-1",
             transactionType: "pos_request",
             sourceId: "request-1",
@@ -600,6 +629,35 @@ describe("BarberSettingsScreen Stripe return sync", () => {
             statusLabel: "Pending approval",
             postureLabel: "Awaiting client approval.",
             canMessage: true
+          },
+          {
+            id: "pos:missing-receipt",
+            transactionType: "pos_card",
+            sourceId: "missing-receipt",
+            appointmentId: null,
+            posSaleId: null,
+            paymentId: null,
+            requestId: null,
+            messageThreadId: null,
+            clientId: null,
+            clientProfileId: null,
+            customerName: "Missing Sale",
+            customerPhone: null,
+            customerEmail: null,
+            serviceLabel: "Custom Amount",
+            note: null,
+            occurredAt: "2026-05-24T11:45:00.000Z",
+            paymentMethodLabel: "Card on File",
+            grossAmount: 9,
+            platformFeeAmount: 0.45,
+            barberPayoutAmount: 8.55,
+            shopSplitAmount: 0,
+            payoutReadinessStatus: "ready",
+            moneyRoutingStatus: "pending",
+            status: "paid",
+            statusLabel: "Paid",
+            postureLabel: "Collected through BVRB3R. Eligible after routing.",
+            canMessage: false
           },
           {
             id: "pos:request-declined",
@@ -645,15 +703,42 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     expect(within(dialog).getByTestId("transactions-ledger-feed")).toBeInTheDocument();
     expect(within(dialog).getByText("Jordan Client")).toBeInTheDocument();
     expect(within(dialog).getByText("Walk-in customer")).toBeInTheDocument();
+    expect(within(dialog).getByText("Phillip mcgee")).toBeInTheDocument();
     expect(within(dialog).getByText("Riley Client")).toBeInTheDocument();
+    expect(within(dialog).getByText("Missing Sale")).toBeInTheDocument();
     expect(within(dialog).getByText("Avery Client")).toBeInTheDocument();
     expect(within(dialog).getByText(/Cash \| \$35/)).toBeInTheDocument();
     expect(within(dialog).getByText(/Card\/App \| \$5/)).toBeInTheDocument();
+    expect(within(screen.getByTestId("transaction-row-pos:card-9")).getByText(/Card on File \| \$9/)).toBeInTheDocument();
     expect(within(dialog).getByText(/Pending approval/)).toBeInTheDocument();
     expect(within(dialog).getByText(/Declined \| No payment collected\./)).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Request closed" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Message unavailable" })).toBeDisabled();
-    expect(screen.getAllByRole("button", { name: "Message" })).toHaveLength(3);
+    expect(screen.getAllByRole("button", { name: "Message" })).toHaveLength(4);
+
+    fireEvent.click(within(screen.getByTestId("transaction-row-pos:card-9")).getByRole("button", { name: "Receipt" }));
+    const cardReceipt = screen.getByRole("dialog", { name: "Transaction receipt" });
+    expect(within(cardReceipt).getByText("Phillip mcgee")).toBeInTheDocument();
+    expect(within(cardReceipt).getByText("Card on File")).toBeInTheDocument();
+    expect(within(cardReceipt).getByText("$9.00")).toBeInTheDocument();
+    expect(within(cardReceipt).getByText("$0.45")).toBeInTheDocument();
+    expect(within(cardReceipt).getByText("$8.55")).toBeInTheDocument();
+    expect(within(cardReceipt).getByText("Ready")).toBeInTheDocument();
+    expect(within(cardReceipt).getByText("Pending")).toBeInTheDocument();
+    fireEvent.click(within(cardReceipt).getByLabelText("Close receipt"));
+
+    fireEvent.click(within(screen.getByTestId("transaction-row-pos:cash-1")).getByRole("button", { name: "Receipt" }));
+    const cashReceipt = screen.getByRole("dialog", { name: "Transaction receipt" });
+    expect(within(cashReceipt).getByText("Walk-in customer")).toBeInTheDocument();
+    expect(within(cashReceipt).getByText("Cash")).toBeInTheDocument();
+    expect(within(cashReceipt).getByText("$35.00")).toBeInTheDocument();
+    expect(within(cashReceipt).getByText("Cash collected directly")).toBeInTheDocument();
+    expect(within(cashReceipt).getByText("No platform payout")).toBeInTheDocument();
+    fireEvent.click(within(cashReceipt).getByLabelText("Close receipt"));
+
+    fireEvent.click(within(screen.getByTestId("transaction-row-pos:missing-receipt")).getByRole("button", { name: "Receipt" }));
+    const missingReceipt = screen.getByRole("dialog", { name: "Transaction receipt" });
+    expect(within(missingReceipt).getByText("Receipt data could not be loaded for this sale.")).toBeInTheDocument();
   });
 
   it("opens Manage Your Business tiles in compact modal workspaces", () => {

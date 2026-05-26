@@ -580,6 +580,9 @@ export type BarberPayoutsPayload = {
     grossAmount: number;
     platformFeeAmount: number;
     barberPayoutAmount: number | null;
+    shopSplitAmount: number | null;
+    payoutReadinessStatus: string | null;
+    moneyRoutingStatus: string | null;
     status: string;
     statusLabel: string;
     postureLabel: string;
@@ -3586,6 +3589,9 @@ async function loadBarberMoneyReporting(input: {
       grossAmount: roundCurrency(numeric(payment.amount)),
       platformFeeAmount: roundCurrency(numeric(routing?.platform_fee_amount)),
       barberPayoutAmount: routing ? roundCurrency(numeric(routing.barber_payout_amount)) : null,
+      shopSplitAmount: routing ? roundCurrency(numeric(routing.shop_split_amount)) : null,
+      payoutReadinessStatus: routing?.payout_readiness_status ?? null,
+      moneyRoutingStatus: routing?.money_routing_status ?? null,
       status: appointment?.status ?? payment.payment_status,
       statusLabel: appointment?.status === "completed" ? "Completed / Paid" : "Paid",
       postureLabel: "Collected through BVRB3R. Eligible after routing.",
@@ -3642,6 +3648,9 @@ async function loadBarberMoneyReporting(input: {
       grossAmount: centsToAmount(posSaleTotalCents(sale) || request?.amount_cents),
       platformFeeAmount: isCash ? 0 : roundCurrency(numeric(routing?.platform_fee_amount ?? sale.platform_fee_cents) / (routing ? 1 : 100)),
       barberPayoutAmount: isCash ? null : routing ? roundCurrency(numeric(routing.barber_payout_amount)) : null,
+      shopSplitAmount: isCash ? 0 : routing ? roundCurrency(numeric(routing.shop_split_amount)) : null,
+      payoutReadinessStatus: isCash ? null : routing?.payout_readiness_status ?? null,
+      moneyRoutingStatus: isCash ? null : routing?.money_routing_status ?? null,
       status: sale.status,
       statusLabel,
       postureLabel: isCash
