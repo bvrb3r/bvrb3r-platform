@@ -17,6 +17,7 @@ import {
   WalletCards
 } from "lucide-react";
 import { ARCHITECT_PRIMARY_NAV_ITEMS } from "@/components/architect-experience/architect-tab-config";
+import { ArchitectFreelancePayoutQueue } from "@/components/architect/payouts/architect-freelance-payout-queue";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
@@ -1084,7 +1085,10 @@ export function ArchitectConsole({
       </section>
 
       <div id="architect-money-payouts" className="scroll-mt-24">
+        <ArchitectFreelancePayoutQueue />
+        <div className="mt-4">
         {moneyRiskSection}
+        </div>
       </div>
 
       <Card id="architect-money-refunds" className="scroll-mt-24 rounded-[32px] p-6">

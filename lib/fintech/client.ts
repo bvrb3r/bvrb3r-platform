@@ -8,6 +8,9 @@ import type {
   ExecuteFintechPayoutsResult,
   FintechManagementPayload,
   FintechPayoutsPayload,
+  FreelancePayoutQueuePayload,
+  FreelancePayoutReleaseEligibility,
+  FreelancePayoutReleaseResult,
   LegalAcceptanceView,
   MembershipCompensationView,
   StripeConnectSessionResult
@@ -27,6 +30,9 @@ type BarberFintechReadinessResponse = BarberFintechReadinessPayload;
 type BarberPayoutsResponse = BarberPayoutsPayload;
 type FintechManagementResponse = FintechManagementPayload;
 type FintechPayoutsResponse = FintechPayoutsPayload;
+type FreelancePayoutQueueResponse = FreelancePayoutQueuePayload;
+type FreelancePayoutValidationResponse = FreelancePayoutReleaseEligibility;
+type FreelancePayoutReleaseResponse = FreelancePayoutReleaseResult;
 type StripeConnectSessionResponse = StripeConnectSessionResult;
 type RefreshStripeAccountResponse = {
   account: ConnectedAccountReadinessView;
@@ -119,6 +125,15 @@ export function useFintechPayoutsQuery(enabled = true) {
     queryFn: () => requestJson<FintechPayoutsResponse>("/api/operations/fintech/payouts"),
     enabled,
     staleTime: 15_000
+  });
+}
+
+export function useArchitectFreelancePayoutQueueQuery(enabled = true) {
+  return useQuery({
+    queryKey: ["fintech", "architect", "freelance-payouts"],
+    queryFn: () => requestJson<FreelancePayoutQueueResponse>("/api/architect/payouts/queue"),
+    enabled,
+    staleTime: 10_000
   });
 }
 
@@ -283,6 +298,32 @@ export function useExecuteFintechPayoutsMutation() {
       }),
     onSuccess: async () => {
       await invalidateFintechQueries(queryClient);
+    }
+  });
+}
+
+export function useValidateFreelancePayoutMutation() {
+  return useMutation({
+    mutationFn: (input: { routingRecordId: string }) =>
+      requestJson<FreelancePayoutValidationResponse>("/api/architect/payouts/validate", {
+        method: "POST",
+        body: JSON.stringify(input)
+      })
+  });
+}
+
+export function useReleaseFreelancePayoutMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: { routingRecordId: string; dryRun?: boolean }) =>
+      requestJson<FreelancePayoutReleaseResponse>("/api/architect/payouts/release", {
+        method: "POST",
+        body: JSON.stringify(input)
+      }),
+    onSuccess: async () => {
+      await invalidateFintechQueries(queryClient);
+      await queryClient.invalidateQueries({ queryKey: ["fintech", "architect", "freelance-payouts"] });
     }
   });
 }

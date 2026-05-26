@@ -1,0 +1,475 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const {
+  createSupabaseAdminClientMock,
+  isSupabaseEnabledMock,
+  createStripeTransferMock,
+  syncWalletBalancesForPaymentMock
+} = vi.hoisted(() => ({
+  createSupabaseAdminClientMock: vi.fn(),
+  isSupabaseEnabledMock: vi.fn(() => true),
+  createStripeTransferMock: vi.fn(),
+  syncWalletBalancesForPaymentMock: vi.fn()
+}));
+
+vi.mock("@/lib/supabase/admin", () => ({
+  createSupabaseAdminClient: createSupabaseAdminClientMock
+}));
+
+vi.mock("@/lib/config/runtime", () => ({
+  isSupabaseEnabled: isSupabaseEnabledMock
+}));
+
+vi.mock("@/lib/wallet/service", () => ({
+  syncWalletBalancesForPayment: syncWalletBalancesForPaymentMock
+}));
+
+vi.mock("@/lib/stripe/connect", () => ({
+  StripeConnectError: class StripeConnectError extends Error {
+    status = 502;
+  },
+  buildStripeReturnUrl: vi.fn(),
+  createStripeConnectedAccount: vi.fn(),
+  createStripeDashboardLoginLink: vi.fn(),
+  createStripeOnboardingLink: vi.fn(),
+  getStripeConnectEnvironment: vi.fn(),
+  getStripeConnectOnboardingPath: vi.fn(),
+  createStripeTransfer: createStripeTransferMock,
+  createStripeTransferReversal: vi.fn(),
+  retrieveStripeConnectedAccount: vi.fn(),
+  retrieveStripePaymentIntentSettlement: vi.fn(),
+  verifyStripeWebhookEvent: vi.fn()
+}));
+
+import {
+  releaseFreelanceRoutingPayout,
+  validateFreelancePayoutReleaseEligibility
+} from "@/lib/fintech/service";
+
+type Row = Record<string, unknown>;
+
+const ROUTING_ID = "routing-freelance";
+const PAYMENT_ID = "payment-pos";
+const POS_SALE_ID = "pos-sale-paid";
+const BARBER_ID = "barber-1";
+const BARBER_PROFILE_ID = "profile-barber";
+const CONNECTED_ACCOUNT_ID = "connected-account-1";
+
+function createBaseTables(overrides: Partial<Record<string, Row[]>> = {}) {
+  return {
+    payment_routing_records: [{
+      id: ROUTING_ID,
+      payment_id: PAYMENT_ID,
+      appointment_id: null,
+      pos_sale_id: POS_SALE_ID,
+      membership_id: null,
+      routing_model: "freelance",
+      payout_recipient_type: "barber",
+      provider_gross_amount: 100,
+      refunded_amount: 0,
+      provider_fee_amount: 0,
+      provider_net_amount: 100,
+      platform_fee_amount: 5,
+      barber_payout_amount: 95,
+      shop_split_amount: 0,
+      currency: "usd",
+      payout_readiness_status: "ready",
+      money_routing_status: "pending",
+      blocked_reason: null,
+      eligible_at: "2026-05-26T13:00:00.000Z",
+      held_at: null,
+      released_at: null,
+      reversed_at: null,
+      processor_charge_id: "ch_test",
+      processor_balance_transaction_id: "txn_test",
+      reconciliation_status: "open",
+      metadata: {},
+      created_at: "2026-05-26T13:00:00.000Z",
+      updated_at: "2026-05-26T13:00:00.000Z"
+    }],
+    payments: [{
+      id: PAYMENT_ID,
+      appointment_id: null,
+      pos_sale_id: POS_SALE_ID,
+      client_id: "client-1",
+      shop_id: null,
+      barber_id: BARBER_ID,
+      provider: "stripe",
+      provider_payment_intent_id: "pi_paid",
+      amount: 100,
+      currency: "usd",
+      status: "captured",
+      payment_status: "captured",
+      payment_type: "pos_sale",
+      paid_at: "2026-05-26T13:00:00.000Z",
+      created_at: "2026-05-26T13:00:00.000Z",
+      updated_at: "2026-05-26T13:00:00.000Z"
+    }],
+    pos_sales: [{
+      id: POS_SALE_ID,
+      barber_id: BARBER_ID,
+      shop_id: null,
+      client_id: "client-1",
+      source: "barber_keypad",
+      status: "paid",
+      payment_method: "card_on_file",
+      payment_status: "paid",
+      subtotal_cents: 10000,
+      discount_cents: 0,
+      tip_cents: 0,
+      platform_fee_cents: 500,
+      client_fee_cents: 0,
+      total_cents: 10000,
+      amount_cents: 10000,
+      total_amount_cents: 10000,
+      payment_id: PAYMENT_ID,
+      customer_name: null,
+      customer_phone: null,
+      customer_email: null,
+      note: null,
+      cash_recorded_at: null,
+      completed_at: "2026-05-26T13:00:00.000Z",
+      created_at: "2026-05-26T13:00:00.000Z",
+      updated_at: "2026-05-26T13:00:00.000Z"
+    }],
+    refunds: [],
+    disputes: [],
+    connected_accounts: [{
+      id: CONNECTED_ACCOUNT_ID,
+      subject_type: "barber",
+      barber_id: BARBER_ID,
+      shop_id: null,
+      provider: "stripe_connect",
+      provider_account_id: "acct_barber",
+      onboarding_status: "verified",
+      payout_readiness_status: "ready",
+      legal_readiness_status: "accepted",
+      tax_readiness_status: "verified",
+      requirements_currently_due: [],
+      requirements_eventually_due: [],
+      requirements_past_due: [],
+      disabled_reason: null,
+      charges_enabled: true,
+      payouts_enabled: true,
+      last_checked_at: null,
+      onboarding_started_at: null,
+      onboarding_completed_at: null,
+      processor_last_synced_at: null,
+      processor_last_event_id: null,
+      processor_last_event_type: null,
+      dashboard_last_accessed_at: null,
+      created_by: null,
+      created_at: "2026-05-26T13:00:00.000Z",
+      updated_at: "2026-05-26T13:00:00.000Z"
+    }],
+    payout_executions: [],
+    barbers: [{
+      id: BARBER_ID,
+      reference_code: "barber-phillip",
+      profile_id: BARBER_PROFILE_ID,
+      compensation_model: "freelance",
+      commission_rate: null,
+      booth_rent_amount: null,
+      booth_rent_frequency: null
+    }],
+    profiles: [{
+      id: BARBER_PROFILE_ID,
+      email: "phillip@example.com",
+      full_name: "Phillip mcgee",
+      role: "barber_user"
+    }],
+    platform_events: [],
+    ...overrides
+  } satisfies Record<string, Row[]>;
+}
+
+function createSupabaseStub(tables: Record<string, Row[]>) {
+  class QueryBuilder {
+    private filters: Array<(row: Row) => boolean> = [];
+    private operation: "insert" | "update" | "upsert" | null = null;
+    private payload: Row | Row[] | null = null;
+    private rowLimit: number | null = null;
+    private orderBy: { column: string; ascending: boolean } | null = null;
+
+    constructor(private readonly table: string) {}
+
+    select() {
+      return this;
+    }
+
+    eq(column: string, value: unknown) {
+      this.filters.push((row) => row[column] === value);
+      return this;
+    }
+
+    in(column: string, values: unknown[]) {
+      this.filters.push((row) => values.includes(row[column]));
+      return this;
+    }
+
+    order(column: string, options?: { ascending?: boolean }) {
+      this.orderBy = { column, ascending: options?.ascending !== false };
+      return this;
+    }
+
+    limit(value: number) {
+      this.rowLimit = value;
+      return this;
+    }
+
+    insert(payload: Row | Row[]) {
+      this.operation = "insert";
+      this.payload = payload;
+      return this;
+    }
+
+    upsert(payload: Row | Row[]) {
+      this.operation = "upsert";
+      this.payload = payload;
+      return this;
+    }
+
+    update(payload: Row) {
+      this.operation = "update";
+      this.payload = payload;
+      return this;
+    }
+
+    private rows() {
+      const source = tables[this.table] ?? [];
+      let rows = source.filter((row) => this.filters.every((filter) => filter(row)));
+      if (this.orderBy) {
+        const { column, ascending } = this.orderBy;
+        rows = [...rows].sort((left, right) => `${left[column] ?? ""}`.localeCompare(`${right[column] ?? ""}`));
+        if (!ascending) {
+          rows.reverse();
+        }
+      }
+      return this.rowLimit === null ? rows : rows.slice(0, this.rowLimit);
+    }
+
+    private execute() {
+      tables[this.table] ??= [];
+      if (this.operation === "insert" || this.operation === "upsert") {
+        const rows = Array.isArray(this.payload) ? this.payload : [this.payload as Row];
+        const inserted = rows.map((row, index) => ({
+          id: row.id ?? `${this.table}-${tables[this.table].length + index + 1}`,
+          created_at: row.created_at ?? "2026-05-26T14:00:00.000Z",
+          updated_at: row.updated_at ?? "2026-05-26T14:00:00.000Z",
+          ...row
+        }));
+        tables[this.table].push(...inserted);
+        return { data: inserted, error: null };
+      }
+
+      if (this.operation === "update") {
+        const rows = this.rows();
+        for (const row of rows) {
+          Object.assign(row, this.payload);
+        }
+        return { data: rows, error: null };
+      }
+
+      return { data: this.rows(), error: null };
+    }
+
+    maybeSingle() {
+      const result = this.execute();
+      return Promise.resolve({ data: result.data[0] ?? null, error: result.error });
+    }
+
+    single() {
+      const result = this.execute();
+      return Promise.resolve({ data: result.data[0] ?? null, error: result.error });
+    }
+
+    then(resolve: (value: { data: Row[]; error: null }) => void, reject: (reason?: unknown) => void) {
+      return Promise.resolve(this.execute()).then(resolve, reject);
+    }
+  }
+
+  return {
+    from: (table: string) => new QueryBuilder(table),
+    tables
+  };
+}
+
+describe("freelance payout execution", () => {
+  beforeEach(() => {
+    createSupabaseAdminClientMock.mockReset();
+    createStripeTransferMock.mockReset();
+    syncWalletBalancesForPaymentMock.mockReset();
+    isSupabaseEnabledMock.mockReturnValue(true);
+    createStripeTransferMock.mockResolvedValue({ id: "tr_freelance" });
+  });
+
+  it("validates a ready freelance POS routing record as eligible", async () => {
+    const supabase = createSupabaseStub(createBaseTables());
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const result = await validateFreelancePayoutReleaseEligibility(ROUTING_ID);
+
+    expect(result.eligible).toBe(true);
+    expect(result.releaseAmount).toBe(95);
+    expect(result.stripeConnectAccountId).toBe("acct_barber");
+  });
+
+  it("does not validate cash or missing-routing POS sales for release", async () => {
+    const supabase = createSupabaseStub(createBaseTables({
+      payment_routing_records: []
+    }));
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    await expect(validateFreelancePayoutReleaseEligibility(ROUTING_ID)).rejects.toMatchObject({
+      status: 404
+    });
+  });
+
+  it("ignores booth rent and commission routing in Phase 1 release", async () => {
+    for (const routingModel of ["booth_rent", "commission"]) {
+      const supabase = createSupabaseStub(createBaseTables({
+        payment_routing_records: [createBaseTables().payment_routing_records[0], {
+          ...createBaseTables().payment_routing_records[0],
+          id: `routing-${routingModel}`,
+          routing_model: routingModel
+        }]
+      }));
+      createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+      const result = await validateFreelancePayoutReleaseEligibility(`routing-${routingModel}`);
+      expect(result.eligible).toBe(false);
+      expect(result.reasons.join(" ")).toMatch(/Only freelance/i);
+    }
+  });
+
+  it("returns a clear ineligible reason when the Stripe Connect account is missing", async () => {
+    const supabase = createSupabaseStub(createBaseTables({
+      connected_accounts: []
+    }));
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const result = await validateFreelancePayoutReleaseEligibility(ROUTING_ID);
+
+    expect(result.eligible).toBe(false);
+    expect(result.reasons.join(" ")).toMatch(/Stripe Connect account is missing/i);
+  });
+
+  it("supports dry-run without creating executions or marking released", async () => {
+    const tables = createBaseTables();
+    const supabase = createSupabaseStub(tables);
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const result = await releaseFreelanceRoutingPayout({
+      routingRecordId: ROUTING_ID,
+      requestedByProfileId: "architect-profile",
+      dryRun: true
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.dryRun).toBe(true);
+    expect(tables.payout_executions).toHaveLength(0);
+    expect(tables.payment_routing_records[0].released_at).toBeNull();
+    expect(createStripeTransferMock).not.toHaveBeenCalled();
+  });
+
+  it("releases a ready freelance routing record through Stripe and marks routing paid out", async () => {
+    const tables = createBaseTables();
+    const supabase = createSupabaseStub(tables);
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const result = await releaseFreelanceRoutingPayout({
+      routingRecordId: ROUTING_ID,
+      requestedByProfileId: "architect-profile"
+    });
+
+    expect(result.ok).toBe(true);
+    expect(createStripeTransferMock).toHaveBeenCalledWith(expect.objectContaining({
+      amount: 95,
+      destinationAccountId: "acct_barber",
+      idempotencyKey: "freelance_payout_release:routing-freelance:barber-1:95.00:usd"
+    }));
+    expect(tables.payout_executions[0]).toMatchObject({
+      routing_record_id: ROUTING_ID,
+      execution_status: "executed",
+      processor_transfer_id: "tr_freelance"
+    });
+    expect(tables.payment_routing_records[0]).toMatchObject({
+      money_routing_status: "paid_out",
+      reconciliation_status: "settled"
+    });
+    expect(tables.payment_routing_records[0].released_at).toBeTruthy();
+    expect(syncWalletBalancesForPaymentMock).toHaveBeenCalledWith(expect.anything(), PAYMENT_ID);
+  });
+
+  it("stores Stripe transfer failure and leaves routing unreleased", async () => {
+    createStripeTransferMock.mockRejectedValue(new Error("Stripe account rejected transfer."));
+    const tables = createBaseTables();
+    const supabase = createSupabaseStub(tables);
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const result = await releaseFreelanceRoutingPayout({
+      routingRecordId: ROUTING_ID,
+      requestedByProfileId: "architect-profile"
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toMatch(/Stripe account rejected transfer/i);
+    expect(tables.payout_executions[0]).toMatchObject({
+      execution_status: "failed",
+      failure_reason: "Stripe account rejected transfer."
+    });
+    expect(tables.payment_routing_records[0].released_at).toBeNull();
+  });
+
+  it("does not double-release an already executed routing record", async () => {
+    const tables = createBaseTables({
+      payout_executions: [{
+        id: "execution-done",
+        routing_record_id: ROUTING_ID,
+        payment_id: PAYMENT_ID,
+        appointment_id: null,
+        membership_id: null,
+        target_subject_type: "barber",
+        execution_type: "transfer",
+        target_connected_account_id: CONNECTED_ACCOUNT_ID,
+        target_provider_account_id: "acct_barber",
+        amount: 95,
+        currency: "usd",
+        execution_status: "executed",
+        blocked_reason: null,
+        failure_reason: null,
+        processor_transfer_id: "tr_existing",
+        processor_reversal_id: null,
+        idempotency_key: "existing",
+        source_execution_id: null,
+        source_refund_id: null,
+        payout_reference: "payout:existing",
+        payout_speed: "standard",
+        instant_payout_fee_amount: 0,
+        net_transfer_amount: 95,
+        processor_payout_id: null,
+        reconciliation_status: "settled",
+        metadata: {},
+        initiated_by: "architect-profile",
+        attempt_count: 1,
+        last_attempted_at: "2026-05-26T13:00:00.000Z",
+        executed_at: "2026-05-26T13:00:00.000Z",
+        failed_at: null,
+        reversed_at: null,
+        created_at: "2026-05-26T13:00:00.000Z",
+        updated_at: "2026-05-26T13:00:00.000Z"
+      }]
+    });
+    const supabase = createSupabaseStub(tables);
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const result = await releaseFreelanceRoutingPayout({
+      routingRecordId: ROUTING_ID,
+      requestedByProfileId: "architect-profile"
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toMatch(/already released/i);
+    expect(createStripeTransferMock).not.toHaveBeenCalled();
+  });
+});

@@ -362,6 +362,65 @@ function BusinessToolModal({
   );
 }
 
+function buildPayoutTimeline(transaction: BarberPayoutTransaction | null) {
+  if (!transaction || transaction.transactionType === "pos_cash") {
+    return [] as Array<{ label: string; detail: string; tone: Tone }>;
+  }
+
+  const routingCalculated = transaction.barberPayoutAmount !== null && transaction.barberPayoutAmount !== undefined;
+  const readyForPayout = transaction.payoutReadinessStatus === "ready" || transaction.payoutReadinessStatus === "eligible";
+  const released = Boolean(transaction.releasedAt) || transaction.moneyRoutingStatus === "paid_out";
+  const failed = transaction.payoutExecutionStatus === "failed";
+  const held = transaction.moneyRoutingStatus === "blocked" || transaction.moneyRoutingStatus === "manual_review";
+  const timeline: Array<{ label: string; detail: string; tone: Tone }> = [
+    {
+      label: "Payment collected",
+      detail: "Collected through BVRB3R.",
+      tone: "green"
+    },
+    {
+      label: routingCalculated ? "Routing calculated" : "Routing pending",
+      detail: routingCalculated
+        ? `${payoutCurrency(transaction.barberPayoutAmount ?? 0)} barber payout after fees.`
+        : "BVRB3R is still calculating payout routing.",
+      tone: routingCalculated ? "green" : "neutral"
+    },
+    {
+      label: readyForPayout ? "Ready for payout" : "Payout not ready",
+      detail: readyForPayout ? "This payment is eligible for release." : "This payment still needs routing review.",
+      tone: readyForPayout ? "green" : "amber"
+    }
+  ];
+
+  if (released) {
+    timeline.push({
+      label: "Released to payout account",
+      detail: transaction.releasedAt ? `Released ${formatDateTime(transaction.releasedAt)}.` : "Released to the barber payout account.",
+      tone: "green"
+    });
+  } else if (failed) {
+    timeline.push({
+      label: "Payout failed",
+      detail: transaction.payoutFailureReason ?? "BVRB3R needs to retry this release.",
+      tone: "danger"
+    });
+  } else if (held) {
+    timeline.push({
+      label: "On hold",
+      detail: "BVRB3R is reviewing this payout before release.",
+      tone: "amber"
+    });
+  } else {
+    timeline.push({
+      label: "Waiting for BVRB3R release",
+      detail: "Ready payments move after platform release.",
+      tone: "neutral"
+    });
+  }
+
+  return timeline;
+}
+
 function TransactionReceiptModal({
   transaction,
   error,
@@ -385,6 +444,7 @@ function TransactionReceiptModal({
     : isBoothRentServicePayout
       ? "Service payout goes to barber after BVRB3R fee. Booth rent is billed separately."
       : "Collected through BVRB3R. Eligible after routing.";
+  const payoutTimeline = buildPayoutTimeline(transaction);
 
   return (
     <div
@@ -465,6 +525,32 @@ function TransactionReceiptModal({
                 </div>
               ))}
             </div>
+
+            {payoutTimeline.length ? (
+              <div className="rounded-[22px] border border-white/8 bg-black/24 p-4">
+                <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-white/40">Payout timeline</p>
+                <div className="mt-4 space-y-3">
+                  {payoutTimeline.map((item) => (
+                    <div key={item.label} className="flex gap-3">
+                      <span className={cn(
+                        "mt-1 h-3 w-3 shrink-0 rounded-full border",
+                        item.tone === "green"
+                          ? "border-[#a3ff12] bg-[#a3ff12]"
+                          : item.tone === "danger"
+                            ? "border-red-300 bg-red-300"
+                            : item.tone === "amber"
+                              ? "border-amber-300 bg-amber-300"
+                              : "border-white/22 bg-white/10"
+                      )} aria-hidden="true" />
+                      <div>
+                        <p className="text-sm font-black text-white">{item.label}</p>
+                        <p className="mt-1 text-xs leading-5 text-white/52">{item.detail}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : null}
       </div>

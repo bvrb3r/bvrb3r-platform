@@ -636,6 +636,40 @@ describe("BarberSettingsScreen Stripe return sync", () => {
             canMessage: true
           },
           {
+            id: "pos:card-released",
+            transactionType: "pos_card",
+            sourceId: "card-released",
+            appointmentId: null,
+            posSaleId: "pos-sale-card-released",
+            paymentId: "payment-card-released",
+            requestId: "request-card-released",
+            messageThreadId: "thread-card-released",
+            clientId: "client-released",
+            clientProfileId: "profile-client-released",
+            customerName: "Released Client",
+            customerPhone: null,
+            customerEmail: "released@example.com",
+            serviceLabel: "Custom Amount",
+            note: null,
+            occurredAt: "2026-05-24T12:10:00.000Z",
+            paymentMethodLabel: "Card on File",
+            grossAmount: 20,
+            platformFeeAmount: 1,
+            barberPayoutAmount: 19,
+            shopSplitAmount: 0,
+            routingModel: "freelance",
+            eligibleAt: "2026-05-24T12:10:00.000Z",
+            releasedAt: "2026-05-24T13:10:00.000Z",
+            payoutExecutionStatus: "executed",
+            payoutFailureReason: null,
+            payoutReadinessStatus: "ready",
+            moneyRoutingStatus: "paid_out",
+            status: "paid",
+            statusLabel: "Paid",
+            postureLabel: "Collected through BVRB3R. Eligible after routing.",
+            canMessage: true
+          },
+          {
             id: "pos:request-1",
             transactionType: "pos_request",
             sourceId: "request-1",
@@ -736,6 +770,7 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     expect(within(dialog).getByText("Walk-in customer")).toBeInTheDocument();
     expect(within(dialog).getByText("Phillip mcgee")).toBeInTheDocument();
     expect(within(dialog).getByText("Booth Client")).toBeInTheDocument();
+    expect(within(dialog).getByText("Released Client")).toBeInTheDocument();
     expect(within(dialog).getByText("Riley Client")).toBeInTheDocument();
     expect(within(dialog).getByText("Missing Sale")).toBeInTheDocument();
     expect(within(dialog).getByText("Avery Client")).toBeInTheDocument();
@@ -746,7 +781,7 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     expect(within(dialog).getByText(/Declined \| No payment collected\./)).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Request closed" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Message unavailable" })).toBeDisabled();
-    expect(screen.getAllByRole("button", { name: "Message" })).toHaveLength(5);
+    expect(screen.getAllByRole("button", { name: "Message" })).toHaveLength(6);
 
     fireEvent.click(within(screen.getByTestId("transaction-row-pos:card-9")).getByRole("button", { name: "Receipt" }));
     const cardReceipt = screen.getByRole("dialog", { name: "Transaction receipt" });
@@ -757,7 +792,15 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     expect(within(cardReceipt).getByText("$8.55")).toBeInTheDocument();
     expect(within(cardReceipt).getByText("Ready")).toBeInTheDocument();
     expect(within(cardReceipt).getByText("Pending")).toBeInTheDocument();
+    expect(within(cardReceipt).getByText("Payout timeline")).toBeInTheDocument();
+    expect(within(cardReceipt).getByText("Waiting for BVRB3R release")).toBeInTheDocument();
     fireEvent.click(within(cardReceipt).getByLabelText("Close receipt"));
+
+    fireEvent.click(within(screen.getByTestId("transaction-row-pos:card-released")).getByRole("button", { name: "Receipt" }));
+    const releasedReceipt = screen.getByRole("dialog", { name: "Transaction receipt" });
+    expect(within(releasedReceipt).getByText("Released Client")).toBeInTheDocument();
+    expect(within(releasedReceipt).getByText("Released to payout account")).toBeInTheDocument();
+    fireEvent.click(within(releasedReceipt).getByLabelText("Close receipt"));
 
     fireEvent.click(within(screen.getByTestId("transaction-row-pos:booth-rent-card")).getByRole("button", { name: "Receipt" }));
     const boothRentReceipt = screen.getByRole("dialog", { name: "Transaction receipt" });

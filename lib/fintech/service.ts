@@ -517,6 +517,82 @@ export type PayoutExecutionView = {
   reversedAt: string | null;
 };
 
+export type FreelancePayoutQueueItem = {
+  routingRecordId: string;
+  paymentId: string;
+  appointmentId: string | null;
+  posSaleId: string | null;
+  barberId: string | null;
+  barberName: string | null;
+  sourceLabel: string;
+  providerGrossAmount: number;
+  platformFeeAmount: number;
+  barberPayoutAmount: number;
+  shopSplitAmount: number;
+  payoutReadinessStatus: string;
+  moneyRoutingStatus: string;
+  eligibleAt: string | null;
+  releasedAt: string | null;
+  stripeConnectAccountId: string | null;
+  existingExecutionId: string | null;
+  existingExecutionStatus: PayoutExecutionStatus | null;
+  ineligibleReasons: string[];
+  canRelease: boolean;
+};
+
+export type FreelancePayoutQueuePayload = {
+  summary: {
+    readyCount: number;
+    readyAmount: number;
+    blockedCount: number;
+    releasedCount: number;
+  };
+  items: FreelancePayoutQueueItem[];
+};
+
+export type FreelancePayoutRoutingSnapshot = {
+  id: string;
+  paymentId: string;
+  appointmentId: string | null;
+  posSaleId: string | null;
+  routingModel: RoutingModel;
+  payoutRecipientType: "barber" | "shop" | "split";
+  providerGrossAmount: number;
+  platformFeeAmount: number;
+  barberPayoutAmount: number;
+  shopSplitAmount: number;
+  currency: string;
+  payoutReadinessStatus: FintechPayoutReadinessStatus;
+  moneyRoutingStatus: MoneyRoutingStatus;
+  blockedReason: string | null;
+  eligibleAt: string | null;
+  releasedAt: string | null;
+  heldAt: string | null;
+  reversedAt: string | null;
+};
+
+export type FreelancePayoutReleaseEligibility = {
+  eligible: boolean;
+  reasons: string[];
+  routingRecordId: string;
+  releaseAmount: number;
+  recipientType: "barber";
+  barberId: string | null;
+  stripeConnectAccountId: string | null;
+  existingExecutionId: string | null;
+  existingExecutionStatus: PayoutExecutionStatus | null;
+  routingRecord: FreelancePayoutRoutingSnapshot | null;
+};
+
+export type FreelancePayoutReleaseResult = {
+  ok: boolean;
+  dryRun: boolean;
+  eligibility: FreelancePayoutReleaseEligibility;
+  execution: PayoutExecutionView | null;
+  routingRecord: FreelancePayoutRoutingSnapshot | null;
+  message: string;
+};
+
 export type FintechPayoutsPayload = {
   summary: {
     executableRoutingRecords: number;
@@ -582,6 +658,10 @@ export type BarberPayoutsPayload = {
     barberPayoutAmount: number | null;
     shopSplitAmount: number | null;
     routingModel: RoutingModel | null;
+    eligibleAt: string | null;
+    releasedAt: string | null;
+    payoutExecutionStatus: PayoutExecutionStatus | null;
+    payoutFailureReason: string | null;
     payoutReadinessStatus: string | null;
     moneyRoutingStatus: string | null;
     status: string;
@@ -1814,7 +1894,7 @@ async function loadPaymentAndContext(supabase: SupabaseClient, paymentId: string
   const appointment = payment.appointment_id
     ? await supabase
       .from("appointments")
-      .select("id, reference_code, status, membership_id, barber_id, shop_id, location_id, client_id")
+      .select("id, reference_code, status, completed_at, starts_at, service_id, membership_id, barber_id, shop_id, location_id, client_id")
       .eq("id", payment.appointment_id)
       .maybeSingle()
     : { data: null, error: null };
@@ -1826,7 +1906,7 @@ async function loadPaymentAndContext(supabase: SupabaseClient, paymentId: string
   const posSale = payment.pos_sale_id
     ? await supabase
       .from("pos_sales")
-      .select("id, status, barber_id, shop_id, client_id, payment_id, total_cents, created_at, updated_at")
+      .select(POS_SALE_SELECT)
       .eq("id", payment.pos_sale_id)
       .maybeSingle()
     : { data: null, error: null };
@@ -1983,6 +2063,29 @@ function mapRoutingView(
     blockedReason: row.blocked_reason,
     createdAt: row.created_at,
     updatedAt: row.updated_at
+  };
+}
+
+function mapFreelancePayoutRoutingSnapshot(row: PaymentRoutingRow): FreelancePayoutRoutingSnapshot {
+  return {
+    id: row.id,
+    paymentId: row.payment_id,
+    appointmentId: row.appointment_id,
+    posSaleId: row.pos_sale_id ?? null,
+    routingModel: row.routing_model,
+    payoutRecipientType: row.payout_recipient_type,
+    providerGrossAmount: numeric(row.provider_gross_amount),
+    platformFeeAmount: numeric(row.platform_fee_amount),
+    barberPayoutAmount: numeric(row.barber_payout_amount),
+    shopSplitAmount: numeric(row.shop_split_amount),
+    currency: row.currency,
+    payoutReadinessStatus: row.payout_readiness_status,
+    moneyRoutingStatus: row.money_routing_status,
+    blockedReason: row.blocked_reason,
+    eligibleAt: row.eligible_at,
+    releasedAt: row.released_at,
+    heldAt: row.held_at,
+    reversedAt: row.reversed_at
   };
 }
 
@@ -3433,10 +3536,11 @@ async function loadBarberMoneyReporting(input: {
   barberId: string;
   payments: PaymentRow[];
   routingRows: PaymentRoutingRow[];
+  payoutExecutions?: PayoutExecutionRow[];
   eligiblePayoutAmount: number;
   executedAmount: number;
 }) {
-  const { supabase, barberId, payments, routingRows, eligiblePayoutAmount, executedAmount } = input;
+  const { supabase, barberId, payments, routingRows, payoutExecutions = [], eligiblePayoutAmount, executedAmount } = input;
   const today = new Date().toISOString().slice(0, 10);
   const posSalesResult = await supabase
     .from("pos_sales")
@@ -3547,6 +3651,16 @@ async function loadBarberMoneyReporting(input: {
       .filter((payment) => payment.pos_sale_id)
       .map((payment) => [payment.pos_sale_id as string, payment])
   );
+  const latestExecutionByRoutingId = new Map<string, PayoutExecutionRow>();
+  for (const execution of payoutExecutions) {
+    if (execution.execution_type !== "transfer" || execution.target_subject_type !== "barber") {
+      continue;
+    }
+    const current = latestExecutionByRoutingId.get(execution.routing_record_id);
+    if (!current || new Date(execution.updated_at).getTime() > new Date(current.updated_at).getTime()) {
+      latestExecutionByRoutingId.set(execution.routing_record_id, execution);
+    }
+  }
 
   const cashSalesToday = posSales.filter((sale) =>
     isCashPosSale(sale)
@@ -3592,6 +3706,12 @@ async function loadBarberMoneyReporting(input: {
       barberPayoutAmount: routing ? roundCurrency(numeric(routing.barber_payout_amount)) : null,
       shopSplitAmount: routing ? roundCurrency(numeric(routing.shop_split_amount)) : null,
       routingModel: routing?.routing_model ?? null,
+      eligibleAt: routing?.eligible_at ?? null,
+      releasedAt: routing?.released_at ?? null,
+      payoutExecutionStatus: routing ? latestExecutionByRoutingId.get(routing.id)?.execution_status ?? null : null,
+      payoutFailureReason: routing
+        ? latestExecutionByRoutingId.get(routing.id)?.failure_reason ?? latestExecutionByRoutingId.get(routing.id)?.blocked_reason ?? null
+        : null,
       payoutReadinessStatus: routing?.payout_readiness_status ?? null,
       moneyRoutingStatus: routing?.money_routing_status ?? null,
       status: appointment?.status ?? payment.payment_status,
@@ -3654,6 +3774,12 @@ async function loadBarberMoneyReporting(input: {
       barberPayoutAmount: isCash ? null : routing ? roundCurrency(numeric(routing.barber_payout_amount)) : null,
       shopSplitAmount: isCash ? 0 : routing ? roundCurrency(numeric(routing.shop_split_amount)) : null,
       routingModel: isCash ? null : routing?.routing_model ?? null,
+      eligibleAt: isCash ? null : routing?.eligible_at ?? null,
+      releasedAt: isCash ? null : routing?.released_at ?? null,
+      payoutExecutionStatus: !isCash && routing ? latestExecutionByRoutingId.get(routing.id)?.execution_status ?? null : null,
+      payoutFailureReason: !isCash && routing
+        ? latestExecutionByRoutingId.get(routing.id)?.failure_reason ?? latestExecutionByRoutingId.get(routing.id)?.blocked_reason ?? null
+        : null,
       payoutReadinessStatus: isCash ? null : routing?.payout_readiness_status ?? null,
       moneyRoutingStatus: isCash ? null : routing?.money_routing_status ?? null,
       status: sale.status,
@@ -4198,6 +4324,537 @@ async function buildPayoutExecutionScope(
   };
 }
 
+type FreelancePayoutReleaseContext = {
+  routing: PaymentRoutingRow;
+  payment: PaymentRow;
+  appointment: AppointmentRow | null;
+  posSale: PosSaleRow | null;
+  refundedAmount: number;
+  disputeHold: boolean;
+  connectedAccount: ConnectedAccountRow | null;
+  executions: PayoutExecutionRow[];
+  barberName: string | null;
+};
+
+function activeTransferExecutionForRouting(executions: PayoutExecutionRow[]) {
+  return executions
+    .filter((row) => row.execution_type === "transfer" && row.target_subject_type === "barber")
+    .sort((left, right) => new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime())[0] ?? null;
+}
+
+function executedTransferExecutionForRouting(executions: PayoutExecutionRow[]) {
+  return executions.find((row) =>
+    row.execution_type === "transfer"
+    && row.target_subject_type === "barber"
+    && row.execution_status === "executed"
+  ) ?? null;
+}
+
+function pendingTransferExecutionForRouting(executions: PayoutExecutionRow[]) {
+  return executions.find((row) =>
+    row.execution_type === "transfer"
+    && row.target_subject_type === "barber"
+    && row.execution_status === "pending"
+  ) ?? null;
+}
+
+function buildFreelancePayoutReleaseIdempotencyKey(input: {
+  routingRecordId: string;
+  barberId: string;
+  amount: number;
+  currency: string;
+}) {
+  return [
+    "freelance_payout_release",
+    input.routingRecordId,
+    input.barberId,
+    input.amount.toFixed(2),
+    input.currency.toLowerCase()
+  ].join(":");
+}
+
+function isPosSalePaidForPayoutRelease(posSale: PosSaleRow | null) {
+  if (!posSale || String(posSale.status ?? "").toLowerCase() !== "paid") {
+    return false;
+  }
+
+  const paymentStatus = String(posSale.payment_status ?? "").toLowerCase();
+  return !paymentStatus || COMPLETION_PAYMENT_SUCCESS_STATUSES.has(paymentStatus);
+}
+
+function buildFreelancePayoutReleaseEligibility(context: FreelancePayoutReleaseContext): FreelancePayoutReleaseEligibility {
+  const { routing, payment, appointment, posSale, refundedAmount, disputeHold, connectedAccount, executions, barberName } = context;
+  void barberName;
+  const reasons: string[] = [];
+  const releaseAmount = roundCurrency(numeric(routing.barber_payout_amount));
+  const existingExecuted = executedTransferExecutionForRouting(executions);
+  const existingPending = pendingTransferExecutionForRouting(executions);
+  const existingExecution = existingExecuted ?? existingPending ?? activeTransferExecutionForRouting(executions);
+
+  if (routing.routing_model !== "freelance") {
+    reasons.push("Only freelance routing records can be released in Phase 1.");
+  }
+  if (routing.payout_recipient_type !== "barber") {
+    reasons.push("Only barber-recipient freelance payouts can be released in Phase 1.");
+  }
+  if (!isPayoutReadinessEligible(routing.payout_readiness_status)) {
+    reasons.push("Routing record is not payout ready.");
+  }
+  if (routing.money_routing_status !== "pending" && routing.money_routing_status !== "ready_for_payout") {
+    reasons.push(`Routing status ${routing.money_routing_status.replaceAll("_", " ")} is not pending release.`);
+  }
+  if (routing.released_at) {
+    reasons.push("Routing record has already been released.");
+  }
+  if (routing.reversed_at) {
+    reasons.push("Routing record has been reversed.");
+  }
+  if (routing.held_at) {
+    reasons.push("Routing record is on hold.");
+  }
+  if (routing.blocked_reason?.trim()) {
+    reasons.push(routing.blocked_reason.trim());
+  }
+  if (releaseAmount <= 0) {
+    reasons.push("Barber payout amount must be greater than zero.");
+  }
+  if (numeric(routing.shop_split_amount) !== 0) {
+    reasons.push("Freelance Phase 1 release requires shop split to be $0.00.");
+  }
+  if (!payment.barber_id) {
+    reasons.push("Payment is missing a barber recipient.");
+  }
+  if (!isCompletionPaymentSuccessful(payment)) {
+    reasons.push("Payment has not been captured or paid.");
+  }
+  if (routing.pos_sale_id && !isPosSalePaidForPayoutRelease(posSale)) {
+    reasons.push("POS sale is not marked paid.");
+  }
+  if (routing.appointment_id && !isAppointmentPayoutEligible(appointment)) {
+    reasons.push("Appointment is not completed.");
+  }
+  if (!routing.pos_sale_id && !routing.appointment_id && !routing.membership_id) {
+    reasons.push("Routing record is not attached to a valid business object.");
+  }
+  if (numeric(routing.refunded_amount) > 0 || refundedAmount > 0) {
+    reasons.push("Refunded payments cannot be released.");
+  }
+  if (disputeHold) {
+    reasons.push("An active dispute hold blocks payout release.");
+  }
+  if (payment.provider !== "stripe") {
+    reasons.push("Only Stripe-backed payments can be released in Phase 1.");
+  }
+  if (!connectedAccount?.provider_account_id?.trim()) {
+    reasons.push("Barber Stripe Connect account is missing.");
+  }
+  if (connectedAccount && !isPayoutReadinessEligible(connectedAccount.payout_readiness_status)) {
+    reasons.push("Barber Stripe Connect account is not payout ready.");
+  }
+  if (connectedAccount && !connectedAccount.payouts_enabled) {
+    reasons.push("Barber Stripe Connect payouts are not enabled.");
+  }
+  if (existingExecuted) {
+    reasons.push("This routing record already has a successful payout execution.");
+  }
+  if (existingPending) {
+    reasons.push("This routing record already has a pending payout execution.");
+  }
+
+  return {
+    eligible: reasons.length === 0,
+    reasons,
+    routingRecordId: routing.id,
+    releaseAmount,
+    recipientType: "barber",
+    barberId: payment.barber_id,
+    stripeConnectAccountId: connectedAccount?.provider_account_id ?? null,
+    existingExecutionId: existingExecution?.id ?? null,
+    existingExecutionStatus: existingExecution?.execution_status ?? null,
+    routingRecord: mapFreelancePayoutRoutingSnapshot(routing)
+  };
+}
+
+async function loadFreelancePayoutReleaseContext(
+  supabase: SupabaseClient,
+  routingRecordId: string
+): Promise<FreelancePayoutReleaseContext> {
+  const routingResult = await supabase
+    .from("payment_routing_records")
+    .select(PAYMENT_ROUTING_SELECT)
+    .eq("id", routingRecordId)
+    .maybeSingle();
+
+  if (routingResult.error) {
+    throw new FintechServiceError("Unable to load the payout routing record.", 500);
+  }
+  if (!routingResult.data) {
+    throw new FintechServiceError("Payout routing record not found.", 404);
+  }
+
+  const routing = routingResult.data as PaymentRoutingRow;
+  const { payment, appointment, posSale, refundedAmount } = await loadPaymentAndContext(supabase, routing.payment_id);
+  const [accounts, executions] = await Promise.all([
+    loadConnectedAccountsForScope(supabase, { barberIds: payment.barber_id ? [payment.barber_id] : [] }),
+    loadPayoutExecutionsForRoutingId(supabase, routing.id)
+  ]);
+  const connectedAccount = accounts.find((row) =>
+    row.subject_type === "barber"
+    && row.barber_id === payment.barber_id
+  ) ?? null;
+  const disputeHold = appointment ? await hasActiveDisputeHold(supabase, appointment.reference_code) : false;
+  const barber = payment.barber_id ? (await loadBarbersByIds([payment.barber_id], supabase))[0] ?? null : null;
+  const profile = barber?.profile_id ? (await loadProfiles([barber.profile_id], supabase))[0] ?? null : null;
+
+  return {
+    routing,
+    payment,
+    appointment,
+    posSale,
+    refundedAmount,
+    disputeHold,
+    connectedAccount,
+    executions,
+    barberName: profileDisplayName(profile) ?? barber?.reference_code ?? payment.barber_id ?? null
+  };
+}
+
+async function validateFreelancePayoutReleaseEligibilityWithSupabase(
+  supabase: SupabaseClient,
+  routingRecordId: string
+) {
+  const context = await loadFreelancePayoutReleaseContext(supabase, routingRecordId);
+  return {
+    context,
+    eligibility: buildFreelancePayoutReleaseEligibility(context)
+  };
+}
+
+export async function validateFreelancePayoutReleaseEligibility(
+  routingRecordId: string
+): Promise<FreelancePayoutReleaseEligibility> {
+  const supabase = getSupabaseOrThrow();
+  const { eligibility } = await validateFreelancePayoutReleaseEligibilityWithSupabase(supabase, routingRecordId);
+  return eligibility;
+}
+
+function mapFreelanceQueueItem(context: FreelancePayoutReleaseContext, eligibility: FreelancePayoutReleaseEligibility): FreelancePayoutQueueItem {
+  const { routing, payment, posSale } = context;
+  const sourceLabel = routing.pos_sale_id
+    ? `POS ${posSale?.payment_method === "card_on_file" ? "Card-on-File" : "Card/App"}`
+    : routing.appointment_id
+      ? "Booked appointment"
+      : "Platform payment";
+
+  return {
+    routingRecordId: routing.id,
+    paymentId: routing.payment_id,
+    appointmentId: routing.appointment_id,
+    posSaleId: routing.pos_sale_id ?? null,
+    barberId: payment.barber_id,
+    barberName: context.barberName,
+    sourceLabel,
+    providerGrossAmount: numeric(routing.provider_gross_amount),
+    platformFeeAmount: numeric(routing.platform_fee_amount),
+    barberPayoutAmount: numeric(routing.barber_payout_amount),
+    shopSplitAmount: numeric(routing.shop_split_amount),
+    payoutReadinessStatus: routing.payout_readiness_status,
+    moneyRoutingStatus: routing.money_routing_status,
+    eligibleAt: routing.eligible_at,
+    releasedAt: routing.released_at,
+    stripeConnectAccountId: context.connectedAccount?.provider_account_id ?? null,
+    existingExecutionId: eligibility.existingExecutionId,
+    existingExecutionStatus: eligibility.existingExecutionStatus,
+    ineligibleReasons: eligibility.reasons,
+    canRelease: eligibility.eligible
+  };
+}
+
+export async function listArchitectFreelancePayoutQueue(): Promise<FreelancePayoutQueuePayload> {
+  const supabase = getSupabaseOrThrow();
+  const routingResult = await supabase
+    .from("payment_routing_records")
+    .select(PAYMENT_ROUTING_SELECT)
+    .eq("routing_model", "freelance")
+    .eq("payout_recipient_type", "barber")
+    .order("updated_at", { ascending: false })
+    .limit(100);
+
+  if (routingResult.error) {
+    throw new FintechServiceError("Unable to load freelance payout queue.", 500);
+  }
+
+  const items: FreelancePayoutQueueItem[] = [];
+  for (const routing of (routingResult.data ?? []) as PaymentRoutingRow[]) {
+    const { context, eligibility } = await validateFreelancePayoutReleaseEligibilityWithSupabase(supabase, routing.id);
+    items.push(mapFreelanceQueueItem(context, eligibility));
+  }
+
+  return {
+    summary: {
+      readyCount: items.filter((item) => item.canRelease).length,
+      readyAmount: roundCurrency(items.filter((item) => item.canRelease).reduce((sum, item) => sum + item.barberPayoutAmount, 0)),
+      blockedCount: items.filter((item) => !item.canRelease && !item.releasedAt && item.moneyRoutingStatus !== "paid_out").length,
+      releasedCount: items.filter((item) => item.releasedAt || item.moneyRoutingStatus === "paid_out" || item.existingExecutionStatus === "executed").length
+    },
+    items
+  };
+}
+
+export async function releaseFreelanceRoutingPayout(input: {
+  routingRecordId: string;
+  requestedByProfileId: string;
+  dryRun?: boolean;
+}): Promise<FreelancePayoutReleaseResult> {
+  const supabase = getSupabaseOrThrow();
+  const { context, eligibility } = await validateFreelancePayoutReleaseEligibilityWithSupabase(supabase, input.routingRecordId);
+  const latestExecution = activeTransferExecutionForRouting(context.executions);
+  const existingExecuted = executedTransferExecutionForRouting(context.executions);
+  const existingPending = pendingTransferExecutionForRouting(context.executions);
+  const mapExecution = (execution: PayoutExecutionRow | null) =>
+    execution
+      ? mapPayoutExecutionView(execution, context.routing, context.payment, context.barberName, null)
+      : null;
+
+  if (existingExecuted) {
+    return {
+      ok: false,
+      dryRun: Boolean(input.dryRun),
+      eligibility,
+      execution: mapExecution(existingExecuted),
+      routingRecord: mapFreelancePayoutRoutingSnapshot(context.routing),
+      message: "This payout was already released."
+    };
+  }
+
+  if (existingPending) {
+    return {
+      ok: true,
+      dryRun: Boolean(input.dryRun),
+      eligibility,
+      execution: mapExecution(existingPending),
+      routingRecord: mapFreelancePayoutRoutingSnapshot(context.routing),
+      message: "This payout release is already pending."
+    };
+  }
+
+  if (!eligibility.eligible) {
+    return {
+      ok: false,
+      dryRun: Boolean(input.dryRun),
+      eligibility,
+      execution: mapExecution(latestExecution),
+      routingRecord: mapFreelancePayoutRoutingSnapshot(context.routing),
+      message: eligibility.reasons[0] ?? "This routing record is not eligible for release."
+    };
+  }
+
+  if (input.dryRun) {
+    return {
+      ok: true,
+      dryRun: true,
+      eligibility,
+      execution: null,
+      routingRecord: mapFreelancePayoutRoutingSnapshot(context.routing),
+      message: `Ready to release ${context.routing.currency.toUpperCase()} ${eligibility.releaseAmount.toFixed(2)} to the barber payout account.`
+    };
+  }
+
+  const now = new Date().toISOString();
+  const idempotencyKey = buildFreelancePayoutReleaseIdempotencyKey({
+    routingRecordId: context.routing.id,
+    barberId: eligibility.barberId!,
+    amount: eligibility.releaseAmount,
+    currency: context.routing.currency
+  });
+  const reusableFailedExecution = context.executions.find((row) =>
+    row.execution_type === "transfer"
+    && row.target_subject_type === "barber"
+    && row.idempotency_key === idempotencyKey
+    && row.execution_status === "failed"
+  );
+  const payoutReference = reusableFailedExecution?.payout_reference ?? `payout:${context.routing.id}:barber`;
+  const plannedExecution = await persistPayoutExecutionRow(supabase, reusableFailedExecution?.id ?? null, {
+    routing_record_id: context.routing.id,
+    payment_id: context.routing.payment_id,
+    appointment_id: context.routing.appointment_id,
+    membership_id: context.routing.membership_id,
+    target_subject_type: "barber",
+    execution_type: "transfer",
+    target_connected_account_id: context.connectedAccount!.id,
+    target_provider_account_id: context.connectedAccount!.provider_account_id,
+    amount: eligibility.releaseAmount,
+    currency: context.routing.currency.toLowerCase(),
+    execution_status: "pending",
+    blocked_reason: null,
+    failure_reason: null,
+    processor_transfer_id: reusableFailedExecution?.processor_transfer_id ?? null,
+    processor_reversal_id: reusableFailedExecution?.processor_reversal_id ?? null,
+    idempotency_key: idempotencyKey,
+    source_execution_id: null,
+    source_refund_id: null,
+    payout_reference: payoutReference,
+    payout_speed: "standard",
+    instant_payout_fee_amount: 0,
+    net_transfer_amount: eligibility.releaseAmount,
+    processor_payout_id: reusableFailedExecution?.processor_payout_id ?? null,
+    reconciliation_status: "open",
+    metadata: {
+      phase: "phase_1_freelance_manual_release",
+      routingModel: context.routing.routing_model,
+      payoutRecipientType: context.routing.payout_recipient_type,
+      source: context.routing.pos_sale_id ? "pos_sale" : "appointment"
+    },
+    initiated_by: input.requestedByProfileId,
+    attempt_count: (reusableFailedExecution?.attempt_count ?? 0) + 1,
+    last_attempted_at: now,
+    created_at: reusableFailedExecution?.created_at ?? now,
+    updated_at: now
+  });
+
+  let transfer: { id: string };
+  try {
+    transfer = await createStripeTransfer({
+      amount: eligibility.releaseAmount,
+      currency: context.routing.currency,
+      destinationAccountId: context.connectedAccount!.provider_account_id!,
+      transferGroup: `bvrb3r:freelance:${context.routing.payment_id}`,
+      metadata: {
+        phase: "phase_1_freelance_manual_release",
+        routing_record_id: context.routing.id,
+        payment_id: context.routing.payment_id,
+        appointment_id: context.routing.appointment_id ?? "",
+        pos_sale_id: context.routing.pos_sale_id ?? "",
+        execution_id: plannedExecution.id,
+        target_subject_type: "barber"
+      },
+      idempotencyKey
+    });
+  } catch (error) {
+    const failureMessage = error instanceof Error ? error.message : "Unable to release this payout.";
+    const failedExecution = await persistPayoutExecutionRow(supabase, plannedExecution.id, {
+      execution_status: "failed",
+      blocked_reason: null,
+      failure_reason: failureMessage,
+      reconciliation_status: "manual_review",
+      failed_at: now,
+      last_attempted_at: now,
+      updated_at: now
+    });
+
+    await recordPlatformEvent(supabase, {
+      eventType: "payout_held",
+      entityType: "payout_execution",
+      entityId: failedExecution.id,
+      actorId: input.requestedByProfileId,
+      source: "api",
+      relatedIds: {
+        payoutExecutionId: failedExecution.id,
+        routingRecordId: context.routing.id,
+        paymentId: context.routing.payment_id,
+        posSaleId: context.routing.pos_sale_id ?? null,
+        barberId: eligibility.barberId
+      },
+      payload: {
+        phase: "phase_1_freelance_manual_release",
+        reason: failureMessage
+      },
+      idempotencyKey: buildPlatformEventIdempotencyKey(["freelance-payout", failedExecution.id, "failed"])
+    }).catch(() => undefined);
+
+    return {
+      ok: false,
+      dryRun: false,
+      eligibility,
+      execution: mapExecution(failedExecution),
+      routingRecord: mapFreelancePayoutRoutingSnapshot(context.routing),
+      message: failureMessage
+    };
+  }
+
+  const executedExecution = await persistPayoutExecutionRow(supabase, plannedExecution.id, {
+    execution_status: "executed",
+    blocked_reason: null,
+    failure_reason: null,
+    processor_transfer_id: transfer.id,
+    reconciliation_status: "settled",
+    executed_at: now,
+    last_attempted_at: now,
+    updated_at: now
+  });
+  const routingUpdate = await supabase
+    .from("payment_routing_records")
+    .update({
+      money_routing_status: "paid_out",
+      reconciliation_status: "settled",
+      released_at: now,
+      blocked_reason: null,
+      last_reconciled_at: now,
+      updated_at: now
+    })
+    .eq("id", context.routing.id)
+    .select(PAYMENT_ROUTING_SELECT)
+    .single();
+
+  if (routingUpdate.error) {
+    return {
+      ok: false,
+      dryRun: false,
+      eligibility,
+      execution: mapExecution(executedExecution),
+      routingRecord: mapFreelancePayoutRoutingSnapshot(context.routing),
+      message: "Payout transfer succeeded, but routing release state could not be updated."
+    };
+  }
+
+  try {
+    await syncWalletBalancesForPayment(supabase, context.routing.payment_id);
+  } catch {
+    console.warn("[freelance-payout-release] wallet_sync_failed", {
+      routingRecordId: context.routing.id,
+      paymentId: context.routing.payment_id
+    });
+  }
+
+  const eventResult = await recordPlatformEvent(supabase, {
+    eventType: "payout_released",
+    entityType: "payout_execution",
+    entityId: executedExecution.id,
+    actorId: input.requestedByProfileId,
+    source: "api",
+    relatedIds: {
+      payoutExecutionId: executedExecution.id,
+      routingRecordId: context.routing.id,
+      paymentId: context.routing.payment_id,
+      appointmentId: context.routing.appointment_id,
+      posSaleId: context.routing.pos_sale_id ?? null,
+      barberId: eligibility.barberId,
+      processorTransferId: transfer.id
+    },
+    payload: {
+      phase: "phase_1_freelance_manual_release",
+      amount: eligibility.releaseAmount,
+      currency: context.routing.currency.toLowerCase()
+    },
+    idempotencyKey: buildPlatformEventIdempotencyKey(["freelance-payout", executedExecution.id, "released"])
+  });
+  if (!eventResult.ok) {
+    console.warn("[freelance-payout-release] event_write_failed", {
+      routingRecordId: context.routing.id,
+      executionId: executedExecution.id
+    });
+  }
+
+  return {
+    ok: true,
+    dryRun: false,
+    eligibility,
+    execution: mapExecution(executedExecution),
+    routingRecord: mapFreelancePayoutRoutingSnapshot(routingUpdate.data as PaymentRoutingRow),
+    message: "Payout released to the barber payout account."
+  };
+}
+
 export async function listFintechPayouts(user: UserAccount): Promise<FintechPayoutsPayload> {
   const supabase = getSupabaseOrThrow();
   const actor = await resolveActor(user, supabase);
@@ -4261,6 +4918,7 @@ export async function getBarberPayouts(user: UserAccount): Promise<BarberPayouts
     barberId: actor.barber!.id,
     payments,
     routingRows: scope.routingRows,
+    payoutExecutions: scope.payoutExecutions,
     eligiblePayoutAmount: summary.eligiblePayoutAmount,
     executedAmount: summary.executedAmount
   });
