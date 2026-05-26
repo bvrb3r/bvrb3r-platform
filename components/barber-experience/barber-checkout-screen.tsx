@@ -403,7 +403,7 @@ export function BarberCheckoutScreen({
       });
       const requestBody = await readJsonResponse(requestResponse);
       if (requestBody?.messageDeliveryStatus === "failed" || requestBody?.messageDeliveryStatus === "plain_text_fallback") {
-        setPendingRequestRetry({ saleId });
+        setPendingRequestRetry({ saleId: requestBody?.sale?.id ?? saleId });
         setPaymentFeedback(requestBody?.message ?? "Request created, but message delivery failed. Retry sending message.");
         await overviewQuery.refetch();
         return;

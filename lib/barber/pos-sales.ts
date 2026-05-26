@@ -50,7 +50,7 @@ type PosPaymentRequestRow = {
   barber_id: string;
   client_id: string;
   amount_cents: number;
-  status: "pending" | "pending_message_failed" | "approved" | "declined" | "expired" | "paid" | "failed";
+  status: "pending" | "pending_approval" | "pending_message_failed" | "approved" | "declined" | "expired" | "paid" | "failed" | "canceled" | "superseded" | "canceled_duplicate";
   requested_at: string;
   approved_at: string | null;
   declined_at: string | null;
@@ -73,6 +73,11 @@ export const POS_SCHEMA_TABLES = {
   saleItems: "pos_sale_items",
   paymentRequests: "pos_payment_requests"
 } as const;
+
+const ACTIVE_POS_PAYMENT_REQUEST_STATUSES: PosPaymentRequestRow["status"][] = ["pending", "pending_approval", "pending_message_failed"];
+const CLIENT_ACTIONABLE_POS_PAYMENT_REQUEST_STATUSES: PosPaymentRequestRow["status"][] = ["pending", "pending_approval"];
+const PAID_POS_PAYMENT_REQUEST_STATUSES: PosPaymentRequestRow["status"][] = ["approved", "paid"];
+const POS_PAYMENT_REQUEST_DUPLICATE_WINDOW_MS = 30 * 60 * 1000;
 
 type PosPaymentRequestMessageMetadata = {
   kind: "pos_payment_request";
@@ -1530,7 +1535,43 @@ function isPosPaymentRequestExpired(request: PosPaymentRequestRow) {
 }
 
 function isPendingPosPaymentRequestStatus(status: PosPaymentRequestRow["status"]) {
-  return status === "pending" || status === "pending_message_failed";
+  return ACTIVE_POS_PAYMENT_REQUEST_STATUSES.includes(status);
+}
+
+function isClientActionablePosPaymentRequestStatus(status: PosPaymentRequestRow["status"]) {
+  return CLIENT_ACTIONABLE_POS_PAYMENT_REQUEST_STATUSES.includes(status);
+}
+
+function isPaidPosPaymentRequestStatus(status: PosPaymentRequestRow["status"]) {
+  return PAID_POS_PAYMENT_REQUEST_STATUSES.includes(status);
+}
+
+function posPaymentRequestTime(request: Pick<PosPaymentRequestRow, "updated_at" | "created_at" | "requested_at">) {
+  return new Date(request.updated_at ?? request.created_at ?? request.requested_at).getTime();
+}
+
+function posPaymentRequestRequestedTime(request: Pick<PosPaymentRequestRow, "requested_at" | "created_at" | "updated_at">) {
+  return new Date(request.requested_at ?? request.created_at ?? request.updated_at).getTime();
+}
+
+function sortPosPaymentRequestsNewestFirst<T extends Pick<PosPaymentRequestRow, "updated_at" | "created_at" | "requested_at">>(requests: T[]) {
+  return [...requests].sort((left, right) => {
+    const rightTime = posPaymentRequestTime(right);
+    const leftTime = posPaymentRequestTime(left);
+    if (rightTime !== leftTime) {
+      return rightTime - leftTime;
+    }
+    return String("id" in right ? right.id : "").localeCompare(String("id" in left ? left.id : ""));
+  });
+}
+
+function isWithinPosPaymentRequestDuplicateWindow(left: PosPaymentRequestRow, right: PosPaymentRequestRow) {
+  const leftTime = posPaymentRequestRequestedTime(left);
+  const rightTime = posPaymentRequestRequestedTime(right);
+  if (Number.isNaN(leftTime) || Number.isNaN(rightTime)) {
+    return true;
+  }
+  return Math.abs(leftTime - rightTime) <= POS_PAYMENT_REQUEST_DUPLICATE_WINDOW_MS;
 }
 
 async function loadClientPosPaymentRequest(input: {
@@ -1624,6 +1665,249 @@ async function updatePosPaymentRequestWithFallbacks(input: {
   }
 
   return result.data as PosPaymentRequestRow;
+}
+
+async function closeDuplicatePosPaymentRequest(input: {
+  supabase: SupabaseClient;
+  requestId: string;
+  status: "superseded" | "canceled_duplicate" | "canceled";
+  closedAt: string;
+}) {
+  try {
+    return await updatePosPaymentRequestWithFallbacks({
+      supabase: input.supabase,
+      requestId: input.requestId,
+      payload: {
+        status: input.status,
+        updated_at: input.closedAt
+      }
+    });
+  } catch (error) {
+    const parts = postgresErrorParts(error);
+    console.warn("[barber-pos] duplicate_request_status_fallback", {
+      paymentRequestId: input.requestId,
+      preferredStatus: input.status,
+      fallbackStatus: "declined",
+      postgresCode: parts.postgresCode,
+      postgresMessage: parts.postgresMessage,
+      postgresDetails: parts.postgresDetails,
+      postgresHint: parts.postgresHint
+    });
+    return updatePosPaymentRequestWithFallbacks({
+      supabase: input.supabase,
+      requestId: input.requestId,
+      payload: {
+        status: "declined",
+        declined_at: input.closedAt,
+        updated_at: input.closedAt
+      }
+    });
+  }
+}
+
+async function readPosPaymentRequestsForSale(supabase: SupabaseClient, saleId: string) {
+  const result = await supabase
+    .from(POS_SCHEMA_TABLES.paymentRequests)
+    .select("*")
+    .eq("pos_sale_id", saleId)
+    .order("updated_at", { ascending: false })
+    .limit(20);
+
+  if (result.error) {
+    throw new BarberPosSaleError("Unable to load existing POS payment requests.", 500, buildPosSaleDebug(result.error, POS_SCHEMA_TABLES.paymentRequests, "pos_payment_request_load_failed"));
+  }
+
+  return sortPosPaymentRequestsNewestFirst((result.data ?? []) as PosPaymentRequestRow[]);
+}
+
+function selectReusablePaymentRequest(requests: PosPaymentRequestRow[]) {
+  const sorted = sortPosPaymentRequestsNewestFirst(requests);
+  return sorted.find((request) => isPendingPosPaymentRequestStatus(request.status))
+    ?? sorted.find((request) => isPaidPosPaymentRequestStatus(request.status))
+    ?? null;
+}
+
+async function readDuplicatePaymentRequestsForSaleContext(input: {
+  supabase: SupabaseClient;
+  sale: PosSaleRow;
+  statusFilter?: (status: PosPaymentRequestRow["status"]) => boolean;
+}) {
+  if (!input.sale.client_id) {
+    return [];
+  }
+
+  const result = await input.supabase
+    .from(POS_SCHEMA_TABLES.paymentRequests)
+    .select("*")
+    .eq("barber_id", input.sale.barber_id)
+    .eq("client_id", input.sale.client_id)
+    .eq("amount_cents", getPosSaleAmountCents(input.sale))
+    .order("updated_at", { ascending: false })
+    .limit(50);
+
+  if (result.error) {
+    throw new BarberPosSaleError("Unable to inspect duplicate POS payment requests.", 500, buildPosSaleDebug(result.error, POS_SCHEMA_TABLES.paymentRequests, "pos_payment_request_duplicate_scan_failed"));
+  }
+
+  const statusFilter = input.statusFilter ?? (() => true);
+  return sortPosPaymentRequestsNewestFirst((result.data ?? []) as PosPaymentRequestRow[])
+    .filter((request) => request.pos_sale_id !== input.sale.id)
+    .filter((request) => statusFilter(request.status));
+}
+
+async function loadPosSaleById(supabase: SupabaseClient, saleId: string) {
+  const result = await supabase
+    .from(POS_SCHEMA_TABLES.sales)
+    .select("*")
+    .eq("id", saleId)
+    .maybeSingle();
+
+  if (result.error) {
+    throw new BarberPosSaleError("Unable to load related POS sale.", 500, buildPosSaleDebug(result.error, POS_SCHEMA_TABLES.sales, "pos_sale_load_failed"));
+  }
+
+  return result.data as PosSaleRow | null;
+}
+
+async function markPosSaleVoidedForDuplicate(input: {
+  supabase: SupabaseClient;
+  saleId: string;
+  at: string;
+}) {
+  await updatePosSaleStateWithFallbacks({
+    supabase: input.supabase,
+    saleId: input.saleId,
+    stage: "pos_payment_request_duplicate_sale_void",
+    payload: {
+      status: "voided",
+      payment_status: "failed",
+      updated_at: input.at
+    },
+    fallbackPayload: {
+      status: "voided",
+      updated_at: input.at
+    }
+  }).catch((error) => {
+    const parts = postgresErrorParts(error);
+    console.warn("[barber-pos] duplicate_sale_void_failed", {
+      saleId: input.saleId,
+      postgresCode: parts.postgresCode,
+      postgresMessage: parts.postgresMessage,
+      postgresDetails: parts.postgresDetails,
+      postgresHint: parts.postgresHint
+    });
+  });
+}
+
+async function findReusableDuplicatePaymentRequest(input: {
+  supabase: SupabaseClient;
+  sale: PosSaleRow;
+}) {
+  const candidates = await readDuplicatePaymentRequestsForSaleContext({
+    supabase: input.supabase,
+    sale: input.sale,
+    statusFilter: isPendingPosPaymentRequestStatus
+  });
+
+  return candidates.find((candidate) => {
+    const pseudoCurrent = {
+      ...candidate,
+      requested_at: input.sale.created_at,
+      created_at: input.sale.created_at,
+      updated_at: input.sale.updated_at ?? input.sale.created_at
+    };
+    return isWithinPosPaymentRequestDuplicateWindow(candidate, pseudoCurrent);
+  }) ?? null;
+}
+
+async function supersedeSiblingPendingPaymentRequests(input: {
+  supabase: SupabaseClient;
+  paidRequest: PosPaymentRequestRow;
+  sale: PosSaleRow;
+  finalizedAt: string;
+}) {
+  const siblings = await readDuplicatePaymentRequestsForSaleContext({
+    supabase: input.supabase,
+    sale: input.sale,
+    statusFilter: isPendingPosPaymentRequestStatus
+  }).catch((error) => {
+    const parts = postgresErrorParts(error);
+    console.warn("[barber-pos] duplicate_request_scan_failed", {
+      paymentRequestId: input.paidRequest.id,
+      posSaleId: input.sale.id,
+      postgresCode: parts.postgresCode,
+      postgresMessage: parts.postgresMessage,
+      postgresDetails: parts.postgresDetails,
+      postgresHint: parts.postgresHint
+    });
+    return [];
+  });
+
+  const closeable = siblings.filter((request) =>
+    request.id !== input.paidRequest.id
+    && isWithinPosPaymentRequestDuplicateWindow(request, input.paidRequest)
+  );
+  if (!closeable.length) {
+    return [];
+  }
+
+  await Promise.all(closeable.map(async (request) => {
+    const updatedRequest = await closeDuplicatePosPaymentRequest({
+      supabase: input.supabase,
+      requestId: request.id,
+      status: "superseded",
+      closedAt: input.finalizedAt
+    }).catch((error) => {
+      const parts = postgresErrorParts(error);
+      console.warn("[barber-pos] duplicate_request_supersede_failed", {
+        paymentRequestId: request.id,
+        paidPaymentRequestId: input.paidRequest.id,
+        posSaleId: request.pos_sale_id,
+        postgresCode: parts.postgresCode,
+        postgresMessage: parts.postgresMessage,
+        postgresDetails: parts.postgresDetails,
+        postgresHint: parts.postgresHint
+      });
+      return null;
+    });
+
+    const duplicateSale = await loadPosSaleById(input.supabase, request.pos_sale_id).catch(() => null);
+    if (duplicateSale && duplicateSale.status !== "paid") {
+      await markPosSaleVoidedForDuplicate({
+        supabase: input.supabase,
+        saleId: duplicateSale.id,
+        at: input.finalizedAt
+      });
+    }
+
+    await appendPosPaymentRequestSystemMessage({
+      supabase: input.supabase,
+      threadId: request.message_thread_id,
+      body: "Payment request superseded. Another request for this sale was paid.",
+      createdAt: input.finalizedAt
+    });
+
+    return updatedRequest;
+  }));
+
+  return closeable;
+}
+
+async function findPaidDuplicatePaymentRequest(input: {
+  supabase: SupabaseClient;
+  request: PosPaymentRequestRow;
+  sale: PosSaleRow;
+}) {
+  const candidates = await readDuplicatePaymentRequestsForSaleContext({
+    supabase: input.supabase,
+    sale: input.sale,
+    statusFilter: isPaidPosPaymentRequestStatus
+  });
+
+  return candidates.find((candidate) =>
+    candidate.id !== input.request.id
+    && isWithinPosPaymentRequestDuplicateWindow(candidate, input.request)
+  ) ?? null;
 }
 
 async function appendPosPaymentRequestSystemMessage(input: {
@@ -2493,20 +2777,11 @@ export async function requestBarberPosSalePayment(user: UserAccount, saleId: str
     throw new BarberPosSaleError("Select a client before requesting card approval.", 409);
   }
 
-  const existingRequest = await supabase
-    .from(POS_SCHEMA_TABLES.paymentRequests)
-    .select("*")
-    .eq("pos_sale_id", sale.id)
-    .order("updated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const existingRequests = await readPosPaymentRequestsForSale(supabase, sale.id);
+  const reusableSaleRequest = selectReusablePaymentRequest(existingRequests);
 
-  if (existingRequest.error && !isUndefinedColumnError(existingRequest.error)) {
-    throw new BarberPosSaleError("Unable to load existing POS payment request.", 500);
-  }
-
-  if (existingRequest.data) {
-    const request = existingRequest.data as PosPaymentRequestRow;
+  if (reusableSaleRequest) {
+    const request = reusableSaleRequest;
     if (request.status === "pending_message_failed") {
       const [{ profile: clientProfile }, barberProfile] = await Promise.all([
         readClientForPosRequest(supabase, sale.client_id),
@@ -2580,7 +2855,7 @@ export async function requestBarberPosSalePayment(user: UserAccount, saleId: str
       };
     }
 
-    if (request.status === "pending" || request.status === "approved" || request.status === "paid") {
+    if (isClientActionablePosPaymentRequestStatus(request.status) || isPaidPosPaymentRequestStatus(request.status)) {
       return {
         ok: true,
         sale,
@@ -2591,6 +2866,89 @@ export async function requestBarberPosSalePayment(user: UserAccount, saleId: str
         message: "Payment request already sent. Client approval is required before payout."
       };
     }
+  }
+
+  const duplicateRequest = await findReusableDuplicatePaymentRequest({ supabase, sale });
+  if (duplicateRequest) {
+    const duplicateSale = await loadPosSaleById(supabase, duplicateRequest.pos_sale_id);
+    await markPosSaleVoidedForDuplicate({
+      supabase,
+      saleId: sale.id,
+      at: new Date().toISOString()
+    });
+
+    if (duplicateRequest.status === "pending_message_failed" && duplicateSale?.client_id) {
+      const [{ profile: clientProfile }, barberProfile] = await Promise.all([
+        readClientForPosRequest(supabase, duplicateSale.client_id),
+        readProfileForPosRequest(supabase, actor.profileId)
+      ]);
+      const retriedAt = new Date().toISOString();
+      const threadId = duplicateRequest.message_thread_id ?? await createOrGetPosPaymentRequestThread({
+        supabase,
+        barberProfile,
+        clientProfile,
+        createdAt: retriedAt,
+        route: "POST /api/barber/pos-sales/[id]/payment-request",
+        posSaleId: duplicateSale.id,
+        paymentRequestId: duplicateRequest.id,
+        barberId: actor.barber.id,
+        clientId: duplicateSale.client_id
+      });
+      await ensurePosPaymentRequestThreadParticipants({
+        supabase,
+        threadId,
+        barberProfile,
+        clientProfile,
+        route: "POST /api/barber/pos-sales/[id]/payment-request",
+        posSaleId: duplicateSale.id,
+        paymentRequestId: duplicateRequest.id,
+        barberId: actor.barber.id,
+        clientId: duplicateSale.client_id
+      });
+      const delivery = await deliverPosPaymentRequestMessage({
+        supabase,
+        request: duplicateRequest,
+        sale: duplicateSale,
+        threadId,
+        barberProfile,
+        createdAt: retriedAt,
+        route: "POST /api/barber/pos-sales/[id]/payment-request",
+        actorProfileId: actor.profileId
+      });
+
+      return {
+        ok: true,
+        sale: duplicateSale,
+        request: delivery.request,
+        payment: null,
+        routing: null,
+        alreadyRequested: true,
+        messageDeliveryStatus: delivery.delivered ? "delivered" : delivery.fallbackDelivered ? "plain_text_fallback" : "failed",
+        error: delivery.delivered ? undefined : "Unable to send the POS payment request message.",
+        message: delivery.delivered
+          ? "Payment request sent. Client approval is required before payout."
+          : delivery.fallbackDelivered
+            ? "Payment request already exists, but the payment card still needs retry."
+            : "Request exists, but message delivery is still failing.",
+        debugCode: delivery.debug?.debugCode,
+        failedTable: delivery.debug?.failedTable,
+        failedConstraint: delivery.debug?.failedConstraint,
+        failedColumn: delivery.debug?.failedColumn
+      };
+    }
+
+    return {
+      ok: true,
+      sale: duplicateSale ?? sale,
+      request: duplicateRequest,
+      payment: null,
+      routing: null,
+      alreadyRequested: true,
+      messageDeliveryStatus: duplicateRequest.status === "pending_message_failed" ? "plain_text_fallback" : "delivered",
+      message: duplicateRequest.status === "pending_message_failed"
+        ? "Payment request already exists, but the payment card still needs retry."
+        : "Payment request already sent. Client approval is required before payout."
+    };
   }
 
   const [{ profile: clientProfile }, barberProfile] = await Promise.all([
@@ -2704,19 +3062,7 @@ export async function retryBarberPosSalePaymentRequestMessage(user: UserAccount,
     throw new BarberPosSaleError("Select a client before requesting card approval.", 409);
   }
 
-  const existingRequest = await supabase
-    .from(POS_SCHEMA_TABLES.paymentRequests)
-    .select("*")
-    .eq("pos_sale_id", sale.id)
-    .order("updated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (existingRequest.error) {
-    throw new BarberPosSaleError("Unable to load existing POS payment request.", 500, buildPosSaleDebug(existingRequest.error, POS_SCHEMA_TABLES.paymentRequests, "pos_payment_request_load_failed"));
-  }
-
-  const request = existingRequest.data as PosPaymentRequestRow | null;
+  const request = selectReusablePaymentRequest(await readPosPaymentRequestsForSale(supabase, sale.id));
   if (!request) {
     throw new BarberPosSaleError("Payment request not found.", 404);
   }
@@ -2970,7 +3316,7 @@ export async function approveClientPosPaymentRequest(user: UserAccount, requestI
     throw new BarberPosSaleError("Request expired.", 409);
   }
 
-  if (!isPendingPosPaymentRequestStatus(request.status)) {
+  if (!isClientActionablePosPaymentRequestStatus(request.status)) {
     throw new BarberPosSaleError("This payment request is no longer pending.", 409);
   }
 
@@ -2980,6 +3326,31 @@ export async function approveClientPosPaymentRequest(user: UserAccount, requestI
   }
 
   if (sale.status === "paid" || sale.payment_id) {
+    throw new BarberPosSaleError("Request already paid.", 409);
+  }
+
+  const paidDuplicate = await findPaidDuplicatePaymentRequest({ supabase, request, sale });
+  if (paidDuplicate) {
+    const closedAt = new Date().toISOString();
+    await Promise.allSettled([
+      closeDuplicatePosPaymentRequest({
+        supabase,
+        requestId: request.id,
+        status: "superseded",
+        closedAt
+      }),
+      markPosSaleVoidedForDuplicate({
+        supabase,
+        saleId: sale.id,
+        at: closedAt
+      }),
+      appendPosPaymentRequestSystemMessage({
+        supabase,
+        threadId: request.message_thread_id,
+        body: "Payment request superseded. Another request for this sale was already paid.",
+        createdAt: closedAt
+      })
+    ]);
     throw new BarberPosSaleError("Request already paid.", 409);
   }
 
@@ -3117,6 +3488,13 @@ export async function approveClientPosPaymentRequest(user: UserAccount, requestI
     createdAt: finalizedAt
   });
 
+  await supersedeSiblingPendingPaymentRequests({
+    supabase,
+    paidRequest: finalizedRequest,
+    sale: finalizedSale,
+    finalizedAt
+  });
+
   return {
     ok: true,
     sale: finalizedSale,
@@ -3156,7 +3534,7 @@ export async function declineClientPosPaymentRequest(user: UserAccount, requestI
     throw new BarberPosSaleError("Request expired.", 409);
   }
 
-  if (!isPendingPosPaymentRequestStatus(request.status)) {
+  if (!isClientActionablePosPaymentRequestStatus(request.status)) {
     throw new BarberPosSaleError("This payment request is no longer pending.", 409);
   }
 

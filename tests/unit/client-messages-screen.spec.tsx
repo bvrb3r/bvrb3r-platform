@@ -1159,7 +1159,7 @@ describe("client messages screen", () => {
     });
   });
 
-  it("treats payment requests with failed message delivery status as pending client actions", async () => {
+  it("does not allow approval from failed or superseded payment request cards", async () => {
     const approve = vi.fn().mockResolvedValue({});
     const decline = vi.fn().mockResolvedValue({});
     const thread = buildThread({
@@ -1219,6 +1219,22 @@ describe("client messages screen", () => {
             senderName: "Phillip mcgee",
             senderRole: "barber_user",
             isOwn: false
+          },
+          {
+            id: "message-pos-request-superseded",
+            body: "Phillip mcgee requested $35.00 for a walk-in service.",
+            messageType: "system",
+            metadata: {
+              kind: "pos_payment_request",
+              paymentRequestId: "request-pos-2",
+              posSaleId: "sale-pos-2",
+              amountCents: 3500,
+              status: "superseded"
+            },
+            createdAt: "2026-05-25T15:02:00.000Z",
+            senderName: "Phillip mcgee",
+            senderRole: "barber_user",
+            isOwn: false
           }
         ]
       },
@@ -1236,10 +1252,15 @@ describe("client messages screen", () => {
       />
     );
 
-    const card = within(screen.getByTestId("message-thread-modal")).getByTestId("pos-payment-request-card");
-    expect(card).toHaveTextContent("Pending");
-    expect(within(card).getByRole("button", { name: "Approve Payment" })).toBeInTheDocument();
-    expect(within(card).getByRole("button", { name: "Decline" })).toBeInTheDocument();
+    const cards = within(screen.getByTestId("message-thread-modal")).getAllByTestId("pos-payment-request-card");
+    expect(cards[0]).toHaveTextContent("Retry Needed");
+    expect(cards[0]).toHaveTextContent("needs to be resent");
+    expect(within(cards[0]).queryByRole("button", { name: "Approve Payment" })).not.toBeInTheDocument();
+    expect(cards[1]).toHaveTextContent("Superseded");
+    expect(cards[1]).toHaveTextContent("duplicate request was closed");
+    expect(within(cards[1]).queryByRole("button", { name: "Approve Payment" })).not.toBeInTheDocument();
+    expect(approve).not.toHaveBeenCalled();
+    expect(decline).not.toHaveBeenCalled();
   });
 
   it("renders the barber inbox with the same compact conversation system", () => {

@@ -601,19 +601,27 @@ function PaymentRequestCard({
   surface: MessagingSurface;
 }) {
   const status = metadata.status;
-  const isPending = status === "pending" || status === "pending_message_failed";
+  const isPending = status === "pending" || status === "pending_approval";
   const showClientActions = surface === "client" && isPending;
   const statusLabel = status === "paid"
     ? "Paid"
+    : status === "approved"
+      ? "Approved"
     : status === "declined"
       ? "Declined"
+      : status === "canceled" || status === "canceled_duplicate"
+        ? "Canceled"
+        : status === "superseded"
+          ? "Superseded"
       : status === "failed"
         ? "Failed"
         : status === "expired"
           ? "Expired"
-          : isProcessing
-            ? "Processing"
-            : "Pending";
+          : status === "pending_message_failed"
+            ? "Retry Needed"
+            : isProcessing
+              ? "Processing"
+              : "Pending";
 
   return (
     <div
@@ -632,7 +640,7 @@ function PaymentRequestCard({
           "rounded-md border px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em]",
           status === "paid"
             ? "border-[#a3ff12]/28 bg-[#a3ff12]/12 text-[#d7ffab]"
-            : status === "declined" || status === "failed" || status === "expired"
+            : status === "declined" || status === "failed" || status === "expired" || status === "canceled" || status === "canceled_duplicate" || status === "superseded"
               ? "border-rose-300/24 bg-rose-500/10 text-rose-100"
               : "border-amber-200/22 bg-amber-300/10 text-amber-100"
         ].join(" ")}>
@@ -663,13 +671,21 @@ function PaymentRequestCard({
         <p className="mt-3 text-xs leading-5 text-white/54">
           {status === "paid"
             ? "Payment approved and collected through BVRB3R."
+            : status === "approved"
+              ? "Payment approved and waiting for final receipt."
             : status === "declined"
               ? "This request was declined. No payment was created."
+              : status === "superseded" || status === "canceled_duplicate"
+                ? "This duplicate request was closed. No payment can be approved from this card."
+                : status === "canceled"
+                  ? "This request was canceled. No payment was created."
               : status === "failed"
                 ? "Payment could not be completed. Contact the barber to try again."
                 : status === "expired"
                   ? "This request expired."
-                  : "Waiting on client approval."}
+                  : status === "pending_message_failed"
+                    ? "The payment card needs to be resent before approval."
+                    : "Waiting on client approval."}
         </p>
       )}
     </div>

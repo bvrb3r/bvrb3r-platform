@@ -327,7 +327,11 @@ describe("barber POS sales", () => {
       join(process.cwd(), "supabase/migrations/20260525153000_pos_payment_request_message_delivery_shape.sql"),
       "utf8"
     );
-    const migrationSql = `${initialMigration}\n${ensureMigration}\n${actionMigration}\n${messageHardeningMigration}\n${messageDeliveryMigration}`;
+    const idempotencyMigration = readFileSync(
+      join(process.cwd(), "supabase/migrations/20260525170000_harden_pos_payment_request_idempotency.sql"),
+      "utf8"
+    );
+    const migrationSql = `${initialMigration}\n${ensureMigration}\n${actionMigration}\n${messageHardeningMigration}\n${messageDeliveryMigration}\n${idempotencyMigration}`;
 
     expect(POS_SCHEMA_TABLES).toEqual({
       sales: "pos_sales",
@@ -341,6 +345,8 @@ describe("barber POS sales", () => {
     expect(migrationSql).toContain("check (message_type in ('text', 'system'))");
     expect(migrationSql).toContain("add column if not exists paid_at timestamptz");
     expect(migrationSql).toContain("pending_message_failed");
+    expect(migrationSql).toContain("superseded");
+    expect(migrationSql).toContain("pos_payment_requests_one_active_per_sale_idx");
     expect(migrationSql).toContain("notify pgrst, 'reload schema'");
     expect(migrationSql).not.toContain("barber_pos_sales");
   });
@@ -869,6 +875,107 @@ describe("barber POS sales", () => {
     expect(tables.payment_routing_records).toHaveLength(0);
   });
 
+  it("returns the existing active request when card approval is sent twice for the same POS sale", async () => {
+    const tables: FakeTables = {
+      profiles: [
+        { id: "profile-phillip", email: "phillip@example.com", role: "barber_user", full_name: "Phillip mcgee" },
+        { id: "profile-client", email: "client@example.com", role: "client_user", full_name: "Jordan Client" }
+      ],
+      barbers: [{
+        id: "455c2930-7255-418b-bd2b-cc64bc0fc9b7",
+        profile_id: "profile-phillip",
+        reference_code: "barber-43b3cda2",
+        compensation_model: "freelance",
+        commission_rate: null
+      }],
+      clients: [{
+        id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
+        profile_id: "profile-client",
+        reference_code: "client-phillip"
+      }],
+      pos_sales: [],
+      pos_sale_items: [],
+      pos_payment_requests: [],
+      message_threads: [],
+      thread_participants: [],
+      messages: [],
+      payment_routing_records: []
+    };
+    createSupabaseAdminClientMock.mockReturnValue(createSupabaseMock(tables));
+
+    const created = await createBarberPosSale(barberUser(), {
+      amountCents: 3500,
+      paymentMethod: "card_on_file",
+      clientId: "6607bce8-3636-46e8-9bbd-eabd9e5ad065"
+    });
+    const first = await requestBarberPosSalePayment(barberUser(), created.sale.id);
+    const second = await requestBarberPosSalePayment(barberUser(), created.sale.id);
+
+    expect(second).toMatchObject({
+      ok: true,
+      alreadyRequested: true,
+      request: expect.objectContaining({ id: first.request.id })
+    });
+    expect(tables.pos_payment_requests).toHaveLength(1);
+    expect(tables.messages.filter((message) => {
+      const metadata = message.metadata as { kind?: string } | undefined;
+      return metadata?.kind === "pos_payment_request";
+    })).toHaveLength(1);
+  });
+
+  it("reuses an active duplicate request instead of creating a second card for the same client and amount", async () => {
+    const tables: FakeTables = {
+      profiles: [
+        { id: "profile-phillip", email: "phillip@example.com", role: "barber_user", full_name: "Phillip mcgee" },
+        { id: "profile-client", email: "client@example.com", role: "client_user", full_name: "Jordan Client" }
+      ],
+      barbers: [{
+        id: "455c2930-7255-418b-bd2b-cc64bc0fc9b7",
+        profile_id: "profile-phillip",
+        reference_code: "barber-43b3cda2",
+        compensation_model: "freelance",
+        commission_rate: null
+      }],
+      clients: [{
+        id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
+        profile_id: "profile-client",
+        reference_code: "client-phillip"
+      }],
+      pos_sales: [],
+      pos_sale_items: [],
+      pos_payment_requests: [],
+      message_threads: [],
+      thread_participants: [],
+      messages: [],
+      payment_routing_records: []
+    };
+    createSupabaseAdminClientMock.mockReturnValue(createSupabaseMock(tables));
+
+    const firstSale = await createBarberPosSale(barberUser(), {
+      amountCents: 3500,
+      paymentMethod: "card_on_file",
+      clientId: "6607bce8-3636-46e8-9bbd-eabd9e5ad065"
+    });
+    const firstRequest = await requestBarberPosSalePayment(barberUser(), firstSale.sale.id);
+    const secondSale = await createBarberPosSale(barberUser(), {
+      amountCents: 3500,
+      paymentMethod: "card_on_file",
+      clientId: "6607bce8-3636-46e8-9bbd-eabd9e5ad065"
+    });
+    const secondRequest = await requestBarberPosSalePayment(barberUser(), secondSale.sale.id);
+
+    expect(secondRequest).toMatchObject({
+      ok: true,
+      alreadyRequested: true,
+      request: expect.objectContaining({ id: firstRequest.request.id }),
+      sale: expect.objectContaining({ id: firstSale.sale.id })
+    });
+    expect(tables.pos_payment_requests).toHaveLength(1);
+    expect(tables.pos_sales.find((sale) => sale.id === secondSale.sale.id)).toMatchObject({
+      status: "voided"
+    });
+  });
+
   it("keeps a pending request when structured payment request message delivery fails", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const tables: FakeTables = {
@@ -1316,6 +1423,138 @@ describe("barber POS sales", () => {
       payout_readiness_status: "ready"
     });
     expect(tables.messages.some((message) => String(message.body).includes("Payment approved. $35.00 collected."))).toBe(true);
+  });
+
+  it("supersedes sibling pending duplicate requests when one card request is approved", async () => {
+    const tables: FakeTables = {
+      profiles: [
+        { id: "profile-phillip", email: "phillip@example.com", role: "barber_user", full_name: "Phillip mcgee" },
+        { id: "profile-client", email: "client@example.com", role: "client_user", full_name: "Jordan Client" }
+      ],
+      barbers: [{
+        id: "455c2930-7255-418b-bd2b-cc64bc0fc9b7",
+        profile_id: "profile-phillip",
+        reference_code: "barber-43b3cda2",
+        compensation_model: "freelance",
+        commission_rate: null
+      }],
+      clients: [{
+        id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
+        profile_id: "profile-client",
+        reference_code: "client-phillip"
+      }],
+      pos_sales: [{
+        id: "pos-sale-paid",
+        barber_id: "455c2930-7255-418b-bd2b-cc64bc0fc9b7",
+        shop_id: null,
+        client_id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
+        customer_name: "Jordan Client",
+        source: "barber_keypad",
+        status: "payment_pending",
+        payment_method: "card_on_file",
+        payment_status: "pending_client_approval",
+        subtotal_cents: 3500,
+        discount_cents: 0,
+        tip_cents: 0,
+        platform_fee_cents: 175,
+        client_fee_cents: 0,
+        total_cents: 3500,
+        payment_id: null,
+        note: null,
+        created_by_profile_id: "profile-phillip",
+        created_at: "2026-05-25T20:03:00.000Z",
+        updated_at: "2026-05-25T20:03:00.000Z"
+      }, {
+        id: "pos-sale-duplicate",
+        barber_id: "455c2930-7255-418b-bd2b-cc64bc0fc9b7",
+        shop_id: null,
+        client_id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
+        customer_name: "Jordan Client",
+        source: "barber_keypad",
+        status: "payment_pending",
+        payment_method: "card_on_file",
+        payment_status: "pending_client_approval",
+        subtotal_cents: 3500,
+        discount_cents: 0,
+        tip_cents: 0,
+        platform_fee_cents: 175,
+        client_fee_cents: 0,
+        total_cents: 3500,
+        payment_id: null,
+        note: null,
+        created_by_profile_id: "profile-phillip",
+        created_at: "2026-05-25T20:05:00.000Z",
+        updated_at: "2026-05-25T20:05:00.000Z"
+      }],
+      pos_sale_items: [],
+      pos_payment_requests: [{
+        id: "request-paid",
+        pos_sale_id: "pos-sale-paid",
+        barber_id: "455c2930-7255-418b-bd2b-cc64bc0fc9b7",
+        client_id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
+        amount_cents: 3500,
+        status: "pending",
+        requested_at: "2026-05-25T20:03:00.000Z",
+        approved_at: null,
+        declined_at: null,
+        expires_at: null,
+        message_thread_id: "thread-paid",
+        payment_id: null,
+        created_at: "2026-05-25T20:03:00.000Z",
+        updated_at: "2026-05-25T20:03:00.000Z"
+      }, {
+        id: "request-duplicate",
+        pos_sale_id: "pos-sale-duplicate",
+        barber_id: "455c2930-7255-418b-bd2b-cc64bc0fc9b7",
+        client_id: "6607bce8-3636-46e8-9bbd-eabd9e5ad065",
+        amount_cents: 3500,
+        status: "pending",
+        requested_at: "2026-05-25T20:05:00.000Z",
+        approved_at: null,
+        declined_at: null,
+        expires_at: null,
+        message_thread_id: "thread-duplicate",
+        payment_id: null,
+        created_at: "2026-05-25T20:05:00.000Z",
+        updated_at: "2026-05-25T20:05:00.000Z"
+      }],
+      message_threads: [],
+      thread_participants: [],
+      messages: [],
+      payment_routing_records: [{
+        id: "routing-pos-approved",
+        payment_id: "payment-pos-approved",
+        pos_sale_id: "pos-sale-paid",
+        payout_readiness_status: "ready",
+        money_routing_status: "pending",
+        eligible_at: "2026-05-25T20:06:00.000Z",
+        released_at: null,
+        barber_payout_amount: 33.25,
+        platform_fee_amount: 1.75,
+        shop_split_amount: 0,
+        updated_at: "2026-05-25T20:06:00.000Z"
+      }]
+    };
+    createSupabaseAdminClientMock.mockReturnValue(createSupabaseMock(tables));
+    createCapturedStripePaymentRecordMock.mockResolvedValue({
+      id: "payment-pos-approved",
+      posSaleId: "pos-sale-paid"
+    });
+
+    const approved = await approveClientPosPaymentRequest(clientUser(), "request-paid");
+
+    expect(approved.request).toMatchObject({
+      id: "request-paid",
+      status: "paid"
+    });
+    expect(tables.pos_payment_requests.find((request) => request.id === "request-duplicate")).toMatchObject({
+      status: "superseded"
+    });
+    expect(tables.pos_sales.find((sale) => sale.id === "pos-sale-duplicate")).toMatchObject({
+      status: "voided"
+    });
+    expect(createCapturedStripePaymentRecordMock).toHaveBeenCalledTimes(1);
+    expect(tables.messages.some((message) => String(message.body).includes("Payment request superseded."))).toBe(true);
   });
 
   it("declines a pending client card request without payment or routing", async () => {

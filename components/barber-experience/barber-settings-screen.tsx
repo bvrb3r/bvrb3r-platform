@@ -1860,7 +1860,16 @@ export function BarberSettingsScreen({
                             ) : transaction.transactionType === "pos_cash" ? (
                               <Button type="button" variant="secondary" className="h-9 px-3 text-xs" disabled>{transaction.customerPhone || transaction.customerEmail ? "Message unavailable" : "Add Customer"}</Button>
                             ) : null}
-                            <Button type="button" variant="secondary" className="h-9 px-3 text-xs">{transaction.transactionType === "pos_request" ? "View request" : "Receipt"}</Button>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              className="h-9 px-3 text-xs"
+                              disabled={transaction.transactionType === "pos_request" && ["Superseded", "Canceled"].includes(transaction.statusLabel)}
+                            >
+                              {transaction.transactionType === "pos_request"
+                                ? ["Superseded", "Canceled"].includes(transaction.statusLabel) ? "Request closed" : "View request"
+                                : "Receipt"}
+                            </Button>
                           </div>
                         </div>
                       </div>
@@ -2444,8 +2453,15 @@ export function BarberSettingsScreen({
                         {transaction.customerPhone || transaction.customerEmail ? "Message unavailable" : "Add customer"}
                       </Button>
                     ) : null}
-                    <Button type="button" variant="secondary" className="h-10 px-3 text-xs">
-                      {transaction.transactionType === "pos_request" ? "View request" : "View receipt"}
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="h-10 px-3 text-xs"
+                      disabled={transaction.transactionType === "pos_request" && ["Superseded", "Canceled"].includes(transaction.statusLabel)}
+                    >
+                      {transaction.transactionType === "pos_request"
+                        ? ["Superseded", "Canceled"].includes(transaction.statusLabel) ? "Request closed" : "View request"
+                        : "View receipt"}
                     </Button>
                   </div>
                 </div>

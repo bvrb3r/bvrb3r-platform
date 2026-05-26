@@ -169,7 +169,7 @@ export type PosPaymentRequestMessageMetadata = {
   paymentRequestId: string;
   posSaleId: string;
   amountCents: number;
-  status: "pending" | "pending_message_failed" | "approved" | "paid" | "declined" | "failed" | "expired";
+  status: "pending" | "pending_approval" | "pending_message_failed" | "approved" | "paid" | "declined" | "failed" | "expired" | "canceled" | "superseded" | "canceled_duplicate";
 };
 
 export type MessagingMessageMetadata =
@@ -467,12 +467,26 @@ function getPosPaymentRequestMetadata(value: unknown): PosPaymentRequestMessageM
     return null;
   }
 
+  const knownStatuses: PosPaymentRequestMessageMetadata["status"][] = [
+    "pending",
+    "pending_approval",
+    "pending_message_failed",
+    "approved",
+    "paid",
+    "declined",
+    "failed",
+    "expired",
+    "canceled",
+    "superseded",
+    "canceled_duplicate"
+  ];
+
   return {
     kind: "pos_payment_request",
     paymentRequestId,
     posSaleId,
     amountCents: Number.isFinite(amountCents) ? amountCents : 0,
-    status: ["pending", "pending_message_failed", "approved", "paid", "declined", "failed", "expired"].includes(status)
+    status: knownStatuses.includes(status as PosPaymentRequestMessageMetadata["status"])
       ? (status as PosPaymentRequestMessageMetadata["status"])
       : "pending"
   };
@@ -555,6 +569,20 @@ async function readPosPaymentRequestSnapshots(
     return new Map<string, PosPaymentRequestMessageMetadata>();
   }
 
+  const knownStatuses: PosPaymentRequestMessageMetadata["status"][] = [
+    "pending",
+    "pending_approval",
+    "pending_message_failed",
+    "approved",
+    "paid",
+    "declined",
+    "failed",
+    "expired",
+    "canceled",
+    "superseded",
+    "canceled_duplicate"
+  ];
+
   return new Map(
     ((result.data ?? []) as Array<{ id: string; pos_sale_id: string; amount_cents: number; status: PosPaymentRequestMessageMetadata["status"] }>)
       .map((row) => [row.id, {
@@ -562,7 +590,7 @@ async function readPosPaymentRequestSnapshots(
         paymentRequestId: row.id,
         posSaleId: row.pos_sale_id,
         amountCents: Number(row.amount_cents ?? 0),
-        status: ["pending", "pending_message_failed", "approved", "paid", "declined", "failed", "expired"].includes(row.status)
+        status: knownStatuses.includes(row.status)
           ? row.status
           : "pending"
       }])

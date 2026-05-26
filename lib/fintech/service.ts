@@ -242,6 +242,9 @@ type PosPaymentRequestRow = {
   updated_at: string;
 };
 
+const ACTIVE_POS_PAYMENT_REQUEST_STATUSES = new Set(["pending", "pending_approval", "pending_message_failed", "payment_pending", "pending_client_approval"]);
+const CLOSED_DUPLICATE_POS_PAYMENT_REQUEST_STATUSES = new Set(["superseded", "canceled", "canceled_duplicate"]);
+
 type ClientDirectoryRow = {
   id: string;
   profile_id: string | null;
@@ -3413,7 +3416,7 @@ function isPaidPosSale(sale: PosSaleRow) {
 }
 
 function isPendingPaymentRequest(request: PosPaymentRequestRow) {
-  return ["pending", "payment_pending", "pending_client_approval"].includes(String(request.status ?? "").toLowerCase());
+  return ACTIVE_POS_PAYMENT_REQUEST_STATUSES.has(String(request.status ?? "").toLowerCase());
 }
 
 function profileDisplayName(profile: ProfileRow | null | undefined) {
@@ -3596,12 +3599,15 @@ async function loadBarberMoneyReporting(input: {
     const profile = profileForClient(sale.client_id ?? request?.client_id);
     const isCash = isCashPosSale(sale);
     const requestStatus = String(request?.status ?? "").toLowerCase();
+    const isClosedDuplicateRequest = CLOSED_DUPLICATE_POS_PAYMENT_REQUEST_STATUSES.has(requestStatus);
     const statusLabel = isCash
       ? "Cash recorded"
       : request && isPendingPaymentRequest(request)
         ? "Pending approval"
         : requestStatus === "declined"
           ? "Declined"
+          : isClosedDuplicateRequest
+            ? "Superseded"
           : requestStatus === "failed"
             ? "Failed"
             : isPaidPosSale(sale)
@@ -3631,8 +3637,12 @@ async function loadBarberMoneyReporting(input: {
       barberPayoutAmount: isCash ? null : routing ? roundCurrency(numeric(routing.barber_payout_amount)) : null,
       status: sale.status,
       statusLabel,
-      postureLabel: isCash ? "Cash collected directly. No platform payout." : "Collected through BVRB3R. Eligible after routing.",
-      canMessage: Boolean(profile?.id)
+      postureLabel: isCash
+        ? "Cash collected directly. No platform payout."
+        : isClosedDuplicateRequest
+          ? "Duplicate request closed. No payment can be approved from this request."
+          : "Collected through BVRB3R. Eligible after routing.",
+      canMessage: Boolean(profile?.id) && !isClosedDuplicateRequest
     });
   }
 
