@@ -208,6 +208,7 @@ describe("phase 15 payout routes", () => {
         blockedCount: 0,
         releasedCount: 0
       },
+      warnings: [],
       items: [{
         routingRecordId: "routing-9",
         paymentId: "payment-9",
@@ -228,6 +229,7 @@ describe("phase 15 payout routes", () => {
         existingExecutionId: null,
         existingExecutionStatus: null,
         ineligibleReasons: [],
+        warnings: [],
         canRelease: true
       }]
     });

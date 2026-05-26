@@ -537,6 +537,7 @@ export type FreelancePayoutQueueItem = {
   existingExecutionId: string | null;
   existingExecutionStatus: PayoutExecutionStatus | null;
   ineligibleReasons: string[];
+  warnings: string[];
   canRelease: boolean;
 };
 
@@ -547,6 +548,7 @@ export type FreelancePayoutQueuePayload = {
     blockedCount: number;
     releasedCount: number;
   };
+  warnings: string[];
   items: FreelancePayoutQueueItem[];
 };
 
@@ -4334,6 +4336,7 @@ type FreelancePayoutReleaseContext = {
   connectedAccount: ConnectedAccountRow | null;
   executions: PayoutExecutionRow[];
   barberName: string | null;
+  warnings: string[];
 };
 
 function activeTransferExecutionForRouting(executions: PayoutExecutionRow[]) {
@@ -4477,7 +4480,8 @@ function buildFreelancePayoutReleaseEligibility(context: FreelancePayoutReleaseC
 
 async function loadFreelancePayoutReleaseContext(
   supabase: SupabaseClient,
-  routingRecordId: string
+  routingRecordId: string,
+  options: { tolerateDisputeInspectionFailure?: boolean } = {}
 ): Promise<FreelancePayoutReleaseContext> {
   const routingResult = await supabase
     .from("payment_routing_records")
@@ -4502,7 +4506,25 @@ async function loadFreelancePayoutReleaseContext(
     row.subject_type === "barber"
     && row.barber_id === payment.barber_id
   ) ?? null;
-  const disputeHold = appointment ? await hasActiveDisputeHold(supabase, appointment.reference_code) : false;
+  const warnings: string[] = [];
+  let disputeHold = false;
+  if (appointment) {
+    try {
+      disputeHold = await hasActiveDisputeHold(supabase, appointment.reference_code);
+    } catch (error) {
+      if (!options.tolerateDisputeInspectionFailure) {
+        throw error;
+      }
+      console.warn("[freelance-payout-queue] dispute_inspection_failed", {
+        routingRecordId: routing.id,
+        appointmentId: appointment.id,
+        appointmentReference: appointment.reference_code,
+        message: error instanceof Error ? error.message : String(error)
+      });
+      warnings.push("Dispute hold inspection unavailable. Manual review required.");
+      disputeHold = false;
+    }
+  }
   const barber = payment.barber_id ? (await loadBarbersByIds([payment.barber_id], supabase))[0] ?? null : null;
   const profile = barber?.profile_id ? (await loadProfiles([barber.profile_id], supabase))[0] ?? null : null;
 
@@ -4515,15 +4537,17 @@ async function loadFreelancePayoutReleaseContext(
     disputeHold,
     connectedAccount,
     executions,
-    barberName: profileDisplayName(profile) ?? barber?.reference_code ?? payment.barber_id ?? null
+    barberName: profileDisplayName(profile) ?? barber?.reference_code ?? payment.barber_id ?? null,
+    warnings
   };
 }
 
 async function validateFreelancePayoutReleaseEligibilityWithSupabase(
   supabase: SupabaseClient,
-  routingRecordId: string
+  routingRecordId: string,
+  options: { tolerateDisputeInspectionFailure?: boolean } = {}
 ) {
-  const context = await loadFreelancePayoutReleaseContext(supabase, routingRecordId);
+  const context = await loadFreelancePayoutReleaseContext(supabase, routingRecordId, options);
   return {
     context,
     eligibility: buildFreelancePayoutReleaseEligibility(context)
@@ -4566,8 +4590,51 @@ function mapFreelanceQueueItem(context: FreelancePayoutReleaseContext, eligibili
     existingExecutionId: eligibility.existingExecutionId,
     existingExecutionStatus: eligibility.existingExecutionStatus,
     ineligibleReasons: eligibility.reasons,
+    warnings: context.warnings,
     canRelease: eligibility.eligible
   };
+}
+
+function mapFreelanceQueueItemFromRoutingFallback(
+  routing: PaymentRoutingRow,
+  reasons: string[],
+  warnings: string[]
+): FreelancePayoutQueueItem {
+  return {
+    routingRecordId: routing.id,
+    paymentId: routing.payment_id,
+    appointmentId: routing.appointment_id,
+    posSaleId: routing.pos_sale_id ?? null,
+    barberId: null,
+    barberName: null,
+    sourceLabel: routing.pos_sale_id ? "POS Card/App" : routing.appointment_id ? "Booked appointment" : "Platform payment",
+    providerGrossAmount: numeric(routing.provider_gross_amount),
+    platformFeeAmount: numeric(routing.platform_fee_amount),
+    barberPayoutAmount: numeric(routing.barber_payout_amount),
+    shopSplitAmount: numeric(routing.shop_split_amount),
+    payoutReadinessStatus: routing.payout_readiness_status,
+    moneyRoutingStatus: routing.money_routing_status,
+    eligibleAt: routing.eligible_at,
+    releasedAt: routing.released_at,
+    stripeConnectAccountId: null,
+    existingExecutionId: null,
+    existingExecutionStatus: null,
+    ineligibleReasons: reasons,
+    warnings,
+    canRelease: false
+  };
+}
+
+function isConfirmedBlockedFreelanceQueueItem(item: FreelancePayoutQueueItem) {
+  if (item.payoutReadinessStatus === "blocked" || item.moneyRoutingStatus === "blocked" || item.moneyRoutingStatus === "manual_review") {
+    return true;
+  }
+
+  const reasons = item.ineligibleReasons.join(" ").toLowerCase();
+  return reasons.includes("active dispute hold")
+    || reasons.includes("on hold")
+    || reasons.includes("has been reversed")
+    || reasons.includes("refunded payments cannot be released");
 }
 
 export async function listArchitectFreelancePayoutQueue(): Promise<FreelancePayoutQueuePayload> {
@@ -4577,7 +4644,13 @@ export async function listArchitectFreelancePayoutQueue(): Promise<FreelancePayo
     .select(PAYMENT_ROUTING_SELECT)
     .eq("routing_model", "freelance")
     .eq("payout_recipient_type", "barber")
-    .order("updated_at", { ascending: false })
+    .eq("payout_readiness_status", "ready")
+    .eq("money_routing_status", "pending")
+    .is("released_at", null)
+    .is("held_at", null)
+    .is("reversed_at", null)
+    .gt("barber_payout_amount", 0)
+    .order("eligible_at", { ascending: false })
     .limit(100);
 
   if (routingResult.error) {
@@ -4585,18 +4658,44 @@ export async function listArchitectFreelancePayoutQueue(): Promise<FreelancePayo
   }
 
   const items: FreelancePayoutQueueItem[] = [];
+  const warnings = new Set<string>();
   for (const routing of (routingResult.data ?? []) as PaymentRoutingRow[]) {
-    const { context, eligibility } = await validateFreelancePayoutReleaseEligibilityWithSupabase(supabase, routing.id);
-    items.push(mapFreelanceQueueItem(context, eligibility));
+    try {
+      const { context, eligibility } = await validateFreelancePayoutReleaseEligibilityWithSupabase(supabase, routing.id, {
+        tolerateDisputeInspectionFailure: true
+      });
+      for (const warning of context.warnings) {
+        warnings.add(warning);
+      }
+      items.push(mapFreelanceQueueItem(context, eligibility));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to enrich payout routing row.";
+      console.warn("[freelance-payout-queue] enrichment_failed", {
+        routingRecordId: routing.id,
+        paymentId: routing.payment_id,
+        appointmentId: routing.appointment_id,
+        posSaleId: routing.pos_sale_id ?? null,
+        message
+      });
+      warnings.add("Some payout rows could not be fully enriched. Visible rows may need manual repair before release.");
+      items.push(mapFreelanceQueueItemFromRoutingFallback(
+        routing,
+        ["Payout context could not be fully loaded. Validate this row before release."],
+        ["Payout context enrichment failed."]
+      ));
+    }
   }
+  const blockedItems = items.filter(isConfirmedBlockedFreelanceQueueItem);
+  const readyItems = items.filter((item) => !isConfirmedBlockedFreelanceQueueItem(item));
 
   return {
     summary: {
-      readyCount: items.filter((item) => item.canRelease).length,
-      readyAmount: roundCurrency(items.filter((item) => item.canRelease).reduce((sum, item) => sum + item.barberPayoutAmount, 0)),
-      blockedCount: items.filter((item) => !item.canRelease && !item.releasedAt && item.moneyRoutingStatus !== "paid_out").length,
+      readyCount: readyItems.length,
+      readyAmount: roundCurrency(readyItems.reduce((sum, item) => sum + item.barberPayoutAmount, 0)),
+      blockedCount: blockedItems.length,
       releasedCount: items.filter((item) => item.releasedAt || item.moneyRoutingStatus === "paid_out" || item.existingExecutionStatus === "executed").length
     },
+    warnings: [...warnings],
     items
   };
 }

@@ -107,6 +107,15 @@ function QueueRow({
               {reason}
             </p>
           ) : null}
+          {item.warnings.length ? (
+            <div className="mt-3 space-y-1">
+              {item.warnings.map((warning) => (
+                <p key={warning} className="text-xs leading-5 text-amber-100/72">
+                  {warning}
+                </p>
+              ))}
+            </div>
+          ) : null}
         </div>
 
         <div className="grid min-w-[18rem] gap-3 sm:grid-cols-2 lg:min-w-[20rem]">
@@ -208,6 +217,14 @@ export function ArchitectFreelancePayoutQueue() {
       </div>
 
       {feedback ? <FeedbackBanner className="mt-5" tone={feedback.tone} message={feedback.message} /> : null}
+      {payload?.warnings?.length ? payload.warnings.map((warning) => (
+        <FeedbackBanner
+          key={warning}
+          className="mt-5"
+          tone="info"
+          message={warning}
+        />
+      )) : null}
       {queueQuery.isError ? (
         <FeedbackBanner
           className="mt-5"

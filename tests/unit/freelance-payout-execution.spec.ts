@@ -42,6 +42,7 @@ vi.mock("@/lib/stripe/connect", () => ({
 }));
 
 import {
+  listArchitectFreelancePayoutQueue,
   releaseFreelanceRoutingPayout,
   validateFreelancePayoutReleaseEligibility
 } from "@/lib/fintech/service";
@@ -183,7 +184,10 @@ function createBaseTables(overrides: Partial<Record<string, Row[]>> = {}) {
   } satisfies Record<string, Row[]>;
 }
 
-function createSupabaseStub(tables: Record<string, Row[]>) {
+function createSupabaseStub(
+  tables: Record<string, Row[]>,
+  tableErrors: Partial<Record<string, { message: string; code?: string; details?: string; hint?: string }>> = {}
+) {
   class QueryBuilder {
     private filters: Array<(row: Row) => boolean> = [];
     private operation: "insert" | "update" | "upsert" | null = null;
@@ -204,6 +208,16 @@ function createSupabaseStub(tables: Record<string, Row[]>) {
 
     in(column: string, values: unknown[]) {
       this.filters.push((row) => values.includes(row[column]));
+      return this;
+    }
+
+    is(column: string, value: unknown) {
+      this.filters.push((row) => row[column] === value);
+      return this;
+    }
+
+    gt(column: string, value: number) {
+      this.filters.push((row) => Number(row[column] ?? 0) > value);
       return this;
     }
 
@@ -250,6 +264,11 @@ function createSupabaseStub(tables: Record<string, Row[]>) {
 
     private execute() {
       tables[this.table] ??= [];
+      const error = tableErrors[this.table];
+      if (error) {
+        return { data: [], error };
+      }
+
       if (this.operation === "insert" || this.operation === "upsert") {
         const rows = Array.isArray(this.payload) ? this.payload : [this.payload as Row];
         const inserted = rows.map((row, index) => ({
@@ -283,7 +302,7 @@ function createSupabaseStub(tables: Record<string, Row[]>) {
       return Promise.resolve({ data: result.data[0] ?? null, error: result.error });
     }
 
-    then(resolve: (value: { data: Row[]; error: null }) => void, reject: (reason?: unknown) => void) {
+    then(resolve: (value: { data: Row[]; error: null | { message: string; code?: string; details?: string; hint?: string } }) => void, reject: (reason?: unknown) => void) {
       return Promise.resolve(this.execute()).then(resolve, reject);
     }
   }
@@ -312,6 +331,218 @@ describe("freelance payout execution", () => {
     expect(result.eligible).toBe(true);
     expect(result.releaseAmount).toBe(95);
     expect(result.stripeConnectAccountId).toBe("acct_barber");
+  });
+
+  it("lists ready freelance POS payouts without requiring an appointment", async () => {
+    const base = createBaseTables();
+    const secondRouting = {
+      ...base.payment_routing_records[0],
+      id: "routing-card-35",
+      payment_id: "payment-card-35",
+      pos_sale_id: "pos-sale-card-35",
+      provider_gross_amount: 35,
+      platform_fee_amount: 1.75,
+      provider_net_amount: 35,
+      barber_payout_amount: 33.25,
+      eligible_at: "2026-05-26T14:00:00.000Z",
+      updated_at: "2026-05-26T14:00:00.000Z"
+    };
+    const secondPayment = {
+      ...base.payments[0],
+      id: "payment-card-35",
+      pos_sale_id: "pos-sale-card-35",
+      amount: 35
+    };
+    const secondSale = {
+      ...base.pos_sales[0],
+      id: "pos-sale-card-35",
+      payment_id: "payment-card-35",
+      total_cents: 3500,
+      amount_cents: 3500,
+      total_amount_cents: 3500
+    };
+    const supabase = createSupabaseStub(createBaseTables({
+      payment_routing_records: [base.payment_routing_records[0], secondRouting],
+      payments: [base.payments[0], secondPayment],
+      pos_sales: [base.pos_sales[0], secondSale]
+    }));
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const result = await listArchitectFreelancePayoutQueue();
+
+    expect(result.summary.readyCount).toBe(2);
+    expect(result.summary.readyAmount).toBe(128.25);
+    expect(result.items).toHaveLength(2);
+    expect(result.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        routingRecordId: ROUTING_ID,
+        appointmentId: null,
+        posSaleId: POS_SALE_ID,
+        barberPayoutAmount: 95,
+        canRelease: true
+      }),
+      expect.objectContaining({
+        routingRecordId: "routing-card-35",
+        appointmentId: null,
+        posSaleId: "pos-sale-card-35",
+        barberPayoutAmount: 33.25,
+        canRelease: true
+      })
+    ]));
+  });
+
+  it("returns queue rows with a warning when dispute inspection is unavailable", async () => {
+    const appointmentId = "appointment-paid";
+    const base = createBaseTables({
+      payment_routing_records: [{
+        ...createBaseTables().payment_routing_records[0],
+        id: "routing-appointment",
+        payment_id: "payment-appointment",
+        appointment_id: appointmentId,
+        pos_sale_id: null
+      }],
+      payments: [{
+        ...createBaseTables().payments[0],
+        id: "payment-appointment",
+        appointment_id: appointmentId,
+        pos_sale_id: null,
+        payment_type: "booking"
+      }],
+      pos_sales: [],
+      appointments: [{
+        id: appointmentId,
+        reference_code: "BVRB-APPT-1",
+        status: "completed",
+        completed_at: "2026-05-26T13:00:00.000Z",
+        starts_at: "2026-05-26T12:30:00.000Z",
+        service_id: "service-1",
+        membership_id: null,
+        barber_id: BARBER_ID,
+        shop_id: null,
+        location_id: "location-1",
+        client_id: "client-1"
+      }]
+    });
+    const supabase = createSupabaseStub(base, {
+      disputes: { message: "relation public.disputes is unavailable", code: "PGRST205" }
+    });
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const result = await listArchitectFreelancePayoutQueue();
+
+    expect(result.items).toHaveLength(1);
+    expect(result.summary.readyCount).toBe(1);
+    expect(result.warnings).toContain("Dispute hold inspection unavailable. Manual review required.");
+    expect(result.items[0].warnings).toContain("Dispute hold inspection unavailable. Manual review required.");
+  });
+
+  it("keeps enrichment failures visible without erasing healthy queue rows", async () => {
+    const base = createBaseTables();
+    const brokenRouting = {
+      ...base.payment_routing_records[0],
+      id: "routing-missing-payment",
+      payment_id: "missing-payment",
+      pos_sale_id: "pos-sale-missing-payment"
+    };
+    const supabase = createSupabaseStub(createBaseTables({
+      payment_routing_records: [base.payment_routing_records[0], brokenRouting]
+    }));
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const result = await listArchitectFreelancePayoutQueue();
+
+    expect(result.items).toHaveLength(2);
+    expect(result.summary.readyCount).toBe(2);
+    expect(result.warnings).toContain("Some payout rows could not be fully enriched. Visible rows may need manual repair before release.");
+    expect(result.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        routingRecordId: ROUTING_ID,
+        canRelease: true
+      }),
+      expect.objectContaining({
+        routingRecordId: "routing-missing-payment",
+        canRelease: false,
+        ineligibleReasons: ["Payout context could not be fully loaded. Validate this row before release."]
+      })
+    ]));
+  });
+
+  it("blocks only rows with a confirmed active dispute", async () => {
+    const appointmentId = "appointment-disputed";
+    const base = createBaseTables();
+    const disputedRouting = {
+      ...base.payment_routing_records[0],
+      id: "routing-disputed-appointment",
+      payment_id: "payment-disputed-appointment",
+      appointment_id: appointmentId,
+      pos_sale_id: null
+    };
+    const disputedPayment = {
+      ...base.payments[0],
+      id: "payment-disputed-appointment",
+      appointment_id: appointmentId,
+      pos_sale_id: null,
+      payment_type: "booking"
+    };
+    const supabase = createSupabaseStub(createBaseTables({
+      payment_routing_records: [base.payment_routing_records[0], disputedRouting],
+      payments: [base.payments[0], disputedPayment],
+      appointments: [{
+        id: appointmentId,
+        reference_code: "BVRB-DISPUTED",
+        status: "completed",
+        completed_at: "2026-05-26T13:00:00.000Z",
+        starts_at: "2026-05-26T12:30:00.000Z",
+        service_id: "service-1",
+        membership_id: null,
+        barber_id: BARBER_ID,
+        shop_id: null,
+        location_id: "location-1",
+        client_id: "client-1"
+      }],
+      disputes: [{
+        id: "dispute-1",
+        appointment_reference: "BVRB-DISPUTED",
+        dispute_status: "open"
+      }]
+    }));
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const result = await listArchitectFreelancePayoutQueue();
+
+    expect(result.items).toHaveLength(2);
+    expect(result.summary.readyCount).toBe(1);
+    expect(result.summary.blockedCount).toBe(1);
+    expect(result.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        routingRecordId: ROUTING_ID,
+        canRelease: true
+      }),
+      expect.objectContaining({
+        routingRecordId: "routing-disputed-appointment",
+        canRelease: false,
+        ineligibleReasons: expect.arrayContaining(["An active dispute hold blocks payout release."])
+      })
+    ]));
+  });
+
+  it("excludes released, held, and reversed routing rows from the manual queue", async () => {
+    const base = createBaseTables();
+    const supabase = createSupabaseStub(createBaseTables({
+      payment_routing_records: [
+        base.payment_routing_records[0],
+        { ...base.payment_routing_records[0], id: "routing-released", released_at: "2026-05-26T15:00:00.000Z" },
+        { ...base.payment_routing_records[0], id: "routing-held", held_at: "2026-05-26T15:00:00.000Z" },
+        { ...base.payment_routing_records[0], id: "routing-reversed", reversed_at: "2026-05-26T15:00:00.000Z" },
+        { ...base.payment_routing_records[0], id: "routing-paid-out", money_routing_status: "paid_out" }
+      ]
+    }));
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const result = await listArchitectFreelancePayoutQueue();
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].routingRecordId).toBe(ROUTING_ID);
   });
 
   it("does not validate cash or missing-routing POS sales for release", async () => {

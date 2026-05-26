@@ -30,6 +30,7 @@ const queuePayload = {
     blockedCount: 0,
     releasedCount: 0
   },
+  warnings: [],
   items: [{
     routingRecordId: "routing-9",
     paymentId: "payment-9",
@@ -50,6 +51,7 @@ const queuePayload = {
     existingExecutionId: null,
     existingExecutionStatus: null,
     ineligibleReasons: [],
+    warnings: [],
     canRelease: true
   }]
 };
@@ -107,5 +109,23 @@ describe("ArchitectFreelancePayoutQueue", () => {
     fireEvent.click(screen.getByRole("button", { name: "Validate" }));
 
     expect(await screen.findByText("Barber Stripe Connect account is missing.")).toBeInTheDocument();
+  });
+
+  it("shows queue warnings without hiding visible ready rows", () => {
+    queueHookMock.mockReturnValue({
+      data: {
+        ...queuePayload,
+        warnings: ["Dispute hold inspection unavailable. Manual review required."]
+      },
+      isLoading: false,
+      isError: false,
+      error: null
+    });
+
+    render(<ArchitectFreelancePayoutQueue />);
+
+    expect(screen.getByText("Dispute hold inspection unavailable. Manual review required.")).toBeInTheDocument();
+    expect(screen.getByText("Phillip mcgee")).toBeInTheDocument();
+    expect(screen.queryByText("No freelance payout releases are waiting right now.")).not.toBeInTheDocument();
   });
 });
