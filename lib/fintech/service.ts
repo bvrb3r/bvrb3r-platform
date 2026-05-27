@@ -3498,6 +3498,11 @@ async function syncRoutingExecutionState(supabase: SupabaseClient, routingId: st
   const totalExecutedAmount = transferExecutions
     .filter((row) => row.execution_status === "executed")
     .reduce((sum, row) => sum + numeric(row.amount), 0);
+  const executedTransferSubjects = new Set(
+    transferExecutions
+      .filter((row) => row.execution_status === "executed")
+      .map((row) => row.target_subject_type)
+  );
   const totalReversedAmount = reversalExecutions
     .filter((row) => row.execution_status === "reversed")
     .reduce((sum, row) => sum + numeric(row.amount), 0);
@@ -3507,7 +3512,10 @@ async function syncRoutingExecutionState(supabase: SupabaseClient, routingId: st
     targetAmount,
     executedAmount: totalExecutedAmount,
     reversedAmount: totalReversedAmount,
-    hasFailures: executions.some((row) => row.execution_status === "failed"),
+    hasFailures: executions.some((row) =>
+      row.execution_status === "failed"
+      && (row.execution_type !== "transfer" || !executedTransferSubjects.has(row.target_subject_type))
+    ),
     hasBlockedExecutions: executions.some((row) => row.execution_status === "blocked"),
     routingStatus: routing.money_routing_status
   });
@@ -3522,13 +3530,15 @@ async function syncRoutingExecutionState(supabase: SupabaseClient, routingId: st
     routing.reconciliation_status !== reconciliationStatus
     || routing.money_routing_status !== nextMoneyRoutingStatus
   ) {
+    const reconciledAt = new Date().toISOString();
     const updateResult = await supabase
       .from("payment_routing_records")
       .update({
         reconciliation_status: reconciliationStatus,
         money_routing_status: nextMoneyRoutingStatus,
-        last_reconciled_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        released_at: nextMoneyRoutingStatus === "paid_out" ? routing.released_at ?? reconciledAt : routing.released_at,
+        last_reconciled_at: reconciledAt,
+        updated_at: reconciledAt
       })
       .eq("id", routing.id)
       .select(PAYMENT_ROUTING_SELECT)
@@ -4186,16 +4196,21 @@ async function executeTransferForRoutingTarget(
     .eq("routing_record_id", routing.id)
     .eq("target_subject_type", target.targetSubjectType)
     .eq("execution_type", "transfer")
-    .maybeSingle();
+    .order("created_at", { ascending: true });
 
   if (existingResult.error) {
     throw new FintechServiceError("Unable to inspect existing payout transfer executions.", 500);
   }
 
-  const existing = (existingResult.data as PayoutExecutionRow | null) ?? null;
-  if (existing?.execution_status === "executed" && existing.processor_transfer_id) {
-    return existing;
+  const existingTransferExecutions = (existingResult.data ?? []) as PayoutExecutionRow[];
+  const existingExecuted = existingTransferExecutions.find((execution) =>
+    execution.execution_status === "executed"
+    && execution.processor_transfer_id
+  ) ?? null;
+  if (existingExecuted) {
+    return existingExecuted;
   }
+  const existing = existingTransferExecutions.find((execution) => execution.execution_status !== "failed") ?? null;
 
   const blockedReason = determinePayoutExecutionBlockReason({
     paymentProvider: payment.provider,
@@ -4212,7 +4227,16 @@ async function executeTransferForRoutingTarget(
     grossAmount: target.amount,
     speed
   });
-  const payoutReference = existing?.payout_reference ?? `payout:${routing.id}:${target.targetSubjectType}`;
+  const { attemptNumber, idempotencyKey } = existing
+    ? {
+      attemptNumber: blockedReason ? existing.attempt_count ?? 0 : (existing.attempt_count ?? 0) + 1,
+      idempotencyKey: existing.idempotency_key
+    }
+    : nextUniquePayoutTransferAttempt({
+      routingRecordId: routing.id,
+      executions: existingTransferExecutions
+    });
+  const payoutReference = existing?.payout_reference ?? `payout:${routing.id}:${target.targetSubjectType}:attempt:${attemptNumber}`;
 
   const plannedExecution = await persistPayoutExecutionRow(supabase, existing?.id ?? null, {
     routing_record_id: routing.id,
@@ -4230,7 +4254,7 @@ async function executeTransferForRoutingTarget(
     failure_reason: null,
     processor_transfer_id: existing?.processor_transfer_id ?? null,
     processor_reversal_id: existing?.processor_reversal_id ?? null,
-    idempotency_key: existing?.idempotency_key ?? buildPayoutExecutionIdempotencyKey(routing.id, target.targetSubjectType, "transfer"),
+    idempotency_key: idempotencyKey,
     source_execution_id: null,
     source_refund_id: null,
     payout_reference: payoutReference,
@@ -4250,7 +4274,7 @@ async function executeTransferForRoutingTarget(
     },
     initiated_by: existing?.initiated_by ?? initiatedBy,
     last_attempted_at: blockedReason ? existing?.last_attempted_at ?? null : now,
-    attempt_count: blockedReason ? existing?.attempt_count ?? 0 : (existing?.attempt_count ?? 0) + 1,
+    attempt_count: attemptNumber,
     created_at: existing?.created_at ?? now,
     updated_at: now
   });
@@ -4713,6 +4737,31 @@ function nextUniqueFreelancePayoutReleaseAttempt(input: {
 }) {
   const usedIdempotencyKeys = new Set(input.executions.map((row) => row.idempotency_key).filter(Boolean));
   let attemptNumber = nextFreelancePayoutReleaseAttemptNumber(input.executions);
+  let idempotencyKey = buildFreelancePayoutReleaseIdempotencyKey({
+    routingRecordId: input.routingRecordId,
+    attemptNumber
+  });
+
+  while (usedIdempotencyKeys.has(idempotencyKey)) {
+    attemptNumber += 1;
+    idempotencyKey = buildFreelancePayoutReleaseIdempotencyKey({
+      routingRecordId: input.routingRecordId,
+      attemptNumber
+    });
+  }
+
+  return { attemptNumber, idempotencyKey };
+}
+
+function nextUniquePayoutTransferAttempt(input: {
+  routingRecordId: string;
+  executions: PayoutExecutionRow[];
+}) {
+  const transferExecutions = input.executions.filter((row) => row.execution_type === "transfer");
+  const usedIdempotencyKeys = new Set(input.executions.map((row) => row.idempotency_key).filter(Boolean));
+  let attemptNumber = transferExecutions.length
+    ? Math.max(...transferExecutions.map((row) => Math.max(1, Math.trunc(numeric(row.attempt_count))))) + 1
+    : 1;
   let idempotencyKey = buildFreelancePayoutReleaseIdempotencyKey({
     routingRecordId: input.routingRecordId,
     attemptNumber

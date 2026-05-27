@@ -53,6 +53,7 @@ vi.mock("@/lib/stripe/connect", () => ({
 
 import {
   approveFreelancePayoutReadinessForRouting,
+  executeFintechPayouts,
   getArchitectStripePlatformDiagnostics,
   getBarberStripePayoutReadiness,
   listArchitectFreelancePayoutQueue,
@@ -68,6 +69,18 @@ const POS_SALE_ID = "pos-sale-paid";
 const BARBER_ID = "barber-1";
 const BARBER_PROFILE_ID = "profile-barber";
 const CONNECTED_ACCOUNT_ID = "connected-account-1";
+const SHOP_ID = "shop-1";
+const OWNER_PROFILE_ID = "profile-owner";
+
+const ownerUser = {
+  id: "owner-user",
+  role: "owner" as const,
+  email: "owner@example.com",
+  password: "demo",
+  name: "Owner Operator",
+  title: "Owner",
+  locationIds: [] as string[]
+};
 
 function createBaseTables(overrides: Partial<Record<string, Row[]>> = {}) {
   return {
@@ -195,6 +208,75 @@ function createBaseTables(overrides: Partial<Record<string, Row[]>> = {}) {
     platform_events: [],
     ...overrides
   } satisfies Record<string, Row[]>;
+}
+
+function createLegacyExecutorTables(overrides: Partial<Record<string, Row[]>> = {}) {
+  const tables = createBaseTables({
+    locations: [{
+      id: SHOP_ID,
+      reference_code: "shop-main",
+      name: "Main Shop",
+      neighborhood: "Downtown",
+      city: "Atlanta",
+      state: "GA"
+    }],
+    profiles: [{
+      id: BARBER_PROFILE_ID,
+      email: "phillip@example.com",
+      full_name: "Phillip mcgee",
+      role: "barber_user"
+    }, {
+      id: OWNER_PROFILE_ID,
+      email: ownerUser.email,
+      full_name: ownerUser.name,
+      role: "owner"
+    }],
+    ...overrides
+  });
+  (tables.payments[0] as Row).shop_id = SHOP_ID;
+  (tables.payments[0] as Row).provider_payment_intent_id = null;
+  (tables.payment_routing_records[0] as Row).money_routing_status = "ready_for_payout";
+  return tables;
+}
+
+function createTransferExecution(overrides: Row = {}) {
+  return {
+    id: "execution-base",
+    routing_record_id: ROUTING_ID,
+    payment_id: PAYMENT_ID,
+    appointment_id: null,
+    membership_id: null,
+    target_subject_type: "barber",
+    execution_type: "transfer",
+    target_connected_account_id: CONNECTED_ACCOUNT_ID,
+    target_provider_account_id: "acct_barber",
+    amount: 95,
+    currency: "usd",
+    execution_status: "failed",
+    blocked_reason: null,
+    failure_reason: "You have insufficient available funds in your Stripe account.",
+    processor_transfer_id: null,
+    processor_reversal_id: null,
+    idempotency_key: "freelance_payout_release:routing-freelance:attempt:1",
+    source_execution_id: null,
+    source_refund_id: null,
+    payout_reference: "payout:routing-freelance:barber:attempt:1",
+    payout_speed: "standard",
+    instant_payout_fee_amount: 0,
+    net_transfer_amount: 95,
+    processor_payout_id: null,
+    reconciliation_status: "manual_review",
+    metadata: {},
+    initiated_by: "architect-profile",
+    attempt_count: 1,
+    last_attempted_at: "2026-05-26T13:00:00.000Z",
+    executed_at: null,
+    failed_at: "2026-05-26T13:00:00.000Z",
+    reversed_at: null,
+    created_at: "2026-05-26T13:00:00.000Z",
+    updated_at: "2026-05-26T13:00:00.000Z",
+    ...overrides
+  };
 }
 
 function createSupabaseStub(
@@ -1310,6 +1392,77 @@ describe("freelance payout execution", () => {
     expect(result.ok).toBe(false);
     expect(result.message).toMatch(/already released/i);
     expect(createStripeTransferMock).not.toHaveBeenCalled();
+  });
+
+  it("executor retries failed transfers with a fresh execution row and attempt idempotency key", async () => {
+    const tables = createLegacyExecutorTables({
+      payout_executions: [createTransferExecution({
+        id: "execution-failed",
+        attempt_count: 6,
+        idempotency_key: "freelance_payout_release:routing-freelance:attempt:1"
+      })]
+    });
+    const supabase = createSupabaseStub(tables);
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const result = await executeFintechPayouts(ownerUser, { mode: "retry_failed" });
+
+    expect(result.summary.executed).toBe(1);
+    expect(createStripeTransferMock).toHaveBeenCalledWith(expect.objectContaining({
+      idempotencyKey: "freelance_payout_release:routing-freelance:attempt:7"
+    }));
+    expect(tables.payout_executions).toHaveLength(2);
+    expect(tables.payout_executions[0]).toMatchObject({
+      id: "execution-failed",
+      execution_status: "failed",
+      processor_transfer_id: null
+    });
+    expect(tables.payout_executions[1]).toMatchObject({
+      execution_status: "executed",
+      attempt_count: 7,
+      idempotency_key: "freelance_payout_release:routing-freelance:attempt:7",
+      processor_transfer_id: "tr_freelance"
+    });
+    expect(tables.payment_routing_records[0]).toMatchObject({
+      money_routing_status: "paid_out"
+    });
+    expect(tables.payment_routing_records[0].released_at).toBeTruthy();
+  });
+
+  it("executor returns an existing successful transfer without retrying failed history", async () => {
+    const tables = createLegacyExecutorTables({
+      payout_executions: [
+        createTransferExecution({
+          id: "execution-failed",
+          attempt_count: 6,
+          updated_at: "2026-05-26T14:00:00.000Z"
+        }),
+        createTransferExecution({
+          id: "execution-executed",
+          execution_status: "executed",
+          failure_reason: null,
+          processor_transfer_id: "tr_existing",
+          idempotency_key: "freelance_payout_release:routing-freelance:attempt:7",
+          attempt_count: 7,
+          reconciliation_status: "settled",
+          executed_at: "2026-05-26T13:30:00.000Z",
+          failed_at: null,
+          updated_at: "2026-05-26T13:30:00.000Z"
+        })
+      ]
+    });
+    const supabase = createSupabaseStub(tables);
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const result = await executeFintechPayouts(ownerUser, { mode: "retry_failed" });
+
+    expect(result.summary.executed).toBe(1);
+    expect(createStripeTransferMock).not.toHaveBeenCalled();
+    expect(tables.payout_executions).toHaveLength(2);
+    expect(tables.payout_executions[1]).toMatchObject({
+      id: "execution-executed",
+      processor_transfer_id: "tr_existing"
+    });
   });
 
   it("replaces the strict transfer subject unique index with executed-only uniqueness", () => {
