@@ -666,8 +666,22 @@ export type FreelancePayoutReleaseResult = {
   debugSafeDetails?: {
     table: "payout_executions";
     constraint: string | null;
+    supabaseCode: string | null;
+    supabaseMessage: string | null;
+    supabaseDetails: string | null;
+    supabaseHint: string | null;
     attemptedIdempotencyKey: string;
+    attemptedAttemptCount: number;
     nextAttemptNumber: number;
+    routingRecordId: string | null;
+    paymentId: string | null;
+    targetConnectedAccountId: string | null;
+    targetProviderAccountId: string | null;
+    amount: number | string | null;
+    currency: string | null;
+    executionStatus: string | null;
+    executionType: string | null;
+    targetSubjectType: string | null;
   };
 };
 
@@ -4721,30 +4735,112 @@ function databaseConstraintName(error: { message?: string; details?: string; hin
   return match?.[1] ?? null;
 }
 
+function errorStringField(error: unknown, key: "code" | "message" | "details" | "hint") {
+  if (!error || typeof error !== "object") {
+    return null;
+  }
+
+  const value = (error as Record<string, unknown>)[key];
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function valueStringOrNull(value: unknown) {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function valueNumberStringOrNull(value: unknown) {
+  return typeof value === "number" || typeof value === "string" ? value : null;
+}
+
+function buildPayoutExecutionInsertDebugDetails(
+  values: Record<string, unknown>,
+  error: unknown,
+  debug: { attemptedIdempotencyKey: string; nextAttemptNumber: number }
+) {
+  return {
+    table: "payout_executions" as const,
+    constraint: databaseConstraintName({
+      code: errorStringField(error, "code") ?? undefined,
+      message: errorStringField(error, "message") ?? undefined,
+      details: errorStringField(error, "details") ?? undefined,
+      hint: errorStringField(error, "hint") ?? undefined
+    }),
+    supabaseCode: errorStringField(error, "code"),
+    supabaseMessage: errorStringField(error, "message"),
+    supabaseDetails: errorStringField(error, "details"),
+    supabaseHint: errorStringField(error, "hint"),
+    attemptedIdempotencyKey: debug.attemptedIdempotencyKey,
+    attemptedAttemptCount: typeof values.attempt_count === "number" ? values.attempt_count : debug.nextAttemptNumber,
+    nextAttemptNumber: debug.nextAttemptNumber,
+    routingRecordId: valueStringOrNull(values.routing_record_id),
+    paymentId: valueStringOrNull(values.payment_id),
+    targetConnectedAccountId: valueStringOrNull(values.target_connected_account_id),
+    targetProviderAccountId: valueStringOrNull(values.target_provider_account_id),
+    amount: valueNumberStringOrNull(values.amount),
+    currency: valueStringOrNull(values.currency),
+    executionStatus: valueStringOrNull(values.execution_status),
+    executionType: valueStringOrNull(values.execution_type),
+    targetSubjectType: valueStringOrNull(values.target_subject_type)
+  };
+}
+
+function logPayoutExecutionInsertFailure(values: Record<string, unknown>, error: unknown, debugSafeDetails: ReturnType<typeof buildPayoutExecutionInsertDebugDetails>) {
+  console.error("BVRB3R_PAYOUT_EXECUTION_INSERT_FAILED", {
+    code: debugSafeDetails.supabaseCode,
+    message: debugSafeDetails.supabaseMessage,
+    details: debugSafeDetails.supabaseDetails,
+    hint: debugSafeDetails.supabaseHint,
+    attemptedPayloadKeys: Object.keys(values).sort(),
+    attemptedIdempotencyKey: debugSafeDetails.attemptedIdempotencyKey,
+    attemptedAttemptCount: debugSafeDetails.attemptedAttemptCount,
+    routingRecordId: debugSafeDetails.routingRecordId,
+    paymentId: debugSafeDetails.paymentId,
+    targetConnectedAccountId: debugSafeDetails.targetConnectedAccountId,
+    targetProviderAccountId: debugSafeDetails.targetProviderAccountId,
+    amount: debugSafeDetails.amount,
+    currency: debugSafeDetails.currency,
+    executionStatus: debugSafeDetails.executionStatus,
+    executionType: debugSafeDetails.executionType,
+    targetSubjectType: debugSafeDetails.targetSubjectType
+  });
+}
+
 async function createPayoutExecutionAttemptRow(
   supabase: SupabaseClient,
   values: Record<string, unknown>,
   debug: { attemptedIdempotencyKey: string; nextAttemptNumber: number }
 ) {
-  const result = await supabase
-    .from("payout_executions")
-    .insert(values)
-    .select(PAYOUT_EXECUTION_SELECT)
-    .single();
-
-  if (result.error) {
+  let result: { data: unknown; error: unknown };
+  try {
+    result = await supabase
+      .from("payout_executions")
+      .insert(values)
+      .select(PAYOUT_EXECUTION_SELECT)
+      .single();
+  } catch (error) {
+    const debugSafeDetails = buildPayoutExecutionInsertDebugDetails(values, error, debug);
+    logPayoutExecutionInsertFailure(values, error, debugSafeDetails);
     return {
       ok: false as const,
       error: {
         failedStep: "create_payout_execution" as const,
         errorCode: "payout_execution_insert_failed",
         errorMessage: "Unable to create the payout execution record.",
-        debugSafeDetails: {
-          table: "payout_executions" as const,
-          constraint: databaseConstraintName(result.error),
-          attemptedIdempotencyKey: debug.attemptedIdempotencyKey,
-          nextAttemptNumber: debug.nextAttemptNumber
-        }
+        debugSafeDetails
+      }
+    };
+  }
+
+  if (result.error) {
+    const debugSafeDetails = buildPayoutExecutionInsertDebugDetails(values, result.error, debug);
+    logPayoutExecutionInsertFailure(values, result.error, debugSafeDetails);
+    return {
+      ok: false as const,
+      error: {
+        failedStep: "create_payout_execution" as const,
+        errorCode: "payout_execution_insert_failed",
+        errorMessage: "Unable to create the payout execution record.",
+        debugSafeDetails
       }
     };
   }

@@ -431,4 +431,67 @@ describe("phase 15 payout routes", () => {
     expect(body.errorMessage).toBe("Release failed: insufficient available Stripe platform balance.");
     expect(body.payoutExecutionId).toBe("execution-failed");
   });
+
+  it("returns safe payout execution insert diagnostics from Architect freelance payout release", async () => {
+    releaseFreelanceRoutingPayoutMock.mockResolvedValue({
+      ok: false,
+      dryRun: false,
+      eligibility: {
+        eligible: true,
+        reasons: [],
+        routingRecordId: "routing-9",
+        releaseAmount: 8.55,
+        recipientType: "barber",
+        barberId: "barber-1",
+        stripeConnectAccountId: "acct_barber",
+        stripePayoutReadiness: null,
+        existingExecutionId: null,
+        existingExecutionStatus: null,
+        routingRecord: null
+      },
+      execution: null,
+      routingRecord: null,
+      message: "Unable to create the payout execution record.",
+      failedStep: "create_payout_execution",
+      errorCode: "payout_execution_insert_failed",
+      errorMessage: "Unable to create the payout execution record.",
+      debugSafeDetails: {
+        table: "payout_executions",
+        constraint: "payout_executions_idempotency_uidx",
+        supabaseCode: "23505",
+        supabaseMessage: "duplicate key value violates unique constraint \"payout_executions_idempotency_uidx\"",
+        supabaseDetails: "Key (idempotency_key)=(freelance_payout_release:routing-9:attempt:7) already exists.",
+        supabaseHint: null,
+        attemptedIdempotencyKey: "freelance_payout_release:routing-9:attempt:7",
+        attemptedAttemptCount: 7,
+        nextAttemptNumber: 7,
+        routingRecordId: "routing-9",
+        paymentId: "payment-9",
+        targetConnectedAccountId: "connected-9",
+        targetProviderAccountId: "acct_barber",
+        amount: 8.55,
+        currency: "usd",
+        executionStatus: "pending",
+        executionType: "transfer",
+        targetSubjectType: "barber"
+      }
+    });
+
+    const response = await postArchitectPayoutRelease(new NextRequest("https://bvrb3r.demo/api/architect/payouts/release", {
+      method: "POST",
+      body: JSON.stringify({ routingRecordId: "routing-9" })
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(false);
+    expect(body.failedStep).toBe("create_payout_execution");
+    expect(body.errorCode).toBe("payout_execution_insert_failed");
+    expect(body.debugSafeDetails.supabaseCode).toBe("23505");
+    expect(body.debugSafeDetails.supabaseMessage).toContain("duplicate key value");
+    expect(body.debugSafeDetails.supabaseDetails).toContain("freelance_payout_release:routing-9:attempt:7");
+    expect(body.debugSafeDetails.supabaseHint).toBeNull();
+    expect(body.debugSafeDetails.attemptedIdempotencyKey).toBe("freelance_payout_release:routing-9:attempt:7");
+    expect(body.debugSafeDetails.attemptedAttemptCount).toBe(7);
+  });
 });

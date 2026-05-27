@@ -1194,6 +1194,7 @@ describe("freelance payout execution", () => {
   });
 
   it("returns safe insert diagnostics when payout execution creation fails", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const tables = createBaseTables();
     const supabase = createSupabaseStub(tables, {}, {
       payout_executions: {
@@ -1216,14 +1217,45 @@ describe("freelance payout execution", () => {
     expect(result.failedStep).toBe("create_payout_execution");
     expect(result.errorCode).toBe("payout_execution_insert_failed");
     expect(result.errorMessage).toBe("Unable to create the payout execution record.");
-    expect(result.debugSafeDetails).toEqual({
+    expect(result.debugSafeDetails).toMatchObject({
       table: "payout_executions",
       constraint: "payout_executions_idempotency_uidx",
+      supabaseCode: "23505",
+      supabaseMessage: "duplicate key value violates unique constraint \"payout_executions_idempotency_uidx\"",
+      supabaseDetails: "Key (idempotency_key)=(freelance_payout_release:routing-freelance:attempt:1) already exists.",
+      supabaseHint: null,
       attemptedIdempotencyKey: "freelance_payout_release:routing-freelance:attempt:1",
-      nextAttemptNumber: 1
+      attemptedAttemptCount: 1,
+      nextAttemptNumber: 1,
+      routingRecordId: ROUTING_ID,
+      paymentId: PAYMENT_ID,
+      targetConnectedAccountId: CONNECTED_ACCOUNT_ID,
+      targetProviderAccountId: "acct_barber",
+      amount: 95,
+      currency: "usd",
+      executionStatus: "pending",
+      executionType: "transfer",
+      targetSubjectType: "barber"
     });
+    expect(consoleErrorSpy).toHaveBeenCalledWith("BVRB3R_PAYOUT_EXECUTION_INSERT_FAILED", expect.objectContaining({
+      code: "23505",
+      message: "duplicate key value violates unique constraint \"payout_executions_idempotency_uidx\"",
+      attemptedPayloadKeys: expect.arrayContaining(["idempotency_key", "attempt_count", "routing_record_id"]),
+      attemptedIdempotencyKey: "freelance_payout_release:routing-freelance:attempt:1",
+      attemptedAttemptCount: 1,
+      routingRecordId: ROUTING_ID,
+      paymentId: PAYMENT_ID,
+      targetConnectedAccountId: CONNECTED_ACCOUNT_ID,
+      targetProviderAccountId: "acct_barber",
+      amount: 95,
+      currency: "usd",
+      executionStatus: "pending",
+      executionType: "transfer",
+      targetSubjectType: "barber"
+    }));
     expect(createStripeTransferMock).not.toHaveBeenCalled();
     expect(tables.payment_routing_records[0].released_at).toBeNull();
+    consoleErrorSpy.mockRestore();
   });
 
   it("does not double-release an already executed routing record", async () => {

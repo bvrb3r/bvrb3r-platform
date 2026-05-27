@@ -12,7 +12,7 @@ import {
   useReleaseFreelancePayoutMutation,
   useValidateFreelancePayoutMutation
 } from "@/lib/fintech/client";
-import type { ArchitectStripePlatformDiagnosticsPayload, FreelancePayoutQueueItem, StripePlatformBalanceView } from "@/lib/fintech/service";
+import type { ArchitectStripePlatformDiagnosticsPayload, FreelancePayoutQueueItem, FreelancePayoutReleaseResult, StripePlatformBalanceView } from "@/lib/fintech/service";
 import { cn } from "@/lib/utils";
 import { getReadableActionError } from "@/lib/utils/feedback";
 
@@ -84,6 +84,23 @@ function stripeRequirementCopy(item: FreelancePayoutQueueItem) {
     message: readiness.displayMessage,
     due
   };
+}
+
+function formatReleaseFeedback(result: FreelancePayoutReleaseResult) {
+  const baseMessage = result.errorMessage ?? result.message;
+  if (result.failedStep !== "create_payout_execution" || !result.debugSafeDetails) {
+    return baseMessage;
+  }
+
+  const details = result.debugSafeDetails;
+  const debugParts = [
+    details.supabaseCode ? `Supabase code: ${details.supabaseCode}` : null,
+    details.supabaseMessage ? `Supabase message: ${details.supabaseMessage}` : null,
+    `Idempotency key: ${details.attemptedIdempotencyKey}`,
+    `Attempt count: ${details.attemptedAttemptCount}`
+  ].filter(Boolean);
+
+  return debugParts.length ? `${baseMessage} ${debugParts.join(" | ")}` : baseMessage;
 }
 
 function StripePlatformDiagnosticsCard() {
@@ -348,7 +365,7 @@ export function ArchitectFreelancePayoutQueue() {
       const result = await releaseMutation.mutateAsync({ routingRecordId: item.routingRecordId });
       setFeedback({
         tone: result.ok ? "success" : "error",
-        message: result.errorMessage ?? result.message
+        message: formatReleaseFeedback(result)
       });
     } catch (error) {
       setFeedback({ tone: "error", message: getReadableActionError(error as { message?: string; status?: number; code?: string }) });

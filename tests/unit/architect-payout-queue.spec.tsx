@@ -385,4 +385,47 @@ describe("ArchitectFreelancePayoutQueue", () => {
     });
     expect((await screen.findAllByText("Release failed: insufficient available Stripe platform balance.")).length).toBeGreaterThanOrEqual(2);
   });
+
+  it("shows safe Supabase diagnostics when payout execution insert fails", async () => {
+    releaseMutateAsyncMock.mockResolvedValue({
+      ok: false,
+      message: "Unable to create the payout execution record.",
+      failedStep: "create_payout_execution",
+      errorCode: "payout_execution_insert_failed",
+      errorMessage: "Unable to create the payout execution record.",
+      debugSafeDetails: {
+        table: "payout_executions",
+        constraint: "payout_executions_idempotency_uidx",
+        supabaseCode: "23505",
+        supabaseMessage: "duplicate key value violates unique constraint \"payout_executions_idempotency_uidx\"",
+        supabaseDetails: "Key (idempotency_key)=(freelance_payout_release:routing-9:attempt:7) already exists.",
+        supabaseHint: null,
+        attemptedIdempotencyKey: "freelance_payout_release:routing-9:attempt:7",
+        attemptedAttemptCount: 7,
+        nextAttemptNumber: 7,
+        routingRecordId: "routing-9",
+        paymentId: "payment-9",
+        targetConnectedAccountId: "connected-9",
+        targetProviderAccountId: "acct_barber",
+        amount: 8.55,
+        currency: "usd",
+        executionStatus: "pending",
+        executionType: "transfer",
+        targetSubjectType: "barber"
+      }
+    });
+
+    render(<ArchitectFreelancePayoutQueue />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Release payout" }));
+
+    await waitFor(() => {
+      expect(releaseMutateAsyncMock).toHaveBeenCalledWith({ routingRecordId: "routing-9" });
+    });
+    expect(await screen.findByText(/Unable to create the payout execution record\./)).toBeInTheDocument();
+    expect(screen.getByText(/Supabase code: 23505/)).toBeInTheDocument();
+    expect(screen.getByText(/Supabase message: duplicate key value violates unique constraint/)).toBeInTheDocument();
+    expect(screen.getByText(/Idempotency key: freelance_payout_release:routing-9:attempt:7/)).toBeInTheDocument();
+    expect(screen.getByText(/Attempt count: 7/)).toBeInTheDocument();
+  });
 });
