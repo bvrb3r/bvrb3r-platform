@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
@@ -1308,5 +1310,20 @@ describe("freelance payout execution", () => {
     expect(result.ok).toBe(false);
     expect(result.message).toMatch(/already released/i);
     expect(createStripeTransferMock).not.toHaveBeenCalled();
+  });
+
+  it("replaces the strict transfer subject unique index with executed-only uniqueness", () => {
+    const migration = readFileSync(
+      join(process.cwd(), "supabase/migrations/20260527120000_replace_payout_execution_transfer_subject_index.sql"),
+      "utf8"
+    );
+
+    expect(migration).toContain("drop constraint payout_executions_transfer_subject_uidx");
+    expect(migration).toContain("drop index if exists public.payout_executions_transfer_subject_uidx");
+    expect(migration).toContain("create unique index if not exists payout_executions_one_executed_transfer_per_subject_uidx");
+    expect(migration).toContain("on public.payout_executions (routing_record_id, target_subject_type)");
+    expect(migration).toContain("execution_status = 'executed'");
+    expect(migration).toContain("execution_type = 'transfer'");
+    expect(migration).toContain("notify pgrst, 'reload schema'");
   });
 });
