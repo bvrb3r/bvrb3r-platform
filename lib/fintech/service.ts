@@ -659,10 +659,16 @@ export type FreelancePayoutReleaseResult = {
   execution: PayoutExecutionView | null;
   routingRecord: FreelancePayoutRoutingSnapshot | null;
   message: string;
-  failedStep?: "platform_balance_preflight" | "stripe_transfer";
+  failedStep?: "create_payout_execution" | "platform_balance_preflight" | "stripe_transfer";
   errorCode?: string;
   errorMessage?: string;
   payoutExecutionId?: string;
+  debugSafeDetails?: {
+    table: "payout_executions";
+    constraint: string | null;
+    attemptedIdempotencyKey: string;
+    nextAttemptNumber: number;
+  };
 };
 
 export type FintechPayoutsPayload = {
@@ -4648,7 +4654,7 @@ function pendingTransferExecutionForRouting(executions: PayoutExecutionRow[]) {
   return executions.find((row) =>
     row.execution_type === "transfer"
     && row.target_subject_type === "barber"
-    && row.execution_status === "pending"
+    && (row.execution_status === "pending" || String(row.execution_status).toLowerCase() === "processing")
   ) ?? null;
 }
 
@@ -4685,6 +4691,68 @@ function nextFreelancePayoutReleaseAttemptNumber(executions: PayoutExecutionRow[
   }
 
   return Math.max(...transferExecutions.map((row) => Math.max(1, Math.trunc(numeric(row.attempt_count))))) + 1;
+}
+
+function nextUniqueFreelancePayoutReleaseAttempt(input: {
+  routingRecordId: string;
+  executions: PayoutExecutionRow[];
+}) {
+  const usedIdempotencyKeys = new Set(input.executions.map((row) => row.idempotency_key).filter(Boolean));
+  let attemptNumber = nextFreelancePayoutReleaseAttemptNumber(input.executions);
+  let idempotencyKey = buildFreelancePayoutReleaseIdempotencyKey({
+    routingRecordId: input.routingRecordId,
+    attemptNumber
+  });
+
+  while (usedIdempotencyKeys.has(idempotencyKey)) {
+    attemptNumber += 1;
+    idempotencyKey = buildFreelancePayoutReleaseIdempotencyKey({
+      routingRecordId: input.routingRecordId,
+      attemptNumber
+    });
+  }
+
+  return { attemptNumber, idempotencyKey };
+}
+
+function databaseConstraintName(error: { message?: string; details?: string; hint?: string; code?: string } | null | undefined) {
+  const text = [error?.message, error?.details, error?.hint].filter(Boolean).join(" ");
+  const match = text.match(/constraint ["']?([a-zA-Z0-9_]+)["']?/i);
+  return match?.[1] ?? null;
+}
+
+async function createPayoutExecutionAttemptRow(
+  supabase: SupabaseClient,
+  values: Record<string, unknown>,
+  debug: { attemptedIdempotencyKey: string; nextAttemptNumber: number }
+) {
+  const result = await supabase
+    .from("payout_executions")
+    .insert(values)
+    .select(PAYOUT_EXECUTION_SELECT)
+    .single();
+
+  if (result.error) {
+    return {
+      ok: false as const,
+      error: {
+        failedStep: "create_payout_execution" as const,
+        errorCode: "payout_execution_insert_failed",
+        errorMessage: "Unable to create the payout execution record.",
+        debugSafeDetails: {
+          table: "payout_executions" as const,
+          constraint: databaseConstraintName(result.error),
+          attemptedIdempotencyKey: debug.attemptedIdempotencyKey,
+          nextAttemptNumber: debug.nextAttemptNumber
+        }
+      }
+    };
+  }
+
+  return {
+    ok: true as const,
+    row: result.data as PayoutExecutionRow
+  };
 }
 
 function stripeErrorStringField(error: unknown, field: "code" | "message" | "decline_code") {
@@ -5407,13 +5475,12 @@ export async function releaseFreelanceRoutingPayout(input: {
   }
 
   const now = new Date().toISOString();
-  const attemptNumber = nextFreelancePayoutReleaseAttemptNumber(context.executions);
-  const idempotencyKey = buildFreelancePayoutReleaseIdempotencyKey({
+  const { attemptNumber, idempotencyKey } = nextUniqueFreelancePayoutReleaseAttempt({
     routingRecordId: context.routing.id,
-    attemptNumber
+    executions: context.executions
   });
   const payoutReference = `payout:${context.routing.id}:barber:attempt:${attemptNumber}`;
-  const plannedExecution = await persistPayoutExecutionRow(supabase, null, {
+  const plannedExecutionResult = await createPayoutExecutionAttemptRow(supabase, {
     routing_record_id: context.routing.id,
     payment_id: context.routing.payment_id,
     appointment_id: context.routing.appointment_id,
@@ -5450,7 +5517,26 @@ export async function releaseFreelanceRoutingPayout(input: {
     last_attempted_at: now,
     created_at: now,
     updated_at: now
+  }, {
+    attemptedIdempotencyKey: idempotencyKey,
+    nextAttemptNumber: attemptNumber
   });
+
+  if (!plannedExecutionResult.ok) {
+    return {
+      ok: false,
+      dryRun: false,
+      eligibility,
+      execution: null,
+      routingRecord: mapFreelancePayoutRoutingSnapshot(context.routing),
+      message: plannedExecutionResult.error.errorMessage,
+      failedStep: plannedExecutionResult.error.failedStep,
+      errorCode: plannedExecutionResult.error.errorCode,
+      errorMessage: plannedExecutionResult.error.errorMessage,
+      debugSafeDetails: plannedExecutionResult.error.debugSafeDetails
+    };
+  }
+  const plannedExecution = plannedExecutionResult.row;
 
   const preflight = await inspectPlatformBalanceBeforeRelease({
     amount: eligibility.releaseAmount,

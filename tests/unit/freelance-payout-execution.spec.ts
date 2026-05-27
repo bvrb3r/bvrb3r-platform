@@ -197,7 +197,8 @@ function createBaseTables(overrides: Partial<Record<string, Row[]>> = {}) {
 
 function createSupabaseStub(
   tables: Record<string, Row[]>,
-  tableErrors: Partial<Record<string, { message: string; code?: string; details?: string; hint?: string }>> = {}
+  tableErrors: Partial<Record<string, { message: string; code?: string; details?: string; hint?: string }>> = {},
+  operationErrors: Partial<Record<string, Partial<Record<"insert" | "update" | "upsert", { message: string; code?: string; details?: string; hint?: string }>>>> = {}
 ) {
   class QueryBuilder {
     private filters: Array<(row: Row) => boolean> = [];
@@ -275,6 +276,10 @@ function createSupabaseStub(
 
     private execute() {
       tables[this.table] ??= [];
+      const operationError = this.operation ? operationErrors[this.table]?.[this.operation] : null;
+      if (operationError) {
+        return { data: [], error: operationError };
+      }
       const error = tableErrors[this.table];
       if (error) {
         return { data: [], error };
@@ -282,6 +287,23 @@ function createSupabaseStub(
 
       if (this.operation === "insert" || this.operation === "upsert") {
         const rows = Array.isArray(this.payload) ? this.payload : [this.payload as Row];
+        if (this.table === "payout_executions") {
+          const duplicate = rows.find((row) =>
+            row.idempotency_key
+            && tables[this.table].some((existing) => existing.idempotency_key === row.idempotency_key)
+          );
+          if (duplicate) {
+            return {
+              data: [],
+              error: {
+                code: "23505",
+                message: "duplicate key value violates unique constraint \"payout_executions_idempotency_uidx\"",
+                details: `Key (idempotency_key)=(${String(duplicate.idempotency_key)}) already exists.`,
+                hint: ""
+              }
+            };
+          }
+        }
         const inserted = rows.map((row, index) => ({
           id: row.id ?? `${this.table}-${tables[this.table].length + index + 1}`,
           created_at: row.created_at ?? "2026-05-26T14:00:00.000Z",
@@ -1059,7 +1081,7 @@ describe("freelance payout execution", () => {
         reconciliation_status: "manual_review",
         metadata: {},
         initiated_by: "architect-profile",
-        attempt_count: 4,
+        attempt_count: 6,
         last_attempted_at: "2026-05-26T13:00:00.000Z",
         executed_at: null,
         failed_at: "2026-05-26T13:00:00.000Z",
@@ -1078,7 +1100,7 @@ describe("freelance payout execution", () => {
 
     expect(result.ok).toBe(true);
     expect(createStripeTransferMock).toHaveBeenCalledWith(expect.objectContaining({
-      idempotencyKey: "freelance_payout_release:routing-freelance:attempt:5"
+      idempotencyKey: "freelance_payout_release:routing-freelance:attempt:7"
     }));
     expect(tables.payout_executions).toHaveLength(2);
     expect(tables.payout_executions[0]).toMatchObject({
@@ -1090,15 +1112,118 @@ describe("freelance payout execution", () => {
     expect(tables.payout_executions[1]).toMatchObject({
       execution_status: "executed",
       failure_reason: null,
-      attempt_count: 5,
+      attempt_count: 7,
       processor_transfer_id: "tr_freelance",
-      idempotency_key: "freelance_payout_release:routing-freelance:attempt:5"
+      idempotency_key: "freelance_payout_release:routing-freelance:attempt:7"
     });
     expect(tables.payment_routing_records[0]).toMatchObject({
       money_routing_status: "paid_out",
       blocked_reason: null
     });
     expect(tables.payment_routing_records[0].released_at).toBeTruthy();
+  });
+
+  it("skips occupied retry idempotency keys before inserting a fresh execution", async () => {
+    const failedExecution = {
+      id: "execution-failed",
+      routing_record_id: ROUTING_ID,
+      payment_id: PAYMENT_ID,
+      appointment_id: null,
+      membership_id: null,
+      target_subject_type: "barber",
+      execution_type: "transfer",
+      target_connected_account_id: CONNECTED_ACCOUNT_ID,
+      target_provider_account_id: "acct_barber",
+      amount: 95,
+      currency: "usd",
+      execution_status: "failed",
+      blocked_reason: null,
+      failure_reason: "You have insufficient available funds in your Stripe account.",
+      processor_transfer_id: null,
+      processor_reversal_id: null,
+      idempotency_key: "freelance_payout_release:routing-freelance:attempt:1",
+      source_execution_id: null,
+      source_refund_id: null,
+      payout_reference: "payout:routing-freelance:barber:attempt:1",
+      payout_speed: "standard",
+      instant_payout_fee_amount: 0,
+      net_transfer_amount: 95,
+      processor_payout_id: null,
+      reconciliation_status: "manual_review",
+      metadata: {},
+      initiated_by: "architect-profile",
+      attempt_count: 6,
+      last_attempted_at: "2026-05-26T13:00:00.000Z",
+      executed_at: null,
+      failed_at: "2026-05-26T13:00:00.000Z",
+      reversed_at: null,
+      created_at: "2026-05-26T13:00:00.000Z",
+      updated_at: "2026-05-26T13:00:00.000Z"
+    };
+    const occupiedAttempt = {
+      ...failedExecution,
+      id: "execution-failed-occupied",
+      idempotency_key: "freelance_payout_release:routing-freelance:attempt:7",
+      payout_reference: "payout:routing-freelance:barber:attempt:7",
+      attempt_count: 1,
+      created_at: "2026-05-26T13:01:00.000Z",
+      updated_at: "2026-05-26T13:01:00.000Z"
+    };
+    const tables = createBaseTables({
+      payout_executions: [failedExecution, occupiedAttempt]
+    });
+    const supabase = createSupabaseStub(tables);
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const result = await releaseFreelanceRoutingPayout({
+      routingRecordId: ROUTING_ID,
+      requestedByProfileId: "architect-profile"
+    });
+
+    expect(result.ok).toBe(true);
+    expect(createStripeTransferMock).toHaveBeenCalledWith(expect.objectContaining({
+      idempotencyKey: "freelance_payout_release:routing-freelance:attempt:8"
+    }));
+    expect(tables.payout_executions).toHaveLength(3);
+    expect(tables.payout_executions[2]).toMatchObject({
+      execution_status: "executed",
+      attempt_count: 8,
+      idempotency_key: "freelance_payout_release:routing-freelance:attempt:8",
+      processor_transfer_id: "tr_freelance"
+    });
+  });
+
+  it("returns safe insert diagnostics when payout execution creation fails", async () => {
+    const tables = createBaseTables();
+    const supabase = createSupabaseStub(tables, {}, {
+      payout_executions: {
+        insert: {
+          code: "23505",
+          message: "duplicate key value violates unique constraint \"payout_executions_idempotency_uidx\"",
+          details: "Key (idempotency_key)=(freelance_payout_release:routing-freelance:attempt:1) already exists.",
+          hint: ""
+        }
+      }
+    });
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const result = await releaseFreelanceRoutingPayout({
+      routingRecordId: ROUTING_ID,
+      requestedByProfileId: "architect-profile"
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.failedStep).toBe("create_payout_execution");
+    expect(result.errorCode).toBe("payout_execution_insert_failed");
+    expect(result.errorMessage).toBe("Unable to create the payout execution record.");
+    expect(result.debugSafeDetails).toEqual({
+      table: "payout_executions",
+      constraint: "payout_executions_idempotency_uidx",
+      attemptedIdempotencyKey: "freelance_payout_release:routing-freelance:attempt:1",
+      nextAttemptNumber: 1
+    });
+    expect(createStripeTransferMock).not.toHaveBeenCalled();
+    expect(tables.payment_routing_records[0].released_at).toBeNull();
   });
 
   it("does not double-release an already executed routing record", async () => {
