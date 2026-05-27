@@ -4664,17 +4664,27 @@ function failedTransferExecutionForRouting(executions: PayoutExecutionRow[]) {
 
 function buildFreelancePayoutReleaseIdempotencyKey(input: {
   routingRecordId: string;
-  barberId: string;
-  amount: number;
-  currency: string;
+  attemptNumber: number;
 }) {
   return [
     "freelance_payout_release",
     input.routingRecordId,
-    input.barberId,
-    input.amount.toFixed(2),
-    input.currency.toLowerCase()
+    "attempt",
+    String(input.attemptNumber)
   ].join(":");
+}
+
+function nextFreelancePayoutReleaseAttemptNumber(executions: PayoutExecutionRow[]) {
+  const transferExecutions = executions.filter((row) =>
+    row.execution_type === "transfer"
+    && row.target_subject_type === "barber"
+  );
+
+  if (!transferExecutions.length) {
+    return 1;
+  }
+
+  return Math.max(...transferExecutions.map((row) => Math.max(1, Math.trunc(numeric(row.attempt_count))))) + 1;
 }
 
 function stripeErrorStringField(error: unknown, field: "code" | "message" | "decline_code") {
@@ -5397,20 +5407,13 @@ export async function releaseFreelanceRoutingPayout(input: {
   }
 
   const now = new Date().toISOString();
+  const attemptNumber = nextFreelancePayoutReleaseAttemptNumber(context.executions);
   const idempotencyKey = buildFreelancePayoutReleaseIdempotencyKey({
     routingRecordId: context.routing.id,
-    barberId: eligibility.barberId!,
-    amount: eligibility.releaseAmount,
-    currency: context.routing.currency
+    attemptNumber
   });
-  const reusableFailedExecution = context.executions.find((row) =>
-    row.execution_type === "transfer"
-    && row.target_subject_type === "barber"
-    && row.idempotency_key === idempotencyKey
-    && row.execution_status === "failed"
-  );
-  const payoutReference = reusableFailedExecution?.payout_reference ?? `payout:${context.routing.id}:barber`;
-  const plannedExecution = await persistPayoutExecutionRow(supabase, reusableFailedExecution?.id ?? null, {
+  const payoutReference = `payout:${context.routing.id}:barber:attempt:${attemptNumber}`;
+  const plannedExecution = await persistPayoutExecutionRow(supabase, null, {
     routing_record_id: context.routing.id,
     payment_id: context.routing.payment_id,
     appointment_id: context.routing.appointment_id,
@@ -5424,8 +5427,8 @@ export async function releaseFreelanceRoutingPayout(input: {
     execution_status: "pending",
     blocked_reason: null,
     failure_reason: null,
-    processor_transfer_id: reusableFailedExecution?.processor_transfer_id ?? null,
-    processor_reversal_id: reusableFailedExecution?.processor_reversal_id ?? null,
+    processor_transfer_id: null,
+    processor_reversal_id: null,
     idempotency_key: idempotencyKey,
     source_execution_id: null,
     source_refund_id: null,
@@ -5433,18 +5436,19 @@ export async function releaseFreelanceRoutingPayout(input: {
     payout_speed: "standard",
     instant_payout_fee_amount: 0,
     net_transfer_amount: eligibility.releaseAmount,
-    processor_payout_id: reusableFailedExecution?.processor_payout_id ?? null,
+    processor_payout_id: null,
     reconciliation_status: "open",
     metadata: {
       phase: "phase_1_freelance_manual_release",
       routingModel: context.routing.routing_model,
       payoutRecipientType: context.routing.payout_recipient_type,
-      source: context.routing.pos_sale_id ? "pos_sale" : "appointment"
+      source: context.routing.pos_sale_id ? "pos_sale" : "appointment",
+      attemptNumber
     },
     initiated_by: input.requestedByProfileId,
-    attempt_count: (reusableFailedExecution?.attempt_count ?? 0) + 1,
+    attempt_count: attemptNumber,
     last_attempted_at: now,
-    created_at: reusableFailedExecution?.created_at ?? now,
+    created_at: now,
     updated_at: now
   });
 

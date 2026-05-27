@@ -964,7 +964,7 @@ describe("freelance payout execution", () => {
     expect(createStripeTransferMock).toHaveBeenCalledWith(expect.objectContaining({
       amount: 95,
       destinationAccountId: "acct_barber",
-      idempotencyKey: "freelance_payout_release:routing-freelance:barber-1:95.00:usd"
+      idempotencyKey: "freelance_payout_release:routing-freelance:attempt:1"
     }));
     expect(tables.payout_executions[0]).toMatchObject({
       routing_record_id: ROUTING_ID,
@@ -1029,7 +1029,7 @@ describe("freelance payout execution", () => {
     });
   });
 
-  it("retries a failed release without creating a duplicate successful execution", async () => {
+  it("retries a failed release with a fresh execution row and idempotency key", async () => {
     const tables = createBaseTables({
       payout_executions: [{
         id: "execution-failed",
@@ -1048,7 +1048,7 @@ describe("freelance payout execution", () => {
         failure_reason: "You have insufficient available funds in your Stripe account.",
         processor_transfer_id: null,
         processor_reversal_id: null,
-        idempotency_key: "freelance_payout_release:routing-freelance:barber-1:95.00:usd",
+        idempotency_key: "freelance_payout_release:routing-freelance:attempt:1",
         source_execution_id: null,
         source_refund_id: null,
         payout_reference: "payout:routing-freelance:barber",
@@ -1059,7 +1059,7 @@ describe("freelance payout execution", () => {
         reconciliation_status: "manual_review",
         metadata: {},
         initiated_by: "architect-profile",
-        attempt_count: 1,
+        attempt_count: 4,
         last_attempted_at: "2026-05-26T13:00:00.000Z",
         executed_at: null,
         failed_at: "2026-05-26T13:00:00.000Z",
@@ -1077,13 +1077,26 @@ describe("freelance payout execution", () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(tables.payout_executions).toHaveLength(1);
+    expect(createStripeTransferMock).toHaveBeenCalledWith(expect.objectContaining({
+      idempotencyKey: "freelance_payout_release:routing-freelance:attempt:5"
+    }));
+    expect(tables.payout_executions).toHaveLength(2);
     expect(tables.payout_executions[0]).toMatchObject({
       id: "execution-failed",
+      execution_status: "failed",
+      failure_reason: "You have insufficient available funds in your Stripe account.",
+      processor_transfer_id: null
+    });
+    expect(tables.payout_executions[1]).toMatchObject({
       execution_status: "executed",
       failure_reason: null,
-      attempt_count: 2,
-      processor_transfer_id: "tr_freelance"
+      attempt_count: 5,
+      processor_transfer_id: "tr_freelance",
+      idempotency_key: "freelance_payout_release:routing-freelance:attempt:5"
+    });
+    expect(tables.payment_routing_records[0]).toMatchObject({
+      money_routing_status: "paid_out",
+      blocked_reason: null
     });
     expect(tables.payment_routing_records[0].released_at).toBeTruthy();
   });
