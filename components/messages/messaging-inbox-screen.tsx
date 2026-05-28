@@ -443,7 +443,7 @@ function buildQuickContacts(threads: MessagingThreadSummary[]) {
 
 function ThreadSkeleton() {
   return (
-    <div className="flex min-h-20 items-center gap-3 rounded-lg border border-white/8 bg-white/[0.025] px-3 py-2">
+    <div className="flex min-h-20 items-center gap-3 rounded-[12px] border border-white/8 bg-white/[0.025] px-3 py-2">
       <Skeleton className="h-11 w-11 rounded-full" />
       <div className="min-w-0 flex-1">
         <Skeleton className="h-4 w-32" />
@@ -456,7 +456,7 @@ function ThreadSkeleton() {
 
 function RolePill({ label }: { label: string }) {
   return (
-    <span className="inline-flex h-5 items-center rounded-md border border-white/10 bg-white/[0.035] px-1.5 text-[10px] font-bold uppercase text-[#d7ffab]">
+    <span className="inline-flex h-5 items-center rounded-[6px] border border-white/10 bg-white/[0.035] px-1.5 text-[10px] font-bold uppercase text-[#d7ffab]">
       {label}
     </span>
   );
@@ -549,7 +549,7 @@ function ThinThreadRow({
         onOpen(thread.id);
       } : undefined}
       className={[
-        "group grid min-h-[74px] grid-cols-[auto_1fr_auto] items-center gap-3 rounded-lg border px-3 py-2 transition",
+        "group grid min-h-[78px] grid-cols-[auto_1fr_auto] items-center gap-3 rounded-[12px] border px-3 py-2 transition",
         active
           ? "border-[#a3ff12]/35 bg-[#a3ff12]/10"
           : "border-white/8 bg-white/[0.022] hover:border-[#a3ff12]/24 hover:bg-white/[0.04]"
@@ -576,7 +576,7 @@ function ThinThreadRow({
         {thread.hasUnread ? (
           <span className="h-2.5 w-2.5 rounded-full bg-[#a3ff12] shadow-[0_0_14px_rgba(163,255,18,0.75)]" aria-label="Unread message" />
         ) : thread.appointmentContext ? (
-          <span className="rounded-md border border-[#a3ff12]/18 bg-[#a3ff12]/8 px-1.5 py-0.5 text-[10px] font-bold text-[#d7ffab]">
+          <span className="rounded-[6px] border border-[#a3ff12]/18 bg-[#a3ff12]/8 px-1.5 py-0.5 text-[10px] font-bold text-[#d7ffab]">
             {thread.appointmentContext.statusLabel}
           </span>
         ) : null}
@@ -1397,7 +1397,7 @@ export function MessagingInboxScreen({
 
   return (
     <div
-      className="relative isolate overflow-hidden rounded-lg border border-white/8 bg-[radial-gradient(circle_at_top_right,rgba(163,255,18,0.10),transparent_28%),#050505] p-3 shadow-[0_24px_70px_rgba(0,0,0,0.42)] sm:p-4"
+      className="relative isolate overflow-hidden rounded-[18px] border border-white/8 bg-[radial-gradient(circle_at_top_right,rgba(163,255,18,0.10),transparent_28%),#050505] p-3 shadow-[0_24px_70px_rgba(0,0,0,0.42)] sm:p-4"
       data-testid={`messaging-inbox-${surface}`}
     >
       <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(163,255,18,0.55),transparent)]" />
@@ -1449,7 +1449,7 @@ export function MessagingInboxScreen({
             />
 
             {surface === "barber" ? (
-              <div className="grid grid-cols-4 gap-1 rounded-lg border border-white/8 bg-white/[0.025] p-1">
+              <div className="grid grid-cols-2 gap-1 rounded-[12px] border border-white/8 bg-white/[0.025] p-1 sm:grid-cols-4">
                 {barberInboxTabs.map((tab) => {
                   const active = barberInboxTab === tab.key;
                   return (
@@ -1458,7 +1458,7 @@ export function MessagingInboxScreen({
                       type="button"
                       onClick={() => setBarberInboxTab(tab.key)}
                       className={[
-                        "min-h-9 rounded-lg px-2 text-[11px] font-bold transition",
+                        "min-h-10 rounded-[8px] px-2 text-[11px] font-bold transition",
                         active ? "bg-[#a3ff12] text-[#050505]" : "text-white/62 hover:bg-white/[0.04] hover:text-white"
                       ].join(" ")}
                     >
@@ -1506,7 +1506,7 @@ export function MessagingInboxScreen({
             </div>
 
             {surface !== "client" ? (
-              <div ref={startersRef} className="rounded-lg border border-white/8 bg-white/[0.025] p-3">
+              <div ref={startersRef} className="rounded-[14px] border border-white/8 bg-white/[0.025] p-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-xs font-bold uppercase text-[#a3ff12]">{copy.starterTitle}</p>
@@ -1516,7 +1516,7 @@ export function MessagingInboxScreen({
               </div>
               <div className="mt-3 space-y-2">
                 {uniqueAppointmentStarters.map((starter) => (
-                  <div key={starter.appointmentId} className="flex items-center justify-between gap-3 rounded-lg border border-white/8 bg-black/24 p-3">
+                  <div key={starter.appointmentId} className="flex items-center justify-between gap-3 rounded-[12px] border border-white/8 bg-black/24 p-3">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-bold text-white">{starter.counterpart.fullName}</p>
                       <p className="truncate text-xs text-white/50">
@@ -1539,7 +1539,7 @@ export function MessagingInboxScreen({
                 ))}
 
                 {contactStarters.map((starter) => (
-                  <div key={`${starter.threadType}-${starter.locationId}-${starter.profileId}`} className="flex items-center justify-between gap-3 rounded-lg border border-white/8 bg-black/24 p-3">
+                  <div key={`${starter.threadType}-${starter.locationId}-${starter.profileId}`} className="flex items-center justify-between gap-3 rounded-[12px] border border-white/8 bg-black/24 p-3">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-bold text-white">{starter.fullName}</p>
                       <p className="truncate text-xs text-white/50">{starter.locationLabel}</p>

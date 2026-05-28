@@ -901,7 +901,7 @@ describe("client messages screen", () => {
     expect(screen.getByRole("link", { name: "Book" })).toHaveAttribute("href", "/booking/new?barber=phillipmcgee&barberId=barber-43b3cda2");
 
     const row = screen.getAllByText("Conversation opened...")[0]?.closest("a");
-    expect(row?.className).toContain("min-h-[74px]");
+    expect(row?.className).toContain("min-h-[78px]");
   });
 
   it("opens a barber appointment thread in a modal and closes back to the inbox", () => {

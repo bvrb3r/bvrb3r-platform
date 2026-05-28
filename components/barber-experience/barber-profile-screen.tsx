@@ -353,16 +353,18 @@ export function BarberProfileScreen({
       {status ? <FeedbackBanner tone={status.tone} message={status.message} /> : null}
       {profileQuery.error ? <FeedbackBanner tone="error" message={readableError(profileQuery.error, "Unable to load the public barber profile preview right now.")} /> : null}
 
-      <GlassCard className="relative overflow-hidden rounded-[32px] p-5 sm:p-6">
+      <GlassCard className="relative overflow-hidden rounded-[28px] p-5 sm:p-6">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(163,255,18,0.10),transparent_30%),radial-gradient(circle_at_bottom_center,rgba(163,255,18,0.06),transparent_28%)]" />
         <div className="relative">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="bvr-section-label">Barber brand</p>
+              <p className="bvr-section-label">Public barber brand</p>
               <h2 className="mt-3 text-[2.65rem] font-black leading-none tracking-[-0.045em] text-white sm:text-6xl">
                 Profile
               </h2>
-              <p className="mt-2 text-base font-medium text-white/60 sm:text-[17px]">Manage your profile & brand</p>
+              <p className="mt-2 max-w-xl text-base font-medium text-white/60 sm:text-[17px]">
+                The client-facing preview, portfolio, trust signals, and booking profile live here.
+              </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
               {publicProfileRoute ? (
@@ -468,6 +470,42 @@ export function BarberProfileScreen({
                 </a>
               ) : null}
 
+              <div className="mt-5 flex flex-wrap gap-2">
+                {publicProfileRoute ? (
+                  <Link
+                    href={publicProfileRoute}
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] bg-[#a3ff12] px-4 text-sm font-black text-[#050505] transition hover:bg-[#d7ffab]"
+                  >
+                    <Eye className="h-4 w-4" />
+                    Public preview
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] bg-[#a3ff12] px-4 text-sm font-black text-[#050505] transition hover:bg-[#d7ffab]"
+                    onClick={() => scrollToSection("preview")}
+                  >
+                    <Eye className="h-4 w-4" />
+                    Public preview
+                  </button>
+                )}
+                <Link
+                  href="/onboarding/barber/profile"
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] border border-white/10 bg-white/[0.035] px-4 text-sm font-extrabold text-white/74 transition hover:border-[#a3ff12]/30 hover:text-white"
+                >
+                  <Pencil className="h-4 w-4 text-[#a3ff12]" />
+                  Edit profile
+                </Link>
+                <button
+                  type="button"
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] border border-white/10 bg-white/[0.035] px-4 text-sm font-extrabold text-white/74 transition hover:border-[#a3ff12]/30 hover:text-white"
+                  onClick={() => scrollToSection("portfolio")}
+                >
+                  <ImagePlus className="h-4 w-4 text-[#a3ff12]" />
+                  Portfolio
+                </button>
+              </div>
+
               <div className="mt-4 max-w-lg rounded-[22px] border border-white/10 bg-black/24 p-3">
                 <label className="text-xs font-black uppercase tracking-[0.16em] text-white/48" htmlFor="barber-public-username">
                   Public username
@@ -553,14 +591,14 @@ export function BarberProfileScreen({
       <div className="grid gap-3 sm:grid-cols-2">
         <Link
           href="/onboarding/barber/profile"
-          className="inline-flex min-h-16 items-center justify-center gap-3 rounded-[16px] border border-white/10 bg-white/[0.025] px-5 text-[19px] font-extrabold text-white transition hover:border-[#a3ff12]/25 hover:bg-white/[0.04]"
+          className="inline-flex min-h-14 items-center justify-center gap-3 rounded-[8px] border border-white/10 bg-white/[0.025] px-5 text-base font-extrabold text-white transition hover:border-[#a3ff12]/25 hover:bg-white/[0.04]"
         >
           <Pencil className="h-6 w-6 text-[#a3ff12]" />
           Edit profile
         </Link>
         <button
           type="button"
-          className="inline-flex min-h-16 items-center justify-center gap-3 rounded-[16px] border border-white/10 bg-white/[0.025] px-5 text-[19px] font-extrabold text-white transition hover:border-[#a3ff12]/25 hover:bg-white/[0.04]"
+          className="inline-flex min-h-14 items-center justify-center gap-3 rounded-[8px] border border-white/10 bg-white/[0.025] px-5 text-base font-extrabold text-white transition hover:border-[#a3ff12]/25 hover:bg-white/[0.04]"
           onClick={() => void handleShareProfile()}
         >
           <Share2 className="h-6 w-6 text-[#a3ff12]" />

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { Route } from "next";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -546,14 +547,14 @@ function AppointmentCard({
 
 function OpenSlotCard({ slot, onBookSlot }: { slot: OpenSlotView; onBookSlot: (slot: OpenSlotView) => void }) {
   return (
-    <div className="rounded-[18px] border border-dashed border-[#a3ff12]/45 bg-[#a3ff12]/[0.025] p-4 shadow-[0_16px_45px_rgba(0,0,0,0.36)]">
+    <div className="rounded-[16px] border border-dashed border-[#a3ff12]/34 bg-[#a3ff12]/[0.025] p-4 shadow-[0_16px_45px_rgba(0,0,0,0.30)]">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-[14px] bg-[rgba(163,255,18,0.14)] text-[#a3ff12] shadow-[0_0_22px_rgba(163,255,18,0.20)]">
             <Plus className="h-6 w-6" />
           </div>
           <div className="min-w-0">
-            <p className="text-lg font-extrabold text-white">Open Slot</p>
+            <p className="text-lg font-extrabold text-white">Open slot</p>
             <p className="mt-1 text-sm font-medium text-white/60">{formatTimeRange(slot.startsAt, slot.endsAt)}</p>
           </div>
         </div>
@@ -1198,6 +1199,19 @@ export function BarberScheduleWorkspace({
     router.push(`/booking/new?${params.toString()}`);
   }
 
+  function handleAddAppointment() {
+    const params = new URLSearchParams();
+    if (payload?.barberId) {
+      params.set("barberId", payload.barberId);
+    }
+    if (selectedLocationId) {
+      params.set("locationId", selectedLocationId);
+    }
+
+    const query = params.toString();
+    router.push(`/booking/new${query ? `?${query}` : ""}` as Route);
+  }
+
   function handleBookNext() {
     setStatusUpdate({ tone: "success", message: "Book Next is coming soon." });
     setSelectedAppointmentId(null);
@@ -1227,48 +1241,70 @@ export function BarberScheduleWorkspace({
 
       {showCalendar ? (
         <>
-      <GlassCard className="relative overflow-hidden rounded-[32px] p-5 sm:p-6">
+      <GlassCard className="relative overflow-hidden rounded-[28px] p-5 sm:p-6">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(163,255,18,0.10),transparent_30%),radial-gradient(circle_at_bottom_center,rgba(163,255,18,0.06),transparent_28%)]" />
         <div className="relative space-y-6">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
               <p className="bvr-section-label">Chair command calendar</p>
+              <h2 className="mt-3 text-[2.35rem] font-black leading-none tracking-[-0.045em] text-white sm:text-5xl">
+                Today&apos;s chair plan
+              </h2>
               <p className="mt-3 text-sm leading-6 text-white/62">
-                Your day, clients, and open money slots.
+                Your booked clients, open slots, and availability controls in one operating view.
               </p>
             </div>
+            <div className="grid gap-2 sm:grid-cols-3 lg:min-w-[32rem]">
+              <button
+                type="button"
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] bg-[#a3ff12] px-4 text-xs font-black text-[#050505] shadow-[0_0_26px_rgba(163,255,18,0.20)] transition hover:bg-[#d7ffab]"
+                onClick={handleAddAppointment}
+              >
+                <Plus className="h-4 w-4" />
+                Add appointment
+              </button>
+              <button
+                type="button"
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] border border-white/10 bg-white/[0.035] px-4 text-xs font-extrabold text-white/74 transition hover:border-[#a3ff12]/30 hover:text-white"
+                onClick={openAvailabilityControls}
+              >
+                <SlidersHorizontal className="h-4 w-4 text-[#a3ff12]" />
+                Availability
+              </button>
+              <button
+                type="button"
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] border border-white/10 bg-white/[0.035] px-4 text-xs font-extrabold text-white/74 transition hover:border-[#a3ff12]/30 hover:text-white"
+                onClick={openAvailabilityControls}
+              >
+                <Clock3 className="h-4 w-4 text-[#a3ff12]" />
+                Block time
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-white/8 bg-black/20 p-3">
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 aria-label="Focus calendar date"
-                className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-white transition hover:border-[#a3ff12]/35 hover:shadow-[0_0_24px_rgba(163,255,18,0.12)]"
+                className="inline-flex h-11 w-11 items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.035] text-white transition hover:border-[#a3ff12]/35 hover:shadow-[0_0_24px_rgba(163,255,18,0.12)]"
                 onClick={() => dateInputRef.current?.focus()}
               >
                 <Search className="h-5 w-5" />
               </button>
               <button
                 type="button"
-                aria-label="Open availability controls"
-                className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-white transition hover:border-[#a3ff12]/35 hover:shadow-[0_0_24px_rgba(163,255,18,0.12)]"
-                onClick={openAvailabilityControls}
+                aria-label="Jump to today"
+                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.035] text-white transition hover:border-[#a3ff12]/35 hover:text-[#a3ff12]"
+                onClick={jumpToToday}
               >
-                <SlidersHorizontal className="h-5 w-5" />
+                <CalendarDays className="h-5 w-5" />
               </button>
             </div>
-          </div>
 
-          <div className="flex items-center justify-between gap-4">
             <button
               type="button"
-              aria-label="Jump to today"
-              className="inline-flex h-[54px] w-[54px] shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-white transition hover:border-[#a3ff12]/35 hover:text-[#a3ff12]"
-              onClick={jumpToToday}
-            >
-              <CalendarDays className="h-5 w-5" />
-            </button>
-            <button
-              type="button"
-              className="inline-flex min-w-0 items-center justify-center gap-1 text-center text-[25px] font-extrabold tracking-[-0.02em] text-white"
+              className="inline-flex min-w-0 items-center justify-center gap-1 text-center text-xl font-extrabold tracking-[-0.02em] text-white sm:text-2xl"
               onClick={() => dateInputRef.current?.showPicker?.()}
             >
               <span className="truncate">{formatMonthYear(selectedDateKey)}</span>
@@ -1276,7 +1312,7 @@ export function BarberScheduleWorkspace({
             </button>
             <button
               type="button"
-              className="inline-flex h-12 shrink-0 items-center justify-center rounded-full border border-[#a3ff12]/24 bg-[#a3ff12]/10 px-5 text-sm font-extrabold text-[#a3ff12] transition hover:border-[#a3ff12]/40 hover:bg-[rgba(163,255,18,0.14)]"
+              className="inline-flex h-11 shrink-0 items-center justify-center rounded-[8px] border border-[#a3ff12]/24 bg-[#a3ff12]/10 px-4 text-sm font-extrabold text-[#a3ff12] transition hover:border-[#a3ff12]/40 hover:bg-[rgba(163,255,18,0.14)]"
               onClick={jumpToToday}
             >
               Today
@@ -1292,7 +1328,7 @@ export function BarberScheduleWorkspace({
             aria-label="Select calendar date"
           />
 
-          <div className="grid grid-cols-7 gap-2">
+          <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
             {weekStrip.map((day) => {
               const isSelected = day.key === selectedDateKey;
               return (
@@ -1300,7 +1336,7 @@ export function BarberScheduleWorkspace({
                   key={day.key}
                   type="button"
                   className={cn(
-                    "flex min-h-[76px] flex-col items-center justify-center rounded-[20px] border border-transparent px-2 transition",
+                    "flex min-h-[64px] flex-col items-center justify-center rounded-[14px] border border-transparent px-1.5 transition sm:min-h-[76px] sm:rounded-[18px] sm:px-2",
                     isSelected
                       ? "border-[#a3ff12] bg-[rgba(163,255,18,0.06)] text-[#a3ff12] shadow-[0_0_24px_rgba(163,255,18,0.12)]"
                       : "text-white hover:border-white/10 hover:bg-white/[0.03]"
@@ -1308,7 +1344,7 @@ export function BarberScheduleWorkspace({
                   onClick={() => setAnchorDate(day.key)}
                 >
                   <span className={cn("text-xs font-bold tracking-[0.05em]", isSelected ? "text-[#a3ff12]" : "text-white/48")}>{day.label}</span>
-                  <span className={cn("mt-2 text-2xl font-bold leading-none", isSelected && "text-3xl font-black")}>{day.dayNumber}</span>
+                  <span className={cn("mt-2 text-xl font-bold leading-none sm:text-2xl", isSelected && "text-2xl font-black sm:text-3xl")}>{day.dayNumber}</span>
                 </button>
               );
             })}
@@ -1316,28 +1352,28 @@ export function BarberScheduleWorkspace({
 
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <DataStatCard
-              className="min-h-[140px] rounded-[22px]"
+              className="min-h-[112px] rounded-[18px]"
               label="Appointments"
               value={revenueEligibleDayAppointments.length}
               detail="Today"
               icon={<CalendarCheck2 className="h-4 w-4" />}
             />
             <DataStatCard
-              className="min-h-[140px] rounded-[22px]"
+              className="min-h-[112px] rounded-[18px]"
               label="Est. Earnings"
               value={formatMoney(estimatedEarnings)}
               detail="Today"
               icon={<CircleDollarSign className="h-4 w-4" />}
             />
             <DataStatCard
-              className="min-h-[140px] rounded-[22px]"
+              className="min-h-[112px] rounded-[18px]"
               label="Open Slots"
               value={scheduleView === "day" ? openSlots.length : "--"}
               detail={scheduleView === "day" ? "Remaining" : "Day view"}
               icon={<Clock3 className="h-4 w-4" />}
             />
             <DataStatCard
-              className="min-h-[140px] rounded-[22px]"
+              className="min-h-[112px] rounded-[18px]"
               label="Day Utilization"
               value={utilization ? `${utilization.percent}%` : "--"}
               detail={<span className={utilization && utilization.percent >= 80 ? "font-bold text-[#a3ff12]" : undefined}>{utilization ? (utilization.percent >= 80 ? "Great" : `${formatDuration(utilization.openMinutes)} open`) : "Set hours"}</span>}
@@ -1395,7 +1431,7 @@ export function BarberScheduleWorkspace({
         </div>
       </GlassCard>
 
-      <GlassCard className="rounded-[32px] p-5 sm:p-6">
+      <GlassCard className="rounded-[28px] p-5 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="bvr-section-label">Daily timeline</p>
@@ -1480,12 +1516,12 @@ export function BarberScheduleWorkspace({
             <div className="empty-state-panel rounded-[24px] p-6">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="text-xl font-extrabold text-white">No appointments today</p>
-                  <p className="mt-2 text-sm leading-6 text-white/58">Your schedule is clear.</p>
+                  <p className="text-xl font-extrabold text-white">No appointments on this day</p>
+                  <p className="mt-2 text-sm leading-6 text-white/58">Add a booking, update availability, or keep the chair open for walk-ins.</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <ActionButton type="button" variant="secondary" onClick={openAvailabilityControls}>
-                    Edit availability
+                    Update availability
                   </ActionButton>
                   <ActionButton type="button" variant="secondary" onClick={() => router.push("/dashboard/barber/checkout")}>
                     Quick Charge
@@ -1504,7 +1540,7 @@ export function BarberScheduleWorkspace({
               onClick={openAvailabilityControls}
             >
               <Plus className="h-5 w-5" />
-              Add Block Time / Break
+              Add block time or break
             </button>
           </div>
         </div>
