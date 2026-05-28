@@ -57,6 +57,7 @@ import {
   getArchitectStripePlatformDiagnostics,
   getBarberStripePayoutReadiness,
   listArchitectFreelancePayoutQueue,
+  releaseReadyFreelancePayoutBatch,
   releaseFreelanceRoutingPayout,
   validateFreelancePayoutReleaseEligibility
 } from "@/lib/fintech/service";
@@ -208,6 +209,50 @@ function createBaseTables(overrides: Partial<Record<string, Row[]>> = {}) {
     platform_events: [],
     ...overrides
   } satisfies Record<string, Row[]>;
+}
+
+function createFreelanceScenario(base: ReturnType<typeof createBaseTables>, input: {
+  routingId: string;
+  paymentId: string;
+  posSaleId: string;
+  gross: number;
+  platformFee: number;
+  barberPayout: number;
+  routing?: Row;
+  payment?: Row;
+  posSale?: Row;
+}) {
+  return {
+    routing: {
+      ...base.payment_routing_records[0],
+      id: input.routingId,
+      payment_id: input.paymentId,
+      pos_sale_id: input.posSaleId,
+      provider_gross_amount: input.gross,
+      platform_fee_amount: input.platformFee,
+      barber_payout_amount: input.barberPayout,
+      eligible_at: "2026-05-26T14:00:00.000Z",
+      updated_at: "2026-05-26T14:00:00.000Z",
+      ...input.routing
+    },
+    payment: {
+      ...base.payments[0],
+      id: input.paymentId,
+      pos_sale_id: input.posSaleId,
+      amount: input.gross,
+      ...input.payment
+    },
+    posSale: {
+      ...base.pos_sales[0],
+      id: input.posSaleId,
+      payment_id: input.paymentId,
+      total_cents: Math.round(input.gross * 100),
+      amount_cents: Math.round(input.gross * 100),
+      total_amount_cents: Math.round(input.gross * 100),
+      platform_fee_cents: Math.round(input.platformFee * 100),
+      ...input.posSale
+    }
+  };
 }
 
 function createLegacyExecutorTables(overrides: Partial<Record<string, Row[]>> = {}) {
@@ -763,6 +808,196 @@ describe("freelance payout execution", () => {
       lastReleaseFailureMessage: "Release failed: insufficient available Stripe platform balance.",
       releaseActionLabel: "Retry release"
     });
+  });
+
+  it("batch releases only ready freelance pending rows", async () => {
+    const base = createBaseTables();
+    const readyOne = createFreelanceScenario(base, {
+      routingId: "routing-ready-1",
+      paymentId: "payment-ready-1",
+      posSaleId: "sale-ready-1",
+      gross: 10,
+      platformFee: 0.5,
+      barberPayout: 9.5
+    });
+    const readyTwo = createFreelanceScenario(base, {
+      routingId: "routing-ready-2",
+      paymentId: "payment-ready-2",
+      posSaleId: "sale-ready-2",
+      gross: 35,
+      platformFee: 1.75,
+      barberPayout: 33.25
+    });
+    const blocked = createFreelanceScenario(base, {
+      routingId: "routing-blocked",
+      paymentId: "payment-blocked",
+      posSaleId: "sale-blocked",
+      gross: 20,
+      platformFee: 1,
+      barberPayout: 19,
+      routing: { blocked_reason: "Manual review required." }
+    });
+    const paidOut = createFreelanceScenario(base, {
+      routingId: "routing-paid-out",
+      paymentId: "payment-paid-out",
+      posSaleId: "sale-paid-out",
+      gross: 15,
+      platformFee: 0.75,
+      barberPayout: 14.25,
+      routing: { money_routing_status: "paid_out", released_at: "2026-05-26T15:00:00.000Z" }
+    });
+    const commission = createFreelanceScenario(base, {
+      routingId: "routing-commission",
+      paymentId: "payment-commission",
+      posSaleId: "sale-commission",
+      gross: 40,
+      platformFee: 2,
+      barberPayout: 26.6,
+      routing: { routing_model: "commission", shop_split_amount: 11.4 }
+    });
+    const tables = createBaseTables({
+      payment_routing_records: [readyOne.routing, readyTwo.routing, blocked.routing, paidOut.routing, commission.routing],
+      payments: [readyOne.payment, readyTwo.payment, blocked.payment, paidOut.payment, commission.payment],
+      pos_sales: [readyOne.posSale, readyTwo.posSale, blocked.posSale, paidOut.posSale, commission.posSale]
+    });
+    const supabase = createSupabaseStub(tables);
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const result = await releaseReadyFreelancePayoutBatch({
+      requestedByProfileId: "architect-profile",
+      scope: "freelance",
+      mode: "ready_only"
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      attemptedCount: 2,
+      releasedCount: 2,
+      failedCount: 0,
+      skippedCount: 0,
+      totalReleasedAmount: 42.75
+    });
+    expect(result.results.map((row) => row.routingRecordId)).toEqual(expect.arrayContaining(["routing-ready-1", "routing-ready-2"]));
+    expect(result.results).toHaveLength(2);
+    expect(createStripeTransferMock).toHaveBeenCalledTimes(2);
+    expect((tables.payout_executions as Row[]).filter((row) => row.execution_status === "executed")).toHaveLength(2);
+    expect(tables.payment_routing_records.find((row) => row.id === "routing-ready-1")?.money_routing_status).toBe("paid_out");
+    expect(tables.payment_routing_records.find((row) => row.id === "routing-ready-2")?.money_routing_status).toBe("paid_out");
+    expect(tables.payment_routing_records.find((row) => row.id === "routing-blocked")?.money_routing_status).toBe("pending");
+    expect(tables.payment_routing_records.find((row) => row.id === "routing-commission")?.money_routing_status).toBe("pending");
+  });
+
+  it("batch release blocks before row transfers when platform balance is below the ready total", async () => {
+    retrieveStripePlatformBalanceMock.mockResolvedValue({
+      available: [{ amount: 1000, currency: "usd" }],
+      pending: []
+    });
+    const supabase = createSupabaseStub(createBaseTables());
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const result = await releaseReadyFreelancePayoutBatch({
+      requestedByProfileId: "architect-profile",
+      scope: "freelance",
+      mode: "ready_only"
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      attemptedCount: 0,
+      releasedCount: 0,
+      failedCount: 0,
+      skippedCount: 1,
+      requiredAmount: 95,
+      availableAmount: 10,
+      errorCode: "stripe_platform_balance_insufficient"
+    });
+    expect(result.results[0]).toMatchObject({
+      routingRecordId: ROUTING_ID,
+      status: "skipped",
+      amount: 95
+    });
+    expect(createStripeTransferMock).not.toHaveBeenCalled();
+    expect(supabase.tables.payout_executions).toHaveLength(0);
+  });
+
+  it("batch release continues after one row fails", async () => {
+    const base = createBaseTables();
+    const first = createFreelanceScenario(base, {
+      routingId: "routing-fails",
+      paymentId: "payment-fails",
+      posSaleId: "sale-fails",
+      gross: 10,
+      platformFee: 0.5,
+      barberPayout: 9.5,
+      routing: { eligible_at: "2026-05-26T15:00:00.000Z" }
+    });
+    const second = createFreelanceScenario(base, {
+      routingId: "routing-succeeds",
+      paymentId: "payment-succeeds",
+      posSaleId: "sale-succeeds",
+      gross: 35,
+      platformFee: 1.75,
+      barberPayout: 33.25,
+      routing: { eligible_at: "2026-05-26T14:00:00.000Z" }
+    });
+    const tables = createBaseTables({
+      payment_routing_records: [first.routing, second.routing],
+      payments: [first.payment, second.payment],
+      pos_sales: [first.posSale, second.posSale]
+    });
+    createStripeTransferMock
+      .mockRejectedValueOnce(Object.assign(new Error("Insufficient funds"), {
+        code: "balance_insufficient",
+        raw: { message: "Insufficient funds" }
+      }))
+      .mockResolvedValueOnce({ id: "tr_second" });
+    const supabase = createSupabaseStub(tables);
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const result = await releaseReadyFreelancePayoutBatch({
+      requestedByProfileId: "architect-profile",
+      scope: "freelance",
+      mode: "ready_only"
+    });
+
+    expect(result.releasedCount).toBe(1);
+    expect(result.failedCount).toBe(1);
+    expect(result.results).toEqual([
+      expect.objectContaining({ routingRecordId: "routing-fails", status: "failed" }),
+      expect.objectContaining({ routingRecordId: "routing-succeeds", status: "released", processorTransferId: "tr_second" })
+    ]);
+    expect(tables.payout_executions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ routing_record_id: "routing-fails", execution_status: "failed" }),
+      expect.objectContaining({ routing_record_id: "routing-succeeds", execution_status: "executed", processor_transfer_id: "tr_second" })
+    ]));
+    expect(tables.payment_routing_records.find((row) => row.id === "routing-fails")?.money_routing_status).toBe("pending");
+    expect(tables.payment_routing_records.find((row) => row.id === "routing-succeeds")?.money_routing_status).toBe("paid_out");
+  });
+
+  it("duplicate batch after success does not create another transfer", async () => {
+    const supabase = createSupabaseStub(createBaseTables());
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const first = await releaseReadyFreelancePayoutBatch({
+      requestedByProfileId: "architect-profile",
+      scope: "freelance",
+      mode: "ready_only"
+    });
+    const second = await releaseReadyFreelancePayoutBatch({
+      requestedByProfileId: "architect-profile",
+      scope: "freelance",
+      mode: "ready_only"
+    });
+
+    expect(first.releasedCount).toBe(1);
+    expect(second).toMatchObject({
+      attemptedCount: 0,
+      releasedCount: 0,
+      failedCount: 0,
+      skippedCount: 0
+    });
+    expect(createStripeTransferMock).toHaveBeenCalledTimes(1);
+    expect((supabase.tables.payout_executions as Row[]).filter((row) => row.execution_status === "executed")).toHaveLength(1);
   });
 
   it("blocks only rows with a confirmed active dispute", async () => {
@@ -1462,6 +1697,33 @@ describe("freelance payout execution", () => {
     expect(tables.payout_executions[1]).toMatchObject({
       id: "execution-executed",
       processor_transfer_id: "tr_existing"
+    });
+  });
+
+  it("executor does not create a duplicate transfer while a pending execution exists", async () => {
+    const tables = createLegacyExecutorTables({
+      payout_executions: [createTransferExecution({
+        id: "execution-pending",
+        execution_status: "pending",
+        failure_reason: null,
+        idempotency_key: "freelance_payout_release:routing-freelance:attempt:1",
+        attempt_count: 1,
+        failed_at: null,
+        updated_at: "2026-05-26T13:30:00.000Z"
+      })]
+    });
+    const supabase = createSupabaseStub(tables);
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const result = await executeFintechPayouts(ownerUser, { mode: "ready" });
+
+    expect(result.summary.skipped).toBe(1);
+    expect(createStripeTransferMock).not.toHaveBeenCalled();
+    expect(tables.payout_executions).toHaveLength(1);
+    expect(tables.payout_executions[0]).toMatchObject({
+      id: "execution-pending",
+      execution_status: "pending",
+      idempotency_key: "freelance_payout_release:routing-freelance:attempt:1"
     });
   });
 

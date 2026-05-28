@@ -685,6 +685,28 @@ export type FreelancePayoutReleaseResult = {
   };
 };
 
+export type FreelancePayoutBatchReleaseRowResult = {
+  routingRecordId: string;
+  status: "released" | "failed" | "skipped";
+  amount: number;
+  processorTransferId: string | null;
+  reason: string | null;
+};
+
+export type FreelancePayoutBatchReleaseResult = {
+  ok: boolean;
+  attemptedCount: number;
+  releasedCount: number;
+  failedCount: number;
+  skippedCount: number;
+  totalReleasedAmount: number;
+  results: FreelancePayoutBatchReleaseRowResult[];
+  message: string;
+  availableAmount: number | null;
+  requiredAmount: number;
+  errorCode?: string;
+};
+
 export type FintechPayoutsPayload = {
   summary: {
     executableRoutingRecords: number;
@@ -4210,7 +4232,10 @@ async function executeTransferForRoutingTarget(
   if (existingExecuted) {
     return existingExecuted;
   }
-  const existing = existingTransferExecutions.find((execution) => execution.execution_status !== "failed") ?? null;
+  const activeExisting = existingTransferExecutions.find((execution) => execution.execution_status !== "failed") ?? null;
+  if (activeExisting) {
+    return activeExisting;
+  }
 
   const blockedReason = determinePayoutExecutionBlockReason({
     paymentProvider: payment.provider,
@@ -4227,18 +4252,13 @@ async function executeTransferForRoutingTarget(
     grossAmount: target.amount,
     speed
   });
-  const { attemptNumber, idempotencyKey } = existing
-    ? {
-      attemptNumber: blockedReason ? existing.attempt_count ?? 0 : (existing.attempt_count ?? 0) + 1,
-      idempotencyKey: existing.idempotency_key
-    }
-    : nextUniquePayoutTransferAttempt({
-      routingRecordId: routing.id,
-      executions: existingTransferExecutions
-    });
-  const payoutReference = existing?.payout_reference ?? `payout:${routing.id}:${target.targetSubjectType}:attempt:${attemptNumber}`;
+  const { attemptNumber, idempotencyKey } = nextUniquePayoutTransferAttempt({
+    routingRecordId: routing.id,
+    executions: existingTransferExecutions
+  });
+  const payoutReference = `payout:${routing.id}:${target.targetSubjectType}:attempt:${attemptNumber}`;
 
-  const plannedExecution = await persistPayoutExecutionRow(supabase, existing?.id ?? null, {
+  const plannedExecution = await persistPayoutExecutionRow(supabase, null, {
     routing_record_id: routing.id,
     payment_id: routing.payment_id,
     appointment_id: routing.appointment_id,
@@ -4252,8 +4272,8 @@ async function executeTransferForRoutingTarget(
     execution_status: blockedReason ? "blocked" : "pending",
     blocked_reason: blockedReason,
     failure_reason: null,
-    processor_transfer_id: existing?.processor_transfer_id ?? null,
-    processor_reversal_id: existing?.processor_reversal_id ?? null,
+    processor_transfer_id: null,
+    processor_reversal_id: null,
     idempotency_key: idempotencyKey,
     source_execution_id: null,
     source_refund_id: null,
@@ -4261,7 +4281,7 @@ async function executeTransferForRoutingTarget(
     payout_speed: payoutMath.speed,
     instant_payout_fee_amount: payoutMath.instantFeeAmount,
     net_transfer_amount: payoutMath.netTransferAmount,
-    processor_payout_id: existing?.processor_payout_id ?? null,
+    processor_payout_id: null,
     reconciliation_status: blockedReason ? "manual_review" : "open",
     metadata: {
       routingModel: routing.routing_model,
@@ -4272,10 +4292,10 @@ async function executeTransferForRoutingTarget(
       instantPayoutFeeAmount: payoutMath.instantFeeAmount,
       netTransferAmount: payoutMath.netTransferAmount
     },
-    initiated_by: existing?.initiated_by ?? initiatedBy,
-    last_attempted_at: blockedReason ? existing?.last_attempted_at ?? null : now,
+    initiated_by: initiatedBy,
+    last_attempted_at: blockedReason ? null : now,
     attempt_count: attemptNumber,
-    created_at: existing?.created_at ?? now,
+    created_at: now,
     updated_at: now
   });
 
@@ -5891,6 +5911,131 @@ export async function releaseFreelanceRoutingPayout(input: {
     execution: mapExecution(executedExecution),
     routingRecord: mapFreelancePayoutRoutingSnapshot(routingUpdate.data as PaymentRoutingRow),
     message: "Payout released to the barber payout account."
+  };
+}
+
+export async function releaseReadyFreelancePayoutBatch(input: {
+  requestedByProfileId: string;
+  scope: "freelance";
+  mode: "ready_only";
+}): Promise<FreelancePayoutBatchReleaseResult> {
+  if (input.scope !== "freelance" || input.mode !== "ready_only") {
+    throw new FintechServiceError("Only ready freelance payout batch release is supported.", 400);
+  }
+
+  const queue = await listArchitectFreelancePayoutQueue();
+  const candidates = queue.items.filter((item) =>
+    item.canRelease
+    && item.payoutReadinessStatus === "ready"
+    && item.moneyRoutingStatus === "pending"
+    && !item.releasedAt
+    && item.shopSplitAmount === 0
+    && item.barberPayoutAmount > 0
+  );
+  const requiredAmount = roundCurrency(candidates.reduce((sum, item) => sum + item.barberPayoutAmount, 0));
+
+  if (!candidates.length) {
+    return {
+      ok: true,
+      attemptedCount: 0,
+      releasedCount: 0,
+      failedCount: 0,
+      skippedCount: 0,
+      totalReleasedAmount: 0,
+      results: [],
+      message: "No ready freelance payouts are eligible for batch release.",
+      availableAmount: null,
+      requiredAmount: 0
+    };
+  }
+
+  const preflight = await inspectPlatformBalanceBeforeRelease({
+    amount: requiredAmount,
+    currency: "usd"
+  });
+
+  if (!preflight.ok) {
+    return {
+      ok: false,
+      attemptedCount: 0,
+      releasedCount: 0,
+      failedCount: 0,
+      skippedCount: candidates.length,
+      totalReleasedAmount: 0,
+      results: candidates.map((item) => ({
+        routingRecordId: item.routingRecordId,
+        status: "skipped",
+        amount: item.barberPayoutAmount,
+        processorTransferId: null,
+        reason: preflight.errorMessage ?? "Stripe platform balance preflight failed."
+      })),
+      message: preflight.errorMessage ?? "Release blocked before Stripe transfer.",
+      availableAmount: preflight.availableAmount ?? null,
+      requiredAmount,
+      errorCode: preflight.errorCode
+    };
+  }
+
+  const results: FreelancePayoutBatchReleaseRowResult[] = [];
+  for (const candidate of candidates) {
+    try {
+      const result = await releaseFreelanceRoutingPayout({
+        routingRecordId: candidate.routingRecordId,
+        requestedByProfileId: input.requestedByProfileId
+      });
+
+      if (result.ok && result.execution?.executionStatus === "executed") {
+        results.push({
+          routingRecordId: candidate.routingRecordId,
+          status: "released",
+          amount: candidate.barberPayoutAmount,
+          processorTransferId: result.execution.processorTransferId,
+          reason: null
+        });
+        continue;
+      }
+
+      const alreadyReleased = result.message.toLowerCase().includes("already released")
+        || result.routingRecord?.moneyRoutingStatus === "paid_out"
+        || result.execution?.executionStatus === "executed";
+      results.push({
+        routingRecordId: candidate.routingRecordId,
+        status: alreadyReleased ? "skipped" : "failed",
+        amount: candidate.barberPayoutAmount,
+        processorTransferId: result.execution?.processorTransferId ?? null,
+        reason: result.errorMessage ?? result.message
+      });
+    } catch (error) {
+      results.push({
+        routingRecordId: candidate.routingRecordId,
+        status: "failed",
+        amount: candidate.barberPayoutAmount,
+        processorTransferId: null,
+        reason: error instanceof Error ? error.message : "Unable to release this payout."
+      });
+    }
+  }
+
+  const releasedCount = results.filter((row) => row.status === "released").length;
+  const failedCount = results.filter((row) => row.status === "failed").length;
+  const skippedCount = results.filter((row) => row.status === "skipped").length;
+  const totalReleasedAmount = roundCurrency(results
+    .filter((row) => row.status === "released")
+    .reduce((sum, row) => sum + row.amount, 0));
+
+  return {
+    ok: true,
+    attemptedCount: candidates.length,
+    releasedCount,
+    failedCount,
+    skippedCount,
+    totalReleasedAmount,
+    results,
+    message: failedCount
+      ? `Released ${releasedCount} payouts. ${failedCount} failed.`
+      : `Released ${releasedCount} ${releasedCount === 1 ? "payout" : "payouts"} totaling $${totalReleasedAmount.toFixed(2)}.`,
+    availableAmount: preflight.availableAmount ?? null,
+    requiredAmount
   };
 }
 

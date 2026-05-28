@@ -13,7 +13,8 @@ const {
   listArchitectFreelancePayoutQueueMock,
   validateFreelancePayoutReleaseEligibilityMock,
   approveFreelancePayoutReadinessForRoutingMock,
-  releaseFreelanceRoutingPayoutMock
+  releaseFreelanceRoutingPayoutMock,
+  releaseReadyFreelancePayoutBatchMock
 } = vi.hoisted(() => ({
   getSessionUserMock: vi.fn(),
   requireArchitectDebugAccessMock: vi.fn(),
@@ -24,7 +25,8 @@ const {
   listArchitectFreelancePayoutQueueMock: vi.fn(),
   validateFreelancePayoutReleaseEligibilityMock: vi.fn(),
   approveFreelancePayoutReadinessForRoutingMock: vi.fn(),
-  releaseFreelanceRoutingPayoutMock: vi.fn()
+  releaseFreelanceRoutingPayoutMock: vi.fn(),
+  releaseReadyFreelancePayoutBatchMock: vi.fn()
 }));
 
 vi.mock("@/lib/booking/route-auth", () => ({
@@ -46,7 +48,8 @@ vi.mock("@/lib/fintech/service", async () => {
     listArchitectFreelancePayoutQueue: listArchitectFreelancePayoutQueueMock,
     validateFreelancePayoutReleaseEligibility: validateFreelancePayoutReleaseEligibilityMock,
     approveFreelancePayoutReadinessForRouting: approveFreelancePayoutReadinessForRoutingMock,
-    releaseFreelanceRoutingPayout: releaseFreelanceRoutingPayoutMock
+    releaseFreelanceRoutingPayout: releaseFreelanceRoutingPayoutMock,
+    releaseReadyFreelancePayoutBatch: releaseReadyFreelancePayoutBatchMock
   };
 });
 
@@ -58,6 +61,7 @@ import { GET as getArchitectStripePlatformDiagnostics } from "@/app/api/architec
 import { POST as postArchitectPayoutValidate } from "@/app/api/architect/payouts/validate/route";
 import { POST as postArchitectPayoutApproveReadiness } from "@/app/api/architect/payouts/approve-readiness/route";
 import { POST as postArchitectPayoutRelease } from "@/app/api/architect/payouts/release/route";
+import { POST as postArchitectPayoutReleaseBatch } from "@/app/api/architect/payouts/release-batch/route";
 
 describe("phase 15 payout routes", () => {
   beforeEach(() => {
@@ -71,6 +75,7 @@ describe("phase 15 payout routes", () => {
     validateFreelancePayoutReleaseEligibilityMock.mockReset();
     approveFreelancePayoutReadinessForRoutingMock.mockReset();
     releaseFreelanceRoutingPayoutMock.mockReset();
+    releaseReadyFreelancePayoutBatchMock.mockReset();
     requireArchitectDebugAccessMock.mockResolvedValue({
       ok: true,
       actor: resolveDemoUser("architect@bvrb3r.demo")
@@ -493,5 +498,49 @@ describe("phase 15 payout routes", () => {
     expect(body.debugSafeDetails.supabaseHint).toBeNull();
     expect(body.debugSafeDetails.attemptedIdempotencyKey).toBe("freelance_payout_release:routing-9:attempt:7");
     expect(body.debugSafeDetails.attemptedAttemptCount).toBe(7);
+  });
+
+  it("releases all ready Architect freelance payouts with the guarded actor id", async () => {
+    releaseReadyFreelancePayoutBatchMock.mockResolvedValue({
+      ok: true,
+      attemptedCount: 3,
+      releasedCount: 3,
+      failedCount: 0,
+      skippedCount: 0,
+      totalReleasedAmount: 42.75,
+      requiredAmount: 42.75,
+      availableAmount: 96.8,
+      results: [
+        { routingRecordId: "routing-1", status: "released", amount: 8.55, processorTransferId: "tr_1", reason: null },
+        { routingRecordId: "routing-2", status: "released", amount: 14.25, processorTransferId: "tr_2", reason: null },
+        { routingRecordId: "routing-3", status: "released", amount: 19.95, processorTransferId: "tr_3", reason: null }
+      ],
+      message: "Released 3 payouts totaling $42.75."
+    });
+
+    const response = await postArchitectPayoutReleaseBatch(new NextRequest("https://bvrb3r.demo/api/architect/payouts/release-batch", {
+      method: "POST",
+      body: JSON.stringify({ scope: "freelance", mode: "ready_only" })
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.releasedCount).toBe(3);
+    expect(body.totalReleasedAmount).toBe(42.75);
+    expect(releaseReadyFreelancePayoutBatchMock).toHaveBeenCalledWith({
+      requestedByProfileId: expect.any(String),
+      scope: "freelance",
+      mode: "ready_only"
+    });
+  });
+
+  it("rejects unsupported Architect payout batch release scopes", async () => {
+    const response = await postArchitectPayoutReleaseBatch(new NextRequest("https://bvrb3r.demo/api/architect/payouts/release-batch", {
+      method: "POST",
+      body: JSON.stringify({ scope: "all", mode: "ready_only" })
+    }));
+
+    expect(response.status).toBe(400);
+    expect(releaseReadyFreelancePayoutBatchMock).not.toHaveBeenCalled();
   });
 });

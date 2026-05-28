@@ -10,6 +10,7 @@ import type {
   FintechPayoutsPayload,
   ArchitectStripePlatformDiagnosticsPayload,
   BarberPayoutReadinessApprovalResult,
+  FreelancePayoutBatchReleaseResult,
   FreelancePayoutQueuePayload,
   FreelancePayoutReleaseEligibility,
   FreelancePayoutReleaseResult,
@@ -36,6 +37,7 @@ type FreelancePayoutQueueResponse = FreelancePayoutQueuePayload;
 type ArchitectStripePlatformDiagnosticsResponse = ArchitectStripePlatformDiagnosticsPayload;
 type FreelancePayoutValidationResponse = FreelancePayoutReleaseEligibility;
 type FreelancePayoutReleaseResponse = FreelancePayoutReleaseResult;
+type FreelancePayoutBatchReleaseResponse = FreelancePayoutBatchReleaseResult;
 type BarberPayoutReadinessApprovalResponse = BarberPayoutReadinessApprovalResult;
 type StripeConnectSessionResponse = StripeConnectSessionResult;
 type RefreshStripeAccountResponse = {
@@ -351,6 +353,23 @@ export function useReleaseFreelancePayoutMutation() {
     onSuccess: async () => {
       await invalidateFintechQueries(queryClient);
       await queryClient.invalidateQueries({ queryKey: ["fintech", "architect", "freelance-payouts"] });
+    }
+  });
+}
+
+export function useReleaseFreelancePayoutBatchMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: { scope: "freelance"; mode: "ready_only" }) =>
+      requestJson<FreelancePayoutBatchReleaseResponse>("/api/architect/payouts/release-batch", {
+        method: "POST",
+        body: JSON.stringify(input)
+      }),
+    onSuccess: async () => {
+      await invalidateFintechQueries(queryClient);
+      await queryClient.invalidateQueries({ queryKey: ["fintech", "architect", "freelance-payouts"] });
+      await queryClient.invalidateQueries({ queryKey: ["fintech", "architect", "stripe-platform-diagnostics"] });
     }
   });
 }

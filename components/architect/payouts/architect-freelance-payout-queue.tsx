@@ -9,6 +9,7 @@ import {
   useApproveFreelancePayoutReadinessMutation,
   useArchitectFreelancePayoutQueueQuery,
   useArchitectStripePlatformDiagnosticsQuery,
+  useReleaseFreelancePayoutBatchMutation,
   useReleaseFreelancePayoutMutation,
   useValidateFreelancePayoutMutation
 } from "@/lib/fintech/client";
@@ -35,6 +36,10 @@ function formatBalanceList(balances: StripePlatformBalanceView[]) {
   return balances
     .map((balance) => `${payoutCurrency(balance.amount)} ${balance.currency.toUpperCase()}`)
     .join(" / ");
+}
+
+function availableUsdBalance(diagnostics?: ArchitectStripePlatformDiagnosticsPayload | null) {
+  return diagnostics?.availableBalances.find((balance) => balance.currency.toLowerCase() === "usd")?.amount ?? 0;
 }
 
 function formatDateTime(value?: string | null) {
@@ -101,6 +106,22 @@ function formatReleaseFeedback(result: FreelancePayoutReleaseResult) {
   ].filter(Boolean);
 
   return debugParts.length ? `${baseMessage} ${debugParts.join(" | ")}` : baseMessage;
+}
+
+function formatBatchReleaseFeedback(result: {
+  releasedCount: number;
+  failedCount: number;
+  skippedCount: number;
+  totalReleasedAmount: number;
+  message: string;
+}) {
+  if (result.failedCount > 0) {
+    return `Released ${result.releasedCount} payouts. ${result.failedCount} failed.`;
+  }
+  if (result.skippedCount > 0 && result.releasedCount === 0) {
+    return result.message;
+  }
+  return `Released ${result.releasedCount} ${result.releasedCount === 1 ? "payout" : "payouts"} totaling ${payoutCurrency(result.totalReleasedAmount)}.`;
 }
 
 function StripePlatformDiagnosticsCard() {
@@ -323,14 +344,93 @@ function QueueRow({
   );
 }
 
+function BatchReleaseConfirmation({
+  count,
+  total,
+  availableBalance,
+  isProcessing,
+  onCancel,
+  onConfirm
+}: {
+  count: number;
+  total: number;
+  availableBalance: number;
+  isProcessing: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 px-4 py-6 backdrop-blur-sm sm:items-center" role="dialog" aria-modal="true" aria-labelledby="batch-release-title">
+      <div className="w-full max-w-xl rounded-[28px] border border-white/10 bg-[#050505] p-5 shadow-2xl">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="surface-label">Batch release</p>
+            <h3 id="batch-release-title" className="mt-3 text-2xl font-black tracking-[-0.03em] text-white">
+              Release all ready payouts?
+            </h3>
+            <p className="mt-2 text-sm leading-6 text-white/58">
+              Release {count} {count === 1 ? "payout" : "payouts"} totaling {payoutCurrency(total)}?
+            </p>
+          </div>
+          <Button type="button" variant="ghost" onClick={onCancel} disabled={isProcessing}>
+            Close
+          </Button>
+        </div>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-[18px] border border-white/8 bg-black/36 p-4">
+            <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-white/36">Stripe available</p>
+            <p className="mt-2 text-xl font-black text-white">{payoutCurrency(availableBalance)}</p>
+          </div>
+          <div className="rounded-[18px] border border-white/8 bg-black/36 p-4">
+            <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-white/36">Required total</p>
+            <p className="mt-2 text-xl font-black text-white">{payoutCurrency(total)}</p>
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-[18px] border border-amber-300/14 bg-amber-300/8 p-4 text-xs leading-6 text-amber-50/76">
+          This sends transfers to barber connected payout accounts.
+        </div>
+
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onCancel} disabled={isProcessing}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={onConfirm} disabled={isProcessing}>
+            {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+            Release all ready payouts
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ArchitectFreelancePayoutQueue() {
   const queueQuery = useArchitectFreelancePayoutQueueQuery();
+  const diagnosticsQuery = useArchitectStripePlatformDiagnosticsQuery();
   const validateMutation = useValidateFreelancePayoutMutation();
   const approveReadinessMutation = useApproveFreelancePayoutReadinessMutation();
   const releaseMutation = useReleaseFreelancePayoutMutation();
+  const batchReleaseMutation = useReleaseFreelancePayoutBatchMutation();
   const [feedback, setFeedback] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(null);
   const [activeRoutingId, setActiveRoutingId] = useState<string | null>(null);
+  const [showBatchConfirmation, setShowBatchConfirmation] = useState(false);
   const payload = queueQuery.data;
+  const batchCandidates = payload?.items.filter((item) =>
+    item.canRelease
+    && item.payoutReadinessStatus === "ready"
+    && item.moneyRoutingStatus === "pending"
+    && !item.releasedAt
+    && item.shopSplitAmount === 0
+    && item.barberPayoutAmount > 0
+  ) ?? [];
+  const batchCount = batchCandidates.length;
+  const batchTotal = batchCandidates.reduce((sum, item) => sum + item.barberPayoutAmount, 0);
+  const batchAvailableBalance = availableUsdBalance(diagnosticsQuery.data);
+  const batchBalanceReady = batchAvailableBalance >= batchTotal;
+  const showBatchButton = Boolean(payload?.summary.readyCount && batchCount > 0);
+  const batchButtonDisabled = batchReleaseMutation.isPending || !batchBalanceReady || diagnosticsQuery.isLoading || diagnosticsQuery.isError;
 
   async function handleValidate(item: FreelancePayoutQueueItem) {
     setFeedback(null);
@@ -390,6 +490,20 @@ export function ArchitectFreelancePayoutQueue() {
     }
   }
 
+  async function handleBatchRelease() {
+    setFeedback(null);
+    try {
+      const result = await batchReleaseMutation.mutateAsync({ scope: "freelance", mode: "ready_only" });
+      setShowBatchConfirmation(false);
+      setFeedback({
+        tone: result.failedCount > 0 || result.ok === false ? "error" : "success",
+        message: formatBatchReleaseFeedback(result)
+      });
+    } catch (error) {
+      setFeedback({ tone: "error", message: getReadableActionError(error as { message?: string; status?: number; code?: string }) });
+    }
+  }
+
   return (
     <Card className="rounded-[32px] p-6" data-testid="architect-freelance-payout-queue">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -419,6 +533,36 @@ export function ArchitectFreelancePayoutQueue() {
       </div>
 
       <StripePlatformDiagnosticsCard />
+
+      {showBatchButton ? (
+        <div className="mt-5 rounded-[24px] border border-[#7CFF00]/14 bg-[#7CFF00]/8 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#d7ffab]/70">
+                Batch ready release
+              </p>
+              <p className="mt-2 text-sm leading-6 text-white/64">
+                Release {batchCount} {batchCount === 1 ? "ready payout" : "ready payouts"} totaling {payoutCurrency(batchTotal)}.
+              </p>
+              {!batchBalanceReady ? (
+                <p className="mt-2 text-xs leading-5 text-amber-50/76">
+                  Stripe available balance is {payoutCurrency(batchAvailableBalance)}. Required total is {payoutCurrency(batchTotal)}.
+                </p>
+              ) : null}
+            </div>
+            <Button
+              type="button"
+              className="min-w-[14rem]"
+              disabled={batchButtonDisabled}
+              title={!batchBalanceReady ? "Stripe platform available balance is below the ready payout total." : undefined}
+              onClick={() => setShowBatchConfirmation(true)}
+            >
+              {batchReleaseMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+              Release all ready payouts
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       {feedback ? <FeedbackBanner className="mt-5" tone={feedback.tone} message={feedback.message} /> : null}
       {payload?.warnings?.length ? payload.warnings.map((warning) => (
@@ -469,6 +613,16 @@ export function ArchitectFreelancePayoutQueue() {
           </p>
         </div>
       </div>
+      {showBatchConfirmation ? (
+        <BatchReleaseConfirmation
+          count={batchCount}
+          total={batchTotal}
+          availableBalance={batchAvailableBalance}
+          isProcessing={batchReleaseMutation.isPending}
+          onCancel={() => setShowBatchConfirmation(false)}
+          onConfirm={() => void handleBatchRelease()}
+        />
+      ) : null}
     </Card>
   );
 }

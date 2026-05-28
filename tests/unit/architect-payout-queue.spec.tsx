@@ -7,24 +7,29 @@ const {
   validateHookMock,
   approveHookMock,
   releaseHookMock,
+  batchReleaseHookMock,
   validateMutateAsyncMock,
   approveMutateAsyncMock,
-  releaseMutateAsyncMock
+  releaseMutateAsyncMock,
+  batchReleaseMutateAsyncMock
 } = vi.hoisted(() => ({
   diagnosticsHookMock: vi.fn(),
   queueHookMock: vi.fn(),
   validateHookMock: vi.fn(),
   approveHookMock: vi.fn(),
   releaseHookMock: vi.fn(),
+  batchReleaseHookMock: vi.fn(),
   validateMutateAsyncMock: vi.fn(),
   approveMutateAsyncMock: vi.fn(),
-  releaseMutateAsyncMock: vi.fn()
+  releaseMutateAsyncMock: vi.fn(),
+  batchReleaseMutateAsyncMock: vi.fn()
 }));
 
 vi.mock("@/lib/fintech/client", () => ({
   useApproveFreelancePayoutReadinessMutation: approveHookMock,
   useArchitectFreelancePayoutQueueQuery: queueHookMock,
   useArchitectStripePlatformDiagnosticsQuery: diagnosticsHookMock,
+  useReleaseFreelancePayoutBatchMutation: batchReleaseHookMock,
   useValidateFreelancePayoutMutation: validateHookMock,
   useReleaseFreelancePayoutMutation: releaseHookMock
 }));
@@ -90,9 +95,11 @@ describe("ArchitectFreelancePayoutQueue", () => {
     queueHookMock.mockReset();
     validateHookMock.mockReset();
     releaseHookMock.mockReset();
+    batchReleaseHookMock.mockReset();
     validateMutateAsyncMock.mockReset();
     approveMutateAsyncMock.mockReset();
     releaseMutateAsyncMock.mockReset();
+    batchReleaseMutateAsyncMock.mockReset();
     queueHookMock.mockReturnValue({
       data: queuePayload,
       isLoading: false,
@@ -131,6 +138,10 @@ describe("ArchitectFreelancePayoutQueue", () => {
     releaseHookMock.mockReturnValue({
       mutateAsync: releaseMutateAsyncMock
     });
+    batchReleaseHookMock.mockReturnValue({
+      mutateAsync: batchReleaseMutateAsyncMock,
+      isPending: false
+    });
   });
 
   it("renders the freelance payout queue and releases a ready item", async () => {
@@ -152,6 +163,74 @@ describe("ArchitectFreelancePayoutQueue", () => {
       expect(releaseMutateAsyncMock).toHaveBeenCalledWith({ routingRecordId: "routing-9" });
     });
     expect(await screen.findByText("Payout released to the barber payout account.")).toBeInTheDocument();
+  });
+
+  it("renders a batch release button and confirms the ready payout total", () => {
+    render(<ArchitectFreelancePayoutQueue />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Release all ready payouts" }));
+
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("Release all ready payouts?")).toBeInTheDocument();
+    expect(within(dialog).getByText("Release 1 payout totaling $8.55?")).toBeInTheDocument();
+    expect(within(dialog).getByText("$100.00")).toBeInTheDocument();
+    expect(within(dialog).getByText("$8.55")).toBeInTheDocument();
+  });
+
+  it("runs batch release and shows the released total", async () => {
+    batchReleaseMutateAsyncMock.mockResolvedValue({
+      ok: true,
+      attemptedCount: 1,
+      releasedCount: 1,
+      failedCount: 0,
+      skippedCount: 0,
+      totalReleasedAmount: 8.55,
+      requiredAmount: 8.55,
+      availableAmount: 100,
+      results: [{ routingRecordId: "routing-9", status: "released", amount: 8.55, processorTransferId: "tr_1", reason: null }],
+      message: "Released 1 payout totaling $8.55."
+    });
+
+    render(<ArchitectFreelancePayoutQueue />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Release all ready payouts" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Release all ready payouts" }));
+
+    await waitFor(() => {
+      expect(batchReleaseMutateAsyncMock).toHaveBeenCalledWith({ scope: "freelance", mode: "ready_only" });
+    });
+    expect(await screen.findByText("Released 1 payout totaling $8.55.")).toBeInTheDocument();
+  });
+
+  it("disables batch release when Stripe available balance is below the ready total", () => {
+    diagnosticsHookMock.mockReturnValue({
+      data: {
+        ok: true,
+        platformAccountId: "acct_1L0nesLDU3d4YToG",
+        country: "US",
+        defaultCurrency: "usd",
+        chargesEnabled: true,
+        payoutsEnabled: true,
+        dashboardDisplayName: "BVRB3R Platform",
+        livemode: false,
+        availableBalances: [{ currency: "usd", amount: 4 }],
+        pendingBalances: [],
+        stripeKeyMode: "test",
+        expectedPlatformAccountId: "acct_1L0nesLDU3d4YToG",
+        accountMatchesExpected: true,
+        mismatchWarning: null,
+        warnings: [],
+        checkedAt: "2026-05-26T15:00:00.000Z"
+      },
+      isLoading: false,
+      isError: false,
+      error: null
+    });
+
+    render(<ArchitectFreelancePayoutQueue />);
+
+    expect(screen.getByRole("button", { name: "Release all ready payouts" })).toBeDisabled();
+    expect(screen.getByText("Stripe available balance is $4.00. Required total is $8.55.")).toBeInTheDocument();
   });
 
   it("renders Stripe platform diagnostics for the app server key", () => {
