@@ -11,9 +11,9 @@ export function ClientSidebar({ activeTab }: { activeTab?: ClientAppTab }) {
       <div className="sticky top-5 space-y-4">
         <div className="bvr-glass-card rounded-[28px] p-5">
           <p className="text-[10px] uppercase tracking-[0.24em] text-[#d7ffab]">Client navigation</p>
-          <p className="mt-3 text-xl font-semibold text-white">Book, track, message, repeat.</p>
+          <p className="mt-3 text-xl font-semibold text-white">Book, track, manage.</p>
           <p className="mt-3 text-sm leading-7 text-white/58">
-            Keep the client lane simple: Home for action, Search for discovery, Culture for community, Messages for support, Profile for account control.
+            Home starts booking, Search handles discovery, Activity keeps appointments and receipts, Profile holds account, wallet, rewards, messages, and community links.
           </p>
         </div>
 

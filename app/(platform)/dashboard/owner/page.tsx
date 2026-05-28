@@ -8,8 +8,8 @@ export default async function OwnerDashboardPage() {
     <DashboardShell
       user={user}
       activeHref="/dashboard/owner"
-      title="Overview"
-      subtitle="Live performance & insights"
+      title="Home"
+      subtitle="Shop health, team movement, and next actions."
       hidePageHeader
     >
       <OwnerOverview />

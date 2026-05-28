@@ -413,6 +413,20 @@ export function ClientBookingsScreen() {
         </div>
       </Card>
 
+      <div className="grid gap-3 sm:grid-cols-3" aria-label="Activity snapshot">
+        {[
+          { label: "Upcoming", value: upcomingAppointments.length, detail: "Booked visits" },
+          { label: "Receipts", value: history.length + posReceipts.length, detail: "Paid records" },
+          { label: "Reviews", value: history.filter((appointment) => appointment.canReview || appointment.review).length, detail: "Ready or posted" }
+        ].map((item) => (
+          <div key={item.label} className="rounded-[24px] border border-white/8 bg-black/20 p-4">
+            <p className="surface-label">{item.label}</p>
+            <p className="mt-3 text-2xl font-semibold text-white">{isInitialLoading ? "--" : item.value}</p>
+            <p className="mt-2 text-sm text-white/54">{item.detail}</p>
+          </div>
+        ))}
+      </div>
+
       <ClientSectionBlock
         eyebrow="Upcoming"
         title="Upcoming Appointments"

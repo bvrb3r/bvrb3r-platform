@@ -311,9 +311,9 @@ export function OwnerOverview() {
       <header className="flex items-start justify-between gap-5">
         <div>
           <h1 className="text-5xl font-black leading-none tracking-[-0.055em] text-white sm:text-6xl" data-display="true">
-            Overview
+            Home
           </h1>
-          <p className="mt-3 text-lg font-medium text-white/68">Live performance & insights</p>
+          <p className="mt-3 text-lg font-medium text-white/68">Shop health, team movement, and next actions.</p>
         </div>
         <div className="flex shrink-0 items-center gap-3">
           <CommandIconButton href="#owner-alerts" label="Open owner alerts" badge={alertCount}>
@@ -436,7 +436,7 @@ export function OwnerOverview() {
             <>
               <UtilizationCard
                 icon={<CalendarDays className="h-5 w-5" />}
-                value={chairsUsedPercent === null ? "—" : `${chairsUsedPercent}%`}
+                value={chairsUsedPercent === null ? "--" : `${chairsUsedPercent}%`}
                 label="Chairs Used"
                 detail={getUtilizationTone(chairsUsedPercent)}
                 href="/dashboard/owner/schedule?filter=utilization"
@@ -452,7 +452,7 @@ export function OwnerOverview() {
               />
               <UtilizationCard
                 icon={<TrendingUp className="h-5 w-5" />}
-                value={peakTime ?? "—"}
+                value={peakTime ?? "--"}
                 label="Peak Time"
                 detail={peakTime ? "Today" : "Not enough data"}
                 href="/dashboard/owner/schedule?range=peak"

@@ -12,9 +12,11 @@ import {
   CreditCard,
   Gift,
   Heart,
+  Images,
   LifeBuoy,
   MailPlus,
   MapPinned,
+  MessageSquareText,
   ReceiptText,
   Repeat2,
   ShieldCheck,
@@ -480,6 +482,32 @@ export function ClientProfileScreen({
           "client-preferred-supply": () => window.location.assign("/dashboard/client/search")
         }}
       />
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Profile quick links">
+        {[
+          { href: CLIENT_PRIMARY_TAB_HREFS.activity, label: "Appointments", detail: "Upcoming, history, receipts", icon: ReceiptText },
+          { href: `${CLIENT_PRIMARY_TAB_HREFS.profile}?section=wallet` as Route, label: "Payment setup", detail: "Cards and booking default", icon: CreditCard },
+          { href: CLIENT_PRIMARY_TAB_HREFS.messages, label: "Messages", detail: "Barbers and support", icon: MessageSquareText },
+          { href: CLIENT_PRIMARY_TAB_HREFS.culture, label: "Culture", detail: "Community and discovery", icon: Images }
+        ].map((item) => {
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.label}
+              href={item.href}
+              className="group rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#d7ffab]/20 hover:bg-black/28"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-white">{item.label}</p>
+                  <p className="mt-1 text-xs text-white/48">{item.detail}</p>
+                </div>
+                <Icon className="h-4 w-4 shrink-0 text-[#d7ffab] transition group-hover:scale-105" />
+              </div>
+            </Link>
+          );
+        })}
+      </div>
 
       <ClientSectionBlock
         eyebrow="Account"

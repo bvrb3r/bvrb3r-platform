@@ -1,9 +1,8 @@
 import type { Route } from "next";
 import {
   CalendarDays,
+  CircleUserRound,
   Home,
-  Images,
-  MessageSquareText,
   Search,
   UserRound,
   type LucideIcon
@@ -30,9 +29,8 @@ export const CLIENT_PRIMARY_NAV_ITEMS: Array<{
 }> = [
   { key: "home", href: CLIENT_PRIMARY_TAB_HREFS.home, label: "Home", subtitle: "Book fast", icon: Home },
   { key: "search", href: CLIENT_PRIMARY_TAB_HREFS.search, label: "Search", subtitle: "Discover", icon: Search },
-  { key: "culture", href: CLIENT_PRIMARY_TAB_HREFS.culture, label: "Culture", subtitle: "Feed / Community / Discover", icon: Images },
-  { key: "messages", href: CLIENT_PRIMARY_TAB_HREFS.messages, label: "Messages", subtitle: "DMs & support", icon: MessageSquareText },
-  { key: "profile", href: CLIENT_PRIMARY_TAB_HREFS.profile, label: "Profile", subtitle: "Account controls", icon: UserRound }
+  { key: "activity", href: CLIENT_PRIMARY_TAB_HREFS.activity, label: "Activity", subtitle: "Appointments / receipts", icon: CalendarDays },
+  { key: "profile", href: CLIENT_PRIMARY_TAB_HREFS.profile, label: "Profile", subtitle: "Account center", icon: CircleUserRound }
 ];
 
 export const GUEST_CLIENT_NAV_ITEMS: Array<{

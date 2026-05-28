@@ -198,8 +198,8 @@ describe("owner overview", () => {
   it("renders the owner overview from canonical revenue, booking, and team truth", () => {
     render(<OwnerOverview />);
 
-    expect(screen.getByRole("heading", { name: "Overview" })).toBeInTheDocument();
-    expect(screen.getByText("Live performance & insights")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Home" })).toBeInTheDocument();
+    expect(screen.getByText("Shop health, team movement, and next actions.")).toBeInTheDocument();
     expect(screen.getByText("Today Revenue")).toBeInTheDocument();
     expect(screen.getAllByText("$180").length).toBeGreaterThan(0);
     expect(screen.getByText("Projected unavailable")).toBeInTheDocument();
