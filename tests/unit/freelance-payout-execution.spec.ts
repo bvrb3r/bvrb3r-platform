@@ -255,6 +255,58 @@ function createFreelanceScenario(base: ReturnType<typeof createBaseTables>, inpu
   };
 }
 
+function createAppointmentScenario(base: ReturnType<typeof createBaseTables>, input: {
+  routingId: string;
+  paymentId: string;
+  appointmentId: string;
+  appointmentReference: string;
+  gross: number;
+  platformFee: number;
+  barberPayout: number;
+  routing?: Row;
+  payment?: Row;
+  appointment?: Row;
+}) {
+  return {
+    routing: {
+      ...base.payment_routing_records[0],
+      id: input.routingId,
+      payment_id: input.paymentId,
+      appointment_id: input.appointmentId,
+      pos_sale_id: null,
+      provider_gross_amount: input.gross,
+      platform_fee_amount: input.platformFee,
+      barber_payout_amount: input.barberPayout,
+      eligible_at: "2026-05-26T14:00:00.000Z",
+      updated_at: "2026-05-26T14:00:00.000Z",
+      ...input.routing
+    },
+    payment: {
+      ...base.payments[0],
+      id: input.paymentId,
+      appointment_id: input.appointmentId,
+      pos_sale_id: null,
+      amount: input.gross,
+      payment_type: "booking",
+      ...input.payment
+    },
+    appointment: {
+      id: input.appointmentId,
+      reference_code: input.appointmentReference,
+      status: "completed",
+      completed_at: "2026-05-26T13:00:00.000Z",
+      starts_at: "2026-05-26T12:30:00.000Z",
+      service_id: "service-1",
+      membership_id: null,
+      barber_id: BARBER_ID,
+      shop_id: null,
+      location_id: "location-1",
+      client_id: "client-1",
+      ...input.appointment
+    }
+  };
+}
+
 function createLegacyExecutorTables(overrides: Partial<Record<string, Row[]>> = {}) {
   const tables = createBaseTables({
     locations: [{
@@ -329,6 +381,8 @@ function createSupabaseStub(
   tableErrors: Partial<Record<string, { message: string; code?: string; details?: string; hint?: string }>> = {},
   operationErrors: Partial<Record<string, Partial<Record<"insert" | "update" | "upsert", { message: string; code?: string; details?: string; hint?: string }>>>> = {}
 ) {
+  const queryLog: Array<{ table: string; operation: "in"; column: string; values: unknown[] }> = [];
+
   class QueryBuilder {
     private filters: Array<(row: Row) => boolean> = [];
     private operation: "insert" | "update" | "upsert" | null = null;
@@ -348,6 +402,7 @@ function createSupabaseStub(
     }
 
     in(column: string, values: unknown[]) {
+      queryLog.push({ table: this.table, operation: "in", column, values });
       this.filters.push((row) => values.includes(row[column]));
       return this;
     }
@@ -471,7 +526,8 @@ function createSupabaseStub(
 
   return {
     from: (table: string) => new QueryBuilder(table),
-    tables
+    tables,
+    queryLog
   };
 }
 
@@ -1086,6 +1142,169 @@ describe("freelance payout execution", () => {
         releaseActionLabel: "Cannot release yet",
         ineligibleReasons: expect.arrayContaining(["An active dispute hold blocks payout release."])
       })
+    ]));
+  });
+
+  it("queries only production-legal dispute hold statuses", async () => {
+    const base = createBaseTables();
+    const appointment = createAppointmentScenario(base, {
+      routingId: "routing-appointment-legal-statuses",
+      paymentId: "payment-appointment-legal-statuses",
+      appointmentId: "appointment-legal-statuses",
+      appointmentReference: "BVRB-LEGAL-STATUSES",
+      gross: 5,
+      platformFee: 0.25,
+      barberPayout: 4.75
+    });
+    const supabase = createSupabaseStub(createBaseTables({
+      payment_routing_records: [appointment.routing],
+      payments: [appointment.payment],
+      appointments: [appointment.appointment],
+      pos_sales: []
+    }));
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    await listArchitectFreelancePayoutQueue();
+
+    expect(supabase.queryLog).toContainEqual({
+      table: "disputes",
+      operation: "in",
+      column: "dispute_status",
+      values: ["open", "under_review", "escalated"]
+    });
+  });
+
+  it.each([
+    ["open"],
+    ["under_review"],
+    ["escalated"]
+  ])("blocks appointment payout when dispute status is %s", async (disputeStatus) => {
+    const base = createBaseTables();
+    const appointment = createAppointmentScenario(base, {
+      routingId: `routing-${disputeStatus}`,
+      paymentId: `payment-${disputeStatus}`,
+      appointmentId: `appointment-${disputeStatus}`,
+      appointmentReference: `BVRB-${disputeStatus}`,
+      gross: 5,
+      platformFee: 0.25,
+      barberPayout: 4.75
+    });
+    const supabase = createSupabaseStub(createBaseTables({
+      payment_routing_records: [appointment.routing],
+      payments: [appointment.payment],
+      appointments: [appointment.appointment],
+      pos_sales: [],
+      disputes: [{
+        id: `dispute-${disputeStatus}`,
+        appointment_reference: `BVRB-${disputeStatus}`,
+        dispute_status: disputeStatus
+      }]
+    }));
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const result = await listArchitectFreelancePayoutQueue();
+
+    expect(result.items[0]).toMatchObject({
+      routingRecordId: `routing-${disputeStatus}`,
+      canRelease: false,
+      releaseBlockedReason: "An active dispute hold blocks payout release."
+    });
+  });
+
+  it.each([
+    ["resolved"],
+    ["dismissed"]
+  ])("does not block appointment payout when dispute status is %s", async (disputeStatus) => {
+    const base = createBaseTables();
+    const appointment = createAppointmentScenario(base, {
+      routingId: `routing-${disputeStatus}`,
+      paymentId: `payment-${disputeStatus}`,
+      appointmentId: `appointment-${disputeStatus}`,
+      appointmentReference: `BVRB-${disputeStatus}`,
+      gross: 5,
+      platformFee: 0.25,
+      barberPayout: 4.75
+    });
+    const supabase = createSupabaseStub(createBaseTables({
+      payment_routing_records: [appointment.routing],
+      payments: [appointment.payment],
+      appointments: [appointment.appointment],
+      pos_sales: [],
+      disputes: [{
+        id: `dispute-${disputeStatus}`,
+        appointment_reference: `BVRB-${disputeStatus}`,
+        dispute_status: disputeStatus
+      }]
+    }));
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const result = await listArchitectFreelancePayoutQueue();
+
+    expect(result.items[0]).toMatchObject({
+      routingRecordId: `routing-${disputeStatus}`,
+      canRelease: true,
+      releaseBlockedReason: null
+    });
+  });
+
+  it("batch releases appointment payouts when no active dispute exists", async () => {
+    const base = createBaseTables();
+    const first = createAppointmentScenario(base, {
+      routingId: "routing-appointment-1",
+      paymentId: "payment-appointment-1",
+      appointmentId: "appointment-1",
+      appointmentReference: "BVRB-APPT-1",
+      gross: 5,
+      platformFee: 0.25,
+      barberPayout: 4.75
+    });
+    const second = createAppointmentScenario(base, {
+      routingId: "routing-appointment-2",
+      paymentId: "payment-appointment-2",
+      appointmentId: "appointment-2",
+      appointmentReference: "BVRB-APPT-2",
+      gross: 5,
+      platformFee: 0.25,
+      barberPayout: 4.75
+    });
+    const tables = createBaseTables({
+      payment_routing_records: [first.routing, second.routing],
+      payments: [first.payment, second.payment],
+      appointments: [first.appointment, second.appointment],
+      pos_sales: [],
+      disputes: [
+        {
+          id: "dispute-resolved",
+          appointment_reference: "BVRB-APPT-1",
+          dispute_status: "resolved"
+        },
+        {
+          id: "dispute-dismissed",
+          appointment_reference: "BVRB-APPT-2",
+          dispute_status: "dismissed"
+        }
+      ]
+    });
+    const supabase = createSupabaseStub(tables);
+    createSupabaseAdminClientMock.mockReturnValue(supabase);
+
+    const result = await releaseReadyFreelancePayoutBatch({
+      requestedByProfileId: "architect-profile",
+      scope: "freelance",
+      mode: "ready_only"
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      attemptedCount: 2,
+      releasedCount: 2,
+      failedCount: 0,
+      totalReleasedAmount: 9.5
+    });
+    expect(createStripeTransferMock).toHaveBeenCalledTimes(2);
+    expect(tables.payment_routing_records).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "routing-appointment-1", money_routing_status: "paid_out" }),
+      expect.objectContaining({ id: "routing-appointment-2", money_routing_status: "paid_out" })
     ]));
   });
 

@@ -2284,7 +2284,7 @@ async function hasActiveDisputeHold(
     .from("disputes")
     .select("id")
     .eq("appointment_reference", appointmentReference)
-    .in("dispute_status", ["open", "needs_response", "under_review", "warning_needs_response", "warning_under_review", "escalated"])
+    .in("dispute_status", ["open", "under_review", "escalated"])
     .limit(1)
     .maybeSingle();
 
