@@ -13,7 +13,13 @@ import {
   useReleaseFreelancePayoutMutation,
   useValidateFreelancePayoutMutation
 } from "@/lib/fintech/client";
-import type { ArchitectStripePlatformDiagnosticsPayload, FreelancePayoutQueueItem, FreelancePayoutReleaseResult, StripePlatformBalanceView } from "@/lib/fintech/service";
+import type {
+  ArchitectStripePlatformDiagnosticsPayload,
+  FreelancePayoutBatchReleaseResult,
+  FreelancePayoutQueueItem,
+  FreelancePayoutReleaseResult,
+  StripePlatformBalanceView
+} from "@/lib/fintech/service";
 import { cn } from "@/lib/utils";
 import { getReadableActionError } from "@/lib/utils/feedback";
 
@@ -138,6 +144,16 @@ function formatBatchReleaseFeedback(result: {
     return result.message;
   }
   return `Released ${result.releasedCount} ${result.releasedCount === 1 ? "payout" : "payouts"} totaling ${payoutCurrency(result.totalReleasedAmount)}.`;
+}
+
+function formatBatchFailureSource(row: FreelancePayoutBatchReleaseResult["results"][number]) {
+  if (row.appointmentId) {
+    return `appointment ${row.appointmentId}`;
+  }
+  if (row.posSaleId) {
+    return `POS sale ${row.posSaleId}`;
+  }
+  return `routing ${row.routingRecordId}`;
 }
 
 function StripePlatformDiagnosticsCard() {
@@ -430,6 +446,7 @@ export function ArchitectFreelancePayoutQueue() {
   const releaseMutation = useReleaseFreelancePayoutMutation();
   const batchReleaseMutation = useReleaseFreelancePayoutBatchMutation();
   const [feedback, setFeedback] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(null);
+  const [batchFailedRows, setBatchFailedRows] = useState<FreelancePayoutBatchReleaseResult["results"]>([]);
   const [activeRoutingId, setActiveRoutingId] = useState<string | null>(null);
   const [showBatchConfirmation, setShowBatchConfirmation] = useState(false);
   const payload = queueQuery.data;
@@ -451,6 +468,7 @@ export function ArchitectFreelancePayoutQueue() {
 
   async function handleValidate(item: FreelancePayoutQueueItem) {
     setFeedback(null);
+    setBatchFailedRows([]);
     setActiveRoutingId(item.routingRecordId);
     try {
       const result = await validateMutation.mutateAsync({ routingRecordId: item.routingRecordId });
@@ -468,6 +486,7 @@ export function ArchitectFreelancePayoutQueue() {
   }
 
   async function handleRelease(item: FreelancePayoutQueueItem) {
+    setBatchFailedRows([]);
     if (!item.canRelease) {
       setFeedback({
         tone: "info",
@@ -493,6 +512,7 @@ export function ArchitectFreelancePayoutQueue() {
 
   async function handleApprovePayoutSetup(item: FreelancePayoutQueueItem) {
     setFeedback(null);
+    setBatchFailedRows([]);
     setActiveRoutingId(item.routingRecordId);
     try {
       const result = await approveReadinessMutation.mutateAsync({ routingRecordId: item.routingRecordId });
@@ -513,9 +533,11 @@ export function ArchitectFreelancePayoutQueue() {
     }
 
     setFeedback(null);
+    setBatchFailedRows([]);
     try {
       const result = await batchReleaseMutation.mutateAsync({ scope: "freelance", mode: "ready_only" });
       setShowBatchConfirmation(false);
+      setBatchFailedRows(result.results.filter((row) => row.status === "failed"));
       setFeedback({
         tone: result.failedCount > 0 || result.ok === false ? "error" : "success",
         message: formatBatchReleaseFeedback(result)
@@ -604,6 +626,30 @@ export function ArchitectFreelancePayoutQueue() {
       ) : null}
 
       {feedback ? <FeedbackBanner className="mt-5" tone={feedback.tone} message={feedback.message} /> : null}
+      {batchFailedRows.length ? (
+        <div className="mt-5 rounded-[22px] border border-rose-300/14 bg-rose-300/8 p-4" data-testid="batch-payout-failures">
+          <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-rose-100/62">
+            {batchFailedRows.length} {batchFailedRows.length === 1 ? "payout" : "payouts"} failed
+          </p>
+          <div className="mt-3 space-y-2">
+            {batchFailedRows.map((row) => (
+              <div key={row.routingRecordId} className="rounded-[16px] border border-white/8 bg-black/24 p-3 text-xs leading-5 text-rose-50/82">
+                <p className="font-bold text-white">
+                  {payoutCurrency(row.amount)} {formatBatchFailureSource(row)}
+                </p>
+                <p className="mt-1">
+                  {row.reason ?? row.errorCode ?? "No failure reason returned."}
+                </p>
+                {row.errorCode || row.failedStep ? (
+                  <p className="mt-1 text-rose-50/62">
+                    {[row.failedStep ? `Step: ${row.failedStep}` : null, row.errorCode ? `Code: ${row.errorCode}` : null].filter(Boolean).join(" | ")}
+                  </p>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
       {payload?.warnings?.length ? payload.warnings.map((warning) => (
         <FeedbackBanner
           key={warning}

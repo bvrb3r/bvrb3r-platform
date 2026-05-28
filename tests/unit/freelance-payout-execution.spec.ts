@@ -879,6 +879,16 @@ describe("freelance payout execution", () => {
     });
     expect(result.results.map((row) => row.routingRecordId)).toEqual(expect.arrayContaining(["routing-ready-1", "routing-ready-2"]));
     expect(result.results).toHaveLength(2);
+    expect(result.results).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        routingRecordId: "routing-ready-1",
+        paymentId: "payment-ready-1",
+        posSaleId: "sale-ready-1",
+        appointmentId: null,
+        errorCode: null,
+        failedStep: null
+      })
+    ]));
     expect(createStripeTransferMock).toHaveBeenCalledTimes(2);
     expect((tables.payout_executions as Row[]).filter((row) => row.execution_status === "executed")).toHaveLength(2);
     expect(tables.payment_routing_records.find((row) => row.id === "routing-ready-1")?.money_routing_status).toBe("paid_out");
@@ -965,8 +975,24 @@ describe("freelance payout execution", () => {
     expect(result.releasedCount).toBe(1);
     expect(result.failedCount).toBe(1);
     expect(result.results).toEqual([
-      expect.objectContaining({ routingRecordId: "routing-fails", status: "failed" }),
-      expect.objectContaining({ routingRecordId: "routing-succeeds", status: "released", processorTransferId: "tr_second" })
+      expect.objectContaining({
+        routingRecordId: "routing-fails",
+        paymentId: "payment-fails",
+        posSaleId: "sale-fails",
+        appointmentId: null,
+        status: "failed",
+        failedStep: "stripe_transfer",
+        errorCode: "stripe_insufficient_funds",
+        reason: "Release failed: insufficient available Stripe platform balance."
+      }),
+      expect.objectContaining({
+        routingRecordId: "routing-succeeds",
+        paymentId: "payment-succeeds",
+        posSaleId: "sale-succeeds",
+        appointmentId: null,
+        status: "released",
+        processorTransferId: "tr_second"
+      })
     ]);
     expect(tables.payout_executions).toEqual(expect.arrayContaining([
       expect.objectContaining({ routing_record_id: "routing-fails", execution_status: "failed" }),

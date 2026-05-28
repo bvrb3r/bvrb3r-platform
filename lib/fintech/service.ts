@@ -687,10 +687,15 @@ export type FreelancePayoutReleaseResult = {
 
 export type FreelancePayoutBatchReleaseRowResult = {
   routingRecordId: string;
+  paymentId: string;
+  appointmentId: string | null;
+  posSaleId: string | null;
   status: "released" | "failed" | "skipped";
   amount: number;
   processorTransferId: string | null;
   reason: string | null;
+  errorCode: string | null;
+  failedStep: string | null;
 };
 
 export type FreelancePayoutBatchReleaseResult = {
@@ -5973,10 +5978,15 @@ export async function releaseReadyFreelancePayoutBatch(input: {
       totalReleasedAmount: 0,
       results: candidates.map((item) => ({
         routingRecordId: item.routingRecordId,
+        paymentId: item.paymentId,
+        appointmentId: item.appointmentId,
+        posSaleId: item.posSaleId,
         status: "skipped",
         amount: item.barberPayoutAmount,
         processorTransferId: null,
-        reason: errorMessage
+        reason: errorMessage,
+        errorCode: errorCode ?? null,
+        failedStep: preflight.failedStep ?? null
       })),
       message: errorMessage,
       availableAmount: preflight.availableAmount ?? null,
@@ -5997,10 +6007,15 @@ export async function releaseReadyFreelancePayoutBatch(input: {
       if (result.ok && result.execution?.executionStatus === "executed") {
         results.push({
           routingRecordId: candidate.routingRecordId,
+          paymentId: candidate.paymentId,
+          appointmentId: candidate.appointmentId,
+          posSaleId: candidate.posSaleId,
           status: "released",
           amount: candidate.barberPayoutAmount,
           processorTransferId: result.execution.processorTransferId,
-          reason: null
+          reason: null,
+          errorCode: null,
+          failedStep: null
         });
         continue;
       }
@@ -6010,18 +6025,28 @@ export async function releaseReadyFreelancePayoutBatch(input: {
         || result.execution?.executionStatus === "executed";
       results.push({
         routingRecordId: candidate.routingRecordId,
+        paymentId: candidate.paymentId,
+        appointmentId: candidate.appointmentId,
+        posSaleId: candidate.posSaleId,
         status: alreadyReleased ? "skipped" : "failed",
         amount: candidate.barberPayoutAmount,
         processorTransferId: result.execution?.processorTransferId ?? null,
-        reason: result.errorMessage ?? result.message
+        reason: result.errorMessage ?? result.message,
+        errorCode: result.errorCode ?? null,
+        failedStep: result.failedStep ?? null
       });
     } catch (error) {
       results.push({
         routingRecordId: candidate.routingRecordId,
+        paymentId: candidate.paymentId,
+        appointmentId: candidate.appointmentId,
+        posSaleId: candidate.posSaleId,
         status: "failed",
         amount: candidate.barberPayoutAmount,
         processorTransferId: null,
-        reason: error instanceof Error ? error.message : "Unable to release this payout."
+        reason: error instanceof Error ? error.message : "Unable to release this payout.",
+        errorCode: "batch_row_release_failed",
+        failedStep: null
       });
     }
   }

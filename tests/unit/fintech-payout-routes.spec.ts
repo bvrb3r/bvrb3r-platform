@@ -573,4 +573,62 @@ describe("phase 15 payout routes", () => {
     expect(body.requiredAmount).toBe(42.75);
     expect(body.availableAmount).toBe(0);
   });
+
+  it("returns row-level failure reasons from Architect batch release", async () => {
+    releaseReadyFreelancePayoutBatchMock.mockResolvedValue({
+      ok: true,
+      attemptedCount: 3,
+      releasedCount: 1,
+      failedCount: 2,
+      skippedCount: 0,
+      totalReleasedAmount: 8.55,
+      requiredAmount: 18.05,
+      availableAmount: 63.55,
+      results: [
+        {
+          routingRecordId: "routing-pos",
+          paymentId: "payment-pos",
+          appointmentId: null,
+          posSaleId: "sale-pos",
+          status: "released",
+          amount: 8.55,
+          processorTransferId: "tr_pos",
+          reason: null,
+          errorCode: null,
+          failedStep: null
+        },
+        {
+          routingRecordId: "routing-appointment-1",
+          paymentId: "payment-appointment-1",
+          appointmentId: "appointment-1",
+          posSaleId: null,
+          status: "failed",
+          amount: 4.75,
+          processorTransferId: null,
+          reason: "Payment has not been captured or paid.",
+          errorCode: "appointment_payment_not_captured",
+          failedStep: "validate_release"
+        }
+      ],
+      message: "Released 1 payouts. 2 failed."
+    });
+
+    const response = await postArchitectPayoutReleaseBatch(new NextRequest("https://bvrb3r.demo/api/architect/payouts/release-batch", {
+      method: "POST",
+      body: JSON.stringify({ scope: "freelance", mode: "ready_only" })
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.results[1]).toMatchObject({
+      routingRecordId: "routing-appointment-1",
+      paymentId: "payment-appointment-1",
+      appointmentId: "appointment-1",
+      status: "failed",
+      amount: 4.75,
+      reason: "Payment has not been captured or paid.",
+      errorCode: "appointment_payment_not_captured",
+      failedStep: "validate_release"
+    });
+  });
 });

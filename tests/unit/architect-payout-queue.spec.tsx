@@ -228,6 +228,72 @@ describe("ArchitectFreelancePayoutQueue", () => {
     expect(screen.getByText(/Available: \$0\.00/)).toBeInTheDocument();
   });
 
+  it("renders row-level batch payout failure reasons", async () => {
+    batchReleaseMutateAsyncMock.mockResolvedValue({
+      ok: true,
+      attemptedCount: 3,
+      releasedCount: 1,
+      failedCount: 2,
+      skippedCount: 0,
+      totalReleasedAmount: 8.55,
+      requiredAmount: 18.05,
+      availableAmount: 63.55,
+      results: [
+        {
+          routingRecordId: "routing-pos",
+          paymentId: "payment-pos",
+          appointmentId: null,
+          posSaleId: "sale-pos",
+          status: "released",
+          amount: 8.55,
+          processorTransferId: "tr_pos",
+          reason: null,
+          errorCode: null,
+          failedStep: null
+        },
+        {
+          routingRecordId: "c94797d0",
+          paymentId: "payment-appointment-1",
+          appointmentId: "c94797d0",
+          posSaleId: null,
+          status: "failed",
+          amount: 4.75,
+          processorTransferId: null,
+          reason: "Payment has not been captured or paid.",
+          errorCode: "appointment_payment_not_captured",
+          failedStep: "validate_release"
+        },
+        {
+          routingRecordId: "132df4f6",
+          paymentId: "payment-appointment-2",
+          appointmentId: "132df4f6",
+          posSaleId: null,
+          status: "failed",
+          amount: 4.75,
+          processorTransferId: null,
+          reason: "Appointment is not completed.",
+          errorCode: "appointment_not_completed",
+          failedStep: "validate_release"
+        }
+      ],
+      message: "Released 1 payouts. 2 failed."
+    });
+
+    render(<ArchitectFreelancePayoutQueue />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Release all ready payouts" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Release all ready payouts" }));
+
+    expect(await screen.findByText("Released 1 payouts. 2 failed.")).toBeInTheDocument();
+    const failures = screen.getByTestId("batch-payout-failures");
+    expect(within(failures).getByText("2 payouts failed")).toBeInTheDocument();
+    expect(within(failures).getByText("$4.75 appointment c94797d0")).toBeInTheDocument();
+    expect(within(failures).getByText("Payment has not been captured or paid.")).toBeInTheDocument();
+    expect(within(failures).getByText("$4.75 appointment 132df4f6")).toBeInTheDocument();
+    expect(within(failures).getByText("Appointment is not completed.")).toBeInTheDocument();
+    expect(within(failures).getAllByText("Step: validate_release | Code: appointment_payment_not_captured").length).toBe(1);
+  });
+
   it("disables batch release when Stripe available balance is below the ready total", () => {
     diagnosticsHookMock.mockReturnValue({
       data: {
