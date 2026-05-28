@@ -543,4 +543,34 @@ describe("phase 15 payout routes", () => {
     expect(response.status).toBe(400);
     expect(releaseReadyFreelancePayoutBatchMock).not.toHaveBeenCalled();
   });
+
+  it("returns structured insufficient platform balance responses from batch release", async () => {
+    releaseReadyFreelancePayoutBatchMock.mockResolvedValue({
+      ok: false,
+      attemptedCount: 0,
+      releasedCount: 0,
+      failedCount: 0,
+      skippedCount: 3,
+      totalReleasedAmount: 0,
+      requiredAmount: 42.75,
+      availableAmount: 0,
+      errorCode: "insufficient_platform_balance",
+      errorMessage: "Release blocked: Stripe platform available balance is below required payout total.",
+      results: [],
+      message: "Release blocked: Stripe platform available balance is below required payout total."
+    });
+
+    const response = await postArchitectPayoutReleaseBatch(new NextRequest("https://bvrb3r.demo/api/architect/payouts/release-batch", {
+      method: "POST",
+      body: JSON.stringify({ scope: "freelance", mode: "ready_only" })
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(false);
+    expect(body.errorCode).toBe("insufficient_platform_balance");
+    expect(body.errorMessage).toBe("Release blocked: Stripe platform available balance is below required payout total.");
+    expect(body.requiredAmount).toBe(42.75);
+    expect(body.availableAmount).toBe(0);
+  });
 });

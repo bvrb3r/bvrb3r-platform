@@ -705,6 +705,7 @@ export type FreelancePayoutBatchReleaseResult = {
   availableAmount: number | null;
   requiredAmount: number;
   errorCode?: string;
+  errorMessage?: string;
 };
 
 export type FintechPayoutsPayload = {
@@ -5955,6 +5956,14 @@ export async function releaseReadyFreelancePayoutBatch(input: {
   });
 
   if (!preflight.ok) {
+    const insufficientBalance = preflight.errorCode === "stripe_platform_balance_insufficient";
+    const errorCode = insufficientBalance
+      ? "insufficient_platform_balance"
+      : preflight.errorCode;
+    const errorMessage = insufficientBalance
+      ? "Release blocked: Stripe platform available balance is below required payout total."
+      : preflight.errorMessage ?? "Release blocked before Stripe transfer.";
+
     return {
       ok: false,
       attemptedCount: 0,
@@ -5967,12 +5976,13 @@ export async function releaseReadyFreelancePayoutBatch(input: {
         status: "skipped",
         amount: item.barberPayoutAmount,
         processorTransferId: null,
-        reason: preflight.errorMessage ?? "Stripe platform balance preflight failed."
+        reason: errorMessage
       })),
-      message: preflight.errorMessage ?? "Release blocked before Stripe transfer.",
+      message: errorMessage,
       availableAmount: preflight.availableAmount ?? null,
       requiredAmount,
-      errorCode: preflight.errorCode
+      errorCode,
+      errorMessage
     };
   }
 

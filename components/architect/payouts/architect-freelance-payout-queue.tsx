@@ -28,6 +28,11 @@ function payoutCurrency(value: number) {
   return payoutCurrencyFormatter.format(value);
 }
 
+function moneyValue(value: unknown) {
+  const amount = typeof value === "number" ? value : Number(value ?? 0);
+  return Number.isFinite(amount) ? amount : 0;
+}
+
 function formatBalanceList(balances: StripePlatformBalanceView[]) {
   if (!balances.length) {
     return "$0.00";
@@ -113,8 +118,19 @@ function formatBatchReleaseFeedback(result: {
   failedCount: number;
   skippedCount: number;
   totalReleasedAmount: number;
+  availableAmount?: number | null;
+  requiredAmount?: number;
+  errorCode?: string;
+  errorMessage?: string;
   message: string;
 }) {
+  if (result.errorCode === "insufficient_platform_balance") {
+    return [
+      result.errorMessage ?? "Release blocked: Stripe platform available balance is below required payout total.",
+      `Required: ${payoutCurrency(moneyValue(result.requiredAmount))}`,
+      `Available: ${payoutCurrency(moneyValue(result.availableAmount))}`
+    ].join(" ");
+  }
   if (result.failedCount > 0) {
     return `Released ${result.releasedCount} payouts. ${result.failedCount} failed.`;
   }
@@ -426,11 +442,12 @@ export function ArchitectFreelancePayoutQueue() {
     && item.barberPayoutAmount > 0
   ) ?? [];
   const batchCount = batchCandidates.length;
-  const batchTotal = batchCandidates.reduce((sum, item) => sum + item.barberPayoutAmount, 0);
+  const batchTotal = batchCandidates.reduce((sum, item) => sum + moneyValue(item.barberPayoutAmount), 0);
   const batchAvailableBalance = availableUsdBalance(diagnosticsQuery.data);
   const batchBalanceReady = batchAvailableBalance >= batchTotal;
   const showBatchButton = Boolean(payload?.summary.readyCount && batchCount > 0);
-  const batchButtonDisabled = batchReleaseMutation.isPending || !batchBalanceReady || diagnosticsQuery.isLoading || diagnosticsQuery.isError;
+  const batchBlockedByBalance = showBatchButton && !diagnosticsQuery.isLoading && !diagnosticsQuery.isError && !batchBalanceReady;
+  const batchButtonDisabled = batchReleaseMutation.isPending || batchBlockedByBalance || diagnosticsQuery.isLoading || diagnosticsQuery.isError;
 
   async function handleValidate(item: FreelancePayoutQueueItem) {
     setFeedback(null);
@@ -491,6 +508,10 @@ export function ArchitectFreelancePayoutQueue() {
   }
 
   async function handleBatchRelease() {
+    if (batchButtonDisabled) {
+      return;
+    }
+
     setFeedback(null);
     try {
       const result = await batchReleaseMutation.mutateAsync({ scope: "freelance", mode: "ready_only" });
@@ -535,30 +556,48 @@ export function ArchitectFreelancePayoutQueue() {
       <StripePlatformDiagnosticsCard />
 
       {showBatchButton ? (
-        <div className="mt-5 rounded-[24px] border border-[#7CFF00]/14 bg-[#7CFF00]/8 p-4">
+        <div className={cn(
+          "mt-5 rounded-[24px] border p-4",
+          batchBlockedByBalance
+            ? "border-amber-300/16 bg-amber-300/8"
+            : "border-[#7CFF00]/14 bg-[#7CFF00]/8"
+        )}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#d7ffab]/70">
+              <p className={cn(
+                "text-[10px] font-extrabold uppercase tracking-[0.16em]",
+                batchBlockedByBalance ? "text-amber-100/70" : "text-[#d7ffab]/70"
+              )}>
                 Batch ready release
               </p>
               <p className="mt-2 text-sm leading-6 text-white/64">
                 Release {batchCount} {batchCount === 1 ? "ready payout" : "ready payouts"} totaling {payoutCurrency(batchTotal)}.
               </p>
-              {!batchBalanceReady ? (
-                <p className="mt-2 text-xs leading-5 text-amber-50/76">
-                  Stripe available balance is {payoutCurrency(batchAvailableBalance)}. Required total is {payoutCurrency(batchTotal)}.
-                </p>
+              {batchBlockedByBalance ? (
+                <div className="mt-3 rounded-[18px] border border-amber-300/14 bg-black/24 p-3 text-xs leading-5 text-amber-50/82">
+                  <p className="font-bold">Release blocked: Stripe platform available balance is below required payout total.</p>
+                  <p className="mt-2">Required: {payoutCurrency(batchTotal)}</p>
+                  <p>Available: {payoutCurrency(batchAvailableBalance)}</p>
+                </div>
               ) : null}
             </div>
             <Button
               type="button"
-              className="min-w-[14rem]"
+              variant={batchBlockedByBalance ? "secondary" : "primary"}
+              className={cn(
+                "min-w-[14rem]",
+                batchBlockedByBalance ? "border-white/10 bg-white/[0.035] text-white/54 shadow-none hover:translate-y-0 hover:border-white/10 hover:bg-white/[0.035] hover:text-white/54" : null
+              )}
               disabled={batchButtonDisabled}
               title={!batchBalanceReady ? "Stripe platform available balance is below the ready payout total." : undefined}
-              onClick={() => setShowBatchConfirmation(true)}
+              onClick={() => {
+                if (!batchButtonDisabled) {
+                  setShowBatchConfirmation(true);
+                }
+              }}
             >
               {batchReleaseMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : null}
-              Release all ready payouts
+              {batchBlockedByBalance ? "Insufficient Stripe balance" : "Release all ready payouts"}
             </Button>
           </div>
         </div>

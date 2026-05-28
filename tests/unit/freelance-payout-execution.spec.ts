@@ -909,12 +909,14 @@ describe("freelance payout execution", () => {
       skippedCount: 1,
       requiredAmount: 95,
       availableAmount: 10,
-      errorCode: "stripe_platform_balance_insufficient"
+      errorCode: "insufficient_platform_balance",
+      errorMessage: "Release blocked: Stripe platform available balance is below required payout total."
     });
     expect(result.results[0]).toMatchObject({
       routingRecordId: ROUTING_ID,
       status: "skipped",
-      amount: 95
+      amount: 95,
+      reason: "Release blocked: Stripe platform available balance is below required payout total."
     });
     expect(createStripeTransferMock).not.toHaveBeenCalled();
     expect(supabase.tables.payout_executions).toHaveLength(0);

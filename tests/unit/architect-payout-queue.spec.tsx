@@ -202,6 +202,32 @@ describe("ArchitectFreelancePayoutQueue", () => {
     expect(await screen.findByText("Released 1 payout totaling $8.55.")).toBeInTheDocument();
   });
 
+  it("renders backend insufficient-balance batch response cleanly", async () => {
+    batchReleaseMutateAsyncMock.mockResolvedValue({
+      ok: false,
+      attemptedCount: 0,
+      releasedCount: 0,
+      failedCount: 0,
+      skippedCount: 1,
+      totalReleasedAmount: 0,
+      requiredAmount: 8.55,
+      availableAmount: 0,
+      errorCode: "insufficient_platform_balance",
+      errorMessage: "Release blocked: Stripe platform available balance is below required payout total.",
+      results: [{ routingRecordId: "routing-9", status: "skipped", amount: 8.55, processorTransferId: null, reason: "Release blocked" }],
+      message: "Release blocked: Stripe platform available balance is below required payout total."
+    });
+
+    render(<ArchitectFreelancePayoutQueue />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Release all ready payouts" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Release all ready payouts" }));
+
+    expect(await screen.findByText(/Release blocked: Stripe platform available balance is below required payout total\./)).toBeInTheDocument();
+    expect(screen.getByText(/Required: \$8\.55/)).toBeInTheDocument();
+    expect(screen.getByText(/Available: \$0\.00/)).toBeInTheDocument();
+  });
+
   it("disables batch release when Stripe available balance is below the ready total", () => {
     diagnosticsHookMock.mockReturnValue({
       data: {
@@ -229,8 +255,14 @@ describe("ArchitectFreelancePayoutQueue", () => {
 
     render(<ArchitectFreelancePayoutQueue />);
 
-    expect(screen.getByRole("button", { name: "Release all ready payouts" })).toBeDisabled();
-    expect(screen.getByText("Stripe available balance is $4.00. Required total is $8.55.")).toBeInTheDocument();
+    const button = screen.getByRole("button", { name: "Insufficient Stripe balance" });
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(batchReleaseMutateAsyncMock).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByText("Release blocked: Stripe platform available balance is below required payout total.")).toBeInTheDocument();
+    expect(screen.getByText("Required: $8.55")).toBeInTheDocument();
+    expect(screen.getByText("Available: $4.00")).toBeInTheDocument();
   });
 
   it("renders Stripe platform diagnostics for the app server key", () => {
