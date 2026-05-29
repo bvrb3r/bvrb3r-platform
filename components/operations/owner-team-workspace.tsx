@@ -24,6 +24,7 @@ import { useFintechManagementQuery } from "@/lib/fintech/client";
 import {
   useCreateOwnerTeamInviteMutation,
   useOwnerTeamInviteDirectoryQuery,
+  useRespondOwnerTeamJoinRequestMutation,
   useShopDashboardQuery,
   type ShopDashboardAppointment,
   type ShopDashboardBarberSummary
@@ -327,8 +328,11 @@ export function OwnerTeamWorkspace() {
   const [sortKey, setSortKey] = useState<SortKey>("top");
   const [selectedBarberId, setSelectedBarberId] = useState<string | null>(null);
   const [inviteFeedback, setInviteFeedback] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(null);
+  const [relationshipFeedback, setRelationshipFeedback] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(null);
+  const relationshipDirectoryQuery = useOwnerTeamInviteDirectoryQuery("", true);
   const inviteDirectoryQuery = useOwnerTeamInviteDirectoryQuery(inviteSearch, inviteModalOpen);
   const createInviteMutation = useCreateOwnerTeamInviteMutation();
+  const respondJoinRequestMutation = useRespondOwnerTeamJoinRequestMutation();
 
   const isInitialLoading =
     (shopQuery.isLoading && !shopQuery.data)
@@ -421,6 +425,10 @@ export function OwnerTeamWorkspace() {
   const idleCount = team.filter((barber) => barber.statusKind === "idle").length;
   const offlineCount = team.filter((barber) => barber.statusKind === "offline").length;
   const activeSortLabel = sortOptions.find((option) => option.key === sortKey)?.label ?? "Top Performers";
+  const relationshipDirectory = relationshipDirectoryQuery.data?.barbers ?? [];
+  const pendingOwnerInvites = relationshipDirectory.filter((barber) => barber.inviteStatus === "invited");
+  const incomingJoinRequests = relationshipDirectory.filter((barber) => barber.inviteStatus === "requested");
+  const relationshipErrorMessage = relationshipDirectoryQuery.error ? getReadableActionError(relationshipDirectoryQuery.error) : null;
 
   async function handleCreateInvite(barberId: string) {
     setInviteFeedback(null);
@@ -435,6 +443,21 @@ export function OwnerTeamWorkspace() {
       });
     } catch (error) {
       setInviteFeedback({ tone: "error", message: getReadableActionError(error as { message?: string; status?: number; code?: string }) });
+    }
+  }
+
+  async function handleJoinRequestResponse(inviteId: string, status: "accepted" | "rejected", barberName: string) {
+    setRelationshipFeedback(null);
+    try {
+      await respondJoinRequestMutation.mutateAsync({ inviteId, status });
+      setRelationshipFeedback({
+        tone: "success",
+        message: status === "accepted"
+          ? `${barberName} is now connected to your shop team.`
+          : `${barberName}'s join request was rejected and kept in relationship history.`
+      });
+    } catch (error) {
+      setRelationshipFeedback({ tone: "error", message: getReadableActionError(error as { message?: string; status?: number; code?: string }) });
     }
   }
 
@@ -462,6 +485,8 @@ export function OwnerTeamWorkspace() {
 
       {errorMessage ? <FeedbackBanner tone="error" message={getReadableActionError(errorMessage)} /> : null}
       {inviteFeedback && !inviteModalOpen ? <FeedbackBanner tone={inviteFeedback.tone} message={inviteFeedback.message} /> : null}
+      {relationshipFeedback ? <FeedbackBanner tone={relationshipFeedback.tone} message={relationshipFeedback.message} /> : null}
+      {relationshipErrorMessage ? <FeedbackBanner tone="error" message={relationshipErrorMessage} /> : null}
 
       <section className="grid gap-3 sm:grid-cols-[1fr_auto]">
         <SearchBar
@@ -568,7 +593,7 @@ export function OwnerTeamWorkspace() {
         <div>
           <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Relationship posture</p>
           <p className="mt-3 text-lg font-extrabold text-white">Commission / Booth Rent / Freelance</p>
-          <p className="mt-2 text-sm leading-6 text-white/56">Labels come from existing membership and compensation data. New Phase 2A controls are not active yet.</p>
+          <p className="mt-2 text-sm leading-6 text-white/56">Operating models are relationship settings. Barbers without an active shop stay freelance by default.</p>
         </div>
         <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
           <p className="text-xs font-black uppercase tracking-[0.16em] text-white/42">Needs setup</p>
@@ -579,6 +604,115 @@ export function OwnerTeamWorkspace() {
           <p className="text-xs font-black uppercase tracking-[0.16em] text-white/42">Connected team</p>
           <p className="mt-3 text-2xl font-black text-white">{team.length}</p>
           <p className="mt-2 text-sm leading-6 text-white/56">Visible in the owner scope today.</p>
+        </div>
+      </GlassCard>
+
+      <GlassCard className="p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Team relationship queue</p>
+            <h2 className="mt-2 text-2xl font-black tracking-[-0.035em] text-white">Invites and join requests</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-white/56">
+              Active relationships are exclusive. Accepted requests connect the barber to this shop; declined and ended records stay auditable.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setInviteModalOpen(true)}
+            className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 px-4 text-sm font-extrabold text-white/74 transition hover:border-[#A3FF12]/28 hover:text-[#A3FF12]"
+          >
+            Invite Barber
+          </button>
+        </div>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-black uppercase tracking-[0.16em] text-white/48">Incoming requests</p>
+              <span className="rounded-full border border-[#A3FF12]/20 bg-[#A3FF12]/10 px-3 py-1 text-xs font-black text-[#A3FF12]">
+                {incomingJoinRequests.length}
+              </span>
+            </div>
+            <div className="mt-4 space-y-3">
+              {relationshipDirectoryQuery.isLoading ? (
+                <>
+                  <Skeleton className="h-20 rounded-[18px]" />
+                  <Skeleton className="h-20 rounded-[18px]" />
+                </>
+              ) : incomingJoinRequests.length ? (
+                incomingJoinRequests.slice(0, 4).map((barber) => (
+                  <div key={barber.inviteId ?? barber.barberId} className="rounded-[18px] border border-white/8 bg-white/[0.035] p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <p className="truncate text-lg font-extrabold text-white">{barber.name}</p>
+                        <p className="mt-1 text-sm text-white/56">{formatRoutingLabel(barber.compensationModel)} request</p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          disabled={!barber.inviteId || respondJoinRequestMutation.isPending}
+                          onClick={() => barber.inviteId ? void handleJoinRequestResponse(barber.inviteId, "accepted", barber.name) : undefined}
+                          className="inline-flex min-h-10 items-center justify-center rounded-full border border-[#A3FF12]/38 bg-[#A3FF12] px-4 text-sm font-black text-black transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:border-white/8 disabled:bg-white/[0.04] disabled:text-white/34"
+                        >
+                          Accept
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!barber.inviteId || respondJoinRequestMutation.isPending}
+                          onClick={() => barber.inviteId ? void handleJoinRequestResponse(barber.inviteId, "rejected", barber.name) : undefined}
+                          className="inline-flex min-h-10 items-center justify-center rounded-full border border-white/10 px-4 text-sm font-extrabold text-white/68 transition hover:border-white/20 hover:text-white disabled:cursor-not-allowed disabled:text-white/34"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                    <p className="mt-3 text-xs font-bold uppercase tracking-[0.13em] text-white/38">One active shop relationship at a time</p>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-[18px] border border-dashed border-white/10 bg-white/[0.025] p-4">
+                  <p className="text-base font-extrabold text-white">No join requests waiting.</p>
+                  <p className="mt-1 text-sm leading-6 text-white/54">Barbers who request this shop will appear here for owner approval.</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-black uppercase tracking-[0.16em] text-white/48">Sent invitations</p>
+              <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-3 py-1 text-xs font-black text-amber-100">
+                {pendingOwnerInvites.length}
+              </span>
+            </div>
+            <div className="mt-4 space-y-3">
+              {relationshipDirectoryQuery.isLoading ? (
+                <>
+                  <Skeleton className="h-20 rounded-[18px]" />
+                  <Skeleton className="h-20 rounded-[18px]" />
+                </>
+              ) : pendingOwnerInvites.length ? (
+                pendingOwnerInvites.slice(0, 4).map((barber) => (
+                  <div key={barber.inviteId ?? barber.barberId} className="rounded-[18px] border border-white/8 bg-white/[0.035] p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-lg font-extrabold text-white">{barber.name}</p>
+                        <p className="mt-1 text-sm text-white/56">{barber.email || barber.username || "Waiting for barber response"}</p>
+                      </div>
+                      <span className="rounded-full border border-amber-300/18 bg-amber-300/10 px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-amber-100">
+                        Pending barber approval
+                      </span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-[18px] border border-dashed border-white/10 bg-white/[0.025] p-4">
+                  <p className="text-base font-extrabold text-white">No open invitations.</p>
+                  <p className="mt-1 text-sm leading-6 text-white/54">Invite barbers when you are ready to connect your shop team.</p>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </GlassCard>
 
@@ -797,12 +931,12 @@ export function OwnerTeamWorkspace() {
                 ) : inviteDirectoryQuery.data?.barbers.length ? inviteDirectoryQuery.data.barbers.map((barber) => {
                   const statusText = barber.alreadyAssigned
                     ? "Assigned"
-                    : barber.inviteStatus === "pending"
+                    : barber.inviteStatus === "invited" || barber.inviteStatus === "requested"
                       ? "Invite pending"
                       : barber.canInvite
                         ? "Ready to invite"
                         : formatStatusLabel(barber.inviteStatus ?? "Unavailable");
-                  const statusTone = barber.alreadyAssigned || barber.inviteStatus === "accepted" ? "text-[#A3FF12]" : barber.inviteStatus === "pending" ? "text-amber-200" : "text-white/58";
+                  const statusTone = barber.alreadyAssigned || barber.inviteStatus === "active" ? "text-[#A3FF12]" : barber.inviteStatus === "invited" || barber.inviteStatus === "requested" ? "text-amber-200" : "text-white/58";
 
                   return (
                     <div key={barber.barberId} className="grid gap-4 rounded-[24px] border border-white/8 bg-black/28 p-4 sm:grid-cols-[1fr_auto] sm:items-center">
@@ -869,7 +1003,7 @@ export function OwnerTeamWorkspace() {
                           )}
                         >
                           <Send className="h-4 w-4" />
-                          {barber.inviteStatus === "pending" ? "Pending" : barber.alreadyAssigned ? "Assigned" : "Send Invite"}
+                          {barber.inviteStatus === "invited" || barber.inviteStatus === "requested" ? "Pending" : barber.alreadyAssigned ? "Assigned" : "Send Invite"}
                         </button>
                       </div>
                     </div>

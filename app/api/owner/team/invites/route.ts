@@ -4,13 +4,19 @@ import { getSessionUser } from "@/lib/booking/route-auth";
 import {
   ShopTeamInviteServiceError,
   createOwnerTeamInvite,
-  listOwnerTeamInviteDirectory
+  listOwnerTeamInviteDirectory,
+  respondToOwnerJoinRequest
 } from "@/lib/operations/shop-team-invites";
 
 const createInviteSchema = z.object({
   barberId: z.string().trim().min(1),
   shopId: z.string().trim().min(1).optional(),
   message: z.string().trim().max(500).optional()
+});
+
+const ownerResponseSchema = z.object({
+  inviteId: z.string().trim().min(1),
+  status: z.enum(["accepted", "rejected"])
 });
 
 function toErrorResponse(error: unknown, fallback: string) {
@@ -47,5 +53,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ invite });
   } catch (error) {
     return toErrorResponse(error, "Unable to create the barber invitation.");
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const user = await getSessionUser();
+    const parsed = ownerResponseSchema.safeParse(await request.json().catch(() => null));
+    if (!parsed.success) {
+      return NextResponse.json({ error: "Invalid shop join request response." }, { status: 400 });
+    }
+
+    const payload = await respondToOwnerJoinRequest(user, parsed.data);
+    return NextResponse.json(payload);
+  } catch (error) {
+    return toErrorResponse(error, "Unable to update the shop join request.");
   }
 }

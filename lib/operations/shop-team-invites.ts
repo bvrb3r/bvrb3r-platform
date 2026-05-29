@@ -4,7 +4,8 @@ import type { UserAccount } from "@/types/domain";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 
-export type ShopTeamInviteStatus = "pending" | "accepted" | "declined" | "canceled" | "removed";
+export type ShopTeamInviteStatus = "invited" | "requested" | "active" | "rejected" | "declined" | "ended";
+export type RelationshipRoutingModel = "freelance" | "booth_rent" | "commission";
 
 type LocationRow = {
   id: string;
@@ -54,6 +55,15 @@ type StaffLocationRow = {
   id: string;
   profile_id: string;
   location_id: string;
+  relationship_status?: ShopTeamInviteStatus | null;
+  routing_model?: RelationshipRoutingModel | null;
+  booth_rent_amount?: number | string | null;
+  booth_rent_frequency?: "daily" | "weekly" | "monthly" | null;
+  barber_percent?: number | string | null;
+  shop_percent?: number | string | null;
+  commission_cap_amount?: number | string | null;
+  commission_cap_frequency?: "weekly" | "monthly" | null;
+  ended_at?: string | null;
 };
 
 type InviteRow = {
@@ -62,11 +72,28 @@ type InviteRow = {
   barber_id: string;
   barber_profile_id: string;
   invited_by_profile_id: string | null;
+  requested_by_profile_id?: string | null;
   status: ShopTeamInviteStatus;
   message: string | null;
   created_at: string;
   updated_at: string;
   responded_at: string | null;
+  approved_by_owner_at?: string | null;
+  approved_by_barber_at?: string | null;
+  rejected_at?: string | null;
+  declined_at?: string | null;
+  ended_at?: string | null;
+  ended_by_profile_id?: string | null;
+  ended_by_role?: "barber" | "owner" | "architect" | null;
+  ended_reason?: string | null;
+  routing_model?: RelationshipRoutingModel | null;
+  barber_percent?: number | string | null;
+  shop_percent?: number | string | null;
+  commission_cap_amount?: number | string | null;
+  commission_cap_frequency?: "weekly" | "monthly" | null;
+  booth_rent_amount?: number | string | null;
+  booth_rent_frequency?: "daily" | "weekly" | "monthly" | null;
+  payout_block_reason?: string | null;
 };
 
 type ShopRow = {
@@ -80,7 +107,11 @@ type ShopRow = {
   app_approval_status: string | null;
 };
 
+const inviteSelectColumns = "id, shop_id, barber_id, barber_profile_id, invited_by_profile_id, requested_by_profile_id, status, message, created_at, updated_at, responded_at, approved_by_owner_at, approved_by_barber_at, rejected_at, declined_at, ended_at, ended_by_profile_id, ended_by_role, ended_reason, routing_model, barber_percent, shop_percent, commission_cap_amount, commission_cap_frequency, booth_rent_amount, booth_rent_frequency, payout_block_reason";
+const membershipSelectColumns = "id, profile_id, location_id, relationship_status, routing_model, booth_rent_amount, booth_rent_frequency, barber_percent, shop_percent, commission_cap_amount, commission_cap_frequency, ended_at";
+
 export interface ShopTeamInviteDirectoryBarber {
+  inviteId: string | null;
   barberId: string;
   barberReference: string;
   profileId: string;
@@ -116,9 +147,17 @@ export interface ShopTeamInviteView {
   barberName: string;
   barberEmail: string;
   status: ShopTeamInviteStatus;
+  source: "owner_invite" | "barber_request";
   message: string | null;
   createdAt: string;
   respondedAt: string | null;
+  operatingModel: RelationshipRoutingModel;
+  boothRentAmount: number | null;
+  boothRentFrequency: "daily" | "weekly" | "monthly" | null;
+  barberPercent: number | null;
+  shopPercent: number | null;
+  commissionCapAmount: number | null;
+  commissionCapFrequency: "weekly" | "monthly" | null;
 }
 
 export interface BarberJoinableShopView {
@@ -181,6 +220,58 @@ function normalize(value?: string | null) {
   return value?.trim().toLowerCase() ?? "";
 }
 
+function numericOrNull(value: number | string | null | undefined) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  const next = Number(value);
+  return Number.isFinite(next) ? next : null;
+}
+
+function normalizeInviteStatus(row: Pick<InviteRow, "status" | "requested_by_profile_id" | "invited_by_profile_id">): ShopTeamInviteStatus {
+  switch (row.status as string) {
+    case "pending":
+      return row.requested_by_profile_id ? "requested" : "invited";
+    case "accepted":
+      return "active";
+    case "canceled":
+    case "removed":
+      return "ended";
+    default:
+      return row.status;
+  }
+}
+
+function getBarberDefaultRoutingModel(barber: BarberRow): RelationshipRoutingModel {
+  if (barber.compensation_model === "booth_rent" || barber.barber_subtype === "booth_rent") {
+    return "booth_rent";
+  }
+
+  if (barber.compensation_model === "commission" || barber.barber_subtype === "commission") {
+    return "commission";
+  }
+
+  return "freelance";
+}
+
+function getDefaultRelationshipTerms(barber: BarberRow) {
+  const routingModel = getBarberDefaultRoutingModel(barber);
+  const commissionRate = numericOrNull(barber.commission_rate);
+  const barberPercent = routingModel === "commission" ? commissionRate ?? 0.7 : null;
+  const shopPercent = routingModel === "commission" ? Math.max(0, 1 - (barberPercent ?? 0.7)) : null;
+
+  return {
+    routing_model: routingModel,
+    booth_rent_amount: routingModel === "booth_rent" ? numericOrNull(barber.booth_rent_amount) : null,
+    booth_rent_frequency: routingModel === "booth_rent" ? barber.booth_rent_frequency ?? "weekly" : null,
+    barber_percent: barberPercent,
+    shop_percent: shopPercent,
+    commission_cap_amount: null,
+    commission_cap_frequency: null
+  };
+}
+
 function isRejectedOrSuspendedStatus(value?: string | null) {
   const normalized = normalize(value);
   return ["rejected", "suspended", "banned", "deactivated", "removed"].includes(normalized);
@@ -218,7 +309,7 @@ function buildBarberReadinessLabels(input: {
   return [
     approved ? "Approved" : "Not approved",
     bookable ? "Bookable" : "Setup incomplete",
-    input.alreadyAssigned ? "Already on team" : input.inviteStatus === "pending" ? "Already invited" : null
+    input.alreadyAssigned ? "Already on team" : input.inviteStatus === "invited" || input.inviteStatus === "requested" ? "Relationship pending" : null
   ].filter((label): label is string => Boolean(label));
 }
 
@@ -233,7 +324,7 @@ function buildShopReadinessLabels(input: {
   return [
     approved ? "Approved shop" : "Not accepting requests yet",
     live ? "Live shop" : "Setup incomplete",
-    input.alreadyAssigned ? "Already connected" : input.inviteStatus === "pending" ? "Request pending" : null
+    input.alreadyAssigned ? "Already connected" : input.inviteStatus === "invited" || input.inviteStatus === "requested" ? "Request pending" : null
   ].filter((label): label is string => Boolean(label));
 }
 
@@ -352,6 +443,8 @@ async function resolveBarber(supabase: SupabaseClient, barberIdOrReference: stri
 function mapInvite(row: InviteRow, locationsById: Map<string, LocationRow>, profilesById: Map<string, ProfileRow>, barber: BarberRow): ShopTeamInviteView {
   const location = locationsById.get(row.shop_id);
   const profile = profilesById.get(row.barber_profile_id);
+  const status = normalizeInviteStatus(row);
+  const operatingModel = row.routing_model ?? getBarberDefaultRoutingModel(barber);
 
   return {
     id: row.id,
@@ -360,10 +453,77 @@ function mapInvite(row: InviteRow, locationsById: Map<string, LocationRow>, prof
     barberId: toReference(barber),
     barberName: profile?.full_name ?? profile?.email ?? toReference(barber),
     barberEmail: profile?.email ?? "",
-    status: row.status,
+    status,
+    source: row.requested_by_profile_id ? "barber_request" : "owner_invite",
     message: row.message,
     createdAt: row.created_at,
-    respondedAt: row.responded_at
+    respondedAt: row.responded_at,
+    operatingModel,
+    boothRentAmount: numericOrNull(row.booth_rent_amount),
+    boothRentFrequency: row.booth_rent_frequency ?? null,
+    barberPercent: numericOrNull(row.barber_percent),
+    shopPercent: numericOrNull(row.shop_percent),
+    commissionCapAmount: numericOrNull(row.commission_cap_amount),
+    commissionCapFrequency: row.commission_cap_frequency ?? null
+  };
+}
+
+async function readActiveMembership(supabase: SupabaseClient, profileId: string) {
+  const result = await supabase
+    .from("staff_locations")
+    .select(membershipSelectColumns)
+    .eq("profile_id", profileId)
+    .eq("relationship_status", "active")
+    .is("ended_at", null)
+    .maybeSingle();
+
+  if (result.error) {
+    throw new ShopTeamInviteServiceError("Unable to check active shop relationship.", 500);
+  }
+
+  return (result.data as StaffLocationRow | null) ?? null;
+}
+
+async function assertNoActiveMembership(supabase: SupabaseClient, profileId: string, message: string) {
+  const activeMembership = await readActiveMembership(supabase, profileId);
+  if (activeMembership) {
+    throw new ShopTeamInviteServiceError(message, 409);
+  }
+}
+
+function buildMembershipPayload(input: {
+  barber: BarberRow;
+  shopId: string;
+  now: string;
+  invitedByProfileId?: string | null;
+  requestedByProfileId?: string | null;
+  approvedByOwnerAt?: string | null;
+  approvedByBarberAt?: string | null;
+}) {
+  const terms = getDefaultRelationshipTerms(input.barber);
+
+  return {
+    profile_id: input.barber.profile_id,
+    location_id: input.shopId,
+    relationship_status: "active",
+    requested_by_profile_id: input.requestedByProfileId ?? null,
+    invited_by_profile_id: input.invitedByProfileId ?? null,
+    approved_by_owner_at: input.approvedByOwnerAt ?? input.now,
+    approved_by_barber_at: input.approvedByBarberAt ?? input.now,
+    routing_model: terms.routing_model,
+    commission_rate: terms.barber_percent,
+    booth_rent_amount: terms.booth_rent_amount,
+    booth_rent_frequency: terms.booth_rent_frequency,
+    barber_percent: terms.barber_percent,
+    shop_percent: terms.shop_percent,
+    commission_cap_amount: terms.commission_cap_amount,
+    commission_cap_frequency: terms.commission_cap_frequency,
+    ended_at: null,
+    ended_by_profile_id: null,
+    ended_by_role: null,
+    ended_reason: null,
+    updated_at: input.now,
+    fintech_updated_at: input.now
   };
 }
 
@@ -404,10 +564,10 @@ export async function listOwnerTeamInviteDirectory(user: UserAccount, search?: s
       ? supabase.from("marketplace_visibility").select("barber_reference, visibility_state, accepts_instant_bookings").in("barber_reference", barberReferences)
       : Promise.resolve({ data: [], error: null }),
     profileIds.length
-      ? supabase.from("staff_locations").select("id, profile_id, location_id").eq("location_id", shop.id).in("profile_id", profileIds)
+      ? supabase.from("staff_locations").select(membershipSelectColumns).eq("relationship_status", "active").is("ended_at", null).in("profile_id", profileIds)
       : Promise.resolve({ data: [], error: null }),
     barberIds.length
-      ? supabase.from("shop_team_invites").select("id, shop_id, barber_id, barber_profile_id, invited_by_profile_id, status, message, created_at, updated_at, responded_at").eq("shop_id", shop.id).in("barber_id", barberIds)
+      ? supabase.from("shop_team_invites").select(inviteSelectColumns).eq("shop_id", shop.id).in("barber_id", barberIds)
       : Promise.resolve({ data: [], error: null }),
     barberReferences.length
       ? supabase.from("marketplace_services").select("barber_reference, price, duration_min, name").in("barber_reference", barberReferences)
@@ -457,6 +617,7 @@ export async function listOwnerTeamInviteDirectory(user: UserAccount, search?: s
       const barberProfile = barberProfilesByReference.get(reference);
       const visibility = visibilityByReference.get(reference);
       const invite = invitesByBarberId.get(barber.id);
+      const inviteStatus = invite ? normalizeInviteStatus(invite) : null;
       const alreadyAssigned = assignedProfileIds.has(barber.profile_id);
       const readinessLabels = buildBarberReadinessLabels({
         appApprovalStatus: barber.app_approval_status,
@@ -465,7 +626,7 @@ export async function listOwnerTeamInviteDirectory(user: UserAccount, search?: s
         hasService: serviceReferences.has(reference),
         hasAvailability: availableBarberIds.has(barber.id),
         alreadyAssigned,
-        inviteStatus: alreadyAssigned ? "accepted" : invite?.status ?? null
+        inviteStatus: alreadyAssigned ? "active" : inviteStatus
       });
       const bookable = readinessLabels.includes("Bookable");
       const name = profile.full_name ?? barberProfile?.display_name ?? profile.email ?? reference;
@@ -487,6 +648,7 @@ export async function listOwnerTeamInviteDirectory(user: UserAccount, search?: s
       }
 
       return [{
+        inviteId: invite?.id ?? null,
         barberId: barber.id,
         barberReference: reference,
         profileId: barber.profile_id,
@@ -500,10 +662,10 @@ export async function listOwnerTeamInviteDirectory(user: UserAccount, search?: s
         visibilityState: visibility?.visibility_state ?? null,
         acceptsInstantBookings: visibility?.accepts_instant_bookings ?? false,
         alreadyAssigned,
-        inviteStatus: alreadyAssigned ? "accepted" : invite?.status ?? null,
+        inviteStatus: alreadyAssigned ? "active" : inviteStatus,
         marketplaceStatusLabel: bookable ? "Bookable" : "Not bookable",
         readinessLabels,
-        canInvite: isApprovedStatus(barber.app_approval_status) && !alreadyAssigned && invite?.status !== "pending"
+        canInvite: isApprovedStatus(barber.app_approval_status) && !alreadyAssigned && inviteStatus !== "invited" && inviteStatus !== "requested"
       }];
     })
     .sort((left, right) => Number(right.canInvite) - Number(left.canInvite) || left.name.localeCompare(right.name))
@@ -533,27 +695,18 @@ export async function createOwnerTeamInvite(user: UserAccount, input: { barberId
     throw new ShopTeamInviteServiceError("Barber account not found.", 404);
   }
 
-  const membership = await supabase
-    .from("staff_locations")
-    .select("id, profile_id, location_id")
-    .eq("profile_id", barber.profile_id)
-    .eq("location_id", requestedShop.id)
-    .maybeSingle();
-
-  if (membership.error) {
-    throw new ShopTeamInviteServiceError("Unable to check current team membership.", 500);
-  }
-
-  if (membership.data) {
-    throw new ShopTeamInviteServiceError("This barber is already assigned to the shop.", 409);
-  }
+  await assertNoActiveMembership(
+    supabase,
+    barber.profile_id,
+    "This barber is already connected to a shop. They must leave or be released before joining another team."
+  );
 
   const existing = await supabase
     .from("shop_team_invites")
-    .select("id, shop_id, barber_id, barber_profile_id, invited_by_profile_id, status, message, created_at, updated_at, responded_at")
+    .select(inviteSelectColumns)
     .eq("shop_id", requestedShop.id)
     .eq("barber_id", barber.id)
-    .eq("status", "pending")
+    .in("status", ["invited", "requested"])
     .maybeSingle();
 
   if (existing.error) {
@@ -570,10 +723,12 @@ export async function createOwnerTeamInvite(user: UserAccount, input: { barberId
         barber_id: barber.id,
         barber_profile_id: barber.profile_id,
         invited_by_profile_id: user.id,
-        status: "pending",
+        requested_by_profile_id: null,
+        status: "invited",
+        ...getDefaultRelationshipTerms(barber),
         message: input.message?.trim() || null
       })
-      .select("id, shop_id, barber_id, barber_profile_id, invited_by_profile_id, status, message, created_at, updated_at, responded_at")
+      .select(inviteSelectColumns)
       .single();
 
     if (insertResult.error) {
@@ -613,6 +768,7 @@ export async function listBarberJoinableShops(user: UserAccount, search?: string
   if (!barber) {
     throw new ShopTeamInviteServiceError("Barber account not found.", 404);
   }
+  const activeMembership = await readActiveMembership(supabase, barber.profile_id);
 
   const shopsResult = await supabase
     .from("shops")
@@ -679,10 +835,10 @@ export async function listBarberJoinableShops(user: UserAccount, search?: string
   const locationIds = [...new Set(((locationsResult.data ?? []) as LocationRow[]).map((location) => location.id))];
   const [membershipsResult, invitesResult, teamResult] = await Promise.all([
     locationIds.length
-      ? supabase.from("staff_locations").select("id, profile_id, location_id").eq("profile_id", barber.profile_id).in("location_id", locationIds)
+      ? supabase.from("staff_locations").select(membershipSelectColumns).eq("profile_id", barber.profile_id).in("location_id", locationIds)
       : Promise.resolve({ data: [], error: null }),
     locationIds.length
-      ? supabase.from("shop_team_invites").select("id, shop_id, barber_id, barber_profile_id, invited_by_profile_id, status, message, created_at, updated_at, responded_at").eq("barber_id", barber.id).in("shop_id", locationIds)
+      ? supabase.from("shop_team_invites").select(inviteSelectColumns).eq("barber_id", barber.id).in("shop_id", locationIds)
       : Promise.resolve({ data: [], error: null }),
     locationIds.length
       ? supabase.from("staff_locations").select("location_id").in("location_id", locationIds)
@@ -710,14 +866,20 @@ export async function listBarberJoinableShops(user: UserAccount, search?: string
     shops: shops.flatMap((shop): BarberJoinableShopView[] => {
       const location = locationsByReference.get(shop.id);
       const invite = location ? invitesByShopId.get(location.id) : undefined;
+      const inviteStatus = invite ? normalizeInviteStatus(invite) : null;
       const alreadyAssigned = location ? assignedLocationIds.has(location.id) : false;
+      const activeElsewhere = Boolean(activeMembership && activeMembership.location_id !== location?.id);
       const readinessLabels = buildShopReadinessLabels({
         approvalStatus: shop.app_approval_status,
-        alreadyAssigned,
-        inviteStatus: alreadyAssigned ? "accepted" : invite?.status ?? null,
+        alreadyAssigned: alreadyAssigned || activeElsewhere,
+        inviteStatus: alreadyAssigned ? "active" : inviteStatus,
         hasTeam: location ? teamLocationIds.has(location.id) : false
       });
-      const labels = location ? readinessLabels : [...readinessLabels, "Shop location missing"];
+      const labels = location
+        ? activeElsewhere
+          ? [...readinessLabels, "Leave current shop first"]
+          : readinessLabels
+        : [...readinessLabels, "Shop location missing"];
 
       return [{
         shopId: location?.id ?? shop.id,
@@ -727,9 +889,9 @@ export async function listBarberJoinableShops(user: UserAccount, search?: string
         state: shop.state || location?.state || null,
         approvalStatus: shop.app_approval_status ?? "pending",
         liveStatusLabel: labels.includes("Live shop") ? "Live shop" : "Not live yet",
-        alreadyAssigned,
-        inviteStatus: alreadyAssigned ? "accepted" : invite?.status ?? null,
-        canRequest: Boolean(location && isApprovedStatus(shop.app_approval_status) && !alreadyAssigned && invite?.status !== "pending"),
+        alreadyAssigned: alreadyAssigned || activeElsewhere,
+        inviteStatus: alreadyAssigned ? "active" : inviteStatus,
+        canRequest: Boolean(location && isApprovedStatus(shop.app_approval_status) && !alreadyAssigned && !activeElsewhere && inviteStatus !== "invited" && inviteStatus !== "requested"),
         readinessLabels: labels
       }];
     }).slice(0, 80)
@@ -775,27 +937,18 @@ export async function createBarberShopJoinRequest(user: UserAccount, input: { sh
     throw new ShopTeamInviteServiceError("This shop is not accepting team requests yet.", 409);
   }
 
-  const membership = await supabase
-    .from("staff_locations")
-    .select("id, profile_id, location_id")
-    .eq("profile_id", barber.profile_id)
-    .eq("location_id", location.id)
-    .maybeSingle();
-
-  if (membership.error) {
-    throw new ShopTeamInviteServiceError("Unable to check current team membership.", 500);
-  }
-
-  if (membership.data) {
-    throw new ShopTeamInviteServiceError("You are already connected to this shop.", 409);
-  }
+  await assertNoActiveMembership(
+    supabase,
+    barber.profile_id,
+    "You are currently connected to a shop. Leave this shop before requesting to join another team."
+  );
 
   const existing = await supabase
     .from("shop_team_invites")
-    .select("id, shop_id, barber_id, barber_profile_id, invited_by_profile_id, status, message, created_at, updated_at, responded_at")
+    .select(inviteSelectColumns)
     .eq("shop_id", location.id)
     .eq("barber_id", barber.id)
-    .eq("status", "pending")
+    .in("status", ["invited", "requested"])
     .maybeSingle();
 
   if (existing.error) {
@@ -810,11 +963,13 @@ export async function createBarberShopJoinRequest(user: UserAccount, input: { sh
         shop_id: location.id,
         barber_id: barber.id,
         barber_profile_id: barber.profile_id,
-        invited_by_profile_id: user.id,
-        status: "pending",
+        invited_by_profile_id: null,
+        requested_by_profile_id: user.id,
+        status: "requested",
+        ...getDefaultRelationshipTerms(barber),
         message: input.message?.trim() || "Barber requested to join this shop."
       })
-      .select("id, shop_id, barber_id, barber_profile_id, invited_by_profile_id, status, message, created_at, updated_at, responded_at")
+      .select(inviteSelectColumns)
       .single();
 
     if (insertResult.error) {
@@ -856,9 +1011,9 @@ export async function listBarberTeamInvites(user: UserAccount): Promise<{ invite
 
   const invitesResult = await supabase
     .from("shop_team_invites")
-    .select("id, shop_id, barber_id, barber_profile_id, invited_by_profile_id, status, message, created_at, updated_at, responded_at")
+    .select(inviteSelectColumns)
     .eq("barber_id", barber.id)
-    .eq("status", "pending")
+    .in("status", ["invited", "requested"])
     .order("created_at", { ascending: false })
     .limit(12);
 
@@ -905,7 +1060,7 @@ export async function respondToBarberTeamInvite(user: UserAccount, input: { invi
 
   const inviteResult = await supabase
     .from("shop_team_invites")
-    .select("id, shop_id, barber_id, barber_profile_id, invited_by_profile_id, status, message, created_at, updated_at, responded_at")
+    .select(inviteSelectColumns)
     .eq("id", input.inviteId)
     .eq("barber_id", barber.id)
     .maybeSingle();
@@ -919,25 +1074,30 @@ export async function respondToBarberTeamInvite(user: UserAccount, input: { invi
     throw new ShopTeamInviteServiceError("Shop invitation not found.", 404);
   }
 
-  if (invite.status !== "pending") {
+  const inviteStatus = normalizeInviteStatus(invite);
+  if (inviteStatus !== "invited") {
     throw new ShopTeamInviteServiceError("This invitation has already been handled.", 409);
   }
 
   const now = new Date().toISOString();
   if (input.status === "accepted") {
-    const routingModel = barber.compensation_model === "booth_rent" ? "booth_rent" : "commission";
+    await assertNoActiveMembership(
+      supabase,
+      barber.profile_id,
+      "You are currently connected to a shop. Leave this shop before accepting another team invitation."
+    );
+
     const membershipResult = await supabase
       .from("staff_locations")
-      .upsert({
-        profile_id: barber.profile_id,
-        location_id: invite.shop_id,
-        routing_model: routingModel,
-        commission_rate: barber.commission_rate,
-        booth_rent_amount: barber.booth_rent_amount,
-        booth_rent_frequency: barber.booth_rent_frequency,
-        updated_at: now,
-        fintech_updated_at: now
-      }, { onConflict: "profile_id,location_id" });
+      .upsert(buildMembershipPayload({
+        barber,
+        shopId: invite.shop_id,
+        now,
+        invitedByProfileId: invite.invited_by_profile_id,
+        requestedByProfileId: invite.requested_by_profile_id ?? null,
+        approvedByOwnerAt: now,
+        approvedByBarberAt: now
+      }), { onConflict: "profile_id,location_id" });
 
     if (membershipResult.error) {
       throw new ShopTeamInviteServiceError("Unable to assign the barber to this shop.", 500);
@@ -947,12 +1107,15 @@ export async function respondToBarberTeamInvite(user: UserAccount, input: { invi
   const updateResult = await supabase
     .from("shop_team_invites")
     .update({
-      status: input.status,
+      status: input.status === "accepted" ? "active" : "declined",
       responded_at: now,
+      approved_by_barber_at: input.status === "accepted" ? now : null,
+      approved_by_owner_at: input.status === "accepted" ? now : null,
+      declined_at: input.status === "declined" ? now : null,
       updated_at: now
     })
     .eq("id", invite.id)
-    .select("id, shop_id, barber_id, barber_profile_id, invited_by_profile_id, status, message, created_at, updated_at, responded_at")
+    .select(inviteSelectColumns)
     .single();
 
   if (updateResult.error || !updateResult.data) {
@@ -975,5 +1138,168 @@ export async function respondToBarberTeamInvite(user: UserAccount, input: { invi
       profileResult.data ? new Map([[barber.profile_id, profileResult.data as ProfileRow]]) : new Map(),
       barber
     )
+  };
+}
+
+export async function respondToOwnerJoinRequest(user: UserAccount, input: { inviteId: string; status: "accepted" | "rejected" }): Promise<{ invite: ShopTeamInviteView }> {
+  const supabase = getSupabaseOrThrow();
+  const locations = await readOwnerLocations(user, supabase);
+  const locationIds = new Set(locations.map((location) => location.id));
+
+  const inviteResult = await supabase
+    .from("shop_team_invites")
+    .select(inviteSelectColumns)
+    .eq("id", input.inviteId)
+    .maybeSingle();
+
+  if (inviteResult.error) {
+    throw new ShopTeamInviteServiceError("Unable to load the shop join request.", 500);
+  }
+
+  const invite = inviteResult.data as InviteRow | null;
+  if (!invite || !locationIds.has(invite.shop_id)) {
+    throw new ShopTeamInviteServiceError("Shop join request not found.", 404);
+  }
+
+  if (normalizeInviteStatus(invite) !== "requested") {
+    throw new ShopTeamInviteServiceError("This shop join request has already been handled.", 409);
+  }
+
+  const barber = await resolveBarber(supabase, invite.barber_id, invite.barber_profile_id);
+  if (!barber) {
+    throw new ShopTeamInviteServiceError("Barber account not found.", 404);
+  }
+
+  const now = new Date().toISOString();
+  if (input.status === "accepted") {
+    await assertNoActiveMembership(
+      supabase,
+      barber.profile_id,
+      "This barber is already connected to a shop. They must leave or be released before joining another team."
+    );
+
+    const membershipResult = await supabase
+      .from("staff_locations")
+      .upsert(buildMembershipPayload({
+        barber,
+        shopId: invite.shop_id,
+        now,
+        invitedByProfileId: invite.invited_by_profile_id,
+        requestedByProfileId: invite.requested_by_profile_id ?? null,
+        approvedByOwnerAt: now,
+        approvedByBarberAt: invite.approved_by_barber_at ?? now
+      }), { onConflict: "profile_id,location_id" });
+
+    if (membershipResult.error) {
+      throw new ShopTeamInviteServiceError("Unable to activate the barber shop relationship.", 500);
+    }
+  }
+
+  const updateResult = await supabase
+    .from("shop_team_invites")
+    .update({
+      status: input.status === "accepted" ? "active" : "rejected",
+      responded_at: now,
+      approved_by_owner_at: input.status === "accepted" ? now : null,
+      approved_by_barber_at: input.status === "accepted" ? invite.approved_by_barber_at ?? now : null,
+      rejected_at: input.status === "rejected" ? now : null,
+      updated_at: now
+    })
+    .eq("id", invite.id)
+    .select(inviteSelectColumns)
+    .single();
+
+  if (updateResult.error || !updateResult.data) {
+    throw new ShopTeamInviteServiceError("Unable to update the shop join request.", 500);
+  }
+
+  const [locationResult, profileResult] = await Promise.all([
+    supabase.from("locations").select("id, reference_code, name, neighborhood, city, state").eq("id", invite.shop_id).maybeSingle(),
+    supabase.from("profiles").select("id, full_name, email, phone, role, primary_onboarding_role").eq("id", barber.profile_id).maybeSingle()
+  ]);
+
+  if (locationResult.error || profileResult.error) {
+    throw new ShopTeamInviteServiceError("Unable to hydrate the updated shop join request.", 500);
+  }
+
+  return {
+    invite: mapInvite(
+      updateResult.data as InviteRow,
+      locationResult.data ? new Map([[invite.shop_id, locationResult.data as LocationRow]]) : new Map(),
+      profileResult.data ? new Map([[barber.profile_id, profileResult.data as ProfileRow]]) : new Map(),
+      barber
+    )
+  };
+}
+
+export async function endBarberShopRelationship(user: UserAccount, input: { relationshipId?: string; reason?: string | null; actor: "barber" | "owner" }): Promise<{ relationshipId: string; effectiveRoutingModel: "freelance" }> {
+  const supabase = getSupabaseOrThrow();
+  const now = new Date().toISOString();
+  let membership: StaffLocationRow | null = null;
+
+  if (input.actor === "barber") {
+    requireBarber(user);
+    const barber = await resolveBarber(supabase, user.barberId!, user.id);
+    if (!barber) {
+      throw new ShopTeamInviteServiceError("Barber account not found.", 404);
+    }
+    membership = await readActiveMembership(supabase, barber.profile_id);
+  } else {
+    const locations = await readOwnerLocations(user, supabase);
+    const locationIds = new Set(locations.map((location) => location.id));
+    if (!input.relationshipId) {
+      throw new ShopTeamInviteServiceError("Relationship id is required.", 400);
+    }
+    const membershipResult = await supabase
+      .from("staff_locations")
+      .select(membershipSelectColumns)
+      .eq("id", input.relationshipId)
+      .maybeSingle();
+    if (membershipResult.error) {
+      throw new ShopTeamInviteServiceError("Unable to load the team relationship.", 500);
+    }
+    membership = (membershipResult.data as StaffLocationRow | null) ?? null;
+    if (!membership || !locationIds.has(membership.location_id)) {
+      throw new ShopTeamInviteServiceError("Team relationship not found.", 404);
+    }
+  }
+
+  if (!membership) {
+    throw new ShopTeamInviteServiceError("No active shop relationship found.", 404);
+  }
+
+  const updateResult = await supabase
+    .from("staff_locations")
+    .update({
+      relationship_status: "ended",
+      ended_at: now,
+      ended_by_profile_id: user.id,
+      ended_by_role: input.actor,
+      ended_reason: input.reason?.trim() || (input.actor === "barber" ? "Barber left the shop." : "Owner released the barber."),
+      updated_at: now
+    })
+    .eq("id", membership.id);
+
+  if (updateResult.error) {
+    throw new ShopTeamInviteServiceError("Unable to end the shop relationship.", 500);
+  }
+
+  await supabase
+    .from("shop_team_invites")
+    .update({
+      status: "ended",
+      ended_at: now,
+      ended_by_profile_id: user.id,
+      ended_by_role: input.actor,
+      ended_reason: input.reason?.trim() || null,
+      updated_at: now
+    })
+    .eq("shop_id", membership.location_id)
+    .eq("barber_profile_id", membership.profile_id)
+    .eq("status", "active");
+
+  return {
+    relationshipId: membership.id,
+    effectiveRoutingModel: "freelance"
   };
 }

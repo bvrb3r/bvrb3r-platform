@@ -922,7 +922,7 @@ export function OwnerSettingsWorkspace({
                         disabled={!barber.canInvite || createInviteMutation.isPending}
                         onClick={() => void handleQuickInviteBarber(barber.barberId)}
                       >
-                        {barber.inviteStatus === "pending" ? "Pending" : barber.alreadyAssigned ? "Assigned" : "Send invite"}
+                        {barber.inviteStatus === "invited" || barber.inviteStatus === "requested" ? "Pending" : barber.alreadyAssigned ? "Assigned" : "Send invite"}
                       </Button>
                     </div>
                   ))}

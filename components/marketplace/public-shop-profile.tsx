@@ -98,6 +98,35 @@ export function PublicShopProfile({
             </div>
             <UsersRound className="h-5 w-5 text-[#baff69]" />
           </div>
+          {barbers.length ? (
+            <div className="mt-5 rounded-[28px] border border-[#7CFF00]/16 bg-[#7CFF00]/8 p-4">
+              <p className="surface-label text-[#d7ffab]">Active team</p>
+              <div className="mt-4 flex gap-3 overflow-x-auto pb-1 hide-scrollbar">
+                {barbers.map((profile) => {
+                  const barberName = getClientFacingBarberName({
+                    username: profile.profile.username,
+                    barberName: profile.barber.name
+                  });
+
+                  return (
+                    <Link
+                      key={`team-${profile.barber.id}`}
+                      href={`/barber/${profile.profile.username}` as Route}
+                      className="group flex min-w-[6rem] flex-col items-center gap-2 rounded-[22px] border border-white/8 bg-black/24 p-3 text-center transition hover:border-[#7CFF00]/28"
+                    >
+                      <Avatar
+                        src={profile.profile.profilePhotoUrl}
+                        alt={barberName}
+                        initials={getInitials(barberName)}
+                        className="h-14 w-14 rounded-full border-2 border-[#7CFF00]/55"
+                      />
+                      <span className="max-w-full truncate text-xs font-extrabold text-white group-hover:text-[#d7ffab]">{barberName}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
           <div className="mt-5 grid gap-3 md:grid-cols-2">
             {barbers.length ? barbers.map((profile) => {
               const barberName = getClientFacingBarberName({

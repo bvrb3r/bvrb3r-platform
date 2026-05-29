@@ -4,14 +4,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   createOwnerTeamInviteMock,
+  respondOwnerJoinRequestMock,
   useCreateOwnerTeamInviteMutationMock,
   useOwnerTeamInviteDirectoryQueryMock,
+  useRespondOwnerTeamJoinRequestMutationMock,
   useShopDashboardQueryMock,
   useFintechManagementQueryMock
 } = vi.hoisted(() => ({
   createOwnerTeamInviteMock: vi.fn(),
+  respondOwnerJoinRequestMock: vi.fn(),
   useCreateOwnerTeamInviteMutationMock: vi.fn(),
   useOwnerTeamInviteDirectoryQueryMock: vi.fn(),
+  useRespondOwnerTeamJoinRequestMutationMock: vi.fn(),
   useShopDashboardQueryMock: vi.fn(),
   useFintechManagementQueryMock: vi.fn()
 }));
@@ -25,6 +29,7 @@ vi.mock("next/link", () => ({
 vi.mock("@/lib/operations/barber-client", () => ({
   useCreateOwnerTeamInviteMutation: useCreateOwnerTeamInviteMutationMock,
   useOwnerTeamInviteDirectoryQuery: useOwnerTeamInviteDirectoryQueryMock,
+  useRespondOwnerTeamJoinRequestMutation: useRespondOwnerTeamJoinRequestMutationMock,
   useShopDashboardQuery: useShopDashboardQueryMock
 }));
 
@@ -40,7 +45,9 @@ describe("owner team workspace", () => {
     useFintechManagementQueryMock.mockReset();
     useOwnerTeamInviteDirectoryQueryMock.mockReset();
     useCreateOwnerTeamInviteMutationMock.mockReset();
+    useRespondOwnerTeamJoinRequestMutationMock.mockReset();
     createOwnerTeamInviteMock.mockReset();
+    respondOwnerJoinRequestMock.mockReset();
 
     useShopDashboardQueryMock.mockReturnValue({
       isLoading: false,
@@ -163,6 +170,7 @@ describe("owner team workspace", () => {
         },
         barbers: [
           {
+            inviteId: null,
             barberId: "barber-jordan",
             barberReference: "barber-jordan",
             profileId: "profile-jordan",
@@ -200,6 +208,24 @@ describe("owner team workspace", () => {
       mutateAsync: createOwnerTeamInviteMock,
       isPending: false
     });
+    respondOwnerJoinRequestMock.mockResolvedValue({
+      invite: {
+        id: "request-1",
+        shopId: "shop-ybor",
+        shopLabel: "BVRB3R Ybor",
+        barberId: "barber-jordan",
+        barberName: "Jordan Fade",
+        barberEmail: "jordan@example.com",
+        status: "active",
+        message: null,
+        createdAt: "2026-04-27T09:00:00.000Z",
+        respondedAt: "2026-04-27T09:05:00.000Z"
+      }
+    });
+    useRespondOwnerTeamJoinRequestMutationMock.mockReturnValue({
+      mutateAsync: respondOwnerJoinRequestMock,
+      isPending: false
+    });
   });
 
   it("renders the owner team lane from scoped canonical barber and payout truth", () => {
@@ -207,7 +233,7 @@ describe("owner team workspace", () => {
 
     expect(screen.getByText("Team")).toBeInTheDocument();
     expect(screen.getByText("Manage your barbers & team performance")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Invite Barber/i })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /Invite Barber/i }).length).toBeGreaterThan(0);
     expect(screen.getByPlaceholderText("Search barbers...")).toBeInTheDocument();
     expect(screen.getAllByText("Maya Cole").length).toBeGreaterThan(0);
     expect(screen.getByText("Total Barbers")).toBeInTheDocument();
@@ -260,7 +286,7 @@ describe("owner team workspace", () => {
   it("opens the real invite directory and sends a canonical shop invite", async () => {
     render(<OwnerTeamWorkspace />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Invite Barber/i }));
+    fireEvent.click(screen.getAllByRole("button", { name: /Invite Barber/i })[0]);
 
     expect(screen.getByRole("dialog", { name: /Invite a barber/i })).toBeInTheDocument();
     expect(screen.getByText("Jordan Fade")).toBeInTheDocument();
@@ -276,5 +302,51 @@ describe("owner team workspace", () => {
       });
     });
     expect(await screen.findByText(/Invite sent to Jordan Fade/i)).toBeInTheDocument();
+  });
+
+  it("lets owners accept incoming barber join requests from the relationship queue", async () => {
+    useOwnerTeamInviteDirectoryQueryMock.mockReturnValue({
+      isLoading: false,
+      error: null,
+      data: {
+        shop: {
+          id: "shop-ybor",
+          label: "BVRB3R Ybor"
+        },
+        barbers: [
+          {
+            inviteId: "request-1",
+            barberId: "barber-jordan",
+            barberReference: "barber-jordan",
+            profileId: "profile-jordan",
+            name: "Jordan Fade",
+            email: "jordan@example.com",
+            username: "jordanfade",
+            serviceAreaLabel: "Ybor City",
+            compensationModel: "commission",
+            appApprovalStatus: "approved",
+            shopApprovalStatus: "approved",
+            visibilityState: "public",
+            acceptsInstantBookings: true,
+            alreadyAssigned: false,
+            inviteStatus: "requested",
+            canInvite: false
+          }
+        ]
+      }
+    });
+
+    render(<OwnerTeamWorkspace />);
+
+    expect(screen.getByText("Incoming requests")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Accept" }));
+
+    await waitFor(() => {
+      expect(respondOwnerJoinRequestMock).toHaveBeenCalledWith({
+        inviteId: "request-1",
+        status: "accepted"
+      });
+    });
+    expect(await screen.findByText(/Jordan Fade is now connected/i)).toBeInTheDocument();
   });
 });

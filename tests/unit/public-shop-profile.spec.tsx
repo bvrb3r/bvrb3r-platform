@@ -64,8 +64,10 @@ describe("public shop profile", () => {
 
     expect(screen.getByTestId("public-shop-profile")).toBeInTheDocument();
     expect(screen.getByText("BVRB3R Tampa")).toBeInTheDocument();
-    expect(screen.getByText("philforsure")).toBeInTheDocument();
+    expect(screen.getByText("Active team")).toBeInTheDocument();
+    expect(screen.getAllByText("philforsure").length).toBeGreaterThan(0);
     expect(screen.queryByText("Phillip McGee")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: /philforsure/i }).some((link) => link.getAttribute("href") === "/barber/philforsure")).toBe(true);
     expect(screen.getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/barber/philforsure");
     expect(screen.getByRole("link", { name: "Book" })).toHaveAttribute("href", "/booking/new?barberId=barber-phillip&serviceId=srv-test-cut");
     expect(screen.queryByText(/approved marketplace supply/i)).not.toBeInTheDocument();

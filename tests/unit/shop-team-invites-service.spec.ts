@@ -34,6 +34,7 @@ function makeMissingInvitesQuery() {
   const query = {
     select: vi.fn(() => query),
     eq: vi.fn(() => query),
+    in: vi.fn(() => query),
     order: vi.fn(() => query),
     limit: vi.fn(async () => ({
       data: null,

@@ -7,7 +7,8 @@ const {
   listBarberJoinableShopsMock,
   listBarberTeamInvitesMock,
   listOwnerTeamInviteDirectoryMock,
-  respondToBarberTeamInviteMock
+  respondToBarberTeamInviteMock,
+  respondToOwnerJoinRequestMock
 } = vi.hoisted(() => ({
   createBarberShopJoinRequestMock: vi.fn(),
   createOwnerTeamInviteMock: vi.fn(),
@@ -15,7 +16,8 @@ const {
   listBarberJoinableShopsMock: vi.fn(),
   listBarberTeamInvitesMock: vi.fn(),
   listOwnerTeamInviteDirectoryMock: vi.fn(),
-  respondToBarberTeamInviteMock: vi.fn()
+  respondToBarberTeamInviteMock: vi.fn(),
+  respondToOwnerJoinRequestMock: vi.fn()
 }));
 
 vi.mock("@/lib/booking/route-auth", () => ({
@@ -36,7 +38,8 @@ vi.mock("@/lib/operations/shop-team-invites", () => ({
   listBarberJoinableShops: listBarberJoinableShopsMock,
   listBarberTeamInvites: listBarberTeamInvitesMock,
   listOwnerTeamInviteDirectory: listOwnerTeamInviteDirectoryMock,
-  respondToBarberTeamInvite: respondToBarberTeamInviteMock
+  respondToBarberTeamInvite: respondToBarberTeamInviteMock,
+  respondToOwnerJoinRequest: respondToOwnerJoinRequestMock
 }));
 
 describe("shop team invite routes", () => {
@@ -48,6 +51,7 @@ describe("shop team invite routes", () => {
     listBarberTeamInvitesMock.mockReset();
     listOwnerTeamInviteDirectoryMock.mockReset();
     respondToBarberTeamInviteMock.mockReset();
+    respondToOwnerJoinRequestMock.mockReset();
 
     getSessionUserMock.mockResolvedValue({
       id: "profile-owner",
@@ -80,7 +84,7 @@ describe("shop team invite routes", () => {
       shopId: "shop-ybor",
       barberId: "barber-real",
       barberName: "Real Barber",
-      status: "pending"
+      status: "invited"
     });
     const { POST } = await import("@/app/api/owner/team/invites/route");
 
@@ -94,7 +98,7 @@ describe("shop team invite routes", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.invite.status).toBe("pending");
+    expect(body.invite.status).toBe("invited");
     expect(createOwnerTeamInviteMock).toHaveBeenCalledWith(
       expect.objectContaining({ role: "owner" }),
       {
@@ -150,7 +154,7 @@ describe("shop team invite routes", () => {
       shopLabel: "BVRB3R Ybor",
       barberId: "barber-real",
       barberName: "Real Barber",
-      status: "pending"
+      status: "requested"
     });
     const { POST } = await import("@/app/api/barber/shop-requests/route");
 
@@ -161,7 +165,7 @@ describe("shop team invite routes", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.invite.status).toBe("pending");
+    expect(body.invite.status).toBe("requested");
     expect(createBarberShopJoinRequestMock).toHaveBeenCalledWith(
       expect.objectContaining({ role: "booth_rent_barber", barberId: "barber-real" }),
       { shopId: "shop-location-uuid" }
@@ -182,7 +186,7 @@ describe("shop team invite routes", () => {
         shopLabel: "BVRB3R Ybor",
         barberId: "barber-real",
         barberName: "Real Barber",
-        status: "accepted"
+        status: "active"
       }
     });
     const { PATCH } = await import("@/app/api/barber/team-invites/route");
@@ -197,7 +201,7 @@ describe("shop team invite routes", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.invite.status).toBe("accepted");
+    expect(body.invite.status).toBe("active");
     expect(respondToBarberTeamInviteMock).toHaveBeenCalledWith(
       expect.objectContaining({ role: "commission_barber", barberId: "barber-real" }),
       {
@@ -242,6 +246,39 @@ describe("shop team invite routes", () => {
       {
         inviteId: "invite-1",
         status: "declined"
+      }
+    );
+  });
+
+  it("lets an owner accept a barber join request through the canonical response service", async () => {
+    respondToOwnerJoinRequestMock.mockResolvedValue({
+      invite: {
+        id: "join-1",
+        shopId: "shop-ybor",
+        shopLabel: "BVRB3R Ybor",
+        barberId: "barber-real",
+        barberName: "Real Barber",
+        status: "active"
+      }
+    });
+    const { PATCH } = await import("@/app/api/owner/team/invites/route");
+
+    const response = await PATCH(new Request("https://bvrb3r.test/api/owner/team/invites", {
+      method: "PATCH",
+      body: JSON.stringify({
+        inviteId: "join-1",
+        status: "accepted"
+      })
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.invite.status).toBe("active");
+    expect(respondToOwnerJoinRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({ role: "owner" }),
+      {
+        inviteId: "join-1",
+        status: "accepted"
       }
     );
   });

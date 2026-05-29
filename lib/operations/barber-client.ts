@@ -819,6 +819,25 @@ export function useCreateOwnerTeamInviteMutation() {
   });
 }
 
+export function useRespondOwnerTeamJoinRequestMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: { inviteId: string; status: "accepted" | "rejected" }) =>
+      requestJson<{ invite: ShopTeamInviteView }>("/api/owner/team/invites", {
+        method: "PATCH",
+        body: JSON.stringify(payload)
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["shop-team-invite-directory"] }),
+        queryClient.invalidateQueries({ queryKey: ["shop-dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["fintech"] })
+      ]);
+    }
+  });
+}
+
 export function useBarberTeamInvitesQuery() {
   return useQuery({
     queryKey: ["barber-team-invites"],
