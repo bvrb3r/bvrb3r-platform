@@ -33,7 +33,7 @@ describe("public shop profile", () => {
             city: "Tampa",
             state: "FL",
             address: "1600 7th Ave, Tampa, FL",
-            profilePhotoUrl: null,
+            profilePhotoUrl: "https://cdn.example.com/shop-logo.png",
             gallery: [],
             activeBarbersCount: 1
           },
@@ -64,6 +64,9 @@ describe("public shop profile", () => {
 
     expect(screen.getByTestId("public-shop-profile")).toBeInTheDocument();
     expect(screen.getByText("BVRB3R Tampa")).toBeInTheDocument();
+    expect(screen.getByAltText("BVRB3R Tampa")).toHaveAttribute("src", "https://cdn.example.com/shop-logo.png");
+    expect(screen.getByText("1600 7th Ave, Tampa, FL")).toBeInTheDocument();
+    expect(screen.getByText("1 approved barber")).toBeInTheDocument();
     expect(screen.getByText("Active team")).toBeInTheDocument();
     expect(screen.getAllByText("philforsure").length).toBeGreaterThan(0);
     expect(screen.queryByText("Phillip McGee")).not.toBeInTheDocument();

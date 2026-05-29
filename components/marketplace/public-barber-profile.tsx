@@ -1,5 +1,6 @@
 import type { Route } from "next";
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { BadgeCheck, CalendarDays, CreditCard, MapPin, ShieldCheck, Star } from "lucide-react";
 import { MarketplaceTrackedActionLink } from "@/components/client-experience/marketplace-tracked-action-link";
 import { PublicBarberGrowthActions } from "@/components/marketplace/public-barber-growth-actions";
@@ -68,9 +69,11 @@ function getPrimarySpecialty(profile: PublicBarberProfileView) {
 }
 
 function getServiceLocation(profile: PublicBarberProfileView) {
-  return profile.shopLocations[0]
+  return profile.shop
+    ? [profile.shop.name, profile.shop.city, profile.shop.state].filter(Boolean).join(" - ")
+    : profile.shopLocations[0]
     ? getBookingLocationSummary(profile.shopLocations[0])
-    : profile.shop?.name ?? "Independent barber";
+    : "Independent barber";
 }
 
 function Stat({ label, value }: { label: string; value: string | number }) {
@@ -157,7 +160,16 @@ export function PublicBarberProfile({
             <p className="mt-2 text-center text-sm text-white/62 sm:text-left">
               {primarySpecialty} - {profile.profile.serviceAreaLabel || profile.shopLocations[0]?.city || "Tampa, FL"}
             </p>
-            <p className="mt-1 text-center text-sm text-white/48 sm:text-left">{profile.shop?.name ?? profile.shopLocations[0]?.name ?? "Phil's chair"}</p>
+            {profile.shop ? (
+              <Link
+                href={`/shop/${encodeURIComponent(profile.shop.id)}` as Route}
+                className="mt-1 block text-center text-sm font-semibold text-[#d7ffab] transition hover:text-white sm:text-left"
+              >
+                Connected to {profile.shop.name}
+              </Link>
+            ) : (
+              <p className="mt-1 text-center text-sm text-white/48 sm:text-left">{profile.shopLocations[0]?.name ?? "Independent chair"}</p>
+            )}
             {verificationBadges.length ? (
               <div className="mt-3 flex flex-wrap justify-center gap-2 sm:justify-start">
                 {verificationBadges.map((badge) => (

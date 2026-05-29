@@ -195,7 +195,7 @@ describe("owner settings workspace", () => {
     expect(screen.getByText("$210")).toBeInTheDocument();
   });
 
-  it("opens quick shop profile setup and saves through the owner activation API", async () => {
+  it("opens quick shop profile setup and saves through the owner shop profile API", async () => {
     useProfileMediaWorkspaceQueryMock.mockReturnValue({
       isLoading: false,
       error: null,
@@ -218,11 +218,15 @@ describe("owner settings workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: /Edit shop profile/i }));
     expect(screen.getByRole("heading", { name: "Edit shop profile" })).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText(/Shop name/i), { target: { value: "BVRB3R North" } });
+    fireEvent.change(screen.getByLabelText(/Brand line/i), { target: { value: "Sharp cuts near campus." } });
+    fireEvent.change(screen.getByLabelText(/City/i), { target: { value: "Tampa" } });
+    fireEvent.change(screen.getByLabelText(/State/i), { target: { value: "FL" } });
     fireEvent.click(screen.getByRole("button", { name: /Save profile/i }));
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith("/api/owner/activation", expect.objectContaining({
-        method: "POST"
+      expect(global.fetch).toHaveBeenCalledWith("/api/owner/shop/profile", expect.objectContaining({
+        method: "PATCH",
+        body: expect.stringContaining("Sharp cuts near campus.")
       }));
     });
   });

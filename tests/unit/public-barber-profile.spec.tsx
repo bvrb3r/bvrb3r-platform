@@ -60,6 +60,7 @@ describe("public barber profile", () => {
           priceRange: [55, 70],
           nextAvailableAt: "2026-04-28T14:00:00.000Z",
           shop: {
+            id: "shop-centro-ybor",
             name: "Centro Ybor Flagship"
           },
           shopLocations: [
@@ -103,10 +104,11 @@ describe("public barber profile", () => {
     expect(within(header).getByRole("button", { name: "Message" })).toHaveAttribute("data-profile-id", "profile-wave");
     expect(within(header).getByRole("button", { name: "Follow" })).toHaveAttribute("data-barber-id", "barber-wave");
     expect(within(screen.getByTestId("barber-profile-header-actions")).getAllByRole("link", { name: "Book" })).toHaveLength(1);
-    expect(screen.getByText(/2172 University Square Mall, Tampa, FL 33612/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Centro Ybor Flagship/).length).toBeGreaterThan(0);
     expect(screen.queryByText("Verified license")).not.toBeInTheDocument();
     expect(screen.getAllByText("Verified identity").length).toBeGreaterThan(0);
     expect(screen.getByText("Verified shop")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Connected to Centro Ybor Flagship" })).toHaveAttribute("href", "/shop/shop-centro-ybor");
     expect(screen.queryByText("Book a service")).not.toBeInTheDocument();
     expect(screen.queryByText("Choose your cut")).not.toBeInTheDocument();
     expect(screen.queryByText("Signature Precision Cut")).not.toBeInTheDocument();

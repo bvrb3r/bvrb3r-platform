@@ -42,8 +42,12 @@ type BarberPortfolioRow = {
 type ShopMediaRow = {
   id: string;
   name: string;
+  brand_line?: string | null;
   neighborhood: string;
   city: string;
+  state?: string | null;
+  phone?: string | null;
+  address?: string | null;
   profile_photo_path: string | null;
   profile_photo_url: string | null;
 };
@@ -74,6 +78,13 @@ export type ManagedMediaAsset = {
 export type ShopMediaWorkspaceView = {
   shopId: string;
   label: string;
+  name?: string;
+  brandLine?: string | null;
+  neighborhood?: string | null;
+  city?: string | null;
+  state?: string | null;
+  phone?: string | null;
+  address?: string | null;
   profilePhotoUrl?: string;
   profilePhotoPath?: string;
   gallery: ManagedMediaAsset[];
@@ -384,7 +395,7 @@ async function readSupabaseShopMedia(supabase: SupabaseClient, shopId: string): 
   const [shopResult, galleryResult] = await Promise.all([
     supabase
       .from("shops")
-      .select("id, name, neighborhood, city, profile_photo_path, profile_photo_url")
+      .select("id, name, brand_line, neighborhood, city, state, phone, address, profile_photo_path, profile_photo_url")
       .eq("id", shopId)
       .maybeSingle(),
     supabase
@@ -406,6 +417,13 @@ async function readSupabaseShopMedia(supabase: SupabaseClient, shopId: string): 
 
   return {
     shopId: shop.id,
+    name: shop.name,
+    brandLine: shop.brand_line ?? null,
+    neighborhood: shop.neighborhood,
+    city: shop.city,
+    state: shop.state ?? null,
+    phone: shop.phone ?? null,
+    address: shop.address ?? null,
     label: `${shop.name} • ${shop.neighborhood}, ${shop.city}`,
     profilePhotoPath: shop.profile_photo_path ?? undefined,
     profilePhotoUrl: toPublicMediaUrl(supabase, shop.profile_photo_path, shop.profile_photo_url),

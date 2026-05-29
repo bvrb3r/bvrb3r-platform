@@ -1,0 +1,172 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const {
+  getSessionUserMock,
+  isSupabaseEnabledMock,
+  createSupabaseAdminClientMock
+} = vi.hoisted(() => ({
+  getSessionUserMock: vi.fn(),
+  isSupabaseEnabledMock: vi.fn(),
+  createSupabaseAdminClientMock: vi.fn()
+}));
+
+vi.mock("@/lib/booking/route-auth", () => ({
+  getSessionUser: getSessionUserMock
+}));
+
+vi.mock("@/lib/config/runtime", () => ({
+  isSupabaseEnabled: isSupabaseEnabledMock
+}));
+
+vi.mock("@/lib/supabase/admin", () => ({
+  createSupabaseAdminClient: createSupabaseAdminClientMock
+}));
+
+import { PATCH } from "@/app/api/owner/shop/profile/route";
+
+function createRequest(payload: Record<string, unknown>) {
+  return new Request("http://localhost/api/owner/shop/profile", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+}
+
+function createShopProfileSupabaseMock(options: {
+  scopedShop?: Record<string, unknown> | null;
+  updatedShop?: Record<string, unknown> | null;
+}) {
+  const eqCalls: Array<[string, unknown]> = [];
+  let updatePayload: Record<string, unknown> | null = null;
+
+  const createSelectChain = () => ({
+    eq(field: string, value: unknown) {
+      eqCalls.push([field, value]);
+      return this;
+    },
+    order() {
+      return this;
+    },
+    limit() {
+      return this;
+    },
+    maybeSingle: vi.fn(async () => ({
+      data: options.scopedShop ?? null,
+      error: null
+    }))
+  });
+
+  const createUpdateChain = (payload: Record<string, unknown>) => {
+    updatePayload = payload;
+    return {
+      eq(field: string, value: unknown) {
+        eqCalls.push([field, value]);
+        return this;
+      },
+      select() {
+        return this;
+      },
+      single: vi.fn(async () => ({
+        data: options.updatedShop ?? null,
+        error: null
+      }))
+    };
+  };
+
+  return {
+    eqCalls,
+    get updatePayload() {
+      return updatePayload;
+    },
+    client: {
+      from: vi.fn(() => ({
+        select: vi.fn(() => createSelectChain()),
+        update: vi.fn((payload: Record<string, unknown>) => createUpdateChain(payload))
+      }))
+    }
+  };
+}
+
+describe("owner shop profile route", () => {
+  beforeEach(() => {
+    getSessionUserMock.mockReset();
+    isSupabaseEnabledMock.mockReset();
+    createSupabaseAdminClientMock.mockReset();
+    isSupabaseEnabledMock.mockReturnValue(true);
+    getSessionUserMock.mockResolvedValue({
+      id: "owner-profile-1",
+      role: "shop_owner_user",
+      locationIds: []
+    });
+  });
+
+  it("lets an owner update their own canonical shop profile fields", async () => {
+    const supabase = createShopProfileSupabaseMock({
+      scopedShop: { id: "shop-owned", owner_profile_id: "owner-profile-1" },
+      updatedShop: {
+        id: "shop-owned",
+        name: "The BVRB3R Shop",
+        brand_line: "Campus cuts.",
+        address: "2200 E Fowler Ave",
+        city: "Tampa",
+        state: "FL"
+      }
+    });
+    createSupabaseAdminClientMock.mockReturnValue(supabase.client);
+
+    const response = await PATCH(createRequest({
+      shopId: "shop-owned",
+      name: "The BVRB3R Shop",
+      brandLine: "Campus cuts.",
+      address: "2200 E Fowler Ave",
+      city: "Tampa",
+      state: "FL"
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.shop.name).toBe("The BVRB3R Shop");
+    expect(supabase.eqCalls).toContainEqual(["id", "shop-owned"]);
+    expect(supabase.eqCalls).toContainEqual(["owner_profile_id", "owner-profile-1"]);
+    expect(supabase.updatePayload).toMatchObject({
+      name: "The BVRB3R Shop",
+      brand_line: "Campus cuts.",
+      address: "2200 E Fowler Ave",
+      city: "Tampa",
+      state: "FL"
+    });
+  });
+
+  it("does not allow updating another owner's shop", async () => {
+    const supabase = createShopProfileSupabaseMock({
+      scopedShop: null,
+      updatedShop: null
+    });
+    createSupabaseAdminClientMock.mockReturnValue(supabase.client);
+
+    const response = await PATCH(createRequest({
+      shopId: "shop-someone-else",
+      name: "Not mine"
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(body.error).toBe("Owner shop not found.");
+    expect(supabase.updatePayload).toBeNull();
+  });
+
+  it("rejects non-owner roles", async () => {
+    getSessionUserMock.mockResolvedValue({
+      id: "client-profile-1",
+      role: "client_user",
+      locationIds: []
+    });
+
+    const response = await PATCH(createRequest({
+      name: "Client Shop"
+    }));
+
+    expect(response.status).toBe(403);
+    expect(createSupabaseAdminClientMock).not.toHaveBeenCalled();
+  });
+});

@@ -257,9 +257,13 @@ export function OwnerSettingsWorkspace({
   const [quickSetupFeedback, setQuickSetupFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [shopProfileDraft, setShopProfileDraft] = useState({
     shopName: user.ownedShopName ?? "",
+    brandLine: "",
+    address: "",
+    neighborhood: "",
     city: "",
+    state: "",
     phone: user.phone ?? "",
-    publicDescription: ""
+    profilePhotoUrl: ""
   });
   const [shopHoursDraft, setShopHoursDraft] = useState({
     days: defaultOwnerWorkingDays,
@@ -274,7 +278,10 @@ export function OwnerSettingsWorkspace({
   const primaryShop = shops[0] ?? null;
   const ownerShopId = primaryShop?.shopId ?? user.ownedShopId ?? user.locationIds[0] ?? null;
   const shopName = primaryShop?.label ?? user.ownedShopName ?? "Shop profile incomplete";
-  const shopAddress = "Address not added yet";
+  const shopAddress = (
+    primaryShop?.address
+    ?? [primaryShop?.neighborhood, primaryShop?.city, primaryShop?.state].filter(Boolean).join(", ")
+  ) || "Address not added yet";
   const shopInitials = getInitials(shopName);
   const selectedSection = (initialSection && initialSection in sectionIdMap ? initialSection : null) as OwnerSettingsSectionKey | null;
   const selectedServiceManager = initialSection === "services";
@@ -313,6 +320,24 @@ export function OwnerSettingsWorkspace({
   const isInitialLoading =
     (profileQuery.isLoading && !profileQuery.data)
     || (fintechQuery.isLoading && !fintechQuery.data);
+
+  useEffect(() => {
+    if (!primaryShop) {
+      return;
+    }
+
+    setShopProfileDraft((current) => ({
+      ...current,
+      shopName: primaryShop.name ?? primaryShop.label ?? current.shopName,
+      brandLine: primaryShop.brandLine ?? current.brandLine,
+      address: primaryShop.address ?? current.address,
+      neighborhood: primaryShop.neighborhood ?? current.neighborhood,
+      city: primaryShop.city ?? current.city,
+      state: primaryShop.state ?? current.state,
+      phone: primaryShop.phone ?? current.phone,
+      profilePhotoUrl: primaryShop.profilePhotoUrl ?? current.profilePhotoUrl
+    }));
+  }, [primaryShop]);
 
   async function uploadWithPath(path: string, file: File) {
     const extension = file.name.split(".").pop()?.toLowerCase() || "jpg";
@@ -369,14 +394,28 @@ export function OwnerSettingsWorkspace({
   async function handleQuickShopProfileSave() {
     setQuickSetupFeedback(null);
     try {
-      await postOwnerActivation({
-        action: "update_shop_profile",
+      const response = await fetch("/api/owner/shop/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
         shopId: ownerShopId,
-        ...shopProfileDraft
+        name: shopProfileDraft.shopName,
+        brandLine: shopProfileDraft.brandLine,
+        phone: shopProfileDraft.phone,
+        address: shopProfileDraft.address,
+        neighborhood: shopProfileDraft.neighborhood,
+        city: shopProfileDraft.city,
+        state: shopProfileDraft.state,
+        profilePhotoUrl: shopProfileDraft.profilePhotoUrl
+        })
       });
+      const body = (await response.json().catch(() => ({}))) as { error?: string };
+      if (!response.ok) {
+        throw new Error(body.error ?? "Unable to save shop profile.");
+      }
       await Promise.all([profileQuery.refetch(), fintechQuery.refetch()]);
       closeQuickSetupModal();
-      setQuickSetupFeedback({ tone: "success", message: "Shop profile saved through the existing shop profile records." });
+      setQuickSetupFeedback({ tone: "success", message: "Shop profile saved to the canonical public shop record." });
     } catch (error) {
       setQuickSetupFeedback({ tone: "error", message: error instanceof Error ? error.message : "Unable to save shop profile." });
     }
@@ -808,20 +847,38 @@ export function OwnerSettingsWorkspace({
                   Shop name
                   <Input value={shopProfileDraft.shopName} onChange={(event) => setShopProfileDraft((current) => ({ ...current, shopName: event.target.value }))} className="mt-2" />
                 </label>
+                <label className="block text-sm font-bold text-white/72">
+                  Brand line / bio
+                  <Input value={shopProfileDraft.brandLine} onChange={(event) => setShopProfileDraft((current) => ({ ...current, brandLine: event.target.value }))} className="mt-2" />
+                </label>
+                <label className="block text-sm font-bold text-white/72">
+                  Public logo URL
+                  <Input value={shopProfileDraft.profilePhotoUrl} onChange={(event) => setShopProfileDraft((current) => ({ ...current, profilePhotoUrl: event.target.value }))} className="mt-2" />
+                </label>
+                <label className="block text-sm font-bold text-white/72">
+                  Address
+                  <Input value={shopProfileDraft.address} onChange={(event) => setShopProfileDraft((current) => ({ ...current, address: event.target.value }))} className="mt-2" />
+                </label>
                 <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block text-sm font-bold text-white/72">
+                    Neighborhood
+                    <Input value={shopProfileDraft.neighborhood} onChange={(event) => setShopProfileDraft((current) => ({ ...current, neighborhood: event.target.value }))} className="mt-2" />
+                  </label>
                   <label className="block text-sm font-bold text-white/72">
                     City
                     <Input value={shopProfileDraft.city} onChange={(event) => setShopProfileDraft((current) => ({ ...current, city: event.target.value }))} className="mt-2" />
+                  </label>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block text-sm font-bold text-white/72">
+                    State
+                    <Input value={shopProfileDraft.state} onChange={(event) => setShopProfileDraft((current) => ({ ...current, state: event.target.value }))} className="mt-2" />
                   </label>
                   <label className="block text-sm font-bold text-white/72">
                     Phone
                     <Input value={shopProfileDraft.phone} onChange={(event) => setShopProfileDraft((current) => ({ ...current, phone: event.target.value }))} className="mt-2" />
                   </label>
                 </div>
-                <label className="block text-sm font-bold text-white/72">
-                  Public description
-                  <Input value={shopProfileDraft.publicDescription} onChange={(event) => setShopProfileDraft((current) => ({ ...current, publicDescription: event.target.value }))} className="mt-2" />
-                </label>
                 <div className="flex gap-3">
                   <Button type="button" variant="secondary" className="min-h-12 flex-1 rounded-2xl" onClick={closeQuickSetupModal}>Cancel</Button>
                   <Button type="button" className="min-h-12 flex-1 rounded-2xl bg-[#A3FF12] text-black hover:bg-[#8de300]" onClick={() => void handleQuickShopProfileSave()}>

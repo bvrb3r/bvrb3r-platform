@@ -45,7 +45,7 @@ import type { LiveAppointmentRecord, LiveOperationsViewer } from "@/lib/operatio
 import { getBarberCompensationSummary, getManagerOperationsSummary, getOwnerAnalyticsSummary } from "@/lib/operations/metrics";
 import { getAppointmentViewModel } from "@/lib/utils/operations";
 import { CLIENT_ACCOUNT_ROLE, isClientRole } from "@/lib/auth/roles";
-import type { Client, DiscoveryResult, RecommendedShopView, ReviewSentiment } from "@/types/domain";
+import type { Client, DiscoveryResult, RecommendedShopView, ReviewSentiment, Shop } from "@/types/domain";
 import type { TrustState } from "@/types/trust";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
@@ -53,16 +53,35 @@ type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 type ShopRecord = {
   id: string;
   name: string;
-  brand_line: string;
-  neighborhood: string;
-  city: string;
-  state: string;
+  brand_line: string | null;
+  neighborhood: string | null;
+  city: string | null;
+  state: string | null;
   phone: string | null;
   address: string | null;
+  profile_photo_path?: string | null;
+  profile_photo_url?: string | null;
   kind: string;
   latitude: number | null;
   longitude: number | null;
   app_approval_status?: string | null;
+};
+
+type MarketplaceShopRecord = {
+  id: string;
+  name: string;
+  brandLine: string;
+  neighborhood: string;
+  city: string;
+  state: string;
+  phone: string;
+  address: string;
+  profilePhotoUrl?: string;
+  kind: string;
+  latitude?: number;
+  longitude?: number;
+  appApprovalStatus?: string;
+  activeBarbersCount?: number;
 };
 
 type LocationRecord = {
@@ -364,7 +383,7 @@ function getSupabase() {
   return createSupabaseAdminClient();
 }
 
-function mapLocationRecordAsShop(row: LocationRecord) {
+function mapLocationRecordAsShop(row: LocationRecord): MarketplaceShopRecord {
   const fallbackAddress = !row.address && /\d/.test(row.neighborhood ?? "") ? row.neighborhood : null;
   return {
     id: row.reference_code ?? row.id,
@@ -375,6 +394,7 @@ function mapLocationRecordAsShop(row: LocationRecord) {
     state: row.state,
     phone: row.phone ?? "",
     address: row.address ?? fallbackAddress ?? `${row.name}, ${row.neighborhood}, ${row.city}, ${row.state}`,
+    profilePhotoUrl: undefined,
     kind: "shop",
     latitude: row.latitude ?? undefined,
     longitude: row.longitude ?? undefined,
@@ -685,7 +705,7 @@ async function readOperationalDirectories(supabase: SupabaseClient | null): Prom
   };
 }
 
-async function readShops(supabase: SupabaseClient | null) {
+async function readShops(supabase: SupabaseClient | null): Promise<MarketplaceShopRecord[]> {
   if (!supabase) {
     return [];
   }
@@ -695,12 +715,13 @@ async function readShops(supabase: SupabaseClient | null) {
     return (shopResult.data as ShopRecord[]).map((row) => ({
       id: row.id,
       name: row.name,
-      brandLine: row.brand_line,
-      neighborhood: row.neighborhood,
-      city: row.city,
-      state: row.state,
+      brandLine: row.brand_line ?? "",
+      neighborhood: row.neighborhood ?? "",
+      city: row.city ?? "",
+      state: row.state ?? "",
       phone: row.phone ?? "",
-      address: row.address ?? `${row.name}, ${row.neighborhood}, ${row.city}, ${row.state}`,
+      address: row.address ?? [row.neighborhood, row.city, row.state].filter(Boolean).join(", "),
+      profilePhotoUrl: row.profile_photo_url ?? row.profile_photo_path ?? undefined,
       kind: row.kind,
       latitude: row.latitude ?? undefined,
       longitude: row.longitude ?? undefined,
@@ -718,6 +739,57 @@ async function readShops(supabase: SupabaseClient | null) {
   }
 
   return (locationResult.data as LocationRecord[]).map(mapLocationRecordAsShop);
+}
+
+async function readActiveShopTeamCounts(
+  supabase: SupabaseClient | null,
+  shopIds: string[]
+): Promise<Map<string, number>> {
+  if (!supabase || !shopIds.length) {
+    return new Map();
+  }
+
+  const result = await supabase
+    .from("shop_team_invites")
+    .select("shop_id, barber_id")
+    .in("shop_id", shopIds)
+    .eq("status", "active");
+
+  if (result.error) {
+    console.error("[platform-service] active shop team counts unavailable", {
+      shopIds,
+      code: result.error.code,
+      message: result.error.message
+    });
+    return new Map();
+  }
+
+  const counts = new Map<string, Set<string>>();
+  for (const row of (result.data ?? []) as Array<{ shop_id: string | null; barber_id: string | null }>) {
+    if (!row.shop_id || !row.barber_id) {
+      continue;
+    }
+
+    const existing = counts.get(row.shop_id) ?? new Set<string>();
+    existing.add(row.barber_id);
+    counts.set(row.shop_id, existing);
+  }
+
+  return new Map([...counts.entries()].map(([shopId, barberIds]) => [shopId, barberIds.size]));
+}
+
+function decorateShopsWithTeamCounts<T extends { id: string; activeBarbersCount?: number }>(
+  shops: T[],
+  teamCounts: Map<string, number>
+) {
+  if (!teamCounts.size) {
+    return shops;
+  }
+
+  return shops.map((shop) => ({
+    ...shop,
+    activeBarbersCount: teamCounts.get(shop.id) ?? shop.activeBarbersCount ?? 0
+  }));
 }
 
 async function readClientPreference(supabase: SupabaseClient | null, clientId?: string) {
@@ -2223,7 +2295,8 @@ function buildRecommendedShops(
   discovery: DiscoveryResult[],
   completedAppointments: LiveAppointmentRecord[],
   hasResolvedLocation: boolean,
-  locationId?: string
+  locationId?: string,
+  teamCounts = new Map<string, number>()
 ) {
   const locationVisitStats = buildVisitStats(completedAppointments, (appointment) => appointment.locationId);
   const preferredShop = hasResolvedLocation ? shops.find((shop) => shop.id === locationId) : undefined;
@@ -2282,12 +2355,16 @@ function buildRecommendedShops(
       state: shop.state,
       address: shop.address,
       kind: shop.kind,
-      activeBarbersCount: metrics?.activeBarbersCount,
+      activeBarbersCount: teamCounts.get(shop.id) ?? shop.activeBarbersCount ?? metrics?.activeBarbersCount ?? 0,
       nextAvailableAt: metrics?.nextAvailableAt,
       nextAvailableLabel: metrics?.nextAvailableLabel,
       rating: metrics?.rating,
       reviewCount: metrics?.reviewCount,
-      bookHref: metrics?.bookHref
+      verifiedLabel: shop.appApprovalStatus === "approved" ? "Verified shop" : undefined,
+      bookHref: metrics?.bookHref,
+      viewHref: `/shop/${encodeURIComponent(shop.id)}`,
+      profilePhotoUrl: shop.profilePhotoUrl,
+      coverPhotoUrl: shop.profilePhotoUrl
     } satisfies RecommendedShopView;
   });
 }
@@ -2445,18 +2522,26 @@ export async function getClientHomePayload(clientId?: string) {
     async () => filterBookableMarketplaceShops(shops, trustState, localizedDiscovery),
     { clientId, locationId: locationId ?? "" }
   );
+  const shopTeamCounts = await withMarketplaceSectionFallback(
+    "shop_team_counts_load_failed",
+    new Map<string, number>(),
+    () => readActiveShopTeamCounts(supabase, visibleShops.map((shop) => shop.id)),
+    { clientId, locationId: locationId ?? "" }
+  );
+  const visibleShopsWithTeamCounts = decorateShopsWithTeamCounts(visibleShops, shopTeamCounts);
   const recommendedBarbers = buildRecommendedBarbers(localizedDiscovery, completedAppointments, hasSavedLocation);
   const recommendedShops = buildRecommendedShops(
-    visibleShops,
+    visibleShopsWithTeamCounts,
     localizedDiscovery,
     completedAppointments,
     hasSavedLocation,
-    locationId
+    locationId,
+    shopTeamCounts
   );
 
   return {
     client: clientProfile ?? null,
-    shops: visibleShops,
+    shops: visibleShopsWithTeamCounts,
     trustedBarbers: localizedDiscovery.filter((result) => result.barberId !== clientProfile?.favoriteBarberReference).slice(0, 6),
     recommendedBarbers,
     recommendedShops,
@@ -2670,9 +2755,16 @@ export async function searchBarbersAndShopsPayload(params: {
   }
   const localizedResults = orderDiscoveryByPreferredLocation(results, clientProfile?.preferredLocation);
   const visibleShops = filterBookableMarketplaceShops(shops, trustState, localizedResults);
+  const shopTeamCounts = await withMarketplaceSectionFallback(
+    "shop_team_counts_load_failed",
+    new Map<string, number>(),
+    () => readActiveShopTeamCounts(supabase, visibleShops.map((shop) => shop.id)),
+    { clientId: params.clientId, locationId: locationId ?? "" }
+  );
+  const visibleShopsWithTeamCounts = decorateShopsWithTeamCounts(visibleShops, shopTeamCounts);
   const matchingShops = queryText
-    ? visibleShops.filter((shop) => `${shop.name} ${shop.neighborhood} ${shop.city}`.toLowerCase().includes(queryText.toLowerCase()))
-    : visibleShops;
+    ? visibleShopsWithTeamCounts.filter((shop) => `${shop.name} ${shop.neighborhood} ${shop.city} ${shop.address ?? ""}`.toLowerCase().includes(queryText.toLowerCase()))
+    : visibleShopsWithTeamCounts;
 
   return {
     mode: effectiveQuery ? "search" : "browse",
@@ -2683,10 +2775,70 @@ export async function searchBarbersAndShopsPayload(params: {
   };
 }
 
+async function readActiveShopForBarber(supabase: SupabaseClient | null, barberId: string): Promise<Shop | null> {
+  if (!supabase || !barberId) {
+    return null;
+  }
+
+  const relationshipResult = await supabase
+    .from("shop_team_invites")
+    .select("shop_id")
+    .eq("barber_id", barberId)
+    .eq("status", "active")
+    .limit(1)
+    .maybeSingle();
+
+  if (relationshipResult.error || !relationshipResult.data?.shop_id) {
+    return null;
+  }
+
+  const shopResult = await supabase
+    .from("shops")
+    .select("id, name, brand_line, phone, address, neighborhood, city, state, profile_photo_url, profile_photo_path, app_approval_status")
+    .eq("id", relationshipResult.data.shop_id)
+    .limit(1)
+    .maybeSingle();
+
+  if (shopResult.error || !shopResult.data) {
+    return null;
+  }
+
+  const shop = shopResult.data as {
+    id: string;
+    name: string;
+    brand_line?: string | null;
+    phone?: string | null;
+    address?: string | null;
+    neighborhood?: string | null;
+    city?: string | null;
+    state?: string | null;
+    profile_photo_url?: string | null;
+    profile_photo_path?: string | null;
+    app_approval_status?: Shop["appApprovalStatus"] | null;
+  };
+
+  return {
+    id: shop.id,
+    name: shop.name,
+    brandLine: shop.brand_line ?? "",
+    phone: shop.phone ?? "",
+    locationIds: [],
+    type: "shop",
+    appApprovalStatus: shop.app_approval_status ?? undefined,
+    profilePhotoUrl: shop.profile_photo_url ?? shop.profile_photo_path ?? undefined,
+    neighborhood: shop.neighborhood ?? undefined,
+    city: shop.city ?? undefined,
+    state: shop.state ?? undefined,
+    address: shop.address ?? undefined
+  };
+}
+
 export async function getBarberDetailsPayload(barberIdOrUsername: string) {
   async function mergeProfileMedia<T extends NonNullable<Awaited<ReturnType<typeof buildPublicProfilePayload>>>>(profile: T) {
     const barberMedia = await readBarberProfileMedia(profile.barber.id).catch(() => null);
-    const shopId = profile.shop?.id ?? profile.profile.shopId ?? profile.shopLocations[0]?.id;
+    const activeShop = await readActiveShopForBarber(getSupabase(), profile.barber.id).catch(() => null);
+    const effectiveShop = activeShop ?? profile.shop;
+    const shopId = effectiveShop?.id ?? profile.profile.shopId ?? profile.shopLocations[0]?.id;
     const shopMedia = shopId ? await readShopProfileMedia(shopId).catch(() => null) : null;
 
     return {
@@ -2705,21 +2857,21 @@ export async function getBarberDetailsPayload(barberIdOrUsername: string) {
             featured: asset.featured
           }))
         : profile.portfolio,
-      shop: profile.shop
+      shop: effectiveShop
         ? {
-            ...profile.shop,
-            profilePhotoUrl: shopMedia?.profilePhotoUrl ?? profile.shop.profilePhotoUrl,
+            ...effectiveShop,
+            profilePhotoUrl: shopMedia?.profilePhotoUrl ?? effectiveShop.profilePhotoUrl,
             gallery: shopMedia?.gallery.length
               ? shopMedia.gallery.map((asset) => ({
                   id: asset.id,
-                  shopId: profile.shop!.id,
+                  shopId: effectiveShop.id,
                   imageUrl: asset.imageUrl,
                   caption: asset.caption,
                   featured: asset.featured
                 }))
-              : profile.shop.gallery
+              : effectiveShop.gallery
           }
-        : profile.shop
+        : effectiveShop
     };
   }
 
@@ -2825,7 +2977,14 @@ export async function getPublicShopProfilePayload(shopIdOrSlug: string): Promise
     return null;
   }
 
-  const recommendedShop = buildRecommendedShops(visibleShops, discovery, [], true, visibleShop.id)
+  const activeTeamResult = await supabase
+    .from("shop_team_invites")
+    .select("barber_id")
+    .eq("shop_id", visibleShop.id)
+    .eq("status", "active");
+  const activeTeamBarberIds = activeTeamResult.error ? [] : [...new Set(((activeTeamResult.data ?? []) as Array<{ barber_id: string | null }>).map((row) => row.barber_id).filter((id): id is string => Boolean(id)))];
+  const shopTeamCounts = new Map([[visibleShop.id, activeTeamBarberIds.length]]);
+  const recommendedShop = buildRecommendedShops(visibleShops, discovery, [], true, visibleShop.id, shopTeamCounts)
     .find((shop) => shop.id === visibleShop.id) ?? {
       ...visibleShop,
       activeBarbersCount: discovery.filter((result) => result.locationId === visibleShop.id).length
@@ -2834,12 +2993,6 @@ export async function getPublicShopProfilePayload(shopIdOrSlug: string): Promise
     result.locationId === visibleShop.id
     || normalizeLabel(result.shopName) === normalizeLabel(visibleShop.name)
   );
-  const activeTeamResult = await supabase
-    .from("shop_team_invites")
-    .select("barber_id")
-    .eq("shop_id", visibleShop.id)
-    .eq("status", "active");
-  const activeTeamBarberIds = activeTeamResult.error ? [] : [...new Set(((activeTeamResult.data ?? []) as Array<{ barber_id: string | null }>).map((row) => row.barber_id).filter((id): id is string => Boolean(id)))];
   const seenBarbers = new Set<string>();
   const linkedProfileIds = linkedResults.map((result) => result.username ?? result.barberId);
   const barbers = (await Promise.all([...new Set([...linkedProfileIds, ...activeTeamBarberIds])].map((identifier) =>
@@ -2868,7 +3021,8 @@ export async function getPublicShopProfilePayload(shopIdOrSlug: string): Promise
     shop: {
       ...recommendedShop,
       phone: visibleShop.phone,
-      profilePhotoUrl: shopMedia?.profilePhotoUrl ?? null,
+      activeBarbersCount: barbers.length,
+      profilePhotoUrl: shopMedia?.profilePhotoUrl ?? visibleShop.profilePhotoUrl ?? undefined,
       gallery: shopMedia?.gallery.map((asset) => ({
         id: asset.id,
         shopId: visibleShop.id,

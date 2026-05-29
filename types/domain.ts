@@ -111,6 +111,10 @@ export interface Shop {
   type: "shop" | "mobile";
   appApprovalStatus?: ApprovalStatus;
   profilePhotoUrl?: string;
+  neighborhood?: string;
+  city?: string;
+  state?: string;
+  address?: string;
   gallery?: ShopMediaAsset[];
 }
 
@@ -538,6 +542,9 @@ export interface RecommendedShopView {
   reviewCount?: number;
   verifiedLabel?: string;
   bookHref?: string;
+  viewHref?: string;
+  profilePhotoUrl?: string;
+  coverPhotoUrl?: string;
 }
 
 export interface MapDiscoveryMarker {

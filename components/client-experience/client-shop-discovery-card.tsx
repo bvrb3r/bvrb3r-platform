@@ -37,7 +37,15 @@ function getInitials(name: string) {
 }
 
 function getLocationLabel(location: ClientShopCardData) {
-  return location.address ?? `${location.neighborhood}, ${location.city}, ${location.state}`;
+  return location.address || [location.neighborhood, location.city, location.state].filter(Boolean).join(", ") || "Shop location";
+}
+
+function getBarberCountLabel(count: number) {
+  if (count <= 0) {
+    return "No active barbers yet";
+  }
+
+  return `${count} barber${count === 1 ? "" : "s"}`;
 }
 
 export function ClientShopDiscoveryCard({
@@ -54,11 +62,12 @@ export function ClientShopDiscoveryCard({
   const primaryCtaHref = (location.bookHref ?? searchHref) as Route;
   const primaryCtaLabel = location.bookHref ? "Book" : "View barbers";
   const imageUrl = location.coverPhotoUrl ?? location.profilePhotoUrl;
-  const ratingLabel = typeof location.rating === "number" ? location.rating.toFixed(1) : "New";
+  const ratingLabel = typeof location.rating === "number" ? location.rating.toFixed(1) : "Verified";
   const reviewLabel = typeof location.reviewCount === "number" && location.reviewCount > 0
     ? `${location.reviewCount} review${location.reviewCount === 1 ? "" : "s"}`
-    : "New shop";
+    : location.verifiedLabel ?? "Approved shop";
   const barberCount = location.activeBarbersCount ?? 0;
+  const brandLine = location.brandLine?.trim() || [location.neighborhood, location.city].filter(Boolean).join(", ") || getLocationLabel(location);
   const saved = favoriteMutation.isSuccess;
 
   async function handleFavorite() {
@@ -128,13 +137,13 @@ export function ClientShopDiscoveryCard({
           </span>
           <span className="inline-flex min-w-0 items-center gap-1.5">
             <UsersRound className="h-4 w-4 shrink-0 text-[#d7ffab]" />
-            <span>{barberCount || "No"} barber{barberCount === 1 ? "" : "s"}</span>
+            <span>{getBarberCountLabel(barberCount)}</span>
           </span>
         </div>
 
         <div className="mt-3 flex items-center gap-2 text-xs text-white/48">
           <Store className="h-3.5 w-3.5 text-[#d7ffab]" />
-          <span className="truncate">{location.brandLine ?? "Pick a chair"}</span>
+          <span className="truncate">{brandLine}</span>
         </div>
 
         <div className="mt-4 grid grid-cols-[1fr_auto] gap-2">

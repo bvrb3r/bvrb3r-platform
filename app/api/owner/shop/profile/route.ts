@@ -1,0 +1,148 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { getSessionUser } from "@/lib/booking/route-auth";
+import { isSupabaseEnabled } from "@/lib/config/runtime";
+import { getMarketplaceState, setMarketplaceState } from "@/lib/marketplace/state";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import type { UserAccount } from "@/types/domain";
+
+const shopProfileSchema = z.object({
+  shopId: z.string().trim().optional().nullable(),
+  name: z.string().trim().min(2).max(120).optional(),
+  brandLine: z.string().trim().max(240).optional().nullable(),
+  phone: z.string().trim().max(40).optional().nullable(),
+  address: z.string().trim().max(240).optional().nullable(),
+  neighborhood: z.string().trim().max(120).optional().nullable(),
+  city: z.string().trim().max(120).optional().nullable(),
+  state: z.string().trim().max(40).optional().nullable(),
+  profilePhotoPath: z.string().trim().max(500).optional().nullable(),
+  profilePhotoUrl: z.string().trim().max(1000).optional().nullable()
+});
+
+function isOwnerScoped(user: UserAccount) {
+  return user.role === "shop_owner_user" || user.role === "owner" || user.role === "manager";
+}
+
+function cleanNullable(value: string | null | undefined) {
+  if (value === undefined) {
+    return undefined;
+  }
+  const trimmed = value?.trim() ?? "";
+  return trimmed || null;
+}
+
+function resolveDemoShopId(user: UserAccount, requestedShopId?: string | null) {
+  return requestedShopId ?? user.ownedShopId ?? user.locationIds[0] ?? null;
+}
+
+function updateDemoShopProfile(user: UserAccount, input: z.infer<typeof shopProfileSchema>) {
+  const shopId = resolveDemoShopId(user, input.shopId);
+  if (!shopId) {
+    return null;
+  }
+
+  const state = getMarketplaceState();
+  const nextShops = state.shops.map((shop) => {
+    if (shop.id !== shopId) {
+      return shop;
+    }
+
+    return {
+      ...shop,
+      name: input.name ?? shop.name,
+      brandLine: cleanNullable(input.brandLine) ?? shop.brandLine,
+      phone: cleanNullable(input.phone) ?? shop.phone,
+      address: cleanNullable(input.address) ?? shop.address,
+      neighborhood: cleanNullable(input.neighborhood) ?? shop.neighborhood,
+      city: cleanNullable(input.city) ?? shop.city,
+      state: cleanNullable(input.state) ?? shop.state,
+      profilePhotoUrl: cleanNullable(input.profilePhotoUrl) ?? shop.profilePhotoUrl
+    };
+  });
+
+  setMarketplaceState({ ...state, shops: nextShops });
+  const shop = nextShops.find((entry) => entry.id === shopId);
+  return shop ? { shop } : null;
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const parsed = shopProfileSchema.safeParse(await request.json().catch(() => null));
+    if (!parsed.success) {
+      return NextResponse.json({ error: "Invalid shop profile payload." }, { status: 400 });
+    }
+
+    const user = await getSessionUser();
+    if (!isOwnerScoped(user)) {
+      return NextResponse.json({ error: "Only shop owners can update shop profile details." }, { status: 403 });
+    }
+
+    if (!isSupabaseEnabled()) {
+      const updated = updateDemoShopProfile(user, parsed.data);
+      if (!updated) {
+        return NextResponse.json({ error: "Owner shop not found." }, { status: 404 });
+      }
+      return NextResponse.json(updated);
+    }
+
+    const supabase = createSupabaseAdminClient();
+    if (!supabase) {
+      return NextResponse.json({ error: "Supabase is not configured for owner shop profile updates." }, { status: 503 });
+    }
+
+    const shopQuery = supabase
+      .from("shops")
+      .select("id, name, brand_line, neighborhood, city, state, phone, address, profile_photo_path, profile_photo_url, owner_profile_id, app_approval_status")
+      .eq("owner_profile_id", user.id)
+      .order("updated_at", { ascending: false })
+      .limit(1);
+    const scopedShopResult = parsed.data.shopId
+      ? await supabase
+          .from("shops")
+          .select("id, name, brand_line, neighborhood, city, state, phone, address, profile_photo_path, profile_photo_url, owner_profile_id, app_approval_status")
+          .eq("id", parsed.data.shopId)
+          .eq("owner_profile_id", user.id)
+          .maybeSingle()
+      : await shopQuery.maybeSingle();
+
+    if (scopedShopResult.error) {
+      throw scopedShopResult.error;
+    }
+    const shop = scopedShopResult.data as { id: string } | null;
+    if (!shop) {
+      return NextResponse.json({ error: "Owner shop not found." }, { status: 404 });
+    }
+
+    const patch = {
+      ...(parsed.data.name !== undefined ? { name: parsed.data.name.trim() } : {}),
+      ...(parsed.data.brandLine !== undefined ? { brand_line: cleanNullable(parsed.data.brandLine) } : {}),
+      ...(parsed.data.phone !== undefined ? { phone: cleanNullable(parsed.data.phone) } : {}),
+      ...(parsed.data.address !== undefined ? { address: cleanNullable(parsed.data.address) } : {}),
+      ...(parsed.data.neighborhood !== undefined ? { neighborhood: cleanNullable(parsed.data.neighborhood) } : {}),
+      ...(parsed.data.city !== undefined ? { city: cleanNullable(parsed.data.city) } : {}),
+      ...(parsed.data.state !== undefined ? { state: cleanNullable(parsed.data.state) } : {}),
+      ...(parsed.data.profilePhotoPath !== undefined ? { profile_photo_path: cleanNullable(parsed.data.profilePhotoPath) } : {}),
+      ...(parsed.data.profilePhotoUrl !== undefined ? { profile_photo_url: cleanNullable(parsed.data.profilePhotoUrl) } : {}),
+      updated_at: new Date().toISOString()
+    };
+
+    const updateResult = await supabase
+      .from("shops")
+      .update(patch)
+      .eq("id", shop.id)
+      .eq("owner_profile_id", user.id)
+      .select("id, name, brand_line, neighborhood, city, state, phone, address, profile_photo_path, profile_photo_url, app_approval_status")
+      .single();
+
+    if (updateResult.error) {
+      throw updateResult.error;
+    }
+
+    return NextResponse.json({ shop: updateResult.data });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Unable to update shop profile." },
+      { status: 500 }
+    );
+  }
+}
