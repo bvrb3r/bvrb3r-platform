@@ -73,7 +73,7 @@ function ReportCard({
   onOpen: () => void;
 }) {
   return (
-    <article className={cn("rounded-lg border bg-black/24 p-4 transition", selected ? "border-[#7CFF00]/35" : "border-white/10")}>
+    <article className={cn("rounded-[24px] border bg-black/24 p-4 transition", selected ? "border-[#7CFF00]/35" : "border-white/10")}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/42">{report.concernType}</p>
@@ -178,7 +178,7 @@ export function ArchitectReportsWorkspace() {
   return (
     <main className="px-2 py-6 sm:px-3 lg:px-5">
       <div className="mx-auto max-w-7xl space-y-5">
-        <section className="rounded-lg border border-white/10 bg-black/35 p-5 shadow-[0_24px_80px_rgba(0,0,0,0.32)]">
+        <section className="rounded-[34px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.92),rgba(5,5,5,0.96))] p-5 shadow-[0_28px_90px_rgba(0,0,0,0.34)]">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <p className="inline-flex items-center gap-2 rounded-full border border-[#7CFF00]/20 bg-[#7CFF00]/8 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#d7ffab]">
@@ -199,7 +199,7 @@ export function ArchitectReportsWorkspace() {
           {status ? (
             <div
               className={cn(
-                "mt-4 rounded-lg border px-4 py-3 text-sm",
+                "mt-4 rounded-[20px] border px-4 py-3 text-sm",
                 status.tone === "success" && "border-[#7CFF00]/25 bg-[#7CFF00]/10 text-[#d7ffab]",
                 status.tone === "error" && "border-rose-400/25 bg-rose-400/10 text-rose-100",
                 status.tone === "info" && "border-white/10 bg-white/[0.04] text-white/70"
@@ -211,26 +211,26 @@ export function ArchitectReportsWorkspace() {
         </section>
 
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <Card className="border-white/10 bg-black/24 p-4">
+          <Card className="rounded-[24px] border-white/10 bg-black/24 p-4">
             <p className="text-xs uppercase tracking-[0.18em] text-white/42">Total</p>
             <p className="mt-3 text-3xl font-black text-white">{payload?.summary.total ?? 0}</p>
           </Card>
-          <Card className="border-rose-400/20 bg-rose-400/8 p-4">
+          <Card className="rounded-[24px] border-rose-400/20 bg-rose-400/8 p-4">
             <p className="text-xs uppercase tracking-[0.18em] text-rose-100/72">Open</p>
             <p className="mt-3 text-3xl font-black text-white">{payload?.summary.received ?? 0}</p>
           </Card>
-          <Card className="border-amber-300/20 bg-amber-300/8 p-4">
+          <Card className="rounded-[24px] border-amber-300/20 bg-amber-300/8 p-4">
             <p className="text-xs uppercase tracking-[0.18em] text-amber-100/72">Under Review</p>
             <p className="mt-3 text-3xl font-black text-white">{payload?.summary.underReview ?? 0}</p>
           </Card>
-          <Card className="border-[#7CFF00]/20 bg-[#7CFF00]/8 p-4">
+          <Card className="rounded-[24px] border-[#7CFF00]/20 bg-[#7CFF00]/8 p-4">
             <p className="text-xs uppercase tracking-[0.18em] text-[#d7ffab]">Resolved / Dismissed</p>
             <p className="mt-3 text-3xl font-black text-white">{(payload?.summary.resolved ?? 0) + (payload?.summary.dismissed ?? 0)}</p>
           </Card>
         </section>
 
         <section className="grid gap-4 xl:grid-cols-[25rem_1fr]">
-          <Card className="border-white/10 bg-black/28 p-4">
+          <Card className="rounded-[30px] border-white/10 bg-black/28 p-4">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/42">Latest reports</p>
@@ -240,7 +240,7 @@ export function ArchitectReportsWorkspace() {
             </div>
             <div className="mt-4 space-y-3">
               {loading ? (
-                <p className="rounded-lg border border-white/10 bg-white/[0.035] p-4 text-sm text-white/58">Loading reports...</p>
+                <p className="rounded-[20px] border border-white/10 bg-white/[0.035] p-4 text-sm text-white/58">Loading reports...</p>
               ) : payload?.reports.length ? (
                 payload.reports.map((report) => (
                   <ReportCard
@@ -251,12 +251,12 @@ export function ArchitectReportsWorkspace() {
                   />
                 ))
               ) : (
-                <p className="rounded-lg border border-white/10 bg-white/[0.035] p-4 text-sm text-white/58">No reports yet.</p>
+                <p className="rounded-[20px] border border-dashed border-white/10 bg-white/[0.035] p-4 text-sm leading-6 text-white/58">No reports yet. Trust and safety submissions will appear here as case files.</p>
               )}
             </div>
           </Card>
 
-          <Card className="border-white/10 bg-black/28 p-5">
+          <Card className="rounded-[30px] border-white/10 bg-black/28 p-5">
             {activeReport ? (
               <div className="space-y-5">
                 <div className="flex flex-col gap-4 border-b border-white/10 pb-5 lg:flex-row lg:items-start lg:justify-between">
@@ -276,7 +276,7 @@ export function ArchitectReportsWorkspace() {
                 </div>
 
                 <div className="grid gap-3 lg:grid-cols-2">
-                  <div className="rounded-lg border border-white/10 bg-black/20 p-4">
+                  <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
                     <p className="text-xs uppercase tracking-[0.18em] text-white/42">Target</p>
                     <p className="mt-2 text-sm font-semibold text-white">{activeReport.targetName}</p>
                     <p className="mt-1 text-xs text-white/50">Reference: {activeReport.targetReference}</p>
@@ -285,7 +285,7 @@ export function ArchitectReportsWorkspace() {
                       <Link href={activeReport.targetHref as Route} className="mt-3 inline-flex text-sm font-semibold text-[#d7ffab]">View target profile</Link>
                     ) : null}
                   </div>
-                  <div className="rounded-lg border border-white/10 bg-black/20 p-4">
+                  <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
                     <p className="text-xs uppercase tracking-[0.18em] text-white/42">Reporter</p>
                     <p className="mt-2 text-sm font-semibold text-white">{activeReport.reporterName}</p>
                     <p className="mt-1 text-xs text-white/50">{activeReport.reporterEmail ?? activeReport.reporterId ?? "No reporter reference"}</p>
@@ -298,7 +298,7 @@ export function ArchitectReportsWorkspace() {
                   </div>
                 </div>
 
-                <div className="rounded-lg border border-white/10 bg-black/20 p-4">
+                <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
                   <p className="text-xs uppercase tracking-[0.18em] text-white/42">Full notes</p>
                   <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-white/72">{activeReport.details || "No notes provided."}</p>
                 </div>
@@ -317,7 +317,7 @@ export function ArchitectReportsWorkspace() {
                   ))}
                 </div>
 
-                <div className="rounded-lg border border-white/10 bg-black/20 p-4">
+                <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
                   <div className="flex items-center gap-2 text-white">
                     <CheckCircle2 className="h-4 w-4 text-[#d7ffab]" />
                     <h3 className="text-sm font-semibold">Event history</h3>
@@ -327,7 +327,7 @@ export function ArchitectReportsWorkspace() {
                       <p className="text-sm text-white/58">Loading event history...</p>
                     ) : detail?.events.length ? (
                       detail.events.map((event) => (
-                        <div key={event.id} className="rounded-lg border border-white/8 bg-white/[0.03] p-3">
+                        <div key={event.id} className="rounded-[20px] border border-white/8 bg-white/[0.03] p-3">
                           <p className="text-sm font-semibold text-white">{event.actionLabel}</p>
                           <p className="mt-1 text-xs text-white/42">{formatDate(event.createdAt)}</p>
                           {event.notes ? <p className="mt-2 text-sm text-white/62">{event.notes}</p> : null}
@@ -340,7 +340,7 @@ export function ArchitectReportsWorkspace() {
                 </div>
               </div>
             ) : (
-              <div className="flex min-h-[32rem] items-center justify-center rounded-lg border border-white/10 bg-white/[0.025] p-8 text-center">
+              <div className="flex min-h-[32rem] items-center justify-center rounded-[26px] border border-dashed border-white/10 bg-white/[0.025] p-8 text-center">
                 <div>
                   <AlertTriangle className="mx-auto h-8 w-8 text-white/42" />
                   <p className="mt-4 text-lg font-semibold text-white">Select a report</p>

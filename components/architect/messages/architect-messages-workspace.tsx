@@ -75,7 +75,7 @@ function ThreadRow({
       type="button"
       onClick={onSelect}
       className={cn(
-        "grid w-full grid-cols-[2.75rem_1fr] gap-3 rounded-lg border p-3 text-left transition",
+        "grid w-full grid-cols-[2.75rem_1fr] gap-3 rounded-[22px] border p-3 text-left transition",
         selected ? "border-[#7CFF00]/35 bg-[#7CFF00]/8" : "border-white/10 bg-black/20 hover:border-white/18"
       )}
     >
@@ -176,7 +176,7 @@ export function ArchitectMessagesWorkspace() {
   return (
     <main className="px-2 py-6 sm:px-3 lg:px-5">
       <div className="mx-auto max-w-7xl space-y-5">
-        <section className="rounded-lg border border-white/10 bg-black/35 p-5 shadow-[0_24px_80px_rgba(0,0,0,0.32)]">
+        <section className="rounded-[34px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.92),rgba(5,5,5,0.96))] p-5 shadow-[0_28px_90px_rgba(0,0,0,0.34)]">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
               <p className="inline-flex items-center gap-2 rounded-full border border-[#7CFF00]/20 bg-[#7CFF00]/8 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#d7ffab]">
@@ -196,7 +196,7 @@ export function ArchitectMessagesWorkspace() {
           {status ? (
             <div
               className={cn(
-                "mt-4 rounded-lg border px-4 py-3 text-sm",
+                "mt-4 rounded-[20px] border px-4 py-3 text-sm",
                 status.tone === "success" && "border-[#7CFF00]/25 bg-[#7CFF00]/10 text-[#d7ffab]",
                 status.tone === "info" && "border-white/10 bg-white/[0.04] text-white/70",
                 status.tone === "error" && "border-rose-400/25 bg-rose-400/10 text-rose-100"
@@ -208,7 +208,7 @@ export function ArchitectMessagesWorkspace() {
         </section>
 
         <section className="grid gap-4 lg:grid-cols-[24rem_1fr]">
-          <Card className="border-white/10 bg-black/28 p-4">
+          <Card className="rounded-[30px] border-white/10 bg-black/28 p-4">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/42">Conversations</p>
@@ -218,7 +218,7 @@ export function ArchitectMessagesWorkspace() {
             </div>
             <div className="mt-4 space-y-2">
               {loadingInbox ? (
-                <p className="rounded-lg border border-white/10 bg-white/[0.035] p-4 text-sm text-white/58">Loading support conversations...</p>
+                <p className="rounded-[20px] border border-white/10 bg-white/[0.035] p-4 text-sm text-white/58">Loading support conversations...</p>
               ) : inbox?.threads.length ? (
                 inbox.threads.map((thread) => (
                   <ThreadRow
@@ -229,12 +229,12 @@ export function ArchitectMessagesWorkspace() {
                   />
                 ))
               ) : (
-                <p className="rounded-lg border border-white/10 bg-white/[0.035] p-4 text-sm text-white/58">No support conversations yet.</p>
+                <p className="rounded-[20px] border border-dashed border-white/10 bg-white/[0.035] p-4 text-sm leading-6 text-white/58">No support conversations yet. Client reports and support threads will appear here when they need Architect attention.</p>
               )}
             </div>
           </Card>
 
-          <Card className="border-white/10 bg-black/28 p-4">
+          <Card className="rounded-[30px] border-white/10 bg-black/28 p-4">
             {selectedThread ? (
               <div className="flex min-h-[36rem] flex-col">
                 <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-4">
@@ -258,7 +258,7 @@ export function ArchitectMessagesWorkspace() {
                   ) : threadPayload?.messages.length ? (
                     threadPayload.messages.map((message) => (
                       <div key={message.id} className={cn("flex", message.isOwn ? "justify-end" : "justify-start")}>
-                        <div className={cn("max-w-[82%] rounded-lg border px-4 py-3 text-sm leading-6", message.isOwn ? "border-[#7CFF00]/25 bg-[#7CFF00]/12 text-[#ecffd6]" : "border-white/10 bg-white/[0.045] text-white/78")}>
+                        <div className={cn("max-w-[82%] rounded-[22px] border px-4 py-3 text-sm leading-6", message.isOwn ? "border-[#7CFF00]/25 bg-[#7CFF00]/12 text-[#ecffd6]" : "border-white/10 bg-white/[0.045] text-white/78")}>
                           <p className="whitespace-pre-wrap">{message.body}</p>
                           <p className="mt-2 text-[11px] text-white/42">{formatRelativeTime(message.createdAt)}</p>
                         </div>
@@ -277,7 +277,7 @@ export function ArchitectMessagesWorkspace() {
                       value={reply}
                       onChange={(event) => setReply(event.target.value)}
                       placeholder="Reply as BVRB3R Support..."
-                      className="min-h-24 rounded-lg border border-white/10 bg-black/35 px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/32 focus:border-[#7CFF00]/35 focus:ring-2 focus:ring-[#7CFF00]/10"
+                      className="min-h-24 rounded-[22px] border border-white/10 bg-black/35 px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/32 focus:border-[#7CFF00]/35 focus:ring-2 focus:ring-[#7CFF00]/10"
                     />
                     <Button type="button" onClick={() => void handleReply()} disabled={sending || !reply.trim()}>
                       <Send className="h-4 w-4" />
@@ -287,7 +287,7 @@ export function ArchitectMessagesWorkspace() {
                 </div>
               </div>
             ) : (
-              <div className="flex min-h-[28rem] items-center justify-center rounded-lg border border-white/10 bg-white/[0.025] p-8 text-center">
+              <div className="flex min-h-[28rem] items-center justify-center rounded-[26px] border border-dashed border-white/10 bg-white/[0.025] p-8 text-center">
                 <div>
                   <MessageCircle className="mx-auto h-8 w-8 text-white/42" />
                   <p className="mt-4 text-lg font-semibold text-white">Select a support conversation</p>

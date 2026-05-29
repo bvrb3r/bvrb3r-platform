@@ -265,7 +265,7 @@ function QueueRow({
   const lastReleaseFailure = item.lastReleaseFailureMessage ?? item.lastFailedExecutionReason ?? null;
 
   return (
-    <div className="rounded-[24px] border border-white/8 bg-black/24 p-4">
+    <div className="rounded-[28px] border border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(0,0,0,0.26))] p-4 shadow-[0_18px_54px_rgba(0,0,0,0.22)]">
       <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-start">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -327,14 +327,14 @@ function QueueRow({
           ) : null}
         </div>
 
-        <div className="grid min-w-[18rem] gap-3 sm:grid-cols-2 lg:min-w-[20rem]">
+        <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:min-w-[20rem]">
           {[
             ["Gross", payoutCurrency(item.providerGrossAmount)],
             ["BVRB3R fee", payoutCurrency(item.platformFeeAmount)],
             ["Barber payout", payoutCurrency(item.barberPayoutAmount)],
             ["Shop split", payoutCurrency(item.shopSplitAmount)]
           ].map(([label, value]) => (
-            <div key={label} className="rounded-[18px] border border-white/8 bg-black/24 p-3">
+            <div key={label} className="rounded-[20px] border border-white/8 bg-black/28 p-3">
               <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-white/36">{label}</p>
               <p className="mt-2 text-sm font-black text-white">{value}</p>
             </div>
@@ -548,7 +548,7 @@ export function ArchitectFreelancePayoutQueue() {
   }
 
   return (
-    <Card className="rounded-[32px] p-6" data-testid="architect-freelance-payout-queue">
+    <Card className="rounded-[34px] border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.94),rgba(5,5,5,0.96))] p-6" data-testid="architect-freelance-payout-queue">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="surface-label">Freelance payout release</p>
@@ -560,14 +560,14 @@ export function ArchitectFreelancePayoutQueue() {
         <WalletCards className="h-5 w-5 text-[#baff69]" />
       </div>
 
-      <div className="mt-5 grid gap-3 md:grid-cols-4">
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[
           ["Ready", String(payload?.summary.readyCount ?? 0), payoutCurrency(payload?.summary.readyAmount ?? 0)],
           ["Blocked", String(payload?.summary.blockedCount ?? 0), "Needs review"],
           ["Released", String(payload?.summary.releasedCount ?? 0), "Already paid out"],
           ["Scope", "Freelance", "Commission and booth rent release stay locked"]
         ].map(([label, value, detail]) => (
-          <div key={label} className="rounded-[20px] border border-white/8 bg-black/24 p-4">
+          <div key={label} className="rounded-[22px] border border-white/8 bg-black/28 p-4">
             <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-white/36">{label}</p>
             <p className="mt-3 text-2xl font-black text-white">{value}</p>
             <p className="mt-2 text-xs leading-5 text-white/50">{detail}</p>
@@ -681,10 +681,15 @@ export function ArchitectFreelancePayoutQueue() {
             onRelease={(next) => void handleRelease(next)}
           />
         )) : (
-          <div className="rounded-[22px] border border-dashed border-white/10 bg-black/24 p-5 text-sm leading-7 text-white/58">
-            <div className="flex items-center gap-3">
+          <div className="rounded-[26px] border border-dashed border-[#7CFF00]/16 bg-[#7CFF00]/8 p-5 text-sm leading-7 text-white/62">
+            <div className="flex items-start gap-3">
               <CheckCircle2 className="h-5 w-5 text-[#baff69]" aria-hidden="true" />
-              <span>No freelance payout releases are waiting right now.</span>
+              <div>
+                <p className="font-semibold text-white">No freelance payout releases are waiting right now.</p>
+                <p className="mt-1 text-sm leading-6 text-white/56">
+                  Released payouts stay auditable. New ready freelance rows will appear here after routing clears.
+                </p>
+              </div>
             </div>
           </div>
         )}

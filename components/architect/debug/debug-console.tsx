@@ -85,7 +85,7 @@ async function readJson<T>(response: Response) {
 
 function JsonBlock({ value }: { value: unknown }) {
   return (
-    <pre className="max-h-72 overflow-auto rounded-lg border border-white/10 bg-black/35 p-3 text-xs leading-5 text-white/70">
+    <pre className="max-h-72 overflow-auto rounded-[20px] border border-white/10 bg-black/35 p-3 text-xs leading-5 text-white/70">
       {JSON.stringify(value, null, 2)}
     </pre>
   );
@@ -93,7 +93,7 @@ function JsonBlock({ value }: { value: unknown }) {
 
 function PacketSummary({ packet }: { packet: ArchitectDebugPacket }) {
   return (
-    <Card className="border-white/10 bg-black/25 p-5">
+    <Card className="rounded-[28px] border-white/10 bg-black/25 p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-white/45">Diagnosis</p>
@@ -105,15 +105,15 @@ function PacketSummary({ packet }: { packet: ArchitectDebugPacket }) {
         </span>
       </div>
       <div className="mt-5 grid gap-3 md:grid-cols-3">
-        <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+        <div className="rounded-[20px] border border-white/10 bg-black/20 p-3">
           <p className="text-xs uppercase tracking-[0.16em] text-white/40">Code</p>
           <p className="mt-2 break-words font-mono text-sm text-white">{packet.summary.diagnosisCode}</p>
         </div>
-        <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+        <div className="rounded-[20px] border border-white/10 bg-black/20 p-3">
           <p className="text-xs uppercase tracking-[0.16em] text-white/40">Layer</p>
           <p className="mt-2 text-sm text-white">{packet.diagnosis.affectedLayer}</p>
         </div>
-        <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+        <div className="rounded-[20px] border border-white/10 bg-black/20 p-3">
           <p className="text-xs uppercase tracking-[0.16em] text-white/40">Repair</p>
           <p className="mt-2 text-sm text-white">{packet.summary.canRepair ? packet.summary.repairType : "No safe repair"}</p>
         </div>
@@ -130,11 +130,11 @@ function EvidencePanel({ packet }: { packet: ArchitectDebugPacket }) {
     ...packet.evidence.logEvidence
   ];
   return (
-    <Card className="border-white/10 bg-black/25 p-5">
+    <Card className="rounded-[28px] border-white/10 bg-black/25 p-5">
       <h3 className="text-lg font-semibold text-white">Evidence</h3>
       <div className="mt-4 space-y-3">
         {evidence.map((item, index) => (
-          <div key={`${item.label}-${index}`} className="rounded-lg border border-white/10 bg-black/20 p-3">
+          <div key={`${item.label}-${index}`} className="rounded-[20px] border border-white/10 bg-black/20 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="font-medium text-white">{item.label}</p>
               <span className={cn("rounded-full border px-2 py-1 text-[11px]", statusClass(item.status))}>{item.status}</span>
@@ -153,11 +153,11 @@ function EntitiesPanel({ packet }: { packet: ArchitectDebugPacket }) {
     return Boolean(value);
   });
   return (
-    <Card className="border-white/10 bg-black/25 p-5">
+    <Card className="rounded-[28px] border-white/10 bg-black/25 p-5">
       <h3 className="text-lg font-semibold text-white">Database Truth</h3>
       <div className="mt-4 grid gap-3">
         {entries.map(([key, value]) => (
-          <details key={key} className="rounded-lg border border-white/10 bg-black/20 p-3">
+          <details key={key} className="rounded-[20px] border border-white/10 bg-black/20 p-3">
             <summary className="cursor-pointer text-sm font-semibold text-white">{entityTitle(key)}</summary>
             <div className="mt-3">
               <JsonBlock value={value} />
@@ -171,11 +171,11 @@ function EntitiesPanel({ packet }: { packet: ArchitectDebugPacket }) {
 
 function ChecklistPanel({ packet }: { packet: ArchitectDebugPacket }) {
   return (
-    <Card className="border-white/10 bg-black/25 p-5">
+    <Card className="rounded-[28px] border-white/10 bg-black/25 p-5">
       <h3 className="text-lg font-semibold text-white">Validation Checklist</h3>
       <div className="mt-4 space-y-2">
         {packet.validationChecklist.map((item) => (
-          <div key={item.stage} className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-black/20 p-3">
+          <div key={item.stage} className="flex items-center justify-between gap-3 rounded-[20px] border border-white/10 bg-black/20 p-3">
             <div>
               <p className="font-mono text-sm text-white">{item.stage}</p>
               {item.reason ? <p className="mt-1 text-xs text-white/50">{item.reason}</p> : null}
@@ -201,14 +201,14 @@ function SidePanel({
 }) {
   return (
     <div className="space-y-4">
-      <Card className="border-white/10 bg-black/25 p-5">
+      <Card className="rounded-[28px] border-white/10 bg-black/25 p-5">
         <div className="flex items-center gap-2 text-white">
           <Wrench className="h-4 w-4" />
           <h3 className="font-semibold">Repair</h3>
         </div>
         <div className="mt-4 space-y-3">
           {packet.repairActions.length ? packet.repairActions.map((action) => (
-            <div key={action.repairType} className="rounded-lg border border-white/10 bg-black/20 p-3">
+            <div key={action.repairType} className="rounded-[20px] border border-white/10 bg-black/20 p-3">
               <p className="font-medium text-white">{action.label}</p>
               <p className="mt-1 text-sm text-white/58">{action.description}</p>
               <Button className="mt-3 w-full" disabled={!action.canRun || repairPending} onClick={onRepair}>
@@ -219,14 +219,14 @@ function SidePanel({
             <p className="text-sm text-white/58">No safe repair is available for this packet.</p>
           )}
           {repairResult ? (
-            <div className={cn("rounded-lg border p-3 text-sm", statusClass(repairResult.ok ? "succeeded" : "failed"))}>
+            <div className={cn("rounded-[20px] border p-3 text-sm", statusClass(repairResult.ok ? "succeeded" : "failed"))}>
               {repairResult.warning ?? (repairResult.ok ? "Repair completed." : repairResult.error ?? "Repair failed.")}
             </div>
           ) : null}
         </div>
       </Card>
 
-      <Card className="border-white/10 bg-black/25 p-5">
+      <Card className="rounded-[28px] border-white/10 bg-black/25 p-5">
         <div className="flex items-center gap-2 text-white">
           <FileCode2 className="h-4 w-4" />
           <h3 className="font-semibold">Codex Prompt</h3>
@@ -234,11 +234,11 @@ function SidePanel({
         <textarea
           readOnly
           value={packet.codexPrompt ?? ""}
-          className="mt-4 h-64 w-full resize-none rounded-lg border border-white/10 bg-black/30 p-3 font-mono text-xs text-white/70"
+          className="mt-4 h-64 w-full resize-none rounded-[20px] border border-white/10 bg-black/30 p-3 font-mono text-xs text-white/70"
         />
       </Card>
 
-      <Card className="border-white/10 bg-black/25 p-5">
+      <Card className="rounded-[28px] border-white/10 bg-black/25 p-5">
         <div className="flex items-center gap-2 text-white">
           <Clipboard className="h-4 w-4" />
           <h3 className="font-semibold">SQL</h3>
@@ -247,7 +247,7 @@ function SidePanel({
           {packet.sqlSnippets.map((snippet) => (
             <div key={snippet.label}>
               <p className="text-sm font-medium text-white">{snippet.label}</p>
-              <pre className="mt-2 overflow-auto rounded-lg border border-white/10 bg-black/30 p-3 text-xs text-white/65">{snippet.sql}</pre>
+              <pre className="mt-2 overflow-auto rounded-[20px] border border-white/10 bg-black/30 p-3 text-xs text-white/65">{snippet.sql}</pre>
             </div>
           ))}
         </div>
@@ -324,7 +324,7 @@ export function DebugConsole({ initialMode }: { initialMode?: string }) {
   return (
     <main className="px-2 pb-12 pt-4 sm:px-3 lg:px-5">
       <div className="mx-auto max-w-7xl space-y-5">
-        <section className="rounded-lg border border-white/10 bg-black/30 p-5">
+        <section className="rounded-[34px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.92),rgba(5,5,5,0.96))] p-5 shadow-[0_28px_90px_rgba(0,0,0,0.34)]">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <div className="inline-flex items-center gap-2 rounded-full border border-[#7CFF00]/18 bg-[#7CFF00]/8 px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-[#d7ffab]">
@@ -333,19 +333,19 @@ export function DebugConsole({ initialMode }: { initialMode?: string }) {
               </div>
               <h1 className="mt-4 text-3xl font-semibold text-white">BVRB3R Architect Debug Console</h1>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-white/58">
-                Evidence, diagnosis, safe repair, Codex packet, deployment check, production validation.
+                Analyze one production symptom at a time, review the evidence packet, and run safe repairs only when the system exposes them.
               </p>
             </div>
             <div className="grid gap-2 text-sm text-white/62 sm:grid-cols-3 lg:min-w-[28rem]">
-              <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+              <div className="rounded-[20px] border border-white/10 bg-black/20 p-3">
                 <p className="text-xs uppercase tracking-[0.16em] text-white/40">Loop</p>
                 <p className="mt-1 text-white">Evidence led</p>
               </div>
-              <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+              <div className="rounded-[20px] border border-white/10 bg-black/20 p-3">
                 <p className="text-xs uppercase tracking-[0.16em] text-white/40">Repair</p>
                 <p className="mt-1 text-white">Safe only</p>
               </div>
-              <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+              <div className="rounded-[20px] border border-white/10 bg-black/20 p-3">
                 <p className="text-xs uppercase tracking-[0.16em] text-white/40">Audit</p>
                 <p className="mt-1 text-white">Tracked</p>
               </div>
@@ -354,12 +354,12 @@ export function DebugConsole({ initialMode }: { initialMode?: string }) {
         </section>
 
         <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
-          <Card className="border-white/10 bg-black/25 p-5">
+          <Card className="rounded-[28px] border-white/10 bg-black/25 p-5">
             <div className="grid gap-3 lg:grid-cols-[12rem_minmax(0,1fr)_auto]">
               <select
                 value={mode}
                 onChange={(event) => setMode(event.target.value)}
-                className="min-h-11 rounded-lg border border-white/10 bg-black/30 px-3 text-sm text-white"
+                className="min-h-11 rounded-[20px] border border-white/10 bg-black/30 px-3 text-sm text-white"
               >
                 {modeOptions.map((option) => (
                   <option key={option.id} value={option.id}>{option.label}</option>
@@ -370,7 +370,7 @@ export function DebugConsole({ initialMode }: { initialMode?: string }) {
                   value={logText}
                   onChange={(event) => setLogText(event.target.value)}
                   placeholder="Paste Vercel runtime log"
-                  className="min-h-24 rounded-lg border border-white/10 bg-black/30 p-3 text-sm text-white"
+                  className="min-h-24 rounded-[20px] border border-white/10 bg-black/30 p-3 text-sm text-white"
                 />
               ) : (
                 <Input
@@ -386,14 +386,14 @@ export function DebugConsole({ initialMode }: { initialMode?: string }) {
               </Button>
             </div>
             {error ? (
-              <div className="mt-4 flex items-start gap-2 rounded-lg border border-rose-400/20 bg-rose-400/10 p-3 text-sm text-rose-100">
+              <div className="mt-4 flex items-start gap-2 rounded-[20px] border border-rose-400/20 bg-rose-400/10 p-3 text-sm text-rose-100">
                 <AlertTriangle className="mt-0.5 h-4 w-4" />
                 {error}
               </div>
             ) : null}
           </Card>
 
-          <Card className="border-white/10 bg-black/25 p-5">
+          <Card className="rounded-[28px] border-white/10 bg-black/25 p-5">
             <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-white/50">Quick Actions</h2>
             <div className="mt-3 grid gap-2">
               {quickCards.map((card) => (
@@ -401,7 +401,7 @@ export function DebugConsole({ initialMode }: { initialMode?: string }) {
                   key={card.mode}
                   type="button"
                   onClick={() => setMode(card.mode)}
-                  className="rounded-lg border border-white/10 bg-black/20 p-3 text-left transition hover:border-[#7CFF00]/22"
+                  className="rounded-[20px] border border-white/10 bg-black/20 p-3 text-left transition hover:border-[#7CFF00]/22"
                 >
                   <p className="text-sm font-medium text-white">{card.label}</p>
                   <p className="mt-1 text-xs text-white/50">{card.detail}</p>
@@ -426,7 +426,7 @@ export function DebugConsole({ initialMode }: { initialMode?: string }) {
         ) : null}
 
         {logResult ? (
-          <Card className="border-white/10 bg-black/25 p-5">
+          <Card className="rounded-[28px] border-white/10 bg-black/25 p-5">
             <div className="mb-4 flex items-center gap-2 text-white">
               <CheckCircle2 className="h-4 w-4" />
               <h2 className="font-semibold">Parsed Log Evidence</h2>

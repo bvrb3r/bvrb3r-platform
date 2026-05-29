@@ -95,6 +95,20 @@ export function ArchitectVerificationQueueWorkspace({
   };
   const query = useArchitectVerificationQueueQuery(deferredFilters, initialData);
   const data = query.data ?? initialData;
+  const queueGroups = data.items.reduce(
+    (counts, item) => {
+      const status = item.canonicalOverallStatus.toLowerCase();
+      if (status.includes("approved") || status.includes("verified")) {
+        counts.approved += 1;
+      } else if (status.includes("rejected") || status.includes("expired") || status.includes("suspended")) {
+        counts.closed += 1;
+      } else {
+        counts.pending += 1;
+      }
+      return counts;
+    },
+    { pending: 0, approved: 0, closed: 0 }
+  );
 
   return (
     <div className="app-screen safe-top-pad px-2 py-2 pb-[calc(env(safe-area-inset-bottom,0px)+2rem)] sm:px-3 sm:py-3 lg:px-5 lg:py-5">
@@ -137,6 +151,24 @@ export function ArchitectVerificationQueueWorkspace({
             </div>
           </GlassCard>
         ) : null}
+
+        <section className="grid gap-3 md:grid-cols-3">
+          <GlassCard className="border-amber-300/16 bg-amber-300/8 p-5">
+            <p className="surface-label text-amber-100/72">Pending review</p>
+            <p className="mt-3 text-3xl font-semibold text-white">{queueGroups.pending}</p>
+            <p className="mt-2 text-sm leading-6 text-white/56">Submitted, under review, or needing an update.</p>
+          </GlassCard>
+          <GlassCard className="border-[#7CFF00]/16 bg-[#7CFF00]/8 p-5">
+            <p className="surface-label text-[#d7ffab]">Approved</p>
+            <p className="mt-3 text-3xl font-semibold text-white">{queueGroups.approved}</p>
+            <p className="mt-2 text-sm leading-6 text-white/56">Trusted records already clear in this view.</p>
+          </GlassCard>
+          <GlassCard className="border-white/10 bg-black/24 p-5">
+            <p className="surface-label">Closed or blocked</p>
+            <p className="mt-3 text-3xl font-semibold text-white">{queueGroups.closed}</p>
+            <p className="mt-2 text-sm leading-6 text-white/56">Rejected, expired, or suspended cases.</p>
+          </GlassCard>
+        </section>
 
         <GlassCard className="p-6">
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1.8fr)_200px_200px_200px]">

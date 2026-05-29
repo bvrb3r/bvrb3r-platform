@@ -937,6 +937,40 @@ export function ArchitectConsole({
     );
   const homeSection = (
     <div className="space-y-4">
+      <Card className="rounded-[34px] border-[#7CFF00]/12 bg-[linear-gradient(135deg,rgba(124,255,0,0.08),rgba(10,10,10,0.86)_46%,rgba(0,0,0,0.92))] p-6">
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+          <div>
+            <p className="surface-label text-[#d7ffab]">Mission control</p>
+            <h2 className="mt-3 max-w-3xl text-2xl font-semibold text-white sm:text-4xl" data-display="true">
+              Platform signals first. Deep tools one tap away.
+            </h2>
+            <p className="mt-3 max-w-3xl text-sm leading-7 text-white/62">
+              Money, verification, access, and diagnostics stay visible here without duplicating the underlying operator flows.
+            </p>
+          </div>
+          <Link href="/architect/debug" className="inline-flex min-h-12 items-center justify-center rounded-full border border-[#7CFF00]/24 bg-[#7CFF00]/10 px-5 py-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-white transition hover:border-[#7CFF00]/35 hover:text-[#d7ffab]">
+            Open debug console
+          </Link>
+        </div>
+        <div className="mt-5 grid gap-3 md:grid-cols-3">
+          <div className="rounded-[24px] border border-white/8 bg-black/25 p-4">
+            <p className="surface-label">Money health</p>
+            <p className="mt-3 text-2xl font-semibold text-white">{moneyAttentionCount}</p>
+            <p className="mt-2 text-sm leading-6 text-white/56">Payout, billing, dispute, and anomaly signals needing eyes.</p>
+          </div>
+          <div className="rounded-[24px] border border-white/8 bg-black/25 p-4">
+            <p className="surface-label">Verification watch</p>
+            <p className="mt-3 text-2xl font-semibold text-white">{verificationBacklogCount}</p>
+            <p className="mt-2 text-sm leading-6 text-white/56">Barber and shop trust records waiting for review.</p>
+          </div>
+          <div className="rounded-[24px] border border-white/8 bg-black/25 p-4">
+            <p className="surface-label">Access posture</p>
+            <p className="mt-3 text-2xl font-semibold text-white">{accountControlBlockers}</p>
+            <p className="mt-2 text-sm leading-6 text-white/56">Suspended, deactivated, or blocked accounts in scope.</p>
+          </div>
+        </div>
+      </Card>
+
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Total users" value={String(data.overview.totalUsers)} detail="Accounts inside platform scope." accent />
         <MetricCard label="Active clients" value={String(data.overview.activeClients)} detail="Client accounts still live." />
@@ -1223,7 +1257,7 @@ export function ArchitectConsole({
   return (
     <div className="app-screen safe-top-pad px-2 py-2 pb-[calc(env(safe-area-inset-bottom,0px)+2rem)] sm:px-3 sm:py-3 lg:px-5 lg:py-5">
       <div className="mx-auto max-w-7xl space-y-4">
-        <Card className="rounded-[34px] p-6">
+        <Card className="rounded-[36px] border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.92),rgba(5,5,5,0.96))] p-6 shadow-[0_28px_90px_rgba(0,0,0,0.34)]">
           <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
             <div>
               <div className="editorial-kicker">
@@ -1252,7 +1286,7 @@ export function ArchitectConsole({
             </div>
           </div>
 
-          <div className="mt-5 flex flex-wrap gap-2">
+          <div className="mt-5 flex flex-wrap gap-2 border-t border-white/8 pt-5">
             <Link href="/architect/verifications" className="inline-flex min-h-12 items-center rounded-full border border-[#7CFF00]/24 bg-[#7CFF00]/10 px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-white transition hover:border-[#7CFF00]/35 hover:text-[#d7ffab] sm:text-[11px] sm:tracking-[0.2em]">
               Open verification queue
             </Link>
