@@ -446,6 +446,9 @@ export function OwnerTeamWorkspace() {
             Team
           </h1>
           <p className="mt-3 text-lg font-medium text-white/68">Manage your barbers & team performance</p>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-white/52">
+            Phase 2 relationship controls will live here. Today, this tab keeps team readiness, payouts, and shop membership status easy to scan.
+          </p>
         </div>
         <button
           type="button"
@@ -561,6 +564,24 @@ export function OwnerTeamWorkspace() {
         )}
       </section>
 
+      <GlassCard className="grid gap-4 p-5 md:grid-cols-3">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Relationship posture</p>
+          <p className="mt-3 text-lg font-extrabold text-white">Commission / Booth Rent / Freelance</p>
+          <p className="mt-2 text-sm leading-6 text-white/56">Labels come from existing membership and compensation data. New Phase 2A controls are not active yet.</p>
+        </div>
+        <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-white/42">Needs setup</p>
+          <p className="mt-3 text-2xl font-black text-amber-300">{team.filter((barber) => barber.statusKind === "pending").length}</p>
+          <p className="mt-2 text-sm leading-6 text-white/56">Verification, payout, or invite readiness.</p>
+        </div>
+        <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-white/42">Connected team</p>
+          <p className="mt-3 text-2xl font-black text-white">{team.length}</p>
+          <p className="mt-2 text-sm leading-6 text-white/56">Visible in the owner scope today.</p>
+        </div>
+      </GlassCard>
+
       <section id="team-roster" className="space-y-3">
         <div className="hidden grid-cols-[minmax(13rem,1.5fr)_0.8fr_0.7fr_0.85fr_0.9fr_0.6fr_2.25rem] gap-4 px-4 text-xs font-black uppercase tracking-[0.12em] text-white/46 md:grid">
           <span>Barber</span>
@@ -581,7 +602,7 @@ export function OwnerTeamWorkspace() {
         ) : !team.length ? (
           <SectionEmptyState
             title="No barbers assigned yet."
-            detail="Invite your first barber to start managing your shop team."
+            detail="Invite barbers to connect your shop team."
             action={
               <button
                 type="button"
@@ -810,7 +831,7 @@ export function OwnerTeamWorkspace() {
                           <span>{barber.acceptsInstantBookings ? "Instant booking on" : "Instant booking off"}</span>
                         </div>
                         <div className="mt-3 flex flex-wrap gap-2">
-                          {barber.readinessLabels.map((label) => (
+                          {(barber.readinessLabels ?? []).map((label) => (
                             <span
                               key={label}
                               className={cn(

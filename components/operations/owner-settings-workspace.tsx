@@ -597,6 +597,9 @@ export function OwnerSettingsWorkspace({
         <div>
           <h1 className="text-5xl font-black leading-none tracking-[-0.055em] text-white sm:text-6xl">Settings</h1>
           <p className="mt-3 text-lg font-medium text-white/62">Manage your shop & business controls</p>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-white/52">
+            Private shop setup, verification, payments, policies, team permissions, and compliance live here without crowding the day-to-day tabs.
+          </p>
         </div>
       </header>
 
@@ -678,6 +681,24 @@ export function OwnerSettingsWorkspace({
         }}
         actionHandlers={ownerGateActionHandlers}
       />
+
+      <GlassCard className="grid gap-4 p-5 md:grid-cols-3">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Business settings hub</p>
+          <p className="mt-3 text-lg font-extrabold text-white">Setup is grouped by decision, not paperwork.</p>
+          <p className="mt-2 text-sm leading-6 text-white/56">Use the rows below for shop profile, payments, team permissions, and legal readiness.</p>
+        </div>
+        <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-white/42">Payment setup</p>
+          <p className={cn("mt-3 text-lg font-extrabold", stripeStatus.tone === "green" ? "text-[#A3FF12]" : stripeStatus.tone === "red" ? "text-red-300" : "text-amber-300")}>{stripeStatus.label}</p>
+          <p className="mt-2 text-sm leading-6 text-white/56">Stripe and payout readiness.</p>
+        </div>
+        <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-white/42">Team permissions</p>
+          <p className="mt-3 text-lg font-extrabold text-white">{membershipCount ? `${membershipCount} linked` : "Not set"}</p>
+          <p className="mt-2 text-sm leading-6 text-white/56">Relationship controls stay future-ready.</p>
+        </div>
+      </GlassCard>
 
       <section className="space-y-3">
         <SectionTitle id="owner-settings-shop-profile">Shop Profile</SectionTitle>
@@ -882,7 +903,7 @@ export function OwnerSettingsWorkspace({
                           {barber.appApprovalStatus} / {barber.visibilityState ?? "hidden"}
                         </p>
                         <div className="mt-3 flex flex-wrap gap-2">
-                          {barber.readinessLabels.map((label) => (
+                          {(barber.readinessLabels ?? []).map((label) => (
                             <span
                               key={label}
                               className={cn(

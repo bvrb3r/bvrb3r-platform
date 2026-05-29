@@ -83,7 +83,7 @@ describe("owner schedule workspace", () => {
     expect(screen.getByText("Open Slots")).toBeInTheDocument();
     expect(screen.getAllByText("Maya").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Jordan Ellis").length).toBeGreaterThan(0);
-    expect(screen.getByText(/75 minutes/)).toBeInTheDocument();
+    expect(screen.getAllByText(/75 minutes/).length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("button", { name: /Jordan Ellis/i }));
     expect(screen.getByText("Leave more texture on top.")).toBeInTheDocument();
@@ -102,6 +102,6 @@ describe("owner schedule workspace", () => {
     render(<OwnerScheduleWorkspace />);
 
     expect(screen.getByText("No chairs or barbers assigned yet.")).toBeInTheDocument();
-    expect(screen.getByText("Add barbers or configure shop chairs to build the shop schedule.")).toBeInTheDocument();
+    expect(screen.getByText("Invite barbers to connect your shop team, then configure shop chairs to build the schedule.")).toBeInTheDocument();
   });
 });

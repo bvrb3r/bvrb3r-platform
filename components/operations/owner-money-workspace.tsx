@@ -605,6 +605,9 @@ export function OwnerMoneyWorkspace() {
             Money
           </h1>
           <p className="mt-3 text-lg font-medium text-white/68">Revenue & payouts</p>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-white/52">
+            Platform-collected revenue, payout readiness, and future commission or booth-rent lanes stay separated from Architect payout execution.
+          </p>
         </div>
         <div className="flex shrink-0 items-center gap-3">
           <details className="group relative">
@@ -647,6 +650,26 @@ export function OwnerMoneyWorkspace() {
       </header>
 
       {errorMessage ? <FeedbackBanner tone="error" message={getReadableActionError(errorMessage)} /> : null}
+
+      <GlassCard className="grid gap-4 p-5 md:grid-cols-4">
+        <div className="md:col-span-2">
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Owner money control</p>
+          <p className="mt-3 text-2xl font-black tracking-[-0.04em] text-white">Revenue now. Splits later.</p>
+          <p className="mt-2 text-sm leading-6 text-white/56">
+            This tab reads owner-facing money posture only. Architect remains the release authority for Phase 1 payouts.
+          </p>
+        </div>
+        <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-white/42">Booth rent</p>
+          <p className="mt-3 text-lg font-black text-white">Coming next</p>
+          <p className="mt-2 text-sm leading-6 text-white/56">Separate invoices, not service payout deductions.</p>
+        </div>
+        <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-white/42">Commission</p>
+          <p className="mt-3 text-lg font-black text-white">Future split lane</p>
+          <p className="mt-2 text-sm leading-6 text-white/56">Will use real relationship rules when wired.</p>
+        </div>
+      </GlassCard>
 
       <GlassCard className="p-6 sm:p-7">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -860,6 +883,21 @@ export function OwnerMoneyWorkspace() {
           </div>
         )}
       </GlassCard>
+
+      <section className="grid gap-4 md:grid-cols-2">
+        <GlassCard className="p-5">
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Platform-collected revenue</p>
+          <p className="mt-3 text-sm leading-6 text-white/58">
+            Card/app payments flow through BVRB3R records. Cash collected outside the platform should stay separate from payout readiness.
+          </p>
+        </GlassCard>
+        <GlassCard className="p-5">
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Shop split readiness</p>
+          <p className="mt-3 text-sm leading-6 text-white/58">
+            Commission and shop-owner payout release are future phases. This view shows honest readiness without moving money.
+          </p>
+        </GlassCard>
+      </section>
     </div>
   );
 }

@@ -346,6 +346,37 @@ export function OwnerOverview() {
         </GlassCard>
       ) : null}
 
+      <GlassCard className="border-[#A3FF12]/14 bg-[linear-gradient(135deg,rgba(163,255,18,0.08),rgba(8,8,8,0.92)_48%,rgba(0,0,0,0.96))] p-6 sm:p-7">
+        <div className="grid gap-5 xl:grid-cols-[1.12fr_0.88fr] xl:items-end">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-[#A3FF12]">Business command center</p>
+            <h2 className="mt-3 max-w-3xl text-3xl font-black tracking-[-0.055em] text-white sm:text-4xl" data-display="true">
+              Run the shop from health, capacity, and money signals.
+            </h2>
+            <p className="mt-3 max-w-3xl text-sm leading-7 text-white/62">
+              Owner Home stays focused on what needs action today: revenue, team coverage, open chair time, and payment setup gaps.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Link href="/dashboard/owner/team" className="rounded-[22px] border border-white/8 bg-black/25 p-4 transition hover:border-[#A3FF12]/28">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-white/42">Team</p>
+              <p className="mt-3 text-2xl font-black text-white">{barbers.length}</p>
+              <p className="mt-2 text-sm leading-6 text-white/56">Connected barbers</p>
+            </Link>
+            <Link href="/dashboard/owner/schedule" className="rounded-[22px] border border-white/8 bg-black/25 p-4 transition hover:border-[#A3FF12]/28">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-white/42">Capacity</p>
+              <p className="mt-3 text-2xl font-black text-white">{chairsUsedPercent === null ? "-" : `${chairsUsedPercent}%`}</p>
+              <p className="mt-2 text-sm leading-6 text-white/56">Chairs in motion</p>
+            </Link>
+            <Link href="/dashboard/owner/money" className="rounded-[22px] border border-white/8 bg-black/25 p-4 transition hover:border-[#A3FF12]/28">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-white/42">Money alerts</p>
+              <p className={cn("mt-3 text-2xl font-black", alertCount ? "text-amber-300" : "text-[#A3FF12]")}>{alertCount}</p>
+              <p className="mt-2 text-sm leading-6 text-white/56">{alertCount ? "Needs review" : "Clear"}</p>
+            </Link>
+          </div>
+        </div>
+      </GlassCard>
+
       <GlassCard className="p-6 sm:p-7">
         <div className="grid gap-6 lg:grid-cols-[1.25fr_0.85fr] lg:items-stretch">
           <div>

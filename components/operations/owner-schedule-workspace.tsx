@@ -467,6 +467,9 @@ export function OwnerScheduleWorkspace() {
             Schedule
           </h1>
           <p className="mt-3 text-lg font-medium text-white/68">All chairs & bookings</p>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-white/52">
+            Shop-wide coverage for the day: team schedule, open chair capacity, and booking density without changing calendar logic.
+          </p>
         </div>
 
         <div className="flex items-center gap-3">
@@ -524,6 +527,24 @@ export function OwnerScheduleWorkspace() {
           <FeedbackBanner tone="error" message={errorMessage} />
         </GlassCard>
       ) : null}
+
+      <GlassCard className="grid gap-4 p-5 md:grid-cols-4">
+        <div className="md:col-span-2">
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Shop schedule pulse</p>
+          <p className="mt-3 text-2xl font-black tracking-[-0.04em] text-white">Today and week context for every chair.</p>
+          <p className="mt-2 text-sm leading-6 text-white/56">When the team is connected, this becomes the operating board for coverage, walk-ins, and open capacity.</p>
+        </div>
+        <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-white/42">Open capacity</p>
+          <p className="mt-3 text-2xl font-black text-white">{openSlotCount}</p>
+          <p className="mt-2 text-sm leading-6 text-white/56">{totalOpenMinutes ? `${totalOpenMinutes} minutes available` : "No open slots detected"}</p>
+        </div>
+        <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-white/42">Team coverage</p>
+          <p className="mt-3 text-2xl font-black text-white">{activeBarbers.length}/{barbers.length || 0}</p>
+          <p className="mt-2 text-sm leading-6 text-white/56">Active barbers in scope.</p>
+        </div>
+      </GlassCard>
 
       <section className="grid grid-cols-7 gap-2 sm:gap-4" aria-label="Schedule date strip">
         {weekDays.map((day) => {
@@ -621,7 +642,7 @@ export function OwnerScheduleWorkspace() {
         ) : !barberColumns.length ? (
           <EmptyState
             title="No chairs or barbers assigned yet."
-            detail="Add barbers or configure shop chairs to build the shop schedule."
+            detail="Invite barbers to connect your shop team, then configure shop chairs to build the schedule."
           >
             <Link href="/onboarding/owner/team" className="inline-flex min-h-12 items-center justify-center rounded-full border border-[#A3FF12]/40 px-5 text-sm font-extrabold text-[#A3FF12] transition hover:bg-[#A3FF12]/10">
               Invite Barber

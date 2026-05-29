@@ -254,7 +254,7 @@ describe("owner team workspace", () => {
     render(<OwnerTeamWorkspace />);
 
     expect(screen.getByText("No barbers assigned yet.")).toBeInTheDocument();
-    expect(screen.getByText("Invite your first barber to start managing your shop team.")).toBeInTheDocument();
+    expect(screen.getByText("Invite barbers to connect your shop team.")).toBeInTheDocument();
   });
 
   it("opens the real invite directory and sends a canonical shop invite", async () => {
