@@ -918,6 +918,9 @@ export function OwnerTeamWorkspace() {
               {inviteDirectoryQuery.data?.shop ? (
                 <div className="mt-4 rounded-[20px] border border-[#A3FF12]/18 bg-[#A3FF12]/8 p-4 text-sm text-white/70">
                   Invites will be sent for <span className="font-extrabold text-white">{inviteDirectoryQuery.data.shop.label}</span>.
+                  {inviteDirectoryQuery.data.shop.setupNote ? (
+                    <p className="mt-2 text-xs leading-5 text-amber-100">{inviteDirectoryQuery.data.shop.setupNote}</p>
+                  ) : null}
                 </div>
               ) : null}
 

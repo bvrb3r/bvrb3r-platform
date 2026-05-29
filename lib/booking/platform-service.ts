@@ -377,7 +377,8 @@ function mapLocationRecordAsShop(row: LocationRecord) {
     address: row.address ?? fallbackAddress ?? `${row.name}, ${row.neighborhood}, ${row.city}, ${row.state}`,
     kind: "shop",
     latitude: row.latitude ?? undefined,
-    longitude: row.longitude ?? undefined
+    longitude: row.longitude ?? undefined,
+    appApprovalStatus: "approved"
   };
 }
 
@@ -2023,14 +2024,10 @@ function filterBookableMarketplaceShops<T extends { id: string; name?: string; a
   trustState: TrustState | undefined,
   visibleResults: Array<{ locationId?: string; shopName?: string }>
 ) {
-  const activeLocationIds = new Set(visibleResults.map((result) => result.locationId).filter(Boolean));
-  const activeShopNames = new Set(
-    visibleResults.map((result) => result.shopName?.trim().toLowerCase()).filter(Boolean)
-  );
+  void visibleResults;
 
   return shops.filter((shop) =>
-    (activeLocationIds.has(shop.id) || activeShopNames.has(shop.name?.trim().toLowerCase() ?? ""))
-    && isShopRecordApprovedForMarketplace(shop)
+    isShopRecordApprovedForMarketplace(shop)
     && !isShopTrustBlockedForMarketplace(trustState, shop.id)
   );
 }
@@ -2819,7 +2816,11 @@ export async function getPublicShopProfilePayload(shopIdOrSlug: string): Promise
     trustState
   });
   const visibleShops = filterBookableMarketplaceShops(shops, trustState, discovery);
-  const visibleShop = findPublicShop(visibleShops, candidateShop.id);
+  const visibleShop = findPublicShop(visibleShops, candidateShop.id) ?? (
+    isShopRecordApprovedForMarketplace(candidateShop) && !isShopTrustBlockedForMarketplace(trustState, candidateShop.id)
+      ? candidateShop
+      : null
+  );
   if (!visibleShop) {
     return null;
   }
@@ -2833,9 +2834,16 @@ export async function getPublicShopProfilePayload(shopIdOrSlug: string): Promise
     result.locationId === visibleShop.id
     || normalizeLabel(result.shopName) === normalizeLabel(visibleShop.name)
   );
+  const activeTeamResult = await supabase
+    .from("shop_team_invites")
+    .select("barber_id")
+    .eq("shop_id", visibleShop.id)
+    .eq("status", "active");
+  const activeTeamBarberIds = activeTeamResult.error ? [] : [...new Set(((activeTeamResult.data ?? []) as Array<{ barber_id: string | null }>).map((row) => row.barber_id).filter((id): id is string => Boolean(id)))];
   const seenBarbers = new Set<string>();
-  const barbers = (await Promise.all(linkedResults.map((result) =>
-    getBarberDetailsPayload(result.username ?? result.barberId)
+  const linkedProfileIds = linkedResults.map((result) => result.username ?? result.barberId);
+  const barbers = (await Promise.all([...new Set([...linkedProfileIds, ...activeTeamBarberIds])].map((identifier) =>
+    getBarberDetailsPayload(identifier)
   )))
     .filter((profile): profile is NonNullable<Awaited<ReturnType<typeof getBarberDetailsPayload>>> => Boolean(profile))
     .filter((profile) => {
@@ -2845,10 +2853,6 @@ export async function getPublicShopProfilePayload(shopIdOrSlug: string): Promise
       seenBarbers.add(profile.barber.id);
       return true;
     });
-
-  if (!barbers.length) {
-    return null;
-  }
 
   const shopMedia = await readShopProfileMedia(visibleShop.id).catch(() => null);
   const serviceMap = new Map<string, PublicShopProfilePayload["services"][number]>();

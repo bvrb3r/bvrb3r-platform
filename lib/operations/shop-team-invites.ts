@@ -54,7 +54,8 @@ type MarketplaceVisibilityRow = {
 type StaffLocationRow = {
   id: string;
   profile_id: string;
-  location_id: string;
+  location_id: string | null;
+  shop_id?: string | null;
   relationship_status?: ShopTeamInviteStatus | null;
   routing_model?: RelationshipRoutingModel | null;
   booth_rent_amount?: number | string | null;
@@ -108,7 +109,21 @@ type ShopRow = {
 };
 
 const inviteSelectColumns = "id, shop_id, barber_id, barber_profile_id, invited_by_profile_id, requested_by_profile_id, status, message, created_at, updated_at, responded_at, approved_by_owner_at, approved_by_barber_at, rejected_at, declined_at, ended_at, ended_by_profile_id, ended_by_role, ended_reason, routing_model, barber_percent, shop_percent, commission_cap_amount, commission_cap_frequency, booth_rent_amount, booth_rent_frequency, payout_block_reason";
-const membershipSelectColumns = "id, profile_id, location_id, relationship_status, routing_model, booth_rent_amount, booth_rent_frequency, barber_percent, shop_percent, commission_cap_amount, commission_cap_frequency, ended_at";
+const membershipSelectColumns = "id, profile_id, location_id, shop_id, relationship_status, routing_model, booth_rent_amount, booth_rent_frequency, barber_percent, shop_percent, commission_cap_amount, commission_cap_frequency, ended_at";
+
+type ShopScope = {
+  id: string;
+  label: string;
+  name: string;
+  neighborhood: string;
+  city: string;
+  state: string;
+  address: string | null;
+  appApprovalStatus: string | null;
+  locationBridgeId: string | null;
+  locationReference: string | null;
+  setupNote: string | null;
+};
 
 export interface ShopTeamInviteDirectoryBarber {
   inviteId: string | null;
@@ -135,6 +150,7 @@ export interface ShopTeamInviteDirectoryPayload {
   shop: {
     id: string;
     label: string;
+    setupNote?: string | null;
   };
   barbers: ShopTeamInviteDirectoryBarber[];
 }
@@ -214,6 +230,46 @@ function toReference(row: { id: string; reference_code: string | null }) {
 
 function formatLocationLabel(location: LocationRow) {
   return [location.name, location.neighborhood, location.city].filter(Boolean).join(" | ");
+}
+
+function formatShopLabel(shop: Pick<ShopScope, "name" | "neighborhood" | "city">) {
+  return [shop.name, shop.neighborhood, shop.city].filter(Boolean).join(" | ");
+}
+
+function mapShopScope(shop: ShopRow, location?: LocationRow | null): ShopScope {
+  return {
+    id: shop.id,
+    label: formatShopLabel({
+      name: shop.name,
+      neighborhood: shop.neighborhood,
+      city: shop.city
+    }),
+    name: shop.name,
+    neighborhood: shop.neighborhood,
+    city: shop.city,
+    state: shop.state,
+    address: shop.address,
+    appApprovalStatus: shop.app_approval_status,
+    locationBridgeId: location?.id ?? null,
+    locationReference: location?.reference_code ?? null,
+    setupNote: location ? null : "Shop location bridge is not linked yet. Team invites can continue; shop scheduling may need location setup."
+  };
+}
+
+function mapLocationScope(location: LocationRow): ShopScope {
+  return {
+    id: toReference(location),
+    label: formatLocationLabel(location),
+    name: location.name,
+    neighborhood: location.neighborhood,
+    city: location.city,
+    state: location.state,
+    address: null,
+    appApprovalStatus: "approved",
+    locationBridgeId: location.id,
+    locationReference: location.reference_code,
+    setupNote: null
+  };
 }
 
 function normalize(value?: string | null) {
@@ -328,10 +384,9 @@ function buildShopReadinessLabels(input: {
   ].filter((label): label is string => Boolean(label));
 }
 
-async function readOwnerLocations(user: UserAccount, supabase: SupabaseClient) {
+async function readOwnerShopScopes(user: UserAccount, supabase: SupabaseClient) {
   requireOwner(user);
   const identifiers = [...new Set([user.ownedShopId, ...user.locationIds].filter((value): value is string => Boolean(value)))];
-  const shopIds = new Set<string>();
   const shopResult = await supabase
     .from("shops")
     .select("id, name, owner_profile_id, neighborhood, city, state, address, app_approval_status")
@@ -341,15 +396,9 @@ async function readOwnerLocations(user: UserAccount, supabase: SupabaseClient) {
     throw new ShopTeamInviteServiceError("Unable to load the owner's shop scope.", 500);
   }
 
-  for (const shop of (shopResult.data ?? []) as ShopRow[]) {
-    shopIds.add(shop.id);
-  }
-
+  const shops = (shopResult.data ?? []) as ShopRow[];
+  const shopIds = new Set(shops.map((shop) => shop.id));
   const allIdentifiers = [...new Set([...identifiers, ...shopIds])];
-  if (!allIdentifiers.length) {
-    return [];
-  }
-
   const uuidValues = allIdentifiers.filter(isUuid);
   const referenceValues = allIdentifiers.filter((value) => !isUuid(value));
   const [uuidResult, referenceResult, shopReferenceResult] = await Promise.all([
@@ -373,7 +422,52 @@ async function readOwnerLocations(user: UserAccount, supabase: SupabaseClient) {
     byId.set(location.id, location);
   }
 
-  return [...byId.values()];
+  const locations = [...byId.values()];
+  const locationByReference = new Map(locations.map((location) => [location.reference_code ?? location.id, location]));
+  const scopes = shops.map((shop) => mapShopScope(shop, locationByReference.get(shop.id) ?? null));
+  const scopedLocationIds = new Set(scopes.map((scope) => scope.locationBridgeId).filter(Boolean));
+  const legacyLocationScopes = locations
+    .filter((location) => !scopedLocationIds.has(location.id))
+    .map(mapLocationScope);
+
+  return [...scopes, ...legacyLocationScopes];
+}
+
+async function readShopScopesByIds(supabase: SupabaseClient, shopIds: string[]) {
+  const ids = [...new Set(shopIds.filter(Boolean))];
+  if (!ids.length) {
+    return new Map<string, ShopScope>();
+  }
+
+  const [shopsResult, locationsByIdResult, locationsByReferenceResult] = await Promise.all([
+    supabase.from("shops").select("id, name, owner_profile_id, neighborhood, city, state, address, app_approval_status").in("id", ids),
+    supabase.from("locations").select("id, reference_code, name, neighborhood, city, state").in("id", ids),
+    supabase.from("locations").select("id, reference_code, name, neighborhood, city, state").in("reference_code", ids)
+  ]);
+
+  if (shopsResult.error || locationsByIdResult.error || locationsByReferenceResult.error) {
+    throw new ShopTeamInviteServiceError("Unable to hydrate shop scope.", 500);
+  }
+
+  const locations = [...((locationsByIdResult.data ?? []) as LocationRow[]), ...((locationsByReferenceResult.data ?? []) as LocationRow[])];
+  const locationsByReference = new Map(locations.map((location) => [location.reference_code ?? location.id, location]));
+  const locationsById = new Map(locations.map((location) => [location.id, location]));
+  const scopes = new Map<string, ShopScope>();
+
+  for (const shop of (shopsResult.data ?? []) as ShopRow[]) {
+    scopes.set(shop.id, mapShopScope(shop, locationsByReference.get(shop.id) ?? null));
+  }
+
+  for (const id of ids) {
+    if (!scopes.has(id)) {
+      const location = locationsById.get(id);
+      if (location) {
+        scopes.set(id, mapLocationScope(location));
+      }
+    }
+  }
+
+  return scopes;
 }
 
 async function resolveBarber(supabase: SupabaseClient, barberIdOrReference: string, profileId?: string | null) {
@@ -440,16 +534,16 @@ async function resolveBarber(supabase: SupabaseClient, barberIdOrReference: stri
   return (profileResult.data as BarberRow | null) ?? null;
 }
 
-function mapInvite(row: InviteRow, locationsById: Map<string, LocationRow>, profilesById: Map<string, ProfileRow>, barber: BarberRow): ShopTeamInviteView {
-  const location = locationsById.get(row.shop_id);
+function mapInvite(row: InviteRow, shopsById: Map<string, ShopScope>, profilesById: Map<string, ProfileRow>, barber: BarberRow): ShopTeamInviteView {
+  const shop = shopsById.get(row.shop_id);
   const profile = profilesById.get(row.barber_profile_id);
   const status = normalizeInviteStatus(row);
   const operatingModel = row.routing_model ?? getBarberDefaultRoutingModel(barber);
 
   return {
     id: row.id,
-    shopId: location ? toReference(location) : row.shop_id,
-    shopLabel: location ? formatLocationLabel(location) : row.shop_id,
+    shopId: shop?.id ?? row.shop_id,
+    shopLabel: shop?.label ?? row.shop_id,
     barberId: toReference(barber),
     barberName: profile?.full_name ?? profile?.email ?? toReference(barber),
     barberEmail: profile?.email ?? "",
@@ -489,11 +583,27 @@ async function assertNoActiveMembership(supabase: SupabaseClient, profileId: str
   if (activeMembership) {
     throw new ShopTeamInviteServiceError(message, 409);
   }
+
+  const activeInvite = await supabase
+    .from("shop_team_invites")
+    .select("id")
+    .eq("barber_profile_id", profileId)
+    .eq("status", "active")
+    .limit(1);
+
+  if (activeInvite.error && !isMissingRelationError(activeInvite.error)) {
+    throw new ShopTeamInviteServiceError("Unable to check active shop relationship.", 500);
+  }
+
+  if ((activeInvite.data ?? []).length) {
+    throw new ShopTeamInviteServiceError(message, 409);
+  }
 }
 
 function buildMembershipPayload(input: {
   barber: BarberRow;
   shopId: string;
+  locationBridgeId?: string | null;
   now: string;
   invitedByProfileId?: string | null;
   requestedByProfileId?: string | null;
@@ -504,7 +614,8 @@ function buildMembershipPayload(input: {
 
   return {
     profile_id: input.barber.profile_id,
-    location_id: input.shopId,
+    shop_id: input.shopId,
+    location_id: input.locationBridgeId ?? null,
     relationship_status: "active",
     requested_by_profile_id: input.requestedByProfileId ?? null,
     invited_by_profile_id: input.invitedByProfileId ?? null,
@@ -529,8 +640,8 @@ function buildMembershipPayload(input: {
 
 export async function listOwnerTeamInviteDirectory(user: UserAccount, search?: string): Promise<ShopTeamInviteDirectoryPayload> {
   const supabase = getSupabaseOrThrow();
-  const locations = await readOwnerLocations(user, supabase);
-  const shop = locations[0];
+  const shops = await readOwnerShopScopes(user, supabase);
+  const shop = shops[0];
   if (!shop) {
     throw new ShopTeamInviteServiceError("No owner shop is available for team invitations.", 404);
   }
@@ -673,8 +784,9 @@ export async function listOwnerTeamInviteDirectory(user: UserAccount, search?: s
 
   return {
     shop: {
-      id: toReference(shop),
-      label: formatLocationLabel(shop)
+      id: shop.id,
+      label: shop.label,
+      setupNote: shop.setupNote
     },
     barbers: directory
   };
@@ -682,10 +794,10 @@ export async function listOwnerTeamInviteDirectory(user: UserAccount, search?: s
 
 export async function createOwnerTeamInvite(user: UserAccount, input: { barberId: string; shopId?: string; message?: string | null }): Promise<ShopTeamInviteView> {
   const supabase = getSupabaseOrThrow();
-  const locations = await readOwnerLocations(user, supabase);
+  const shops = await readOwnerShopScopes(user, supabase);
   const requestedShop = input.shopId
-    ? locations.find((location) => location.id === input.shopId || toReference(location) === input.shopId)
-    : locations[0];
+    ? shops.find((shop) => shop.id === input.shopId || shop.locationBridgeId === input.shopId || shop.locationReference === input.shopId)
+    : shops[0];
   if (!requestedShop) {
     throw new ShopTeamInviteServiceError("This shop is outside the owner invite scope.", 403);
   }
@@ -819,12 +931,12 @@ export async function listBarberJoinableShops(user: UserAccount, search?: string
       .includes(query);
   });
 
-  const shopReferences = shops.map((shop) => shop.id);
-  const locationsResult = shopReferences.length
+  const shopIds = shops.map((shop) => shop.id);
+  const locationsResult = shopIds.length
     ? await supabase
       .from("locations")
       .select("id, reference_code, name, neighborhood, city, state")
-      .in("reference_code", shopReferences)
+      .in("reference_code", shopIds)
     : { data: [], error: null };
 
   if (locationsResult.error) {
@@ -832,16 +944,15 @@ export async function listBarberJoinableShops(user: UserAccount, search?: string
   }
 
   const locationsByReference = new Map(((locationsResult.data ?? []) as LocationRow[]).map((location) => [location.reference_code ?? location.id, location]));
-  const locationIds = [...new Set(((locationsResult.data ?? []) as LocationRow[]).map((location) => location.id))];
   const [membershipsResult, invitesResult, teamResult] = await Promise.all([
-    locationIds.length
-      ? supabase.from("staff_locations").select(membershipSelectColumns).eq("profile_id", barber.profile_id).in("location_id", locationIds)
+    shopIds.length
+      ? supabase.from("staff_locations").select(membershipSelectColumns).eq("profile_id", barber.profile_id)
       : Promise.resolve({ data: [], error: null }),
-    locationIds.length
-      ? supabase.from("shop_team_invites").select(inviteSelectColumns).eq("barber_id", barber.id).in("shop_id", locationIds)
+    shopIds.length
+      ? supabase.from("shop_team_invites").select(inviteSelectColumns).eq("barber_id", barber.id).in("shop_id", shopIds)
       : Promise.resolve({ data: [], error: null }),
-    locationIds.length
-      ? supabase.from("staff_locations").select("location_id").in("location_id", locationIds)
+    shopIds.length
+      ? supabase.from("shop_team_invites").select("shop_id").in("shop_id", shopIds).eq("status", "active")
       : Promise.resolve({ data: [], error: null })
   ]);
 
@@ -854,8 +965,9 @@ export async function listBarberJoinableShops(user: UserAccount, search?: string
     }
   }
 
-  const assignedLocationIds = new Set(((membershipsResult.data ?? []) as StaffLocationRow[]).map((row) => row.location_id));
-  const teamLocationIds = new Set(((teamResult.data ?? []) as Array<{ location_id: string }>).map((row) => row.location_id));
+  const membershipRows = (membershipsResult.data ?? []) as StaffLocationRow[];
+  const assignedShopIds = new Set(membershipRows.map((row) => row.shop_id ?? row.location_id).filter(Boolean));
+  const teamShopIds = new Set(((teamResult.data ?? []) as Array<{ shop_id: string }>).map((row) => row.shop_id));
   const invitesByShopId = new Map(
     ((invitesResult.data ?? []) as InviteRow[])
       .sort((left, right) => right.created_at.localeCompare(left.created_at))
@@ -865,24 +977,25 @@ export async function listBarberJoinableShops(user: UserAccount, search?: string
   return {
     shops: shops.flatMap((shop): BarberJoinableShopView[] => {
       const location = locationsByReference.get(shop.id);
-      const invite = location ? invitesByShopId.get(location.id) : undefined;
+      const invite = invitesByShopId.get(shop.id);
       const inviteStatus = invite ? normalizeInviteStatus(invite) : null;
-      const alreadyAssigned = location ? assignedLocationIds.has(location.id) : false;
-      const activeElsewhere = Boolean(activeMembership && activeMembership.location_id !== location?.id);
+      const alreadyAssigned = assignedShopIds.has(shop.id) || Boolean(location && assignedShopIds.has(location.id));
+      const activeMembershipShopId = activeMembership?.shop_id ?? activeMembership?.location_id ?? null;
+      const activeElsewhere = Boolean(activeMembershipShopId && activeMembershipShopId !== shop.id && activeMembershipShopId !== location?.id);
       const readinessLabels = buildShopReadinessLabels({
         approvalStatus: shop.app_approval_status,
         alreadyAssigned: alreadyAssigned || activeElsewhere,
         inviteStatus: alreadyAssigned ? "active" : inviteStatus,
-        hasTeam: location ? teamLocationIds.has(location.id) : false
+        hasTeam: teamShopIds.has(shop.id)
       });
-      const labels = location
-        ? activeElsewhere
-          ? [...readinessLabels, "Leave current shop first"]
-          : readinessLabels
-        : [...readinessLabels, "Shop location missing"];
+      const labels = activeElsewhere
+        ? [...readinessLabels, "Leave current shop first"]
+        : location
+          ? readinessLabels
+          : [...readinessLabels, "Shop location bridge missing"];
 
       return [{
-        shopId: location?.id ?? shop.id,
+        shopId: shop.id,
         shopReference: shop.id,
         shopLabel: location ? formatLocationLabel(location) : [shop.name, shop.city, shop.state].filter(Boolean).join(" | "),
         city: shop.city || location?.city || null,
@@ -891,7 +1004,7 @@ export async function listBarberJoinableShops(user: UserAccount, search?: string
         liveStatusLabel: labels.includes("Live shop") ? "Live shop" : "Not live yet",
         alreadyAssigned: alreadyAssigned || activeElsewhere,
         inviteStatus: alreadyAssigned ? "active" : inviteStatus,
-        canRequest: Boolean(location && isApprovedStatus(shop.app_approval_status) && !alreadyAssigned && !activeElsewhere && inviteStatus !== "invited" && inviteStatus !== "requested"),
+        canRequest: Boolean(isApprovedStatus(shop.app_approval_status) && !alreadyAssigned && !activeElsewhere && inviteStatus !== "invited" && inviteStatus !== "requested"),
         readinessLabels: labels
       }];
     }).slice(0, 80)
@@ -906,26 +1019,10 @@ export async function createBarberShopJoinRequest(user: UserAccount, input: { sh
     throw new ShopTeamInviteServiceError("Barber account not found.", 404);
   }
 
-  const locationQuery = supabase
-    .from("locations")
-    .select("id, reference_code, name, neighborhood, city, state");
-  const locationResult = isUuid(input.shopId)
-    ? await locationQuery.or(`id.eq.${input.shopId},reference_code.eq.${input.shopId}`).maybeSingle()
-    : await locationQuery.eq("reference_code", input.shopId).maybeSingle();
-
-  if (locationResult.error) {
-    throw new ShopTeamInviteServiceError("Unable to resolve the shop location.", 500);
-  }
-
-  const location = locationResult.data as LocationRow | null;
-  if (!location) {
-    throw new ShopTeamInviteServiceError("This shop has no service location configured yet.", 409);
-  }
-
   const shopResult = await supabase
     .from("shops")
     .select("id, name, owner_profile_id, neighborhood, city, state, address, app_approval_status")
-    .eq("id", location.reference_code ?? input.shopId)
+    .eq("id", input.shopId)
     .maybeSingle();
 
   if (shopResult.error) {
@@ -937,6 +1034,18 @@ export async function createBarberShopJoinRequest(user: UserAccount, input: { sh
     throw new ShopTeamInviteServiceError("This shop is not accepting team requests yet.", 409);
   }
 
+  const locationResult = await supabase
+    .from("locations")
+    .select("id, reference_code, name, neighborhood, city, state")
+    .eq("reference_code", shop.id)
+    .maybeSingle();
+
+  if (locationResult.error) {
+    throw new ShopTeamInviteServiceError("Unable to resolve the shop location bridge.", 500);
+  }
+
+  const shopScope = mapShopScope(shop, (locationResult.data as LocationRow | null) ?? null);
+
   await assertNoActiveMembership(
     supabase,
     barber.profile_id,
@@ -946,7 +1055,7 @@ export async function createBarberShopJoinRequest(user: UserAccount, input: { sh
   const existing = await supabase
     .from("shop_team_invites")
     .select(inviteSelectColumns)
-    .eq("shop_id", location.id)
+    .eq("shop_id", shop.id)
     .eq("barber_id", barber.id)
     .in("status", ["invited", "requested"])
     .maybeSingle();
@@ -960,7 +1069,7 @@ export async function createBarberShopJoinRequest(user: UserAccount, input: { sh
     const insertResult = await supabase
       .from("shop_team_invites")
       .insert({
-        shop_id: location.id,
+        shop_id: shop.id,
         barber_id: barber.id,
         barber_profile_id: barber.profile_id,
         invited_by_profile_id: null,
@@ -995,7 +1104,7 @@ export async function createBarberShopJoinRequest(user: UserAccount, input: { sh
 
   return mapInvite(
     invite,
-    new Map([[location.id, location]]),
+    new Map([[shop.id, shopScope]]),
     profileResult.data ? new Map([[barber.profile_id, profileResult.data as ProfileRow]]) : new Map(),
     barber
   );
@@ -1025,28 +1134,20 @@ export async function listBarberTeamInvites(user: UserAccount): Promise<{ invite
   }
 
   const invites = (invitesResult.data ?? []) as InviteRow[];
-  const locationIds = [...new Set(invites.map((invite) => invite.shop_id))];
-  const [locationsResult, profileResult] = await Promise.all([
-    locationIds.length
-      ? supabase.from("locations").select("id, reference_code, name, neighborhood, city, state").in("id", locationIds)
-      : Promise.resolve({ data: [], error: null }),
+  const [shopsById, profileResult] = await Promise.all([
+    readShopScopesByIds(supabase, invites.map((invite) => invite.shop_id)),
     supabase.from("profiles").select("id, full_name, email, phone, role, primary_onboarding_role").eq("id", barber.profile_id).maybeSingle()
   ]);
 
-  if (locationsResult.error && isMissingRelationError(locationsResult.error)) {
-    return { invites: [] };
-  }
-
-  if (locationsResult.error || profileResult.error) {
+  if (profileResult.error) {
     throw new ShopTeamInviteServiceError("Unable to hydrate shop invitations.", 500);
   }
 
-  const locationsById = new Map(((locationsResult.data ?? []) as LocationRow[]).map((location) => [location.id, location]));
   const profile = profileResult.data as ProfileRow | null;
   const profilesById = profile ? new Map([[barber.profile_id, profile]]) : new Map();
 
   return {
-    invites: invites.map((invite) => mapInvite(invite, locationsById, profilesById, barber))
+    invites: invites.map((invite) => mapInvite(invite, shopsById, profilesById, barber))
   };
 }
 
@@ -1089,15 +1190,16 @@ export async function respondToBarberTeamInvite(user: UserAccount, input: { invi
 
     const membershipResult = await supabase
       .from("staff_locations")
-      .upsert(buildMembershipPayload({
+      .insert(buildMembershipPayload({
         barber,
         shopId: invite.shop_id,
+        locationBridgeId: (await readShopScopesByIds(supabase, [invite.shop_id])).get(invite.shop_id)?.locationBridgeId ?? null,
         now,
         invitedByProfileId: invite.invited_by_profile_id,
         requestedByProfileId: invite.requested_by_profile_id ?? null,
         approvedByOwnerAt: now,
         approvedByBarberAt: now
-      }), { onConflict: "profile_id,location_id" });
+      }));
 
     if (membershipResult.error) {
       throw new ShopTeamInviteServiceError("Unable to assign the barber to this shop.", 500);
@@ -1122,19 +1224,19 @@ export async function respondToBarberTeamInvite(user: UserAccount, input: { invi
     throw new ShopTeamInviteServiceError("Unable to update the shop invitation.", 500);
   }
 
-  const [locationResult, profileResult] = await Promise.all([
-    supabase.from("locations").select("id, reference_code, name, neighborhood, city, state").eq("id", invite.shop_id).maybeSingle(),
+  const [shopsById, profileResult] = await Promise.all([
+    readShopScopesByIds(supabase, [invite.shop_id]),
     supabase.from("profiles").select("id, full_name, email, phone, role, primary_onboarding_role").eq("id", barber.profile_id).maybeSingle()
   ]);
 
-  if (locationResult.error || profileResult.error) {
+  if (profileResult.error) {
     throw new ShopTeamInviteServiceError("Unable to hydrate the updated invitation.", 500);
   }
 
   return {
     invite: mapInvite(
       updateResult.data as InviteRow,
-      locationResult.data ? new Map([[invite.shop_id, locationResult.data as LocationRow]]) : new Map(),
+      shopsById,
       profileResult.data ? new Map([[barber.profile_id, profileResult.data as ProfileRow]]) : new Map(),
       barber
     )
@@ -1143,8 +1245,9 @@ export async function respondToBarberTeamInvite(user: UserAccount, input: { invi
 
 export async function respondToOwnerJoinRequest(user: UserAccount, input: { inviteId: string; status: "accepted" | "rejected" }): Promise<{ invite: ShopTeamInviteView }> {
   const supabase = getSupabaseOrThrow();
-  const locations = await readOwnerLocations(user, supabase);
-  const locationIds = new Set(locations.map((location) => location.id));
+  const shops = await readOwnerShopScopes(user, supabase);
+  const shopIds = new Set(shops.map((shop) => shop.id));
+  const shopsById = new Map(shops.map((shop) => [shop.id, shop]));
 
   const inviteResult = await supabase
     .from("shop_team_invites")
@@ -1157,7 +1260,7 @@ export async function respondToOwnerJoinRequest(user: UserAccount, input: { invi
   }
 
   const invite = inviteResult.data as InviteRow | null;
-  if (!invite || !locationIds.has(invite.shop_id)) {
+  if (!invite || !shopIds.has(invite.shop_id)) {
     throw new ShopTeamInviteServiceError("Shop join request not found.", 404);
   }
 
@@ -1180,15 +1283,16 @@ export async function respondToOwnerJoinRequest(user: UserAccount, input: { invi
 
     const membershipResult = await supabase
       .from("staff_locations")
-      .upsert(buildMembershipPayload({
+      .insert(buildMembershipPayload({
         barber,
         shopId: invite.shop_id,
+        locationBridgeId: shopsById.get(invite.shop_id)?.locationBridgeId ?? null,
         now,
         invitedByProfileId: invite.invited_by_profile_id,
         requestedByProfileId: invite.requested_by_profile_id ?? null,
         approvedByOwnerAt: now,
         approvedByBarberAt: invite.approved_by_barber_at ?? now
-      }), { onConflict: "profile_id,location_id" });
+      }));
 
     if (membershipResult.error) {
       throw new ShopTeamInviteServiceError("Unable to activate the barber shop relationship.", 500);
@@ -1213,19 +1317,19 @@ export async function respondToOwnerJoinRequest(user: UserAccount, input: { invi
     throw new ShopTeamInviteServiceError("Unable to update the shop join request.", 500);
   }
 
-  const [locationResult, profileResult] = await Promise.all([
-    supabase.from("locations").select("id, reference_code, name, neighborhood, city, state").eq("id", invite.shop_id).maybeSingle(),
+  const [hydratedShopsById, profileResult] = await Promise.all([
+    readShopScopesByIds(supabase, [invite.shop_id]),
     supabase.from("profiles").select("id, full_name, email, phone, role, primary_onboarding_role").eq("id", barber.profile_id).maybeSingle()
   ]);
 
-  if (locationResult.error || profileResult.error) {
+  if (profileResult.error) {
     throw new ShopTeamInviteServiceError("Unable to hydrate the updated shop join request.", 500);
   }
 
   return {
     invite: mapInvite(
       updateResult.data as InviteRow,
-      locationResult.data ? new Map([[invite.shop_id, locationResult.data as LocationRow]]) : new Map(),
+      hydratedShopsById,
       profileResult.data ? new Map([[barber.profile_id, profileResult.data as ProfileRow]]) : new Map(),
       barber
     )
@@ -1245,8 +1349,8 @@ export async function endBarberShopRelationship(user: UserAccount, input: { rela
     }
     membership = await readActiveMembership(supabase, barber.profile_id);
   } else {
-    const locations = await readOwnerLocations(user, supabase);
-    const locationIds = new Set(locations.map((location) => location.id));
+    const shops = await readOwnerShopScopes(user, supabase);
+    const shopIds = new Set(shops.flatMap((shop) => [shop.id, shop.locationBridgeId]).filter((value): value is string => Boolean(value)));
     if (!input.relationshipId) {
       throw new ShopTeamInviteServiceError("Relationship id is required.", 400);
     }
@@ -1259,7 +1363,7 @@ export async function endBarberShopRelationship(user: UserAccount, input: { rela
       throw new ShopTeamInviteServiceError("Unable to load the team relationship.", 500);
     }
     membership = (membershipResult.data as StaffLocationRow | null) ?? null;
-    if (!membership || !locationIds.has(membership.location_id)) {
+    if (!membership || !shopIds.has(membership.shop_id ?? membership.location_id ?? "")) {
       throw new ShopTeamInviteServiceError("Team relationship not found.", 404);
     }
   }
@@ -1294,7 +1398,7 @@ export async function endBarberShopRelationship(user: UserAccount, input: { rela
       ended_reason: input.reason?.trim() || null,
       updated_at: now
     })
-    .eq("shop_id", membership.location_id)
+    .eq("shop_id", membership.shop_id ?? membership.location_id)
     .eq("barber_profile_id", membership.profile_id)
     .eq("status", "active");
 
