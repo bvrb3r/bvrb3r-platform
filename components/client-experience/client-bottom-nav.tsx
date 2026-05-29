@@ -15,8 +15,8 @@ export function ClientBottomNav({ activeTab, mode = "client" }: { activeTab?: Cl
     : CLIENT_PRIMARY_NAV_ITEMS;
 
   return (
-    <div className="fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] z-50 lg:hidden">
-      <nav className="mx-auto flex max-w-xl items-center gap-2 rounded-[30px] border border-white/10 bg-[rgba(10,10,10,0.86)] px-3 py-3 backdrop-blur-2xl shadow-[0_24px_44px_rgba(0,0,0,0.34)]">
+    <div className="fixed inset-x-2 bottom-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] z-50 sm:inset-x-3 lg:hidden">
+      <nav className="mobile-dock mx-auto flex max-w-[88rem] items-center gap-2 rounded-[28px] border border-white/10 px-3 py-3 shadow-[0_22px_44px_rgba(0,0,0,0.42)]" aria-label={mode === "guest" ? "Guest mobile navigation" : "Client mobile navigation"}>
         {items.map((item) => {
           const Icon = item.icon;
           const isActive = item.key === activeTab;
@@ -29,12 +29,12 @@ export function ClientBottomNav({ activeTab, mode = "client" }: { activeTab?: Cl
               className={cn(
                 "flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-[22px] px-2 py-2.5 text-center transition",
                 isActive
-                  ? "bg-[linear-gradient(135deg,rgba(124,255,0,0.18),rgba(16,16,16,0.96))] text-white shadow-[0_14px_32px_rgba(124,255,0,0.12)]"
-                  : "text-white/54 hover:bg-white/[0.04] hover:text-white"
+                  ? "border border-[#7CFF00]/26 bg-[#7CFF00]/10 text-white"
+                  : "border border-white/8 bg-black/18 text-white/66 hover:border-[#7CFF00]/20 hover:text-white"
               )}
             >
               <Icon className={cn("h-4 w-4", isActive ? "text-[#d7ffab]" : "text-white/62")} />
-              <span className="text-[10px] font-semibold uppercase tracking-[0.14em]">{item.label}</span>
+              <span className="max-w-full truncate text-[10px] font-semibold uppercase leading-none tracking-[0.14em]">{item.label}</span>
             </Link>
           );
         })}

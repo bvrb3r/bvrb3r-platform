@@ -444,8 +444,8 @@ export function DashboardShell({
   const showShellContext = !isBarberDashboard;
 
   return (
-    <div className="app-screen safe-top-pad px-2 py-2 pb-[calc(env(safe-area-inset-bottom,0px)+6.5rem)] sm:px-3 sm:py-3 lg:px-5 lg:py-5 lg:pb-5">
-      <div className="mx-auto grid max-w-7xl gap-4 lg:grid-cols-[290px_minmax(0,1fr)] 2xl:grid-cols-[310px_minmax(0,1fr)]">
+    <div className="bvr-screen app-screen safe-top-pad overflow-x-clip px-3 py-3 pb-[calc(env(safe-area-inset-bottom,0px)+6.5rem)] sm:px-4 sm:py-4 lg:px-5 lg:py-5 lg:pb-5">
+      <div className="mx-auto grid max-w-[88rem] gap-5 lg:grid-cols-[18rem_minmax(0,1fr)] 2xl:grid-cols-[19rem_minmax(0,1fr)]">
         <Card className="hidden h-fit rounded-[34px] bg-[linear-gradient(180deg,rgba(16,16,16,0.98),rgba(8,8,8,0.98))] p-4 lg:sticky lg:top-4 lg:block">
           <div className="rounded-[28px] border border-[#7CFF00]/16 bg-[linear-gradient(180deg,rgba(124,255,0,0.12),rgba(124,255,0,0.04))] p-5">
             <p className="surface-label text-[#cfff93]">The BVRB3R Shop(TM)</p>
@@ -551,7 +551,7 @@ export function DashboardShell({
           ) : null}
         </Card>
 
-        <div className="min-w-0 space-y-4">
+        <div className="min-w-0 space-y-5">
           <Card className="rounded-[30px] border border-white/8 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(8,8,8,0.98))] p-4 lg:hidden">
             <div className="flex items-center justify-between gap-3">
               <Link href={nav[0]?.href ?? getDefaultRouteForUser(user)} className="flex min-w-0 items-center gap-3 text-white">
@@ -676,7 +676,7 @@ export function DashboardShell({
       </div>
 
       <div className="fixed inset-x-2 bottom-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] z-40 sm:inset-x-3 lg:hidden">
-        <div className="mobile-dock mx-auto max-w-7xl rounded-[28px] border border-white/10 px-3 py-3 shadow-[0_22px_44px_rgba(0,0,0,0.42)]">
+        <div className="mobile-dock mx-auto max-w-[88rem] rounded-[28px] border border-white/10 px-3 py-3 shadow-[0_22px_44px_rgba(0,0,0,0.42)]">
           <div className="flex gap-2 overflow-x-auto hide-scrollbar">
             {nav.map((item) => {
               const Icon = item.icon;
@@ -688,14 +688,14 @@ export function DashboardShell({
                   aria-label={`Open mobile dock ${item.label}`}
                   aria-current={isActive ? "page" : undefined}
                   className={cn(
-                    "flex min-w-[4.75rem] flex-1 flex-col items-center justify-center gap-1 rounded-[22px] border px-2.5 py-3 text-center transition sm:min-w-[5.5rem] sm:px-3",
+                    "flex min-h-12 min-w-[4.75rem] flex-1 flex-col items-center justify-center gap-1 rounded-[22px] border px-2.5 py-3 text-center transition sm:min-w-[5.5rem] sm:px-3",
                     isActive
                       ? "border-[#7CFF00]/26 bg-[#7CFF00]/10 text-white"
                       : "border-white/8 bg-black/18 text-white/66 hover:border-[#7CFF00]/20 hover:text-white"
                   )}
                 >
                   <Icon className={cn("h-4 w-4", isActive ? "text-[#d7ffab]" : "text-[#baff69]")} />
-                  <span aria-hidden="true" className="text-[10px] font-semibold uppercase tracking-[0.14em] sm:tracking-[0.18em]">{item.mobileLabel ?? item.label}</span>
+                  <span aria-hidden="true" className="max-w-full truncate text-[10px] font-semibold uppercase leading-none tracking-[0.14em] sm:tracking-[0.18em]">{item.mobileLabel ?? item.label}</span>
                 </Link>
               );
             })}

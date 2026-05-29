@@ -1,7 +1,6 @@
-import Link from "next/link";
 import { ShieldCheck } from "lucide-react";
+import { ArchitectPrimaryNav } from "@/components/architect-experience/architect-primary-nav";
 import { LogoutButton } from "@/components/auth/logout-button";
-import { ARCHITECT_PRIMARY_NAV_ITEMS } from "@/components/architect-experience/architect-tab-config";
 import { GlassCard } from "@/design/components";
 import { getPlatformAdminUser } from "@/lib/auth/guards";
 
@@ -10,8 +9,8 @@ export default async function ArchitectLayout({ children }: { children: React.Re
 
   return (
     <>
-      <div className="px-2 pt-2 sm:px-3 sm:pt-3 lg:px-5 lg:pt-5">
-        <div className="mx-auto max-w-7xl">
+      <div className="bvr-screen overflow-x-clip px-3 pt-3 sm:px-4 sm:pt-4 lg:px-5 lg:pt-5">
+        <div className="mx-auto max-w-[88rem]">
           <GlassCard className="p-4 sm:p-5">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
               <div className="min-w-0">
@@ -23,20 +22,12 @@ export default async function ArchitectLayout({ children }: { children: React.Re
                   <p className="text-lg font-semibold text-white">{user.name}</p>
                   <p className="mt-1 truncate text-sm text-white/60">{user.email}</p>
                 </div>
-                <p className="mt-3 max-w-3xl text-sm leading-6 text-white/58">Platform control room access.</p>
+                <p className="mt-3 max-w-3xl text-sm leading-6 text-white/58">Mission Control for users, verification, money, debug, reports, and platform settings.</p>
               </div>
 
-              <div className="flex flex-col gap-3 xl:min-w-[28rem] xl:items-end">
-                <div className="flex flex-wrap gap-2">
-                  {ARCHITECT_PRIMARY_NAV_ITEMS.map((item) => (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      className="inline-flex min-h-11 items-center rounded-full border border-white/10 bg-black/20 px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/76 transition hover:border-[#7CFF00]/20 hover:text-white sm:text-[11px]"
-                    >
-                      {item.label}
-                    </Link>
-                  ))}
+              <div className="flex min-w-0 flex-col gap-3 xl:min-w-[31rem] xl:items-end">
+                <div className="w-full xl:max-w-[44rem]">
+                  <ArchitectPrimaryNav />
                 </div>
                 <div className="w-full xl:w-auto">
                   <LogoutButton compact className="xl:min-w-[11.5rem]" />

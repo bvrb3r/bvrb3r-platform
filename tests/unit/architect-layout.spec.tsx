@@ -11,6 +11,10 @@ vi.mock("@/lib/auth/guards", () => ({
   getPlatformAdminUser: getPlatformAdminUserMock
 }));
 
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/architect/money"
+}));
+
 vi.mock("@/components/auth/logout-button", () => ({
   LogoutButton: ({ className }: { className?: string }) => (
     <div className={className} data-testid="architect-logout-control">
@@ -52,6 +56,7 @@ describe("architect layout", () => {
     expect(screen.getByRole("link", { name: "Users" })).toHaveAttribute("href", "/architect/users");
     expect(screen.getByRole("link", { name: "Verifications" })).toHaveAttribute("href", "/architect/verifications");
     expect(screen.getByRole("link", { name: "Money" })).toHaveAttribute("href", "/architect/money");
+    expect(screen.getByRole("link", { name: "Money" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "Messages" })).toHaveAttribute("href", "/architect/messages");
     expect(screen.getByRole("link", { name: "Reports" })).toHaveAttribute("href", "/architect/reports");
     expect(screen.getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/architect/settings");

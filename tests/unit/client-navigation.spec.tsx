@@ -31,9 +31,11 @@ describe("client navigation", () => {
   it("renders only the four primary client tabs in the bottom nav", () => {
     render(<ClientBottomNav activeTab="activity" />);
 
+    expect(screen.getByRole("navigation", { name: "Client mobile navigation" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/dashboard/client");
     expect(screen.getByRole("link", { name: "Search" })).toHaveAttribute("href", "/dashboard/client/search");
     expect(screen.getByRole("link", { name: "Activity" })).toHaveAttribute("href", "/dashboard/client/activity");
+    expect(screen.getByRole("link", { name: "Activity" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "Profile" })).toHaveAttribute("href", "/dashboard/client/profile");
     expect(screen.queryByRole("link", { name: "Culture" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Messages" })).not.toBeInTheDocument();

@@ -124,8 +124,8 @@ export function ArchitectDashboard({ initialData }: { initialData: ArchitectDash
   const pendingTotal = data.counts.pendingBarberApprovals + data.counts.pendingShopOwnerApprovals;
 
   return (
-    <div className="app-screen safe-top-pad px-2 py-2 pb-[calc(env(safe-area-inset-bottom,0px)+2rem)] sm:px-3 sm:py-3 lg:px-5 lg:py-5">
-      <div className="mx-auto max-w-7xl space-y-4">
+    <div className="app-screen safe-top-pad overflow-x-clip px-3 py-3 pb-[calc(env(safe-area-inset-bottom,0px)+2rem)] sm:px-4 sm:py-4 lg:px-5 lg:py-5">
+      <div className="mx-auto max-w-[88rem] space-y-5">
         <Card className="rounded-[34px] p-6">
           <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
             <div>
@@ -179,7 +179,7 @@ export function ArchitectDashboard({ initialData }: { initialData: ArchitectDash
           </Card>
         ) : null}
 
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
           <Metric label="Clients" value={data.counts.totalClients} detail="Real client accounts" href="/architect/users?role=client" accent />
           <Metric label="Barbers" value={data.counts.totalBarbers} detail="Real barber accounts" href="/architect/users?role=barber" />
           <Metric label="Shop owners" value={data.counts.totalShopOwners} detail="Real owner accounts" href="/architect/users?role=shop_owner" />
