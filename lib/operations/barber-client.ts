@@ -349,6 +349,27 @@ export interface UpdateOwnerTeamRelationshipResponse {
   };
 }
 
+export interface OwnerShopProfileResponse {
+  shop: {
+    id: string;
+    name: string;
+    brand_line?: string | null;
+    public_bio?: string | null;
+    cover_photo_url?: string | null;
+    public_hours?: unknown;
+    policies?: string | null;
+    shop_username?: string | null;
+    neighborhood?: string | null;
+    city?: string | null;
+    state?: string | null;
+    phone?: string | null;
+    address?: string | null;
+    profile_photo_path?: string | null;
+    profile_photo_url?: string | null;
+    app_approval_status?: string | null;
+  };
+}
+
 export interface ShopDashboardLocationSummary {
   id: string;
   name: string;
@@ -794,6 +815,48 @@ export function useShopDashboardQuery() {
     queryKey: ["shop-dashboard"],
     queryFn: () => requestJson<ShopDashboardResponse>("/api/shop/dashboard"),
     staleTime: 5_000
+  });
+}
+
+export function useOwnerShopProfileQuery() {
+  return useQuery({
+    queryKey: ["owner-shop-profile"],
+    queryFn: () => requestJson<OwnerShopProfileResponse>("/api/owner/shop/profile")
+  });
+}
+
+export function useUpdateOwnerShopProfileMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: {
+      shopId?: string | null;
+      name?: string;
+      brandLine?: string | null;
+      publicBio?: string | null;
+      coverPhotoUrl?: string | null;
+      publicHours?: unknown;
+      policies?: string | null;
+      shopUsername?: string | null;
+      phone?: string | null;
+      address?: string | null;
+      neighborhood?: string | null;
+      city?: string | null;
+      state?: string | null;
+      profilePhotoUrl?: string | null;
+      profilePhotoPath?: string | null;
+    }) =>
+      requestJson<OwnerShopProfileResponse>("/api/owner/shop/profile", {
+        method: "PATCH",
+        body: JSON.stringify(payload)
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["owner-shop-profile"] }),
+        queryClient.invalidateQueries({ queryKey: ["shop-dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["shop-team-invite-directory"] })
+      ]);
+    }
   });
 }
 

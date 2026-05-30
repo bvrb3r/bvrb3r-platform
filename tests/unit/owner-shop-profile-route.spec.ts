@@ -22,7 +22,7 @@ vi.mock("@/lib/supabase/admin", () => ({
   createSupabaseAdminClient: createSupabaseAdminClientMock
 }));
 
-import { PATCH } from "@/app/api/owner/shop/profile/route";
+import { GET, PATCH } from "@/app/api/owner/shop/profile/route";
 
 function createRequest(payload: Record<string, unknown>) {
   return new Request("http://localhost/api/owner/shop/profile", {
@@ -107,6 +107,10 @@ describe("owner shop profile route", () => {
         id: "shop-owned",
         name: "The BVRB3R Shop",
         brand_line: "Campus cuts.",
+        public_bio: "A public shop bio.",
+        cover_photo_url: "https://cdn.example.com/cover.jpg",
+        policies: "Arrive five minutes early.",
+        shop_username: "bvrb3rshop",
         address: "2200 E Fowler Ave",
         city: "Tampa",
         state: "FL"
@@ -118,6 +122,10 @@ describe("owner shop profile route", () => {
       shopId: "shop-owned",
       name: "The BVRB3R Shop",
       brandLine: "Campus cuts.",
+      publicBio: "A public shop bio.",
+      coverPhotoUrl: "https://cdn.example.com/cover.jpg",
+      policies: "Arrive five minutes early.",
+      shopUsername: "BVRB3RShop",
       address: "2200 E Fowler Ave",
       city: "Tampa",
       state: "FL"
@@ -131,10 +139,41 @@ describe("owner shop profile route", () => {
     expect(supabase.updatePayload).toMatchObject({
       name: "The BVRB3R Shop",
       brand_line: "Campus cuts.",
+      public_bio: "A public shop bio.",
+      cover_photo_url: "https://cdn.example.com/cover.jpg",
+      policies: "Arrive five minutes early.",
+      shop_username: "bvrb3rshop",
       address: "2200 E Fowler Ave",
       city: "Tampa",
       state: "FL"
     });
+  });
+
+  it("loads the owner canonical shop profile for the Team editor", async () => {
+    const supabase = createShopProfileSupabaseMock({
+      scopedShop: {
+        id: "shop-owned",
+        name: "The BVRB3R Shop",
+        owner_profile_id: "owner-profile-1",
+        public_bio: "Public team bio.",
+        cover_photo_url: "https://cdn.example.com/cover.jpg",
+        shop_username: "bvrb3rshop"
+      }
+    });
+    createSupabaseAdminClientMock.mockReturnValue(supabase.client);
+
+    const response = await GET();
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.shop).toMatchObject({
+      id: "shop-owned",
+      name: "The BVRB3R Shop",
+      public_bio: "Public team bio.",
+      cover_photo_url: "https://cdn.example.com/cover.jpg",
+      shop_username: "bvrb3rshop"
+    });
+    expect(supabase.eqCalls).toContainEqual(["owner_profile_id", "owner-profile-1"]);
   });
 
   it("does not allow updating another owner's shop", async () => {

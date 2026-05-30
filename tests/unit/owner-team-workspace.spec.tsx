@@ -9,10 +9,13 @@ const {
   releaseOwnerRelationshipMock,
   useCreateOwnerTeamInviteMutationMock,
   useOwnerTeamInviteDirectoryQueryMock,
+  useOwnerShopProfileQueryMock,
+  useUpdateOwnerShopProfileMutationMock,
   useReleaseOwnerTeamRelationshipMutationMock,
   useRespondOwnerTeamJoinRequestMutationMock,
   useUpdateOwnerTeamRelationshipMutationMock,
   useShopDashboardQueryMock,
+  updateOwnerShopProfileMock,
   useFintechManagementQueryMock
 } = vi.hoisted(() => ({
   createOwnerTeamInviteMock: vi.fn(),
@@ -21,10 +24,13 @@ const {
   releaseOwnerRelationshipMock: vi.fn(),
   useCreateOwnerTeamInviteMutationMock: vi.fn(),
   useOwnerTeamInviteDirectoryQueryMock: vi.fn(),
+  useOwnerShopProfileQueryMock: vi.fn(),
+  useUpdateOwnerShopProfileMutationMock: vi.fn(),
   useReleaseOwnerTeamRelationshipMutationMock: vi.fn(),
   useRespondOwnerTeamJoinRequestMutationMock: vi.fn(),
   useUpdateOwnerTeamRelationshipMutationMock: vi.fn(),
   useShopDashboardQueryMock: vi.fn(),
+  updateOwnerShopProfileMock: vi.fn(),
   useFintechManagementQueryMock: vi.fn()
 }));
 
@@ -37,6 +43,8 @@ vi.mock("next/link", () => ({
 vi.mock("@/lib/operations/barber-client", () => ({
   useCreateOwnerTeamInviteMutation: useCreateOwnerTeamInviteMutationMock,
   useOwnerTeamInviteDirectoryQuery: useOwnerTeamInviteDirectoryQueryMock,
+  useOwnerShopProfileQuery: useOwnerShopProfileQueryMock,
+  useUpdateOwnerShopProfileMutation: useUpdateOwnerShopProfileMutationMock,
   useReleaseOwnerTeamRelationshipMutation: useReleaseOwnerTeamRelationshipMutationMock,
   useRespondOwnerTeamJoinRequestMutation: useRespondOwnerTeamJoinRequestMutationMock,
   useUpdateOwnerTeamRelationshipMutation: useUpdateOwnerTeamRelationshipMutationMock,
@@ -54,12 +62,15 @@ describe("owner team workspace", () => {
     useShopDashboardQueryMock.mockReset();
     useFintechManagementQueryMock.mockReset();
     useOwnerTeamInviteDirectoryQueryMock.mockReset();
+    useOwnerShopProfileQueryMock.mockReset();
+    useUpdateOwnerShopProfileMutationMock.mockReset();
     useCreateOwnerTeamInviteMutationMock.mockReset();
     useRespondOwnerTeamJoinRequestMutationMock.mockReset();
     createOwnerTeamInviteMock.mockReset();
     respondOwnerJoinRequestMock.mockReset();
     updateOwnerRelationshipMock.mockReset();
     releaseOwnerRelationshipMock.mockReset();
+    updateOwnerShopProfileMock.mockReset();
 
     useShopDashboardQueryMock.mockReturnValue({
       isLoading: false,
@@ -174,6 +185,35 @@ describe("owner team workspace", () => {
         ],
         blockedPayments: []
       }
+    });
+
+    useOwnerShopProfileQueryMock.mockReturnValue({
+      isLoading: false,
+      error: null,
+      data: {
+        shop: {
+          id: "shop-ybor",
+          name: "BVRB3R Ybor",
+          shop_username: "bvrb3rybor",
+          brand_line: "Chair-first cuts.",
+          public_bio: "Ybor cuts with a verified shop team.",
+          cover_photo_url: "https://cdn.example.com/ybor-cover.jpg",
+          profile_photo_url: "https://cdn.example.com/ybor-logo.jpg",
+          address: "1600 E 7th Ave",
+          city: "Tampa",
+          state: "FL",
+          neighborhood: "Ybor City",
+          phone: "813-555-0101",
+          public_hours: "Mon-Fri 9-5",
+          policies: "Arrive five minutes early.",
+          app_approval_status: "approved"
+        }
+      }
+    });
+    updateOwnerShopProfileMock.mockResolvedValue({ shop: { id: "shop-ybor", name: "BVRB3R Ybor Lab" } });
+    useUpdateOwnerShopProfileMutationMock.mockReturnValue({
+      mutateAsync: updateOwnerShopProfileMock,
+      isPending: false
     });
 
     useOwnerTeamInviteDirectoryQueryMock.mockReturnValue({
@@ -388,6 +428,53 @@ describe("owner team workspace", () => {
         relationshipId: "membership-maya",
         reason: "Owner released barber from team."
       });
+    });
+  });
+
+  it("lets owners edit the public shop profile from Team", async () => {
+    render(<OwnerTeamWorkspace />);
+
+    expect(screen.getByText("Public Shop Profile")).toBeInTheDocument();
+    expect(screen.getByText("@bvrb3rybor")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit shop profile" }));
+    fireEvent.change(screen.getByLabelText("Shop name"), {
+      target: { value: "BVRB3R Ybor Lab" }
+    });
+    fireEvent.change(screen.getByLabelText("Public bio"), {
+      target: { value: "A sharper public team profile." }
+    });
+    fireEvent.change(screen.getByLabelText("Policies"), {
+      target: { value: "Deposits may apply." }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save public profile" }));
+
+    await waitFor(() => {
+      expect(updateOwnerShopProfileMock).toHaveBeenCalledWith(expect.objectContaining({
+        shopId: "shop-ybor",
+        name: "BVRB3R Ybor Lab",
+        publicBio: "A sharper public team profile.",
+        policies: "Deposits may apply."
+      }));
+    });
+  });
+
+  it("lets owners change public team featured status and display order", async () => {
+    render(<OwnerTeamWorkspace />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Maya Cole/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Feature" }));
+    fireEvent.click(screen.getByRole("button", { name: "Move down" }));
+
+    await waitFor(() => {
+      expect(updateOwnerRelationshipMock).toHaveBeenCalledWith(expect.objectContaining({
+        relationshipId: "membership-maya",
+        featuredOnShopProfile: true
+      }));
+      expect(updateOwnerRelationshipMock).toHaveBeenCalledWith(expect.objectContaining({
+        relationshipId: "membership-maya",
+        publicTeamOrder: 1
+      }));
     });
   });
 

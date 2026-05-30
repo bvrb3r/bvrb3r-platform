@@ -29,6 +29,11 @@ describe("public shop profile", () => {
             id: "shop-tampa",
             name: "BVRB3R Tampa",
             brandLine: "Cuts in Tampa.",
+            publicBio: "A public shop profile for Tampa.",
+            shopUsername: "bvrb3rtampa",
+            coverPhotoUrl: "https://cdn.example.com/shop-cover.jpg",
+            publicHours: "Mon-Fri 9-5",
+            policies: "Arrive five minutes early.",
             neighborhood: "Ybor",
             city: "Tampa",
             state: "FL",
@@ -64,6 +69,9 @@ describe("public shop profile", () => {
 
     expect(screen.getByTestId("public-shop-profile")).toBeInTheDocument();
     expect(screen.getByText("BVRB3R Tampa")).toBeInTheDocument();
+    expect(screen.getByText("@bvrb3rtampa")).toBeInTheDocument();
+    expect(screen.getByText("A public shop profile for Tampa.")).toBeInTheDocument();
+    expect(screen.getByAltText("BVRB3R Tampa cover")).toHaveAttribute("src", "https://cdn.example.com/shop-cover.jpg");
     expect(screen.getByAltText("BVRB3R Tampa")).toHaveAttribute("src", "https://cdn.example.com/shop-logo.png");
     expect(screen.getByText("1600 7th Ave, Tampa, FL")).toBeInTheDocument();
     expect(screen.getByText("1 approved barber")).toBeInTheDocument();
@@ -78,6 +86,8 @@ describe("public shop profile", () => {
     expect(screen.getAllByRole("link", { name: /philforsure/i }).some((link) => link.getAttribute("href") === "/barber/philforsure")).toBe(true);
     expect(screen.getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/barber/philforsure");
     expect(screen.getAllByRole("link", { name: "Book" }).some((link) => link.getAttribute("href") === "/booking/new?barberId=barber-phillip&serviceId=srv-test-cut")).toBe(true);
+    expect(screen.getByText("Mon-Fri 9-5")).toBeInTheDocument();
+    expect(screen.getByText("Arrive five minutes early.")).toBeInTheDocument();
     expect(screen.queryByText(/approved marketplace supply/i)).not.toBeInTheDocument();
   });
 });

@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState, type ComponentProps, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ComponentProps, type ReactNode } from "react";
 import Link from "next/link";
+import type { Route } from "next";
 import {
   BriefcaseBusiness,
   ChevronDown,
@@ -24,9 +25,11 @@ import { useFintechManagementQuery } from "@/lib/fintech/client";
 import {
   useCreateOwnerTeamInviteMutation,
   useOwnerTeamInviteDirectoryQuery,
+  useOwnerShopProfileQuery,
   useReleaseOwnerTeamRelationshipMutation,
   useRespondOwnerTeamJoinRequestMutation,
   useShopDashboardQuery,
+  useUpdateOwnerShopProfileMutation,
   useUpdateOwnerTeamRelationshipMutation,
   type ShopDashboardAppointment,
   type ShopDashboardBarberSummary
@@ -57,6 +60,7 @@ type TeamBarberView = {
   payoutBlockReason: string | null;
   relationshipId: string | null;
   publicTeamVisible: boolean;
+  publicTeamOrder: number;
   featuredOnShopProfile: boolean;
   searchText: string;
 };
@@ -72,6 +76,22 @@ type RelationshipUpdatePayload = {
   publicTeamVisible?: boolean;
   publicTeamOrder?: number;
   featuredOnShopProfile?: boolean;
+};
+
+type ShopProfileDraft = {
+  name: string;
+  shopUsername: string;
+  brandLine: string;
+  publicBio: string;
+  profilePhotoUrl: string;
+  coverPhotoUrl: string;
+  address: string;
+  neighborhood: string;
+  city: string;
+  state: string;
+  phone: string;
+  publicHours: string;
+  policies: string;
 };
 
 type MetricCardProps = {
@@ -338,6 +358,7 @@ function TeamActionLink({
 
 export function OwnerTeamWorkspace() {
   const shopQuery = useShopDashboardQuery();
+  const shopProfileQuery = useOwnerShopProfileQuery();
   const fintechQuery = useFintechManagementQuery();
   const [searchValue, setSearchValue] = useState("");
   const [inviteSearch, setInviteSearch] = useState("");
@@ -345,6 +366,23 @@ export function OwnerTeamWorkspace() {
   const [activeFilter, setActiveFilter] = useState<TeamFilter>("all");
   const [sortKey, setSortKey] = useState<SortKey>("top");
   const [selectedBarberId, setSelectedBarberId] = useState<string | null>(null);
+  const [shopProfileEditorOpen, setShopProfileEditorOpen] = useState(false);
+  const [shopProfileDraft, setShopProfileDraft] = useState<ShopProfileDraft>({
+    name: "",
+    shopUsername: "",
+    brandLine: "",
+    publicBio: "",
+    profilePhotoUrl: "",
+    coverPhotoUrl: "",
+    address: "",
+    neighborhood: "",
+    city: "",
+    state: "",
+    phone: "",
+    publicHours: "",
+    policies: ""
+  });
+  const [shopProfileFeedback, setShopProfileFeedback] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(null);
   const [inviteFeedback, setInviteFeedback] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(null);
   const [relationshipFeedback, setRelationshipFeedback] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(null);
   const relationshipDirectoryQuery = useOwnerTeamInviteDirectoryQuery("", true);
@@ -353,12 +391,36 @@ export function OwnerTeamWorkspace() {
   const respondJoinRequestMutation = useRespondOwnerTeamJoinRequestMutation();
   const updateRelationshipMutation = useUpdateOwnerTeamRelationshipMutation();
   const releaseRelationshipMutation = useReleaseOwnerTeamRelationshipMutation();
+  const updateShopProfileMutation = useUpdateOwnerShopProfileMutation();
+
+  useEffect(() => {
+    const shop = shopProfileQuery.data?.shop;
+    if (!shop) {
+      return;
+    }
+
+    setShopProfileDraft({
+      name: shop.name ?? "",
+      shopUsername: shop.shop_username ?? "",
+      brandLine: shop.brand_line ?? "",
+      publicBio: shop.public_bio ?? "",
+      profilePhotoUrl: shop.profile_photo_url ?? shop.profile_photo_path ?? "",
+      coverPhotoUrl: shop.cover_photo_url ?? "",
+      address: shop.address ?? "",
+      neighborhood: shop.neighborhood ?? "",
+      city: shop.city ?? "",
+      state: shop.state ?? "",
+      phone: shop.phone ?? "",
+      publicHours: typeof shop.public_hours === "string" ? shop.public_hours : "",
+      policies: shop.policies ?? ""
+    });
+  }, [shopProfileQuery.data?.shop]);
 
   const isInitialLoading =
     (shopQuery.isLoading && !shopQuery.data)
     || (fintechQuery.isLoading && !fintechQuery.data);
 
-  const errorMessage = shopQuery.error ?? fintechQuery.error;
+  const errorMessage = shopQuery.error ?? fintechQuery.error ?? shopProfileQuery.error;
   const inviteErrorMessage = inviteDirectoryQuery.error ? getReadableActionError(inviteDirectoryQuery.error) : null;
 
   const barbers = useMemo(() => shopQuery.data?.barbers ?? [], [shopQuery.data?.barbers]);
@@ -411,6 +473,7 @@ export function OwnerTeamWorkspace() {
         currentShopLabel,
         relationshipId: typeof membership?.id === "string" ? membership.id : null,
         publicTeamVisible: membershipRecord.publicTeamVisible !== false && membershipRecord.public_team_visible !== false,
+        publicTeamOrder: getOptionalNumericField(membershipRecord, ["publicTeamOrder", "public_team_order"]) ?? 0,
         featuredOnShopProfile: membershipRecord.featuredOnShopProfile === true || membershipRecord.featured_on_shop_profile === true,
         searchText: `${barber.name} ${roleLabel} ${statusLabel} ${currentShopLabel ?? ""}`.toLowerCase()
       };
@@ -453,6 +516,43 @@ export function OwnerTeamWorkspace() {
   const pendingOwnerInvites = relationshipDirectory.filter((barber) => barber.inviteStatus === "invited");
   const incomingJoinRequests = relationshipDirectory.filter((barber) => barber.inviteStatus === "requested");
   const relationshipErrorMessage = relationshipDirectoryQuery.error ? getReadableActionError(relationshipDirectoryQuery.error) : null;
+  const ownerShopProfile = shopProfileQuery.data?.shop ?? null;
+  const publicShopHref = ownerShopProfile?.id ? `/shop/${encodeURIComponent(ownerShopProfile.id)}` : "/dashboard/client/search?type=shops";
+
+  function updateShopProfileDraft(field: keyof ShopProfileDraft, value: string) {
+    setShopProfileDraft((current) => ({ ...current, [field]: value }));
+  }
+
+  async function handleShopProfileSave() {
+    if (!ownerShopProfile?.id) {
+      setShopProfileFeedback({ tone: "error", message: "Owner shop profile is not available yet." });
+      return;
+    }
+
+    setShopProfileFeedback(null);
+    try {
+      await updateShopProfileMutation.mutateAsync({
+        shopId: ownerShopProfile.id,
+        name: shopProfileDraft.name,
+        shopUsername: shopProfileDraft.shopUsername || null,
+        brandLine: shopProfileDraft.brandLine || null,
+        publicBio: shopProfileDraft.publicBio || null,
+        profilePhotoUrl: shopProfileDraft.profilePhotoUrl || null,
+        coverPhotoUrl: shopProfileDraft.coverPhotoUrl || null,
+        address: shopProfileDraft.address || null,
+        neighborhood: shopProfileDraft.neighborhood || null,
+        city: shopProfileDraft.city || null,
+        state: shopProfileDraft.state || null,
+        phone: shopProfileDraft.phone || null,
+        publicHours: shopProfileDraft.publicHours || null,
+        policies: shopProfileDraft.policies || null
+      });
+      setShopProfileFeedback({ tone: "success", message: "Public shop profile saved." });
+      setShopProfileEditorOpen(false);
+    } catch (error) {
+      setShopProfileFeedback({ tone: "error", message: getReadableActionError(error as { message?: string; status?: number; code?: string }) });
+    }
+  }
 
   async function handleCreateInvite(barberId: string) {
     setInviteFeedback(null);
@@ -547,6 +647,123 @@ export function OwnerTeamWorkspace() {
       {inviteFeedback && !inviteModalOpen ? <FeedbackBanner tone={inviteFeedback.tone} message={inviteFeedback.message} /> : null}
       {relationshipFeedback ? <FeedbackBanner tone={relationshipFeedback.tone} message={relationshipFeedback.message} /> : null}
       {relationshipErrorMessage ? <FeedbackBanner tone="error" message={relationshipErrorMessage} /> : null}
+
+      <GlassCard className="overflow-hidden p-0">
+        {ownerShopProfile?.cover_photo_url ? (
+          <div className="h-36 overflow-hidden border-b border-white/8">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={ownerShopProfile.cover_photo_url} alt={`${ownerShopProfile.name} cover`} className="h-full w-full object-cover opacity-85" />
+          </div>
+        ) : null}
+        <div className="grid gap-5 p-5 sm:p-6 lg:grid-cols-[auto_1fr_auto] lg:items-center">
+          <Avatar
+            src={ownerShopProfile?.profile_photo_url ?? ownerShopProfile?.profile_photo_path ?? undefined}
+            alt={ownerShopProfile?.name ?? "Shop profile"}
+            initials={getInitials(ownerShopProfile?.name ?? "Shop")}
+            className="h-20 w-20 rounded-[24px] border-2 border-[#A3FF12]/45 bg-[#A3FF12]/10"
+          />
+          <div className="min-w-0">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Public Shop Profile</p>
+            <h2 className="mt-2 truncate text-3xl font-black tracking-[-0.045em] text-white">{ownerShopProfile?.name ?? "Shop profile loading"}</h2>
+            <p className="mt-1 text-sm font-bold text-white/54">{ownerShopProfile?.shop_username ? `@${ownerShopProfile.shop_username}` : "Public handle not set"}</p>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-white/60">
+              {ownerShopProfile?.public_bio ?? ownerShopProfile?.brand_line ?? "Shape the public business profile clients see before choosing a barber."}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold uppercase tracking-[0.13em] text-white/44">
+              <span>{formatStatusLabel(ownerShopProfile?.app_approval_status ?? "pending")}</span>
+              <span>{[ownerShopProfile?.address, ownerShopProfile?.city, ownerShopProfile?.state].filter(Boolean).join(", ") || "Address not set"}</span>
+              <span>{team.filter((barber) => barber.publicTeamVisible).length} public barber{team.filter((barber) => barber.publicTeamVisible).length === 1 ? "" : "s"}</span>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2 lg:justify-end">
+            <Link
+              href={publicShopHref as Route}
+              className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-sm font-extrabold text-white/72 transition hover:border-[#A3FF12]/28 hover:text-[#A3FF12]"
+            >
+              View public profile
+            </Link>
+            <button
+              type="button"
+              onClick={() => setShopProfileEditorOpen((current) => !current)}
+              className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#A3FF12]/38 bg-[#A3FF12] px-4 text-sm font-black text-black shadow-[0_14px_32px_rgba(163,255,18,0.2)] transition hover:-translate-y-0.5"
+            >
+              Edit shop profile
+            </button>
+          </div>
+        </div>
+        {shopProfileFeedback ? <div className="px-5 pb-5 sm:px-6"><FeedbackBanner tone={shopProfileFeedback.tone} message={shopProfileFeedback.message} /></div> : null}
+        {shopProfileEditorOpen ? (
+          <div className="border-t border-white/8 p-5 sm:p-6">
+            <div className="grid gap-3 md:grid-cols-2">
+              {([
+                ["name", "Shop name"],
+                ["shopUsername", "Public handle"],
+                ["profilePhotoUrl", "Logo / profile photo URL"],
+                ["coverPhotoUrl", "Cover photo URL"],
+                ["brandLine", "Brand line"],
+                ["phone", "Phone"],
+                ["address", "Address"],
+                ["neighborhood", "Neighborhood"],
+                ["city", "City"],
+                ["state", "State"]
+              ] as Array<[keyof ShopProfileDraft, string]>).map(([field, label]) => (
+                <label key={field} className="space-y-2">
+                  <span className="text-xs font-black uppercase tracking-[0.14em] text-white/42">{label}</span>
+                  <input
+                    value={shopProfileDraft[field]}
+                    onChange={(event) => updateShopProfileDraft(field, event.target.value)}
+                    className="min-h-12 w-full rounded-[16px] border border-white/10 bg-black/28 px-4 text-sm font-bold text-white outline-none transition placeholder:text-white/28 focus:border-[#A3FF12]/50"
+                  />
+                </label>
+              ))}
+              <label className="space-y-2 md:col-span-2">
+                <span className="text-xs font-black uppercase tracking-[0.14em] text-white/42">Public bio</span>
+                <textarea
+                  value={shopProfileDraft.publicBio}
+                  onChange={(event) => updateShopProfileDraft("publicBio", event.target.value)}
+                  rows={3}
+                  className="w-full rounded-[16px] border border-white/10 bg-black/28 px-4 py-3 text-sm font-bold text-white outline-none transition placeholder:text-white/28 focus:border-[#A3FF12]/50"
+                />
+              </label>
+              <label className="space-y-2">
+                <span className="text-xs font-black uppercase tracking-[0.14em] text-white/42">Hours</span>
+                <textarea
+                  value={shopProfileDraft.publicHours}
+                  onChange={(event) => updateShopProfileDraft("publicHours", event.target.value)}
+                  rows={3}
+                  className="w-full rounded-[16px] border border-white/10 bg-black/28 px-4 py-3 text-sm font-bold text-white outline-none transition placeholder:text-white/28 focus:border-[#A3FF12]/50"
+                />
+              </label>
+              <label className="space-y-2">
+                <span className="text-xs font-black uppercase tracking-[0.14em] text-white/42">Policies</span>
+                <textarea
+                  value={shopProfileDraft.policies}
+                  onChange={(event) => updateShopProfileDraft("policies", event.target.value)}
+                  rows={3}
+                  className="w-full rounded-[16px] border border-white/10 bg-black/28 px-4 py-3 text-sm font-bold text-white outline-none transition placeholder:text-white/28 focus:border-[#A3FF12]/50"
+                />
+              </label>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={updateShopProfileMutation.isPending}
+                onClick={() => void handleShopProfileSave()}
+                className="inline-flex min-h-11 items-center rounded-full bg-[#A3FF12] px-5 text-sm font-black text-black transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-55"
+              >
+                Save public profile
+              </button>
+              <button
+                type="button"
+                onClick={() => setShopProfileEditorOpen(false)}
+                className="inline-flex min-h-11 items-center rounded-full border border-white/10 bg-black/20 px-5 text-sm font-black text-white/66 transition hover:border-[#A3FF12]/30 hover:text-[#A3FF12]"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </GlassCard>
 
       <section className="grid gap-3 sm:grid-cols-[1fr_auto]">
         <SearchBar
@@ -976,6 +1193,30 @@ export function OwnerTeamWorkspace() {
                             className="inline-flex min-h-10 items-center rounded-full border border-white/10 bg-black/20 px-4 text-xs font-black text-white/72 transition hover:border-[#A3FF12]/28 hover:text-[#A3FF12] disabled:cursor-not-allowed disabled:opacity-55"
                           >
                             {barber.featuredOnShopProfile ? "Unfeature" : "Feature"}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!barber.relationshipId || updateRelationshipMutation.isPending}
+                            onClick={() => void handleRelationshipUpdate(
+                              barber,
+                              { publicTeamOrder: Math.max(0, barber.publicTeamOrder - 1) },
+                              `${barber.name} was moved earlier on the public shop team.`
+                            )}
+                            className="inline-flex min-h-10 items-center rounded-full border border-white/10 bg-black/20 px-4 text-xs font-black text-white/72 transition hover:border-[#A3FF12]/28 hover:text-[#A3FF12] disabled:cursor-not-allowed disabled:opacity-55"
+                          >
+                            Move up
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!barber.relationshipId || updateRelationshipMutation.isPending}
+                            onClick={() => void handleRelationshipUpdate(
+                              barber,
+                              { publicTeamOrder: barber.publicTeamOrder + 1 },
+                              `${barber.name} was moved later on the public shop team.`
+                            )}
+                            className="inline-flex min-h-10 items-center rounded-full border border-white/10 bg-black/20 px-4 text-xs font-black text-white/72 transition hover:border-[#A3FF12]/28 hover:text-[#A3FF12] disabled:cursor-not-allowed disabled:opacity-55"
+                          >
+                            Move down
                           </button>
                           <button
                             type="button"

@@ -111,6 +111,11 @@ export interface Shop {
   type: "shop" | "mobile";
   appApprovalStatus?: ApprovalStatus;
   profilePhotoUrl?: string;
+  coverPhotoUrl?: string;
+  publicBio?: string;
+  publicHours?: unknown;
+  policies?: string;
+  shopUsername?: string;
   neighborhood?: string;
   city?: string;
   state?: string;

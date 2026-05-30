@@ -2794,7 +2794,7 @@ async function readActiveShopForBarber(supabase: SupabaseClient | null, barberId
 
   const shopResult = await supabase
     .from("shops")
-    .select("id, name, brand_line, phone, address, neighborhood, city, state, profile_photo_url, profile_photo_path, app_approval_status")
+    .select("id, name, brand_line, public_bio, cover_photo_url, public_hours, policies, shop_username, phone, address, neighborhood, city, state, profile_photo_url, profile_photo_path, app_approval_status")
     .eq("id", relationshipResult.data.shop_id)
     .limit(1)
     .maybeSingle();
@@ -2807,6 +2807,11 @@ async function readActiveShopForBarber(supabase: SupabaseClient | null, barberId
     id: string;
     name: string;
     brand_line?: string | null;
+    public_bio?: string | null;
+    cover_photo_url?: string | null;
+    public_hours?: unknown;
+    policies?: string | null;
+    shop_username?: string | null;
     phone?: string | null;
     address?: string | null;
     neighborhood?: string | null;
@@ -2821,6 +2826,11 @@ async function readActiveShopForBarber(supabase: SupabaseClient | null, barberId
     id: shop.id,
     name: shop.name,
     brandLine: shop.brand_line ?? "",
+    publicBio: shop.public_bio ?? undefined,
+    coverPhotoUrl: shop.cover_photo_url ?? undefined,
+    publicHours: shop.public_hours ?? undefined,
+    policies: shop.policies ?? undefined,
+    shopUsername: shop.shop_username ?? undefined,
     phone: shop.phone ?? "",
     locationIds: [],
     type: "shop",
@@ -2926,6 +2936,11 @@ export type PublicShopProfilePayload = {
   shop: RecommendedShopView & {
     phone?: string;
     profilePhotoUrl?: string | null;
+    coverPhotoUrl?: string;
+    publicBio?: string;
+    publicHours?: unknown;
+    policies?: string;
+    shopUsername?: string;
     gallery?: Array<{
       id: string;
       shopId: string;

@@ -16,7 +16,12 @@ const shopProfileSchema = z.object({
   city: z.string().trim().max(120).optional().nullable(),
   state: z.string().trim().max(40).optional().nullable(),
   profilePhotoPath: z.string().trim().max(500).optional().nullable(),
-  profilePhotoUrl: z.string().trim().max(1000).optional().nullable()
+  profilePhotoUrl: z.string().trim().max(1000).optional().nullable(),
+  coverPhotoUrl: z.string().trim().max(1000).optional().nullable(),
+  publicBio: z.string().trim().max(2000).optional().nullable(),
+  publicHours: z.union([z.record(z.unknown()), z.string().trim().max(2000)]).optional().nullable(),
+  policies: z.string().trim().max(2000).optional().nullable(),
+  shopUsername: z.string().trim().min(2).max(80).regex(/^[a-zA-Z0-9._-]+$/).optional().nullable()
 });
 
 function isOwnerScoped(user: UserAccount) {
@@ -56,7 +61,12 @@ function updateDemoShopProfile(user: UserAccount, input: z.infer<typeof shopProf
       neighborhood: cleanNullable(input.neighborhood) ?? shop.neighborhood,
       city: cleanNullable(input.city) ?? shop.city,
       state: cleanNullable(input.state) ?? shop.state,
-      profilePhotoUrl: cleanNullable(input.profilePhotoUrl) ?? shop.profilePhotoUrl
+      profilePhotoUrl: cleanNullable(input.profilePhotoUrl) ?? shop.profilePhotoUrl,
+      coverPhotoUrl: cleanNullable(input.coverPhotoUrl) ?? shop.coverPhotoUrl,
+      publicBio: cleanNullable(input.publicBio) ?? shop.publicBio,
+      publicHours: input.publicHours ?? shop.publicHours,
+      policies: cleanNullable(input.policies) ?? shop.policies,
+      shopUsername: cleanNullable(input.shopUsername) ?? shop.shopUsername
     };
   });
 
@@ -92,14 +102,14 @@ export async function PATCH(request: Request) {
 
     const shopQuery = supabase
       .from("shops")
-      .select("id, name, brand_line, neighborhood, city, state, phone, address, profile_photo_path, profile_photo_url, owner_profile_id, app_approval_status")
+      .select("id, name, brand_line, public_bio, cover_photo_url, public_hours, policies, shop_username, neighborhood, city, state, phone, address, profile_photo_path, profile_photo_url, owner_profile_id, app_approval_status")
       .eq("owner_profile_id", user.id)
       .order("updated_at", { ascending: false })
       .limit(1);
     const scopedShopResult = parsed.data.shopId
       ? await supabase
           .from("shops")
-          .select("id, name, brand_line, neighborhood, city, state, phone, address, profile_photo_path, profile_photo_url, owner_profile_id, app_approval_status")
+          .select("id, name, brand_line, public_bio, cover_photo_url, public_hours, policies, shop_username, neighborhood, city, state, phone, address, profile_photo_path, profile_photo_url, owner_profile_id, app_approval_status")
           .eq("id", parsed.data.shopId)
           .eq("owner_profile_id", user.id)
           .maybeSingle()
@@ -123,6 +133,11 @@ export async function PATCH(request: Request) {
       ...(parsed.data.state !== undefined ? { state: cleanNullable(parsed.data.state) } : {}),
       ...(parsed.data.profilePhotoPath !== undefined ? { profile_photo_path: cleanNullable(parsed.data.profilePhotoPath) } : {}),
       ...(parsed.data.profilePhotoUrl !== undefined ? { profile_photo_url: cleanNullable(parsed.data.profilePhotoUrl) } : {}),
+      ...(parsed.data.coverPhotoUrl !== undefined ? { cover_photo_url: cleanNullable(parsed.data.coverPhotoUrl) } : {}),
+      ...(parsed.data.publicBio !== undefined ? { public_bio: cleanNullable(parsed.data.publicBio) } : {}),
+      ...(parsed.data.publicHours !== undefined ? { public_hours: typeof parsed.data.publicHours === "string" ? cleanNullable(parsed.data.publicHours) : parsed.data.publicHours } : {}),
+      ...(parsed.data.policies !== undefined ? { policies: cleanNullable(parsed.data.policies) } : {}),
+      ...(parsed.data.shopUsername !== undefined ? { shop_username: cleanNullable(parsed.data.shopUsername)?.toLowerCase() ?? null } : {}),
       updated_at: new Date().toISOString()
     };
 
@@ -131,7 +146,7 @@ export async function PATCH(request: Request) {
       .update(patch)
       .eq("id", shop.id)
       .eq("owner_profile_id", user.id)
-      .select("id, name, brand_line, neighborhood, city, state, phone, address, profile_photo_path, profile_photo_url, app_approval_status")
+      .select("id, name, brand_line, public_bio, cover_photo_url, public_hours, policies, shop_username, neighborhood, city, state, phone, address, profile_photo_path, profile_photo_url, app_approval_status")
       .single();
 
     if (updateResult.error) {
@@ -142,6 +157,53 @@ export async function PATCH(request: Request) {
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Unable to update shop profile." },
+      { status: 500 }
+    );
+  }
+}
+
+export async function GET() {
+  try {
+    const user = await getSessionUser();
+    if (!isOwnerScoped(user)) {
+      return NextResponse.json({ error: "Only shop owners can view shop profile details." }, { status: 403 });
+    }
+
+    if (!isSupabaseEnabled()) {
+      const state = getMarketplaceState();
+      const shopId = resolveDemoShopId(user);
+      const shop = state.shops.find((entry) => entry.id === shopId) ?? null;
+      if (!shop) {
+        return NextResponse.json({ error: "Owner shop not found." }, { status: 404 });
+      }
+      return NextResponse.json({ shop });
+    }
+
+    const supabase = createSupabaseAdminClient();
+    if (!supabase) {
+      return NextResponse.json({ error: "Supabase is not configured for owner shop profile reads." }, { status: 503 });
+    }
+
+    const result = await supabase
+      .from("shops")
+      .select("id, name, brand_line, public_bio, cover_photo_url, public_hours, policies, shop_username, neighborhood, city, state, phone, address, profile_photo_path, profile_photo_url, owner_profile_id, app_approval_status")
+      .eq("owner_profile_id", user.id)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (result.error) {
+      throw result.error;
+    }
+
+    if (!result.data) {
+      return NextResponse.json({ error: "Owner shop not found." }, { status: 404 });
+    }
+
+    return NextResponse.json({ shop: result.data });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Unable to load shop profile." },
       { status: 500 }
     );
   }

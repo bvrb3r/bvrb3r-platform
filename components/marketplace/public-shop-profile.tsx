@@ -33,6 +33,12 @@ export function PublicShopProfile({
   return (
     <div className="space-y-4" data-testid="public-shop-profile">
       <Card className="overflow-hidden rounded-[36px] p-6 sm:p-8">
+        {shop.coverPhotoUrl ? (
+          <div className="-mx-6 -mt-6 mb-6 h-44 overflow-hidden sm:-mx-8 sm:-mt-8 sm:h-56">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={shop.coverPhotoUrl} alt={`${shop.name} cover`} className="h-full w-full object-cover opacity-88" />
+          </div>
+        ) : null}
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(124,255,0,0.12),transparent_36%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.06),transparent_28%)]" />
         <div className="relative grid gap-6 lg:grid-cols-[auto_1fr_auto] lg:items-center">
           {shop.profilePhotoUrl ? (
@@ -59,7 +65,8 @@ export function PublicShopProfile({
             <h1 className="mt-3 text-4xl font-black tracking-[-0.055em] text-white sm:text-6xl" data-display="true">
               {shop.name}
             </h1>
-            <p className="mt-3 max-w-2xl text-sm leading-7 text-white/66">{shop.brandLine ?? "Pick a barber and book."}</p>
+            {shop.shopUsername ? <p className="mt-1 text-sm font-bold text-[#d7ffab]">@{shop.shopUsername}</p> : null}
+            <p className="mt-3 max-w-2xl text-sm leading-7 text-white/66">{shop.publicBio ?? shop.brandLine ?? "Pick a barber and book."}</p>
             <div className="mt-5 flex flex-wrap gap-3 text-sm text-white/66">
               <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-3 py-2">
                 <MapPin className="h-4 w-4 text-[#baff69]" />
@@ -244,6 +251,32 @@ export function PublicShopProfile({
                 </div>
               )}
             </div>
+          </Card>
+
+          <Card className="rounded-[36px] p-6 sm:p-8">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="surface-label">Shop Details</p>
+                <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-white">Hours & Policies</h2>
+              </div>
+              <ShieldCheck className="h-5 w-5 text-[#baff69]" />
+            </div>
+            {shop.policies || shop.publicHours ? (
+              <div className="mt-4 space-y-3 text-sm leading-6 text-white/62">
+                {shop.publicHours ? (
+                  <p className="rounded-[22px] border border-white/8 bg-black/20 p-4">
+                    {typeof shop.publicHours === "string" ? shop.publicHours : "Shop hours are managed by the owner."}
+                  </p>
+                ) : null}
+                {shop.policies ? (
+                  <p className="rounded-[22px] border border-white/8 bg-black/20 p-4">{shop.policies}</p>
+                ) : null}
+              </div>
+            ) : (
+              <p className="mt-4 rounded-[22px] border border-dashed border-white/10 bg-black/20 p-4 text-sm leading-6 text-white/58">
+                Shop hours and public policies will appear here when the owner adds them.
+              </p>
+            )}
           </Card>
 
           <Card className="rounded-[36px] p-6 sm:p-8">
