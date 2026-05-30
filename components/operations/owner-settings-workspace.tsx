@@ -634,7 +634,7 @@ export function OwnerSettingsWorkspace({
           "Owner Home remains the team and public profile command center."
         ]}
         primaryAction={ownerShopId ? { label: "View Shop", href: `/kiosk/${ownerShopId}` } : undefined}
-        secondaryAction={{ label: "Edit Shop Profile", onClick: () => setQuickSetupModal("profile") }}
+        secondaryAction={{ label: "Edit Public Shop Info", onClick: () => setQuickSetupModal("profile") }}
         tiles={[
           { label: "Shop Profile", value: ownerShopId && shopName !== "Shop profile incomplete" ? "Live" : "Needs setup", helper: "Public shop identity.", tone: ownerShopId ? "green" : "yellow", href: "#owner-settings-shop-profile" },
           { label: "Verification", value: verificationLabel, helper: "Shop approval status.", tone: verificationTone, href: "#owner-settings-compliance" },
@@ -669,7 +669,7 @@ export function OwnerSettingsWorkspace({
         title="Business Control Hub"
         subtitle="Setup is grouped by decision, not paperwork."
         rows={[
-          { title: "Payment Setup", subtitle: "Stripe and payout readiness.", href: "/dashboard/owner/money?view=fintech", status: stripeStatus.label, tone: stripeStatus.tone, icon: <WalletCards className="h-5 w-5" /> },
+          { title: "Banking Status", subtitle: "Stripe and payout readiness.", href: "/dashboard/owner/money?view=fintech", status: stripeStatus.label, tone: stripeStatus.tone, icon: <WalletCards className="h-5 w-5" /> },
           { title: "Team Permissions", subtitle: "Manage team roles and permissions.", href: "/dashboard/owner", status: membershipCount ? `${membershipCount} linked` : "Not set", tone: membershipCount ? "green" : "muted", icon: <Users className="h-5 w-5" /> },
           { title: "Public Profile", subtitle: "Shop profile, branding, hours, and policies.", href: "#owner-settings-shop-profile", icon: <Store className="h-5 w-5" /> },
           { title: "Shop Readiness", subtitle: "Verification, documents, and compliance.", href: "#owner-settings-compliance", status: verificationLabel, tone: verificationTone, icon: <ShieldCheck className="h-5 w-5" /> }

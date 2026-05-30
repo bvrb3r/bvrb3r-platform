@@ -17,6 +17,7 @@ export default async function OwnerSettingsPage({
       title="More"
       subtitle="Account, shop settings, verification, payments, policies, compliance, activity, and help."
       hidePageHeader
+      hideShellContext
     >
       <OwnerSettingsWorkspace user={user} initialSection={params.section} />
     </DashboardShell>

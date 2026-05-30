@@ -148,6 +148,7 @@ describe("owner More workspace", () => {
     render(<OwnerSettingsWorkspace user={resolveDemoUser("owner@bvrb3r.demo")} />);
 
     expect(screen.getByRole("heading", { name: "More" })).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { name: "More" })).toHaveLength(1);
     expect(screen.getByText("Manage your account, shop setup, verification, payments, policies, compliance, and help.")).toBeInTheDocument();
     expect(screen.getByTestId("owner-more-identity-card")).toBeInTheDocument();
     expect(screen.getByText("Shop owner account")).toBeInTheDocument();
@@ -219,7 +220,7 @@ describe("owner More workspace", () => {
 
     render(<OwnerSettingsWorkspace user={{ ...resolveDemoUser("owner@bvrb3r.demo"), appApprovalStatus: "approved", shopApprovalStatus: "approved" }} />);
 
-    fireEvent.click(screen.getAllByRole("button", { name: /Edit shop profile/i })[0]);
+    fireEvent.click(screen.getByRole("button", { name: /Edit public shop info/i }));
     expect(screen.getByRole("heading", { name: "Edit shop profile" })).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText(/Shop name/i), { target: { value: "BVRB3R North" } });
     fireEvent.change(screen.getByLabelText(/Brand line/i), { target: { value: "Sharp cuts near campus." } });

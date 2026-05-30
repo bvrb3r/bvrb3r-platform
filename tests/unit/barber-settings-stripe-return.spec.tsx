@@ -373,6 +373,19 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     setupHookMocks();
   });
 
+  it("renders the barber More control center with one heading and the identity card first", () => {
+    render(<BarberSettingsScreen user={resolveDemoUser("blaze@bvrb3r.demo")} />);
+
+    expect(screen.getAllByRole("heading", { name: "More" })).toHaveLength(1);
+    const identityCard = screen.getByTestId("barber-more-identity-card");
+    const setupGate = screen.getByText("Your barber setup");
+    expect(identityCard).toBeInTheDocument();
+    expect(screen.getByText("Business Control Hub")).toBeInTheDocument();
+    expect(identityCard.compareDocumentPosition(setupGate) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByText("Quick Actions")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Log out" })).toBeInTheDocument();
+  });
+
   it("syncs Stripe payout readiness when returning from Connect onboarding", async () => {
     render(<BarberSettingsScreen user={resolveDemoUser("blaze@bvrb3r.demo")} stripeReturnState="return" embedded />);
 

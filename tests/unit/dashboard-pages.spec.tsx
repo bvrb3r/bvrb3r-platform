@@ -32,6 +32,10 @@ vi.mock("@/components/operations/owner-overview", () => ({
   )
 }));
 
+vi.mock("@/components/operations/owner-team-workspace", () => ({
+  OwnerTeamWorkspace: () => <div data-testid="owner-team-workspace-stub">Owner team workspace</div>
+}));
+
 vi.mock("@/components/operations/manager-overview", () => ({
   ManagerOverview: ({ locationIds }: { locationIds: string[] }) => <div data-testid="manager-overview-stub">{locationIds.join(",")}</div>
 }));
@@ -46,6 +50,10 @@ vi.mock("@/components/operations/barber-workspace", () => ({
 
 vi.mock("@/components/operations/barber-schedule-workspace", () => ({
   BarberScheduleWorkspace: ({ barberName }: { barberName: string }) => <div data-testid="barber-schedule-workspace-stub">{barberName}</div>
+}));
+
+vi.mock("@/components/barber-experience/barber-calendar-screen", () => ({
+  BarberCalendarScreen: ({ barberName }: { barberName: string }) => <div data-testid="barber-calendar-screen-stub">{barberName}</div>
 }));
 
 vi.mock("@/components/barber-experience/barber-checkout-screen", () => ({
@@ -161,8 +169,8 @@ describe("dashboard role pages", () => {
     render(await OwnerDashboardPage());
 
     expect(getAuthorizedUserMock).toHaveBeenCalledWith(["shop_owner_user"]);
-    expect(screen.getByRole("heading", { name: "Overview" })).toBeInTheDocument();
-    expect(screen.getByTestId("owner-overview-stub")).toBeInTheDocument();
+    expect(screen.getByTestId("owner-team-workspace-stub")).toBeInTheDocument();
+    expect(screen.queryByTestId("owner-overview-stub")).not.toBeInTheDocument();
   });
 
   it("renders the shop command center for the manager route", async () => {
@@ -201,8 +209,8 @@ describe("dashboard role pages", () => {
     render(await BarberDashboardPage());
 
     expect(getAuthorizedUserMock).toHaveBeenCalledWith(["barber_user"]);
-    expect(screen.getByRole("heading", { name: "Calendar" })).toBeInTheDocument();
-    expect(screen.getByTestId("barber-schedule-workspace-stub")).toHaveTextContent("Blaze King");
+    expect(screen.getByRole("heading", { name: "Home" })).toBeInTheDocument();
+    expect(screen.getByTestId("barber-calendar-screen-stub")).toHaveTextContent("Blaze King");
     expect(screen.getByTestId("shell-identity-name")).toHaveTextContent("Blaze King");
     expect(screen.queryByText("Owner control center")).not.toBeInTheDocument();
   });
@@ -214,7 +222,7 @@ describe("dashboard role pages", () => {
 
     expect(getAuthorizedUserMock).toHaveBeenCalledWith(["barber_user"]);
     expect(screen.getByRole("heading", { name: "Calendar" })).toBeInTheDocument();
-    expect(screen.getByTestId("barber-schedule-workspace-stub")).toHaveTextContent("Blaze King");
+    expect(screen.getByTestId("barber-calendar-screen-stub")).toHaveTextContent("Blaze King");
     expect(screen.getByTestId("shell-identity-name")).toHaveTextContent("Blaze King");
   });
 
@@ -266,7 +274,7 @@ describe("dashboard role pages", () => {
     );
 
     expect(getAuthorizedUserMock).toHaveBeenCalledWith(["barber_user"]);
-    expect(screen.getByRole("heading", { name: "More" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "More" })).not.toBeInTheDocument();
     expect(screen.getByTestId("barber-more-screen-stub")).toHaveTextContent("Blaze King|payouts");
   });
 

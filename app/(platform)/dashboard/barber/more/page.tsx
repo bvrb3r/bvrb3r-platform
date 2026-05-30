@@ -17,6 +17,7 @@ export default async function BarberMorePage({
       activeHref="/dashboard/barber/more"
       title="More"
       subtitle="Manage your account, payouts & settings"
+      hidePageHeader
     >
       <BarberSettingsScreen user={user} initialSection={params.section} stripeReturnState={stripeReturnState} />
     </DashboardShell>

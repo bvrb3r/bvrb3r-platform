@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ArrowLeftRight,
   BarChart3,
@@ -118,7 +118,6 @@ const sectionIdMap = {
 
 type SettingsSectionKey = keyof typeof sectionIdMap;
 type Tone = "green" | "amber" | "danger" | "neutral";
-type LinkHref = ComponentProps<typeof Link>["href"];
 type BarberQuickSetupModal = "service" | "availability" | "visibility" | "booking" | "invites" | null;
 type BusinessToolKey =
   | "services"
@@ -806,31 +805,6 @@ function getBusinessToolDescription(tool: BusinessToolKey | null) {
     default:
       return undefined;
   }
-}
-
-function QuickActionLink({ href, icon: Icon, children }: { href: LinkHref; icon: LucideIcon; children: ReactNode }) {
-  return (
-    <Link
-      href={href}
-      className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-[#a3ff12]/35 bg-[#a3ff12]/8 px-5 text-sm font-extrabold text-[#a3ff12] transition hover:border-[#a3ff12]/60 hover:bg-[#a3ff12]/12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a3ff12]/55"
-    >
-      <Icon className="h-4 w-4" aria-hidden="true" />
-      {children}
-    </Link>
-  );
-}
-
-function QuickActionButton({ icon: Icon, children, onClick }: { icon: LucideIcon; children: ReactNode; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-[#a3ff12]/35 bg-[#a3ff12]/8 px-5 text-sm font-extrabold text-[#a3ff12] transition hover:border-[#a3ff12]/60 hover:bg-[#a3ff12]/12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a3ff12]/55"
-    >
-      <Icon className="h-4 w-4" aria-hidden="true" />
-      {children}
-    </button>
-  );
 }
 
 export function BarberSettingsScreen({
@@ -1634,6 +1608,30 @@ export function BarberSettingsScreen({
           />
         ) : null}
 
+        <MoreIdentityReadinessCard
+          variant="barber"
+          imageUrl={barberPhotoUrl}
+          initials={getInitials(user.name)}
+          title={user.name}
+          subtitle={subtypeLabel}
+          roleLabel="Barber account"
+          badges={[
+            { label: verificationDecision?.gates.badge?.allowed ? "Verified Barber" : formatStatusLabel(canonicalVerificationStatus), tone: moreToneForStatus(getStatusTone(canonicalVerificationStatus)) },
+            { label: formatStatusLabel(user.appApprovalStatus), tone: moreToneForStatus(getStatusTone(user.appApprovalStatus)) },
+            { label: payoutsReady ? "Payouts connected" : "Payouts setup", tone: payoutsReady ? "green" : "yellow" }
+          ]}
+          metaLines={[shopName, locationLabel]}
+          primaryAction={{ label: "View Public Profile", href: "/dashboard/barber/profile" }}
+          secondaryAction={{ label: "Edit Public Profile", href: "/dashboard/barber/profile" }}
+          tiles={statusItems.map((item) => ({
+            label: item.label,
+            value: item.value,
+            tone: moreToneForStatus(item.tone),
+            helper: item.label === "Payouts" ? payoutSetupMessage : undefined,
+            href: item.label === "Payouts" ? "#barber-settings-payouts" : item.label === "Profile" ? "/dashboard/barber/profile" : "#barber-settings-verification"
+          }))}
+        />
+
         <MoreActivationGate
           title="Your barber setup"
           subtitle="Finish these steps so clients can book you and payouts can move correctly."
@@ -1686,44 +1684,20 @@ export function BarberSettingsScreen({
           </GlassCard>
         ) : null}
 
-        <MoreIdentityReadinessCard
-          variant="barber"
-          imageUrl={barberPhotoUrl}
-          initials={getInitials(user.name)}
-          title={user.name}
-          subtitle={subtypeLabel}
-          roleLabel="Barber account"
-          badges={[
-            { label: verificationDecision?.gates.badge?.allowed ? "Verified Barber" : formatStatusLabel(canonicalVerificationStatus), tone: moreToneForStatus(getStatusTone(canonicalVerificationStatus)) },
-            { label: formatStatusLabel(user.appApprovalStatus), tone: moreToneForStatus(getStatusTone(user.appApprovalStatus)) },
-            { label: payoutsReady ? "Payouts connected" : "Payouts setup", tone: payoutsReady ? "green" : "yellow" }
-          ]}
-          metaLines={[shopName, locationLabel]}
-          primaryAction={{ label: "View Profile", href: "/dashboard/barber/profile" }}
-          secondaryAction={{ label: "Edit Profile", href: "/dashboard/barber/profile" }}
-          tiles={statusItems.map((item) => ({
-            label: item.label,
-            value: item.value,
-            tone: moreToneForStatus(item.tone),
-            helper: item.label === "Payouts" ? payoutSetupMessage : undefined,
-            href: item.label === "Payouts" ? "#barber-settings-payouts" : item.label === "Profile" ? "/dashboard/barber/profile" : "#barber-settings-verification"
-          }))}
-        />
-
         <MoreControlHub
           title="Business Control Hub"
           subtitle="Manage the tools that control your bookings, services, payouts, and public profile."
-          rows={[
-            { title: "Services", subtitle: "Manage pricing and offerings", href: "#barber-settings-business", icon: <Scissors className="h-5 w-5" /> },
-            { title: "Availability", subtitle: "Working hours and blocked time", href: "#barber-settings-business", icon: <Clock3 className="h-5 w-5" /> },
-            { title: "Booking Settings", subtitle: "Online booking preferences", href: "#barber-settings-business", icon: <CalendarDays className="h-5 w-5" /> },
-            { title: "Payouts", subtitle: "Eligible balance and readiness", href: "#barber-settings-payouts", status: payoutCurrency(eligiblePayoutAmount ?? 0), tone: hasPayoutAmount ? "green" : "muted", icon: <WalletCards className="h-5 w-5" /> },
-            { title: "Transactions", subtitle: "Sales and receipts", href: "#barber-settings-transactions", icon: <ReceiptText className="h-5 w-5" /> },
-            { title: "Reports", subtitle: "Performance overview", href: "#barber-settings-business", icon: <BarChart3 className="h-5 w-5" /> },
-            { title: "Shop Relationship", subtitle: "Invites and operating model", href: "#barber-settings-shop-invites", status: pendingShopInvites.length ? `${pendingShopInvites.length} pending` : subtypeLabel, tone: pendingShopInvites.length ? "yellow" : "muted", icon: <Store className="h-5 w-5" /> },
-            { title: "Notifications", subtitle: "Alerts and reminders", href: "#barber-settings-business", icon: <BellRing className="h-5 w-5" /> }
-          ]}
-        />
+        rows={[
+          { title: "Service Library", subtitle: "Pricing and offerings", href: "#barber-settings-business", icon: <Scissors className="h-5 w-5" /> },
+          { title: "Hours", subtitle: "Working time and blocks", href: "#barber-settings-business", icon: <Clock3 className="h-5 w-5" /> },
+          { title: "Booking Rules", subtitle: "Online booking preferences", href: "#barber-settings-business", icon: <CalendarDays className="h-5 w-5" /> },
+          { title: "Payout Balance", subtitle: "Eligible balance and readiness", href: "#barber-settings-payouts", status: payoutCurrency(eligiblePayoutAmount ?? 0), tone: hasPayoutAmount ? "green" : "muted", icon: <WalletCards className="h-5 w-5" /> },
+          { title: "Receipts", subtitle: "Sales and transactions", href: "#barber-settings-transactions", icon: <ReceiptText className="h-5 w-5" /> },
+          { title: "Performance", subtitle: "Reports and trends", href: "#barber-settings-business", icon: <BarChart3 className="h-5 w-5" /> },
+          { title: "Shop Relationship", subtitle: "Invites and operating model", href: "#barber-settings-shop-invites", status: pendingShopInvites.length ? `${pendingShopInvites.length} pending` : subtypeLabel, tone: pendingShopInvites.length ? "yellow" : "muted", icon: <Store className="h-5 w-5" /> },
+          { title: "Alerts", subtitle: "Notifications and reminders", href: "#barber-settings-business", icon: <BellRing className="h-5 w-5" /> }
+        ]}
+      />
 
         <GlassCard id="barber-settings-shop-invites" className="scroll-mt-6 p-5 sm:p-6">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
@@ -2782,16 +2756,7 @@ export function BarberSettingsScreen({
           ) : null}
         </section>
 
-        {barberMoreSections.map((group) => <MoreSectionGroup key={group.title} group={group} />)}
-
-        <section className="space-y-4">
-          <SectionLabel>Quick Actions</SectionLabel>
-          <div className="flex flex-wrap gap-3">
-            <QuickActionLink href="/dashboard/barber/checkout?section=services" icon={Plus}>Add Service</QuickActionLink>
-            <QuickActionButton icon={Clock3} onClick={() => openBusinessTool("availability")}>Update Availability</QuickActionButton>
-            <QuickActionLink href="/dashboard/barber/messages" icon={LifeBuoy}>Contact Support</QuickActionLink>
-          </div>
-        </section>
+        {barberMoreSections.filter((group) => group.title !== "Business Setup").map((group) => <MoreSectionGroup key={group.title} group={group} />)}
 
         <MoreLogoutCard />
       </div>

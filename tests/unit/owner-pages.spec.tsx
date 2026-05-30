@@ -162,6 +162,8 @@ describe("owner dashboard tab pages", () => {
     );
 
     expect(screen.getByTestId("owner-settings-workspace-stub")).toHaveTextContent("services");
+    expect(screen.queryByTestId("owner-team-workspace-stub")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("owner-overview-stub")).not.toBeInTheDocument();
     expect(screen.queryByTestId("account-session-workspace-stub")).not.toBeInTheDocument();
   });
 });

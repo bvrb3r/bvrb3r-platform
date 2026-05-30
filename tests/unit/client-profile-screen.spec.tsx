@@ -284,6 +284,10 @@ describe("client profile screen", () => {
       />
     );
 
+    expect(screen.getAllByRole("heading", { name: "More" })).toHaveLength(1);
+    expect(screen.getByTestId("client-more-identity-card")).toBeInTheDocument();
+    expect(screen.getByText("Your BVRB3R setup")).toBeInTheDocument();
+    expect(screen.getByText("Personal Control Hub")).toBeInTheDocument();
     const headings = [
       screen.getByRole("heading", { name: "Account & Profile" }),
       screen.getByRole("heading", { name: "Booking Activity" }),
@@ -325,7 +329,8 @@ describe("client profile screen", () => {
     expect(screen.getByText("Text updates")).toBeInTheDocument();
     expect(screen.getByText("Email updates")).toBeInTheDocument();
     expect(screen.getByText("Push alerts")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Message Support" })).toHaveAttribute("href", "/dashboard/client/messages?thread=support");
+    expect(screen.getByRole("link", { name: /Contact Support/ })).toHaveAttribute("href", "/dashboard/client/messages?thread=support");
+    expect(screen.queryByText("Settings & Support")).not.toBeInTheDocument();
     expect(screen.queryByText("Account settings")).not.toBeInTheDocument();
     expect(screen.queryByText("Account status")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Log out" })).toBeInTheDocument();

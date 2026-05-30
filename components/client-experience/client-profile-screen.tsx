@@ -550,7 +550,7 @@ export function ClientProfileScreen({
           { href: "#profile-preferences", title: "Favorites", subtitle: "Saved barbers and shops", icon: <Heart className="h-5 w-5" /> },
           { href: "#profile-settings", title: "Notifications", subtitle: "Messages and reminders", icon: <BellRing className="h-5 w-5" /> },
           { href: "/verify-contact", title: "Privacy", subtitle: "Contact and security", icon: <ShieldCheck className="h-5 w-5" /> },
-          { href: "/contact", title: "Help", subtitle: "Support and resources", icon: <LifeBuoy className="h-5 w-5" /> }
+          { href: "/contact", title: "Help", subtitle: "Support resources", icon: <LifeBuoy className="h-5 w-5" /> }
         ]}
       />
 
@@ -1014,11 +1014,11 @@ export function ClientProfileScreen({
       </ClientSectionBlock>
 
       <ClientSectionBlock
-        eyebrow="Settings & Support"
+        eyebrow="Preferences"
         title="Preferences"
-        subtitle="Notification controls, privacy, and help stay in one place."
+        subtitle="Notification controls and location preferences stay in one place."
       >
-        <div id="profile-settings" className="grid scroll-mt-6 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div id="profile-settings" className="grid scroll-mt-6 gap-4 md:grid-cols-3">
           <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
             <div className="inline-flex items-center gap-2 text-sm text-white/78">
               <BellRing className="h-4 w-4 text-[#baff69]" />
@@ -1085,22 +1085,6 @@ export function ClientProfileScreen({
             </div>
           </div>
 
-          <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-            <div className="inline-flex items-center gap-2 text-sm text-white/78">
-              <LifeBuoy className="h-4 w-4 text-[#d7ffab]" />
-              Support
-            </div>
-            <p className="mt-3 text-lg font-semibold text-white">Need help?</p>
-            <p className="mt-2 text-sm text-white/58">Support messages now live in Messages so account, booking, and payment questions stay in one thread.</p>
-            <div className="mt-4 flex flex-wrap gap-3">
-              <Link href={`${CLIENT_PRIMARY_TAB_HREFS.messages}?thread=support`} className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[13px] font-semibold text-white/84 transition hover:border-[#d7ffab]/18 hover:text-[#d7ffab]">
-                Message Support
-              </Link>
-              <Link href={CLIENT_PRIMARY_TAB_HREFS.activity} className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-[13px] font-semibold text-white/84 transition hover:border-[#d7ffab]/18 hover:text-[#d7ffab]">
-                Open Activity
-              </Link>
-            </div>
-          </div>
         </div>
       </ClientSectionBlock>
 
