@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { getDefaultRouteForUser, resolveDemoUser } from "@/lib/auth/demo-auth";
 
@@ -133,11 +133,11 @@ describe("dashboard shell identity and navigation", () => {
     expect(actions.map((action) => action.getAttribute("aria-label"))).toEqual([
       "Open notifications",
       "Open messages",
-      "Open account"
+      "Open profile"
     ]);
     expect(screen.getByTestId("shell-mobile-business-name")).toHaveTextContent("Shop owner workspace");
     expect(screen.getByRole("link", { name: "Open messages" })).toHaveAttribute("href", "/dashboard/owner/messages");
-    expect(screen.getByRole("link", { name: "Open account" })).toHaveAttribute("href", "/dashboard/owner/more");
+    expect(screen.getByRole("link", { name: "Open profile" })).toHaveAttribute("href", "/dashboard/owner/more");
   });
 
   it("renders barber header actions with messages and More routes", () => {
@@ -153,11 +153,33 @@ describe("dashboard shell identity and navigation", () => {
     expect(actions.map((action) => action.getAttribute("aria-label"))).toEqual([
       "Open notifications",
       "Open messages",
-      "Open account"
+      "Open profile"
     ]);
     expect(screen.getByTestId("shell-mobile-business-name")).toHaveTextContent("Shop barber workspace");
     expect(screen.getByRole("link", { name: "Open messages" })).toHaveAttribute("href", "/dashboard/barber/messages");
-    expect(screen.getByRole("link", { name: "Open account" })).toHaveAttribute("href", "/dashboard/barber/more");
+    expect(screen.getByRole("link", { name: "Open profile" })).toHaveAttribute("href", "/dashboard/barber/more");
+  });
+
+  it("routes persistent approval warnings into the Bell and More attention dots", () => {
+    const user = {
+      ...resolveDemoUser("blaze@bvrb3r.demo"),
+      appApprovalStatus: "pending" as const
+    };
+
+    render(
+      <DashboardShell user={user} activeHref="/dashboard/barber" title="Home" subtitle="Testing barber header.">
+        <div>Workspace body</div>
+      </DashboardShell>
+    );
+
+    expect(screen.getByLabelText("1 unread notifications")).toHaveClass("bg-[#ffd166]");
+    expect(screen.getByLabelText("1 account attention items")).toHaveClass("bg-[#ffd166]");
+
+    fireEvent.click(screen.getByRole("button", { name: "Open notifications" }));
+
+    expect(screen.getByText("VERIFICATION")).toBeInTheDocument();
+    expect(screen.getByText("warning")).toBeInTheDocument();
+    expect(screen.getByText("This barber account is not publicly live yet.")).toBeInTheDocument();
   });
 
   it("locks client primary navigation to five tabs only", () => {

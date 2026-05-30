@@ -17,6 +17,7 @@ import type { LucideIcon } from "lucide-react";
 import { BARBER_PRIMARY_NAV_ITEMS } from "@/components/barber-experience/barber-tab-config";
 import { CLIENT_PRIMARY_NAV_ITEMS, CLIENT_PRIMARY_TAB_HREFS } from "@/components/client-experience/client-tab-config";
 import { DashboardHeaderActions } from "@/components/dashboard/dashboard-header-actions";
+import type { DashboardHeaderNotificationItem } from "@/components/dashboard/dashboard-header-actions";
 import { OWNER_PRIMARY_NAV_ITEMS } from "@/components/owner-experience/owner-tab-config";
 import { Card } from "@/components/ui/card";
 import { getDefaultRouteForUser, getUserRoleLabel } from "@/lib/auth/demo-auth";
@@ -375,6 +376,33 @@ function getWorkspaceSubtitle(user: UserAccount, roleLabel: string) {
   return `${roleLabel} workspace`;
 }
 
+function getHeaderNotifications(user: UserAccount, approvalBanner: ApprovalBanner | null): {
+  notificationItems: DashboardHeaderNotificationItem[];
+  notificationTone: "yellow" | "red";
+} {
+  const items: DashboardHeaderNotificationItem[] = [];
+
+  if (approvalBanner) {
+    const isCritical = user.appApprovalStatus === "rejected" || user.shopApprovalStatus === "rejected";
+    items.push({
+      id: "approval-status",
+      category: "VERIFICATION",
+      severity: isCritical ? "critical" : "warning",
+      title: approvalBanner.title,
+      body: approvalBanner.detail,
+      action: {
+        label: approvalBanner.ctaLabel,
+        href: approvalBanner.href
+      }
+    });
+  }
+
+  return {
+    notificationItems: items,
+    notificationTone: items.some((item) => item.severity === "critical") ? "red" : "yellow"
+  };
+}
+
 function formatApprovalStatus(status?: UserAccount["appApprovalStatus"]) {
   switch (status) {
     case "approved":
@@ -484,6 +512,7 @@ export function DashboardShell({
   const messagesHref = getMessagesHref(user.role);
   const profileHref = getProfileHref(user.role);
   const approvalBanner = getApprovalBanner(user);
+  const headerNotifications = getHeaderNotifications(user, approvalBanner);
   const accountAttentionCount = approvalBanner ? 1 : 0;
   const accountAttentionTone = user.appApprovalStatus === "rejected" || user.shopApprovalStatus === "rejected" ? "red" : "yellow";
   const isBarberDashboard = isBarberRole(user.role);
@@ -614,6 +643,9 @@ export function DashboardShell({
                 notificationsHref={notificationsHref}
                 messagesHref={messagesHref}
                 moreHref={profileHref}
+                notificationUnreadCount={headerNotifications.notificationItems.length}
+                notificationTone={headerNotifications.notificationTone}
+                notificationItems={headerNotifications.notificationItems}
                 accountAttentionCount={accountAttentionCount}
                 accountAttentionTone={accountAttentionTone}
               />

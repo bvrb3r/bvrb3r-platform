@@ -52,11 +52,11 @@ describe("client navigation", () => {
     expect(actions.map((action) => action.getAttribute("aria-label"))).toEqual([
       "Open notifications",
       "Open messages",
-      "Open account"
+      "Open profile"
     ]);
     expect(screen.getByText("Search, book, and manage visits")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open messages" })).toHaveAttribute("href", "/dashboard/client/messages");
-    expect(screen.getByRole("link", { name: "Open account" })).toHaveAttribute("href", "/dashboard/client/more");
+    expect(screen.getByRole("link", { name: "Open profile" })).toHaveAttribute("href", "/dashboard/client/more");
     expect(screen.queryByRole("link", { name: "Open culture" })).not.toBeInTheDocument();
   });
 });

@@ -9,6 +9,22 @@ import { cn } from "@/lib/utils";
 type HeaderRole = "client" | "barber" | "owner" | "architect";
 
 type AttentionTone = "yellow" | "red";
+type NotificationTone = "yellow" | "red";
+type NotificationSeverity = "critical" | "warning" | "info";
+
+export type DashboardHeaderNotificationItem = {
+  id: string;
+  category: string;
+  severity: NotificationSeverity;
+  title: string;
+  body: string;
+  timestamp?: string | null;
+  action?: {
+    label: string;
+    href: ComponentProps<typeof Link>["href"];
+  };
+  read?: boolean;
+};
 
 type DashboardHeaderActionsProps = {
   role: HeaderRole;
@@ -16,6 +32,8 @@ type DashboardHeaderActionsProps = {
   messagesHref: ComponentProps<typeof Link>["href"];
   moreHref: ComponentProps<typeof Link>["href"];
   notificationUnreadCount?: number;
+  notificationTone?: NotificationTone;
+  notificationItems?: DashboardHeaderNotificationItem[];
   messageUnreadCount?: number;
   accountAttentionCount?: number;
   accountAttentionTone?: AttentionTone;
@@ -37,18 +55,35 @@ function iconButtonClass() {
   return "relative inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/25 text-white/74 transition hover:border-[#7CFF00]/28 hover:bg-[#7CFF00]/8 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7CFF00]/50";
 }
 
+function severityClass(severity: NotificationSeverity) {
+  switch (severity) {
+    case "critical":
+      return "border-[#ff3b30]/24 bg-[#ff3b30]/10 text-[#ffb3ad]";
+    case "warning":
+      return "border-[#ffd166]/24 bg-[#ffd166]/10 text-[#ffe2a6]";
+    case "info":
+    default:
+      return "border-[#A3FF12]/20 bg-[#A3FF12]/8 text-[#d7ffab]";
+  }
+}
+
 export function DashboardHeaderActions({
   role,
   notificationsHref,
   messagesHref,
   moreHref,
   notificationUnreadCount = 0,
+  notificationTone = "red",
+  notificationItems = [],
   messageUnreadCount = 0,
   accountAttentionCount = 0,
   accountAttentionTone = "yellow"
 }: DashboardHeaderActionsProps) {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
-  const hasUnreadNotifications = notificationUnreadCount > 0;
+  const unreadNotificationItems = notificationItems.filter((item) => !item.read);
+  const recentNotificationItems = notificationItems.filter((item) => item.read).slice(0, 4);
+  const effectiveNotificationUnreadCount = Math.max(notificationUnreadCount, unreadNotificationItems.length);
+  const hasUnreadNotifications = effectiveNotificationUnreadCount > 0;
   const hasUnreadMessages = messageUnreadCount > 0;
   const hasAccountAttention = accountAttentionCount > 0;
   const roleLabel = role === "owner" ? "shop owner" : role;
@@ -64,13 +99,13 @@ export function DashboardHeaderActions({
           onClick={() => setIsNotificationsOpen((current) => !current)}
         >
           <Bell className="h-5 w-5" aria-hidden="true" />
-          {hasUnreadNotifications ? <Dot tone="red" label={`${notificationUnreadCount} unread notifications`} /> : null}
+          {hasUnreadNotifications ? <Dot tone={notificationTone} label={`${effectiveNotificationUnreadCount} unread notifications`} /> : null}
         </button>
         <Link href={messagesHref} aria-label="Open messages" className={iconButtonClass()}>
           <MessageSquareText className="h-5 w-5" aria-hidden="true" />
           {hasUnreadMessages ? <Dot tone="red" label={`${messageUnreadCount} unread messages`} /> : null}
         </Link>
-        <Link href={moreHref} aria-label="Open account" className={iconButtonClass()}>
+        <Link href={moreHref} aria-label="Open profile" className={iconButtonClass()}>
           <UserRound className="h-5 w-5" aria-hidden="true" />
           {hasAccountAttention ? <Dot tone={accountAttentionTone} label={`${accountAttentionCount} account attention items`} /> : null}
         </Link>
@@ -96,17 +131,33 @@ export function DashboardHeaderActions({
           <div className="mt-4 space-y-4">
             <section>
               <p className="text-[10px] font-black uppercase tracking-[0.22em] text-white/42">Unread</p>
-              <div className="mt-2 rounded-[20px] border border-white/8 bg-black/28 p-4 text-sm text-white/62">
-                {hasUnreadNotifications
-                  ? `${notificationUnreadCount} unread notification${notificationUnreadCount === 1 ? "" : "s"} for this ${roleLabel} workspace.`
-                  : "No new notifications."}
-              </div>
+              {unreadNotificationItems.length ? (
+                <div className="mt-2 space-y-2">
+                  {unreadNotificationItems.map((item) => (
+                    <NotificationRow key={item.id} item={item} />
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-2 rounded-[20px] border border-white/8 bg-black/28 p-4 text-sm text-white/62">
+                  {hasUnreadNotifications
+                    ? `${effectiveNotificationUnreadCount} unread notification${effectiveNotificationUnreadCount === 1 ? "" : "s"} for this ${roleLabel} workspace.`
+                    : "No new notifications."}
+                </div>
+              )}
             </section>
             <section>
               <p className="text-[10px] font-black uppercase tracking-[0.22em] text-white/42">Recent</p>
-              <div className="mt-2 rounded-[20px] border border-dashed border-white/10 bg-black/18 p-4 text-sm text-white/54">
-                Notification history will appear here as account-level alerts are wired in.
-              </div>
+              {recentNotificationItems.length ? (
+                <div className="mt-2 space-y-2">
+                  {recentNotificationItems.map((item) => (
+                    <NotificationRow key={item.id} item={item} />
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-2 rounded-[20px] border border-dashed border-white/10 bg-black/18 p-4 text-sm text-white/54">
+                  Notification history will appear here as account-level alerts are wired in.
+                </div>
+              )}
             </section>
             {notificationsHref ? (
               <Link
@@ -119,6 +170,32 @@ export function DashboardHeaderActions({
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function NotificationRow({ item }: { item: DashboardHeaderNotificationItem }) {
+  return (
+    <div className="rounded-[20px] border border-white/8 bg-black/28 p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/42">{item.category}</span>
+        <span className={cn("rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em]", severityClass(item.severity))}>
+          {item.severity}
+        </span>
+      </div>
+      <p className="mt-3 text-sm font-black text-white">{item.title}</p>
+      <p className="mt-1 text-sm leading-5 text-white/58">{item.body}</p>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+        <span className="text-xs text-white/38">{item.timestamp ?? "Just now"}</span>
+        {item.action ? (
+          <Link
+            href={item.action.href}
+            className="inline-flex min-h-9 items-center justify-center rounded-full border border-[#A3FF12]/24 bg-[#A3FF12]/8 px-3 text-[10px] font-black uppercase tracking-[0.16em] text-[#A3FF12] transition hover:bg-[#A3FF12]/14"
+          >
+            {item.action.label}
+          </Link>
+        ) : null}
+      </div>
     </div>
   );
 }
