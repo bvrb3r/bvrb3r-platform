@@ -12,7 +12,7 @@ import {
   CreditCard,
   Gift,
   Heart,
-  Images,
+  KeyRound,
   LifeBuoy,
   MailPlus,
   MapPinned,
@@ -23,17 +23,24 @@ import {
   Store,
   Trash2,
 } from "lucide-react";
-import { LogoutButton } from "@/components/auth/logout-button";
 import { ClientActivationGate } from "@/components/activation/tier1-activation-gates";
 import { ClientActionLink } from "@/components/client-experience/client-action-link";
 import { ClientPaymentMethodsPanel } from "@/components/client-experience/client-payment-methods-panel";
 import { ClientSectionBlock } from "@/components/client-experience/client-section-block";
 import { CLIENT_PRIMARY_TAB_HREFS } from "@/components/client-experience/client-tab-config";
+import {
+  MoreActivationGate,
+  MoreControlHub,
+  MoreIdentityReadinessCard,
+  MoreLogoutCard,
+  MorePageHeader,
+  MoreSectionGroup,
+  type MoreSectionGroup as MoreSectionGroupConfig
+} from "@/components/dashboard/more/more-components";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Input } from "@/components/ui/input";
-import { Avatar, DataStatCard, PageHeader, StatusBadge } from "@/design/components";
+import { Avatar, DataStatCard, StatusBadge } from "@/design/components";
 import { useClientBookingsQuery, useClientMembershipQuery } from "@/lib/booking/client";
 import type { ClientProfilePayload } from "@/lib/booking/platform-service";
 import { useCreateReferralInviteMutation, useClientReferralSummary } from "@/lib/engagement/client";
@@ -235,6 +242,28 @@ export function ClientProfileScreen({
   const selectedSection = (initialSection && initialSection in sectionIdMap ? initialSection : null) as ProfileSectionKey | null;
   const notificationPreference = mediaQuery.data?.viewer.notificationPreference ?? payload.notificationPreference;
   const hasPhone = clientPhone.length > 0;
+  const rewardsPoints = pointsBalance?.unlockedPoints ?? 0;
+  const favoriteCount = (favoriteBarber ? 1 : 0) + preferredShops.length;
+  const bookingReady = Boolean(defaultPaymentMethod && (favoriteBarber || preferredShops.length || savedClientLocation));
+  const clientMoreSections: MoreSectionGroupConfig[] = [
+    {
+      title: "Compliance & Security",
+      subtitle: "Login, privacy, and account protection controls.",
+      rows: [
+        { title: "Password & Login", subtitle: "Open the shared contact and sign-in verification flow.", href: "/verify-contact", icon: <KeyRound className="h-5 w-5" /> },
+        { title: "Privacy", subtitle: "Review what BVRB3R uses for booking, rewards, and reminders.", href: "/contact", icon: <ShieldCheck className="h-5 w-5" /> },
+        { title: "Account Security", subtitle: "Keep email and phone verification current.", href: "/verify-contact", status: emailVerified || phoneVerified ? "Verified" : "Needs setup", tone: emailVerified || phoneVerified ? "green" : "yellow", icon: <ShieldCheck className="h-5 w-5" /> }
+      ]
+    },
+    {
+      title: "Support",
+      subtitle: "Help and account questions stay reachable from Messages.",
+      rows: [
+        { title: "Help Center", subtitle: "Guides and support resources.", href: "/contact", icon: <LifeBuoy className="h-5 w-5" /> },
+        { title: "Contact Support", subtitle: "Start a support conversation inside Messages.", href: `${CLIENT_PRIMARY_TAB_HREFS.messages}?thread=support` as Route, icon: <MessageSquareText className="h-5 w-5" /> }
+      ]
+    }
+  ];
 
   useEffect(() => {
     if (!selectedSection) {
@@ -449,15 +478,10 @@ export function ClientProfileScreen({
 
   return (
     <div className="space-y-4" data-testid="client-profile-screen">
-      <Card className="rounded-[34px] border-white/10 bg-[linear-gradient(180deg,rgba(17,17,17,0.96),rgba(6,6,6,0.98))] p-5 shadow-[0_26px_60px_rgba(0,0,0,0.24)] sm:p-6">
-        <div className="relative">
-          <PageHeader
-            label="Profile"
-            title="Profile"
-            subtitle="Manage your account, preferences, payments, rewards, and more."
-          />
-        </div>
-      </Card>
+      <MorePageHeader
+        title="More"
+        subtitle="Manage your account, booking activity, payments, rewards, and preferences."
+      />
 
       {mediaFeedback ? <FeedbackBanner tone={mediaFeedback.tone} message={mediaFeedback.message} /> : null}
       {referralFeedback ? <FeedbackBanner tone={referralFeedback.tone} message={referralFeedback.message} /> : null}
@@ -466,52 +490,73 @@ export function ClientProfileScreen({
       {membershipQuery.error ? <FeedbackBanner tone="error" message="Membership status could not be loaded right now." /> : null}
       {referralSummaryQuery.error ? <FeedbackBanner tone="error" message="Invite progress is unavailable right now." /> : null}
 
-      <ClientActivationGate
-        input={{
-          emailVerified,
-          phoneVerified: hasPhone && phoneVerified,
-          hasDefaultPaymentMethod: Boolean(defaultPaymentMethod),
-          hasLocation: Boolean(primaryShop ?? savedClientLocation ?? client?.favoriteShopReference),
-          hasPreferredSupply: Boolean(favoriteBarber ?? preferredShops.length)
-        }}
-        actionHandlers={{
-          "client-payment": () => scrollToSection("wallet"),
-          "client-location": openLocationModal,
-          "client-email": () => window.location.assign("/verify-contact"),
-          "client-phone": () => window.location.assign("/verify-contact"),
-          "client-preferred-supply": () => window.location.assign("/dashboard/client/search")
-        }}
+      <MoreIdentityReadinessCard
+        variant="client"
+        imageUrl={clientPhotoUrl}
+        initials={initialsForName(clientName)}
+        title={clientName}
+        subtitle={clientEmail}
+        roleLabel="Client account"
+        badges={[
+          { label: emailVerified || phoneVerified ? "Verified" : "Verification needed", tone: emailVerified || phoneVerified ? "green" : "yellow" },
+          { label: defaultPaymentMethod ? "Wallet ready" : "Add payment", tone: defaultPaymentMethod ? "green" : "yellow" },
+          { label: rewardsPoints ? `${rewardsPoints} pts` : "Rewards setup", tone: rewardsPoints ? "green" : "muted" }
+        ]}
+        metaLines={[
+          hasPhone ? clientPhone : "Phone not connected yet",
+          localBookingAreaTitle
+        ]}
+        primaryAction={{ label: "Edit Account", href: "#profile-account" }}
+        secondaryAction={{ label: "View Activity", href: CLIENT_PRIMARY_TAB_HREFS.activity }}
+        tiles={[
+          { label: "Account", value: emailVerified || phoneVerified ? "Verified" : "Needs setup", helper: "Email and phone readiness.", tone: emailVerified || phoneVerified ? "green" : "yellow", href: "#profile-account" },
+          { label: "Wallet", value: defaultPaymentMethod ? "Card ready" : "Add payment", helper: getPaymentMethodTitle(defaultPaymentMethod), tone: defaultPaymentMethod ? "green" : "yellow", href: "#profile-wallet" },
+          { label: "Rewards", value: `${rewardsPoints} pts`, helper: pointsBalance?.explanation.progressLabel ?? "Not active yet", tone: rewardsPoints ? "green" : "muted", href: "#profile-rewards" },
+          { label: "Favorites", value: favoriteCount ? `${favoriteCount} saved` : "Add favorites", helper: "Barbers and shops you trust.", tone: favoriteCount ? "green" : "muted", href: "#profile-preferences" },
+          { label: "Booking", value: bookingReady ? "Ready" : "Needs setup", helper: "Payment, favorites, and location.", tone: bookingReady ? "green" : "yellow", href: "#profile-activity" }
+        ]}
       />
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Profile quick links">
-        {[
-          { href: CLIENT_PRIMARY_TAB_HREFS.activity, label: "Appointments", detail: "Upcoming, history, receipts", icon: ReceiptText },
-          { href: `${CLIENT_PRIMARY_TAB_HREFS.profile}?section=wallet` as Route, label: "Payment setup", detail: "Cards and booking default", icon: CreditCard },
-          { href: CLIENT_PRIMARY_TAB_HREFS.messages, label: "Messages", detail: "Barbers and support", icon: MessageSquareText },
-          { href: CLIENT_PRIMARY_TAB_HREFS.culture, label: "Culture", detail: "Community and discovery", icon: Images }
-        ].map((item) => {
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.label}
-              href={item.href}
-              className="group rounded-[24px] border border-white/8 bg-black/20 p-4 transition hover:border-[#d7ffab]/20 hover:bg-black/28"
-            >
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-white">{item.label}</p>
-                  <p className="mt-1 text-xs text-white/48">{item.detail}</p>
-                </div>
-                <Icon className="h-4 w-4 shrink-0 text-[#d7ffab] transition group-hover:scale-105" />
-              </div>
-            </Link>
-          );
-        })}
-      </div>
+      <MoreActivationGate
+        title="Your BVRB3R setup"
+        subtitle="Finish these steps so booking, payments, rewards, and reminders work smoothly."
+      >
+        <ClientActivationGate
+          input={{
+            emailVerified,
+            phoneVerified: hasPhone && phoneVerified,
+            hasDefaultPaymentMethod: Boolean(defaultPaymentMethod),
+            hasLocation: Boolean(primaryShop ?? savedClientLocation ?? client?.favoriteShopReference),
+            hasPreferredSupply: Boolean(favoriteBarber ?? preferredShops.length)
+          }}
+          actionHandlers={{
+            "client-payment": () => scrollToSection("wallet"),
+            "client-location": openLocationModal,
+            "client-email": () => window.location.assign("/verify-contact"),
+            "client-phone": () => window.location.assign("/verify-contact"),
+            "client-preferred-supply": () => window.location.assign("/dashboard/client/search")
+          }}
+        />
+      </MoreActivationGate>
+
+      <MoreControlHub
+        title="Personal Control Hub"
+        subtitle="Manage how BVRB3R knows you, bills you, reminds you, and tracks your activity."
+        rows={[
+          { href: "#profile-account", title: "Account", subtitle: "Name, contact, and profile photo", icon: <Camera className="h-5 w-5" /> },
+          { href: "#profile-wallet", title: "Wallet", subtitle: "Cards and booking default", icon: <CreditCard className="h-5 w-5" /> },
+          { href: CLIENT_PRIMARY_TAB_HREFS.activity, title: "Activity", subtitle: "Appointments and receipts", icon: <ReceiptText className="h-5 w-5" /> },
+          { href: "#profile-rewards", title: "Rewards", subtitle: "Points and referrals", icon: <Gift className="h-5 w-5" /> },
+          { href: "#profile-preferences", title: "Favorites", subtitle: "Saved barbers and shops", icon: <Heart className="h-5 w-5" /> },
+          { href: "#profile-settings", title: "Notifications", subtitle: "Messages and reminders", icon: <BellRing className="h-5 w-5" /> },
+          { href: "/verify-contact", title: "Privacy", subtitle: "Contact and security", icon: <ShieldCheck className="h-5 w-5" /> },
+          { href: "/contact", title: "Help", subtitle: "Support and resources", icon: <LifeBuoy className="h-5 w-5" /> }
+        ]}
+      />
 
       <ClientSectionBlock
-        eyebrow="Account"
-        title="Account"
+        eyebrow="Account & Profile"
+        title="Account & Profile"
         subtitle="Your identity, contact details, and payment default."
       >
         <div id="profile-account" className="scroll-mt-6 rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(7,7,7,0.99))] p-5 shadow-[0_22px_44px_rgba(0,0,0,0.2)] sm:p-6">
@@ -647,8 +692,8 @@ export function ClientProfileScreen({
       </ClientSectionBlock>
 
       <ClientSectionBlock
-        eyebrow="Activity"
-        title="Activity"
+        eyebrow="Booking Activity"
+        title="Booking Activity"
         subtitle="Appointments, receipts, history, and rebooking stay close to your account."
       >
         <div id="profile-activity" className="scroll-mt-6 rounded-[30px] border border-white/10 bg-black/20 p-5">
@@ -698,8 +743,8 @@ export function ClientProfileScreen({
       </ClientSectionBlock>
 
       <ClientSectionBlock
-        eyebrow="Preferences"
-        title="Preferences"
+        eyebrow="Favorites"
+        title="Favorites"
         subtitle="Keep the barbers and shops you want to get back to quickly."
       >
         <div id="profile-preferences" className="grid scroll-mt-6 gap-4 xl:grid-cols-2">
@@ -783,7 +828,7 @@ export function ClientProfileScreen({
 
       <ClientSectionBlock
         eyebrow="Wallet"
-        title="Wallet"
+        title="Payments & Wallet"
         subtitle="Saved payment methods and the booking default stay here."
       >
         <div id="profile-wallet" className="scroll-mt-6 space-y-4">
@@ -802,8 +847,8 @@ export function ClientProfileScreen({
       </ClientSectionBlock>
 
       <ClientSectionBlock
-        eyebrow="Rewards"
-        title="Rewards"
+        eyebrow="Rewards & Loyalty"
+        title="Rewards & Loyalty"
         subtitle="BVR Points, progress, and membership stay compact here."
       >
         <div id="profile-rewards" className="scroll-mt-6 space-y-4">
@@ -970,7 +1015,7 @@ export function ClientProfileScreen({
 
       <ClientSectionBlock
         eyebrow="Settings & Support"
-        title="Settings & Support"
+        title="Preferences"
         subtitle="Notification controls, privacy, and help stay in one place."
       >
         <div id="profile-settings" className="grid scroll-mt-6 gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -1059,15 +1104,9 @@ export function ClientProfileScreen({
         </div>
       </ClientSectionBlock>
 
-      <ClientSectionBlock
-        eyebrow="Logout"
-        title="Logout"
-        subtitle="End the current session when you are done."
-      >
-        <div className="rounded-[28px] border border-white/10 bg-black/20 p-5">
-          <LogoutButton compact className="max-w-sm" />
-        </div>
-      </ClientSectionBlock>
+      {clientMoreSections.map((group) => <MoreSectionGroup key={group.title} group={group} />)}
+
+      <MoreLogoutCard />
 
       {locationModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/72 px-4 py-5 backdrop-blur-sm sm:items-center" role="dialog" aria-modal="true">

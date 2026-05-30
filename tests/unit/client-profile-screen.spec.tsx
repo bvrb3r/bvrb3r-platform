@@ -285,14 +285,15 @@ describe("client profile screen", () => {
     );
 
     const headings = [
-      screen.getAllByText("Account")[0],
-      screen.getAllByText("Activity")[0],
-      screen.getAllByText("Preferences")[0],
-      screen.getAllByText("Wallet")[0],
-      screen.getAllByText("Rewards")[0],
-      screen.getAllByText("Invite & Earn")[0],
-      screen.getAllByText("Settings & Support")[0],
-      screen.getAllByText("Logout")[0]
+      screen.getByRole("heading", { name: "Account & Profile" }),
+      screen.getByRole("heading", { name: "Booking Activity" }),
+      screen.getByRole("heading", { name: "Payments & Wallet" }),
+      screen.getByRole("heading", { name: "Rewards & Loyalty" }),
+      screen.getByRole("heading", { name: "Invite & Earn" }),
+      screen.getByRole("heading", { name: "Preferences" }),
+      screen.getByRole("heading", { name: "Compliance & Security" }),
+      screen.getByRole("heading", { name: "Support" }),
+      screen.getAllByText("Account session")[0]
     ];
 
     for (let index = 1; index < headings.length; index += 1) {
@@ -450,7 +451,7 @@ describe("client profile screen", () => {
       />
     );
 
-    expect(screen.getByText("jordan@bvrb3r.app")).toBeInTheDocument();
+    expect(screen.getAllByText("jordan@bvrb3r.app").length).toBeGreaterThan(0);
     expect(screen.getByText("Phone required")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Add Phone" })).toHaveAttribute("href", "/verify-contact");
   });

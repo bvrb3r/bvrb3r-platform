@@ -392,7 +392,7 @@ describe("BarberSettingsScreen Stripe return sync", () => {
   it("shows the Stripe payout setup reason and resume action", () => {
     render(<BarberSettingsScreen user={resolveDemoUser("blaze@bvrb3r.demo")} embedded />);
 
-    expect(screen.getByText("Payout setup required")).toBeInTheDocument();
+    expect(screen.getAllByText("Payout setup required").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Missing: individual.ssn_last_4.").length).toBeGreaterThan(0);
     expect(screen.getByText("individual.ssn_last_4")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Resume Stripe Setup" })).toBeInTheDocument();
@@ -439,8 +439,8 @@ describe("BarberSettingsScreen Stripe return sync", () => {
 
     render(<BarberSettingsScreen user={resolveDemoUser("blaze@bvrb3r.demo")} embedded />);
 
-    expect(screen.getByText("Payout setup pending BVRB3R review")).toBeInTheDocument();
-    expect(screen.getByText("Payout setup pending BVRB3R review.")).toBeInTheDocument();
+    expect(screen.getAllByText("Payout setup pending BVRB3R review").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Payout setup pending BVRB3R review.").length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: "Resume Stripe Setup" })).not.toBeInTheDocument();
   });
 

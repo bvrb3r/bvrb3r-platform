@@ -3,19 +3,14 @@
 import { useEffect, useMemo, useState, type ComponentProps, type ReactNode } from "react";
 import Link from "next/link";
 import {
-  BadgeCheck,
   CalendarDays,
-  ChevronRight,
   CircleDollarSign,
   Clock3,
   CreditCard,
-  Eye,
   FileCheck2,
   FileText,
   HelpCircle,
   KeyRound,
-  LogOut,
-  MapPin,
   MessageCircle,
   Paintbrush,
   ReceiptText,
@@ -27,11 +22,18 @@ import {
   WalletCards
 } from "lucide-react";
 import { OwnerActivationGate } from "@/components/activation/tier1-activation-gates";
-import { LogoutButton } from "@/components/auth/logout-button";
+import {
+  MoreActivationGate,
+  MoreControlHub,
+  MoreIdentityReadinessCard,
+  MoreLogoutCard,
+  MorePageHeader,
+  MoreSectionGroup,
+  type MoreSectionGroup as MoreSectionGroupConfig
+} from "@/components/dashboard/more/more-components";
 import { Button } from "@/components/ui/button";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
 import { ServiceCatalogWorkspace } from "@/components/marketplace/service-catalog-workspace";
 import { GalleryManagerCard, ProfilePhotoManagerCard } from "@/components/profile/profile-media-manager";
 import { GlassCard } from "@/design/components";
@@ -43,7 +45,7 @@ import { cn, currency } from "@/lib/utils";
 import { getReadableActionError } from "@/lib/utils/feedback";
 import type { UserAccount } from "@/types/domain";
 
-type SettingTone = "green" | "amber" | "red" | "neutral";
+type SettingTone = "green" | "yellow" | "red" | "muted";
 
 type SettingRow = {
   title: string;
@@ -124,9 +126,9 @@ function getStatusTone(status?: UserAccount["appApprovalStatus"]): SettingTone {
       return "red";
     case "under_review":
     case "pending":
-      return "amber";
+      return "yellow";
     default:
-      return "neutral";
+      return "muted";
   }
 }
 
@@ -156,10 +158,10 @@ function getStripeStatus({
   }
 
   if (operationalStatus && operationalStatus !== "not_ready") {
-    return { label: formatConnectedStatus(operationalStatus), tone: "amber" as const };
+    return { label: formatConnectedStatus(operationalStatus), tone: "yellow" as const };
   }
 
-  return { label: "Not connected", tone: "neutral" as const };
+  return { label: "Not connected", tone: "muted" as const };
 }
 
 function getTaxStatus(status?: string) {
@@ -167,80 +169,25 @@ function getTaxStatus(status?: string) {
     case "verified":
       return { label: "Verified", tone: "green" as const };
     case "submitted":
-      return { label: "Submitted", tone: "amber" as const };
+      return { label: "Submitted", tone: "yellow" as const };
     case "pending":
-      return { label: "Pending", tone: "amber" as const };
+      return { label: "Pending", tone: "yellow" as const };
     default:
-      return { label: "Not connected", tone: "neutral" as const };
+      return { label: "Not connected", tone: "muted" as const };
   }
 }
 
-function statusClasses(tone: SettingTone = "neutral") {
+function statusClasses(tone: SettingTone = "muted") {
   switch (tone) {
     case "green":
       return "border-[#A3FF12]/25 bg-[#A3FF12]/10 text-[#A3FF12]";
-    case "amber":
+    case "yellow":
       return "border-amber-300/25 bg-amber-300/10 text-amber-300";
     case "red":
       return "border-red-400/25 bg-red-500/10 text-red-300";
-    case "neutral":
+    case "muted":
       return "border-white/10 bg-white/[0.04] text-white/58";
   }
-}
-
-function SectionTitle({ children, id }: { children: ReactNode; id: string }) {
-  return (
-    <div id={id} className="scroll-mt-6">
-      <h2 className="text-2xl font-extrabold tracking-[-0.04em] text-white">{children}</h2>
-    </div>
-  );
-}
-
-function SettingsGroup({ rows }: { rows: SettingRow[] }) {
-  return (
-    <GlassCard className="overflow-hidden p-0">
-      <div className="divide-y divide-white/8">
-        {rows.map((row) => (
-          <Link
-            key={row.title}
-            href={row.href}
-            className="group grid min-h-[76px] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 px-5 py-4 transition hover:bg-[#A3FF12]/[0.035] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/70 sm:px-6"
-          >
-            <span className="flex h-12 w-12 items-center justify-center rounded-[16px] border border-[#A3FF12]/22 bg-[#A3FF12]/10 text-[#A3FF12] shadow-[0_0_22px_rgba(163,255,18,0.12)]">
-              {row.icon}
-            </span>
-            <span className="min-w-0">
-              <span className="block text-lg font-extrabold tracking-[-0.03em] text-white">{row.title}</span>
-              <span className="mt-1 block text-sm leading-5 text-white/56">{row.subtitle}</span>
-            </span>
-            <span className="flex items-center gap-3">
-              {row.status ? (
-                <span className={cn("hidden rounded-full border px-3 py-1.5 text-xs font-extrabold sm:inline-flex", statusClasses(row.tone))}>
-                  {row.status}
-                </span>
-              ) : null}
-              <ChevronRight className="h-5 w-5 text-white/42 transition group-hover:translate-x-0.5 group-hover:text-[#A3FF12]" />
-            </span>
-          </Link>
-        ))}
-      </div>
-    </GlassCard>
-  );
-}
-
-function IdentitySkeleton() {
-  return (
-    <GlassCard className="p-6">
-      <div className="flex gap-4">
-        <Skeleton className="h-20 w-20 rounded-full" />
-        <div className="flex-1">
-          <Skeleton className="h-8 w-56" />
-          <Skeleton className="mt-3 h-4 w-72" />
-          <Skeleton className="mt-4 h-7 w-36 rounded-full" />
-        </div>
-      </div>
-    </GlassCard>
-  );
 }
 
 export function OwnerSettingsWorkspace({
@@ -530,7 +477,7 @@ export function OwnerSettingsWorkspace({
       href: "/onboarding/owner/team",
       icon: <Users className="h-5 w-5" />,
       status: membershipCount ? `${membershipCount} linked` : "Not set",
-      tone: membershipCount ? "green" : "neutral"
+      tone: membershipCount ? "green" : "muted"
     },
     {
       title: "Commission & Fees",
@@ -538,7 +485,7 @@ export function OwnerSettingsWorkspace({
       href: "/dashboard/owner/money?view=fintech",
       icon: <CircleDollarSign className="h-5 w-5" />,
       status: blockedRoutingCount ? "Needs review" : "Protected",
-      tone: blockedRoutingCount ? "amber" : "green"
+      tone: blockedRoutingCount ? "yellow" : "green"
     }
   ];
 
@@ -557,7 +504,7 @@ export function OwnerSettingsWorkspace({
       href: "/dashboard/owner/money?section=payouts",
       icon: <CalendarDays className="h-5 w-5" />,
       status: "View schedule",
-      tone: "neutral"
+      tone: "muted"
     },
     {
       title: "Tax Information",
@@ -584,7 +531,7 @@ export function OwnerSettingsWorkspace({
       href: "/onboarding/owner/verification",
       icon: <FileCheck2 className="h-5 w-5" />,
       status: verificationStatus === "approved" ? "View documents" : "Needs setup",
-      tone: verificationStatus === "approved" ? "green" : "amber"
+      tone: verificationStatus === "approved" ? "green" : "yellow"
     },
     {
       title: "Security & Access",
@@ -627,121 +574,110 @@ export function OwnerSettingsWorkspace({
     "owner-public-profile": () => setQuickSetupModal("visibility")
   };
 
+  const ownerMoreSections: MoreSectionGroupConfig[] = [
+    {
+      id: "owner-settings-shop-profile",
+      title: "Shop Profile",
+      subtitle: "Public shop information, branding, hours, and policies.",
+      rows: shopProfileRows
+    },
+    {
+      id: "owner-settings-business-setup",
+      title: "Business Setup",
+      subtitle: "Services, payout setup, team permissions, and commission controls.",
+      rows: businessSetupRows
+    },
+    {
+      id: "owner-settings-payments",
+      title: "Payments & Banking",
+      subtitle: "Bank accounts, payout schedule, and tax information.",
+      rows: paymentsRows
+    },
+    {
+      id: "owner-settings-compliance",
+      title: "Compliance & Security",
+      subtitle: "Verification, business documents, and secure access.",
+      rows: complianceRows
+    },
+    {
+      id: "owner-settings-support",
+      title: "Support",
+      subtitle: "Help and direct support for shop owner operations.",
+      rows: supportRows
+    }
+  ];
+
   return (
     <div className="space-y-7" data-testid="owner-settings-workspace">
       {errorMessage ? <FeedbackBanner tone="error" message={getReadableActionError(errorMessage)} /> : null}
       {quickSetupFeedback ? <FeedbackBanner tone={quickSetupFeedback.tone} message={quickSetupFeedback.message} /> : null}
 
-      <header className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-5xl font-black leading-none tracking-[-0.055em] text-white sm:text-6xl">More</h1>
-          <p className="mt-3 text-lg font-medium text-white/62">Account, shop settings, verification, payments, policies, compliance, activity, and help.</p>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-white/52">
-            Private shop setup, verification, payments, policies, team permissions, and compliance live here without crowding the day-to-day tabs.
-          </p>
-        </div>
-      </header>
-
-      {isInitialLoading ? (
-        <IdentitySkeleton />
-      ) : (
-        <GlassCard className="p-5 sm:p-6">
-          <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex min-w-0 items-center gap-4">
-              {primaryShop?.profilePhotoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={primaryShop.profilePhotoUrl}
-                  alt={shopName}
-                  className="h-20 w-20 rounded-full border-2 border-[#A3FF12]/70 object-cover shadow-[0_0_30px_rgba(163,255,18,0.18)]"
-                />
-              ) : (
-                <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full border-2 border-[#A3FF12]/70 bg-[#A3FF12]/10 text-2xl font-black tracking-[-0.03em] text-[#A3FF12] shadow-[0_0_30px_rgba(163,255,18,0.18)]">
-                  {shopInitials}
-                </div>
-              )}
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-3">
-                  <h2 className="text-2xl font-black tracking-[-0.04em] text-white sm:text-3xl">{shopName}</h2>
-                  <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-extrabold", statusClasses(verificationTone))}>
-                    <BadgeCheck className="h-4 w-4" />
-                    {verificationLabel}
-                  </span>
-                </div>
-                <p className="mt-2 flex items-center gap-2 text-sm text-white/55">
-                  <MapPin className="h-4 w-4 text-[#A3FF12]" />
-                  {shopAddress}
-                </p>
-              </div>
-            </div>
-
-            {ownerShopId ? (
-              <Link
-                href={`/kiosk/${ownerShopId}`}
-                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-white/10 bg-white/[0.035] px-5 text-sm font-extrabold text-white transition hover:border-[#A3FF12]/35 hover:text-[#A3FF12]"
-              >
-                <Eye className="h-4 w-4" />
-                View Shop
-              </Link>
-            ) : null}
-          </div>
-
-          <div className="mt-5 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-[20px] border border-white/8 bg-black/25 p-4">
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-white/42">Payout readiness</p>
-              <p className="mt-3 text-lg font-extrabold text-white">{stripeStatus.label}</p>
-            </div>
-            <div className="rounded-[20px] border border-white/8 bg-black/25 p-4">
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-white/42">Ready amount</p>
-              <p className="mt-3 text-lg font-extrabold text-[#A3FF12]">{currency(readyForPayoutAmount)}</p>
-            </div>
-            <div className="rounded-[20px] border border-white/8 bg-black/25 p-4">
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-white/42">Attention</p>
-              <p className={cn("mt-3 text-lg font-extrabold", needsAttentionCount ? "text-amber-300" : "text-[#A3FF12]")}>
-                {needsAttentionCount ? `${needsAttentionCount} needs review` : "Clear"}
-              </p>
-            </div>
-          </div>
-        </GlassCard>
-      )}
-
-      <OwnerActivationGate
-        input={{
-          approvalStatus: verificationStatus,
-          accountStatus: user.accountStatus,
-          hasShopProfile: Boolean(ownerShopId && shopName !== "Shop profile incomplete"),
-          hasAddress: user.locationIds.length > 0,
-          hasShopHours: user.locationIds.length > 0,
-          payoutsReady: Boolean(fintechShopAccount?.chargesEnabled && fintechShopAccount.payoutsEnabled),
-          hasInvitedBarber: membershipCount > 0,
-          hasAcceptedBarber: membershipCount > 0,
-          hasBookableBarber: hasBookableLinkedBarber,
-          publicProfileEnabled: true
-        }}
-        actionHandlers={ownerGateActionHandlers}
+      <MorePageHeader
+        title="More"
+        subtitle="Manage your account, shop setup, verification, payments, policies, compliance, and help."
       />
 
-      <GlassCard className="grid gap-4 p-5 md:grid-cols-3">
-        <div>
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Business control hub</p>
-          <p className="mt-3 text-lg font-extrabold text-white">Setup is grouped by decision, not paperwork.</p>
-          <p className="mt-2 text-sm leading-6 text-white/56">Use the rows below for shop profile, payments, team permissions, and legal readiness.</p>
-        </div>
-        <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
-          <p className="text-xs font-black uppercase tracking-[0.16em] text-white/42">Payment setup</p>
-          <p className={cn("mt-3 text-lg font-extrabold", stripeStatus.tone === "green" ? "text-[#A3FF12]" : stripeStatus.tone === "red" ? "text-red-300" : "text-amber-300")}>{stripeStatus.label}</p>
-          <p className="mt-2 text-sm leading-6 text-white/56">Stripe and payout readiness.</p>
-        </div>
-        <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
-          <p className="text-xs font-black uppercase tracking-[0.16em] text-white/42">Team permissions</p>
-          <p className="mt-3 text-lg font-extrabold text-white">{membershipCount ? `${membershipCount} linked` : "Not set"}</p>
-          <p className="mt-2 text-sm leading-6 text-white/56">Relationship controls stay future-ready.</p>
-        </div>
-      </GlassCard>
+      <MoreIdentityReadinessCard
+        variant="owner"
+        imageUrl={isInitialLoading ? null : primaryShop?.profilePhotoUrl}
+        initials={shopInitials}
+        title={isInitialLoading ? "Loading shop profile" : shopName}
+        subtitle={shopAddress}
+        roleLabel="Shop owner account"
+        badges={[
+          { label: verificationLabel, tone: verificationTone },
+          { label: stripeStatus.label, tone: stripeStatus.tone },
+          { label: membershipCount ? `${membershipCount} linked` : "No team yet", tone: membershipCount ? "green" : "muted" }
+        ]}
+        metaLines={[
+          user.name ? `Owner: ${user.name}` : "Owner account",
+          "Owner Home remains the team and public profile command center."
+        ]}
+        primaryAction={ownerShopId ? { label: "View Shop", href: `/kiosk/${ownerShopId}` } : undefined}
+        secondaryAction={{ label: "Edit Shop Profile", onClick: () => setQuickSetupModal("profile") }}
+        tiles={[
+          { label: "Shop Profile", value: ownerShopId && shopName !== "Shop profile incomplete" ? "Live" : "Needs setup", helper: "Public shop identity.", tone: ownerShopId ? "green" : "yellow", href: "#owner-settings-shop-profile" },
+          { label: "Verification", value: verificationLabel, helper: "Shop approval status.", tone: verificationTone, href: "#owner-settings-compliance" },
+          { label: "Payouts", value: stripeStatus.label, helper: `Ready amount ${currency(readyForPayoutAmount)}`, tone: stripeStatus.tone, href: "#owner-settings-payments" },
+          { label: "Team", value: membershipCount ? `${membershipCount} linked` : "No team yet", helper: "Barbers connected to this shop.", tone: membershipCount ? "green" : "muted", href: "/dashboard/owner" },
+          { label: "Booking", value: hasBookableLinkedBarber ? "Active" : "Setup needed", helper: needsAttentionCount ? `${needsAttentionCount} attention item${needsAttentionCount === 1 ? "" : "s"}` : "Shop profile readiness.", tone: hasBookableLinkedBarber ? "green" : "yellow", href: "/dashboard/owner/schedule" }
+        ]}
+      />
+
+      <MoreActivationGate
+        title="Your shop setup"
+        subtitle="Finish these steps so your shop profile, team, bookings, and payouts are ready."
+      >
+        <OwnerActivationGate
+          input={{
+            approvalStatus: verificationStatus,
+            accountStatus: user.accountStatus,
+            hasShopProfile: Boolean(ownerShopId && shopName !== "Shop profile incomplete"),
+            hasAddress: user.locationIds.length > 0,
+            hasShopHours: user.locationIds.length > 0,
+            payoutsReady: Boolean(fintechShopAccount?.chargesEnabled && fintechShopAccount.payoutsEnabled),
+            hasInvitedBarber: membershipCount > 0,
+            hasAcceptedBarber: membershipCount > 0,
+            hasBookableBarber: hasBookableLinkedBarber,
+            publicProfileEnabled: true
+          }}
+          actionHandlers={ownerGateActionHandlers}
+        />
+      </MoreActivationGate>
+
+      <MoreControlHub
+        title="Business Control Hub"
+        subtitle="Setup is grouped by decision, not paperwork."
+        rows={[
+          { title: "Payment Setup", subtitle: "Stripe and payout readiness.", href: "/dashboard/owner/money?view=fintech", status: stripeStatus.label, tone: stripeStatus.tone, icon: <WalletCards className="h-5 w-5" /> },
+          { title: "Team Permissions", subtitle: "Manage team roles and permissions.", href: "/dashboard/owner", status: membershipCount ? `${membershipCount} linked` : "Not set", tone: membershipCount ? "green" : "muted", icon: <Users className="h-5 w-5" /> },
+          { title: "Public Profile", subtitle: "Shop profile, branding, hours, and policies.", href: "#owner-settings-shop-profile", icon: <Store className="h-5 w-5" /> },
+          { title: "Shop Readiness", subtitle: "Verification, documents, and compliance.", href: "#owner-settings-compliance", status: verificationLabel, tone: verificationTone, icon: <ShieldCheck className="h-5 w-5" /> }
+        ]}
+      />
 
       <section className="space-y-3">
-        <SectionTitle id="owner-settings-shop-profile">Shop Profile</SectionTitle>
-        <SettingsGroup rows={shopProfileRows} />
+        <MoreSectionGroup group={ownerMoreSections[0]} />
         {selectedBrandingManager ? (
           shops.length ? (
             <div className="grid gap-4 pt-1 xl:grid-cols-[0.88fr_1.12fr]">
@@ -797,8 +733,7 @@ export function OwnerSettingsWorkspace({
       </section>
 
       <section className="space-y-3">
-        <SectionTitle id="owner-settings-business-setup">Business Setup</SectionTitle>
-        <SettingsGroup rows={businessSetupRows} />
+        <MoreSectionGroup group={ownerMoreSections[1]} />
         {selectedServiceManager ? (
           <div className="pt-1">
             <ServiceCatalogWorkspace role="owner" />
@@ -806,29 +741,10 @@ export function OwnerSettingsWorkspace({
         ) : null}
       </section>
 
-      <section className="space-y-3">
-        <SectionTitle id="owner-settings-payments">Payments & Banking</SectionTitle>
-        <SettingsGroup rows={paymentsRows} />
-      </section>
-
-      <section className="space-y-3">
-        <SectionTitle id="owner-settings-compliance">Compliance & Security</SectionTitle>
-        <SettingsGroup rows={complianceRows} />
-      </section>
-
-      <section className="space-y-3">
-        <SectionTitle id="owner-settings-support">Support</SectionTitle>
-        <SettingsGroup rows={supportRows} />
-      </section>
+      {ownerMoreSections.slice(2).map((group) => <MoreSectionGroup key={group.title} group={group} />)}
 
       <section id="owner-settings-logout" className="scroll-mt-6">
-        <GlassCard className="border-red-500/20 bg-red-500/[0.025] p-4">
-          <div className="mb-3 flex items-center justify-center gap-2 text-sm font-extrabold uppercase tracking-[0.18em] text-red-300">
-            <LogOut className="h-5 w-5" />
-            Account session
-          </div>
-          <LogoutButton className="[&_button]:min-h-[60px] [&_button]:justify-center [&_button]:rounded-[18px] [&_button]:border [&_button]:border-red-500/35 [&_button]:bg-red-500/[0.04] [&_button]:text-lg [&_button]:font-black [&_button]:text-red-300 [&_button]:shadow-none [&_button]:hover:bg-red-500/10 [&_button_svg]:text-red-300" />
-        </GlassCard>
+        <MoreLogoutCard />
       </section>
 
       <div className="h-3" />
@@ -965,7 +881,7 @@ export function OwnerSettingsWorkspace({
                               key={label}
                               className={cn(
                                 "inline-flex min-h-7 items-center rounded-full border px-3 py-1 text-xs font-extrabold",
-                                statusClasses(label.includes("Approved") || label.includes("Bookable") || label.includes("team") ? "green" : label.includes("incomplete") || label.includes("invited") || label.includes("Not approved") ? "amber" : "neutral")
+                                statusClasses(label.includes("Approved") || label.includes("Bookable") || label.includes("team") ? "green" : label.includes("incomplete") || label.includes("invited") || label.includes("Not approved") ? "yellow" : "muted")
                               )}
                             >
                               {label}

@@ -12,7 +12,6 @@ import {
   CheckCircle2,
   ChevronRight,
   CircleDollarSign,
-  CircleHelp,
   Clock3,
   FileText,
   Fingerprint,
@@ -35,7 +34,15 @@ import {
   type LucideIcon
 } from "lucide-react";
 import { BarberActivationGate } from "@/components/activation/tier1-activation-gates";
-import { LogoutButton } from "@/components/auth/logout-button";
+import {
+  MoreActivationGate,
+  MoreControlHub,
+  MoreIdentityReadinessCard,
+  MoreLogoutCard,
+  MorePageHeader,
+  MoreSectionGroup,
+  type MoreSectionGroup as MoreSectionGroupConfig
+} from "@/components/dashboard/more/more-components";
 import { BarberEarningsWorkspace } from "@/components/operations/barber-earnings-workspace";
 import { BarberScheduleWorkspace } from "@/components/operations/barber-schedule-workspace";
 import { Button } from "@/components/ui/button";
@@ -266,18 +273,6 @@ function CircleIcon({ icon: Icon, className }: { icon: LucideIcon; className?: s
     >
       <Icon className="h-5 w-5" aria-hidden="true" />
     </span>
-  );
-}
-
-function HeaderIconLink({ href, label, icon: Icon }: { href: LinkHref; label: string; icon: LucideIcon }) {
-  return (
-    <Link
-      href={href}
-      aria-label={label}
-      className="inline-flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-white transition hover:border-[#a3ff12]/35 hover:text-[#a3ff12] hover:shadow-[0_0_24px_rgba(163,255,18,0.12)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a3ff12]/60"
-    >
-      <Icon className="h-5 w-5" aria-hidden="true" />
-    </Link>
   );
 }
 
@@ -1088,6 +1083,73 @@ export function BarberSettingsScreen({
     { key: "account", title: "Account Settings", subtitle: "Password, profile & security", icon: Settings2 }
   ] satisfies Array<{ key: BusinessToolKey; title: string; subtitle: string; icon: LucideIcon }>;
   const activeBusinessControl = businessControls.find((item) => item.key === activeBusinessTool) ?? null;
+  const moreToneForStatus = (tone: Tone): "green" | "yellow" | "red" | "muted" => {
+    if (tone === "amber") {
+      return "yellow";
+    }
+    if (tone === "danger") {
+      return "red";
+    }
+    if (tone === "neutral") {
+      return "muted";
+    }
+    return "green";
+  };
+  const barberMoreSections: MoreSectionGroupConfig[] = [
+    {
+      id: "barber-settings-public-profile",
+      title: "Public Profile",
+      subtitle: "Everything clients see before they book.",
+      rows: [
+        { title: "Profile Information", subtitle: "Name, headline, bio, and public identity", href: "/dashboard/barber/profile", icon: <UserCheck className="h-5 w-5" /> },
+        { title: "Public Photo", subtitle: "Main profile image clients see", href: "/dashboard/barber/profile", icon: <Pencil className="h-5 w-5" /> },
+        { title: "Portfolio", subtitle: "Haircut photos and discovery uploads", href: "/dashboard/barber/profile?section=portfolio", icon: <Scissors className="h-5 w-5" /> },
+        { title: "Public Username", subtitle: "Your shareable BVRB3R profile link", href: "/dashboard/barber/profile?section=username", icon: <Send className="h-5 w-5" /> }
+      ]
+    },
+    {
+      id: "barber-settings-business-setup",
+      title: "Business Setup",
+      subtitle: "Booking rules, services, hours, and shop relationship controls.",
+      rows: [
+        { title: "Services", subtitle: "Manage pricing and offerings", href: "#barber-settings-business", icon: <Scissors className="h-5 w-5" /> },
+        { title: "Availability", subtitle: "Working hours and blocked time", href: "#barber-settings-business", icon: <Clock3 className="h-5 w-5" /> },
+        { title: "Booking Settings", subtitle: "Online booking rules and preferences", href: "#barber-settings-business", icon: <CalendarDays className="h-5 w-5" /> },
+        { title: "Shop Relationship", subtitle: "Freelance, booth rent, or commission connection", href: "#barber-settings-shop-invites", status: pendingShopInvites.length ? `${pendingShopInvites.length} invite${pendingShopInvites.length === 1 ? "" : "s"}` : subtypeLabel, tone: pendingShopInvites.length ? "yellow" : "muted", icon: <Store className="h-5 w-5" /> }
+      ]
+    },
+    {
+      id: "barber-settings-payments-banking",
+      title: "Payments & Banking",
+      subtitle: "Payout account, eligible balance, transactions, and tax posture.",
+      rows: [
+        { title: "Stripe Connect", subtitle: "Payout account and readiness", href: "#barber-settings-payouts", status: payoutSetupStatusLabel, tone: payoutsReady ? "green" : "yellow", icon: <WalletCards className="h-5 w-5" /> },
+        { title: "Payout Status", subtitle: "Eligible balance and payout routing", href: "#barber-settings-payouts", status: payoutCurrency(eligiblePayoutAmount ?? 0), tone: hasPayoutAmount ? "green" : "muted", icon: <CircleDollarSign className="h-5 w-5" /> },
+        { title: "Transactions", subtitle: "Sales and receipts", href: "#barber-settings-transactions", icon: <ReceiptText className="h-5 w-5" /> },
+        { title: "Tax Information", subtitle: "Tax forms and documents", href: "#barber-settings-payouts", icon: <FileText className="h-5 w-5" /> }
+      ]
+    },
+    {
+      id: "barber-settings-compliance",
+      title: "Compliance & Security",
+      subtitle: "Identity, license, account security, and privacy.",
+      rows: [
+        { title: "Identity Verification", subtitle: "Identity review and account proofing", href: "#barber-settings-verification", status: formatStatusLabel(canonicalVerificationStatus), tone: moreToneForStatus(getStatusTone(canonicalVerificationStatus)), icon: <Fingerprint className="h-5 w-5" /> },
+        { title: "License Verification", subtitle: "License upload and review status", href: "#barber-settings-verification", icon: <ShieldCheck className="h-5 w-5" /> },
+        { title: "Account Security", subtitle: "Password, contact, and login settings", href: "#barber-settings-business", icon: <Settings2 className="h-5 w-5" /> },
+        { title: "Privacy", subtitle: "Public profile and communication preferences", href: "#barber-settings-business", icon: <SlidersHorizontal className="h-5 w-5" /> }
+      ]
+    },
+    {
+      id: "barber-settings-support",
+      title: "Support",
+      subtitle: "Help resources and direct support threads.",
+      rows: [
+        { title: "Help Center", subtitle: "Guides and platform help", href: "/contact", icon: <LifeBuoy className="h-5 w-5" /> },
+        { title: "Contact Support", subtitle: "Message BVRB3R support", href: "/dashboard/barber/messages?thread=support", icon: <Headphones className="h-5 w-5" /> }
+      ]
+    }
+  ];
 
   useEffect(() => {
     if (!selectedSection) {
@@ -1566,38 +1628,35 @@ export function BarberSettingsScreen({
         ) : null}
 
         {!embedded ? (
-          <header className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <h1 className="text-[42px] font-black leading-none tracking-[-0.045em] text-white sm:text-5xl">More</h1>
-              <p className="mt-3 text-base font-medium text-white/62 sm:text-[17px]">
-                Manage your account, payouts & settings
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              <HeaderIconLink href="#barber-settings-business" label="Manage business settings" icon={SlidersHorizontal} />
-              <HeaderIconLink href="#barber-settings-support" label="Get help" icon={CircleHelp} />
-            </div>
-          </header>
+          <MorePageHeader
+            title="More"
+            subtitle="Manage your account, business setup, payouts, profile, and settings."
+          />
         ) : null}
 
-        <BarberActivationGate
-          input={{
-            approvalStatus: canonicalVerificationStatus,
-            accountStatus: user.accountStatus,
-            hasActiveService,
-            hasAvailability,
-            isProfilePublic,
-            isAcceptingBookings: isBookingActive,
-            payoutsReady,
-            payoutsRequired: payoutsRequiredForActivation,
-            hasServiceLocation,
-            serviceLocationRequired: true,
-            hasShopLink: hasAcceptedShopLink,
-            shopLinkRequired,
-            hasPendingShopInvite: pendingShopInvites.length > 0
-          }}
-          actionHandlers={activationActionHandlers}
-        />
+        <MoreActivationGate
+          title="Your barber setup"
+          subtitle="Finish these steps so clients can book you and payouts can move correctly."
+        >
+          <BarberActivationGate
+            input={{
+              approvalStatus: canonicalVerificationStatus,
+              accountStatus: user.accountStatus,
+              hasActiveService,
+              hasAvailability,
+              isProfilePublic,
+              isAcceptingBookings: isBookingActive,
+              payoutsReady,
+              payoutsRequired: payoutsRequiredForActivation,
+              hasServiceLocation,
+              serviceLocationRequired: true,
+              hasShopLink: hasAcceptedShopLink,
+              shopLinkRequired,
+              hasPendingShopInvite: pendingShopInvites.length > 0
+            }}
+            actionHandlers={activationActionHandlers}
+          />
+        </MoreActivationGate>
 
         {!payoutsReady ? (
           <GlassCard id="barber-settings-payout-refresh" className="scroll-mt-6 p-5 sm:p-6">
@@ -1627,75 +1686,44 @@ export function BarberSettingsScreen({
           </GlassCard>
         ) : null}
 
-        <GlassCard active className="p-5 sm:p-6">
-          <div className="grid gap-6 lg:grid-cols-[auto_1fr_auto] lg:items-center">
-            <div className="relative h-28 w-28 sm:h-32 sm:w-32">
-              <Avatar
-                src={barberPhotoUrl}
-                alt={`${user.name} avatar`}
-                initials={getInitials(user.name)}
-                className="h-full w-full border-2 border-[#a3ff12]/70 shadow-[0_0_0_2px_rgba(163,255,18,0.10),0_20px_60px_rgba(0,0,0,0.50)]"
-              />
-              <Link
-                href="/dashboard/barber/profile"
-                aria-label="Edit barber profile photo"
-                className="absolute bottom-1 right-1 inline-flex h-11 w-11 items-center justify-center rounded-full border-2 border-[#a3ff12] bg-[#a3ff12]/12 text-[#a3ff12] shadow-[0_0_24px_rgba(163,255,18,0.24)] transition hover:bg-[#a3ff12]/18 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a3ff12]/60"
-              >
-                <Pencil className="h-4 w-4" aria-hidden="true" />
-              </Link>
-            </div>
+        <MoreIdentityReadinessCard
+          variant="barber"
+          imageUrl={barberPhotoUrl}
+          initials={getInitials(user.name)}
+          title={user.name}
+          subtitle={subtypeLabel}
+          roleLabel="Barber account"
+          badges={[
+            { label: verificationDecision?.gates.badge?.allowed ? "Verified Barber" : formatStatusLabel(canonicalVerificationStatus), tone: moreToneForStatus(getStatusTone(canonicalVerificationStatus)) },
+            { label: formatStatusLabel(user.appApprovalStatus), tone: moreToneForStatus(getStatusTone(user.appApprovalStatus)) },
+            { label: payoutsReady ? "Payouts connected" : "Payouts setup", tone: payoutsReady ? "green" : "yellow" }
+          ]}
+          metaLines={[shopName, locationLabel]}
+          primaryAction={{ label: "View Profile", href: "/dashboard/barber/profile" }}
+          secondaryAction={{ label: "Edit Profile", href: "/dashboard/barber/profile" }}
+          tiles={statusItems.map((item) => ({
+            label: item.label,
+            value: item.value,
+            tone: moreToneForStatus(item.tone),
+            helper: item.label === "Payouts" ? payoutSetupMessage : undefined,
+            href: item.label === "Payouts" ? "#barber-settings-payouts" : item.label === "Profile" ? "/dashboard/barber/profile" : "#barber-settings-verification"
+          }))}
+        />
 
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-3">
-                <h2 className="truncate text-3xl font-black tracking-[-0.04em] text-white sm:text-4xl">{user.name}</h2>
-                <ShieldCheck className="h-7 w-7 text-[#a3ff12] drop-shadow-[0_0_10px_rgba(163,255,18,0.35)]" aria-hidden="true" />
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <StatusPill tone={getStatusTone(canonicalVerificationStatus)}>
-                  {verificationDecision?.gates.badge?.allowed ? "Verified Barber" : formatStatusLabel(canonicalVerificationStatus)}
-                </StatusPill>
-                <StatusPill tone={getStatusTone(user.appApprovalStatus)}>
-                  {formatStatusLabel(user.appApprovalStatus)}
-                </StatusPill>
-              </div>
-              <p className="mt-4 text-base font-semibold text-white/78">{subtypeLabel}</p>
-              <p className="mt-2 text-sm text-white/54">{shopName}</p>
-              <p className="mt-2 inline-flex items-center gap-2 text-sm text-white/48">
-                <MapPin className="h-4 w-4 text-[#a3ff12]" aria-hidden="true" />
-                {locationLabel}
-              </p>
-            </div>
-
-            <Link
-              href="/dashboard/barber/profile"
-              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-[#a3ff12]/35 bg-[#a3ff12]/10 px-5 text-sm font-extrabold text-[#a3ff12] transition hover:border-[#a3ff12]/60 hover:bg-[#a3ff12]/14 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a3ff12]/55"
-            >
-              View Profile
-              <ChevronRight className="h-4 w-4" aria-hidden="true" />
-            </Link>
-          </div>
-
-          <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-            {statusItems.map((item, index) => {
-              const Icon = item.icon;
-              return (
-                <div
-                  key={item.label}
-                  className={cn(
-                    "rounded-[20px] border border-white/8 bg-black/25 p-4",
-                    index > 0 && "xl:border-l-white/12"
-                  )}
-                >
-                  <Icon className="h-5 w-5 text-[#a3ff12]" aria-hidden="true" />
-                  <p className="mt-3 text-sm font-extrabold text-white">{item.label}</p>
-                  <p className={cn("mt-1 text-sm font-bold", item.tone === "green" ? "text-[#a3ff12]" : item.tone === "amber" ? "text-amber-200" : item.tone === "danger" ? "text-red-200" : "text-white/56")}>
-                    {item.value}
-                  </p>
-                </div>
-              );
-            })}
-          </div>
-        </GlassCard>
+        <MoreControlHub
+          title="Business Control Hub"
+          subtitle="Manage the tools that control your bookings, services, payouts, and public profile."
+          rows={[
+            { title: "Services", subtitle: "Manage pricing and offerings", href: "#barber-settings-business", icon: <Scissors className="h-5 w-5" /> },
+            { title: "Availability", subtitle: "Working hours and blocked time", href: "#barber-settings-business", icon: <Clock3 className="h-5 w-5" /> },
+            { title: "Booking Settings", subtitle: "Online booking preferences", href: "#barber-settings-business", icon: <CalendarDays className="h-5 w-5" /> },
+            { title: "Payouts", subtitle: "Eligible balance and readiness", href: "#barber-settings-payouts", status: payoutCurrency(eligiblePayoutAmount ?? 0), tone: hasPayoutAmount ? "green" : "muted", icon: <WalletCards className="h-5 w-5" /> },
+            { title: "Transactions", subtitle: "Sales and receipts", href: "#barber-settings-transactions", icon: <ReceiptText className="h-5 w-5" /> },
+            { title: "Reports", subtitle: "Performance overview", href: "#barber-settings-business", icon: <BarChart3 className="h-5 w-5" /> },
+            { title: "Shop Relationship", subtitle: "Invites and operating model", href: "#barber-settings-shop-invites", status: pendingShopInvites.length ? `${pendingShopInvites.length} pending` : subtypeLabel, tone: pendingShopInvites.length ? "yellow" : "muted", icon: <Store className="h-5 w-5" /> },
+            { title: "Notifications", subtitle: "Alerts and reminders", href: "#barber-settings-business", icon: <BellRing className="h-5 w-5" /> }
+          ]}
+        />
 
         <GlassCard id="barber-settings-shop-invites" className="scroll-mt-6 p-5 sm:p-6">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
@@ -2754,6 +2782,8 @@ export function BarberSettingsScreen({
           ) : null}
         </section>
 
+        {barberMoreSections.map((group) => <MoreSectionGroup key={group.title} group={group} />)}
+
         <section className="space-y-4">
           <SectionLabel>Quick Actions</SectionLabel>
           <div className="flex flex-wrap gap-3">
@@ -2763,34 +2793,7 @@ export function BarberSettingsScreen({
           </div>
         </section>
 
-        <GlassCard id="barber-settings-support" className="scroll-mt-6 p-5 sm:p-6">
-          <div className="grid gap-5 lg:grid-cols-[1fr_auto] lg:items-center">
-            <div className="flex items-start gap-4">
-              <CircleIcon icon={Headphones} />
-              <div>
-                <SectionLabel>Support</SectionLabel>
-                <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-white">Get help with account, payouts, bookings, or verification.</h2>
-              </div>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:min-w-[360px]">
-              <Link href="/dashboard/barber/messages" className="flex min-h-14 items-center justify-between gap-4 rounded-[18px] border border-white/10 bg-black/24 px-4 font-extrabold text-white transition hover:border-[#a3ff12]/30 hover:text-[#a3ff12]">
-                Message Support
-                <ChevronRight className="h-4 w-4" aria-hidden="true" />
-              </Link>
-              <Link href="/contact" className="flex min-h-14 items-center justify-between gap-4 rounded-[18px] border border-white/10 bg-black/24 px-4 font-extrabold text-white transition hover:border-[#a3ff12]/30 hover:text-[#a3ff12]">
-                Help Center
-                <ChevronRight className="h-4 w-4" aria-hidden="true" />
-              </Link>
-            </div>
-          </div>
-        </GlassCard>
-
-        <GlassCard className="p-3">
-          <LogoutButton
-            compact
-            className="[&>button]:min-h-14 [&>button]:w-full [&>button]:justify-center [&>button]:rounded-[18px] [&>button]:border [&>button]:border-red-400/25 [&>button]:bg-red-500/8 [&>button]:px-4 [&>button]:text-[#ff4d4d] [&>button]:hover:bg-red-500/12"
-          />
-        </GlassCard>
+        <MoreLogoutCard />
       </div>
 
       {receiptTransactionId ? (

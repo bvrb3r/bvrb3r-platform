@@ -148,13 +148,17 @@ describe("owner More workspace", () => {
     render(<OwnerSettingsWorkspace user={resolveDemoUser("owner@bvrb3r.demo")} />);
 
     expect(screen.getByRole("heading", { name: "More" })).toBeInTheDocument();
-    expect(screen.getByText("Account, shop settings, verification, payments, policies, compliance, activity, and help.")).toBeInTheDocument();
+    expect(screen.getByText("Manage your account, shop setup, verification, payments, policies, compliance, and help.")).toBeInTheDocument();
+    expect(screen.getByTestId("owner-more-identity-card")).toBeInTheDocument();
+    expect(screen.getByText("Shop owner account")).toBeInTheDocument();
+    expect(screen.getByText("Your shop setup")).toBeInTheDocument();
+    expect(screen.getByText("Business Control Hub")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Shop Profile" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Business Setup" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Payments & Banking" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Compliance & Security" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Support" })).toBeInTheDocument();
-    expect(screen.getByText("$95")).toBeInTheDocument();
+    expect(screen.getByText("Ready amount $95")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /log out/i })).toBeInTheDocument();
   });
 
@@ -192,7 +196,7 @@ describe("owner More workspace", () => {
     }} />);
 
     expect(screen.getAllByText("Verified").length).toBeGreaterThan(0);
-    expect(screen.getByText("$210")).toBeInTheDocument();
+    expect(screen.getByText("Ready amount $210")).toBeInTheDocument();
   });
 
   it("opens quick shop profile setup and saves through the owner shop profile API", async () => {
@@ -215,7 +219,7 @@ describe("owner More workspace", () => {
 
     render(<OwnerSettingsWorkspace user={{ ...resolveDemoUser("owner@bvrb3r.demo"), appApprovalStatus: "approved", shopApprovalStatus: "approved" }} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Edit shop profile/i }));
+    fireEvent.click(screen.getAllByRole("button", { name: /Edit shop profile/i })[0]);
     expect(screen.getByRole("heading", { name: "Edit shop profile" })).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText(/Shop name/i), { target: { value: "BVRB3R North" } });
     fireEvent.change(screen.getByLabelText(/Brand line/i), { target: { value: "Sharp cuts near campus." } });
