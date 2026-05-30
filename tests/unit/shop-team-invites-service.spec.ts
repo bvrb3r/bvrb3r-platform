@@ -151,6 +151,97 @@ describe("shop team invite service", () => {
     });
   });
 
+  it("hydrates barber invites for text shop ids without querying locations.id", async () => {
+    const locationsIdQueryMock = vi.fn();
+    createSupabaseAdminClientMock.mockReturnValue({
+      from: vi.fn((table: string) => {
+        if (table === "barbers") {
+          return makeBarberQuery();
+        }
+        if (table === "shop_team_invites") {
+          return makeQuery({
+            data: [{
+              id: "invite-text-shop",
+              shop_id: "shop-the-bvrb3r-shop-universi-a02c68",
+              barber_id: "barber-real",
+              barber_profile_id: "profile-barber",
+              invited_by_profile_id: "profile-owner",
+              requested_by_profile_id: null,
+              status: "invited",
+              message: null,
+              created_at: "2026-05-30T10:00:00.000Z",
+              updated_at: "2026-05-30T10:00:00.000Z",
+              responded_at: null,
+              routing_model: "booth_rent"
+            }],
+            error: null
+          });
+        }
+        if (table === "shops") {
+          return makeQuery({
+            data: [{
+              id: "shop-the-bvrb3r-shop-universi-a02c68",
+              name: "The BVRB3R™ Shop",
+              owner_profile_id: "profile-owner",
+              neighborhood: "University Mall",
+              city: "Tampa",
+              state: "FL",
+              address: "2200 E Fowler Ave",
+              app_approval_status: "approved"
+            }],
+            error: null
+          });
+        }
+        if (table === "locations") {
+          const query = makeQuery({ data: [], error: null }) as Record<string, unknown>;
+          query.in = vi.fn((column: string, values: string[]) => {
+            if (column === "id") {
+              locationsIdQueryMock(values);
+            }
+            return query;
+          });
+          return query;
+        }
+        if (table === "profiles") {
+          return makeQuery({
+            data: [{
+              id: "profile-barber",
+              full_name: "Phillip McGee",
+              email: "phillip@example.com",
+              phone: null,
+              role: "barber_user",
+              primary_onboarding_role: "barber"
+            }],
+            error: null
+          });
+        }
+        throw new Error(`Unexpected table: ${table}`);
+      })
+    });
+
+    const { listBarberTeamInvites } = await import("@/lib/operations/shop-team-invites");
+
+    await expect(listBarberTeamInvites({
+      id: "profile-barber",
+      role: "barber_user",
+      email: "barber@example.com",
+      password: "",
+      name: "Real Barber",
+      title: "Barber",
+      locationIds: [],
+      barberId: "barber-real-ref"
+    })).resolves.toMatchObject({
+      invites: [{
+        id: "invite-text-shop",
+        shopId: "shop-the-bvrb3r-shop-universi-a02c68",
+        shopLabel: "The BVRB3R™ Shop | University Mall | Tampa",
+        status: "invited",
+        operatingModel: "booth_rent"
+      }]
+    });
+    expect(locationsIdQueryMock).not.toHaveBeenCalled();
+  });
+
   it("does not block owner invites for an active independent freelance chair", async () => {
     createSupabaseAdminClientMock.mockReturnValue({
       from: vi.fn((table: string) => {

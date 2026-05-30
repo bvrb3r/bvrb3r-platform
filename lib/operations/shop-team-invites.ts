@@ -499,9 +499,13 @@ async function readShopScopesByIds(supabase: SupabaseClient, shopIds: string[]) 
     return new Map<string, ShopScope>();
   }
 
+  const uuidIds = ids.filter(isUuid);
+
   const [shopsResult, locationsByIdResult, locationsByReferenceResult] = await Promise.all([
     supabase.from("shops").select("id, name, owner_profile_id, neighborhood, city, state, address, app_approval_status").in("id", ids),
-    supabase.from("locations").select("id, reference_code, name, neighborhood, city, state").in("id", ids),
+    uuidIds.length
+      ? supabase.from("locations").select("id, reference_code, name, neighborhood, city, state").in("id", uuidIds)
+      : Promise.resolve({ data: [], error: null }),
     supabase.from("locations").select("id, reference_code, name, neighborhood, city, state").in("reference_code", ids)
   ]);
 
