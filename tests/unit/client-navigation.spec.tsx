@@ -9,6 +9,7 @@ vi.mock("next/link", () => ({
 }));
 
 import { ClientBottomNav } from "@/components/client-experience/client-bottom-nav";
+import { ClientAppHeader } from "@/components/client-experience/client-app-header";
 import { ClientSidebar } from "@/components/client-experience/client-sidebar";
 
 describe("client navigation", () => {
@@ -42,5 +43,20 @@ describe("client navigation", () => {
     expect(screen.queryByRole("link", { name: "Activity" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Profile" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /bookings/i })).not.toBeInTheDocument();
+  });
+
+  it("renders the universal client header actions in the shared order", () => {
+    render(<ClientAppHeader />);
+
+    const actions = Array.from(screen.getByRole("group", { name: "Header actions" }).querySelectorAll("button,a"));
+    expect(actions.map((action) => action.getAttribute("aria-label"))).toEqual([
+      "Open notifications",
+      "Open messages",
+      "Open account"
+    ]);
+    expect(screen.getByText("Search, book, and manage visits")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open messages" })).toHaveAttribute("href", "/dashboard/client/messages");
+    expect(screen.getByRole("link", { name: "Open account" })).toHaveAttribute("href", "/dashboard/client/more");
+    expect(screen.queryByRole("link", { name: "Open culture" })).not.toBeInTheDocument();
   });
 });

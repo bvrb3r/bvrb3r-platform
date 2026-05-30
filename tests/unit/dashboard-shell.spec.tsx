@@ -120,6 +120,46 @@ describe("dashboard shell identity and navigation", () => {
     expect(screen.getByText("5 owner tabs")).toBeInTheDocument();
   });
 
+  it("renders owner header actions with messages and More routes", () => {
+    const user = resolveDemoUser("owner@bvrb3r.demo");
+
+    render(
+      <DashboardShell user={user} activeHref="/dashboard/owner" title="Home" subtitle="Testing owner header.">
+        <div>Workspace body</div>
+      </DashboardShell>
+    );
+
+    const actions = Array.from(screen.getByRole("group", { name: "Header actions" }).querySelectorAll("button,a"));
+    expect(actions.map((action) => action.getAttribute("aria-label"))).toEqual([
+      "Open notifications",
+      "Open messages",
+      "Open account"
+    ]);
+    expect(screen.getByTestId("shell-mobile-business-name")).toHaveTextContent("Shop owner workspace");
+    expect(screen.getByRole("link", { name: "Open messages" })).toHaveAttribute("href", "/dashboard/owner/messages");
+    expect(screen.getByRole("link", { name: "Open account" })).toHaveAttribute("href", "/dashboard/owner/more");
+  });
+
+  it("renders barber header actions with messages and More routes", () => {
+    const user = resolveDemoUser("blaze@bvrb3r.demo");
+
+    render(
+      <DashboardShell user={user} activeHref="/dashboard/barber" title="Home" subtitle="Testing barber header.">
+        <div>Workspace body</div>
+      </DashboardShell>
+    );
+
+    const actions = Array.from(screen.getByRole("group", { name: "Header actions" }).querySelectorAll("button,a"));
+    expect(actions.map((action) => action.getAttribute("aria-label"))).toEqual([
+      "Open notifications",
+      "Open messages",
+      "Open account"
+    ]);
+    expect(screen.getByTestId("shell-mobile-business-name")).toHaveTextContent("Shop barber workspace");
+    expect(screen.getByRole("link", { name: "Open messages" })).toHaveAttribute("href", "/dashboard/barber/messages");
+    expect(screen.getByRole("link", { name: "Open account" })).toHaveAttribute("href", "/dashboard/barber/more");
+  });
+
   it("locks client primary navigation to five tabs only", () => {
     const user = resolveDemoUser("client@bvrb3r.demo");
 

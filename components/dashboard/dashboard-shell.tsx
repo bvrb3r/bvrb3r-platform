@@ -7,7 +7,6 @@ import {
   Clock3,
   LayoutDashboard,
   MapPinned,
-  MessageSquareText,
   ShieldCheck,
   Sparkles,
   UserRound,
@@ -17,6 +16,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { BARBER_PRIMARY_NAV_ITEMS } from "@/components/barber-experience/barber-tab-config";
 import { CLIENT_PRIMARY_NAV_ITEMS, CLIENT_PRIMARY_TAB_HREFS } from "@/components/client-experience/client-tab-config";
+import { DashboardHeaderActions } from "@/components/dashboard/dashboard-header-actions";
 import { OWNER_PRIMARY_NAV_ITEMS } from "@/components/owner-experience/owner-tab-config";
 import { Card } from "@/components/ui/card";
 import { getDefaultRouteForUser, getUserRoleLabel } from "@/lib/auth/demo-auth";
@@ -329,10 +329,50 @@ function getProfileHref(role: Role): ComponentProps<typeof Link>["href"] {
   }
 
   if (isBarberAccountRole(role)) {
-    return "/dashboard/barber/profile";
+    return "/dashboard/barber/more";
   }
 
   return "/workspace/profile";
+}
+
+function getHeaderActionRole(role: Role) {
+  if (isClientRole(role)) {
+    return "client" as const;
+  }
+
+  if (isShopOwnerRole(role)) {
+    return "owner" as const;
+  }
+
+  if (isBarberAccountRole(role)) {
+    return "barber" as const;
+  }
+
+  return "architect" as const;
+}
+
+function getWorkspaceSubtitle(user: UserAccount, roleLabel: string) {
+  if (isClientRole(user.role)) {
+    return "Search, book, and manage visits";
+  }
+
+  if (isShopOwnerRole(user.role)) {
+    return user.ownedShopName?.trim() || "Shop owner workspace";
+  }
+
+  if (isBarberAccountRole(user.role)) {
+    if (user.barberSubtype === "freelance") {
+      return "Freelance barber workspace";
+    }
+
+    if (user.barberSubtype === "booth_rent" || user.barberSubtype === "commission") {
+      return "Shop barber workspace";
+    }
+
+    return "Barber workspace";
+  }
+
+  return `${roleLabel} workspace`;
 }
 
 function formatApprovalStatus(status?: UserAccount["appApprovalStatus"]) {
@@ -425,6 +465,7 @@ export function DashboardShell({
   const ownerShopName = isShopOwnerRole(user.role) ? user.ownedShopName?.trim() || null : null;
   const primaryShellIdentity = ownerShopName ?? "BVRB3R Platform";
   const mobileWorkspaceLabel = ownerShopName ?? `${activeRole} workspace`;
+  const workspaceSubtitle = getWorkspaceSubtitle(user, activeRole);
   const visibleLocations = user.locationIds.map((locationId) => ({
     id: locationId,
     name: user.role === "owner" && user.ownedShopId === locationId && user.ownedShopName
@@ -443,6 +484,8 @@ export function DashboardShell({
   const messagesHref = getMessagesHref(user.role);
   const profileHref = getProfileHref(user.role);
   const approvalBanner = getApprovalBanner(user);
+  const accountAttentionCount = approvalBanner ? 1 : 0;
+  const accountAttentionTone = user.appApprovalStatus === "rejected" || user.shopApprovalStatus === "rejected" ? "red" : "yellow";
   const isBarberDashboard = isBarberRole(user.role);
   const showShellContext = !isBarberDashboard && !hideShellContext;
 
@@ -555,7 +598,7 @@ export function DashboardShell({
         </Card>
 
         <div className="min-w-0 space-y-5">
-          <Card className="rounded-[30px] border border-white/8 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(8,8,8,0.98))] p-4 lg:hidden">
+          <Card className="rounded-[30px] border border-white/8 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(8,8,8,0.98))] p-4">
             <div className="flex items-center justify-between gap-3">
               <Link href={nav[0]?.href ?? getDefaultRouteForUser(user)} className="flex min-w-0 items-center gap-3 text-white">
                 <div className="flex h-11 w-11 items-center justify-center rounded-[16px] border border-[#7CFF00]/20 bg-[linear-gradient(135deg,rgba(124,255,0,0.18),rgba(15,15,15,0.96))] text-sm font-semibold tracking-[0.22em] text-[#d7ffab] shadow-[0_16px_34px_rgba(124,255,0,0.14)]">
@@ -563,24 +606,21 @@ export function DashboardShell({
                 </div>
                 <div className="min-w-0">
                   <p className="text-[10px] uppercase tracking-[0.26em] text-[#cfff93]">BVRB3R</p>
-                  <p className="mt-1 truncate text-sm font-medium text-white/74" data-testid="shell-mobile-business-name">{mobileWorkspaceLabel}</p>
+                  <p className="mt-1 truncate text-sm font-medium text-white/74" data-testid="shell-mobile-business-name">{workspaceSubtitle || mobileWorkspaceLabel}</p>
                 </div>
               </Link>
-              <div className="flex items-center gap-2">
-                <Link href={notificationsHref} aria-label="Open notifications" className="relative inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/25 text-white/74 transition hover:border-[#7CFF00]/20 hover:text-white">
-                  <Bell className="h-5 w-5" />
-                </Link>
-                <Link href={messagesHref} aria-label="Open messages or support" className="relative inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/25 text-white/74 transition hover:border-[#7CFF00]/20 hover:text-white">
-                  <MessageSquareText className="h-5 w-5" />
-                </Link>
-                <Link href={profileHref} aria-label="Open profile" className="relative inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/25 text-white/74 transition hover:border-[#7CFF00]/20 hover:text-white">
-                  <UserRound className="h-5 w-5" />
-                </Link>
-              </div>
+              <DashboardHeaderActions
+                role={getHeaderActionRole(user.role)}
+                notificationsHref={notificationsHref}
+                messagesHref={messagesHref}
+                moreHref={profileHref}
+                accountAttentionCount={accountAttentionCount}
+                accountAttentionTone={accountAttentionTone}
+              />
             </div>
 
             {showShellContext ? (
-              <>
+              <div className="lg:hidden">
                 <div className="mt-4 flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="text-sm text-white/68" data-testid="shell-mobile-identity-name">{user.name}</p>
@@ -621,7 +661,7 @@ export function DashboardShell({
                     <span key={`mobile-location-${location.id}`} className="status-pill text-white/72">{location.name}</span>
                   )) : <span className="status-pill text-white/52">No assigned locations yet</span>}
                 </div>
-              </>
+              </div>
             ) : null}
           </Card>
 

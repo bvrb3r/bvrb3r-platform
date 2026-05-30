@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { Images, MessageSquareText, UserRound } from "lucide-react";
 import {
   CLIENT_PRIMARY_TAB_HREFS,
   type ClientAppMode
 } from "@/components/client-experience/client-tab-config";
+import { DashboardHeaderActions } from "@/components/dashboard/dashboard-header-actions";
 
 export function ClientAppHeader({ mode = "client" }: { mode?: ClientAppMode }) {
   const isGuest = mode === "guest";
@@ -33,17 +33,11 @@ export function ClientAppHeader({ mode = "client" }: { mode?: ClientAppMode }) {
             </Link>
           </div>
         ) : (
-          <div className="flex items-center gap-2">
-            <Link href={CLIENT_PRIMARY_TAB_HREFS.culture} aria-label="Open culture" className="relative inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/25 text-white/74 transition hover:border-[#7CFF00]/20 hover:text-white">
-              <Images className="h-5 w-5" />
-            </Link>
-            <Link href={CLIENT_PRIMARY_TAB_HREFS.messages} aria-label="Open messages" className="relative inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/25 text-white/74 transition hover:border-[#7CFF00]/20 hover:text-white">
-              <MessageSquareText className="h-5 w-5" />
-            </Link>
-            <Link href={CLIENT_PRIMARY_TAB_HREFS.profile} aria-label="Open profile" className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/25 text-white/74 transition hover:border-[#7CFF00]/20 hover:text-white">
-              <UserRound className="h-5 w-5" />
-            </Link>
-          </div>
+          <DashboardHeaderActions
+            role="client"
+            messagesHref={CLIENT_PRIMARY_TAB_HREFS.messages}
+            moreHref={CLIENT_PRIMARY_TAB_HREFS.more}
+          />
         )}
       </div>
     </header>
