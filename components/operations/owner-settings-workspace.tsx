@@ -492,7 +492,7 @@ export function OwnerSettingsWorkspace({
     {
       title: "Branding",
       subtitle: "Logo, cover photo & shop theme",
-      href: "/dashboard/owner/settings?section=branding",
+      href: "/dashboard/owner/more?section=branding",
       icon: <Paintbrush className="h-5 w-5" />
     },
     {
@@ -513,7 +513,7 @@ export function OwnerSettingsWorkspace({
     {
       title: "Services",
       subtitle: "Manage services & pricing",
-      href: "/dashboard/owner/settings?section=services",
+      href: "/dashboard/owner/more?section=services",
       icon: <Scissors className="h-5 w-5" />
     },
     {
@@ -589,7 +589,7 @@ export function OwnerSettingsWorkspace({
     {
       title: "Security & Access",
       subtitle: "Password, 2FA & login settings",
-      href: "/dashboard/owner/settings?section=logout",
+      href: "/dashboard/owner/more?section=logout",
       icon: <KeyRound className="h-5 w-5" />
     }
   ];
@@ -634,8 +634,8 @@ export function OwnerSettingsWorkspace({
 
       <header className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-5xl font-black leading-none tracking-[-0.055em] text-white sm:text-6xl">Settings</h1>
-          <p className="mt-3 text-lg font-medium text-white/62">Manage your shop & business controls</p>
+          <h1 className="text-5xl font-black leading-none tracking-[-0.055em] text-white sm:text-6xl">More</h1>
+          <p className="mt-3 text-lg font-medium text-white/62">Account, shop settings, verification, payments, policies, compliance, activity, and help.</p>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-white/52">
             Private shop setup, verification, payments, policies, team permissions, and compliance live here without crowding the day-to-day tabs.
           </p>
@@ -723,7 +723,7 @@ export function OwnerSettingsWorkspace({
 
       <GlassCard className="grid gap-4 p-5 md:grid-cols-3">
         <div>
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Business settings hub</p>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Business control hub</p>
           <p className="mt-3 text-lg font-extrabold text-white">Setup is grouped by decision, not paperwork.</p>
           <p className="mt-2 text-sm leading-6 text-white/56">Use the rows below for shop profile, payments, team permissions, and legal readiness.</p>
         </div>

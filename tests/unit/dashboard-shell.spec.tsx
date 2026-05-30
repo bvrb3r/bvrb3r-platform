@@ -4,7 +4,7 @@ import { getDefaultRouteForUser, resolveDemoUser } from "@/lib/auth/demo-auth";
 
 describe("dashboard shell identity and navigation", () => {
   it.each([
-    ["owner@bvrb3r.demo", "Brandon Rivers", "Shop Owner", "Active role: Shop owner", ["Home", "Schedule", "Money", "Messages", "Settings"]],
+    ["owner@bvrb3r.demo", "Brandon Rivers", "Shop Owner", "Active role: Shop owner", ["Home", "Schedule", "Money", "Messages", "More"]],
     ["manager@bvrb3r.demo", "Mia Torres", "Shop Manager", "Active role: Shop manager", ["Dashboard", "Schedule", "Team", "Queue", "Profile"]],
     ["frontdesk@bvrb3r.demo", "Kayla Brooks", "Front Desk / Kiosk Ops", "Active role: Front desk", ["Check-in", "Waitlist", "Schedule", "Barbers", "Profile"]],
     ["wave@bvrb3r.demo", "Wave Carter", "Barber Manager", "Active role: Barber manager", ["Dashboard", "Schedule", "Team", "Queue", "Profile"]],
@@ -106,7 +106,7 @@ describe("dashboard shell identity and navigation", () => {
       </DashboardShell>
     );
 
-    ["Home", "Schedule", "Money", "Messages", "Settings"].forEach((label) => {
+    ["Home", "Schedule", "Money", "Messages", "More"].forEach((label) => {
       expect(screen.getAllByRole("link", { name: new RegExp(label, "i") }).length).toBeGreaterThan(0);
     });
 
@@ -114,6 +114,7 @@ describe("dashboard shell identity and navigation", () => {
     expect(screen.queryByRole("link", { name: /overview/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /finance/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /staff/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /settings/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /^team$/i })).not.toBeInTheDocument();
     expect(screen.getByText("5 tabs")).toBeInTheDocument();
     expect(screen.getByText("5 owner tabs")).toBeInTheDocument();

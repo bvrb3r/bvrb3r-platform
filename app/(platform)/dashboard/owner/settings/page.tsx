@@ -13,9 +13,9 @@ export default async function OwnerSettingsPage({
   return (
     <DashboardShell
       user={user}
-      activeHref="/dashboard/owner/settings"
-      title="Settings"
-      subtitle="Manage your shop & business controls"
+      activeHref="/dashboard/owner/more"
+      title="More"
+      subtitle="Account, shop settings, verification, payments, policies, compliance, activity, and help."
       hidePageHeader
     >
       <OwnerSettingsWorkspace user={user} initialSection={params.section} />

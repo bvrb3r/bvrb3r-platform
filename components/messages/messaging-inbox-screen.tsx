@@ -31,7 +31,6 @@ import type {
 
 type MessagingSurface = "client" | "barber" | "shop";
 type ThreadFilter = "all" | "barbers" | "shops" | "support" | "other" | "clients" | "requests" | "bookings" | "team";
-type BarberInboxTab = "primary" | "requests" | "bookings" | "general";
 type ActiveThread = MessagingThreadPayload["thread"];
 type AppointmentContextView = NonNullable<MessagingThreadSummary["appointmentContext"]>;
 
@@ -59,13 +58,6 @@ const shopThreadFilters: { key: ThreadFilter; label: string }[] = [
   { key: "support", label: "Support" },
   { key: "team", label: "Team" },
   { key: "bookings", label: "Bookings" }
-];
-
-const barberInboxTabs: { key: BarberInboxTab; label: string }[] = [
-  { key: "primary", label: "Primary" },
-  { key: "requests", label: "Requests" },
-  { key: "bookings", label: "Bookings" },
-  { key: "general", label: "General" }
 ];
 
 function formatThreadTime(iso: string) {
@@ -275,26 +267,6 @@ function isBookingRequestThread(thread: MessagingThreadSummary) {
   return Boolean(thread.appointmentContext && (statusText.includes("pending") || statusText.includes("request")));
 }
 
-function getBarberInboxCategory(thread: MessagingThreadSummary): Exclude<BarberInboxTab, "primary"> {
-  if (isBookingRequestThread(thread)) {
-    return "requests";
-  }
-
-  if (thread.appointmentContext) {
-    return "bookings";
-  }
-
-  return "general";
-}
-
-function getBarberTabCount(tab: BarberInboxTab, threads: MessagingThreadSummary[]) {
-  if (tab === "primary") {
-    return threads.length;
-  }
-
-  return threads.filter((thread) => getBarberInboxCategory(thread) === tab).length;
-}
-
 function getThreadPreview(thread: MessagingThreadSummary) {
   if (thread.lastMessage?.body) {
     return thread.lastMessage.body;
@@ -364,12 +336,6 @@ function filterThreads(threads: MessagingThreadSummary[], activeFilter: ThreadFi
 
     return matchesFilter && (!normalizedQuery || searchable.includes(normalizedQuery));
   });
-}
-
-function filterBarberThreads(threads: MessagingThreadSummary[], activeTab: BarberInboxTab, activeFilter: ThreadFilter, query: string) {
-  const filtered = filterThreads(threads, activeFilter, query, "barber");
-
-  return filtered.filter((thread) => activeTab === "primary" || getBarberInboxCategory(thread) === activeTab);
 }
 
 function getThreadActivityTime(thread: MessagingThreadSummary) {
@@ -1175,7 +1141,7 @@ export function MessagingInboxScreen({
   const threadsQuery = useMessageThreadsQuery();
   const createThreadMutation = useCreateMessageThreadMutation();
   const broadcastMutation = useSendMessageBroadcastMutation();
-  const clientUsesModal = surface === "client";
+  const usesModalThreadView = true;
   const [modalThreadId, setModalThreadId] = useState<string | null>(selectedThreadId ?? null);
   const [composeOpen, setComposeOpen] = useState(false);
   const [participantSearch, setParticipantSearch] = useState("");
@@ -1186,7 +1152,6 @@ export function MessagingInboxScreen({
   const [broadcastBody, setBroadcastBody] = useState("");
   const [threadSearch, setThreadSearch] = useState("");
   const [threadFilter, setThreadFilter] = useState<ThreadFilter>("all");
-  const [barberInboxTab, setBarberInboxTab] = useState<BarberInboxTab>("primary");
   const [paymentRequestActionId, setPaymentRequestActionId] = useState<string | null>(null);
   const startersRef = useRef<HTMLDivElement | null>(null);
   const hasTriggeredSupportIntentRef = useRef(false);
@@ -1212,7 +1177,7 @@ export function MessagingInboxScreen({
   }, [appointmentStarters]);
   const contactStarters = useMemo(() => threadsQuery.data?.eligibleContacts ?? [], [threadsQuery.data?.eligibleContacts]);
   const broadcastTargets = useMemo(() => threadsQuery.data?.broadcastTargets ?? [], [threadsQuery.data?.broadcastTargets]);
-  const activeThreadId = clientUsesModal ? modalThreadId ?? undefined : selectedThreadId ?? threads[0]?.id;
+  const activeThreadId = usesModalThreadView ? modalThreadId ?? undefined : selectedThreadId ?? threads[0]?.id;
   const threadQuery = useMessageThreadQuery(activeThreadId);
   const participantSearchQuery = useMessageParticipantSearchQuery(participantSearch, composeOpen && available);
   const sendMessageMutation = useSendMessageMutation(activeThreadId);
@@ -1235,10 +1200,8 @@ export function MessagingInboxScreen({
   );
   const activeThreadFilters = surface === "barber" ? barberThreadFilters : surface === "shop" ? shopThreadFilters : threadFilters;
   const displayedThreads = useMemo(
-    () => surface === "barber"
-      ? filterBarberThreads(threads, barberInboxTab, threadFilter, threadSearch)
-      : filterThreads(threads, threadFilter, threadSearch, surface),
-    [barberInboxTab, surface, threadFilter, threadSearch, threads]
+    () => filterThreads(threads, threadFilter, threadSearch, surface),
+    [surface, threadFilter, threadSearch, threads]
   );
 
   useEffect(() => {
@@ -1257,7 +1220,7 @@ export function MessagingInboxScreen({
       const threadPayload = await createThreadMutation.mutateAsync(payload);
       if (threadPayload.thread?.id) {
         setStatusUpdate({ tone: "success", message: successMessage });
-        if (clientUsesModal) {
+        if (usesModalThreadView) {
           setModalThreadId(threadPayload.thread.id);
         }
         router.push(`${basePath}/${threadPayload.thread.id}` as Route, { scroll: false });
@@ -1265,16 +1228,16 @@ export function MessagingInboxScreen({
     } catch (error) {
       setStatusUpdate({ tone: "error", message: readableError(error, "Unable to open the conversation.") });
     }
-  }, [basePath, clientUsesModal, createThreadMutation, router]);
+  }, [basePath, createThreadMutation, router, usesModalThreadView]);
 
   const handleOpenThread = useCallback((threadId: string) => {
-    if (clientUsesModal) {
+    if (usesModalThreadView) {
       setComposerBody("");
       setComposeOpen(false);
       setModalThreadId(threadId);
       router.push(`${basePath}/${threadId}` as Route, { scroll: false });
     }
-  }, [basePath, clientUsesModal, router]);
+  }, [basePath, router, usesModalThreadView]);
 
   const handleCloseCompose = useCallback(() => {
     setComposeOpen(false);
@@ -1282,14 +1245,14 @@ export function MessagingInboxScreen({
   }, []);
 
   const handleCloseThread = useCallback(() => {
-    if (!clientUsesModal) {
+    if (!usesModalThreadView) {
       return;
     }
 
     setComposerBody("");
     setModalThreadId(null);
     router.push(basePath as Route, { scroll: false });
-  }, [basePath, clientUsesModal, router]);
+  }, [basePath, router, usesModalThreadView]);
 
   useEffect(() => {
     if (
@@ -1409,7 +1372,7 @@ export function MessagingInboxScreen({
   }
 
   const handleNewMessage = () => {
-    if (clientUsesModal) {
+    if (usesModalThreadView) {
       setStatusUpdate(null);
       setComposeOpen(true);
       setParticipantSearch("");
@@ -1454,8 +1417,8 @@ export function MessagingInboxScreen({
       ) : null}
 
       {available ? (
-        <div className={clientUsesModal ? "mt-4" : "mt-4 grid gap-4 xl:grid-cols-[0.88fr_1.12fr]"}>
-          <aside className={clientUsesModal ? "mx-auto w-full max-w-3xl space-y-3" : "min-w-0 space-y-3"}>
+        <div className={usesModalThreadView ? "mt-4" : "mt-4 grid gap-4 xl:grid-cols-[0.88fr_1.12fr]"}>
+          <aside className={usesModalThreadView ? "mx-auto w-full max-w-3xl space-y-3" : "min-w-0 space-y-3"}>
             <div>
               <SearchBar
                 aria-label="Search messages"
@@ -1469,29 +1432,8 @@ export function MessagingInboxScreen({
             <ThreadStoryRail
               basePath={basePath}
               contacts={quickContacts}
-              onOpenThread={clientUsesModal ? handleOpenThread : undefined}
+              onOpenThread={usesModalThreadView ? handleOpenThread : undefined}
             />
-
-            {surface === "barber" ? (
-              <div className="grid grid-cols-2 gap-1 rounded-[12px] border border-white/8 bg-white/[0.025] p-1 sm:grid-cols-4">
-                {barberInboxTabs.map((tab) => {
-                  const active = barberInboxTab === tab.key;
-                  return (
-                    <button
-                      key={tab.key}
-                      type="button"
-                      onClick={() => setBarberInboxTab(tab.key)}
-                      className={[
-                        "min-h-10 rounded-[8px] px-2 text-[11px] font-bold transition",
-                        active ? "bg-[#a3ff12] text-[#050505]" : "text-white/62 hover:bg-white/[0.04] hover:text-white"
-                      ].join(" ")}
-                    >
-                      {tab.label} <span className={active ? "text-black/58" : "text-white/36"}>{getBarberTabCount(tab.key, threads)}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            ) : null}
 
             <div className="flex gap-2 overflow-x-auto pb-1">
               {activeThreadFilters.map((filter) => (
@@ -1520,7 +1462,7 @@ export function MessagingInboxScreen({
                   thread={thread}
                   basePath={basePath}
                   active={thread.id === activeThreadId}
-                  onOpen={clientUsesModal ? handleOpenThread : undefined}
+                  onOpen={usesModalThreadView ? handleOpenThread : undefined}
                 />
               )) : (
                 <div className="rounded-lg border border-dashed border-white/10 bg-white/[0.025] p-4 text-sm leading-6 text-white/58">
@@ -1529,7 +1471,7 @@ export function MessagingInboxScreen({
               )}
             </div>
 
-            {surface !== "client" ? (
+            {surface !== "client" && !usesModalThreadView ? (
               <div ref={startersRef} className="rounded-[14px] border border-white/8 bg-white/[0.025] p-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -1596,7 +1538,7 @@ export function MessagingInboxScreen({
               </div>
             ) : null}
 
-            {surface === "shop" ? (
+            {surface === "shop" && !usesModalThreadView ? (
               <div className="rounded-lg border border-white/8 bg-white/[0.025] p-3">
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -1647,7 +1589,7 @@ export function MessagingInboxScreen({
             ) : null}
           </aside>
 
-          {!clientUsesModal ? (
+          {!usesModalThreadView ? (
             <ConversationPanel
               activeThread={activeThread}
               activeThreadId={activeThreadId}
@@ -1671,7 +1613,7 @@ export function MessagingInboxScreen({
         </div>
       ) : null}
 
-      {available && clientUsesModal ? (
+      {available && usesModalThreadView ? (
         <ConversationModal
           activeThread={activeThread}
           activeThreadId={activeThreadId}
@@ -1693,7 +1635,7 @@ export function MessagingInboxScreen({
         />
       ) : null}
 
-      {available && clientUsesModal && composeOpen ? (
+      {available && usesModalThreadView && composeOpen ? (
         <ComposeModal
           error={participantSearchQuery.error}
           isLoading={participantSearchQuery.isLoading}

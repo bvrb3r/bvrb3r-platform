@@ -257,7 +257,7 @@ function payoutStatusCopy(readyAccounts: number, readyAmount: number, blockedCou
     label: "Setup incomplete",
     detail: "Complete setup",
     tone: "amber" as const,
-    href: "/dashboard/owner/settings?section=payouts"
+    href: "/dashboard/owner/more?section=payouts"
   };
 }
 

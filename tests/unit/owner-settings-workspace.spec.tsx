@@ -78,7 +78,7 @@ function makeShopAccount(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe("owner settings workspace", () => {
+describe("owner More workspace", () => {
   beforeEach(() => {
     useProfileMediaWorkspaceQueryMock.mockReset();
     useMutateProfileMediaMutationMock.mockReset();
@@ -144,11 +144,11 @@ describe("owner settings workspace", () => {
     });
   });
 
-  it("renders the owner settings control center from canonical profile and fintech posture", () => {
+  it("renders the owner More control center from canonical profile and fintech posture", () => {
     render(<OwnerSettingsWorkspace user={resolveDemoUser("owner@bvrb3r.demo")} />);
 
-    expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
-    expect(screen.getByText("Manage your shop & business controls")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "More" })).toBeInTheDocument();
+    expect(screen.getByText("Account, shop settings, verification, payments, policies, compliance, activity, and help.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Shop Profile" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Business Setup" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Payments & Banking" })).toBeInTheDocument();

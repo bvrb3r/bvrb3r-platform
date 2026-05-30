@@ -50,6 +50,7 @@ import OwnerOverviewPage from "@/app/(platform)/dashboard/owner/overview/page";
 import OwnerSchedulePage from "@/app/(platform)/dashboard/owner/schedule/page";
 import OwnerMoneyPage from "@/app/(platform)/dashboard/owner/money/page";
 import OwnerMessagesPage from "@/app/(platform)/dashboard/owner/messages/page";
+import OwnerMorePage from "@/app/(platform)/dashboard/owner/more/page";
 import OwnerSettingsPage from "@/app/(platform)/dashboard/owner/settings/page";
 
 describe("owner dashboard tab pages", () => {
@@ -108,6 +109,8 @@ describe("owner dashboard tab pages", () => {
     render(await OwnerMessagesPage());
 
     expect(screen.getByTestId("messaging-inbox-stub")).toHaveTextContent("shop");
+    expect(screen.queryByTestId("owner-team-workspace-stub")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("owner-overview-stub")).not.toBeInTheDocument();
   });
 
   it("keeps the growth placeholder available on the owner money tab when requested", async () => {
@@ -136,7 +139,20 @@ describe("owner dashboard tab pages", () => {
     expect(screen.getByTestId("fintech-workspace-stub")).toHaveTextContent("loc-ybor,loc-hyde");
   });
 
-  it("renders the owner settings workspace on the canonical settings tab", async () => {
+  it("renders the owner More workspace on the canonical More tab", async () => {
+    getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("owner@bvrb3r.demo"));
+
+    render(
+      await OwnerMorePage({
+        searchParams: Promise.resolve({ section: "services" })
+      })
+    );
+
+    expect(screen.getByTestId("owner-settings-workspace-stub")).toHaveTextContent("services");
+    expect(screen.queryByTestId("account-session-workspace-stub")).not.toBeInTheDocument();
+  });
+
+  it("keeps the legacy owner settings route as a More alias", async () => {
     getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("owner@bvrb3r.demo"));
 
     render(

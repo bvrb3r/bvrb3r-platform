@@ -15,7 +15,7 @@ export default async function SettingsPage() {
   }
 
   if (isOwner) {
-    redirect("/dashboard/owner/settings" as Route);
+    redirect("/dashboard/owner/more" as Route);
   }
 
   if (isBarberAccountRole(user.role)) {

@@ -617,7 +617,7 @@ export function OwnerScheduleWorkspace() {
               label="Shop Hours"
               value="-"
               detail="Unavailable"
-              href="/dashboard/owner/settings?section=shop-hours"
+              href="/dashboard/owner/more?section=shop-hours"
             />
           </>
         )}
@@ -647,7 +647,7 @@ export function OwnerScheduleWorkspace() {
             <Link href="/onboarding/owner/team" className="inline-flex min-h-12 items-center justify-center rounded-full border border-[#A3FF12]/40 px-5 text-sm font-extrabold text-[#A3FF12] transition hover:bg-[#A3FF12]/10">
               Invite Barber
             </Link>
-            <Link href="/dashboard/owner/settings?section=shop-hours" className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/12 px-5 text-sm font-extrabold text-white/74 transition hover:border-[#A3FF12]/30 hover:text-[#A3FF12]">
+            <Link href="/dashboard/owner/more?section=shop-hours" className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/12 px-5 text-sm font-extrabold text-white/74 transition hover:border-[#A3FF12]/30 hover:text-[#A3FF12]">
               Configure Shop Hours
             </Link>
           </EmptyState>
@@ -656,10 +656,10 @@ export function OwnerScheduleWorkspace() {
             title="No schedule data for this day."
             detail="Set shop hours and barber availability to track chair usage."
           >
-            <Link href="/dashboard/owner/settings?section=shop-hours" className="inline-flex min-h-12 items-center justify-center rounded-full border border-[#A3FF12]/40 px-5 text-sm font-extrabold text-[#A3FF12] transition hover:bg-[#A3FF12]/10">
+            <Link href="/dashboard/owner/more?section=shop-hours" className="inline-flex min-h-12 items-center justify-center rounded-full border border-[#A3FF12]/40 px-5 text-sm font-extrabold text-[#A3FF12] transition hover:bg-[#A3FF12]/10">
               Set Shop Hours
             </Link>
-            <Link href="/dashboard/owner/settings?section=availability" className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/12 px-5 text-sm font-extrabold text-white/74 transition hover:border-[#A3FF12]/30 hover:text-[#A3FF12]">
+            <Link href="/dashboard/owner/more?section=availability" className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/12 px-5 text-sm font-extrabold text-white/74 transition hover:border-[#A3FF12]/30 hover:text-[#A3FF12]">
               Add Availability
             </Link>
           </EmptyState>

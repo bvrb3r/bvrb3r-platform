@@ -142,7 +142,7 @@ function getBoundaryCopy(role: Role) {
   switch (role) {
     case "shop_owner_user":
     case "owner":
-      return "Home, Schedule, Money, Messages, and Settings keep shop control clean.";
+      return "Home, Schedule, Money, Messages, and More keep shop control clean.";
     case "manager":
       return "Manager mode keeps the floor visible while ownership financial controls, payout rules, and transfer rights stay protected.";
     case "front_desk":
@@ -321,7 +321,7 @@ function getMessagesHref(role: Role): ComponentProps<typeof Link>["href"] {
 
 function getProfileHref(role: Role): ComponentProps<typeof Link>["href"] {
   if (isShopOwnerRole(role)) {
-    return "/dashboard/owner/settings";
+      return "/dashboard/owner/more";
   }
 
   if (isClientRole(role)) {
@@ -409,6 +409,7 @@ export function DashboardShell({
   subtitle,
   activeHref,
   hidePageHeader = false,
+  hideShellContext = false,
   children
 }: {
   user: UserAccount;
@@ -416,6 +417,7 @@ export function DashboardShell({
   subtitle: string;
   activeHref?: string;
   hidePageHeader?: boolean;
+  hideShellContext?: boolean;
   children: React.ReactNode;
 }) {
   const nav = getNavigation(user);
@@ -442,7 +444,7 @@ export function DashboardShell({
   const profileHref = getProfileHref(user.role);
   const approvalBanner = getApprovalBanner(user);
   const isBarberDashboard = isBarberRole(user.role);
-  const showShellContext = !isBarberDashboard;
+  const showShellContext = !isBarberDashboard && !hideShellContext;
 
   return (
     <div className="bvr-screen app-screen safe-top-pad overflow-x-clip px-3 py-3 pb-[calc(env(safe-area-inset-bottom,0px)+6.5rem)] sm:px-4 sm:py-4 lg:px-5 lg:py-5 lg:pb-5">

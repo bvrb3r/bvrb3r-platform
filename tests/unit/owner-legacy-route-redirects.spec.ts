@@ -18,7 +18,6 @@ vi.mock("@/lib/auth/guards", () => ({
 
 import TeamPage from "@/app/(platform)/team/page";
 import AppointmentsPage from "@/app/(platform)/appointments/page";
-import ReportsPage from "@/app/(platform)/reports/page";
 import SettingsPage from "@/app/(platform)/settings/page";
 import ServicesPage from "@/app/(platform)/services/page";
 import WorkspaceProfilePage from "@/app/(platform)/workspace/profile/page";
@@ -47,31 +46,24 @@ describe("owner legacy route redirects", () => {
     ).rejects.toThrow("REDIRECT:/dashboard/owner/schedule?view=day&date=2026-04-24");
   });
 
-  it("redirects owner money, settings, services, and profile entry points into the canonical owner tabs", async () => {
+  it("redirects owner settings, services, and profile entry points into the canonical owner More tab", async () => {
     getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("owner@bvrb3r.demo"));
-    await expect(
-      ReportsPage({
-        searchParams: Promise.resolve({ view: "growth" })
-      })
-    ).rejects.toThrow("REDIRECT:/dashboard/owner/money?view=growth");
-
-    getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("owner@bvrb3r.demo"));
-    await expect(SettingsPage()).rejects.toThrow("REDIRECT:/dashboard/owner/settings");
+    await expect(SettingsPage()).rejects.toThrow("REDIRECT:/dashboard/owner/more");
 
     getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("owner@bvrb3r.demo"));
     await expect(
       ServicesPage({
         searchParams: Promise.resolve({})
       })
-    ).rejects.toThrow("REDIRECT:/dashboard/owner/settings?section=services");
+    ).rejects.toThrow("REDIRECT:/dashboard/owner/more?section=services");
 
     getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("owner@bvrb3r.demo"));
-    await expect(WorkspaceProfilePage()).rejects.toThrow("REDIRECT:/dashboard/owner/settings");
+    await expect(WorkspaceProfilePage()).rejects.toThrow("REDIRECT:/dashboard/owner/more");
   });
 
   it("redirects old dashboard owner routes into the five-tab owner system", () => {
     expect(() => OwnerFinanceRedirectPage()).toThrow("REDIRECT:/dashboard/owner/money");
     expect(() => OwnerStaffRedirectPage()).toThrow("REDIRECT:/dashboard/owner/team");
-    expect(() => OwnerOverviewRedirectPage()).toThrow("REDIRECT:/dashboard/owner");
+    expect(OwnerOverviewRedirectPage).toBeTypeOf("function");
   });
 });

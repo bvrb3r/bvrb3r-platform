@@ -1058,7 +1058,7 @@ export function OwnerTeamWorkspace() {
                   </button>
 
                   <Link
-                    href={barber.statusKind === "pending" ? "/dashboard/owner/settings?section=verification" : "/dashboard/owner/team"}
+                    href={barber.statusKind === "pending" ? "/dashboard/owner/more?section=verification" : "/dashboard/owner/team"}
                     className={cn("inline-flex items-center gap-2 text-base font-extrabold", statusClasses.split(" ")[1])}
                   >
                     <span className={cn("h-3 w-3 rounded-full shadow-[0_0_12px_currentColor]", statusClasses.split(" ")[0])} />
@@ -1113,7 +1113,7 @@ export function OwnerTeamWorkspace() {
                       <TeamActionLink href={`/dashboard/owner/messages?threadWith=${encodeURIComponent(barber.id)}`}>
                         Message Barber
                       </TeamActionLink>
-                      <TeamActionLink href={`/dashboard/owner/settings?section=compensation&barberId=${encodeURIComponent(barber.id)}`}>
+                      <TeamActionLink href={`/dashboard/owner/more?section=compensation&barberId=${encodeURIComponent(barber.id)}`}>
                         Edit Role / Permissions
                       </TeamActionLink>
                     </GlassCard>

@@ -41,7 +41,7 @@ export default async function ServicesPage({
   const marketplaceRole = user.role;
 
   if (isShopOwnerRole(marketplaceRole)) {
-    redirect("/dashboard/owner/settings?section=services" as Route);
+    redirect("/dashboard/owner/more?section=services" as Route);
   }
 
   if (isBarberAccountRole(marketplaceRole)) {

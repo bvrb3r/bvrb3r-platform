@@ -1,14 +1,14 @@
 import type { Route } from "next";
 import {
   CalendarDays,
+  Ellipsis,
   Home,
   MessageSquareText,
-  Settings2,
   WalletCards,
   type LucideIcon
 } from "lucide-react";
 
-export type OwnerAppTab = "home" | "schedule" | "money" | "messages" | "settings" | "team";
+export type OwnerAppTab = "home" | "schedule" | "money" | "messages" | "more" | "settings" | "team";
 
 export const OWNER_PRIMARY_TAB_HREFS = {
   home: "/dashboard/owner",
@@ -16,6 +16,7 @@ export const OWNER_PRIMARY_TAB_HREFS = {
   schedule: "/dashboard/owner/schedule",
   money: "/dashboard/owner/money",
   messages: "/dashboard/owner/messages",
+  more: "/dashboard/owner/more",
   settings: "/dashboard/owner/settings"
 } as const satisfies Record<OwnerAppTab, Route>;
 
@@ -30,5 +31,5 @@ export const OWNER_PRIMARY_NAV_ITEMS: Array<{
   { key: "schedule", href: OWNER_PRIMARY_TAB_HREFS.schedule, activeHref: OWNER_PRIMARY_TAB_HREFS.schedule, label: "Schedule", icon: CalendarDays },
   { key: "money", href: OWNER_PRIMARY_TAB_HREFS.money, activeHref: OWNER_PRIMARY_TAB_HREFS.money, label: "Money", icon: WalletCards },
   { key: "messages", href: OWNER_PRIMARY_TAB_HREFS.messages, activeHref: OWNER_PRIMARY_TAB_HREFS.messages, label: "Messages", icon: MessageSquareText },
-  { key: "settings", href: OWNER_PRIMARY_TAB_HREFS.settings, activeHref: OWNER_PRIMARY_TAB_HREFS.settings, label: "Settings", icon: Settings2 }
+  { key: "more", href: OWNER_PRIMARY_TAB_HREFS.more, activeHref: OWNER_PRIMARY_TAB_HREFS.more, label: "More", icon: Ellipsis }
 ];

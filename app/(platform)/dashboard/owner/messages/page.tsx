@@ -11,6 +11,8 @@ export default async function OwnerMessagesPage() {
       activeHref="/dashboard/owner/messages"
       title="Messages"
       subtitle="Client, barber, team, booking, and support conversations."
+      hidePageHeader
+      hideShellContext
     >
       <MessagingInboxScreen
         surface="shop"

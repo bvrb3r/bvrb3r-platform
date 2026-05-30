@@ -1330,7 +1330,10 @@ describe("client messages screen", () => {
     );
 
     expect(screen.getByTestId("messaging-inbox-barber")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Primary 1/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Primary/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /General/i })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("message-thread-panel")).not.toBeInTheDocument();
+    expect(screen.getByTestId("message-thread-modal")).toBeInTheDocument();
     ["All", "Clients", "Shops", "Support", "Requests", "Bookings"].forEach((label) => {
       expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
     });

@@ -16,6 +16,7 @@ export default async function BarberMessageThreadPage({
       activeHref="/dashboard/barber/messages"
       title="Messages"
       subtitle="Connect with clients & manage conversations."
+      hidePageHeader
     >
       <MessagingInboxScreen
         surface="barber"
