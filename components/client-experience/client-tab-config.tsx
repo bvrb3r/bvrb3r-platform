@@ -1,22 +1,25 @@
 import type { Route } from "next";
 import {
-  CalendarDays,
   CircleUserRound,
+  Ellipsis,
   Home,
+  MessageSquareText,
   Search,
+  Sparkles,
   UserRound,
   type LucideIcon
 } from "lucide-react";
 
-export type ClientAppTab = "home" | "search" | "culture" | "activity" | "messages" | "profile";
+export type ClientAppTab = "home" | "search" | "culture" | "messages" | "more" | "activity" | "profile";
 export type ClientAppMode = "client" | "guest";
 
 export const CLIENT_PRIMARY_TAB_HREFS = {
   home: "/dashboard/client",
   search: "/dashboard/client/search",
   culture: "/dashboard/client/culture",
-  activity: "/dashboard/client/activity",
   messages: "/dashboard/client/messages",
+  more: "/dashboard/client/more",
+  activity: "/dashboard/client/activity",
   profile: "/dashboard/client/profile"
 } as const satisfies Record<ClientAppTab, Route>;
 
@@ -29,8 +32,9 @@ export const CLIENT_PRIMARY_NAV_ITEMS: Array<{
 }> = [
   { key: "home", href: CLIENT_PRIMARY_TAB_HREFS.home, label: "Home", subtitle: "Book fast", icon: Home },
   { key: "search", href: CLIENT_PRIMARY_TAB_HREFS.search, label: "Search", subtitle: "Discover", icon: Search },
-  { key: "activity", href: CLIENT_PRIMARY_TAB_HREFS.activity, label: "Activity", subtitle: "Appointments / receipts", icon: CalendarDays },
-  { key: "profile", href: CLIENT_PRIMARY_TAB_HREFS.profile, label: "Profile", subtitle: "Account center", icon: CircleUserRound }
+  { key: "culture", href: CLIENT_PRIMARY_TAB_HREFS.culture, label: "Culture", subtitle: "Feed shell", icon: Sparkles },
+  { key: "messages", href: CLIENT_PRIMARY_TAB_HREFS.messages, label: "Messages", subtitle: "Threads", icon: MessageSquareText },
+  { key: "more", href: CLIENT_PRIMARY_TAB_HREFS.more, label: "More", subtitle: "Account", icon: Ellipsis }
 ];
 
 export const GUEST_CLIENT_NAV_ITEMS: Array<{
@@ -41,5 +45,5 @@ export const GUEST_CLIENT_NAV_ITEMS: Array<{
 }> = [
   { key: "search", href: "/discover?entry=guest" as Route, label: "Explore", icon: Search },
   { key: "home", href: "/" as Route, label: "Account", icon: UserRound },
-  { key: "activity", href: "/booking/new?source=guest_discovery" as Route, label: "Book", icon: CalendarDays }
+  { key: "profile", href: "/booking/new?source=guest_discovery" as Route, label: "Book", icon: CircleUserRound }
 ];

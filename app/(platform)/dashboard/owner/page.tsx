@@ -1,5 +1,5 @@
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
-import { OwnerOverview } from "@/components/operations/owner-overview";
+import { OwnerTeamWorkspace } from "@/components/operations/owner-team-workspace";
 import { getAuthorizedUser } from "@/lib/auth/guards";
 
 export default async function OwnerDashboardPage() {
@@ -9,10 +9,10 @@ export default async function OwnerDashboardPage() {
       user={user}
       activeHref="/dashboard/owner"
       title="Home"
-      subtitle="Shop health, team movement, and next actions."
+      subtitle="Team command center, public shop profile controls, and next owner actions."
       hidePageHeader
     >
-      <OwnerOverview />
+      <OwnerTeamWorkspace />
     </DashboardShell>
   );
 }

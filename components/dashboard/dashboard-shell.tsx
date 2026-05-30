@@ -119,7 +119,7 @@ function getPrimaryActionTitle(role: Role) {
   switch (role) {
     case "shop_owner_user":
     case "owner":
-      return "Home shows live revenue, bookings, chair capacity, alerts, and the next owner action.";
+      return "Home brings shop health, team controls, public shop profile, and next owner actions together.";
     case "manager":
       return "Keep schedule, queue, and attendance moving without opening owner-only controls.";
     case "front_desk":
@@ -129,10 +129,10 @@ function getPrimaryActionTitle(role: Role) {
     case "freelance_barber":
     case "commission_barber":
     case "booth_rent_barber":
-      return "Calendar, Checkout, Profile, Messages, and More stay focused by job.";
+      return "Home, Checkout, Profile, Messages, and More stay focused by job.";
     case "client_user":
     case "client":
-      return "Home keeps fast booking close, Search keeps discovery precise, Activity keeps appointments and receipts visible, and Profile holds account controls.";
+      return "Home keeps booking fast, Search handles discovery, Culture holds the feed shell, Messages keeps conversations close, and More holds account controls.";
     default:
       return "Stay oriented and move on the next action fast.";
   }
@@ -142,7 +142,7 @@ function getBoundaryCopy(role: Role) {
   switch (role) {
     case "shop_owner_user":
     case "owner":
-      return "Home, Team, Schedule, Money, and Settings keep shop control clean.";
+      return "Home, Schedule, Money, Messages, and Settings keep shop control clean.";
     case "manager":
       return "Manager mode keeps the floor visible while ownership financial controls, payout rules, and transfer rights stay protected.";
     case "front_desk":
@@ -156,7 +156,7 @@ function getBoundaryCopy(role: Role) {
       return "Barber tools stay separated so schedule, payment, profile, messages, and setup stay easy to scan.";
     case "client_user":
     case "client":
-      return "Client mode keeps Home, Search, Activity, and Profile separated cleanly so booking, discovery, receipts, and account controls stay obvious.";
+      return "Client mode keeps Home, Search, Culture, Messages, and More separated cleanly so booking, discovery, conversation, receipts, and account controls stay obvious.";
     default:
       return "Relevant tools only.";
   }
@@ -266,9 +266,9 @@ function getUtilityCards(user: UserAccount): UtilityCard[] {
     case "client_user":
     case "client":
       return [
-        { label: "Client tabs", value: "4", detail: "Home, Search, Activity, and Profile stay tied to this authenticated client account only.", icon: CalendarDays },
+        { label: "Client tabs", value: "5", detail: "Home, Search, Culture, Messages, and More stay tied to this authenticated client account only.", icon: CalendarDays },
         { label: "Discovery", value: "Live", detail: "Barber and shop recommendations build from real activity, not seeded client data.", icon: Sparkles },
-        { label: "Profile", value: "Connected", detail: "Wallet, rewards, referrals, messages, and settings stay inside Profile instead of crowding the dock.", icon: UserRound }
+        { label: "More", value: "Connected", detail: "Wallet, rewards, referrals, receipts, preferences, and settings stay inside More instead of crowding the dock.", icon: UserRound }
       ];
     default:
       return [{ label: "Workspace", value: "Ready", detail: "Role-aware view", icon: Sparkles }];
@@ -310,6 +310,7 @@ function getMessagesHref(role: Role): ComponentProps<typeof Link>["href"] {
       return "/dashboard/barber/messages";
     case "shop_owner_user":
     case "owner":
+      return "/dashboard/owner/messages";
     case "manager":
     case "front_desk":
       return "/workspace/messages";
@@ -324,7 +325,7 @@ function getProfileHref(role: Role): ComponentProps<typeof Link>["href"] {
   }
 
   if (isClientRole(role)) {
-    return CLIENT_PRIMARY_TAB_HREFS.profile;
+    return CLIENT_PRIMARY_TAB_HREFS.more;
   }
 
   if (isBarberAccountRole(role)) {

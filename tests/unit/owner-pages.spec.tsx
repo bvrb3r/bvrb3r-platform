@@ -14,6 +14,14 @@ vi.mock("@/components/operations/owner-team-workspace", () => ({
   OwnerTeamWorkspace: () => <div data-testid="owner-team-workspace-stub">Owner team workspace</div>
 }));
 
+vi.mock("@/components/operations/owner-overview", () => ({
+  OwnerOverview: () => <div data-testid="owner-overview-stub">Owner overview workspace</div>
+}));
+
+vi.mock("@/components/messages/messaging-inbox-screen", () => ({
+  MessagingInboxScreen: ({ surface }: { surface: string }) => <div data-testid="messaging-inbox-stub">{surface}</div>
+}));
+
 vi.mock("@/components/operations/owner-schedule-workspace", () => ({
   OwnerScheduleWorkspace: () => <div data-testid="owner-schedule-workspace-stub">Owner schedule workspace</div>
 }));
@@ -37,8 +45,11 @@ vi.mock("@/components/operations/fintech-workspace", () => ({
 }));
 
 import OwnerTeamPage from "@/app/(platform)/dashboard/owner/team/page";
+import OwnerDashboardPage from "@/app/(platform)/dashboard/owner/page";
+import OwnerOverviewPage from "@/app/(platform)/dashboard/owner/overview/page";
 import OwnerSchedulePage from "@/app/(platform)/dashboard/owner/schedule/page";
 import OwnerMoneyPage from "@/app/(platform)/dashboard/owner/money/page";
+import OwnerMessagesPage from "@/app/(platform)/dashboard/owner/messages/page";
 import OwnerSettingsPage from "@/app/(platform)/dashboard/owner/settings/page";
 
 describe("owner dashboard tab pages", () => {
@@ -46,12 +57,28 @@ describe("owner dashboard tab pages", () => {
     getAuthorizedUserMock.mockReset();
   });
 
-  it("renders the owner team workspace on the canonical team tab", async () => {
+  it("renders the owner team workspace on the canonical home tab", async () => {
+    getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("owner@bvrb3r.demo"));
+
+    render(await OwnerDashboardPage());
+
+    expect(screen.getByTestId("owner-team-workspace-stub")).toBeInTheDocument();
+  });
+
+  it("keeps the legacy team route as an alias to owner home controls", async () => {
     getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("owner@bvrb3r.demo"));
 
     render(await OwnerTeamPage());
 
     expect(screen.getByTestId("owner-team-workspace-stub")).toBeInTheDocument();
+  });
+
+  it("keeps the old owner overview screen reachable", async () => {
+    getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("owner@bvrb3r.demo"));
+
+    render(await OwnerOverviewPage());
+
+    expect(screen.getByTestId("owner-overview-stub")).toBeInTheDocument();
   });
 
   it("renders the owner schedule workspace on the canonical schedule tab", async () => {
@@ -73,6 +100,14 @@ describe("owner dashboard tab pages", () => {
 
     expect(screen.getByTestId("owner-money-workspace-stub")).toBeInTheDocument();
     expect(screen.queryByTestId("fintech-workspace-stub")).not.toBeInTheDocument();
+  });
+
+  it("renders the owner messages tab on the shared shop messaging surface", async () => {
+    getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("owner@bvrb3r.demo"));
+
+    render(await OwnerMessagesPage());
+
+    expect(screen.getByTestId("messaging-inbox-stub")).toHaveTextContent("shop");
   });
 
   it("keeps the growth placeholder available on the owner money tab when requested", async () => {

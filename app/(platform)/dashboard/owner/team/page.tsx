@@ -8,9 +8,9 @@ export default async function OwnerTeamPage() {
   return (
     <DashboardShell
       user={user}
-      activeHref="/dashboard/owner/team"
-      title="Team"
-      subtitle="Manage your barbers & team performance"
+      activeHref="/dashboard/owner"
+      title="Home"
+      subtitle="Manage your public shop profile, barbers, invites, and team performance."
       hidePageHeader
     >
       <OwnerTeamWorkspace />

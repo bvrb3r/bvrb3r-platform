@@ -313,11 +313,11 @@ describe("owner team workspace", () => {
     });
   });
 
-  it("renders the owner team lane from scoped canonical barber and payout truth", () => {
+  it("renders the owner home lane from scoped canonical barber and payout truth", () => {
     render(<OwnerTeamWorkspace />);
 
-    expect(screen.getByText("Team")).toBeInTheDocument();
-    expect(screen.getByText("Manage your barbers & team performance")).toBeInTheDocument();
+    expect(screen.getByText("Home")).toBeInTheDocument();
+    expect(screen.getByText("Team command center and public shop profile controls.")).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: /Invite Barber/i }).length).toBeGreaterThan(0);
     expect(screen.getByPlaceholderText("Search barbers...")).toBeInTheDocument();
     expect(screen.getAllByText("Maya Cole").length).toBeGreaterThan(0);
@@ -431,7 +431,7 @@ describe("owner team workspace", () => {
     });
   });
 
-  it("lets owners edit the public shop profile from Team", async () => {
+  it("lets owners edit the public shop profile from Home", async () => {
     render(<OwnerTeamWorkspace />);
 
     expect(screen.getByText("Public Shop Profile")).toBeInTheDocument();

@@ -19,16 +19,6 @@ export interface ClientCulturePost {
   createdAtLabel: string;
 }
 
-const seededCulturePosts: ClientCulturePost[] = [
-  {
-    id: "culture-seed-cuts",
-    creatorRole: "barber",
-    creatorName: "BVRB3R Culture",
-    caption: "Fresh cuts, local shops, and the barbers clients keep coming back to.",
-    createdAtLabel: "Today"
-  }
-];
-
 function creatorRoleLabel(role: CultureCreatorRole) {
   switch (role) {
     case "barber":
@@ -43,7 +33,7 @@ function creatorRoleLabel(role: CultureCreatorRole) {
 }
 
 export function ClientCultureScreen({
-  posts = seededCulturePosts
+  posts = []
 }: {
   posts?: ClientCulturePost[];
 }) {

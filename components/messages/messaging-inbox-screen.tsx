@@ -30,7 +30,7 @@ import type {
 } from "@/lib/messages/service";
 
 type MessagingSurface = "client" | "barber" | "shop";
-type ThreadFilter = "all" | "barbers" | "shops" | "support" | "other";
+type ThreadFilter = "all" | "barbers" | "shops" | "support" | "other" | "clients" | "requests" | "bookings" | "team";
 type BarberInboxTab = "primary" | "requests" | "bookings" | "general";
 type ActiveThread = MessagingThreadPayload["thread"];
 type AppointmentContextView = NonNullable<MessagingThreadSummary["appointmentContext"]>;
@@ -45,9 +45,20 @@ const threadFilters: { key: ThreadFilter; label: string }[] = [
 
 const barberThreadFilters: { key: ThreadFilter; label: string }[] = [
   { key: "all", label: "All" },
-  { key: "other", label: "Clients" },
+  { key: "clients", label: "Clients" },
   { key: "shops", label: "Shops" },
-  { key: "support", label: "Support" }
+  { key: "support", label: "Support" },
+  { key: "requests", label: "Requests" },
+  { key: "bookings", label: "Bookings" }
+];
+
+const shopThreadFilters: { key: ThreadFilter; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "clients", label: "Clients" },
+  { key: "barbers", label: "Barbers" },
+  { key: "support", label: "Support" },
+  { key: "team", label: "Team" },
+  { key: "bookings", label: "Bookings" }
 ];
 
 const barberInboxTabs: { key: BarberInboxTab; label: string }[] = [
@@ -190,7 +201,7 @@ function getRoleBadgeLabel(role?: string | null, threadType?: string) {
     return "Support";
   }
 
-  if (role === "owner" || role === "manager" || role === "front_desk") {
+  if (role === "owner" || role === "shop_owner_user" || role === "manager" || role === "front_desk") {
     return "Shop";
   }
 
@@ -205,17 +216,30 @@ function getRoleBadgeLabel(role?: string | null, threadType?: string) {
   return null;
 }
 
-function getThreadFilter(role?: string | null, threadType?: string): ThreadFilter {
-  if (threadType === "support" || role === "platform_admin") {
+function getSurfaceThreadFilter(thread: MessagingThreadSummary, surface: MessagingSurface): ThreadFilter {
+  if (surface !== "client" && isBookingRequestThread(thread)) {
+    return "requests";
+  }
+
+  if (surface !== "client" && thread.appointmentContext) {
+    return "bookings";
+  }
+
+  const role = thread.counterpart?.role;
+  if (thread.threadType === "support" || role === "platform_admin") {
     return "support";
   }
 
-  if (role === "owner" || role === "manager" || role === "front_desk") {
-    return "shops";
+  if (role === "client") {
+    return "clients";
   }
 
   if (isBarberAccountRole(role)) {
     return "barbers";
+  }
+
+  if (role === "owner" || role === "shop_owner_user" || role === "manager" || role === "front_desk") {
+    return surface === "shop" ? "team" : "shops";
   }
 
   return "other";
@@ -320,11 +344,11 @@ function getConversationContextLine(thread: ActiveThread) {
   return thread.locationContext?.locationLabel ?? "Direct conversation";
 }
 
-function filterThreads(threads: MessagingThreadSummary[], activeFilter: ThreadFilter, query: string) {
+function filterThreads(threads: MessagingThreadSummary[], activeFilter: ThreadFilter, query: string, surface: MessagingSurface) {
   const normalizedQuery = query.trim().toLowerCase();
 
   return threads.filter((thread) => {
-    const filterKey = getThreadFilter(thread.counterpart?.role, thread.threadType);
+    const filterKey = getSurfaceThreadFilter(thread, surface);
     const matchesFilter = activeFilter === "all" || filterKey === activeFilter;
     const searchable = [
       thread.counterpart?.fullName,
@@ -343,7 +367,7 @@ function filterThreads(threads: MessagingThreadSummary[], activeFilter: ThreadFi
 }
 
 function filterBarberThreads(threads: MessagingThreadSummary[], activeTab: BarberInboxTab, activeFilter: ThreadFilter, query: string) {
-  const filtered = filterThreads(threads, activeFilter, query);
+  const filtered = filterThreads(threads, activeFilter, query, "barber");
 
   return filtered.filter((thread) => activeTab === "primary" || getBarberInboxCategory(thread) === activeTab);
 }
@@ -1209,11 +1233,11 @@ export function MessagingInboxScreen({
     () => buildQuickContacts(threads),
     [threads]
   );
-  const activeThreadFilters = surface === "barber" ? barberThreadFilters : threadFilters;
+  const activeThreadFilters = surface === "barber" ? barberThreadFilters : surface === "shop" ? shopThreadFilters : threadFilters;
   const displayedThreads = useMemo(
     () => surface === "barber"
       ? filterBarberThreads(threads, barberInboxTab, threadFilter, threadSearch)
-      : filterThreads(threads, threadFilter, threadSearch),
+      : filterThreads(threads, threadFilter, threadSearch, surface),
     [barberInboxTab, surface, threadFilter, threadSearch, threads]
   );
 

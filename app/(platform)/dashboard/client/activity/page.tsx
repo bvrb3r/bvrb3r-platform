@@ -7,7 +7,7 @@ export default async function ClientActivityDashboardPage() {
   await getClientExperienceContext();
 
   return (
-    <ClientAppShell activeTab="activity">
+    <ClientAppShell activeTab="more">
       <Suspense fallback={null}>
         <ClientBookingsScreen />
       </Suspense>

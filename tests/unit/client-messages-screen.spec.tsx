@@ -1331,11 +1331,90 @@ describe("client messages screen", () => {
 
     expect(screen.getByTestId("messaging-inbox-barber")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Primary 1/i })).toBeInTheDocument();
+    ["All", "Clients", "Shops", "Support", "Requests", "Bookings"].forEach((label) => {
+      expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
+    });
     expect(screen.getAllByText("Jordan Ellis").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Client").length).toBeGreaterThan(0);
     expect(screen.getAllByText("I am outside.").length).toBeGreaterThan(1);
     expect(screen.getByText("test cut • May 19 • Cancelled")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Book" })).toHaveAttribute("href", "/booking/new");
+  });
+
+  it("renders the shop owner inbox with owner-specific filters on the shared messaging layout", () => {
+    const clientThread = buildThread({
+      id: "thread-client-1",
+      counterpart: {
+        profileId: "profile-client",
+        fullName: "Jordan Ellis",
+        role: "client"
+      },
+      appointmentContext: null,
+      lastMessage: {
+        id: "message-client-owner",
+        body: "Can I book with the shop?",
+        messageType: "text",
+        createdAt: "2026-05-19T13:35:00.000Z",
+        senderName: "Jordan Ellis"
+      }
+    });
+    useMessageThreadsQueryMock.mockReturnValue({
+      data: {
+        available: true,
+        viewer: {
+          profileId: "profile-owner",
+          fullName: "BVRB3R Owner",
+          role: "owner"
+        },
+        threads: [clientThread],
+        eligibleAppointments: [],
+        eligibleContacts: [],
+        broadcastTargets: []
+      },
+      isLoading: false,
+      error: null
+    });
+    useMessageThreadQueryMock.mockReturnValue({
+      data: {
+        available: true,
+        viewer: {
+          profileId: "profile-owner",
+          fullName: "BVRB3R Owner",
+          role: "owner"
+        },
+        thread: buildThreadDetail(clientThread, "owner"),
+        messages: [
+          {
+            id: "message-client-owner",
+            body: "Can I book with the shop?",
+            messageType: "text",
+            createdAt: "2026-05-19T13:35:00.000Z",
+            senderName: "Jordan Ellis",
+            senderRole: "client",
+            isOwn: false
+          }
+        ]
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="shop"
+        basePath="/dashboard/owner/messages"
+        selectedThreadId="thread-client-1"
+        title="Messages"
+        subtitle="Client, barber, team, booking, and support conversations."
+      />
+    );
+
+    expect(screen.getByTestId("messaging-inbox-shop")).toBeInTheDocument();
+    ["All", "Clients", "Barbers", "Support", "Team", "Bookings"].forEach((label) => {
+      expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
+    });
+    expect(screen.getAllByText("Jordan Ellis").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Client").length).toBeGreaterThan(0);
   });
 
   it("keeps support conversations compact without booking actions", () => {

@@ -29,7 +29,7 @@ export default async function ClientProfileDashboardPage({
   const params = await searchParams;
   if (params.stripeMinimalTest === "1") {
     return (
-      <ClientAppShell activeTab="profile">
+      <ClientAppShell activeTab="more">
         <StripeDebugCard />
       </ClientAppShell>
     );
@@ -87,7 +87,7 @@ export default async function ClientProfileDashboardPage({
   }
 
   return (
-    <ClientAppShell activeTab="profile">
+    <ClientAppShell activeTab="more">
       <ClientProfileScreen
         payload={payload}
         isSignedInClient={context.isSignedInClient}

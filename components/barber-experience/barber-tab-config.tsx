@@ -1,17 +1,17 @@
 import type { Route } from "next";
 import {
-  CalendarDays,
   CircleDollarSign,
   Ellipsis,
+  Home,
   MessageSquareText,
   UserRound,
   type LucideIcon
 } from "lucide-react";
 
-export type BarberAppTab = "calendar" | "checkout" | "profile" | "messages" | "more";
+export type BarberAppTab = "home" | "checkout" | "profile" | "messages" | "more";
 
 export const BARBER_PRIMARY_TAB_HREFS = {
-  calendar: "/dashboard/barber",
+  home: "/dashboard/barber",
   checkout: "/dashboard/barber/checkout",
   profile: "/dashboard/barber/profile",
   messages: "/dashboard/barber/messages",
@@ -25,7 +25,7 @@ export const BARBER_PRIMARY_NAV_ITEMS: Array<{
   label: string;
   icon: LucideIcon;
 }> = [
-  { key: "calendar", href: BARBER_PRIMARY_TAB_HREFS.calendar, activeHref: BARBER_PRIMARY_TAB_HREFS.calendar, label: "Calendar", icon: CalendarDays },
+  { key: "home", href: BARBER_PRIMARY_TAB_HREFS.home, activeHref: BARBER_PRIMARY_TAB_HREFS.home, label: "Home", icon: Home },
   { key: "checkout", href: BARBER_PRIMARY_TAB_HREFS.checkout, activeHref: BARBER_PRIMARY_TAB_HREFS.checkout, label: "Checkout", icon: CircleDollarSign },
   { key: "profile", href: BARBER_PRIMARY_TAB_HREFS.profile, activeHref: BARBER_PRIMARY_TAB_HREFS.profile, label: "Profile", icon: UserRound },
   { key: "messages", href: BARBER_PRIMARY_TAB_HREFS.messages, activeHref: BARBER_PRIMARY_TAB_HREFS.messages, label: "Messages", icon: MessageSquareText },

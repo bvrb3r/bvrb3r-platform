@@ -13,7 +13,7 @@ export function ClientSidebar({ activeTab }: { activeTab?: ClientAppTab }) {
           <p className="text-[10px] uppercase tracking-[0.24em] text-[#d7ffab]">Client navigation</p>
           <p className="mt-3 text-xl font-semibold text-white">Book, track, manage</p>
           <p className="mt-3 text-sm leading-7 text-white/58">
-            Home starts booking, Search handles discovery, Activity keeps visits and receipts, Profile holds account, wallet, rewards, messages, and preferences.
+            Home starts booking, Search handles discovery, Culture opens the feed shell, Messages keeps conversations close, and More holds account, wallet, rewards, receipts, and preferences.
           </p>
         </div>
 

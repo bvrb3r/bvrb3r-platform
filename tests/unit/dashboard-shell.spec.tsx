@@ -4,13 +4,13 @@ import { getDefaultRouteForUser, resolveDemoUser } from "@/lib/auth/demo-auth";
 
 describe("dashboard shell identity and navigation", () => {
   it.each([
-    ["owner@bvrb3r.demo", "Brandon Rivers", "Shop Owner", "Active role: Shop owner", ["Home", "Team", "Schedule", "Money", "Settings"]],
+    ["owner@bvrb3r.demo", "Brandon Rivers", "Shop Owner", "Active role: Shop owner", ["Home", "Schedule", "Money", "Messages", "Settings"]],
     ["manager@bvrb3r.demo", "Mia Torres", "Shop Manager", "Active role: Shop manager", ["Dashboard", "Schedule", "Team", "Queue", "Profile"]],
     ["frontdesk@bvrb3r.demo", "Kayla Brooks", "Front Desk / Kiosk Ops", "Active role: Front desk", ["Check-in", "Waitlist", "Schedule", "Barbers", "Profile"]],
     ["wave@bvrb3r.demo", "Wave Carter", "Barber Manager", "Active role: Barber manager", ["Dashboard", "Schedule", "Team", "Queue", "Profile"]],
-    ["blaze@bvrb3r.demo", "Blaze King", "Booth-Rent Barber", null, ["Calendar", "Checkout", "Profile", "Messages", "More"]],
-    ["lux@bvrb3r.demo", "Luxe Reed", "Freelance Barber", null, ["Calendar", "Checkout", "Profile", "Messages", "More"]],
-    ["client@bvrb3r.demo", "Jordan Ellis", "Client", "Active role: Client", ["Home", "Search", "Activity", "Profile"]]
+    ["blaze@bvrb3r.demo", "Blaze King", "Booth-Rent Barber", null, ["Home", "Checkout", "Profile", "Messages", "More"]],
+    ["lux@bvrb3r.demo", "Luxe Reed", "Freelance Barber", null, ["Home", "Checkout", "Profile", "Messages", "More"]],
+    ["client@bvrb3r.demo", "Jordan Ellis", "Client", "Active role: Client", ["Home", "Search", "Culture", "Messages", "More"]]
   ])("renders the selected identity for %s", (email, name, title, roleLabel, navLabels) => {
     const user = resolveDemoUser(email);
     const activeHref = getDefaultRouteForUser(user);
@@ -76,11 +76,11 @@ describe("dashboard shell identity and navigation", () => {
       </DashboardShell>
     );
 
-    ["Calendar", "Checkout", "Profile", "Messages", "More"].forEach((label) => {
+    ["Home", "Checkout", "Profile", "Messages", "More"].forEach((label) => {
       expect(screen.getAllByRole("link", { name: new RegExp(label, "i") }).length).toBeGreaterThan(0);
     });
 
-    expect(screen.queryByRole("link", { name: /home/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /calendar/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /settings/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /command/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /earnings/i })).not.toBeInTheDocument();
@@ -106,7 +106,7 @@ describe("dashboard shell identity and navigation", () => {
       </DashboardShell>
     );
 
-    ["Home", "Team", "Schedule", "Money", "Settings"].forEach((label) => {
+    ["Home", "Schedule", "Money", "Messages", "Settings"].forEach((label) => {
       expect(screen.getAllByRole("link", { name: new RegExp(label, "i") }).length).toBeGreaterThan(0);
     });
 
@@ -114,11 +114,12 @@ describe("dashboard shell identity and navigation", () => {
     expect(screen.queryByRole("link", { name: /overview/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /finance/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /staff/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /^team$/i })).not.toBeInTheDocument();
     expect(screen.getByText("5 tabs")).toBeInTheDocument();
     expect(screen.getByText("5 owner tabs")).toBeInTheDocument();
   });
 
-  it("locks client primary navigation to four tabs only", () => {
+  it("locks client primary navigation to five tabs only", () => {
     const user = resolveDemoUser("client@bvrb3r.demo");
 
     render(
@@ -127,19 +128,19 @@ describe("dashboard shell identity and navigation", () => {
       </DashboardShell>
     );
 
-    ["Home", "Search", "Activity", "Profile"].forEach((label) => {
+    ["Home", "Search", "Culture", "Messages", "More"].forEach((label) => {
       expect(screen.getAllByRole("link", { name: new RegExp(label, "i") }).length).toBeGreaterThan(0);
     });
 
-    expect(screen.queryByRole("link", { name: /culture/i })).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(/open mobile dock messages/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /activity/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /^profile$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /wallet/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /rewards/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /referrals/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /settings/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /bookings/i })).not.toBeInTheDocument();
-    expect(screen.getByText("4 tabs")).toBeInTheDocument();
-    expect(screen.getByText("4 client tabs")).toBeInTheDocument();
+    expect(screen.getByText("5 tabs")).toBeInTheDocument();
+    expect(screen.getByText("5 client tabs")).toBeInTheDocument();
   });
 
 });

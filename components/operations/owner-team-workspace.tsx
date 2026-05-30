@@ -626,11 +626,11 @@ export function OwnerTeamWorkspace() {
       <header className="flex items-start justify-between gap-5">
         <div>
           <h1 className="text-5xl font-black leading-none tracking-[-0.055em] text-white sm:text-6xl" data-display="true">
-            Team
+            Home
           </h1>
-          <p className="mt-3 text-lg font-medium text-white/68">Manage your barbers & team performance</p>
+          <p className="mt-3 text-lg font-medium text-white/68">Team command center and public shop profile controls.</p>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-white/52">
-            Phase 2 relationship controls will live here. Today, this tab keeps team readiness, payouts, and shop membership status easy to scan.
+            Manage invites, join requests, active barbers, public team display, and shop presentation from one private owner surface.
           </p>
         </div>
         <button
@@ -1110,7 +1110,7 @@ export function OwnerTeamWorkspace() {
                       <TeamActionLink href={`/dashboard/owner/money?barberId=${encodeURIComponent(barber.id)}`}>
                         View Transactions
                       </TeamActionLink>
-                      <TeamActionLink href={`/workspace/messages?threadWith=${encodeURIComponent(barber.id)}`}>
+                      <TeamActionLink href={`/dashboard/owner/messages?threadWith=${encodeURIComponent(barber.id)}`}>
                         Message Barber
                       </TeamActionLink>
                       <TeamActionLink href={`/dashboard/owner/settings?section=compensation&barberId=${encodeURIComponent(barber.id)}`}>
