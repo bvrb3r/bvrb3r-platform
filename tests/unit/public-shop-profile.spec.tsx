@@ -13,7 +13,7 @@ vi.mock("@/components/client-experience/marketplace-tracked-action-link", () => 
 }));
 
 vi.mock("@/components/marketplace/public-shop-favorite-action", () => ({
-  PublicShopFavoriteAction: () => <button type="button">Favorite shop</button>
+  PublicShopFavoriteAction: () => <button type="button">Save</button>
 }));
 
 import { PublicShopProfile } from "@/components/marketplace/public-shop-profile";
@@ -67,12 +67,17 @@ describe("public shop profile", () => {
     expect(screen.getByAltText("BVRB3R Tampa")).toHaveAttribute("src", "https://cdn.example.com/shop-logo.png");
     expect(screen.getByText("1600 7th Ave, Tampa, FL")).toBeInTheDocument();
     expect(screen.getByText("1 approved barber")).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "Book" }).length).toBeGreaterThan(0);
+    expect(screen.getByRole("link", { name: "Message" })).toHaveAttribute("href", "/workspace/messages?shop=shop-tampa");
+    expect(screen.getByRole("button", { name: "Following" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Share" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
     expect(screen.getByText("Active team")).toBeInTheDocument();
     expect(screen.getAllByText("philforsure").length).toBeGreaterThan(0);
     expect(screen.queryByText("Phillip McGee")).not.toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: /philforsure/i }).some((link) => link.getAttribute("href") === "/barber/philforsure")).toBe(true);
     expect(screen.getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/barber/philforsure");
-    expect(screen.getByRole("link", { name: "Book" })).toHaveAttribute("href", "/booking/new?barberId=barber-phillip&serviceId=srv-test-cut");
+    expect(screen.getAllByRole("link", { name: "Book" }).some((link) => link.getAttribute("href") === "/booking/new?barberId=barber-phillip&serviceId=srv-test-cut")).toBe(true);
     expect(screen.queryByText(/approved marketplace supply/i)).not.toBeInTheDocument();
   });
 });

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Route } from "next";
-import { CalendarDays, Clock3, MapPin, Scissors, ShieldCheck, Star, UsersRound } from "lucide-react";
+import { CalendarDays, Clock3, MapPin, MessageCircle, Scissors, Share2, ShieldCheck, Star, UsersRound } from "lucide-react";
 import { MarketplaceTrackedActionLink } from "@/components/client-experience/marketplace-tracked-action-link";
 import { PublicShopFavoriteAction } from "@/components/marketplace/public-shop-favorite-action";
 import { Card } from "@/components/ui/card";
@@ -28,6 +28,7 @@ export function PublicShopProfile({
   const { shop, barbers, services } = payload;
   const gallery = shop.gallery ?? [];
   const address = shop.address ?? `${shop.neighborhood}, ${shop.city}, ${shop.state}`;
+  const shopBookingHref = shop.bookHref ?? `/dashboard/client/search?type=shops&q=${encodeURIComponent(shop.name)}`;
 
   return (
     <div className="space-y-4" data-testid="public-shop-profile">
@@ -78,13 +79,34 @@ export function PublicShopProfile({
           </div>
 
           <div className="flex flex-col gap-3">
-            <PublicShopFavoriteAction shopId={shop.id} canFavorite={viewerCanFavorite} />
-            <Link
-              href="/dashboard/client/search?type=shops"
-              className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/10 bg-black/24 px-5 text-sm font-extrabold text-white transition hover:border-[#7CFF00]/35 hover:text-[#d7ffab]"
+            <MarketplaceTrackedActionLink
+              href={shopBookingHref as Route}
+              className="min-h-12 px-5 text-sm"
+              analytics={{
+                eventType: "booking_cta_clicked",
+                locationId: shop.id,
+                sourceKind: "public_profile",
+                sourceReference: "shop_profile_header"
+              }}
             >
-              View barbers
+              Book
+            </MarketplaceTrackedActionLink>
+            <Link
+              href={`/workspace/messages?shop=${encodeURIComponent(shop.id)}` as Route}
+              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-white/10 bg-black/24 px-5 text-sm font-extrabold text-white transition hover:border-[#7CFF00]/35 hover:text-[#d7ffab]"
+            >
+              <MessageCircle className="h-4 w-4" />
+              Message
             </Link>
+            <button type="button" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-white/10 bg-black/24 px-5 text-sm font-extrabold text-white transition hover:border-[#7CFF00]/35 hover:text-[#d7ffab]">
+              <UsersRound className="h-4 w-4" />
+              Following
+            </button>
+            <button type="button" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-white/10 bg-black/24 px-5 text-sm font-extrabold text-white transition hover:border-[#7CFF00]/35 hover:text-[#d7ffab]">
+              <Share2 className="h-4 w-4" />
+              Share
+            </button>
+            <PublicShopFavoriteAction shopId={shop.id} canFavorite={viewerCanFavorite} />
           </div>
         </div>
       </Card>
@@ -121,6 +143,7 @@ export function PublicShopProfile({
                         className="h-14 w-14 rounded-full border-2 border-[#7CFF00]/55"
                       />
                       <span className="max-w-full truncate text-xs font-extrabold text-white group-hover:text-[#d7ffab]">{barberName}</span>
+                      <span className="text-[11px] font-bold text-white/48">{(profile.proof?.reviewScore ?? profile.barber.rating).toFixed(1)} rating</span>
                     </Link>
                   );
                 })}
@@ -245,6 +268,19 @@ export function PublicShopProfile({
                 Public shop work will appear here when it is added.
               </p>
             )}
+          </Card>
+
+          <Card className="rounded-[36px] p-6 sm:p-8">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="surface-label">Reviews</p>
+                <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-white">Shop Reputation</h2>
+              </div>
+              <Star className="h-5 w-5 text-[#baff69]" />
+            </div>
+            <p className="mt-4 rounded-[22px] border border-dashed border-white/10 bg-black/20 p-4 text-sm leading-6 text-white/58">
+              Shop reviews will appear here after clients review the business. Barber reviews stay on each barber profile.
+            </p>
           </Card>
         </div>
       </section>

@@ -2979,9 +2979,12 @@ export async function getPublicShopProfilePayload(shopIdOrSlug: string): Promise
 
   const activeTeamResult = await supabase
     .from("shop_team_invites")
-    .select("barber_id")
+    .select("barber_id, public_team_visible, public_team_order, featured_on_shop_profile")
     .eq("shop_id", visibleShop.id)
-    .eq("status", "active");
+    .eq("status", "active")
+    .eq("public_team_visible", true)
+    .order("featured_on_shop_profile", { ascending: false })
+    .order("public_team_order", { ascending: true });
   const activeTeamBarberIds = activeTeamResult.error ? [] : [...new Set(((activeTeamResult.data ?? []) as Array<{ barber_id: string | null }>).map((row) => row.barber_id).filter((id): id is string => Boolean(id)))];
   const shopTeamCounts = new Map([[visibleShop.id, activeTeamBarberIds.length]]);
   const recommendedShop = buildRecommendedShops(visibleShops, discovery, [], true, visibleShop.id, shopTeamCounts)

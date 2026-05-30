@@ -3,12 +3,27 @@ import { z } from "zod";
 import { getSessionUser } from "@/lib/booking/route-auth";
 import {
   ShopTeamInviteServiceError,
-  endBarberShopRelationship
+  endBarberShopRelationship,
+  updateOwnerTeamRelationship
 } from "@/lib/operations/shop-team-invites";
 
 const releaseSchema = z.object({
   relationshipId: z.string().trim().min(1),
   reason: z.string().trim().max(500).optional()
+});
+
+const updateSchema = z.object({
+  relationshipId: z.string().trim().min(1),
+  routingModel: z.enum(["freelance", "booth_rent", "commission"]).optional(),
+  boothRentAmount: z.number().nonnegative().nullable().optional(),
+  boothRentFrequency: z.enum(["daily", "weekly", "monthly"]).nullable().optional(),
+  barberPercent: z.number().min(0).max(1).nullable().optional(),
+  shopPercent: z.number().min(0).max(1).nullable().optional(),
+  commissionCapAmount: z.number().nonnegative().nullable().optional(),
+  commissionCapFrequency: z.enum(["weekly", "monthly"]).nullable().optional(),
+  publicTeamVisible: z.boolean().optional(),
+  publicTeamOrder: z.number().int().min(0).max(999).optional(),
+  featuredOnShopProfile: z.boolean().optional()
 });
 
 function toErrorResponse(error: unknown, fallback: string) {
@@ -36,5 +51,20 @@ export async function DELETE(request: Request) {
     return NextResponse.json(payload);
   } catch (error) {
     return toErrorResponse(error, "Unable to release the barber from the shop.");
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const user = await getSessionUser();
+    const parsed = updateSchema.safeParse(await request.json().catch(() => null));
+    if (!parsed.success) {
+      return NextResponse.json({ error: "Invalid shop relationship update payload." }, { status: 400 });
+    }
+
+    const payload = await updateOwnerTeamRelationship(user, parsed.data);
+    return NextResponse.json(payload);
+  } catch (error) {
+    return toErrorResponse(error, "Unable to update the shop relationship.");
   }
 }

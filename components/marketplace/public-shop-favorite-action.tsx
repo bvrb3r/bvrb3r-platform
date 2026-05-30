@@ -36,7 +36,7 @@ export function PublicShopFavoriteAction({
       {feedback ? <FeedbackBanner tone={feedback.tone} message={feedback.message} /> : null}
       <Button type="button" variant="secondary" className="min-h-12 rounded-full px-5" disabled={favoriteMutation.isPending} onClick={() => void handleFavorite()}>
         <BookmarkCheck className="h-4 w-4" />
-        {favoriteMutation.isPending ? "Saving..." : "Favorite shop"}
+        {favoriteMutation.isPending ? "Saving..." : "Save"}
       </Button>
     </div>
   );

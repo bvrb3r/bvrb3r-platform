@@ -24,8 +24,10 @@ import { useFintechManagementQuery } from "@/lib/fintech/client";
 import {
   useCreateOwnerTeamInviteMutation,
   useOwnerTeamInviteDirectoryQuery,
+  useReleaseOwnerTeamRelationshipMutation,
   useRespondOwnerTeamJoinRequestMutation,
   useShopDashboardQuery,
+  useUpdateOwnerTeamRelationshipMutation,
   type ShopDashboardAppointment,
   type ShopDashboardBarberSummary
 } from "@/lib/operations/barber-client";
@@ -53,7 +55,23 @@ type TeamBarberView = {
   payoutStatus: string;
   payoutReadinessStatus: string;
   payoutBlockReason: string | null;
+  relationshipId: string | null;
+  publicTeamVisible: boolean;
+  featuredOnShopProfile: boolean;
   searchText: string;
+};
+
+type RelationshipUpdatePayload = {
+  routingModel?: "freelance" | "booth_rent" | "commission";
+  boothRentAmount?: number | null;
+  boothRentFrequency?: "daily" | "weekly" | "monthly" | null;
+  barberPercent?: number | null;
+  shopPercent?: number | null;
+  commissionCapAmount?: number | null;
+  commissionCapFrequency?: "weekly" | "monthly" | null;
+  publicTeamVisible?: boolean;
+  publicTeamOrder?: number;
+  featuredOnShopProfile?: boolean;
 };
 
 type MetricCardProps = {
@@ -333,6 +351,8 @@ export function OwnerTeamWorkspace() {
   const inviteDirectoryQuery = useOwnerTeamInviteDirectoryQuery(inviteSearch, inviteModalOpen);
   const createInviteMutation = useCreateOwnerTeamInviteMutation();
   const respondJoinRequestMutation = useRespondOwnerTeamJoinRequestMutation();
+  const updateRelationshipMutation = useUpdateOwnerTeamRelationshipMutation();
+  const releaseRelationshipMutation = useReleaseOwnerTeamRelationshipMutation();
 
   const isInitialLoading =
     (shopQuery.isLoading && !shopQuery.data)
@@ -370,6 +390,7 @@ export function OwnerTeamWorkspace() {
       const roleLabel = formatRoutingLabel(membership?.routingModel ?? barber.compensationModel);
       const statusLabel = getStatusCopy(statusKind);
       const currentShopLabel = membership?.shopLabel ?? account?.shopLabel ?? null;
+      const membershipRecord = (membership ?? {}) as Record<string, unknown>;
 
       return {
         id: barber.id,
@@ -388,6 +409,9 @@ export function OwnerTeamWorkspace() {
         payoutReadinessStatus: formatStatusLabel(payoutReadinessStatus),
         payoutBlockReason,
         currentShopLabel,
+        relationshipId: typeof membership?.id === "string" ? membership.id : null,
+        publicTeamVisible: membershipRecord.publicTeamVisible !== false && membershipRecord.public_team_visible !== false,
+        featuredOnShopProfile: membershipRecord.featuredOnShopProfile === true || membershipRecord.featured_on_shop_profile === true,
         searchText: `${barber.name} ${roleLabel} ${statusLabel} ${currentShopLabel ?? ""}`.toLowerCase()
       };
     });
@@ -456,6 +480,42 @@ export function OwnerTeamWorkspace() {
           ? `${barberName} is now connected to your shop team.`
           : `${barberName}'s join request was rejected and kept in relationship history.`
       });
+    } catch (error) {
+      setRelationshipFeedback({ tone: "error", message: getReadableActionError(error as { message?: string; status?: number; code?: string }) });
+    }
+  }
+
+  async function handleRelationshipUpdate(barber: TeamBarberView, payload: RelationshipUpdatePayload, successMessage: string) {
+    if (!barber.relationshipId) {
+      setRelationshipFeedback({ tone: "error", message: "Active relationship record is not available for this barber." });
+      return;
+    }
+
+    setRelationshipFeedback(null);
+    try {
+      await updateRelationshipMutation.mutateAsync({
+        ...payload,
+        relationshipId: barber.relationshipId
+      });
+      setRelationshipFeedback({ tone: "success", message: successMessage });
+    } catch (error) {
+      setRelationshipFeedback({ tone: "error", message: getReadableActionError(error as { message?: string; status?: number; code?: string }) });
+    }
+  }
+
+  async function handleReleaseRelationship(barber: TeamBarberView) {
+    if (!barber.relationshipId) {
+      setRelationshipFeedback({ tone: "error", message: "Active relationship record is not available for this barber." });
+      return;
+    }
+
+    setRelationshipFeedback(null);
+    try {
+      await releaseRelationshipMutation.mutateAsync({
+        relationshipId: barber.relationshipId,
+        reason: "Owner released barber from team."
+      });
+      setRelationshipFeedback({ tone: "success", message: `${barber.name} was released. Their effective model is freelance.` });
     } catch (error) {
       setRelationshipFeedback({ tone: "error", message: getReadableActionError(error as { message?: string; status?: number; code?: string }) });
     }
@@ -858,6 +918,77 @@ export function OwnerTeamWorkspace() {
                         Inspect
                       </Link>
                     </div>
+                    <div className="mt-3 grid gap-3 rounded-[20px] border border-[#A3FF12]/14 bg-[#A3FF12]/6 p-4 md:grid-cols-[1fr_1fr]">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.16em] text-[#A3FF12]">Operating model</p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {(["freelance", "booth_rent", "commission"] as const).map((model) => (
+                            <button
+                              key={`${barber.id}-${model}`}
+                              type="button"
+                              disabled={!barber.relationshipId || updateRelationshipMutation.isPending}
+                              onClick={() => void handleRelationshipUpdate(
+                                barber,
+                                model === "commission"
+                                  ? { routingModel: model, barberPercent: 0.7, shopPercent: 0.3 }
+                                  : model === "booth_rent"
+                                    ? { routingModel: model, boothRentAmount: 250, boothRentFrequency: "weekly", barberPercent: null, shopPercent: null }
+                                    : { routingModel: model, boothRentAmount: null, boothRentFrequency: null, barberPercent: null, shopPercent: null },
+                                `${barber.name}'s operating model was set to ${formatRoutingLabel(model)}.`
+                              )}
+                              className={cn(
+                                "inline-flex min-h-10 items-center rounded-full border px-4 text-xs font-black transition",
+                                barber.roleLabel.toLowerCase() === formatRoutingLabel(model).toLowerCase()
+                                  ? "border-[#A3FF12]/38 bg-[#A3FF12] text-black"
+                                  : "border-white/10 bg-black/20 text-white/68 hover:border-[#A3FF12]/28 hover:text-[#A3FF12]",
+                                (!barber.relationshipId || updateRelationshipMutation.isPending) && "cursor-not-allowed opacity-55"
+                              )}
+                            >
+                              {formatRoutingLabel(model)}
+                            </button>
+                          ))}
+                        </div>
+                        <p className="mt-3 text-xs leading-5 text-white/48">Commission defaults to 70/30. Booth rent terms can be refined in Money after the relationship is saved.</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.16em] text-[#A3FF12]">Public shop profile</p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            disabled={!barber.relationshipId || updateRelationshipMutation.isPending}
+                            onClick={() => void handleRelationshipUpdate(
+                              barber,
+                              { publicTeamVisible: !barber.publicTeamVisible },
+                              barber.publicTeamVisible ? `${barber.name} is hidden from the public shop team.` : `${barber.name} is visible on the public shop team.`
+                            )}
+                            className="inline-flex min-h-10 items-center rounded-full border border-white/10 bg-black/20 px-4 text-xs font-black text-white/72 transition hover:border-[#A3FF12]/28 hover:text-[#A3FF12] disabled:cursor-not-allowed disabled:opacity-55"
+                          >
+                            {barber.publicTeamVisible ? "Hide publicly" : "Show publicly"}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!barber.relationshipId || updateRelationshipMutation.isPending}
+                            onClick={() => void handleRelationshipUpdate(
+                              barber,
+                              { featuredOnShopProfile: !barber.featuredOnShopProfile },
+                              barber.featuredOnShopProfile ? `${barber.name} is no longer featured.` : `${barber.name} is featured on the shop profile.`
+                            )}
+                            className="inline-flex min-h-10 items-center rounded-full border border-white/10 bg-black/20 px-4 text-xs font-black text-white/72 transition hover:border-[#A3FF12]/28 hover:text-[#A3FF12] disabled:cursor-not-allowed disabled:opacity-55"
+                          >
+                            {barber.featuredOnShopProfile ? "Unfeature" : "Feature"}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!barber.relationshipId || releaseRelationshipMutation.isPending}
+                            onClick={() => void handleReleaseRelationship(barber)}
+                            className="inline-flex min-h-10 items-center rounded-full border border-red-300/20 bg-red-400/10 px-4 text-xs font-black text-red-100 transition hover:border-red-200/36 hover:bg-red-400/14 disabled:cursor-not-allowed disabled:opacity-55"
+                          >
+                            Release barber
+                          </button>
+                        </div>
+                        <p className="mt-3 text-xs leading-5 text-white/48">Public controls only affect the shop profile team surface. Barber accounts and past history stay intact.</p>
+                      </div>
+                    </div>
                   </div>
                 ) : null}
               </GlassCard>
@@ -943,14 +1074,20 @@ export function OwnerTeamWorkspace() {
 
                   return (
                     <div key={barber.barberId} className="grid gap-4 rounded-[24px] border border-white/8 bg-black/28 p-4 sm:grid-cols-[1fr_auto] sm:items-center">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-3">
-                          <p className="truncate text-xl font-extrabold tracking-[-0.03em] text-white">{barber.name}</p>
-                          <span className={cn("inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-extrabold", statusTone)}>
-                            <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
-                            {statusText}
-                          </span>
-                        </div>
+                      <div className="flex min-w-0 gap-4">
+                        <Avatar
+                          alt={barber.name}
+                          initials={getInitials(barber.name)}
+                          className="h-14 w-14 shrink-0 border-2 border-[#A3FF12]/45 bg-[#A3FF12]/10"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-3">
+                            <p className="truncate text-xl font-extrabold tracking-[-0.03em] text-white">{barber.name}</p>
+                            <span className={cn("inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-extrabold", statusTone)}>
+                              <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                              {statusText}
+                            </span>
+                          </div>
                         <div className="mt-2 flex flex-wrap gap-2 text-sm text-white/56">
                           {barber.email ? (
                             <span className="inline-flex items-center gap-1.5">
@@ -983,6 +1120,12 @@ export function OwnerTeamWorkspace() {
                               {label}
                             </span>
                           ))}
+                        </div>
+                        {!barber.canInvite && barber.inviteDisabledReason ? (
+                          <p className="mt-3 rounded-[14px] border border-amber-300/18 bg-amber-300/8 px-3 py-2 text-xs font-bold leading-5 text-amber-100">
+                            {barber.inviteDisabledReason}
+                          </p>
+                        ) : null}
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-2 sm:justify-end">

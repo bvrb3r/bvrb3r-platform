@@ -339,6 +339,16 @@ export interface ShopDashboardBarberSummary {
   nextAppointmentStart: string | null;
 }
 
+export interface UpdateOwnerTeamRelationshipResponse {
+  relationship: {
+    id: string;
+    routing_model?: string | null;
+    public_team_visible?: boolean | null;
+    public_team_order?: number | string | null;
+    featured_on_shop_profile?: boolean | null;
+  };
+}
+
 export interface ShopDashboardLocationSummary {
   id: string;
   name: string;
@@ -833,6 +843,56 @@ export function useRespondOwnerTeamJoinRequestMutation() {
         queryClient.invalidateQueries({ queryKey: ["shop-team-invite-directory"] }),
         queryClient.invalidateQueries({ queryKey: ["shop-dashboard"] }),
         queryClient.invalidateQueries({ queryKey: ["fintech"] })
+      ]);
+    }
+  });
+}
+
+export function useUpdateOwnerTeamRelationshipMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: {
+      relationshipId: string;
+      routingModel?: "freelance" | "booth_rent" | "commission";
+      boothRentAmount?: number | null;
+      boothRentFrequency?: "daily" | "weekly" | "monthly" | null;
+      barberPercent?: number | null;
+      shopPercent?: number | null;
+      commissionCapAmount?: number | null;
+      commissionCapFrequency?: "weekly" | "monthly" | null;
+      publicTeamVisible?: boolean;
+      publicTeamOrder?: number;
+      featuredOnShopProfile?: boolean;
+    }) =>
+      requestJson<UpdateOwnerTeamRelationshipResponse>("/api/owner/team/relationships", {
+        method: "PATCH",
+        body: JSON.stringify(payload)
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["shop-dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["fintech"] }),
+        queryClient.invalidateQueries({ queryKey: ["shop-team-invite-directory"] })
+      ]);
+    }
+  });
+}
+
+export function useReleaseOwnerTeamRelationshipMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: { relationshipId: string; reason?: string }) =>
+      requestJson<{ relationshipId: string; effectiveRoutingModel: "freelance" }>("/api/owner/team/relationships", {
+        method: "DELETE",
+        body: JSON.stringify(payload)
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["shop-dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["fintech"] }),
+        queryClient.invalidateQueries({ queryKey: ["shop-team-invite-directory"] })
       ]);
     }
   });

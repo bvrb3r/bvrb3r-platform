@@ -65,6 +65,9 @@ type StaffLocationRow = {
   commission_cap_amount?: number | string | null;
   commission_cap_frequency?: "weekly" | "monthly" | null;
   ended_at?: string | null;
+  public_team_visible?: boolean | null;
+  public_team_order?: number | string | null;
+  featured_on_shop_profile?: boolean | null;
 };
 
 type InviteRow = {
@@ -95,6 +98,9 @@ type InviteRow = {
   booth_rent_amount?: number | string | null;
   booth_rent_frequency?: "daily" | "weekly" | "monthly" | null;
   payout_block_reason?: string | null;
+  public_team_visible?: boolean | null;
+  public_team_order?: number | string | null;
+  featured_on_shop_profile?: boolean | null;
 };
 
 type ShopRow = {
@@ -108,8 +114,8 @@ type ShopRow = {
   app_approval_status: string | null;
 };
 
-const inviteSelectColumns = "id, shop_id, barber_id, barber_profile_id, invited_by_profile_id, requested_by_profile_id, status, message, created_at, updated_at, responded_at, approved_by_owner_at, approved_by_barber_at, rejected_at, declined_at, ended_at, ended_by_profile_id, ended_by_role, ended_reason, routing_model, barber_percent, shop_percent, commission_cap_amount, commission_cap_frequency, booth_rent_amount, booth_rent_frequency, payout_block_reason";
-const membershipSelectColumns = "id, profile_id, location_id, shop_id, relationship_status, routing_model, booth_rent_amount, booth_rent_frequency, barber_percent, shop_percent, commission_cap_amount, commission_cap_frequency, ended_at";
+const inviteSelectColumns = "id, shop_id, barber_id, barber_profile_id, invited_by_profile_id, requested_by_profile_id, status, message, created_at, updated_at, responded_at, approved_by_owner_at, approved_by_barber_at, rejected_at, declined_at, ended_at, ended_by_profile_id, ended_by_role, ended_reason, routing_model, barber_percent, shop_percent, commission_cap_amount, commission_cap_frequency, booth_rent_amount, booth_rent_frequency, payout_block_reason, public_team_visible, public_team_order, featured_on_shop_profile";
+const membershipSelectColumns = "id, profile_id, location_id, shop_id, relationship_status, routing_model, booth_rent_amount, booth_rent_frequency, barber_percent, shop_percent, commission_cap_amount, commission_cap_frequency, ended_at, public_team_visible, public_team_order, featured_on_shop_profile";
 
 type ShopScope = {
   id: string;
@@ -144,6 +150,7 @@ export interface ShopTeamInviteDirectoryBarber {
   marketplaceStatusLabel: string;
   readinessLabels: string[];
   canInvite: boolean;
+  inviteDisabledReason: string | null;
 }
 
 export interface ShopTeamInviteDirectoryPayload {
@@ -741,6 +748,14 @@ export async function listOwnerTeamInviteDirectory(user: UserAccount, search?: s
       });
       const bookable = readinessLabels.includes("Bookable");
       const name = profile.full_name ?? barberProfile?.display_name ?? profile.email ?? reference;
+      const canInvite = isApprovedStatus(barber.app_approval_status) && !alreadyAssigned && inviteStatus !== "invited" && inviteStatus !== "requested";
+      const inviteDisabledReason = alreadyAssigned
+        ? "This barber is already connected to another shop."
+        : !isApprovedStatus(barber.app_approval_status)
+          ? "This barber is not approved for team invites yet."
+          : inviteStatus === "invited" || inviteStatus === "requested"
+            ? "A team request is already pending."
+            : null;
       const searchText = [
         name,
         profile.email,
@@ -776,7 +791,8 @@ export async function listOwnerTeamInviteDirectory(user: UserAccount, search?: s
         inviteStatus: alreadyAssigned ? "active" : inviteStatus,
         marketplaceStatusLabel: bookable ? "Bookable" : "Not bookable",
         readinessLabels,
-        canInvite: isApprovedStatus(barber.app_approval_status) && !alreadyAssigned && inviteStatus !== "invited" && inviteStatus !== "requested"
+        canInvite,
+        inviteDisabledReason
       }];
     })
     .sort((left, right) => Number(right.canInvite) - Number(left.canInvite) || left.name.localeCompare(right.name))
@@ -1405,5 +1421,78 @@ export async function endBarberShopRelationship(user: UserAccount, input: { rela
   return {
     relationshipId: membership.id,
     effectiveRoutingModel: "freelance"
+  };
+}
+
+export async function updateOwnerTeamRelationship(user: UserAccount, input: {
+  relationshipId: string;
+  routingModel?: RelationshipRoutingModel;
+  boothRentAmount?: number | null;
+  boothRentFrequency?: "daily" | "weekly" | "monthly" | null;
+  barberPercent?: number | null;
+  shopPercent?: number | null;
+  commissionCapAmount?: number | null;
+  commissionCapFrequency?: "weekly" | "monthly" | null;
+  publicTeamVisible?: boolean;
+  publicTeamOrder?: number;
+  featuredOnShopProfile?: boolean;
+}) {
+  requireOwner(user);
+  const supabase = getSupabaseOrThrow();
+  const shops = await readOwnerShopScopes(user, supabase);
+  const shopIds = new Set(shops.flatMap((shop) => [shop.id, shop.locationBridgeId]).filter((value): value is string => Boolean(value)));
+  const membershipResult = await supabase
+    .from("staff_locations")
+    .select(membershipSelectColumns)
+    .eq("id", input.relationshipId)
+    .maybeSingle();
+
+  if (membershipResult.error) {
+    throw new ShopTeamInviteServiceError("Unable to load the team relationship.", 500);
+  }
+
+  const membership = (membershipResult.data as StaffLocationRow | null) ?? null;
+  if (!membership || !shopIds.has(membership.shop_id ?? membership.location_id ?? "")) {
+    throw new ShopTeamInviteServiceError("Team relationship not found.", 404);
+  }
+
+  const now = new Date().toISOString();
+  const patch = {
+    ...(input.routingModel ? { routing_model: input.routingModel } : {}),
+    ...(input.boothRentAmount !== undefined ? { booth_rent_amount: input.boothRentAmount } : {}),
+    ...(input.boothRentFrequency !== undefined ? { booth_rent_frequency: input.boothRentFrequency } : {}),
+    ...(input.barberPercent !== undefined ? { barber_percent: input.barberPercent } : {}),
+    ...(input.shopPercent !== undefined ? { shop_percent: input.shopPercent } : {}),
+    ...(input.commissionCapAmount !== undefined ? { commission_cap_amount: input.commissionCapAmount } : {}),
+    ...(input.commissionCapFrequency !== undefined ? { commission_cap_frequency: input.commissionCapFrequency } : {}),
+    ...(input.publicTeamVisible !== undefined ? { public_team_visible: input.publicTeamVisible } : {}),
+    ...(input.publicTeamOrder !== undefined ? { public_team_order: input.publicTeamOrder } : {}),
+    ...(input.featuredOnShopProfile !== undefined ? { featured_on_shop_profile: input.featuredOnShopProfile } : {}),
+    updated_at: now
+  };
+
+  const updateResult = await supabase
+    .from("staff_locations")
+    .update(patch)
+    .eq("id", membership.id)
+    .select(membershipSelectColumns)
+    .single();
+
+  if (updateResult.error) {
+    throw new ShopTeamInviteServiceError("Unable to update the team relationship.", 500);
+  }
+
+  await supabase
+    .from("shop_team_invites")
+    .update({
+      ...patch,
+      updated_at: now
+    })
+    .eq("shop_id", membership.shop_id ?? membership.location_id)
+    .eq("barber_profile_id", membership.profile_id)
+    .eq("status", "active");
+
+  return {
+    relationship: updateResult.data as StaffLocationRow
   };
 }

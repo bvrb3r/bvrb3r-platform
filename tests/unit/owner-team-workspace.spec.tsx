@@ -5,17 +5,25 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   createOwnerTeamInviteMock,
   respondOwnerJoinRequestMock,
+  updateOwnerRelationshipMock,
+  releaseOwnerRelationshipMock,
   useCreateOwnerTeamInviteMutationMock,
   useOwnerTeamInviteDirectoryQueryMock,
+  useReleaseOwnerTeamRelationshipMutationMock,
   useRespondOwnerTeamJoinRequestMutationMock,
+  useUpdateOwnerTeamRelationshipMutationMock,
   useShopDashboardQueryMock,
   useFintechManagementQueryMock
 } = vi.hoisted(() => ({
   createOwnerTeamInviteMock: vi.fn(),
   respondOwnerJoinRequestMock: vi.fn(),
+  updateOwnerRelationshipMock: vi.fn(),
+  releaseOwnerRelationshipMock: vi.fn(),
   useCreateOwnerTeamInviteMutationMock: vi.fn(),
   useOwnerTeamInviteDirectoryQueryMock: vi.fn(),
+  useReleaseOwnerTeamRelationshipMutationMock: vi.fn(),
   useRespondOwnerTeamJoinRequestMutationMock: vi.fn(),
+  useUpdateOwnerTeamRelationshipMutationMock: vi.fn(),
   useShopDashboardQueryMock: vi.fn(),
   useFintechManagementQueryMock: vi.fn()
 }));
@@ -29,7 +37,9 @@ vi.mock("next/link", () => ({
 vi.mock("@/lib/operations/barber-client", () => ({
   useCreateOwnerTeamInviteMutation: useCreateOwnerTeamInviteMutationMock,
   useOwnerTeamInviteDirectoryQuery: useOwnerTeamInviteDirectoryQueryMock,
+  useReleaseOwnerTeamRelationshipMutation: useReleaseOwnerTeamRelationshipMutationMock,
   useRespondOwnerTeamJoinRequestMutation: useRespondOwnerTeamJoinRequestMutationMock,
+  useUpdateOwnerTeamRelationshipMutation: useUpdateOwnerTeamRelationshipMutationMock,
   useShopDashboardQuery: useShopDashboardQueryMock
 }));
 
@@ -48,6 +58,8 @@ describe("owner team workspace", () => {
     useRespondOwnerTeamJoinRequestMutationMock.mockReset();
     createOwnerTeamInviteMock.mockReset();
     respondOwnerJoinRequestMock.mockReset();
+    updateOwnerRelationshipMock.mockReset();
+    releaseOwnerRelationshipMock.mockReset();
 
     useShopDashboardQueryMock.mockReturnValue({
       isLoading: false,
@@ -133,6 +145,8 @@ describe("owner team workspace", () => {
         memberships: [
           {
             id: "membership-maya",
+            publicTeamVisible: true,
+            featuredOnShopProfile: false,
             barberId: "barber-maya",
             barberName: "Maya Cole",
             shopId: "shop-ybor",
@@ -145,6 +159,8 @@ describe("owner team workspace", () => {
           },
           {
             id: "membership-ren",
+            publicTeamVisible: true,
+            featuredOnShopProfile: false,
             barberId: "barber-ren",
             barberName: "Ren Hale",
             shopId: "shop-ybor",
@@ -186,6 +202,25 @@ describe("owner team workspace", () => {
             alreadyAssigned: false,
             inviteStatus: null,
             canInvite: true
+          },
+          {
+            inviteId: null,
+            barberId: "barber-tied",
+            barberReference: "barber-tied",
+            profileId: "profile-tied",
+            name: "Tied Barber",
+            email: "tied@example.com",
+            username: "tiedbarber",
+            serviceAreaLabel: "Tampa",
+            compensationModel: "commission",
+            appApprovalStatus: "approved",
+            shopApprovalStatus: "approved",
+            visibilityState: "public",
+            acceptsInstantBookings: true,
+            alreadyAssigned: true,
+            inviteStatus: "active",
+            inviteDisabledReason: "This barber is already connected to another shop.",
+            canInvite: false
           }
         ]
       }
@@ -224,6 +259,16 @@ describe("owner team workspace", () => {
     });
     useRespondOwnerTeamJoinRequestMutationMock.mockReturnValue({
       mutateAsync: respondOwnerJoinRequestMock,
+      isPending: false
+    });
+    updateOwnerRelationshipMock.mockResolvedValue({ relationship: { id: "membership-maya", routing_model: "booth_rent" } });
+    useUpdateOwnerTeamRelationshipMutationMock.mockReturnValue({
+      mutateAsync: updateOwnerRelationshipMock,
+      isPending: false
+    });
+    releaseOwnerRelationshipMock.mockResolvedValue({ relationshipId: "membership-maya", effectiveRoutingModel: "freelance" });
+    useReleaseOwnerTeamRelationshipMutationMock.mockReturnValue({
+      mutateAsync: releaseOwnerRelationshipMock,
       isPending: false
     });
   });
@@ -291,7 +336,7 @@ describe("owner team workspace", () => {
     expect(screen.getByRole("dialog", { name: /Invite a barber/i })).toBeInTheDocument();
     expect(screen.getByText("Jordan Fade")).toBeInTheDocument();
     expect(screen.getByText("jordan@example.com")).toBeInTheDocument();
-    expect(screen.getByText("Instant booking on")).toBeInTheDocument();
+    expect(screen.getAllByText("Instant booking on").length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("button", { name: /Send Invite/i }));
 
@@ -302,6 +347,48 @@ describe("owner team workspace", () => {
       });
     });
     expect(await screen.findByText(/Invite sent to Jordan Fade/i)).toBeInTheDocument();
+  });
+
+  it("shows disabled invite reasons for barbers already active with another shop", () => {
+    render(<OwnerTeamWorkspace />);
+
+    fireEvent.click(screen.getAllByRole("button", { name: /Invite Barber/i })[0]);
+
+    expect(screen.getByText("Tied Barber")).toBeInTheDocument();
+    expect(screen.getByText("This barber is already connected to another shop.")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /Assigned/i }).some((button) => button.hasAttribute("disabled"))).toBe(true);
+  });
+
+  it("lets owners set operating model, public visibility, and release an active barber", async () => {
+    render(<OwnerTeamWorkspace />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Maya Cole/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Booth rent" }));
+
+    await waitFor(() => {
+      expect(updateOwnerRelationshipMock).toHaveBeenCalledWith(expect.objectContaining({
+        relationshipId: "membership-maya",
+        routingModel: "booth_rent",
+        boothRentAmount: 250,
+        boothRentFrequency: "weekly"
+      }));
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide publicly" }));
+    await waitFor(() => {
+      expect(updateOwnerRelationshipMock).toHaveBeenCalledWith(expect.objectContaining({
+        relationshipId: "membership-maya",
+        publicTeamVisible: false
+      }));
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Release barber" }));
+    await waitFor(() => {
+      expect(releaseOwnerRelationshipMock).toHaveBeenCalledWith({
+        relationshipId: "membership-maya",
+        reason: "Owner released barber from team."
+      });
+    });
   });
 
   it("lets owners accept incoming barber join requests from the relationship queue", async () => {
