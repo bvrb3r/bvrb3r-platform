@@ -170,6 +170,45 @@ describe("public barber profile", () => {
     expect(screen.queryByText("No work posted yet.")).not.toBeInTheDocument();
   });
 
+  it("falls back to the independent chair label when no active shop affiliation exists", () => {
+    render(
+      <PublicBarberProfile
+        profile={{
+          barber: {
+            id: "barber-independent",
+            userId: "profile-independent",
+            name: "Independent Pro",
+            rating: 4.8
+          },
+          profile: {
+            username: "independentpro",
+            headline: "Private chair, clean cuts.",
+            profilePhotoUrl: null,
+            photoAccent: "#7cff00",
+            specialties: ["Fades"],
+            badges: []
+          },
+          proof: {
+            reviewScore: 4.8,
+            reviewCount: 10,
+            verificationLabels: []
+          },
+          priceRange: [40, 60],
+          nextAvailableAt: "2026-04-28T14:00:00.000Z",
+          shopLocations: [],
+          bookingCtaHref: "/booking/new?barberId=barber-independent",
+          services: [],
+          reviews: [],
+          portfolio: []
+        } as unknown as PublicBarberProfileView}
+      />
+    );
+
+    expect(screen.getByText(/Independent barber/)).toBeInTheDocument();
+    expect(screen.getByText("Independent chair")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Connected to/i })).not.toBeInTheDocument();
+  });
+
   it("posts a public barber review from the review modal and refreshes the community proof", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({

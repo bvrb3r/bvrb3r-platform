@@ -344,6 +344,59 @@ function isApprovedStatus(value?: string | null) {
   return ["approved", "active", "verified"].includes(normalize(value));
 }
 
+function isIndependentShopReference(value?: string | null) {
+  return Boolean(value?.toLowerCase().startsWith("independent-barber-"));
+}
+
+function getMembershipCandidateShopId(row: StaffLocationRow, locationsById: Map<string, LocationRow>) {
+  if (row.shop_id && !isIndependentShopReference(row.shop_id)) {
+    return row.shop_id;
+  }
+
+  const locationReference = row.location_id ? locationsById.get(row.location_id)?.reference_code : null;
+  return locationReference && !isIndependentShopReference(locationReference) ? locationReference : null;
+}
+
+async function filterRealShopMemberships(supabase: SupabaseClient, rows: StaffLocationRow[]) {
+  const activeRows = rows.filter((row) => row.relationship_status === "active" && !row.ended_at);
+  if (!activeRows.length) {
+    return [];
+  }
+
+  const locationIds = [...new Set(activeRows.map((row) => row.location_id).filter((value): value is string => Boolean(value)))];
+  const locationsResult = locationIds.length
+    ? await supabase.from("locations").select("id, reference_code, name, neighborhood, city, state").in("id", locationIds)
+    : { data: [], error: null };
+
+  if (locationsResult.error) {
+    throw new ShopTeamInviteServiceError("Unable to check active shop relationship.", 500);
+  }
+
+  const locationsById = new Map(((locationsResult.data ?? []) as LocationRow[]).map((location) => [location.id, location]));
+  const candidateShopIds = [...new Set(activeRows.map((row) => getMembershipCandidateShopId(row, locationsById)).filter((value): value is string => Boolean(value)))];
+  if (!candidateShopIds.length) {
+    return [];
+  }
+
+  const shopsResult = await supabase
+    .from("shops")
+    .select("id, name, owner_profile_id, neighborhood, city, state, address, app_approval_status")
+    .in("id", candidateShopIds);
+
+  if (shopsResult.error) {
+    throw new ShopTeamInviteServiceError("Unable to check active shop relationship.", 500);
+  }
+
+  const approvedShopIds = new Set(((shopsResult.data ?? []) as ShopRow[])
+    .filter((shop) => isApprovedStatus(shop.app_approval_status) && !isIndependentShopReference(shop.id))
+    .map((shop) => shop.id));
+
+  return activeRows.filter((row) => {
+    const candidateShopId = getMembershipCandidateShopId(row, locationsById);
+    return Boolean(candidateShopId && approvedShopIds.has(candidateShopId));
+  });
+}
+
 function isMissingRelationError(error: unknown) {
   if (!error || typeof error !== "object") {
     return false;
@@ -575,14 +628,14 @@ async function readActiveMembership(supabase: SupabaseClient, profileId: string)
     .select(membershipSelectColumns)
     .eq("profile_id", profileId)
     .eq("relationship_status", "active")
-    .is("ended_at", null)
-    .maybeSingle();
+    .is("ended_at", null);
 
   if (result.error) {
     throw new ShopTeamInviteServiceError("Unable to check active shop relationship.", 500);
   }
 
-  return (result.data as StaffLocationRow | null) ?? null;
+  const realMemberships = await filterRealShopMemberships(supabase, (result.data ?? []) as StaffLocationRow[]);
+  return realMemberships[0] ?? null;
 }
 
 async function assertNoActiveMembership(supabase: SupabaseClient, profileId: string, message: string) {
@@ -671,7 +724,7 @@ export async function listOwnerTeamInviteDirectory(user: UserAccount, search?: s
   const profileIds = [...new Set(visibleBarbers.map((barber) => barber.profile_id))];
   const barberReferences = barbers.map(toReference);
   const barberIds = visibleBarbers.map((barber) => barber.id);
-  const [profilesResult, barberProfilesResult, visibilityResult, membershipsResult, invitesResult, marketplaceServicesResult, servicesResult, availabilityResult] = await Promise.all([
+  const [profilesResult, barberProfilesResult, visibilityResult, membershipsResult, invitesResult, activeTeamInvitesResult, marketplaceServicesResult, servicesResult, availabilityResult] = await Promise.all([
     profileIds.length
       ? supabase.from("profiles").select("id, full_name, email, phone, role, primary_onboarding_role").in("id", profileIds)
       : Promise.resolve({ data: [], error: null }),
@@ -687,6 +740,9 @@ export async function listOwnerTeamInviteDirectory(user: UserAccount, search?: s
     barberIds.length
       ? supabase.from("shop_team_invites").select(inviteSelectColumns).eq("shop_id", shop.id).in("barber_id", barberIds)
       : Promise.resolve({ data: [], error: null }),
+    barberIds.length
+      ? supabase.from("shop_team_invites").select(inviteSelectColumns).eq("status", "active").in("barber_id", barberIds)
+      : Promise.resolve({ data: [], error: null }),
     barberReferences.length
       ? supabase.from("marketplace_services").select("barber_reference, price, duration_min, name").in("barber_reference", barberReferences)
       : Promise.resolve({ data: [], error: null }),
@@ -698,9 +754,9 @@ export async function listOwnerTeamInviteDirectory(user: UserAccount, search?: s
       : Promise.resolve({ data: [], error: null })
   ]);
 
-  for (const result of [profilesResult, barberProfilesResult, visibilityResult, membershipsResult, invitesResult, marketplaceServicesResult, servicesResult, availabilityResult]) {
+  for (const result of [profilesResult, barberProfilesResult, visibilityResult, membershipsResult, invitesResult, activeTeamInvitesResult, marketplaceServicesResult, servicesResult, availabilityResult]) {
     if (result.error) {
-      if (result === invitesResult && isMissingRelationError(result.error)) {
+      if ((result === invitesResult || result === activeTeamInvitesResult) && isMissingRelationError(result.error)) {
         continue;
       }
       throw new ShopTeamInviteServiceError("Unable to load barber invitation details.", 500);
@@ -710,7 +766,16 @@ export async function listOwnerTeamInviteDirectory(user: UserAccount, search?: s
   const profilesById = new Map(((profilesResult.data ?? []) as ProfileRow[]).map((profile) => [profile.id, profile]));
   const barberProfilesByReference = new Map(((barberProfilesResult.data ?? []) as BarberProfileRow[]).map((profile) => [profile.barber_reference, profile]));
   const visibilityByReference = new Map(((visibilityResult.data ?? []) as MarketplaceVisibilityRow[]).map((visibility) => [visibility.barber_reference, visibility]));
-  const assignedProfileIds = new Set(((membershipsResult.data ?? []) as StaffLocationRow[]).map((row) => row.profile_id));
+  const realShopMemberships = await filterRealShopMemberships(supabase, (membershipsResult.data ?? []) as StaffLocationRow[]);
+  const assignedProfileIds = new Set(realShopMemberships.map((row) => row.profile_id));
+  for (const invite of (activeTeamInvitesResult.data ?? []) as InviteRow[]) {
+    if (!isIndependentShopReference(invite.shop_id)) {
+      assignedProfileIds.add(invite.barber_profile_id);
+    }
+  }
+  const independentProfileIds = new Set(((membershipsResult.data ?? []) as StaffLocationRow[])
+    .filter((row) => !assignedProfileIds.has(row.profile_id) && row.relationship_status === "active" && !row.ended_at)
+    .map((row) => row.profile_id));
   const serviceReferences = new Set(
     ([...((marketplaceServicesResult.data ?? []) as Array<{ barber_reference: string | null; price: number | string | null; duration_min: number | null; name: string | null }>), ...((servicesResult.data ?? []) as Array<{ barber_reference: string | null; price: number | string | null; duration_min: number | null; name: string | null }>)])
       .filter((service) => service.barber_reference && Number(service.price ?? 0) > 0 && Number(service.duration_min ?? 0) >= 15 && Boolean(service.name?.trim()))
@@ -737,6 +802,7 @@ export async function listOwnerTeamInviteDirectory(user: UserAccount, search?: s
       const invite = invitesByBarberId.get(barber.id);
       const inviteStatus = invite ? normalizeInviteStatus(invite) : null;
       const alreadyAssigned = assignedProfileIds.has(barber.profile_id);
+      const hasIndependentChair = independentProfileIds.has(barber.profile_id);
       const readinessLabels = buildBarberReadinessLabels({
         appApprovalStatus: barber.app_approval_status,
         visibilityState: visibility?.visibility_state,
@@ -746,6 +812,9 @@ export async function listOwnerTeamInviteDirectory(user: UserAccount, search?: s
         alreadyAssigned,
         inviteStatus: alreadyAssigned ? "active" : inviteStatus
       });
+      const displayReadinessLabels = hasIndependentChair && !alreadyAssigned
+        ? [...readinessLabels, "Independent location"]
+        : readinessLabels;
       const bookable = readinessLabels.includes("Bookable");
       const name = profile.full_name ?? barberProfile?.display_name ?? profile.email ?? reference;
       const canInvite = isApprovedStatus(barber.app_approval_status) && !alreadyAssigned && inviteStatus !== "invited" && inviteStatus !== "requested";
@@ -790,7 +859,7 @@ export async function listOwnerTeamInviteDirectory(user: UserAccount, search?: s
         alreadyAssigned,
         inviteStatus: alreadyAssigned ? "active" : inviteStatus,
         marketplaceStatusLabel: bookable ? "Bookable" : "Not bookable",
-        readinessLabels,
+        readinessLabels: displayReadinessLabels,
         canInvite,
         inviteDisabledReason
       }];
@@ -982,7 +1051,9 @@ export async function listBarberJoinableShops(user: UserAccount, search?: string
   }
 
   const membershipRows = (membershipsResult.data ?? []) as StaffLocationRow[];
-  const assignedShopIds = new Set(membershipRows.map((row) => row.shop_id ?? row.location_id).filter(Boolean));
+  const realShopMemberships = await filterRealShopMemberships(supabase, membershipRows);
+  const assignedShopIds = new Set(realShopMemberships.map((row) => row.shop_id ?? row.location_id).filter(Boolean));
+  const hasIndependentChair = membershipRows.some((row) => !realShopMemberships.includes(row) && row.relationship_status === "active" && !row.ended_at);
   const teamShopIds = new Set(((teamResult.data ?? []) as Array<{ shop_id: string }>).map((row) => row.shop_id));
   const invitesByShopId = new Map(
     ((invitesResult.data ?? []) as InviteRow[])
@@ -1007,8 +1078,8 @@ export async function listBarberJoinableShops(user: UserAccount, search?: string
       const labels = activeElsewhere
         ? [...readinessLabels, "Leave current shop first"]
         : location
-          ? readinessLabels
-          : [...readinessLabels, "Shop location bridge missing"];
+          ? hasIndependentChair && !alreadyAssigned ? [...readinessLabels, "Freelance chair active"] : readinessLabels
+          : [...readinessLabels, hasIndependentChair && !alreadyAssigned ? "Freelance chair active" : "Shop location bridge missing"];
 
       return [{
         shopId: shop.id,
