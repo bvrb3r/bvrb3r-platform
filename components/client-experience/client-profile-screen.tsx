@@ -22,6 +22,7 @@ import {
   ShieldCheck,
   Store,
   Trash2,
+  UserRound,
 } from "lucide-react";
 import { ClientActivationGate } from "@/components/activation/tier1-activation-gates";
 import { ClientActionLink } from "@/components/client-experience/client-action-link";
@@ -507,7 +508,7 @@ export function ClientProfileScreen({
           localBookingAreaTitle
         ]}
         primaryAction={{ label: "Edit Account", href: "#profile-account" }}
-        secondaryAction={{ label: "View Activity", href: CLIENT_PRIMARY_TAB_HREFS.activity }}
+        secondaryAction={{ label: "Edit Profile", href: "#client-public-profile" }}
         tiles={[
           { label: "Account", value: emailVerified || phoneVerified ? "Verified" : "Needs setup", helper: "Email and phone readiness.", tone: emailVerified || phoneVerified ? "green" : "yellow", href: "#profile-account" },
           { label: "Wallet", value: defaultPaymentMethod ? "Card ready" : "Add payment", helper: getPaymentMethodTitle(defaultPaymentMethod), tone: defaultPaymentMethod ? "green" : "yellow", href: "#profile-wallet" },
@@ -544,6 +545,7 @@ export function ClientProfileScreen({
         subtitle="Manage how BVRB3R knows you, bills you, reminds you, and tracks your activity."
         rows={[
           { href: "#profile-account", title: "Account", subtitle: "Name, contact, and profile photo", icon: <Camera className="h-5 w-5" /> },
+          { href: "#client-public-profile", title: "Public Profile", subtitle: "Culture profile and public identity", icon: <UserRound className="h-5 w-5" /> },
           { href: "#profile-wallet", title: "Wallet", subtitle: "Cards and booking default", icon: <CreditCard className="h-5 w-5" /> },
           { href: CLIENT_PRIMARY_TAB_HREFS.activity, title: "Activity", subtitle: "Appointments and receipts", icon: <ReceiptText className="h-5 w-5" /> },
           { href: "#profile-rewards", title: "Rewards", subtitle: "Points and referrals", icon: <Gift className="h-5 w-5" /> },
@@ -685,6 +687,56 @@ export function ClientProfileScreen({
                 >
                   Edit Location
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </ClientSectionBlock>
+
+      <ClientSectionBlock
+        eyebrow="Public Profile"
+        title="Client Public Profile"
+        subtitle="Your culture profile for follows, posts, and social discovery inside BVRB3R."
+      >
+        <div id="client-public-profile" className="scroll-mt-6 rounded-[30px] border border-white/10 bg-black/20 p-5 sm:p-6">
+          <div className="grid gap-5 lg:grid-cols-[auto_minmax(0,1fr)] lg:items-start">
+            <Avatar
+              src={clientPhotoUrl}
+              alt={clientName}
+              initials={initialsForName(clientName)}
+              className="h-24 w-24 rounded-[28px] border-2 border-[#d7ffab]/30 text-2xl"
+            />
+            <div className="min-w-0">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Culture profile</p>
+              <h3 className="mt-2 text-2xl font-black tracking-[-0.04em] text-white">{clientName}</h3>
+              <p className="mt-2 text-sm leading-6 text-white/58">
+                Client public profiles appear only in Culture, follow, and social surfaces. Barber and shop marketplace search stays reserved for bookable businesses.
+              </p>
+              <div className="mt-5 grid gap-3 md:grid-cols-2">
+                <label className="block text-sm font-bold text-white/72">
+                  Display name
+                  <Input value={clientName} readOnly className="mt-2" />
+                </label>
+                <label className="block text-sm font-bold text-white/72">
+                  @username
+                  <Input value="" readOnly placeholder="Set public username next" className="mt-2" />
+                </label>
+                <label className="block text-sm font-bold text-white/72 md:col-span-2">
+                  Bio
+                  <textarea
+                    readOnly
+                    rows={3}
+                    placeholder="Tell the BVRB3R culture feed what styles, shops, and cuts you follow."
+                    className="mt-2 w-full rounded-[14px] border border-white/10 bg-[#101010] px-4 py-3 text-base text-white outline-none placeholder:text-white/38 sm:text-sm"
+                  />
+                </label>
+              </div>
+              <div className="mt-5 rounded-[22px] border border-dashed border-white/10 bg-black/18 p-4 text-sm leading-6 text-white/58">
+                Public culture feed editing is staged here. Save controls will activate when Culture posting and public client handles are connected.
+              </div>
+              <div className="mt-5 flex flex-wrap gap-3">
+                <Button type="button" disabled className="min-h-11 rounded-full px-5">Save profile</Button>
+                <Button type="button" variant="secondary" className="min-h-11 rounded-full px-5" onClick={() => scrollToSection("activity")}>Cancel</Button>
               </div>
             </div>
           </div>

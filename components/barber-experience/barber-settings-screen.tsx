@@ -171,6 +171,23 @@ function formatStatusLabel(value?: string | null) {
   return value.replaceAll("_", " ").replace(/\b\w/g, (segment) => segment.toUpperCase());
 }
 
+function formatBarberFacingLocationLabel(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "Service location not set";
+  }
+
+  if (trimmed.startsWith("independent-barber-")) {
+    return "Independent barber";
+  }
+
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(trimmed)) {
+    return "Assigned booking location";
+  }
+
+  return trimmed;
+}
+
 function readableError(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
 }
@@ -905,7 +922,9 @@ export function BarberSettingsScreen({
   const selectedSection = (initialSection && initialSection in sectionIdMap ? initialSection : null) as SettingsSectionKey | null;
   const barberPhotoUrl = mediaQuery.data?.barberProfile?.profilePhotoUrl ?? mediaQuery.data?.viewer.profilePhotoUrl ?? null;
   const shopName = readinessPayload?.memberships[0]?.shopLabel ?? user.ownedShopName ?? "Shop not set";
-  const locationLabel = user.locationIds.length ? user.locationIds.join(", ") : "No location assigned";
+  const locationLabel = user.locationIds.length
+    ? user.locationIds.map(formatBarberFacingLocationLabel).join(", ")
+    : "Service location not set";
   const canonicalVerificationStatus = resolveCanonicalActivationStatus(
     user.appApprovalStatus,
     trustQuery.data?.canonicalOverallStatus,
@@ -998,6 +1017,8 @@ export function BarberSettingsScreen({
     (readinessPayload?.memberships.length ?? 0) > 0
     || ((overviewPayload?.shops.length ?? 0) > 0 && activationSetup?.locationMode !== "custom")
   );
+  const barberIdentityShopLabel = hasAcceptedShopLink ? shopName : "Independent barber";
+  const barberIdentityLocationLabel = activationSetup?.serviceLocationLabel ?? assignedLocationLabels;
   const shopLinkRequired = selectedSubtype === "commission";
   const profileVisibilityState = mediaQuery.data?.barberProfile?.visibilityState ?? null;
   const isProfilePublic = profileVisibilityState === "public" || profileVisibilityState === "featured";
@@ -1620,8 +1641,8 @@ export function BarberSettingsScreen({
             { label: formatStatusLabel(user.appApprovalStatus), tone: moreToneForStatus(getStatusTone(user.appApprovalStatus)) },
             { label: payoutsReady ? "Payouts connected" : "Payouts setup", tone: payoutsReady ? "green" : "yellow" }
           ]}
-          metaLines={[shopName, locationLabel]}
-          primaryAction={{ label: "View Public Profile", href: "/dashboard/barber/profile" }}
+          metaLines={[barberIdentityShopLabel, barberIdentityLocationLabel]}
+          primaryAction={{ label: "Edit Account", href: "#barber-settings-account" }}
           secondaryAction={{ label: "Edit Public Profile", href: "/dashboard/barber/profile" }}
           tiles={statusItems.map((item) => ({
             label: item.label,

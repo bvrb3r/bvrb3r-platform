@@ -286,10 +286,14 @@ describe("client profile screen", () => {
 
     expect(screen.getAllByRole("heading", { name: "More" })).toHaveLength(1);
     expect(screen.getByTestId("client-more-identity-card")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Edit Account" })).toHaveAttribute("href", "#profile-account");
+    expect(screen.getByRole("link", { name: "Edit Profile" })).toHaveAttribute("href", "#client-public-profile");
+    expect(screen.queryByRole("link", { name: "View Activity" })).not.toBeInTheDocument();
     expect(screen.getByText("Your BVRB3R setup")).toBeInTheDocument();
     expect(screen.getByText("Personal Control Hub")).toBeInTheDocument();
     const headings = [
       screen.getByRole("heading", { name: "Account & Profile" }),
+      screen.getByRole("heading", { name: "Client Public Profile" }),
       screen.getByRole("heading", { name: "Booking Activity" }),
       screen.getByRole("heading", { name: "Payments & Wallet" }),
       screen.getByRole("heading", { name: "Rewards & Loyalty" }),
@@ -305,6 +309,7 @@ describe("client profile screen", () => {
     }
 
     expect(screen.getByLabelText("Edit profile photo")).toBeInTheDocument();
+    expect(screen.getByText("Client public profiles appear only in Culture, follow, and social surfaces. Barber and shop marketplace search stays reserved for bookable businesses.")).toBeInTheDocument();
     expect(screen.queryByText("Quick profile sections")).not.toBeInTheDocument();
     expect(screen.getByText("View appointments")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "View appointments" })).toHaveAttribute("href", "/dashboard/client/activity");

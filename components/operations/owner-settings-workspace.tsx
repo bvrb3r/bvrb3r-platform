@@ -223,6 +223,10 @@ export function OwnerSettingsWorkspace({
 
   const shops = profileQuery.data?.shops ?? [];
   const primaryShop = shops[0] ?? null;
+  const primaryShopRecord = primaryShop as (typeof primaryShop & { shopUsername?: unknown }) | null;
+  const primaryShopUsername = typeof primaryShopRecord?.shopUsername === "string"
+    ? primaryShopRecord.shopUsername
+    : null;
   const ownerShopId = primaryShop?.shopId ?? user.ownedShopId ?? user.locationIds[0] ?? null;
   const shopName = primaryShop?.label ?? user.ownedShopName ?? "Shop profile incomplete";
   const shopAddress = (
@@ -264,10 +268,6 @@ export function OwnerSettingsWorkspace({
   });
   const taxStatus = getTaxStatus(fintechShopAccount?.taxReadinessStatus);
   const errorMessage = profileQuery.error ?? fintechQuery.error;
-  const isInitialLoading =
-    (profileQuery.isLoading && !profileQuery.data)
-    || (fintechQuery.isLoading && !fintechQuery.data);
-
   useEffect(() => {
     if (!primaryShop) {
       return;
@@ -614,27 +614,27 @@ export function OwnerSettingsWorkspace({
 
       <MorePageHeader
         title="More"
-        subtitle="Manage your account, shop setup, verification, payments, policies, compliance, and help."
+        subtitle="Manage your account, shop setup, payments, policies, and settings."
       />
 
       <MoreIdentityReadinessCard
         variant="owner"
-        imageUrl={isInitialLoading ? null : primaryShop?.profilePhotoUrl}
-        initials={shopInitials}
-        title={isInitialLoading ? "Loading shop profile" : shopName}
-        subtitle={shopAddress}
+        imageUrl={profileQuery.data?.viewer.profilePhotoUrl}
+        initials={getInitials(user.name)}
+        title={user.name || "Shop owner"}
+        subtitle={user.email ?? "Owner account"}
         roleLabel="Shop owner account"
         badges={[
           { label: verificationLabel, tone: verificationTone },
           { label: stripeStatus.label, tone: stripeStatus.tone },
-          { label: membershipCount ? `${membershipCount} linked` : "No team yet", tone: membershipCount ? "green" : "muted" }
+          { label: user.phone ? "Phone connected" : "Phone needed", tone: user.phone ? "green" : "yellow" }
         ]}
         metaLines={[
-          user.name ? `Owner: ${user.name}` : "Owner account",
-          "Owner Home remains the team and public profile command center."
+          user.phone ?? "Phone not connected yet",
+          "Owner Home stays the team and public shop profile command center."
         ]}
-        primaryAction={ownerShopId ? { label: "View Shop", href: `/kiosk/${ownerShopId}` } : undefined}
-        secondaryAction={{ label: "Edit Public Shop Info", onClick: () => setQuickSetupModal("profile") }}
+        primaryAction={{ label: "Edit Account", href: "/verify-contact" }}
+        secondaryAction={ownerShopId ? { label: "Edit Shop Profile", onClick: () => setQuickSetupModal("profile") } : undefined}
         tiles={[
           { label: "Shop Profile", value: ownerShopId && shopName !== "Shop profile incomplete" ? "Live" : "Needs setup", helper: "Public shop identity.", tone: ownerShopId ? "green" : "yellow", href: "#owner-settings-shop-profile" },
           { label: "Verification", value: verificationLabel, helper: "Shop approval status.", tone: verificationTone, href: "#owner-settings-compliance" },
@@ -643,6 +643,53 @@ export function OwnerSettingsWorkspace({
           { label: "Booking", value: hasBookableLinkedBarber ? "Active" : "Setup needed", helper: needsAttentionCount ? `${needsAttentionCount} attention item${needsAttentionCount === 1 ? "" : "s"}` : "Shop profile readiness.", tone: hasBookableLinkedBarber ? "green" : "yellow", href: "/dashboard/owner/schedule" }
         ]}
       />
+
+      <GlassCard className="p-5 sm:p-6" data-testid="owner-public-shop-profile-card">
+        <div className="grid gap-5 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center">
+          <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-[28px] border-2 border-[#A3FF12]/45 bg-[#A3FF12]/10 text-2xl font-black text-[#A3FF12] sm:h-28 sm:w-28">
+            {primaryShop?.profilePhotoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={primaryShop.profilePhotoUrl} alt={`${shopName} logo`} className="h-full w-full object-cover" />
+            ) : (
+              shopInitials
+            )}
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Public Shop Profile</p>
+            <h2 className="mt-2 text-3xl font-black tracking-[-0.045em] text-white">
+              {ownerShopId && shopName !== "Shop profile incomplete" ? shopName : "Finish shop profile"}
+            </h2>
+            <p className="mt-2 text-sm font-semibold text-white/58">
+              {primaryShopUsername ? `@${primaryShopUsername}` : "Set your shop name, handle, address, photos, hours, and policies."}
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <span className={cn("rounded-full border px-3 py-1.5 text-xs font-extrabold", statusClasses(verificationTone))}>{verificationLabel}</span>
+              <span className={cn("rounded-full border px-3 py-1.5 text-xs font-extrabold", statusClasses(shopAddress === "Address not added yet" ? "yellow" : "green"))}>
+                {shopAddress === "Address not added yet" ? "Address needed" : "Address ready"}
+              </span>
+              <span className={cn("rounded-full border px-3 py-1.5 text-xs font-extrabold", statusClasses(membershipCount ? "green" : "muted"))}>
+                {membershipCount ? `${membershipCount} public/team linked` : "No active barbers yet"}
+              </span>
+            </div>
+            <p className="mt-4 max-w-2xl text-sm leading-6 text-white/58">
+              {primaryShop?.brandLine || "Public shop details appear on discovery cards and the shop profile once setup is complete."}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-3 lg:flex-col">
+            <Button type="button" className="min-h-12 rounded-full px-5" onClick={() => setQuickSetupModal("profile")}>
+              Edit Shop Profile
+            </Button>
+            {ownerShopId ? (
+              <Link
+                href={`/shop/${encodeURIComponent(ownerShopId)}` as never}
+                className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] px-5 text-sm font-extrabold text-white/78 transition hover:border-[#A3FF12]/28 hover:text-[#A3FF12]"
+              >
+                Preview Public Profile
+              </Link>
+            ) : null}
+          </div>
+        </div>
+      </GlassCard>
 
       <MoreActivationGate
         title="Your shop setup"

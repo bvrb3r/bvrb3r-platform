@@ -317,7 +317,9 @@ describe("owner team workspace", () => {
     render(<OwnerTeamWorkspace />);
 
     expect(screen.getByText("Home")).toBeInTheDocument();
-    expect(screen.getByText("Team command center and public shop profile controls.")).toBeInTheDocument();
+    expect(screen.getByText("Manage your shop, team, and public profile.")).toBeInTheDocument();
+    expect(screen.getByText("Invites, team status, schedule, money, and profile controls.")).toBeInTheDocument();
+    expect(screen.queryByText("Manage invites, join requests, active barbers, public team display, and shop presentation from one private owner surface.")).not.toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: /Invite Barber/i }).length).toBeGreaterThan(0);
     expect(screen.getByPlaceholderText("Search barbers...")).toBeInTheDocument();
     expect(screen.getAllByText("Maya Cole").length).toBeGreaterThan(0);

@@ -9,7 +9,7 @@ export default async function OwnerDashboardPage() {
       user={user}
       activeHref="/dashboard/owner"
       title="Home"
-      subtitle="Team command center, public shop profile controls, and next owner actions."
+      subtitle="Manage your shop, team, and public profile."
       hidePageHeader
     >
       <OwnerTeamWorkspace />

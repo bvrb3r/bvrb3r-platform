@@ -380,6 +380,10 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     const identityCard = screen.getByTestId("barber-more-identity-card");
     const setupGate = screen.getByText("Your barber setup");
     expect(identityCard).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Edit Account" })).toHaveAttribute("href", "#barber-settings-account");
+    expect(screen.getByRole("link", { name: "Edit Public Profile" })).toHaveAttribute("href", "/dashboard/barber/profile");
+    expect(screen.queryByRole("link", { name: "View Public Profile" })).not.toBeInTheDocument();
+    expect(identityCard).not.toHaveTextContent("independent-barber-");
     expect(screen.getByText("Business Control Hub")).toBeInTheDocument();
     expect(identityCard.compareDocumentPosition(setupGate) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.queryByText("Quick Actions")).not.toBeInTheDocument();

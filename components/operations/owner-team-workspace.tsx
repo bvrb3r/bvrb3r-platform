@@ -628,9 +628,9 @@ export function OwnerTeamWorkspace() {
           <h1 className="text-5xl font-black leading-none tracking-[-0.055em] text-white sm:text-6xl" data-display="true">
             Home
           </h1>
-          <p className="mt-3 text-lg font-medium text-white/68">Team command center and public shop profile controls.</p>
+          <p className="mt-3 text-lg font-medium text-white/68">Manage your shop, team, and public profile.</p>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-white/52">
-            Manage invites, join requests, active barbers, public team display, and shop presentation from one private owner surface.
+            Invites, team status, schedule, money, and profile controls.
           </p>
         </div>
         <button
@@ -664,10 +664,10 @@ export function OwnerTeamWorkspace() {
           />
           <div className="min-w-0">
             <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Public Shop Profile</p>
-            <h2 className="mt-2 truncate text-3xl font-black tracking-[-0.045em] text-white">{ownerShopProfile?.name ?? "Shop profile loading"}</h2>
-            <p className="mt-1 text-sm font-bold text-white/54">{ownerShopProfile?.shop_username ? `@${ownerShopProfile.shop_username}` : "Public handle not set"}</p>
+            <h2 className="mt-2 truncate text-3xl font-black tracking-[-0.045em] text-white">{ownerShopProfile?.name ?? "Finish shop profile"}</h2>
+            <p className="mt-1 text-sm font-bold text-white/54">{ownerShopProfile?.shop_username ? `@${ownerShopProfile.shop_username}` : "Set your public shop handle"}</p>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-white/60">
-              {ownerShopProfile?.public_bio ?? ownerShopProfile?.brand_line ?? "Shape the public business profile clients see before choosing a barber."}
+              {ownerShopProfile?.public_bio ?? ownerShopProfile?.brand_line ?? "Set your shop name, handle, address, photos, hours, and policies."}
             </p>
             <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold uppercase tracking-[0.13em] text-white/44">
               <span>{formatStatusLabel(ownerShopProfile?.app_approval_status ?? "pending")}</span>
@@ -676,12 +676,6 @@ export function OwnerTeamWorkspace() {
             </div>
           </div>
           <div className="flex flex-wrap gap-2 lg:justify-end">
-            <Link
-              href={publicShopHref as Route}
-              className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-sm font-extrabold text-white/72 transition hover:border-[#A3FF12]/28 hover:text-[#A3FF12]"
-            >
-              View public profile
-            </Link>
             <button
               type="button"
               onClick={() => setShopProfileEditorOpen((current) => !current)}
@@ -689,6 +683,14 @@ export function OwnerTeamWorkspace() {
             >
               Edit shop profile
             </button>
+            {ownerShopProfile?.id ? (
+              <Link
+                href={publicShopHref as Route}
+                className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-sm font-extrabold text-white/72 transition hover:border-[#A3FF12]/28 hover:text-[#A3FF12]"
+              >
+                Preview public profile
+              </Link>
+            ) : null}
           </div>
         </div>
         {shopProfileFeedback ? <div className="px-5 pb-5 sm:px-6"><FeedbackBanner tone={shopProfileFeedback.tone} message={shopProfileFeedback.message} /></div> : null}
