@@ -676,12 +676,18 @@ export function OwnerTeamWorkspace() {
             </div>
           </div>
           <div className="flex flex-wrap gap-2 lg:justify-end">
+            <Link
+              href="/dashboard/owner/public-profile"
+              className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#A3FF12]/38 bg-[#A3FF12] px-4 text-sm font-black text-black shadow-[0_14px_32px_rgba(163,255,18,0.2)] transition hover:-translate-y-0.5"
+            >
+              Public Profile
+            </Link>
             <button
               type="button"
               onClick={() => setShopProfileEditorOpen((current) => !current)}
-              className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#A3FF12]/38 bg-[#A3FF12] px-4 text-sm font-black text-black shadow-[0_14px_32px_rgba(163,255,18,0.2)] transition hover:-translate-y-0.5"
+              className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-sm font-extrabold text-white/72 transition hover:border-[#A3FF12]/28 hover:text-[#A3FF12]"
             >
-              Edit shop profile
+              Quick edit
             </button>
             {ownerShopProfile?.id ? (
               <Link

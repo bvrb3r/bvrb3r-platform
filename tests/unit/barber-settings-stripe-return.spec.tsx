@@ -380,7 +380,15 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     const identityCard = screen.getByTestId("barber-more-identity-card");
     const setupGate = screen.getByText("Your barber setup");
     expect(identityCard).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Edit Account" })).toHaveAttribute("href", "#barber-settings-account");
+    fireEvent.click(screen.getByRole("button", { name: "Edit Account" }));
+    expect(screen.getByRole("dialog", { name: "Edit Account" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Public display name")).toBeInTheDocument();
+    expect(screen.getByLabelText("Email")).toBeInTheDocument();
+    expect(screen.getByLabelText("Phone number")).toBeInTheDocument();
+    expect(screen.getByText("Default payment method")).toBeInTheDocument();
+    expect(screen.getByLabelText("City/location")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog", { name: "Edit Account" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Edit Public Profile" })).toHaveAttribute("href", "/dashboard/barber/profile");
     expect(screen.queryByRole("link", { name: "View Public Profile" })).not.toBeInTheDocument();
     expect(identityCard).not.toHaveTextContent("independent-barber-");

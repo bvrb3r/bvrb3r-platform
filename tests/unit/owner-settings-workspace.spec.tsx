@@ -152,11 +152,19 @@ describe("owner More workspace", () => {
     expect(screen.getByText("Manage your account, shop setup, payments, policies, and settings.")).toBeInTheDocument();
     expect(screen.getByTestId("owner-more-identity-card")).toBeInTheDocument();
     expect(screen.getByText("Shop owner account")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Edit Account" })).toHaveAttribute("href", "/verify-contact");
+    fireEvent.click(screen.getByRole("button", { name: "Edit Account" }));
+    expect(screen.getByRole("dialog", { name: "Edit Account" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Public display name")).toBeInTheDocument();
+    expect(screen.getByLabelText("Email")).toBeInTheDocument();
+    expect(screen.getByLabelText("Phone number")).toBeInTheDocument();
+    expect(screen.getByText("Default payment method")).toBeInTheDocument();
+    expect(screen.getByLabelText("City/location")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.getByTestId("owner-public-shop-profile-card")).toBeInTheDocument();
     expect(screen.getAllByText("Public Shop Profile").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Finish shop profile").length).toBeGreaterThan(0);
-    expect(screen.getAllByRole("button", { name: "Edit Shop Profile" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("link", { name: "Public Profile" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("link", { name: "Public Profile" })[0]).toHaveAttribute("href", "/dashboard/owner/public-profile");
     expect(screen.queryByText("Unable to load shop profile")).not.toBeInTheDocument();
     expect(screen.getByText("Your shop setup")).toBeInTheDocument();
     expect(screen.getByText("Business Control Hub")).toBeInTheDocument();
@@ -226,7 +234,7 @@ describe("owner More workspace", () => {
 
     render(<OwnerSettingsWorkspace user={{ ...resolveDemoUser("owner@bvrb3r.demo"), appApprovalStatus: "approved", shopApprovalStatus: "approved" }} />);
 
-    fireEvent.click(screen.getAllByRole("button", { name: /Edit Shop Profile/i })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Quick edit" }));
     expect(screen.getByRole("heading", { name: "Edit shop profile" })).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText(/Shop name/i), { target: { value: "BVRB3R North" } });
     fireEvent.change(screen.getByLabelText(/Brand line/i), { target: { value: "Sharp cuts near campus." } });

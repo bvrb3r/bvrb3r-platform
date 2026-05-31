@@ -439,7 +439,8 @@ describe("owner team workspace", () => {
     expect(screen.getByText("Public Shop Profile")).toBeInTheDocument();
     expect(screen.getByText("@bvrb3rybor")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Edit shop profile" }));
+    expect(screen.getByRole("link", { name: "Public Profile" })).toHaveAttribute("href", "/dashboard/owner/public-profile");
+    fireEvent.click(screen.getByRole("button", { name: "Quick edit" }));
     fireEvent.change(screen.getByLabelText("Shop name"), {
       target: { value: "BVRB3R Ybor Lab" }
     });

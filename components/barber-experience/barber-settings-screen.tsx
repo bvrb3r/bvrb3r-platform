@@ -34,6 +34,7 @@ import {
   type LucideIcon
 } from "lucide-react";
 import { BarberActivationGate } from "@/components/activation/tier1-activation-gates";
+import { AccountQuickEditModal } from "@/components/dashboard/account/account-quick-edit-modal";
 import {
   MoreActivationGate,
   MoreControlHub,
@@ -869,6 +870,7 @@ export function BarberSettingsScreen({
   const [expirationDate, setExpirationDate] = useState("");
   const [feedback, setFeedback] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(null);
   const stripeReturnSyncRef = useRef(false);
+  const [accountEditorOpen, setAccountEditorOpen] = useState(false);
   const [quickSetupModal, setQuickSetupModal] = useState<BarberQuickSetupModal>(null);
   const [activeBusinessTool, setActiveBusinessTool] = useState<BusinessToolKey | null>(null);
   const [activeBusinessPanel, setActiveBusinessPanel] = useState<BusinessPanelKey | null>(null);
@@ -1642,7 +1644,7 @@ export function BarberSettingsScreen({
             { label: payoutsReady ? "Payouts connected" : "Payouts setup", tone: payoutsReady ? "green" : "yellow" }
           ]}
           metaLines={[barberIdentityShopLabel, barberIdentityLocationLabel]}
-          primaryAction={{ label: "Edit Account", href: "#barber-settings-account" }}
+          primaryAction={{ label: "Edit Account", onClick: () => setAccountEditorOpen(true) }}
           secondaryAction={{ label: "Edit Public Profile", href: "/dashboard/barber/profile" }}
           tiles={statusItems.map((item) => ({
             label: item.label,
@@ -2781,6 +2783,20 @@ export function BarberSettingsScreen({
 
         <MoreLogoutCard />
       </div>
+
+      <AccountQuickEditModal
+        open={accountEditorOpen}
+        variant="barber"
+        displayName={user.name}
+        email={user.email}
+        phone={user.phone}
+        cityLocation={barberIdentityLocationLabel}
+        defaultPaymentMethodLabel="Managed through payout and checkout settings"
+        managePaymentHref="/dashboard/barber/more#barber-settings-payouts"
+        emailVerified={user.emailVerified}
+        phoneVerified={user.phoneVerified}
+        onClose={() => setAccountEditorOpen(false)}
+      />
 
       {receiptTransactionId ? (
         <TransactionReceiptModal

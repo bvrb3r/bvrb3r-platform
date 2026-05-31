@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ComponentProps, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ClientProfilePayload } from "@/lib/booking/platform-service";
@@ -286,8 +286,23 @@ describe("client profile screen", () => {
 
     expect(screen.getAllByRole("heading", { name: "More" })).toHaveLength(1);
     expect(screen.getByTestId("client-more-identity-card")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Edit Account" })).toHaveAttribute("href", "#profile-account");
-    expect(screen.getByRole("link", { name: "Edit Profile" })).toHaveAttribute("href", "#client-public-profile");
+    const scrollSpy = Element.prototype.scrollIntoView as ReturnType<typeof vi.fn>;
+    scrollSpy.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "Edit Account" }));
+    expect(scrollSpy).not.toHaveBeenCalled();
+    const accountDialog = screen.getByRole("dialog", { name: "Edit Account" });
+    expect(accountDialog).toBeInTheDocument();
+    expect(within(accountDialog).getByLabelText("Public display name")).toBeInTheDocument();
+    expect(within(accountDialog).getByLabelText("Email")).toBeInTheDocument();
+    expect(within(accountDialog).getByLabelText("Phone number")).toBeInTheDocument();
+    expect(within(accountDialog).getByText("Default payment method")).toBeInTheDocument();
+    expect(within(accountDialog).getByLabelText("City/location")).toBeInTheDocument();
+    expect(within(accountDialog).getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+    expect(within(accountDialog).getByRole("button", { name: "Save" })).toBeInTheDocument();
+    expect(within(accountDialog).getByLabelText("Close account editor")).toBeInTheDocument();
+    fireEvent.click(within(accountDialog).getByLabelText("Close account editor"));
+    expect(screen.queryByRole("dialog", { name: "Edit Account" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Public Profile" })).toHaveAttribute("href", "/dashboard/client/public-profile");
     expect(screen.queryByRole("link", { name: "View Activity" })).not.toBeInTheDocument();
     expect(screen.getByText("Your BVRB3R setup")).toBeInTheDocument();
     expect(screen.getByText("Personal Control Hub")).toBeInTheDocument();

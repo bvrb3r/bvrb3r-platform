@@ -22,6 +22,7 @@ import {
   WalletCards
 } from "lucide-react";
 import { OwnerActivationGate } from "@/components/activation/tier1-activation-gates";
+import { AccountQuickEditModal } from "@/components/dashboard/account/account-quick-edit-modal";
 import {
   MoreActivationGate,
   MoreControlHub,
@@ -201,6 +202,7 @@ export function OwnerSettingsWorkspace({
   const mediaMutation = useMutateProfileMediaMutation();
   const fintechQuery = useFintechManagementQuery();
   const [quickSetupModal, setQuickSetupModal] = useState<OwnerQuickSetupModal>(null);
+  const [accountEditorOpen, setAccountEditorOpen] = useState(false);
   const [quickSetupFeedback, setQuickSetupFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [shopProfileDraft, setShopProfileDraft] = useState({
     shopName: user.ownedShopName ?? "",
@@ -633,8 +635,8 @@ export function OwnerSettingsWorkspace({
           user.phone ?? "Phone not connected yet",
           "Owner Home stays the team and public shop profile command center."
         ]}
-        primaryAction={{ label: "Edit Account", href: "/verify-contact" }}
-        secondaryAction={ownerShopId ? { label: "Edit Shop Profile", onClick: () => setQuickSetupModal("profile") } : undefined}
+        primaryAction={{ label: "Edit Account", onClick: () => setAccountEditorOpen(true) }}
+        secondaryAction={ownerShopId ? { label: "Public Profile", href: "/dashboard/owner/public-profile" } : undefined}
         tiles={[
           { label: "Shop Profile", value: ownerShopId && shopName !== "Shop profile incomplete" ? "Live" : "Needs setup", helper: "Public shop identity.", tone: ownerShopId ? "green" : "yellow", href: "#owner-settings-shop-profile" },
           { label: "Verification", value: verificationLabel, helper: "Shop approval status.", tone: verificationTone, href: "#owner-settings-compliance" },
@@ -676,8 +678,14 @@ export function OwnerSettingsWorkspace({
             </p>
           </div>
           <div className="flex flex-wrap gap-3 lg:flex-col">
-            <Button type="button" className="min-h-12 rounded-full px-5" onClick={() => setQuickSetupModal("profile")}>
-              Edit Shop Profile
+            <Link
+              href="/dashboard/owner/public-profile"
+              className="inline-flex min-h-12 items-center justify-center rounded-full border border-[#A3FF12]/40 bg-[#A3FF12]/12 px-5 text-sm font-extrabold text-[#A3FF12] shadow-[0_0_28px_rgba(163,255,18,0.14)] transition hover:border-[#A3FF12]/70 hover:bg-[#A3FF12]/16"
+            >
+              Public Profile
+            </Link>
+            <Button type="button" variant="secondary" className="min-h-12 rounded-full px-5" onClick={() => setQuickSetupModal("profile")}>
+              Quick edit
             </Button>
             {ownerShopId ? (
               <Link
@@ -795,6 +803,20 @@ export function OwnerSettingsWorkspace({
       </section>
 
       <div className="h-3" />
+
+      <AccountQuickEditModal
+        open={accountEditorOpen}
+        variant="owner"
+        displayName={user.name || "Shop owner"}
+        email={user.email}
+        phone={user.phone}
+        cityLocation={[primaryShop?.city, primaryShop?.state].filter(Boolean).join(", ") || ""}
+        defaultPaymentMethodLabel={stripeStatus.label === "Connected" ? "Owner payout setup connected" : "Payment setup managed in Money"}
+        managePaymentHref="/dashboard/owner/money?view=fintech"
+        emailVerified={user.emailVerified}
+        phoneVerified={user.phoneVerified}
+        onClose={() => setAccountEditorOpen(false)}
+      />
 
       {quickSetupModal ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/72 px-4 py-5 backdrop-blur-sm sm:items-center" role="dialog" aria-modal="true">

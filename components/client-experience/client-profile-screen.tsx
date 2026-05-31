@@ -29,6 +29,7 @@ import { ClientActionLink } from "@/components/client-experience/client-action-l
 import { ClientPaymentMethodsPanel } from "@/components/client-experience/client-payment-methods-panel";
 import { ClientSectionBlock } from "@/components/client-experience/client-section-block";
 import { CLIENT_PRIMARY_TAB_HREFS } from "@/components/client-experience/client-tab-config";
+import { AccountQuickEditModal } from "@/components/dashboard/account/account-quick-edit-modal";
 import {
   MoreActivationGate,
   MoreControlHub,
@@ -195,6 +196,7 @@ export function ClientProfileScreen({
   const [referralFeedback, setReferralFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [locationFeedback, setLocationFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
+  const [accountEditorOpen, setAccountEditorOpen] = useState(false);
   const [locationModalOpen, setLocationModalOpen] = useState(false);
   const [locationDraft, setLocationDraft] = useState(() => ({
     city: payload.client?.preferredLocation?.city ?? "",
@@ -507,8 +509,8 @@ export function ClientProfileScreen({
           hasPhone ? clientPhone : "Phone not connected yet",
           localBookingAreaTitle
         ]}
-        primaryAction={{ label: "Edit Account", href: "#profile-account" }}
-        secondaryAction={{ label: "Edit Profile", href: "#client-public-profile" }}
+        primaryAction={{ label: "Edit Account", onClick: () => setAccountEditorOpen(true) }}
+        secondaryAction={{ label: "Public Profile", href: "/dashboard/client/public-profile" }}
         tiles={[
           { label: "Account", value: emailVerified || phoneVerified ? "Verified" : "Needs setup", helper: "Email and phone readiness.", tone: emailVerified || phoneVerified ? "green" : "yellow", href: "#profile-account" },
           { label: "Wallet", value: defaultPaymentMethod ? "Card ready" : "Add payment", helper: getPaymentMethodTitle(defaultPaymentMethod), tone: defaultPaymentMethod ? "green" : "yellow", href: "#profile-wallet" },
@@ -1143,6 +1145,20 @@ export function ClientProfileScreen({
       {clientMoreSections.map((group) => <MoreSectionGroup key={group.title} group={group} />)}
 
       <MoreLogoutCard />
+
+      <AccountQuickEditModal
+        open={accountEditorOpen}
+        variant="client"
+        displayName={clientName}
+        email={clientEmail === "No email on file yet" ? "" : clientEmail}
+        phone={clientPhone}
+        cityLocation={savedClientLocationLabel || primaryShop?.city || ""}
+        defaultPaymentMethodLabel={getPaymentMethodTitle(defaultPaymentMethod)}
+        managePaymentHref="/dashboard/client/more?section=wallet"
+        emailVerified={emailVerified}
+        phoneVerified={phoneVerified}
+        onClose={() => setAccountEditorOpen(false)}
+      />
 
       {locationModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/72 px-4 py-5 backdrop-blur-sm sm:items-center" role="dialog" aria-modal="true">
