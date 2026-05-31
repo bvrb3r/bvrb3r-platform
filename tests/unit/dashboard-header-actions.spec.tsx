@@ -105,12 +105,12 @@ describe("DashboardHeaderActions", () => {
             id: "stripe-test-mode",
             category: "PAYOUTS",
             severity: "warning",
-            title: "Stripe is in test mode.",
-            body: "Live payouts are not active yet.",
+            title: "Payout setup",
+            body: "Stripe is in test mode. Live payouts are not active yet.",
             timestamp: "Today",
             action: {
               label: "View payout setup",
-              href: "/dashboard/barber/more?section=payouts"
+              href: "/dashboard/barber/more#payouts"
             }
           },
           {
@@ -126,16 +126,16 @@ describe("DashboardHeaderActions", () => {
       />
     );
 
-    expect(screen.getByLabelText("1 unread notifications")).toHaveClass("bg-[#ff3b30]");
+    expect(screen.getByLabelText("1 unread notifications")).toHaveClass("bg-[#ffd166]");
 
     fireEvent.click(screen.getByRole("button", { name: "Open notifications" }));
 
     expect(screen.getByText("PAYOUTS")).toBeInTheDocument();
     expect(screen.getByText("warning")).toBeInTheDocument();
-    expect(screen.getByText("Stripe is in test mode.")).toBeInTheDocument();
-    expect(screen.getByText("Live payouts are not active yet.")).toBeInTheDocument();
+    expect(screen.getByText("Payout setup")).toBeInTheDocument();
+    expect(screen.getByText("Stripe is in test mode. Live payouts are not active yet.")).toBeInTheDocument();
     expect(screen.getByText("Today")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "View payout setup" })).toHaveAttribute("href", "/dashboard/barber/more?section=payouts");
+    expect(screen.getByRole("link", { name: "View payout setup" })).toHaveAttribute("href", "/dashboard/barber/more#payouts");
     expect(screen.getByText("BOOKING")).toBeInTheDocument();
     expect(screen.getByText("Yesterday")).toBeInTheDocument();
   });

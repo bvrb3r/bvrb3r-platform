@@ -358,29 +358,29 @@ function getWorkspaceSubtitle(user: UserAccount, roleLabel: string) {
   }
 
   if (isShopOwnerRole(user.role)) {
-    return user.ownedShopName?.trim() || "Shop owner workspace";
+    return "Owner account";
   }
 
   if (isBarberAccountRole(user.role)) {
-    if (user.barberSubtype === "freelance") {
-      return "Freelance barber workspace";
-    }
+    return "Professional account";
+  }
 
-    if (user.barberSubtype === "booth_rent" || user.barberSubtype === "commission") {
-      return "Shop barber workspace";
-    }
-
-    return "Barber workspace";
+  if (roleLabel.toLowerCase().includes("architect") || roleLabel.toLowerCase().includes("platform")) {
+    return "Platform control";
   }
 
   return `${roleLabel} workspace`;
 }
 
-function getHeaderNotifications(user: UserAccount, approvalBanner: ApprovalBanner | null): {
+function getHeaderNotifications(
+  user: UserAccount,
+  approvalBanner: ApprovalBanner | null,
+  extraItems: DashboardHeaderNotificationItem[] = []
+): {
   notificationItems: DashboardHeaderNotificationItem[];
   notificationTone: "yellow" | "red";
 } {
-  const items: DashboardHeaderNotificationItem[] = [];
+  const items: DashboardHeaderNotificationItem[] = [...extraItems];
 
   if (approvalBanner) {
     const isCritical = user.appApprovalStatus === "rejected" || user.shopApprovalStatus === "rejected";
@@ -478,6 +478,7 @@ export function DashboardShell({
   activeHref,
   hidePageHeader = false,
   hideShellContext = false,
+  headerNotificationItems = [],
   children
 }: {
   user: UserAccount;
@@ -486,13 +487,11 @@ export function DashboardShell({
   activeHref?: string;
   hidePageHeader?: boolean;
   hideShellContext?: boolean;
+  headerNotificationItems?: DashboardHeaderNotificationItem[];
   children: React.ReactNode;
 }) {
   const nav = getNavigation(user);
   const activeRole = getUserRoleLabel(user);
-  const ownerShopName = isShopOwnerRole(user.role) ? user.ownedShopName?.trim() || null : null;
-  const primaryShellIdentity = ownerShopName ?? "BVRB3R Platform";
-  const mobileWorkspaceLabel = ownerShopName ?? `${activeRole} workspace`;
   const workspaceSubtitle = getWorkspaceSubtitle(user, activeRole);
   const visibleLocations = user.locationIds.map((locationId) => ({
     id: locationId,
@@ -512,7 +511,7 @@ export function DashboardShell({
   const messagesHref = getMessagesHref(user.role);
   const profileHref = getProfileHref(user.role);
   const approvalBanner = getApprovalBanner(user);
-  const headerNotifications = getHeaderNotifications(user, approvalBanner);
+  const headerNotifications = getHeaderNotifications(user, approvalBanner, headerNotificationItems);
   const accountAttentionCount = approvalBanner ? 1 : 0;
   const accountAttentionTone = user.appApprovalStatus === "rejected" || user.shopApprovalStatus === "rejected" ? "red" : "yellow";
   const isBarberDashboard = isBarberRole(user.role);
@@ -523,15 +522,10 @@ export function DashboardShell({
       <div className="mx-auto grid max-w-[88rem] gap-5 lg:grid-cols-[18rem_minmax(0,1fr)] 2xl:grid-cols-[19rem_minmax(0,1fr)]">
         <Card className="hidden h-fit rounded-[34px] bg-[linear-gradient(180deg,rgba(16,16,16,0.98),rgba(8,8,8,0.98))] p-4 lg:sticky lg:top-4 lg:block">
           <div className="rounded-[28px] border border-[#7CFF00]/16 bg-[linear-gradient(180deg,rgba(124,255,0,0.12),rgba(124,255,0,0.04))] p-5">
-            <p className="surface-label text-[#cfff93]">The BVRB3R Shop(TM)</p>
-            <h1 className="mt-3 text-3xl font-semibold" data-display="true" data-testid="shell-business-name">{primaryShellIdentity}</h1>
-            <p className="mt-4 text-sm text-white/60" data-testid="shell-identity-name">{user.name}</p>
-            <p className="mt-1 text-[11px] uppercase tracking-[0.22em] text-white/40" data-testid="shell-identity-title">{user.title}</p>
-            {showShellContext ? (
-              <div className="mt-4 inline-flex items-center rounded-full border border-white/10 bg-black/35 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-[#cfff93]" data-testid="shell-identity-role">
-                Active role: {activeRole}
-              </div>
-            ) : null}
+            <p className="surface-label text-[#cfff93]">Platform</p>
+            <h1 className="mt-3 text-3xl font-semibold" data-display="true" data-testid="shell-business-name">BVRB3R</h1>
+            <p className="mt-4 text-sm text-white/64" data-testid="shell-identity-name">{workspaceSubtitle}</p>
+            <p className="mt-1 text-[11px] uppercase tracking-[0.22em] text-white/40" data-testid="shell-identity-title">Unified dashboard</p>
           </div>
 
           {showShellContext ? (
@@ -635,7 +629,7 @@ export function DashboardShell({
                 </div>
                 <div className="min-w-0">
                   <p className="text-[10px] uppercase tracking-[0.26em] text-[#cfff93]">BVRB3R</p>
-                  <p className="mt-1 truncate text-sm font-medium text-white/74" data-testid="shell-mobile-business-name">{workspaceSubtitle || mobileWorkspaceLabel}</p>
+                  <p className="mt-1 truncate text-sm font-medium text-white/74" data-testid="shell-mobile-business-name">{workspaceSubtitle}</p>
                 </div>
               </Link>
               <DashboardHeaderActions
@@ -651,50 +645,6 @@ export function DashboardShell({
               />
             </div>
 
-            {showShellContext ? (
-              <div className="lg:hidden">
-                <div className="mt-4 flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm text-white/68" data-testid="shell-mobile-identity-name">{user.name}</p>
-                    <p className="mt-1 text-[11px] uppercase tracking-[0.22em] text-white/40" data-testid="shell-mobile-identity-title">{user.title}</p>
-                  </div>
-                  <div className="rounded-[20px] border border-[#7CFF00]/16 bg-[#7CFF00]/8 px-3 py-3 text-right">
-                    <p className="surface-label text-[#d7ffab]">Active role</p>
-                    <p className="mt-2 text-sm font-medium text-white" data-testid="shell-mobile-identity-role">{activeRole}</p>
-                  </div>
-                </div>
-
-                <div className="mt-4 rounded-[24px] border border-white/8 bg-black/20 p-4">
-                  <p className="surface-label">{getPrimaryFocusLabel(user.role)}</p>
-                  <p className="mt-3 text-lg font-semibold leading-7 text-white">{getPrimaryActionTitle(user.role)}</p>
-                  <p className="mt-3 text-sm leading-6 text-white/62">{getBoundaryCopy(user.role)}</p>
-                </div>
-
-                <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                  {utilityCards.map((card) => {
-                    const Icon = card.icon;
-                    return (
-                      <div key={`mobile-${card.label}`} className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="surface-label">{card.label}</p>
-                            <p className="mt-3 text-xl font-semibold text-white">{card.value}</p>
-                            <p className="mt-2 text-sm leading-6 text-white/56">{card.detail}</p>
-                          </div>
-                          <Icon className="mt-1 h-4 w-4 text-[#baff69]" />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div className="mt-3 flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.22em] text-white/48">
-                  {visibleLocations.length ? visibleLocations.map((location) => (
-                    <span key={`mobile-location-${location.id}`} className="status-pill text-white/72">{location.name}</span>
-                  )) : <span className="status-pill text-white/52">No assigned locations yet</span>}
-                </div>
-              </div>
-            ) : null}
           </Card>
 
           {!hidePageHeader ? (

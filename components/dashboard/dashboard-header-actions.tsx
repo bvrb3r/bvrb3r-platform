@@ -73,7 +73,7 @@ export function DashboardHeaderActions({
   messagesHref,
   moreHref,
   notificationUnreadCount = 0,
-  notificationTone = "red",
+  notificationTone,
   notificationItems = [],
   messageUnreadCount = 0,
   accountAttentionCount = 0,
@@ -86,6 +86,8 @@ export function DashboardHeaderActions({
   const hasUnreadNotifications = effectiveNotificationUnreadCount > 0;
   const hasUnreadMessages = messageUnreadCount > 0;
   const hasAccountAttention = accountAttentionCount > 0;
+  const effectiveNotificationTone =
+    notificationTone ?? (unreadNotificationItems.some((item) => item.severity === "critical") ? "red" : "yellow");
   const roleLabel = role === "owner" ? "shop owner" : role;
 
   return (
@@ -99,7 +101,7 @@ export function DashboardHeaderActions({
           onClick={() => setIsNotificationsOpen((current) => !current)}
         >
           <Bell className="h-5 w-5" aria-hidden="true" />
-          {hasUnreadNotifications ? <Dot tone={notificationTone} label={`${effectiveNotificationUnreadCount} unread notifications`} /> : null}
+          {hasUnreadNotifications ? <Dot tone={effectiveNotificationTone} label={`${effectiveNotificationUnreadCount} unread notifications`} /> : null}
         </button>
         <Link href={messagesHref} aria-label="Open messages" className={iconButtonClass()}>
           <MessageSquareText className="h-5 w-5" aria-hidden="true" />

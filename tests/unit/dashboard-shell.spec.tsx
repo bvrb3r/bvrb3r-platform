@@ -4,14 +4,14 @@ import { getDefaultRouteForUser, resolveDemoUser } from "@/lib/auth/demo-auth";
 
 describe("dashboard shell identity and navigation", () => {
   it.each([
-    ["owner@bvrb3r.demo", "Brandon Rivers", "Shop Owner", "Active role: Shop owner", ["Home", "Schedule", "Money", "Messages", "More"]],
-    ["manager@bvrb3r.demo", "Mia Torres", "Shop Manager", "Active role: Shop manager", ["Dashboard", "Schedule", "Team", "Queue", "Profile"]],
-    ["frontdesk@bvrb3r.demo", "Kayla Brooks", "Front Desk / Kiosk Ops", "Active role: Front desk", ["Check-in", "Waitlist", "Schedule", "Barbers", "Profile"]],
-    ["wave@bvrb3r.demo", "Wave Carter", "Barber Manager", "Active role: Barber manager", ["Dashboard", "Schedule", "Team", "Queue", "Profile"]],
-    ["blaze@bvrb3r.demo", "Blaze King", "Booth-Rent Barber", null, ["Home", "Checkout", "Profile", "Messages", "More"]],
-    ["lux@bvrb3r.demo", "Luxe Reed", "Freelance Barber", null, ["Home", "Checkout", "Profile", "Messages", "More"]],
-    ["client@bvrb3r.demo", "Jordan Ellis", "Client", "Active role: Client", ["Home", "Search", "Culture", "Messages", "More"]]
-  ])("renders the selected identity for %s", (email, name, title, roleLabel, navLabels) => {
+    ["owner@bvrb3r.demo", "Owner account", ["Home", "Schedule", "Money", "Messages", "More"]],
+    ["manager@bvrb3r.demo", "Shop manager workspace", ["Dashboard", "Schedule", "Team", "Queue", "Profile"]],
+    ["frontdesk@bvrb3r.demo", "Front desk workspace", ["Check-in", "Waitlist", "Schedule", "Barbers", "Profile"]],
+    ["wave@bvrb3r.demo", "Barber manager workspace", ["Dashboard", "Schedule", "Team", "Queue", "Profile"]],
+    ["blaze@bvrb3r.demo", "Professional account", ["Home", "Checkout", "Profile", "Messages", "More"]],
+    ["lux@bvrb3r.demo", "Professional account", ["Home", "Checkout", "Profile", "Messages", "More"]],
+    ["client@bvrb3r.demo", "Search, book, and manage visits", ["Home", "Search", "Culture", "Messages", "More"]]
+  ])("renders the platform shell identity for %s", (email, expectedSubtitle, navLabels) => {
     const user = resolveDemoUser(email);
     const activeHref = getDefaultRouteForUser(user);
 
@@ -21,13 +21,10 @@ describe("dashboard shell identity and navigation", () => {
       </DashboardShell>
     );
 
-    expect(screen.getByTestId("shell-identity-name")).toHaveTextContent(name);
-    expect(screen.getByTestId("shell-identity-title")).toHaveTextContent(title);
-    if (roleLabel) {
-      expect(screen.getByTestId("shell-identity-role")).toHaveTextContent(roleLabel);
-    } else {
-      expect(screen.queryByTestId("shell-identity-role")).not.toBeInTheDocument();
-    }
+    expect(screen.getByTestId("shell-business-name")).toHaveTextContent("BVRB3R");
+    expect(screen.getByTestId("shell-identity-name")).toHaveTextContent(expectedSubtitle);
+    expect(screen.getByTestId("shell-identity-title")).toHaveTextContent("Unified dashboard");
+    expect(screen.queryByTestId("shell-identity-role")).not.toBeInTheDocument();
 
     navLabels.forEach((label, index) => {
       const links = screen.getAllByRole("link", { name: new RegExp(label, "i") });
@@ -37,13 +34,10 @@ describe("dashboard shell identity and navigation", () => {
       }
     });
 
-    if (email !== "owner@bvrb3r.demo") {
-      expect(screen.queryByText("Money")).not.toBeInTheDocument();
-      expect(screen.queryByText("Brandon Rivers")).not.toBeInTheDocument();
-    }
+    expect(screen.queryByText("Brandon Rivers")).not.toBeInTheDocument();
   });
 
-  it("shows the canonical saved shop name as the owner business identity", () => {
+  it("keeps owner shop identity out of the global shell header", () => {
     const user = {
       ...resolveDemoUser("owner@bvrb3r.demo"),
       name: "Phillip Mcgee",
@@ -60,11 +54,10 @@ describe("dashboard shell identity and navigation", () => {
       </DashboardShell>
     );
 
-    expect(screen.getByTestId("shell-business-name")).toHaveTextContent("Phillip's Fresh Cuts");
-    expect(screen.getByTestId("shell-identity-name")).toHaveTextContent("Phillip Mcgee");
-    expect(screen.getByTestId("shell-identity-role")).toHaveTextContent("Active role: Shop owner");
-    expect(screen.getAllByText("Phillip's Fresh Cuts").length).toBeGreaterThan(0);
-    expect(screen.queryByTestId("shell-business-name")).not.toHaveTextContent("BVRB3R Platform");
+    expect(screen.getByTestId("shell-business-name")).toHaveTextContent("BVRB3R");
+    expect(screen.getByTestId("shell-identity-name")).toHaveTextContent("Owner account");
+    expect(screen.queryByTestId("shell-identity-role")).not.toBeInTheDocument();
+    expect(screen.getByTestId("shell-mobile-business-name")).toHaveTextContent("Owner account");
   });
 
   it("locks barber primary navigation to five tabs only", () => {
@@ -135,7 +128,9 @@ describe("dashboard shell identity and navigation", () => {
       "Open messages",
       "Open profile"
     ]);
-    expect(screen.getByTestId("shell-mobile-business-name")).toHaveTextContent("Shop owner workspace");
+    expect(screen.getByTestId("shell-mobile-business-name")).toHaveTextContent("Owner account");
+    expect(screen.queryByTestId("shell-mobile-identity-name")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("shell-mobile-identity-role")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open messages" })).toHaveAttribute("href", "/dashboard/owner/messages");
     expect(screen.getByRole("link", { name: "Open profile" })).toHaveAttribute("href", "/dashboard/owner/more");
   });
@@ -155,9 +150,48 @@ describe("dashboard shell identity and navigation", () => {
       "Open messages",
       "Open profile"
     ]);
-    expect(screen.getByTestId("shell-mobile-business-name")).toHaveTextContent("Shop barber workspace");
+    expect(screen.getByTestId("shell-mobile-business-name")).toHaveTextContent("Professional account");
     expect(screen.getByRole("link", { name: "Open messages" })).toHaveAttribute("href", "/dashboard/barber/messages");
     expect(screen.getByRole("link", { name: "Open profile" })).toHaveAttribute("href", "/dashboard/barber/more");
+  });
+
+  it("renders client, barber, and owner platform subtitles without business-card copy", () => {
+    const client = resolveDemoUser("client@bvrb3r.demo");
+    const barber = resolveDemoUser("blaze@bvrb3r.demo");
+    const owner = {
+      ...resolveDemoUser("owner@bvrb3r.demo"),
+      name: "Phillip Mcgee",
+      ownedShopName: "The BVRB3R™ Shop (University Mall)"
+    };
+
+    const { rerender } = render(
+      <DashboardShell user={client} activeHref="/dashboard/client" title="Home" subtitle="Testing client header.">
+        <div>Workspace body</div>
+      </DashboardShell>
+    );
+
+    expect(screen.getByTestId("shell-mobile-business-name")).toHaveTextContent("Search, book, and manage visits");
+
+    rerender(
+      <DashboardShell user={barber} activeHref="/dashboard/barber" title="Home" subtitle="Testing barber header.">
+        <div>Workspace body</div>
+      </DashboardShell>
+    );
+
+    expect(screen.getByTestId("shell-mobile-business-name")).toHaveTextContent("Professional account");
+    expect(screen.getByTestId("shell-mobile-business-name")).not.toHaveTextContent("Freelance barber workspace");
+    expect(screen.getByTestId("shell-mobile-business-name")).not.toHaveTextContent("Shop barber workspace");
+
+    rerender(
+      <DashboardShell user={owner} activeHref="/dashboard/owner" title="Home" subtitle="Testing owner header.">
+        <div>Workspace body</div>
+      </DashboardShell>
+    );
+
+    expect(screen.getByTestId("shell-mobile-business-name")).toHaveTextContent("Owner account");
+    expect(screen.getByTestId("shell-mobile-business-name")).not.toHaveTextContent("The BVRB3R™ Shop (University Mall)");
+    expect(screen.queryByTestId("shell-mobile-identity-name")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("shell-mobile-identity-role")).not.toBeInTheDocument();
   });
 
   it("routes persistent approval warnings into the Bell and More attention dots", () => {
@@ -180,6 +214,44 @@ describe("dashboard shell identity and navigation", () => {
     expect(screen.getByText("VERIFICATION")).toBeInTheDocument();
     expect(screen.getByText("warning")).toBeInTheDocument();
     expect(screen.getByText("This barber account is not publicly live yet.")).toBeInTheDocument();
+  });
+
+  it("routes supplied Stripe payout warnings into the Bell as yellow notifications", () => {
+    const user = resolveDemoUser("blaze@bvrb3r.demo");
+
+    render(
+      <DashboardShell
+        user={user}
+        activeHref="/dashboard/barber/more"
+        title="More"
+        subtitle="Testing barber notifications."
+        headerNotificationItems={[
+          {
+            id: "stripe-test-mode-payouts",
+            category: "PAYOUTS",
+            severity: "warning",
+            title: "Payout setup",
+            body: "Stripe is in test mode. Live payouts are not active yet.",
+            action: {
+              label: "View payout setup",
+              href: "/dashboard/barber/more#payouts"
+            }
+          }
+        ]}
+      >
+        <div>Workspace body</div>
+      </DashboardShell>
+    );
+
+    expect(screen.getByLabelText("1 unread notifications")).toHaveClass("bg-[#ffd166]");
+
+    fireEvent.click(screen.getByRole("button", { name: "Open notifications" }));
+
+    expect(screen.getByText("PAYOUTS")).toBeInTheDocument();
+    expect(screen.getByText("warning")).toBeInTheDocument();
+    expect(screen.getByText("Payout setup")).toBeInTheDocument();
+    expect(screen.getByText("Stripe is in test mode. Live payouts are not active yet.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View payout setup" })).toHaveAttribute("href", "/dashboard/barber/more#payouts");
   });
 
   it("locks client primary navigation to five tabs only", () => {
