@@ -34,7 +34,7 @@ import {
   type LucideIcon
 } from "lucide-react";
 import { BarberActivationGate } from "@/components/activation/tier1-activation-gates";
-import { AccountQuickEditModal } from "@/components/dashboard/account/account-quick-edit-modal";
+import { AccountQuickEditModal, type AccountQuickEditInput, type AccountQuickEditLocationOption } from "@/components/dashboard/account/account-quick-edit-modal";
 import {
   MoreActivationGate,
   MoreControlHub,
@@ -187,6 +187,28 @@ function formatBarberFacingLocationLabel(value: string) {
   }
 
   return trimmed;
+}
+
+function splitFullName(fullName: string) {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  return {
+    firstName: parts[0] ?? "",
+    lastName: parts.slice(1).join(" ") || parts[0] || ""
+  };
+}
+
+function toLocationOption(location?: { city?: string | null; state?: string | null } | null): AccountQuickEditLocationOption | null {
+  const city = location?.city?.trim();
+  const state = location?.state?.trim();
+  if (!city) {
+    return null;
+  }
+
+  return {
+    city,
+    state: state ?? "",
+    label: [city, state].filter(Boolean).join(", ")
+  };
 }
 
 function readableError(error: unknown, fallback: string) {
@@ -1021,6 +1043,9 @@ export function BarberSettingsScreen({
   );
   const barberIdentityShopLabel = hasAcceptedShopLink ? shopName : "Independent barber";
   const barberIdentityLocationLabel = activationSetup?.serviceLocationLabel ?? assignedLocationLabels;
+  const barberLocationOptions = [
+    toLocationOption(activationSetup?.bookingLocation)
+  ].filter((option): option is AccountQuickEditLocationOption => Boolean(option));
   const shopLinkRequired = selectedSubtype === "commission";
   const profileVisibilityState = mediaQuery.data?.barberProfile?.visibilityState ?? null;
   const isProfilePublic = profileVisibilityState === "public" || profileVisibilityState === "featured";
@@ -1204,6 +1229,44 @@ export function BarberSettingsScreen({
     if (tool === "reports") {
       setSalesTrendRange("today");
     }
+  }
+
+  async function handleAccountSave(input: AccountQuickEditInput) {
+    const { firstName, lastName } = splitFullName(input.fullName);
+    if (!firstName || !lastName) {
+      throw new Error("Enter a first and last name.");
+    }
+
+    if (!input.phone.trim()) {
+      throw new Error("Phone number is required for account contact updates.");
+    }
+
+    const response = await fetch("/api/auth/contact", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        firstName,
+        lastName,
+        phone: input.phone,
+        email: input.email || undefined
+      })
+    });
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    if (!response.ok) {
+      throw new Error(body.error ?? "Unable to save account contact details.");
+    }
+
+    setFeedback({ tone: "success", message: "Account details saved. Email or phone changes may still require verification." });
+  }
+
+  function handleAccountPaymentAction() {
+    setAccountEditorOpen(false);
+    window.setTimeout(() => {
+      const target = document.getElementById("barber-settings-payouts");
+      if (typeof target?.scrollIntoView === "function") {
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }, 0);
   }
 
   function closeBusinessTool() {
@@ -2788,14 +2851,18 @@ export function BarberSettingsScreen({
         open={accountEditorOpen}
         variant="barber"
         displayName={user.name}
+        fullName={user.canonicalFullName ?? user.name}
         email={user.email}
         phone={user.phone}
         cityLocation={barberIdentityLocationLabel}
         defaultPaymentMethodLabel="Managed through payout and checkout settings"
         managePaymentHref="/dashboard/barber/more#barber-settings-payouts"
+        locationOptions={barberLocationOptions}
         emailVerified={user.emailVerified}
         phoneVerified={user.phoneVerified}
         onClose={() => setAccountEditorOpen(false)}
+        onPaymentAction={handleAccountPaymentAction}
+        onSave={handleAccountSave}
       />
 
       {receiptTransactionId ? (

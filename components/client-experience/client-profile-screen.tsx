@@ -29,7 +29,7 @@ import { ClientActionLink } from "@/components/client-experience/client-action-l
 import { ClientPaymentMethodsPanel } from "@/components/client-experience/client-payment-methods-panel";
 import { ClientSectionBlock } from "@/components/client-experience/client-section-block";
 import { CLIENT_PRIMARY_TAB_HREFS } from "@/components/client-experience/client-tab-config";
-import { AccountQuickEditModal } from "@/components/dashboard/account/account-quick-edit-modal";
+import { AccountQuickEditModal, type AccountQuickEditInput, type AccountQuickEditLocationOption } from "@/components/dashboard/account/account-quick-edit-modal";
 import {
   MoreActivationGate,
   MoreControlHub,
@@ -165,6 +165,33 @@ function formatPreferredLocation(location?: { city?: string; state?: string; pos
   return [location.city, location.state, location.postalCode].map((part) => part?.trim()).filter(Boolean).join(", ");
 }
 
+function splitFullName(fullName: string) {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  return {
+    firstName: parts[0] ?? "",
+    lastName: parts.slice(1).join(" ") || parts[0] || ""
+  };
+}
+
+function parseCityStateLabel(label: string) {
+  const [city = "", state = ""] = label.split(",").map((part) => part.trim());
+  return { city, state };
+}
+
+function addLocationOption(
+  options: Map<string, AccountQuickEditLocationOption>,
+  location?: { city?: string | null; state?: string | null } | null
+) {
+  const city = location?.city?.trim();
+  const state = location?.state?.trim();
+  if (!city) {
+    return;
+  }
+
+  const label = [city, state].filter(Boolean).join(", ");
+  options.set(label.toLowerCase(), { label, city, state: state ?? "" });
+}
+
 export function ClientProfileScreen({
   payload,
   isSignedInClient,
@@ -197,6 +224,9 @@ export function ClientProfileScreen({
   const [locationFeedback, setLocationFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
   const [accountEditorOpen, setAccountEditorOpen] = useState(false);
+  const [savedAccountName, setSavedAccountName] = useState<string | null>(null);
+  const [savedAccountEmail, setSavedAccountEmail] = useState<string | null>(null);
+  const [savedAccountPhone, setSavedAccountPhone] = useState<string | null>(null);
   const [locationModalOpen, setLocationModalOpen] = useState(false);
   const [locationDraft, setLocationDraft] = useState(() => ({
     city: payload.client?.preferredLocation?.city ?? "",
@@ -218,9 +248,9 @@ export function ClientProfileScreen({
   const preferredShops = payload.preferredShops;
   const paymentMethods = payload.paymentMethods;
   const defaultPaymentMethod = getResolvedDefaultPaymentMethod(paymentMethods);
-  const clientName = client?.fullName ?? (isSignedInClient ? "Client" : "Client preview");
-  const clientEmail = client?.email?.trim() || authEmail?.trim() || "No email on file yet";
-  const clientPhone = client?.phone?.trim() || authPhone?.trim() || "";
+  const clientName = savedAccountName ?? client?.fullName ?? (isSignedInClient ? "Client" : "Client preview");
+  const clientEmail = (savedAccountEmail ?? client?.email?.trim()) || authEmail?.trim() || "No email on file yet";
+  const clientPhone = (savedAccountPhone ?? client?.phone?.trim()) || authPhone?.trim() || "";
   const clientPhotoUrl = mediaQuery.data?.viewer.profilePhotoUrl;
   const pointsBalance = pointsBalanceQuery.data ?? null;
   const pointsHistory = pointsHistoryQuery.data ?? null;
@@ -248,6 +278,13 @@ export function ClientProfileScreen({
   const rewardsPoints = pointsBalance?.unlockedPoints ?? 0;
   const favoriteCount = (favoriteBarber ? 1 : 0) + preferredShops.length;
   const bookingReady = Boolean(defaultPaymentMethod && (favoriteBarber || preferredShops.length || savedClientLocation));
+  const supportedLocationOptions = (() => {
+    const options = new Map<string, AccountQuickEditLocationOption>();
+    preferredShops.forEach((shop) => addLocationOption(options, shop));
+    favoriteBarber?.shopLocations?.forEach((location) => addLocationOption(options, location));
+    addLocationOption(options, savedClientLocation);
+    return [...options.values()].sort((left, right) => left.label.localeCompare(right.label));
+  })();
   const clientMoreSections: MoreSectionGroupConfig[] = [
     {
       title: "Compliance & Security",
@@ -477,6 +514,76 @@ export function ClientProfileScreen({
     } finally {
       setIsSavingLocation(false);
     }
+  }
+
+  async function handleAccountSave(input: AccountQuickEditInput) {
+    if (!isSignedInClient) {
+      throw new Error("Sign in before saving account details.");
+    }
+
+    const { city, state } = parseCityStateLabel(input.cityLocation);
+    const { firstName, lastName } = splitFullName(input.fullName);
+    if (!firstName || !lastName) {
+      throw new Error("Enter a first and last name.");
+    }
+
+    const contactResponse = await fetch("/api/auth/contact", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        firstName,
+        lastName,
+        phone: input.phone,
+        email: input.email || undefined
+      })
+    });
+    const contactBody = (await contactResponse.json().catch(() => ({}))) as { error?: string };
+    if (!contactResponse.ok) {
+      throw new Error(contactBody.error ?? "Unable to save account contact details.");
+    }
+
+    if (city) {
+      const locationResponse = await fetch("/api/client/location", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ city, state })
+      });
+      const locationBody = (await locationResponse.json().catch(() => ({}))) as {
+        error?: string;
+        location?: { city: string; state: string; postalCode?: string };
+        client?: { preferredLocation?: { city: string; state: string; postalCode?: string } | null };
+      };
+      if (!locationResponse.ok) {
+        throw new Error(locationBody.error ?? "Unable to save client location.");
+      }
+      const savedLocation = locationBody.location ?? locationBody.client?.preferredLocation ?? { city, state };
+      setSavedClientLocation(savedLocation);
+    }
+
+    if (input.defaultPaymentMethodId && input.defaultPaymentMethodId !== defaultPaymentMethod?.id) {
+      const paymentResponse = await fetch(`/api/payments/methods/${encodeURIComponent(input.defaultPaymentMethodId)}/default`, {
+        method: "POST"
+      });
+      const paymentBody = (await paymentResponse.json().catch(() => ({}))) as { error?: string };
+      if (!paymentResponse.ok) {
+        throw new Error(paymentBody.error ?? "Unable to set the default payment method.");
+      }
+    }
+
+    setSavedAccountName(input.fullName);
+    setSavedAccountEmail(input.email);
+    setSavedAccountPhone(input.phone);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["payments", "methods"] }),
+      queryClient.invalidateQueries({ queryKey: ["client-home"] }),
+      queryClient.invalidateQueries({ queryKey: ["client-bookings"] }),
+      queryClient.invalidateQueries({ queryKey: ["marketplace"] })
+    ]);
+  }
+
+  function handleAccountPaymentAction() {
+    setAccountEditorOpen(false);
+    window.setTimeout(() => scrollToSection("wallet"), 0);
   }
 
   return (
@@ -1150,14 +1257,25 @@ export function ClientProfileScreen({
         open={accountEditorOpen}
         variant="client"
         displayName={clientName}
+        fullName={clientName}
         email={clientEmail === "No email on file yet" ? "" : clientEmail}
         phone={clientPhone}
         cityLocation={savedClientLocationLabel || primaryShop?.city || ""}
         defaultPaymentMethodLabel={getPaymentMethodTitle(defaultPaymentMethod)}
+        paymentOptions={paymentMethods.map((method) => ({
+          id: method.id,
+          label: getPaymentMethodTitle(method),
+          isDefault: method.id === defaultPaymentMethod?.id
+        }))}
+        defaultPaymentMethodId={defaultPaymentMethod?.id ?? null}
         managePaymentHref="/dashboard/client/more?section=wallet"
+        locationOptions={supportedLocationOptions}
+        requireLocationOption={supportedLocationOptions.length > 0}
         emailVerified={emailVerified}
         phoneVerified={phoneVerified}
         onClose={() => setAccountEditorOpen(false)}
+        onPaymentAction={handleAccountPaymentAction}
+        onSave={handleAccountSave}
       />
 
       {locationModalOpen ? (

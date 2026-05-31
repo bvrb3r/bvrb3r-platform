@@ -34,7 +34,7 @@ describe("AccountQuickEditModal", () => {
     expect(screen.getByRole("dialog", { name: "Edit Account" })).toBeInTheDocument();
     expect(screen.getByText("Default payment method")).toBeInTheDocument();
     expect(screen.getByText("Visa ending in 4242")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Manage Payment Method" })).toHaveAttribute("href", "/dashboard/client/more?section=wallet");
+    expect(screen.getByRole("button", { name: "Manage Payment Method" })).toBeInTheDocument();
     expect(screen.queryByLabelText(/card number/i)).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Public display name"), { target: { value: "" } });
@@ -52,10 +52,46 @@ describe("AccountQuickEditModal", () => {
     await waitFor(() => {
       expect(onSave).toHaveBeenCalledWith({
         displayName: "Jordan",
+        fullName: "Jordan Ellis",
         email: "new@example.com",
         phone: "8135550202",
-        cityLocation: "Tampa, FL"
+        cityLocation: "Tampa, FL",
+        defaultPaymentMethodId: null
       });
+    });
+  });
+
+  it("restricts client location to supported market options and keeps save visible", async () => {
+    const onSave = vi.fn();
+
+    render(
+      <AccountQuickEditModal
+        open
+        variant="client"
+        displayName="Jordan Ellis"
+        email="jordan@example.com"
+        phone="8135550190"
+        cityLocation=""
+        defaultPaymentMethodLabel="Visa ending in 4242"
+        managePaymentHref="/dashboard/client/more?section=wallet"
+        locationOptions={[{ label: "Tampa, FL", city: "Tampa", state: "FL" }]}
+        requireLocationOption
+        onClose={vi.fn()}
+        onSave={onSave}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("City/location"), { target: { value: "Miami, FL" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("Choose a supported barber-market city from the list.")).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("City/location"), { target: { value: "Tam" } });
+    fireEvent.click(screen.getByRole("button", { name: "Tampa, FL" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ cityLocation: "Tampa, FL" }));
     });
   });
 
@@ -84,5 +120,28 @@ describe("AccountQuickEditModal", () => {
     fireEvent.click(screen.getByLabelText("Close account editor"));
     expect(onClose).toHaveBeenCalledTimes(2);
     expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("routes payout/payment actions through a close-aware callback", () => {
+    const onPaymentAction = vi.fn();
+
+    render(
+      <AccountQuickEditModal
+        open
+        variant="barber"
+        displayName="Blaze King"
+        email="blaze@example.com"
+        phone="8135550190"
+        cityLocation="Tampa, FL"
+        defaultPaymentMethodLabel="Managed through payout and checkout settings"
+        managePaymentHref="/dashboard/barber/more#barber-settings-payouts"
+        onClose={vi.fn()}
+        onPaymentAction={onPaymentAction}
+      />
+    );
+
+    expect(screen.getByText("Default payment method & Payout")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Click here" }));
+    expect(onPaymentAction).toHaveBeenCalledWith("/dashboard/barber/more#barber-settings-payouts");
   });
 });

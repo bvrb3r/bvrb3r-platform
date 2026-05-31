@@ -22,7 +22,7 @@ import {
   WalletCards
 } from "lucide-react";
 import { OwnerActivationGate } from "@/components/activation/tier1-activation-gates";
-import { AccountQuickEditModal } from "@/components/dashboard/account/account-quick-edit-modal";
+import { AccountQuickEditModal, type AccountQuickEditInput, type AccountQuickEditLocationOption } from "@/components/dashboard/account/account-quick-edit-modal";
 import {
   MoreActivationGate,
   MoreControlHub,
@@ -191,6 +191,28 @@ function statusClasses(tone: SettingTone = "muted") {
   }
 }
 
+function splitFullName(fullName: string) {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  return {
+    firstName: parts[0] ?? "",
+    lastName: parts.slice(1).join(" ") || parts[0] || ""
+  };
+}
+
+function toLocationOption(location?: { city?: string | null; state?: string | null } | null): AccountQuickEditLocationOption | null {
+  const city = location?.city?.trim();
+  const state = location?.state?.trim();
+  if (!city) {
+    return null;
+  }
+
+  return {
+    city,
+    state: state ?? "",
+    label: [city, state].filter(Boolean).join(", ")
+  };
+}
+
 export function OwnerSettingsWorkspace({
   user,
   initialSection
@@ -203,6 +225,9 @@ export function OwnerSettingsWorkspace({
   const fintechQuery = useFintechManagementQuery();
   const [quickSetupModal, setQuickSetupModal] = useState<OwnerQuickSetupModal>(null);
   const [accountEditorOpen, setAccountEditorOpen] = useState(false);
+  const [savedOwnerName, setSavedOwnerName] = useState<string | null>(null);
+  const [savedOwnerEmail, setSavedOwnerEmail] = useState<string | null>(null);
+  const [savedOwnerPhone, setSavedOwnerPhone] = useState<string | null>(null);
   const [quickSetupFeedback, setQuickSetupFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [shopProfileDraft, setShopProfileDraft] = useState({
     shopName: user.ownedShopName ?? "",
@@ -225,7 +250,12 @@ export function OwnerSettingsWorkspace({
 
   const shops = profileQuery.data?.shops ?? [];
   const primaryShop = shops[0] ?? null;
+  const ownerDisplayName = (savedOwnerName ?? user.name) || "Shop owner";
+  const ownerEmail = savedOwnerEmail ?? user.email;
+  const ownerPhone = savedOwnerPhone ?? user.phone;
   const primaryShopRecord = primaryShop as (typeof primaryShop & { shopUsername?: unknown }) | null;
+  const ownerLocationOptions = [toLocationOption(primaryShop), toLocationOption(shopProfileDraft)]
+    .filter((option): option is AccountQuickEditLocationOption => Boolean(option));
   const primaryShopUsername = typeof primaryShopRecord?.shopUsername === "string"
     ? primaryShopRecord.shopUsername
     : null;
@@ -317,6 +347,44 @@ export function OwnerSettingsWorkspace({
 
   function closeQuickSetupModal() {
     setQuickSetupModal(null);
+  }
+
+  async function handleAccountSave(input: AccountQuickEditInput) {
+    const { firstName, lastName } = splitFullName(input.fullName);
+    if (!firstName || !lastName) {
+      throw new Error("Enter a first and last name.");
+    }
+
+    if (!input.phone.trim()) {
+      throw new Error("Phone number is required for account contact updates.");
+    }
+
+    const response = await fetch("/api/auth/contact", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        firstName,
+        lastName,
+        phone: input.phone,
+        email: input.email || undefined
+      })
+    });
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    if (!response.ok) {
+      throw new Error(body.error ?? "Unable to save account contact details.");
+    }
+
+    setSavedOwnerName(input.fullName);
+    setSavedOwnerEmail(input.email);
+    setSavedOwnerPhone(input.phone);
+    setQuickSetupFeedback({ tone: "success", message: "Account details saved. Email or phone changes may still require verification." });
+  }
+
+  function handleAccountPaymentAction() {
+    setAccountEditorOpen(false);
+    window.setTimeout(() => {
+      window.location.assign("/dashboard/owner/money?view=fintech");
+    }, 0);
   }
 
   function toggleOwnerActivationDay(day: number) {
@@ -622,9 +690,9 @@ export function OwnerSettingsWorkspace({
       <MoreIdentityReadinessCard
         variant="owner"
         imageUrl={profileQuery.data?.viewer.profilePhotoUrl}
-        initials={getInitials(user.name)}
-        title={user.name || "Shop owner"}
-        subtitle={user.email ?? "Owner account"}
+        initials={getInitials(ownerDisplayName)}
+        title={ownerDisplayName}
+        subtitle={ownerEmail ?? "Owner account"}
         roleLabel="Shop owner account"
         badges={[
           { label: verificationLabel, tone: verificationTone },
@@ -807,15 +875,19 @@ export function OwnerSettingsWorkspace({
       <AccountQuickEditModal
         open={accountEditorOpen}
         variant="owner"
-        displayName={user.name || "Shop owner"}
-        email={user.email}
-        phone={user.phone}
+        displayName={ownerDisplayName}
+        fullName={user.canonicalFullName ?? ownerDisplayName}
+        email={ownerEmail}
+        phone={ownerPhone}
         cityLocation={[primaryShop?.city, primaryShop?.state].filter(Boolean).join(", ") || ""}
         defaultPaymentMethodLabel={stripeStatus.label === "Connected" ? "Owner payout setup connected" : "Payment setup managed in Money"}
         managePaymentHref="/dashboard/owner/money?view=fintech"
+        locationOptions={ownerLocationOptions}
         emailVerified={user.emailVerified}
         phoneVerified={user.phoneVerified}
         onClose={() => setAccountEditorOpen(false)}
+        onPaymentAction={handleAccountPaymentAction}
+        onSave={handleAccountSave}
       />
 
       {quickSetupModal ? (

@@ -157,7 +157,8 @@ describe("owner More workspace", () => {
     expect(screen.getByLabelText("Public display name")).toBeInTheDocument();
     expect(screen.getByLabelText("Email")).toBeInTheDocument();
     expect(screen.getByLabelText("Phone number")).toBeInTheDocument();
-    expect(screen.getByText("Default payment method")).toBeInTheDocument();
+    expect(screen.getByText("Default payment method & Payout")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Click here" })).toBeInTheDocument();
     expect(screen.getByLabelText("City/location")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.getByTestId("owner-public-shop-profile-card")).toBeInTheDocument();

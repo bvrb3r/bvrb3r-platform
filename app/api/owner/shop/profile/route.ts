@@ -24,6 +24,8 @@ const shopProfileSchema = z.object({
   shopUsername: z.string().trim().min(2).max(80).regex(/^[a-zA-Z0-9._-]+$/).optional().nullable()
 });
 
+const ownerShopSelect = "id, name, brand_line, public_bio, cover_photo_url, public_hours, policies, shop_username, neighborhood, city, state, phone, address, profile_photo_path, profile_photo_url, owner_profile_id, app_approval_status";
+
 function isOwnerScoped(user: UserAccount) {
   return user.role === "shop_owner_user" || user.role === "owner" || user.role === "manager";
 }
@@ -75,6 +77,82 @@ function updateDemoShopProfile(user: UserAccount, input: z.infer<typeof shopProf
   return shop ? { shop } : null;
 }
 
+async function getOwnerProfileIds(supabase: NonNullable<ReturnType<typeof createSupabaseAdminClient>>, user: UserAccount) {
+  const ids = new Set<string>([user.id]);
+  if (user.email) {
+    const profileResult = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("email", user.email)
+      .limit(1)
+      .maybeSingle();
+
+    if (!profileResult.error && profileResult.data?.id) {
+      ids.add(String((profileResult.data as { id: string }).id));
+    }
+  }
+
+  return [...ids];
+}
+
+async function readOwnerScopedShop(
+  supabase: NonNullable<ReturnType<typeof createSupabaseAdminClient>>,
+  user: UserAccount,
+  requestedShopId?: string | null
+) {
+  if (requestedShopId) {
+    const ownerIds = await getOwnerProfileIds(supabase, user);
+    const scopedRequestedQuery = supabase
+      .from("shops")
+      .select(ownerShopSelect)
+      .eq("id", requestedShopId)
+      .limit(1);
+    const scopedRequested = ownerIds.length === 1
+      ? await scopedRequestedQuery.eq("owner_profile_id", ownerIds[0]).maybeSingle()
+      : await scopedRequestedQuery.in("owner_profile_id", ownerIds).maybeSingle();
+
+    if (scopedRequested.error || scopedRequested.data) {
+      return scopedRequested;
+    }
+
+    if (user.ownedShopId === requestedShopId) {
+      return supabase
+        .from("shops")
+        .select(ownerShopSelect)
+        .eq("id", requestedShopId)
+        .limit(1)
+        .maybeSingle();
+    }
+
+    return { data: null, error: null };
+  }
+
+  const ownerIds = await getOwnerProfileIds(supabase, user);
+  const ownerQuery = supabase
+    .from("shops")
+    .select(ownerShopSelect)
+    .order("updated_at", { ascending: false })
+    .limit(1);
+  const byOwner = ownerIds.length === 1
+    ? await ownerQuery.eq("owner_profile_id", ownerIds[0]).maybeSingle()
+    : await ownerQuery.in("owner_profile_id", ownerIds).maybeSingle();
+
+  if (byOwner.error || byOwner.data) {
+    return byOwner;
+  }
+
+  if (user.ownedShopId) {
+    return supabase
+      .from("shops")
+      .select(ownerShopSelect)
+      .eq("id", user.ownedShopId)
+      .limit(1)
+      .maybeSingle();
+  }
+
+  return byOwner;
+}
+
 export async function PATCH(request: Request) {
   try {
     const parsed = shopProfileSchema.safeParse(await request.json().catch(() => null));
@@ -100,20 +178,7 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "Supabase is not configured for owner shop profile updates." }, { status: 503 });
     }
 
-    const shopQuery = supabase
-      .from("shops")
-      .select("id, name, brand_line, public_bio, cover_photo_url, public_hours, policies, shop_username, neighborhood, city, state, phone, address, profile_photo_path, profile_photo_url, owner_profile_id, app_approval_status")
-      .eq("owner_profile_id", user.id)
-      .order("updated_at", { ascending: false })
-      .limit(1);
-    const scopedShopResult = parsed.data.shopId
-      ? await supabase
-          .from("shops")
-          .select("id, name, brand_line, public_bio, cover_photo_url, public_hours, policies, shop_username, neighborhood, city, state, phone, address, profile_photo_path, profile_photo_url, owner_profile_id, app_approval_status")
-          .eq("id", parsed.data.shopId)
-          .eq("owner_profile_id", user.id)
-          .maybeSingle()
-      : await shopQuery.maybeSingle();
+    const scopedShopResult = await readOwnerScopedShop(supabase, user, parsed.data.shopId);
 
     if (scopedShopResult.error) {
       throw scopedShopResult.error;
@@ -145,8 +210,7 @@ export async function PATCH(request: Request) {
       .from("shops")
       .update(patch)
       .eq("id", shop.id)
-      .eq("owner_profile_id", user.id)
-      .select("id, name, brand_line, public_bio, cover_photo_url, public_hours, policies, shop_username, neighborhood, city, state, phone, address, profile_photo_path, profile_photo_url, app_approval_status")
+      .select(ownerShopSelect)
       .single();
 
     if (updateResult.error) {
@@ -184,13 +248,7 @@ export async function GET() {
       return NextResponse.json({ error: "Supabase is not configured for owner shop profile reads." }, { status: 503 });
     }
 
-    const result = await supabase
-      .from("shops")
-      .select("id, name, brand_line, public_bio, cover_photo_url, public_hours, policies, shop_username, neighborhood, city, state, phone, address, profile_photo_path, profile_photo_url, owner_profile_id, app_approval_status")
-      .eq("owner_profile_id", user.id)
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const result = await readOwnerScopedShop(supabase, user);
 
     if (result.error) {
       throw result.error;

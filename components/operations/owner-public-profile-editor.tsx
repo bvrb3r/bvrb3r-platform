@@ -49,6 +49,10 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
   const [draft, setDraft] = useState<ShopPublicProfileDraft>(emptyDraft);
   const [feedback, setFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const shop = profileQuery.data?.shop ?? null;
+  const loadErrorStatus = profileQuery.error && typeof profileQuery.error === "object" && "status" in profileQuery.error
+    ? Number((profileQuery.error as { status?: number }).status)
+    : null;
+  const showSetupState = !shop && (profileQuery.isLoading || loadErrorStatus === 404 || !profileQuery.error);
   const shopName = draft.name || shop?.name || user.ownedShopName || "Finish shop profile";
   const shopHandle = draft.shopUsername || shop?.shop_username || "";
   const publicShopHref = shop?.id ? `/shop/${encodeURIComponent(shop.id)}` : null;
@@ -136,7 +140,13 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
       </div>
 
       {feedback ? <FeedbackBanner tone={feedback.tone} message={feedback.message} /> : null}
-      {profileQuery.error ? <FeedbackBanner tone="error" message="Unable to load shop profile. Try again from Owner Home or More." /> : null}
+      {profileQuery.error && loadErrorStatus !== 404 ? <FeedbackBanner tone="error" message="Unable to load shop profile. Try again from Owner Home or More." /> : null}
+      {showSetupState ? (
+        <FeedbackBanner
+          tone="info"
+          message="Finish shop profile. Set your shop name, handle, address, photos, hours, and policies."
+        />
+      ) : null}
 
       <GlassCard active className="overflow-hidden p-0">
         <div
