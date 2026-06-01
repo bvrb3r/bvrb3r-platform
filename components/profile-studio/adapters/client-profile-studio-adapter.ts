@@ -1,17 +1,25 @@
 import type { ProfileStudioViewModel } from "@/components/profile-studio/profile-studio-shell";
 import type { UserAccount } from "@/types/domain";
+import type { ManagedMediaAsset } from "@/lib/profile/service";
 
 function suggestHandle(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "").slice(0, 32);
 }
 
-export function buildClientProfileStudioViewModel(user: UserAccount): ProfileStudioViewModel {
+export function buildClientProfileStudioViewModel(
+  user: UserAccount,
+  media?: {
+    profilePhotoUrl?: string | null;
+    gallery?: ManagedMediaAsset[];
+  } | null
+): ProfileStudioViewModel {
   const displayName = user.canonicalFullName ?? user.name ?? "Client";
   const handle = suggestHandle(displayName) || "client";
   const userWithLocation = user as UserAccount & { city?: string | null; state?: string | null };
   const city = typeof userWithLocation.city === "string" ? userWithLocation.city : "";
   const state = typeof userWithLocation.state === "string" ? userWithLocation.state : "";
   const location = [city, state].filter(Boolean).join(", ");
+  const posts = media?.gallery ?? [];
 
   return {
     role: "client",
@@ -27,6 +35,7 @@ export function buildClientProfileStudioViewModel(user: UserAccount): ProfileStu
       publicName: displayName,
       username: handle,
       publicUrl: `/client/${handle}`,
+      avatarUrl: media?.profilePhotoUrl ?? null,
       badge: "Culture profile",
       bio: "",
       contextLine: location || "Culture and social identity",
@@ -50,12 +59,12 @@ export function buildClientProfileStudioViewModel(user: UserAccount): ProfileStu
       saveUnavailableReason: "Client username saving is coming soon."
     },
     stats: [
-      { label: "Posts", value: 0 },
+      { label: "Posts", value: posts.length },
       { label: "Followers", value: 0 },
       { label: "Following", value: 0 }
     ],
     trustCards: [
-      { title: "Posts", value: "0 Posts", helper: "Shared in Culture", status: "neutral" },
+      { title: "Posts", value: `${posts.length} Posts`, helper: "Shared in Culture", status: posts.length ? "good" : "neutral" },
       { title: "Followers", value: "0 Followers", helper: "Followers appear as people connect with your Culture profile.", status: "neutral" },
       { title: "Member status", value: "Active", helper: "BVRB3R Culture member", status: "good" }
     ],
@@ -69,10 +78,15 @@ export function buildClientProfileStudioViewModel(user: UserAccount): ProfileStu
     ],
     work: {
       title: "Your posts",
-      countLabel: "0 posts",
+      countLabel: `${posts.length} post${posts.length === 1 ? "" : "s"}`,
       addLabel: "Add post",
       emptyCopy: "No Culture posts yet. Add real media when Culture publishing is connected.",
-      items: []
+      items: posts.map((asset) => ({
+        id: asset.id,
+        imageUrl: asset.imageUrl,
+        alt: asset.caption || `${displayName} Culture post`,
+        caption: asset.caption
+      }))
     }
   };
 }

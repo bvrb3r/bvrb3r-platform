@@ -107,6 +107,7 @@ type ProfileStudioShellProps = {
   photoControl?: ReactNode;
   onPreview?: () => void;
   onMedia?: () => void;
+  onAddMedia?: () => void;
   onShare?: () => void;
   onContextEdit?: () => void;
   onDeleteMedia?: (id: string) => void;
@@ -142,6 +143,7 @@ export function ProfileStudioShell({
   photoControl,
   onPreview,
   onMedia,
+  onAddMedia,
   onShare,
   onContextEdit,
   onDeleteMedia,
@@ -162,7 +164,23 @@ export function ProfileStudioShell({
     }
   }, [isUsernameModalOpen, usernameValue]);
 
-  function handleMediaAction() {
+  function handleRoleMediaAction() {
+    if (onMedia) {
+      onMedia();
+      return;
+    }
+    if (onAddMedia) {
+      onAddMedia();
+      return;
+    }
+    workSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function handleAddMediaAction() {
+    if (onAddMedia) {
+      onAddMedia();
+      return;
+    }
     if (onMedia) {
       onMedia();
       return;
@@ -278,7 +296,7 @@ export function ProfileStudioShell({
                 <Eye className="h-4 w-4" aria-hidden="true" />
                 {model.actions.publicPreviewLabel}
               </button>
-              <button type="button" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] border border-white/10 bg-white/[0.035] px-4 text-sm font-extrabold text-white/74 transition hover:border-[#a3ff12]/30 hover:text-white" onClick={handleMediaAction}>
+              <button type="button" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] border border-white/10 bg-white/[0.035] px-4 text-sm font-extrabold text-white/74 transition hover:border-[#a3ff12]/30 hover:text-white" onClick={handleRoleMediaAction}>
                 <ImagePlus className="h-4 w-4 text-[#a3ff12]" aria-hidden="true" />
                 {model.actions.mediaLabel}
               </button>
@@ -329,7 +347,7 @@ export function ProfileStudioShell({
       <section className="overflow-hidden" aria-label="Profile highlights">
         <div className="hide-scrollbar flex gap-5 overflow-x-auto pb-2">
           {model.highlights.map((highlight) => (
-            <button key={`${highlight.type}-${highlight.label}`} type="button" className="flex w-[112px] shrink-0 flex-col items-center" onClick={highlight.type === "new" ? handleMediaAction : undefined}>
+            <button key={`${highlight.type}-${highlight.label}`} type="button" className="flex w-[112px] shrink-0 flex-col items-center" onClick={highlight.type === "new" ? handleAddMediaAction : undefined}>
               {highlight.imageUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={highlight.imageUrl} alt={highlight.label} className="h-[112px] w-[112px] rounded-full border-[3px] border-white/20 object-cover" />
@@ -350,7 +368,7 @@ export function ProfileStudioShell({
             <h3 className="text-2xl font-black tracking-[-0.03em] text-white">{model.work.title}</h3>
             <p className="mt-1 text-lg font-medium text-white/60">{model.work.countLabel}</p>
           </div>
-          <button type="button" aria-label={mediaButtonLabel} className="inline-flex min-h-11 items-center gap-2 rounded-[8px] border border-[#a3ff12]/25 bg-[#a3ff12]/10 px-4 text-sm font-black text-[#a3ff12] transition hover:bg-[#a3ff12]/16" onClick={handleMediaAction}>
+          <button type="button" aria-label={mediaButtonLabel} className="inline-flex min-h-11 items-center gap-2 rounded-[8px] border border-[#a3ff12]/25 bg-[#a3ff12]/10 px-4 text-sm font-black text-[#a3ff12] transition hover:bg-[#a3ff12]/16" onClick={handleAddMediaAction}>
             <Plus className="h-5 w-5" />
             {mediaButtonLabel}
           </button>
@@ -359,7 +377,7 @@ export function ProfileStudioShell({
         <div className="grid grid-cols-3 gap-1.5">
           {model.work.items.length ? model.work.items.slice(0, 9).map((item) => (
             <div key={item.id} className="group relative aspect-square overflow-hidden rounded-[12px] border border-white/10 bg-black/25">
-              <button type="button" className="h-full w-full" onClick={handleMediaAction}>
+              <button type="button" className="h-full w-full" onClick={handleAddMediaAction}>
               {item.imageUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={item.imageUrl} alt={item.alt} className="h-full w-full object-cover transition duration-200 group-hover:scale-[1.03]" />

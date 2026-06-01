@@ -12,8 +12,28 @@ import { uploadMediaAsset } from "@/lib/storage/media";
 import { useBarberTrustSummary } from "@/lib/trust/client";
 import type { UserAccount } from "@/types/domain";
 
+type PickerInput = HTMLInputElement & { showPicker?: () => void };
+
 function suggestPublicUsername(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "").slice(0, 32);
+}
+
+function openFilePicker(input: HTMLInputElement | null) {
+  const picker = input as PickerInput | null;
+  if (!picker) {
+    return;
+  }
+
+  if (typeof picker.showPicker === "function") {
+    try {
+      picker.showPicker();
+      return;
+    } catch {
+      // Browser-gated showPicker can still fail; click() is the standard fallback.
+    }
+  }
+
+  picker.click();
 }
 
 function isFallbackPublicUsername(username?: string | null, barberId?: string | null) {
@@ -61,6 +81,7 @@ export function BarberProfileScreen({
   const barberId = user.barberId;
   const barberName = user.name;
   const studioRef = useRef<HTMLDivElement | null>(null);
+  const mediaInputRef = useRef<HTMLInputElement | null>(null);
   const profileQuery = useBarberProfileQuery(barberId);
   const mediaQuery = useProfileMediaWorkspaceQuery(true);
   const mediaMutation = useMutateProfileMediaMutation();
@@ -73,6 +94,15 @@ export function BarberProfileScreen({
   const verificationDecision = trustQuery.data?.verificationDecision;
   const profilePhotoUrl = profile?.profile.profilePhotoUrl ?? barberMedia?.profilePhotoUrl;
   const portfolioAssets = useMemo(() => {
+    if (barberMedia?.gallery.length) {
+      return barberMedia.gallery.map((asset) => ({
+        id: asset.id,
+        imageUrl: asset.imageUrl,
+        caption: asset.caption,
+        featured: asset.featured
+      }));
+    }
+
     if (profile?.portfolio.length) {
       return profile.portfolio.map((asset) => ({
         id: asset.id,
@@ -82,12 +112,7 @@ export function BarberProfileScreen({
       }));
     }
 
-    return (barberMedia?.gallery ?? []).map((asset) => ({
-      id: asset.id,
-      imageUrl: asset.imageUrl,
-      caption: asset.caption,
-      featured: asset.featured
-    }));
+    return [];
   }, [barberMedia?.gallery, profile?.portfolio]);
   const reviewScore = profile?.proof?.reviewScore ?? profile?.barber.rating;
   const reviewCount = profile?.proof?.reviewCount ?? profile?.reviews.length ?? profile?.barber.reviewCount;
@@ -143,12 +168,59 @@ export function BarberProfileScreen({
       return;
     }
 
-    const uploaded = await uploadWithPath(`profiles/barbers/${barberMedia.barberId}/profile`, file);
-    await mediaMutation.mutateAsync({
-      action: "set_barber_photo",
-      storagePath: uploaded.path,
-      imageUrl: uploaded.publicUrl
-    });
+    try {
+      const uploaded = await uploadWithPath(`profiles/barbers/${barberMedia.barberId}/profile`, file);
+      await mediaMutation.mutateAsync({
+        action: "set_barber_photo",
+        storagePath: uploaded.path,
+        imageUrl: uploaded.publicUrl
+      });
+      await profileQuery.refetch();
+      setLocalFeedback({ tone: "info", message: "Barber profile photo updated." });
+    } catch (error) {
+      setLocalFeedback({ tone: "error", message: readableError(error, "Unable to update barber profile photo.") });
+    }
+  }
+
+  async function handleBarberGalleryUpload(file: File) {
+    if (!barberMedia) {
+      setLocalFeedback({ tone: "error", message: "Media workspace is not ready for this barber profile yet." });
+      return;
+    }
+
+    const error = validateImageFile(file);
+    if (error) {
+      setLocalFeedback({ tone: "error", message: error });
+      return;
+    }
+
+    setLocalFeedback(null);
+    try {
+      const uploaded = await uploadWithPath(`profiles/barbers/${barberMedia.barberId}/gallery`, file);
+      await mediaMutation.mutateAsync({
+        action: "add_barber_gallery_image",
+        storagePath: uploaded.path,
+        imageUrl: uploaded.publicUrl
+      });
+      await profileQuery.refetch();
+      setLocalFeedback({ tone: "info", message: "Portfolio image added." });
+    } catch (errorValue) {
+      setLocalFeedback({ tone: "error", message: readableError(errorValue, "Unable to add portfolio image.") });
+    }
+  }
+
+  async function handleBarberGalleryRemove(assetId: string) {
+    setLocalFeedback(null);
+    try {
+      await mediaMutation.mutateAsync({
+        action: "remove_barber_gallery_image",
+        assetId
+      });
+      await profileQuery.refetch();
+      setLocalFeedback({ tone: "info", message: "Portfolio image removed." });
+    } catch (error) {
+      setLocalFeedback({ tone: "error", message: readableError(error, "Unable to remove image.") });
+    }
   }
 
   function scrollToStudio() {
@@ -213,6 +285,21 @@ export function BarberProfileScreen({
     <div ref={studioRef} className="space-y-6" data-testid="barber-profile-screen">
       {status ? <FeedbackBanner tone={status.tone} message={status.message} /> : null}
       {profileQuery.error ? <FeedbackBanner tone="error" message={readableError(profileQuery.error, "Unable to load the public barber profile preview right now.")} /> : null}
+      <input
+        ref={mediaInputRef}
+        aria-label="Add portfolio image upload input"
+        type="file"
+        accept="image/*"
+        className="sr-only"
+        tabIndex={-1}
+        onChange={async (event) => {
+          const file = event.target.files?.[0] ?? null;
+          event.currentTarget.value = "";
+          if (file) {
+            await handleBarberGalleryUpload(file);
+          }
+        }}
+      />
 
       <ProfileStudioShell
         model={{
@@ -243,9 +330,12 @@ export function BarberProfileScreen({
         }}
         onContextEdit={() => setLocalFeedback({ tone: "info", message: "Chair and location display editing is coming soon." })}
         onShare={() => void handleShareProfile()}
+        onMedia={() => openFilePicker(mediaInputRef.current)}
+        onAddMedia={() => openFilePicker(mediaInputRef.current)}
+        onDeleteMedia={(assetId) => void handleBarberGalleryRemove(assetId)}
         photoControl={(
           <ProfileImageEditButton
-            label="Update public photo"
+            label="Update public barber photo"
             disabled={mediaMutation.isPending}
             onFileSelected={async (file) => {
               const error = validateImageFile(file);

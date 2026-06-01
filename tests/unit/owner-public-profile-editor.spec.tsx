@@ -1,11 +1,19 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { OwnerPublicProfileEditor } from "@/components/operations/owner-public-profile-editor";
 import type { UserAccount } from "@/types/domain";
 
-const { useOwnerShopProfileQueryMock } = vi.hoisted(() => ({
-  useOwnerShopProfileQueryMock: vi.fn()
+const {
+  useOwnerShopProfileQueryMock,
+  useProfileMediaWorkspaceQueryMock,
+  useMutateProfileMediaMutationMock,
+  uploadMediaAssetMock
+} = vi.hoisted(() => ({
+  useOwnerShopProfileQueryMock: vi.fn(),
+  useProfileMediaWorkspaceQueryMock: vi.fn(),
+  useMutateProfileMediaMutationMock: vi.fn(),
+  uploadMediaAssetMock: vi.fn()
 }));
 
 vi.mock("next/link", () => ({
@@ -16,6 +24,15 @@ vi.mock("next/link", () => ({
 
 vi.mock("@/lib/operations/barber-client", () => ({
   useOwnerShopProfileQuery: useOwnerShopProfileQueryMock
+}));
+
+vi.mock("@/lib/profile/client", () => ({
+  useProfileMediaWorkspaceQuery: useProfileMediaWorkspaceQueryMock,
+  useMutateProfileMediaMutation: useMutateProfileMediaMutationMock
+}));
+
+vi.mock("@/lib/storage/media", () => ({
+  uploadMediaAsset: uploadMediaAssetMock
 }));
 
 describe("OwnerPublicProfileEditor", () => {
@@ -32,6 +49,29 @@ describe("OwnerPublicProfileEditor", () => {
 
   beforeEach(() => {
     useOwnerShopProfileQueryMock.mockReset();
+    useProfileMediaWorkspaceQueryMock.mockReset();
+    useMutateProfileMediaMutationMock.mockReset();
+    uploadMediaAssetMock.mockReset();
+    useProfileMediaWorkspaceQueryMock.mockReturnValue({
+      data: {
+        viewer: {
+          role: "shop_owner_user",
+          email: user.email,
+          notificationPreference: null
+        },
+        clientProfile: null,
+        barberProfile: null,
+        shops: []
+      }
+    });
+    useMutateProfileMediaMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: vi.fn().mockResolvedValue({})
+    });
+    uploadMediaAssetMock.mockResolvedValue({
+      path: "profiles/shops/shop-bvrb3r/gallery/shop.jpg",
+      publicUrl: "https://cdn.example.com/shop.jpg"
+    });
   });
 
   it("shows setup copy instead of a load error when the owner shop profile is incomplete", () => {
@@ -79,8 +119,6 @@ describe("OwnerPublicProfileEditor", () => {
     expect(screen.queryByText("Public shop username")).not.toBeInTheDocument();
     expect(screen.getByText("@bvrb3rshop")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Update shop logo" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Update shop logo" }));
-    expect(screen.getByText("Shop logo upload is coming soon.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Edit public shop username" }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByText("This is how clients find and share your shop profile.")).toBeInTheDocument();
@@ -99,5 +137,108 @@ describe("OwnerPublicProfileEditor", () => {
     expect(screen.queryByText(/barber portfolio/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/private owner/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/payout/i)).not.toBeInTheDocument();
+  });
+
+  it("uploads shop gallery media through the owner media mutation", async () => {
+    const mutateAsync = vi.fn().mockResolvedValue({});
+    useMutateProfileMediaMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync
+    });
+    useOwnerShopProfileQueryMock.mockReturnValue({
+      data: {
+        shop: {
+          id: "shop-bvrb3r",
+          name: "The BVRB3R Shop",
+          shop_username: "bvrb3rshop",
+          brand_line: "Campus cuts.",
+          public_bio: "Public shop bio.",
+          city: "Tampa",
+          state: "FL",
+          address: "2200 E Fowler Ave"
+        }
+      },
+      error: null,
+      isLoading: false,
+      refetch: vi.fn()
+    });
+
+    render(<OwnerPublicProfileEditor user={user} />);
+
+    const file = new File(["shop"], "shop.jpg", { type: "image/jpeg" });
+    fireEvent.change(screen.getByLabelText("Add shop image upload input"), { target: { files: [file] } });
+
+    await waitFor(() => expect(uploadMediaAssetMock).toHaveBeenCalledWith(expect.stringContaining("profiles/shops/shop-bvrb3r/gallery"), file));
+    expect(mutateAsync).toHaveBeenCalledWith({
+      action: "add_shop_gallery_image",
+      shopId: "shop-bvrb3r",
+      storagePath: "profiles/shops/shop-bvrb3r/gallery/shop.jpg",
+      imageUrl: "https://cdn.example.com/shop.jpg"
+    });
+    expect(await screen.findByText("Shop image added.")).toBeInTheDocument();
+  });
+
+  it("removes shop gallery media through the owner media mutation", async () => {
+    const mutateAsync = vi.fn().mockResolvedValue({});
+    useMutateProfileMediaMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync
+    });
+    useProfileMediaWorkspaceQueryMock.mockReturnValue({
+      data: {
+        viewer: {
+          role: "shop_owner_user",
+          email: user.email,
+          notificationPreference: null
+        },
+        clientProfile: null,
+        barberProfile: null,
+        shops: [
+          {
+            shopId: "shop-bvrb3r",
+            label: "The BVRB3R Shop",
+            profilePhotoUrl: null,
+            gallery: [
+              {
+                id: "shop-image-1",
+                imageUrl: "https://cdn.example.com/shop-1.jpg",
+                storagePath: "profiles/shops/shop-bvrb3r/gallery/shop-1.jpg",
+                caption: "Shop floor",
+                featured: false,
+                createdAt: new Date().toISOString()
+              }
+            ]
+          }
+        ]
+      }
+    });
+    useOwnerShopProfileQueryMock.mockReturnValue({
+      data: {
+        shop: {
+          id: "shop-bvrb3r",
+          name: "The BVRB3R Shop",
+          shop_username: "bvrb3rshop",
+          brand_line: "Campus cuts.",
+          public_bio: "Public shop bio.",
+          city: "Tampa",
+          state: "FL",
+          address: "2200 E Fowler Ave"
+        }
+      },
+      error: null,
+      isLoading: false,
+      refetch: vi.fn()
+    });
+
+    render(<OwnerPublicProfileEditor user={user} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove Shop floor" }));
+
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith({
+      action: "remove_shop_gallery_image",
+      shopId: "shop-bvrb3r",
+      assetId: "shop-image-1"
+    }));
+    expect(await screen.findByText("Shop image removed.")).toBeInTheDocument();
   });
 });

@@ -19,6 +19,17 @@ const mutationSchema = z.discriminatedUnion("action", [
     action: z.literal("remove_viewer_photo")
   }),
   z.object({
+    action: z.literal("add_client_gallery_image"),
+    storagePath: z.string().trim().min(1),
+    imageUrl: z.string().trim().min(1),
+    caption: z.string().trim().max(140).optional(),
+    featured: z.boolean().optional()
+  }),
+  z.object({
+    action: z.literal("remove_client_gallery_image"),
+    assetId: z.string().trim().min(1)
+  }),
+  z.object({
     action: z.literal("set_barber_photo"),
     storagePath: z.string().trim().min(1),
     imageUrl: z.string().trim().min(1)

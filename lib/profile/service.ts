@@ -1,5 +1,5 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { isBarberAccountRole } from "@/lib/auth/roles";
+import { isBarberAccountRole, isClientRole, isShopOwnerRole } from "@/lib/auth/roles";
 import { isSupabaseEnabled, runtimeConfig } from "@/lib/config/runtime";
 import { demoLocations } from "@/lib/data/demo";
 import { getEngagementState, setEngagementState } from "@/lib/engagement/state";
@@ -62,6 +62,14 @@ type ShopGalleryRow = {
   created_at: string;
 };
 
+type ClientProfileMediaRow = {
+  id: string;
+  owner_profile_id: string | null;
+  asset_type: string;
+  storage_path: string;
+  created_at: string;
+};
+
 type ShopIdRow = {
   id: string;
 };
@@ -103,6 +111,11 @@ export type ProfileMediaWorkspacePayload = {
       pushEnabled: boolean;
     } | null;
   };
+  clientProfile: {
+    profilePhotoUrl?: string;
+    profilePhotoPath?: string;
+    gallery: ManagedMediaAsset[];
+  } | null;
   barberProfile: {
     barberId: string;
     profilePhotoUrl?: string;
@@ -121,6 +134,7 @@ type DemoProfilePhoto = {
 
 type DemoProfileMediaState = {
   viewerPhotosByEmail: Record<string, DemoProfilePhoto>;
+  clientGalleryByEmail: Record<string, ManagedMediaAsset[]>;
 };
 
 type SetPhotoInput = {
@@ -136,7 +150,7 @@ type RemovePhotoInput = {
 };
 
 type AddGalleryImageInput = {
-  action: "add_barber_gallery_image" | "add_shop_gallery_image";
+  action: "add_client_gallery_image" | "add_barber_gallery_image" | "add_shop_gallery_image";
   storagePath: string;
   imageUrl: string;
   caption?: string;
@@ -145,7 +159,7 @@ type AddGalleryImageInput = {
 };
 
 type RemoveGalleryImageInput = {
-  action: "remove_barber_gallery_image" | "remove_shop_gallery_image";
+  action: "remove_client_gallery_image" | "remove_barber_gallery_image" | "remove_shop_gallery_image";
   assetId: string;
   shopId?: string;
 };
@@ -190,7 +204,8 @@ function getSupabase() {
 function getDemoProfileMediaState() {
   if (!globalThis.__bvrb3rProfileMediaState) {
     globalThis.__bvrb3rProfileMediaState = {
-      viewerPhotosByEmail: {}
+      viewerPhotosByEmail: {},
+      clientGalleryByEmail: {}
     };
   }
 
@@ -259,6 +274,27 @@ function mapShopGalleryAsset(row: ShopGalleryRow | ShopMediaAsset | ManagedMedia
   };
 }
 
+function mapClientGalleryAsset(client: SupabaseClient | null, row: ClientProfileMediaRow | ManagedMediaAsset): ManagedMediaAsset {
+  if ("imageUrl" in row) {
+    return row;
+  }
+
+  return {
+    id: row.id,
+    imageUrl: toPublicMediaUrl(client, row.storage_path) ?? row.storage_path,
+    storagePath: row.storage_path,
+    caption: "",
+    featured: false,
+    createdAt: row.created_at
+  };
+}
+
+function assertClientRole(user: UserAccount) {
+  if (!isClientRole(user.role)) {
+    throw new ProfileMediaServiceError("Only clients can manage Culture profile media.", 403);
+  }
+}
+
 function assertBarberRole(user: UserAccount) {
   if (!isBarberAccountRole(user.role) || !user.barberId) {
     throw new ProfileMediaServiceError("Only barbers can manage barber profile media.", 403);
@@ -268,7 +304,7 @@ function assertBarberRole(user: UserAccount) {
 }
 
 function assertShopRole(user: UserAccount, managedShopIds: string[], shopId?: string) {
-  if (!(user.role === "owner" || user.role === "manager" || user.role === "front_desk")) {
+  if (!(isShopOwnerRole(user.role) || user.role === "manager" || user.role === "front_desk")) {
     throw new ProfileMediaServiceError("Only shop-facing roles can manage shop media.", 403);
   }
 
@@ -282,7 +318,7 @@ function assertShopRole(user: UserAccount, managedShopIds: string[], shopId?: st
 function listDemoManagedShopIds(user: UserAccount) {
   const state = getMarketplaceState();
   const directShopIds = state.shops
-    .filter((shop) => user.role === "owner" || shop.locationIds.some((locationId) => user.locationIds.includes(locationId)))
+    .filter((shop) => isShopOwnerRole(user.role) || shop.locationIds.some((locationId) => user.locationIds.includes(locationId)))
     .map((shop) => shop.id);
 
   if (directShopIds.length) {
@@ -293,16 +329,27 @@ function listDemoManagedShopIds(user: UserAccount) {
 }
 
 async function listSupabaseManagedShopIds(user: UserAccount, supabase: SupabaseClient) {
+  if (isShopOwnerRole(user.role)) {
+    const profile = await resolveProfileRow(user, supabase);
+    const ownedShopsResult = await supabase
+      .from("shops")
+      .select("id")
+      .eq("owner_profile_id", profile.id)
+      .order("id");
+
+    if (ownedShopsResult.error) {
+      throw new ProfileMediaServiceError("Unable to resolve shop media scope.", 500);
+    }
+
+    return ((ownedShopsResult.data ?? []) as ShopIdRow[]).map((row) => row.id);
+  }
+
   const shopsResult = await supabase.from("shops").select("id").order("id");
   if (shopsResult.error) {
     throw new ProfileMediaServiceError("Unable to resolve shop media scope.", 500);
   }
 
   const shopIds = ((shopsResult.data ?? []) as ShopIdRow[]).map((row) => row.id);
-  if (user.role === "owner") {
-    return shopIds;
-  }
-
   const directMatches = shopIds.filter((shopId) => user.locationIds.includes(shopId));
   if (directMatches.length) {
     return directMatches;
@@ -434,6 +481,25 @@ async function readSupabaseShopMedia(supabase: SupabaseClient, shopId: string): 
   };
 }
 
+async function readSupabaseClientMedia(supabase: SupabaseClient, profile: ProfileMediaRow) {
+  const galleryResult = await supabase
+    .from("media_assets")
+    .select("id, owner_profile_id, asset_type, storage_path, created_at")
+    .eq("owner_profile_id", profile.id)
+    .eq("asset_type", "client_profile_post")
+    .order("created_at", { ascending: false });
+
+  if (galleryResult.error) {
+    throw new ProfileMediaServiceError("Unable to load client profile media.", 500);
+  }
+
+  return {
+    profilePhotoPath: profile.profile_photo_path ?? undefined,
+    profilePhotoUrl: toPublicMediaUrl(supabase, profile.profile_photo_path, profile.profile_photo_url),
+    gallery: ((galleryResult.data ?? []) as ClientProfileMediaRow[]).map((row) => mapClientGalleryAsset(supabase, row))
+  };
+}
+
 function readDemoBarberMedia(barberId: string) {
   const state = getMarketplaceState();
   const profile = state.barberProfiles.find((entry) => entry.barberId === barberId);
@@ -490,6 +556,15 @@ function readDemoViewerPhoto(email: string) {
   return state.viewerPhotosByEmail[email];
 }
 
+function readDemoClientMedia(email: string) {
+  const state = getDemoProfileMediaState();
+  return {
+    profilePhotoPath: state.viewerPhotosByEmail[email]?.storagePath,
+    profilePhotoUrl: state.viewerPhotosByEmail[email]?.imageUrl,
+    gallery: state.clientGalleryByEmail[email] ?? []
+  };
+}
+
 function readDemoNotificationPreference(user: UserAccount) {
   const state = getEngagementState();
   return (
@@ -534,6 +609,11 @@ function updateDemoViewerPhoto(email: string, nextPhoto?: DemoProfilePhoto) {
   }
 
   state.viewerPhotosByEmail[email] = nextPhoto;
+}
+
+function updateDemoClientGallery(email: string, galleryUpdater: (current: ManagedMediaAsset[]) => ManagedMediaAsset[]) {
+  const state = getDemoProfileMediaState();
+  state.clientGalleryByEmail[email] = galleryUpdater(state.clientGalleryByEmail[email] ?? []);
 }
 
 function updateDemoBarberMedia(barberId: string, input: { profilePhotoUrl?: string; galleryUpdater?: (current: ManagedMediaAsset[]) => ManagedMediaAsset[] }) {
@@ -645,6 +725,7 @@ export async function getProfileMediaWorkspacePayload(user: UserAccount): Promis
   if (!supabase) {
     const viewerPhoto = readDemoViewerPhoto(user.email);
     const notificationPreference = readDemoNotificationPreference(user);
+    const clientProfile = isClientRole(user.role) ? readDemoClientMedia(user.email) : null;
     const barberProfile = user.barberId
       ? {
           barberId: user.barberId,
@@ -668,18 +749,22 @@ export async function getProfileMediaWorkspacePayload(user: UserAccount): Promis
             }
           : null
       },
+      clientProfile,
       barberProfile,
-      shops: (user.role === "owner" || user.role === "manager" || user.role === "front_desk")
+      shops: (isShopOwnerRole(user.role) || user.role === "manager" || user.role === "front_desk")
         ? managedShopIds.map((shopId) => readDemoShopMedia(shopId)).filter((value): value is ShopMediaWorkspaceView => Boolean(value))
         : []
     };
   }
 
   const profile = await resolveProfileRow(user, supabase);
-  const managedShopIds = (user.role === "owner" || user.role === "manager" || user.role === "front_desk")
+  const managedShopIds = (isShopOwnerRole(user.role) || user.role === "manager" || user.role === "front_desk")
     ? await listSupabaseManagedShopIds(user, supabase)
     : [];
-  const [barberProfile, shops] = await Promise.all([
+  const [clientProfile, barberProfile, shops] = await Promise.all([
+    isClientRole(user.role)
+      ? readSupabaseClientMedia(supabase, profile)
+      : Promise.resolve(null),
     user.barberId
       ? readSupabaseBarberMedia(supabase, user.barberId).then((result) => ({
           barberId: user.barberId!,
@@ -700,6 +785,7 @@ export async function getProfileMediaWorkspacePayload(user: UserAccount): Promis
       profilePhotoUrl: toPublicMediaUrl(supabase, profile.profile_photo_path, profile.profile_photo_url),
       notificationPreference
     },
+    clientProfile,
     barberProfile,
     shops: shops.filter((value): value is ShopMediaWorkspaceView => Boolean(value))
   };
@@ -719,6 +805,24 @@ export async function mutateProfileMedia(user: UserAccount, input: ProfileMediaM
         break;
       case "remove_viewer_photo":
         updateDemoViewerPhoto(user.email, undefined);
+        break;
+      case "add_client_gallery_image":
+        assertClientRole(user);
+        updateDemoClientGallery(user.email, (current) => [
+          {
+            id: makeDemoId("client-gallery"),
+            imageUrl: input.imageUrl,
+            storagePath: input.storagePath,
+            caption: input.caption?.trim() ?? "",
+            featured: Boolean(input.featured),
+            createdAt: new Date().toISOString()
+          },
+          ...current
+        ]);
+        break;
+      case "remove_client_gallery_image":
+        assertClientRole(user);
+        updateDemoClientGallery(user.email, (current) => current.filter((asset) => asset.id !== input.assetId));
         break;
       case "set_barber_photo":
         updateDemoBarberMedia(assertBarberRole(user), { profilePhotoUrl: input.imageUrl });
@@ -789,7 +893,7 @@ export async function mutateProfileMedia(user: UserAccount, input: ProfileMediaM
   }
 
   const profile = await resolveProfileRow(user, supabase);
-  const managedShopIds = (user.role === "owner" || user.role === "manager" || user.role === "front_desk")
+  const managedShopIds = (isShopOwnerRole(user.role) || user.role === "manager" || user.role === "front_desk")
     ? await listSupabaseManagedShopIds(user, supabase)
     : [];
 
@@ -819,6 +923,35 @@ export async function mutateProfileMedia(user: UserAccount, input: ProfileMediaM
 
       if (result.error) {
         throw new ProfileMediaServiceError("Unable to remove the profile photo.", 500);
+      }
+      break;
+    }
+    case "add_client_gallery_image": {
+      assertClientRole(user);
+      const result = await supabase
+        .from("media_assets")
+        .insert({
+          owner_profile_id: profile.id,
+          asset_type: "client_profile_post",
+          storage_path: input.storagePath
+        });
+
+      if (result.error) {
+        throw new ProfileMediaServiceError("Unable to add the client profile media.", 500);
+      }
+      break;
+    }
+    case "remove_client_gallery_image": {
+      assertClientRole(user);
+      const result = await supabase
+        .from("media_assets")
+        .delete()
+        .eq("id", input.assetId)
+        .eq("owner_profile_id", profile.id)
+        .eq("asset_type", "client_profile_post");
+
+      if (result.error) {
+        throw new ProfileMediaServiceError("Unable to remove the client profile media.", 500);
       }
       break;
     }

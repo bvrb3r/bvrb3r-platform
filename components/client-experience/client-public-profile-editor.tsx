@@ -1,25 +1,150 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { Route } from "next";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { buildClientProfileStudioViewModel } from "@/components/profile-studio/adapters/client-profile-studio-adapter";
 import { ProfileImageEditButton } from "@/components/profile-studio/profile-image-edit-button";
 import { ProfileStudioShell } from "@/components/profile-studio/profile-studio-shell";
+import { useMutateProfileMediaMutation, useProfileMediaWorkspaceQuery } from "@/lib/profile/client";
+import { uploadMediaAsset } from "@/lib/storage/media";
 import type { UserAccount } from "@/types/domain";
 
 function suggestHandle(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "").slice(0, 32);
 }
 
+type PickerInput = HTMLInputElement & { showPicker?: () => void };
+
+function openFilePicker(input: HTMLInputElement | null) {
+  const picker = input as PickerInput | null;
+  if (!picker) {
+    return;
+  }
+
+  if (typeof picker.showPicker === "function") {
+    try {
+      picker.showPicker();
+      return;
+    } catch {
+      // Browser-gated showPicker can fail; click() is the safe fallback.
+    }
+  }
+
+  picker.click();
+}
+
+function validateImageFile(file: File | null) {
+  if (!file) {
+    return "Choose an image to upload.";
+  }
+
+  if (!file.type.startsWith("image/")) {
+    return "Only image uploads are supported here.";
+  }
+
+  if (file.size > 8 * 1024 * 1024) {
+    return "Images must stay under 8 MB.";
+  }
+
+  return null;
+}
+
+function safeSegment(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "client";
+}
+
+function readableError(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
 export function ClientPublicProfileEditor({ user }: { user: UserAccount }) {
-  const model = useMemo(() => buildClientProfileStudioViewModel(user), [user]);
+  const mediaInputRef = useRef<HTMLInputElement | null>(null);
+  const mediaQuery = useProfileMediaWorkspaceQuery(true);
+  const mediaMutation = useMutateProfileMediaMutation();
+  const clientMedia = mediaQuery.data?.clientProfile ?? null;
+  const model = useMemo(() => buildClientProfileStudioViewModel(user, clientMedia), [clientMedia, user]);
   const [usernameDraft, setUsernameDraft] = useState(model.username.value);
-  const [feedback, setFeedback] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ tone: "info" | "success" | "error"; message: string } | null>(null);
+
+  async function uploadWithPath(path: string, file: File) {
+    const extension = file.name.split(".").pop()?.toLowerCase() || "jpg";
+    return uploadMediaAsset(`${path}/${Date.now()}.${extension}`, file);
+  }
+
+  async function handleProfilePhotoUpload(file: File) {
+    const error = validateImageFile(file);
+    if (error) {
+      setFeedback({ tone: "error", message: error });
+      return;
+    }
+
+    setFeedback(null);
+    try {
+      const uploaded = await uploadWithPath(`profiles/client/${safeSegment(user.id || user.email)}/profile`, file);
+      await mediaMutation.mutateAsync({
+        action: "set_viewer_photo",
+        storagePath: uploaded.path,
+        imageUrl: uploaded.publicUrl
+      });
+      setFeedback({ tone: "success", message: "Profile photo updated." });
+    } catch (errorValue) {
+      setFeedback({ tone: "error", message: readableError(errorValue, "Unable to update profile photo.") });
+    }
+  }
+
+  async function handlePostUpload(file: File) {
+    const error = validateImageFile(file);
+    if (error) {
+      setFeedback({ tone: "error", message: error });
+      return;
+    }
+
+    setFeedback(null);
+    try {
+      const uploaded = await uploadWithPath(`profiles/client/${safeSegment(user.id || user.email)}/posts`, file);
+      await mediaMutation.mutateAsync({
+        action: "add_client_gallery_image",
+        storagePath: uploaded.path,
+        imageUrl: uploaded.publicUrl
+      });
+      setFeedback({ tone: "success", message: "Post added." });
+    } catch (errorValue) {
+      setFeedback({ tone: "error", message: readableError(errorValue, "Unable to add post.") });
+    }
+  }
+
+  async function handlePostRemove(assetId: string) {
+    setFeedback(null);
+    try {
+      await mediaMutation.mutateAsync({
+        action: "remove_client_gallery_image",
+        assetId
+      });
+      setFeedback({ tone: "success", message: "Post removed." });
+    } catch (errorValue) {
+      setFeedback({ tone: "error", message: readableError(errorValue, "Unable to remove image.") });
+    }
+  }
 
   return (
     <div className="space-y-4" data-testid="client-public-profile-editor">
-      {feedback ? <FeedbackBanner tone="info" message={feedback} /> : null}
+      {feedback ? <FeedbackBanner tone={feedback.tone} message={feedback.message} /> : null}
+      <input
+        ref={mediaInputRef}
+        aria-label="Add post upload input"
+        type="file"
+        accept="image/*"
+        className="sr-only"
+        tabIndex={-1}
+        onChange={async (event) => {
+          const file = event.target.files?.[0] ?? null;
+          event.currentTarget.value = "";
+          if (file) {
+            await handlePostUpload(file);
+          }
+        }}
+      />
       <ProfileStudioShell
         model={{
           ...model,
@@ -40,11 +165,15 @@ export function ClientPublicProfileEditor({ user }: { user: UserAccount }) {
         onUsernameChange={(value) => setUsernameDraft(suggestHandle(value))}
         photoControl={(
           <ProfileImageEditButton
-            label="Update public photo"
-            onUnavailable={() => setFeedback("Profile photo upload is coming soon.")}
+            label="Update public profile photo"
+            disabled={mediaMutation.isPending}
+            onFileSelected={handleProfilePhotoUpload}
           />
         )}
-        onPreview={() => setFeedback("Culture public preview opens when client profile routing is connected.")}
+        onMedia={() => openFilePicker(mediaInputRef.current)}
+        onAddMedia={() => openFilePicker(mediaInputRef.current)}
+        onDeleteMedia={(assetId) => void handlePostRemove(assetId)}
+        onPreview={() => setFeedback({ tone: "info", message: "Culture public preview opens when client profile routing is connected." })}
         onShare={async () => {
           const url = `${window.location.origin}/client/${usernameDraft || model.username.value}`;
           if (navigator.share) {
@@ -52,7 +181,7 @@ export function ClientPublicProfileEditor({ user }: { user: UserAccount }) {
           } else {
             await navigator.clipboard?.writeText(url);
           }
-          setFeedback("Culture profile link copied.");
+          setFeedback({ tone: "success", message: "Culture profile link copied." });
         }}
       />
     </div>

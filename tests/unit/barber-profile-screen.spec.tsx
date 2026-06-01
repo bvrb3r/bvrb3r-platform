@@ -8,12 +8,14 @@ const {
   useBarberProfileQueryMock,
   useProfileMediaWorkspaceQueryMock,
   useMutateProfileMediaMutationMock,
-  useBarberTrustSummaryMock
+  useBarberTrustSummaryMock,
+  uploadMediaAssetMock
 } = vi.hoisted(() => ({
   useBarberProfileQueryMock: vi.fn(),
   useProfileMediaWorkspaceQueryMock: vi.fn(),
   useMutateProfileMediaMutationMock: vi.fn(),
-  useBarberTrustSummaryMock: vi.fn()
+  useBarberTrustSummaryMock: vi.fn(),
+  uploadMediaAssetMock: vi.fn()
 }));
 
 vi.mock("next/link", () => ({
@@ -32,7 +34,7 @@ vi.mock("@/lib/profile/client", () => ({
 }));
 
 vi.mock("@/lib/storage/media", () => ({
-  uploadMediaAsset: vi.fn()
+  uploadMediaAsset: uploadMediaAssetMock
 }));
 
 vi.mock("@/lib/trust/client", () => ({
@@ -56,6 +58,7 @@ describe("BarberProfileScreen", () => {
     useProfileMediaWorkspaceQueryMock.mockReset();
     useMutateProfileMediaMutationMock.mockReset();
     useBarberTrustSummaryMock.mockReset();
+    uploadMediaAssetMock.mockReset();
 
     useBarberProfileQueryMock.mockReturnValue({
       data: {
@@ -111,6 +114,10 @@ describe("BarberProfileScreen", () => {
       mutateAsync: vi.fn(),
       error: null
     });
+    uploadMediaAssetMock.mockResolvedValue({
+      path: "profiles/barbers/barber-43b3cda2/gallery/work.jpg",
+      publicUrl: "https://cdn.example.com/new-work.jpg"
+    });
     useBarberTrustSummaryMock.mockReturnValue({
       data: { verificationDecision: { gates: { badge: { allowed: false } } } },
       error: null
@@ -128,7 +135,7 @@ describe("BarberProfileScreen", () => {
     expect(screen.getByText("Public preview")).toBeInTheDocument();
     expect(screen.queryByText("Edit profile")).not.toBeInTheDocument();
     expect(screen.getByText("Portfolio")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Update public photo" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Update public barber photo" })).toBeInTheDocument();
     expect(screen.getByText("@phillipmcgee")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Edit public username" }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -156,5 +163,90 @@ describe("BarberProfileScreen", () => {
     expect(screen.queryByText(/Portfolio and discovery uploads/i)).not.toBeInTheDocument();
     expect(screen.queryByText("Public preview snapshot")).not.toBeInTheDocument();
     expect(screen.queryByText(/No file chosen/i)).not.toBeInTheDocument();
+  });
+
+  it("uploads and removes barber portfolio media through the profile media mutation", async () => {
+    const mutateAsync = vi.fn().mockResolvedValue({});
+    const refetch = vi.fn().mockResolvedValue({});
+    useMutateProfileMediaMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync,
+      error: null
+    });
+    useBarberProfileQueryMock.mockReturnValue({
+      data: {
+        barber: {
+          id: "barber-43b3cda2",
+          name: "Phillip mcgee",
+          bio: "",
+          rating: 5,
+          reviewCount: 1,
+          bookingLink: "/barber/barber-43b3cda2"
+        },
+        profile: {
+          username: "phillipmcgee",
+          profilePhotoUrl: null,
+          headline: "",
+          badges: [],
+          yearsExperience: null
+        },
+        proof: {
+          reviewScore: 5,
+          reviewCount: 1,
+          rankingLabel: "Best booking fit",
+          followCount: 0,
+          bookingsCompleted: 4,
+          profileViews: 0,
+          bookingClicks: 0,
+          verificationLabels: []
+        },
+        shop: null,
+        shopLocations: [{ name: "Phils chair" }],
+        portfolio: [],
+        reviews: [{}],
+        services: [],
+        mostBookedService: { service: { name: "test cut" } }
+      },
+      error: null,
+      refetch
+    });
+    useProfileMediaWorkspaceQueryMock.mockReturnValue({
+      data: {
+        barberProfile: {
+          barberId: "barber-43b3cda2",
+          profilePhotoUrl: null,
+          gallery: [
+            {
+              id: "work-1",
+              imageUrl: "https://cdn.example.com/work-1.jpg",
+              storagePath: "profiles/barbers/barber-43b3cda2/gallery/work-1.jpg",
+              caption: "Fade",
+              featured: true,
+              createdAt: new Date().toISOString()
+            }
+          ]
+        }
+      }
+    });
+
+    render(<BarberProfileScreen user={user} />);
+
+    const file = new File(["work"], "work.jpg", { type: "image/jpeg" });
+    fireEvent.change(screen.getByLabelText("Add portfolio image upload input"), { target: { files: [file] } });
+
+    await screen.findByText("Portfolio image added.");
+    expect(uploadMediaAssetMock).toHaveBeenCalledWith(expect.stringContaining("profiles/barbers/barber-43b3cda2/gallery"), file);
+    expect(mutateAsync).toHaveBeenCalledWith({
+      action: "add_barber_gallery_image",
+      storagePath: "profiles/barbers/barber-43b3cda2/gallery/work.jpg",
+      imageUrl: "https://cdn.example.com/new-work.jpg"
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove Fade" }));
+    await screen.findByText("Portfolio image removed.");
+    expect(mutateAsync).toHaveBeenCalledWith({
+      action: "remove_barber_gallery_image",
+      assetId: "work-1"
+    });
   });
 });
