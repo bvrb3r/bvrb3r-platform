@@ -173,7 +173,7 @@ export function ClientPublicProfileEditor({ user }: { user: UserAccount }) {
         onMedia={() => openFilePicker(mediaInputRef.current)}
         onAddMedia={() => openFilePicker(mediaInputRef.current)}
         onDeleteMedia={(assetId) => void handlePostRemove(assetId)}
-        onPreview={() => setFeedback({ tone: "info", message: "Culture public preview opens when client profile routing is connected." })}
+        onPreview={() => window.location.assign(`/client/${usernameDraft || model.username.value}`)}
         onShare={async () => {
           const url = `${window.location.origin}/client/${usernameDraft || model.username.value}`;
           if (navigator.share) {

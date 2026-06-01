@@ -2953,13 +2953,15 @@ export type PublicShopProfilePayload = {
   services: NonNullable<Awaited<ReturnType<typeof getBarberDetailsPayload>>>["services"];
 };
 
-function findPublicShop<T extends { id: string; name: string }>(shops: T[], shopIdOrSlug: string) {
+function findPublicShop<T extends { id: string; name: string; shopUsername?: string | null }>(shops: T[], shopIdOrSlug: string) {
   const decoded = decodeURIComponent(shopIdOrSlug);
   const normalized = normalizeLabel(decoded);
   const slugged = decoded.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
   return shops.find((shop) =>
     shop.id === decoded
+    || shop.shopUsername?.toLowerCase() === decoded.toLowerCase()
+    || shop.shopUsername?.toLowerCase() === slugged
     || normalizeLabel(shop.name) === normalized
     || shop.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") === slugged
   );

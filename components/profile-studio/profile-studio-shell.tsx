@@ -5,15 +5,17 @@ import type { Route } from "next";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
+  ChevronLeft,
   ChevronRight,
   Eye,
-  ImagePlus,
+  FolderPlus,
   Lock,
   Pencil,
   Plus,
   Share2,
   Sparkles,
-  Trash2
+  Trash2,
+  X
 } from "lucide-react";
 import { GlassCard, StatusBadge } from "@/design/components";
 import { cn } from "@/lib/utils";
@@ -114,6 +116,11 @@ type ProfileStudioShellProps = {
   isSavingUsername?: boolean;
 };
 
+type StudioFolder = {
+  id: string;
+  label: string;
+};
+
 function initialsForName(name: string) {
   return name
     .split(" ")
@@ -154,27 +161,32 @@ export function ProfileStudioShell({
   const [isUsernameModalOpen, setIsUsernameModalOpen] = useState(false);
   const [usernameDraft, setUsernameDraft] = useState(usernameValue);
   const [usernameFeedback, setUsernameFeedback] = useState<string | null>(null);
+  const [folders, setFolders] = useState<StudioFolder[]>(() =>
+    model.highlights
+      .filter((highlight) => highlight.type === "collection")
+      .map((highlight) => ({ id: highlight.label.toLowerCase(), label: highlight.label }))
+  );
+  const [isFolderModalOpen, setIsFolderModalOpen] = useState(false);
+  const [folderDraft, setFolderDraft] = useState("");
+  const [folderError, setFolderError] = useState<string | null>(null);
+  const [activeFolder, setActiveFolder] = useState<StudioFolder | null>(null);
+  const [activeMediaIndex, setActiveMediaIndex] = useState(0);
+  const [moveTarget, setMoveTarget] = useState<{ itemId: string; itemLabel: string } | null>(null);
+  const [mediaFolderAssignments, setMediaFolderAssignments] = useState<Record<string, string>>({});
   const usernameModalTitle = model.username.modalTitle ?? (model.role === "shop_owner" ? "Edit public shop username" : "Edit public username");
   const usernameModalHelper = model.username.modalHelper ?? "This is how people find and share this public profile.";
   const mediaButtonLabel = model.work.addLabel;
+  const roleFolderHelper = model.role === "client"
+    ? "Group your Culture posts into a public folder."
+    : model.role === "barber"
+      ? "Group your portfolio images into a public folder."
+      : "Group your shop gallery images into a public folder.";
 
   useEffect(() => {
     if (!isUsernameModalOpen) {
       setUsernameDraft(usernameValue);
     }
   }, [isUsernameModalOpen, usernameValue]);
-
-  function handleRoleMediaAction() {
-    if (onMedia) {
-      onMedia();
-      return;
-    }
-    if (onAddMedia) {
-      onAddMedia();
-      return;
-    }
-    workSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
 
   function handleAddMediaAction() {
     if (onAddMedia) {
@@ -193,6 +205,64 @@ export function ProfileStudioShell({
     await onUsernameSave?.(value);
     setUsernameFeedback(onUsernameSave ? "Handle updated." : "Handle saving is not connected yet.");
     setIsUsernameModalOpen(false);
+  }
+
+  function createFolder() {
+    const nextName = folderDraft.trim();
+    if (!nextName) {
+      setFolderError("Folder name is required.");
+      return;
+    }
+    if (nextName.length > 24) {
+      setFolderError("Keep folder names under 24 characters.");
+      return;
+    }
+    if (folders.length >= 6) {
+      setFolderError("You can create up to 6 folders.");
+      return;
+    }
+    if (folders.some((folder) => folder.label.toLowerCase() === nextName.toLowerCase())) {
+      setFolderError("Folder name already exists.");
+      return;
+    }
+
+    const nextFolder = {
+      id: `${nextName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}-${Date.now()}`,
+      label: nextName
+    };
+    setFolders((current) => [...current, nextFolder]);
+    setFolderDraft("");
+    setFolderError(null);
+    setIsFolderModalOpen(false);
+  }
+
+  function folderItems(folder: StudioFolder | null) {
+    if (!folder) {
+      return [];
+    }
+    const assignedItems = model.work.items.filter((item) => mediaFolderAssignments[item.id] === folder.id);
+    return assignedItems.length ? assignedItems : folder.id === folders[0]?.id ? model.work.items : [];
+  }
+
+  function openFolder(folder: StudioFolder) {
+    setActiveFolder(folder);
+    setActiveMediaIndex(0);
+  }
+
+  function moveActiveIndex(delta: number) {
+    const items = folderItems(activeFolder);
+    if (!items.length) {
+      return;
+    }
+    setActiveMediaIndex((current) => (current + delta + items.length) % items.length);
+  }
+
+  function assignMediaToFolder(folderId: string) {
+    if (!moveTarget) {
+      return;
+    }
+    setMediaFolderAssignments((current) => ({ ...current, [moveTarget.itemId]: folderId }));
+    setMoveTarget(null);
   }
 
   return (
@@ -296,10 +366,6 @@ export function ProfileStudioShell({
                 <Eye className="h-4 w-4" aria-hidden="true" />
                 {model.actions.publicPreviewLabel}
               </button>
-              <button type="button" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] border border-white/10 bg-white/[0.035] px-4 text-sm font-extrabold text-white/74 transition hover:border-[#a3ff12]/30 hover:text-white" onClick={handleRoleMediaAction}>
-                <ImagePlus className="h-4 w-4 text-[#a3ff12]" aria-hidden="true" />
-                {model.actions.mediaLabel}
-              </button>
               <button type="button" aria-label={model.actions.shareLabel} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] border border-white/10 bg-white/[0.035] px-4 text-sm font-extrabold text-white/74 transition hover:border-[#a3ff12]/30 hover:text-white" onClick={onShare}>
                 <Share2 className="h-4 w-4 text-[#a3ff12]" aria-hidden="true" />
                 Share
@@ -341,22 +407,22 @@ export function ProfileStudioShell({
             <p className="mt-1 text-[17px] text-white/60">{model.dashboardSummary.text}</p>
           </div>
         </div>
-        <ChevronRight className="h-6 w-6 shrink-0 text-white/85" />
       </GlassCard>
 
       <section className="overflow-hidden" aria-label="Profile highlights">
         <div className="hide-scrollbar flex gap-5 overflow-x-auto pb-2">
-          {model.highlights.map((highlight) => (
-            <button key={`${highlight.type}-${highlight.label}`} type="button" className="flex w-[112px] shrink-0 flex-col items-center" onClick={highlight.type === "new" ? handleAddMediaAction : undefined}>
-              {highlight.imageUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={highlight.imageUrl} alt={highlight.label} className="h-[112px] w-[112px] rounded-full border-[3px] border-white/20 object-cover" />
-              ) : (
-                <span className="flex h-[112px] w-[112px] items-center justify-center rounded-full border-[3px] border-white/15 bg-white/[0.018] text-[54px] font-light leading-none text-[#a3ff12]">
-                  {highlight.type === "new" ? "+" : highlight.label.slice(0, 1).toUpperCase()}
-                </span>
-              )}
-              <span className="mt-2 max-w-full truncate text-center text-base font-medium text-white/70">{highlight.label}</span>
+          <button type="button" className="flex w-[112px] shrink-0 flex-col items-center" onClick={() => setIsFolderModalOpen(true)}>
+            <span className="flex h-[112px] w-[112px] items-center justify-center rounded-full border-[3px] border-white/15 bg-white/[0.018] text-[54px] font-light leading-none text-[#a3ff12]">
+              +
+            </span>
+            <span className="mt-2 max-w-full truncate text-center text-base font-medium text-white/70">New</span>
+          </button>
+          {folders.map((folder) => (
+            <button key={folder.id} type="button" className="flex w-[112px] shrink-0 flex-col items-center" onClick={() => openFolder(folder)}>
+              <span className="flex h-[112px] w-[112px] items-center justify-center rounded-full border-[3px] border-white/15 bg-white/[0.018] text-[38px] font-black leading-none text-[#a3ff12]">
+                {folder.label.slice(0, 1).toUpperCase()}
+              </span>
+              <span className="mt-2 max-w-full truncate text-center text-base font-medium text-white/70">{folder.label}</span>
             </button>
           ))}
         </div>
@@ -393,6 +459,14 @@ export function ProfileStudioShell({
               >
                 <Trash2 className="h-4 w-4" />
               </button>
+              <button
+                type="button"
+                aria-label={`Move ${item.alt} to folder`}
+                className="absolute left-2 top-2 inline-flex h-9 w-9 items-center justify-center rounded-full border border-black/40 bg-black/72 text-white shadow-lg transition hover:border-[#a3ff12]/40 hover:text-[#a3ff12]"
+                onClick={() => setMoveTarget({ itemId: item.id, itemLabel: item.alt })}
+              >
+                <FolderPlus className="h-4 w-4" />
+              </button>
             </div>
           )) : (
             <div className="col-span-3 flex aspect-[3/1] items-center justify-center rounded-[18px] border border-dashed border-white/10 bg-black/20 p-5 text-center text-sm text-white/58">
@@ -413,6 +487,106 @@ export function ProfileStudioShell({
           onClose={() => setIsUsernameModalOpen(false)}
           onSave={handleUsernameSave}
         />
+      ) : null}
+
+      {isFolderModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/72 px-4 py-6 backdrop-blur-md sm:items-center">
+          <div role="dialog" aria-modal="true" aria-label="Create folder" className="w-full max-w-md rounded-[24px] border border-[#a3ff12]/24 bg-[#080808] p-5 shadow-[0_30px_90px_rgba(0,0,0,0.55)]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-[#a3ff12]">Profile folder</p>
+                <h3 className="mt-2 text-2xl font-black tracking-[-0.035em] text-white">Create folder</h3>
+                <p className="mt-2 text-sm leading-6 text-white/58">{roleFolderHelper}</p>
+              </div>
+              <button type="button" aria-label="Close folder creator" className="rounded-full border border-white/10 p-2 text-white/70" onClick={() => setIsFolderModalOpen(false)}>
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <label className="mt-5 block text-sm font-bold text-white/72" htmlFor="profile-folder-name">Folder name</label>
+            <input
+              id="profile-folder-name"
+              value={folderDraft}
+              maxLength={24}
+              onChange={(event) => {
+                setFolderDraft(event.target.value);
+                setFolderError(null);
+              }}
+              className="mt-2 h-12 w-full rounded-[12px] border border-white/10 bg-black/35 px-4 text-white outline-none transition focus:border-[#a3ff12]/50"
+            />
+            {folderError ? <p className="mt-3 text-sm font-bold text-red-200">{folderError}</p> : null}
+            <div className="mt-6 flex flex-wrap justify-end gap-3">
+              <button type="button" className="min-h-11 rounded-[8px] border border-white/10 px-4 text-sm font-extrabold text-white/70" onClick={() => setIsFolderModalOpen(false)}>Cancel</button>
+              <button type="button" className="min-h-11 rounded-[8px] bg-[#a3ff12] px-4 text-sm font-black text-black" onClick={createFolder}>Save</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {activeFolder ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/78 px-4 py-6 backdrop-blur-md sm:items-center">
+          <div role="dialog" aria-modal="true" aria-label={`${activeFolder.label} folder viewer`} className="w-full max-w-4xl rounded-[28px] border border-white/10 bg-[#070707] p-5 shadow-[0_34px_100px_rgba(0,0,0,0.62)]">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-[#a3ff12]">Folder</p>
+                <h3 className="mt-1 text-2xl font-black tracking-[-0.035em] text-white">{activeFolder.label}</h3>
+              </div>
+              <button type="button" aria-label="Close folder viewer" className="rounded-full border border-white/10 p-2 text-white/70" onClick={() => setActiveFolder(null)}>
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            {folderItems(activeFolder).length ? (
+              <div className="mt-6 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3">
+                <button type="button" aria-label="Previous image" className="rounded-full border border-white/10 p-3 text-white" onClick={() => moveActiveIndex(-1)}>
+                  <ChevronLeft className="h-5 w-5" />
+                </button>
+                <div className="grid grid-cols-[0.7fr_1fr_0.7fr] items-center gap-3 overflow-hidden">
+                  {[-1, 0, 1].map((offset) => {
+                    const items = folderItems(activeFolder);
+                    const item = items[(activeMediaIndex + offset + items.length) % items.length];
+                    return (
+                      <div key={`${item.id}-${offset}`} className={cn("aspect-square overflow-hidden rounded-[22px] border border-white/10 bg-black/30 transition", offset === 0 ? "scale-100 opacity-100" : "scale-90 opacity-35 blur-[1px]")}>
+                        {item.imageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={item.imageUrl} alt={item.alt} className="h-full w-full object-cover" />
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+                <button type="button" aria-label="Next image" className="rounded-full border border-white/10 p-3 text-white" onClick={() => moveActiveIndex(1)}>
+                  <ChevronRight className="h-5 w-5" />
+                </button>
+              </div>
+            ) : (
+              <div className="mt-6 rounded-[22px] border border-dashed border-white/10 bg-black/24 p-8 text-center text-sm text-white/58">
+                No media in this folder yet. Add or move media into this folder.
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
+
+      {moveTarget ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/72 px-4 py-6 backdrop-blur-md sm:items-center">
+          <div role="dialog" aria-modal="true" aria-label="Move to folder" className="w-full max-w-md rounded-[24px] border border-white/10 bg-[#080808] p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-2xl font-black tracking-[-0.035em] text-white">Move to folder</h3>
+                <p className="mt-2 text-sm text-white/58">{moveTarget.itemLabel}</p>
+              </div>
+              <button type="button" aria-label="Close move to folder" className="rounded-full border border-white/10 p-2 text-white/70" onClick={() => setMoveTarget(null)}>
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="mt-5 grid gap-2">
+              {folders.map((folder) => (
+                <button key={folder.id} type="button" className="min-h-12 rounded-[10px] border border-white/10 bg-white/[0.035] px-4 text-left text-sm font-bold text-white transition hover:border-[#a3ff12]/35" onClick={() => assignMediaToFolder(folder.id)}>
+                  {folder.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
       ) : null}
     </div>
   );

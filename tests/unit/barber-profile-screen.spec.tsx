@@ -134,7 +134,8 @@ describe("BarberProfileScreen", () => {
     expect(screen.getByText("The client-facing preview, portfolio, trust signals, and booking profile live here.")).toBeInTheDocument();
     expect(screen.getByText("Public preview")).toBeInTheDocument();
     expect(screen.queryByText("Edit profile")).not.toBeInTheDocument();
-    expect(screen.getByText("Portfolio")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Portfolio" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Share profile" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Update public barber photo" })).toBeInTheDocument();
     expect(screen.getByText("@phillipmcgee")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Edit public username" }));

@@ -129,8 +129,8 @@ describe("OwnerPublicProfileEditor", () => {
     expect(screen.getByText(/2200 E Fowler Ave - Tampa, FL/i)).toBeInTheDocument();
     expect(screen.getAllByText("Public barbers").length).toBeGreaterThan(0);
     expect(screen.getByText("Shop status")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Team" }));
-    expect(screen.getByText("Team display is managed from Owner Home.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Team" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Share profile" })).toBeInTheDocument();
     expect(screen.queryByText("Edit profile")).not.toBeInTheDocument();
     expect(screen.queryByText("/shop/bvrb3rshop")).not.toBeInTheDocument();
     expect(screen.queryByText("Public preview snapshot")).not.toBeInTheDocument();

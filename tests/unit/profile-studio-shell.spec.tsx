@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { ProfileImageEditButton } from "@/components/profile-studio/profile-image-edit-button";
@@ -61,10 +61,16 @@ const model: ProfileStudioViewModel = {
   ],
   work: {
     title: "Your posts",
-    countLabel: "0 posts",
+    countLabel: "1 post",
     addLabel: "Add post",
     emptyCopy: "No fake media is shown.",
-    items: []
+    items: [
+      {
+        id: "post-1",
+        imageUrl: "https://cdn.example.com/post-1.jpg",
+        alt: "Culture post"
+      }
+    ]
   }
 };
 
@@ -88,6 +94,7 @@ describe("ProfileStudioShell", () => {
     expect(screen.getByRole("button", { name: "Update public photo" })).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "Public preview" })).toHaveLength(1);
     expect(screen.getAllByRole("button", { name: "Share profile" })).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "Posts" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Edit public username" }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByText("This is how people find your Culture profile.")).toBeInTheDocument();
@@ -103,10 +110,68 @@ describe("ProfileStudioShell", () => {
     expect(screen.getByText("Culture activity")).toBeInTheDocument();
     expect(screen.getByText("Your dashboard")).toBeInTheDocument();
     expect(screen.getByText("Your posts")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add post" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Move Culture post to folder" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove Culture post" })).toBeInTheDocument();
     expect(screen.queryByText("Public preview snapshot")).not.toBeInTheDocument();
     expect(screen.queryByText("Edit profile")).not.toBeInTheDocument();
     expect(screen.queryByText(/public barber brand/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/starting price/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/No file chosen/i)).not.toBeInTheDocument();
+  });
+
+  it("creates folders and opens a premium folder viewer", () => {
+    render(
+      <ProfileStudioShell
+        model={model}
+        backHref="/dashboard/client/more"
+        backLabel="Back to More"
+        usernameValue="jordan"
+        photoControl={<ProfileImageEditButton label="Update public photo" onUnavailable={vi.fn()} />}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /\+ New/ }));
+    const createDialog = screen.getByRole("dialog", { name: "Create folder" });
+    expect(within(createDialog).getByText("Group your Culture posts into a public folder.")).toBeInTheDocument();
+    expect(within(createDialog).getByLabelText("Folder name")).toBeInTheDocument();
+    expect(within(createDialog).getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+    expect(within(createDialog).getByRole("button", { name: "Save" })).toBeInTheDocument();
+    expect(within(createDialog).getByRole("button", { name: "Close folder creator" })).toBeInTheDocument();
+
+    fireEvent.change(within(createDialog).getByLabelText("Folder name"), { target: { value: "Culture" } });
+    fireEvent.click(within(createDialog).getByRole("button", { name: "Save" }));
+    expect(screen.getByText("Folder name already exists.")).toBeInTheDocument();
+
+    fireEvent.change(within(createDialog).getByLabelText("Folder name"), { target: { value: "Travel" } });
+    fireEvent.click(within(createDialog).getByRole("button", { name: "Save" }));
+    const highlights = screen.getByLabelText("Profile highlights");
+    expect(within(highlights).getByRole("button", { name: /Travel/ })).toBeInTheDocument();
+
+    fireEvent.click(within(highlights).getByRole("button", { name: /Travel/ }));
+    expect(screen.getByRole("dialog", { name: "Travel folder viewer" })).toBeInTheDocument();
+    expect(screen.getByText("No media in this folder yet. Add or move media into this folder.")).toBeInTheDocument();
+  });
+
+  it("moves media into a folder and shows carousel controls", () => {
+    render(
+      <ProfileStudioShell
+        model={model}
+        backHref="/dashboard/client/more"
+        backLabel="Back to More"
+        usernameValue="jordan"
+        photoControl={<ProfileImageEditButton label="Update public photo" onUnavailable={vi.fn()} />}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Move Culture post to folder" }));
+    const moveDialog = screen.getByRole("dialog", { name: "Move to folder" });
+    fireEvent.click(within(moveDialog).getByRole("button", { name: "Culture" }));
+
+    fireEvent.click(within(screen.getByLabelText("Profile highlights")).getByRole("button", { name: /Culture/ }));
+    const viewer = screen.getByRole("dialog", { name: "Culture folder viewer" });
+    expect(within(viewer).getByRole("button", { name: "Previous image" })).toBeInTheDocument();
+    expect(within(viewer).getByRole("button", { name: "Next image" })).toBeInTheDocument();
+    expect(within(viewer).getAllByAltText("Culture post").length).toBeGreaterThan(0);
   });
 });

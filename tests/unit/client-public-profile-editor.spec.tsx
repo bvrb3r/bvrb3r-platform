@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ClientPublicProfileEditor } from "@/components/client-experience/client-public-profile-editor";
 import type { UserAccount } from "@/types/domain";
 
@@ -73,6 +73,10 @@ describe("ClientPublicProfileEditor", () => {
     });
   });
 
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("renders a Culture-scoped public profile studio without marketplace language", () => {
     render(<ClientPublicProfileEditor user={user} />);
 
@@ -86,6 +90,7 @@ describe("ClientPublicProfileEditor", () => {
     expect(screen.getByText("@jordanellis")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Update public profile photo" })).toBeInTheDocument();
     expect(screen.getByAltText("Jordan Ellis public image")).toHaveAttribute("src", "https://cdn.example.com/client-avatar.jpg");
+    expect(screen.queryByRole("button", { name: "Posts" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Edit public username" }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByText("This is how people find your Culture profile.")).toBeInTheDocument();
@@ -181,15 +186,20 @@ describe("ClientPublicProfileEditor", () => {
 
   it("uses role-specific feedback for preview and share actions", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
+    const assign = vi.fn();
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: { writeText }
+    });
+    vi.stubGlobal("location", {
+      origin: "https://www.bvrb3r.app",
+      assign
     });
 
     render(<ClientPublicProfileEditor user={user} />);
 
     fireEvent.click(screen.getAllByRole("button", { name: "Public preview" })[0]);
-    expect(screen.getByText("Culture public preview opens when client profile routing is connected.")).toBeInTheDocument();
+    expect(assign).toHaveBeenCalledWith("/client/jordanellis");
 
     fireEvent.click(screen.getAllByRole("button", { name: "Share profile" })[0]);
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(expect.stringContaining("/client/jordanellis")));
