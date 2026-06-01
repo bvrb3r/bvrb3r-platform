@@ -47,7 +47,7 @@ function suggestHandle(value: string) {
 export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
   const profileQuery = useOwnerShopProfileQuery();
   const [draft, setDraft] = useState<ShopPublicProfileDraft>(emptyDraft);
-  const [feedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
+  const [feedback, setFeedback] = useState<{ tone: "info" | "success" | "error"; message: string } | null>(null);
   const studioRef = useRef<HTMLDivElement | null>(null);
   const shop = profileQuery.data?.shop ?? null;
   const loadErrorStatus = profileQuery.error && typeof profileQuery.error === "object" && "status" in profileQuery.error
@@ -129,15 +129,23 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
         usernameValue={draft.shopUsername || model.username.value}
         onUsernameChange={(value) => updateDraft("shopUsername", suggestHandle(value))}
         onEdit={scrollToStudio}
-        onMedia={scrollToStudio}
+        onMedia={() => setFeedback({ tone: "info", message: "Team display is managed from Owner Home." })}
         onPreview={() => {
           if (model.hero.publicUrl) {
             window.location.assign(model.hero.publicUrl);
+            return;
           }
+          setFeedback({ tone: "info", message: "Finish shop profile before opening a public preview." });
         }}
-        onShare={() => {
+        onShare={async () => {
           const path = model.hero.publicUrl ?? "/dashboard/owner/public-profile";
-          void navigator.clipboard?.writeText(`${window.location.origin}${path}`);
+          const url = `${window.location.origin}${path}`;
+          if (navigator.share) {
+            await navigator.share({ title: `${model.hero.publicName} on BVRB3R`, url });
+          } else {
+            await navigator.clipboard?.writeText(url);
+          }
+          setFeedback({ tone: "success", message: "Shop profile link copied." });
         }}
       />
     </div>

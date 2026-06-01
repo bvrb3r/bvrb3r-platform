@@ -76,9 +76,9 @@ export function buildShopProfileStudioViewModel({
       { label: "Public barbers", value: publicBarberCount ?? 0 }
     ],
     trustCards: [
-      { title: "Rating", value: "--", helper: "Reviews build with completed visits", status: "neutral" },
-      { title: "Public barbers", value: `${publicBarberCount ?? 0} Public barbers`, helper: "Team display", status: publicBarberCount ? "good" : "neutral" },
-      { title: "Shop status", value: isApproved ? "Approved" : "Setup needed", helper: isApproved ? "Shop verification" : "Finish shop profile", status: isApproved ? "good" : "warning" }
+      { title: "Rating", value: "--", helper: "Reviews build with completed visits.", status: "neutral" },
+      { title: "Public barbers", value: `${publicBarberCount ?? 0} Public barbers`, helper: "Show team members when they are ready for public display.", status: publicBarberCount ? "good" : "neutral" },
+      { title: "Shop status", value: isApproved ? "Approved" : "Setup needed", helper: isApproved ? "Shop verification" : "Complete your shop profile.", status: isApproved ? "good" : "warning" }
     ],
     dashboardSummary: {
       title: "Your dashboard",

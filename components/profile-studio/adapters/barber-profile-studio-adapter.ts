@@ -155,7 +155,7 @@ export function buildBarberProfileStudioViewModel({
       title: "Your work",
       countLabel: `${posts} post${posts === 1 ? "" : "s"}`,
       manageLabel: "Manage",
-      emptyCopy: "No portfolio photos yet. Add real work so clients can judge the cut before they book.",
+      emptyCopy: "No portfolio work yet. Add haircut photos to build trust with clients.",
       items: portfolioAssets.map((asset) => ({
         id: asset.id,
         imageUrl: asset.imageUrl,
@@ -165,4 +165,3 @@ export function buildBarberProfileStudioViewModel({
     }
   };
 }
-

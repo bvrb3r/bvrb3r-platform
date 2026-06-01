@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { Route } from "next";
+import { useMemo, useRef } from "react";
 import type { ReactNode } from "react";
 import {
   ChevronRight,
@@ -107,6 +108,8 @@ type ProfileStudioShellProps = {
   onShare?: () => void;
 };
 
+const RESERVED_HANDLES = new Set(["admin", "support", "bvrb3r", "help", "payments", "system", "official"]);
+
 function initialsForName(name: string) {
   return name
     .split(" ")
@@ -126,6 +129,20 @@ function severityClass(severity: ProfileStudioSeverity = "neutral") {
   return "border-white/8 bg-black/20";
 }
 
+function validateHandle(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "Add a public handle to save.";
+  }
+  if (!/^[a-z0-9_-]+$/.test(trimmed)) {
+    return "Use lowercase letters, numbers, hyphens, or underscores.";
+  }
+  if (RESERVED_HANDLES.has(trimmed)) {
+    return "This handle is reserved.";
+  }
+  return null;
+}
+
 export function ProfileStudioShell({
   model,
   backHref,
@@ -142,6 +159,35 @@ export function ProfileStudioShell({
 }: ProfileStudioShellProps) {
   const publicName = model.hero.publicName || model.hero.emptyTitle || "Finish profile";
   const publicUrl = model.username.publicUrl ?? model.hero.publicUrl;
+  const workSectionRef = useRef<HTMLElement | null>(null);
+  const normalizedHandle = usernameValue.trim().toLowerCase();
+  const originalHandle = model.username.value.trim().toLowerCase();
+  const handleError = validateHandle(normalizedHandle);
+  const handleChanged = normalizedHandle !== originalHandle;
+  const canSaveHandle = model.username.canEdit && handleChanged && !handleError && Boolean(onUsernameSave);
+  const handleStatus = useMemo(() => {
+    if (!model.username.canEdit) {
+      return "This public link is managed by BVRB3R.";
+    }
+    if (handleError) {
+      return handleError;
+    }
+    if (!onUsernameSave && handleChanged) {
+      return "Handle saving is not connected yet.";
+    }
+    if (!handleChanged) {
+      return "Handle is up to date.";
+    }
+    return "Handle available.";
+  }, [handleChanged, handleError, model.username.canEdit, onUsernameSave]);
+
+  function handleMediaAction() {
+    if (onMedia) {
+      onMedia();
+      return;
+    }
+    workSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 
   return (
     <div className="space-y-6" data-testid={`profile-studio-${model.role}`}>
@@ -178,7 +224,7 @@ export function ProfileStudioShell({
           style={model.hero.coverUrl ? { backgroundImage: `linear-gradient(180deg,rgba(0,0,0,0.10),rgba(0,0,0,0.48)), url(${model.hero.coverUrl})`, backgroundSize: "cover", backgroundPosition: "center" } : undefined}
         />
         <div className="grid gap-6 p-5 sm:p-6 lg:grid-cols-[auto_minmax(0,1fr)_auto]">
-          <div className="relative -mt-20 h-[178px] w-[178px] shrink-0 overflow-hidden rounded-[36px] border-[3px] border-white/15 bg-black text-5xl font-black text-[#a3ff12] shadow-[0_0_0_2px_rgba(163,255,18,0.10),0_20px_60px_rgba(0,0,0,0.50)]">
+          <div className="relative -mt-20 h-[148px] w-[148px] shrink-0 overflow-hidden rounded-[28px] border-[3px] border-white/15 bg-black text-4xl font-black text-[#a3ff12] shadow-[0_0_0_2px_rgba(163,255,18,0.10),0_20px_60px_rgba(0,0,0,0.50)] sm:h-[178px] sm:w-[178px] sm:rounded-[36px] sm:text-5xl">
             {model.hero.avatarUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={model.hero.avatarUrl} alt={`${publicName} public image`} className="h-full w-full object-cover" />
@@ -223,7 +269,7 @@ export function ProfileStudioShell({
                 <Pencil className="h-4 w-4 text-[#a3ff12]" aria-hidden="true" />
                 {model.actions.editProfileLabel}
               </button>
-              <button type="button" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] border border-white/10 bg-white/[0.035] px-4 text-sm font-extrabold text-white/74 transition hover:border-[#a3ff12]/30 hover:text-white" onClick={onMedia}>
+              <button type="button" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] border border-white/10 bg-white/[0.035] px-4 text-sm font-extrabold text-white/74 transition hover:border-[#a3ff12]/30 hover:text-white" onClick={handleMediaAction}>
                 <ImagePlus className="h-4 w-4 text-[#a3ff12]" aria-hidden="true" />
                 {model.actions.mediaLabel}
               </button>
@@ -255,15 +301,28 @@ export function ProfileStudioShell({
               value={usernameValue}
               onChange={(event) => onUsernameChange?.(event.target.value.toLowerCase())}
               readOnly={!model.username.canEdit}
+              spellCheck={false}
+              autoCapitalize="none"
+              autoCorrect="off"
+              inputMode="text"
+              aria-label={model.username.title}
               className="mt-2 min-h-12 w-full rounded-2xl border border-white/10 bg-black/34 px-4 text-sm font-bold text-white outline-none transition placeholder:text-white/34 focus:border-[#a3ff12]/42 read-only:text-white/54"
               placeholder="public-handle"
             />
           </label>
-          <button type="button" className="inline-flex min-h-12 items-center justify-center rounded-2xl border border-[#a3ff12]/28 bg-[#a3ff12]/10 px-5 text-sm font-black text-[#a3ff12] transition hover:border-[#a3ff12]/46 hover:bg-[#a3ff12]/16" onClick={onUsernameSave}>
+          <button
+            type="button"
+            disabled={!canSaveHandle}
+            className="inline-flex min-h-12 items-center justify-center rounded-2xl border border-[#a3ff12]/28 bg-[#a3ff12]/10 px-5 text-sm font-black text-[#a3ff12] transition hover:border-[#a3ff12]/46 hover:bg-[#a3ff12]/16 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.025] disabled:text-white/36"
+            onClick={onUsernameSave}
+          >
             Save handle
           </button>
         </div>
         <p className="mt-3 text-xs leading-5 text-white/48">{model.username.helperText}</p>
+        <p className={cn("mt-2 text-xs font-bold", handleError ? "text-yellow-200" : handleChanged ? "text-[#a3ff12]" : "text-white/42")}>
+          {handleStatus}
+        </p>
       </GlassCard>
 
       {editorSlot}
@@ -317,16 +376,16 @@ export function ProfileStudioShell({
         ))}
       </div>
 
-      <section className="overflow-hidden">
+      <section className="overflow-hidden" aria-label="Profile highlights">
         <div className="hide-scrollbar flex gap-5 overflow-x-auto pb-2">
           {model.highlights.map((highlight) => (
-            <button key={`${highlight.type}-${highlight.label}`} type="button" className="flex w-[112px] shrink-0 flex-col items-center" onClick={highlight.type === "new" ? onMedia : undefined}>
+            <button key={`${highlight.type}-${highlight.label}`} type="button" className="flex w-[112px] shrink-0 flex-col items-center" onClick={highlight.type === "new" ? handleMediaAction : undefined}>
               {highlight.imageUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={highlight.imageUrl} alt={highlight.label} className="h-[112px] w-[112px] rounded-full border-[3px] border-white/20 object-cover" />
               ) : (
                 <span className="flex h-[112px] w-[112px] items-center justify-center rounded-full border-[3px] border-white/15 bg-white/[0.018] text-[54px] font-light leading-none text-[#a3ff12]">
-                  {highlight.type === "new" ? "+" : highlight.label.slice(0, 2).toUpperCase()}
+                  {highlight.type === "new" ? "+" : highlight.label.slice(0, 1).toUpperCase()}
                 </span>
               )}
               <span className="mt-2 max-w-full truncate text-center text-base font-medium text-white/70">{highlight.label}</span>
@@ -335,13 +394,13 @@ export function ProfileStudioShell({
         </div>
       </section>
 
-      <section className="space-y-4">
+      <section ref={workSectionRef} className="space-y-4 pb-[max(2.5rem,env(safe-area-inset-bottom))]">
         <div className="flex items-end justify-between gap-3">
           <div>
             <h3 className="text-2xl font-black tracking-[-0.03em] text-white">{model.work.title}</h3>
             <p className="mt-1 text-lg font-medium text-white/60">{model.work.countLabel}</p>
           </div>
-          <button type="button" className="inline-flex items-center gap-1 text-lg font-extrabold text-[#a3ff12]" onClick={onMedia}>
+          <button type="button" className="inline-flex items-center gap-1 text-lg font-extrabold text-[#a3ff12]" onClick={handleMediaAction}>
             {model.work.manageLabel}
             <ChevronRight className="h-5 w-5" />
           </button>
@@ -349,7 +408,7 @@ export function ProfileStudioShell({
 
         <div className="grid grid-cols-3 gap-1.5">
           {model.work.items.length ? model.work.items.slice(0, 9).map((item) => (
-            <button key={item.id} type="button" className="group relative aspect-square overflow-hidden rounded-[12px] border border-white/10 bg-black/25" onClick={onMedia}>
+            <button key={item.id} type="button" className="group relative aspect-square overflow-hidden rounded-[12px] border border-white/10 bg-black/25" onClick={handleMediaAction}>
               {item.imageUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={item.imageUrl} alt={item.alt} className="h-full w-full object-cover transition duration-200 group-hover:scale-[1.03]" />

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { OwnerPublicProfileEditor } from "@/components/operations/owner-public-profile-editor";
@@ -83,6 +83,8 @@ describe("OwnerPublicProfileEditor", () => {
     expect(screen.getByText(/2200 E Fowler Ave - Tampa, FL/i)).toBeInTheDocument();
     expect(screen.getAllByText("Public barbers").length).toBeGreaterThan(0);
     expect(screen.getByText("Shop status")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Team" }));
+    expect(screen.getByText("Team display is managed from Owner Home.")).toBeInTheDocument();
     expect(screen.queryByText("Public preview snapshot")).not.toBeInTheDocument();
     expect(screen.queryByText(/barber portfolio/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/private owner/i)).not.toBeInTheDocument();

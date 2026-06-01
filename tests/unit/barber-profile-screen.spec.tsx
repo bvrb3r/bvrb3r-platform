@@ -128,6 +128,10 @@ describe("BarberProfileScreen", () => {
     expect(screen.getByText("Public preview")).toBeInTheDocument();
     expect(screen.getAllByText("Edit profile").length).toBeGreaterThan(0);
     expect(screen.getByText("Portfolio")).toBeInTheDocument();
+    const usernameInput = screen.getByLabelText("Public username");
+    expect(usernameInput).toHaveAttribute("spellcheck", "false");
+    expect(usernameInput).toHaveAttribute("autocapitalize", "none");
+    expect(usernameInput).toHaveAttribute("autocorrect", "off");
     expect(screen.getByText("Posts")).toBeInTheDocument();
     expect(screen.getByText("Followers")).toBeInTheDocument();
     expect(screen.getAllByText("Bookings").length).toBeGreaterThan(0);

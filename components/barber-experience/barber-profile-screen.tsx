@@ -187,7 +187,7 @@ export function BarberProfileScreen({
     }
 
     await navigator.clipboard?.writeText(shareUrl);
-    setLocalFeedback({ tone: "info", message: "Public profile link copied." });
+    setLocalFeedback({ tone: "info", message: "Barber profile link copied." });
   }
 
   async function handleUsernameSave() {
@@ -259,7 +259,6 @@ export function BarberProfileScreen({
           scrollToStudio();
         }}
         onEdit={() => window.location.assign("/onboarding/barber/profile")}
-        onMedia={scrollToStudio}
         onShare={() => void handleShareProfile()}
         photoControl={(
           <>

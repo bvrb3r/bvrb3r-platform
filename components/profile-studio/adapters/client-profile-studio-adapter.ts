@@ -28,7 +28,7 @@ export function buildClientProfileStudioViewModel(user: UserAccount): ProfileStu
       username: handle,
       publicUrl: `/client/${handle}`,
       badge: "Culture profile",
-      bio: "",
+      bio: `${displayName} is part of the BVRB3R Culture network.`,
       contextLine: location || "Culture and social identity",
       emptyTitle: "Finish profile",
       emptyBody: "Add your photo, username, bio, and public media."
@@ -52,9 +52,9 @@ export function buildClientProfileStudioViewModel(user: UserAccount): ProfileStu
       { label: "Following", value: 0 }
     ],
     trustCards: [
-      { title: "Culture activity", value: "0 Posts", helper: "Shared in Culture", status: "neutral" },
-      { title: "Social profile", value: "0 Followers", helper: "Community proof builds here", status: "neutral" },
-      { title: "Member status", value: "Active", helper: "BVRB3R Culture", status: "good" }
+      { title: "Posts", value: "0 Posts", helper: "Shared in Culture", status: "neutral" },
+      { title: "Followers", value: "0 Followers", helper: "Followers appear as people connect with your Culture profile.", status: "neutral" },
+      { title: "Member status", value: "Active", helper: "BVRB3R Culture member", status: "good" }
     ],
     dashboardSummary: {
       title: "Your dashboard",

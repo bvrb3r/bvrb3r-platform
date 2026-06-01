@@ -85,6 +85,13 @@ describe("ProfileStudioShell", () => {
     expect(screen.getAllByRole("heading", { name: "Public Profile" }).length).toBeGreaterThan(0);
     expect(screen.getAllByText("Culture profile").length).toBeGreaterThan(0);
     expect(screen.getByText("Public username")).toBeInTheDocument();
+    const usernameInput = screen.getByLabelText("Public username");
+    expect(usernameInput).toHaveAttribute("spellcheck", "false");
+    expect(usernameInput).toHaveAttribute("autocapitalize", "none");
+    expect(usernameInput).toHaveAttribute("autocorrect", "off");
+    expect(usernameInput).toHaveAttribute("inputmode", "text");
+    expect(screen.getByRole("button", { name: "Save handle" })).toBeDisabled();
+    expect(screen.getByText("Handle is up to date.")).toBeInTheDocument();
     expect(screen.getByText("Culture activity")).toBeInTheDocument();
     expect(screen.getByText("Your dashboard")).toBeInTheDocument();
     expect(screen.getByText("Your posts")).toBeInTheDocument();
