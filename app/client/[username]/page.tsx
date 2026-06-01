@@ -1,9 +1,26 @@
 import Link from "next/link";
+import Image from "next/image";
 import { MessageCircle, Share2, Sparkles, UserPlus } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { isSupabaseEnabled, runtimeConfig } from "@/lib/config/runtime";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+
+type PublicClientProfile = {
+  id: string;
+  displayName: string;
+  username: string;
+  avatarUrl?: string | null;
+  bio?: string | null;
+  contextLine?: string | null;
+  posts: Array<{ id: string; imageUrl: string }>;
+};
 
 function cleanUsername(value: string) {
   return decodeURIComponent(value).trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "");
+}
+
+function suggestHandle(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "").slice(0, 32);
 }
 
 function displayNameFromUsername(username: string) {
@@ -23,10 +40,93 @@ function initialsForName(name: string) {
     .join("") || "BV";
 }
 
+function publicMediaUrl(storagePath?: string | null, imageUrl?: string | null) {
+  if (imageUrl) {
+    return imageUrl;
+  }
+
+  if (!storagePath || !isSupabaseEnabled()) {
+    return storagePath ?? null;
+  }
+
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) {
+    return storagePath;
+  }
+
+  return supabase.storage.from(runtimeConfig.mediaBucket).getPublicUrl(storagePath).data.publicUrl || storagePath;
+}
+
+async function readPublicClientProfile(username: string): Promise<PublicClientProfile | null> {
+  const supabase = isSupabaseEnabled() ? createSupabaseAdminClient() : null;
+  if (!supabase) {
+    const displayName = displayNameFromUsername(username);
+    return {
+      id: username,
+      displayName,
+      username,
+      bio: null,
+      contextLine: "Culture and social identity",
+      posts: []
+    };
+  }
+
+  const profilesResult = await supabase
+    .from("profiles")
+    .select("id, full_name, profile_photo_path, profile_photo_url, public_bio, public_city, public_state")
+    .limit(300);
+
+  if (profilesResult.error) {
+    return null;
+  }
+
+  const profiles = (profilesResult.data ?? []) as Array<{
+    id: string;
+    full_name?: string | null;
+    profile_photo_path?: string | null;
+    profile_photo_url?: string | null;
+    public_bio?: string | null;
+    public_city?: string | null;
+    public_state?: string | null;
+  }>;
+  const profile = profiles.find((entry) => {
+    const displayName = entry.full_name?.trim() || "";
+    return entry.id === username || suggestHandle(displayName) === username;
+  });
+
+  if (!profile) {
+    return null;
+  }
+
+  const mediaResult = await supabase
+    .from("media_assets")
+    .select("id, storage_path")
+    .eq("owner_profile_id", profile.id)
+    .eq("asset_type", "client_profile_post")
+    .order("created_at", { ascending: false });
+
+  const displayName = profile.full_name?.trim() || displayNameFromUsername(username);
+  const contextLine = [profile.public_city, profile.public_state].filter(Boolean).join(", ") || "Culture and social identity";
+  return {
+    id: profile.id,
+    displayName,
+    username,
+    avatarUrl: publicMediaUrl(profile.profile_photo_path, profile.profile_photo_url),
+    bio: profile.public_bio ?? null,
+    contextLine,
+    posts: ((mediaResult.data ?? []) as Array<{ id: string; storage_path: string }>).map((item) => ({
+      id: item.id,
+      imageUrl: publicMediaUrl(item.storage_path) ?? item.storage_path
+    }))
+  };
+}
+
 export default async function PublicClientProfilePage({ params }: { params: Promise<{ username: string }>; }) {
   const { username: rawUsername } = await params;
   const username = cleanUsername(rawUsername) || "client";
-  const displayName = displayNameFromUsername(username);
+  const profile = await readPublicClientProfile(username);
+  const displayName = profile?.displayName ?? displayNameFromUsername(username);
+  const posts = profile?.posts ?? [];
 
   return (
     <main className="min-h-screen bg-[#050505] px-4 py-6 text-white sm:px-6 lg:px-8">
@@ -38,18 +138,28 @@ export default async function PublicClientProfilePage({ params }: { params: Prom
         <Card className="overflow-hidden rounded-[36px] border border-white/10 bg-black/40 p-6 shadow-[0_28px_80px_rgba(0,0,0,0.42)] sm:p-8">
           <div className="-mx-6 -mt-6 mb-6 h-44 border-b border-white/10 bg-[radial-gradient(circle_at_top_right,rgba(163,255,18,0.18),transparent_35%),linear-gradient(135deg,rgba(163,255,18,0.10),rgba(255,255,255,0.04)_42%,rgba(0,0,0,0.34))] sm:-mx-8 sm:-mt-8" />
           <div className="grid gap-6 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center">
-            <div className="-mt-20 flex h-32 w-32 items-center justify-center rounded-[32px] border-[3px] border-white/15 bg-black text-4xl font-black text-[#a3ff12] shadow-[0_20px_60px_rgba(0,0,0,0.50)]">
-              {initialsForName(displayName)}
+            <div className="-mt-20 flex h-32 w-32 items-center justify-center overflow-hidden rounded-[32px] border-[3px] border-white/15 bg-black text-4xl font-black text-[#a3ff12] shadow-[0_20px_60px_rgba(0,0,0,0.50)]">
+              {profile?.avatarUrl ? (
+                <Image
+                  src={profile.avatarUrl}
+                  alt={`${displayName} public profile`}
+                  width={128}
+                  height={128}
+                  unoptimized
+                  className="h-full w-full object-cover"
+                />
+              ) : initialsForName(displayName)}
             </div>
 
             <div className="min-w-0">
               <p className="text-xs font-black uppercase tracking-[0.18em] text-[#a3ff12]">Culture profile</p>
               <h1 className="mt-3 text-4xl font-black tracking-[-0.055em] text-white sm:text-6xl">Public Profile</h1>
               <p className="mt-3 max-w-2xl text-sm leading-7 text-white/66">
-                Culture posts, follows, comments, likes, and message context live here.
+                {profile?.bio?.trim() || "No public bio yet."}
               </p>
               <p className="mt-5 text-3xl font-black tracking-[-0.04em] text-white">{displayName}</p>
               <p className="mt-1 text-sm font-bold text-[#a3ff12]">@{username}</p>
+              <p className="mt-2 text-sm font-semibold text-white/50">{profile?.contextLine ?? "Culture and social identity"}</p>
             </div>
 
             <div className="flex flex-col gap-3">
@@ -71,7 +181,7 @@ export default async function PublicClientProfilePage({ params }: { params: Prom
 
         <div className="grid gap-4 sm:grid-cols-3">
           {[
-            ["0", "Posts"],
+            [posts.length.toString(), "Posts"],
             ["0", "Followers"],
             ["0", "Following"]
           ].map(([value, label]) => (
@@ -82,12 +192,31 @@ export default async function PublicClientProfilePage({ params }: { params: Prom
           ))}
         </div>
 
-        <Card className="rounded-[28px] border border-dashed border-white/10 bg-black/24 p-6 text-center">
-          <Sparkles className="mx-auto h-8 w-8 text-[#a3ff12]" />
-          <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-white">Culture posts</h2>
-          <p className="mt-2 text-sm leading-6 text-white/58">
-            No public Culture posts are visible yet.
-          </p>
+        <Card className="rounded-[28px] border border-white/10 bg-black/24 p-6">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-[#a3ff12]">Culture posts</p>
+              <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-white">Public media</h2>
+            </div>
+            <Sparkles className="h-8 w-8 text-[#a3ff12]" />
+          </div>
+          {posts.length ? (
+            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+              {posts.map((post) => (
+                <Image
+                  key={post.id}
+                  src={post.imageUrl}
+                  alt={`${displayName} Culture post`}
+                  width={360}
+                  height={360}
+                  unoptimized
+                  className="aspect-square rounded-[20px] object-cover"
+                />
+              ))}
+            </div>
+          ) : (
+            <p className="mt-5 text-sm leading-6 text-white/58">No public Culture posts are visible yet.</p>
+          )}
         </Card>
       </div>
     </main>

@@ -16,8 +16,12 @@ function formatLocation(shop: OwnerShopProfile | null) {
     return "";
   }
 
+  const isPublicPlaceholder = (part: string) => !part.replace(/[,\s-]/g, "") || /^pending(?:pending)*$/i.test(part.replace(/[,\s-]/g, ""));
   const cityState = [shop.city, shop.state].filter(Boolean).join(", ");
-  return [shop.address, shop.neighborhood, cityState].filter(Boolean).join(" - ");
+  return [shop.address, shop.neighborhood, cityState]
+    .map((part) => part?.trim() ?? "")
+    .filter((part) => part && !isPublicPlaceholder(part))
+    .join(" - ");
 }
 
 export function buildShopProfileStudioViewModel({
@@ -53,8 +57,13 @@ export function buildShopProfileStudioViewModel({
       coverUrl: shop?.cover_photo_url ?? null,
       badge: isApproved ? "Verified shop" : shop ? "Setup needed" : "Public shop profile",
       bio: shop?.public_bio || shop?.brand_line || "",
-      contextLine: location || "Address, hours, team, and public media belong here.",
-      contextEditable: false,
+      contextLine: location || "Add shop address.",
+      contextEditable: Boolean(shop),
+      bioEmptyCopy: "Add a public shop bio.",
+      bioModalTitle: "Edit public shop bio",
+      bioModalHelper: "This bio appears on your public shop profile before clients choose a shop or barber.",
+      contextModalTitle: "Edit shop public location",
+      contextModalHelper: "This address appears on your public shop profile.",
       emptyTitle: "Finish shop profile",
       emptyBody: "Set your shop name, handle, address, photos, hours, and policies."
     },

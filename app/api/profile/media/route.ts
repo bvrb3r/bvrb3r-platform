@@ -30,6 +30,15 @@ const mutationSchema = z.discriminatedUnion("action", [
     assetId: z.string().trim().min(1)
   }),
   z.object({
+    action: z.literal("set_client_public_bio"),
+    publicBio: z.string().trim().max(300)
+  }),
+  z.object({
+    action: z.literal("set_client_public_location"),
+    city: z.string().trim().max(120),
+    state: z.string().trim().max(40)
+  }),
+  z.object({
     action: z.literal("set_barber_photo"),
     storagePath: z.string().trim().min(1),
     imageUrl: z.string().trim().min(1)
@@ -47,6 +56,14 @@ const mutationSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("remove_barber_gallery_image"),
     assetId: z.string().trim().min(1)
+  }),
+  z.object({
+    action: z.literal("set_barber_public_bio"),
+    publicBio: z.string().trim().max(300)
+  }),
+  z.object({
+    action: z.literal("set_barber_public_location"),
+    label: z.string().trim().max(120)
   }),
   z.object({
     action: z.literal("set_shop_photo"),
@@ -70,6 +87,19 @@ const mutationSchema = z.discriminatedUnion("action", [
     action: z.literal("remove_shop_gallery_image"),
     shopId: z.string().trim().min(1),
     assetId: z.string().trim().min(1)
+  }),
+  z.object({
+    action: z.literal("set_shop_public_bio"),
+    shopId: z.string().trim().min(1),
+    publicBio: z.string().trim().max(300)
+  }),
+  z.object({
+    action: z.literal("set_shop_public_location"),
+    shopId: z.string().trim().min(1),
+    address: z.string().trim().max(240).optional().nullable(),
+    neighborhood: z.string().trim().max(120).optional().nullable(),
+    city: z.string().trim().max(120).optional().nullable(),
+    state: z.string().trim().max(40).optional().nullable()
   }),
   z.object({
     action: z.literal("update_viewer_notification_preference"),
@@ -113,9 +143,9 @@ export async function POST(request: Request) {
     const supabase = createSupabaseAdminClient();
     const action = parsed.data.action;
     const shopId = "shopId" in parsed.data ? parsed.data.shopId : undefined;
-    if (supabase && (action === "set_barber_photo" || action === "remove_barber_photo" || action === "add_barber_gallery_image" || action === "remove_barber_gallery_image") && user.barberId) {
+    if (supabase && (action === "set_barber_photo" || action === "remove_barber_photo" || action === "add_barber_gallery_image" || action === "remove_barber_gallery_image" || action === "set_barber_public_bio" || action === "set_barber_public_location") && user.barberId) {
       await publishBarberMarketplaceReadiness(supabase, user.barberId);
-    } else if (shopId && (action === "set_shop_photo" || action === "remove_shop_photo" || action === "add_shop_gallery_image" || action === "remove_shop_gallery_image")) {
+    } else if (shopId && (action === "set_shop_photo" || action === "remove_shop_photo" || action === "add_shop_gallery_image" || action === "remove_shop_gallery_image" || action === "set_shop_public_bio" || action === "set_shop_public_location")) {
       revalidateMarketplaceSurfaces({ shopId });
     }
     return NextResponse.json(payload);

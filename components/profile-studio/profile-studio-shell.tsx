@@ -19,6 +19,8 @@ import {
 } from "lucide-react";
 import { GlassCard, StatusBadge } from "@/design/components";
 import { cn } from "@/lib/utils";
+import { ProfileBioEditModal } from "@/components/profile-studio/profile-bio-edit-modal";
+import { ProfileContextEditModal, type ProfileContextField } from "@/components/profile-studio/profile-context-edit-modal";
 import { ProfileUsernameEditModal } from "@/components/profile-studio/profile-username-edit-modal";
 
 export type ProfileStudioRole = "client" | "barber" | "shop_owner";
@@ -46,6 +48,11 @@ export type ProfileStudioViewModel = {
     contextEditable?: boolean;
     contextLocked?: boolean;
     contextActionLabel?: string;
+    bioEmptyCopy?: string;
+    bioModalTitle?: string;
+    bioModalHelper?: string;
+    contextModalTitle?: string;
+    contextModalHelper?: string;
     emptyTitle?: string;
     emptyBody?: string;
   };
@@ -112,8 +119,14 @@ type ProfileStudioShellProps = {
   onAddMedia?: () => void;
   onShare?: () => void;
   onContextEdit?: () => void;
+  onContextLocked?: () => void;
+  onBioSave?: (value: string) => void | Promise<void>;
+  onContextSave?: (values: Record<string, string>) => void | Promise<void>;
+  contextFields?: ProfileContextField[];
   onDeleteMedia?: (id: string) => void;
   isSavingUsername?: boolean;
+  isSavingBio?: boolean;
+  isSavingContext?: boolean;
 };
 
 type StudioFolder = {
@@ -153,14 +166,26 @@ export function ProfileStudioShell({
   onAddMedia,
   onShare,
   onContextEdit,
+  onContextLocked,
+  onBioSave,
+  onContextSave,
+  contextFields,
   onDeleteMedia,
-  isSavingUsername
+  isSavingUsername,
+  isSavingBio,
+  isSavingContext
 }: ProfileStudioShellProps) {
   const publicName = model.hero.publicName || model.hero.emptyTitle || "Finish profile";
   const workSectionRef = useRef<HTMLElement | null>(null);
   const [isUsernameModalOpen, setIsUsernameModalOpen] = useState(false);
+  const [isBioModalOpen, setIsBioModalOpen] = useState(false);
+  const [isContextModalOpen, setIsContextModalOpen] = useState(false);
   const [usernameDraft, setUsernameDraft] = useState(usernameValue);
   const [usernameFeedback, setUsernameFeedback] = useState<string | null>(null);
+  const [bioValue, setBioValue] = useState(model.hero.bio?.trim() ?? "");
+  const [contextValue, setContextValue] = useState(model.hero.contextLine?.trim() ?? "");
+  const [bioFeedback, setBioFeedback] = useState<string | null>(null);
+  const [contextFeedback, setContextFeedback] = useState<string | null>(null);
   const [folders, setFolders] = useState<StudioFolder[]>(() =>
     model.highlights
       .filter((highlight) => highlight.type === "collection")
@@ -175,6 +200,10 @@ export function ProfileStudioShell({
   const [mediaFolderAssignments, setMediaFolderAssignments] = useState<Record<string, string>>({});
   const usernameModalTitle = model.username.modalTitle ?? (model.role === "shop_owner" ? "Edit public shop username" : "Edit public username");
   const usernameModalHelper = model.username.modalHelper ?? "This is how people find and share this public profile.";
+  const bioModalTitle = model.hero.bioModalTitle ?? (model.role === "barber" ? "Edit public barber bio" : model.role === "shop_owner" ? "Edit public shop bio" : "Edit public bio");
+  const bioModalHelper = model.hero.bioModalHelper ?? "This bio appears on your public profile.";
+  const contextModalTitle = model.hero.contextModalTitle ?? (model.role === "barber" ? "Edit public chair/location" : model.role === "shop_owner" ? "Edit shop public location" : "Edit public location");
+  const contextModalHelper = model.hero.contextModalHelper ?? "This appears on your public profile.";
   const mediaButtonLabel = model.work.addLabel;
   const roleFolderHelper = model.role === "client"
     ? "Group your Culture posts into a public folder."
@@ -187,6 +216,18 @@ export function ProfileStudioShell({
       setUsernameDraft(usernameValue);
     }
   }, [isUsernameModalOpen, usernameValue]);
+
+  useEffect(() => {
+    if (!isBioModalOpen) {
+      setBioValue(model.hero.bio?.trim() ?? "");
+    }
+  }, [isBioModalOpen, model.hero.bio]);
+
+  useEffect(() => {
+    if (!isContextModalOpen) {
+      setContextValue(model.hero.contextLine?.trim() ?? "");
+    }
+  }, [isContextModalOpen, model.hero.contextLine]);
 
   function handleAddMediaAction() {
     if (onAddMedia) {
@@ -205,6 +246,26 @@ export function ProfileStudioShell({
     await onUsernameSave?.(value);
     setUsernameFeedback(onUsernameSave ? "Handle updated." : "Handle saving is not connected yet.");
     setIsUsernameModalOpen(false);
+  }
+
+  async function handleBioSave(value: string) {
+    await onBioSave?.(value);
+    setBioValue(value);
+    setBioFeedback(value ? "Bio updated." : "Bio cleared.");
+    setIsBioModalOpen(false);
+  }
+
+  async function handleContextSave(values: Record<string, string>) {
+    await onContextSave?.(values);
+    const nextContext = Object.values(values)
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .join(", ");
+    if (nextContext) {
+      setContextValue(nextContext);
+    }
+    setContextFeedback("Public context updated.");
+    setIsContextModalOpen(false);
   }
 
   function createFolder() {
@@ -338,25 +399,43 @@ export function ProfileStudioShell({
                 {usernameFeedback ? <span className="text-xs font-bold text-[#a3ff12]">{usernameFeedback}</span> : null}
               </div>
             ) : null}
-            <p className="mt-4 max-w-3xl text-sm leading-6 text-white/58">
-              {model.hero.bio || model.hero.emptyBody || "Add a public bio or story to complete this profile."}
-            </p>
-            {model.hero.contextLine ? (
+            <div className="mt-4 flex max-w-3xl flex-wrap items-center gap-2">
+              <p className="text-sm leading-6 text-white/58">
+                {bioValue || model.hero.bioEmptyCopy || "Add a public bio."}
+              </p>
+              <button
+                type="button"
+                aria-label={bioModalTitle}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-[#a3ff12] transition hover:border-[#a3ff12]/30 hover:bg-[#a3ff12]/10"
+                onClick={() => setIsBioModalOpen(true)}
+              >
+                <Pencil className="h-4 w-4" />
+              </button>
+              {bioFeedback ? <span className="text-xs font-bold text-[#a3ff12]">{bioFeedback}</span> : null}
+            </div>
+            {contextValue ? (
               <div className="mt-2 flex flex-wrap items-center gap-2 text-base font-semibold text-white/50">
-                <span>{model.hero.contextLine}</span>
+                <span>{contextValue}</span>
+                {contextFeedback ? <span className="text-xs font-bold text-[#a3ff12]">{contextFeedback}</span> : null}
                 {model.hero.contextEditable ? (
                   <button
                     type="button"
                     aria-label={model.hero.contextActionLabel ?? "Edit public context"}
                     className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-[#a3ff12] transition hover:border-[#a3ff12]/30 hover:bg-[#a3ff12]/10"
-                    onClick={onContextEdit}
+                    onClick={() => {
+                      if (contextFields?.length && onContextSave) {
+                        setIsContextModalOpen(true);
+                        return;
+                      }
+                      onContextEdit?.();
+                    }}
                   >
                     <Pencil className="h-4 w-4" />
                   </button>
                 ) : model.hero.contextLocked ? (
-                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/[0.025] text-white/44" aria-label="Public context locked">
+                  <button type="button" className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/[0.025] text-white/44" aria-label="Public context locked" onClick={onContextLocked}>
                     <Lock className="h-4 w-4" />
-                  </span>
+                  </button>
                 ) : null}
               </div>
             ) : null}
@@ -486,6 +565,28 @@ export function ProfileStudioShell({
           onChange={setUsernameDraft}
           onClose={() => setIsUsernameModalOpen(false)}
           onSave={handleUsernameSave}
+        />
+      ) : null}
+
+      {isBioModalOpen ? (
+        <ProfileBioEditModal
+          title={bioModalTitle}
+          helper={bioModalHelper}
+          value={bioValue}
+          isSaving={isSavingBio}
+          onClose={() => setIsBioModalOpen(false)}
+          onSave={handleBioSave}
+        />
+      ) : null}
+
+      {isContextModalOpen && contextFields?.length ? (
+        <ProfileContextEditModal
+          title={contextModalTitle}
+          helper={contextModalHelper}
+          fields={contextFields}
+          isSaving={isSavingContext}
+          onClose={() => setIsContextModalOpen(false)}
+          onSave={handleContextSave}
         />
       ) : null}
 

@@ -10,14 +10,17 @@ export function buildClientProfileStudioViewModel(
   user: UserAccount,
   media?: {
     profilePhotoUrl?: string | null;
+    publicBio?: string | null;
+    publicCity?: string | null;
+    publicState?: string | null;
     gallery?: ManagedMediaAsset[];
   } | null
 ): ProfileStudioViewModel {
   const displayName = user.canonicalFullName ?? user.name ?? "Client";
   const handle = suggestHandle(displayName) || "client";
   const userWithLocation = user as UserAccount & { city?: string | null; state?: string | null };
-  const city = typeof userWithLocation.city === "string" ? userWithLocation.city : "";
-  const state = typeof userWithLocation.state === "string" ? userWithLocation.state : "";
+  const city = media?.publicCity ?? (typeof userWithLocation.city === "string" ? userWithLocation.city : "");
+  const state = media?.publicState ?? (typeof userWithLocation.state === "string" ? userWithLocation.state : "");
   const location = [city, state].filter(Boolean).join(", ");
   const posts = media?.gallery ?? [];
 
@@ -37,9 +40,14 @@ export function buildClientProfileStudioViewModel(
       publicUrl: `/client/${handle}`,
       avatarUrl: media?.profilePhotoUrl ?? null,
       badge: "Culture profile",
-      bio: "",
+      bio: media?.publicBio ?? "",
       contextLine: location || "Culture and social identity",
-      contextEditable: false,
+      contextEditable: true,
+      bioEmptyCopy: "Add a public bio.",
+      bioModalTitle: "Edit public bio",
+      bioModalHelper: "This bio appears on your Culture profile, comments, likes, follows, and message context.",
+      contextModalTitle: "Edit public location",
+      contextModalHelper: "Choose the public city or area shown on your Culture profile.",
       emptyTitle: "Finish profile",
       emptyBody: "Add your photo, username, bio, and public media."
     },

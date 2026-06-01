@@ -2855,7 +2855,9 @@ export async function getBarberDetailsPayload(barberIdOrUsername: string) {
       ...profile,
       profile: {
         ...profile.profile,
-        profilePhotoUrl: barberMedia?.profilePhotoUrl ?? profile.profile.profilePhotoUrl
+        profilePhotoUrl: barberMedia?.profilePhotoUrl ?? profile.profile.profilePhotoUrl,
+        headline: barberMedia?.publicBio ?? profile.profile.headline,
+        serviceAreaLabel: barberMedia?.serviceAreaLabel ?? profile.profile.serviceAreaLabel
       },
       portfolio: barberMedia?.gallery.length
         ? barberMedia.gallery.map((asset) => ({
@@ -3043,6 +3045,12 @@ export async function getPublicShopProfilePayload(shopIdOrSlug: string): Promise
       phone: visibleShop.phone,
       activeBarbersCount: barbers.length,
       profilePhotoUrl: shopMedia?.profilePhotoUrl ?? visibleShop.profilePhotoUrl ?? undefined,
+      publicBio: shopMedia?.publicBio ?? ("publicBio" in visibleShop ? (visibleShop as { publicBio?: string }).publicBio : undefined),
+      brandLine: shopMedia?.brandLine ?? visibleShop.brandLine,
+      address: shopMedia?.address ?? visibleShop.address,
+      neighborhood: shopMedia?.neighborhood ?? visibleShop.neighborhood,
+      city: shopMedia?.city ?? visibleShop.city,
+      state: shopMedia?.state ?? visibleShop.state,
       gallery: shopMedia?.gallery.map((asset) => ({
         id: asset.id,
         shopId: visibleShop.id,

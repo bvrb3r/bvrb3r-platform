@@ -127,6 +127,35 @@ export function ClientPublicProfileEditor({ user }: { user: UserAccount }) {
     }
   }
 
+  async function handleBioSave(publicBio: string) {
+    setFeedback(null);
+    try {
+      await mediaMutation.mutateAsync({
+        action: "set_client_public_bio",
+        publicBio
+      });
+      setFeedback({ tone: "success", message: "Public bio updated." });
+    } catch (errorValue) {
+      setFeedback({ tone: "error", message: readableError(errorValue, "Unable to update public bio.") });
+      throw errorValue;
+    }
+  }
+
+  async function handleLocationSave(values: Record<string, string>) {
+    setFeedback(null);
+    try {
+      await mediaMutation.mutateAsync({
+        action: "set_client_public_location",
+        city: values.city ?? "",
+        state: values.state ?? ""
+      });
+      setFeedback({ tone: "success", message: "Public location updated." });
+    } catch (errorValue) {
+      setFeedback({ tone: "error", message: readableError(errorValue, "Unable to update public location.") });
+      throw errorValue;
+    }
+  }
+
   return (
     <div className="space-y-4" data-testid="client-public-profile-editor">
       {feedback ? <FeedbackBanner tone={feedback.tone} message={feedback.message} /> : null}
@@ -173,6 +202,26 @@ export function ClientPublicProfileEditor({ user }: { user: UserAccount }) {
         onMedia={() => openFilePicker(mediaInputRef.current)}
         onAddMedia={() => openFilePicker(mediaInputRef.current)}
         onDeleteMedia={(assetId) => void handlePostRemove(assetId)}
+        onBioSave={handleBioSave}
+        isSavingBio={mediaMutation.isPending}
+        contextFields={[
+          {
+            name: "city",
+            label: "City or area",
+            value: clientMedia?.publicCity ?? "",
+            placeholder: "Tampa",
+            maxLength: 120
+          },
+          {
+            name: "state",
+            label: "State",
+            value: clientMedia?.publicState ?? "",
+            placeholder: "FL",
+            maxLength: 40
+          }
+        ]}
+        onContextSave={handleLocationSave}
+        isSavingContext={mediaMutation.isPending}
         onPreview={() => window.location.assign(`/client/${usernameDraft || model.username.value}`)}
         onShare={async () => {
           const url = `${window.location.origin}/client/${usernameDraft || model.username.value}`;

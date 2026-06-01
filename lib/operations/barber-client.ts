@@ -854,7 +854,8 @@ export function useUpdateOwnerShopProfileMutation() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["owner-shop-profile"] }),
         queryClient.invalidateQueries({ queryKey: ["shop-dashboard"] }),
-        queryClient.invalidateQueries({ queryKey: ["shop-team-invite-directory"] })
+        queryClient.invalidateQueries({ queryKey: ["shop-team-invite-directory"] }),
+        queryClient.invalidateQueries({ queryKey: ["profile-media"] })
       ]);
     }
   });

@@ -125,12 +125,13 @@ export function BarberProfileScreen({
   const reputationLabel = profile?.proof?.rankingLabel
     ?? profile?.proof?.reputationTier
     ?? (reviewScore && reviewCount && reviewScore >= 4.8 ? "Best booking fit" : isVerified ? "Verified barber" : "Best booking fit");
-  const rawIdentityLine = profile?.profile.headline?.trim() || profile?.barber.bio?.trim() || "";
+  const rawIdentityLine = barberMedia?.publicBio?.trim() || profile?.profile.headline?.trim() || profile?.barber.bio?.trim() || "";
   const identityLine = rawIdentityLine.toLowerCase() === `${barberName} on the bvrb3r network.`.toLowerCase()
     ? ""
     : rawIdentityLine;
   const shopLabel = profile?.shop?.name
     ?? profile?.shopLocations[0]?.name
+    ?? barberMedia?.serviceAreaLabel
     ?? "Independent barber";
   const mutationStatus = mediaMutation.error
     ? { tone: "error" as const, message: readableError(mediaMutation.error, "Unable to update barber profile media right now.") }
@@ -220,6 +221,36 @@ export function BarberProfileScreen({
       setLocalFeedback({ tone: "info", message: "Portfolio image removed." });
     } catch (error) {
       setLocalFeedback({ tone: "error", message: readableError(error, "Unable to remove image.") });
+    }
+  }
+
+  async function handleBarberBioSave(publicBio: string) {
+    setLocalFeedback(null);
+    try {
+      await mediaMutation.mutateAsync({
+        action: "set_barber_public_bio",
+        publicBio
+      });
+      await profileQuery.refetch();
+      setLocalFeedback({ tone: "info", message: "Public barber bio updated." });
+    } catch (error) {
+      setLocalFeedback({ tone: "error", message: readableError(error, "Unable to update public barber bio.") });
+      throw error;
+    }
+  }
+
+  async function handleBarberContextSave(values: Record<string, string>) {
+    setLocalFeedback(null);
+    try {
+      await mediaMutation.mutateAsync({
+        action: "set_barber_public_location",
+        label: values.label ?? ""
+      });
+      await profileQuery.refetch();
+      setLocalFeedback({ tone: "info", message: "Public chair/location updated." });
+    } catch (error) {
+      setLocalFeedback({ tone: "error", message: readableError(error, "Unable to update public chair/location.") });
+      throw error;
     }
   }
 
@@ -328,7 +359,20 @@ export function BarberProfileScreen({
           }
           scrollToStudio();
         }}
-        onContextEdit={() => setLocalFeedback({ tone: "info", message: "Chair and location display editing is coming soon." })}
+        onBioSave={handleBarberBioSave}
+        isSavingBio={mediaMutation.isPending}
+        contextFields={!profile?.shop ? [
+          {
+            name: "label",
+            label: "Chair or location display",
+            value: barberMedia?.serviceAreaLabel ?? (shopLabel === "Independent barber" ? "" : shopLabel),
+            placeholder: "Phils chair",
+            maxLength: 120
+          }
+        ] : undefined}
+        onContextSave={!profile?.shop ? handleBarberContextSave : undefined}
+        isSavingContext={mediaMutation.isPending}
+        onContextLocked={() => setLocalFeedback({ tone: "info", message: "This location is controlled by your connected shop." })}
         onShare={() => void handleShareProfile()}
         onMedia={() => openFilePicker(mediaInputRef.current)}
         onAddMedia={() => openFilePicker(mediaInputRef.current)}

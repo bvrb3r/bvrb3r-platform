@@ -53,7 +53,9 @@ export function useMutateProfileMediaMutation() {
         queryClient.invalidateQueries({ queryKey: ["client-home"] }),
         queryClient.invalidateQueries({ queryKey: ["client-bookings"] }),
         queryClient.invalidateQueries({ queryKey: ["barber-profile"] }),
-        queryClient.invalidateQueries({ queryKey: ["marketplace"] })
+        queryClient.invalidateQueries({ queryKey: ["marketplace"] }),
+        queryClient.invalidateQueries({ queryKey: ["owner-shop-profile"] }),
+        queryClient.invalidateQueries({ queryKey: ["shop-dashboard"] })
       ]);
     }
   });

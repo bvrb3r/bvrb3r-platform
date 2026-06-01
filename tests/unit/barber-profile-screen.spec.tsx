@@ -105,6 +105,8 @@ describe("BarberProfileScreen", () => {
         barberProfile: {
           barberId: "barber-43b3cda2",
           profilePhotoUrl: null,
+          publicBio: "Sharp public barber bio.",
+          serviceAreaLabel: "Phils chair",
           gallery: []
         }
       }
@@ -132,6 +134,8 @@ describe("BarberProfileScreen", () => {
     expect(screen.getAllByRole("heading", { name: "Profile" }).length).toBeGreaterThan(0);
     expect(screen.getByText("Manage your profile & brand")).toBeInTheDocument();
     expect(screen.getByText("The client-facing preview, portfolio, trust signals, and booking profile live here.")).toBeInTheDocument();
+    expect(screen.getByText("Sharp public barber bio.")).toBeInTheDocument();
+    expect(screen.getByText("Phils chair")).toBeInTheDocument();
     expect(screen.getByText("Public preview")).toBeInTheDocument();
     expect(screen.queryByText("Edit profile")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Portfolio" })).not.toBeInTheDocument();
@@ -249,5 +253,40 @@ describe("BarberProfileScreen", () => {
       action: "remove_barber_gallery_image",
       assetId: "work-1"
     });
+  });
+
+  it("saves barber public bio and freelance chair/location from the hero", async () => {
+    const mutateAsync = vi.fn().mockResolvedValue({});
+    const refetch = vi.fn().mockResolvedValue({});
+    useMutateProfileMediaMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync,
+      error: null
+    });
+    useBarberProfileQueryMock.mockReturnValue({
+      ...useBarberProfileQueryMock(),
+      refetch
+    });
+
+    render(<BarberProfileScreen user={user} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit public barber bio" }));
+    fireEvent.change(screen.getByLabelText("Public bio"), { target: { value: "Fresh public story" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByText("Public barber bio updated.");
+    expect(mutateAsync).toHaveBeenCalledWith({
+      action: "set_barber_public_bio",
+      publicBio: "Fresh public story"
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit chair or location display" }));
+    fireEvent.change(screen.getByLabelText("Chair or location display"), { target: { value: "Downtown chair" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByText("Public chair/location updated.");
+    expect(mutateAsync).toHaveBeenCalledWith({
+      action: "set_barber_public_location",
+      label: "Downtown chair"
+    });
+    expect(refetch).toHaveBeenCalled();
   });
 });

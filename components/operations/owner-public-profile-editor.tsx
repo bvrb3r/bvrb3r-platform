@@ -6,7 +6,7 @@ import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { buildShopProfileStudioViewModel } from "@/components/profile-studio/adapters/shop-profile-studio-adapter";
 import { ProfileImageEditButton } from "@/components/profile-studio/profile-image-edit-button";
 import { ProfileStudioShell } from "@/components/profile-studio/profile-studio-shell";
-import { useOwnerShopProfileQuery } from "@/lib/operations/barber-client";
+import { useOwnerShopProfileQuery, useUpdateOwnerShopProfileMutation } from "@/lib/operations/barber-client";
 import { useMutateProfileMediaMutation, useProfileMediaWorkspaceQuery } from "@/lib/profile/client";
 import { uploadMediaAsset } from "@/lib/storage/media";
 import type { UserAccount } from "@/types/domain";
@@ -94,6 +94,7 @@ function readableError(error: unknown, fallback: string) {
 export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
   const mediaInputRef = useRef<HTMLInputElement | null>(null);
   const profileQuery = useOwnerShopProfileQuery();
+  const shopProfileMutation = useUpdateOwnerShopProfileMutation();
   const mediaQuery = useProfileMediaWorkspaceQuery(true);
   const mediaMutation = useMutateProfileMediaMutation();
   const [draft, setDraft] = useState<ShopPublicProfileDraft>(emptyDraft);
@@ -119,7 +120,7 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
       id: shopMedia.shopId,
       name: shopMedia.name ?? shopMedia.label,
       brand_line: shopMedia.brandLine ?? null,
-      public_bio: null,
+      public_bio: shopMedia.publicBio ?? null,
       cover_photo_url: null,
       public_hours: null,
       policies: null,
@@ -278,6 +279,58 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
     }
   }
 
+  async function handleShopBioSave(publicBio: string) {
+    const shopId = effectiveShop?.id ?? shopMedia?.shopId;
+    if (!shopId) {
+      setFeedback({ tone: "error", message: "Finish shop profile before editing the shop bio." });
+      throw new Error("Shop profile is not ready.");
+    }
+
+    setFeedback(null);
+    try {
+      await shopProfileMutation.mutateAsync({
+        shopId,
+        publicBio
+      });
+      updateDraft("publicBio", publicBio);
+      setFeedback({ tone: "success", message: "Shop bio updated." });
+    } catch (errorValue) {
+      setFeedback({ tone: "error", message: readableError(errorValue, "Unable to update shop bio.") });
+      throw errorValue;
+    }
+  }
+
+  async function handleShopLocationSave(values: Record<string, string>) {
+    const shopId = effectiveShop?.id ?? shopMedia?.shopId;
+    if (!shopId) {
+      setFeedback({ tone: "error", message: "Finish shop profile before editing the shop location." });
+      throw new Error("Shop profile is not ready.");
+    }
+
+    const nextLocation = {
+      address: values.address ?? "",
+      neighborhood: values.neighborhood ?? "",
+      city: values.city ?? "",
+      state: values.state ?? ""
+    };
+
+    setFeedback(null);
+    try {
+      await shopProfileMutation.mutateAsync({
+        shopId,
+        ...nextLocation
+      });
+      updateDraft("address", nextLocation.address);
+      updateDraft("neighborhood", nextLocation.neighborhood);
+      updateDraft("city", nextLocation.city);
+      updateDraft("state", nextLocation.state);
+      setFeedback({ tone: "success", message: "Shop public location updated." });
+    } catch (errorValue) {
+      setFeedback({ tone: "error", message: readableError(errorValue, "Unable to update shop location.") });
+      throw errorValue;
+    }
+  }
+
   return (
     <div data-testid="owner-public-profile-editor">
       {feedback ? <FeedbackBanner tone={feedback.tone} message={feedback.message} /> : null}
@@ -320,6 +373,40 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
         onMedia={() => setFeedback({ tone: "info", message: "Team display is managed from Owner Home." })}
         onAddMedia={() => openFilePicker(mediaInputRef.current)}
         onDeleteMedia={(assetId) => void handleShopGalleryRemove(assetId)}
+        onBioSave={handleShopBioSave}
+        isSavingBio={shopProfileMutation.isPending}
+        contextFields={effectiveShop ? [
+          {
+            name: "address",
+            label: "Address",
+            value: draft.address,
+            placeholder: "123 Main St",
+            maxLength: 240
+          },
+          {
+            name: "neighborhood",
+            label: "Neighborhood",
+            value: draft.neighborhood,
+            placeholder: "University Square Mall",
+            maxLength: 120
+          },
+          {
+            name: "city",
+            label: "City",
+            value: draft.city,
+            placeholder: "Tampa",
+            maxLength: 120
+          },
+          {
+            name: "state",
+            label: "State",
+            value: draft.state,
+            placeholder: "FL",
+            maxLength: 40
+          }
+        ] : undefined}
+        onContextSave={effectiveShop ? handleShopLocationSave : undefined}
+        isSavingContext={shopProfileMutation.isPending}
         onPreview={() => {
           if (model.hero.publicUrl) {
             window.location.assign(model.hero.publicUrl);

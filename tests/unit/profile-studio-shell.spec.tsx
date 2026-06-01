@@ -25,7 +25,13 @@ const model: ProfileStudioViewModel = {
     username: "jordan",
     badge: "Culture profile",
     bio: "Public bio",
-    contextLine: "Culture identity"
+    contextLine: "Culture identity",
+    contextEditable: true,
+    bioEmptyCopy: "Add a public bio.",
+    bioModalTitle: "Edit public bio",
+    bioModalHelper: "This bio appears on your Culture profile.",
+    contextModalTitle: "Edit public location",
+    contextModalHelper: "Choose the public city or area shown on your Culture profile."
   },
   actions: {
     publicPreviewLabel: "Public preview",
@@ -83,6 +89,12 @@ describe("ProfileStudioShell", () => {
         backLabel="Back to More"
         usernameValue="jordan"
         photoControl={<ProfileImageEditButton label="Update public photo" onUnavailable={vi.fn()} />}
+        onBioSave={vi.fn()}
+        contextFields={[
+          { name: "city", label: "City or area", value: "Tampa" },
+          { name: "state", label: "State", value: "FL" }
+        ]}
+        onContextSave={vi.fn()}
       />
     );
 
@@ -107,6 +119,18 @@ describe("ProfileStudioShell", () => {
     expect(usernameInput).toHaveAttribute("autocorrect", "off");
     expect(usernameInput).toHaveAttribute("inputmode", "text");
     expect(screen.queryByRole("button", { name: "Save handle" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit public bio" }));
+    expect(screen.getByRole("dialog", { name: "Edit public bio" })).toBeInTheDocument();
+    expect(screen.getByText("This bio appears on your Culture profile.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Close bio editor" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit public context" }));
+    expect(screen.getByRole("dialog", { name: "Edit public location" })).toBeInTheDocument();
+    expect(screen.getByText("Choose the public city or area shown on your Culture profile.")).toBeInTheDocument();
+    expect(screen.getByLabelText("City or area")).toHaveValue("Tampa");
+    expect(screen.getByRole("button", { name: "Close context editor" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.getByText("Culture activity")).toBeInTheDocument();
     expect(screen.getByText("Your dashboard")).toBeInTheDocument();
     expect(screen.getByText("Your posts")).toBeInTheDocument();

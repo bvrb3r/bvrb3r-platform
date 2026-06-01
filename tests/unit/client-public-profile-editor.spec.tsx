@@ -57,6 +57,9 @@ describe("ClientPublicProfileEditor", () => {
         clientProfile: {
           profilePhotoUrl: "https://cdn.example.com/client-avatar.jpg",
           profilePhotoPath: "profiles/client/avatar.jpg",
+          publicBio: "Public Culture bio.",
+          publicCity: "Tampa",
+          publicState: "FL",
           gallery: []
         },
         barberProfile: null,
@@ -85,6 +88,8 @@ describe("ClientPublicProfileEditor", () => {
     expect(screen.getByText("Manage your Culture profile")).toBeInTheDocument();
     expect(screen.getAllByText(/Culture profile/i).length).toBeGreaterThan(0);
     expect(screen.getByText("Shape the identity that appears in Culture, comments, likes, follows, and message context.")).toBeInTheDocument();
+    expect(screen.getByText("Public Culture bio.")).toBeInTheDocument();
+    expect(screen.getByText("Tampa, FL")).toBeInTheDocument();
     expect(screen.getByText("Client public profiles appear in Culture and social interactions. They do not appear in barber or shop marketplace search.")).toBeInTheDocument();
     expect(screen.queryByText("Public username")).not.toBeInTheDocument();
     expect(screen.getByText("@jordanellis")).toBeInTheDocument();
@@ -137,6 +142,38 @@ describe("ClientPublicProfileEditor", () => {
       imageUrl: "https://cdn.example.com/post.jpg"
     });
     expect(await screen.findByText("Post added.")).toBeInTheDocument();
+  });
+
+  it("saves client public bio and location from the hero modals", async () => {
+    const mutateAsync = vi.fn().mockResolvedValue({});
+    useMutateProfileMediaMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync
+    });
+
+    render(<ClientPublicProfileEditor user={user} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit public bio" }));
+    fireEvent.change(screen.getByLabelText("Public bio"), { target: { value: "New Culture bio" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith({
+      action: "set_client_public_bio",
+      publicBio: "New Culture bio"
+    }));
+    expect(await screen.findByText("Public bio updated.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit public context" }));
+    fireEvent.change(screen.getByLabelText("City or area"), { target: { value: "Orlando" } });
+    fireEvent.change(screen.getByLabelText("State"), { target: { value: "FL" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith({
+      action: "set_client_public_location",
+      city: "Orlando",
+      state: "FL"
+    }));
+    expect(await screen.findByText("Public location updated.")).toBeInTheDocument();
   });
 
   it("removes client Culture posts through the media mutation", async () => {

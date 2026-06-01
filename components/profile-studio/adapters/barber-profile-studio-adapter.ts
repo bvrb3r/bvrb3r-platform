@@ -116,6 +116,11 @@ export function buildBarberProfileStudioViewModel({
       contextEditable: !profile?.shop,
       contextLocked: Boolean(profile?.shop),
       contextActionLabel: "Edit chair or location display",
+      bioEmptyCopy: "Add a public bio or story.",
+      bioModalTitle: "Edit public barber bio",
+      bioModalHelper: "This bio appears on your public barber profile before clients book.",
+      contextModalTitle: "Edit public chair/location",
+      contextModalHelper: "This appears on your public barber profile.",
       emptyTitle: "Finish barber profile",
       emptyBody: "Add a public bio or story to complete this profile."
     },

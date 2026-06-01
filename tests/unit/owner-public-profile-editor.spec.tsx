@@ -6,11 +6,13 @@ import type { UserAccount } from "@/types/domain";
 
 const {
   useOwnerShopProfileQueryMock,
+  useUpdateOwnerShopProfileMutationMock,
   useProfileMediaWorkspaceQueryMock,
   useMutateProfileMediaMutationMock,
   uploadMediaAssetMock
 } = vi.hoisted(() => ({
   useOwnerShopProfileQueryMock: vi.fn(),
+  useUpdateOwnerShopProfileMutationMock: vi.fn(),
   useProfileMediaWorkspaceQueryMock: vi.fn(),
   useMutateProfileMediaMutationMock: vi.fn(),
   uploadMediaAssetMock: vi.fn()
@@ -23,7 +25,8 @@ vi.mock("next/link", () => ({
 }));
 
 vi.mock("@/lib/operations/barber-client", () => ({
-  useOwnerShopProfileQuery: useOwnerShopProfileQueryMock
+  useOwnerShopProfileQuery: useOwnerShopProfileQueryMock,
+  useUpdateOwnerShopProfileMutation: useUpdateOwnerShopProfileMutationMock
 }));
 
 vi.mock("@/lib/profile/client", () => ({
@@ -49,6 +52,7 @@ describe("OwnerPublicProfileEditor", () => {
 
   beforeEach(() => {
     useOwnerShopProfileQueryMock.mockReset();
+    useUpdateOwnerShopProfileMutationMock.mockReset();
     useProfileMediaWorkspaceQueryMock.mockReset();
     useMutateProfileMediaMutationMock.mockReset();
     uploadMediaAssetMock.mockReset();
@@ -65,6 +69,10 @@ describe("OwnerPublicProfileEditor", () => {
       }
     });
     useMutateProfileMediaMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: vi.fn().mockResolvedValue({})
+    });
+    useUpdateOwnerShopProfileMutationMock.mockReturnValue({
       isPending: false,
       mutateAsync: vi.fn().mockResolvedValue({})
     });
@@ -129,6 +137,7 @@ describe("OwnerPublicProfileEditor", () => {
     expect(screen.getByText(/2200 E Fowler Ave - Tampa, FL/i)).toBeInTheDocument();
     expect(screen.getAllByText("Public barbers").length).toBeGreaterThan(0);
     expect(screen.getByText("Shop status")).toBeInTheDocument();
+    expect(screen.queryByText(/Pending - Pending, Pending/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Team" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Share profile" })).toBeInTheDocument();
     expect(screen.queryByText("Edit profile")).not.toBeInTheDocument();
@@ -137,6 +146,61 @@ describe("OwnerPublicProfileEditor", () => {
     expect(screen.queryByText(/barber portfolio/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/private owner/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/payout/i)).not.toBeInTheDocument();
+  });
+
+  it("saves shop public bio and location from the hero modals", async () => {
+    const mutateAsync = vi.fn().mockResolvedValue({});
+    useUpdateOwnerShopProfileMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync
+    });
+    useOwnerShopProfileQueryMock.mockReturnValue({
+      data: {
+        shop: {
+          id: "shop-bvrb3r",
+          name: "The BVRB3R Shop",
+          shop_username: "bvrb3rshop",
+          brand_line: "Campus cuts.",
+          public_bio: "Public shop bio.",
+          city: "Pending",
+          state: "Pending",
+          address: "Pending"
+        }
+      },
+      error: null,
+      isLoading: false,
+      refetch: vi.fn()
+    });
+
+    render(<OwnerPublicProfileEditor user={user} />);
+
+    expect(screen.getByText("Add shop address.")).toBeInTheDocument();
+    expect(screen.queryByText(/Pending - Pending, Pending/i)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit public shop bio" }));
+    fireEvent.change(screen.getByLabelText("Public bio"), { target: { value: "New shop story" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith({
+      shopId: "shop-bvrb3r",
+      publicBio: "New shop story"
+    }));
+    expect(await screen.findByText("Shop bio updated.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit public context" }));
+    fireEvent.change(screen.getByLabelText("Address"), { target: { value: "2200 E Fowler Ave" } });
+    fireEvent.change(screen.getByLabelText("Neighborhood"), { target: { value: "University Square Mall" } });
+    fireEvent.change(screen.getByLabelText("City"), { target: { value: "Tampa" } });
+    fireEvent.change(screen.getByLabelText("State"), { target: { value: "FL" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith({
+      shopId: "shop-bvrb3r",
+      address: "2200 E Fowler Ave",
+      neighborhood: "University Square Mall",
+      city: "Tampa",
+      state: "FL"
+    }));
+    expect(await screen.findByText("Shop public location updated.")).toBeInTheDocument();
   });
 
   it("uploads shop gallery media through the owner media mutation", async () => {
