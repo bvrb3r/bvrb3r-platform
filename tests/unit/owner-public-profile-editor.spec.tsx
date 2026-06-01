@@ -56,9 +56,9 @@ describe("OwnerPublicProfileEditor", () => {
 
     render(<OwnerPublicProfileEditor user={user} />);
 
-    expect(screen.getByText("Finish shop profile. Set your shop name, handle, address, photos, hours, and policies.")).toBeInTheDocument();
-    expect(screen.queryByText("Unable to load shop profile. Try again from Owner Home or More.")).not.toBeInTheDocument();
-    expect(screen.getByText("The BVRB3R Shop")).toBeInTheDocument();
+    expect(screen.getAllByText(/Finish shop profile.*Set your shop name, handle, address, photos, hours, and policies/i).length).toBeGreaterThan(0);
+    expect(screen.queryByText("Unable to load shop profile. Try again.")).not.toBeInTheDocument();
+    expect(screen.getAllByText("The BVRB3R Shop").length).toBeGreaterThan(0);
   });
 
   it("renders the shop public profile studio fields from the resolved shop", () => {
@@ -83,9 +83,15 @@ describe("OwnerPublicProfileEditor", () => {
     render(<OwnerPublicProfileEditor user={user} />);
 
     expect(screen.getByTestId("owner-public-profile-editor")).toBeInTheDocument();
+    expect(screen.getByText("Manage your shop profile & brand")).toBeInTheDocument();
+    expect(screen.getByText("Shape the public business profile clients see before choosing a shop or barber.")).toBeInTheDocument();
+    expect(screen.getByText("Public shop username")).toBeInTheDocument();
+    expect(screen.getAllByText("Shop gallery and business media").length).toBeGreaterThan(0);
     expect(screen.getByDisplayValue("The BVRB3R Shop")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("bvrb3rshop")).toBeInTheDocument();
+    expect(screen.getAllByDisplayValue("bvrb3rshop").length).toBeGreaterThan(0);
     expect(screen.getByDisplayValue("2200 E Fowler Ave")).toBeInTheDocument();
-    expect(screen.getByText("Team preview")).toBeInTheDocument();
+    expect(screen.getAllByText("Public team").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/private owner/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/payout/i)).not.toBeInTheDocument();
   });
 });

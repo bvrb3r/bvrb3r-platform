@@ -26,15 +26,20 @@ describe("ClientPublicProfileEditor", () => {
     render(<ClientPublicProfileEditor user={user} />);
 
     expect(screen.getByTestId("client-public-profile-editor")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Public Profile" })).toBeInTheDocument();
-    expect(screen.getByText("Culture profile settings")).toBeInTheDocument();
-    expect(screen.getByText("Client public profiles are scoped to Culture and social interactions. They do not appear in barber or shop marketplace search.")).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { name: "Public Profile" }).length).toBeGreaterThan(0);
+    expect(screen.getByText("Manage your Culture profile")).toBeInTheDocument();
+    expect(screen.getByText("Shape the identity that appears in Culture, comments, likes, follows, and message context.")).toBeInTheDocument();
+    expect(screen.getByText("Client public profiles appear in Culture and social interactions. They do not appear in barber or shop marketplace search.")).toBeInTheDocument();
+    expect(screen.getByText("Public username")).toBeInTheDocument();
+    expect(screen.getAllByText("Profile readiness").length).toBeGreaterThan(0);
+    expect(screen.getByText("Culture posts and profile media")).toBeInTheDocument();
     expect(screen.getByLabelText("Public display name")).toBeInTheDocument();
     expect(screen.getByLabelText("@username")).toBeInTheDocument();
-    expect(screen.getByLabelText("Bio")).toBeInTheDocument();
-    expect(screen.getByText("Media / posts")).toBeInTheDocument();
-    expect(screen.getByText("Visibility")).toBeInTheDocument();
+    expect(screen.getByLabelText("Public bio")).toBeInTheDocument();
+    expect(screen.getByText("Public preview snapshot")).toBeInTheDocument();
     expect(screen.queryByText(/services/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/booking profile/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/starting price/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/next opening/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^book$/i })).not.toBeInTheDocument();
   });
 });
