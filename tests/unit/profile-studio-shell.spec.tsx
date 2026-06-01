@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { ProfileStudioShell, type ProfileStudioViewModel } from "@/components/profile-studio/profile-studio-shell";
@@ -28,7 +28,6 @@ const model: ProfileStudioViewModel = {
   },
   actions: {
     publicPreviewLabel: "Public preview",
-    editProfileLabel: "Edit profile",
     mediaLabel: "Posts",
     shareLabel: "Share profile"
   },
@@ -37,7 +36,9 @@ const model: ProfileStudioViewModel = {
     value: "jordan",
     helperText: "Lowercase letters, numbers, hyphens, or underscores.",
     canEdit: true,
-    publicUrl: "/client/jordan"
+    publicUrl: "/client/jordan",
+    modalTitle: "Edit public username",
+    modalHelper: "This is how people find your Culture profile."
   },
   stats: [
     { label: "Posts", value: 0 },
@@ -53,10 +54,6 @@ const model: ProfileStudioViewModel = {
     title: "Your dashboard",
     text: "0 profile views, 0 post clicks."
   },
-  secondaryActions: [
-    { label: "Edit profile", intent: "edit_profile" },
-    { label: "Share profile", intent: "share_profile" }
-  ],
   highlights: [
     { label: "New", type: "new" },
     { label: "Culture", type: "collection" }
@@ -64,7 +61,7 @@ const model: ProfileStudioViewModel = {
   work: {
     title: "Your posts",
     countLabel: "0 posts",
-    manageLabel: "Manage",
+    addLabel: "Add post",
     emptyCopy: "No fake media is shown.",
     items: []
   }
@@ -84,18 +81,25 @@ describe("ProfileStudioShell", () => {
     expect(screen.getByTestId("profile-studio-client")).toBeInTheDocument();
     expect(screen.getAllByRole("heading", { name: "Public Profile" }).length).toBeGreaterThan(0);
     expect(screen.getAllByText("Culture profile").length).toBeGreaterThan(0);
-    expect(screen.getByText("Public username")).toBeInTheDocument();
+    expect(screen.queryByText("Public username")).not.toBeInTheDocument();
+    expect(screen.getByText("@jordan")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Edit public username" }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByText("This is how people find your Culture profile.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Close username editor" })).toBeInTheDocument();
     const usernameInput = screen.getByLabelText("Public username");
     expect(usernameInput).toHaveAttribute("spellcheck", "false");
     expect(usernameInput).toHaveAttribute("autocapitalize", "none");
     expect(usernameInput).toHaveAttribute("autocorrect", "off");
     expect(usernameInput).toHaveAttribute("inputmode", "text");
-    expect(screen.getByRole("button", { name: "Save handle" })).toBeDisabled();
-    expect(screen.getByText("Handle is up to date.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save handle" })).not.toBeInTheDocument();
     expect(screen.getByText("Culture activity")).toBeInTheDocument();
     expect(screen.getByText("Your dashboard")).toBeInTheDocument();
     expect(screen.getByText("Your posts")).toBeInTheDocument();
     expect(screen.queryByText("Public preview snapshot")).not.toBeInTheDocument();
+    expect(screen.queryByText("Edit profile")).not.toBeInTheDocument();
     expect(screen.queryByText(/public barber brand/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/starting price/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/No file chosen/i)).not.toBeInTheDocument();

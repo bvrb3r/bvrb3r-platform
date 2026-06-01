@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Route } from "next";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { buildShopProfileStudioViewModel } from "@/components/profile-studio/adapters/shop-profile-studio-adapter";
@@ -48,7 +48,6 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
   const profileQuery = useOwnerShopProfileQuery();
   const [draft, setDraft] = useState<ShopPublicProfileDraft>(emptyDraft);
   const [feedback, setFeedback] = useState<{ tone: "info" | "success" | "error"; message: string } | null>(null);
-  const studioRef = useRef<HTMLDivElement | null>(null);
   const shop = profileQuery.data?.shop ?? null;
   const loadErrorStatus = profileQuery.error && typeof profileQuery.error === "object" && "status" in profileQuery.error
     ? Number((profileQuery.error as { status?: number }).status)
@@ -107,12 +106,8 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
     setDraft((current) => ({ ...current, [field]: value }));
   }
 
-  function scrollToStudio() {
-    studioRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
-
   return (
-    <div ref={studioRef} data-testid="owner-public-profile-editor">
+    <div data-testid="owner-public-profile-editor">
       {feedback ? <FeedbackBanner tone={feedback.tone} message={feedback.message} /> : null}
       {profileQuery.error && loadErrorStatus !== 404 ? <FeedbackBanner tone="error" message="Unable to load shop profile. Try again." /> : null}
       {showSetupState ? (
@@ -128,7 +123,6 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
         backLabel="Back to More"
         usernameValue={draft.shopUsername || model.username.value}
         onUsernameChange={(value) => updateDraft("shopUsername", suggestHandle(value))}
-        onEdit={scrollToStudio}
         onMedia={() => setFeedback({ tone: "info", message: "Team display is managed from Owner Home." })}
         onPreview={() => {
           if (model.hero.publicUrl) {

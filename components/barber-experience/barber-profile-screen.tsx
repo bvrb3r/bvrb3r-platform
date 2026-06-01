@@ -122,7 +122,10 @@ export function BarberProfileScreen({
   const reputationLabel = profile?.proof?.rankingLabel
     ?? profile?.proof?.reputationTier
     ?? (reviewScore && reviewCount && reviewScore >= 4.8 ? "Best booking fit" : isVerified ? "Verified barber" : "Best booking fit");
-  const identityLine = profile?.profile.headline?.trim() || profile?.barber.bio?.trim() || `${barberName} on the BVRB3R network.`;
+  const rawIdentityLine = profile?.profile.headline?.trim() || profile?.barber.bio?.trim() || "";
+  const identityLine = rawIdentityLine.toLowerCase() === `${barberName} on the bvrb3r network.`.toLowerCase()
+    ? ""
+    : rawIdentityLine;
   const shopLabel = profile?.shop?.name
     ?? profile?.shopLocations[0]?.name
     ?? "Independent barber";
@@ -190,8 +193,8 @@ export function BarberProfileScreen({
     setLocalFeedback({ tone: "info", message: "Barber profile link copied." });
   }
 
-  async function handleUsernameSave() {
-    const username = usernameDraft.trim().toLowerCase();
+  async function handleUsernameSave(nextUsername?: string) {
+    const username = (nextUsername ?? usernameDraft).trim().toLowerCase();
     setLocalFeedback(null);
     setIsSavingUsername(true);
     try {
@@ -204,6 +207,7 @@ export function BarberProfileScreen({
       if (!response.ok) {
         throw new Error(body.error ?? "Unable to save public username.");
       }
+      setUsernameDraft(username);
       await profileQuery.refetch();
       setLocalFeedback({ tone: "info", message: "Public username saved. Client profile links refresh right away." });
     } catch (error) {
@@ -250,7 +254,8 @@ export function BarberProfileScreen({
         backLabel="Back to More"
         usernameValue={usernameDraft || model.username.value}
         onUsernameChange={(value) => setUsernameDraft(suggestPublicUsername(value))}
-        onUsernameSave={() => void handleUsernameSave()}
+        onUsernameSave={(value) => void handleUsernameSave(value)}
+        isSavingUsername={isSavingUsername}
         onPreview={() => {
           if (publicProfileHref) {
             window.location.assign(publicProfileHref);
@@ -258,7 +263,7 @@ export function BarberProfileScreen({
           }
           scrollToStudio();
         }}
-        onEdit={() => window.location.assign("/onboarding/barber/profile")}
+        onContextEdit={() => setLocalFeedback({ tone: "info", message: "Chair and location display editing is coming soon." })}
         onShare={() => void handleShareProfile()}
         photoControl={(
           <>

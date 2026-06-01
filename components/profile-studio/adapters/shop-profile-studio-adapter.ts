@@ -54,12 +54,12 @@ export function buildShopProfileStudioViewModel({
       badge: isApproved ? "Verified shop" : shop ? "Setup needed" : "Public shop profile",
       bio: shop?.public_bio || shop?.brand_line || "",
       contextLine: location || "Address, hours, team, and public media belong here.",
+      contextEditable: false,
       emptyTitle: "Finish shop profile",
       emptyBody: "Set your shop name, handle, address, photos, hours, and policies."
     },
     actions: {
       publicPreviewLabel: "Public preview",
-      editProfileLabel: "Edit profile",
       mediaLabel: "Team",
       shareLabel: "Share profile"
     },
@@ -68,7 +68,10 @@ export function buildShopProfileStudioViewModel({
       value: handle,
       helperText: "Lowercase letters, numbers, hyphens, or underscores. If you leave it alone, BVRB3R keeps a stable fallback shop link.",
       canEdit: true,
-      publicUrl: shop?.id ? `/shop/${encodeURIComponent(handle || shop.id)}` : null
+      publicUrl: shop?.id ? `/shop/${encodeURIComponent(handle || shop.id)}` : null,
+      modalTitle: "Edit public shop username",
+      modalHelper: "This is how clients find and share your shop profile.",
+      saveUnavailableReason: "Shop username saving is coming soon."
     },
     stats: [
       { label: "Posts", value: gallery.length },
@@ -84,10 +87,6 @@ export function buildShopProfileStudioViewModel({
       title: "Your dashboard",
       text: "0 shop profile views, 0 booking clicks."
     },
-    secondaryActions: [
-      { label: "Edit profile", intent: "edit_profile" },
-      { label: "Share profile", intent: "share_profile" }
-    ],
     highlights: [
       { label: "New", type: "new" },
       { label: "Shop", type: "collection" }
@@ -95,7 +94,7 @@ export function buildShopProfileStudioViewModel({
     work: {
       title: "Shop gallery",
       countLabel: `${gallery.length} post${gallery.length === 1 ? "" : "s"}`,
-      manageLabel: "Manage",
+      addLabel: "Add shop image",
       emptyCopy: "No shop gallery media yet. Add real shop photos when gallery uploads are connected.",
       items: gallery.map((item) => ({
         id: item.id,

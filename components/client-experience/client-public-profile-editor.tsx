@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import type { Route } from "next";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { buildClientProfileStudioViewModel } from "@/components/profile-studio/adapters/client-profile-studio-adapter";
@@ -15,14 +15,9 @@ export function ClientPublicProfileEditor({ user }: { user: UserAccount }) {
   const model = useMemo(() => buildClientProfileStudioViewModel(user), [user]);
   const [usernameDraft, setUsernameDraft] = useState(model.username.value);
   const [feedback, setFeedback] = useState<string | null>(null);
-  const studioRef = useRef<HTMLDivElement | null>(null);
-
-  function scrollToStudio() {
-    studioRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
 
   return (
-    <div ref={studioRef} className="space-y-4" data-testid="client-public-profile-editor">
+    <div className="space-y-4" data-testid="client-public-profile-editor">
       {feedback ? <FeedbackBanner tone="info" message={feedback} /> : null}
       <ProfileStudioShell
         model={{
@@ -42,7 +37,6 @@ export function ClientPublicProfileEditor({ user }: { user: UserAccount }) {
         backLabel="Back to More"
         usernameValue={usernameDraft}
         onUsernameChange={(value) => setUsernameDraft(suggestHandle(value))}
-        onEdit={scrollToStudio}
         onPreview={() => setFeedback("Culture public preview opens when client profile routing is connected.")}
         onShare={async () => {
           const url = `${window.location.origin}/client/${usernameDraft || model.username.value}`;

@@ -31,7 +31,13 @@ describe("ClientPublicProfileEditor", () => {
     expect(screen.getAllByText(/Culture profile/i).length).toBeGreaterThan(0);
     expect(screen.getByText("Shape the identity that appears in Culture, comments, likes, follows, and message context.")).toBeInTheDocument();
     expect(screen.getByText("Client public profiles appear in Culture and social interactions. They do not appear in barber or shop marketplace search.")).toBeInTheDocument();
-    expect(screen.getByText("Public username")).toBeInTheDocument();
+    expect(screen.queryByText("Public username")).not.toBeInTheDocument();
+    expect(screen.getByText("@jordanellis")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Edit public username" }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByText("This is how people find your Culture profile.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
     expect(screen.getAllByText("Posts").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Followers").length).toBeGreaterThan(0);
     expect(screen.getByText("Following")).toBeInTheDocument();
@@ -40,9 +46,12 @@ describe("ClientPublicProfileEditor", () => {
     expect(screen.getByText("Member status")).toBeInTheDocument();
     expect(screen.getByText("Your dashboard")).toBeInTheDocument();
     expect(screen.getByText("Your posts")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add post" })).toBeInTheDocument();
     expect(screen.getByText("No Culture posts yet. Add real media when Culture publishing is connected.")).toBeInTheDocument();
     expect(screen.queryByText("Profile readiness")).not.toBeInTheDocument();
     expect(screen.queryByText("Public identity")).not.toBeInTheDocument();
+    expect(screen.queryByText("Edit profile")).not.toBeInTheDocument();
+    expect(screen.queryByText("/client/jordanellis")).not.toBeInTheDocument();
     expect(screen.queryByText("Public preview snapshot")).not.toBeInTheDocument();
     expect(screen.queryByText(/services/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/starting price/i)).not.toBeInTheDocument();

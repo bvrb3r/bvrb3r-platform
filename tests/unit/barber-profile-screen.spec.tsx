@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BarberProfileScreen } from "@/components/barber-experience/barber-profile-screen";
@@ -126,12 +126,17 @@ describe("BarberProfileScreen", () => {
     expect(screen.getByText("Manage your profile & brand")).toBeInTheDocument();
     expect(screen.getByText("The client-facing preview, portfolio, trust signals, and booking profile live here.")).toBeInTheDocument();
     expect(screen.getByText("Public preview")).toBeInTheDocument();
-    expect(screen.getAllByText("Edit profile").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Edit profile")).not.toBeInTheDocument();
     expect(screen.getByText("Portfolio")).toBeInTheDocument();
+    expect(screen.getByText("@phillipmcgee")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Edit public username" }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByText("This is how clients find and share your barber profile.")).toBeInTheDocument();
     const usernameInput = screen.getByLabelText("Public username");
     expect(usernameInput).toHaveAttribute("spellcheck", "false");
     expect(usernameInput).toHaveAttribute("autocapitalize", "none");
     expect(usernameInput).toHaveAttribute("autocorrect", "off");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.getByText("Posts")).toBeInTheDocument();
     expect(screen.getByText("Followers")).toBeInTheDocument();
     expect(screen.getAllByText("Bookings").length).toBeGreaterThan(0);
@@ -139,8 +144,11 @@ describe("BarberProfileScreen", () => {
     expect(screen.getByText("Experience")).toBeInTheDocument();
     expect(screen.getByText("Your work")).toBeInTheDocument();
     expect(screen.getByText("2 posts")).toBeInTheDocument();
-    expect(screen.getByText("Manage")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add portfolio image" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /Remove/i })).toHaveLength(2);
     expect(screen.getAllByText("Haircuts")).toHaveLength(1);
+    expect(screen.queryByText("/barber/phillipmcgee")).not.toBeInTheDocument();
+    expect(screen.queryByText("Phillip mcgee on the BVRB3R network.")).not.toBeInTheDocument();
     expect(screen.queryByText("Profile readiness")).not.toBeInTheDocument();
     expect(screen.queryByText("Public identity")).not.toBeInTheDocument();
     expect(screen.queryByText(/Public barber photo/i)).not.toBeInTheDocument();

@@ -2,19 +2,22 @@
 
 import Link from "next/link";
 import type { Route } from "next";
-import { useMemo, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   ChevronRight,
   Eye,
   ImagePlus,
-  Link as LinkIcon,
+  Lock,
   Pencil,
+  Plus,
   Share2,
-  Sparkles
+  Sparkles,
+  Trash2
 } from "lucide-react";
 import { GlassCard, StatusBadge } from "@/design/components";
 import { cn } from "@/lib/utils";
+import { ProfileUsernameEditModal } from "@/components/profile-studio/profile-username-edit-modal";
 
 export type ProfileStudioRole = "client" | "barber" | "shop_owner";
 export type ProfileStudioSeverity = "good" | "warning" | "neutral";
@@ -38,12 +41,14 @@ export type ProfileStudioViewModel = {
     badge?: string | null;
     bio?: string | null;
     contextLine?: string | null;
+    contextEditable?: boolean;
+    contextLocked?: boolean;
+    contextActionLabel?: string;
     emptyTitle?: string;
     emptyBody?: string;
   };
   actions: {
     publicPreviewLabel: string;
-    editProfileLabel: string;
     mediaLabel: string;
     shareLabel: string;
   };
@@ -53,6 +58,9 @@ export type ProfileStudioViewModel = {
     helperText: string;
     canEdit: boolean;
     publicUrl?: string | null;
+    modalTitle?: string;
+    modalHelper?: string;
+    saveUnavailableReason?: string | null;
   };
   stats: Array<{
     label: string;
@@ -70,10 +78,6 @@ export type ProfileStudioViewModel = {
     title: string;
     text: string;
   };
-  secondaryActions: Array<{
-    label: string;
-    intent: "edit_profile" | "share_profile";
-  }>;
   highlights: Array<{
     label: string;
     type: "new" | "collection";
@@ -82,7 +86,7 @@ export type ProfileStudioViewModel = {
   work: {
     title: string;
     countLabel: string;
-    manageLabel: string;
+    addLabel: string;
     emptyCopy: string;
     items: Array<{
       id: string;
@@ -99,16 +103,15 @@ type ProfileStudioShellProps = {
   backLabel: string;
   usernameValue: string;
   onUsernameChange?: (value: string) => void;
-  onUsernameSave?: () => void;
-  editorSlot?: ReactNode;
+  onUsernameSave?: (value: string) => void | Promise<void>;
   photoControl?: ReactNode;
   onPreview?: () => void;
-  onEdit?: () => void;
   onMedia?: () => void;
   onShare?: () => void;
+  onContextEdit?: () => void;
+  onDeleteMedia?: (id: string) => void;
+  isSavingUsername?: boolean;
 };
-
-const RESERVED_HANDLES = new Set(["admin", "support", "bvrb3r", "help", "payments", "system", "official"]);
 
 function initialsForName(name: string) {
   return name
@@ -129,20 +132,6 @@ function severityClass(severity: ProfileStudioSeverity = "neutral") {
   return "border-white/8 bg-black/20";
 }
 
-function validateHandle(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return "Add a public handle to save.";
-  }
-  if (!/^[a-z0-9_-]+$/.test(trimmed)) {
-    return "Use lowercase letters, numbers, hyphens, or underscores.";
-  }
-  if (RESERVED_HANDLES.has(trimmed)) {
-    return "This handle is reserved.";
-  }
-  return null;
-}
-
 export function ProfileStudioShell({
   model,
   backHref,
@@ -150,36 +139,28 @@ export function ProfileStudioShell({
   usernameValue,
   onUsernameChange,
   onUsernameSave,
-  editorSlot,
   photoControl,
   onPreview,
-  onEdit,
   onMedia,
-  onShare
+  onShare,
+  onContextEdit,
+  onDeleteMedia,
+  isSavingUsername
 }: ProfileStudioShellProps) {
   const publicName = model.hero.publicName || model.hero.emptyTitle || "Finish profile";
-  const publicUrl = model.username.publicUrl ?? model.hero.publicUrl;
   const workSectionRef = useRef<HTMLElement | null>(null);
-  const normalizedHandle = usernameValue.trim().toLowerCase();
-  const originalHandle = model.username.value.trim().toLowerCase();
-  const handleError = validateHandle(normalizedHandle);
-  const handleChanged = normalizedHandle !== originalHandle;
-  const canSaveHandle = model.username.canEdit && handleChanged && !handleError && Boolean(onUsernameSave);
-  const handleStatus = useMemo(() => {
-    if (!model.username.canEdit) {
-      return "This public link is managed by BVRB3R.";
+  const [isUsernameModalOpen, setIsUsernameModalOpen] = useState(false);
+  const [usernameDraft, setUsernameDraft] = useState(usernameValue);
+  const [usernameFeedback, setUsernameFeedback] = useState<string | null>(null);
+  const usernameModalTitle = model.username.modalTitle ?? (model.role === "shop_owner" ? "Edit public shop username" : "Edit public username");
+  const usernameModalHelper = model.username.modalHelper ?? "This is how people find and share this public profile.";
+  const mediaButtonLabel = model.work.addLabel;
+
+  useEffect(() => {
+    if (!isUsernameModalOpen) {
+      setUsernameDraft(usernameValue);
     }
-    if (handleError) {
-      return handleError;
-    }
-    if (!onUsernameSave && handleChanged) {
-      return "Handle saving is not connected yet.";
-    }
-    if (!handleChanged) {
-      return "Handle is up to date.";
-    }
-    return "Handle available.";
-  }, [handleChanged, handleError, model.username.canEdit, onUsernameSave]);
+  }, [isUsernameModalOpen, usernameValue]);
 
   function handleMediaAction() {
     if (onMedia) {
@@ -187,6 +168,13 @@ export function ProfileStudioShell({
       return;
     }
     workSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  async function handleUsernameSave(value: string) {
+    onUsernameChange?.(value);
+    await onUsernameSave?.(value);
+    setUsernameFeedback(onUsernameSave ? "Handle updated." : "Handle saving is not connected yet.");
+    setIsUsernameModalOpen(false);
   }
 
   return (
@@ -248,16 +236,41 @@ export function ProfileStudioShell({
             </div>
             <p className="mt-3 max-w-3xl text-xl font-medium leading-[1.4] text-white/78">{model.hero.subtitle}</p>
             <p className="mt-5 text-3xl font-black tracking-[-0.045em] text-white">{publicName}</p>
-            {model.hero.username ? <p className="mt-1 text-base font-bold text-white/54">@{model.hero.username}</p> : null}
+            {model.hero.username ? (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <p className="text-base font-bold text-white/54">@{model.hero.username}</p>
+                <button
+                  type="button"
+                  aria-label={usernameModalTitle}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-[#a3ff12] transition hover:border-[#a3ff12]/30 hover:bg-[#a3ff12]/10"
+                  onClick={() => setIsUsernameModalOpen(true)}
+                >
+                  <Pencil className="h-4 w-4" />
+                </button>
+                {usernameFeedback ? <span className="text-xs font-bold text-[#a3ff12]">{usernameFeedback}</span> : null}
+              </div>
+            ) : null}
             <p className="mt-4 max-w-3xl text-sm leading-6 text-white/58">
               {model.hero.bio || model.hero.emptyBody || "Add a public bio or story to complete this profile."}
             </p>
-            {model.hero.contextLine ? <p className="mt-2 text-base font-semibold text-white/50">{model.hero.contextLine}</p> : null}
-            {publicUrl ? (
-              <a href={publicUrl} className="mt-3 inline-flex items-center gap-2 text-lg font-bold text-[#a3ff12] transition hover:text-[#cfff93]">
-                <LinkIcon className="h-5 w-5" aria-hidden="true" />
-                {publicUrl}
-              </a>
+            {model.hero.contextLine ? (
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-base font-semibold text-white/50">
+                <span>{model.hero.contextLine}</span>
+                {model.hero.contextEditable ? (
+                  <button
+                    type="button"
+                    aria-label={model.hero.contextActionLabel ?? "Edit public context"}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-[#a3ff12] transition hover:border-[#a3ff12]/30 hover:bg-[#a3ff12]/10"
+                    onClick={onContextEdit}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                ) : model.hero.contextLocked ? (
+                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/[0.025] text-white/44" aria-label="Public context locked">
+                    <Lock className="h-4 w-4" />
+                  </span>
+                ) : null}
+              </div>
             ) : null}
 
             <div className="mt-5 flex flex-wrap gap-2">
@@ -265,17 +278,13 @@ export function ProfileStudioShell({
                 <Eye className="h-4 w-4" aria-hidden="true" />
                 {model.actions.publicPreviewLabel}
               </button>
-              <button type="button" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] border border-white/10 bg-white/[0.035] px-4 text-sm font-extrabold text-white/74 transition hover:border-[#a3ff12]/30 hover:text-white" onClick={onEdit}>
-                <Pencil className="h-4 w-4 text-[#a3ff12]" aria-hidden="true" />
-                {model.actions.editProfileLabel}
-              </button>
               <button type="button" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] border border-white/10 bg-white/[0.035] px-4 text-sm font-extrabold text-white/74 transition hover:border-[#a3ff12]/30 hover:text-white" onClick={handleMediaAction}>
                 <ImagePlus className="h-4 w-4 text-[#a3ff12]" aria-hidden="true" />
                 {model.actions.mediaLabel}
               </button>
-              <button type="button" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] border border-white/10 bg-white/[0.035] px-4 text-sm font-extrabold text-white/74 transition hover:border-[#a3ff12]/30 hover:text-white" onClick={onShare}>
+              <button type="button" aria-label={model.actions.shareLabel} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] border border-white/10 bg-white/[0.035] px-4 text-sm font-extrabold text-white/74 transition hover:border-[#a3ff12]/30 hover:text-white" onClick={onShare}>
                 <Share2 className="h-4 w-4 text-[#a3ff12]" aria-hidden="true" />
-                {model.actions.shareLabel}
+                Share
               </button>
             </div>
 
@@ -291,41 +300,6 @@ export function ProfileStudioShell({
           </div>
         </div>
       </GlassCard>
-
-      <GlassCard className="rounded-[20px] p-5 sm:p-6">
-        <p className="bvr-section-label">{model.username.title}</p>
-        <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-          <label className="block text-sm font-bold text-white/72">
-            Public handle
-            <input
-              value={usernameValue}
-              onChange={(event) => onUsernameChange?.(event.target.value.toLowerCase())}
-              readOnly={!model.username.canEdit}
-              spellCheck={false}
-              autoCapitalize="none"
-              autoCorrect="off"
-              inputMode="text"
-              aria-label={model.username.title}
-              className="mt-2 min-h-12 w-full rounded-2xl border border-white/10 bg-black/34 px-4 text-sm font-bold text-white outline-none transition placeholder:text-white/34 focus:border-[#a3ff12]/42 read-only:text-white/54"
-              placeholder="public-handle"
-            />
-          </label>
-          <button
-            type="button"
-            disabled={!canSaveHandle}
-            className="inline-flex min-h-12 items-center justify-center rounded-2xl border border-[#a3ff12]/28 bg-[#a3ff12]/10 px-5 text-sm font-black text-[#a3ff12] transition hover:border-[#a3ff12]/46 hover:bg-[#a3ff12]/16 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.025] disabled:text-white/36"
-            onClick={onUsernameSave}
-          >
-            Save handle
-          </button>
-        </div>
-        <p className="mt-3 text-xs leading-5 text-white/48">{model.username.helperText}</p>
-        <p className={cn("mt-2 text-xs font-bold", handleError ? "text-yellow-200" : handleChanged ? "text-[#a3ff12]" : "text-white/42")}>
-          {handleStatus}
-        </p>
-      </GlassCard>
-
-      {editorSlot}
 
       <GlassCard className="overflow-hidden rounded-[20px] p-0">
         <div className="grid sm:grid-cols-3">
@@ -362,20 +336,6 @@ export function ProfileStudioShell({
         <ChevronRight className="h-6 w-6 shrink-0 text-white/85" />
       </GlassCard>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        {model.secondaryActions.map((action) => (
-          <button
-            key={action.label}
-            type="button"
-            className="inline-flex min-h-14 items-center justify-center gap-3 rounded-[8px] border border-white/10 bg-white/[0.025] px-5 text-base font-extrabold text-white transition hover:border-[#a3ff12]/25 hover:bg-white/[0.04]"
-            onClick={action.intent === "share_profile" ? onShare : onEdit}
-          >
-            {action.intent === "share_profile" ? <Share2 className="h-6 w-6 text-[#a3ff12]" /> : <Pencil className="h-6 w-6 text-[#a3ff12]" />}
-            {action.label}
-          </button>
-        ))}
-      </div>
-
       <section className="overflow-hidden" aria-label="Profile highlights">
         <div className="hide-scrollbar flex gap-5 overflow-x-auto pb-2">
           {model.highlights.map((highlight) => (
@@ -400,22 +360,32 @@ export function ProfileStudioShell({
             <h3 className="text-2xl font-black tracking-[-0.03em] text-white">{model.work.title}</h3>
             <p className="mt-1 text-lg font-medium text-white/60">{model.work.countLabel}</p>
           </div>
-          <button type="button" className="inline-flex items-center gap-1 text-lg font-extrabold text-[#a3ff12]" onClick={handleMediaAction}>
-            {model.work.manageLabel}
-            <ChevronRight className="h-5 w-5" />
+          <button type="button" aria-label={mediaButtonLabel} className="inline-flex min-h-11 items-center gap-2 rounded-[8px] border border-[#a3ff12]/25 bg-[#a3ff12]/10 px-4 text-sm font-black text-[#a3ff12] transition hover:bg-[#a3ff12]/16" onClick={handleMediaAction}>
+            <Plus className="h-5 w-5" />
+            {mediaButtonLabel}
           </button>
         </div>
 
         <div className="grid grid-cols-3 gap-1.5">
           {model.work.items.length ? model.work.items.slice(0, 9).map((item) => (
-            <button key={item.id} type="button" className="group relative aspect-square overflow-hidden rounded-[12px] border border-white/10 bg-black/25" onClick={handleMediaAction}>
+            <div key={item.id} className="group relative aspect-square overflow-hidden rounded-[12px] border border-white/10 bg-black/25">
+              <button type="button" className="h-full w-full" onClick={handleMediaAction}>
               {item.imageUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={item.imageUrl} alt={item.alt} className="h-full w-full object-cover transition duration-200 group-hover:scale-[1.03]" />
               ) : (
                 <span className="flex h-full w-full items-center justify-center text-sm text-white/42">Image unavailable</span>
               )}
-            </button>
+              </button>
+              <button
+                type="button"
+                aria-label={`Remove ${item.alt}`}
+                className="absolute right-2 top-2 inline-flex h-9 w-9 items-center justify-center rounded-full border border-black/40 bg-black/72 text-white shadow-lg transition hover:border-red-300/40 hover:text-red-200"
+                onClick={() => onDeleteMedia?.(item.id)}
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
           )) : (
             <div className="col-span-3 flex aspect-[3/1] items-center justify-center rounded-[18px] border border-dashed border-white/10 bg-black/20 p-5 text-center text-sm text-white/58">
               {model.work.emptyCopy}
@@ -423,6 +393,19 @@ export function ProfileStudioShell({
           )}
         </div>
       </section>
+
+      {isUsernameModalOpen ? (
+        <ProfileUsernameEditModal
+          title={usernameModalTitle}
+          helper={usernameModalHelper}
+          value={usernameDraft}
+          isSaving={isSavingUsername}
+          saveDisabledReason={model.username.saveUnavailableReason ?? (!onUsernameSave ? "Handle saving is not connected yet." : null)}
+          onChange={setUsernameDraft}
+          onClose={() => setIsUsernameModalOpen(false)}
+          onSave={handleUsernameSave}
+        />
+      ) : null}
     </div>
   );
 }

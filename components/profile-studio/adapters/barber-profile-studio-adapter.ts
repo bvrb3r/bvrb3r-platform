@@ -113,12 +113,14 @@ export function buildBarberProfileStudioViewModel({
       badge: reputationLabel,
       bio: identityLine,
       contextLine: shopLabel,
+      contextEditable: !profile?.shop,
+      contextLocked: Boolean(profile?.shop),
+      contextActionLabel: "Edit chair or location display",
       emptyTitle: "Finish barber profile",
-      emptyBody: `${barberName} on the BVRB3R network.`
+      emptyBody: "Add a public bio or story to complete this profile."
     },
     actions: {
       publicPreviewLabel: "Public preview",
-      editProfileLabel: "Edit profile",
       mediaLabel: "Portfolio",
       shareLabel: "Share profile"
     },
@@ -127,7 +129,9 @@ export function buildBarberProfileStudioViewModel({
       value: username,
       helperText: "Lowercase letters, numbers, hyphens, or underscores. If you leave it alone, BVRB3R keeps a stable fallback link.",
       canEdit: true,
-      publicUrl: publicProfileHref
+      publicUrl: publicProfileHref,
+      modalTitle: "Edit public username",
+      modalHelper: "This is how clients find and share your barber profile."
     },
     stats: [
       { label: "Posts", value: compactNumber(posts) },
@@ -143,10 +147,6 @@ export function buildBarberProfileStudioViewModel({
       title: "Your dashboard",
       text: `${compactNumber(profile?.proof?.profileViews)} profile views, ${compactNumber(profile?.proof?.bookingClicks)} booking clicks.`
     },
-    secondaryActions: [
-      { label: "Edit profile", intent: "edit_profile" },
-      { label: "Share profile", intent: "share_profile" }
-    ],
     highlights: [
       { label: "New", type: "new" },
       { label: "Haircuts", type: "collection", imageUrl: portfolioAssets[0]?.imageUrl }
@@ -154,7 +154,7 @@ export function buildBarberProfileStudioViewModel({
     work: {
       title: "Your work",
       countLabel: `${posts} post${posts === 1 ? "" : "s"}`,
-      manageLabel: "Manage",
+      addLabel: "Add portfolio image",
       emptyCopy: "No portfolio work yet. Add haircut photos to build trust with clients.",
       items: portfolioAssets.map((asset) => ({
         id: asset.id,

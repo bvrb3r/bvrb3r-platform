@@ -28,14 +28,14 @@ export function buildClientProfileStudioViewModel(user: UserAccount): ProfileStu
       username: handle,
       publicUrl: `/client/${handle}`,
       badge: "Culture profile",
-      bio: `${displayName} is part of the BVRB3R Culture network.`,
+      bio: "",
       contextLine: location || "Culture and social identity",
+      contextEditable: false,
       emptyTitle: "Finish profile",
       emptyBody: "Add your photo, username, bio, and public media."
     },
     actions: {
       publicPreviewLabel: "Public preview",
-      editProfileLabel: "Edit profile",
       mediaLabel: "Posts",
       shareLabel: "Share profile"
     },
@@ -44,7 +44,10 @@ export function buildClientProfileStudioViewModel(user: UserAccount): ProfileStu
       value: handle,
       helperText: "Lowercase letters, numbers, hyphens, or underscores. If you leave it alone, BVRB3R keeps a stable fallback link.",
       canEdit: true,
-      publicUrl: `/client/${handle}`
+      publicUrl: `/client/${handle}`,
+      modalTitle: "Edit public username",
+      modalHelper: "This is how people find your Culture profile.",
+      saveUnavailableReason: "Client username saving is coming soon."
     },
     stats: [
       { label: "Posts", value: 0 },
@@ -60,10 +63,6 @@ export function buildClientProfileStudioViewModel(user: UserAccount): ProfileStu
       title: "Your dashboard",
       text: "0 profile views, 0 post clicks."
     },
-    secondaryActions: [
-      { label: "Edit profile", intent: "edit_profile" },
-      { label: "Share profile", intent: "share_profile" }
-    ],
     highlights: [
       { label: "New", type: "new" },
       { label: "Culture", type: "collection" }
@@ -71,7 +70,7 @@ export function buildClientProfileStudioViewModel(user: UserAccount): ProfileStu
     work: {
       title: "Your posts",
       countLabel: "0 posts",
-      manageLabel: "Manage",
+      addLabel: "Add post",
       emptyCopy: "No Culture posts yet. Add real media when Culture publishing is connected.",
       items: []
     }
