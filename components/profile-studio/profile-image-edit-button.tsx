@@ -42,6 +42,7 @@ export function ProfileImageEditButton({
       {uploadEnabled ? (
         <input
           ref={inputRef}
+          aria-label={`${label} upload input`}
           type="file"
           accept="image/*"
           className="sr-only"

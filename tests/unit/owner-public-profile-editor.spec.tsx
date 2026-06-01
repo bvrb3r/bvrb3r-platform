@@ -178,6 +178,70 @@ describe("OwnerPublicProfileEditor", () => {
     expect(await screen.findByText("Shop image added.")).toBeInTheDocument();
   });
 
+  it("keeps the uploaded shop logo in the studio hero without showing a false load error", async () => {
+    const mutateAsync = vi.fn().mockResolvedValue({});
+    const refetch = vi.fn().mockRejectedValue(new Error("Unable to load shop profile."));
+    useMutateProfileMediaMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync
+    });
+    useProfileMediaWorkspaceQueryMock.mockReturnValue({
+      data: {
+        viewer: {
+          role: "shop_owner_user",
+          email: user.email,
+          notificationPreference: null
+        },
+        clientProfile: null,
+        barberProfile: null,
+        shops: [
+          {
+            shopId: "shop-bvrb3r",
+            label: "The BVRB3R Shop",
+            name: "The BVRB3R Shop",
+            profilePhotoUrl: "https://cdn.example.com/current-logo.jpg",
+            profilePhotoPath: "profiles/shops/shop-bvrb3r/profile/current.jpg",
+            gallery: []
+          }
+        ]
+      }
+    });
+    useOwnerShopProfileQueryMock.mockReturnValue({
+      data: {
+        shop: {
+          id: "shop-bvrb3r",
+          name: "The BVRB3R Shop",
+          shop_username: "bvrb3rshop",
+          brand_line: "Campus cuts.",
+          public_bio: "Public shop bio.",
+          city: "Tampa",
+          state: "FL",
+          address: "2200 E Fowler Ave"
+        }
+      },
+      error: new Error("Unable to load shop profile."),
+      isLoading: false,
+      refetch
+    });
+
+    render(<OwnerPublicProfileEditor user={user} />);
+
+    expect(screen.getByAltText("The BVRB3R Shop public image")).toHaveAttribute("src", "https://cdn.example.com/current-logo.jpg");
+
+    const file = new File(["logo"], "logo.jpg", { type: "image/jpeg" });
+    fireEvent.change(screen.getByLabelText("Update shop logo upload input"), { target: { files: [file] } });
+
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith({
+      action: "set_shop_photo",
+      shopId: "shop-bvrb3r",
+      storagePath: "profiles/shops/shop-bvrb3r/gallery/shop.jpg",
+      imageUrl: "https://cdn.example.com/shop.jpg"
+    }));
+    expect(await screen.findByText("Shop logo updated.")).toBeInTheDocument();
+    expect(screen.queryByText("Unable to load shop profile. Try again.")).not.toBeInTheDocument();
+    expect(refetch).not.toHaveBeenCalled();
+  });
+
   it("removes shop gallery media through the owner media mutation", async () => {
     const mutateAsync = vi.fn().mockResolvedValue({});
     useMutateProfileMediaMutationMock.mockReturnValue({

@@ -102,56 +102,84 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
   const loadErrorStatus = profileQuery.error && typeof profileQuery.error === "object" && "status" in profileQuery.error
     ? Number((profileQuery.error as { status?: number }).status)
     : null;
-  const showSetupState = !shop && (profileQuery.isLoading || loadErrorStatus === 404 || !profileQuery.error);
   const shopMedia = useMemo(() => {
     const shops = mediaQuery.data?.shops ?? [];
     return shops.find((entry) => entry.shopId === shop?.id) ?? shops[0] ?? null;
   }, [mediaQuery.data?.shops, shop?.id]);
+  const effectiveShop = useMemo(() => {
+    if (shop) {
+      return shop;
+    }
+
+    if (!shopMedia) {
+      return null;
+    }
+
+    return {
+      id: shopMedia.shopId,
+      name: shopMedia.name ?? shopMedia.label,
+      brand_line: shopMedia.brandLine ?? null,
+      public_bio: null,
+      cover_photo_url: null,
+      public_hours: null,
+      policies: null,
+      shop_username: null,
+      neighborhood: shopMedia.neighborhood ?? null,
+      city: shopMedia.city ?? null,
+      state: shopMedia.state ?? null,
+      phone: shopMedia.phone ?? null,
+      address: shopMedia.address ?? null,
+      profile_photo_path: shopMedia.profilePhotoPath ?? null,
+      profile_photo_url: shopMedia.profilePhotoUrl ?? null,
+      app_approval_status: null
+    };
+  }, [shop, shopMedia]);
+  const showSetupState = !effectiveShop && (profileQuery.isLoading || loadErrorStatus === 404 || !profileQuery.error);
 
   useEffect(() => {
-    if (!shop) {
+    if (!effectiveShop) {
       setDraft((current) => ({ ...current, name: user.ownedShopName ?? current.name }));
       return;
     }
 
     setDraft({
-      name: shop.name ?? "",
-      shopUsername: shop.shop_username ?? "",
-      brandLine: shop.brand_line ?? "",
-      publicBio: shop.public_bio ?? "",
-      profilePhotoUrl: shop.profile_photo_url ?? shop.profile_photo_path ?? "",
-      coverPhotoUrl: shop.cover_photo_url ?? "",
-      address: shop.address ?? "",
-      neighborhood: shop.neighborhood ?? "",
-      city: shop.city ?? "",
-      state: shop.state ?? "",
-      phone: shop.phone ?? "",
-      publicHours: typeof shop.public_hours === "string" ? shop.public_hours : "",
-      policies: shop.policies ?? ""
+      name: effectiveShop.name ?? "",
+      shopUsername: effectiveShop.shop_username ?? "",
+      brandLine: effectiveShop.brand_line ?? "",
+      publicBio: effectiveShop.public_bio ?? "",
+      profilePhotoUrl: shopMedia?.profilePhotoUrl ?? effectiveShop.profile_photo_url ?? effectiveShop.profile_photo_path ?? "",
+      coverPhotoUrl: effectiveShop.cover_photo_url ?? "",
+      address: effectiveShop.address ?? "",
+      neighborhood: effectiveShop.neighborhood ?? "",
+      city: effectiveShop.city ?? "",
+      state: effectiveShop.state ?? "",
+      phone: effectiveShop.phone ?? "",
+      publicHours: typeof effectiveShop.public_hours === "string" ? effectiveShop.public_hours : "",
+      policies: effectiveShop.policies ?? ""
     });
-  }, [shop, user.ownedShopName]);
+  }, [effectiveShop, shopMedia?.profilePhotoUrl, user.ownedShopName]);
 
   const studioShop = useMemo(() => {
-    if (!shop) {
+    if (!effectiveShop) {
       return null;
     }
 
     return {
-      ...shop,
-      name: draft.name || shop.name,
-      shop_username: draft.shopUsername || shop.shop_username,
-      brand_line: draft.brandLine || shop.brand_line,
-      public_bio: draft.publicBio || shop.public_bio,
-      profile_photo_url: shopMedia?.profilePhotoUrl || draft.profilePhotoUrl || shop.profile_photo_url,
-      profile_photo_path: shopMedia?.profilePhotoPath || shop.profile_photo_path,
-      cover_photo_url: draft.coverPhotoUrl || shop.cover_photo_url,
-      address: draft.address || shop.address,
-      neighborhood: draft.neighborhood || shop.neighborhood,
-      city: draft.city || shop.city,
-      state: draft.state || shop.state,
-      phone: draft.phone || shop.phone,
-      public_hours: draft.publicHours || shop.public_hours,
-      policies: draft.policies || shop.policies,
+      ...effectiveShop,
+      name: draft.name || effectiveShop.name,
+      shop_username: draft.shopUsername || effectiveShop.shop_username,
+      brand_line: draft.brandLine || effectiveShop.brand_line,
+      public_bio: draft.publicBio || effectiveShop.public_bio,
+      profile_photo_url: shopMedia?.profilePhotoUrl || draft.profilePhotoUrl || effectiveShop.profile_photo_url,
+      profile_photo_path: shopMedia?.profilePhotoPath || effectiveShop.profile_photo_path,
+      cover_photo_url: draft.coverPhotoUrl || effectiveShop.cover_photo_url,
+      address: draft.address || effectiveShop.address,
+      neighborhood: draft.neighborhood || effectiveShop.neighborhood,
+      city: draft.city || effectiveShop.city,
+      state: draft.state || effectiveShop.state,
+      phone: draft.phone || effectiveShop.phone,
+      public_hours: draft.publicHours || effectiveShop.public_hours,
+      policies: draft.policies || effectiveShop.policies,
       gallery: (shopMedia?.gallery ?? []).map((asset) => ({
         id: asset.id,
         image_url: asset.imageUrl,
@@ -160,7 +188,7 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
         featured: asset.featured
       }))
     };
-  }, [draft, shop, shopMedia]);
+  }, [draft, effectiveShop, shopMedia]);
 
   const model = useMemo(() => buildShopProfileStudioViewModel({ shop: studioShop, user }), [studioShop, user]);
 
@@ -174,7 +202,7 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
   }
 
   async function handleShopPhotoUpload(file: File) {
-    const shopId = shop?.id ?? shopMedia?.shopId;
+    const shopId = effectiveShop?.id ?? shopMedia?.shopId;
     if (!shopId) {
       setFeedback({ tone: "error", message: "Finish shop profile before uploading a shop logo." });
       return;
@@ -196,7 +224,6 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
         imageUrl: uploaded.publicUrl
       });
       updateDraft("profilePhotoUrl", uploaded.publicUrl);
-      await profileQuery.refetch();
       setFeedback({ tone: "success", message: "Shop logo updated." });
     } catch (errorValue) {
       setFeedback({ tone: "error", message: readableError(errorValue, "Unable to update shop logo.") });
@@ -204,7 +231,7 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
   }
 
   async function handleShopGalleryUpload(file: File) {
-    const shopId = shop?.id ?? shopMedia?.shopId;
+    const shopId = effectiveShop?.id ?? shopMedia?.shopId;
     if (!shopId) {
       setFeedback({ tone: "error", message: "Finish shop profile before uploading shop gallery media." });
       return;
@@ -232,7 +259,7 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
   }
 
   async function handleShopGalleryRemove(assetId: string) {
-    const shopId = shop?.id ?? shopMedia?.shopId;
+    const shopId = effectiveShop?.id ?? shopMedia?.shopId;
     if (!shopId) {
       setFeedback({ tone: "error", message: "Finish shop profile before managing shop gallery media." });
       return;
@@ -254,7 +281,7 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
   return (
     <div data-testid="owner-public-profile-editor">
       {feedback ? <FeedbackBanner tone={feedback.tone} message={feedback.message} /> : null}
-      {profileQuery.error && loadErrorStatus !== 404 ? <FeedbackBanner tone="error" message="Unable to load shop profile. Try again." /> : null}
+      {profileQuery.error && loadErrorStatus !== 404 && !effectiveShop ? <FeedbackBanner tone="error" message="Unable to load shop profile. Try again." /> : null}
       {showSetupState ? (
         <FeedbackBanner
           tone="info"
