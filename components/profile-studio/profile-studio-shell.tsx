@@ -4,8 +4,6 @@ import Link from "next/link";
 import type { Route } from "next";
 import type { ReactNode } from "react";
 import {
-  Camera,
-  CheckCircle2,
   ChevronRight,
   Eye,
   ImagePlus,
@@ -61,46 +59,36 @@ export type ProfileStudioViewModel = {
     helper?: string;
     visibility?: "public" | "private";
   }>;
-  readiness: {
+  trustCards: Array<{
     title: string;
-    subtitle: string;
-    description: string;
-    cards: Array<{
-      title: string;
-      value: string | number;
-      helper: string;
-      severity?: ProfileStudioSeverity;
-    }>;
-    needsAttention?: string[];
+    value: string | number;
+    helper: string;
+    status?: ProfileStudioSeverity;
+  }>;
+  dashboardSummary: {
+    title: string;
+    text: string;
   };
-  identity: {
+  secondaryActions: Array<{
+    label: string;
+    intent: "edit_profile" | "share_profile";
+  }>;
+  highlights: Array<{
+    label: string;
+    type: "new" | "collection";
+    imageUrl?: string | null;
+  }>;
+  work: {
     title: string;
-    subtitle: string;
-    description: string;
-    cards: Array<{
-      title: string;
-      value: string | number;
-      helper: string;
-    }>;
-  };
-  media: {
-    title: string;
-    subtitle: string;
-    addButtonLabel: string;
+    countLabel: string;
+    manageLabel: string;
     emptyCopy: string;
     items: Array<{
       id: string;
-      url?: string | null;
+      imageUrl?: string | null;
+      alt: string;
       caption?: string | null;
-      featured?: boolean;
-      type?: "image" | "video";
     }>;
-  };
-  preview: {
-    title: string;
-    subtitle: string;
-    enabled: boolean;
-    actions: string[];
   };
 };
 
@@ -110,7 +98,9 @@ type ProfileStudioShellProps = {
   backLabel: string;
   usernameValue: string;
   onUsernameChange?: (value: string) => void;
+  onUsernameSave?: () => void;
   editorSlot?: ReactNode;
+  photoControl?: ReactNode;
   onPreview?: () => void;
   onEdit?: () => void;
   onMedia?: () => void;
@@ -142,7 +132,9 @@ export function ProfileStudioShell({
   backLabel,
   usernameValue,
   onUsernameChange,
+  onUsernameSave,
   editorSlot,
+  photoControl,
   onPreview,
   onEdit,
   onMedia,
@@ -153,7 +145,7 @@ export function ProfileStudioShell({
 
   return (
     <div className="space-y-6" data-testid={`profile-studio-${model.role}`}>
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <GlassCard className="flex flex-wrap items-start justify-between gap-4 rounded-[22px] p-5 sm:p-6">
         <div>
           <h1 className="text-[2.65rem] font-black leading-none tracking-[-0.045em] text-white sm:text-6xl">
             {model.page.title}
@@ -169,7 +161,7 @@ export function ProfileStudioShell({
           <ChevronRight className="h-4 w-4 rotate-180" aria-hidden="true" />
           {backLabel}
         </Link>
-      </div>
+      </GlassCard>
 
       {model.page.statusText ? (
         <GlassCard className="flex items-center gap-3 rounded-[18px] p-4">
@@ -186,13 +178,14 @@ export function ProfileStudioShell({
           style={model.hero.coverUrl ? { backgroundImage: `linear-gradient(180deg,rgba(0,0,0,0.10),rgba(0,0,0,0.48)), url(${model.hero.coverUrl})`, backgroundSize: "cover", backgroundPosition: "center" } : undefined}
         />
         <div className="grid gap-6 p-5 sm:p-6 lg:grid-cols-[auto_minmax(0,1fr)_auto]">
-          <div className="-mt-20 h-[178px] w-[178px] shrink-0 overflow-hidden rounded-[36px] border-[3px] border-white/15 bg-black text-5xl font-black text-[#a3ff12] shadow-[0_0_0_2px_rgba(163,255,18,0.10),0_20px_60px_rgba(0,0,0,0.50)]">
+          <div className="relative -mt-20 h-[178px] w-[178px] shrink-0 overflow-hidden rounded-[36px] border-[3px] border-white/15 bg-black text-5xl font-black text-[#a3ff12] shadow-[0_0_0_2px_rgba(163,255,18,0.10),0_20px_60px_rgba(0,0,0,0.50)]">
             {model.hero.avatarUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={model.hero.avatarUrl} alt={`${publicName} public image`} className="h-full w-full object-cover" />
             ) : (
               <div className="flex h-full w-full items-center justify-center">{initialsForName(publicName)}</div>
             )}
+            {photoControl}
           </div>
 
           <div className="min-w-0">
@@ -240,21 +233,6 @@ export function ProfileStudioShell({
               </button>
             </div>
 
-            {model.stats.length ? (
-              <div className="mt-6 grid max-w-xl grid-cols-2 gap-4 sm:grid-cols-4">
-                {model.stats.map((stat) => (
-                  <div key={stat.label}>
-                    <p className="text-[30px] font-black leading-none tracking-[-0.03em] text-white">{stat.value}</p>
-                    <p className="mt-1 text-[17px] font-medium text-white/60">{stat.label}</p>
-                    {stat.helper ? <p className="mt-1 text-xs font-bold text-white/38">{stat.helper}</p> : null}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="mt-6 rounded-[22px] border border-dashed border-white/10 bg-black/20 p-4 text-sm text-white/58">
-                Profile stats appear here once real public activity exists.
-              </div>
-            )}
           </div>
 
           <div className="flex shrink-0 items-start gap-2 lg:flex-col">
@@ -281,148 +259,111 @@ export function ProfileStudioShell({
               placeholder="public-handle"
             />
           </label>
-          <button type="button" className="inline-flex min-h-12 items-center justify-center rounded-2xl border border-[#a3ff12]/28 bg-[#a3ff12]/10 px-5 text-sm font-black text-[#a3ff12] transition hover:border-[#a3ff12]/46 hover:bg-[#a3ff12]/16">
+          <button type="button" className="inline-flex min-h-12 items-center justify-center rounded-2xl border border-[#a3ff12]/28 bg-[#a3ff12]/10 px-5 text-sm font-black text-[#a3ff12] transition hover:border-[#a3ff12]/46 hover:bg-[#a3ff12]/16" onClick={onUsernameSave}>
             Save handle
           </button>
         </div>
         <p className="mt-3 text-xs leading-5 text-white/48">{model.username.helperText}</p>
       </GlassCard>
 
-      <section className="grid gap-4 lg:grid-cols-[0.96fr_1.04fr]">
-        <GlassCard className="p-5 sm:p-6">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="bvr-section-label">Profile readiness</p>
-              <h3 className="mt-3 text-2xl font-black tracking-[-0.03em] text-white">{model.readiness.title}</h3>
-              <p className="mt-2 text-sm text-white/58">{model.readiness.subtitle}</p>
-              <p className="mt-2 text-sm leading-6 text-white/52">{model.readiness.description}</p>
-            </div>
-            <CheckCircle2 className="h-5 w-5 text-[#a3ff12]" aria-hidden="true" />
-          </div>
-
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {model.readiness.cards.map((card) => (
-              <div key={card.title} className={cn("rounded-[20px] border p-4", severityClass(card.severity))}>
-                <p className="surface-label">{card.title}</p>
-                <p className="mt-3 text-2xl font-semibold text-white">{card.value}</p>
-                <p className="mt-2 text-sm text-white/58">{card.helper}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-4 rounded-[24px] border border-white/8 bg-black/20 p-4">
-            <p className="surface-label">Needs attention</p>
-            <div className="mt-3 space-y-2 text-sm text-white/62">
-              {model.readiness.needsAttention?.length ? model.readiness.needsAttention.map((item) => (
-                <p key={item}>- {item}</p>
-              )) : <p>This public profile has the core studio surfaces ready.</p>}
-            </div>
-          </div>
-        </GlassCard>
-
-        <GlassCard className="p-5 sm:p-6">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="bvr-section-label">Public identity</p>
-              <h3 className="mt-3 text-2xl font-black tracking-[-0.03em] text-white">{model.identity.title}</h3>
-              <p className="mt-2 text-sm text-white/58">{model.identity.subtitle}</p>
-              <p className="mt-2 text-sm leading-6 text-white/52">{model.identity.description}</p>
-            </div>
-            <Camera className="h-5 w-5 text-[#a3ff12]" aria-hidden="true" />
-          </div>
-
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            {model.identity.cards.map((card) => (
-              <div key={card.title} className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-                <div className="inline-flex items-center gap-2 text-sm text-white/78">
-                  <Sparkles className="h-4 w-4 text-[#a3ff12]" aria-hidden="true" />
-                  {card.title}
-                </div>
-                <p className="mt-3 text-lg font-semibold text-white">{card.value}</p>
-                <p className="mt-2 text-sm text-white/58">{card.helper}</p>
-              </div>
-            ))}
-          </div>
-        </GlassCard>
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-[0.94fr_1.06fr]">
-        <GlassCard className="p-5 sm:p-6">
-          <p className="bvr-section-label">{model.media.title}</p>
-          <h3 className="mt-3 text-2xl font-black tracking-[-0.03em] text-white">{model.media.subtitle}</h3>
-          <p className="mt-3 text-sm leading-7 text-white/62">{model.media.emptyCopy}</p>
-          <button type="button" className="mt-5 inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] border border-[#a3ff12]/24 bg-[#a3ff12]/10 px-4 text-sm font-black text-[#a3ff12]">
-            <ImagePlus className="h-4 w-4" aria-hidden="true" />
-            {model.media.addButtonLabel}
-          </button>
-        </GlassCard>
-
-        <GlassCard className="p-5 sm:p-6">
-          <div className="flex items-end justify-between gap-3">
-            <div>
-              <p className="bvr-section-label">Gallery</p>
-              <h3 className="mt-3 text-2xl font-black tracking-[-0.03em] text-white">Public media grid</h3>
-              <p className="mt-2 text-sm text-white/58">Only real uploaded media appears here.</p>
-            </div>
-          </div>
-          {model.media.items.length ? (
-            <div className="mt-4 grid grid-cols-3 gap-1.5">
-              {model.media.items.slice(0, 9).map((item) => (
-                <div key={item.id} className="group relative aspect-square overflow-hidden rounded-[12px] border border-white/10 bg-black/25">
-                  {item.url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={item.url} alt={item.caption || "Public profile media"} className="h-full w-full object-cover" />
-                  ) : (
-                    <span className="flex h-full w-full items-center justify-center text-sm text-white/42">Media unavailable</span>
-                  )}
-                  {item.featured ? <span className="absolute bottom-2 right-2 rounded-[8px] border border-[#a3ff12]/28 bg-black/55 px-1.5 py-0.5 text-[12px] font-black tracking-[0.04em] text-[#a3ff12]">Featured</span> : null}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="mt-4 flex aspect-[3/1] items-center justify-center rounded-[18px] border border-dashed border-white/10 bg-black/20 p-5 text-center text-sm text-white/58">
-              No public media yet. Add real media when uploads are available.
-            </div>
-          )}
-        </GlassCard>
-      </section>
-
       {editorSlot}
 
-      <GlassCard className="p-5 sm:p-6">
-        <p className="bvr-section-label">Public preview snapshot</p>
-        <h3 className="mt-3 text-2xl font-black tracking-[-0.03em] text-white">{model.preview.title}</h3>
-        <p className="mt-2 text-sm text-white/58">{model.preview.subtitle}</p>
-        <div className="mt-5 rounded-[26px] border border-white/10 bg-black/28 p-5">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-            <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-[24px] border border-white/12 bg-black text-2xl font-black text-[#a3ff12]">
-              {model.hero.avatarUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={model.hero.avatarUrl} alt={`${publicName} preview`} className="h-full w-full object-cover" />
-              ) : initialsForName(publicName)}
+      <GlassCard className="overflow-hidden rounded-[20px] p-0">
+        <div className="grid sm:grid-cols-3">
+          {model.stats.map((stat, index) => (
+            <div key={stat.label} className={cn("min-h-[128px] p-5", index > 0 && "border-t border-white/10 sm:border-l sm:border-t-0")}>
+              <p className="text-[30px] font-black leading-none tracking-[-0.03em] text-white">{stat.value}</p>
+              <p className="mt-2 text-lg font-medium text-white/72">{stat.label}</p>
+              {stat.helper ? <p className="mt-1 text-[15px] font-bold text-[#a3ff12]">{stat.helper}</p> : null}
             </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-xl font-black tracking-[-0.03em] text-white">{publicName}</p>
-              {model.hero.username ? <p className="mt-1 text-sm font-bold text-white/52">@{model.hero.username}</p> : null}
-              <p className="mt-2 line-clamp-2 text-sm leading-6 text-white/58">{model.hero.bio || model.hero.contextLine || model.hero.emptyBody}</p>
-            </div>
-          </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            {model.preview.actions.map((action, index) => (
-              <button
-                key={action}
-                type="button"
-                className={cn(
-                  "inline-flex min-h-10 items-center justify-center rounded-[8px] px-3 text-xs font-black",
-                  index === 0 ? "bg-[#a3ff12] text-black" : "border border-white/10 bg-white/[0.035] text-white/72"
-                )}
-              >
-                {action}
-              </button>
-            ))}
-          </div>
+          ))}
         </div>
       </GlassCard>
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        {model.trustCards.slice(0, 3).map((card) => (
+          <GlassCard key={card.title} className={cn("rounded-[20px] p-5", severityClass(card.status))}>
+            <p className="text-[30px] font-black leading-tight tracking-[-0.03em] text-white">{card.value}</p>
+            <p className="mt-1 text-lg font-medium text-white/72">{card.title}</p>
+            <p className="mt-1 text-[15px] font-bold text-[#a3ff12]">{card.helper}</p>
+          </GlassCard>
+        ))}
+      </div>
+
+      <GlassCard className="flex min-h-[106px] items-center justify-between gap-4 rounded-[18px] p-[22px]">
+        <div className="flex min-w-0 items-center gap-4">
+          <span className="flex h-[58px] w-[58px] shrink-0 items-center justify-center rounded-full border border-[#a3ff12]/25 bg-[rgba(163,255,18,0.08)] text-[#a3ff12]">
+            <Sparkles className="h-7 w-7" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-[22px] font-black tracking-[-0.03em] text-white">{model.dashboardSummary.title}</p>
+            <p className="mt-1 text-[17px] text-white/60">{model.dashboardSummary.text}</p>
+          </div>
+        </div>
+        <ChevronRight className="h-6 w-6 shrink-0 text-white/85" />
+      </GlassCard>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        {model.secondaryActions.map((action) => (
+          <button
+            key={action.label}
+            type="button"
+            className="inline-flex min-h-14 items-center justify-center gap-3 rounded-[8px] border border-white/10 bg-white/[0.025] px-5 text-base font-extrabold text-white transition hover:border-[#a3ff12]/25 hover:bg-white/[0.04]"
+            onClick={action.intent === "share_profile" ? onShare : onEdit}
+          >
+            {action.intent === "share_profile" ? <Share2 className="h-6 w-6 text-[#a3ff12]" /> : <Pencil className="h-6 w-6 text-[#a3ff12]" />}
+            {action.label}
+          </button>
+        ))}
+      </div>
+
+      <section className="overflow-hidden">
+        <div className="hide-scrollbar flex gap-5 overflow-x-auto pb-2">
+          {model.highlights.map((highlight) => (
+            <button key={`${highlight.type}-${highlight.label}`} type="button" className="flex w-[112px] shrink-0 flex-col items-center" onClick={highlight.type === "new" ? onMedia : undefined}>
+              {highlight.imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={highlight.imageUrl} alt={highlight.label} className="h-[112px] w-[112px] rounded-full border-[3px] border-white/20 object-cover" />
+              ) : (
+                <span className="flex h-[112px] w-[112px] items-center justify-center rounded-full border-[3px] border-white/15 bg-white/[0.018] text-[54px] font-light leading-none text-[#a3ff12]">
+                  {highlight.type === "new" ? "+" : highlight.label.slice(0, 2).toUpperCase()}
+                </span>
+              )}
+              <span className="mt-2 max-w-full truncate text-center text-base font-medium text-white/70">{highlight.label}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="space-y-4">
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <h3 className="text-2xl font-black tracking-[-0.03em] text-white">{model.work.title}</h3>
+            <p className="mt-1 text-lg font-medium text-white/60">{model.work.countLabel}</p>
+          </div>
+          <button type="button" className="inline-flex items-center gap-1 text-lg font-extrabold text-[#a3ff12]" onClick={onMedia}>
+            {model.work.manageLabel}
+            <ChevronRight className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-3 gap-1.5">
+          {model.work.items.length ? model.work.items.slice(0, 9).map((item) => (
+            <button key={item.id} type="button" className="group relative aspect-square overflow-hidden rounded-[12px] border border-white/10 bg-black/25" onClick={onMedia}>
+              {item.imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={item.imageUrl} alt={item.alt} className="h-full w-full object-cover transition duration-200 group-hover:scale-[1.03]" />
+              ) : (
+                <span className="flex h-full w-full items-center justify-center text-sm text-white/42">Image unavailable</span>
+              )}
+            </button>
+          )) : (
+            <div className="col-span-3 flex aspect-[3/1] items-center justify-center rounded-[18px] border border-dashed border-white/10 bg-black/20 p-5 text-center text-sm text-white/58">
+              {model.work.emptyCopy}
+            </div>
+          )}
+        </div>
+      </section>
     </div>
   );
 }

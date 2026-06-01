@@ -39,31 +39,34 @@ const model: ProfileStudioViewModel = {
     canEdit: true,
     publicUrl: "/client/jordan"
   },
-  stats: [{ label: "Posts", value: 0 }],
-  readiness: {
-    title: "Profile readiness",
-    subtitle: "Culture-facing identity",
-    description: "Keep your public Culture profile clean.",
-    cards: [{ title: "Public photo", value: "Setup", helper: "Add a photo." }]
+  stats: [
+    { label: "Posts", value: 0 },
+    { label: "Followers", value: 0 },
+    { label: "Following", value: 0 }
+  ],
+  trustCards: [
+    { title: "Culture activity", value: "0 Posts", helper: "Shared in Culture" },
+    { title: "Social profile", value: "0 Followers", helper: "Community proof builds here" },
+    { title: "Member status", value: "Active", helper: "BVRB3R Culture" }
+  ],
+  dashboardSummary: {
+    title: "Your dashboard",
+    text: "0 profile views, 0 post clicks."
   },
-  identity: {
-    title: "Public identity",
-    subtitle: "What the community sees",
-    description: "Your public photo, username, bio, and Culture posts appear across social interactions.",
-    cards: [{ title: "Culture posts", value: 0, helper: "Only real posts appear." }]
-  },
-  media: {
-    title: "Culture posts and profile media",
-    subtitle: "Upload real photos or videos.",
-    addButtonLabel: "Add post",
+  secondaryActions: [
+    { label: "Edit profile", intent: "edit_profile" },
+    { label: "Share profile", intent: "share_profile" }
+  ],
+  highlights: [
+    { label: "New", type: "new" },
+    { label: "Culture", type: "collection" }
+  ],
+  work: {
+    title: "Your posts",
+    countLabel: "0 posts",
+    manageLabel: "Manage",
     emptyCopy: "No fake media is shown.",
     items: []
-  },
-  preview: {
-    title: "Client Culture preview",
-    subtitle: "This is what other users see.",
-    enabled: true,
-    actions: ["Follow", "Message", "Share"]
   }
 };
 
@@ -82,11 +85,12 @@ describe("ProfileStudioShell", () => {
     expect(screen.getAllByRole("heading", { name: "Public Profile" }).length).toBeGreaterThan(0);
     expect(screen.getAllByText("Culture profile").length).toBeGreaterThan(0);
     expect(screen.getByText("Public username")).toBeInTheDocument();
-    expect(screen.getAllByText("Profile readiness").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Public identity").length).toBeGreaterThan(0);
-    expect(screen.getByText("Culture posts and profile media")).toBeInTheDocument();
-    expect(screen.getByText("Public preview snapshot")).toBeInTheDocument();
+    expect(screen.getByText("Culture activity")).toBeInTheDocument();
+    expect(screen.getByText("Your dashboard")).toBeInTheDocument();
+    expect(screen.getByText("Your posts")).toBeInTheDocument();
+    expect(screen.queryByText("Public preview snapshot")).not.toBeInTheDocument();
     expect(screen.queryByText(/public barber brand/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/starting price/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/No file chosen/i)).not.toBeInTheDocument();
   });
 });

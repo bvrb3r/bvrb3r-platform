@@ -20,10 +20,6 @@ function formatLocation(shop: OwnerShopProfile | null) {
   return [shop.address, shop.neighborhood, cityState].filter(Boolean).join(" - ");
 }
 
-function hasValue(value: unknown) {
-  return typeof value === "string" ? value.trim().length > 0 : Boolean(value);
-}
-
 export function buildShopProfileStudioViewModel({
   shop,
   user
@@ -37,16 +33,6 @@ export function buildShopProfileStudioViewModel({
   const publicBarberCount = typeof shop?.public_barber_count === "number" ? shop.public_barber_count : null;
   const gallery = shop?.gallery ?? [];
   const isApproved = shop?.app_approval_status === "approved";
-  const readinessItems = [
-    hasValue(shop?.name) ? null : "Set the public shop name",
-    hasValue(shop?.shop_username) ? null : "Set the public shop username",
-    hasValue(shop?.address) || hasValue(shop?.city) ? null : "Add address and city",
-    hasValue(shop?.public_hours) ? null : "Add public hours",
-    hasValue(shop?.policies) ? null : "Add shop policies",
-    publicBarberCount && publicBarberCount > 0 ? null : "Connect visible public team barbers",
-    gallery.length ? null : "Add real shop gallery media"
-  ].filter(Boolean) as string[];
-
   return {
     role: "shop_owner",
     page: {
@@ -85,52 +71,38 @@ export function buildShopProfileStudioViewModel({
       publicUrl: shop?.id ? `/shop/${encodeURIComponent(handle || shop.id)}` : null
     },
     stats: [
-      ...(publicBarberCount === null ? [] : [{ label: "Public barbers", value: publicBarberCount, helper: "Visible team" }]),
-      ...(gallery.length ? [{ label: "Gallery", value: gallery.length, helper: "Real media" }] : [])
+      { label: "Posts", value: gallery.length },
+      { label: "Followers", value: 0 },
+      { label: "Public barbers", value: publicBarberCount ?? 0 }
     ],
-    readiness: {
-      title: "Profile readiness",
-      subtitle: "Shop-facing trust",
-      description: "Keep your shop profile ready with real address, hours, policies, team, and public media.",
-      cards: [
-        { title: "Shop verification", value: isApproved ? "Approved" : "Setup", helper: isApproved ? "Verified shop badge can appear publicly." : "Finish approval and profile setup.", severity: isApproved ? "good" : "warning" },
-        { title: "Address", value: hasValue(shop?.address) || hasValue(shop?.city) ? "Ready" : "Missing", helper: "Clients need real location context.", severity: hasValue(shop?.address) || hasValue(shop?.city) ? "good" : "warning" },
-        { title: "Hours", value: hasValue(shop?.public_hours) ? "Ready" : "Setup", helper: "Public hours clarify planning.", severity: hasValue(shop?.public_hours) ? "good" : "warning" },
-        { title: "Policies", value: hasValue(shop?.policies) ? "Ready" : "Setup", helper: "Policies set expectations before booking.", severity: hasValue(shop?.policies) ? "good" : "warning" },
-        { title: "Public team", value: publicBarberCount ?? "Not connected", helper: "Visible active barbers appear on the shop profile.", severity: publicBarberCount ? "good" : "neutral" },
-        { title: "Shop gallery", value: gallery.length, helper: "Only real shop media appears here.", severity: gallery.length ? "good" : "neutral" },
-        { title: "Booking readiness", value: shop ? "Review" : "Setup", helper: "Shop booking context stays separate from account controls.", severity: shop ? "neutral" : "warning" }
-      ],
-      needsAttention: readinessItems
+    trustCards: [
+      { title: "Rating", value: "--", helper: "Reviews build with completed visits", status: "neutral" },
+      { title: "Public barbers", value: `${publicBarberCount ?? 0} Public barbers`, helper: "Team display", status: publicBarberCount ? "good" : "neutral" },
+      { title: "Shop status", value: isApproved ? "Approved" : "Setup needed", helper: isApproved ? "Shop verification" : "Finish shop profile", status: isApproved ? "good" : "warning" }
+    ],
+    dashboardSummary: {
+      title: "Your dashboard",
+      text: "0 shop profile views, 0 booking clicks."
     },
-    identity: {
-      title: "Public identity",
-      subtitle: "What clients see",
-      description: "Your shop logo, gallery, team, policies, hours, and booking context stay client-facing here.",
-      cards: [
-        { title: "Shop logo", value: hasValue(shop?.profile_photo_url) || hasValue(shop?.profile_photo_path) ? "Live" : "Setup", helper: "The public logo anchors the shop card and profile." },
-        { title: "Shop gallery", value: gallery.length, helper: "Gallery media should be real shop, team, event, or brand images." },
-        { title: "Public team", value: publicBarberCount ?? "Not connected", helper: "Team visibility is controlled from Owner Home." },
-        { title: "Hours and policies", value: hasValue(shop?.public_hours) || hasValue(shop?.policies) ? "In progress" : "Setup", helper: "Hours and policies help clients understand the shop before choosing." }
-      ]
-    },
-    media: {
-      title: "Shop gallery and business media",
-      subtitle: "Upload real shop photos, team photos, events, and brand images. No placeholder media.",
-      addButtonLabel: "Add shop image",
-      emptyCopy: "No shop gallery media yet. Add real shop photos when gallery uploads are connected; no placeholder media is shown.",
+    secondaryActions: [
+      { label: "Edit profile", intent: "edit_profile" },
+      { label: "Share profile", intent: "share_profile" }
+    ],
+    highlights: [
+      { label: "New", type: "new" },
+      { label: "Shop", type: "collection" }
+    ],
+    work: {
+      title: "Shop gallery",
+      countLabel: `${gallery.length} post${gallery.length === 1 ? "" : "s"}`,
+      manageLabel: "Manage",
+      emptyCopy: "No shop gallery media yet. Add real shop photos when gallery uploads are connected.",
       items: gallery.map((item) => ({
         id: item.id,
-        url: item.image_url,
-        caption: item.caption,
-        featured: Boolean(item.featured)
+        imageUrl: item.image_url,
+        alt: item.caption || `${shopName} shop gallery image`,
+        caption: item.caption
       }))
-    },
-    preview: {
-      title: "Shop public preview",
-      subtitle: "This is what other users see.",
-      enabled: Boolean(shop),
-      actions: ["View team", "Book with shop", "Message", "Follow", "Share"]
     }
   };
 }

@@ -47,44 +47,33 @@ export function buildClientProfileStudioViewModel(user: UserAccount): ProfileStu
       publicUrl: `/client/${handle}`
     },
     stats: [
-      { label: "Posts", value: 0, helper: "Culture posts" }
+      { label: "Posts", value: 0 },
+      { label: "Followers", value: 0 },
+      { label: "Following", value: 0 }
     ],
-    readiness: {
-      title: "Profile readiness",
-      subtitle: "Culture-facing identity",
-      description: "Keep your public Culture profile clean, real, and recognizable.",
-      cards: [
-        { title: "Public photo", value: "Setup", helper: "Add a recognizable Culture profile photo.", severity: "warning" },
-        { title: "Username", value: handle ? "Ready" : "Set up", helper: "A stable social handle keeps your profile shareable.", severity: handle ? "good" : "warning" },
-        { title: "Bio", value: "Setup", helper: "Share a short public story for Culture interactions.", severity: "warning" },
-        { title: "Posts", value: 0, helper: "No Culture posts are published yet.", severity: "neutral" },
-        { title: "Social visibility", value: "Culture", helper: "Visible only in Culture and social contexts.", severity: "good" }
-      ],
-      needsAttention: ["Add a public profile photo", "Add a short Culture bio", "Add real public media when posting is available"]
+    trustCards: [
+      { title: "Culture activity", value: "0 Posts", helper: "Shared in Culture", status: "neutral" },
+      { title: "Social profile", value: "0 Followers", helper: "Community proof builds here", status: "neutral" },
+      { title: "Member status", value: "Active", helper: "BVRB3R Culture", status: "good" }
+    ],
+    dashboardSummary: {
+      title: "Your dashboard",
+      text: "0 profile views, 0 post clicks."
     },
-    identity: {
-      title: "Public identity",
-      subtitle: "What the community sees",
-      description: "Your public photo, username, bio, and Culture posts appear across social interactions.",
-      cards: [
-        { title: "Public photo", value: "Setup", helper: "This image follows comments, likes, follows, and messages." },
-        { title: "Bio", value: "Setup", helper: "A short public story helps people recognize you." },
-        { title: "Culture posts", value: 0, helper: "Only real Culture posts will appear here." },
-        { title: "Social proof", value: "Not connected", helper: "Followers and follows appear when the social layer has activity." }
-      ]
-    },
-    media: {
-      title: "Culture posts and profile media",
-      subtitle: "Upload real photos or videos that represent your BVRB3R Culture profile.",
-      addButtonLabel: "Add post",
-      emptyCopy: "No Culture posts yet. Upload controls will activate when Culture publishing is connected; no fake media is shown.",
+    secondaryActions: [
+      { label: "Edit profile", intent: "edit_profile" },
+      { label: "Share profile", intent: "share_profile" }
+    ],
+    highlights: [
+      { label: "New", type: "new" },
+      { label: "Culture", type: "collection" }
+    ],
+    work: {
+      title: "Your posts",
+      countLabel: "0 posts",
+      manageLabel: "Manage",
+      emptyCopy: "No Culture posts yet. Add real media when Culture publishing is connected.",
       items: []
-    },
-    preview: {
-      title: "Client Culture preview",
-      subtitle: "This is what other users see.",
-      enabled: true,
-      actions: ["Follow", "Message", "Share"]
     }
   };
 }

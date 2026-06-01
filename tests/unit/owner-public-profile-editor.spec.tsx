@@ -4,12 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { OwnerPublicProfileEditor } from "@/components/operations/owner-public-profile-editor";
 import type { UserAccount } from "@/types/domain";
 
-const {
-  useOwnerShopProfileQueryMock,
-  useUpdateOwnerShopProfileMutationMock
-} = vi.hoisted(() => ({
-  useOwnerShopProfileQueryMock: vi.fn(),
-  useUpdateOwnerShopProfileMutationMock: vi.fn()
+const { useOwnerShopProfileQueryMock } = vi.hoisted(() => ({
+  useOwnerShopProfileQueryMock: vi.fn()
 }));
 
 vi.mock("next/link", () => ({
@@ -19,8 +15,7 @@ vi.mock("next/link", () => ({
 }));
 
 vi.mock("@/lib/operations/barber-client", () => ({
-  useOwnerShopProfileQuery: useOwnerShopProfileQueryMock,
-  useUpdateOwnerShopProfileMutation: useUpdateOwnerShopProfileMutationMock
+  useOwnerShopProfileQuery: useOwnerShopProfileQueryMock
 }));
 
 describe("OwnerPublicProfileEditor", () => {
@@ -37,11 +32,6 @@ describe("OwnerPublicProfileEditor", () => {
 
   beforeEach(() => {
     useOwnerShopProfileQueryMock.mockReset();
-    useUpdateOwnerShopProfileMutationMock.mockReset();
-    useUpdateOwnerShopProfileMutationMock.mockReturnValue({
-      isPending: false,
-      mutateAsync: vi.fn()
-    });
   });
 
   it("shows setup copy instead of a load error when the owner shop profile is incomplete", () => {
@@ -84,13 +74,17 @@ describe("OwnerPublicProfileEditor", () => {
 
     expect(screen.getByTestId("owner-public-profile-editor")).toBeInTheDocument();
     expect(screen.getByText("Manage your shop profile & brand")).toBeInTheDocument();
+    expect(screen.getByText(/Public shop brand/i)).toBeInTheDocument();
     expect(screen.getByText("Shape the public business profile clients see before choosing a shop or barber.")).toBeInTheDocument();
     expect(screen.getByText("Public shop username")).toBeInTheDocument();
-    expect(screen.getAllByText("Shop gallery and business media").length).toBeGreaterThan(0);
-    expect(screen.getByDisplayValue("The BVRB3R Shop")).toBeInTheDocument();
+    expect(screen.getByText("Shop gallery")).toBeInTheDocument();
+    expect(screen.getAllByText("The BVRB3R Shop").length).toBeGreaterThan(0);
     expect(screen.getAllByDisplayValue("bvrb3rshop").length).toBeGreaterThan(0);
-    expect(screen.getByDisplayValue("2200 E Fowler Ave")).toBeInTheDocument();
-    expect(screen.getAllByText("Public team").length).toBeGreaterThan(0);
+    expect(screen.getByText(/2200 E Fowler Ave - Tampa, FL/i)).toBeInTheDocument();
+    expect(screen.getAllByText("Public barbers").length).toBeGreaterThan(0);
+    expect(screen.getByText("Shop status")).toBeInTheDocument();
+    expect(screen.queryByText("Public preview snapshot")).not.toBeInTheDocument();
+    expect(screen.queryByText(/barber portfolio/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/private owner/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/payout/i)).not.toBeInTheDocument();
   });
