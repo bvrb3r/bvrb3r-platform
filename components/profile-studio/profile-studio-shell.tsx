@@ -211,7 +211,7 @@ export function ProfileStudioShell({
           className="h-44 border-b border-white/8 bg-[radial-gradient(circle_at_top_right,rgba(163,255,18,0.18),transparent_34%),linear-gradient(135deg,rgba(163,255,18,0.10),rgba(255,255,255,0.04)_42%,rgba(0,0,0,0.34))]"
           style={model.hero.coverUrl ? { backgroundImage: `linear-gradient(180deg,rgba(0,0,0,0.10),rgba(0,0,0,0.48)), url(${model.hero.coverUrl})`, backgroundSize: "cover", backgroundPosition: "center" } : undefined}
         />
-        <div className="grid gap-6 p-5 sm:p-6 lg:grid-cols-[auto_minmax(0,1fr)_auto]">
+        <div className="grid gap-6 p-5 sm:p-6 lg:grid-cols-[auto_minmax(0,1fr)]">
           <div className="relative -mt-20 h-[148px] w-[148px] shrink-0 overflow-hidden rounded-[28px] border-[3px] border-white/15 bg-black text-4xl font-black text-[#a3ff12] shadow-[0_0_0_2px_rgba(163,255,18,0.10),0_20px_60px_rgba(0,0,0,0.50)] sm:h-[178px] sm:w-[178px] sm:rounded-[36px] sm:text-5xl">
             {model.hero.avatarUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -287,16 +287,6 @@ export function ProfileStudioShell({
                 Share
               </button>
             </div>
-
-          </div>
-
-          <div className="flex shrink-0 items-start gap-2 lg:flex-col">
-            <button type="button" aria-label={model.actions.publicPreviewLabel} className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-white transition hover:border-[#a3ff12]/35 hover:shadow-[0_0_24px_rgba(163,255,18,0.12)] sm:h-14 sm:w-14" onClick={onPreview}>
-              <Eye className="h-5 w-5 sm:h-6 sm:w-6" />
-            </button>
-            <button type="button" aria-label={model.actions.shareLabel} className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-white transition hover:border-[#a3ff12]/35 hover:shadow-[0_0_24px_rgba(163,255,18,0.12)] sm:h-14 sm:w-14" onClick={onShare}>
-              <Share2 className="h-5 w-5 sm:h-6 sm:w-6" />
-            </button>
           </div>
         </div>
       </GlassCard>

@@ -78,6 +78,9 @@ describe("OwnerPublicProfileEditor", () => {
     expect(screen.getByText("Shape the public business profile clients see before choosing a shop or barber.")).toBeInTheDocument();
     expect(screen.queryByText("Public shop username")).not.toBeInTheDocument();
     expect(screen.getByText("@bvrb3rshop")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Update shop logo" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Update shop logo" }));
+    expect(screen.getByText("Shop logo upload is coming soon.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Edit public shop username" }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByText("This is how clients find and share your shop profile.")).toBeInTheDocument();

@@ -33,6 +33,9 @@ describe("ClientPublicProfileEditor", () => {
     expect(screen.getByText("Client public profiles appear in Culture and social interactions. They do not appear in barber or shop marketplace search.")).toBeInTheDocument();
     expect(screen.queryByText("Public username")).not.toBeInTheDocument();
     expect(screen.getByText("@jordanellis")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Update public photo" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Update public photo" }));
+    expect(screen.getByText("Profile photo upload is coming soon.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Edit public username" }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByText("This is how people find your Culture profile.")).toBeInTheDocument();

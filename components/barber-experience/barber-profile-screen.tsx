@@ -1,18 +1,16 @@
 "use client";
 
 import type { Route } from "next";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { Pencil } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { buildBarberProfileStudioViewModel } from "@/components/profile-studio/adapters/barber-profile-studio-adapter";
+import { ProfileImageEditButton } from "@/components/profile-studio/profile-image-edit-button";
 import { ProfileStudioShell } from "@/components/profile-studio/profile-studio-shell";
 import { useBarberProfileQuery } from "@/lib/booking/client";
 import { useMutateProfileMediaMutation, useProfileMediaWorkspaceQuery } from "@/lib/profile/client";
 import { uploadMediaAsset } from "@/lib/storage/media";
 import { useBarberTrustSummary } from "@/lib/trust/client";
 import type { UserAccount } from "@/types/domain";
-
-type PickerInput = HTMLInputElement & { showPicker?: () => void };
 
 function suggestPublicUsername(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "").slice(0, 32);
@@ -51,24 +49,6 @@ function validateImageFile(file: File | null) {
   return null;
 }
 
-function openFilePicker(input: HTMLInputElement | null) {
-  const picker = input as PickerInput | null;
-  if (!picker) {
-    return;
-  }
-
-  if (typeof picker.showPicker === "function") {
-    try {
-      picker.showPicker();
-      return;
-    } catch {
-      // Fall back to click() where showPicker exists but is browser-gated.
-    }
-  }
-
-  picker.click();
-}
-
 export function BarberProfileScreen({
   user,
   initialSection,
@@ -80,8 +60,6 @@ export function BarberProfileScreen({
 }) {
   const barberId = user.barberId;
   const barberName = user.name;
-  const photoInputId = useId();
-  const photoInputRef = useRef<HTMLInputElement | null>(null);
   const studioRef = useRef<HTMLDivElement | null>(null);
   const profileQuery = useBarberProfileQuery(barberId);
   const mediaQuery = useProfileMediaWorkspaceQuery(true);
@@ -266,37 +244,20 @@ export function BarberProfileScreen({
         onContextEdit={() => setLocalFeedback({ tone: "info", message: "Chair and location display editing is coming soon." })}
         onShare={() => void handleShareProfile()}
         photoControl={(
-          <>
-            <input
-              id={photoInputId}
-              ref={photoInputRef}
-              type="file"
-              accept="image/*"
-              className="sr-only"
-              tabIndex={-1}
-              onChange={async (event) => {
-                const file = event.target.files?.[0] ?? null;
-                event.currentTarget.value = "";
-                const error = validateImageFile(file);
-                if (error) {
-                  setLocalFeedback({ tone: "error", message: error });
-                  return;
-                }
+          <ProfileImageEditButton
+            label="Update public photo"
+            disabled={mediaMutation.isPending}
+            onFileSelected={async (file) => {
+              const error = validateImageFile(file);
+              if (error) {
+                setLocalFeedback({ tone: "error", message: error });
+                return;
+              }
 
-                setLocalFeedback(null);
-                await handleBarberPhotoUpload(file!);
-              }}
-            />
-            <button
-              type="button"
-              aria-label="Update public photo"
-              disabled={mediaMutation.isPending}
-              className="absolute bottom-3 right-3 flex h-[52px] w-[52px] items-center justify-center rounded-full border-2 border-[#a3ff12] bg-[rgba(163,255,18,0.10)] text-[#a3ff12] shadow-[0_0_28px_rgba(163,255,18,0.25)] transition hover:bg-[rgba(163,255,18,0.16)] disabled:opacity-50"
-              onClick={() => openFilePicker(photoInputRef.current)}
-            >
-              <Pencil className="h-5 w-5" />
-            </button>
-          </>
+              setLocalFeedback(null);
+              await handleBarberPhotoUpload(file);
+            }}
+          />
         )}
       />
     </div>

@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
+import { ProfileImageEditButton } from "@/components/profile-studio/profile-image-edit-button";
 import { ProfileStudioShell, type ProfileStudioViewModel } from "@/components/profile-studio/profile-studio-shell";
 
 vi.mock("next/link", () => ({
@@ -75,6 +76,7 @@ describe("ProfileStudioShell", () => {
         backHref="/dashboard/client/more"
         backLabel="Back to More"
         usernameValue="jordan"
+        photoControl={<ProfileImageEditButton label="Update public photo" onUnavailable={vi.fn()} />}
       />
     );
 
@@ -83,6 +85,9 @@ describe("ProfileStudioShell", () => {
     expect(screen.getAllByText("Culture profile").length).toBeGreaterThan(0);
     expect(screen.queryByText("Public username")).not.toBeInTheDocument();
     expect(screen.getByText("@jordan")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Update public photo" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Public preview" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "Share profile" })).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "Edit public username" }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByText("This is how people find your Culture profile.")).toBeInTheDocument();

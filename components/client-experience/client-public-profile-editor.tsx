@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import type { Route } from "next";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { buildClientProfileStudioViewModel } from "@/components/profile-studio/adapters/client-profile-studio-adapter";
+import { ProfileImageEditButton } from "@/components/profile-studio/profile-image-edit-button";
 import { ProfileStudioShell } from "@/components/profile-studio/profile-studio-shell";
 import type { UserAccount } from "@/types/domain";
 
@@ -37,6 +38,12 @@ export function ClientPublicProfileEditor({ user }: { user: UserAccount }) {
         backLabel="Back to More"
         usernameValue={usernameDraft}
         onUsernameChange={(value) => setUsernameDraft(suggestHandle(value))}
+        photoControl={(
+          <ProfileImageEditButton
+            label="Update public photo"
+            onUnavailable={() => setFeedback("Profile photo upload is coming soon.")}
+          />
+        )}
         onPreview={() => setFeedback("Culture public preview opens when client profile routing is connected.")}
         onShare={async () => {
           const url = `${window.location.origin}/client/${usernameDraft || model.username.value}`;

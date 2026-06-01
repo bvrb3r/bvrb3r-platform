@@ -128,6 +128,7 @@ describe("BarberProfileScreen", () => {
     expect(screen.getByText("Public preview")).toBeInTheDocument();
     expect(screen.queryByText("Edit profile")).not.toBeInTheDocument();
     expect(screen.getByText("Portfolio")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Update public photo" })).toBeInTheDocument();
     expect(screen.getByText("@phillipmcgee")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Edit public username" }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();

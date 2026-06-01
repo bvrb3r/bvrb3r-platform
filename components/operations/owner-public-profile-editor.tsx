@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Route } from "next";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { buildShopProfileStudioViewModel } from "@/components/profile-studio/adapters/shop-profile-studio-adapter";
+import { ProfileImageEditButton } from "@/components/profile-studio/profile-image-edit-button";
 import { ProfileStudioShell } from "@/components/profile-studio/profile-studio-shell";
 import { useOwnerShopProfileQuery } from "@/lib/operations/barber-client";
 import type { UserAccount } from "@/types/domain";
@@ -123,6 +124,13 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
         backLabel="Back to More"
         usernameValue={draft.shopUsername || model.username.value}
         onUsernameChange={(value) => updateDraft("shopUsername", suggestHandle(value))}
+        photoControl={(
+          <ProfileImageEditButton
+            label="Update shop logo"
+            // Owner account avatars stay in account surfaces; this studio edits the public shop brand image.
+            onUnavailable={() => setFeedback({ tone: "info", message: "Shop logo upload is coming soon." })}
+          />
+        )}
         onMedia={() => setFeedback({ tone: "info", message: "Team display is managed from Owner Home." })}
         onPreview={() => {
           if (model.hero.publicUrl) {
