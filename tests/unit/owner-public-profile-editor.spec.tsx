@@ -203,6 +203,43 @@ describe("OwnerPublicProfileEditor", () => {
     expect(await screen.findByText("Shop public location updated.")).toBeInTheDocument();
   });
 
+  it("allows shop bio save from setup state without the old finish-profile blocker", async () => {
+    const error = new Error("Owner shop not found.") as Error & { status?: number };
+    error.status = 404;
+    const mutateAsync = vi.fn().mockResolvedValue({
+      shop: {
+        id: "shop-bvrb3r",
+        name: "The BVRB3R Shop",
+        shop_username: "bvrb3rshop",
+        public_bio: "Setup state bio."
+      }
+    });
+    useOwnerShopProfileQueryMock.mockReturnValue({
+      data: null,
+      error,
+      isLoading: false,
+      refetch: vi.fn()
+    });
+    useUpdateOwnerShopProfileMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync
+    });
+
+    render(<OwnerPublicProfileEditor user={user} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit public shop bio" }));
+    fireEvent.change(screen.getByLabelText("Public bio"), { target: { value: "Setup state bio." } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith({
+      shopId: undefined,
+      publicBio: "Setup state bio."
+    }));
+    expect(screen.queryByText("Finish shop profile before editing the shop bio.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Unable to load shop profile. Try again.")).not.toBeInTheDocument();
+    expect(await screen.findByText("Shop bio updated.")).toBeInTheDocument();
+  });
+
   it("uploads shop gallery media through the owner media mutation", async () => {
     const mutateAsync = vi.fn().mockResolvedValue({});
     useMutateProfileMediaMutationMock.mockReturnValue({

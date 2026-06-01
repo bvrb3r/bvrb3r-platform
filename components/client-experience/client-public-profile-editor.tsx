@@ -136,8 +136,9 @@ export function ClientPublicProfileEditor({ user }: { user: UserAccount }) {
       });
       setFeedback({ tone: "success", message: "Public bio updated." });
     } catch (errorValue) {
-      setFeedback({ tone: "error", message: readableError(errorValue, "Unable to update public bio.") });
-      throw errorValue;
+      const message = readableError(errorValue, "Unable to update public bio.");
+      setFeedback({ tone: "error", message });
+      throw new Error(message);
     }
   }
 
@@ -151,8 +152,9 @@ export function ClientPublicProfileEditor({ user }: { user: UserAccount }) {
       });
       setFeedback({ tone: "success", message: "Public location updated." });
     } catch (errorValue) {
-      setFeedback({ tone: "error", message: readableError(errorValue, "Unable to update public location.") });
-      throw errorValue;
+      const message = readableError(errorValue, "Unable to update public location.");
+      setFeedback({ tone: "error", message });
+      throw new Error(message);
     }
   }
 

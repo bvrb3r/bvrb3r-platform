@@ -420,21 +420,35 @@ async function listSupabaseManagedShopIds(user: UserAccount, supabase: SupabaseC
 }
 
 async function resolveProfileRow(user: UserAccount, supabase: SupabaseClient) {
-  const result = await supabase
+  const byEmailResult = user.email ? await supabase
     .from("profiles")
     .select("id, email, profile_photo_path, profile_photo_url, public_bio, public_city, public_state")
     .eq("email", user.email)
-    .maybeSingle();
+    .maybeSingle() : { data: null, error: null };
 
-  if (result.error) {
+  if (byEmailResult.error) {
     throw new ProfileMediaServiceError("Unable to resolve the signed-in profile.", 500);
   }
 
-  if (!result.data) {
+  if (byEmailResult.data) {
+    return byEmailResult.data as ProfileMediaRow;
+  }
+
+  const byIdResult = await supabase
+    .from("profiles")
+    .select("id, email, profile_photo_path, profile_photo_url, public_bio, public_city, public_state")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (byIdResult.error) {
+    throw new ProfileMediaServiceError("Unable to resolve the signed-in profile.", 500);
+  }
+
+  if (!byIdResult.data) {
     throw new ProfileMediaServiceError("No profile was found for this account.", 404);
   }
 
-  return result.data as ProfileMediaRow;
+  return byIdResult.data as ProfileMediaRow;
 }
 
 async function readSupabaseNotificationPreference(user: UserAccount, supabase: SupabaseClient) {

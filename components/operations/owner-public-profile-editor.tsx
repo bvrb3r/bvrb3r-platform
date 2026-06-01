@@ -6,7 +6,7 @@ import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { buildShopProfileStudioViewModel } from "@/components/profile-studio/adapters/shop-profile-studio-adapter";
 import { ProfileImageEditButton } from "@/components/profile-studio/profile-image-edit-button";
 import { ProfileStudioShell } from "@/components/profile-studio/profile-studio-shell";
-import { useOwnerShopProfileQuery, useUpdateOwnerShopProfileMutation } from "@/lib/operations/barber-client";
+import { useOwnerShopProfileQuery, useUpdateOwnerShopProfileMutation, type OwnerShopProfileResponse } from "@/lib/operations/barber-client";
 import { useMutateProfileMediaMutation, useProfileMediaWorkspaceQuery } from "@/lib/profile/client";
 import { uploadMediaAsset } from "@/lib/storage/media";
 import type { UserAccount } from "@/types/domain";
@@ -98,8 +98,9 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
   const mediaQuery = useProfileMediaWorkspaceQuery(true);
   const mediaMutation = useMutateProfileMediaMutation();
   const [draft, setDraft] = useState<ShopPublicProfileDraft>(emptyDraft);
+  const [localShop, setLocalShop] = useState<OwnerShopProfileResponse["shop"] | null>(null);
   const [feedback, setFeedback] = useState<{ tone: "info" | "success" | "error"; message: string } | null>(null);
-  const shop = profileQuery.data?.shop ?? null;
+  const shop = localShop ?? profileQuery.data?.shop ?? null;
   const loadErrorStatus = profileQuery.error && typeof profileQuery.error === "object" && "status" in profileQuery.error
     ? Number((profileQuery.error as { status?: number }).status)
     : null;
@@ -281,32 +282,27 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
 
   async function handleShopBioSave(publicBio: string) {
     const shopId = effectiveShop?.id ?? shopMedia?.shopId;
-    if (!shopId) {
-      setFeedback({ tone: "error", message: "Finish shop profile before editing the shop bio." });
-      throw new Error("Shop profile is not ready.");
-    }
 
     setFeedback(null);
     try {
-      await shopProfileMutation.mutateAsync({
+      const response = await shopProfileMutation.mutateAsync({
         shopId,
         publicBio
       });
+      if (response.shop) {
+        setLocalShop(response.shop);
+      }
       updateDraft("publicBio", publicBio);
       setFeedback({ tone: "success", message: "Shop bio updated." });
     } catch (errorValue) {
-      setFeedback({ tone: "error", message: readableError(errorValue, "Unable to update shop bio.") });
-      throw errorValue;
+      const message = readableError(errorValue, "Unable to update shop bio.");
+      setFeedback({ tone: "error", message });
+      throw new Error(message);
     }
   }
 
   async function handleShopLocationSave(values: Record<string, string>) {
     const shopId = effectiveShop?.id ?? shopMedia?.shopId;
-    if (!shopId) {
-      setFeedback({ tone: "error", message: "Finish shop profile before editing the shop location." });
-      throw new Error("Shop profile is not ready.");
-    }
-
     const nextLocation = {
       address: values.address ?? "",
       neighborhood: values.neighborhood ?? "",
@@ -316,18 +312,22 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
 
     setFeedback(null);
     try {
-      await shopProfileMutation.mutateAsync({
+      const response = await shopProfileMutation.mutateAsync({
         shopId,
         ...nextLocation
       });
+      if (response.shop) {
+        setLocalShop(response.shop);
+      }
       updateDraft("address", nextLocation.address);
       updateDraft("neighborhood", nextLocation.neighborhood);
       updateDraft("city", nextLocation.city);
       updateDraft("state", nextLocation.state);
       setFeedback({ tone: "success", message: "Shop public location updated." });
     } catch (errorValue) {
-      setFeedback({ tone: "error", message: readableError(errorValue, "Unable to update shop location.") });
-      throw errorValue;
+      const message = readableError(errorValue, "Unable to update shop location.");
+      setFeedback({ tone: "error", message });
+      throw new Error(message);
     }
   }
 

@@ -273,7 +273,7 @@ describe("BarberProfileScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Edit public barber bio" }));
     fireEvent.change(screen.getByLabelText("Public bio"), { target: { value: "Fresh public story" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    await screen.findByText("Public barber bio updated.");
+    await screen.findByText("Barber bio updated.");
     expect(mutateAsync).toHaveBeenCalledWith({
       action: "set_barber_public_bio",
       publicBio: "Fresh public story"

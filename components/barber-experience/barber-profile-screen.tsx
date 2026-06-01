@@ -232,10 +232,11 @@ export function BarberProfileScreen({
         publicBio
       });
       await profileQuery.refetch();
-      setLocalFeedback({ tone: "info", message: "Public barber bio updated." });
+      setLocalFeedback({ tone: "info", message: "Barber bio updated." });
     } catch (error) {
-      setLocalFeedback({ tone: "error", message: readableError(error, "Unable to update public barber bio.") });
-      throw error;
+      const message = readableError(error, "Unable to update barber bio.");
+      setLocalFeedback({ tone: "error", message });
+      throw new Error(message);
     }
   }
 
@@ -249,8 +250,9 @@ export function BarberProfileScreen({
       await profileQuery.refetch();
       setLocalFeedback({ tone: "info", message: "Public chair/location updated." });
     } catch (error) {
-      setLocalFeedback({ tone: "error", message: readableError(error, "Unable to update public chair/location.") });
-      throw error;
+      const message = readableError(error, "Unable to update public chair/location.");
+      setLocalFeedback({ tone: "error", message });
+      throw new Error(message);
     }
   }
 
