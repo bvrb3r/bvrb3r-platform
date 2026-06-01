@@ -27,6 +27,14 @@ export function ProfileBioEditModal({
     setDraft(value);
   }, [value]);
 
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
+
   async function handleSave() {
     const next = draft.trim();
     if (next.length > 300) {

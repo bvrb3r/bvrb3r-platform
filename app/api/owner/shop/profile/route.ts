@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getSessionUser } from "@/lib/booking/route-auth";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import { getMarketplaceState, setMarketplaceState } from "@/lib/marketplace/state";
+import { resolveSignedInProfile, CurrentProfileResolverError } from "@/lib/profile/current-profile";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { UserAccount } from "@/types/domain";
 
@@ -78,21 +79,25 @@ function updateDemoShopProfile(user: UserAccount, input: z.infer<typeof shopProf
 }
 
 async function getOwnerProfileIds(supabase: NonNullable<ReturnType<typeof createSupabaseAdminClient>>, user: UserAccount) {
-  const ids = new Set<string>([user.id]);
-  if (user.email) {
-    const profileResult = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("email", user.email)
-      .limit(1)
-      .maybeSingle();
-
-    if (!profileResult.error && profileResult.data?.id) {
-      ids.add(String((profileResult.data as { id: string }).id));
+  try {
+    const result = await resolveSignedInProfile<{ id: string; email?: string | null; role?: string | null }>({
+      user,
+      supabase,
+      select: "id, email, role"
+    });
+    return [...new Set([result.profileId, user.id].filter(Boolean))];
+  } catch (error) {
+    if (error instanceof CurrentProfileResolverError) {
+      console.error("[owner-shop-profile] owner profile resolver failed", {
+        code: error.code,
+        status: error.status,
+        userId: user.id,
+        email: user.email
+      });
+      return user.id && user.id !== "guest-user" ? [user.id] : [];
     }
+    throw error;
   }
-
-  return [...ids];
 }
 
 async function readOwnerScopedShop(
@@ -128,6 +133,17 @@ async function readOwnerScopedShop(
   }
 
   const ownerIds = await getOwnerProfileIds(supabase, user);
+  if (!ownerIds.length) {
+    if (user.ownedShopId) {
+      return supabase
+        .from("shops")
+        .select(ownerShopSelect)
+        .eq("id", user.ownedShopId)
+        .limit(1)
+        .maybeSingle();
+    }
+    return { data: null, error: null };
+  }
   const ownerQuery = supabase
     .from("shops")
     .select(ownerShopSelect)

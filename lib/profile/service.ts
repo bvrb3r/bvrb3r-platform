@@ -4,6 +4,7 @@ import { isSupabaseEnabled, runtimeConfig } from "@/lib/config/runtime";
 import { demoLocations } from "@/lib/data/demo";
 import { getEngagementState, setEngagementState } from "@/lib/engagement/state";
 import { getMarketplaceState, setMarketplaceState } from "@/lib/marketplace/state";
+import { resolveSignedInProfile, CurrentProfileResolverError } from "@/lib/profile/current-profile";
 import type { BarberPortfolioAsset, Role, ShopMediaAsset, UserAccount } from "@/types/domain";
 import type { NotificationPreferenceRecord } from "@/types/engagement";
 
@@ -12,6 +13,7 @@ type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 type ProfileMediaRow = {
   id: string;
   email: string;
+  role: string | null;
   profile_photo_path: string | null;
   profile_photo_url: string | null;
   public_bio: string | null;
@@ -420,35 +422,19 @@ async function listSupabaseManagedShopIds(user: UserAccount, supabase: SupabaseC
 }
 
 async function resolveProfileRow(user: UserAccount, supabase: SupabaseClient) {
-  const byEmailResult = user.email ? await supabase
-    .from("profiles")
-    .select("id, email, profile_photo_path, profile_photo_url, public_bio, public_city, public_state")
-    .eq("email", user.email)
-    .maybeSingle() : { data: null, error: null };
-
-  if (byEmailResult.error) {
-    throw new ProfileMediaServiceError("Unable to resolve the signed-in profile.", 500);
+  try {
+    const result = await resolveSignedInProfile<ProfileMediaRow>({
+      user,
+      supabase,
+      select: "id, email, role, profile_photo_path, profile_photo_url, public_bio, public_city, public_state"
+    });
+    return result.profile;
+  } catch (error) {
+    if (error instanceof CurrentProfileResolverError) {
+      throw new ProfileMediaServiceError("Unable to resolve account profile.", error.status);
+    }
+    throw error;
   }
-
-  if (byEmailResult.data) {
-    return byEmailResult.data as ProfileMediaRow;
-  }
-
-  const byIdResult = await supabase
-    .from("profiles")
-    .select("id, email, profile_photo_path, profile_photo_url, public_bio, public_city, public_state")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (byIdResult.error) {
-    throw new ProfileMediaServiceError("Unable to resolve the signed-in profile.", 500);
-  }
-
-  if (!byIdResult.data) {
-    throw new ProfileMediaServiceError("No profile was found for this account.", 404);
-  }
-
-  return byIdResult.data as ProfileMediaRow;
 }
 
 async function readSupabaseNotificationPreference(user: UserAccount, supabase: SupabaseClient) {

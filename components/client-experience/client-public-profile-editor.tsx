@@ -63,7 +63,21 @@ export function ClientPublicProfileEditor({ user }: { user: UserAccount }) {
   const mediaQuery = useProfileMediaWorkspaceQuery(true);
   const mediaMutation = useMutateProfileMediaMutation();
   const clientMedia = mediaQuery.data?.clientProfile ?? null;
-  const model = useMemo(() => buildClientProfileStudioViewModel(user, clientMedia), [clientMedia, user]);
+  const studioClientMedia = useMemo(() => clientMedia
+    ? {
+        ...clientMedia,
+        profilePhotoUrl: clientMedia.profilePhotoUrl ?? mediaQuery.data?.viewer.profilePhotoUrl,
+        profilePhotoPath: clientMedia.profilePhotoPath ?? mediaQuery.data?.viewer.profilePhotoPath
+      }
+    : {
+        profilePhotoUrl: mediaQuery.data?.viewer.profilePhotoUrl,
+        profilePhotoPath: mediaQuery.data?.viewer.profilePhotoPath,
+        publicBio: null,
+        publicCity: null,
+        publicState: null,
+        gallery: []
+      }, [clientMedia, mediaQuery.data?.viewer.profilePhotoPath, mediaQuery.data?.viewer.profilePhotoUrl]);
+  const model = useMemo(() => buildClientProfileStudioViewModel(user, studioClientMedia), [studioClientMedia, user]);
   const [usernameDraft, setUsernameDraft] = useState(model.username.value);
   const [feedback, setFeedback] = useState<{ tone: "info" | "success" | "error"; message: string } | null>(null);
 

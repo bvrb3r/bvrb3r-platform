@@ -37,6 +37,14 @@ export function ProfileContextEditModal({
     setDraft(Object.fromEntries(fields.map((field) => [field.name, field.value])));
   }, [fields]);
 
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
+
   async function handleSave() {
     const nextValues = Object.fromEntries(
       fields.map((field) => [field.name, (draft[field.name] ?? "").trim()])

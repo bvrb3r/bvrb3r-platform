@@ -144,6 +144,34 @@ describe("ClientPublicProfileEditor", () => {
     expect(await screen.findByText("Post added.")).toBeInTheDocument();
   });
 
+  it("uses the viewer profile photo source when the client profile media photo is empty", () => {
+    useProfileMediaWorkspaceQueryMock.mockReturnValue({
+      data: {
+        viewer: {
+          role: "client_user",
+          email: user.email,
+          profilePhotoUrl: "https://cdn.example.com/viewer-avatar.jpg",
+          profilePhotoPath: "profiles/client/viewer-avatar.jpg",
+          notificationPreference: null
+        },
+        clientProfile: {
+          profilePhotoUrl: null,
+          profilePhotoPath: null,
+          publicBio: "Public Culture bio.",
+          publicCity: "Tampa",
+          publicState: "FL",
+          gallery: []
+        },
+        barberProfile: null,
+        shops: []
+      }
+    });
+
+    render(<ClientPublicProfileEditor user={user} />);
+
+    expect(screen.getByAltText("Jordan Ellis public image")).toHaveAttribute("src", "https://cdn.example.com/viewer-avatar.jpg");
+  });
+
   it("saves client public bio and location from the hero modals", async () => {
     const mutateAsync = vi.fn().mockResolvedValue({});
     useMutateProfileMediaMutationMock.mockReturnValue({
