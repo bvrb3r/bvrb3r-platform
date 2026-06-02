@@ -218,6 +218,10 @@ function isPendingPublicLocationPart(value?: string | null) {
   return !normalized || normalized === "pending" || normalized === "pendingpending";
 }
 
+function isRecoverableShopMediaError(error: unknown) {
+  return error instanceof Error && error.message === "Unable to load shop profile media.";
+}
+
 export function OwnerSettingsWorkspace({
   user,
   initialSection
@@ -285,7 +289,9 @@ export function OwnerSettingsWorkspace({
     requirementsCurrentlyDue: fintechShopAccount?.requirementsCurrentlyDue
   });
   const taxStatus = getTaxStatus(fintechShopAccount?.taxReadinessStatus);
-  const profileMediaError = profileQuery.error && !shops.length ? profileQuery.error : null;
+  const profileMediaError = profileQuery.error && !shops.length && !isRecoverableShopMediaError(profileQuery.error)
+    ? profileQuery.error
+    : null;
   const errorMessage = profileMediaError ?? fintechQuery.error;
   async function uploadWithPath(path: string, file: File) {
     const extension = file.name.split(".").pop()?.toLowerCase() || "jpg";

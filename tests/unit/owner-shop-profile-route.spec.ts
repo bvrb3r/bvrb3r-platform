@@ -3,11 +3,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   getSessionUserMock,
   isSupabaseEnabledMock,
-  createSupabaseAdminClientMock
+  createSupabaseAdminClientMock,
+  createSupabaseServerClientMock
 } = vi.hoisted(() => ({
   getSessionUserMock: vi.fn(),
   isSupabaseEnabledMock: vi.fn(),
-  createSupabaseAdminClientMock: vi.fn()
+  createSupabaseAdminClientMock: vi.fn(),
+  createSupabaseServerClientMock: vi.fn()
 }));
 
 vi.mock("@/lib/booking/route-auth", () => ({
@@ -22,6 +24,10 @@ vi.mock("@/lib/supabase/admin", () => ({
   createSupabaseAdminClient: createSupabaseAdminClientMock
 }));
 
+vi.mock("@/lib/supabase/server", () => ({
+  createSupabaseServerClient: createSupabaseServerClientMock
+}));
+
 import { GET, PATCH } from "@/app/api/owner/shop/profile/route";
 
 function createRequest(payload: Record<string, unknown>) {
@@ -33,13 +39,14 @@ function createRequest(payload: Record<string, unknown>) {
 }
 
 function createShopProfileSupabaseMock(options: {
+  profile?: Record<string, unknown> | null;
   scopedShop?: Record<string, unknown> | null;
   updatedShop?: Record<string, unknown> | null;
 }) {
   const eqCalls: Array<[string, unknown]> = [];
   let updatePayload: Record<string, unknown> | null = null;
 
-  const createSelectChain = () => ({
+  const createSelectChain = (table: string) => ({
     eq(field: string, value: unknown) {
       eqCalls.push([field, value]);
       return this;
@@ -51,7 +58,7 @@ function createShopProfileSupabaseMock(options: {
       return this;
     },
     maybeSingle: vi.fn(async () => ({
-      data: options.scopedShop ?? null,
+      data: table === "profiles" ? options.profile ?? { id: "owner-profile-1", email: "owner@example.com", role: "shop_owner_user" } : options.scopedShop ?? null,
       error: null
     }))
   });
@@ -79,8 +86,8 @@ function createShopProfileSupabaseMock(options: {
       return updatePayload;
     },
     client: {
-      from: vi.fn(() => ({
-        select: vi.fn(() => createSelectChain()),
+      from: vi.fn((table: string) => ({
+        select: vi.fn(() => createSelectChain(table)),
         update: vi.fn((payload: Record<string, unknown>) => createUpdateChain(payload))
       }))
     }
@@ -92,7 +99,16 @@ describe("owner shop profile route", () => {
     getSessionUserMock.mockReset();
     isSupabaseEnabledMock.mockReset();
     createSupabaseAdminClientMock.mockReset();
+    createSupabaseServerClientMock.mockReset();
     isSupabaseEnabledMock.mockReturnValue(true);
+    createSupabaseServerClientMock.mockResolvedValue({
+      auth: {
+        getUser: vi.fn(async () => ({
+          data: { user: { id: "owner-profile-1", email: "owner@example.com" } },
+          error: null
+        }))
+      }
+    });
     getSessionUserMock.mockResolvedValue({
       id: "owner-profile-1",
       role: "shop_owner_user",

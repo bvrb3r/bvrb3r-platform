@@ -151,6 +151,49 @@ describe("OwnerPublicProfileEditor", () => {
     expect(screen.queryByText(/payout/i)).not.toBeInTheDocument();
   });
 
+  it("keeps the shop profile studio visible when optional shop media fails to load", () => {
+    useOwnerShopProfileQueryMock.mockReturnValue({
+      data: {
+        shop: {
+          id: "shop-bvrb3r",
+          name: "The BVRB3R Shop",
+          shop_username: "bvrb3rshop",
+          brand_line: "Campus cuts.",
+          public_bio: "Public shop bio.",
+          profile_photo_url: "https://cdn.example.com/shop-logo.png",
+          profile_photo_path: "profiles/shops/shop-bvrb3r/profile/logo.png",
+          city: "Tampa",
+          state: "FL",
+          address: "2200 E Fowler Ave"
+        }
+      },
+      error: null,
+      isLoading: false,
+      refetch: vi.fn()
+    });
+    useProfileMediaWorkspaceQueryMock.mockReturnValue({
+      error: new Error("Unable to load shop profile media."),
+      data: {
+        viewer: {
+          role: "shop_owner_user",
+          email: user.email,
+          notificationPreference: null
+        },
+        clientProfile: null,
+        barberProfile: null,
+        shops: []
+      }
+    });
+
+    render(<OwnerPublicProfileEditor user={user} />);
+
+    expect(screen.getByAltText("The BVRB3R Shop public image")).toHaveAttribute("src", "https://cdn.example.com/shop-logo.png");
+    expect(screen.getByText("Shop gallery")).toBeInTheDocument();
+    expect(screen.getByText("No shop gallery media yet. Add real shop photos when gallery uploads are connected.")).toBeInTheDocument();
+    expect(screen.queryByText("Unable to load shop profile. Try again.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Unable to load shop profile media.")).not.toBeInTheDocument();
+  });
+
   it("saves shop public bio and location from the hero modals", async () => {
     const mutateAsync = vi.fn().mockResolvedValue({});
     useUpdateOwnerShopProfileMutationMock.mockReturnValue({

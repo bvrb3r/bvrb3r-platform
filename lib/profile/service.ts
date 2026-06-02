@@ -106,6 +106,8 @@ export type ShopMediaWorkspaceView = {
   profilePhotoUrl?: string;
   profilePhotoPath?: string;
   gallery: ManagedMediaAsset[];
+  mediaWarning?: string;
+  hasMediaError?: boolean;
 };
 
 export type ProfileMediaWorkspacePayload = {
@@ -501,7 +503,7 @@ async function readSupabaseShopMedia(supabase: SupabaseClient, shopId: string): 
   ]);
 
   if (shopResult.error) {
-    throw new ProfileMediaServiceError("Unable to load shop profile media.", 500);
+    throw new ProfileMediaServiceError("Unable to load shop profile.", 500);
   }
 
   const shop = (shopResult.data ?? null) as ShopMediaRow | null;
@@ -517,6 +519,7 @@ async function readSupabaseShopMedia(supabase: SupabaseClient, shopId: string): 
     });
   }
   const galleryRows = galleryResult.error ? [] : (galleryResult.data ?? []) as ShopGalleryRow[];
+  const mediaWarning = galleryResult.error ? "Unable to load shop profile media." : undefined;
 
   return {
     shopId: shop.id,
@@ -531,6 +534,8 @@ async function readSupabaseShopMedia(supabase: SupabaseClient, shopId: string): 
     label: `${shop.name} • ${shop.neighborhood}, ${shop.city}`,
     profilePhotoPath: shop.profile_photo_path ?? undefined,
     profilePhotoUrl: toPublicMediaUrl(supabase, shop.profile_photo_path, shop.profile_photo_url),
+    mediaWarning,
+    hasMediaError: Boolean(galleryResult.error),
     gallery: galleryRows.map((row) => ({
       ...mapShopGalleryAsset(row),
       imageUrl: toPublicMediaUrl(supabase, row.storage_path, row.image_url) ?? row.image_url
