@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 export function ProfileBioEditModal({
@@ -21,19 +22,43 @@ export function ProfileBioEditModal({
   const [draft, setDraft] = useState(value);
   const [error, setError] = useState<string | null>(null);
   const [localSaving, setLocalSaving] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const saving = Boolean(isSaving || localSaving);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     setDraft(value);
   }, [value]);
 
   useEffect(() => {
+    if (!mounted) {
+      return undefined;
+    }
+
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, []);
+  }, [mounted]);
+
+  useEffect(() => {
+    if (!mounted) {
+      return undefined;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && !saving) {
+        onClose();
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [mounted, onClose, saving]);
 
   async function handleSave() {
     const next = draft.trim();
@@ -52,8 +77,12 @@ export function ProfileBioEditModal({
     }
   }
 
-  return (
-    <div className="fixed inset-0 z-[120] flex items-end justify-center overflow-y-auto bg-black/72 px-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-6 backdrop-blur-md sm:items-center sm:py-6">
+  if (!mounted) {
+    return null;
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-end justify-center overflow-y-auto bg-black/72 px-4 pb-[max(6rem,env(safe-area-inset-bottom))] pt-4 backdrop-blur-md sm:items-center sm:py-6">
       <div role="dialog" aria-modal="true" aria-label={title} className="flex max-h-[calc(100dvh-3rem-env(safe-area-inset-bottom))] w-full max-w-lg flex-col overflow-hidden rounded-[24px] border border-[#a3ff12]/24 bg-[#080808] shadow-[0_30px_90px_rgba(0,0,0,0.55)]">
         <div className="flex items-start justify-between gap-4 px-5 pt-5">
           <div>
@@ -91,6 +120,7 @@ export function ProfileBioEditModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

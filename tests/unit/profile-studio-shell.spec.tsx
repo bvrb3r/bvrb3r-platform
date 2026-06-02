@@ -177,6 +177,72 @@ describe("ProfileStudioShell", () => {
     expect(screen.getByText("No media in this folder yet. Add or move media into this folder.")).toBeInTheDocument();
   });
 
+  it("renders the username editor as a top-layer portal with usable actions", async () => {
+    const onUsernameSave = vi.fn();
+    const previousOverflow = document.body.style.overflow;
+
+    render(
+      <ProfileStudioShell
+        model={model}
+        backHref="/dashboard/client/more"
+        backLabel="Back to More"
+        usernameValue="jordan"
+        photoControl={<ProfileImageEditButton label="Update public photo" onUnavailable={vi.fn()} />}
+        onUsernameSave={onUsernameSave}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit public username" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog.parentElement).toBe(document.body);
+    expect(dialog).toHaveClass("z-[9999]");
+    expect(dialog).not.toHaveClass("z-[80]");
+    expect(dialog).toHaveClass("pb-[max(6rem,env(safe-area-inset-bottom))]");
+    expect(document.body.style.overflow).toBe("hidden");
+
+    const usernameInput = screen.getByLabelText("Public username");
+    expect(usernameInput).toHaveAttribute("spellcheck", "false");
+    expect(usernameInput).toHaveAttribute("autocapitalize", "none");
+    expect(usernameInput).toHaveAttribute("autocorrect", "off");
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Close username editor" })).toBeEnabled();
+
+    fireEvent.change(usernameInput, { target: { value: "admin" } });
+    expect(screen.getByText("This username is reserved.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+
+    fireEvent.change(usernameInput, { target: { value: "jordan-culture" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(onUsernameSave).toHaveBeenCalledWith("jordan-culture");
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(document.body.style.overflow).toBe(previousOverflow);
+  });
+
+  it("closes the username editor through Cancel and X actions", async () => {
+    render(
+      <ProfileStudioShell
+        model={model}
+        backHref="/dashboard/client/more"
+        backLabel="Back to More"
+        usernameValue="jordan"
+        photoControl={<ProfileImageEditButton label="Update public photo" onUnavailable={vi.fn()} />}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit public username" }));
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit public username" }));
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close username editor" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
   it("keeps the bio save footer usable and closes only after successful save", async () => {
     let resolveSave: (() => void) | undefined;
     const onBioSave = vi.fn(() => new Promise<void>((resolve) => {

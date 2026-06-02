@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 const RESERVED_HANDLES = new Set(["admin", "support", "bvrb3r", "help", "payments", "system", "official"]);
@@ -37,12 +39,48 @@ export function ProfileUsernameEditModal({
   onClose: () => void;
   onSave: (value: string) => void | Promise<void>;
 }) {
+  const [mounted, setMounted] = useState(false);
   const error = validateProfileHandle(value);
   const canSave = !error && !saveDisabledReason && !isSaving;
 
-  return (
-    <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/72 px-4 py-5 backdrop-blur-xl sm:items-center" role="dialog" aria-modal="true" aria-labelledby="profile-username-modal-title">
-      <div className="w-full max-w-[440px] overflow-hidden rounded-[22px] border border-white/12 bg-[#070807]/95 shadow-[0_28px_90px_rgba(0,0,0,0.62)]">
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) {
+      return undefined;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [mounted]);
+
+  useEffect(() => {
+    if (!mounted) {
+      return undefined;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [mounted, onClose]);
+
+  if (!mounted) {
+    return null;
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/72 px-4 pb-[max(6rem,env(safe-area-inset-bottom))] pt-4 backdrop-blur-xl sm:items-center sm:py-5" role="dialog" aria-modal="true" aria-labelledby="profile-username-modal-title">
+      <div className="flex max-h-[calc(100dvh-2rem)] w-full max-w-[440px] flex-col overflow-hidden rounded-[22px] border border-white/12 bg-[#070807]/95 shadow-[0_28px_90px_rgba(0,0,0,0.62)]">
         <div className="flex items-start justify-between gap-4 border-b border-white/8 p-5">
           <div>
             <p className="bvr-section-label">Public link</p>
@@ -61,7 +99,7 @@ export function ProfileUsernameEditModal({
           </button>
         </div>
 
-        <div className="p-5">
+        <div className="min-h-0 flex-1 overflow-y-auto p-5">
           <label className="block text-sm font-bold text-white/72">
             Username
             <input
@@ -86,7 +124,8 @@ export function ProfileUsernameEditModal({
           )}
         </div>
 
-        <div className="flex gap-3 border-t border-white/8 p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+        <div className="shrink-0 border-t border-white/8 p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+          <div className="flex gap-3">
           <button
             type="button"
             className="inline-flex min-h-12 flex-1 items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.035] px-5 text-sm font-black text-white/72 transition hover:border-white/20 hover:text-white"
@@ -102,8 +141,10 @@ export function ProfileUsernameEditModal({
           >
             {isSaving ? "Saving..." : "Save"}
           </button>
+          </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
