@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
@@ -176,6 +176,51 @@ describe("owner More workspace", () => {
     expect(screen.getByRole("heading", { name: "Support" })).toBeInTheDocument();
     expect(screen.getByText("Ready amount $95")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /log out/i })).toBeInTheDocument();
+  });
+
+  it("keeps owner account avatar separate while public shop card renders the shop logo", () => {
+    useProfileMediaWorkspaceQueryMock.mockReturnValue({
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+      data: {
+        viewer: {
+          profilePhotoUrl: null,
+          profilePhotoPath: null,
+          notificationPreference: {
+            inAppEnabled: true,
+            emailEnabled: true,
+            smsEnabled: false,
+            pushEnabled: true
+          }
+        },
+        shops: [
+          {
+            shopId: "shop-the-bvrb3r-shop-universi-a02c68",
+            name: "The BVRB3R™ Shop (University Mall)",
+            label: "The BVRB3R™ Shop (University Mall)",
+            brandLine: "University Mall cuts.",
+            profilePhotoUrl: "https://cdn.example.com/shop-logo.png",
+            profilePhotoPath: "profiles/shops/shop-the-bvrb3r-shop-universi-a02c68/profile/logo.png",
+            city: "Pending",
+            state: "Pending",
+            address: null,
+            gallery: []
+          }
+        ]
+      }
+    });
+
+    render(<OwnerSettingsWorkspace user={{ ...resolveDemoUser("owner@bvrb3r.demo"), name: "BVRB3R Owner" }} />);
+
+    const ownerAccountCard = screen.getByTestId("owner-more-identity-card");
+    expect(within(ownerAccountCard).getByText("BO")).toBeInTheDocument();
+    expect(within(ownerAccountCard).queryByAltText("BVRB3R Owner profile photo")).not.toBeInTheDocument();
+    expect(screen.getByAltText("The BVRB3R™ Shop (University Mall) logo")).toHaveAttribute("src", "https://cdn.example.com/shop-logo.png");
+    expect(screen.getByRole("heading", { name: "The BVRB3R™ Shop (University Mall)" })).toBeInTheDocument();
+    expect(screen.getByText("Address needed")).toBeInTheDocument();
+    expect(screen.queryByText(/Pending - Pending, Pending/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("Unable to resolve the signed-in profile.")).not.toBeInTheDocument();
   });
 
   it("opens existing service management inside business setup when requested", () => {

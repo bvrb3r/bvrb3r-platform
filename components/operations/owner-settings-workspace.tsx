@@ -202,15 +202,28 @@ function splitFullName(fullName: string) {
 function toLocationOption(location?: { city?: string | null; state?: string | null } | null): AccountQuickEditLocationOption | null {
   const city = location?.city?.trim();
   const state = location?.state?.trim();
-  if (!city) {
+  if (!city || isPendingPublicLocationPart(city)) {
     return null;
   }
 
   return {
     city,
-    state: state ?? "",
-    label: [city, state].filter(Boolean).join(", ")
+    state: state && !isPendingPublicLocationPart(state) ? state : "",
+    label: [city, state && !isPendingPublicLocationPart(state) ? state : ""].filter(Boolean).join(", ")
   };
+}
+
+function isPendingPublicLocationPart(value?: string | null) {
+  const normalized = value?.replace(/[,\s-]/g, "").trim().toLowerCase() ?? "";
+  return !normalized || normalized === "pending" || normalized === "pendingpending";
+}
+
+function formatPublicShopAddress(shop?: { address?: string | null; neighborhood?: string | null; city?: string | null; state?: string | null } | null) {
+  const parts = [shop?.address, shop?.neighborhood, [shop?.city, shop?.state].filter(Boolean).join(", ")]
+    .map((part) => part?.trim() ?? "")
+    .filter((part) => part && !isPendingPublicLocationPart(part));
+
+  return parts.join(" - ") || "Address not added yet";
 }
 
 export function OwnerSettingsWorkspace({
@@ -260,11 +273,8 @@ export function OwnerSettingsWorkspace({
     ? primaryShopRecord.shopUsername
     : null;
   const ownerShopId = primaryShop?.shopId ?? user.ownedShopId ?? user.locationIds[0] ?? null;
-  const shopName = primaryShop?.label ?? user.ownedShopName ?? "Shop profile incomplete";
-  const shopAddress = (
-    primaryShop?.address
-    ?? [primaryShop?.neighborhood, primaryShop?.city, primaryShop?.state].filter(Boolean).join(", ")
-  ) || "Address not added yet";
+  const shopName = primaryShop?.name ?? primaryShop?.label ?? user.ownedShopName ?? "Shop profile incomplete";
+  const shopAddress = formatPublicShopAddress(primaryShop);
   const shopInitials = getInitials(shopName);
   const selectedSection = (initialSection && initialSection in sectionIdMap ? initialSection : null) as OwnerSettingsSectionKey | null;
   const selectedServiceManager = initialSection === "services";

@@ -108,6 +108,8 @@ describe("OwnerPublicProfileEditor", () => {
           shop_username: "bvrb3rshop",
           brand_line: "Campus cuts.",
           public_bio: "Public shop bio.",
+          profile_photo_url: "https://cdn.example.com/shop-logo.png",
+          profile_photo_path: "profiles/shops/shop-bvrb3r/profile/logo.png",
           city: "Tampa",
           state: "FL",
           address: "2200 E Fowler Ave"
@@ -124,6 +126,7 @@ describe("OwnerPublicProfileEditor", () => {
     expect(screen.getByText("Manage your shop profile & brand")).toBeInTheDocument();
     expect(screen.getByText(/Public shop brand/i)).toBeInTheDocument();
     expect(screen.getByText("Shape the public business profile clients see before choosing a shop or barber.")).toBeInTheDocument();
+    expect(screen.getByAltText("The BVRB3R Shop public image")).toHaveAttribute("src", "https://cdn.example.com/shop-logo.png");
     expect(screen.queryByText("Public shop username")).not.toBeInTheDocument();
     expect(screen.getByText("@bvrb3rshop")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Update shop logo" })).toBeInTheDocument();
@@ -201,6 +204,35 @@ describe("OwnerPublicProfileEditor", () => {
       state: "FL"
     }));
     expect(await screen.findByText("Shop public location updated.")).toBeInTheDocument();
+  });
+
+  it("treats pending shop city and state as setup state without a load error", () => {
+    useOwnerShopProfileQueryMock.mockReturnValue({
+      data: {
+        shop: {
+          id: "shop-bvrb3r",
+          name: "The BVRB3R Shop",
+          shop_username: "bvrb3rshop",
+          brand_line: "Campus cuts.",
+          public_bio: "Public shop bio.",
+          profile_photo_url: "https://cdn.example.com/shop-logo.png",
+          profile_photo_path: "profiles/shops/shop-bvrb3r/profile/logo.png",
+          city: "Pending",
+          state: "Pending",
+          address: null
+        }
+      },
+      error: null,
+      isLoading: false,
+      refetch: vi.fn()
+    });
+
+    render(<OwnerPublicProfileEditor user={user} />);
+
+    expect(screen.getByAltText("The BVRB3R Shop public image")).toHaveAttribute("src", "https://cdn.example.com/shop-logo.png");
+    expect(screen.getByText("Add shop address.")).toBeInTheDocument();
+    expect(screen.queryByText(/Pending - Pending, Pending/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("Unable to load shop profile. Try again.")).not.toBeInTheDocument();
   });
 
   it("allows shop bio save from setup state without the old finish-profile blocker", async () => {

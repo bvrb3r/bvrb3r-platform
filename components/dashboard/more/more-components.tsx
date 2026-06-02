@@ -123,7 +123,7 @@ export function MoreIdentityReadinessCard({
   secondaryAction?: MoreAction;
   tiles: MoreReadinessTile[];
 }) {
-  const avatarLabel = variant === "owner" ? "shop logo" : "profile photo";
+  const avatarLabel = "profile photo";
 
   return (
     <GlassCard active className="overflow-hidden p-5 sm:p-6" data-testid={`${variant}-more-identity-card`}>

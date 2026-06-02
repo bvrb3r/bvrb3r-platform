@@ -41,6 +41,7 @@ import { getTrustProvider } from "@/lib/trust/provider";
 import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
 import { readAppointmentPaymentSummary, readClientPaymentMethodsByClientId, type ClientPaymentMethodView } from "@/lib/payments/service";
 import { readBarberProfileMedia, readShopProfileMedia } from "@/lib/profile/service";
+import { toPublicMediaUrl } from "@/lib/profile/public-media-url";
 import type { LiveAppointmentRecord, LiveOperationsViewer } from "@/lib/operations/live-state";
 import { getBarberCompensationSummary, getManagerOperationsSummary, getOwnerAnalyticsSummary } from "@/lib/operations/metrics";
 import { getAppointmentViewModel } from "@/lib/utils/operations";
@@ -721,7 +722,7 @@ async function readShops(supabase: SupabaseClient | null): Promise<MarketplaceSh
       state: row.state ?? "",
       phone: row.phone ?? "",
       address: row.address ?? [row.neighborhood, row.city, row.state].filter(Boolean).join(", "),
-      profilePhotoUrl: row.profile_photo_url ?? row.profile_photo_path ?? undefined,
+      profilePhotoUrl: toPublicMediaUrl(supabase, row.profile_photo_path, row.profile_photo_url),
       kind: row.kind,
       latitude: row.latitude ?? undefined,
       longitude: row.longitude ?? undefined,
@@ -2835,7 +2836,7 @@ async function readActiveShopForBarber(supabase: SupabaseClient | null, barberId
     locationIds: [],
     type: "shop",
     appApprovalStatus: shop.app_approval_status ?? undefined,
-    profilePhotoUrl: shop.profile_photo_url ?? shop.profile_photo_path ?? undefined,
+    profilePhotoUrl: toPublicMediaUrl(getSupabase(), shop.profile_photo_path, shop.profile_photo_url),
     neighborhood: shop.neighborhood ?? undefined,
     city: shop.city ?? undefined,
     state: shop.state ?? undefined,

@@ -1,10 +1,11 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { isBarberAccountRole, isClientRole, isShopOwnerRole } from "@/lib/auth/roles";
-import { isSupabaseEnabled, runtimeConfig } from "@/lib/config/runtime";
+import { isSupabaseEnabled } from "@/lib/config/runtime";
 import { demoLocations } from "@/lib/data/demo";
 import { getEngagementState, setEngagementState } from "@/lib/engagement/state";
 import { getMarketplaceState, setMarketplaceState } from "@/lib/marketplace/state";
 import { resolveSignedInProfile, CurrentProfileResolverError } from "@/lib/profile/current-profile";
+import { toPublicMediaUrl } from "@/lib/profile/public-media-url";
 import type { BarberPortfolioAsset, Role, ShopMediaAsset, UserAccount } from "@/types/domain";
 import type { NotificationPreferenceRecord } from "@/types/engagement";
 
@@ -277,23 +278,6 @@ function makeDemoId(prefix: string) {
 function cleanPublicText(value?: string | null, maxLength = 300) {
   const trimmed = value?.trim() ?? "";
   return trimmed ? trimmed.slice(0, maxLength) : null;
-}
-
-function toPublicMediaUrl(client: SupabaseClient | null, storagePath?: string | null, imageUrl?: string | null) {
-  if (imageUrl) {
-    return imageUrl;
-  }
-
-  if (!storagePath) {
-    return undefined;
-  }
-
-  if (!client) {
-    return storagePath;
-  }
-
-  const { data } = client.storage.from(runtimeConfig.mediaBucket).getPublicUrl(storagePath);
-  return data.publicUrl || storagePath;
 }
 
 function mapBarberGalleryAsset(row: BarberPortfolioRow | ManagedMediaAsset): ManagedMediaAsset {
