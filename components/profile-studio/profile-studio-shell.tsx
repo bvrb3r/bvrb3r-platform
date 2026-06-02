@@ -184,6 +184,8 @@ export function ProfileStudioShell({
   const [usernameFeedback, setUsernameFeedback] = useState<string | null>(null);
   const [bioValue, setBioValue] = useState(model.hero.bio?.trim() ?? "");
   const [contextValue, setContextValue] = useState(model.hero.contextLine?.trim() ?? "");
+  const previousHeroBioRef = useRef(model.hero.bio?.trim() ?? "");
+  const previousContextRef = useRef(model.hero.contextLine?.trim() ?? "");
   const [bioFeedback, setBioFeedback] = useState<string | null>(null);
   const [contextFeedback, setContextFeedback] = useState<string | null>(null);
   const [folders, setFolders] = useState<StudioFolder[]>(() =>
@@ -218,14 +220,22 @@ export function ProfileStudioShell({
   }, [isUsernameModalOpen, usernameValue]);
 
   useEffect(() => {
-    if (!isBioModalOpen) {
-      setBioValue(model.hero.bio?.trim() ?? "");
+    const nextBio = model.hero.bio?.trim() ?? "";
+    if (nextBio !== previousHeroBioRef.current) {
+      previousHeroBioRef.current = nextBio;
+      if (!isBioModalOpen) {
+        setBioValue(nextBio);
+      }
     }
   }, [isBioModalOpen, model.hero.bio]);
 
   useEffect(() => {
-    if (!isContextModalOpen) {
-      setContextValue(model.hero.contextLine?.trim() ?? "");
+    const nextContext = model.hero.contextLine?.trim() ?? "";
+    if (nextContext !== previousContextRef.current) {
+      previousContextRef.current = nextContext;
+      if (!isContextModalOpen) {
+        setContextValue(nextContext);
+      }
     }
   }, [isContextModalOpen, model.hero.contextLine]);
 

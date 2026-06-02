@@ -309,7 +309,8 @@ export function OwnerSettingsWorkspace({
     requirementsCurrentlyDue: fintechShopAccount?.requirementsCurrentlyDue
   });
   const taxStatus = getTaxStatus(fintechShopAccount?.taxReadinessStatus);
-  const errorMessage = profileQuery.error ?? fintechQuery.error;
+  const profileMediaError = profileQuery.error && !shops.length ? profileQuery.error : null;
+  const errorMessage = profileMediaError ?? fintechQuery.error;
   useEffect(() => {
     if (!primaryShop) {
       return;

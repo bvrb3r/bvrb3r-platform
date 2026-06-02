@@ -500,7 +500,7 @@ async function readSupabaseShopMedia(supabase: SupabaseClient, shopId: string): 
       .order("created_at", { ascending: false })
   ]);
 
-  if (shopResult.error || galleryResult.error) {
+  if (shopResult.error) {
     throw new ProfileMediaServiceError("Unable to load shop profile media.", 500);
   }
 
@@ -508,6 +508,15 @@ async function readSupabaseShopMedia(supabase: SupabaseClient, shopId: string): 
   if (!shop) {
     return null;
   }
+
+  if (galleryResult.error) {
+    console.warn("[profile-media] shop gallery unavailable; continuing with shop identity", {
+      shopId,
+      message: galleryResult.error.message,
+      code: galleryResult.error.code
+    });
+  }
+  const galleryRows = galleryResult.error ? [] : (galleryResult.data ?? []) as ShopGalleryRow[];
 
   return {
     shopId: shop.id,
@@ -522,7 +531,7 @@ async function readSupabaseShopMedia(supabase: SupabaseClient, shopId: string): 
     label: `${shop.name} • ${shop.neighborhood}, ${shop.city}`,
     profilePhotoPath: shop.profile_photo_path ?? undefined,
     profilePhotoUrl: toPublicMediaUrl(supabase, shop.profile_photo_path, shop.profile_photo_url),
-    gallery: ((galleryResult.data ?? []) as ShopGalleryRow[]).map((row) => ({
+    gallery: galleryRows.map((row) => ({
       ...mapShopGalleryAsset(row),
       imageUrl: toPublicMediaUrl(supabase, row.storage_path, row.image_url) ?? row.image_url
     }))

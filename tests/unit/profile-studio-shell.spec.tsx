@@ -204,7 +204,7 @@ describe("ProfileStudioShell", () => {
     expect(onBioSave).toHaveBeenCalledWith("Saved public bio");
     resolveSave?.();
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Edit public bio" })).not.toBeInTheDocument());
-    expect(screen.getByText("Saved public bio")).toBeInTheDocument();
+    expect(await screen.findByText("Saved public bio")).toBeInTheDocument();
   });
 
   it("keeps the bio modal open with inline error after failed save", async () => {

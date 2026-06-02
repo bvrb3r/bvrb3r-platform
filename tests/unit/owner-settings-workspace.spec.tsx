@@ -181,7 +181,7 @@ describe("owner More workspace", () => {
   it("keeps owner account avatar separate while public shop card renders the shop logo", () => {
     useProfileMediaWorkspaceQueryMock.mockReturnValue({
       isLoading: false,
-      error: null,
+      error: new Error("Unable to load shop profile media."),
       refetch: vi.fn(),
       data: {
         viewer: {
@@ -221,6 +221,7 @@ describe("owner More workspace", () => {
     expect(screen.getByText("Address needed")).toBeInTheDocument();
     expect(screen.queryByText(/Pending - Pending, Pending/i)).not.toBeInTheDocument();
     expect(screen.queryByText("Unable to resolve the signed-in profile.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Unable to load shop profile media.")).not.toBeInTheDocument();
   });
 
   it("opens existing service management inside business setup when requested", () => {
