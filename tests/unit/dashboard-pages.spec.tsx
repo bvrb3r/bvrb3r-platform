@@ -211,7 +211,7 @@ describe("dashboard role pages", () => {
     expect(getAuthorizedUserMock).toHaveBeenCalledWith(["barber_user"]);
     expect(screen.getByRole("heading", { name: "Home" })).toBeInTheDocument();
     expect(screen.getByTestId("barber-calendar-screen-stub")).toHaveTextContent("Blaze King");
-    expect(screen.getByTestId("shell-identity-name")).toHaveTextContent("Blaze King");
+    expect(screen.getByTestId("shell-identity-name")).toHaveTextContent("Professional account");
     expect(screen.queryByText("Owner control center")).not.toBeInTheDocument();
   });
 
@@ -223,7 +223,7 @@ describe("dashboard role pages", () => {
     expect(getAuthorizedUserMock).toHaveBeenCalledWith(["barber_user"]);
     expect(screen.getByRole("heading", { name: "Calendar" })).toBeInTheDocument();
     expect(screen.getByTestId("barber-calendar-screen-stub")).toHaveTextContent("Blaze King");
-    expect(screen.getByTestId("shell-identity-name")).toHaveTextContent("Blaze King");
+    expect(screen.getByTestId("shell-identity-name")).toHaveTextContent("Professional account");
   });
 
   it("renders the barber checkout route", async () => {
@@ -250,7 +250,7 @@ describe("dashboard role pages", () => {
     );
 
     expect(getAuthorizedUserMock).toHaveBeenCalledWith(["barber_user"]);
-    expect(screen.getByRole("heading", { name: "Profile" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Profile" })).not.toBeInTheDocument();
     expect(screen.getByTestId("barber-profile-screen-stub")).toHaveTextContent("Blaze King|reviews");
   });
 

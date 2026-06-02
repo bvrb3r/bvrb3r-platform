@@ -99,7 +99,8 @@ export function buildBarberProfileStudioViewModel({
     role: "barber",
     page: {
       title: "Profile",
-      subtitle: "Manage your profile & brand"
+      subtitle: "Manage your profile & brand",
+      statusText: "Professional profile studio. Clients use this profile to view your work, trust signals, availability, and booking context."
     },
     hero: {
       label: "Public barber brand",

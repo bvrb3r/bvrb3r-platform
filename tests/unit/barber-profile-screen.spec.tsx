@@ -136,8 +136,12 @@ describe("BarberProfileScreen", () => {
 
     expect(screen.getByTestId("barber-profile-screen")).toBeInTheDocument();
     expect(screen.getByText(/Public barber brand/i)).toBeInTheDocument();
-    expect(screen.getAllByRole("heading", { name: "Profile" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("heading", { name: "Profile", level: 1 })).toHaveLength(1);
     expect(screen.getByText("Manage your profile & brand")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back to More" })).toHaveAttribute("href", "/dashboard/barber/more");
+    expect(screen.getAllByRole("link", { name: "Back to More" })).toHaveLength(1);
+    expect(screen.getByText(/Professional profile studio/i)).toBeInTheDocument();
+    expect(screen.getByText(/work, trust signals, availability, and booking context/i)).toBeInTheDocument();
     expect(screen.getByText("The client-facing preview, portfolio, trust signals, and booking profile live here.")).toBeInTheDocument();
     expect(screen.getByText("Sharp public barber bio.")).toBeInTheDocument();
     expect(screen.queryByText("Profile already synced.")).not.toBeInTheDocument();

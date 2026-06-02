@@ -48,6 +48,7 @@ export default async function BarberProfilePage({
       activeHref="/dashboard/barber/profile"
       title="Profile"
       subtitle="Manage your profile & brand"
+      hidePageHeader
     >
       <BarberProfileScreen
         user={effectiveUser}
