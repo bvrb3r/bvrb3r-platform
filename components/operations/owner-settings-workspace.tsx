@@ -76,7 +76,7 @@ const sectionIdMap = {
 } as const;
 
 type OwnerSettingsSectionKey = keyof typeof sectionIdMap;
-type OwnerQuickSetupModal = "profile" | "hours" | "invite" | "visibility" | null;
+type OwnerQuickSetupModal = "hours" | "invite" | "visibility" | null;
 
 const defaultOwnerWorkingDays = [1, 2, 3, 4, 5, 6];
 const ownerDayOptions = [
@@ -218,14 +218,6 @@ function isPendingPublicLocationPart(value?: string | null) {
   return !normalized || normalized === "pending" || normalized === "pendingpending";
 }
 
-function formatPublicShopAddress(shop?: { address?: string | null; neighborhood?: string | null; city?: string | null; state?: string | null } | null) {
-  const parts = [shop?.address, shop?.neighborhood, [shop?.city, shop?.state].filter(Boolean).join(", ")]
-    .map((part) => part?.trim() ?? "")
-    .filter((part) => part && !isPendingPublicLocationPart(part));
-
-  return parts.join(" - ") || "Address not added yet";
-}
-
 export function OwnerSettingsWorkspace({
   user,
   initialSection
@@ -242,16 +234,6 @@ export function OwnerSettingsWorkspace({
   const [savedOwnerEmail, setSavedOwnerEmail] = useState<string | null>(null);
   const [savedOwnerPhone, setSavedOwnerPhone] = useState<string | null>(null);
   const [quickSetupFeedback, setQuickSetupFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
-  const [shopProfileDraft, setShopProfileDraft] = useState({
-    shopName: user.ownedShopName ?? "",
-    brandLine: "",
-    address: "",
-    neighborhood: "",
-    city: "",
-    state: "",
-    phone: user.phone ?? "",
-    profilePhotoUrl: ""
-  });
   const [shopHoursDraft, setShopHoursDraft] = useState({
     days: defaultOwnerWorkingDays,
     startTime: "12:00",
@@ -266,16 +248,10 @@ export function OwnerSettingsWorkspace({
   const ownerDisplayName = (savedOwnerName ?? user.name) || "Shop owner";
   const ownerEmail = savedOwnerEmail ?? user.email;
   const ownerPhone = savedOwnerPhone ?? user.phone;
-  const primaryShopRecord = primaryShop as (typeof primaryShop & { shopUsername?: unknown }) | null;
-  const ownerLocationOptions = [toLocationOption(primaryShop), toLocationOption(shopProfileDraft)]
+  const ownerLocationOptions = [toLocationOption(primaryShop)]
     .filter((option): option is AccountQuickEditLocationOption => Boolean(option));
-  const primaryShopUsername = typeof primaryShopRecord?.shopUsername === "string"
-    ? primaryShopRecord.shopUsername
-    : null;
   const ownerShopId = primaryShop?.shopId ?? user.ownedShopId ?? user.locationIds[0] ?? null;
   const shopName = primaryShop?.name ?? primaryShop?.label ?? user.ownedShopName ?? "Shop profile incomplete";
-  const shopAddress = formatPublicShopAddress(primaryShop);
-  const shopInitials = getInitials(shopName);
   const selectedSection = (initialSection && initialSection in sectionIdMap ? initialSection : null) as OwnerSettingsSectionKey | null;
   const selectedServiceManager = initialSection === "services";
   const selectedBrandingManager = initialSection === "branding";
@@ -311,24 +287,6 @@ export function OwnerSettingsWorkspace({
   const taxStatus = getTaxStatus(fintechShopAccount?.taxReadinessStatus);
   const profileMediaError = profileQuery.error && !shops.length ? profileQuery.error : null;
   const errorMessage = profileMediaError ?? fintechQuery.error;
-  useEffect(() => {
-    if (!primaryShop) {
-      return;
-    }
-
-    setShopProfileDraft((current) => ({
-      ...current,
-      shopName: primaryShop.name ?? primaryShop.label ?? current.shopName,
-      brandLine: primaryShop.brandLine ?? current.brandLine,
-      address: primaryShop.address ?? current.address,
-      neighborhood: primaryShop.neighborhood ?? current.neighborhood,
-      city: primaryShop.city ?? current.city,
-      state: primaryShop.state ?? current.state,
-      phone: primaryShop.phone ?? current.phone,
-      profilePhotoUrl: primaryShop.profilePhotoUrl ?? current.profilePhotoUrl
-    }));
-  }, [primaryShop]);
-
   async function uploadWithPath(path: string, file: File) {
     const extension = file.name.split(".").pop()?.toLowerCase() || "jpg";
     return uploadMediaAsset(`${path}/${Date.now()}.${extension}`, file);
@@ -416,36 +374,6 @@ export function OwnerSettingsWorkspace({
     const body = (await response.json().catch(() => ({}))) as { error?: string };
     if (!response.ok) {
       throw new Error(body.error ?? "Unable to save shop activation details.");
-    }
-  }
-
-  async function handleQuickShopProfileSave() {
-    setQuickSetupFeedback(null);
-    try {
-      const response = await fetch("/api/owner/shop/profile", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-        shopId: ownerShopId,
-        name: shopProfileDraft.shopName,
-        brandLine: shopProfileDraft.brandLine,
-        phone: shopProfileDraft.phone,
-        address: shopProfileDraft.address,
-        neighborhood: shopProfileDraft.neighborhood,
-        city: shopProfileDraft.city,
-        state: shopProfileDraft.state,
-        profilePhotoUrl: shopProfileDraft.profilePhotoUrl
-        })
-      });
-      const body = (await response.json().catch(() => ({}))) as { error?: string };
-      if (!response.ok) {
-        throw new Error(body.error ?? "Unable to save shop profile.");
-      }
-      await Promise.all([profileQuery.refetch(), fintechQuery.refetch()]);
-      closeQuickSetupModal();
-      setQuickSetupFeedback({ tone: "success", message: "Shop profile saved to the canonical public shop record." });
-    } catch (error) {
-      setQuickSetupFeedback({ tone: "error", message: error instanceof Error ? error.message : "Unable to save shop profile." });
     }
   }
 
@@ -638,8 +566,8 @@ export function OwnerSettingsWorkspace({
   ];
 
   const ownerGateActionHandlers = {
-    "owner-profile": () => setQuickSetupModal("profile"),
-    "owner-address": () => setQuickSetupModal("profile"),
+    "owner-profile": () => window.location.assign("/dashboard/owner/public-profile"),
+    "owner-address": () => window.location.assign("/dashboard/owner/public-profile"),
     "owner-hours": () => setQuickSetupModal("hours"),
     "owner-payouts": () => window.location.assign("/dashboard/owner/money?view=fintech"),
     "owner-invite": () => setQuickSetupModal("invite"),
@@ -725,59 +653,6 @@ export function OwnerSettingsWorkspace({
         ]}
       />
 
-      <GlassCard className="p-5 sm:p-6" data-testid="owner-public-shop-profile-card">
-        <div className="grid gap-5 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center">
-          <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-[28px] border-2 border-[#A3FF12]/45 bg-[#A3FF12]/10 text-2xl font-black text-[#A3FF12] sm:h-28 sm:w-28">
-            {primaryShop?.profilePhotoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={primaryShop.profilePhotoUrl} alt={`${shopName} logo`} className="h-full w-full object-cover" />
-            ) : (
-              shopInitials
-            )}
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Public Shop Profile</p>
-            <h2 className="mt-2 text-3xl font-black tracking-[-0.045em] text-white">
-              {ownerShopId && shopName !== "Shop profile incomplete" ? shopName : "Finish shop profile"}
-            </h2>
-            <p className="mt-2 text-sm font-semibold text-white/58">
-              {primaryShopUsername ? `@${primaryShopUsername}` : "Set your shop name, handle, address, photos, hours, and policies."}
-            </p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <span className={cn("rounded-full border px-3 py-1.5 text-xs font-extrabold", statusClasses(verificationTone))}>{verificationLabel}</span>
-              <span className={cn("rounded-full border px-3 py-1.5 text-xs font-extrabold", statusClasses(shopAddress === "Address not added yet" ? "yellow" : "green"))}>
-                {shopAddress === "Address not added yet" ? "Address needed" : "Address ready"}
-              </span>
-              <span className={cn("rounded-full border px-3 py-1.5 text-xs font-extrabold", statusClasses(membershipCount ? "green" : "muted"))}>
-                {membershipCount ? `${membershipCount} public/team linked` : "No active barbers yet"}
-              </span>
-            </div>
-            <p className="mt-4 max-w-2xl text-sm leading-6 text-white/58">
-              {primaryShop?.brandLine || "Public shop details appear on discovery cards and the shop profile once setup is complete."}
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-3 lg:flex-col">
-            <Link
-              href="/dashboard/owner/public-profile"
-              className="inline-flex min-h-12 items-center justify-center rounded-full border border-[#A3FF12]/40 bg-[#A3FF12]/12 px-5 text-sm font-extrabold text-[#A3FF12] shadow-[0_0_28px_rgba(163,255,18,0.14)] transition hover:border-[#A3FF12]/70 hover:bg-[#A3FF12]/16"
-            >
-              Public Profile
-            </Link>
-            <Button type="button" variant="secondary" className="min-h-12 rounded-full px-5" onClick={() => setQuickSetupModal("profile")}>
-              Quick edit
-            </Button>
-            {ownerShopId ? (
-              <Link
-                href={`/shop/${encodeURIComponent(ownerShopId)}` as never}
-                className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] px-5 text-sm font-extrabold text-white/78 transition hover:border-[#A3FF12]/28 hover:text-[#A3FF12]"
-              >
-                Preview Public Profile
-              </Link>
-            ) : null}
-          </div>
-        </div>
-      </GlassCard>
-
       <MoreActivationGate
         title="Your shop setup"
         subtitle="Finish these steps so your shop profile, team, bookings, and payouts are ready."
@@ -805,7 +680,7 @@ export function OwnerSettingsWorkspace({
         rows={[
           { title: "Banking Status", subtitle: "Stripe and payout readiness.", href: "/dashboard/owner/money?view=fintech", status: stripeStatus.label, tone: stripeStatus.tone, icon: <WalletCards className="h-5 w-5" /> },
           { title: "Team Permissions", subtitle: "Manage team roles and permissions.", href: "/dashboard/owner", status: membershipCount ? `${membershipCount} linked` : "Not set", tone: membershipCount ? "green" : "muted", icon: <Users className="h-5 w-5" /> },
-          { title: "Public Profile", subtitle: "Shop profile, branding, hours, and policies.", href: "#owner-settings-shop-profile", icon: <Store className="h-5 w-5" /> },
+          { title: "Public Profile", subtitle: "Shop profile, branding, hours, and policies.", href: "/dashboard/owner/public-profile", icon: <Store className="h-5 w-5" /> },
           { title: "Shop Readiness", subtitle: "Verification, documents, and compliance.", href: "#owner-settings-compliance", status: verificationLabel, tone: verificationTone, icon: <ShieldCheck className="h-5 w-5" /> }
         ]}
       />
@@ -890,7 +765,7 @@ export function OwnerSettingsWorkspace({
         fullName={user.canonicalFullName ?? ownerDisplayName}
         email={ownerEmail}
         phone={ownerPhone}
-        cityLocation={[primaryShop?.city, primaryShop?.state].filter(Boolean).join(", ") || ""}
+        cityLocation={toLocationOption(primaryShop)?.label ?? ""}
         defaultPaymentMethodLabel={stripeStatus.label === "Connected" ? "Owner payout setup connected" : "Payment setup managed in Money"}
         managePaymentHref="/dashboard/owner/money?view=fintech"
         locationOptions={ownerLocationOptions}
@@ -904,58 +779,6 @@ export function OwnerSettingsWorkspace({
       {quickSetupModal ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/72 px-4 py-5 backdrop-blur-sm sm:items-center" role="dialog" aria-modal="true">
           <div className="w-full max-w-2xl rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(4,4,4,0.98))] p-5 text-white shadow-[0_24px_70px_rgba(0,0,0,0.58),0_0_34px_rgba(163,255,18,0.12)]">
-            {quickSetupModal === "profile" ? (
-              <div className="space-y-4">
-                <div>
-                  <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Quick setup</p>
-                  <h2 className="mt-2 text-2xl font-black tracking-[-0.04em]">Edit shop profile</h2>
-                  <p className="mt-2 text-sm text-white/58">This updates the same shop profile source used by public shop surfaces.</p>
-                </div>
-                <label className="block text-sm font-bold text-white/72">
-                  Shop name
-                  <Input value={shopProfileDraft.shopName} onChange={(event) => setShopProfileDraft((current) => ({ ...current, shopName: event.target.value }))} className="mt-2" />
-                </label>
-                <label className="block text-sm font-bold text-white/72">
-                  Brand line / bio
-                  <Input value={shopProfileDraft.brandLine} onChange={(event) => setShopProfileDraft((current) => ({ ...current, brandLine: event.target.value }))} className="mt-2" />
-                </label>
-                <label className="block text-sm font-bold text-white/72">
-                  Public logo URL
-                  <Input value={shopProfileDraft.profilePhotoUrl} onChange={(event) => setShopProfileDraft((current) => ({ ...current, profilePhotoUrl: event.target.value }))} className="mt-2" />
-                </label>
-                <label className="block text-sm font-bold text-white/72">
-                  Address
-                  <Input value={shopProfileDraft.address} onChange={(event) => setShopProfileDraft((current) => ({ ...current, address: event.target.value }))} className="mt-2" />
-                </label>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="block text-sm font-bold text-white/72">
-                    Neighborhood
-                    <Input value={shopProfileDraft.neighborhood} onChange={(event) => setShopProfileDraft((current) => ({ ...current, neighborhood: event.target.value }))} className="mt-2" />
-                  </label>
-                  <label className="block text-sm font-bold text-white/72">
-                    City
-                    <Input value={shopProfileDraft.city} onChange={(event) => setShopProfileDraft((current) => ({ ...current, city: event.target.value }))} className="mt-2" />
-                  </label>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="block text-sm font-bold text-white/72">
-                    State
-                    <Input value={shopProfileDraft.state} onChange={(event) => setShopProfileDraft((current) => ({ ...current, state: event.target.value }))} className="mt-2" />
-                  </label>
-                  <label className="block text-sm font-bold text-white/72">
-                    Phone
-                    <Input value={shopProfileDraft.phone} onChange={(event) => setShopProfileDraft((current) => ({ ...current, phone: event.target.value }))} className="mt-2" />
-                  </label>
-                </div>
-                <div className="flex gap-3">
-                  <Button type="button" variant="secondary" className="min-h-12 flex-1 rounded-2xl" onClick={closeQuickSetupModal}>Cancel</Button>
-                  <Button type="button" className="min-h-12 flex-1 rounded-2xl bg-[#A3FF12] text-black hover:bg-[#8de300]" onClick={() => void handleQuickShopProfileSave()}>
-                    Save profile
-                  </Button>
-                </div>
-              </div>
-            ) : null}
-
             {quickSetupModal === "hours" ? (
               <div className="space-y-4">
                 <div>

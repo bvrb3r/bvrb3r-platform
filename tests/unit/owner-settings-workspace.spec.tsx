@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
@@ -161,14 +161,20 @@ describe("owner More workspace", () => {
     expect(screen.getByRole("button", { name: "Click here" })).toBeInTheDocument();
     expect(screen.getByLabelText("City/location")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(screen.getByTestId("owner-public-shop-profile-card")).toBeInTheDocument();
-    expect(screen.getAllByText("Public Shop Profile").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Finish shop profile").length).toBeGreaterThan(0);
-    expect(screen.getAllByRole("link", { name: "Public Profile" }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole("link", { name: "Public Profile" })[0]).toHaveAttribute("href", "/dashboard/owner/public-profile");
+    expect(screen.getByText("Your shop setup")).toBeInTheDocument();
+    expect(screen.getAllByText("Needs setup").length).toBeGreaterThan(0);
+    expect(screen.queryByTestId("owner-public-shop-profile-card")).not.toBeInTheDocument();
+    expect(screen.queryByText("Public Shop Profile")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Quick edit" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Preview Public Profile" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Public Profile" })).toHaveAttribute(
+      "href",
+      "/dashboard/owner/public-profile",
+    );
     expect(screen.queryByText("Unable to load shop profile")).not.toBeInTheDocument();
     expect(screen.getByText("Your shop setup")).toBeInTheDocument();
     expect(screen.getByText("Business Control Hub")).toBeInTheDocument();
+    expect(screen.getByText("Shop profile, branding, hours, and policies.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Shop Profile" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Business Setup" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Payments & Banking" })).toBeInTheDocument();
@@ -178,7 +184,7 @@ describe("owner More workspace", () => {
     expect(screen.getByRole("button", { name: /log out/i })).toBeInTheDocument();
   });
 
-  it("keeps owner account avatar separate while public shop card renders the shop logo", () => {
+  it("renders one owner account identity card and suppresses recoverable shop media errors", () => {
     useProfileMediaWorkspaceQueryMock.mockReturnValue({
       isLoading: false,
       error: new Error("Unable to load shop profile media."),
@@ -216,9 +222,10 @@ describe("owner More workspace", () => {
     const ownerAccountCard = screen.getByTestId("owner-more-identity-card");
     expect(within(ownerAccountCard).getByText("BO")).toBeInTheDocument();
     expect(within(ownerAccountCard).queryByAltText("BVRB3R Owner profile photo")).not.toBeInTheDocument();
-    expect(screen.getByAltText("The BVRB3R™ Shop (University Mall) logo")).toHaveAttribute("src", "https://cdn.example.com/shop-logo.png");
-    expect(screen.getByRole("heading", { name: "The BVRB3R™ Shop (University Mall)" })).toBeInTheDocument();
-    expect(screen.getByText("Address needed")).toBeInTheDocument();
+    expect(screen.getAllByTestId("owner-more-identity-card")).toHaveLength(1);
+    expect(screen.queryByTestId("owner-public-shop-profile-card")).not.toBeInTheDocument();
+    expect(screen.queryByAltText("The BVRB3R™ Shop (University Mall) logo")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "The BVRB3R™ Shop (University Mall)" })).not.toBeInTheDocument();
     expect(screen.queryByText(/Pending - Pending, Pending/i)).not.toBeInTheDocument();
     expect(screen.queryByText("Unable to resolve the signed-in profile.")).not.toBeInTheDocument();
     expect(screen.queryByText("Unable to load shop profile media.")).not.toBeInTheDocument();
@@ -259,42 +266,6 @@ describe("owner More workspace", () => {
 
     expect(screen.getAllByText("Verified").length).toBeGreaterThan(0);
     expect(screen.getByText("Ready amount $210")).toBeInTheDocument();
-  });
-
-  it("opens quick shop profile setup and saves through the owner shop profile API", async () => {
-    useProfileMediaWorkspaceQueryMock.mockReturnValue({
-      isLoading: false,
-      error: null,
-      refetch: vi.fn(),
-      data: {
-        viewer: {
-          notificationPreference: {
-            inAppEnabled: true,
-            emailEnabled: true,
-            smsEnabled: false,
-            pushEnabled: true
-          }
-        },
-        shops: []
-      }
-    });
-
-    render(<OwnerSettingsWorkspace user={{ ...resolveDemoUser("owner@bvrb3r.demo"), appApprovalStatus: "approved", shopApprovalStatus: "approved" }} />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Quick edit" }));
-    expect(screen.getByRole("heading", { name: "Edit shop profile" })).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText(/Shop name/i), { target: { value: "BVRB3R North" } });
-    fireEvent.change(screen.getByLabelText(/Brand line/i), { target: { value: "Sharp cuts near campus." } });
-    fireEvent.change(screen.getByLabelText(/City/i), { target: { value: "Tampa" } });
-    fireEvent.change(screen.getByLabelText(/State/i), { target: { value: "FL" } });
-    fireEvent.click(screen.getByRole("button", { name: /Save profile/i }));
-
-    await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith("/api/owner/shop/profile", expect.objectContaining({
-        method: "PATCH",
-        body: expect.stringContaining("Sharp cuts near campus.")
-      }));
-    });
   });
 
   it("opens the invite barber directory from the activation gate without routing back to overview", () => {
