@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OwnerPublicProfileEditor } from "@/components/operations/owner-public-profile-editor";
 import type { UserAccount } from "@/types/domain";
 
@@ -82,6 +82,10 @@ describe("OwnerPublicProfileEditor", () => {
     });
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("shows setup copy instead of a load error when the owner shop profile is incomplete", () => {
     const error = new Error("Owner shop not found.") as Error & { status?: number };
     error.status = 404;
@@ -126,6 +130,7 @@ describe("OwnerPublicProfileEditor", () => {
     expect(screen.getByText("Manage your shop profile & brand")).toBeInTheDocument();
     expect(screen.getByText(/Public shop brand/i)).toBeInTheDocument();
     expect(screen.getByText("Shape the public business profile clients see before choosing a shop or barber.")).toBeInTheDocument();
+    expect(screen.queryByText("Profile already synced.")).not.toBeInTheDocument();
     expect(screen.getByAltText("The BVRB3R Shop public image")).toHaveAttribute("src", "https://cdn.example.com/shop-logo.png");
     expect(screen.queryByText("Public shop username")).not.toBeInTheDocument();
     expect(screen.getByText("@bvrb3rshop")).toBeInTheDocument();
@@ -247,6 +252,47 @@ describe("OwnerPublicProfileEditor", () => {
       state: "FL"
     }));
     expect(await screen.findByText("Shop public location updated.")).toBeInTheDocument();
+  });
+
+  it("auto-dismisses successful shop profile studio feedback", async () => {
+    vi.useFakeTimers();
+    const mutateAsync = vi.fn().mockResolvedValue({});
+    useUpdateOwnerShopProfileMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync
+    });
+    useOwnerShopProfileQueryMock.mockReturnValue({
+      data: {
+        shop: {
+          id: "shop-bvrb3r",
+          name: "The BVRB3R Shop",
+          shop_username: "bvrb3rshop",
+          brand_line: "Campus cuts.",
+          public_bio: "Public shop bio.",
+          city: "Tampa",
+          state: "FL",
+          address: "2200 E Fowler Ave"
+        }
+      },
+      error: null,
+      isLoading: false,
+      refetch: vi.fn()
+    });
+
+    render(<OwnerPublicProfileEditor user={user} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit public shop bio" }));
+    fireEvent.change(screen.getByLabelText("Public bio"), { target: { value: "New shop story" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByText("Shop bio updated.")).toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+    expect(screen.queryByText("Shop bio updated.")).not.toBeInTheDocument();
   });
 
   it("treats pending shop city and state as setup state without a load error", () => {

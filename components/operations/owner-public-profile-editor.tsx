@@ -6,6 +6,7 @@ import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { buildShopProfileStudioViewModel } from "@/components/profile-studio/adapters/shop-profile-studio-adapter";
 import { ProfileImageEditButton } from "@/components/profile-studio/profile-image-edit-button";
 import { ProfileStudioShell } from "@/components/profile-studio/profile-studio-shell";
+import { useProfileStudioFeedback } from "@/components/profile-studio/use-profile-studio-feedback";
 import { useOwnerShopProfileQuery, useUpdateOwnerShopProfileMutation, type OwnerShopProfileResponse } from "@/lib/operations/barber-client";
 import { useMutateProfileMediaMutation, useProfileMediaWorkspaceQuery } from "@/lib/profile/client";
 import { uploadMediaAsset } from "@/lib/storage/media";
@@ -99,7 +100,7 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
   const mediaMutation = useMutateProfileMediaMutation();
   const [draft, setDraft] = useState<ShopPublicProfileDraft>(emptyDraft);
   const [localShop, setLocalShop] = useState<OwnerShopProfileResponse["shop"] | null>(null);
-  const [feedback, setFeedback] = useState<{ tone: "info" | "success" | "error"; message: string } | null>(null);
+  const [feedback, setFeedback] = useProfileStudioFeedback();
   const shop = localShop ?? profileQuery.data?.shop ?? null;
   const loadErrorStatus = profileQuery.error && typeof profileQuery.error === "object" && "status" in profileQuery.error
     ? Number((profileQuery.error as { status?: number }).status)

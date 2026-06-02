@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ClientPublicProfileEditor } from "@/components/client-experience/client-public-profile-editor";
@@ -77,6 +77,7 @@ describe("ClientPublicProfileEditor", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -91,6 +92,7 @@ describe("ClientPublicProfileEditor", () => {
     expect(screen.getByText("Public Culture bio.")).toBeInTheDocument();
     expect(screen.getByText("Tampa, FL")).toBeInTheDocument();
     expect(screen.getByText("Client public profiles appear in Culture and social interactions. They do not appear in barber or shop marketplace search.")).toBeInTheDocument();
+    expect(screen.queryByText("Profile already synced.")).not.toBeInTheDocument();
     expect(screen.queryByText("Public username")).not.toBeInTheDocument();
     expect(screen.getByText("@jordanellis")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Update public profile photo" })).toBeInTheDocument();
@@ -142,6 +144,44 @@ describe("ClientPublicProfileEditor", () => {
       imageUrl: "https://cdn.example.com/post.jpg"
     });
     expect(await screen.findByText("Post added.")).toBeInTheDocument();
+  });
+
+  it("auto-dismisses successful profile studio feedback", async () => {
+    vi.useFakeTimers();
+    const mutateAsync = vi.fn().mockResolvedValue({});
+    useMutateProfileMediaMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync
+    });
+
+    render(<ClientPublicProfileEditor user={user} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit public bio" }));
+    fireEvent.change(screen.getByLabelText("Public bio"), { target: { value: "New Culture bio" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByText("Public bio updated.")).toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+    expect(screen.queryByText("Public bio updated.")).not.toBeInTheDocument();
+  });
+
+  it("keeps profile studio error feedback visible until replaced", async () => {
+    vi.useFakeTimers();
+    render(<ClientPublicProfileEditor user={user} />);
+
+    const file = new File(["not-image"], "post.txt", { type: "text/plain" });
+    fireEvent.change(screen.getByLabelText("Add post upload input"), { target: { files: [file] } });
+
+    expect(screen.getByText("Only image uploads are supported here.")).toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+    expect(screen.getByText("Only image uploads are supported here.")).toBeInTheDocument();
   });
 
   it("uses the viewer profile photo source when the client profile media photo is empty", () => {

@@ -6,6 +6,7 @@ import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { buildBarberProfileStudioViewModel } from "@/components/profile-studio/adapters/barber-profile-studio-adapter";
 import { ProfileImageEditButton } from "@/components/profile-studio/profile-image-edit-button";
 import { ProfileStudioShell } from "@/components/profile-studio/profile-studio-shell";
+import { useProfileStudioFeedback } from "@/components/profile-studio/use-profile-studio-feedback";
 import { useBarberProfileQuery } from "@/lib/booking/client";
 import { useMutateProfileMediaMutation, useProfileMediaWorkspaceQuery } from "@/lib/profile/client";
 import { uploadMediaAsset } from "@/lib/storage/media";
@@ -86,7 +87,7 @@ export function BarberProfileScreen({
   const mediaQuery = useProfileMediaWorkspaceQuery(true);
   const mediaMutation = useMutateProfileMediaMutation();
   const trustQuery = useBarberTrustSummary(true);
-  const [localFeedback, setLocalFeedback] = useState<{ tone: "info" | "error"; message: string } | null>(null);
+  const [localFeedback, setLocalFeedback] = useProfileStudioFeedback();
   const [usernameDraft, setUsernameDraft] = useState("");
   const [isSavingUsername, setIsSavingUsername] = useState(false);
   const barberMedia = mediaQuery.data?.barberProfile ?? null;
@@ -137,10 +138,12 @@ export function BarberProfileScreen({
     ? { tone: "error" as const, message: readableError(mediaMutation.error, "Unable to update barber profile media right now.") }
     : null;
   const profileRepairNotice = (profileQuery.data as { profileRepairNotice?: string } | undefined)?.profileRepairNotice;
+  const visibleProfileRepairFeedback = profileRepairFeedback === "Profile already synced." ? null : profileRepairFeedback;
+  const visibleProfileRepairNotice = profileRepairNotice === "Profile already synced." ? null : profileRepairNotice;
   const status = mutationStatus
     ?? localFeedback
-    ?? (profileRepairFeedback ? { tone: profileRepairFeedback.includes("_") ? "error" as const : "info" as const, message: profileRepairFeedback } : null)
-    ?? (profileRepairNotice ? { tone: "info" as const, message: profileRepairNotice } : null);
+    ?? (visibleProfileRepairFeedback ? { tone: visibleProfileRepairFeedback.includes("_") ? "error" as const : "info" as const, message: visibleProfileRepairFeedback } : null)
+    ?? (visibleProfileRepairNotice ? { tone: "info" as const, message: visibleProfileRepairNotice } : null);
 
   useEffect(() => {
     if (profile?.profile.username && !isSavingUsername) {

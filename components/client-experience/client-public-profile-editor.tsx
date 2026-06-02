@@ -6,6 +6,7 @@ import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { buildClientProfileStudioViewModel } from "@/components/profile-studio/adapters/client-profile-studio-adapter";
 import { ProfileImageEditButton } from "@/components/profile-studio/profile-image-edit-button";
 import { ProfileStudioShell } from "@/components/profile-studio/profile-studio-shell";
+import { useProfileStudioFeedback } from "@/components/profile-studio/use-profile-studio-feedback";
 import { useMutateProfileMediaMutation, useProfileMediaWorkspaceQuery } from "@/lib/profile/client";
 import { uploadMediaAsset } from "@/lib/storage/media";
 import type { UserAccount } from "@/types/domain";
@@ -79,7 +80,7 @@ export function ClientPublicProfileEditor({ user }: { user: UserAccount }) {
       }, [clientMedia, mediaQuery.data?.viewer.profilePhotoPath, mediaQuery.data?.viewer.profilePhotoUrl]);
   const model = useMemo(() => buildClientProfileStudioViewModel(user, studioClientMedia), [studioClientMedia, user]);
   const [usernameDraft, setUsernameDraft] = useState(model.username.value);
-  const [feedback, setFeedback] = useState<{ tone: "info" | "success" | "error"; message: string } | null>(null);
+  const [feedback, setFeedback] = useProfileStudioFeedback();
 
   async function uploadWithPath(path: string, file: File) {
     const extension = file.name.split(".").pop()?.toLowerCase() || "jpg";

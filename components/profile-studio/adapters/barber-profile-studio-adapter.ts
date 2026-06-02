@@ -99,8 +99,7 @@ export function buildBarberProfileStudioViewModel({
     role: "barber",
     page: {
       title: "Profile",
-      subtitle: "Manage your profile & brand",
-      statusText: "Profile already synced."
+      subtitle: "Manage your profile & brand"
     },
     hero: {
       label: "Public barber brand",

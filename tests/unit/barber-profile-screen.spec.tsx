@@ -1,6 +1,6 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BarberProfileScreen } from "@/components/barber-experience/barber-profile-screen";
 import type { UserAccount } from "@/types/domain";
 
@@ -95,7 +95,8 @@ describe("BarberProfileScreen", () => {
         ],
         reviews: [{}],
         services: [],
-        mostBookedService: { service: { name: "test cut" } }
+        mostBookedService: { service: { name: "test cut" } },
+        profileRepairNotice: "Profile already synced."
       },
       error: null,
       refetch: vi.fn()
@@ -126,6 +127,10 @@ describe("BarberProfileScreen", () => {
     });
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("renders the final minimal barber profile studio without duplicated lower sections", () => {
     render(<BarberProfileScreen user={user} />);
 
@@ -135,6 +140,7 @@ describe("BarberProfileScreen", () => {
     expect(screen.getByText("Manage your profile & brand")).toBeInTheDocument();
     expect(screen.getByText("The client-facing preview, portfolio, trust signals, and booking profile live here.")).toBeInTheDocument();
     expect(screen.getByText("Sharp public barber bio.")).toBeInTheDocument();
+    expect(screen.queryByText("Profile already synced.")).not.toBeInTheDocument();
     expect(screen.getByText("Phils chair")).toBeInTheDocument();
     expect(screen.getByText("Public preview")).toBeInTheDocument();
     expect(screen.queryByText("Edit profile")).not.toBeInTheDocument();
@@ -288,5 +294,35 @@ describe("BarberProfileScreen", () => {
       label: "Downtown chair"
     });
     expect(refetch).toHaveBeenCalled();
+  });
+
+  it("auto-dismisses successful barber profile studio feedback", async () => {
+    vi.useFakeTimers();
+    const mutateAsync = vi.fn().mockResolvedValue({});
+    const refetch = vi.fn().mockResolvedValue({});
+    useMutateProfileMediaMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync,
+      error: null
+    });
+    useBarberProfileQueryMock.mockReturnValue({
+      ...useBarberProfileQueryMock(),
+      refetch
+    });
+
+    render(<BarberProfileScreen user={user} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit public barber bio" }));
+    fireEvent.change(screen.getByLabelText("Public bio"), { target: { value: "Fresh public story" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByText("Barber bio updated.")).toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+    expect(screen.queryByText("Barber bio updated.")).not.toBeInTheDocument();
   });
 });
