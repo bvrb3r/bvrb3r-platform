@@ -284,15 +284,10 @@ export function BarberProfileScreen({
     setLocalFeedback(null);
     setIsSavingUsername(true);
     try {
-      const response = await fetch("/api/barber/public-username", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username })
+      await mediaMutation.mutateAsync({
+        action: "set_barber_public_username",
+        username
       });
-      const body = (await response.json().catch(() => ({}))) as { error?: string };
-      if (!response.ok) {
-        throw new Error(body.error ?? "Unable to save public username.");
-      }
       setUsernameDraft(username);
       await profileQuery.refetch();
       setLocalFeedback({ tone: "info", message: "Public username saved. Client profile links refresh right away." });

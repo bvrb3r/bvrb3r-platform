@@ -244,6 +244,27 @@ describe("ClientPublicProfileEditor", () => {
     expect(await screen.findByText("Public location updated.")).toBeInTheDocument();
   });
 
+  it("saves the client public username and updates the hero route state", async () => {
+    const mutateAsync = vi.fn().mockResolvedValue({});
+    useMutateProfileMediaMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync
+    });
+
+    render(<ClientPublicProfileEditor user={user} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit public username" }));
+    fireEvent.change(screen.getByLabelText("Public username"), { target: { value: "jordan-culture" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith({
+      action: "set_client_public_username",
+      username: "jordan-culture"
+    }));
+    expect(await screen.findByText("Public username saved.")).toBeInTheDocument();
+    expect(screen.getByText("@jordan-culture")).toBeInTheDocument();
+  });
+
   it("removes client Culture posts through the media mutation", async () => {
     const mutateAsync = vi.fn().mockResolvedValue({});
     useMutateProfileMediaMutationMock.mockReturnValue({

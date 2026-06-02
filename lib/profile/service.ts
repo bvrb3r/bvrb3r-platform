@@ -17,6 +17,7 @@ type ProfileMediaRow = {
   role: string | null;
   profile_photo_path: string | null;
   profile_photo_url: string | null;
+  public_username: string | null;
   public_bio: string | null;
   public_city: string | null;
   public_state: string | null;
@@ -24,6 +25,7 @@ type ProfileMediaRow = {
 
 type BarberProfileMediaRow = {
   barber_reference: string;
+  username: string | null;
   profile_photo_path: string | null;
   profile_photo_url: string | null;
   visibility_state: string | null;
@@ -50,6 +52,7 @@ type BarberPortfolioRow = {
 type ShopMediaRow = {
   id: string;
   name: string;
+  public_username?: string | null;
   brand_line?: string | null;
   public_bio?: string | null;
   neighborhood: string;
@@ -96,6 +99,7 @@ export type ShopMediaWorkspaceView = {
   shopId: string;
   label: string;
   name?: string;
+  publicUsername?: string | null;
   brandLine?: string | null;
   publicBio?: string | null;
   neighborhood?: string | null;
@@ -126,6 +130,7 @@ export type ProfileMediaWorkspacePayload = {
   clientProfile: {
     profilePhotoUrl?: string;
     profilePhotoPath?: string;
+    publicUsername?: string | null;
     publicBio?: string | null;
     publicCity?: string | null;
     publicState?: string | null;
@@ -133,6 +138,7 @@ export type ProfileMediaWorkspacePayload = {
   } | null;
   barberProfile: {
     barberId: string;
+    publicUsername?: string | null;
     profilePhotoUrl?: string;
     profilePhotoPath?: string;
     publicBio?: string | null;
@@ -151,7 +157,7 @@ type DemoProfilePhoto = {
 
 type DemoProfileMediaState = {
   viewerPhotosByEmail: Record<string, DemoProfilePhoto>;
-  clientPublicProfilesByEmail: Record<string, { publicBio?: string; publicCity?: string; publicState?: string }>;
+  clientPublicProfilesByEmail: Record<string, { publicUsername?: string; publicBio?: string; publicCity?: string; publicState?: string }>;
   clientGalleryByEmail: Record<string, ManagedMediaAsset[]>;
 };
 
@@ -195,6 +201,11 @@ type UpdateClientPublicBioInput = {
   publicBio: string;
 };
 
+type UpdateClientPublicUsernameInput = {
+  action: "set_client_public_username";
+  username: string;
+};
+
 type UpdateClientPublicLocationInput = {
   action: "set_client_public_location";
   city: string;
@@ -206,6 +217,11 @@ type UpdateBarberPublicBioInput = {
   publicBio: string;
 };
 
+type UpdateBarberPublicUsernameInput = {
+  action: "set_barber_public_username";
+  username: string;
+};
+
 type UpdateBarberPublicLocationInput = {
   action: "set_barber_public_location";
   label: string;
@@ -215,6 +231,12 @@ type UpdateShopPublicBioInput = {
   action: "set_shop_public_bio";
   shopId: string;
   publicBio: string;
+};
+
+type UpdateShopPublicUsernameInput = {
+  action: "set_shop_public_username";
+  shopId: string;
+  username: string;
 };
 
 type UpdateShopPublicLocationInput = {
@@ -232,10 +254,13 @@ export type ProfileMediaMutationInput =
   | AddGalleryImageInput
   | RemoveGalleryImageInput
   | UpdateNotificationPreferenceInput
+  | UpdateClientPublicUsernameInput
   | UpdateClientPublicBioInput
   | UpdateClientPublicLocationInput
+  | UpdateBarberPublicUsernameInput
   | UpdateBarberPublicBioInput
   | UpdateBarberPublicLocationInput
+  | UpdateShopPublicUsernameInput
   | UpdateShopPublicBioInput
   | UpdateShopPublicLocationInput;
 
@@ -280,6 +305,56 @@ function makeDemoId(prefix: string) {
 function cleanPublicText(value?: string | null, maxLength = 300) {
   const trimmed = value?.trim() ?? "";
   return trimmed ? trimmed.slice(0, maxLength) : null;
+}
+
+const RESERVED_PUBLIC_USERNAMES = new Set(["admin", "support", "bvrb3r", "help", "payments", "system", "official"]);
+
+function normalizePublicUsername(value?: string | null) {
+  return value?.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "").slice(0, 32) ?? "";
+}
+
+function assertPublicUsername(value: string) {
+  const username = normalizePublicUsername(value);
+  if (username.length < 3) {
+    throw new ProfileMediaServiceError("Use at least 3 lowercase letters, numbers, hyphens, or underscores.", 400);
+  }
+
+  if (!/^[a-z0-9_-]+$/.test(username)) {
+    throw new ProfileMediaServiceError("Use lowercase letters, numbers, hyphens, or underscores.", 400);
+  }
+
+  if (RESERVED_PUBLIC_USERNAMES.has(username)) {
+    throw new ProfileMediaServiceError("That username is reserved.", 400);
+  }
+
+  return username;
+}
+
+async function assertPublicUsernameAvailable(
+  supabase: SupabaseClient,
+  username: string,
+  owner: { type: "client" | "barber" | "shop"; id: string }
+) {
+  const [clientResult, barberResult, shopResult] = await Promise.all([
+    supabase.from("profiles").select("id, public_username").eq("public_username", username).maybeSingle(),
+    supabase.from("barber_profiles").select("barber_reference, username").eq("username", username).maybeSingle(),
+    supabase.from("shops").select("id, public_username").eq("public_username", username).maybeSingle()
+  ]);
+
+  if (clientResult.error || barberResult.error || shopResult.error) {
+    throw new ProfileMediaServiceError("Unable to check username availability.", 500);
+  }
+
+  const clientOwner = (clientResult.data as { id?: string | null } | null)?.id;
+  const barberOwner = (barberResult.data as { barber_reference?: string | null } | null)?.barber_reference;
+  const shopOwner = (shopResult.data as { id?: string | null } | null)?.id;
+  const isOwnClient = owner.type === "client" && clientOwner === owner.id;
+  const isOwnBarber = owner.type === "barber" && barberOwner === owner.id;
+  const isOwnShop = owner.type === "shop" && shopOwner === owner.id;
+
+  if ((clientOwner && !isOwnClient) || (barberOwner && !isOwnBarber) || (shopOwner && !isOwnShop)) {
+    throw new ProfileMediaServiceError("That username is already taken.", 409);
+  }
 }
 
 function mapBarberGalleryAsset(row: BarberPortfolioRow | ManagedMediaAsset): ManagedMediaAsset {
@@ -412,7 +487,7 @@ async function resolveProfileRow(user: UserAccount, supabase: SupabaseClient) {
     const result = await resolveSignedInProfile<ProfileMediaRow>({
       user,
       supabase,
-      select: "id, email, role, profile_photo_path, profile_photo_url, public_bio, public_city, public_state"
+      select: "id, email, role, profile_photo_path, profile_photo_url, public_username, public_bio, public_city, public_state"
     });
     return result.profile;
   } catch (error) {
@@ -449,7 +524,7 @@ async function readSupabaseBarberMedia(supabase: SupabaseClient, barberId: strin
   const [profileResult, visibilityResult, galleryResult] = await Promise.all([
     supabase
       .from("barber_profiles")
-      .select("barber_reference, profile_photo_path, profile_photo_url, visibility_state, bio, service_area_label")
+      .select("barber_reference, username, profile_photo_path, profile_photo_url, visibility_state, bio, service_area_label")
       .eq("barber_reference", barberId)
       .maybeSingle(),
     supabase
@@ -479,6 +554,7 @@ async function readSupabaseBarberMedia(supabase: SupabaseClient, barberId: strin
   return {
     profilePhotoPath: profile?.profile_photo_path ?? undefined,
     profilePhotoUrl: toPublicMediaUrl(supabase, profile?.profile_photo_path, profile?.profile_photo_url),
+    publicUsername: profile?.username ?? null,
     publicBio: profile?.bio ?? null,
     serviceAreaLabel: profile?.service_area_label ?? null,
     visibilityState: visibility?.visibility_state ?? profile?.visibility_state ?? "hidden",
@@ -487,11 +563,25 @@ async function readSupabaseBarberMedia(supabase: SupabaseClient, barberId: strin
   };
 }
 
+async function readExistingBarberUsername(supabase: SupabaseClient, barberId: string) {
+  const result = await supabase
+    .from("barber_profiles")
+    .select("username")
+    .eq("barber_reference", barberId)
+    .maybeSingle();
+
+  if (result.error) {
+    return barberId;
+  }
+
+  return ((result.data as { username?: string | null } | null)?.username ?? barberId).trim() || barberId;
+}
+
 async function readSupabaseShopMedia(supabase: SupabaseClient, shopId: string): Promise<ShopMediaWorkspaceView | null> {
   const [shopResult, galleryResult] = await Promise.all([
     supabase
       .from("shops")
-      .select("id, name, brand_line, public_bio, neighborhood, city, state, phone, address, profile_photo_path, profile_photo_url")
+      .select("id, name, public_username, brand_line, public_bio, neighborhood, city, state, phone, address, profile_photo_path, profile_photo_url")
       .eq("id", shopId)
       .maybeSingle(),
     supabase
@@ -524,6 +614,7 @@ async function readSupabaseShopMedia(supabase: SupabaseClient, shopId: string): 
   return {
     shopId: shop.id,
     name: shop.name,
+    publicUsername: shop.public_username ?? null,
     brandLine: shop.brand_line ?? null,
     publicBio: shop.public_bio ?? null,
     neighborhood: shop.neighborhood,
@@ -558,6 +649,7 @@ async function readSupabaseClientMedia(supabase: SupabaseClient, profile: Profil
   return {
     profilePhotoPath: profile.profile_photo_path ?? undefined,
     profilePhotoUrl: toPublicMediaUrl(supabase, profile.profile_photo_path, profile.profile_photo_url),
+    publicUsername: profile.public_username ?? null,
     publicBio: profile.public_bio ?? null,
     publicCity: profile.public_city ?? null,
     publicState: profile.public_state ?? null,
@@ -584,6 +676,7 @@ function readDemoBarberMedia(barberId: string) {
   return {
     profilePhotoPath: profile?.profilePhotoUrl,
     profilePhotoUrl: profile?.profilePhotoUrl,
+    publicUsername: profile?.username ?? null,
     publicBio: profile?.headline ?? null,
     serviceAreaLabel: profile?.serviceAreaLabel ?? null,
     visibilityState: visibility?.visibilityState ?? profile?.visibilityState ?? "hidden",
@@ -618,6 +711,7 @@ function readDemoShopMedia(shopId: string): ShopMediaWorkspaceView | null {
     label: location ? `${location.name} • ${location.neighborhood}, ${location.city}` : shop.name,
     name: shop.name,
     brandLine: shop.brandLine ?? null,
+    publicUsername: shop.shopUsername ?? null,
     publicBio: shop.publicBio ?? null,
     neighborhood: shop.neighborhood ?? location?.neighborhood ?? null,
     city: shop.city ?? location?.city ?? null,
@@ -641,6 +735,7 @@ function readDemoClientMedia(email: string) {
   return {
     profilePhotoPath: state.viewerPhotosByEmail[email]?.storagePath,
     profilePhotoUrl: state.viewerPhotosByEmail[email]?.imageUrl,
+    publicUsername: publicProfile.publicUsername ?? null,
     publicBio: publicProfile.publicBio ?? null,
     publicCity: publicProfile.publicCity ?? null,
     publicState: publicProfile.publicState ?? null,
@@ -699,10 +794,11 @@ function updateDemoClientGallery(email: string, galleryUpdater: (current: Manage
   state.clientGalleryByEmail[email] = galleryUpdater(state.clientGalleryByEmail[email] ?? []);
 }
 
-function updateDemoClientPublicProfile(email: string, input: { publicBio?: string | null; publicCity?: string | null; publicState?: string | null }) {
+function updateDemoClientPublicProfile(email: string, input: { publicUsername?: string | null; publicBio?: string | null; publicCity?: string | null; publicState?: string | null }) {
   const state = getDemoProfileMediaState();
   state.clientPublicProfilesByEmail[email] = {
     ...(state.clientPublicProfilesByEmail[email] ?? {}),
+    ...(input.publicUsername !== undefined ? { publicUsername: input.publicUsername ?? "" } : {}),
     ...(input.publicBio !== undefined ? { publicBio: input.publicBio ?? "" } : {}),
     ...(input.publicCity !== undefined ? { publicCity: input.publicCity ?? "" } : {}),
     ...(input.publicState !== undefined ? { publicState: input.publicState ?? "" } : {})
@@ -710,6 +806,7 @@ function updateDemoClientPublicProfile(email: string, input: { publicBio?: strin
 }
 
 function updateDemoBarberMedia(barberId: string, input: {
+  publicUsername?: string;
   profilePhotoUrl?: string;
   publicBio?: string | null;
   serviceAreaLabel?: string | null;
@@ -744,6 +841,7 @@ function updateDemoBarberMedia(barberId: string, input: {
       profile.barberId === barberId
         ? {
             ...profile,
+            username: input.publicUsername ?? profile.username,
             profilePhotoUrl: input.profilePhotoUrl ?? profile.profilePhotoUrl,
             headline: input.publicBio !== undefined ? input.publicBio ?? "" : profile.headline,
             serviceAreaLabel: input.serviceAreaLabel !== undefined ? input.serviceAreaLabel ?? "" : profile.serviceAreaLabel
@@ -757,6 +855,7 @@ function updateDemoBarberMedia(barberId: string, input: {
 }
 
 function updateDemoShopMedia(shopId: string, input: {
+  publicUsername?: string;
   profilePhotoUrl?: string;
   publicBio?: string | null;
   address?: string | null;
@@ -783,6 +882,7 @@ function updateDemoShopMedia(shopId: string, input: {
 
     return {
       ...shop,
+      shopUsername: input.publicUsername ?? shop.shopUsername,
       profilePhotoUrl: input.profilePhotoUrl ?? shop.profilePhotoUrl,
       publicBio: input.publicBio !== undefined ? input.publicBio ?? "" : shop.publicBio,
       address: input.address !== undefined ? input.address ?? "" : shop.address,
@@ -937,6 +1037,10 @@ export async function mutateProfileMedia(user: UserAccount, input: ProfileMediaM
         assertClientRole(user);
         updateDemoClientGallery(user.email, (current) => current.filter((asset) => asset.id !== input.assetId));
         break;
+      case "set_client_public_username":
+        assertClientRole(user);
+        updateDemoClientPublicProfile(user.email, { publicUsername: assertPublicUsername(input.username) });
+        break;
       case "set_client_public_bio":
         assertClientRole(user);
         updateDemoClientPublicProfile(user.email, { publicBio: cleanPublicText(input.publicBio) ?? "" });
@@ -981,6 +1085,9 @@ export async function mutateProfileMedia(user: UserAccount, input: ProfileMediaM
       case "set_barber_public_bio":
         updateDemoBarberMedia(assertBarberRole(user), { publicBio: cleanPublicText(input.publicBio) ?? "" });
         break;
+      case "set_barber_public_username":
+        updateDemoBarberMedia(assertBarberRole(user), { publicUsername: assertPublicUsername(input.username) });
+        break;
       case "set_barber_public_location":
         updateDemoBarberMedia(assertBarberRole(user), { serviceAreaLabel: cleanPublicText(input.label, 120) ?? "" });
         break;
@@ -1017,6 +1124,11 @@ export async function mutateProfileMedia(user: UserAccount, input: ProfileMediaM
       case "set_shop_public_bio":
         updateDemoShopMedia(assertShopRole(user, managedShopIds, input.shopId), {
           publicBio: cleanPublicText(input.publicBio) ?? ""
+        });
+        break;
+      case "set_shop_public_username":
+        updateDemoShopMedia(assertShopRole(user, managedShopIds, input.shopId), {
+          publicUsername: assertPublicUsername(input.username)
         });
         break;
       case "set_shop_public_location": {
@@ -1100,6 +1212,23 @@ export async function mutateProfileMedia(user: UserAccount, input: ProfileMediaM
       }
       break;
     }
+    case "set_client_public_username": {
+      assertClientRole(user);
+      const username = assertPublicUsername(input.username);
+      await assertPublicUsernameAvailable(supabase, username, { type: "client", id: profile.id });
+      const result = await supabase
+        .from("profiles")
+        .update({
+          public_username: username,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", profile.id);
+
+      if (result.error) {
+        throw new ProfileMediaServiceError("Unable to save the client public username.", 500);
+      }
+      break;
+    }
     case "set_client_public_bio": {
       assertClientRole(user);
       const result = await supabase
@@ -1133,12 +1262,13 @@ export async function mutateProfileMedia(user: UserAccount, input: ProfileMediaM
     }
     case "set_barber_photo": {
       const barberId = assertBarberRole(user);
+      const currentUsername = await readExistingBarberUsername(supabase, barberId);
       const result = await supabase
         .from("barber_profiles")
         .upsert({
           barber_reference: barberId,
           barber_email: user.email,
-          username: barberId,
+          username: currentUsername,
           display_name: user.name,
           profile_photo_path: input.storagePath,
           profile_photo_url: input.imageUrl,
@@ -1200,12 +1330,13 @@ export async function mutateProfileMedia(user: UserAccount, input: ProfileMediaM
     }
     case "set_barber_public_bio": {
       const barberId = assertBarberRole(user);
+      const currentUsername = await readExistingBarberUsername(supabase, barberId);
       const result = await supabase
         .from("barber_profiles")
         .upsert({
           barber_reference: barberId,
           barber_email: user.email,
-          username: barberId,
+          username: currentUsername,
           display_name: user.name,
           bio: cleanPublicText(input.publicBio),
           updated_at: new Date().toISOString()
@@ -1216,14 +1347,37 @@ export async function mutateProfileMedia(user: UserAccount, input: ProfileMediaM
       }
       break;
     }
-    case "set_barber_public_location": {
+    case "set_barber_public_username": {
       const barberId = assertBarberRole(user);
+      const username = assertPublicUsername(input.username);
+      await assertPublicUsernameAvailable(supabase, username, { type: "barber", id: barberId });
       const result = await supabase
         .from("barber_profiles")
         .upsert({
           barber_reference: barberId,
           barber_email: user.email,
-          username: barberId,
+          username,
+          display_name: user.name,
+          updated_at: new Date().toISOString()
+        }, { onConflict: "barber_reference" });
+
+      if (result.error) {
+        throw new ProfileMediaServiceError("Unable to save the barber public username.", 500);
+      }
+
+      await supabase.from("barbers").update({ booking_slug: username }).eq("reference_code", barberId);
+      await supabase.from("barbers").update({ booking_slug: username }).eq("id", barberId);
+      break;
+    }
+    case "set_barber_public_location": {
+      const barberId = assertBarberRole(user);
+      const currentUsername = await readExistingBarberUsername(supabase, barberId);
+      const result = await supabase
+        .from("barber_profiles")
+        .upsert({
+          barber_reference: barberId,
+          barber_email: user.email,
+          username: currentUsername,
           display_name: user.name,
           service_area_label: cleanPublicText(input.label, 120),
           updated_at: new Date().toISOString()
@@ -1310,6 +1464,23 @@ export async function mutateProfileMedia(user: UserAccount, input: ProfileMediaM
 
       if (result.error) {
         throw new ProfileMediaServiceError("Unable to save the shop public bio.", 500);
+      }
+      break;
+    }
+    case "set_shop_public_username": {
+      const shopId = assertShopRole(user, managedShopIds, input.shopId);
+      const username = assertPublicUsername(input.username);
+      await assertPublicUsernameAvailable(supabase, username, { type: "shop", id: shopId });
+      const result = await supabase
+        .from("shops")
+        .update({
+          public_username: username,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", shopId);
+
+      if (result.error) {
+        throw new ProfileMediaServiceError("Unable to save the shop public username.", 500);
       }
       break;
     }

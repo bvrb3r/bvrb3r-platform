@@ -126,7 +126,8 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
       cover_photo_url: null,
       public_hours: null,
       policies: null,
-      shop_username: null,
+      public_username: shopMedia.publicUsername ?? null,
+      shop_username: shopMedia.publicUsername ?? null,
       neighborhood: shopMedia.neighborhood ?? null,
       city: shopMedia.city ?? null,
       state: shopMedia.state ?? null,
@@ -147,7 +148,7 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
 
     setDraft({
       name: effectiveShop.name ?? "",
-      shopUsername: effectiveShop.shop_username ?? "",
+      shopUsername: (effectiveShop as { public_username?: string | null }).public_username ?? effectiveShop.shop_username ?? "",
       brandLine: effectiveShop.brand_line ?? "",
       publicBio: effectiveShop.public_bio ?? "",
       profilePhotoUrl: shopMedia?.profilePhotoUrl ?? effectiveShop.profile_photo_url ?? effectiveShop.profile_photo_path ?? "",
@@ -170,6 +171,7 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
     return {
       ...effectiveShop,
       name: draft.name || effectiveShop.name,
+      public_username: draft.shopUsername || (effectiveShop as { public_username?: string | null }).public_username,
       shop_username: draft.shopUsername || effectiveShop.shop_username,
       brand_line: draft.brandLine || effectiveShop.brand_line,
       public_bio: draft.publicBio || effectiveShop.public_bio,
@@ -302,6 +304,38 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
     }
   }
 
+  async function handleShopUsernameSave(username: string) {
+    const shopId = effectiveShop?.id ?? shopMedia?.shopId;
+    if (!shopId) {
+      const message = "Finish shop profile before saving a public shop username.";
+      setFeedback({ tone: "error", message });
+      throw new Error(message);
+    }
+
+    const nextUsername = suggestHandle(username);
+    setFeedback(null);
+    try {
+      await mediaMutation.mutateAsync({
+        action: "set_shop_public_username",
+        shopId,
+        username: nextUsername
+      });
+      updateDraft("shopUsername", nextUsername);
+      setLocalShop((current) => current
+        ? {
+            ...current,
+            public_username: nextUsername,
+            shop_username: nextUsername
+          } as OwnerShopProfileResponse["shop"]
+        : current);
+      setFeedback({ tone: "success", message: "Shop username saved." });
+    } catch (errorValue) {
+      const message = readableError(errorValue, "Unable to save shop username.");
+      setFeedback({ tone: "error", message });
+      throw new Error(message);
+    }
+  }
+
   async function handleShopLocationSave(values: Record<string, string>) {
     const shopId = effectiveShop?.id ?? shopMedia?.shopId;
     const nextLocation = {
@@ -364,6 +398,8 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
         backLabel="Back to More"
         usernameValue={draft.shopUsername || model.username.value}
         onUsernameChange={(value) => updateDraft("shopUsername", suggestHandle(value))}
+        onUsernameSave={handleShopUsernameSave}
+        isSavingUsername={mediaMutation.isPending}
         photoControl={(
           <ProfileImageEditButton
             label="Update shop logo"

@@ -73,7 +73,7 @@ async function readPublicClientProfile(username: string): Promise<PublicClientPr
 
   const profilesResult = await supabase
     .from("profiles")
-    .select("id, full_name, profile_photo_path, profile_photo_url, public_bio, public_city, public_state")
+    .select("id, full_name, public_username, profile_photo_path, profile_photo_url, public_bio, public_city, public_state")
     .limit(300);
 
   if (profilesResult.error) {
@@ -83,6 +83,7 @@ async function readPublicClientProfile(username: string): Promise<PublicClientPr
   const profiles = (profilesResult.data ?? []) as Array<{
     id: string;
     full_name?: string | null;
+    public_username?: string | null;
     profile_photo_path?: string | null;
     profile_photo_url?: string | null;
     public_bio?: string | null;
@@ -91,7 +92,7 @@ async function readPublicClientProfile(username: string): Promise<PublicClientPr
   }>;
   const profile = profiles.find((entry) => {
     const displayName = entry.full_name?.trim() || "";
-    return entry.id === username || suggestHandle(displayName) === username;
+    return entry.id === username || entry.public_username === username || suggestHandle(displayName) === username;
   });
 
   if (!profile) {
@@ -110,7 +111,7 @@ async function readPublicClientProfile(username: string): Promise<PublicClientPr
   return {
     id: profile.id,
     displayName,
-    username,
+    username: profile.public_username ?? username,
     avatarUrl: publicMediaUrl(profile.profile_photo_path, profile.profile_photo_url),
     bio: profile.public_bio ?? null,
     contextLine,
@@ -126,6 +127,7 @@ export default async function PublicClientProfilePage({ params }: { params: Prom
   const username = cleanUsername(rawUsername) || "client";
   const profile = await readPublicClientProfile(username);
   const displayName = profile?.displayName ?? displayNameFromUsername(username);
+  const publicUsername = profile?.username ?? username;
   const posts = profile?.posts ?? [];
 
   return (
@@ -158,7 +160,7 @@ export default async function PublicClientProfilePage({ params }: { params: Prom
                 {profile?.bio?.trim() || "No public bio yet."}
               </p>
               <p className="mt-5 text-3xl font-black tracking-[-0.04em] text-white">{displayName}</p>
-              <p className="mt-1 text-sm font-bold text-[#a3ff12]">@{username}</p>
+              <p className="mt-1 text-sm font-bold text-[#a3ff12]">@{publicUsername}</p>
               <p className="mt-2 text-sm font-semibold text-white/50">{profile?.contextLine ?? "Culture and social identity"}</p>
             </div>
 

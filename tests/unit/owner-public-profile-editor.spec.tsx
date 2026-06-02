@@ -109,6 +109,7 @@ describe("OwnerPublicProfileEditor", () => {
         shop: {
           id: "shop-bvrb3r",
           name: "The BVRB3R Shop",
+          public_username: "bvrb3rshop",
           shop_username: "bvrb3rshop",
           brand_line: "Campus cuts.",
           public_bio: "Public shop bio.",
@@ -252,6 +253,46 @@ describe("OwnerPublicProfileEditor", () => {
       state: "FL"
     }));
     expect(await screen.findByText("Shop public location updated.")).toBeInTheDocument();
+  });
+
+  it("saves shop public username through the shared profile media mutation", async () => {
+    const mutateAsync = vi.fn().mockResolvedValue({});
+    useMutateProfileMediaMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync
+    });
+    useOwnerShopProfileQueryMock.mockReturnValue({
+      data: {
+        shop: {
+          id: "shop-bvrb3r",
+          name: "The BVRB3R Shop",
+          public_username: "bvrb3rshop",
+          shop_username: "bvrb3rshop",
+          brand_line: "Campus cuts.",
+          public_bio: "Public shop bio.",
+          city: "Tampa",
+          state: "FL",
+          address: "2200 E Fowler Ave"
+        }
+      },
+      error: null,
+      isLoading: false,
+      refetch: vi.fn()
+    });
+
+    render(<OwnerPublicProfileEditor user={user} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit public shop username" }));
+    fireEvent.change(screen.getByLabelText("Public username"), { target: { value: "university-shop" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith({
+      action: "set_shop_public_username",
+      shopId: "shop-bvrb3r",
+      username: "university-shop"
+    }));
+    expect(await screen.findByText("Shop username saved.")).toBeInTheDocument();
+    expect(screen.getByText("@university-shop")).toBeInTheDocument();
   });
 
   it("auto-dismisses successful shop profile studio feedback", async () => {

@@ -358,6 +358,7 @@ export interface OwnerShopProfileResponse {
     cover_photo_url?: string | null;
     public_hours?: unknown;
     policies?: string | null;
+    public_username?: string | null;
     shop_username?: string | null;
     neighborhood?: string | null;
     city?: string | null;

@@ -157,6 +157,23 @@ export function ClientPublicProfileEditor({ user }: { user: UserAccount }) {
     }
   }
 
+  async function handleUsernameSave(username: string) {
+    const nextUsername = suggestHandle(username);
+    setFeedback(null);
+    try {
+      await mediaMutation.mutateAsync({
+        action: "set_client_public_username",
+        username: nextUsername
+      });
+      setUsernameDraft(nextUsername);
+      setFeedback({ tone: "success", message: "Public username saved." });
+    } catch (errorValue) {
+      const message = readableError(errorValue, "Unable to save public username.");
+      setFeedback({ tone: "error", message });
+      throw new Error(message);
+    }
+  }
+
   async function handleLocationSave(values: Record<string, string>) {
     setFeedback(null);
     try {
@@ -209,6 +226,8 @@ export function ClientPublicProfileEditor({ user }: { user: UserAccount }) {
         backLabel="Back to More"
         usernameValue={usernameDraft}
         onUsernameChange={(value) => setUsernameDraft(suggestHandle(value))}
+        onUsernameSave={handleUsernameSave}
+        isSavingUsername={mediaMutation.isPending}
         photoControl={(
           <ProfileImageEditButton
             label="Update public profile photo"

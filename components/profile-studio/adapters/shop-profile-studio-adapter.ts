@@ -24,6 +24,11 @@ function formatLocation(shop: OwnerShopProfile | null) {
     .join(" - ");
 }
 
+function getShopUsername(shop: OwnerShopProfile | null) {
+  const publicUsername = (shop as { public_username?: string | null } | null)?.public_username?.trim();
+  return publicUsername || shop?.shop_username?.trim() || "";
+}
+
 export function buildShopProfileStudioViewModel({
   shop,
   user
@@ -32,7 +37,7 @@ export function buildShopProfileStudioViewModel({
   user: UserAccount;
 }): ProfileStudioViewModel {
   const shopName = shop?.name?.trim() || user.ownedShopName || "Finish shop profile";
-  const handle = shop?.shop_username?.trim() || suggestHandle(shopName);
+  const handle = getShopUsername(shop) || suggestHandle(shopName);
   const location = formatLocation(shop);
   const publicBarberCount = typeof shop?.public_barber_count === "number" ? shop.public_barber_count : null;
   const gallery = shop?.gallery ?? [];
@@ -79,8 +84,7 @@ export function buildShopProfileStudioViewModel({
       canEdit: true,
       publicUrl: shop?.id ? `/shop/${encodeURIComponent(handle || shop.id)}` : null,
       modalTitle: "Edit public shop username",
-      modalHelper: "This is how clients find and share your shop profile.",
-      saveUnavailableReason: "Shop username saving is coming soon."
+      modalHelper: "This is how clients find and share your shop profile."
     },
     stats: [
       { label: "Posts", value: gallery.length },

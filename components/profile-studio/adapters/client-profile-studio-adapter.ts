@@ -11,13 +11,14 @@ export function buildClientProfileStudioViewModel(
   media?: {
     profilePhotoUrl?: string | null;
     publicBio?: string | null;
+    publicUsername?: string | null;
     publicCity?: string | null;
     publicState?: string | null;
     gallery?: ManagedMediaAsset[];
   } | null
 ): ProfileStudioViewModel {
   const displayName = user.canonicalFullName ?? user.name ?? "Client";
-  const handle = suggestHandle(displayName) || "client";
+  const handle = media?.publicUsername?.trim() || suggestHandle(displayName) || "client";
   const userWithLocation = user as UserAccount & { city?: string | null; state?: string | null };
   const city = media?.publicCity ?? (typeof userWithLocation.city === "string" ? userWithLocation.city : "");
   const state = media?.publicState ?? (typeof userWithLocation.state === "string" ? userWithLocation.state : "");
@@ -63,8 +64,7 @@ export function buildClientProfileStudioViewModel(
       canEdit: true,
       publicUrl: `/client/${handle}`,
       modalTitle: "Edit public username",
-      modalHelper: "This is how people find your Culture profile.",
-      saveUnavailableReason: "Client username saving is coming soon."
+      modalHelper: "This is how people find your Culture profile."
     },
     stats: [
       { label: "Posts", value: posts.length },

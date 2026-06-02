@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BarberProfileScreen } from "@/components/barber-experience/barber-profile-screen";
@@ -297,6 +297,34 @@ describe("BarberProfileScreen", () => {
       action: "set_barber_public_location",
       label: "Downtown chair"
     });
+    expect(refetch).toHaveBeenCalled();
+  });
+
+  it("saves barber public username through the shared profile media mutation", async () => {
+    const mutateAsync = vi.fn().mockResolvedValue({});
+    const refetch = vi.fn().mockResolvedValue({});
+    useMutateProfileMediaMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync,
+      error: null
+    });
+    useBarberProfileQueryMock.mockReturnValue({
+      ...useBarberProfileQueryMock(),
+      refetch
+    });
+
+    render(<BarberProfileScreen user={user} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit public username" }));
+    fireEvent.change(screen.getByLabelText("Public username"), { target: { value: "phil-public" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith({
+      action: "set_barber_public_username",
+      username: "phil-public"
+    }));
+    expect(await screen.findByText("Public username saved. Client profile links refresh right away.")).toBeInTheDocument();
+    expect(screen.getByText("@phil-public")).toBeInTheDocument();
     expect(refetch).toHaveBeenCalled();
   });
 

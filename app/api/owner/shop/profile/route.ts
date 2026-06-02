@@ -25,7 +25,7 @@ const shopProfileSchema = z.object({
   shopUsername: z.string().trim().min(2).max(80).regex(/^[a-zA-Z0-9._-]+$/).optional().nullable()
 });
 
-const ownerShopSelect = "id, name, brand_line, public_bio, cover_photo_url, public_hours, policies, shop_username, neighborhood, city, state, phone, address, profile_photo_path, profile_photo_url, owner_profile_id, app_approval_status";
+const ownerShopSelect = "id, name, brand_line, public_bio, cover_photo_url, public_hours, policies, public_username, shop_username:public_username, neighborhood, city, state, phone, address, profile_photo_path, profile_photo_url, owner_profile_id, app_approval_status";
 
 function isOwnerScoped(user: UserAccount) {
   return user.role === "shop_owner_user" || user.role === "owner" || user.role === "manager";
@@ -218,7 +218,7 @@ export async function PATCH(request: Request) {
       ...(parsed.data.publicBio !== undefined ? { public_bio: cleanNullable(parsed.data.publicBio) } : {}),
       ...(parsed.data.publicHours !== undefined ? { public_hours: typeof parsed.data.publicHours === "string" ? cleanNullable(parsed.data.publicHours) : parsed.data.publicHours } : {}),
       ...(parsed.data.policies !== undefined ? { policies: cleanNullable(parsed.data.policies) } : {}),
-      ...(parsed.data.shopUsername !== undefined ? { shop_username: cleanNullable(parsed.data.shopUsername)?.toLowerCase() ?? null } : {}),
+      ...(parsed.data.shopUsername !== undefined ? { public_username: cleanNullable(parsed.data.shopUsername)?.toLowerCase() ?? null } : {}),
       updated_at: new Date().toISOString()
     };
 

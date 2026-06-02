@@ -158,7 +158,7 @@ describe("owner shop profile route", () => {
       public_bio: "A public shop bio.",
       cover_photo_url: "https://cdn.example.com/cover.jpg",
       policies: "Arrive five minutes early.",
-      shop_username: "bvrb3rshop",
+      public_username: "bvrb3rshop",
       address: "2200 E Fowler Ave",
       city: "Tampa",
       state: "FL"
