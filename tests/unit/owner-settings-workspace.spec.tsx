@@ -184,7 +184,7 @@ describe("owner More workspace", () => {
     expect(screen.getByRole("button", { name: /log out/i })).toBeInTheDocument();
   });
 
-  it("renders one owner account identity card and suppresses recoverable shop media errors", () => {
+  it("uses the public shop profile image in the single owner account identity card", () => {
     useProfileMediaWorkspaceQueryMock.mockReturnValue({
       isLoading: false,
       error: new Error("Unable to load shop profile media."),
@@ -220,8 +220,8 @@ describe("owner More workspace", () => {
     render(<OwnerSettingsWorkspace user={{ ...resolveDemoUser("owner@bvrb3r.demo"), name: "BVRB3R Owner" }} />);
 
     const ownerAccountCard = screen.getByTestId("owner-more-identity-card");
-    expect(within(ownerAccountCard).getByText("BO")).toBeInTheDocument();
-    expect(within(ownerAccountCard).queryByAltText("BVRB3R Owner profile photo")).not.toBeInTheDocument();
+    expect(within(ownerAccountCard).getByAltText("BVRB3R Owner profile photo")).toHaveAttribute("src", "https://cdn.example.com/shop-logo.png");
+    expect(within(ownerAccountCard).queryByText("BO")).not.toBeInTheDocument();
     expect(screen.getAllByTestId("owner-more-identity-card")).toHaveLength(1);
     expect(screen.queryByTestId("owner-public-shop-profile-card")).not.toBeInTheDocument();
     expect(screen.queryByAltText("The BVRB3R™ Shop (University Mall) logo")).not.toBeInTheDocument();
@@ -229,6 +229,57 @@ describe("owner More workspace", () => {
     expect(screen.queryByText(/Pending - Pending, Pending/i)).not.toBeInTheDocument();
     expect(screen.queryByText("Unable to resolve the signed-in profile.")).not.toBeInTheDocument();
     expect(screen.queryByText("Unable to load shop profile media.")).not.toBeInTheDocument();
+  });
+
+  it("falls back to the owner viewer photo when no shop profile image exists", () => {
+    useProfileMediaWorkspaceQueryMock.mockReturnValue({
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+      data: {
+        viewer: {
+          profilePhotoUrl: "https://cdn.example.com/owner-human.jpg",
+          profilePhotoPath: "profiles/owners/owner-profile/photo.jpg",
+          notificationPreference: {
+            inAppEnabled: true,
+            emailEnabled: true,
+            smsEnabled: false,
+            pushEnabled: true
+          }
+        },
+        shops: [
+          {
+            shopId: "shop-the-bvrb3r-shop-universi-a02c68",
+            name: "The BVRB3Râ„¢ Shop (University Mall)",
+            label: "The BVRB3Râ„¢ Shop (University Mall)",
+            brandLine: "University Mall cuts.",
+            profilePhotoUrl: null,
+            profilePhotoPath: null,
+            city: "Tampa",
+            state: "FL",
+            address: "2200 E Fowler Ave",
+            gallery: []
+          }
+        ]
+      }
+    });
+
+    render(<OwnerSettingsWorkspace user={{ ...resolveDemoUser("owner@bvrb3r.demo"), name: "BVRB3R Owner" }} />);
+
+    const ownerAccountCard = screen.getByTestId("owner-more-identity-card");
+    expect(within(ownerAccountCard).getByAltText("BVRB3R Owner profile photo")).toHaveAttribute("src", "https://cdn.example.com/owner-human.jpg");
+    expect(screen.getAllByTestId("owner-more-identity-card")).toHaveLength(1);
+    expect(screen.queryByTestId("owner-public-shop-profile-card")).not.toBeInTheDocument();
+  });
+
+  it("falls back to owner initials when neither shop nor viewer image exists", () => {
+    render(<OwnerSettingsWorkspace user={{ ...resolveDemoUser("owner@bvrb3r.demo"), name: "BVRB3R Owner" }} />);
+
+    const ownerAccountCard = screen.getByTestId("owner-more-identity-card");
+    expect(within(ownerAccountCard).getByText("BO")).toBeInTheDocument();
+    expect(within(ownerAccountCard).queryByAltText("BVRB3R Owner profile photo")).not.toBeInTheDocument();
+    expect(screen.getAllByTestId("owner-more-identity-card")).toHaveLength(1);
+    expect(screen.queryByTestId("owner-public-shop-profile-card")).not.toBeInTheDocument();
   });
 
   it("opens existing service management inside business setup when requested", () => {

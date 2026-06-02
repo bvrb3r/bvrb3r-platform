@@ -256,6 +256,7 @@ export function OwnerSettingsWorkspace({
     .filter((option): option is AccountQuickEditLocationOption => Boolean(option));
   const ownerShopId = primaryShop?.shopId ?? user.ownedShopId ?? user.locationIds[0] ?? null;
   const shopName = primaryShop?.name ?? primaryShop?.label ?? user.ownedShopName ?? "Shop profile incomplete";
+  const ownerMoreProfileImageUrl = primaryShop?.profilePhotoUrl ?? profileQuery.data?.viewer.profilePhotoUrl;
   const selectedSection = (initialSection && initialSection in sectionIdMap ? initialSection : null) as OwnerSettingsSectionKey | null;
   const selectedServiceManager = initialSection === "services";
   const selectedBrandingManager = initialSection === "branding";
@@ -634,7 +635,7 @@ export function OwnerSettingsWorkspace({
 
       <MoreIdentityReadinessCard
         variant="owner"
-        imageUrl={profileQuery.data?.viewer.profilePhotoUrl}
+        imageUrl={ownerMoreProfileImageUrl}
         initials={getInitials(ownerDisplayName)}
         title={ownerDisplayName}
         subtitle={ownerEmail ?? "Owner account"}
