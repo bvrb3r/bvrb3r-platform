@@ -206,6 +206,7 @@ describe("owner More workspace", () => {
             name: "The BVRB3R™ Shop (University Mall)",
             label: "The BVRB3R™ Shop (University Mall)",
             brandLine: "University Mall cuts.",
+            publicUsername: "thebvrb3rshopuniversitymall",
             profilePhotoUrl: "https://cdn.example.com/shop-logo.png",
             profilePhotoPath: "profiles/shops/shop-the-bvrb3r-shop-universi-a02c68/profile/logo.png",
             city: "Pending",
@@ -253,11 +254,14 @@ describe("owner More workspace", () => {
             name: "The BVRB3Râ„¢ Shop (University Mall)",
             label: "The BVRB3Râ„¢ Shop (University Mall)",
             brandLine: "University Mall cuts.",
+            publicUsername: "thebvrb3rshopuniversitymall",
             profilePhotoUrl: null,
             profilePhotoPath: null,
             city: "Tampa",
             state: "FL",
+            zipCode: "33612",
             address: "2200 E Fowler Ave",
+            neighborhood: "Do not show me",
             gallery: []
           }
         ]
@@ -268,6 +272,9 @@ describe("owner More workspace", () => {
 
     const ownerAccountCard = screen.getByTestId("owner-more-identity-card");
     expect(within(ownerAccountCard).getByAltText("BVRB3R Owner profile photo")).toHaveAttribute("src", "https://cdn.example.com/owner-human.jpg");
+    expect(within(ownerAccountCard).getByText("@thebvrb3rshopuniversitymall")).toBeInTheDocument();
+    expect(within(ownerAccountCard).getByText("2200 E Fowler Ave - Tampa, FL 33612")).toBeInTheDocument();
+    expect(within(ownerAccountCard).queryByText("Do not show me")).not.toBeInTheDocument();
     expect(screen.getAllByTestId("owner-more-identity-card")).toHaveLength(1);
     expect(screen.queryByTestId("owner-public-shop-profile-card")).not.toBeInTheDocument();
   });

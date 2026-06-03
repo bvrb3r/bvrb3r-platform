@@ -121,6 +121,12 @@ describe("client profile screen", () => {
             emailEnabled: true,
             pushEnabled: true
           }
+        },
+        clientProfile: {
+          publicUsername: "phillipmcgee",
+          publicCity: "Tampa",
+          publicState: "FL",
+          gallery: []
         }
       }
     });
@@ -285,7 +291,11 @@ describe("client profile screen", () => {
     );
 
     expect(screen.getAllByRole("heading", { name: "More" })).toHaveLength(1);
-    expect(screen.getByTestId("client-more-identity-card")).toBeInTheDocument();
+    const identityCard = screen.getByTestId("client-more-identity-card");
+    expect(identityCard).toBeInTheDocument();
+    expect(within(identityCard).getByText("@phillipmcgee")).toBeInTheDocument();
+    expect(within(identityCard).getByText("Tampa, FL")).toBeInTheDocument();
+    expect(within(identityCard).queryByText("813-555-0100")).not.toBeInTheDocument();
     const scrollSpy = Element.prototype.scrollIntoView as ReturnType<typeof vi.fn>;
     scrollSpy.mockClear();
     fireEvent.click(screen.getByRole("button", { name: "Edit Account" }));

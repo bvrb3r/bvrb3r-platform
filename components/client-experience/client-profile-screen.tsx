@@ -50,6 +50,7 @@ import { getClientFacingBarberName } from "@/lib/marketplace/client-facing";
 import { getResolvedDefaultPaymentMethod, type ClientPaymentMethodView } from "@/lib/payments/client";
 import { usePointsBalanceQuery, usePointsHistoryQuery } from "@/lib/points/client";
 import { useMutateProfileMediaMutation, useProfileMediaWorkspaceQuery } from "@/lib/profile/client";
+import { formatPublicCityStateLocation, formatPublicUsernameLine } from "@/lib/profile/public-identity-summary";
 import { uploadMediaAsset } from "@/lib/storage/media";
 import { currency } from "@/lib/utils";
 
@@ -252,6 +253,11 @@ export function ClientProfileScreen({
   const clientEmail = (savedAccountEmail ?? client?.email?.trim()) || authEmail?.trim() || "No email on file yet";
   const clientPhone = (savedAccountPhone ?? client?.phone?.trim()) || authPhone?.trim() || "";
   const clientPhotoUrl = mediaQuery.data?.viewer.profilePhotoUrl;
+  const clientPublicUsernameLine = formatPublicUsernameLine(mediaQuery.data?.clientProfile?.publicUsername);
+  const clientPublicLocationLine = formatPublicCityStateLocation({
+    city: mediaQuery.data?.clientProfile?.publicCity ?? savedClientLocation?.city,
+    state: mediaQuery.data?.clientProfile?.publicState ?? savedClientLocation?.state
+  });
   const pointsBalance = pointsBalanceQuery.data ?? null;
   const pointsHistory = pointsHistoryQuery.data ?? null;
   const recentPointsActivity = pointsHistory?.activity.slice(0, 3) ?? [];
@@ -613,8 +619,8 @@ export function ClientProfileScreen({
           { label: rewardsPoints ? `${rewardsPoints} pts` : "Rewards setup", tone: rewardsPoints ? "green" : "muted" }
         ]}
         metaLines={[
-          hasPhone ? clientPhone : "Phone not connected yet",
-          localBookingAreaTitle
+          clientPublicUsernameLine,
+          clientPublicLocationLine
         ]}
         primaryAction={{ label: "Edit Account", onClick: () => setAccountEditorOpen(true) }}
         secondaryAction={{ label: "Public Profile", href: "/dashboard/client/public-profile" }}

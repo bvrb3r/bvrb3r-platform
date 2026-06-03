@@ -238,8 +238,14 @@ function setupHookMocks() {
         }
       },
       barberProfile: {
+        publicUsername: "phillipforsure",
         profilePhotoUrl: null,
-        visibilityState: "public"
+        visibilityState: "public",
+        publicAddress: "8516 Island Breeze Ln",
+        publicCity: "Temple Terrace",
+        publicState: "FL",
+        publicZip: "33607",
+        serviceAreaLabel: "Phils chair / 2172 University Square More / Tampa"
       }
     },
     error: null,
@@ -336,7 +342,8 @@ function setupHookMocks() {
       activationSetup: {
         hasAvailabilityDraft: true,
         hasServiceLocation: true,
-        locationMode: "custom"
+        locationMode: "custom",
+        serviceLocationLabel: "Phils chair / 2172 University Square More / Tampa"
       },
       status: {
         isOnline: true,
@@ -392,6 +399,11 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     expect(screen.queryByRole("dialog", { name: "Edit Account" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Edit Public Profile" })).toHaveAttribute("href", "/dashboard/barber/profile");
     expect(screen.queryByRole("link", { name: "View Public Profile" })).not.toBeInTheDocument();
+    expect(within(identityCard).getByText("@phillipforsure")).toBeInTheDocument();
+    expect(within(identityCard).getByText("8516 Island Breeze Ln - Temple Terrace, FL 33607")).toBeInTheDocument();
+    expect(within(identityCard).queryByText("Independent barber")).not.toBeInTheDocument();
+    expect(within(identityCard).queryByText(/Phils chair/i)).not.toBeInTheDocument();
+    expect(within(identityCard).queryByText(/Freelance service area/i)).not.toBeInTheDocument();
     expect(identityCard).not.toHaveTextContent("independent-barber-");
     expect(screen.getByText("Business Control Hub")).toBeInTheDocument();
     expect(identityCard.compareDocumentPosition(setupGate) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

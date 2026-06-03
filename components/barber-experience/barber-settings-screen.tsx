@@ -63,6 +63,7 @@ import {
 import type { BarberPayoutsPayload } from "@/lib/fintech/service";
 import { getStripePayoutReadinessLabel, isStripeConnectReadyForActivation } from "@/lib/fintech/payout-readiness";
 import { useMutateProfileMediaMutation, useProfileMediaWorkspaceQuery } from "@/lib/profile/client";
+import { formatPublicAddressLocation, formatPublicUsernameLine } from "@/lib/profile/public-identity-summary";
 import {
   useCreateVerificationUploadMutation,
   useStartBarberIdentitySessionMutation,
@@ -945,7 +946,6 @@ export function BarberSettingsScreen({
   const overviewPayload = overviewQuery.data;
   const selectedSection = (initialSection && initialSection in sectionIdMap ? initialSection : null) as SettingsSectionKey | null;
   const barberPhotoUrl = mediaQuery.data?.barberProfile?.profilePhotoUrl ?? mediaQuery.data?.viewer.profilePhotoUrl ?? null;
-  const shopName = readinessPayload?.memberships[0]?.shopLabel ?? user.ownedShopName ?? "Shop not set";
   const locationLabel = user.locationIds.length
     ? user.locationIds.map(formatBarberFacingLocationLabel).join(", ")
     : "Service location not set";
@@ -1041,8 +1041,17 @@ export function BarberSettingsScreen({
     (readinessPayload?.memberships.length ?? 0) > 0
     || ((overviewPayload?.shops.length ?? 0) > 0 && activationSetup?.locationMode !== "custom")
   );
-  const barberIdentityShopLabel = hasAcceptedShopLink ? shopName : "Independent barber";
-  const barberIdentityLocationLabel = activationSetup?.serviceLocationLabel ?? assignedLocationLabels;
+  const barberPublicUsernameLine = formatPublicUsernameLine(mediaQuery.data?.barberProfile?.publicUsername);
+  const canonicalBarberLocationLabel = formatPublicAddressLocation({
+    address: mediaQuery.data?.barberProfile?.publicAddress,
+    city: mediaQuery.data?.barberProfile?.publicCity,
+    state: mediaQuery.data?.barberProfile?.publicState,
+    zip: mediaQuery.data?.barberProfile?.publicZip,
+    fallback: mediaQuery.data?.barberProfile?.serviceAreaLabel?.trim() || "Add service location"
+  });
+  const barberIdentityLocationLabel = hasAcceptedShopLink
+    ? assignedLocationLabels
+    : canonicalBarberLocationLabel;
   const barberLocationOptions = [
     toLocationOption(activationSetup?.bookingLocation)
   ].filter((option): option is AccountQuickEditLocationOption => Boolean(option));
@@ -1706,7 +1715,7 @@ export function BarberSettingsScreen({
             { label: formatStatusLabel(user.appApprovalStatus), tone: moreToneForStatus(getStatusTone(user.appApprovalStatus)) },
             { label: payoutsReady ? "Payouts connected" : "Payouts setup", tone: payoutsReady ? "green" : "yellow" }
           ]}
-          metaLines={[barberIdentityShopLabel, barberIdentityLocationLabel]}
+          metaLines={[barberPublicUsernameLine, barberIdentityLocationLabel]}
           primaryAction={{ label: "Edit Account", onClick: () => setAccountEditorOpen(true) }}
           secondaryAction={{ label: "Edit Public Profile", href: "/dashboard/barber/profile" }}
           tiles={statusItems.map((item) => ({

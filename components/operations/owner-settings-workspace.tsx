@@ -41,6 +41,7 @@ import { GlassCard } from "@/design/components";
 import { useFintechManagementQuery } from "@/lib/fintech/client";
 import { useCreateOwnerTeamInviteMutation, useOwnerTeamInviteDirectoryQuery } from "@/lib/operations/barber-client";
 import { useMutateProfileMediaMutation, useProfileMediaWorkspaceQuery } from "@/lib/profile/client";
+import { formatPublicAddressLocation, formatPublicUsernameLine } from "@/lib/profile/public-identity-summary";
 import { uploadMediaAsset } from "@/lib/storage/media";
 import { cn, currency } from "@/lib/utils";
 import { getReadableActionError } from "@/lib/utils/feedback";
@@ -257,6 +258,14 @@ export function OwnerSettingsWorkspace({
   const ownerShopId = primaryShop?.shopId ?? user.ownedShopId ?? user.locationIds[0] ?? null;
   const shopName = primaryShop?.name ?? primaryShop?.label ?? user.ownedShopName ?? "Shop profile incomplete";
   const ownerMoreProfileImageUrl = primaryShop?.profilePhotoUrl ?? profileQuery.data?.viewer.profilePhotoUrl;
+  const ownerPublicUsernameLine = formatPublicUsernameLine(primaryShop?.publicUsername);
+  const ownerPublicLocationLine = formatPublicAddressLocation({
+    address: primaryShop?.address,
+    city: primaryShop?.city,
+    state: primaryShop?.state,
+    zip: primaryShop?.zipCode,
+    fallback: "Add shop address"
+  });
   const selectedSection = (initialSection && initialSection in sectionIdMap ? initialSection : null) as OwnerSettingsSectionKey | null;
   const selectedServiceManager = initialSection === "services";
   const selectedBrandingManager = initialSection === "branding";
@@ -646,8 +655,8 @@ export function OwnerSettingsWorkspace({
           { label: user.phone ? "Phone connected" : "Phone needed", tone: user.phone ? "green" : "yellow" }
         ]}
         metaLines={[
-          user.phone ?? "Phone not connected yet",
-          "Owner Home stays the team and public shop profile command center."
+          ownerPublicUsernameLine,
+          ownerPublicLocationLine
         ]}
         primaryAction={{ label: "Edit Account", onClick: () => setAccountEditorOpen(true) }}
         secondaryAction={ownerShopId ? { label: "Public Profile", href: "/dashboard/owner/public-profile" } : undefined}
