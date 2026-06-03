@@ -663,7 +663,7 @@ function cleanText(value?: string | null) {
 }
 
 function normalizeSearchText(value: string) {
-  return value.trim().replace(/[%_,]/g, " ").replace(/\s+/g, " ");
+  return value.trim().replace(/^@+/, "").replace(/[%_,]/g, " ").replace(/\s+/g, "");
 }
 
 function searchMatches(value: string | null | undefined, query: string) {

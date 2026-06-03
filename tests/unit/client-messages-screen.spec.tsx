@@ -277,6 +277,377 @@ describe("client messages screen", () => {
     expect(mutateAsync).not.toHaveBeenCalled();
   });
 
+  it("finds a barber public username from the main Messages search", () => {
+    useMessageParticipantSearchQueryMock.mockReturnValue({
+      data: {
+        results: [
+          {
+            id: "profile-barber",
+            participantId: "profile-barber",
+            displayName: "Phillip mcgee",
+            resultType: "barber",
+            participantType: "barber",
+            role: "barber_user",
+            avatarUrl: "https://cdn.bvrb3r.test/phillip.jpg",
+            publicUsername: "phillipforsure",
+            publicContextLine: "8516 Island Breeze Ln - Temple Terrace, FL 33607",
+            publicProfileHref: "/barber/phillipforsure",
+            profileHref: "/barber/phillipforsure",
+            bookingHref: "/booking/new?barber=phillipforsure&barberId=barber-43b3cda2",
+            existingThreadId: null,
+            createThreadInput: {
+              threadType: "client_barber",
+              profileId: "profile-barber"
+            },
+            subtitle: "Barber"
+          }
+        ]
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="client"
+        basePath="/dashboard/client/messages"
+        title="Messages"
+        subtitle="Your conversations, appointments, and support."
+      />
+    );
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Search messages" }), {
+      target: { value: "@phillipforsure" }
+    });
+
+    expect(screen.getByText("People and businesses")).toBeInTheDocument();
+    expect(screen.getByText("@phillipforsure")).toBeInTheDocument();
+    expect(screen.getByText("8516 Island Breeze Ln - Temple Terrace, FL 33607")).toBeInTheDocument();
+    expect(screen.getByText("Start")).toBeInTheDocument();
+    expect(screen.queryByText("Phillip mcgee")).not.toBeInTheDocument();
+  });
+
+  it("searches public usernames without requiring the at sign", () => {
+    useMessageParticipantSearchQueryMock.mockReturnValue({
+      data: {
+        results: [
+          {
+            id: "profile-barber",
+            participantId: "profile-barber",
+            displayName: "Phillip mcgee",
+            resultType: "barber",
+            participantType: "barber",
+            role: "barber_user",
+            avatarUrl: null,
+            publicUsername: "phillipforsure",
+            publicContextLine: "8516 Island Breeze Ln - Temple Terrace, FL 33607",
+            publicProfileHref: "/barber/phillipforsure",
+            profileHref: "/barber/phillipforsure",
+            existingThreadId: null,
+            createThreadInput: {
+              threadType: "client_barber",
+              profileId: "profile-barber"
+            },
+            subtitle: "Barber"
+          }
+        ]
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="client"
+        basePath="/dashboard/client/messages"
+        title="Messages"
+        subtitle="Your conversations, appointments, and support."
+      />
+    );
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Search messages" }), {
+      target: { value: "phillipforsure" }
+    });
+
+    expect(screen.getByText("@phillipforsure")).toBeInTheDocument();
+  });
+
+  it("finds a shop public username from the main Messages search", () => {
+    useMessageParticipantSearchQueryMock.mockReturnValue({
+      data: {
+        results: [
+          {
+            id: "shop-the-bvrb3r-shop",
+            participantId: "shop-the-bvrb3r-shop",
+            displayName: "The BVRB3R Shop",
+            resultType: "shop",
+            participantType: "shop",
+            role: "shop_owner_user",
+            avatarUrl: "https://cdn.bvrb3r.test/shop-logo.jpg",
+            publicUsername: "thebvrb3rshopuniversitymall",
+            publicContextLine: "2172 University Square Mall - Tampa, FL 33612",
+            publicProfileHref: "/shop/thebvrb3rshopuniversitymall",
+            profileHref: "/shop/thebvrb3rshopuniversitymall",
+            existingThreadId: null,
+            createThreadInput: {
+              threadType: "client_shop",
+              profileId: "profile-owner",
+              locationId: "shop-the-bvrb3r-shop"
+            },
+            subtitle: "Shop"
+          }
+        ]
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="client"
+        basePath="/dashboard/client/messages"
+        title="Messages"
+        subtitle="Your conversations, appointments, and support."
+      />
+    );
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Search messages" }), {
+      target: { value: "@thebvrb3rshopuniversitymall" }
+    });
+
+    expect(screen.getByText("@thebvrb3rshopuniversitymall")).toBeInTheDocument();
+    expect(screen.getByText("2172 University Square Mall - Tampa, FL 33612")).toBeInTheDocument();
+    expect(screen.queryByText("The BVRB3R Shop")).not.toBeInTheDocument();
+  });
+
+  it("shows existing conversations before public identity search results", () => {
+    useMessageThreadsQueryMock.mockReturnValue({
+      data: {
+        available: true,
+        viewer: {
+          profileId: "profile-client",
+          fullName: "Jordan Ellis",
+          role: "client"
+        },
+        threads: [buildThread()],
+        eligibleAppointments: [],
+        eligibleContacts: [],
+        broadcastTargets: []
+      },
+      isLoading: false,
+      error: null
+    });
+    useMessageParticipantSearchQueryMock.mockReturnValue({
+      data: {
+        results: [
+          {
+            id: "profile-shop",
+            participantId: "profile-shop",
+            displayName: "The BVRB3R Shop",
+            resultType: "shop",
+            participantType: "shop",
+            role: "shop_owner_user",
+            avatarUrl: null,
+            publicUsername: "thebvrb3rshopuniversitymall",
+            publicContextLine: "2172 University Square Mall - Tampa, FL 33612",
+            publicProfileHref: "/shop/thebvrb3rshopuniversitymall",
+            profileHref: "/shop/thebvrb3rshopuniversitymall",
+            existingThreadId: null,
+            createThreadInput: {
+              threadType: "client_shop",
+              profileId: "profile-shop",
+              locationId: "shop-the-bvrb3r-shop"
+            },
+            subtitle: "Shop"
+          }
+        ]
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="client"
+        basePath="/dashboard/client/messages"
+        title="Messages"
+        subtitle="Your conversations, appointments, and support."
+      />
+    );
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Search messages" }), {
+      target: { value: "phillipforsure" }
+    });
+
+    expect(screen.getByText("Existing conversations")).toBeInTheDocument();
+    expect(screen.getByText("People and businesses")).toBeInTheDocument();
+    const existingHeader = screen.getByText("Existing conversations");
+    const peopleHeader = screen.getByText("People and businesses");
+    expect(existingHeader.compareDocumentPosition(peopleHeader) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("opens an existing thread from a main search public identity result", () => {
+    const push = vi.fn();
+    useRouterMock.mockReturnValue({
+      push,
+      replace: vi.fn()
+    });
+    useMessageParticipantSearchQueryMock.mockReturnValue({
+      data: {
+        results: [
+          {
+            id: "profile-barber",
+            participantId: "profile-barber",
+            displayName: "Phillip mcgee",
+            resultType: "barber",
+            participantType: "barber",
+            role: "barber_user",
+            avatarUrl: null,
+            publicUsername: "phillipforsure",
+            publicContextLine: "8516 Island Breeze Ln - Temple Terrace, FL 33607",
+            publicProfileHref: "/barber/phillipforsure",
+            profileHref: "/barber/phillipforsure",
+            existingThreadId: "thread-appointment-1",
+            createThreadInput: {
+              threadType: "client_barber",
+              profileId: "profile-barber"
+            },
+            subtitle: "Barber"
+          }
+        ]
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="client"
+        basePath="/dashboard/client/messages"
+        title="Messages"
+        subtitle="Your conversations, appointments, and support."
+      />
+    );
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Search messages" }), {
+      target: { value: "@phillipforsure" }
+    });
+    fireEvent.click(screen.getByText("@phillipforsure"));
+
+    expect(push).toHaveBeenCalledWith("/dashboard/client/messages/thread-appointment-1", { scroll: false });
+  });
+
+  it("creates a new thread from a main search public identity result", async () => {
+    const push = vi.fn();
+    const mutateAsync = vi.fn().mockResolvedValue({
+      thread: {
+        id: "thread-new-shop"
+      }
+    });
+    useRouterMock.mockReturnValue({
+      push,
+      replace: vi.fn()
+    });
+    useCreateMessageThreadMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync
+    });
+    useMessageParticipantSearchQueryMock.mockReturnValue({
+      data: {
+        results: [
+          {
+            id: "profile-shop",
+            participantId: "profile-shop",
+            displayName: "The BVRB3R Shop",
+            resultType: "shop",
+            participantType: "shop",
+            role: "shop_owner_user",
+            avatarUrl: null,
+            publicUsername: "thebvrb3rshopuniversitymall",
+            publicContextLine: "2172 University Square Mall - Tampa, FL 33612",
+            publicProfileHref: "/shop/thebvrb3rshopuniversitymall",
+            profileHref: "/shop/thebvrb3rshopuniversitymall",
+            existingThreadId: null,
+            createThreadInput: {
+              threadType: "client_shop",
+              profileId: "profile-shop",
+              locationId: "shop-the-bvrb3r-shop"
+            },
+            subtitle: "Shop"
+          }
+        ]
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="client"
+        basePath="/dashboard/client/messages"
+        title="Messages"
+        subtitle="Your conversations, appointments, and support."
+      />
+    );
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Search messages" }), {
+      target: { value: "@thebvrb3rshopuniversitymall" }
+    });
+    fireEvent.click(screen.getByText("@thebvrb3rshopuniversitymall"));
+
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledWith({
+        threadType: "client_shop",
+        profileId: "profile-shop",
+        locationId: "shop-the-bvrb3r-shop"
+      });
+    });
+    expect(push).toHaveBeenCalledWith("/dashboard/client/messages/thread-new-shop", { scroll: false });
+  });
+
+  it("shows a public username no-result state from the main Messages search", () => {
+    render(
+      <MessagingInboxScreen
+        surface="client"
+        basePath="/dashboard/client/messages"
+        title="Messages"
+        subtitle="Your conversations, appointments, and support."
+      />
+    );
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Search messages" }), {
+      target: { value: "@missinghandle" }
+    });
+
+    expect(screen.getByText("No matching people or messages.")).toBeInTheDocument();
+    expect(screen.getByText("Try a public username like @phillipforsure.")).toBeInTheDocument();
+  });
+
+  it("shows a clear public username search error", () => {
+    useMessageParticipantSearchQueryMock.mockReturnValue({
+      data: {
+        results: []
+      },
+      isLoading: false,
+      error: new Error("Search failed")
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="client"
+        basePath="/dashboard/client/messages"
+        title="Messages"
+        subtitle="Your conversations, appointments, and support."
+      />
+    );
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Search messages" }), {
+      target: { value: "@phillipforsure" }
+    });
+
+    expect(screen.getByText("Unable to search public usernames. Try again.")).toBeInTheDocument();
+  });
+
   it("renders participant search results and opens an existing barber thread", () => {
     const push = vi.fn();
     const mutateAsync = vi.fn();

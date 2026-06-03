@@ -484,11 +484,65 @@ function ThreadSkeleton() {
   );
 }
 
+function getParticipantSearchDisplay(result: MessagingParticipantSearchResult) {
+  if (result.resultType === "support") {
+    return "BVRB3R Support";
+  }
+
+  const username = result.publicUsername?.trim().replace(/^@+/, "");
+  return username ? `@${username}` : result.displayName;
+}
+
 function RolePill({ label }: { label: string }) {
   return (
     <span className="inline-flex h-5 items-center rounded-[6px] border border-white/10 bg-white/[0.035] px-1.5 text-[10px] font-bold uppercase text-[#d7ffab]">
       {label}
     </span>
+  );
+}
+
+function ParticipantSearchResultRow({
+  result,
+  disabled,
+  onSelect
+}: {
+  result: MessagingParticipantSearchResult;
+  disabled: boolean;
+  onSelect: (result: MessagingParticipantSearchResult) => void;
+}) {
+  const publicDisplayName = getParticipantSearchDisplay(result);
+  const username = result.publicUsername?.trim().replace(/^@+/, "");
+  const secondaryUsername = username && publicDisplayName !== `@${username}` ? `@${username}` : null;
+
+  return (
+    <button
+      type="button"
+      className="grid min-h-[68px] w-full grid-cols-[auto_1fr_auto] items-center gap-3 rounded-lg border border-white/8 bg-white/[0.025] px-3 py-2 text-left transition hover:border-[#a3ff12]/28 hover:bg-white/[0.05] disabled:opacity-55"
+      disabled={disabled}
+      onClick={() => onSelect(result)}
+    >
+      <Avatar
+        src={getAvatarImageUrl(result.avatarUrl, result.role, result.resultType === "support" ? "support" : undefined)}
+        alt={publicDisplayName}
+        initials={getAvatarInitials(publicDisplayName, result.role, result.resultType === "support" ? "support" : undefined)}
+        className="h-11 w-11 text-sm"
+      />
+      <span className="min-w-0">
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-sm font-bold text-white">{publicDisplayName}</span>
+          <RolePill label={result.resultType === "support" ? "Support" : result.resultType === "shop" ? "Shop" : result.resultType === "client" ? "Client" : "Barber"} />
+        </span>
+        {secondaryUsername ? (
+          <span className="mt-0.5 block truncate text-xs font-bold text-[#d7ffab]/85">{secondaryUsername}</span>
+        ) : null}
+        <span className="mt-0.5 block truncate text-xs text-white/48">
+          {result.existingThreadId ? "Existing conversation" : result.publicContextLine ?? result.subtitle ?? "Start a conversation"}
+        </span>
+      </span>
+      <span className="rounded-lg border border-[#a3ff12]/20 bg-[#a3ff12]/10 px-2.5 py-1 text-[11px] font-black text-[#d7ffab]">
+        {result.existingThreadId ? "Open" : "Start"}
+      </span>
+    </button>
   );
 }
 
@@ -1126,48 +1180,12 @@ function ComposeModal({
           ) : results.length ? (
             <div className="space-y-2">
               {results.map((result) => (
-                (() => {
-                  const publicDisplayName = result.resultType === "support"
-                    ? "BVRB3R Support"
-                    : result.publicUsername
-                      ? `@${result.publicUsername.replace(/^@+/, "")}`
-                      : result.displayName;
-                  const secondaryUsername = result.publicUsername && publicDisplayName !== `@${result.publicUsername.replace(/^@+/, "")}`
-                    ? `@${result.publicUsername.replace(/^@+/, "")}`
-                    : null;
-
-                  return (
-                <button
+                <ParticipantSearchResultRow
                   key={`${result.resultType}-${result.id}`}
-                  type="button"
-                  className="grid min-h-[68px] w-full grid-cols-[auto_1fr_auto] items-center gap-3 rounded-lg border border-white/8 bg-white/[0.025] px-3 py-2 text-left transition hover:border-[#a3ff12]/28 hover:bg-white/[0.05] disabled:opacity-55"
                   disabled={selectPending}
-                  onClick={() => onSelect(result)}
-                >
-                  <Avatar
-                    src={getAvatarImageUrl(result.avatarUrl, result.role, result.resultType === "support" ? "support" : undefined)}
-                    alt={publicDisplayName}
-                    initials={getAvatarInitials(publicDisplayName, result.role, result.resultType === "support" ? "support" : undefined)}
-                    className="h-11 w-11 text-sm"
-                  />
-                  <span className="min-w-0">
-                    <span className="flex min-w-0 items-center gap-2">
-                      <span className="truncate text-sm font-bold text-white">{publicDisplayName}</span>
-                      <RolePill label={result.resultType === "support" ? "Support" : result.resultType === "shop" ? "Shop" : result.resultType === "client" ? "Client" : "Barber"} />
-                    </span>
-                    {secondaryUsername ? (
-                      <span className="mt-0.5 block truncate text-xs font-bold text-[#d7ffab]/85">{secondaryUsername}</span>
-                    ) : null}
-                    <span className="mt-0.5 block truncate text-xs text-white/48">
-                      {result.existingThreadId ? "Existing conversation" : result.publicContextLine ?? result.subtitle ?? "Start a conversation"}
-                    </span>
-                  </span>
-                  <span className="rounded-lg border border-[#a3ff12]/20 bg-[#a3ff12]/10 px-2.5 py-1 text-[11px] font-black text-[#d7ffab]">
-                    {result.existingThreadId ? "Open" : "Start"}
-                  </span>
-                </button>
-                  );
-                })()
+                  result={result}
+                  onSelect={onSelect}
+                />
               ))}
             </div>
           ) : (
@@ -1240,6 +1258,8 @@ export function MessagingInboxScreen({
   const activeThreadId = usesModalThreadView ? modalThreadId ?? undefined : selectedThreadId ?? threads[0]?.id;
   const threadQuery = useMessageThreadQuery(activeThreadId);
   const participantSearchQuery = useMessageParticipantSearchQuery(participantSearch, composeOpen && available);
+  const isUnifiedSearchActive = threadSearch.trim().length >= 2;
+  const mainParticipantSearchQuery = useMessageParticipantSearchQuery(threadSearch, isUnifiedSearchActive && available);
   const sendMessageMutation = useSendMessageMutation(activeThreadId);
   const approvePaymentRequestMutation = useApprovePosPaymentRequestMutation(activeThreadId);
   const declinePaymentRequestMutation = useDeclinePosPaymentRequestMutation(activeThreadId);
@@ -1263,6 +1283,12 @@ export function MessagingInboxScreen({
     () => filterThreads(threads, threadFilter, threadSearch, surface),
     [surface, threadFilter, threadSearch, threads]
   );
+  const mainSearchResults = useMemo(() => {
+    const displayedThreadIds = new Set(displayedThreads.map((thread) => thread.id));
+    return (mainParticipantSearchQuery.data?.results ?? []).filter((result) => {
+      return !result.existingThreadId || !displayedThreadIds.has(result.existingThreadId);
+    });
+  }, [displayedThreads, mainParticipantSearchQuery.data?.results]);
 
   useEffect(() => {
     setModalThreadId(selectedThreadId ?? null);
@@ -1516,19 +1542,63 @@ export function MessagingInboxScreen({
                   <ThreadSkeleton />
                   <ThreadSkeleton />
                 </>
-              ) : displayedThreads.length ? displayedThreads.map((thread) => (
-                <ThinThreadRow
-                  key={thread.id}
-                  thread={thread}
-                  basePath={basePath}
-                  active={thread.id === activeThreadId}
-                  onOpen={usesModalThreadView ? handleOpenThread : undefined}
-                />
-              )) : (
-                <div className="rounded-lg border border-dashed border-white/10 bg-white/[0.025] p-4 text-sm leading-6 text-white/58">
-                  <p className="font-bold text-white/72">{threads.length ? "No matching messages." : copy.emptyTitle}</p>
-                  {!threads.length ? <p className="mt-1">{copy.emptyThreadCopy}</p> : null}
-                </div>
+              ) : (
+                <>
+                  {isUnifiedSearchActive && displayedThreads.length ? (
+                    <p className="px-1 text-[11px] font-black uppercase tracking-[0.18em] text-white/38">Existing conversations</p>
+                  ) : null}
+
+                  {displayedThreads.length ? displayedThreads.map((thread) => (
+                    <ThinThreadRow
+                      key={thread.id}
+                      thread={thread}
+                      basePath={basePath}
+                      active={thread.id === activeThreadId}
+                      onOpen={usesModalThreadView ? handleOpenThread : undefined}
+                    />
+                  )) : null}
+
+                  {isUnifiedSearchActive ? (
+                    <div className={displayedThreads.length ? "pt-2" : undefined}>
+                      {displayedThreads.length || mainSearchResults.length || mainParticipantSearchQuery.isLoading || mainParticipantSearchQuery.error ? (
+                        <p className="mb-2 px-1 text-[11px] font-black uppercase tracking-[0.18em] text-white/38">People and businesses</p>
+                      ) : null}
+
+                      {mainParticipantSearchQuery.error ? (
+                        <FeedbackBanner tone="error" message="Unable to search public usernames. Try again." />
+                      ) : mainParticipantSearchQuery.isLoading ? (
+                        <div className="space-y-2">
+                          <ThreadSkeleton />
+                          <ThreadSkeleton />
+                        </div>
+                      ) : mainSearchResults.length ? (
+                        <div className="space-y-2">
+                          {mainSearchResults.map((result) => (
+                            <ParticipantSearchResultRow
+                              key={`${result.resultType}-${result.id}`}
+                              disabled={createThreadMutation.isPending}
+                              result={result}
+                              onSelect={(selectedResult) => void handleSelectParticipant(selectedResult)}
+                            />
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {!displayedThreads.length && (!isUnifiedSearchActive || (!mainSearchResults.length && !mainParticipantSearchQuery.isLoading && !mainParticipantSearchQuery.error)) ? (
+                    <div className="rounded-lg border border-dashed border-white/10 bg-white/[0.025] p-4 text-sm leading-6 text-white/58">
+                      <p className="font-bold text-white/72">
+                        {isUnifiedSearchActive ? "No matching people or messages." : threads.length ? "No matching messages." : copy.emptyTitle}
+                      </p>
+                      {isUnifiedSearchActive ? (
+                        <p className="mt-1">Try a public username like @phillipforsure.</p>
+                      ) : !threads.length ? (
+                        <p className="mt-1">{copy.emptyThreadCopy}</p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </>
               )}
             </div>
 
