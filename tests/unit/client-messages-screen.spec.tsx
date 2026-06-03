@@ -1276,6 +1276,117 @@ describe("client messages screen", () => {
     expect(within(composeModal).queryByText("Phillip mcgee")).not.toBeInTheDocument();
   });
 
+  it("shows shop public username results with View Profile and Message actions from New Message", () => {
+    const mutateAsync = vi.fn().mockResolvedValue({
+      thread: {
+        id: "thread-shop-1"
+      }
+    });
+    useCreateMessageThreadMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync
+    });
+    useMessageParticipantSearchQueryMock.mockReturnValue({
+      data: {
+        results: [
+          {
+            id: "shop-the-bvrb3r-shop",
+            participantId: "shop-the-bvrb3r-shop",
+            displayName: "The BVRB3R Shop",
+            resultType: "shop",
+            participantType: "shop",
+            role: "shop_owner_user",
+            avatarUrl: "https://cdn.bvrb3r.test/shop-logo.jpg",
+            publicUsername: "thebvrb3rshopuniversitymall",
+            publicContextLine: "2172 University Square Mall - Tampa, FL 33612",
+            publicProfileHref: "/shop/thebvrb3rshopuniversitymall",
+            profileHref: "/shop/thebvrb3rshopuniversitymall",
+            existingThreadId: null,
+            createThreadInput: {
+              threadType: "client_shop",
+              profileId: "profile-owner",
+              locationId: "shop-the-bvrb3r-shop"
+            },
+            subtitle: "Shop"
+          }
+        ]
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="client"
+        basePath="/dashboard/client/messages"
+        title="Messages"
+        subtitle="Barbers, shops, bookings, and support."
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "New Message" }));
+    fireEvent.change(screen.getByPlaceholderText("Search @username, barber, shop, or client"), {
+      target: { value: "@thebvrb" }
+    });
+
+    const composeModal = screen.getByTestId("message-compose-modal");
+    expect(within(composeModal).getByAltText("@thebvrb3rshopuniversitymall")).toHaveAttribute("src", "https://cdn.bvrb3r.test/shop-logo.jpg");
+    expect(within(composeModal).getByText("@thebvrb3rshopuniversitymall")).toBeInTheDocument();
+    expect(within(composeModal).getByText("Shop")).toBeInTheDocument();
+    expect(within(composeModal).getByText("2172 University Square Mall - Tampa, FL 33612")).toBeInTheDocument();
+    expect(within(composeModal).getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/shop/thebvrb3rshopuniversitymall");
+    expect(within(composeModal).getByRole("button", { name: "Message" })).toBeInTheDocument();
+    expect(within(composeModal).queryByText("The BVRB3R Shop")).not.toBeInTheDocument();
+  });
+
+  it("keeps an owner's own shop visible but disables Message", () => {
+    useMessageParticipantSearchQueryMock.mockReturnValue({
+      data: {
+        results: [
+          {
+            id: "shop-the-bvrb3r-shop",
+            participantId: "shop-the-bvrb3r-shop",
+            displayName: "The BVRB3R Shop",
+            resultType: "shop",
+            participantType: "shop",
+            role: "shop_owner_user",
+            avatarUrl: null,
+            publicUsername: "thebvrb3rshopuniversitymall",
+            publicContextLine: "2172 University Square Mall - Tampa, FL 33612",
+            publicProfileHref: "/shop/thebvrb3rshopuniversitymall",
+            profileHref: "/shop/thebvrb3rshopuniversitymall",
+            existingThreadId: null,
+            createThreadInput: null,
+            messageDisabledReason: "This is your shop.",
+            subtitle: "Shop"
+          }
+        ]
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="shop"
+        basePath="/dashboard/owner/messages"
+        title="Messages"
+        subtitle="Clients, barbers, team, bookings, and support."
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "New Message" }));
+    fireEvent.change(screen.getByPlaceholderText("Search @username, barber, shop, or client"), {
+      target: { value: "THE BVRB" }
+    });
+
+    const composeModal = screen.getByTestId("message-compose-modal");
+    expect(within(composeModal).getByText("@thebvrb3rshopuniversitymall")).toBeInTheDocument();
+    expect(within(composeModal).getByText("This is your shop.")).toBeInTheDocument();
+    expect(within(composeModal).getByRole("button", { name: "Message" })).toBeDisabled();
+    expect(within(composeModal).getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/shop/thebvrb3rshopuniversitymall");
+  });
+
   it("routes straight into an existing support thread when requested", async () => {
     const replace = vi.fn();
     useRouterMock.mockReturnValue({

@@ -75,6 +75,12 @@ type ShopPublicIdentityRow = {
   owner_profile_id?: string | null;
 };
 
+type PublicUsernameRegistryRow = {
+  owner_type: "client" | "barber" | "shop";
+  owner_id: string;
+  username: string;
+};
+
 type StaffLocationRow = {
   location_id: string;
   profile_id: string;
@@ -742,12 +748,16 @@ function cleanText(value?: string | null) {
 }
 
 function normalizeSearchText(value: string) {
-  return value.trim().replace(/^@+/, "").replace(/[%_,]/g, " ").replace(/\s+/g, "");
+  return value
+    .trim()
+    .replace(/^@+/, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "");
 }
 
 function searchMatches(value: string | null | undefined, query: string) {
-  const normalizedValue = value?.trim().replace(/^@+/, "").replace(/[%_,]/g, " ").replace(/\s+/g, "").toLowerCase();
-  return Boolean(normalizedValue?.includes(query.toLowerCase()));
+  const normalizedValue = normalizeSearchText(value ?? "");
+  return Boolean(normalizedValue?.includes(query));
 }
 
 function getThreadSearchKey(thread: MessagingThreadSummary) {
@@ -787,6 +797,60 @@ function buildExistingThreadLookup(threads: MessagingThreadSummary[]) {
   }
 
   return lookup;
+}
+
+function isOptionalPublicUsernameRegistryError(error: unknown) {
+  const code = typeof error === "object" && error && "code" in error ? String((error as { code?: unknown }).code ?? "") : "";
+  const message = error instanceof Error
+    ? error.message
+    : typeof error === "object" && error && "message" in error
+      ? String((error as { message?: unknown }).message ?? "")
+      : String(error ?? "");
+
+  return code === "42P01"
+    || code === "PGRST205"
+    || message.toLowerCase().includes("public_usernames")
+    || message.toLowerCase().includes("could not find the table");
+}
+
+async function readPublicUsernameRegistryMatches(supabase: SupabaseClient, normalizedQuery: string) {
+  const empty = {
+    clientProfileIds: [] as string[],
+    barberReferences: [] as string[],
+    shopIds: [] as string[]
+  };
+
+  if (!normalizedQuery) {
+    return empty;
+  }
+
+  try {
+    const result = await supabase
+      .from("public_usernames")
+      .select("owner_type, owner_id, username")
+      .ilike("username", `%${normalizedQuery}%`)
+      .limit(24);
+
+    if (result.error) {
+      throw result.error;
+    }
+
+    const rows = (result.data ?? []) as PublicUsernameRegistryRow[];
+    return {
+      clientProfileIds: unique(rows.filter((row) => row.owner_type === "client").map((row) => row.owner_id).filter(Boolean)),
+      barberReferences: unique(rows.filter((row) => row.owner_type === "barber").map((row) => row.owner_id).filter(Boolean)),
+      shopIds: unique(rows.filter((row) => row.owner_type === "shop").map((row) => row.owner_id).filter(Boolean))
+    };
+  } catch (error) {
+    if (!isOptionalPublicUsernameRegistryError(error)) {
+      console.warn("[messages] public_username_registry_search_failed", {
+        errorName: error instanceof Error ? error.name : "UnknownError",
+        errorMessage: error instanceof Error ? error.message : String(error)
+      });
+    }
+
+    return empty;
+  }
 }
 
 function formatCityState(city?: string | null, state?: string | null) {
@@ -2757,7 +2821,9 @@ export async function searchMessagingParticipants(user: UserAccount, query: stri
   }
 
   const results = new Map<string, MessagingParticipantSearchResult>();
-  const supportMatches = ["support", "bvrb3r", "help"].some((term) => term.includes(normalizedQuery.toLowerCase()) || normalizedQuery.toLowerCase().includes(term));
+  const registryMatches = await readPublicUsernameRegistryMatches(supabase, normalizedQuery);
+  const supportMatches = "bvrb3r".includes(normalizedQuery)
+    || ["support", "help"].some((term) => term.includes(normalizedQuery) || normalizedQuery.includes(term));
 
   if (supportMatches) {
     try {
@@ -2804,6 +2870,27 @@ export async function searchMessagingParticipants(user: UserAccount, query: stri
       }
     } catch (error) {
       recordParticipantSearchWarning(warnings, "barber", "Unable to search public barber messaging results.", error);
+    }
+
+    if (registryMatches.barberReferences.length) {
+      try {
+        const registryBarberProfileResult = await supabase
+          .from("barber_profiles")
+          .select("barber_reference, username, display_name, profile_photo_path, profile_photo_url, visibility_state, public_address, public_city, public_state, public_zip, service_area_label")
+          .in("barber_reference", registryMatches.barberReferences);
+
+        if (registryBarberProfileResult.error) {
+          throw registryBarberProfileResult.error;
+        }
+
+        for (const profile of ((registryBarberProfileResult.data ?? []) as BarberPublicProfileRow[])) {
+          if (!profile.visibility_state || profile.visibility_state === "public" || profile.visibility_state === "featured") {
+            barberProfilesByReference.set(profile.barber_reference, profile);
+          }
+        }
+      } catch (error) {
+        recordParticipantSearchWarning(warnings, "barber", "Unable to hydrate registry barber messaging results.", error);
+      }
     }
 
     try {
@@ -2919,17 +3006,45 @@ export async function searchMessagingParticipants(user: UserAccount, query: stri
   }
 
   try {
-    const clientProfileResult = await supabase
-      .from("profiles")
-      .select("id, full_name, email, role, public_username, profile_photo_path, profile_photo_url, public_city, public_state")
-      .or(`public_username.ilike.%${normalizedQuery}%,public_city.ilike.%${normalizedQuery}%,public_state.ilike.%${normalizedQuery}%`)
-      .limit(12);
+    const clientProfilesById = new Map<string, ProfileRow>();
+    try {
+      const clientProfileResult = await supabase
+        .from("profiles")
+        .select("id, full_name, email, role, public_username, profile_photo_path, profile_photo_url, public_city, public_state")
+        .or(`public_username.ilike.%${normalizedQuery}%,public_city.ilike.%${normalizedQuery}%,public_state.ilike.%${normalizedQuery}%`)
+        .limit(12);
 
-    if (clientProfileResult.error) {
-      throw clientProfileResult.error;
+      if (clientProfileResult.error) {
+        throw clientProfileResult.error;
+      }
+
+      for (const profile of ((clientProfileResult.data ?? []) as ProfileRow[])) {
+        clientProfilesById.set(profile.id, profile);
+      }
+    } catch (error) {
+      recordParticipantSearchWarning(warnings, "client", "Unable to search client messaging results.", error);
     }
 
-    const clientProfiles = ((clientProfileResult.data ?? []) as ProfileRow[])
+    if (registryMatches.clientProfileIds.length) {
+      try {
+        const registryClientProfileResult = await supabase
+          .from("profiles")
+          .select("id, full_name, email, role, public_username, profile_photo_path, profile_photo_url, public_city, public_state")
+          .in("id", registryMatches.clientProfileIds);
+
+        if (registryClientProfileResult.error) {
+          throw registryClientProfileResult.error;
+        }
+
+        for (const profile of ((registryClientProfileResult.data ?? []) as ProfileRow[])) {
+          clientProfilesById.set(profile.id, profile);
+        }
+      } catch (error) {
+        recordParticipantSearchWarning(warnings, "client", "Unable to hydrate registry client messaging results.", error);
+      }
+    }
+
+    const clientProfiles = [...clientProfilesById.values()]
       .filter((profile) => isClientRole(profile.role) && cleanText(profile.public_username));
 
     const clientRowsResult = clientProfiles.length
@@ -2980,35 +3095,71 @@ export async function searchMessagingParticipants(user: UserAccount, query: stri
   }
 
   try {
-    const shopResult = await supabase
-      .from("shops")
-      .select("id, name, public_username, profile_photo_path, profile_photo_url, address, city, state, zip_code, owner_profile_id")
-      .or(`name.ilike.%${normalizedQuery}%,public_username.ilike.%${normalizedQuery}%,city.ilike.%${normalizedQuery}%`)
-      .limit(8);
+    const shopsById = new Map<string, ShopPublicIdentityRow>();
+    try {
+      const shopResult = await supabase
+        .from("shops")
+        .select("id, name, public_username, profile_photo_path, profile_photo_url, address, city, state, zip_code, owner_profile_id")
+        .or(`name.ilike.%${normalizedQuery}%,public_username.ilike.%${normalizedQuery}%,city.ilike.%${normalizedQuery}%`)
+        .limit(8);
 
-    if (shopResult.error) {
-      throw shopResult.error;
-    }
-
-    const shopRows = (shopResult.data ?? []) as ShopPublicIdentityRow[];
-    const shopParticipantsByLocation = await readShopParticipantsByLocationIds(supabase, shopRows.map((row) => row.id));
-    for (const shop of shopRows) {
-      const primaryShopProfile = pickPrimaryShopProfile(shopParticipantsByLocation.get(shop.id) ?? []);
-      if (!primaryShopProfile && !shop.owner_profile_id) {
-        continue;
+      if (shopResult.error) {
+        throw shopResult.error;
       }
 
+      for (const shop of ((shopResult.data ?? []) as ShopPublicIdentityRow[])) {
+        shopsById.set(shop.id, shop);
+      }
+    } catch (error) {
+      recordParticipantSearchWarning(warnings, "shop", "Unable to search shop messaging results.", error);
+    }
+
+    if (registryMatches.shopIds.length) {
+      try {
+        const registryShopResult = await supabase
+          .from("shops")
+          .select("id, name, public_username, profile_photo_path, profile_photo_url, address, city, state, zip_code, owner_profile_id")
+          .in("id", registryMatches.shopIds);
+
+        if (registryShopResult.error) {
+          throw registryShopResult.error;
+        }
+
+        for (const shop of ((registryShopResult.data ?? []) as ShopPublicIdentityRow[])) {
+          shopsById.set(shop.id, shop);
+        }
+      } catch (error) {
+        recordParticipantSearchWarning(warnings, "shop", "Unable to hydrate registry shop messaging results.", error);
+      }
+    }
+
+    const shopRows = [...shopsById.values()]
+      .filter((shop) =>
+        searchMatches(shop.public_username, normalizedQuery)
+        || searchMatches(shop.name, normalizedQuery)
+        || searchMatches(shop.city, normalizedQuery)
+        || registryMatches.shopIds.includes(shop.id)
+      );
+    const shopParticipantsByLocation = await readShopParticipantsByLocationIds(supabase, shopRows.map((row) => row.id))
+      .catch((error) => {
+        recordParticipantSearchWarning(warnings, "shop", "Unable to resolve shop messaging participants.", error);
+        return new Map<string, ProfileRow[]>();
+      });
+    for (const shop of shopRows) {
+      const primaryShopProfile = pickPrimaryShopProfile(shopParticipantsByLocation.get(shop.id) ?? []);
       const metadata = buildShopMessagingMetadata(supabase, shop);
       const profileId = primaryShopProfile?.id ?? shop.owner_profile_id ?? shop.id;
-      const isOwnShop = profileId === actor.profile.id || shop.owner_profile_id === actor.profile.id;
+      const isOwnShop = primaryShopProfile?.id === actor.profile.id || shop.owner_profile_id === actor.profile.id || (actor.kind === "shop" && actor.locationIds?.includes(shop.id));
       const action = isOwnShop
-        ? { createThreadInput: null, messageDisabledReason: "This is you." }
-        : buildParticipantSearchAction({
-            actor,
-            targetType: "shop",
-            shopLocationId: shop.id,
-            shopContactProfileId: profileId
-          });
+        ? { createThreadInput: null, messageDisabledReason: "This is your shop." }
+        : primaryShopProfile || shop.owner_profile_id
+          ? buildParticipantSearchAction({
+              actor,
+              targetType: "shop",
+              shopLocationId: shop.id,
+              shopContactProfileId: profileId
+            })
+          : { createThreadInput: null, messageDisabledReason: "Messaging this shop is not available yet." };
       results.set(`shop:${shop.id}`, {
         id: shop.id,
         participantId: shop.id,
