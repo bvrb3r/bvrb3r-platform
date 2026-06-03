@@ -129,6 +129,7 @@ describe("BarberProfileScreen", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
   it("renders the final minimal barber profile studio without duplicated lower sections", () => {
@@ -302,6 +303,10 @@ describe("BarberProfileScreen", () => {
 
   it("saves barber public username through the shared profile media mutation", async () => {
     vi.useFakeTimers();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ available: true, reason: null })
+    }));
     let resolveSave: (() => void) | undefined;
     const mutateAsync = vi.fn(() => new Promise<void>((resolve) => {
       resolveSave = resolve;
@@ -321,6 +326,12 @@ describe("BarberProfileScreen", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Edit public username" }));
     fireEvent.change(screen.getByLabelText("Public username"), { target: { value: "phil-public" } });
+    await act(async () => {
+      vi.advanceTimersByTime(400);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByText("Username available.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     expect(screen.getByRole("button", { name: "Saving..." })).toBeDisabled();

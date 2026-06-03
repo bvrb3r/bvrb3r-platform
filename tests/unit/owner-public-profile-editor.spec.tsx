@@ -84,6 +84,7 @@ describe("OwnerPublicProfileEditor", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
   it("shows setup copy instead of a load error when the owner shop profile is incomplete", () => {
@@ -257,6 +258,10 @@ describe("OwnerPublicProfileEditor", () => {
 
   it("saves shop public username through the shared profile media mutation", async () => {
     vi.useFakeTimers();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ available: true, reason: null })
+    }));
     let resolveSave: (() => void) | undefined;
     const mutateAsync = vi.fn(() => new Promise<void>((resolve) => {
       resolveSave = resolve;
@@ -288,6 +293,12 @@ describe("OwnerPublicProfileEditor", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Edit public shop username" }));
     fireEvent.change(screen.getByLabelText("Public username"), { target: { value: "university-shop" } });
+    await act(async () => {
+      vi.advanceTimersByTime(400);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByText("Username available.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     expect(screen.getByRole("button", { name: "Saving..." })).toBeDisabled();

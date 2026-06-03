@@ -4,7 +4,27 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
-const RESERVED_HANDLES = new Set(["admin", "support", "bvrb3r", "help", "payments", "system", "official"]);
+const RESERVED_HANDLES = new Set([
+  "admin",
+  "support",
+  "bvrb3r",
+  "help",
+  "payments",
+  "system",
+  "official",
+  "login",
+  "signup",
+  "dashboard",
+  "api",
+  "client",
+  "barber",
+  "shop",
+  "owner",
+  "architect",
+  "settings",
+  "profile",
+  "public"
+]);
 
 export function validateProfileHandle(value: string) {
   const trimmed = value.trim();
@@ -27,6 +47,8 @@ export function ProfileUsernameEditModal({
   isSaving = false,
   isSaved = false,
   saveError,
+  availabilityMessage,
+  availabilityTone = "success",
   saveDisabledReason,
   onChange,
   onClose,
@@ -38,6 +60,8 @@ export function ProfileUsernameEditModal({
   isSaving?: boolean;
   isSaved?: boolean;
   saveError?: string | null;
+  availabilityMessage?: string | null;
+  availabilityTone?: "success" | "warning";
   saveDisabledReason?: string | null;
   onChange: (value: string) => void;
   onClose: () => void;
@@ -127,6 +151,8 @@ export function ProfileUsernameEditModal({
             <p className="mt-2 text-xs font-bold text-[#a3ff12]">Username saved.</p>
           ) : error || saveDisabledReason ? (
             <p className="mt-2 text-xs font-bold text-yellow-200">{error ?? saveDisabledReason}</p>
+          ) : availabilityMessage ? (
+            <p className={`mt-2 text-xs font-bold ${availabilityTone === "warning" ? "text-yellow-200" : "text-[#a3ff12]"}`}>{availabilityMessage}</p>
           ) : (
             <p className="mt-2 text-xs font-bold text-[#a3ff12]">Username ready.</p>
           )}

@@ -83,7 +83,15 @@ const model: ProfileStudioViewModel = {
 describe("ProfileStudioShell", () => {
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
+
+  function mockUsernameAvailability(result: { available: boolean; reason: string | null } = { available: true, reason: null }) {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(result)
+    }));
+  }
 
   it("renders role-provided studio sections without hardcoded barber copy", () => {
     render(
@@ -182,6 +190,7 @@ describe("ProfileStudioShell", () => {
   });
 
   it("renders the username editor as a top-layer portal with usable actions", async () => {
+    mockUsernameAvailability();
     const onUsernameSave = vi.fn();
     const previousOverflow = document.body.style.overflow;
 
@@ -217,6 +226,8 @@ describe("ProfileStudioShell", () => {
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
 
     fireEvent.change(usernameInput, { target: { value: "jordan-culture" } });
+    expect(screen.getByText("Checking username...")).toBeInTheDocument();
+    expect(await screen.findByText("Username available.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(onUsernameSave).toHaveBeenCalledWith("jordan-culture");
 
@@ -226,6 +237,7 @@ describe("ProfileStudioShell", () => {
   });
 
   it("keeps the username editor open briefly with saved confirmation before closing", async () => {
+    mockUsernameAvailability();
     let resolveSave: (() => void) | undefined;
     const onUsernameSave = vi.fn(() => new Promise<void>((resolve) => {
       resolveSave = resolve;
@@ -243,7 +255,10 @@ describe("ProfileStudioShell", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Edit public username" }));
-    fireEvent.change(await screen.findByLabelText("Public username"), { target: { value: "jordan-live" } });
+    const usernameInput = await screen.findByLabelText("Public username");
+    fireEvent.change(usernameInput, { target: { value: "jordan-live" } });
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    expect(await screen.findByText("Username available.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     expect(screen.getByRole("button", { name: "Saving..." })).toBeDisabled();
@@ -262,7 +277,31 @@ describe("ProfileStudioShell", () => {
     expect(screen.getByText("Public username saved. @jordan-live is live.")).toBeInTheDocument();
   });
 
+  it("shows taken username availability and disables Save", async () => {
+    mockUsernameAvailability({ available: false, reason: "taken" });
+
+    render(
+      <ProfileStudioShell
+        model={model}
+        backHref="/dashboard/client/more"
+        backLabel="Back to More"
+        usernameValue="jordan"
+        photoControl={<ProfileImageEditButton label="Update public photo" onUnavailable={vi.fn()} />}
+        onUsernameSave={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit public username" }));
+    const usernameInput = await screen.findByLabelText("Public username");
+    fireEvent.change(usernameInput, { target: { value: "taken-name" } });
+    expect(screen.getByText("Checking username...")).toBeInTheDocument();
+
+    expect(await screen.findByText("Username taken. Please choose a different username.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+
   it("keeps the username editor open and shows inline error after failed save", async () => {
+    mockUsernameAvailability();
     render(
       <ProfileStudioShell
         model={model}
@@ -275,7 +314,9 @@ describe("ProfileStudioShell", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Edit public username" }));
-    fireEvent.change(await screen.findByLabelText("Public username"), { target: { value: "jordan-error" } });
+    const usernameInput = await screen.findByLabelText("Public username");
+    fireEvent.change(usernameInput, { target: { value: "jordan-error" } });
+    expect(await screen.findByText("Username available.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     expect(await screen.findByText("Unable to save public username.")).toBeInTheDocument();

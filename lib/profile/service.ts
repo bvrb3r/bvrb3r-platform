@@ -307,7 +307,36 @@ function cleanPublicText(value?: string | null, maxLength = 300) {
   return trimmed ? trimmed.slice(0, maxLength) : null;
 }
 
-const RESERVED_PUBLIC_USERNAMES = new Set(["admin", "support", "bvrb3r", "help", "payments", "system", "official"]);
+export type PublicUsernameOwnerType = "client" | "barber" | "shop";
+export type PublicUsernameAvailabilityReason = "taken" | "reserved" | "invalid" | "unavailable" | null;
+
+export type PublicUsernameAvailability = {
+  available: boolean;
+  normalizedUsername: string;
+  reason: PublicUsernameAvailabilityReason;
+};
+
+const RESERVED_PUBLIC_USERNAMES = new Set([
+  "admin",
+  "support",
+  "bvrb3r",
+  "help",
+  "payments",
+  "system",
+  "official",
+  "login",
+  "signup",
+  "dashboard",
+  "api",
+  "client",
+  "barber",
+  "shop",
+  "owner",
+  "architect",
+  "settings",
+  "profile",
+  "public"
+]);
 
 function normalizePublicUsername(value?: string | null) {
   return value?.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "").slice(0, 32) ?? "";
@@ -324,17 +353,87 @@ function assertPublicUsername(value: string) {
   }
 
   if (RESERVED_PUBLIC_USERNAMES.has(username)) {
-    throw new ProfileMediaServiceError("That username is reserved.", 400);
+    throw new ProfileMediaServiceError("This username is reserved.", 400);
   }
 
   return username;
 }
 
+function isSupabaseMissingRelation(error: unknown) {
+  const code = (error as { code?: string } | null)?.code;
+  const message = (error as { message?: string } | null)?.message?.toLowerCase() ?? "";
+  return code === "42P01" || message.includes("public_usernames") || message.includes("claim_public_username");
+}
+
+function toUsernameClaimError(error: unknown) {
+  const code = (error as { code?: string } | null)?.code;
+  const message = (error as { message?: string } | null)?.message?.toLowerCase() ?? "";
+  if (code === "23505" || message.includes("username_taken") || message.includes("already taken")) {
+    return new ProfileMediaServiceError("Username taken. Please choose a different username.", 409);
+  }
+
+  if (message.includes("reserved_public_username")) {
+    return new ProfileMediaServiceError("This username is reserved.", 400);
+  }
+
+  if (message.includes("invalid_public_username") || message.includes("invalid_owner")) {
+    return new ProfileMediaServiceError("Use lowercase letters, numbers, hyphens, or underscores. No spaces.", 400);
+  }
+
+  if (isSupabaseMissingRelation(error)) {
+    console.error("[profile-public-username] global username registry migration is missing", {
+      code,
+      message: (error as { message?: string } | null)?.message
+    });
+    return new ProfileMediaServiceError("Username ownership registry is not installed. Apply the latest Supabase migration.", 500);
+  }
+
+  return new ProfileMediaServiceError("Unable to save username. Please try again.", 500);
+}
+
+async function claimPublicUsername(
+  supabase: SupabaseClient,
+  username: string,
+  owner: { type: PublicUsernameOwnerType; id: string },
+  changedByProfileId: string
+) {
+  const result = await supabase.rpc("claim_public_username", {
+    p_owner_type: owner.type,
+    p_owner_id: owner.id,
+    p_new_username: username,
+    p_changed_by_profile_id: changedByProfileId,
+    p_source: "profile_studio"
+  });
+
+  if (result.error) {
+    throw toUsernameClaimError(result.error);
+  }
+}
+
 async function assertPublicUsernameAvailable(
   supabase: SupabaseClient,
   username: string,
-  owner: { type: "client" | "barber" | "shop"; id: string }
+  owner: { type: PublicUsernameOwnerType; id: string }
 ) {
+  const registryResult = await supabase
+    .from("public_usernames")
+    .select("owner_type, owner_id, username")
+    .eq("username", username)
+    .maybeSingle();
+
+  if (!registryResult.error) {
+    const registryOwner = registryResult.data as { owner_type?: PublicUsernameOwnerType | null; owner_id?: string | null } | null;
+    if (!registryOwner || (registryOwner.owner_type === owner.type && registryOwner.owner_id === owner.id)) {
+      return;
+    }
+
+    throw new ProfileMediaServiceError("Username taken. Please choose a different username.", 409);
+  }
+
+  if (!isSupabaseMissingRelation(registryResult.error)) {
+    throw new ProfileMediaServiceError("Unable to check username availability.", 500);
+  }
+
   const [clientResult, barberResult, shopResult] = await Promise.all([
     supabase.from("profiles").select("id, public_username").eq("public_username", username).maybeSingle(),
     supabase.from("barber_profiles").select("barber_reference, username").eq("username", username).maybeSingle(),
@@ -353,7 +452,36 @@ async function assertPublicUsernameAvailable(
   const isOwnShop = owner.type === "shop" && shopOwner === owner.id;
 
   if ((clientOwner && !isOwnClient) || (barberOwner && !isOwnBarber) || (shopOwner && !isOwnShop)) {
-    throw new ProfileMediaServiceError("That username is already taken.", 409);
+    throw new ProfileMediaServiceError("Username taken. Please choose a different username.", 409);
+  }
+}
+
+export async function checkPublicUsernameAvailability(
+  usernameValue: string,
+  owner: { type: PublicUsernameOwnerType; id: string }
+): Promise<PublicUsernameAvailability> {
+  const username = normalizePublicUsername(usernameValue);
+  if (username.length < 3 || !/^[a-z0-9_-]+$/.test(username)) {
+    return { available: false, normalizedUsername: username, reason: "invalid" };
+  }
+
+  if (RESERVED_PUBLIC_USERNAMES.has(username)) {
+    return { available: false, normalizedUsername: username, reason: "reserved" };
+  }
+
+  const supabase = getSupabase();
+  if (!supabase) {
+    return { available: true, normalizedUsername: username, reason: null };
+  }
+
+  try {
+    await assertPublicUsernameAvailable(supabase, username, owner);
+    return { available: true, normalizedUsername: username, reason: null };
+  } catch (error) {
+    if (error instanceof ProfileMediaServiceError && error.status === 409) {
+      return { available: false, normalizedUsername: username, reason: "taken" };
+    }
+    return { available: false, normalizedUsername: username, reason: "unavailable" };
   }
 }
 
@@ -1215,7 +1343,7 @@ export async function mutateProfileMedia(user: UserAccount, input: ProfileMediaM
     case "set_client_public_username": {
       assertClientRole(user);
       const username = assertPublicUsername(input.username);
-      await assertPublicUsernameAvailable(supabase, username, { type: "client", id: profile.id });
+      await claimPublicUsername(supabase, username, { type: "client", id: profile.id }, profile.id);
       const result = await supabase
         .from("profiles")
         .update({
@@ -1350,7 +1478,7 @@ export async function mutateProfileMedia(user: UserAccount, input: ProfileMediaM
     case "set_barber_public_username": {
       const barberId = assertBarberRole(user);
       const username = assertPublicUsername(input.username);
-      await assertPublicUsernameAvailable(supabase, username, { type: "barber", id: barberId });
+      await claimPublicUsername(supabase, username, { type: "barber", id: barberId }, profile.id);
       const result = await supabase
         .from("barber_profiles")
         .upsert({
@@ -1470,7 +1598,7 @@ export async function mutateProfileMedia(user: UserAccount, input: ProfileMediaM
     case "set_shop_public_username": {
       const shopId = assertShopRole(user, managedShopIds, input.shopId);
       const username = assertPublicUsername(input.username);
-      await assertPublicUsernameAvailable(supabase, username, { type: "shop", id: shopId });
+      await claimPublicUsername(supabase, username, { type: "shop", id: shopId }, profile.id);
       const result = await supabase
         .from("shops")
         .update({

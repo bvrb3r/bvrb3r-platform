@@ -21,11 +21,12 @@ import { GlassCard, StatusBadge } from "@/design/components";
 import { cn } from "@/lib/utils";
 import { ProfileBioEditModal } from "@/components/profile-studio/profile-bio-edit-modal";
 import { ProfileContextEditModal, type ProfileContextField } from "@/components/profile-studio/profile-context-edit-modal";
-import { ProfileUsernameEditModal } from "@/components/profile-studio/profile-username-edit-modal";
+import { ProfileUsernameEditModal, validateProfileHandle } from "@/components/profile-studio/profile-username-edit-modal";
 
 export type ProfileStudioRole = "client" | "barber" | "shop_owner";
 export type ProfileStudioSeverity = "good" | "warning" | "neutral";
 type UsernameSaveState = "idle" | "saving" | "saved" | "error";
+type UsernameAvailabilityState = "current" | "idle" | "checking" | "available" | "taken" | "reserved" | "invalid" | "unavailable";
 
 export type ProfileStudioViewModel = {
   role: ProfileStudioRole;
@@ -186,6 +187,7 @@ export function ProfileStudioShell({
   const [usernameFeedback, setUsernameFeedback] = useState<string | null>(null);
   const [usernameSaveState, setUsernameSaveState] = useState<UsernameSaveState>("idle");
   const [usernameSaveError, setUsernameSaveError] = useState<string | null>(null);
+  const [usernameAvailability, setUsernameAvailability] = useState<UsernameAvailabilityState>("current");
   const [bioValue, setBioValue] = useState(model.hero.bio?.trim() ?? "");
   const [contextValue, setContextValue] = useState(model.hero.contextLine?.trim() ?? "");
   const previousHeroBioRef = useRef(model.hero.bio?.trim() ?? "");
@@ -216,12 +218,73 @@ export function ProfileStudioShell({
     : model.role === "barber"
       ? "Group your portfolio images into a public folder."
       : "Group your shop gallery images into a public folder.";
+  const normalizedCurrentUsername = usernameValue.trim().toLowerCase();
+  const normalizedDraftUsername = usernameDraft.trim().toLowerCase();
 
   useEffect(() => {
     if (!isUsernameModalOpen) {
       setUsernameDraft(usernameValue);
+      setUsernameAvailability("current");
     }
   }, [isUsernameModalOpen, usernameValue]);
+
+  useEffect(() => {
+    if (!isUsernameModalOpen || usernameSaveState === "saving" || usernameSaveState === "saved" || usernameSaveState === "error") {
+      return undefined;
+    }
+
+    const username = normalizedDraftUsername;
+    if (!username || username === normalizedCurrentUsername) {
+      setUsernameAvailability("current");
+      return undefined;
+    }
+
+    const localError = validateProfileHandle(username);
+    if (localError) {
+      setUsernameAvailability(localError.includes("reserved") ? "reserved" : "invalid");
+      return undefined;
+    }
+
+    setUsernameAvailability("checking");
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => {
+      const ownerType = model.role === "shop_owner" ? "shop" : model.role;
+      const params = new URLSearchParams({ username, ownerType });
+      fetch(`/api/profile/username/availability?${params.toString()}`, { signal: controller.signal })
+        .then(async (response) => {
+          if (!response.ok) {
+            throw new Error("availability_check_failed");
+          }
+          return response.json() as Promise<{ available?: boolean; reason?: string | null }>;
+        })
+        .then((result) => {
+          if (result.available) {
+            setUsernameAvailability("available");
+            return;
+          }
+
+          if (result.reason === "taken") {
+            setUsernameAvailability("taken");
+          } else if (result.reason === "reserved") {
+            setUsernameAvailability("reserved");
+          } else if (result.reason === "invalid") {
+            setUsernameAvailability("invalid");
+          } else {
+            setUsernameAvailability("unavailable");
+          }
+        })
+        .catch((error) => {
+          if ((error as { name?: string }).name !== "AbortError") {
+            setUsernameAvailability("unavailable");
+          }
+        });
+    }, 400);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [isUsernameModalOpen, model.role, normalizedCurrentUsername, normalizedDraftUsername, usernameSaveState]);
 
   useEffect(() => () => {
     if (usernameCloseTimerRef.current) {
@@ -274,6 +337,7 @@ export function ProfileStudioShell({
     }
     setUsernameSaveState("idle");
     setUsernameSaveError(null);
+    setUsernameAvailability("current");
     setIsUsernameModalOpen(true);
   }
 
@@ -288,6 +352,55 @@ export function ProfileStudioShell({
     setIsUsernameModalOpen(false);
     setUsernameSaveState("idle");
     setUsernameSaveError(null);
+    setUsernameAvailability("current");
+  }
+
+  function handleUsernameDraftChange(value: string) {
+    setUsernameDraft(value);
+    setUsernameSaveError(null);
+    setUsernameSaveState("idle");
+    const next = value.trim().toLowerCase();
+    if (!next || next === normalizedCurrentUsername) {
+      setUsernameAvailability("current");
+      return;
+    }
+
+    const localError = validateProfileHandle(next);
+    if (localError) {
+      setUsernameAvailability(localError.includes("reserved") ? "reserved" : "invalid");
+    } else {
+      setUsernameAvailability("checking");
+    }
+  }
+
+  function usernameAvailabilityMessage() {
+    switch (usernameAvailability) {
+      case "checking":
+        return "Checking username...";
+      case "available":
+        return "Username available.";
+      case "current":
+        return "Username ready.";
+      default:
+        return null;
+    }
+  }
+
+  function usernameAvailabilitySaveBlocker() {
+    switch (usernameAvailability) {
+      case "checking":
+        return "Checking username...";
+      case "taken":
+        return "Username taken. Please choose a different username.";
+      case "reserved":
+        return "This username is reserved.";
+      case "invalid":
+        return "Use lowercase letters, numbers, hyphens, or underscores. No spaces.";
+      case "unavailable":
+        return "Unable to check username availability.";
+      default:
+        return null;
+    }
   }
 
   async function handleUsernameSave(value: string) {
@@ -295,10 +408,11 @@ export function ProfileStudioShell({
     setUsernameSaveError(null);
     setUsernameFeedback(null);
     try {
-      onUsernameChange?.(value);
       await onUsernameSave?.(value);
       setUsernameDraft(value);
+      onUsernameChange?.(value);
       setUsernameSaveState("saved");
+      setUsernameAvailability("current");
       usernameCloseTimerRef.current = window.setTimeout(() => {
         setIsUsernameModalOpen(false);
         setUsernameSaveState("idle");
@@ -629,8 +743,10 @@ export function ProfileStudioShell({
           isSaving={usernameSaveState === "saving" || Boolean(isSavingUsername)}
           isSaved={usernameSaveState === "saved"}
           saveError={usernameSaveError}
-          saveDisabledReason={model.username.saveUnavailableReason ?? (!onUsernameSave ? "Handle saving is not connected yet." : null)}
-          onChange={setUsernameDraft}
+          availabilityMessage={usernameAvailabilityMessage()}
+          availabilityTone={usernameAvailability === "checking" ? "warning" : "success"}
+          saveDisabledReason={model.username.saveUnavailableReason ?? (!onUsernameSave ? "Handle saving is not connected yet." : usernameAvailabilitySaveBlocker())}
+          onChange={handleUsernameDraftChange}
           onClose={closeUsernameModal}
           onSave={handleUsernameSave}
         />
