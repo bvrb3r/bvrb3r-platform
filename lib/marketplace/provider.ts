@@ -600,7 +600,7 @@ async function readSupabaseRuntime(supabase: SupabaseClient): Promise<Marketplac
       barberProfiles: profileRows.map((row: any) => {
         const cityState = [row.public_city, row.public_state].filter(Boolean).join(", ");
         const cityStateZip = [cityState, row.public_zip].filter(Boolean).join(" ");
-        const publicServiceLocation = [row.public_address, cityStateZip].filter(Boolean).join(" / ");
+        const publicServiceLocation = [row.public_address, cityStateZip].filter(Boolean).join(" - ");
         return {
         id: row.id,
         barberId: row.barber_reference,

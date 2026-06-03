@@ -87,7 +87,7 @@ function formatFreelanceLocation(profile: BarberStudioProfile | null, fallback: 
   const zip = profileData?.publicZip?.trim() ?? "";
   const cityState = [city, state].filter(Boolean).join(", ");
   const cityStateZip = [cityState, zip].filter(Boolean).join(" ");
-  return [address, cityStateZip].filter(Boolean).join(" / ")
+  return [address, cityStateZip].filter(Boolean).join(" - ")
     || profileData?.serviceAreaLabel?.trim()
     || fallback;
 }
@@ -117,7 +117,8 @@ export function buildBarberProfileStudioViewModel({
   identityLine,
   shopLabel,
   publicProfileHref,
-  username
+  username,
+  isLocationLocked = Boolean(profile?.shop)
 }: {
   profile: BarberStudioProfile | null;
   barberName: string;
@@ -130,12 +131,12 @@ export function buildBarberProfileStudioViewModel({
   shopLabel: string;
   publicProfileHref: string | null;
   username: string;
+  isLocationLocked?: boolean;
 }): ProfileStudioViewModel {
   const posts = portfolioAssets.length;
   const bookings = profile?.proof?.bookingsCompleted ?? 0;
   const followers = profile?.proof?.followCount ?? 0;
-  const isShopConnected = Boolean(profile?.shop);
-  const contextLine = isShopConnected
+  const contextLine = isLocationLocked
     ? formatShopControlledLocation(profile, shopLabel)
     : formatFreelanceLocation(profile, shopLabel === "Independent barber" ? "" : shopLabel) || "Add service location.";
 
@@ -157,8 +158,8 @@ export function buildBarberProfileStudioViewModel({
       badge: reputationLabel,
       bio: identityLine,
       contextLine,
-      contextEditable: !isShopConnected,
-      contextLocked: isShopConnected,
+      contextEditable: !isLocationLocked,
+      contextLocked: isLocationLocked,
       contextActionLabel: "Edit public service location",
       bioEmptyCopy: "Add a public bio or story.",
       bioModalTitle: "Edit public barber bio",

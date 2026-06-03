@@ -70,6 +70,18 @@ function validateImageFile(file: File | null) {
   return null;
 }
 
+function isNonFreelanceBarberMode(user: UserAccount) {
+  if (user.barberSubtype) {
+    return user.barberSubtype === "booth_rent" || user.barberSubtype === "commission";
+  }
+
+  return user.role === "booth_rent_barber" || user.role === "commission_barber";
+}
+
+function isBarberLocationLocked(user: UserAccount, profile: { shop?: unknown } | null) {
+  return Boolean(profile?.shop && isNonFreelanceBarberMode(user));
+}
+
 export function BarberProfileScreen({
   user,
   initialSection,
@@ -140,6 +152,7 @@ export function BarberProfileScreen({
     state: barberMedia?.publicState ?? "",
     zip: barberMedia?.publicZip ?? ""
   };
+  const barberLocationLocked = isBarberLocationLocked(user, profile);
   const mutationStatus = mediaMutation.error
     ? { tone: "error" as const, message: readableError(mediaMutation.error, "Unable to update barber profile media right now.") }
     : null;
@@ -332,7 +345,8 @@ export function BarberProfileScreen({
     identityLine,
     shopLabel,
     publicProfileHref,
-    username: usernameDraft || profile?.profile.username || suggestPublicUsername(barberName)
+    username: usernameDraft || profile?.profile.username || suggestPublicUsername(barberName),
+    isLocationLocked: barberLocationLocked
   });
 
   return (
@@ -385,7 +399,7 @@ export function BarberProfileScreen({
         }}
         onBioSave={handleBarberBioSave}
         isSavingBio={mediaMutation.isPending}
-        contextFields={!profile?.shop ? [
+        contextFields={!barberLocationLocked ? [
           {
             name: "address",
             label: "Address",
@@ -415,7 +429,7 @@ export function BarberProfileScreen({
             maxLength: 20
           }
         ] : undefined}
-        onContextSave={!profile?.shop ? handleBarberContextSave : undefined}
+        onContextSave={!barberLocationLocked ? handleBarberContextSave : undefined}
         isSavingContext={mediaMutation.isPending}
         onContextLocked={() => setLocalFeedback({ tone: "info", message: "This location is controlled by your connected shop." })}
         onShare={() => void handleShareProfile()}

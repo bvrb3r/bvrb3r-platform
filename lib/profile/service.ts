@@ -337,7 +337,7 @@ function formatProviderPublicLocation({
   const cleanZip = cleanPublicText(zip, 20);
   const cityState = [cleanCity, cleanState].filter(Boolean).join(", ");
   const cityStateZip = [cityState, cleanZip].filter(Boolean).join(" ");
-  return [cleanAddress, cityStateZip].filter(Boolean).join(" / ") || null;
+  return [cleanAddress, cityStateZip].filter(Boolean).join(" - ") || null;
 }
 
 export type PublicUsernameOwnerType = "client" | "barber" | "shop";

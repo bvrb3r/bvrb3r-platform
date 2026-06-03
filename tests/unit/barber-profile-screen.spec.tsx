@@ -150,7 +150,7 @@ describe("BarberProfileScreen", () => {
     expect(screen.getByText("The client-facing preview, portfolio, trust signals, and booking profile live here.")).toBeInTheDocument();
     expect(screen.getByText("Sharp public barber bio.")).toBeInTheDocument();
     expect(screen.queryByText("Profile already synced.")).not.toBeInTheDocument();
-    expect(screen.getByText("2200 E Fowler Ave / Tampa, FL 33612")).toBeInTheDocument();
+    expect(screen.getByText("2200 E Fowler Ave - Tampa, FL 33612")).toBeInTheDocument();
     expect(screen.getByText("Public preview")).toBeInTheDocument();
     expect(screen.queryByText("Edit profile")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Portfolio" })).not.toBeInTheDocument();
@@ -313,6 +313,54 @@ describe("BarberProfileScreen", () => {
       zip: "33612"
     });
     expect(refetch).toHaveBeenCalled();
+  });
+
+  it("keeps freelance barber location editable when shop display data exists", () => {
+    const baseQuery = useBarberProfileQueryMock();
+    useBarberProfileQueryMock.mockReturnValue({
+      ...baseQuery,
+      data: {
+        ...baseQuery.data,
+        shop: {
+          name: "Display-only shop",
+          address: "999 Locked St",
+          city: "Tampa",
+          state: "FL",
+          zipCode: "33609"
+        }
+      }
+    });
+
+    render(<BarberProfileScreen user={{ ...user, barberSubtype: "freelance" }} />);
+
+    expect(screen.getByText("2200 E Fowler Ave - Tampa, FL 33612")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edit public service location" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Public context locked" })).not.toBeInTheDocument();
+  });
+
+  it("locks accepted booth-rent barber location to the connected shop", () => {
+    const baseQuery = useBarberProfileQueryMock();
+    useBarberProfileQueryMock.mockReturnValue({
+      ...baseQuery,
+      data: {
+        ...baseQuery.data,
+        shop: {
+          name: "The BVRB3R Shop",
+          address: "2172 University Square Mall",
+          city: "Tampa",
+          state: "FL",
+          zipCode: "33612"
+        },
+        shopLocations: []
+      }
+    });
+
+    render(<BarberProfileScreen user={{ ...user, barberSubtype: "booth_rent" }} />);
+
+    expect(screen.getByText("The BVRB3R Shop - 2172 University Square Mall - Tampa, FL 33612")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit public service location" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Public context locked" }));
+    expect(screen.getByText("This location is controlled by your connected shop.")).toBeInTheDocument();
   });
 
   it("saves barber public username through the shared profile media mutation", async () => {

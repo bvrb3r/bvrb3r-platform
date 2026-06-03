@@ -14,6 +14,8 @@ export type PublicIdentitySearchResult = {
   city?: string | null;
   state?: string | null;
   zip?: string | null;
+  isLocationLocked?: boolean;
+  locationSource?: "freelance" | "shop";
 };
 
 function cleanQuery(value: string) {
@@ -96,7 +98,9 @@ async function searchBarbers(supabase: SupabaseClient, query: string): Promise<P
       address: profile.public_address ?? profile.service_area_label ?? null,
       city: profile.public_city ?? null,
       state: profile.public_state ?? null,
-      zip: profile.public_zip ?? null
+      zip: profile.public_zip ?? null,
+      isLocationLocked: false,
+      locationSource: "freelance" as const
     }));
 }
 
@@ -134,7 +138,8 @@ async function searchShops(supabase: SupabaseClient, query: string): Promise<Pub
         address: shop.address ?? null,
         city: shop.city ?? null,
         state: shop.state ?? null,
-        zip: shop.zip_code ?? null
+        zip: shop.zip_code ?? null,
+        locationSource: "shop" as const
       };
     });
 }

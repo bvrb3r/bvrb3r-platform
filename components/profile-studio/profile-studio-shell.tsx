@@ -349,7 +349,7 @@ export function ProfileStudioShell({
     const cityStateZip = [cityState, zip].filter(Boolean).join(" ");
 
     if (address && model.role === "barber") {
-      return [address, cityStateZip].filter(Boolean).join(" / ");
+      return [address, cityStateZip].filter(Boolean).join(" - ");
     }
 
     if (address) {

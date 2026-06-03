@@ -97,7 +97,9 @@ describe("searchPublicIdentities", () => {
         address: "2200 E Fowler Ave",
         city: "Tampa",
         state: "FL",
-        zip: "33612"
+        zip: "33612",
+        isLocationLocked: false,
+        locationSource: "freelance"
       }),
       expect.objectContaining({
         ownerType: "shop",
@@ -106,7 +108,8 @@ describe("searchPublicIdentities", () => {
         address: "2172 University Square Mall",
         city: "Tampa",
         state: "FL",
-        zip: "33612"
+        zip: "33612",
+        locationSource: "shop"
       })
     ]));
   });
