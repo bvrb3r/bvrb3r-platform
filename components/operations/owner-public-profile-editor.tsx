@@ -20,9 +20,9 @@ type ShopPublicProfileDraft = {
   profilePhotoUrl: string;
   coverPhotoUrl: string;
   address: string;
-  neighborhood: string;
   city: string;
   state: string;
+  zipCode: string;
   phone: string;
   publicHours: string;
   policies: string;
@@ -36,9 +36,9 @@ const emptyDraft: ShopPublicProfileDraft = {
   profilePhotoUrl: "",
   coverPhotoUrl: "",
   address: "",
-  neighborhood: "",
   city: "",
   state: "",
+  zipCode: "",
   phone: "",
   publicHours: "",
   policies: ""
@@ -131,6 +131,7 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
       neighborhood: shopMedia.neighborhood ?? null,
       city: shopMedia.city ?? null,
       state: shopMedia.state ?? null,
+      zip_code: shopMedia.zipCode ?? null,
       phone: shopMedia.phone ?? null,
       address: shopMedia.address ?? null,
       profile_photo_path: shopMedia.profilePhotoPath ?? null,
@@ -154,9 +155,9 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
       profilePhotoUrl: shopMedia?.profilePhotoUrl ?? effectiveShop.profile_photo_url ?? effectiveShop.profile_photo_path ?? "",
       coverPhotoUrl: effectiveShop.cover_photo_url ?? "",
       address: effectiveShop.address ?? "",
-      neighborhood: effectiveShop.neighborhood ?? "",
       city: effectiveShop.city ?? "",
       state: effectiveShop.state ?? "",
+      zipCode: (effectiveShop as { zip_code?: string | null; zipCode?: string | null }).zip_code ?? (effectiveShop as { zipCode?: string | null }).zipCode ?? "",
       phone: effectiveShop.phone ?? "",
       publicHours: typeof effectiveShop.public_hours === "string" ? effectiveShop.public_hours : "",
       policies: effectiveShop.policies ?? ""
@@ -179,9 +180,9 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
       profile_photo_path: shopMedia?.profilePhotoPath || effectiveShop.profile_photo_path,
       cover_photo_url: draft.coverPhotoUrl || effectiveShop.cover_photo_url,
       address: draft.address || effectiveShop.address,
-      neighborhood: draft.neighborhood || effectiveShop.neighborhood,
       city: draft.city || effectiveShop.city,
       state: draft.state || effectiveShop.state,
+      zip_code: draft.zipCode || (effectiveShop as { zip_code?: string | null; zipCode?: string | null }).zip_code || (effectiveShop as { zipCode?: string | null }).zipCode,
       phone: draft.phone || effectiveShop.phone,
       public_hours: draft.publicHours || effectiveShop.public_hours,
       policies: draft.policies || effectiveShop.policies,
@@ -340,9 +341,9 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
     const shopId = effectiveShop?.id ?? shopMedia?.shopId;
     const nextLocation = {
       address: values.address ?? "",
-      neighborhood: values.neighborhood ?? "",
       city: values.city ?? "",
-      state: values.state ?? ""
+      state: values.state ?? "",
+      zipCode: values.zipCode ?? ""
     };
 
     setFeedback(null);
@@ -355,10 +356,10 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
         setLocalShop(response.shop);
       }
       updateDraft("address", nextLocation.address);
-      updateDraft("neighborhood", nextLocation.neighborhood);
       updateDraft("city", nextLocation.city);
       updateDraft("state", nextLocation.state);
-      setFeedback({ tone: "success", message: "Shop public location updated." });
+      updateDraft("zipCode", nextLocation.zipCode);
+      setFeedback({ tone: "success", message: "Shop location saved." });
     } catch (errorValue) {
       const message = readableError(errorValue, "Unable to update shop location.");
       setFeedback({ tone: "error", message });
@@ -421,13 +422,6 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
             maxLength: 240
           },
           {
-            name: "neighborhood",
-            label: "Neighborhood",
-            value: draft.neighborhood,
-            placeholder: "University Square Mall",
-            maxLength: 120
-          },
-          {
             name: "city",
             label: "City",
             value: draft.city,
@@ -440,6 +434,13 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
             value: draft.state,
             placeholder: "FL",
             maxLength: 40
+          },
+          {
+            name: "zipCode",
+            label: "ZIP code",
+            value: draft.zipCode,
+            placeholder: "33612",
+            maxLength: 20
           }
         ] : undefined}
         onContextSave={effectiveShop ? handleShopLocationSave : undefined}

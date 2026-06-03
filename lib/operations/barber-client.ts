@@ -363,6 +363,7 @@ export interface OwnerShopProfileResponse {
     neighborhood?: string | null;
     city?: string | null;
     state?: string | null;
+    zip_code?: string | null;
     phone?: string | null;
     address?: string | null;
     profile_photo_path?: string | null;

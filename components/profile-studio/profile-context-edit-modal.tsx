@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
@@ -17,6 +17,7 @@ export function ProfileContextEditModal({
   helper,
   fields,
   isSaving,
+  successMessage = "Public context saved.",
   onClose,
   onSave
 }: {
@@ -24,6 +25,7 @@ export function ProfileContextEditModal({
   helper: string;
   fields: ProfileContextField[];
   isSaving?: boolean;
+  successMessage?: string;
   onClose: () => void;
   onSave: (values: Record<string, string>) => void | Promise<void>;
 }) {
@@ -32,7 +34,9 @@ export function ProfileContextEditModal({
   );
   const [error, setError] = useState<string | null>(null);
   const [localSaving, setLocalSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const closeTimerRef = useRef<number | null>(null);
   const saving = Boolean(isSaving || localSaving);
 
   useEffect(() => {
@@ -42,6 +46,12 @@ export function ProfileContextEditModal({
   useEffect(() => {
     setDraft(Object.fromEntries(fields.map((field) => [field.name, field.value])));
   }, [fields]);
+
+  useEffect(() => () => {
+    if (closeTimerRef.current) {
+      window.clearTimeout(closeTimerRef.current);
+    }
+  }, []);
 
   useEffect(() => {
     if (!mounted) {
@@ -80,11 +90,19 @@ export function ProfileContextEditModal({
       return;
     }
     setError(null);
+    setSaved(false);
     setLocalSaving(true);
     try {
       await onSave(nextValues);
+      setSaved(true);
+      closeTimerRef.current = window.setTimeout(() => {
+        onClose();
+        setSaved(false);
+        closeTimerRef.current = null;
+      }, 850);
     } catch (saveError) {
       setError(saveError instanceof Error && saveError.message ? saveError.message : "Unable to update public context.");
+      setSaved(false);
     } finally {
       setLocalSaving(false);
     }
@@ -118,6 +136,7 @@ export function ProfileContextEditModal({
                   onChange={(event) => {
                     setDraft((current) => ({ ...current, [field.name]: event.target.value }));
                     setError(null);
+                    setSaved(false);
                   }}
                   className="mt-2 h-12 w-full rounded-[12px] border border-white/10 bg-black/35 px-4 text-white outline-none transition placeholder:text-white/30 focus:border-[#a3ff12]/50"
                   placeholder={field.placeholder}
@@ -127,11 +146,12 @@ export function ProfileContextEditModal({
             ))}
           </div>
           {error ? <p className="mt-3 text-sm font-bold text-red-200">{error}</p> : null}
+          {saved ? <p className="mt-3 text-sm font-bold text-[#a3ff12]">{successMessage}</p> : null}
         </div>
         <div className="sticky bottom-0 flex flex-wrap justify-end gap-3 border-t border-white/10 bg-[#080808]/96 px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-4 backdrop-blur">
-          <button type="button" className="min-h-11 rounded-[8px] border border-white/10 px-4 text-sm font-extrabold text-white/70" onClick={onClose} disabled={saving}>Cancel</button>
-          <button type="button" className="min-h-11 rounded-[8px] bg-[#a3ff12] px-4 text-sm font-black text-black disabled:cursor-not-allowed disabled:opacity-60" onClick={() => void handleSave()} disabled={saving}>
-            {saving ? "Saving..." : "Save"}
+          <button type="button" className="min-h-11 rounded-[8px] border border-white/10 px-4 text-sm font-extrabold text-white/70" onClick={onClose} disabled={saving || saved}>Cancel</button>
+          <button type="button" className="min-h-11 rounded-[8px] bg-[#a3ff12] px-4 text-sm font-black text-black disabled:cursor-not-allowed disabled:opacity-60" onClick={() => void handleSave()} disabled={saving || saved}>
+            {saved ? "Saved" : saving ? "Saving..." : "Save"}
           </button>
         </div>
       </div>

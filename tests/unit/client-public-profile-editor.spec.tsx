@@ -241,7 +241,9 @@ describe("ClientPublicProfileEditor", () => {
       city: "Orlando",
       state: "FL"
     }));
-    expect(await screen.findByText("Public location updated.")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Address")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("ZIP code")).not.toBeInTheDocument();
+    expect((await screen.findAllByText("Public location saved.")).length).toBeGreaterThan(0);
   });
 
   it("saves the client public username and updates the hero route state", async () => {

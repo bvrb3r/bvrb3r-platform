@@ -71,7 +71,10 @@ const mutationSchema = z.discriminatedUnion("action", [
   }),
   z.object({
     action: z.literal("set_barber_public_location"),
-    label: z.string().trim().max(120)
+    address: z.string().trim().max(240).optional().nullable(),
+    city: z.string().trim().max(120).optional().nullable(),
+    state: z.string().trim().max(40).optional().nullable(),
+    zip: z.string().trim().max(20).optional().nullable()
   }),
   z.object({
     action: z.literal("set_shop_photo"),
@@ -110,9 +113,9 @@ const mutationSchema = z.discriminatedUnion("action", [
     action: z.literal("set_shop_public_location"),
     shopId: z.string().trim().min(1),
     address: z.string().trim().max(240).optional().nullable(),
-    neighborhood: z.string().trim().max(120).optional().nullable(),
     city: z.string().trim().max(120).optional().nullable(),
-    state: z.string().trim().max(40).optional().nullable()
+    state: z.string().trim().max(40).optional().nullable(),
+    zipCode: z.string().trim().max(20).optional().nullable()
   }),
   z.object({
     action: z.literal("update_viewer_notification_preference"),

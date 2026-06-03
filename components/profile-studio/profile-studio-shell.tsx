@@ -330,6 +330,38 @@ export function ProfileStudioShell({
       : `Public username saved. @${value} is live.`;
   }
 
+  function contextSavedMessage() {
+    if (model.role === "barber") {
+      return "Service location saved.";
+    }
+    if (model.role === "shop_owner") {
+      return "Shop location saved.";
+    }
+    return "Public location saved.";
+  }
+
+  function formatContextValues(values: Record<string, string>) {
+    const address = values.address?.trim() ?? "";
+    const city = values.city?.trim() ?? "";
+    const state = values.state?.trim() ?? "";
+    const zip = (values.zip ?? values.zipCode ?? "").trim();
+    const cityState = [city, state].filter(Boolean).join(", ");
+    const cityStateZip = [cityState, zip].filter(Boolean).join(" ");
+
+    if (address && model.role === "barber") {
+      return [address, cityStateZip].filter(Boolean).join(" / ");
+    }
+
+    if (address) {
+      return [address, cityStateZip].filter(Boolean).join(" - ");
+    }
+
+    return cityStateZip || Object.values(values)
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .join(", ");
+  }
+
   function openUsernameModal() {
     if (usernameCloseTimerRef.current) {
       window.clearTimeout(usernameCloseTimerRef.current);
@@ -437,15 +469,11 @@ export function ProfileStudioShell({
 
   async function handleContextSave(values: Record<string, string>) {
     await onContextSave?.(values);
-    const nextContext = Object.values(values)
-      .map((value) => value.trim())
-      .filter(Boolean)
-      .join(", ");
+    const nextContext = formatContextValues(values);
     if (nextContext) {
       setContextValue(nextContext);
     }
-    setContextFeedback("Public context updated.");
-    setIsContextModalOpen(false);
+    setContextFeedback(contextSavedMessage());
   }
 
   function createFolder() {
@@ -769,6 +797,7 @@ export function ProfileStudioShell({
           helper={contextModalHelper}
           fields={contextFields}
           isSaving={isSavingContext}
+          successMessage={contextSavedMessage()}
           onClose={() => setIsContextModalOpen(false)}
           onSave={handleContextSave}
         />

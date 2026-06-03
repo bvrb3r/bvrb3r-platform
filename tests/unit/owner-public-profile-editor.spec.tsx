@@ -241,19 +241,20 @@ describe("OwnerPublicProfileEditor", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Edit public context" }));
     fireEvent.change(screen.getByLabelText("Address"), { target: { value: "2200 E Fowler Ave" } });
-    fireEvent.change(screen.getByLabelText("Neighborhood"), { target: { value: "University Square Mall" } });
+    expect(screen.queryByLabelText("Neighborhood")).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("City"), { target: { value: "Tampa" } });
     fireEvent.change(screen.getByLabelText("State"), { target: { value: "FL" } });
+    fireEvent.change(screen.getByLabelText("ZIP code"), { target: { value: "33612" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith({
       shopId: "shop-bvrb3r",
       address: "2200 E Fowler Ave",
-      neighborhood: "University Square Mall",
       city: "Tampa",
-      state: "FL"
+      state: "FL",
+      zipCode: "33612"
     }));
-    expect(await screen.findByText("Shop public location updated.")).toBeInTheDocument();
+    expect((await screen.findAllByText("Shop location saved.")).length).toBeGreaterThan(0);
   });
 
   it("saves shop public username through the shared profile media mutation", async () => {

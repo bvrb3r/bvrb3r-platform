@@ -597,7 +597,11 @@ async function readSupabaseRuntime(supabase: SupabaseClient): Promise<Marketplac
       services: serviceState,
       barbers: barberState,
       locations: locationState,
-      barberProfiles: profileRows.map((row: any) => ({
+      barberProfiles: profileRows.map((row: any) => {
+        const cityState = [row.public_city, row.public_state].filter(Boolean).join(", ");
+        const cityStateZip = [cityState, row.public_zip].filter(Boolean).join(" ");
+        const publicServiceLocation = [row.public_address, cityStateZip].filter(Boolean).join(" / ");
+        return {
         id: row.id,
         barberId: row.barber_reference,
         username: row.username,
@@ -612,9 +616,10 @@ async function readSupabaseRuntime(supabase: SupabaseClient): Promise<Marketplac
         specialties: row.specialties ?? [],
         badges: row.badges ?? [],
         nextAvailableAt: nextAvailableByBarber.get(row.barber_reference) ?? "",
-        serviceAreaLabel: row.service_area_label ?? "",
+        serviceAreaLabel: publicServiceLocation || row.service_area_label || "",
         visibilityState: row.visibility_state === "featured" || row.visibility_state === "public" ? row.visibility_state : "hidden"
-      })),
+        };
+      }),
       visibilities: tableRows(visibility.data).map((row: any) => ({
         barberId: row.barber_reference,
         visibilityState: row.visibility_state,

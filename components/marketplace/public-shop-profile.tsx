@@ -27,7 +27,11 @@ export function PublicShopProfile({
 }) {
   const { shop, barbers, services } = payload;
   const gallery = shop.gallery ?? [];
-  const address = shop.address ?? `${shop.neighborhood}, ${shop.city}, ${shop.state}`;
+  const cityState = [shop.city, shop.state].filter(Boolean).join(", ");
+  const cityStateZip = [cityState, shop.zipCode].filter(Boolean).join(" ");
+  const addressAlreadyHasCityState = Boolean(shop.address && [shop.city, shop.state].some((part) => part && shop.address?.toLowerCase().includes(part.toLowerCase())));
+  const addressSuffix = addressAlreadyHasCityState ? shop.zipCode : cityStateZip;
+  const address = [shop.address, addressSuffix].filter(Boolean).join(" - ") || "Add shop address.";
   const shopBookingHref = shop.bookHref ?? `/dashboard/client/search?type=shops&q=${encodeURIComponent(shop.name)}`;
 
   return (

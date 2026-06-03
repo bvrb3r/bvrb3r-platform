@@ -2947,6 +2947,7 @@ export type PublicShopProfilePayload = {
     publicHours?: unknown;
     policies?: string;
     shopUsername?: string;
+    zipCode?: string | null;
     gallery?: Array<{
       id: string;
       shopId: string;
@@ -3055,6 +3056,7 @@ export async function getPublicShopProfilePayload(shopIdOrSlug: string): Promise
       neighborhood: shopMedia?.neighborhood ?? visibleShop.neighborhood,
       city: shopMedia?.city ?? visibleShop.city,
       state: shopMedia?.state ?? visibleShop.state,
+      zipCode: shopMedia?.zipCode ?? (visibleShop as { zipCode?: string | null }).zipCode ?? null,
       gallery: shopMedia?.gallery.map((asset) => ({
         id: asset.id,
         shopId: visibleShop.id,

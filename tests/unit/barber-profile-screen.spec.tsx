@@ -108,6 +108,10 @@ describe("BarberProfileScreen", () => {
           profilePhotoUrl: null,
           publicBio: "Sharp public barber bio.",
           serviceAreaLabel: "Phils chair",
+          publicAddress: "2200 E Fowler Ave",
+          publicCity: "Tampa",
+          publicState: "FL",
+          publicZip: "33612",
           gallery: []
         }
       }
@@ -146,7 +150,7 @@ describe("BarberProfileScreen", () => {
     expect(screen.getByText("The client-facing preview, portfolio, trust signals, and booking profile live here.")).toBeInTheDocument();
     expect(screen.getByText("Sharp public barber bio.")).toBeInTheDocument();
     expect(screen.queryByText("Profile already synced.")).not.toBeInTheDocument();
-    expect(screen.getByText("Phils chair")).toBeInTheDocument();
+    expect(screen.getByText("2200 E Fowler Ave / Tampa, FL 33612")).toBeInTheDocument();
     expect(screen.getByText("Public preview")).toBeInTheDocument();
     expect(screen.queryByText("Edit profile")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Portfolio" })).not.toBeInTheDocument();
@@ -266,7 +270,7 @@ describe("BarberProfileScreen", () => {
     });
   });
 
-  it("saves barber public bio and freelance chair/location from the hero", async () => {
+  it("saves barber public bio and freelance service location from the hero", async () => {
     const mutateAsync = vi.fn().mockResolvedValue({});
     const refetch = vi.fn().mockResolvedValue({});
     useMutateProfileMediaMutationMock.mockReturnValue({
@@ -290,13 +294,23 @@ describe("BarberProfileScreen", () => {
       publicBio: "Fresh public story"
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Edit chair or location display" }));
-    fireEvent.change(screen.getByLabelText("Chair or location display"), { target: { value: "Downtown chair" } });
+    fireEvent.click(screen.getByRole("button", { name: "Edit public service location" }));
+    expect(screen.getByLabelText("Address")).toBeInTheDocument();
+    expect(screen.getByLabelText("City")).toBeInTheDocument();
+    expect(screen.getByLabelText("State")).toBeInTheDocument();
+    expect(screen.getByLabelText("ZIP code")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Address"), { target: { value: "2200 E Fowler Ave" } });
+    fireEvent.change(screen.getByLabelText("City"), { target: { value: "Tampa" } });
+    fireEvent.change(screen.getByLabelText("State"), { target: { value: "FL" } });
+    fireEvent.change(screen.getByLabelText("ZIP code"), { target: { value: "33612" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    await screen.findByText("Public chair/location updated.");
+    expect((await screen.findAllByText("Service location saved.")).length).toBeGreaterThan(0);
     expect(mutateAsync).toHaveBeenCalledWith({
       action: "set_barber_public_location",
-      label: "Downtown chair"
+      address: "2200 E Fowler Ave",
+      city: "Tampa",
+      state: "FL",
+      zip: "33612"
     });
     expect(refetch).toHaveBeenCalled();
   });

@@ -397,6 +397,40 @@ describe("ProfileStudioShell", () => {
     expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
   });
 
+  it("keeps the context modal open briefly with saved confirmation before closing", async () => {
+    let resolveSave: (() => void) | undefined;
+    const onContextSave = vi.fn(() => new Promise<void>((resolve) => {
+      resolveSave = resolve;
+    }));
+
+    render(
+      <ProfileStudioShell
+        model={model}
+        backHref="/dashboard/client/more"
+        backLabel="Back to More"
+        usernameValue="jordan"
+        photoControl={<ProfileImageEditButton label="Update public photo" onUnavailable={vi.fn()} />}
+        contextFields={[
+          { name: "city", label: "City or area", value: "Tampa" },
+          { name: "state", label: "State", value: "FL" }
+        ]}
+        onContextSave={onContextSave}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit public context" }));
+    fireEvent.change(screen.getByLabelText("City or area"), { target: { value: "Orlando" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(screen.getByRole("button", { name: "Saving..." })).toBeDisabled();
+    expect(onContextSave).toHaveBeenCalledWith({ city: "Orlando", state: "FL" });
+    resolveSave?.();
+
+    expect((await screen.findAllByText("Public location saved.")).length).toBeGreaterThan(0);
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Edit public location" })).not.toBeInTheDocument());
+    expect(screen.getByText("Orlando, FL")).toBeInTheDocument();
+  });
+
   it("moves media into a folder and shows carousel controls", () => {
     render(
       <ProfileStudioShell

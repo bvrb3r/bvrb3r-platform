@@ -26,6 +26,8 @@ function createSearchSupabaseMock() {
         id: "client-profile-1",
         full_name: "Jordan Ellis",
         public_username: "jordan",
+        public_city: "Tampa",
+        public_state: "FL",
         profile_photo_url: "https://cdn.example.com/jordan.jpg"
       }
     ],
@@ -34,6 +36,10 @@ function createSearchSupabaseMock() {
         barber_reference: "barber-1",
         username: "phil",
         display_name: "Phillip McGee",
+        public_address: "2200 E Fowler Ave",
+        public_city: "Tampa",
+        public_state: "FL",
+        public_zip: "33612",
         profile_photo_url: "https://cdn.example.com/phil.jpg"
       }
     ],
@@ -42,6 +48,10 @@ function createSearchSupabaseMock() {
         id: "shop-1",
         name: "The BVRB3R Shop",
         public_username: "bvrb3rshop",
+        address: "2172 University Square Mall",
+        city: "Tampa",
+        state: "FL",
+        zip_code: "33612",
         profile_photo_url: "https://cdn.example.com/shop.jpg"
       }
     ]
@@ -76,17 +86,27 @@ describe("searchPublicIdentities", () => {
       expect.objectContaining({
         ownerType: "client",
         username: "jordan",
-        publicProfileUrl: "/client/jordan"
+        publicProfileUrl: "/client/jordan",
+        city: "Tampa",
+        state: "FL"
       }),
       expect.objectContaining({
         ownerType: "barber",
         username: "phil",
-        publicProfileUrl: "/barber/phil"
+        publicProfileUrl: "/barber/phil",
+        address: "2200 E Fowler Ave",
+        city: "Tampa",
+        state: "FL",
+        zip: "33612"
       }),
       expect.objectContaining({
         ownerType: "shop",
         username: "bvrb3rshop",
-        publicProfileUrl: "/shop/bvrb3rshop"
+        publicProfileUrl: "/shop/bvrb3rshop",
+        address: "2172 University Square Mall",
+        city: "Tampa",
+        state: "FL",
+        zip: "33612"
       })
     ]));
   });

@@ -16,6 +16,7 @@ const shopProfileSchema = z.object({
   neighborhood: z.string().trim().max(120).optional().nullable(),
   city: z.string().trim().max(120).optional().nullable(),
   state: z.string().trim().max(40).optional().nullable(),
+  zipCode: z.string().trim().max(20).optional().nullable(),
   profilePhotoPath: z.string().trim().max(500).optional().nullable(),
   profilePhotoUrl: z.string().trim().max(1000).optional().nullable(),
   coverPhotoUrl: z.string().trim().max(1000).optional().nullable(),
@@ -25,7 +26,7 @@ const shopProfileSchema = z.object({
   shopUsername: z.string().trim().min(2).max(80).regex(/^[a-zA-Z0-9._-]+$/).optional().nullable()
 });
 
-const ownerShopSelect = "id, name, brand_line, public_bio, cover_photo_url, public_hours, policies, public_username, shop_username:public_username, neighborhood, city, state, phone, address, profile_photo_path, profile_photo_url, owner_profile_id, app_approval_status";
+const ownerShopSelect = "id, name, brand_line, public_bio, cover_photo_url, public_hours, policies, public_username, shop_username:public_username, neighborhood, city, state, zip_code, phone, address, profile_photo_path, profile_photo_url, owner_profile_id, app_approval_status";
 
 function isOwnerScoped(user: UserAccount) {
   return user.role === "shop_owner_user" || user.role === "owner" || user.role === "manager";
@@ -64,6 +65,7 @@ function updateDemoShopProfile(user: UserAccount, input: z.infer<typeof shopProf
       neighborhood: cleanNullable(input.neighborhood) ?? shop.neighborhood,
       city: cleanNullable(input.city) ?? shop.city,
       state: cleanNullable(input.state) ?? shop.state,
+      zipCode: cleanNullable(input.zipCode) ?? (shop as { zipCode?: string | null }).zipCode,
       profilePhotoUrl: cleanNullable(input.profilePhotoUrl) ?? shop.profilePhotoUrl,
       coverPhotoUrl: cleanNullable(input.coverPhotoUrl) ?? shop.coverPhotoUrl,
       publicBio: cleanNullable(input.publicBio) ?? shop.publicBio,
@@ -212,6 +214,7 @@ export async function PATCH(request: Request) {
       ...(parsed.data.neighborhood !== undefined ? { neighborhood: cleanNullable(parsed.data.neighborhood) } : {}),
       ...(parsed.data.city !== undefined ? { city: cleanNullable(parsed.data.city) } : {}),
       ...(parsed.data.state !== undefined ? { state: cleanNullable(parsed.data.state) } : {}),
+      ...(parsed.data.zipCode !== undefined ? { zip_code: cleanNullable(parsed.data.zipCode) } : {}),
       ...(parsed.data.profilePhotoPath !== undefined ? { profile_photo_path: cleanNullable(parsed.data.profilePhotoPath) } : {}),
       ...(parsed.data.profilePhotoUrl !== undefined ? { profile_photo_url: cleanNullable(parsed.data.profilePhotoUrl) } : {}),
       ...(parsed.data.coverPhotoUrl !== undefined ? { cover_photo_url: cleanNullable(parsed.data.coverPhotoUrl) } : {}),

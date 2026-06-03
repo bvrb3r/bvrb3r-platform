@@ -18,7 +18,8 @@ function formatLocation(shop: OwnerShopProfile | null) {
 
   const isPublicPlaceholder = (part: string) => !part.replace(/[,\s-]/g, "") || /^pending(?:pending)*$/i.test(part.replace(/[,\s-]/g, ""));
   const cityState = [shop.city, shop.state].filter(Boolean).join(", ");
-  return [shop.address, shop.neighborhood, cityState]
+  const cityStateZip = [cityState, (shop as { zip_code?: string | null; zipCode?: string | null }).zip_code ?? (shop as { zipCode?: string | null }).zipCode].filter(Boolean).join(" ");
+  return [shop.address, cityStateZip]
     .map((part) => part?.trim() ?? "")
     .filter((part) => part && !isPublicPlaceholder(part))
     .join(" - ");

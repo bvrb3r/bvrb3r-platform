@@ -134,6 +134,12 @@ export function BarberProfileScreen({
     ?? profile?.shopLocations[0]?.name
     ?? barberMedia?.serviceAreaLabel
     ?? "Independent barber";
+  const barberPublicLocation = {
+    address: barberMedia?.publicAddress ?? "",
+    city: barberMedia?.publicCity ?? "",
+    state: barberMedia?.publicState ?? "",
+    zip: barberMedia?.publicZip ?? ""
+  };
   const mutationStatus = mediaMutation.error
     ? { tone: "error" as const, message: readableError(mediaMutation.error, "Unable to update barber profile media right now.") }
     : null;
@@ -247,12 +253,15 @@ export function BarberProfileScreen({
     try {
       await mediaMutation.mutateAsync({
         action: "set_barber_public_location",
-        label: values.label ?? ""
+        address: values.address ?? "",
+        city: values.city ?? "",
+        state: values.state ?? "",
+        zip: values.zip ?? ""
       });
       await profileQuery.refetch();
-      setLocalFeedback({ tone: "info", message: "Public chair/location updated." });
+      setLocalFeedback({ tone: "info", message: "Service location saved." });
     } catch (error) {
-      const message = readableError(error, "Unable to update public chair/location.");
+      const message = readableError(error, "Unable to update service location.");
       setLocalFeedback({ tone: "error", message });
       throw new Error(message);
     }
@@ -301,7 +310,19 @@ export function BarberProfileScreen({
   }
 
   const model = buildBarberProfileStudioViewModel({
-    profile,
+    profile: profile
+      ? {
+          ...profile,
+          profile: {
+            ...profile.profile,
+            serviceAreaLabel: barberMedia?.serviceAreaLabel ?? null,
+            publicAddress: barberMedia?.publicAddress ?? null,
+            publicCity: barberMedia?.publicCity ?? null,
+            publicState: barberMedia?.publicState ?? null,
+            publicZip: barberMedia?.publicZip ?? null
+          }
+        }
+      : profile,
     barberName,
     profilePhotoUrl,
     portfolioAssets,
@@ -366,11 +387,32 @@ export function BarberProfileScreen({
         isSavingBio={mediaMutation.isPending}
         contextFields={!profile?.shop ? [
           {
-            name: "label",
-            label: "Chair or location display",
-            value: barberMedia?.serviceAreaLabel ?? (shopLabel === "Independent barber" ? "" : shopLabel),
-            placeholder: "Phils chair",
+            name: "address",
+            label: "Address",
+            value: barberPublicLocation.address,
+            placeholder: "123 Main St",
+            maxLength: 240
+          },
+          {
+            name: "city",
+            label: "City",
+            value: barberPublicLocation.city,
+            placeholder: "Tampa",
             maxLength: 120
+          },
+          {
+            name: "state",
+            label: "State",
+            value: barberPublicLocation.state,
+            placeholder: "FL",
+            maxLength: 40
+          },
+          {
+            name: "zip",
+            label: "ZIP code",
+            value: barberPublicLocation.zip,
+            placeholder: "33612",
+            maxLength: 20
           }
         ] : undefined}
         onContextSave={!profile?.shop ? handleBarberContextSave : undefined}

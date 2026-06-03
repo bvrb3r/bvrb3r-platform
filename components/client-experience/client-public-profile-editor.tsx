@@ -182,7 +182,7 @@ export function ClientPublicProfileEditor({ user }: { user: UserAccount }) {
         city: values.city ?? "",
         state: values.state ?? ""
       });
-      setFeedback({ tone: "success", message: "Public location updated." });
+      setFeedback({ tone: "success", message: "Public location saved." });
     } catch (errorValue) {
       const message = readableError(errorValue, "Unable to update public location.");
       setFeedback({ tone: "error", message });
