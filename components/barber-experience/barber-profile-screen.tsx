@@ -245,6 +245,22 @@ export function BarberProfileScreen({
     }
   }
 
+  async function handleBarberFeaturedMediaSave(assetId: string) {
+    setLocalFeedback(null);
+    try {
+      await mediaMutation.mutateAsync({
+        action: "set_barber_featured_media",
+        assetId
+      });
+      await profileQuery.refetch();
+      setLocalFeedback({ tone: "info", message: "Featured image saved." });
+    } catch (error) {
+      const message = readableError(error, "Unable to set featured image.");
+      setLocalFeedback({ tone: "error", message });
+      throw new Error(message);
+    }
+  }
+
   async function handleBarberBioSave(publicBio: string) {
     setLocalFeedback(null);
     try {
@@ -436,6 +452,8 @@ export function BarberProfileScreen({
         onMedia={() => openFilePicker(mediaInputRef.current)}
         onAddMedia={() => openFilePicker(mediaInputRef.current)}
         onDeleteMedia={(assetId) => void handleBarberGalleryRemove(assetId)}
+        onSetFeaturedMedia={handleBarberFeaturedMediaSave}
+        isSettingFeaturedMedia={mediaMutation.isPending}
         photoControl={(
           <ProfileImageEditButton
             label="Update public barber photo"

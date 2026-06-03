@@ -284,6 +284,29 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
     }
   }
 
+  async function handleShopFeaturedMediaSave(assetId: string) {
+    const shopId = effectiveShop?.id ?? shopMedia?.shopId;
+    if (!shopId) {
+      const message = "Finish shop profile before setting featured media.";
+      setFeedback({ tone: "error", message });
+      throw new Error(message);
+    }
+
+    setFeedback(null);
+    try {
+      await mediaMutation.mutateAsync({
+        action: "set_shop_featured_media",
+        shopId,
+        assetId
+      });
+      setFeedback({ tone: "success", message: "Featured image saved." });
+    } catch (errorValue) {
+      const message = readableError(errorValue, "Unable to set featured image.");
+      setFeedback({ tone: "error", message });
+      throw new Error(message);
+    }
+  }
+
   async function handleShopBioSave(publicBio: string) {
     const shopId = effectiveShop?.id ?? shopMedia?.shopId;
 
@@ -411,6 +434,8 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
         onMedia={() => setFeedback({ tone: "info", message: "Team display is managed from Owner Home." })}
         onAddMedia={() => openFilePicker(mediaInputRef.current)}
         onDeleteMedia={(assetId) => void handleShopGalleryRemove(assetId)}
+        onSetFeaturedMedia={handleShopFeaturedMediaSave}
+        isSettingFeaturedMedia={mediaMutation.isPending}
         onBioSave={handleShopBioSave}
         isSavingBio={shopProfileMutation.isPending}
         contextFields={effectiveShop ? [

@@ -124,10 +124,19 @@ export function PublicBarberProfile({
   const nextOpening = safeDateLabel(profile.nextAvailableAt);
   const bio = cleanPublicText(profile.barber.bio) || cleanPublicText(profile.profile.headline) || "Fresh work, sharp details, and clean appointments.";
   const primarySpecialty = getPrimarySpecialty(profile);
+  const coverImageUrl = profile.portfolio.find((asset) => asset.featured)?.imageUrl
+    ?? profile.portfolio[0]?.imageUrl
+    ?? profile.profile.profilePhotoUrl;
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 pb-12">
       <section className={`${compactPanelClass} p-4 sm:p-6`} data-testid="public-barber-profile-header">
+        {coverImageUrl ? (
+          <div className="-mx-4 -mt-4 mb-5 h-40 overflow-hidden rounded-t-lg border-b border-white/8 sm:-mx-6 sm:-mt-6 sm:h-52">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={coverImageUrl} alt={`${displayName} featured work`} className="h-full w-full object-cover opacity-90" />
+          </div>
+        ) : null}
         <div className="grid gap-5 sm:grid-cols-[auto_1fr] sm:items-start">
           <div className="mx-auto sm:mx-0">
             {profile.profile.profilePhotoUrl ? (

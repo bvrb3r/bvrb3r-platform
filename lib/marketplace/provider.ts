@@ -20,6 +20,7 @@ import {
 } from "@/lib/marketplace/engine";
 import { buildBarberProofSignals, enrichPublicProfileWithProof, rankDiscoveryResults, replaceServicePopularity } from "@/lib/marketplace/insights";
 import { syncServiceToCanonicalRows } from "@/lib/marketplace/service-sync";
+import { toPublicMediaUrl } from "@/lib/profile/public-media-url";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import type {
   Barber,
@@ -606,7 +607,7 @@ async function readSupabaseRuntime(supabase: SupabaseClient): Promise<Marketplac
         barberId: row.barber_reference,
         username: row.username,
         photoAccent: "#7cff00",
-        profilePhotoUrl: row.profile_photo_url ?? row.profile_photo_path ?? undefined,
+        profilePhotoUrl: toPublicMediaUrl(supabase, row.profile_photo_path, row.profile_photo_url) ?? undefined,
         yearsExperience: row.years_experience,
         shopId: row.shop_reference
           ?? indexRows.find((entry: any) => entry.barber_reference === row.barber_reference)?.shop_reference
@@ -629,7 +630,7 @@ async function readSupabaseRuntime(supabase: SupabaseClient): Promise<Marketplac
       barberPortfolios: tableRows(portfolios.data).map((row: any) => ({
         id: row.id,
         barberId: row.barber_reference,
-        imageUrl: row.image_url ?? row.storage_path,
+        imageUrl: toPublicMediaUrl(supabase, row.storage_path, row.image_url) ?? row.image_url ?? row.storage_path,
         caption: row.caption,
         styleTagIds: row.style_tag_ids ?? [],
         featured: row.featured

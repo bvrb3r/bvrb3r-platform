@@ -142,6 +142,21 @@ export function ClientPublicProfileEditor({ user }: { user: UserAccount }) {
     }
   }
 
+  async function handleFeaturedPostSave(assetId: string) {
+    setFeedback(null);
+    try {
+      await mediaMutation.mutateAsync({
+        action: "set_client_featured_media",
+        assetId
+      });
+      setFeedback({ tone: "success", message: "Featured image saved." });
+    } catch (errorValue) {
+      const message = readableError(errorValue, "Unable to set featured image.");
+      setFeedback({ tone: "error", message });
+      throw new Error(message);
+    }
+  }
+
   async function handleBioSave(publicBio: string) {
     setFeedback(null);
     try {
@@ -238,6 +253,8 @@ export function ClientPublicProfileEditor({ user }: { user: UserAccount }) {
         onMedia={() => openFilePicker(mediaInputRef.current)}
         onAddMedia={() => openFilePicker(mediaInputRef.current)}
         onDeleteMedia={(assetId) => void handlePostRemove(assetId)}
+        onSetFeaturedMedia={handleFeaturedPostSave}
+        isSettingFeaturedMedia={mediaMutation.isPending}
         onBioSave={handleBioSave}
         isSavingBio={mediaMutation.isPending}
         contextFields={[

@@ -42,6 +42,7 @@ export function buildShopProfileStudioViewModel({
   const location = formatLocation(shop);
   const publicBarberCount = typeof shop?.public_barber_count === "number" ? shop.public_barber_count : null;
   const gallery = shop?.gallery ?? [];
+  const featuredGalleryImage = gallery.find((item) => item.featured)?.image_url ?? gallery[0]?.image_url;
   const isApproved = shop?.app_approval_status === "approved";
   return {
     role: "shop_owner",
@@ -60,7 +61,7 @@ export function buildShopProfileStudioViewModel({
       username: handle || null,
       publicUrl: shop?.id ? `/shop/${encodeURIComponent(handle || shop.id)}` : null,
       avatarUrl: shop?.profile_photo_url ?? shop?.profile_photo_path ?? null,
-      coverUrl: shop?.cover_photo_url ?? null,
+      coverUrl: featuredGalleryImage ?? shop?.cover_photo_url ?? null,
       badge: isApproved ? "Verified shop" : shop ? "Setup needed" : "Public shop profile",
       bio: shop?.public_bio || shop?.brand_line || "",
       contextLine: location || "Add shop address.",
@@ -114,7 +115,8 @@ export function buildShopProfileStudioViewModel({
         id: item.id,
         imageUrl: item.image_url,
         alt: item.caption || `${shopName} shop gallery image`,
-        caption: item.caption
+        caption: item.caption,
+        featured: Boolean(item.featured)
       }))
     }
   };

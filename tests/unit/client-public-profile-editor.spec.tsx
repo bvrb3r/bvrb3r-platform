@@ -146,6 +146,53 @@ describe("ClientPublicProfileEditor", () => {
     expect(await screen.findByText("Post added.")).toBeInTheDocument();
   });
 
+  it("sets a client Culture post as the featured banner through the media mutation", async () => {
+    const mutateAsync = vi.fn().mockResolvedValue({});
+    useProfileMediaWorkspaceQueryMock.mockReturnValue({
+      data: {
+        viewer: {
+          role: "client_user",
+          email: user.email,
+          profilePhotoUrl: "https://cdn.example.com/client-avatar.jpg",
+          profilePhotoPath: "profiles/client/avatar.jpg",
+          notificationPreference: null
+        },
+        clientProfile: {
+          profilePhotoUrl: "https://cdn.example.com/client-avatar.jpg",
+          profilePhotoPath: "profiles/client/avatar.jpg",
+          publicBio: "Public Culture bio.",
+          publicCity: "Tampa",
+          publicState: "FL",
+          gallery: [
+            {
+              id: "client-post-1",
+              imageUrl: "https://cdn.example.com/post-1.jpg",
+              storagePath: "profiles/client/post-1.jpg",
+              caption: "Culture post",
+              featured: false,
+              createdAt: "2026-06-01T00:00:00.000Z"
+            }
+          ]
+        },
+        barberProfile: null,
+        shops: []
+      }
+    });
+    useMutateProfileMediaMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync
+    });
+
+    render(<ClientPublicProfileEditor user={user} />);
+    fireEvent.click(screen.getByRole("button", { name: "Set as featured banner" }));
+
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith({
+      action: "set_client_featured_media",
+      assetId: "client-post-1"
+    }));
+    expect((await screen.findAllByText("Featured image saved.")).length).toBeGreaterThan(0);
+  });
+
   it("auto-dismisses successful profile studio feedback", async () => {
     vi.useFakeTimers();
     const mutateAsync = vi.fn().mockResolvedValue({});

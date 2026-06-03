@@ -84,6 +84,7 @@ type ClientProfileMediaRow = {
   owner_profile_id: string | null;
   asset_type: string;
   storage_path: string;
+  featured: boolean | null;
   created_at: string;
 };
 
@@ -198,6 +199,12 @@ type RemoveGalleryImageInput = {
   shopId?: string;
 };
 
+type SetFeaturedMediaInput = {
+  action: "set_client_featured_media" | "set_barber_featured_media" | "set_shop_featured_media";
+  assetId: string;
+  shopId?: string;
+};
+
 type UpdateNotificationPreferenceInput = {
   action: "update_viewer_notification_preference";
   inAppEnabled: boolean;
@@ -266,6 +273,7 @@ export type ProfileMediaMutationInput =
   | RemovePhotoInput
   | AddGalleryImageInput
   | RemoveGalleryImageInput
+  | SetFeaturedMediaInput
   | UpdateNotificationPreferenceInput
   | UpdateClientPublicUsernameInput
   | UpdateClientPublicBioInput
@@ -569,7 +577,7 @@ function mapClientGalleryAsset(client: SupabaseClient | null, row: ClientProfile
     imageUrl: toPublicMediaUrl(client, row.storage_path) ?? row.storage_path,
     storagePath: row.storage_path,
     caption: "",
-    featured: false,
+    featured: Boolean(row.featured),
     createdAt: row.created_at
   };
 }
@@ -803,9 +811,10 @@ async function readSupabaseShopMedia(supabase: SupabaseClient, shopId: string): 
 async function readSupabaseClientMedia(supabase: SupabaseClient, profile: ProfileMediaRow) {
   const galleryResult = await supabase
     .from("media_assets")
-    .select("id, owner_profile_id, asset_type, storage_path, created_at")
+    .select("id, owner_profile_id, asset_type, storage_path, featured, created_at")
     .eq("owner_profile_id", profile.id)
     .eq("asset_type", "client_profile_post")
+    .order("featured", { ascending: false })
     .order("created_at", { ascending: false });
 
   if (galleryResult.error) {
@@ -1211,6 +1220,15 @@ export async function mutateProfileMedia(user: UserAccount, input: ProfileMediaM
         assertClientRole(user);
         updateDemoClientGallery(user.email, (current) => current.filter((asset) => asset.id !== input.assetId));
         break;
+      case "set_client_featured_media":
+        assertClientRole(user);
+        updateDemoClientGallery(user.email, (current) => {
+          if (!current.some((asset) => asset.id === input.assetId)) {
+            throw new ProfileMediaServiceError("Unable to set featured image.", 404);
+          }
+          return current.map((asset) => ({ ...asset, featured: asset.id === input.assetId }));
+        });
+        break;
       case "set_client_public_username":
         assertClientRole(user);
         updateDemoClientPublicProfile(user.email, { publicUsername: assertPublicUsername(input.username) });
@@ -1256,6 +1274,18 @@ export async function mutateProfileMedia(user: UserAccount, input: ProfileMediaM
         });
         break;
       }
+      case "set_barber_featured_media": {
+        const barberId = assertBarberRole(user);
+        updateDemoBarberMedia(barberId, {
+          galleryUpdater: (current) => {
+            if (!current.some((asset) => asset.id === input.assetId)) {
+              throw new ProfileMediaServiceError("Unable to set featured image.", 404);
+            }
+            return current.map((asset) => ({ ...asset, featured: asset.id === input.assetId }));
+          }
+        });
+        break;
+      }
       case "set_barber_public_bio":
         updateDemoBarberMedia(assertBarberRole(user), { publicBio: cleanPublicText(input.publicBio) ?? "" });
         break;
@@ -1294,6 +1324,18 @@ export async function mutateProfileMedia(user: UserAccount, input: ProfileMediaM
         const shopId = assertShopRole(user, managedShopIds, input.shopId);
         updateDemoShopMedia(shopId, {
           galleryUpdater: (current) => current.filter((asset) => asset.id !== input.assetId)
+        });
+        break;
+      }
+      case "set_shop_featured_media": {
+        const shopId = assertShopRole(user, managedShopIds, input.shopId);
+        updateDemoShopMedia(shopId, {
+          galleryUpdater: (current) => {
+            if (!current.some((asset) => asset.id === input.assetId)) {
+              throw new ProfileMediaServiceError("Unable to set featured image.", 404);
+            }
+            return current.map((asset) => ({ ...asset, featured: asset.id === input.assetId }));
+          }
         });
         break;
       }
@@ -1361,16 +1403,59 @@ export async function mutateProfileMedia(user: UserAccount, input: ProfileMediaM
     }
     case "add_client_gallery_image": {
       assertClientRole(user);
+      if (input.featured) {
+        const clearResult = await supabase
+          .from("media_assets")
+          .update({ featured: false })
+          .eq("owner_profile_id", profile.id)
+          .eq("asset_type", "client_profile_post");
+
+        if (clearResult.error) {
+          throw new ProfileMediaServiceError("Unable to set featured image.", 500);
+        }
+      }
       const result = await supabase
         .from("media_assets")
         .insert({
           owner_profile_id: profile.id,
           asset_type: "client_profile_post",
-          storage_path: input.storagePath
+          storage_path: input.storagePath,
+          featured: Boolean(input.featured)
         });
 
       if (result.error) {
         throw new ProfileMediaServiceError("Unable to add the client profile media.", 500);
+      }
+      break;
+    }
+    case "set_client_featured_media": {
+      assertClientRole(user);
+      const assetResult = await supabase
+        .from("media_assets")
+        .select("id")
+        .eq("id", input.assetId)
+        .eq("owner_profile_id", profile.id)
+        .eq("asset_type", "client_profile_post")
+        .maybeSingle();
+
+      if (assetResult.error || !assetResult.data) {
+        throw new ProfileMediaServiceError("Unable to set featured image.", assetResult.error ? 500 : 404);
+      }
+
+      const clearResult = await supabase
+        .from("media_assets")
+        .update({ featured: false })
+        .eq("owner_profile_id", profile.id)
+        .eq("asset_type", "client_profile_post");
+      const setResult = await supabase
+        .from("media_assets")
+        .update({ featured: true })
+        .eq("id", input.assetId)
+        .eq("owner_profile_id", profile.id)
+        .eq("asset_type", "client_profile_post");
+
+      if (clearResult.error || setResult.error) {
+        throw new ProfileMediaServiceError("Unable to set featured image.", 500);
       }
       break;
     }
@@ -1474,6 +1559,16 @@ export async function mutateProfileMedia(user: UserAccount, input: ProfileMediaM
     }
     case "add_barber_gallery_image": {
       const barberId = assertBarberRole(user);
+      if (input.featured) {
+        const clearResult = await supabase
+          .from("barber_portfolios")
+          .update({ featured: false })
+          .eq("barber_reference", barberId);
+
+        if (clearResult.error) {
+          throw new ProfileMediaServiceError("Unable to set featured image.", 500);
+        }
+      }
       const result = await supabase
         .from("barber_portfolios")
         .insert({
@@ -1488,6 +1583,34 @@ export async function mutateProfileMedia(user: UserAccount, input: ProfileMediaM
 
       if (result.error) {
         throw new ProfileMediaServiceError("Unable to add the barber gallery image.", 500);
+      }
+      break;
+    }
+    case "set_barber_featured_media": {
+      const barberId = assertBarberRole(user);
+      const assetResult = await supabase
+        .from("barber_portfolios")
+        .select("id")
+        .eq("id", input.assetId)
+        .eq("barber_reference", barberId)
+        .maybeSingle();
+
+      if (assetResult.error || !assetResult.data) {
+        throw new ProfileMediaServiceError("Unable to set featured image.", assetResult.error ? 500 : 404);
+      }
+
+      const clearResult = await supabase
+        .from("barber_portfolios")
+        .update({ featured: false, updated_at: new Date().toISOString() })
+        .eq("barber_reference", barberId);
+      const setResult = await supabase
+        .from("barber_portfolios")
+        .update({ featured: true, updated_at: new Date().toISOString() })
+        .eq("id", input.assetId)
+        .eq("barber_reference", barberId);
+
+      if (clearResult.error || setResult.error) {
+        throw new ProfileMediaServiceError("Unable to set featured image.", 500);
       }
       break;
     }
@@ -1603,6 +1726,16 @@ export async function mutateProfileMedia(user: UserAccount, input: ProfileMediaM
     }
     case "add_shop_gallery_image": {
       const shopId = assertShopRole(user, managedShopIds, input.shopId);
+      if (input.featured) {
+        const clearResult = await supabase
+          .from("shop_media_assets")
+          .update({ featured: false })
+          .eq("shop_reference", shopId);
+
+        if (clearResult.error) {
+          throw new ProfileMediaServiceError("Unable to set featured image.", 500);
+        }
+      }
       const result = await supabase
         .from("shop_media_assets")
         .insert({
@@ -1617,6 +1750,34 @@ export async function mutateProfileMedia(user: UserAccount, input: ProfileMediaM
 
       if (result.error) {
         throw new ProfileMediaServiceError("Unable to add the shop gallery image.", 500);
+      }
+      break;
+    }
+    case "set_shop_featured_media": {
+      const shopId = assertShopRole(user, managedShopIds, input.shopId);
+      const assetResult = await supabase
+        .from("shop_media_assets")
+        .select("id")
+        .eq("id", input.assetId)
+        .eq("shop_reference", shopId)
+        .maybeSingle();
+
+      if (assetResult.error || !assetResult.data) {
+        throw new ProfileMediaServiceError("Unable to set featured image.", assetResult.error ? 500 : 404);
+      }
+
+      const clearResult = await supabase
+        .from("shop_media_assets")
+        .update({ featured: false, updated_at: new Date().toISOString() })
+        .eq("shop_reference", shopId);
+      const setResult = await supabase
+        .from("shop_media_assets")
+        .update({ featured: true, updated_at: new Date().toISOString() })
+        .eq("id", input.assetId)
+        .eq("shop_reference", shopId);
+
+      if (clearResult.error || setResult.error) {
+        throw new ProfileMediaServiceError("Unable to set featured image.", 500);
       }
       break;
     }

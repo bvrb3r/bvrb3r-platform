@@ -79,6 +79,7 @@ type MarketplaceShopRecord = {
   phone: string;
   address: string;
   profilePhotoUrl?: string;
+  coverPhotoUrl?: string;
   shopUsername?: string;
   kind: string;
   latitude?: number;
@@ -715,7 +716,30 @@ async function readShops(supabase: SupabaseClient | null): Promise<MarketplaceSh
 
   const shopResult = await supabase.from("shops").select("*").order("neighborhood");
   if (!shopResult.error && (shopResult.data ?? []).length) {
-    return (shopResult.data as ShopRecord[]).map((row) => ({
+    const shopRows = shopResult.data as ShopRecord[];
+    const shopIds = shopRows.map((row) => row.id);
+    const galleryResult = shopIds.length
+      ? await supabase
+        .from("shop_media_assets")
+        .select("shop_reference, storage_path, image_url, featured, created_at")
+        .in("shop_reference", shopIds)
+        .order("featured", { ascending: false })
+        .order("created_at", { ascending: false })
+      : { data: [], error: null };
+    const coverByShopId = new Map<string, string>();
+    if (!galleryResult.error) {
+      (galleryResult.data as Array<{ shop_reference: string; storage_path: string | null; image_url: string | null }> ?? []).forEach((asset) => {
+        if (coverByShopId.has(asset.shop_reference)) {
+          return;
+        }
+        const url = toPublicMediaUrl(supabase, asset.storage_path, asset.image_url);
+        if (url) {
+          coverByShopId.set(asset.shop_reference, url);
+        }
+      });
+    }
+
+    return shopRows.map((row) => ({
       id: row.id,
       name: row.name,
       brandLine: row.brand_line ?? "",
@@ -725,6 +749,7 @@ async function readShops(supabase: SupabaseClient | null): Promise<MarketplaceSh
       phone: row.phone ?? "",
       address: row.address ?? [row.neighborhood, row.city, row.state].filter(Boolean).join(", "),
       profilePhotoUrl: toPublicMediaUrl(supabase, row.profile_photo_path, row.profile_photo_url),
+      coverPhotoUrl: coverByShopId.get(row.id),
       shopUsername: row.public_username ?? undefined,
       kind: row.kind,
       latitude: row.latitude ?? undefined,
@@ -2368,7 +2393,7 @@ function buildRecommendedShops(
       bookHref: metrics?.bookHref,
       viewHref: `/shop/${encodeURIComponent(shop.id)}`,
       profilePhotoUrl: shop.profilePhotoUrl,
-      coverPhotoUrl: shop.profilePhotoUrl
+      coverPhotoUrl: shop.coverPhotoUrl ?? shop.profilePhotoUrl
     } satisfies RecommendedShopView;
   });
 }
@@ -3035,6 +3060,12 @@ export async function getPublicShopProfilePayload(shopIdOrSlug: string): Promise
     });
 
   const shopMedia = await readShopProfileMedia(visibleShop.id).catch(() => null);
+  const shopFeaturedCoverUrl = shopMedia?.gallery.find((asset) => asset.featured)?.imageUrl
+    ?? shopMedia?.gallery[0]?.imageUrl
+    ?? recommendedShop.coverPhotoUrl
+    ?? visibleShop.coverPhotoUrl
+    ?? shopMedia?.profilePhotoUrl
+    ?? visibleShop.profilePhotoUrl;
   const serviceMap = new Map<string, PublicShopProfilePayload["services"][number]>();
   for (const profile of barbers) {
     for (const service of profile.services) {
@@ -3050,6 +3081,7 @@ export async function getPublicShopProfilePayload(shopIdOrSlug: string): Promise
       phone: visibleShop.phone,
       activeBarbersCount: barbers.length,
       profilePhotoUrl: shopMedia?.profilePhotoUrl ?? visibleShop.profilePhotoUrl ?? undefined,
+      coverPhotoUrl: shopFeaturedCoverUrl,
       publicBio: shopMedia?.publicBio ?? ("publicBio" in visibleShop ? (visibleShop as { publicBio?: string }).publicBio : undefined),
       brandLine: shopMedia?.brandLine ?? visibleShop.brandLine,
       address: shopMedia?.address ?? visibleShop.address,

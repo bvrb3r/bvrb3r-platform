@@ -139,6 +139,7 @@ export function buildBarberProfileStudioViewModel({
   const contextLine = isLocationLocked
     ? formatShopControlledLocation(profile, shopLabel)
     : formatFreelanceLocation(profile, shopLabel === "Independent barber" ? "" : shopLabel) || "Add service location.";
+  const featuredPortfolioAsset = portfolioAssets.find((asset) => asset.featured) ?? portfolioAssets[0];
 
   return {
     role: "barber",
@@ -155,6 +156,7 @@ export function buildBarberProfileStudioViewModel({
       username,
       publicUrl: publicProfileHref ?? profile?.barber.bookingLink ?? null,
       avatarUrl: profilePhotoUrl,
+      coverUrl: featuredPortfolioAsset?.imageUrl ?? null,
       badge: reputationLabel,
       bio: identityLine,
       contextLine,
@@ -210,7 +212,8 @@ export function buildBarberProfileStudioViewModel({
         id: asset.id,
         imageUrl: asset.imageUrl,
         alt: asset.caption || `${barberName} portfolio work`,
-        caption: asset.caption
+        caption: asset.caption,
+        featured: Boolean(asset.featured)
       }))
     }
   };

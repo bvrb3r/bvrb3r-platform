@@ -467,6 +467,70 @@ describe("OwnerPublicProfileEditor", () => {
     expect(await screen.findByText("Shop image added.")).toBeInTheDocument();
   });
 
+  it("sets shop gallery media as the featured public banner", async () => {
+    const mutateAsync = vi.fn().mockResolvedValue({});
+    useMutateProfileMediaMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync
+    });
+    useProfileMediaWorkspaceQueryMock.mockReturnValue({
+      data: {
+        viewer: {
+          role: "shop_owner_user",
+          email: user.email,
+          notificationPreference: null
+        },
+        clientProfile: null,
+        barberProfile: null,
+        shops: [
+          {
+            shopId: "shop-bvrb3r",
+            label: "The BVRB3R Shop",
+            name: "The BVRB3R Shop",
+            profilePhotoUrl: "https://cdn.example.com/shop-logo.jpg",
+            gallery: [
+              {
+                id: "shop-image-1",
+                imageUrl: "https://cdn.example.com/shop-1.jpg",
+                storagePath: "profiles/shops/shop-bvrb3r/gallery/shop-1.jpg",
+                caption: "Shop floor",
+                featured: false,
+                createdAt: new Date().toISOString()
+              }
+            ]
+          }
+        ]
+      }
+    });
+    useOwnerShopProfileQueryMock.mockReturnValue({
+      data: {
+        shop: {
+          id: "shop-bvrb3r",
+          name: "The BVRB3R Shop",
+          shop_username: "bvrb3rshop",
+          brand_line: "Campus cuts.",
+          public_bio: "Public shop bio.",
+          city: "Tampa",
+          state: "FL",
+          address: "2200 E Fowler Ave"
+        }
+      },
+      error: null,
+      isLoading: false,
+      refetch: vi.fn()
+    });
+
+    render(<OwnerPublicProfileEditor user={user} />);
+    fireEvent.click(screen.getByRole("button", { name: "Set as featured banner" }));
+
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith({
+      action: "set_shop_featured_media",
+      shopId: "shop-bvrb3r",
+      assetId: "shop-image-1"
+    }));
+    expect((await screen.findAllByText("Featured image saved.")).length).toBeGreaterThan(0);
+  });
+
   it("keeps the uploaded shop logo in the studio hero without showing a false load error", async () => {
     const mutateAsync = vi.fn().mockResolvedValue({});
     const refetch = vi.fn().mockRejectedValue(new Error("Unable to load shop profile."));

@@ -270,6 +270,54 @@ describe("BarberProfileScreen", () => {
     });
   });
 
+  it("sets barber portfolio media as the featured public banner", async () => {
+    const mutateAsync = vi.fn().mockResolvedValue({});
+    const refetch = vi.fn().mockResolvedValue({});
+    useMutateProfileMediaMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync,
+      error: null
+    });
+    useBarberProfileQueryMock.mockReturnValue({
+      ...useBarberProfileQueryMock(),
+      refetch
+    });
+    useProfileMediaWorkspaceQueryMock.mockReturnValue({
+      data: {
+        barberProfile: {
+          barberId: "barber-43b3cda2",
+          profilePhotoUrl: null,
+          publicBio: "Sharp public barber bio.",
+          serviceAreaLabel: "Phils chair",
+          publicAddress: "2200 E Fowler Ave",
+          publicCity: "Tampa",
+          publicState: "FL",
+          publicZip: "33612",
+          gallery: [
+            {
+              id: "work-1",
+              imageUrl: "https://cdn.example.com/work-1.jpg",
+              storagePath: "profiles/barbers/barber-43b3cda2/gallery/work-1.jpg",
+              caption: "Fade",
+              featured: false,
+              createdAt: new Date().toISOString()
+            }
+          ]
+        }
+      }
+    });
+
+    render(<BarberProfileScreen user={user} />);
+    fireEvent.click(screen.getByRole("button", { name: "Set as featured banner" }));
+
+    expect((await screen.findAllByText("Featured image saved.")).length).toBeGreaterThan(0);
+    expect(mutateAsync).toHaveBeenCalledWith({
+      action: "set_barber_featured_media",
+      assetId: "work-1"
+    });
+    expect(refetch).toHaveBeenCalled();
+  });
+
   it("saves barber public bio and freelance service location from the hero", async () => {
     const mutateAsync = vi.fn().mockResolvedValue({});
     const refetch = vi.fn().mockResolvedValue({});

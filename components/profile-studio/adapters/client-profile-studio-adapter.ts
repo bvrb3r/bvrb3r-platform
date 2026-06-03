@@ -24,6 +24,7 @@ export function buildClientProfileStudioViewModel(
   const state = media?.publicState ?? (typeof userWithLocation.state === "string" ? userWithLocation.state : "");
   const location = [city, state].filter(Boolean).join(", ");
   const posts = media?.gallery ?? [];
+  const featuredPost = posts.find((asset) => asset.featured) ?? posts[0];
 
   return {
     role: "client",
@@ -40,6 +41,7 @@ export function buildClientProfileStudioViewModel(
       username: handle,
       publicUrl: `/client/${handle}`,
       avatarUrl: media?.profilePhotoUrl ?? null,
+      coverUrl: featuredPost?.imageUrl ?? null,
       badge: "Culture profile",
       bio: media?.publicBio ?? "",
       contextLine: location || "Culture and social identity",
@@ -93,7 +95,8 @@ export function buildClientProfileStudioViewModel(
         id: asset.id,
         imageUrl: asset.imageUrl,
         alt: asset.caption || `${displayName} Culture post`,
-        caption: asset.caption
+        caption: asset.caption,
+        featured: asset.featured
       }))
     }
   };

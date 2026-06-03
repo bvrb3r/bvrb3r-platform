@@ -189,6 +189,34 @@ describe("ProfileStudioShell", () => {
     expect(screen.getByText("No media in this folder yet. Add or move media into this folder.")).toBeInTheDocument();
   });
 
+  it("renders featured banner heart control and saves the selected media item", async () => {
+    const onSetFeaturedMedia = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ProfileStudioShell
+        model={{
+          ...model,
+          work: {
+            ...model.work,
+            items: [
+              { id: "post-1", imageUrl: "https://cdn.example.com/post-1.jpg", alt: "Culture post", featured: false },
+              { id: "post-2", imageUrl: "https://cdn.example.com/post-2.jpg", alt: "Featured Culture post", featured: true }
+            ]
+          }
+        }}
+        backHref="/dashboard/client/more"
+        backLabel="Back to More"
+        usernameValue="jordan"
+        onSetFeaturedMedia={onSetFeaturedMedia}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "Featured banner" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Set as featured banner" }));
+
+    await waitFor(() => expect(onSetFeaturedMedia).toHaveBeenCalledWith("post-1"));
+    expect(await screen.findByText("Featured image saved.")).toBeInTheDocument();
+  });
+
   it("renders the username editor as a top-layer portal with usable actions", async () => {
     mockUsernameAvailability();
     const onUsernameSave = vi.fn();
