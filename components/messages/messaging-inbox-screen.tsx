@@ -4,7 +4,7 @@ import type { Route } from "next";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, MessageSquarePlus, MessageSquareText, RadioTower, Search, Send, X } from "lucide-react";
+import { ArrowLeft, MessageSquarePlus, MessageSquareText, RadioTower, Search, Send, Sparkles, X } from "lucide-react";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -14,6 +14,7 @@ import {
   useApprovePosPaymentRequestMutation,
   useCreateMessageThreadMutation,
   useDeclinePosPaymentRequestMutation,
+  useMarkMessageThreadReadMutation,
   useMessageParticipantSearchQuery,
   useMessageThreadQuery,
   useMessageThreadsQuery,
@@ -1222,6 +1223,7 @@ export function MessagingInboxScreen({
   const copy = getSurfaceCopy(surface);
   const threadsQuery = useMessageThreadsQuery();
   const createThreadMutation = useCreateMessageThreadMutation();
+  const markReadMutation = useMarkMessageThreadReadMutation();
   const broadcastMutation = useSendMessageBroadcastMutation();
   const usesModalThreadView = true;
   const [modalThreadId, setModalThreadId] = useState<string | null>(selectedThreadId ?? null);
@@ -1235,15 +1237,25 @@ export function MessagingInboxScreen({
   const [threadSearch, setThreadSearch] = useState("");
   const [threadFilter, setThreadFilter] = useState<ThreadFilter>("all");
   const [paymentRequestActionId, setPaymentRequestActionId] = useState<string | null>(null);
+  const [optimisticallyReadThreadIds, setOptimisticallyReadThreadIds] = useState<Set<string>>(() => new Set());
   const startersRef = useRef<HTMLDivElement | null>(null);
   const hasTriggeredSupportIntentRef = useRef(false);
+  const markedReadThreadIdsRef = useRef<Set<string>>(new Set());
 
   const available = threadsQuery.data?.available ?? false;
   const threadAggregation = useMemo(
     () => orderAndDedupeThreads(threadsQuery.data?.threads ?? [], surface),
     [surface, threadsQuery.data?.threads]
   );
-  const threads = threadAggregation.threads;
+  const threads = useMemo(
+    () =>
+      threadAggregation.threads.map((thread) =>
+        optimisticallyReadThreadIds.has(thread.id)
+          ? { ...thread, hasUnread: false }
+          : thread
+      ),
+    [optimisticallyReadThreadIds, threadAggregation.threads]
+  );
   const appointmentStarters = useMemo(() => threadsQuery.data?.eligibleAppointments ?? [], [threadsQuery.data?.eligibleAppointments]);
   const uniqueAppointmentStarters = useMemo(() => {
     const seen = new Set<string>();
@@ -1297,6 +1309,41 @@ export function MessagingInboxScreen({
   useEffect(() => {
     setModalThreadId(selectedThreadId ?? null);
   }, [selectedThreadId]);
+
+  useEffect(() => {
+    if (!activeThreadId || !available) {
+      return;
+    }
+
+    if (markedReadThreadIdsRef.current.has(activeThreadId)) {
+      return;
+    }
+
+    markedReadThreadIdsRef.current.add(activeThreadId);
+    setOptimisticallyReadThreadIds((current) => {
+      if (current.has(activeThreadId)) {
+        return current;
+      }
+
+      const next = new Set(current);
+      next.add(activeThreadId);
+      return next;
+    });
+
+    void markReadMutation.mutateAsync(activeThreadId).catch(() => {
+      markedReadThreadIdsRef.current.delete(activeThreadId);
+      setOptimisticallyReadThreadIds((current) => {
+        if (!current.has(activeThreadId)) {
+          return current;
+        }
+
+        const next = new Set(current);
+        next.delete(activeThreadId);
+        return next;
+      });
+      void threadsQuery.refetch();
+    });
+  }, [activeThreadId, available, markReadMutation, threadsQuery]);
 
   useEffect(() => {
     if (!broadcastLocationId && broadcastTargets[0]?.locationId) {
@@ -1499,7 +1546,7 @@ export function MessagingInboxScreen({
               href={cultureHref as Route}
               className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-xs font-black text-white/74 transition hover:border-[#a3ff12]/30 hover:text-[#d7ffab]"
             >
-              <RadioTower className="h-4 w-4" aria-hidden="true" />
+              <Sparkles className="h-4 w-4" aria-hidden="true" />
               {cultureLabel}
             </Link>
           ) : null}

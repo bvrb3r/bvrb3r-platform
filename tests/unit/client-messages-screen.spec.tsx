@@ -8,6 +8,7 @@ const {
   useMessageThreadQueryMock,
   useMessageParticipantSearchQueryMock,
   useCreateMessageThreadMutationMock,
+  useMarkMessageThreadReadMutationMock,
   useSendMessageMutationMock,
   useApprovePosPaymentRequestMutationMock,
   useDeclinePosPaymentRequestMutationMock,
@@ -18,6 +19,7 @@ const {
   useMessageThreadQueryMock: vi.fn(),
   useMessageParticipantSearchQueryMock: vi.fn(),
   useCreateMessageThreadMutationMock: vi.fn(),
+  useMarkMessageThreadReadMutationMock: vi.fn(),
   useSendMessageMutationMock: vi.fn(),
   useApprovePosPaymentRequestMutationMock: vi.fn(),
   useDeclinePosPaymentRequestMutationMock: vi.fn(),
@@ -56,6 +58,7 @@ vi.mock("@/lib/messages/client", () => ({
   useMessageThreadQuery: useMessageThreadQueryMock,
   useMessageParticipantSearchQuery: useMessageParticipantSearchQueryMock,
   useCreateMessageThreadMutation: useCreateMessageThreadMutationMock,
+  useMarkMessageThreadReadMutation: useMarkMessageThreadReadMutationMock,
   useSendMessageMutation: useSendMessageMutationMock,
   useApprovePosPaymentRequestMutation: useApprovePosPaymentRequestMutationMock,
   useDeclinePosPaymentRequestMutation: useDeclinePosPaymentRequestMutationMock,
@@ -159,6 +162,7 @@ describe("client messages screen", () => {
     useMessageThreadQueryMock.mockReset();
     useMessageParticipantSearchQueryMock.mockReset();
     useCreateMessageThreadMutationMock.mockReset();
+    useMarkMessageThreadReadMutationMock.mockReset();
     useSendMessageMutationMock.mockReset();
     useApprovePosPaymentRequestMutationMock.mockReset();
     useDeclinePosPaymentRequestMutationMock.mockReset();
@@ -208,6 +212,10 @@ describe("client messages screen", () => {
     useCreateMessageThreadMutationMock.mockReturnValue({
       isPending: false,
       mutateAsync: vi.fn()
+    });
+    useMarkMessageThreadReadMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: vi.fn().mockResolvedValue({ threadId: "thread-appointment-1", lastReadAt: "2026-05-19T13:31:00.000Z" })
     });
     useSendMessageMutationMock.mockReturnValue({
       isPending: false,
@@ -289,7 +297,159 @@ describe("client messages screen", () => {
     );
 
     expect(screen.getByRole("button", { name: "New Message" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Culture" })).toHaveAttribute("href", "/dashboard/client/culture");
+    const cultureLink = screen.getByRole("link", { name: "Culture" });
+    expect(cultureLink).toHaveAttribute("href", "/dashboard/client/culture");
+    expect(cultureLink.querySelector(".lucide-sparkles")).toBeInTheDocument();
+    expect(cultureLink.querySelector(".lucide-radio-tower")).not.toBeInTheDocument();
+  });
+
+  it("marks an unread thread read and removes the dot when the row opens", async () => {
+    const markRead = vi.fn().mockResolvedValue({
+      threadId: "thread-appointment-1",
+      lastReadAt: "2026-05-19T13:31:00.000Z"
+    });
+    useMarkMessageThreadReadMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: markRead
+    });
+    const thread = buildThread({ hasUnread: true });
+    useMessageThreadsQueryMock.mockReturnValue({
+      data: {
+        available: true,
+        viewer: {
+          profileId: "profile-client",
+          fullName: "Jordan Ellis",
+          role: "client"
+        },
+        threads: [thread],
+        eligibleAppointments: [],
+        eligibleContacts: [],
+        broadcastTargets: []
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn()
+    });
+    useMessageThreadQueryMock.mockReturnValue({
+      data: {
+        available: true,
+        viewer: {
+          profileId: "profile-client",
+          fullName: "Jordan Ellis",
+          role: "client"
+        },
+        thread: buildThreadDetail(thread),
+        messages: []
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="client"
+        basePath="/dashboard/client/messages"
+        title="Messages"
+        subtitle="Barbers, shops, bookings, and support."
+      />
+    );
+
+    expect(screen.getByLabelText("Unread message")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("message-thread-row-thread-appointment-1"));
+
+    await waitFor(() => {
+      expect(markRead).toHaveBeenCalledWith("thread-appointment-1");
+    });
+    expect(screen.queryByLabelText("Unread message")).not.toBeInTheDocument();
+  });
+
+  it("does not render a green unread dot when the thread is already read", () => {
+    useMessageThreadsQueryMock.mockReturnValue({
+      data: {
+        available: true,
+        viewer: {
+          profileId: "profile-client",
+          fullName: "Jordan Ellis",
+          role: "client"
+        },
+        threads: [buildThread({ hasUnread: false })],
+        eligibleAppointments: [],
+        eligibleContacts: [],
+        broadcastTargets: []
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn()
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="client"
+        basePath="/dashboard/client/messages"
+        title="Messages"
+        subtitle="Barbers, shops, bookings, and support."
+      />
+    );
+
+    expect(screen.queryByLabelText("Unread message")).not.toBeInTheDocument();
+  });
+
+  it("marks a directly loaded selected thread read", async () => {
+    const markRead = vi.fn().mockResolvedValue({
+      threadId: "thread-appointment-1",
+      lastReadAt: "2026-05-19T13:31:00.000Z"
+    });
+    useMarkMessageThreadReadMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: markRead
+    });
+    const thread = buildThread({ hasUnread: true });
+    useMessageThreadsQueryMock.mockReturnValue({
+      data: {
+        available: true,
+        viewer: {
+          profileId: "profile-client",
+          fullName: "Jordan Ellis",
+          role: "client"
+        },
+        threads: [thread],
+        eligibleAppointments: [],
+        eligibleContacts: [],
+        broadcastTargets: []
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn()
+    });
+    useMessageThreadQueryMock.mockReturnValue({
+      data: {
+        available: true,
+        viewer: {
+          profileId: "profile-client",
+          fullName: "Jordan Ellis",
+          role: "client"
+        },
+        thread: buildThreadDetail(thread),
+        messages: []
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="client"
+        basePath="/dashboard/client/messages"
+        selectedThreadId="thread-appointment-1"
+        title="Messages"
+        subtitle="Barbers, shops, bookings, and support."
+      />
+    );
+
+    await waitFor(() => {
+      expect(markRead).toHaveBeenCalledWith("thread-appointment-1");
+    });
   });
 
   it("maps Culture header actions for barber and owner message surfaces", () => {
@@ -529,11 +689,19 @@ describe("client messages screen", () => {
     expect(existingHeader.compareDocumentPosition(peopleHeader) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("opens an existing thread from a main search public identity result", () => {
+  it("opens an existing thread from a main search public identity result and marks it read", async () => {
     const push = vi.fn();
+    const markRead = vi.fn().mockResolvedValue({
+      threadId: "thread-appointment-1",
+      lastReadAt: "2026-05-19T13:31:00.000Z"
+    });
     useRouterMock.mockReturnValue({
       push,
       replace: vi.fn()
+    });
+    useMarkMessageThreadReadMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: markRead
     });
     useMessageParticipantSearchQueryMock.mockReturnValue({
       data: {
@@ -578,6 +746,9 @@ describe("client messages screen", () => {
     fireEvent.click(screen.getByText("@phillipforsure"));
 
     expect(push).toHaveBeenCalledWith("/dashboard/client/messages/thread-appointment-1", { scroll: false });
+    await waitFor(() => {
+      expect(markRead).toHaveBeenCalledWith("thread-appointment-1");
+    });
   });
 
   it("creates a new thread from a main search public identity result", async () => {

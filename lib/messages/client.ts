@@ -79,6 +79,23 @@ export function useCreateMessageThreadMutation() {
   });
 }
 
+export function useMarkMessageThreadReadMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (threadId: string) =>
+      requestJson<{ threadId: string; lastReadAt: string }>(`/api/messages/threads/${threadId}/read`, {
+        method: "PATCH"
+      }),
+    onSuccess: async (_, threadId) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["messages", "threads"] }),
+        queryClient.invalidateQueries({ queryKey: ["messages", "threads", threadId] })
+      ]);
+    }
+  });
+}
+
 export function useSendMessageMutation(threadId?: string) {
   const queryClient = useQueryClient();
 

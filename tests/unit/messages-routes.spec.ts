@@ -9,6 +9,7 @@ const {
   getMessagingThreadPayloadMock,
   searchMessagingParticipantsMock,
   createMessagingThreadMock,
+  markMessageThreadReadMock,
   sendThreadMessageMock,
   sendMessagingBroadcastMock
 } = vi.hoisted(() => ({
@@ -17,6 +18,7 @@ const {
   getMessagingThreadPayloadMock: vi.fn(),
   searchMessagingParticipantsMock: vi.fn(),
   createMessagingThreadMock: vi.fn(),
+  markMessageThreadReadMock: vi.fn(),
   sendThreadMessageMock: vi.fn(),
   sendMessagingBroadcastMock: vi.fn()
 }));
@@ -33,6 +35,7 @@ vi.mock("@/lib/messages/service", async () => {
     getMessagingThreadPayload: getMessagingThreadPayloadMock,
     searchMessagingParticipants: searchMessagingParticipantsMock,
     createMessagingThread: createMessagingThreadMock,
+    markMessageThreadRead: markMessageThreadReadMock,
     sendThreadMessage: sendThreadMessageMock,
     sendMessagingBroadcast: sendMessagingBroadcastMock
   };
@@ -41,6 +44,7 @@ vi.mock("@/lib/messages/service", async () => {
 import { GET as getThreads, POST as postThreads } from "@/app/api/messages/threads/route";
 import { GET as searchParticipants } from "@/app/api/messages/participants/search/route";
 import { GET as getThread } from "@/app/api/messages/threads/[id]/route";
+import { PATCH as markThreadRead } from "@/app/api/messages/threads/[id]/read/route";
 import { POST as postMessage } from "@/app/api/messages/threads/[id]/messages/route";
 import { POST as postBroadcast } from "@/app/api/messages/broadcasts/route";
 
@@ -51,6 +55,7 @@ describe("phase 8 messaging routes", () => {
     getMessagingThreadPayloadMock.mockReset();
     searchMessagingParticipantsMock.mockReset();
     createMessagingThreadMock.mockReset();
+    markMessageThreadReadMock.mockReset();
     sendThreadMessageMock.mockReset();
     sendMessagingBroadcastMock.mockReset();
   });
@@ -321,6 +326,40 @@ describe("phase 8 messaging routes", () => {
     getMessagingThreadPayloadMock.mockRejectedValue(new MessagingServiceError("Only thread participants can view this conversation.", 403));
 
     const response = await getThread(new NextRequest("https://bvrb3r.demo/api/messages/threads/thread-1"), {
+      params: Promise.resolve({ id: "thread-1" })
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.error).toMatch(/participants/i);
+  });
+
+  it("marks the signed-in participant thread row read", async () => {
+    getSessionUserMock.mockResolvedValue(resolveDemoUser("client@bvrb3r.demo"));
+    markMessageThreadReadMock.mockResolvedValue({
+      threadId: "thread-1",
+      lastReadAt: "2026-05-19T13:31:00.000Z"
+    });
+
+    const response = await markThreadRead(new NextRequest("https://bvrb3r.demo/api/messages/threads/thread-1/read", {
+      method: "PATCH"
+    }), {
+      params: Promise.resolve({ id: "thread-1" })
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.threadId).toBe("thread-1");
+    expect(markMessageThreadReadMock).toHaveBeenCalledWith(expect.anything(), "thread-1");
+  });
+
+  it("rejects mark-read for users who are not thread participants", async () => {
+    getSessionUserMock.mockResolvedValue(resolveDemoUser("client@bvrb3r.demo"));
+    markMessageThreadReadMock.mockRejectedValue(new MessagingServiceError("Only thread participants can mark this conversation read.", 403));
+
+    const response = await markThreadRead(new NextRequest("https://bvrb3r.demo/api/messages/threads/thread-1/read", {
+      method: "PATCH"
+    }), {
       params: Promise.resolve({ id: "thread-1" })
     });
     const body = await response.json();

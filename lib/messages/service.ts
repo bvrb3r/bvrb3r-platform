@@ -122,6 +122,7 @@ type ThreadParticipantRow = {
   profile_id: string;
   thread_role: Role;
   created_at: string;
+  last_read_at: string | null;
 };
 
 type MessageRow = {
@@ -485,6 +486,64 @@ function isMessageMetadataColumnError(error: unknown) {
     || (/metadata/i.test(message) && /schema cache|column|could not find/i.test(message));
 }
 
+function isThreadParticipantReadColumnError(error: unknown) {
+  const candidate = error as { code?: string; message?: string } | null | undefined;
+  const message = candidate?.message ?? "";
+  return candidate?.code === "42703"
+    || candidate?.code === "PGRST204"
+    || (/last_read_at|thread_participants/i.test(message) && /schema cache|column|could not find/i.test(message));
+}
+
+async function selectThreadParticipantsForThreads(input: {
+  supabase: SupabaseClient;
+  threadIds: string[];
+}) {
+  const withReadState = await input.supabase
+    .from("thread_participants")
+    .select("id, thread_id, profile_id, thread_role, created_at, last_read_at")
+    .in("thread_id", input.threadIds);
+
+  if (!withReadState.error) {
+    return {
+      data: (withReadState.data ?? []) as ThreadParticipantRow[],
+      error: null
+    };
+  }
+
+  if (!isThreadParticipantReadColumnError(withReadState.error)) {
+    return {
+      data: [],
+      error: withReadState.error
+    };
+  }
+
+  console.warn("[messages] thread_participant_read_state_column_fallback", {
+    threadCount: input.threadIds.length,
+    postgresCode: withReadState.error.code ?? null,
+    postgresMessage: withReadState.error.message ?? null
+  });
+
+  const withoutReadState = await input.supabase
+    .from("thread_participants")
+    .select("id, thread_id, profile_id, thread_role, created_at")
+    .in("thread_id", input.threadIds);
+
+  if (withoutReadState.error) {
+    return {
+      data: [],
+      error: withoutReadState.error
+    };
+  }
+
+  return {
+    data: ((withoutReadState.data ?? []) as Omit<ThreadParticipantRow, "last_read_at">[]).map((participant) => ({
+      ...participant,
+      last_read_at: null
+    })),
+    error: null
+  };
+}
+
 function extractPosPaymentRequestIdFromBody(body: string | null | undefined) {
   return body?.match(/Payment request ID:\s*([^\s]+)/i)?.[1] ?? null;
 }
@@ -526,6 +585,25 @@ function getPosPaymentRequestMetadata(value: unknown): PosPaymentRequestMessageM
       ? (status as PosPaymentRequestMessageMetadata["status"])
       : "pending"
   };
+}
+
+export function isThreadUnreadForViewer(input: {
+  latestMessage: { sender_profile_id: string | null; created_at: string } | null;
+  currentProfileId: string;
+  lastReadAt?: string | null;
+}) {
+  const latestIncomingCreatedAt = input.latestMessage && input.latestMessage.sender_profile_id !== input.currentProfileId
+    ? new Date(input.latestMessage.created_at).getTime()
+    : null;
+  const lastReadAt = input.lastReadAt ? new Date(input.lastReadAt).getTime() : null;
+
+  return latestIncomingCreatedAt !== null
+    && Number.isFinite(latestIncomingCreatedAt)
+    && (
+      !lastReadAt
+      || !Number.isFinite(lastReadAt)
+      || latestIncomingCreatedAt > lastReadAt
+    );
 }
 
 async function selectMessagesForThreads(input: {
@@ -1237,6 +1315,7 @@ function buildThreadSummary(input: {
   locationLabels: Map<string, string>;
 }): MessagingThreadSummary {
   const threadParticipants = input.participants.filter((participant) => participant.thread_id === input.thread.id);
+  const currentParticipant = threadParticipants.find((participant) => participant.profile_id === input.currentProfileId) ?? null;
   const counterpartParticipant = threadParticipants.find((participant) => participant.profile_id !== input.currentProfileId) ?? null;
   const counterpartProfile = counterpartParticipant ? input.profilesById.get(counterpartParticipant.profile_id) ?? null : null;
   const counterpartMetadata = counterpartParticipant
@@ -1253,6 +1332,11 @@ function buildThreadSummary(input: {
     ? input.publicMetadataByProfileId.get(latestMessage.sender_profile_id) ?? null
     : null;
   const locationLabel = input.thread.location_id ? input.locationLabels.get(input.thread.location_id) ?? input.thread.location_id : null;
+  const hasUnread = isThreadUnreadForViewer({
+    latestMessage,
+    currentProfileId: input.currentProfileId,
+    lastReadAt: currentParticipant?.last_read_at ?? null
+  });
 
   return {
     id: input.thread.id,
@@ -1291,7 +1375,7 @@ function buildThreadSummary(input: {
             : null
         }
       : null,
-    hasUnread: Boolean(latestMessage && latestMessage.sender_profile_id !== input.currentProfileId)
+    hasUnread
   };
 }
 
@@ -1316,10 +1400,10 @@ async function readThreadBundle(supabase: SupabaseClient, currentProfileId: stri
       .select("id, thread_type, appointment_id, location_id, created_at, updated_at, created_by_profile_id")
       .in("id", threadIds)
       .order("updated_at", { ascending: false }),
-    supabase
-      .from("thread_participants")
-      .select("id, thread_id, profile_id, thread_role, created_at")
-      .in("thread_id", threadIds),
+    selectThreadParticipantsForThreads({
+      supabase,
+      threadIds
+    }),
     selectMessagesForThreads({
       supabase,
       threadIds,
@@ -2803,6 +2887,40 @@ export async function searchMessagingParticipants(user: UserAccount, query: stri
   }
 
   return payload;
+}
+
+export async function markMessageThreadRead(user: UserAccount, threadId: string): Promise<{ threadId: string; lastReadAt: string }> {
+  const supabase = getSupabase();
+  if (!supabase) {
+    throw new MessagingServiceError("Messaging is available when Supabase is configured.", 503);
+  }
+
+  const actor = await resolveMessagingActor(user, supabase);
+  const lastReadAt = new Date().toISOString();
+  const updateResult = await supabase
+    .from("thread_participants")
+    .update({ last_read_at: lastReadAt })
+    .eq("thread_id", threadId)
+    .eq("profile_id", actor.profile.id)
+    .select("id")
+    .maybeSingle();
+
+  if (updateResult.error) {
+    if (isThreadParticipantReadColumnError(updateResult.error)) {
+      throw new MessagingServiceError("Message read state migration is required.", 503);
+    }
+
+    throw new MessagingServiceError("Unable to mark this conversation read.", 500);
+  }
+
+  if (!updateResult.data) {
+    throw new MessagingServiceError("Only thread participants can mark this conversation read.", 403);
+  }
+
+  return {
+    threadId,
+    lastReadAt
+  };
 }
 
 export async function createMessagingThread(user: UserAccount, input: MessagingCreateThreadInput) {
