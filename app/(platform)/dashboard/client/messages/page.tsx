@@ -15,6 +15,7 @@ export default async function ClientMessagesDashboardPage({
       <MessagingInboxScreen
         surface="client"
         basePath="/dashboard/client/messages"
+        cultureHref="/dashboard/client/culture"
         startSupportIntent={params.thread === "support"}
         title="Messages"
         subtitle="Barbers, shops, bookings, and support."

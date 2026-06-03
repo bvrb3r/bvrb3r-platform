@@ -15,6 +15,7 @@ export default async function ClientMessageThreadDashboardPage({
       <MessagingInboxScreen
         surface="client"
         basePath="/dashboard/client/messages"
+        cultureHref="/dashboard/client/culture"
         selectedThreadId={threadId}
         title="Messages"
         subtitle="Your conversations, appointments, and support."

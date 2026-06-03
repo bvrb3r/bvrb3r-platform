@@ -16,6 +16,7 @@ export default async function BarberMessagesPage() {
       <MessagingInboxScreen
         surface="barber"
         basePath="/dashboard/barber/messages"
+        cultureHref="/dashboard/barber/culture"
         title="Messages"
         subtitle="Clients, bookings, shop lines, and support."
       />

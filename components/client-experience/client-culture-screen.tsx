@@ -6,6 +6,7 @@ import { PageHeader, StatusBadge } from "@/design/components";
 import { CLIENT_PRIMARY_TAB_HREFS } from "@/components/client-experience/client-tab-config";
 
 export type CultureCreatorRole = "client" | "barber" | "shop" | "architect";
+type CultureSurface = "client" | "barber" | "shop";
 
 export interface ClientCulturePost {
   id: string;
@@ -33,11 +34,25 @@ function creatorRoleLabel(role: CultureCreatorRole) {
 }
 
 export function ClientCultureScreen({
-  posts = []
+  posts = [],
+  surface = "client"
 }: {
   posts?: ClientCulturePost[];
+  surface?: CultureSurface;
 }) {
   const hasPosts = posts.length > 0;
+  const discoverBarbersHref = surface === "client" ? CLIENT_PRIMARY_TAB_HREFS.search : "/discover";
+  const viewShopsHref = surface === "client" ? `${CLIENT_PRIMARY_TAB_HREFS.search}?type=shops` : "/discover?type=shops";
+  const postingTitle = surface === "barber"
+    ? "Share professional work"
+    : surface === "shop"
+      ? "Share shop moments"
+      : "Share your next cut";
+  const postingCopy = surface === "barber"
+    ? "Posting as a barber profile is available when your public profile is live and approved."
+    : surface === "shop"
+      ? "Posting as a shop brand is available when your public shop profile is live and approved."
+      : "Posting is coming soon.";
 
   return (
     <div className="space-y-4" data-testid="client-culture-screen">
@@ -106,20 +121,20 @@ export function ClientCultureScreen({
         </div>
 
         <aside className="space-y-4">
-          <Link href={CLIENT_PRIMARY_TAB_HREFS.search} className="block rounded-[26px] border border-[#d7ffab]/16 bg-[#d7ffab]/8 p-5 transition hover:border-[#d7ffab]/34">
+          <Link href={discoverBarbersHref as Route} className="block rounded-[26px] border border-[#d7ffab]/16 bg-[#d7ffab]/8 p-5 transition hover:border-[#d7ffab]/34">
             <Search className="h-5 w-5 text-[#d7ffab]" />
             <p className="mt-4 text-lg font-semibold text-white">Discover barbers</p>
             <p className="mt-2 text-sm leading-6 text-white/58">Find your next cut from live client discovery.</p>
           </Link>
-          <Link href={`${CLIENT_PRIMARY_TAB_HREFS.search}?type=shops` as Route} className="block rounded-[26px] border border-white/10 bg-black/20 p-5 transition hover:border-white/18">
+          <Link href={viewShopsHref as Route} className="block rounded-[26px] border border-white/10 bg-black/20 p-5 transition hover:border-white/18">
             <Store className="h-5 w-5 text-[#baff69]" />
             <p className="mt-4 text-lg font-semibold text-white">View shops</p>
             <p className="mt-2 text-sm leading-6 text-white/58">Browse shops, chairs, and local supply.</p>
           </Link>
           <div className="rounded-[26px] border border-white/10 bg-black/20 p-5">
             <Scissors className="h-5 w-5 text-[#d7ffab]" />
-            <p className="mt-4 text-lg font-semibold text-white">Share your next cut</p>
-            <p className="mt-2 text-sm leading-6 text-white/58">Posting is coming soon.</p>
+            <p className="mt-4 text-lg font-semibold text-white">{postingTitle}</p>
+            <p className="mt-2 text-sm leading-6 text-white/58">{postingCopy}</p>
             <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/24 px-3 py-2 text-xs uppercase tracking-[0.16em] text-white/54">
               <UsersRound className="h-3.5 w-3.5" />
               Community ready

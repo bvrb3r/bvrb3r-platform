@@ -77,18 +77,20 @@ vi.mock("@/components/barber-experience/barber-settings-screen", () => ({
 vi.mock("@/components/messages/messaging-inbox-screen", () => ({
   MessagingInboxScreen: ({
     basePath,
+    cultureHref,
     selectedThreadId,
     startSupportIntent,
     title
   }: {
     basePath: string;
+    cultureHref?: string;
     selectedThreadId?: string;
     startSupportIntent?: boolean;
     title?: string;
   }) => (
     <div data-testid="messages-screen-stub">
       <h1>{title}</h1>
-      {basePath}|{selectedThreadId ?? "none"}|{String(Boolean(startSupportIntent))}
+      {basePath}|{cultureHref ?? "none"}|{selectedThreadId ?? "none"}|{String(Boolean(startSupportIntent))}
     </div>
   )
 }));
@@ -116,7 +118,7 @@ vi.mock("@/components/client-experience/client-home-screen", () => ({
 }));
 
 vi.mock("@/components/client-experience/client-culture-screen", () => ({
-  ClientCultureScreen: () => <div data-testid="client-culture-screen-stub">Culture</div>
+  ClientCultureScreen: ({ surface = "client" }: { surface?: string }) => <div data-testid="client-culture-screen-stub">Culture|{surface}</div>
 }));
 
 vi.mock("@/components/client-experience/client-bookings-screen", () => ({
@@ -138,6 +140,7 @@ import FrontDeskDashboardPage from "@/app/(platform)/dashboard/front-desk/page";
 import BarberDashboardPage from "@/app/(platform)/dashboard/barber/page";
 import BarberCalendarPage from "@/app/(platform)/dashboard/barber/calendar/page";
 import BarberCheckoutPage from "@/app/(platform)/dashboard/barber/checkout/page";
+import BarberCulturePage from "@/app/(platform)/dashboard/barber/culture/page";
 import BarberMessagesPage from "@/app/(platform)/dashboard/barber/messages/page";
 import BarberMorePage from "@/app/(platform)/dashboard/barber/more/page";
 import BarberProfilePage from "@/app/(platform)/dashboard/barber/profile/page";
@@ -148,6 +151,7 @@ import ClientActivityDashboardPage from "@/app/(platform)/dashboard/client/activ
 import ClientCultureDashboardPage from "@/app/(platform)/dashboard/client/culture/page";
 import ClientMessagesDashboardPage from "@/app/(platform)/dashboard/client/messages/page";
 import ClientMessageThreadDashboardPage from "@/app/(platform)/dashboard/client/messages/[threadId]/page";
+import OwnerCulturePage from "@/app/(platform)/dashboard/owner/culture/page";
 import SettingsPage from "@/app/(platform)/settings/page";
 
 describe("dashboard role pages", () => {
@@ -261,7 +265,16 @@ describe("dashboard role pages", () => {
 
     expect(getAuthorizedUserMock).toHaveBeenCalledWith(["barber_user"]);
     expect(screen.getAllByRole("heading", { name: "Messages" }).length).toBeGreaterThan(0);
-    expect(screen.getByTestId("messages-screen-stub")).toHaveTextContent("/dashboard/barber/messages|none|false");
+    expect(screen.getByTestId("messages-screen-stub")).toHaveTextContent("/dashboard/barber/messages|/dashboard/barber/culture|none|false");
+  });
+
+  it("renders the barber Culture route without requiring a client role", async () => {
+    getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("blaze@bvrb3r.demo"));
+
+    render(await BarberCulturePage());
+
+    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["barber_user"]);
+    expect(screen.getByTestId("client-culture-screen-stub")).toHaveTextContent("Culture|barber");
   });
 
   it("renders the barber more route", async () => {
@@ -309,7 +322,7 @@ describe("dashboard role pages", () => {
     render(await ClientCultureDashboardPage());
 
     expect(screen.getByTestId("client-app-shell-stub")).toBeInTheDocument();
-    expect(screen.getByTestId("client-culture-screen-stub")).toHaveTextContent("Culture");
+    expect(screen.getByTestId("client-culture-screen-stub")).toHaveTextContent("Culture|client");
   });
 
   it("keeps the client activity route available by direct URL", async () => {
@@ -330,7 +343,7 @@ describe("dashboard role pages", () => {
 
     expect(getAuthorizedUserMock).toHaveBeenCalledWith(["client_user"]);
     expect(screen.getAllByRole("heading", { name: "Messages" }).length).toBeGreaterThan(0);
-    expect(screen.getByTestId("messages-screen-stub")).toHaveTextContent("/dashboard/client/messages|none|true");
+    expect(screen.getByTestId("messages-screen-stub")).toHaveTextContent("/dashboard/client/messages|/dashboard/client/culture|none|true");
   });
 
   it("renders the client message thread route", async () => {
@@ -344,7 +357,16 @@ describe("dashboard role pages", () => {
 
     expect(getAuthorizedUserMock).toHaveBeenCalledWith(["client_user"]);
     expect(screen.getAllByRole("heading", { name: "Messages" }).length).toBeGreaterThan(0);
-    expect(screen.getByTestId("messages-screen-stub")).toHaveTextContent("/dashboard/client/messages|thread-support-1|false");
+    expect(screen.getByTestId("messages-screen-stub")).toHaveTextContent("/dashboard/client/messages|/dashboard/client/culture|thread-support-1|false");
+  });
+
+  it("renders the owner Culture route without requiring a client role", async () => {
+    getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("owner@bvrb3r.demo"));
+
+    render(await OwnerCulturePage());
+
+    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["shop_owner_user"]);
+    expect(screen.getByTestId("client-culture-screen-stub")).toHaveTextContent("Culture|shop");
   });
 
   it("renders account settings and logout surface for the canonical owner settings tab", async () => {

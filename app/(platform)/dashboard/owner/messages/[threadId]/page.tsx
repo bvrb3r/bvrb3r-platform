@@ -15,16 +15,17 @@ export default async function OwnerMessageThreadPage({
       user={user}
       activeHref="/dashboard/owner/messages"
       title="Messages"
-      subtitle="Client, barber, team, booking, and support conversations."
+      subtitle="Clients, barbers, team, bookings, and support."
       hidePageHeader
       hideShellContext
     >
       <MessagingInboxScreen
         surface="shop"
         basePath="/dashboard/owner/messages"
+        cultureHref="/dashboard/owner/culture"
         selectedThreadId={threadId}
         title="Messages"
-        subtitle="Client, barber, team, booking, and support conversations."
+        subtitle="Clients, barbers, team, bookings, and support."
       />
     </DashboardShell>
   );

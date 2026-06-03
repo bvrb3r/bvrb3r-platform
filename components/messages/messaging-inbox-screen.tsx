@@ -1202,6 +1202,8 @@ function ComposeModal({
 export function MessagingInboxScreen({
   surface,
   basePath,
+  cultureHref,
+  cultureLabel = "Culture",
   selectedThreadId,
   startSupportIntent = false,
   title,
@@ -1209,6 +1211,8 @@ export function MessagingInboxScreen({
 }: {
   surface: MessagingSurface;
   basePath: string;
+  cultureHref?: string;
+  cultureLabel?: string;
   selectedThreadId?: string;
   startSupportIntent?: boolean;
   title: string;
@@ -1481,14 +1485,25 @@ export function MessagingInboxScreen({
           <h2 className="mt-1 text-2xl font-black text-white sm:text-3xl" data-display="true">{title}</h2>
           <p className="mt-1 max-w-xl truncate text-sm text-white/54">{subtitle}</p>
         </div>
-        <Button
-          className="h-10 rounded-lg px-4 normal-case tracking-normal"
-          disabled={surface === "client" ? createThreadMutation.isPending : false}
-          onClick={handleNewMessage}
-        >
-          <MessageSquarePlus className="h-4 w-4" aria-hidden="true" />
-          {createThreadMutation.isPending ? "Opening..." : "New Message"}
-        </Button>
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:justify-end">
+          <Button
+            className="h-10 rounded-lg px-4 normal-case tracking-normal"
+            disabled={surface === "client" ? createThreadMutation.isPending : false}
+            onClick={handleNewMessage}
+          >
+            <MessageSquarePlus className="h-4 w-4" aria-hidden="true" />
+            {createThreadMutation.isPending ? "Opening..." : "New Message"}
+          </Button>
+          {cultureHref ? (
+            <Link
+              href={cultureHref as Route}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-xs font-black text-white/74 transition hover:border-[#a3ff12]/30 hover:text-[#d7ffab]"
+            >
+              <RadioTower className="h-4 w-4" aria-hidden="true" />
+              {cultureLabel}
+            </Link>
+          ) : null}
+        </div>
       </div>
 
       <div className="mt-3 space-y-2">

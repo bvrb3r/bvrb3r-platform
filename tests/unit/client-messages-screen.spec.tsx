@@ -277,6 +277,49 @@ describe("client messages screen", () => {
     expect(mutateAsync).not.toHaveBeenCalled();
   });
 
+  it("renders Culture as a secondary Messages header action", () => {
+    render(
+      <MessagingInboxScreen
+        surface="client"
+        basePath="/dashboard/client/messages"
+        cultureHref="/dashboard/client/culture"
+        title="Messages"
+        subtitle="Barbers, shops, bookings, and support."
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "New Message" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Culture" })).toHaveAttribute("href", "/dashboard/client/culture");
+  });
+
+  it("maps Culture header actions for barber and owner message surfaces", () => {
+    const { rerender } = render(
+      <MessagingInboxScreen
+        surface="barber"
+        basePath="/dashboard/barber/messages"
+        cultureHref="/dashboard/barber/culture"
+        title="Messages"
+        subtitle="Clients, bookings, shop lines, and support."
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "New Message" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Culture" })).toHaveAttribute("href", "/dashboard/barber/culture");
+
+    rerender(
+      <MessagingInboxScreen
+        surface="shop"
+        basePath="/dashboard/owner/messages"
+        cultureHref="/dashboard/owner/culture"
+        title="Messages"
+        subtitle="Clients, barbers, team, bookings, and support."
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "New Message" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Culture" })).toHaveAttribute("href", "/dashboard/owner/culture");
+  });
+
   it("finds a barber public username from the main Messages search", () => {
     useMessageParticipantSearchQueryMock.mockReturnValue({
       data: {

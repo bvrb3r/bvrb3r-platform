@@ -17,6 +17,7 @@ export default async function OwnerMessagesPage() {
       <MessagingInboxScreen
         surface="shop"
         basePath="/dashboard/owner/messages"
+        cultureHref="/dashboard/owner/culture"
         title="Messages"
         subtitle="Clients, barbers, team, bookings, and support."
       />
