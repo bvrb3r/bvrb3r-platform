@@ -146,14 +146,13 @@ export function BarberProfileScreen({
     ?? (visibleProfileRepairNotice ? { tone: "info" as const, message: visibleProfileRepairNotice } : null);
 
   useEffect(() => {
-    if (profile?.profile.username && !isSavingUsername) {
-      setUsernameDraft(
-        isFallbackPublicUsername(profile.profile.username, profile.barber.id)
-          ? suggestPublicUsername(barberName)
-          : profile.profile.username
-      );
+    if (profile?.profile.username) {
+      const profileUsername = isFallbackPublicUsername(profile.profile.username, profile.barber.id)
+        ? suggestPublicUsername(barberName)
+        : profile.profile.username;
+      setUsernameDraft((current) => current || profileUsername);
     }
-  }, [barberName, isSavingUsername, profile?.barber.id, profile?.profile.username]);
+  }, [barberName, profile?.barber.id, profile?.profile.username]);
 
   useEffect(() => {
     if (initialSection === "portfolio") {
@@ -264,12 +263,13 @@ export function BarberProfileScreen({
   }
 
   async function handleShareProfile() {
-    if (!publicProfileHref) {
+    const sharePath = usernameDraft ? `/barber/${usernameDraft}` : publicProfileHref;
+    if (!sharePath) {
       setLocalFeedback({ tone: "info", message: "Set a public username before sharing this profile." });
       return;
     }
 
-    const shareUrl = `${window.location.origin}${publicProfileHref}`;
+    const shareUrl = `${window.location.origin}${sharePath}`;
     if (navigator.share) {
       await navigator.share({ title: `${barberName} on BVRB3R`, url: shareUrl });
       return;
@@ -290,9 +290,11 @@ export function BarberProfileScreen({
       });
       setUsernameDraft(username);
       await profileQuery.refetch();
-      setLocalFeedback({ tone: "info", message: "Public username saved. Client profile links refresh right away." });
+      setLocalFeedback({ tone: "info", message: `Public username saved. @${username} is live.` });
     } catch (error) {
-      setLocalFeedback({ tone: "error", message: readableError(error, "Unable to save public username.") });
+      const message = readableError(error, "Unable to save public username.");
+      setLocalFeedback({ tone: "error", message });
+      throw new Error(message);
     } finally {
       setIsSavingUsername(false);
     }
@@ -350,11 +352,12 @@ export function BarberProfileScreen({
         backLabel="Back to More"
         usernameValue={usernameDraft || model.username.value}
         onUsernameChange={(value) => setUsernameDraft(suggestPublicUsername(value))}
-        onUsernameSave={(value) => void handleUsernameSave(value)}
+        onUsernameSave={handleUsernameSave}
         isSavingUsername={isSavingUsername}
         onPreview={() => {
-          if (publicProfileHref) {
-            window.location.assign(publicProfileHref);
+          const previewHref = usernameDraft ? `/barber/${usernameDraft}` : publicProfileHref;
+          if (previewHref) {
+            window.location.assign(previewHref);
             return;
           }
           scrollToStudio();

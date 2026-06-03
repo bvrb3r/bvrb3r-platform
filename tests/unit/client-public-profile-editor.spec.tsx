@@ -245,7 +245,11 @@ describe("ClientPublicProfileEditor", () => {
   });
 
   it("saves the client public username and updates the hero route state", async () => {
-    const mutateAsync = vi.fn().mockResolvedValue({});
+    vi.useFakeTimers();
+    let resolveSave: (() => void) | undefined;
+    const mutateAsync = vi.fn(() => new Promise<void>((resolve) => {
+      resolveSave = resolve;
+    }));
     useMutateProfileMediaMutationMock.mockReturnValue({
       isPending: false,
       mutateAsync
@@ -257,11 +261,21 @@ describe("ClientPublicProfileEditor", () => {
     fireEvent.change(screen.getByLabelText("Public username"), { target: { value: "jordan-culture" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
-    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith({
+    expect(screen.getByRole("button", { name: "Saving..." })).toBeDisabled();
+    expect(mutateAsync).toHaveBeenCalledWith({
       action: "set_client_public_username",
       username: "jordan-culture"
-    }));
-    expect(await screen.findByText("Public username saved.")).toBeInTheDocument();
+    });
+    await act(async () => {
+      resolveSave?.();
+      await Promise.resolve();
+    });
+    expect(screen.getByText("Username saved.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Saved" })).toBeDisabled();
+    act(() => {
+      vi.advanceTimersByTime(850);
+    });
+    expect(screen.getAllByText("Public username saved. @jordan-culture is live.").length).toBeGreaterThan(0);
     expect(screen.getByText("@jordan-culture")).toBeInTheDocument();
   });
 

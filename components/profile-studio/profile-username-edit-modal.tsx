@@ -25,6 +25,8 @@ export function ProfileUsernameEditModal({
   helper,
   value,
   isSaving = false,
+  isSaved = false,
+  saveError,
   saveDisabledReason,
   onChange,
   onClose,
@@ -34,6 +36,8 @@ export function ProfileUsernameEditModal({
   helper: string;
   value: string;
   isSaving?: boolean;
+  isSaved?: boolean;
+  saveError?: string | null;
   saveDisabledReason?: string | null;
   onChange: (value: string) => void;
   onClose: () => void;
@@ -41,7 +45,7 @@ export function ProfileUsernameEditModal({
 }) {
   const [mounted, setMounted] = useState(false);
   const error = validateProfileHandle(value);
-  const canSave = !error && !saveDisabledReason && !isSaving;
+  const canSave = !error && !saveDisabledReason && !isSaving && !isSaved;
 
   useEffect(() => {
     setMounted(true);
@@ -117,7 +121,11 @@ export function ProfileUsernameEditModal({
           <p className="mt-3 text-xs leading-5 text-white/48">
             Lowercase letters, numbers, hyphens, or underscores. No spaces.
           </p>
-          {error || saveDisabledReason ? (
+          {saveError ? (
+            <p className="mt-2 text-xs font-bold text-red-200">{saveError}</p>
+          ) : isSaved ? (
+            <p className="mt-2 text-xs font-bold text-[#a3ff12]">Username saved.</p>
+          ) : error || saveDisabledReason ? (
             <p className="mt-2 text-xs font-bold text-yellow-200">{error ?? saveDisabledReason}</p>
           ) : (
             <p className="mt-2 text-xs font-bold text-[#a3ff12]">Username ready.</p>
@@ -139,7 +147,7 @@ export function ProfileUsernameEditModal({
             className="inline-flex min-h-12 flex-1 items-center justify-center rounded-[8px] bg-[#a3ff12] px-5 text-sm font-black text-[#050505] transition hover:bg-[#d7ffab] disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-white/36"
             onClick={() => void onSave(value.trim())}
           >
-            {isSaving ? "Saving..." : "Save"}
+            {isSaved ? "Saved" : isSaving ? "Saving..." : "Save"}
           </button>
           </div>
         </div>

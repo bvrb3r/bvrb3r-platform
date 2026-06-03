@@ -256,7 +256,11 @@ describe("OwnerPublicProfileEditor", () => {
   });
 
   it("saves shop public username through the shared profile media mutation", async () => {
-    const mutateAsync = vi.fn().mockResolvedValue({});
+    vi.useFakeTimers();
+    let resolveSave: (() => void) | undefined;
+    const mutateAsync = vi.fn(() => new Promise<void>((resolve) => {
+      resolveSave = resolve;
+    }));
     useMutateProfileMediaMutationMock.mockReturnValue({
       isPending: false,
       mutateAsync
@@ -286,12 +290,22 @@ describe("OwnerPublicProfileEditor", () => {
     fireEvent.change(screen.getByLabelText("Public username"), { target: { value: "university-shop" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
-    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith({
+    expect(screen.getByRole("button", { name: "Saving..." })).toBeDisabled();
+    expect(mutateAsync).toHaveBeenCalledWith({
       action: "set_shop_public_username",
       shopId: "shop-bvrb3r",
       username: "university-shop"
-    }));
-    expect(await screen.findByText("Shop username saved.")).toBeInTheDocument();
+    });
+    await act(async () => {
+      resolveSave?.();
+      await Promise.resolve();
+    });
+    expect(screen.getByText("Username saved.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Saved" })).toBeDisabled();
+    act(() => {
+      vi.advanceTimersByTime(850);
+    });
+    expect(screen.getAllByText("Public shop username saved. @university-shop is live.").length).toBeGreaterThan(0);
     expect(screen.getByText("@university-shop")).toBeInTheDocument();
   });
 

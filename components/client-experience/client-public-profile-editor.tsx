@@ -166,7 +166,7 @@ export function ClientPublicProfileEditor({ user }: { user: UserAccount }) {
         username: nextUsername
       });
       setUsernameDraft(nextUsername);
-      setFeedback({ tone: "success", message: "Public username saved." });
+      setFeedback({ tone: "success", message: `Public username saved. @${nextUsername} is live.` });
     } catch (errorValue) {
       const message = readableError(errorValue, "Unable to save public username.");
       setFeedback({ tone: "error", message });

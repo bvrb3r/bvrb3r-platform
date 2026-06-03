@@ -328,7 +328,7 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
             shop_username: nextUsername
           } as OwnerShopProfileResponse["shop"]
         : current);
-      setFeedback({ tone: "success", message: "Shop username saved." });
+      setFeedback({ tone: "success", message: `Public shop username saved. @${nextUsername} is live.` });
     } catch (errorValue) {
       const message = readableError(errorValue, "Unable to save shop username.");
       setFeedback({ tone: "error", message });

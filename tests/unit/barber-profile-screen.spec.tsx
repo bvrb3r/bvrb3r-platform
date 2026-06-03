@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BarberProfileScreen } from "@/components/barber-experience/barber-profile-screen";
@@ -301,7 +301,11 @@ describe("BarberProfileScreen", () => {
   });
 
   it("saves barber public username through the shared profile media mutation", async () => {
-    const mutateAsync = vi.fn().mockResolvedValue({});
+    vi.useFakeTimers();
+    let resolveSave: (() => void) | undefined;
+    const mutateAsync = vi.fn(() => new Promise<void>((resolve) => {
+      resolveSave = resolve;
+    }));
     const refetch = vi.fn().mockResolvedValue({});
     useMutateProfileMediaMutationMock.mockReturnValue({
       isPending: false,
@@ -319,11 +323,21 @@ describe("BarberProfileScreen", () => {
     fireEvent.change(screen.getByLabelText("Public username"), { target: { value: "phil-public" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
-    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith({
+    expect(screen.getByRole("button", { name: "Saving..." })).toBeDisabled();
+    expect(mutateAsync).toHaveBeenCalledWith({
       action: "set_barber_public_username",
       username: "phil-public"
-    }));
-    expect(await screen.findByText("Public username saved. Client profile links refresh right away.")).toBeInTheDocument();
+    });
+    await act(async () => {
+      resolveSave?.();
+      await Promise.resolve();
+    });
+    expect(screen.getByText("Username saved.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Saved" })).toBeDisabled();
+    act(() => {
+      vi.advanceTimersByTime(850);
+    });
+    expect(screen.getAllByText("Public username saved. @phil-public is live.").length).toBeGreaterThan(0);
     expect(screen.getByText("@phil-public")).toBeInTheDocument();
     expect(refetch).toHaveBeenCalled();
   });

@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProfileImageEditButton } from "@/components/profile-studio/profile-image-edit-button";
 import { ProfileStudioShell, type ProfileStudioViewModel } from "@/components/profile-studio/profile-studio-shell";
 
@@ -81,6 +81,10 @@ const model: ProfileStudioViewModel = {
 };
 
 describe("ProfileStudioShell", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("renders role-provided studio sections without hardcoded barber copy", () => {
     render(
       <ProfileStudioShell
@@ -219,6 +223,64 @@ describe("ProfileStudioShell", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(document.body.style.overflow).toBe(previousOverflow);
+  });
+
+  it("keeps the username editor open briefly with saved confirmation before closing", async () => {
+    let resolveSave: (() => void) | undefined;
+    const onUsernameSave = vi.fn(() => new Promise<void>((resolve) => {
+      resolveSave = resolve;
+    }));
+
+    render(
+      <ProfileStudioShell
+        model={model}
+        backHref="/dashboard/client/more"
+        backLabel="Back to More"
+        usernameValue="jordan"
+        photoControl={<ProfileImageEditButton label="Update public photo" onUnavailable={vi.fn()} />}
+        onUsernameSave={onUsernameSave}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit public username" }));
+    fireEvent.change(await screen.findByLabelText("Public username"), { target: { value: "jordan-live" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(screen.getByRole("button", { name: "Saving..." })).toBeDisabled();
+    expect(onUsernameSave).toHaveBeenCalledWith("jordan-live");
+
+    await act(async () => {
+      resolveSave?.();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText("Username saved.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Saved" })).toBeDisabled();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.getByText("Public username saved. @jordan-live is live.")).toBeInTheDocument();
+  });
+
+  it("keeps the username editor open and shows inline error after failed save", async () => {
+    render(
+      <ProfileStudioShell
+        model={model}
+        backHref="/dashboard/client/more"
+        backLabel="Back to More"
+        usernameValue="jordan"
+        photoControl={<ProfileImageEditButton label="Update public photo" onUnavailable={vi.fn()} />}
+        onUsernameSave={vi.fn().mockRejectedValue(new Error("Unable to save public username."))}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit public username" }));
+    fireEvent.change(await screen.findByLabelText("Public username"), { target: { value: "jordan-error" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText("Unable to save public username.")).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
   });
 
   it("closes the username editor through Cancel and X actions", async () => {

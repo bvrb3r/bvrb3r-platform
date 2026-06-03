@@ -25,6 +25,7 @@ import { ProfileUsernameEditModal } from "@/components/profile-studio/profile-us
 
 export type ProfileStudioRole = "client" | "barber" | "shop_owner";
 export type ProfileStudioSeverity = "good" | "warning" | "neutral";
+type UsernameSaveState = "idle" | "saving" | "saved" | "error";
 
 export type ProfileStudioViewModel = {
   role: ProfileStudioRole;
@@ -177,11 +178,14 @@ export function ProfileStudioShell({
 }: ProfileStudioShellProps) {
   const publicName = model.hero.publicName || model.hero.emptyTitle || "Finish profile";
   const workSectionRef = useRef<HTMLElement | null>(null);
+  const usernameCloseTimerRef = useRef<number | null>(null);
   const [isUsernameModalOpen, setIsUsernameModalOpen] = useState(false);
   const [isBioModalOpen, setIsBioModalOpen] = useState(false);
   const [isContextModalOpen, setIsContextModalOpen] = useState(false);
   const [usernameDraft, setUsernameDraft] = useState(usernameValue);
   const [usernameFeedback, setUsernameFeedback] = useState<string | null>(null);
+  const [usernameSaveState, setUsernameSaveState] = useState<UsernameSaveState>("idle");
+  const [usernameSaveError, setUsernameSaveError] = useState<string | null>(null);
   const [bioValue, setBioValue] = useState(model.hero.bio?.trim() ?? "");
   const [contextValue, setContextValue] = useState(model.hero.contextLine?.trim() ?? "");
   const previousHeroBioRef = useRef(model.hero.bio?.trim() ?? "");
@@ -219,6 +223,12 @@ export function ProfileStudioShell({
     }
   }, [isUsernameModalOpen, usernameValue]);
 
+  useEffect(() => () => {
+    if (usernameCloseTimerRef.current) {
+      window.clearTimeout(usernameCloseTimerRef.current);
+    }
+  }, []);
+
   useEffect(() => {
     const nextBio = model.hero.bio?.trim() ?? "";
     if (nextBio !== previousHeroBioRef.current) {
@@ -251,11 +261,57 @@ export function ProfileStudioShell({
     workSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  async function handleUsernameSave(value: string) {
-    onUsernameChange?.(value);
-    await onUsernameSave?.(value);
-    setUsernameFeedback(onUsernameSave ? "Handle updated." : "Handle saving is not connected yet.");
+  function usernameSavedMessage(value: string) {
+    return model.role === "shop_owner"
+      ? `Public shop username saved. @${value} is live.`
+      : `Public username saved. @${value} is live.`;
+  }
+
+  function openUsernameModal() {
+    if (usernameCloseTimerRef.current) {
+      window.clearTimeout(usernameCloseTimerRef.current);
+      usernameCloseTimerRef.current = null;
+    }
+    setUsernameSaveState("idle");
+    setUsernameSaveError(null);
+    setIsUsernameModalOpen(true);
+  }
+
+  function closeUsernameModal() {
+    if (usernameSaveState === "saving") {
+      return;
+    }
+    if (usernameCloseTimerRef.current) {
+      window.clearTimeout(usernameCloseTimerRef.current);
+      usernameCloseTimerRef.current = null;
+    }
     setIsUsernameModalOpen(false);
+    setUsernameSaveState("idle");
+    setUsernameSaveError(null);
+  }
+
+  async function handleUsernameSave(value: string) {
+    setUsernameSaveState("saving");
+    setUsernameSaveError(null);
+    setUsernameFeedback(null);
+    try {
+      onUsernameChange?.(value);
+      await onUsernameSave?.(value);
+      setUsernameDraft(value);
+      setUsernameSaveState("saved");
+      usernameCloseTimerRef.current = window.setTimeout(() => {
+        setIsUsernameModalOpen(false);
+        setUsernameSaveState("idle");
+        setUsernameSaveError(null);
+        setUsernameFeedback(usernameSavedMessage(value));
+        usernameCloseTimerRef.current = null;
+      }, 850);
+    } catch (error) {
+      const message = error instanceof Error && error.message ? error.message : "Unable to save username.";
+      setUsernameSaveState("error");
+      setUsernameSaveError(message);
+      setUsernameFeedback(null);
+    }
   }
 
   async function handleBioSave(value: string) {
@@ -402,7 +458,7 @@ export function ProfileStudioShell({
                   type="button"
                   aria-label={usernameModalTitle}
                   className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-[#a3ff12] transition hover:border-[#a3ff12]/30 hover:bg-[#a3ff12]/10"
-                  onClick={() => setIsUsernameModalOpen(true)}
+                  onClick={openUsernameModal}
                 >
                   <Pencil className="h-4 w-4" />
                 </button>
@@ -570,10 +626,12 @@ export function ProfileStudioShell({
           title={usernameModalTitle}
           helper={usernameModalHelper}
           value={usernameDraft}
-          isSaving={isSavingUsername}
+          isSaving={usernameSaveState === "saving" || Boolean(isSavingUsername)}
+          isSaved={usernameSaveState === "saved"}
+          saveError={usernameSaveError}
           saveDisabledReason={model.username.saveUnavailableReason ?? (!onUsernameSave ? "Handle saving is not connected yet." : null)}
           onChange={setUsernameDraft}
-          onClose={() => setIsUsernameModalOpen(false)}
+          onClose={closeUsernameModal}
           onSave={handleUsernameSave}
         />
       ) : null}
