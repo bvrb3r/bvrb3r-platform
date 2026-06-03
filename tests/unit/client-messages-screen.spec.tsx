@@ -77,7 +77,9 @@ function buildThread(overrides: Record<string, unknown> = {}) {
       profileId: "profile-barber",
       fullName: "Phillip mcgee",
       role: "barber_user",
-      avatarUrl: null,
+      avatarUrl: "https://cdn.bvrb3r.test/barber-avatar.jpg",
+      publicUsername: "phillipforsure",
+      publicContextLine: "8516 Island Breeze Ln - Temple Terrace, FL 33607",
       publicProfileHref: "/barber/phillipmcgee",
       bookingHref: "/booking/new?barber=phillipmcgee&barberId=barber-43b3cda2"
     },
@@ -231,12 +233,19 @@ describe("client messages screen", () => {
         surface="client"
         basePath="/dashboard/client/messages"
         title="Messages"
-        subtitle="Keep barber replies, shop updates, and support conversations in one client-safe inbox."
+        subtitle="Barbers, shops, bookings, and support."
       />
     );
 
+    expect(screen.getByText("MESSAGES")).toBeInTheDocument();
+    expect(screen.getByText("Barbers, shops, bookings, and support.")).toBeInTheDocument();
     expect(screen.getByText("No messages yet.")).toBeInTheDocument();
+    expect(screen.getByText("Your barber, shop, booking, and support conversations will appear here.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "New Message" })).toBeInTheDocument();
+    ["All", "Barbers", "Shops", "Bookings", "Support"].forEach((label) => {
+      expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("button", { name: "Other" })).not.toBeInTheDocument();
     expect(screen.queryByText("New")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Start a support message" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Message Support" })).not.toBeInTheDocument();
@@ -290,6 +299,8 @@ describe("client messages screen", () => {
             participantType: "barber",
             role: "barber_user",
             avatarUrl: "https://cdn.bvrb3r.test/phillip.jpg",
+            publicUsername: "phillipforsure",
+            publicContextLine: "8516 Island Breeze Ln - Temple Terrace, FL 33607",
             publicProfileHref: "/barber/phillipmcgee",
             profileHref: "/barber/phillipmcgee",
             bookingHref: "/booking/new?barber=phillipmcgee&barberId=barber-43b3cda2",
@@ -338,6 +349,7 @@ describe("client messages screen", () => {
 
     const composeModal = screen.getByTestId("message-compose-modal");
     expect(within(composeModal).getByText("Phillip mcgee")).toBeInTheDocument();
+    expect(within(composeModal).getByText("@phillipforsure")).toBeInTheDocument();
     expect(within(composeModal).getAllByText("BVRB3R Support").length).toBeGreaterThan(0);
     fireEvent.click(within(composeModal).getByText("Phillip mcgee"));
 
@@ -604,10 +616,12 @@ describe("client messages screen", () => {
     expect(screen.queryByRole("button", { name: "Open" })).not.toBeInTheDocument();
     expect(screen.getByTestId("message-thread-row-thread-appointment-1")).toBeInTheDocument();
     expect(screen.getByTestId("message-thread-row-thread-support-1")).toBeInTheDocument();
+    expect(screen.getByText("@phillipforsure")).toBeInTheDocument();
+    expect(screen.getByText("8516 Island Breeze Ln - Temple Terrace, FL 33607")).toBeInTheDocument();
     expect(screen.getByText("Barber thread")).toBeInTheDocument();
     expect(screen.getByText("Latest support reply")).toBeInTheDocument();
     expect(screen.queryByText("Old support reply")).not.toBeInTheDocument();
-    expect(screen.getAllByText("PM").length).toBeGreaterThan(0);
+    expect(screen.getAllByAltText("Phillip mcgee").length).toBeGreaterThan(0);
     expect(screen.getAllByText("B").length).toBeGreaterThan(0);
 
     const rows = screen.getAllByTestId(/message-thread-row-/);
@@ -892,9 +906,9 @@ describe("client messages screen", () => {
     expect(screen.getByRole("textbox", { name: "Search messages" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "New Message" })).toBeInTheDocument();
     expect(screen.getAllByText("Phillip mcgee").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("PM").length).toBeGreaterThan(0);
+    expect(screen.getAllByAltText("Phillip mcgee").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Barber").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("test cut • Cancelled").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("8516 Island Breeze Ln - Temple Terrace, FL 33607").length).toBeGreaterThan(0);
     expect(screen.getByText("test cut • May 19 • Cancelled")).toBeInTheDocument();
     expect(screen.getAllByText("Conversation opened...").length).toBeGreaterThan(1);
     expect(screen.getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/barber/phillipmcgee");
@@ -1268,7 +1282,11 @@ describe("client messages screen", () => {
       counterpart: {
         profileId: "profile-client",
         fullName: "Jordan Ellis",
-        role: "client"
+        role: "client",
+        avatarUrl: "https://cdn.bvrb3r.test/client.jpg",
+        publicUsername: "jordanellis",
+        publicContextLine: "Tampa, FL",
+        publicProfileHref: "/client/jordanellis"
       },
       lastMessage: {
         id: "message-client-1",
@@ -1339,6 +1357,8 @@ describe("client messages screen", () => {
     });
     expect(screen.getAllByText("Jordan Ellis").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Client").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("@jordanellis").length).toBeGreaterThan(0);
+    expect(screen.getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/client/jordanellis");
     expect(screen.getAllByText("I am outside.").length).toBeGreaterThan(1);
     expect(screen.getByText("test cut • May 19 • Cancelled")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Book" })).toHaveAttribute("href", "/booking/new");
@@ -1350,7 +1370,11 @@ describe("client messages screen", () => {
       counterpart: {
         profileId: "profile-client",
         fullName: "Jordan Ellis",
-        role: "client"
+        role: "client",
+        avatarUrl: "https://cdn.bvrb3r.test/client.jpg",
+        publicUsername: "jordanellis",
+        publicContextLine: "Tampa, FL",
+        publicProfileHref: "/client/jordanellis"
       },
       appointmentContext: null,
       lastMessage: {
@@ -1418,6 +1442,8 @@ describe("client messages screen", () => {
     });
     expect(screen.getAllByText("Jordan Ellis").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Client").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("@jordanellis").length).toBeGreaterThan(0);
+    expect(screen.getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/client/jordanellis");
   });
 
   it("keeps support conversations compact without booking actions", () => {
@@ -1498,6 +1524,7 @@ describe("client messages screen", () => {
     expect(screen.getAllByText("B").length).toBeGreaterThan(0);
     expect(screen.getAllByText("How can we help?").length).toBeGreaterThan(1);
     expect(screen.getAllByText("Support").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("link", { name: "View Profile" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Book" })).not.toBeInTheDocument();
   });
 });

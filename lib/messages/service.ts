@@ -2,6 +2,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { resolveBarberReportTarget } from "@/lib/trust/report-targets";
 import { CANONICAL_PLATFORM_ADMIN_EMAIL } from "@/lib/auth/demo-auth";
 import { buildMarketplaceBookingHref } from "@/lib/marketplace/links";
+import { toPublicMediaUrl } from "@/lib/profile/public-media-url";
 import {
   assertActorCanCreateClientBarberThread,
   assertActorCanCreateShopThread,
@@ -24,6 +25,11 @@ type ProfileRow = {
   full_name: string | null;
   email: string;
   role: Role;
+  public_username?: string | null;
+  profile_photo_path?: string | null;
+  profile_photo_url?: string | null;
+  public_city?: string | null;
+  public_state?: string | null;
 };
 
 type ClientRow = {
@@ -48,7 +54,25 @@ type BarberPublicProfileRow = {
   display_name: string | null;
   profile_photo_path: string | null;
   profile_photo_url: string | null;
+  public_address?: string | null;
+  public_city?: string | null;
+  public_state?: string | null;
+  public_zip?: string | null;
+  service_area_label?: string | null;
   visibility_state?: string | null;
+};
+
+type ShopPublicIdentityRow = {
+  id: string;
+  name: string | null;
+  public_username: string | null;
+  profile_photo_path: string | null;
+  profile_photo_url: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zip_code?: string | null;
+  owner_profile_id?: string | null;
 };
 
 type StaffLocationRow = {
@@ -139,8 +163,11 @@ type HydratedAppointmentContext = {
 
 type PublicMessagingMetadata = {
   avatarUrl: string | null;
+  displayName: string | null;
+  publicUsername: string | null;
   publicProfileHref: string | null;
   bookingHref: string | null;
+  publicContextLine: string | null;
 };
 
 export type MessagingThreadParticipantView = {
@@ -149,6 +176,8 @@ export type MessagingThreadParticipantView = {
   role: Role;
   isSelf: boolean;
   avatarUrl?: string | null;
+  publicUsername?: string | null;
+  publicContextLine?: string | null;
   publicProfileHref?: string | null;
   bookingHref?: string | null;
 };
@@ -192,6 +221,8 @@ export type MessagingThreadSummary = {
     fullName: string;
     role: Role;
     avatarUrl?: string | null;
+    publicUsername?: string | null;
+    publicContextLine?: string | null;
     publicProfileHref?: string | null;
     bookingHref?: string | null;
   } | null;
@@ -222,6 +253,8 @@ export type MessagingInboxCandidate = {
     fullName: string;
     role: Role;
     avatarUrl?: string | null;
+    publicUsername?: string | null;
+    publicContextLine?: string | null;
     publicProfileHref?: string | null;
     bookingHref?: string | null;
   };
@@ -244,6 +277,8 @@ export type MessagingParticipantSearchResult = {
   participantType: "barber" | "shop" | "client" | "support";
   role: Role;
   avatarUrl?: string | null;
+  publicUsername?: string | null;
+  publicContextLine?: string | null;
   publicProfileHref?: string | null;
   profileHref: string | null;
   bookingHref?: string | null;
@@ -383,6 +418,7 @@ type ThreadBundle = {
   messages: MessageRow[];
   profilesById: Map<string, ProfileRow>;
   publicMetadataByProfileId: Map<string, PublicMessagingMetadata>;
+  publicMetadataByLocationId: Map<string, PublicMessagingMetadata>;
   latestMessageByThreadId: Map<string, MessageRow>;
   appointmentContexts: Map<string, HydratedAppointmentContext>;
   locationLabels: Map<string, string>;
@@ -663,21 +699,75 @@ function buildExistingThreadLookup(threads: MessagingThreadSummary[]) {
   return lookup;
 }
 
-function getPublicProfileMediaUrl(row?: BarberPublicProfileRow | null) {
-  return cleanText(row?.profile_photo_url) ?? cleanText(row?.profile_photo_path);
+function formatCityState(city?: string | null, state?: string | null) {
+  return [cleanText(city), cleanText(state)].filter(Boolean).join(", ") || null;
 }
 
-function buildBarberMessagingMetadata(barber: BarberRow, publicProfile?: BarberPublicProfileRow | null): PublicMessagingMetadata {
-  const barberReference = cleanText(barber.reference_code) ?? cleanText(barber.booking_slug) ?? barber.id;
-  const publicSlug = cleanText(publicProfile?.username) ?? cleanText(barber.booking_slug) ?? barberReference;
+function formatPublicAddress(input: {
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
+}) {
+  const cityStateZip = [formatCityState(input.city, input.state), cleanText(input.zip)].filter(Boolean).join(" ");
+  return [cleanText(input.address), cityStateZip].filter(Boolean).join(" - ") || null;
+}
+
+function getPublicProfileMediaUrl(supabase: SupabaseClient, row?: { profile_photo_path?: string | null; profile_photo_url?: string | null } | null) {
+  return toPublicMediaUrl(supabase, row?.profile_photo_path, row?.profile_photo_url);
+}
+
+function buildClientMessagingMetadata(supabase: SupabaseClient, profile: ProfileRow): PublicMessagingMetadata {
+  const username = cleanText(profile.public_username);
 
   return {
-    avatarUrl: getPublicProfileMediaUrl(publicProfile),
+    avatarUrl: getPublicProfileMediaUrl(supabase, profile) ?? null,
+    displayName: cleanText(profile.full_name),
+    publicUsername: username,
+    publicProfileHref: username ? `/client/${encodeURIComponent(username)}` : null,
+    bookingHref: null,
+    publicContextLine: formatCityState(profile.public_city, profile.public_state)
+  };
+}
+
+function buildBarberMessagingMetadata(supabase: SupabaseClient, barber: BarberRow, publicProfile?: BarberPublicProfileRow | null): PublicMessagingMetadata {
+  const barberReference = cleanText(barber.reference_code) ?? cleanText(barber.booking_slug) ?? barber.id;
+  const publicSlug = cleanText(publicProfile?.username) ?? cleanText(barber.booking_slug) ?? barberReference;
+  const publicContextLine = formatPublicAddress({
+    address: publicProfile?.public_address,
+    city: publicProfile?.public_city,
+    state: publicProfile?.public_state,
+    zip: publicProfile?.public_zip
+  }) ?? cleanText(publicProfile?.service_area_label);
+
+  return {
+    avatarUrl: getPublicProfileMediaUrl(supabase, publicProfile) ?? null,
+    displayName: cleanText(publicProfile?.display_name),
+    publicUsername: publicSlug,
     publicProfileHref: `/barber/${encodeURIComponent(publicSlug)}`,
     bookingHref: buildMarketplaceBookingHref({
       barberId: barberReference,
       username: publicSlug,
       sourceKind: "client_dashboard"
+    }),
+    publicContextLine
+  };
+}
+
+function buildShopMessagingMetadata(supabase: SupabaseClient, shop: ShopPublicIdentityRow): PublicMessagingMetadata {
+  const username = cleanText(shop.public_username) ?? cleanText(shop.id);
+
+  return {
+    avatarUrl: getPublicProfileMediaUrl(supabase, shop) ?? null,
+    displayName: cleanText(shop.name),
+    publicUsername: username,
+    publicProfileHref: username ? `/shop/${encodeURIComponent(username)}` : null,
+    bookingHref: null,
+    publicContextLine: formatPublicAddress({
+      address: shop.address,
+      city: shop.city,
+      state: shop.state,
+      zip: shop.zip_code
     })
   };
 }
@@ -691,6 +781,15 @@ async function readPublicMessagingMetadataByProfileIds(
     return new Map();
   }
 
+  const profiles = await readProfilesByIds(supabase, uniqueProfileIds);
+  const metadataByProfileId = new Map<string, PublicMessagingMetadata>();
+
+  for (const profile of profiles.values()) {
+    if (isClientRole(profile.role)) {
+      metadataByProfileId.set(profile.id, buildClientMessagingMetadata(supabase, profile));
+    }
+  }
+
   const barberResult = await supabase
     .from("barbers")
     .select("id, profile_id, reference_code, booking_slug")
@@ -702,7 +801,7 @@ async function readPublicMessagingMetadataByProfileIds(
 
   const barbers = (barberResult.data ?? []) as BarberRow[];
   if (!barbers.length) {
-    return new Map();
+    return metadataByProfileId;
   }
 
   const publicReferenceCandidates = unique(
@@ -716,7 +815,7 @@ async function readPublicMessagingMetadataByProfileIds(
   const publicProfilesResult = publicReferenceCandidates.length
     ? await supabase
         .from("barber_profiles")
-        .select("barber_reference, username, display_name, profile_photo_path, profile_photo_url")
+        .select("barber_reference, username, display_name, profile_photo_path, profile_photo_url, public_address, public_city, public_state, public_zip, service_area_label")
         .in("barber_reference", publicReferenceCandidates)
     : { data: [], error: null };
 
@@ -727,17 +826,46 @@ async function readPublicMessagingMetadataByProfileIds(
   const publicProfilesByReference = new Map(
     ((publicProfilesResult.data ?? []) as BarberPublicProfileRow[]).map((row) => [row.barber_reference, row])
   );
-  const metadataByProfileId = new Map<string, PublicMessagingMetadata>();
-
   for (const barber of barbers) {
     const publicProfile = [barber.reference_code, barber.booking_slug, barber.id, barber.profile_id]
       .map((value) => (value ? publicProfilesByReference.get(value) ?? null : null))
       .find((row): row is BarberPublicProfileRow => Boolean(row)) ?? null;
 
-    metadataByProfileId.set(barber.profile_id, buildBarberMessagingMetadata(barber, publicProfile));
+    metadataByProfileId.set(barber.profile_id, buildBarberMessagingMetadata(supabase, barber, publicProfile));
   }
 
   return metadataByProfileId;
+}
+
+async function readPublicShopMetadataByLocationIds(
+  supabase: SupabaseClient,
+  locationIds: string[]
+): Promise<Map<string, PublicMessagingMetadata>> {
+  const uniqueLocationIds = unique(locationIds.filter(Boolean));
+  if (!uniqueLocationIds.length) {
+    return new Map();
+  }
+
+  const result = await supabase
+    .from("shops")
+    .select("id, name, public_username, profile_photo_path, profile_photo_url, address, city, state, zip_code, owner_profile_id")
+    .in("id", uniqueLocationIds);
+
+  if (result.error) {
+    console.warn("[messages] shop_public_metadata_read_failed", {
+      locationCount: uniqueLocationIds.length,
+      postgresCode: result.error.code ?? null,
+      postgresMessage: result.error.message ?? null
+    });
+    return new Map();
+  }
+
+  return new Map(
+    ((result.data ?? []) as ShopPublicIdentityRow[]).map((shop) => [
+      shop.id,
+      buildShopMessagingMetadata(supabase, shop)
+    ])
+  );
 }
 
 function toAppointmentContextView(context: HydratedAppointmentContext): NonNullable<MessagingThreadSummary["appointmentContext"]> {
@@ -801,7 +929,7 @@ async function readProfilesByIds(supabase: SupabaseClient, profileIds: string[])
 
   const result = await supabase
     .from("profiles")
-    .select("id, full_name, email, role")
+    .select("id, full_name, email, role, public_username, profile_photo_path, profile_photo_url, public_city, public_state")
     .in("id", uniqueProfileIds);
 
   if (result.error) {
@@ -905,7 +1033,7 @@ async function resolveMessagingActor(user: UserAccount, supabase: SupabaseClient
 
   const profileResult = await supabase
     .from("profiles")
-    .select("id, full_name, email, role")
+    .select("id, full_name, email, role, public_username, profile_photo_path, profile_photo_url, public_city, public_state")
     .eq("email", user.email)
     .maybeSingle();
 
@@ -1000,7 +1128,7 @@ async function readAppointmentContexts(supabase: SupabaseClient, appointments: A
     ...clientRows.map((row) => row.profile_id).filter((value): value is string => Boolean(value)),
     ...barberRows.map((row) => row.profile_id)
   ]);
-  const profilesResult = await supabase.from("profiles").select("id, full_name, email, role").in("id", profileIds);
+  const profilesResult = await supabase.from("profiles").select("id, full_name, email, role, public_username, profile_photo_path, profile_photo_url, public_city, public_state").in("id", profileIds);
 
   if (profilesResult.error) {
     throw new MessagingServiceError("Unable to hydrate appointment participants.", 500);
@@ -1056,6 +1184,7 @@ function buildThreadSummary(input: {
   participants: ThreadParticipantRow[];
   profilesById: Map<string, ProfileRow>;
   publicMetadataByProfileId: Map<string, PublicMessagingMetadata>;
+  publicMetadataByLocationId: Map<string, PublicMessagingMetadata>;
   latestMessageByThreadId: Map<string, MessageRow>;
   appointmentContexts: Map<string, HydratedAppointmentContext>;
   locationLabels: Map<string, string>;
@@ -1066,6 +1195,10 @@ function buildThreadSummary(input: {
   const counterpartMetadata = counterpartParticipant
     ? input.publicMetadataByProfileId.get(counterpartParticipant.profile_id) ?? null
     : null;
+  const shopMetadata = input.thread.location_id && counterpartProfile && isShopRole(counterpartProfile.role)
+    ? input.publicMetadataByLocationId.get(input.thread.location_id) ?? null
+    : null;
+  const publicMetadata = shopMetadata ?? counterpartMetadata;
   const appointmentContext = input.thread.appointment_id ? input.appointmentContexts.get(input.thread.appointment_id) ?? null : null;
   const latestMessage = input.latestMessageByThreadId.get(input.thread.id) ?? null;
   const latestSender = latestMessage?.sender_profile_id ? input.profilesById.get(latestMessage.sender_profile_id) ?? null : null;
@@ -1087,11 +1220,13 @@ function buildThreadSummary(input: {
     counterpart: counterpartParticipant && counterpartProfile
       ? {
           profileId: counterpartParticipant.profile_id,
-          fullName: counterpartProfile.full_name ?? counterpartProfile.email,
+          fullName: publicMetadata?.displayName ?? counterpartProfile.full_name ?? counterpartProfile.email,
           role: counterpartProfile.role,
-          avatarUrl: counterpartMetadata?.avatarUrl ?? null,
-          publicProfileHref: counterpartMetadata?.publicProfileHref ?? null,
-          bookingHref: counterpartMetadata?.bookingHref ?? null
+          avatarUrl: publicMetadata?.avatarUrl ?? null,
+          publicUsername: publicMetadata?.publicUsername ?? null,
+          publicContextLine: publicMetadata?.publicContextLine ?? null,
+          publicProfileHref: publicMetadata?.publicProfileHref ?? null,
+          bookingHref: publicMetadata?.bookingHref ?? null
         }
       : null,
     appointmentContext: appointmentContext ? toAppointmentContextView(appointmentContext) : null,
@@ -1116,6 +1251,7 @@ async function readThreadBundle(supabase: SupabaseClient, currentProfileId: stri
       messages: [],
       profilesById: new Map<string, ProfileRow>(),
       publicMetadataByProfileId: new Map<string, PublicMessagingMetadata>(),
+      publicMetadataByLocationId: new Map<string, PublicMessagingMetadata>(),
       latestMessageByThreadId: new Map<string, MessageRow>(),
       appointmentContexts: new Map<string, HydratedAppointmentContext>(),
       locationLabels: new Map<string, string>()
@@ -1156,6 +1292,10 @@ async function readThreadBundle(supabase: SupabaseClient, currentProfileId: stri
     supabase,
     [...participantProfileIds, ...senderProfileIds, currentProfileId]
   );
+  const publicMetadataByLocationId = await readPublicShopMetadataByLocationIds(
+    supabase,
+    threads.map((thread) => thread.location_id).filter((value): value is string => Boolean(value))
+  );
   const latestMessageByThreadId = new Map<string, MessageRow>();
 
   for (const message of messages) {
@@ -1192,6 +1332,7 @@ async function readThreadBundle(supabase: SupabaseClient, currentProfileId: stri
     messages,
     profilesById,
     publicMetadataByProfileId,
+    publicMetadataByLocationId,
     latestMessageByThreadId,
     appointmentContexts,
     locationLabels: new Map(locationRows.rows.map((row) => [row.id, formatLocationLabel(row)]))
@@ -2180,6 +2321,7 @@ export async function getMessagingInboxPayload(user: UserAccount): Promise<Messa
       participants: bundle.participants,
       profilesById: bundle.profilesById,
       publicMetadataByProfileId: bundle.publicMetadataByProfileId,
+      publicMetadataByLocationId: bundle.publicMetadataByLocationId,
       latestMessageByThreadId: bundle.latestMessageByThreadId,
       appointmentContexts: bundle.appointmentContexts,
       locationLabels: bundle.locationLabels
@@ -2268,6 +2410,7 @@ export async function getMessagingThreadPayload(user: UserAccount, threadId: str
     participants: bundle.participants,
     profilesById: bundle.profilesById,
     publicMetadataByProfileId: bundle.publicMetadataByProfileId,
+    publicMetadataByLocationId: bundle.publicMetadataByLocationId,
     latestMessageByThreadId: bundle.latestMessageByThreadId,
     appointmentContexts: bundle.appointmentContexts,
     locationLabels: bundle.locationLabels
@@ -2304,6 +2447,8 @@ export async function getMessagingThreadPayload(user: UserAccount, threadId: str
           role: participant.thread_role,
           isSelf: participant.profile_id === actor.profile.id,
           avatarUrl: metadata?.avatarUrl ?? null,
+          publicUsername: metadata?.publicUsername ?? null,
+          publicContextLine: metadata?.publicContextLine ?? null,
           publicProfileHref: metadata?.publicProfileHref ?? null,
           bookingHref: metadata?.bookingHref ?? null
         };
@@ -2374,6 +2519,7 @@ export async function searchMessagingParticipants(user: UserAccount, query: stri
         participants: bundle.participants,
         profilesById: bundle.profilesById,
         publicMetadataByProfileId: bundle.publicMetadataByProfileId,
+        publicMetadataByLocationId: bundle.publicMetadataByLocationId,
         latestMessageByThreadId: bundle.latestMessageByThreadId,
         appointmentContexts: bundle.appointmentContexts,
         locationLabels: bundle.locationLabels
@@ -2522,7 +2668,7 @@ export async function searchMessagingParticipants(user: UserAccount, query: stri
         continue;
       }
 
-      const metadata = buildBarberMessagingMetadata(barber, publicProfile);
+      const metadata = buildBarberMessagingMetadata(supabase, barber, publicProfile);
       results.set(`barber:${profile.id}`, {
         id: profile.id,
         participantId: profile.id,
@@ -2531,6 +2677,8 @@ export async function searchMessagingParticipants(user: UserAccount, query: stri
         participantType: "barber",
         role: profile.role,
         avatarUrl: metadata.avatarUrl,
+        publicUsername: metadata.publicUsername,
+        publicContextLine: metadata.publicContextLine,
         publicProfileHref: metadata.publicProfileHref,
         profileHref: metadata.publicProfileHref,
         bookingHref: metadata.bookingHref,
@@ -2548,42 +2696,45 @@ export async function searchMessagingParticipants(user: UserAccount, query: stri
 
   try {
     const shopResult = await supabase
-      .from("locations")
-      .select("id, reference_code, name, neighborhood, city, state")
-      .or(`name.ilike.%${normalizedQuery}%,neighborhood.ilike.%${normalizedQuery}%,city.ilike.%${normalizedQuery}%,reference_code.ilike.%${normalizedQuery}%`)
+      .from("shops")
+      .select("id, name, public_username, profile_photo_path, profile_photo_url, address, city, state, zip_code, owner_profile_id")
+      .or(`name.ilike.%${normalizedQuery}%,public_username.ilike.%${normalizedQuery}%,city.ilike.%${normalizedQuery}%`)
       .limit(8);
 
     if (shopResult.error) {
       throw shopResult.error;
     }
 
-    const shopRows = (shopResult.data ?? []) as LocationRow[];
+    const shopRows = (shopResult.data ?? []) as ShopPublicIdentityRow[];
     const shopParticipantsByLocation = await readShopParticipantsByLocationIds(supabase, shopRows.map((row) => row.id));
     for (const shop of shopRows) {
       const primaryShopProfile = pickPrimaryShopProfile(shopParticipantsByLocation.get(shop.id) ?? []);
-      if (!primaryShopProfile) {
+      if (!primaryShopProfile && !shop.owner_profile_id) {
         continue;
       }
 
-      const publicProfileHref = `/shop/${encodeURIComponent(shop.reference_code ?? shop.id)}`;
+      const metadata = buildShopMessagingMetadata(supabase, shop);
+      const profileId = primaryShopProfile?.id ?? shop.owner_profile_id ?? shop.id;
       results.set(`shop:${shop.id}`, {
         id: shop.id,
         participantId: shop.id,
-        displayName: shop.name,
+        displayName: metadata.displayName ?? shop.name ?? "Shop",
         resultType: "shop",
         participantType: "shop",
-        role: primaryShopProfile.role,
-        avatarUrl: null,
-        publicProfileHref,
-        profileHref: publicProfileHref,
+        role: primaryShopProfile?.role ?? "shop_owner_user",
+        avatarUrl: metadata.avatarUrl,
+        publicUsername: metadata.publicUsername,
+        publicContextLine: metadata.publicContextLine,
+        publicProfileHref: metadata.publicProfileHref,
+        profileHref: metadata.publicProfileHref,
         bookingHref: null,
         existingThreadId: threadLookup.get(`shop:${shop.id}`) ?? null,
         createThreadInput: {
           threadType: "client_shop",
-          profileId: primaryShopProfile.id,
+          profileId,
           locationId: shop.id
         },
-        subtitle: [shop.neighborhood, shop.city].filter(Boolean).join(" | ") || "Shop"
+        subtitle: metadata.publicContextLine ?? "Shop"
       });
     }
   } catch (error) {
@@ -2958,6 +3109,7 @@ function buildArchitectSupportThreadSummary(input: {
   participants: ThreadParticipantRow[];
   profilesById: Map<string, ProfileRow>;
   publicMetadataByProfileId: Map<string, PublicMessagingMetadata>;
+  publicMetadataByLocationId: Map<string, PublicMessagingMetadata>;
   latestMessageByThreadId: Map<string, MessageRow>;
   appointmentContexts: Map<string, HydratedAppointmentContext>;
   locationLabels: Map<string, string>;
@@ -2969,6 +3121,7 @@ function buildArchitectSupportThreadSummary(input: {
     participants: input.participants,
     profilesById: input.profilesById,
     publicMetadataByProfileId: input.publicMetadataByProfileId,
+    publicMetadataByLocationId: input.publicMetadataByLocationId,
     latestMessageByThreadId: input.latestMessageByThreadId,
     appointmentContexts: input.appointmentContexts,
     locationLabels: input.locationLabels
@@ -3043,6 +3196,7 @@ export async function getArchitectSupportInboxPayload(actor: ArchitectMessagingA
         participants: bundle.participants,
         profilesById: bundle.profilesById,
         publicMetadataByProfileId: bundle.publicMetadataByProfileId,
+        publicMetadataByLocationId: bundle.publicMetadataByLocationId,
         latestMessageByThreadId: bundle.latestMessageByThreadId,
         appointmentContexts: bundle.appointmentContexts,
         locationLabels: bundle.locationLabels,
@@ -3095,6 +3249,7 @@ export async function getArchitectSupportThreadPayload(
     participants: bundle.participants,
     profilesById: bundle.profilesById,
     publicMetadataByProfileId: bundle.publicMetadataByProfileId,
+    publicMetadataByLocationId: bundle.publicMetadataByLocationId,
     latestMessageByThreadId: bundle.latestMessageByThreadId,
     appointmentContexts: bundle.appointmentContexts,
     locationLabels: bundle.locationLabels,
@@ -3119,6 +3274,8 @@ export async function getArchitectSupportThreadPayload(
           role: participant.thread_role,
           isSelf: participant.profile_id === supportProfile.id,
           avatarUrl: metadata?.avatarUrl ?? null,
+          publicUsername: metadata?.publicUsername ?? null,
+          publicContextLine: metadata?.publicContextLine ?? null,
           publicProfileHref: metadata?.publicProfileHref ?? null,
           bookingHref: metadata?.bookingHref ?? null
         };

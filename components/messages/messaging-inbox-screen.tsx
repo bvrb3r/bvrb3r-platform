@@ -38,26 +38,26 @@ const threadFilters: { key: ThreadFilter; label: string }[] = [
   { key: "all", label: "All" },
   { key: "barbers", label: "Barbers" },
   { key: "shops", label: "Shops" },
-  { key: "support", label: "Support" },
-  { key: "other", label: "Other" }
+  { key: "bookings", label: "Bookings" },
+  { key: "support", label: "Support" }
 ];
 
 const barberThreadFilters: { key: ThreadFilter; label: string }[] = [
   { key: "all", label: "All" },
   { key: "clients", label: "Clients" },
-  { key: "shops", label: "Shops" },
-  { key: "support", label: "Support" },
+  { key: "bookings", label: "Bookings" },
   { key: "requests", label: "Requests" },
-  { key: "bookings", label: "Bookings" }
+  { key: "shops", label: "Shops" },
+  { key: "support", label: "Support" }
 ];
 
 const shopThreadFilters: { key: ThreadFilter; label: string }[] = [
   { key: "all", label: "All" },
   { key: "clients", label: "Clients" },
   { key: "barbers", label: "Barbers" },
-  { key: "support", label: "Support" },
   { key: "team", label: "Team" },
-  { key: "bookings", label: "Bookings" }
+  { key: "bookings", label: "Bookings" },
+  { key: "support", label: "Support" }
 ];
 
 function formatThreadTime(iso: string) {
@@ -147,9 +147,11 @@ function readableError(error: unknown, fallback: string) {
 function getSurfaceCopy(surface: MessagingSurface) {
   if (surface === "shop") {
     return {
-      shellLabel: "Shop messages",
+      shellLabel: "MESSAGES",
       composerPlaceholder: "Message this thread.",
-      emptyThreadCopy: "Pick a conversation or open a direct shop line.",
+      emptyTitle: "No shop messages yet.",
+      emptyThreadCopy: "Client, barber, team, booking, and support conversations will appear here.",
+      emptyPanelCopy: "Pick a conversation or open a direct shop line.",
       starterTitle: "New lines",
       starterCopy: "Open a real client or barber thread tied to this location.",
       broadcastTitle: "Broadcast",
@@ -159,9 +161,11 @@ function getSurfaceCopy(surface: MessagingSurface) {
 
   if (surface === "barber") {
     return {
-      shellLabel: "Client messages",
+      shellLabel: "MESSAGES",
       composerPlaceholder: "Message the client.",
-      emptyThreadCopy: "Pick a client conversation or open one from a booked appointment.",
+      emptyTitle: "No client messages yet.",
+      emptyThreadCopy: "Booked clients, requests, shop lines, and support conversations will appear here.",
+      emptyPanelCopy: "Pick a client conversation or open one from a booked appointment.",
       starterTitle: "New messages",
       starterCopy: "Start from appointment-linked clients or connected shop lines.",
       broadcastTitle: "",
@@ -170,9 +174,11 @@ function getSurfaceCopy(surface: MessagingSurface) {
   }
 
   return {
-    shellLabel: "Messages",
+    shellLabel: "MESSAGES",
     composerPlaceholder: "Message your barber, shop, or support.",
-    emptyThreadCopy: "Pick a conversation or start one from an appointment.",
+    emptyTitle: "No messages yet.",
+    emptyThreadCopy: "Your barber, shop, booking, and support conversations will appear here.",
+    emptyPanelCopy: "Pick a conversation or start one from an appointment.",
     starterTitle: "New messages",
     starterCopy: "Start from a booked appointment, shop line, or support.",
     broadcastTitle: "",
@@ -316,14 +322,34 @@ function getConversationContextLine(thread: ActiveThread) {
   return thread.locationContext?.locationLabel ?? "Direct conversation";
 }
 
+function getPublicUsernameLine(thread: MessagingThreadSummary | ActiveThread) {
+  const username = thread?.counterpart?.publicUsername?.trim();
+  return username ? `@${username}` : null;
+}
+
+function getPublicContextLine(thread: MessagingThreadSummary | ActiveThread) {
+  if (thread?.threadType === "support" || thread?.counterpart?.role === "platform_admin") {
+    return "Support";
+  }
+
+  return thread?.counterpart?.publicContextLine
+    ?? getAppointmentLine(thread)
+    ?? thread?.locationContext?.locationLabel
+    ?? null;
+}
+
 function filterThreads(threads: MessagingThreadSummary[], activeFilter: ThreadFilter, query: string, surface: MessagingSurface) {
   const normalizedQuery = query.trim().toLowerCase();
 
   return threads.filter((thread) => {
     const filterKey = getSurfaceThreadFilter(thread, surface);
-    const matchesFilter = activeFilter === "all" || filterKey === activeFilter;
+    const matchesFilter = activeFilter === "all"
+      || filterKey === activeFilter
+      || (activeFilter === "bookings" && Boolean(thread.appointmentContext));
     const searchable = [
       thread.counterpart?.fullName,
+      thread.counterpart?.publicUsername,
+      thread.counterpart?.publicContextLine,
       getRoleBadgeLabel(thread.counterpart?.role, thread.threadType),
       thread.appointmentContext?.serviceName,
       thread.appointmentContext?.locationLabel,
@@ -526,8 +552,8 @@ function ThinThreadRow({
 }) {
   const displayName = getDisplayName(thread);
   const roleBadgeLabel = getRoleBadgeLabel(thread.counterpart?.role, thread.threadType);
-  const appointmentLine = getAppointmentLine(thread);
-  const contextDetail = appointmentLine ?? getThreadStatusLabel(thread.threadType);
+  const usernameLine = getPublicUsernameLine(thread);
+  const contextDetail = getPublicContextLine(thread) ?? getThreadStatusLabel(thread.threadType);
   const preview = getThreadPreview(thread);
 
   return (
@@ -556,6 +582,7 @@ function ThinThreadRow({
           <p className="truncate text-sm font-bold text-white">{displayName}</p>
           {roleBadgeLabel ? <RolePill label={roleBadgeLabel} /> : null}
         </div>
+        {usernameLine ? <p className="mt-0.5 truncate text-xs font-bold text-[#d7ffab]/85">{usernameLine}</p> : null}
         <p className="mt-0.5 truncate text-xs font-medium text-white/54">{contextDetail}</p>
         <p className="mt-0.5 truncate text-xs text-white/42">{preview}</p>
       </div>
@@ -730,6 +757,8 @@ function ConversationPanel({
   const displayName = participantSummary || activeThread?.counterpart?.fullName || "Conversation";
   const roleBadgeLabel = getRoleBadgeLabel(activeThread?.counterpart?.role, activeThread?.threadType);
   const hasAppointment = Boolean(activeThread?.appointmentContext);
+  const usernameLine = getPublicUsernameLine(activeThread);
+  const publicContextLine = getPublicContextLine(activeThread);
   const profileHref = activeThread?.threadType === "support"
     ? null
     : activeThread?.counterpart?.publicProfileHref ?? null;
@@ -786,8 +815,9 @@ function ConversationPanel({
                     <h3 className="truncate text-base font-black text-white">{displayName}</h3>
                     {roleBadgeLabel ? <RolePill label={roleBadgeLabel} /> : null}
                   </div>
-                  <p className="mt-0.5 text-xs text-white/46">
-                    {activeThread.threadType === "support" ? "Support" : "Active soon"}
+                  {usernameLine ? <p className="mt-0.5 truncate text-xs font-bold text-[#d7ffab]/85">{usernameLine}</p> : null}
+                  <p className="mt-0.5 truncate text-xs text-white/46">
+                    {publicContextLine ?? (activeThread.threadType === "support" ? "Support" : "Direct conversation")}
                   </p>
                 </div>
               </div>
@@ -799,7 +829,7 @@ function ConversationPanel({
                   >
                     View Profile
                   </Link>
-                ) : (
+                ) : activeThread.threadType !== "support" ? (
                   <button
                     type="button"
                     className="h-8 rounded-lg border border-white/10 px-3 text-xs font-bold text-white/72 transition hover:border-[#a3ff12]/28 hover:text-white disabled:opacity-45"
@@ -807,7 +837,7 @@ function ConversationPanel({
                   >
                     View Profile
                   </button>
-                )}
+                ) : null}
                 {surface !== "shop" && activeThread.threadType !== "support" ? (
                   <Link
                     href={bookingHref as Route}
@@ -911,7 +941,7 @@ function ConversationPanel({
               <MessageSquareText className="h-5 w-5" aria-hidden="true" />
             </div>
             <p className="mt-3 text-sm font-semibold text-white">{hasAppointment ? "Open this appointment thread." : "Pick a conversation"}</p>
-            <p className="mt-1 text-sm leading-6 text-white/54">{copy.emptyThreadCopy}</p>
+            <p className="mt-1 text-sm leading-6 text-white/54">{copy.emptyPanelCopy}</p>
           </div>
         </div>
       )}
@@ -1098,10 +1128,13 @@ function ComposeModal({
                   <span className="min-w-0">
                     <span className="flex min-w-0 items-center gap-2">
                       <span className="truncate text-sm font-bold text-white">{result.displayName}</span>
-                      <RolePill label={result.resultType === "support" ? "Support" : result.resultType === "shop" ? "Shop" : "Barber"} />
+                      <RolePill label={result.resultType === "support" ? "Support" : result.resultType === "shop" ? "Shop" : result.resultType === "client" ? "Client" : "Barber"} />
                     </span>
+                    {result.publicUsername ? (
+                      <span className="mt-0.5 block truncate text-xs font-bold text-[#d7ffab]/85">@{result.publicUsername}</span>
+                    ) : null}
                     <span className="mt-0.5 block truncate text-xs text-white/48">
-                      {result.existingThreadId ? "Existing conversation" : result.subtitle ?? "Start a conversation"}
+                      {result.existingThreadId ? "Existing conversation" : result.publicContextLine ?? result.subtitle ?? "Start a conversation"}
                     </span>
                   </span>
                   <span className="rounded-lg border border-[#a3ff12]/20 bg-[#a3ff12]/10 px-2.5 py-1 text-[11px] font-black text-[#d7ffab]">
@@ -1466,7 +1499,8 @@ export function MessagingInboxScreen({
                 />
               )) : (
                 <div className="rounded-lg border border-dashed border-white/10 bg-white/[0.025] p-4 text-sm leading-6 text-white/58">
-                  <p>{threads.length ? "No matching messages." : "No messages yet."}</p>
+                  <p className="font-bold text-white/72">{threads.length ? "No matching messages." : copy.emptyTitle}</p>
+                  {!threads.length ? <p className="mt-1">{copy.emptyThreadCopy}</p> : null}
                 </div>
               )}
             </div>

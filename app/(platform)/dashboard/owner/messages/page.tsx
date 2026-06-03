@@ -10,7 +10,7 @@ export default async function OwnerMessagesPage() {
       user={user}
       activeHref="/dashboard/owner/messages"
       title="Messages"
-      subtitle="Client, barber, team, booking, and support conversations."
+      subtitle="Clients, barbers, team, bookings, and support."
       hidePageHeader
       hideShellContext
     >
@@ -18,7 +18,7 @@ export default async function OwnerMessagesPage() {
         surface="shop"
         basePath="/dashboard/owner/messages"
         title="Messages"
-        subtitle="Client, barber, team, booking, and support conversations."
+        subtitle="Clients, barbers, team, bookings, and support."
       />
     </DashboardShell>
   );
