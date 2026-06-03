@@ -703,6 +703,45 @@ function formatCityState(city?: string | null, state?: string | null) {
   return [cleanText(city), cleanText(state)].filter(Boolean).join(", ") || null;
 }
 
+function formatPublicHandle(username?: string | null) {
+  const clean = cleanText(username)?.replace(/^@+/, "");
+  return clean ? `@${clean}` : null;
+}
+
+function getPublicFallbackName(role?: Role | null) {
+  if (!role) {
+    return "BVRB3R";
+  }
+
+  if (isClientRole(role)) {
+    return "BVRB3R Client";
+  }
+
+  if (isBarberRole(role)) {
+    return "BVRB3R Barber";
+  }
+
+  if (isShopRole(role)) {
+    return "BVRB3R Shop";
+  }
+
+  if (role === "platform_admin") {
+    return "BVRB3R Support";
+  }
+
+  return "BVRB3R";
+}
+
+function getPublicMessagingDisplayName(input: {
+  role?: Role | null;
+  username?: string | null;
+  publicDisplayName?: string | null;
+}) {
+  return formatPublicHandle(input.username)
+    ?? cleanText(input.publicDisplayName)
+    ?? getPublicFallbackName(input.role);
+}
+
 function formatPublicAddress(input: {
   address?: string | null;
   city?: string | null;
@@ -722,7 +761,7 @@ function buildClientMessagingMetadata(supabase: SupabaseClient, profile: Profile
 
   return {
     avatarUrl: getPublicProfileMediaUrl(supabase, profile) ?? null,
-    displayName: cleanText(profile.full_name),
+    displayName: getPublicMessagingDisplayName({ role: profile.role, username }),
     publicUsername: username,
     publicProfileHref: username ? `/client/${encodeURIComponent(username)}` : null,
     bookingHref: null,
@@ -742,7 +781,11 @@ function buildBarberMessagingMetadata(supabase: SupabaseClient, barber: BarberRo
 
   return {
     avatarUrl: getPublicProfileMediaUrl(supabase, publicProfile) ?? null,
-    displayName: cleanText(publicProfile?.display_name),
+    displayName: getPublicMessagingDisplayName({
+      role: "barber_user",
+      username: publicSlug,
+      publicDisplayName: publicProfile?.display_name
+    }),
     publicUsername: publicSlug,
     publicProfileHref: `/barber/${encodeURIComponent(publicSlug)}`,
     bookingHref: buildMarketplaceBookingHref({
@@ -759,7 +802,11 @@ function buildShopMessagingMetadata(supabase: SupabaseClient, shop: ShopPublicId
 
   return {
     avatarUrl: getPublicProfileMediaUrl(supabase, shop) ?? null,
-    displayName: cleanText(shop.name),
+    displayName: getPublicMessagingDisplayName({
+      role: "shop_owner_user",
+      username,
+      publicDisplayName: shop.name
+    }),
     publicUsername: username,
     publicProfileHref: username ? `/shop/${encodeURIComponent(username)}` : null,
     bookingHref: null,
@@ -1202,6 +1249,9 @@ function buildThreadSummary(input: {
   const appointmentContext = input.thread.appointment_id ? input.appointmentContexts.get(input.thread.appointment_id) ?? null : null;
   const latestMessage = input.latestMessageByThreadId.get(input.thread.id) ?? null;
   const latestSender = latestMessage?.sender_profile_id ? input.profilesById.get(latestMessage.sender_profile_id) ?? null : null;
+  const latestSenderMetadata = latestMessage?.sender_profile_id
+    ? input.publicMetadataByProfileId.get(latestMessage.sender_profile_id) ?? null
+    : null;
   const locationLabel = input.thread.location_id ? input.locationLabels.get(input.thread.location_id) ?? input.thread.location_id : null;
 
   return {
@@ -1220,7 +1270,7 @@ function buildThreadSummary(input: {
     counterpart: counterpartParticipant && counterpartProfile
       ? {
           profileId: counterpartParticipant.profile_id,
-          fullName: publicMetadata?.displayName ?? counterpartProfile.full_name ?? counterpartProfile.email,
+          fullName: publicMetadata?.displayName ?? getPublicFallbackName(counterpartProfile.role),
           role: counterpartProfile.role,
           avatarUrl: publicMetadata?.avatarUrl ?? null,
           publicUsername: publicMetadata?.publicUsername ?? null,
@@ -1236,7 +1286,9 @@ function buildThreadSummary(input: {
           body: latestMessage.body,
           messageType: latestMessage.message_type,
           createdAt: latestMessage.created_at,
-          senderName: latestSender ? (latestSender.full_name ?? latestSender.email) : null
+          senderName: latestSender
+            ? latestSenderMetadata?.displayName ?? getPublicFallbackName(latestSender.role)
+            : null
         }
       : null,
     hasUnread: Boolean(latestMessage && latestMessage.sender_profile_id !== input.currentProfileId)
@@ -2071,7 +2123,7 @@ async function createOrGetShopThread(input: {
       sender_profile_id: null,
       body: buildShopThreadSystemMessage({
         threadType: input.threadType,
-        counterpartName: input.counterpartProfile.full_name ?? input.counterpartProfile.email,
+        counterpartName: getPublicFallbackName(input.counterpartProfile.role),
         locationLabel: formatLocationLabel(input.location)
       }),
       message_type: "system"
@@ -2443,7 +2495,7 @@ export async function getMessagingThreadPayload(user: UserAccount, threadId: str
         const metadata = bundle.publicMetadataByProfileId.get(participant.profile_id) ?? null;
         return {
           profileId: participant.profile_id,
-          fullName: profile?.full_name ?? profile?.email ?? participant.profile_id,
+          fullName: metadata?.displayName ?? getPublicFallbackName(profile?.role ?? participant.thread_role),
           role: participant.thread_role,
           isSelf: participant.profile_id === actor.profile.id,
           avatarUrl: metadata?.avatarUrl ?? null,
@@ -2456,13 +2508,14 @@ export async function getMessagingThreadPayload(user: UserAccount, threadId: str
     },
     messages: messageRows.map((message) => {
       const sender = message.sender_profile_id ? bundle.profilesById.get(message.sender_profile_id) ?? null : null;
+      const senderMetadata = message.sender_profile_id ? bundle.publicMetadataByProfileId.get(message.sender_profile_id) ?? null : null;
       return {
         id: message.id,
         body: message.body,
         messageType: message.message_type,
         metadata: hydrateMessageMetadata(message.metadata, paymentRequestSnapshots, message.body),
         createdAt: message.created_at,
-        senderName: sender ? (sender.full_name ?? sender.email) : null,
+        senderName: sender ? senderMetadata?.displayName ?? getPublicFallbackName(sender.role) : null,
         senderRole: sender?.role ?? null,
         isOwn: message.sender_profile_id === actor.profile.id
       };
@@ -2657,7 +2710,8 @@ export async function searchMessagingParticipants(user: UserAccount, query: stri
       const publicProfile = [barber.reference_code, barber.booking_slug, barber.id, barber.profile_id]
         .map((value) => (value ? barberProfilesByReference.get(value) ?? null : null))
         .find((row): row is BarberPublicProfileRow => Boolean(row)) ?? null;
-      const displayName = cleanText(publicProfile?.display_name) ?? profile.full_name ?? profile.email;
+      const metadata = buildBarberMessagingMetadata(supabase, barber, publicProfile);
+      const displayName = metadata.displayName ?? getPublicFallbackName(profile.role);
       if (
         !searchMatches(displayName, normalizedQuery) &&
         !searchMatches(profile.full_name, normalizedQuery) &&
@@ -2668,7 +2722,6 @@ export async function searchMessagingParticipants(user: UserAccount, query: stri
         continue;
       }
 
-      const metadata = buildBarberMessagingMetadata(supabase, barber, publicProfile);
       results.set(`barber:${profile.id}`, {
         id: profile.id,
         participantId: profile.id,
@@ -2718,7 +2771,7 @@ export async function searchMessagingParticipants(user: UserAccount, query: stri
       results.set(`shop:${shop.id}`, {
         id: shop.id,
         participantId: shop.id,
-        displayName: metadata.displayName ?? shop.name ?? "Shop",
+        displayName: metadata.displayName ?? "BVRB3R Shop",
         resultType: "shop",
         participantType: "shop",
         role: primaryShopProfile?.role ?? "shop_owner_user",
@@ -3086,6 +3139,9 @@ export async function sendThreadMessage(user: UserAccount, threadId: string, inp
   }
 
   const message = insertResult.data as MessageRow;
+  const senderMetadata = await readPublicMessagingMetadataByProfileIds(supabase, [actor.profile.id])
+    .then((metadata) => metadata.get(actor.profile.id) ?? null)
+    .catch(() => null);
 
   return {
     message: {
@@ -3094,7 +3150,7 @@ export async function sendThreadMessage(user: UserAccount, threadId: string, inp
       messageType: message.message_type,
       metadata: normalizeMessageMetadata(message.metadata),
       createdAt: message.created_at,
-      senderName: actor.profile.full_name ?? actor.profile.email,
+      senderName: senderMetadata?.displayName ?? getPublicFallbackName(actor.profile.role),
       senderRole: actor.profile.role,
       isOwn: true
     }
@@ -3270,7 +3326,7 @@ export async function getArchitectSupportThreadPayload(
         const metadata = bundle.publicMetadataByProfileId.get(participant.profile_id) ?? null;
         return {
           profileId: participant.profile_id,
-          fullName: profile?.full_name ?? profile?.email ?? participant.profile_id,
+          fullName: metadata?.displayName ?? getPublicFallbackName(profile?.role ?? participant.thread_role),
           role: participant.thread_role,
           isSelf: participant.profile_id === supportProfile.id,
           avatarUrl: metadata?.avatarUrl ?? null,
@@ -3286,12 +3342,13 @@ export async function getArchitectSupportThreadPayload(
       .sort((left, right) => new Date(left.created_at).getTime() - new Date(right.created_at).getTime())
       .map((message) => {
         const sender = message.sender_profile_id ? bundle.profilesById.get(message.sender_profile_id) ?? null : null;
+        const senderMetadata = message.sender_profile_id ? bundle.publicMetadataByProfileId.get(message.sender_profile_id) ?? null : null;
         return {
           id: message.id,
           body: message.body,
           messageType: message.message_type,
           createdAt: message.created_at,
-          senderName: sender ? (sender.full_name ?? sender.email) : null,
+          senderName: sender ? senderMetadata?.displayName ?? getPublicFallbackName(sender.role) : null,
           senderRole: sender?.role ?? null,
           isOwn: message.sender_profile_id === supportProfile.id
         };

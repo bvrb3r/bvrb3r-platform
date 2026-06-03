@@ -290,6 +290,15 @@ function getThreadPreview(thread: MessagingThreadSummary) {
 }
 
 function getDisplayName(thread: MessagingThreadSummary | ActiveThread) {
+  if (thread?.threadType === "support" || thread?.counterpart?.role === "platform_admin") {
+    return "BVRB3R Support";
+  }
+
+  const username = thread?.counterpart?.publicUsername?.trim().replace(/^@+/, "");
+  if (username) {
+    return `@${username}`;
+  }
+
   return thread?.counterpart?.fullName ?? "Conversation";
 }
 
@@ -325,6 +334,11 @@ function getConversationContextLine(thread: ActiveThread) {
 function getPublicUsernameLine(thread: MessagingThreadSummary | ActiveThread) {
   const username = thread?.counterpart?.publicUsername?.trim();
   return username ? `@${username}` : null;
+}
+
+function getSecondaryUsernameLine(thread: MessagingThreadSummary | ActiveThread, displayName: string) {
+  const usernameLine = getPublicUsernameLine(thread);
+  return usernameLine && usernameLine !== displayName ? usernameLine : null;
 }
 
 function getPublicContextLine(thread: MessagingThreadSummary | ActiveThread) {
@@ -440,7 +454,7 @@ function buildQuickContacts(threads: MessagingThreadSummary[]) {
 
   for (const thread of threads) {
     const id = thread.counterpart?.profileId ?? thread.id;
-    const label = thread.counterpart?.fullName ?? "Conversation";
+    const label = getDisplayName(thread);
     if (!contacts.has(id)) {
       contacts.set(id, {
         id,
@@ -552,7 +566,7 @@ function ThinThreadRow({
 }) {
   const displayName = getDisplayName(thread);
   const roleBadgeLabel = getRoleBadgeLabel(thread.counterpart?.role, thread.threadType);
-  const usernameLine = getPublicUsernameLine(thread);
+  const usernameLine = getSecondaryUsernameLine(thread, displayName);
   const contextDetail = getPublicContextLine(thread) ?? getThreadStatusLabel(thread.threadType);
   const preview = getThreadPreview(thread);
 
@@ -754,10 +768,10 @@ function ConversationPanel({
     .filter((participant) => !participant.isSelf)
     .map((participant) => participant.fullName)
     .join(", ") ?? "";
-  const displayName = participantSummary || activeThread?.counterpart?.fullName || "Conversation";
+  const displayName = getDisplayName(activeThread) || participantSummary || "Conversation";
   const roleBadgeLabel = getRoleBadgeLabel(activeThread?.counterpart?.role, activeThread?.threadType);
   const hasAppointment = Boolean(activeThread?.appointmentContext);
-  const usernameLine = getPublicUsernameLine(activeThread);
+  const usernameLine = getSecondaryUsernameLine(activeThread, displayName);
   const publicContextLine = getPublicContextLine(activeThread);
   const profileHref = activeThread?.threadType === "support"
     ? null
@@ -1112,6 +1126,17 @@ function ComposeModal({
           ) : results.length ? (
             <div className="space-y-2">
               {results.map((result) => (
+                (() => {
+                  const publicDisplayName = result.resultType === "support"
+                    ? "BVRB3R Support"
+                    : result.publicUsername
+                      ? `@${result.publicUsername.replace(/^@+/, "")}`
+                      : result.displayName;
+                  const secondaryUsername = result.publicUsername && publicDisplayName !== `@${result.publicUsername.replace(/^@+/, "")}`
+                    ? `@${result.publicUsername.replace(/^@+/, "")}`
+                    : null;
+
+                  return (
                 <button
                   key={`${result.resultType}-${result.id}`}
                   type="button"
@@ -1121,17 +1146,17 @@ function ComposeModal({
                 >
                   <Avatar
                     src={getAvatarImageUrl(result.avatarUrl, result.role, result.resultType === "support" ? "support" : undefined)}
-                    alt={result.displayName}
-                    initials={getAvatarInitials(result.displayName, result.role, result.resultType === "support" ? "support" : undefined)}
+                    alt={publicDisplayName}
+                    initials={getAvatarInitials(publicDisplayName, result.role, result.resultType === "support" ? "support" : undefined)}
                     className="h-11 w-11 text-sm"
                   />
                   <span className="min-w-0">
                     <span className="flex min-w-0 items-center gap-2">
-                      <span className="truncate text-sm font-bold text-white">{result.displayName}</span>
+                      <span className="truncate text-sm font-bold text-white">{publicDisplayName}</span>
                       <RolePill label={result.resultType === "support" ? "Support" : result.resultType === "shop" ? "Shop" : result.resultType === "client" ? "Client" : "Barber"} />
                     </span>
-                    {result.publicUsername ? (
-                      <span className="mt-0.5 block truncate text-xs font-bold text-[#d7ffab]/85">@{result.publicUsername}</span>
+                    {secondaryUsername ? (
+                      <span className="mt-0.5 block truncate text-xs font-bold text-[#d7ffab]/85">{secondaryUsername}</span>
                     ) : null}
                     <span className="mt-0.5 block truncate text-xs text-white/48">
                       {result.existingThreadId ? "Existing conversation" : result.publicContextLine ?? result.subtitle ?? "Start a conversation"}
@@ -1141,6 +1166,8 @@ function ComposeModal({
                     {result.existingThreadId ? "Open" : "Start"}
                   </span>
                 </button>
+                  );
+                })()
               ))}
             </div>
           ) : (
