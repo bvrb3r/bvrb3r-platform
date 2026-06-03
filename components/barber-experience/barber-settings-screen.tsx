@@ -295,6 +295,10 @@ function formatBarberPayoutChipLabel({
   return `Payouts ${formatStatusLabel(payoutStatus).toLowerCase()}`;
 }
 
+function cleanBarberMoreLocationLine(value?: string | null) {
+  return value?.split("•")[0]?.trim() ?? "";
+}
+
 function resolveCanonicalActivationStatus(...statuses: Array<string | null | undefined>) {
   const normalized = statuses.map((status) => status?.trim().toLowerCase()).filter((status): status is string => Boolean(status));
   if (normalized.some((status) => ["suspended", "banned", "deactivated"].includes(status))) {
@@ -1073,13 +1077,18 @@ export function BarberSettingsScreen({
     || ((overviewPayload?.shops.length ?? 0) > 0 && activationSetup?.locationMode !== "custom")
   );
   const barberPublicUsernameLine = formatPublicUsernameLine(mediaQuery.data?.barberProfile?.publicUsername);
-  const canonicalBarberLocationLabel = formatPublicAddressLocation({
+  const structuredBarberLocationLabel = formatPublicAddressLocation({
     address: mediaQuery.data?.barberProfile?.publicAddress,
     city: mediaQuery.data?.barberProfile?.publicCity,
     state: mediaQuery.data?.barberProfile?.publicState,
     zip: mediaQuery.data?.barberProfile?.publicZip,
-    fallback: mediaQuery.data?.barberProfile?.serviceAreaLabel?.trim() || "Add service location"
+    fallback: ""
   });
+  const canonicalBarberLocationLabel = cleanBarberMoreLocationLine(
+    structuredBarberLocationLabel
+      || mediaQuery.data?.barberProfile?.serviceAreaLabel
+      || "Add service location"
+  );
   const barberIdentityLocationLabel = hasAcceptedShopLink
     ? assignedLocationLabels
     : canonicalBarberLocationLabel;

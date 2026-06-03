@@ -245,7 +245,7 @@ function setupHookMocks() {
         publicCity: "Temple Terrace",
         publicState: "FL",
         publicZip: "33607",
-        serviceAreaLabel: "Phils chair / 2172 University Square More / Tampa"
+        serviceAreaLabel: "8516 Island Breeze Ln - Temple Terrace, FL 33607 • Independent barber • Freelance service area"
       }
     },
     error: null,
@@ -343,7 +343,7 @@ function setupHookMocks() {
         hasAvailabilityDraft: true,
         hasServiceLocation: true,
         locationMode: "custom",
-        serviceLocationLabel: "Phils chair / 2172 University Square More / Tampa"
+        serviceLocationLabel: "8516 Island Breeze Ln - Temple Terrace, FL 33607 • Independent barber • Freelance service area"
       },
       status: {
         isOnline: true,
@@ -408,9 +408,9 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     expect(within(identityCard).getByText("Payouts connected")).toBeInTheDocument();
     expect(within(identityCard).getByText("@phillipforsure")).toBeInTheDocument();
     expect(within(identityCard).getByText("8516 Island Breeze Ln - Temple Terrace, FL 33607")).toBeInTheDocument();
-    expect(within(identityCard).queryByText("Independent barber")).not.toBeInTheDocument();
-    expect(within(identityCard).queryByText(/Phils chair/i)).not.toBeInTheDocument();
-    expect(within(identityCard).queryByText(/Freelance service area/i)).not.toBeInTheDocument();
+    expect(identityCard).not.toHaveTextContent("Independent barber");
+    expect(identityCard).not.toHaveTextContent("Freelance service area");
+    expect(identityCard).not.toHaveTextContent("Phils chair / 2172 University Square More / Tampa");
     expect(identityCard).not.toHaveTextContent("independent-barber-");
     expect(screen.getByText("Business Control Hub")).toBeInTheDocument();
     expect(identityCard.compareDocumentPosition(setupGate) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
