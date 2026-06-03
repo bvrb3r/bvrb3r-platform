@@ -381,7 +381,7 @@ describe("BarberSettingsScreen Stripe return sync", () => {
   });
 
   it("renders the barber More control center with one heading and the identity card first", () => {
-    render(<BarberSettingsScreen user={resolveDemoUser("blaze@bvrb3r.demo")} />);
+    render(<BarberSettingsScreen user={{ ...resolveDemoUser("blaze@bvrb3r.demo"), appApprovalStatus: "approved" }} />);
 
     expect(screen.getAllByRole("heading", { name: "More" })).toHaveLength(1);
     const identityCard = screen.getByTestId("barber-more-identity-card");
@@ -399,6 +399,13 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     expect(screen.queryByRole("dialog", { name: "Edit Account" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Edit Public Profile" })).toHaveAttribute("href", "/dashboard/barber/profile");
     expect(screen.queryByRole("link", { name: "View Public Profile" })).not.toBeInTheDocument();
+    expect(within(identityCard).getByRole("heading", { name: "Blaze King" })).toBeInTheDocument();
+    expect(within(identityCard).getByText("BARBER ACCOUNT")).toBeInTheDocument();
+    expect(within(identityCard).getByText("blaze@bvrb3r.demo")).toBeInTheDocument();
+    expect(within(identityCard).queryByText("Freelance")).not.toBeInTheDocument();
+    expect(within(identityCard).getByText("Account approved")).toBeInTheDocument();
+    expect(within(identityCard).getByText("License approved")).toBeInTheDocument();
+    expect(within(identityCard).getByText("Payouts connected")).toBeInTheDocument();
     expect(within(identityCard).getByText("@phillipforsure")).toBeInTheDocument();
     expect(within(identityCard).getByText("8516 Island Breeze Ln - Temple Terrace, FL 33607")).toBeInTheDocument();
     expect(within(identityCard).queryByText("Independent barber")).not.toBeInTheDocument();

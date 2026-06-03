@@ -293,9 +293,16 @@ describe("client profile screen", () => {
     expect(screen.getAllByRole("heading", { name: "More" })).toHaveLength(1);
     const identityCard = screen.getByTestId("client-more-identity-card");
     expect(identityCard).toBeInTheDocument();
+    expect(within(identityCard).getByRole("heading", { name: "Jordan Ellis" })).toBeInTheDocument();
+    expect(within(identityCard).getByText("CLIENT ACCOUNT")).toBeInTheDocument();
+    expect(within(identityCard).getByText("jordan@bvrb3r.app")).toBeInTheDocument();
+    expect(within(identityCard).getAllByText("Verified").length).toBeGreaterThan(0);
+    expect(within(identityCard).getByText("Wallet ready")).toBeInTheDocument();
+    expect(within(identityCard).getByText("Rewards setup")).toBeInTheDocument();
     expect(within(identityCard).getByText("@phillipmcgee")).toBeInTheDocument();
     expect(within(identityCard).getByText("Tampa, FL")).toBeInTheDocument();
     expect(within(identityCard).queryByText("813-555-0100")).not.toBeInTheDocument();
+    expect(within(identityCard).queryByText(/Street|Avenue|Lane|Road/i)).not.toBeInTheDocument();
     const scrollSpy = Element.prototype.scrollIntoView as ReturnType<typeof vi.fn>;
     scrollSpy.mockClear();
     fireEvent.click(screen.getByRole("button", { name: "Edit Account" }));

@@ -612,11 +612,11 @@ export function ClientProfileScreen({
         initials={initialsForName(clientName)}
         title={clientName}
         subtitle={clientEmail}
-        roleLabel="Client account"
+        roleLabel="CLIENT ACCOUNT"
         badges={[
           { label: emailVerified || phoneVerified ? "Verified" : "Verification needed", tone: emailVerified || phoneVerified ? "green" : "yellow" },
           { label: defaultPaymentMethod ? "Wallet ready" : "Add payment", tone: defaultPaymentMethod ? "green" : "yellow" },
-          { label: rewardsPoints ? `${rewardsPoints} pts` : "Rewards setup", tone: rewardsPoints ? "green" : "muted" }
+          { label: "Rewards setup", tone: rewardsPoints ? "green" : "muted" }
         ]}
         metaLines={[
           clientPublicUsernameLine,

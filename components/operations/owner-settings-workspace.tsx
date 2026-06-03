@@ -166,6 +166,17 @@ function getStripeStatus({
   return { label: "Not connected", tone: "muted" as const };
 }
 
+function getOwnerPayoutChipLabel(label: string) {
+  if (label === "Connected") {
+    return "Payouts connected";
+  }
+  if (label === "Not connected") {
+    return "Payouts not started";
+  }
+
+  return `Payouts ${label.toLowerCase()}`;
+}
+
 function getTaxStatus(status?: string) {
   switch (status) {
     case "verified":
@@ -298,6 +309,7 @@ export function OwnerSettingsWorkspace({
     disabledReason: fintechShopAccount?.disabledReason,
     requirementsCurrentlyDue: fintechShopAccount?.requirementsCurrentlyDue
   });
+  const ownerPayoutChipLabel = getOwnerPayoutChipLabel(stripeStatus.label);
   const taxStatus = getTaxStatus(fintechShopAccount?.taxReadinessStatus);
   const profileMediaError = profileQuery.error && !shops.length && !isRecoverableShopMediaError(profileQuery.error)
     ? profileQuery.error
@@ -648,10 +660,10 @@ export function OwnerSettingsWorkspace({
         initials={getInitials(ownerDisplayName)}
         title={ownerDisplayName}
         subtitle={ownerEmail ?? "Owner account"}
-        roleLabel="Shop owner account"
+        roleLabel="SHOP OWNER ACCOUNT"
         badges={[
           { label: verificationLabel, tone: verificationTone },
-          { label: stripeStatus.label, tone: stripeStatus.tone },
+          { label: ownerPayoutChipLabel, tone: stripeStatus.tone },
           { label: user.phone ? "Phone connected" : "Phone needed", tone: user.phone ? "green" : "yellow" }
         ]}
         metaLines={[

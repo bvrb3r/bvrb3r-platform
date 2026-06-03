@@ -265,6 +265,36 @@ function getStatusTone(value?: string | null): Tone {
   return "neutral";
 }
 
+function formatScopedStatusLabel(scope: string, value?: string | null) {
+  const normalized = value?.toLowerCase() ?? "";
+  if (["approved", "verified", "active", "ready", "payout_ready"].includes(normalized)) {
+    return `${scope} approved`;
+  }
+  if (!normalized || normalized === "not_required") {
+    return `${scope} not started`;
+  }
+
+  return `${scope} ${formatStatusLabel(value).toLowerCase()}`;
+}
+
+function formatBarberPayoutChipLabel({
+  payoutsReady,
+  payoutStatus
+}: {
+  payoutsReady: boolean;
+  payoutStatus?: string | null;
+}) {
+  if (payoutsReady) {
+    return "Payouts connected";
+  }
+
+  if (!payoutStatus || payoutStatus === "not_ready") {
+    return "Payouts setup";
+  }
+
+  return `Payouts ${formatStatusLabel(payoutStatus).toLowerCase()}`;
+}
+
 function resolveCanonicalActivationStatus(...statuses: Array<string | null | undefined>) {
   const normalized = statuses.map((status) => status?.trim().toLowerCase()).filter((status): status is string => Boolean(status));
   if (normalized.some((status) => ["suspended", "banned", "deactivated"].includes(status))) {
@@ -957,6 +987,7 @@ export function BarberSettingsScreen({
   const payoutStatus = connectedAccount?.operationalStatus ?? null;
   const stripeEnvironment = readinessPayload?.stripeEnvironment;
   const payoutsReady = isStripeConnectReadyForActivation(connectedAccount, stripeEnvironment);
+  const payoutsConnectedForIdentity = Boolean(connectedAccount?.chargesEnabled && connectedAccount.payoutsEnabled);
   const payoutsRequiredForActivation = selectedSubtype !== "freelance";
   const payoutsClearForActivation = !payoutsRequiredForActivation || payoutsReady;
   const payoutReadinessLabel = getStripePayoutReadinessLabel(payoutsReady, stripeEnvironment);
@@ -1708,12 +1739,12 @@ export function BarberSettingsScreen({
           imageUrl={barberPhotoUrl}
           initials={getInitials(user.name)}
           title={user.name}
-          subtitle={subtypeLabel}
-          roleLabel="Barber account"
+          subtitle={user.email}
+          roleLabel="BARBER ACCOUNT"
           badges={[
-            { label: verificationDecision?.gates.badge?.allowed ? "Verified Barber" : formatStatusLabel(canonicalVerificationStatus), tone: moreToneForStatus(getStatusTone(canonicalVerificationStatus)) },
-            { label: formatStatusLabel(user.appApprovalStatus), tone: moreToneForStatus(getStatusTone(user.appApprovalStatus)) },
-            { label: payoutsReady ? "Payouts connected" : "Payouts setup", tone: payoutsReady ? "green" : "yellow" }
+            { label: formatScopedStatusLabel("Account", user.appApprovalStatus), tone: moreToneForStatus(getStatusTone(user.appApprovalStatus)) },
+            { label: formatScopedStatusLabel("License", canonicalVerificationStatus), tone: moreToneForStatus(getStatusTone(canonicalVerificationStatus)) },
+            { label: formatBarberPayoutChipLabel({ payoutsReady: payoutsConnectedForIdentity, payoutStatus }), tone: payoutsConnectedForIdentity ? "green" : "yellow" }
           ]}
           metaLines={[barberPublicUsernameLine, barberIdentityLocationLabel]}
           primaryAction={{ label: "Edit Account", onClick: () => setAccountEditorOpen(true) }}

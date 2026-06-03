@@ -151,7 +151,7 @@ describe("owner More workspace", () => {
     expect(screen.getAllByRole("heading", { name: "More" })).toHaveLength(1);
     expect(screen.getByText("Manage your account, shop setup, payments, policies, and settings.")).toBeInTheDocument();
     expect(screen.getByTestId("owner-more-identity-card")).toBeInTheDocument();
-    expect(screen.getByText("Shop owner account")).toBeInTheDocument();
+    expect(screen.getByText("SHOP OWNER ACCOUNT")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Edit Account" }));
     expect(screen.getByRole("dialog", { name: "Edit Account" })).toBeInTheDocument();
     expect(screen.getByLabelText("Public display name")).toBeInTheDocument();
@@ -272,9 +272,13 @@ describe("owner More workspace", () => {
 
     const ownerAccountCard = screen.getByTestId("owner-more-identity-card");
     expect(within(ownerAccountCard).getByAltText("BVRB3R Owner profile photo")).toHaveAttribute("src", "https://cdn.example.com/owner-human.jpg");
+    expect(within(ownerAccountCard).getByRole("heading", { name: "BVRB3R Owner" })).toBeInTheDocument();
+    expect(within(ownerAccountCard).getByText("SHOP OWNER ACCOUNT")).toBeInTheDocument();
+    expect(within(ownerAccountCard).getByText("owner@bvrb3r.demo")).toBeInTheDocument();
     expect(within(ownerAccountCard).getByText("@thebvrb3rshopuniversitymall")).toBeInTheDocument();
     expect(within(ownerAccountCard).getByText("2200 E Fowler Ave - Tampa, FL 33612")).toBeInTheDocument();
     expect(within(ownerAccountCard).queryByText("Do not show me")).not.toBeInTheDocument();
+    expect(within(ownerAccountCard).getByText("Payouts connected")).toBeInTheDocument();
     expect(screen.getAllByTestId("owner-more-identity-card")).toHaveLength(1);
     expect(screen.queryByTestId("owner-public-shop-profile-card")).not.toBeInTheDocument();
   });
