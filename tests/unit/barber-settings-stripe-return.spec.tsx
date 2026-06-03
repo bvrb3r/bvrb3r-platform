@@ -418,6 +418,66 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     expect(screen.getByRole("button", { name: "Log out" })).toBeInTheDocument();
   });
 
+  it("keeps the canonical public location for freelance barbers even with an accepted shop link", () => {
+    useBarberFintechReadinessQueryMock.mockReturnValue({
+      data: {
+        barberId: "barber-blaze",
+        barberName: "Blaze King",
+        connectedAccount: buildConnectedAccount(),
+        stripePayoutReadiness: buildStripePayoutReadiness(),
+        stripeEnvironment: {
+          mode: "test",
+          label: "Stripe test mode - not live payouts.",
+          blocksLivePayouts: true
+        },
+        agreements: [],
+        memberships: [{ id: "membership-1", shopId: "shop-legacy", shopLabel: "Legacy Shop", status: "accepted" }],
+        routingSummary: {
+          blockedPaymentsCount: 0,
+          pendingPaymentsCount: 0,
+          readyForPayoutAmount: 0,
+          blockedReasons: []
+        },
+        blockedPayments: []
+      },
+      error: null,
+      refetch: readinessRefetchMock
+    });
+    useBarberOverviewQueryMock.mockReturnValue({
+      data: {
+        todayAppointments: [],
+        shops: [{ id: "shop-legacy", label: "Phils chair / 2172 University Square More / Tampa • Independent barber • Freelance service area" }],
+        workingHours: [{ weekday: 1, startTime: "12:00", endTime: "19:00" }],
+        earnings: {
+          grossSales: 0
+        },
+        activationSetup: {
+          hasAvailabilityDraft: true,
+          hasServiceLocation: true,
+          locationMode: "shop",
+          serviceLocationLabel: "Phils chair / 2172 University Square More / Tampa • Independent barber • Freelance service area"
+        },
+        status: {
+          isOnline: true,
+          liveStatus: "available",
+          acceptsWalkIns: true,
+          currentShopId: "shop-legacy"
+        }
+      },
+      error: null,
+      refetch: overviewRefetchMock
+    });
+
+    render(<BarberSettingsScreen user={{ ...resolveDemoUser("blaze@bvrb3r.demo"), barberSubtype: "freelance", appApprovalStatus: "approved" }} />);
+
+    const identityCard = screen.getByTestId("barber-more-identity-card");
+    expect(within(identityCard).getByText("@phillipforsure")).toBeInTheDocument();
+    expect(within(identityCard).getByText("8516 Island Breeze Ln - Temple Terrace, FL 33607")).toBeInTheDocument();
+    expect(identityCard).not.toHaveTextContent("Independent barber");
+    expect(identityCard).not.toHaveTextContent("Freelance service area");
+    expect(identityCard).not.toHaveTextContent("Phils chair / 2172 University Square More / Tampa");
+  });
+
   it("syncs Stripe payout readiness when returning from Connect onboarding", async () => {
     render(<BarberSettingsScreen user={resolveDemoUser("blaze@bvrb3r.demo")} stripeReturnState="return" embedded />);
 

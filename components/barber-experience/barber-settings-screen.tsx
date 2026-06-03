@@ -296,7 +296,7 @@ function formatBarberPayoutChipLabel({
 }
 
 function cleanBarberMoreLocationLine(value?: string | null) {
-  return value?.split("•")[0]?.trim() ?? "";
+  return value?.split(/(?:•|â€¢)/)[0]?.trim() ?? "";
 }
 
 function resolveCanonicalActivationStatus(...statuses: Array<string | null | undefined>) {
@@ -1076,6 +1076,8 @@ export function BarberSettingsScreen({
     (readinessPayload?.memberships.length ?? 0) > 0
     || ((overviewPayload?.shops.length ?? 0) > 0 && activationSetup?.locationMode !== "custom")
   );
+  const isFreelanceBarber = selectedSubtype === "freelance";
+  const hasShopControlledLocation = !isFreelanceBarber && hasAcceptedShopLink;
   const barberPublicUsernameLine = formatPublicUsernameLine(mediaQuery.data?.barberProfile?.publicUsername);
   const structuredBarberLocationLabel = formatPublicAddressLocation({
     address: mediaQuery.data?.barberProfile?.publicAddress,
@@ -1089,8 +1091,8 @@ export function BarberSettingsScreen({
       || mediaQuery.data?.barberProfile?.serviceAreaLabel
       || "Add service location"
   );
-  const barberIdentityLocationLabel = hasAcceptedShopLink
-    ? assignedLocationLabels
+  const barberIdentityLocationLabel = hasShopControlledLocation
+    ? cleanBarberMoreLocationLine(assignedLocationLabels)
     : canonicalBarberLocationLabel;
   const barberLocationOptions = [
     toLocationOption(activationSetup?.bookingLocation)
