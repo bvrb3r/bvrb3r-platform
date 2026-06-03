@@ -3,7 +3,9 @@
 import type { Route } from "next";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ArrowLeft, MessageSquarePlus, MessageSquareText, RadioTower, Search, Send, Sparkles, X } from "lucide-react";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Button } from "@/components/ui/button";
@@ -514,13 +516,14 @@ function ParticipantSearchResultRow({
   const publicDisplayName = getParticipantSearchDisplay(result);
   const username = result.publicUsername?.trim().replace(/^@+/, "");
   const secondaryUsername = username && publicDisplayName !== `@${username}` ? `@${username}` : null;
+  const roleLabel = result.resultType === "support" ? "Support" : result.resultType === "shop" ? "Shop" : result.resultType === "client" ? "Client" : "Barber";
+  const profileHref = result.publicProfileHref ?? result.profileHref;
+  const messageDisabled = disabled || Boolean(result.messageDisabledReason);
 
   return (
-    <button
-      type="button"
-      className="grid min-h-[68px] w-full grid-cols-[auto_1fr_auto] items-center gap-3 rounded-lg border border-white/8 bg-white/[0.025] px-3 py-2 text-left transition hover:border-[#a3ff12]/28 hover:bg-white/[0.05] disabled:opacity-55"
-      disabled={disabled}
-      onClick={() => onSelect(result)}
+    <div
+      className="grid min-h-[82px] w-full grid-cols-[auto_1fr] gap-3 rounded-lg border border-white/8 bg-white/[0.025] px-3 py-2 text-left transition hover:border-[#a3ff12]/28 hover:bg-white/[0.05] sm:grid-cols-[auto_1fr_auto]"
+      data-testid={`message-participant-result-${result.resultType}-${result.id}`}
     >
       <Avatar
         src={getAvatarImageUrl(result.avatarUrl, result.role, result.resultType === "support" ? "support" : undefined)}
@@ -531,19 +534,104 @@ function ParticipantSearchResultRow({
       <span className="min-w-0">
         <span className="flex min-w-0 items-center gap-2">
           <span className="truncate text-sm font-bold text-white">{publicDisplayName}</span>
-          <RolePill label={result.resultType === "support" ? "Support" : result.resultType === "shop" ? "Shop" : result.resultType === "client" ? "Client" : "Barber"} />
+          <RolePill label={roleLabel} />
         </span>
         {secondaryUsername ? (
           <span className="mt-0.5 block truncate text-xs font-bold text-[#d7ffab]/85">{secondaryUsername}</span>
         ) : null}
         <span className="mt-0.5 block truncate text-xs text-white/48">
-          {result.existingThreadId ? "Existing conversation" : result.publicContextLine ?? result.subtitle ?? "Start a conversation"}
+          {result.publicContextLine ?? result.subtitle ?? (result.existingThreadId ? "Existing conversation" : "Start a conversation")}
         </span>
+        {result.messageDisabledReason ? (
+          <span className="mt-1 block text-[11px] font-semibold text-white/42">{result.messageDisabledReason}</span>
+        ) : null}
       </span>
-      <span className="rounded-lg border border-[#a3ff12]/20 bg-[#a3ff12]/10 px-2.5 py-1 text-[11px] font-black text-[#d7ffab]">
-        {result.existingThreadId ? "Open" : "Start"}
+      <span className="col-span-2 flex shrink-0 items-center justify-end gap-2 sm:col-span-1">
+        {profileHref ? (
+          <Link
+            href={profileHref as Route}
+            className="inline-flex h-8 items-center rounded-lg border border-white/10 px-2.5 text-[11px] font-black text-white/72 transition hover:border-[#a3ff12]/28 hover:text-white"
+          >
+            View Profile
+          </Link>
+        ) : null}
+        <button
+          type="button"
+          className="inline-flex h-8 items-center rounded-lg border border-[#a3ff12]/20 bg-[#a3ff12]/10 px-2.5 text-[11px] font-black text-[#d7ffab] transition hover:border-[#a3ff12]/36 hover:bg-[#a3ff12]/16 disabled:cursor-not-allowed disabled:opacity-45"
+          disabled={messageDisabled}
+          onClick={() => onSelect(result)}
+        >
+          {result.existingThreadId ? "Open" : "Message"}
+        </button>
       </span>
-    </button>
+    </div>
+  );
+}
+
+function TopLayerModal({
+  children,
+  label,
+  onClose,
+  testId
+}: {
+  children: ReactNode;
+  label: string;
+  onClose: () => void;
+  testId?: string;
+}) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [mounted]);
+
+  useEffect(() => {
+    if (!mounted) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [mounted, onClose]);
+
+  if (!mounted) {
+    return null;
+  }
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/72 px-0 pb-0 pt-0 backdrop-blur-sm sm:items-center sm:p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label={label}
+      data-testid={testId}
+    >
+      <button
+        type="button"
+        className="absolute inset-0 cursor-default"
+        aria-label={`Close ${label}`}
+        onClick={onClose}
+      />
+      {children}
+    </div>,
+    document.body
   );
 }
 
@@ -838,7 +926,7 @@ function ConversationPanel({
       className={[
         "flex flex-col border border-white/8 bg-[#070707]/96 shadow-[0_20px_60px_rgba(0,0,0,0.38)]",
         mode === "modal"
-          ? "h-[100dvh] w-full rounded-none sm:h-[min(92vh,48rem)] sm:max-w-2xl sm:rounded-lg"
+          ? "h-[100dvh] min-h-0 w-full rounded-none sm:h-[min(92vh,48rem)] sm:max-w-2xl sm:rounded-lg"
           : "min-h-[34rem] rounded-lg"
       ].join(" ")}
       data-testid={mode === "modal" ? "message-thread-modal" : "message-thread-panel"}
@@ -940,7 +1028,7 @@ function ConversationPanel({
 
       {activeThread ? (
         <>
-          <div className="flex-1 space-y-3 overflow-y-auto px-3 py-4 scroll-smooth sm:px-4">
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-4 scroll-smooth sm:px-4">
             {messages.length ? messages.map((message) => {
               const paymentRequestMetadata = getPosPaymentRequestMetadata(message.metadata);
               return (
@@ -980,7 +1068,7 @@ function ConversationPanel({
             )}
           </div>
 
-          <div className="border-t border-white/8 p-3">
+          <div className="shrink-0 border-t border-white/8 p-3 pb-[calc(env(safe-area-inset-bottom)+12px)]">
             <label className="sr-only" htmlFor={`${surface}-message-composer`}>Reply</label>
             <div className="flex items-end gap-2 rounded-lg border border-white/10 bg-black/35 p-2">
               <textarea
@@ -1060,18 +1148,7 @@ function ConversationModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/72 backdrop-blur-sm sm:items-center sm:p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Message conversation"
-    >
-      <button
-        type="button"
-        className="absolute inset-0 cursor-default"
-        aria-label="Close conversation"
-        onClick={onClose}
-      />
+    <TopLayerModal label="Message conversation" onClose={onClose}>
       <div className="relative z-10 w-full sm:max-w-2xl">
         <ConversationPanel
           activeThread={activeThread}
@@ -1094,7 +1171,7 @@ function ConversationModal({
           onSend={onSend}
         />
       </div>
-    </div>
+    </TopLayerModal>
   );
 }
 
@@ -1120,19 +1197,7 @@ function ComposeModal({
   const hasSearch = query.trim().length >= 2;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/72 backdrop-blur-sm sm:items-center sm:p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-label="New message"
-      data-testid="message-compose-modal"
-    >
-      <button
-        type="button"
-        className="absolute inset-0 cursor-default"
-        aria-label="Close new message"
-        onClick={onClose}
-      />
+    <TopLayerModal label="New message" onClose={onClose} testId="message-compose-modal">
       <section className="relative z-10 flex h-[100dvh] w-full flex-col rounded-none border border-white/8 bg-[#070707]/96 shadow-[0_20px_60px_rgba(0,0,0,0.38)] sm:h-[min(80vh,38rem)] sm:max-w-xl sm:rounded-lg">
         <div className="border-b border-white/8 px-4 py-3">
           <div className="flex items-center justify-between gap-3">
@@ -1150,7 +1215,7 @@ function ComposeModal({
             </button>
           </div>
 
-          <label className="sr-only" htmlFor="message-participant-search">Search barbers, shops, or clients</label>
+          <label className="sr-only" htmlFor="message-participant-search">Search @username, barber, shop, or client</label>
           <div className="mt-3 flex h-11 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 focus-within:border-[#a3ff12]/30">
             <Search className="h-4 w-4 text-white/36" aria-hidden="true" />
             <input
@@ -1158,7 +1223,7 @@ function ComposeModal({
               autoFocus
               value={query}
               onChange={(event) => onQueryChange(event.target.value)}
-              placeholder="Search barbers, shops, or clients"
+              placeholder="Search @username, barber, shop, or client"
               className="min-w-0 flex-1 bg-transparent text-sm font-medium text-white outline-none placeholder:text-white/34"
             />
           </div>
@@ -1171,7 +1236,7 @@ function ComposeModal({
 
           {!hasSearch ? (
             <div className="rounded-lg border border-dashed border-white/10 bg-white/[0.025] p-4 text-sm leading-6 text-white/56">
-              Search for a barber, shop, or support line to start a message.
+              Search a public username like @phillipforsure.
             </div>
           ) : isLoading ? (
             <div className="space-y-2">
@@ -1191,12 +1256,12 @@ function ComposeModal({
             </div>
           ) : (
             <div className="rounded-lg border border-dashed border-white/10 bg-white/[0.025] p-4 text-sm leading-6 text-white/56">
-              No messageable matches yet.
+              No public profiles or messages found. Try searching a public username like @phillipforsure.
             </div>
           )}
         </div>
       </section>
-    </div>
+    </TopLayerModal>
   );
 }
 
@@ -1492,6 +1557,11 @@ export function MessagingInboxScreen({
       if (result.existingThreadId) {
         handleCloseCompose();
         handleOpenThread(result.existingThreadId);
+        return;
+      }
+
+      if (!result.createThreadInput) {
+        setStatusUpdate({ tone: "info", message: result.messageDisabledReason ?? "Messaging this profile is not available yet." });
         return;
       }
 

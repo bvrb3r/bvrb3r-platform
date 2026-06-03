@@ -280,7 +280,7 @@ describe("client messages screen", () => {
     fireEvent.click(screen.getByRole("button", { name: "New Message" }));
 
     const composeModal = screen.getByTestId("message-compose-modal");
-    expect(within(composeModal).getByPlaceholderText("Search barbers, shops, or clients")).toBeInTheDocument();
+    expect(within(composeModal).getByPlaceholderText("Search @username, barber, shop, or client")).toBeInTheDocument();
     expect(within(composeModal).queryByText("BVRB3R Support")).not.toBeInTheDocument();
     expect(mutateAsync).not.toHaveBeenCalled();
   });
@@ -452,6 +452,112 @@ describe("client messages screen", () => {
     });
   });
 
+  it("renders the active thread as a top-layer safe-area modal", async () => {
+    const thread = buildThread();
+    useMessageThreadsQueryMock.mockReturnValue({
+      data: {
+        available: true,
+        viewer: {
+          profileId: "profile-client",
+          fullName: "Jordan Ellis",
+          role: "client"
+        },
+        threads: [thread],
+        eligibleAppointments: [],
+        eligibleContacts: [],
+        broadcastTargets: []
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn()
+    });
+    useMessageThreadQueryMock.mockReturnValue({
+      data: {
+        available: true,
+        viewer: {
+          profileId: "profile-client",
+          fullName: "Jordan Ellis",
+          role: "client"
+        },
+        thread: buildThreadDetail(thread),
+        messages: []
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="client"
+        basePath="/dashboard/client/messages"
+        selectedThreadId="thread-appointment-1"
+        title="Messages"
+        subtitle="Barbers, shops, bookings, and support."
+      />
+    );
+
+    const dialog = await screen.findByRole("dialog", { name: "Message conversation" });
+    expect(dialog).toHaveClass("z-[9999]");
+    expect(document.body.style.overflow).toBe("hidden");
+    const sendButton = screen.getByRole("button", { name: "Send message" });
+    expect(sendButton).toBeInTheDocument();
+    expect(sendButton.closest(".border-t")).toHaveClass("pb-[calc(env(safe-area-inset-bottom)+12px)]");
+  });
+
+  it("closes the active thread from Back and restores the Messages route", async () => {
+    const push = vi.fn();
+    useRouterMock.mockReturnValue({
+      push,
+      replace: vi.fn()
+    });
+    const thread = buildThread();
+    useMessageThreadsQueryMock.mockReturnValue({
+      data: {
+        available: true,
+        viewer: {
+          profileId: "profile-client",
+          fullName: "Jordan Ellis",
+          role: "client"
+        },
+        threads: [thread],
+        eligibleAppointments: [],
+        eligibleContacts: [],
+        broadcastTargets: []
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn()
+    });
+    useMessageThreadQueryMock.mockReturnValue({
+      data: {
+        available: true,
+        viewer: {
+          profileId: "profile-client",
+          fullName: "Jordan Ellis",
+          role: "client"
+        },
+        thread: buildThreadDetail(thread),
+        messages: []
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="client"
+        basePath="/dashboard/client/messages"
+        selectedThreadId="thread-appointment-1"
+        title="Messages"
+        subtitle="Barbers, shops, bookings, and support."
+      />
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Back" }));
+
+    expect(push).toHaveBeenCalledWith("/dashboard/client/messages", { scroll: false });
+  });
+
   it("maps Culture header actions for barber and owner message surfaces", () => {
     const { rerender } = render(
       <MessagingInboxScreen
@@ -526,7 +632,7 @@ describe("client messages screen", () => {
     expect(screen.getByText("People and businesses")).toBeInTheDocument();
     expect(screen.getByText("@phillipforsure")).toBeInTheDocument();
     expect(screen.getByText("8516 Island Breeze Ln - Temple Terrace, FL 33607")).toBeInTheDocument();
-    expect(screen.getByText("Start")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Message" })).toBeInTheDocument();
     expect(screen.queryByText("Phillip mcgee")).not.toBeInTheDocument();
   });
 
@@ -743,7 +849,7 @@ describe("client messages screen", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Search messages" }), {
       target: { value: "@phillipforsure" }
     });
-    fireEvent.click(screen.getByText("@phillipforsure"));
+    fireEvent.click(screen.getByRole("button", { name: "Open" }));
 
     expect(push).toHaveBeenCalledWith("/dashboard/client/messages/thread-appointment-1", { scroll: false });
     await waitFor(() => {
@@ -807,7 +913,7 @@ describe("client messages screen", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Search messages" }), {
       target: { value: "@thebvrb3rshopuniversitymall" }
     });
-    fireEvent.click(screen.getByText("@thebvrb3rshopuniversitymall"));
+    fireEvent.click(screen.getByRole("button", { name: "Message" }));
 
     await waitFor(() => {
       expect(mutateAsync).toHaveBeenCalledWith({
@@ -928,7 +1034,7 @@ describe("client messages screen", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "New Message" }));
-    fireEvent.change(screen.getByPlaceholderText("Search barbers, shops, or clients"), {
+    fireEvent.change(screen.getByPlaceholderText("Search @username, barber, shop, or client"), {
       target: { value: "phillip" }
     });
 
@@ -936,7 +1042,7 @@ describe("client messages screen", () => {
     expect(within(composeModal).getByText("@phillipforsure")).toBeInTheDocument();
     expect(within(composeModal).queryByText("Phillip mcgee")).not.toBeInTheDocument();
     expect(within(composeModal).getAllByText("BVRB3R Support").length).toBeGreaterThan(0);
-    fireEvent.click(within(composeModal).getByText("@phillipforsure"));
+    fireEvent.click(within(composeModal).getByRole("button", { name: "Open" }));
 
     expect(mutateAsync).not.toHaveBeenCalled();
     expect(push).toHaveBeenCalledWith("/dashboard/client/messages/thread-appointment-1", { scroll: false });
@@ -988,7 +1094,7 @@ describe("client messages screen", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "New Message" }));
-    fireEvent.change(screen.getByPlaceholderText("Search barbers, shops, or clients"), {
+    fireEvent.change(screen.getByPlaceholderText("Search @username, barber, shop, or client"), {
       target: { value: "phillip" }
     });
 
@@ -1050,10 +1156,10 @@ describe("client messages screen", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "New Message" }));
-    fireEvent.change(screen.getByPlaceholderText("Search barbers, shops, or clients"), {
+    fireEvent.change(screen.getByPlaceholderText("Search @username, barber, shop, or client"), {
       target: { value: "nova" }
     });
-    fireEvent.click(screen.getByText("Nova Blades"));
+    fireEvent.click(screen.getByRole("button", { name: "Message" }));
 
     await waitFor(() => {
       expect(mutateAsync).toHaveBeenCalledTimes(1);
@@ -1063,6 +1169,111 @@ describe("client messages screen", () => {
       profileId: "profile-new-barber"
     });
     expect(push).toHaveBeenCalledWith("/dashboard/client/messages/thread-new-barber", { scroll: false });
+  });
+
+  it("lets a barber find a client public username from New Message", () => {
+    useMessageParticipantSearchQueryMock.mockReturnValue({
+      data: {
+        results: [
+          {
+            id: "profile-client",
+            participantId: "profile-client",
+            displayName: "Phillip mcgee",
+            resultType: "client",
+            participantType: "client",
+            role: "client_user",
+            avatarUrl: "https://cdn.bvrb3r.test/client.jpg",
+            publicUsername: "phillipmcgee",
+            publicContextLine: "Tampa, FL",
+            publicProfileHref: "/client/phillipmcgee",
+            profileHref: "/client/phillipmcgee",
+            existingThreadId: null,
+            createThreadInput: {
+              threadType: "client_barber",
+              profileId: "profile-client"
+            },
+            subtitle: "Client"
+          }
+        ]
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="barber"
+        basePath="/dashboard/barber/messages"
+        title="Messages"
+        subtitle="Clients, bookings, shop lines, and support."
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "New Message" }));
+    fireEvent.change(screen.getByPlaceholderText("Search @username, barber, shop, or client"), {
+      target: { value: "@phillipmcgee" }
+    });
+
+    const composeModal = screen.getByTestId("message-compose-modal");
+    expect(within(composeModal).getByAltText("@phillipmcgee")).toHaveAttribute("src", "https://cdn.bvrb3r.test/client.jpg");
+    expect(within(composeModal).getByText("@phillipmcgee")).toBeInTheDocument();
+    expect(within(composeModal).getByText("Client")).toBeInTheDocument();
+    expect(within(composeModal).getByText("Tampa, FL")).toBeInTheDocument();
+    expect(within(composeModal).getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/client/phillipmcgee");
+    expect(within(composeModal).getByRole("button", { name: "Message" })).toBeInTheDocument();
+    expect(within(composeModal).queryByText("Phillip mcgee")).not.toBeInTheDocument();
+  });
+
+  it("lets an owner find a barber public username from New Message", () => {
+    useMessageParticipantSearchQueryMock.mockReturnValue({
+      data: {
+        results: [
+          {
+            id: "profile-barber",
+            participantId: "profile-barber",
+            displayName: "Phillip mcgee",
+            resultType: "barber",
+            participantType: "barber",
+            role: "barber_user",
+            avatarUrl: "https://cdn.bvrb3r.test/barber.jpg",
+            publicUsername: "phillipforsure",
+            publicContextLine: "8516 Island Breeze Ln - Temple Terrace, FL 33607",
+            publicProfileHref: "/barber/phillipforsure",
+            profileHref: "/barber/phillipforsure",
+            existingThreadId: null,
+            createThreadInput: {
+              threadType: "barber_shop",
+              profileId: "profile-barber",
+              locationId: "shop-the-bvrb3r-shop"
+            },
+            subtitle: "Barber"
+          }
+        ]
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="shop"
+        basePath="/dashboard/owner/messages"
+        title="Messages"
+        subtitle="Clients, barbers, team, bookings, and support."
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "New Message" }));
+    fireEvent.change(screen.getByPlaceholderText("Search @username, barber, shop, or client"), {
+      target: { value: "@phillipforsure" }
+    });
+
+    const composeModal = screen.getByTestId("message-compose-modal");
+    expect(within(composeModal).getByText("@phillipforsure")).toBeInTheDocument();
+    expect(within(composeModal).getByText("8516 Island Breeze Ln - Temple Terrace, FL 33607")).toBeInTheDocument();
+    expect(within(composeModal).getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/barber/phillipforsure");
+    expect(within(composeModal).getByRole("button", { name: "Message" })).toBeInTheDocument();
+    expect(within(composeModal).queryByText("Phillip mcgee")).not.toBeInTheDocument();
   });
 
   it("routes straight into an existing support thread when requested", async () => {

@@ -284,7 +284,8 @@ export type MessagingParticipantSearchResult = {
   profileHref: string | null;
   bookingHref?: string | null;
   existingThreadId?: string | null;
-  createThreadInput: MessagingCreateThreadInput;
+  createThreadInput?: MessagingCreateThreadInput | null;
+  messageDisabledReason?: string | null;
   subtitle?: string | null;
 };
 
@@ -745,7 +746,8 @@ function normalizeSearchText(value: string) {
 }
 
 function searchMatches(value: string | null | undefined, query: string) {
-  return Boolean(value?.toLowerCase().includes(query.toLowerCase()));
+  const normalizedValue = value?.trim().replace(/^@+/, "").replace(/[%_,]/g, " ").replace(/\s+/g, "").toLowerCase();
+  return Boolean(normalizedValue?.includes(query.toLowerCase()));
 }
 
 function getThreadSearchKey(thread: MessagingThreadSummary) {
@@ -754,11 +756,21 @@ function getThreadSearchKey(thread: MessagingThreadSummary) {
   }
 
   if (thread.threadType === "client_barber" && thread.counterpart?.profileId) {
-    return `barber:${thread.counterpart.profileId}`;
+    return isClientRole(thread.counterpart.role)
+      ? `client:${thread.counterpart.profileId}`
+      : `barber:${thread.counterpart.profileId}`;
   }
 
   if (thread.threadType === "client_shop" && thread.locationId) {
-    return `shop:${thread.locationId}`;
+    return thread.counterpart && isClientRole(thread.counterpart.role)
+      ? `client:${thread.counterpart.profileId}`
+      : `shop:${thread.locationId}`;
+  }
+
+  if (thread.threadType === "barber_shop" && thread.locationId) {
+    return thread.counterpart && isBarberRole(thread.counterpart.role)
+      ? `barber:${thread.counterpart.profileId}`
+      : `shop:${thread.locationId}`;
   }
 
   return null;
@@ -895,6 +907,84 @@ function buildShopMessagingMetadata(supabase: SupabaseClient, shop: ShopPublicId
       zip: shop.zip_code
     })
   };
+}
+
+function buildParticipantSearchAction(input: {
+  actor: MessagingActorContext;
+  targetType: "client" | "barber" | "shop" | "support";
+  targetProfileId?: string | null;
+  shopLocationId?: string | null;
+  shopContactProfileId?: string | null;
+}): Pick<MessagingParticipantSearchResult, "createThreadInput" | "messageDisabledReason"> {
+  if (input.targetProfileId && input.targetProfileId === input.actor.profile.id) {
+    return { createThreadInput: null, messageDisabledReason: "This is you." };
+  }
+
+  if (input.targetType === "support") {
+    return { createThreadInput: { threadType: "support" }, messageDisabledReason: null };
+  }
+
+  if (input.targetType === "client") {
+    if (!input.targetProfileId) {
+      return { createThreadInput: null, messageDisabledReason: "Messaging this profile is not available yet." };
+    }
+
+    if (input.actor.kind === "barber") {
+      return { createThreadInput: { threadType: "client_barber", profileId: input.targetProfileId }, messageDisabledReason: null };
+    }
+
+    if (input.actor.kind === "shop") {
+      const locationId = input.actor.locationIds?.[0] ?? null;
+      return locationId
+        ? { createThreadInput: { threadType: "client_shop", profileId: input.targetProfileId, locationId }, messageDisabledReason: null }
+        : { createThreadInput: null, messageDisabledReason: "Messaging this profile is not available yet." };
+    }
+
+    return { createThreadInput: null, messageDisabledReason: "Messaging this profile type is coming soon." };
+  }
+
+  if (input.targetType === "barber") {
+    if (!input.targetProfileId) {
+      return { createThreadInput: null, messageDisabledReason: "Messaging this profile is not available yet." };
+    }
+
+    if (input.actor.kind === "client") {
+      return { createThreadInput: { threadType: "client_barber", profileId: input.targetProfileId }, messageDisabledReason: null };
+    }
+
+    if (input.actor.kind === "shop") {
+      const locationId = input.actor.locationIds?.[0] ?? null;
+      return locationId
+        ? { createThreadInput: { threadType: "barber_shop", profileId: input.targetProfileId, locationId }, messageDisabledReason: null }
+        : { createThreadInput: null, messageDisabledReason: "Messaging this profile is not available yet." };
+    }
+
+    return { createThreadInput: null, messageDisabledReason: "Messaging this profile type is coming soon." };
+  }
+
+  if (input.targetType === "shop") {
+    if (!input.shopLocationId || !input.shopContactProfileId) {
+      return { createThreadInput: null, messageDisabledReason: "Messaging this shop is not available yet." };
+    }
+
+    if (input.actor.kind === "client") {
+      return {
+        createThreadInput: { threadType: "client_shop", profileId: input.shopContactProfileId, locationId: input.shopLocationId },
+        messageDisabledReason: null
+      };
+    }
+
+    if (input.actor.kind === "barber") {
+      return {
+        createThreadInput: { threadType: "barber_shop", profileId: input.shopContactProfileId, locationId: input.shopLocationId },
+        messageDisabledReason: null
+      };
+    }
+
+    return { createThreadInput: null, messageDisabledReason: "Messaging this profile type is coming soon." };
+  }
+
+  return { createThreadInput: null, messageDisabledReason: "Messaging this profile is not available yet." };
 }
 
 async function readPublicMessagingMetadataByProfileIds(
@@ -2684,7 +2774,7 @@ export async function searchMessagingParticipants(user: UserAccount, query: stri
         profileHref: null,
         bookingHref: null,
         existingThreadId: threadLookup.get(`support:${supportProfile.id}`) ?? null,
-        createThreadInput: { threadType: "support" },
+        ...buildParticipantSearchAction({ actor, targetType: "support", targetProfileId: supportProfile.id }),
         subtitle: "BVRB3R Support"
       });
     } catch (error) {
@@ -2699,7 +2789,7 @@ export async function searchMessagingParticipants(user: UserAccount, query: stri
     try {
       const barberProfileResult = await supabase
         .from("barber_profiles")
-        .select("barber_reference, username, display_name, profile_photo_path, profile_photo_url, visibility_state")
+        .select("barber_reference, username, display_name, profile_photo_path, profile_photo_url, visibility_state, public_address, public_city, public_state, public_zip, service_area_label")
         .or(`display_name.ilike.%${normalizedQuery}%,username.ilike.%${normalizedQuery}%,barber_reference.ilike.%${normalizedQuery}%`)
         .limit(12);
 
@@ -2820,15 +2910,73 @@ export async function searchMessagingParticipants(user: UserAccount, query: stri
         profileHref: metadata.publicProfileHref,
         bookingHref: metadata.bookingHref,
         existingThreadId: threadLookup.get(`barber:${profile.id}`) ?? null,
-        createThreadInput: {
-          threadType: "client_barber",
-          profileId: profile.id
-        },
+        ...buildParticipantSearchAction({ actor, targetType: "barber", targetProfileId: profile.id }),
         subtitle: "Barber"
       });
     }
   } catch (error) {
     recordParticipantSearchWarning(warnings, "barber", "Unable to search barber messaging results.", error);
+  }
+
+  try {
+    const clientProfileResult = await supabase
+      .from("profiles")
+      .select("id, full_name, email, role, public_username, profile_photo_path, profile_photo_url, public_city, public_state")
+      .or(`public_username.ilike.%${normalizedQuery}%,public_city.ilike.%${normalizedQuery}%,public_state.ilike.%${normalizedQuery}%`)
+      .limit(12);
+
+    if (clientProfileResult.error) {
+      throw clientProfileResult.error;
+    }
+
+    const clientProfiles = ((clientProfileResult.data ?? []) as ProfileRow[])
+      .filter((profile) => isClientRole(profile.role) && cleanText(profile.public_username));
+
+    const clientRowsResult = clientProfiles.length
+      ? await supabase
+          .from("clients")
+          .select("id, profile_id")
+          .in("profile_id", clientProfiles.map((profile) => profile.id))
+      : { data: [], error: null };
+
+    if (clientRowsResult.error) {
+      throw clientRowsResult.error;
+    }
+
+    const clientProfileIds = new Set(((clientRowsResult.data ?? []) as ClientRow[]).map((client) => client.profile_id));
+    for (const profile of clientProfiles) {
+      if (!clientProfileIds.has(profile.id)) {
+        continue;
+      }
+
+      const metadata = buildClientMessagingMetadata(supabase, profile);
+      if (
+        !searchMatches(metadata.publicUsername, normalizedQuery)
+        && !searchMatches(metadata.publicContextLine, normalizedQuery)
+      ) {
+        continue;
+      }
+
+      results.set(`client:${profile.id}`, {
+        id: profile.id,
+        participantId: profile.id,
+        displayName: metadata.displayName ?? getPublicFallbackName(profile.role),
+        resultType: "client",
+        participantType: "client",
+        role: profile.role,
+        avatarUrl: metadata.avatarUrl,
+        publicUsername: metadata.publicUsername,
+        publicContextLine: metadata.publicContextLine,
+        publicProfileHref: metadata.publicProfileHref,
+        profileHref: metadata.publicProfileHref,
+        bookingHref: null,
+        existingThreadId: threadLookup.get(`client:${profile.id}`) ?? null,
+        ...buildParticipantSearchAction({ actor, targetType: "client", targetProfileId: profile.id }),
+        subtitle: metadata.publicContextLine ?? "Client"
+      });
+    }
+  } catch (error) {
+    recordParticipantSearchWarning(warnings, "client", "Unable to search client messaging results.", error);
   }
 
   try {
@@ -2852,6 +3000,15 @@ export async function searchMessagingParticipants(user: UserAccount, query: stri
 
       const metadata = buildShopMessagingMetadata(supabase, shop);
       const profileId = primaryShopProfile?.id ?? shop.owner_profile_id ?? shop.id;
+      const isOwnShop = profileId === actor.profile.id || shop.owner_profile_id === actor.profile.id;
+      const action = isOwnShop
+        ? { createThreadInput: null, messageDisabledReason: "This is you." }
+        : buildParticipantSearchAction({
+            actor,
+            targetType: "shop",
+            shopLocationId: shop.id,
+            shopContactProfileId: profileId
+          });
       results.set(`shop:${shop.id}`, {
         id: shop.id,
         participantId: shop.id,
@@ -2866,11 +3023,7 @@ export async function searchMessagingParticipants(user: UserAccount, query: stri
         profileHref: metadata.publicProfileHref,
         bookingHref: null,
         existingThreadId: threadLookup.get(`shop:${shop.id}`) ?? null,
-        createThreadInput: {
-          threadType: "client_shop",
-          profileId,
-          locationId: shop.id
-        },
+        ...action,
         subtitle: metadata.publicContextLine ?? "Shop"
       });
     }
