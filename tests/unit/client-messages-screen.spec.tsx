@@ -1339,6 +1339,57 @@ describe("client messages screen", () => {
     expect(within(composeModal).queryByText("The BVRB3R Shop")).not.toBeInTheDocument();
   });
 
+  it("shows Opening while a public username result is creating a thread", () => {
+    useCreateMessageThreadMutationMock.mockReturnValue({
+      isPending: true,
+      mutateAsync: vi.fn()
+    });
+    useMessageParticipantSearchQueryMock.mockReturnValue({
+      data: {
+        results: [
+          {
+            id: "shop-the-bvrb3r-shop",
+            participantId: "shop-the-bvrb3r-shop",
+            displayName: "The BVRB3R Shop",
+            resultType: "shop",
+            participantType: "shop",
+            role: "shop_owner_user",
+            avatarUrl: null,
+            publicUsername: "thebvrb3rshopuniversitymall",
+            publicContextLine: "2172 University Square Mall - Tampa, FL 33612",
+            publicProfileHref: "/shop/thebvrb3rshopuniversitymall",
+            profileHref: "/shop/thebvrb3rshopuniversitymall",
+            existingThreadId: null,
+            createThreadInput: {
+              threadType: "client_shop",
+              profileId: "profile-owner",
+              locationId: "shop-the-bvrb3r-shop"
+            },
+            subtitle: "Shop"
+          }
+        ]
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="client"
+        basePath="/dashboard/client/messages"
+        title="Messages"
+        subtitle="Barbers, shops, bookings, and support."
+      />
+    );
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Search messages" }), {
+      target: { value: "@thebvrb" }
+    });
+
+    const resultCard = screen.getByTestId("message-participant-result-shop-shop-the-bvrb3r-shop");
+    expect(within(resultCard).getByRole("button", { name: "Opening..." })).toBeDisabled();
+  });
+
   it("keeps an owner's own shop visible but disables Message", () => {
     useMessageParticipantSearchQueryMock.mockReturnValue({
       data: {

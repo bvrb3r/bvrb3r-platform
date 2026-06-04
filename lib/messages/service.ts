@@ -465,6 +465,17 @@ function formatLocationLabel(location: LocationRow) {
   return area ? `${location.name} | ${area}` : [location.name, location.state].filter(Boolean).join(" | ");
 }
 
+function shopToLocationRow(shop: ShopPublicIdentityRow): LocationRow {
+  return {
+    id: shop.id,
+    reference_code: shop.public_username,
+    name: cleanText(shop.name) ?? cleanText(shop.public_username) ?? "BVRB3R Shop",
+    neighborhood: cleanText(shop.address) ?? "",
+    city: cleanText(shop.city) ?? "",
+    state: cleanText(shop.state) ?? ""
+  };
+}
+
 function baseViewer(user: UserAccount, profileId: string | null = null): MessagingInboxPayload["viewer"] {
   return {
     profileId,
@@ -1229,7 +1240,7 @@ async function readLocationsByValues(supabase: SupabaseClient, values: string[])
 
   const uuidValues = uniqueValues.filter(isUuidLike);
   const referenceValues = uniqueValues.filter((value) => !isUuidLike(value));
-  const [uuidResult, referenceResult] = await Promise.all([
+  const [uuidResult, referenceResult, shopIdResult, shopUsernameResult] = await Promise.all([
     uuidValues.length
       ? supabase
           .from("locations")
@@ -1241,6 +1252,16 @@ async function readLocationsByValues(supabase: SupabaseClient, values: string[])
           .from("locations")
           .select("id, reference_code, name, neighborhood, city, state")
           .in("reference_code", referenceValues)
+      : Promise.resolve({ data: [], error: null }),
+    supabase
+      .from("shops")
+      .select("id, name, public_username, profile_photo_path, profile_photo_url, address, city, state, zip_code, owner_profile_id")
+      .in("id", uniqueValues),
+    referenceValues.length
+      ? supabase
+          .from("shops")
+          .select("id, name, public_username, profile_photo_path, profile_photo_url, address, city, state, zip_code, owner_profile_id")
+          .in("public_username", referenceValues)
       : Promise.resolve({ data: [], error: null })
   ]);
 
@@ -1251,6 +1272,16 @@ async function readLocationsByValues(supabase: SupabaseClient, values: string[])
   const rowById = new Map<string, LocationRow>();
   for (const row of [...((uuidResult.data ?? []) as LocationRow[]), ...((referenceResult.data ?? []) as LocationRow[])]) {
     rowById.set(row.id, row);
+  }
+  if (!shopIdResult.error && !shopUsernameResult.error) {
+    for (const shop of [...((shopIdResult.data ?? []) as ShopPublicIdentityRow[]), ...((shopUsernameResult.data ?? []) as ShopPublicIdentityRow[])]) {
+      rowById.set(shop.id, shopToLocationRow(shop));
+    }
+  } else {
+    console.warn("[messages] shop_location_identity_read_failed", {
+      postgresCode: shopIdResult.error?.code ?? shopUsernameResult.error?.code ?? null,
+      postgresMessage: shopIdResult.error?.message ?? shopUsernameResult.error?.message ?? null
+    });
   }
 
   const rows = [...rowById.values()];
@@ -1296,6 +1327,37 @@ async function readShopParticipantsByLocationIds(supabase: SupabaseClient, locat
     const rows = grouped.get(membership.location_id) ?? [];
     rows.push(profile);
     grouped.set(membership.location_id, rows);
+  }
+
+  const shopOwnerResult = await supabase
+    .from("shops")
+    .select("id, owner_profile_id")
+    .in("id", uniqueLocationIds);
+
+  if (shopOwnerResult.error) {
+    console.warn("[messages] shop_owner_participant_read_failed", {
+      locationCount: uniqueLocationIds.length,
+      postgresCode: shopOwnerResult.error.code ?? null,
+      postgresMessage: shopOwnerResult.error.message ?? null
+    });
+  } else {
+    const shopOwnerRows = (shopOwnerResult.data ?? []) as Array<{ id: string; owner_profile_id?: string | null }>;
+    const ownerProfiles = await readProfilesByIds(
+      supabase,
+      shopOwnerRows.map((shop) => shop.owner_profile_id).filter((value): value is string => Boolean(value))
+    );
+    for (const shop of shopOwnerRows) {
+      const ownerProfile = shop.owner_profile_id ? ownerProfiles.get(shop.owner_profile_id) ?? null : null;
+      if (!ownerProfile || !isShopRole(ownerProfile.role)) {
+        continue;
+      }
+
+      const rows = grouped.get(shop.id) ?? [];
+      if (!rows.some((profile) => profile.id === ownerProfile.id)) {
+        rows.push(ownerProfile);
+      }
+      grouped.set(shop.id, rows);
+    }
   }
 
   for (const [locationId, profiles] of grouped) {
@@ -1942,30 +2004,6 @@ async function assertActorCanReachLocation(
       throw new MessagingServiceError("This shop role cannot open conversations outside its assigned locations.", 403);
     }
     return;
-  }
-
-  const relationshipResult = actor.kind === "client"
-    ? await supabase
-        .from("appointments")
-        .select("id")
-        .eq("client_id", actor.clientId ?? "")
-        .eq("location_id", locationId)
-        .limit(1)
-        .maybeSingle()
-    : await supabase
-        .from("appointments")
-        .select("id")
-        .eq("barber_id", actor.barberId ?? "")
-        .eq("location_id", locationId)
-        .limit(1)
-        .maybeSingle();
-
-  if (relationshipResult.error) {
-    throw new MessagingServiceError("Unable to confirm the shop relationship for messaging.", 500);
-  }
-
-  if (!relationshipResult.data) {
-    throw new MessagingServiceError("You can only message shops connected to your real appointment history.", 403);
   }
 }
 

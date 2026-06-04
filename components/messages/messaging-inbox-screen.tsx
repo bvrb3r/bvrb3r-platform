@@ -519,6 +519,7 @@ function ParticipantSearchResultRow({
   const roleLabel = result.resultType === "support" ? "Support" : result.resultType === "shop" ? "Shop" : result.resultType === "client" ? "Client" : "Barber";
   const profileHref = result.publicProfileHref ?? result.profileHref;
   const messageDisabled = disabled || Boolean(result.messageDisabledReason);
+  const isOpening = disabled && !result.messageDisabledReason;
 
   return (
     <div
@@ -561,7 +562,7 @@ function ParticipantSearchResultRow({
           disabled={messageDisabled}
           onClick={() => onSelect(result)}
         >
-          {result.existingThreadId ? "Open" : "Message"}
+          {isOpening ? "Opening..." : result.existingThreadId ? "Open" : "Message"}
         </button>
       </span>
     </div>
