@@ -219,6 +219,10 @@ function getThreadStatusLabel(threadType: string) {
   return threadType.replaceAll("_", " ");
 }
 
+function isClientAccountRole(role?: string | null) {
+  return role === "client" || role === "client_user";
+}
+
 function getRoleBadgeLabel(role?: string | null, threadType?: string) {
   if (threadType === "support" || role === "platform_admin") {
     return "Support";
@@ -232,7 +236,7 @@ function getRoleBadgeLabel(role?: string | null, threadType?: string) {
     return "Barber";
   }
 
-  if (role === "client") {
+  if (isClientAccountRole(role)) {
     return "Client";
   }
 
@@ -273,7 +277,7 @@ function getMessageThreadFilterTags(thread: MessagingThreadSummary, surface: Mes
   }
 
   if (surface === "barber") {
-    if (role === "client" || thread.threadType === "client_barber") {
+    if (isClientAccountRole(role) || thread.threadType === "client_barber") {
       tags.add("clients");
     }
 
@@ -285,7 +289,7 @@ function getMessageThreadFilterTags(thread: MessagingThreadSummary, surface: Mes
   }
 
   if (surface === "shop") {
-    if (role === "client" || thread.threadType === "client_shop") {
+    if (isClientAccountRole(role) || thread.threadType === "client_shop") {
       tags.add("clients");
     }
 
@@ -510,7 +514,7 @@ function getProfileTargetKind(role?: string | null, threadType?: string | null):
     return null;
   }
 
-  if (role === "client") {
+  if (isClientAccountRole(role)) {
     return "client";
   }
 
@@ -648,7 +652,7 @@ function getDirectConversationKey(thread: MessagingThreadSummary, surface: Messa
   }
 
   if (thread.threadType === "client_shop" && thread.counterpart?.profileId) {
-    const targetKind = thread.counterpart.role === "client" ? "client" : "shop";
+    const targetKind = isClientAccountRole(thread.counterpart.role) ? "client" : "shop";
     return `${surface}:client_shop:${targetKind}:${thread.counterpart.profileId}`;
   }
 

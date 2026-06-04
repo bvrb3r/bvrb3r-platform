@@ -2681,7 +2681,7 @@ describe("client messages screen", () => {
       counterpart: {
         profileId: "profile-client",
         fullName: "Jordan Ellis",
-        role: "client",
+        role: "client_user",
         avatarUrl: "https://cdn.bvrb3r.test/client.jpg",
         publicUsername: "jordanellis",
         publicContextLine: "Tampa, FL",
@@ -2727,7 +2727,7 @@ describe("client messages screen", () => {
             messageType: "text",
             createdAt: "2026-05-19T13:35:00.000Z",
             senderName: "Jordan Ellis",
-            senderRole: "client",
+            senderRole: "client_user",
             isOwn: false
           }
         ]
@@ -2848,7 +2848,7 @@ describe("client messages screen", () => {
       counterpart: {
         profileId: "profile-client",
         fullName: "@phillipmcgee",
-        role: "client",
+        role: "client_user",
         avatarUrl: "https://cdn.bvrb3r.test/client-avatar.jpg",
         publicUsername: "phillipmcgee",
         publicContextLine: "Tampa, FL",
