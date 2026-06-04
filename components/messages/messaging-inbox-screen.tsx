@@ -152,8 +152,8 @@ function getSurfaceCopy(surface: MessagingSurface) {
     return {
       shellLabel: "MESSAGES",
       composerPlaceholder: "Message this thread.",
-      emptyTitle: "No shop messages yet.",
-      emptyThreadCopy: "Client, barber, team, booking, and support conversations will appear here.",
+      emptyTitle: "No conversations yet.",
+      emptyThreadCopy: "Search a public username to start a message.",
       emptyPanelCopy: "Pick a conversation or open a direct shop line.",
       starterTitle: "New lines",
       starterCopy: "Open a real client or barber thread tied to this location.",

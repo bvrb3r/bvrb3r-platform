@@ -1367,6 +1367,19 @@ async function readShopParticipantsByLocationIds(supabase: SupabaseClient, locat
   return grouped;
 }
 
+async function readOwnedShopIdsForProfile(supabase: SupabaseClient, profileId: string) {
+  const result = await supabase
+    .from("shops")
+    .select("id")
+    .eq("owner_profile_id", profileId);
+
+  if (result.error) {
+    throw new MessagingServiceError("Unable to resolve owned shops for messaging.", 500);
+  }
+
+  return unique(((result.data ?? []) as Array<{ id: string }>).map((shop) => shop.id).filter(Boolean));
+}
+
 async function resolveMessagingActor(user: UserAccount, supabase: SupabaseClient): Promise<MessagingActorContext> {
   if (!isMessagingRole(user.role)) {
     throw new MessagingServiceError("This role cannot use messaging.", 403);
@@ -1411,10 +1424,11 @@ async function resolveMessagingActor(user: UserAccount, supabase: SupabaseClient
   }
 
   if (isShopRole(user.role)) {
+    const ownedShopIds = await readOwnedShopIdsForProfile(supabase, profile.id);
     return {
       profile,
       kind: "shop",
-      locationIds: [...user.locationIds]
+      locationIds: unique([...user.locationIds, ...ownedShopIds])
     };
   }
 
@@ -1786,7 +1800,18 @@ async function readEligibleContacts(
       .limit(48);
 
     if (appointmentsResult.error) {
-      throw new MessagingServiceError("Unable to load shop contacts for messaging.", 500);
+      console.warn("[messages] shop_contacts_preload_failed", {
+        profileId: actor.profile.id,
+        role: actor.profile.role,
+        shopIds: locationRows.map((row) => row.id),
+        queryName: "appointments_by_shop_location",
+        postgresCode: appointmentsResult.error.code ?? null,
+        postgresMessage: appointmentsResult.error.message ?? null
+      });
+      return {
+        eligibleContacts: [] as MessagingContactCandidate[],
+        broadcastTargets: [] as MessagingBroadcastTarget[]
+      };
     }
 
     const appointmentContexts = await readAppointmentContexts(supabase, (appointmentsResult.data ?? []) as AppointmentRow[]);

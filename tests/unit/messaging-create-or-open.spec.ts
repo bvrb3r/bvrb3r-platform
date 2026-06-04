@@ -8,7 +8,7 @@ vi.mock("@/lib/supabase/admin", () => ({
   createSupabaseAdminClient: createSupabaseAdminClientMock
 }));
 
-import { createMessagingThread } from "@/lib/messages/service";
+import { createMessagingThread, getMessagingInboxPayload } from "@/lib/messages/service";
 
 type Row = Record<string, unknown>;
 
@@ -64,6 +64,8 @@ const shopRow = {
 function createMessagingSupabaseMock(options: {
   actor: "client" | "barber" | "owner";
   existingShopThread?: boolean;
+  appointmentsError?: boolean;
+  noOwnedShop?: boolean;
 }) {
   const state = {
     message_threads: options.existingShopThread
@@ -165,6 +167,16 @@ function createMessagingSupabaseMock(options: {
         return this.resolveInsert(single);
       }
 
+      if (this.table === "appointments" && options.appointmentsError) {
+        return {
+          data: null,
+          error: {
+            code: "PGRST999",
+            message: "appointments preload unavailable"
+          }
+        };
+      }
+
       const rows = this.selectRows();
       return {
         data: single ? rows[0] ?? null : rows,
@@ -252,6 +264,9 @@ function createMessagingSupabaseMock(options: {
       }
 
       if (this.table === "shops") {
+        if (this.filters.get("owner_profile_id") === "profile-owner") {
+          return options.noOwnedShop ? [] : [{ id: shopRow.id }];
+        }
         if (this.inFilter?.values.includes(shopRow.id) || this.inFilter?.values.includes(shopRow.public_username)) {
           return [shopRow];
         }
@@ -305,6 +320,9 @@ function createMessagingSupabaseMock(options: {
       }
 
       if (this.table === "appointments") {
+        if (options.appointmentsError) {
+          return [];
+        }
         return [];
       }
 
@@ -390,5 +408,47 @@ describe("messaging create or open conversation", () => {
     expect(payload.thread).toBeTruthy();
     expect(payload.thread?.id).toBe("thread-existing-shop");
     expect(supabase.state.inserts.message_threads).toBe(0);
+  });
+
+  it("loads shop owner Messages with an owned shop and no legacy staff contacts", async () => {
+    const supabase = createMessagingSupabaseMock({ actor: "owner" });
+    createSupabaseAdminClientMock.mockReturnValue(supabase.client);
+
+    const payload = await getMessagingInboxPayload({
+      role: "owner",
+      email: "owner@bvrb3r.test",
+      name: "Private Owner",
+      locationIds: []
+    } as never);
+
+    expect(payload.available).toBe(true);
+    expect(payload.threads).toEqual([]);
+    expect(payload.eligibleContacts).toEqual([]);
+    expect(payload.broadcastTargets).toEqual([]);
+  });
+
+  it("does not block shop owner Messages when optional shop contact preload fails", async () => {
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const supabase = createMessagingSupabaseMock({ actor: "owner", appointmentsError: true });
+    createSupabaseAdminClientMock.mockReturnValue(supabase.client);
+
+    const payload = await getMessagingInboxPayload({
+      role: "owner",
+      email: "owner@bvrb3r.test",
+      name: "Private Owner",
+      locationIds: []
+    } as never);
+
+    expect(payload.available).toBe(true);
+    expect(payload.eligibleContacts).toEqual([]);
+    expect(consoleWarn).toHaveBeenCalledWith("[messages] shop_contacts_preload_failed", expect.objectContaining({
+      profileId: "profile-owner",
+      role: "owner",
+      shopIds: ["shop-the-bvrb3r-shop"],
+      queryName: "appointments_by_shop_location",
+      postgresCode: "PGRST999",
+      postgresMessage: "appointments preload unavailable"
+    }));
+    consoleWarn.mockRestore();
   });
 });
