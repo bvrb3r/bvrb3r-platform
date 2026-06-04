@@ -110,6 +110,7 @@ type LocationRow = {
   neighborhood: string;
   city: string;
   state: string;
+  source?: "location" | "shop";
 };
 
 type MessageThreadRow = {
@@ -434,10 +435,14 @@ type ThreadBundle = {
 
 export class MessagingServiceError extends Error {
   status: number;
+  code: string;
+  step: string;
 
-  constructor(message: string, status = 400) {
+  constructor(message: string, status = 400, code = "messaging_error", step = "unknown") {
     super(message);
     this.status = status;
+    this.code = code;
+    this.step = step;
   }
 }
 
@@ -472,7 +477,8 @@ function shopToLocationRow(shop: ShopPublicIdentityRow): LocationRow {
     name: cleanText(shop.name) ?? cleanText(shop.public_username) ?? "BVRB3R Shop",
     neighborhood: cleanText(shop.address) ?? "",
     city: cleanText(shop.city) ?? "",
-    state: cleanText(shop.state) ?? ""
+    state: cleanText(shop.state) ?? "",
+    source: "shop"
   };
 }
 
@@ -2053,7 +2059,13 @@ async function ensureThreadParticipants(
 
   const insertResult = await supabase.from("thread_participants").insert(missingRows);
   if (insertResult.error) {
-    throw new MessagingServiceError("Unable to attach messaging participants.", 500);
+    console.warn("[messages] thread_participant_insert_failed", {
+      threadId,
+      participantCount: missingRows.length,
+      postgresCode: insertResult.error.code ?? null,
+      postgresMessage: insertResult.error.message ?? null
+    });
+    throw new MessagingServiceError("Unable to attach messaging participants.", 500, "participant_insert_failed", "participant_insert");
   }
 }
 
@@ -2359,18 +2371,32 @@ async function createOrGetShopThread(input: {
   counterpartProfile: ProfileRow;
   createdByProfileId: string;
 }) {
-  const threadLookupResult = await input.supabase
+  const dbLocationId = input.location.source === "shop" ? null : input.location.id;
+  let threadLookupQuery = input.supabase
     .from("message_threads")
     .select("id, thread_type, appointment_id, location_id, created_at, updated_at, created_by_profile_id")
-    .eq("thread_type", input.threadType)
-    .eq("location_id", input.location.id)
-    .order("updated_at", { ascending: false });
+    .eq("thread_type", input.threadType);
 
-  if (threadLookupResult.error) {
-    throw new MessagingServiceError("Unable to look up the messaging conversation.", 500);
+  if (dbLocationId) {
+    threadLookupQuery = threadLookupQuery.eq("location_id", dbLocationId);
   }
 
-  const candidateThreads = (threadLookupResult.data ?? []) as MessageThreadRow[];
+  const threadLookupResult = await threadLookupQuery.order("updated_at", { ascending: false });
+
+  if (threadLookupResult.error) {
+    console.warn("[messages] create_shop_thread_step_failed", {
+      step: "existing_thread_lookup",
+      threadType: input.threadType,
+      publicShopReference: input.location.source === "shop" ? input.location.id : null,
+      dbLocationId,
+      postgresCode: threadLookupResult.error.code ?? null,
+      postgresMessage: threadLookupResult.error.message ?? null
+    });
+    throw new MessagingServiceError("Unable to look up the messaging conversation.", 500, "existing_thread_lookup_failed", "existing_thread_lookup");
+  }
+
+  const candidateThreads = ((threadLookupResult.data ?? []) as MessageThreadRow[])
+    .filter((thread) => thread.location_id === dbLocationId);
   const candidateThreadIds = candidateThreads.map((thread) => thread.id);
   const participantsResult = candidateThreadIds.length
     ? await input.supabase
@@ -2380,7 +2406,16 @@ async function createOrGetShopThread(input: {
     : { data: [], error: null };
 
   if (participantsResult.error) {
-    throw new MessagingServiceError("Unable to resolve existing shop thread participants.", 500);
+    console.warn("[messages] create_shop_thread_step_failed", {
+      step: "existing_participant_lookup",
+      threadType: input.threadType,
+      publicShopReference: input.location.source === "shop" ? input.location.id : null,
+      dbLocationId,
+      candidateThreadCount: candidateThreadIds.length,
+      postgresCode: participantsResult.error.code ?? null,
+      postgresMessage: participantsResult.error.message ?? null
+    });
+    throw new MessagingServiceError("Unable to resolve existing shop thread participants.", 500, "existing_participant_lookup_failed", "existing_participant_lookup");
   }
 
   const participantRows = (participantsResult.data ?? []) as ThreadParticipantRow[];
@@ -2403,7 +2438,7 @@ async function createOrGetShopThread(input: {
     .from("message_threads")
     .insert({
       thread_type: input.threadType,
-      location_id: input.location.id,
+      location_id: dbLocationId,
       created_by_profile_id: input.createdByProfileId,
       updated_at: createdAt
     })
@@ -2411,11 +2446,32 @@ async function createOrGetShopThread(input: {
     .single();
 
   if (threadInsert.error) {
-    throw new MessagingServiceError("Unable to create the shop conversation.", 500);
+    console.warn("[messages] create_shop_thread_step_failed", {
+      step: "thread_insert",
+      threadType: input.threadType,
+      publicShopReference: input.location.source === "shop" ? input.location.id : null,
+      dbLocationId,
+      postgresCode: threadInsert.error.code ?? null,
+      postgresMessage: threadInsert.error.message ?? null
+    });
+    throw new MessagingServiceError("Unable to create the shop conversation.", 500, "thread_insert_failed", "thread_insert");
   }
 
   const threadId = threadInsert.data.id as string;
-  await ensureThreadParticipants(input.supabase, threadId, [], [...input.shopParticipants, input.counterpartProfile]);
+  try {
+    await ensureThreadParticipants(input.supabase, threadId, [], [...input.shopParticipants, input.counterpartProfile]);
+  } catch (error) {
+    console.warn("[messages] create_shop_thread_step_failed", {
+      step: "participant_insert",
+      threadType: input.threadType,
+      threadId,
+      publicShopReference: input.location.source === "shop" ? input.location.id : null,
+      dbLocationId,
+      errorCode: error instanceof MessagingServiceError ? error.code : null,
+      errorMessage: error instanceof Error ? error.message : String(error)
+    });
+    throw error;
+  }
 
   const systemMessageInsert = await input.supabase
     .from("messages")
@@ -2431,7 +2487,16 @@ async function createOrGetShopThread(input: {
     });
 
   if (systemMessageInsert.error) {
-    throw new MessagingServiceError("Unable to write the shop conversation system message.", 500);
+    console.warn("[messages] create_shop_thread_step_failed", {
+      step: "system_message_insert",
+      threadType: input.threadType,
+      threadId,
+      publicShopReference: input.location.source === "shop" ? input.location.id : null,
+      dbLocationId,
+      postgresCode: systemMessageInsert.error.code ?? null,
+      postgresMessage: systemMessageInsert.error.message ?? null
+    });
+    throw new MessagingServiceError("Unable to write the shop conversation system message.", 500, "system_message_insert_failed", "system_message_insert");
   }
 
   return threadId;

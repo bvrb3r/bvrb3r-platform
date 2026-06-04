@@ -73,7 +73,7 @@ function createMessagingSupabaseMock(options: {
           id: "thread-existing-shop",
           thread_type: options.actor === "owner" ? "client_shop" : "barber_shop",
           appointment_id: null,
-          location_id: "shop-the-bvrb3r-shop",
+          location_id: null,
           created_at: "2026-06-04T12:00:00.000Z",
           updated_at: "2026-06-04T12:00:00.000Z",
           created_by_profile_id: "profile-owner"
@@ -360,6 +360,7 @@ describe("messaging create or open conversation", () => {
     expect(payload.thread).toBeTruthy();
     expect(payload.thread?.id).toBe("thread-created-1");
     expect(payload.thread?.threadType).toBe("barber_shop");
+    expect(payload.thread?.locationId).toBeNull();
     expect(supabase.state.inserts.message_threads).toBe(1);
     expect(supabase.state.thread_participants).toEqual(expect.arrayContaining([
       expect.objectContaining({ thread_id: "thread-created-1", profile_id: "profile-owner" }),
@@ -385,6 +386,7 @@ describe("messaging create or open conversation", () => {
     expect(payload.thread).toBeTruthy();
     expect(payload.thread?.id).toBe("thread-created-1");
     expect(payload.thread?.threadType).toBe("client_shop");
+    expect(payload.thread?.locationId).toBeNull();
     expect(supabase.state.thread_participants).toEqual(expect.arrayContaining([
       expect.objectContaining({ thread_id: "thread-created-1", profile_id: "profile-owner" }),
       expect.objectContaining({ thread_id: "thread-created-1", profile_id: "profile-client" })

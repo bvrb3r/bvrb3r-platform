@@ -153,6 +153,8 @@ describe("phase 8 messaging routes", () => {
 
     expect(response.status).toBe(201);
     expect(body.thread.id).toBe("thread-1");
+    expect(body.threadId).toBe("thread-1");
+    expect(body.created).toBe(false);
     expect(body.thread.threadType).toBe("client_barber");
   });
 

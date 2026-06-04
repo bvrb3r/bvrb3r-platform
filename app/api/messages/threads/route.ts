@@ -29,11 +29,21 @@ function isSupportedMessagingRole(role: Awaited<ReturnType<typeof getSessionUser
 
 function toErrorResponse(error: unknown) {
   if (error instanceof MessagingServiceError) {
-    return NextResponse.json({ error: error.message }, { status: error.status });
+    return NextResponse.json({
+      error: "Could not open conversation",
+      message: error.message,
+      code: error.code,
+      step: error.step
+    }, { status: error.status });
   }
 
   const message = error instanceof Error ? error.message : "Unable to load messaging.";
-  return NextResponse.json({ error: message }, { status: 500 });
+  return NextResponse.json({
+    error: "Could not open conversation",
+    message,
+    code: "unexpected_create_open_failure",
+    step: "unexpected"
+  }, { status: 500 });
 }
 
 function describeCreateThreadTarget(input: z.infer<typeof createThreadSchema>) {
@@ -99,7 +109,11 @@ export async function POST(request: Request) {
         actorRole: user.role,
         ...describeCreateThreadTarget(parsed.data)
       });
-      return NextResponse.json({ error: "Couldn't open conversation. Try again." }, { status: 500 });
+      return NextResponse.json({
+        error: "Could not open conversation",
+        code: "missing_thread_id",
+        step: "returned_payload"
+      }, { status: 500 });
     }
 
     console.info("[messages] create_thread_succeeded", {
@@ -108,7 +122,11 @@ export async function POST(request: Request) {
       threadId: payload.thread.id,
       ...describeCreateThreadTarget(parsed.data)
     });
-    return NextResponse.json(payload, { status: 201 });
+    return NextResponse.json({
+      ...payload,
+      threadId: payload.thread.id,
+      created: false
+    }, { status: 201 });
   } catch (error) {
     console.warn("[messages] create_thread_failed", {
       actorUserId: user?.id ?? null,
