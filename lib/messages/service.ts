@@ -114,7 +114,7 @@ type LocationRow = {
 };
 
 type ResolvedMessageShopTarget = {
-  location: LocationRow;
+  location: LocationRow | null;
   participants: ProfileRow[];
 };
 
@@ -366,7 +366,7 @@ export type MessagingCreateThreadInput =
   | {
       threadType: Extract<MessagingThreadType, "client_shop" | "barber_shop">;
       profileId: string;
-      locationId: string;
+      locationId?: string | null;
     };
 
 export type MessagingBroadcastAudience = "clients" | "barbers" | "all";
@@ -1095,9 +1095,7 @@ function buildParticipantSearchAction(input: {
 
     if (input.actor.kind === "shop") {
       const locationId = input.actor.locationIds?.[0] ?? null;
-      return locationId
-        ? { createThreadInput: { threadType: "client_shop", profileId: input.targetProfileId, locationId }, messageDisabledReason: null }
-        : { createThreadInput: null, messageDisabledReason: "Messaging this profile is not available yet." };
+      return { createThreadInput: { threadType: "client_shop", profileId: input.targetProfileId, locationId }, messageDisabledReason: null };
     }
 
     return { createThreadInput: null, messageDisabledReason: "Messaging this profile type is coming soon." };
@@ -1114,16 +1112,14 @@ function buildParticipantSearchAction(input: {
 
     if (input.actor.kind === "shop") {
       const locationId = input.actor.locationIds?.[0] ?? null;
-      return locationId
-        ? { createThreadInput: { threadType: "barber_shop", profileId: input.targetProfileId, locationId }, messageDisabledReason: null }
-        : { createThreadInput: null, messageDisabledReason: "Messaging this profile is not available yet." };
+      return { createThreadInput: { threadType: "barber_shop", profileId: input.targetProfileId, locationId }, messageDisabledReason: null };
     }
 
     return { createThreadInput: null, messageDisabledReason: "Messaging this profile type is coming soon." };
   }
 
   if (input.targetType === "shop") {
-    if (!input.shopLocationId || !input.shopContactProfileId) {
+    if (!input.shopContactProfileId) {
       return { createThreadInput: null, messageDisabledReason: "Messaging this shop is not available yet." };
     }
 
@@ -1466,8 +1462,12 @@ async function readShopParticipantsByLocationIds(supabase: SupabaseClient, locat
 
 async function resolveMessageShopTarget(
   supabase: SupabaseClient,
-  value: string
+  value: string | null | undefined
 ): Promise<ResolvedMessageShopTarget | null> {
+  if (!value) {
+    return null;
+  }
+
   const lookup = await readLocationsByValues(supabase, [value]);
   const location = lookup.byValue.get(value);
   if (!location) {
@@ -2482,13 +2482,13 @@ async function writeAppointmentSystemMessageIfMissing(
 async function createOrGetShopThread(input: {
   supabase: SupabaseClient;
   threadType: Extract<MessagingThreadType, "client_shop" | "barber_shop">;
-  location: LocationRow;
+  location: LocationRow | null;
   shopParticipants: ProfileRow[];
   counterpartProfile: ProfileRow;
   createdByProfileId: string;
   diagnostics?: ReturnType<typeof buildCreateOpenDiagnostics>;
 }) {
-  const dbLocationId = input.location.source === "shop" ? null : input.location.id;
+  const dbLocationId = input.location && input.location.source !== "shop" ? input.location.id : null;
   let threadLookupQuery = input.supabase
     .from("message_threads")
     .select("id, thread_type, appointment_id, location_id, created_at, updated_at, created_by_profile_id")
@@ -2505,7 +2505,7 @@ async function createOrGetShopThread(input: {
     console.warn("[messages] create_shop_thread_step_failed", {
       step: "existing_thread_lookup",
       threadType: input.threadType,
-      publicShopReference: input.location.source === "shop" ? input.location.id : null,
+      publicShopReference: input.location?.source === "shop" ? input.location.id : null,
       dbLocationId,
       postgresCode: threadLookupResult.error.code ?? null,
       postgresMessage: threadLookupResult.error.message ?? null,
@@ -2529,7 +2529,7 @@ async function createOrGetShopThread(input: {
     console.warn("[messages] create_shop_thread_step_failed", {
       step: "existing_participant_lookup",
       threadType: input.threadType,
-      publicShopReference: input.location.source === "shop" ? input.location.id : null,
+      publicShopReference: input.location?.source === "shop" ? input.location.id : null,
       dbLocationId,
       candidateThreadCount: candidateThreadIds.length,
       postgresCode: participantsResult.error.code ?? null,
@@ -2574,7 +2574,7 @@ async function createOrGetShopThread(input: {
     console.warn("[messages] create_shop_thread_step_failed", {
       step: "thread_insert",
       threadType: input.threadType,
-      publicShopReference: input.location.source === "shop" ? input.location.id : null,
+      publicShopReference: input.location?.source === "shop" ? input.location.id : null,
       dbLocationId,
       postgresCode: threadInsert.error.code ?? null,
       postgresMessage: threadInsert.error.message ?? null,
@@ -2595,7 +2595,7 @@ async function createOrGetShopThread(input: {
       step: "participant_insert",
       threadType: input.threadType,
       threadId,
-      publicShopReference: input.location.source === "shop" ? input.location.id : null,
+      publicShopReference: input.location?.source === "shop" ? input.location.id : null,
       dbLocationId,
       errorCode: error instanceof MessagingServiceError ? error.code : null,
       errorMessage: error instanceof Error ? error.message : String(error),
@@ -2612,7 +2612,7 @@ async function createOrGetShopThread(input: {
       body: buildShopThreadSystemMessage({
         threadType: input.threadType,
         counterpartName: getPublicFallbackName(input.counterpartProfile.role),
-        locationLabel: formatLocationLabel(input.location)
+        locationLabel: input.location ? formatLocationLabel(input.location) : "Direct message"
       }),
       message_type: "system"
     });
@@ -2623,7 +2623,7 @@ async function createOrGetShopThread(input: {
       step: "system_message_insert",
       threadType: input.threadType,
       threadId,
-      publicShopReference: input.location.source === "shop" ? input.location.id : null,
+      publicShopReference: input.location?.source === "shop" ? input.location.id : null,
       dbLocationId,
       postgresCode: systemMessageInsert.error.code ?? null,
       postgresMessage: systemMessageInsert.error.message ?? null,
@@ -3644,45 +3644,44 @@ export async function createMessagingThread(user: UserAccount, input: MessagingC
         actorRole: actor.profile.role,
         actorProfileId: actor.profile.id,
         targetType: actor.kind === "shop" ? "profile" : "shop",
-        targetIdKind: isUuidLike(input.locationId) ? "uuid" : "public_reference",
+        targetIdKind: input.locationId ? isUuidLike(input.locationId) ? "uuid" : "public_reference" : "none",
         resolvedThreadType: input.threadType
       })
     : undefined;
 
-  let shopTarget: ResolvedMessageShopTarget | null;
+  let shopTarget: ResolvedMessageShopTarget | null = null;
   try {
     shopTarget = await resolveMessageShopTarget(supabase, input.locationId);
   } catch (error) {
     const failureDiagnostics = markCreateOpenFailure(shopThreadDiagnostics, "target_resolution", error);
     throw new MessagingServiceError("Unable to resolve the messaging target.", 500, "target_resolution_failed", "target_resolution", failureDiagnostics);
   }
-  if (!shopTarget) {
-    const failureDiagnostics = markCreateOpenFailure(shopThreadDiagnostics, "target_resolution");
-    throw new MessagingServiceError("Shop location not found for messaging.", 404, "target_not_found", "target_resolution", failureDiagnostics);
-  }
-  const { location, participants: shopParticipants } = shopTarget;
+  const location = shopTarget?.location ?? null;
+  let shopParticipants = shopTarget?.participants ?? [];
   if (shopThreadDiagnostics) {
-    shopThreadDiagnostics.targetIdKind = location.source === "shop" ? "public_shop_identity" : "location";
+    shopThreadDiagnostics.targetIdKind = location ? location.source === "shop" ? "public_shop_identity" : "location" : "none";
   }
 
-  try {
-    await assertActorCanReachLocation(supabase, actor, location.id);
-  } catch (error) {
-    const failureDiagnostics = markCreateOpenFailure(shopThreadDiagnostics, "target_resolution", error);
-    throw new MessagingServiceError(
-      error instanceof Error ? error.message : "Unable to verify the messaging target.",
-      error instanceof MessagingServiceError ? error.status : 500,
-      error instanceof MessagingServiceError ? error.code : "target_scope_failed",
-      "target_resolution",
-      failureDiagnostics
-    );
-  }
-  if (!shopParticipants.length) {
-    const failureDiagnostics = markCreateOpenFailure(shopThreadDiagnostics, "target_resolution");
-    throw new MessagingServiceError("No shop-facing participants are available for this location.", 400, "target_participants_missing", "target_resolution", failureDiagnostics);
+  if (location) {
+    try {
+      await assertActorCanReachLocation(supabase, actor, location.id);
+    } catch (error) {
+      const failureDiagnostics = markCreateOpenFailure(shopThreadDiagnostics, "target_resolution", error);
+      throw new MessagingServiceError(
+        error instanceof Error ? error.message : "Unable to verify the messaging target.",
+        error instanceof MessagingServiceError ? error.status : 500,
+        error instanceof MessagingServiceError ? error.code : "target_scope_failed",
+        "target_resolution",
+        failureDiagnostics
+      );
+    }
   }
 
   if (actor.kind === "shop") {
+    if (!shopParticipants.some((profile) => profile.id === actor.profile.id)) {
+      shopParticipants = sortShopProfiles([...shopParticipants, actor.profile]);
+    }
+
     let counterpartProfile: ProfileRow;
     try {
       counterpartProfile = await readProfileById(supabase, input.profileId);
@@ -3709,9 +3708,24 @@ export async function createMessagingThread(user: UserAccount, input: MessagingC
     return readCreatedMessagingThreadPayload(user, threadId, shopThreadDiagnostics);
   }
 
+  if (!shopParticipants.length && input.profileId) {
+    let selectedShopProfile: ProfileRow;
+    try {
+      selectedShopProfile = await readProfileById(supabase, input.profileId);
+    } catch (error) {
+      const failureDiagnostics = markCreateOpenFailure(shopThreadDiagnostics, "target_resolution", error);
+      throw new MessagingServiceError("Unable to resolve the messaging target.", 500, "target_resolution_failed", "target_resolution", failureDiagnostics);
+    }
+
+    if (isShopRole(selectedShopProfile.role)) {
+      shopParticipants = [selectedShopProfile];
+    }
+  }
+
   const primaryShopProfile = pickPrimaryShopProfile(shopParticipants);
   if (!primaryShopProfile) {
-    throw new MessagingServiceError("No shop-facing contact is available for this location.", 400);
+    const failureDiagnostics = markCreateOpenFailure(shopThreadDiagnostics, "target_resolution");
+    throw new MessagingServiceError("No shop-facing contact is available for this conversation.", 400, "target_participants_missing", "target_resolution", failureDiagnostics);
   }
 
   if (input.profileId && !shopParticipants.some((profile) => profile.id === input.profileId)) {

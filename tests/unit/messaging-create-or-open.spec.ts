@@ -404,6 +404,33 @@ describe("messaging create or open conversation", () => {
     expect(supabase.state.messages).toHaveLength(1);
   });
 
+  it("creates a barber to shop conversation with null location when no shop location is supplied", async () => {
+    const supabase = createMessagingSupabaseMock({ actor: "barber" });
+    createSupabaseAdminClientMock.mockReturnValue(supabase.client);
+
+    const payload = await createMessagingThread({
+      role: "barber_user",
+      email: "barber@bvrb3r.test",
+      locationIds: []
+    } as never, {
+      threadType: "barber_shop",
+      profileId: "profile-owner"
+    });
+
+    expect(payload.thread?.id).toBe("thread-created-1");
+    expect(payload.thread?.locationId).toBeNull();
+    expect(supabase.state.message_threads).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "thread-created-1",
+        location_id: null
+      })
+    ]));
+    expect(supabase.state.thread_participants).toEqual(expect.arrayContaining([
+      expect.objectContaining({ thread_id: "thread-created-1", profile_id: "profile-owner", thread_role: "owner" }),
+      expect.objectContaining({ thread_id: "thread-created-1", profile_id: "profile-barber", thread_role: "commission_barber" })
+    ]));
+  });
+
   it("normalizes a public shop reference before UUID-backed message creation queries", async () => {
     const supabase = createMessagingSupabaseMock({ actor: "barber" });
     createSupabaseAdminClientMock.mockReturnValue(supabase.client);
@@ -458,6 +485,34 @@ describe("messaging create or open conversation", () => {
     expect(payload.thread?.id).toBe("thread-created-1");
     expect(payload.thread?.threadType).toBe("client_shop");
     expect(payload.thread?.locationId).toBeNull();
+    expect(supabase.state.thread_participants).toEqual(expect.arrayContaining([
+      expect.objectContaining({ thread_id: "thread-created-1", profile_id: "profile-owner", thread_role: "owner" }),
+      expect.objectContaining({ thread_id: "thread-created-1", profile_id: "profile-client", thread_role: "client" })
+    ]));
+  });
+
+  it("creates a shop owner to client conversation with null location when no shop location is supplied", async () => {
+    const supabase = createMessagingSupabaseMock({ actor: "owner" });
+    createSupabaseAdminClientMock.mockReturnValue(supabase.client);
+
+    const payload = await createMessagingThread({
+      role: "owner",
+      email: "owner@bvrb3r.test",
+      locationIds: []
+    } as never, {
+      threadType: "client_shop",
+      profileId: "profile-client"
+    });
+
+    expect(payload.thread?.id).toBe("thread-created-1");
+    expect(payload.thread?.threadType).toBe("client_shop");
+    expect(payload.thread?.locationId).toBeNull();
+    expect(supabase.state.message_threads).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "thread-created-1",
+        location_id: null
+      })
+    ]));
     expect(supabase.state.thread_participants).toEqual(expect.arrayContaining([
       expect.objectContaining({ thread_id: "thread-created-1", profile_id: "profile-owner", thread_role: "owner" }),
       expect.objectContaining({ thread_id: "thread-created-1", profile_id: "profile-client", thread_role: "client" })

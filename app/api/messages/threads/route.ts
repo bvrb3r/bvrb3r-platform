@@ -19,7 +19,7 @@ const createThreadSchema = z.union([
   z.object({
     threadType: z.enum(["client_shop", "barber_shop"]),
     profileId: z.string().trim().min(1),
-    locationId: z.string().trim().min(1)
+    locationId: z.string().trim().min(1).nullable().optional()
   })
 ]);
 
@@ -87,6 +87,9 @@ function getTargetIdKind(input: z.infer<typeof createThreadSchema> | null) {
   }
 
   if ("locationId" in input) {
+    if (!input.locationId) {
+      return "none";
+    }
     return input.locationId.includes("-") ? "uuid_or_public_shop_id" : "public_reference";
   }
 
