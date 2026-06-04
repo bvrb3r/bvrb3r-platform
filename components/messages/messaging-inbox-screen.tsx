@@ -505,6 +505,97 @@ function getPublicContextLine(thread: MessagingThreadSummary | ActiveThread) {
     ?? null;
 }
 
+function getProfileTargetKind(role?: string | null, threadType?: string | null): "client" | "barber" | "shop" | null {
+  if (threadType === "support" || role === "platform_admin") {
+    return null;
+  }
+
+  if (role === "client") {
+    return "client";
+  }
+
+  if (isBarberAccountRole(role)) {
+    return "barber";
+  }
+
+  if (role === "owner" || role === "shop_owner_user" || role === "manager" || role === "front_desk") {
+    return "shop";
+  }
+
+  if (threadType === "client_shop" || threadType === "barber_shop") {
+    return "shop";
+  }
+
+  if (threadType === "client_barber") {
+    return "barber";
+  }
+
+  return null;
+}
+
+function getDashboardProfileViewBase(surface: MessagingSurface) {
+  if (surface === "client") {
+    return "/dashboard/client/profile-view";
+  }
+
+  if (surface === "barber") {
+    return "/dashboard/barber/profile-view";
+  }
+
+  return "/dashboard/owner/profile-view";
+}
+
+function buildDashboardProfileHref({
+  surface,
+  targetKind,
+  target,
+  sourceThreadId
+}: {
+  surface: MessagingSurface;
+  targetKind: "client" | "barber" | "shop";
+  target?: string | null;
+  sourceThreadId?: string | null;
+}) {
+  const cleanTarget = target?.trim().replace(/^@+/, "");
+  if (!cleanTarget) {
+    return null;
+  }
+
+  const baseHref = `${getDashboardProfileViewBase(surface)}/${targetKind}/${encodeURIComponent(cleanTarget)}`;
+  return sourceThreadId ? `${baseHref}?sourceThreadId=${encodeURIComponent(sourceThreadId)}` : baseHref;
+}
+
+function getThreadProfileHref(thread: MessagingThreadSummary | ActiveThread | null | undefined, surface: MessagingSurface, sourceThreadId?: string | null) {
+  if (!thread?.counterpart) {
+    return null;
+  }
+
+  const targetKind = getProfileTargetKind(thread.counterpart.role, thread.threadType);
+  if (!targetKind) {
+    return null;
+  }
+
+  return buildDashboardProfileHref({
+    surface,
+    targetKind,
+    target: thread.counterpart.publicUsername ?? thread.counterpart.profileId,
+    sourceThreadId
+  }) ?? thread.counterpart.publicProfileHref ?? null;
+}
+
+function getParticipantProfileHref(result: MessagingParticipantSearchResult, surface: MessagingSurface) {
+  const targetKind = result.resultType === "support" ? null : result.resultType;
+  if (!targetKind) {
+    return null;
+  }
+
+  return buildDashboardProfileHref({
+    surface,
+    targetKind,
+    target: result.publicUsername ?? result.id
+  }) ?? result.publicProfileHref ?? result.profileHref ?? null;
+}
+
 function filterThreads(threads: MessagingThreadSummary[], activeFilter: ThreadFilter, query: string, surface: MessagingSurface) {
   const normalizedQuery = query.trim().toLowerCase();
 
@@ -676,17 +767,19 @@ function RolePill({ label }: { label: string }) {
 function ParticipantSearchResultRow({
   result,
   disabled,
+  surface,
   onSelect
 }: {
   result: MessagingParticipantSearchResult;
   disabled: boolean;
+  surface: MessagingSurface;
   onSelect: (result: MessagingParticipantSearchResult) => void;
 }) {
   const publicDisplayName = getParticipantSearchDisplay(result);
   const username = result.publicUsername?.trim().replace(/^@+/, "");
   const secondaryUsername = username && publicDisplayName !== `@${username}` ? `@${username}` : null;
   const roleLabel = result.resultType === "support" ? "Support" : result.resultType === "shop" ? "Shop" : result.resultType === "client" ? "Client" : "Barber";
-  const profileHref = result.publicProfileHref ?? result.profileHref;
+  const profileHref = getParticipantProfileHref(result, surface);
   const messageDisabled = disabled || Boolean(result.messageDisabledReason);
   const isOpening = disabled && !result.messageDisabledReason;
 
@@ -1094,9 +1187,7 @@ function ConversationPanel({
   const composerPlaceholder = composerDisabledByLifecycle
     ? requestBanner?.message ?? copy.composerPlaceholder
     : getTargetAwareComposerPlaceholder(activeThread, surface);
-  const profileHref = activeThread?.threadType === "support"
-    ? null
-    : activeThread?.counterpart?.publicProfileHref ?? null;
+  const profileHref = getThreadProfileHref(activeThread, surface, activeThreadId ?? selectedThreadId ?? null);
   const bookingHref = activeThread?.counterpart?.bookingHref ?? "/booking/new";
 
   return (
@@ -1395,7 +1486,8 @@ function ComposeModal({
   onSelect,
   query,
   results,
-  selectPending
+  selectPending,
+  surface
 }: {
   actionError?: string | null;
   error: unknown;
@@ -1406,6 +1498,7 @@ function ComposeModal({
   query: string;
   results: MessagingParticipantSearchResult[];
   selectPending: boolean;
+  surface: MessagingSurface;
 }) {
   const hasSearch = query.trim().length >= 2;
 
@@ -1468,6 +1561,7 @@ function ComposeModal({
                   key={`${result.resultType}-${result.id}`}
                   disabled={selectPending}
                   result={result}
+                  surface={surface}
                   onSelect={onSelect}
                 />
               ))}
@@ -2013,6 +2107,7 @@ export function MessagingInboxScreen({
                               key={`${result.resultType}-${result.id}`}
                               disabled={createThreadMutation.isPending}
                               result={result}
+                              surface={surface}
                               onSelect={(selectedResult) => void handleSelectParticipant(selectedResult)}
                             />
                           ))}
@@ -2214,6 +2309,7 @@ export function MessagingInboxScreen({
           query={participantSearch}
           results={participantSearchQuery.data?.results ?? []}
           selectPending={createThreadMutation.isPending}
+          surface={surface}
         />
       ) : null}
     </div>

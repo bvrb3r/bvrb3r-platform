@@ -1651,7 +1651,7 @@ describe("client messages screen", () => {
     expect(within(composeModal).getByText("@phillipmcgee")).toBeInTheDocument();
     expect(within(composeModal).getByText("Client")).toBeInTheDocument();
     expect(within(composeModal).getByText("Tampa, FL")).toBeInTheDocument();
-    expect(within(composeModal).getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/client/phillipmcgee");
+    expect(within(composeModal).getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/dashboard/barber/profile-view/client/phillipmcgee");
     expect(within(composeModal).getByRole("button", { name: "Message" })).toBeInTheDocument();
     expect(within(composeModal).queryByText("Phillip mcgee")).not.toBeInTheDocument();
   });
@@ -1703,7 +1703,7 @@ describe("client messages screen", () => {
     const composeModal = screen.getByTestId("message-compose-modal");
     expect(within(composeModal).getByText("@phillipforsure")).toBeInTheDocument();
     expect(within(composeModal).getByText("8516 Island Breeze Ln - Temple Terrace, FL 33607")).toBeInTheDocument();
-    expect(within(composeModal).getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/barber/phillipforsure");
+    expect(within(composeModal).getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/dashboard/owner/profile-view/barber/phillipforsure");
     expect(within(composeModal).getByRole("button", { name: "Message" })).toBeInTheDocument();
     expect(within(composeModal).queryByText("Phillip mcgee")).not.toBeInTheDocument();
   });
@@ -1766,7 +1766,7 @@ describe("client messages screen", () => {
     expect(within(composeModal).getByText("@thebvrb3rshopuniversitymall")).toBeInTheDocument();
     expect(within(composeModal).getByText("Shop")).toBeInTheDocument();
     expect(within(composeModal).getByText("2172 University Square Mall - Tampa, FL 33612")).toBeInTheDocument();
-    expect(within(composeModal).getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/shop/thebvrb3rshopuniversitymall");
+    expect(within(composeModal).getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/dashboard/client/profile-view/shop/thebvrb3rshopuniversitymall");
     expect(within(composeModal).getByRole("button", { name: "Message" })).toBeInTheDocument();
     expect(within(composeModal).queryByText("The BVRB3R Shop")).not.toBeInTheDocument();
   });
@@ -1867,7 +1867,7 @@ describe("client messages screen", () => {
     expect(within(composeModal).getByText("@thebvrb3rshopuniversitymall")).toBeInTheDocument();
     expect(within(composeModal).getByText("This is your shop.")).toBeInTheDocument();
     expect(within(composeModal).getByRole("button", { name: "Message" })).toBeDisabled();
-    expect(within(composeModal).getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/shop/thebvrb3rshopuniversitymall");
+    expect(within(composeModal).getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/dashboard/owner/profile-view/shop/thebvrb3rshopuniversitymall");
   });
 
   it("routes straight into an existing support thread when requested", async () => {
@@ -2308,7 +2308,7 @@ describe("client messages screen", () => {
     expect(screen.getAllByText("8516 Island Breeze Ln - Temple Terrace, FL 33607").length).toBeGreaterThan(0);
     expect(screen.getByText("test cut • May 19 • Cancelled")).toBeInTheDocument();
     expect(screen.getAllByText("Conversation opened...").length).toBeGreaterThan(1);
-    expect(screen.getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/barber/phillipforsure");
+    expect(screen.getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/dashboard/client/profile-view/barber/phillipforsure?sourceThreadId=thread-appointment-1");
     expect(screen.getByRole("link", { name: "Book" })).toHaveAttribute("href", "/booking/new?barber=phillipforsure&barberId=barber-43b3cda2");
 
     const row = screen.getAllByText("Conversation opened...")[0]?.closest("a");
@@ -2385,7 +2385,7 @@ describe("client messages screen", () => {
     expect(within(modal).queryByText("Phillip mcgee")).not.toBeInTheDocument();
     expect(within(modal).getByRole("textbox", { name: "Reply" })).toBeInTheDocument();
     expect(within(modal).getByRole("button", { name: "Send message" })).toBeInTheDocument();
-    expect(within(modal).getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/barber/phillipforsure");
+    expect(within(modal).getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/dashboard/client/profile-view/barber/phillipforsure?sourceThreadId=thread-appointment-1");
     expect(within(modal).getByRole("link", { name: "Book" })).toHaveAttribute("href", "/booking/new?barber=phillipforsure&barberId=barber-43b3cda2");
 
     fireEvent.click(within(modal).getByRole("button", { name: "Back" }));
@@ -2758,7 +2758,7 @@ describe("client messages screen", () => {
     expect(screen.queryByText("Jordan Ellis")).not.toBeInTheDocument();
     expect(screen.getAllByText("Client").length).toBeGreaterThan(0);
     expect(screen.getAllByText("@jordanellis").length).toBeGreaterThan(0);
-    expect(screen.getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/client/jordanellis");
+    expect(screen.getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/dashboard/barber/profile-view/client/jordanellis?sourceThreadId=thread-appointment-1");
     expect(screen.getAllByText("I am outside.").length).toBeGreaterThan(1);
     expect(screen.getByText("test cut • May 19 • Cancelled")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Book" })).toHaveAttribute("href", "/booking/new");
@@ -3044,7 +3044,7 @@ describe("client messages screen", () => {
     expect(screen.queryByText("Jordan Ellis")).not.toBeInTheDocument();
     expect(screen.getAllByText("Client").length).toBeGreaterThan(0);
     expect(screen.getAllByText("@jordanellis").length).toBeGreaterThan(0);
-    expect(screen.getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/client/jordanellis");
+    expect(screen.getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/dashboard/owner/profile-view/client/jordanellis?sourceThreadId=thread-client-1");
   });
 
   it("shows shop owner client, barber, and team threads under the correct filter chips", () => {
