@@ -2840,6 +2840,130 @@ describe("client messages screen", () => {
     expect(screen.queryByText("Older direct thread")).not.toBeInTheDocument();
   });
 
+  it("shows barber client threads under Clients and booking-linked threads under Bookings", () => {
+    const clientThread = buildThread({
+      id: "thread-client-booking",
+      threadType: "client_barber",
+      appointmentId: "appointment-client",
+      counterpart: {
+        profileId: "profile-client",
+        fullName: "@phillipmcgee",
+        role: "client",
+        avatarUrl: "https://cdn.bvrb3r.test/client-avatar.jpg",
+        publicUsername: "phillipmcgee",
+        publicContextLine: "Tampa, FL",
+        publicProfileHref: "/client/phillipmcgee",
+        bookingHref: null
+      },
+      appointmentContext: {
+        appointmentId: "appointment-client",
+        confirmationCode: "CLIENT1",
+        status: "completed",
+        statusLabel: "Completed",
+        startsAt: "2026-05-19T13:30:00.000Z",
+        serviceName: "test cut",
+        locationLabel: "BVRB3R chair"
+      },
+      lastMessage: {
+        id: "message-client-booking",
+        body: "Client booking thread",
+        messageType: "text",
+        createdAt: "2026-05-19T13:00:00.000Z",
+        senderName: "@phillipmcgee"
+      }
+    });
+    const directClientThread = buildThread({
+      id: "thread-client-direct",
+      threadType: "client_barber",
+      appointmentId: null,
+      appointmentContext: null,
+      counterpart: {
+        profileId: "profile-client-direct",
+        fullName: "@clientdirect",
+        role: "client",
+        avatarUrl: null,
+        publicUsername: "clientdirect",
+        publicContextLine: "Tampa, FL",
+        publicProfileHref: "/client/clientdirect",
+        bookingHref: null
+      },
+      updatedAt: "2026-05-19T12:00:00.000Z",
+      lastMessage: {
+        id: "message-client-direct",
+        body: "Direct client thread",
+        messageType: "text",
+        createdAt: "2026-05-19T12:00:00.000Z",
+        senderName: "@clientdirect"
+      }
+    });
+    const shopThread = buildThread({
+      id: "thread-shop-direct",
+      threadType: "barber_shop",
+      appointmentId: null,
+      locationId: null,
+      appointmentContext: null,
+      counterpart: {
+        profileId: "profile-owner",
+        fullName: "@thebvrb3rshopuniversitymall",
+        role: "shop_owner_user",
+        avatarUrl: "https://cdn.bvrb3r.test/shop-logo.jpg",
+        publicUsername: "thebvrb3rshopuniversitymall",
+        publicContextLine: "2172 University Square Mall - Tampa, FL 33612",
+        publicProfileHref: "/shop/thebvrb3rshopuniversitymall",
+        bookingHref: null
+      },
+      updatedAt: "2026-05-19T14:00:00.000Z",
+      lastMessage: {
+        id: "message-shop-direct",
+        body: "Shop direct thread",
+        messageType: "text",
+        createdAt: "2026-05-19T14:00:00.000Z",
+        senderName: "@thebvrb3rshopuniversitymall"
+      }
+    });
+
+    useMessageThreadsQueryMock.mockReturnValue({
+      data: {
+        available: true,
+        viewer: {
+          profileId: "profile-barber",
+          fullName: "Phillip mcgee",
+          role: "barber_user"
+        },
+        threads: [clientThread, directClientThread, shopThread],
+        eligibleAppointments: [],
+        eligibleContacts: [],
+        broadcastTargets: []
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="barber"
+        basePath="/dashboard/barber/messages"
+        title="Messages"
+        subtitle="Clients, bookings, shop lines, and support."
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Clients" }));
+    expect(screen.getByTestId("message-thread-row-thread-client-booking")).toBeInTheDocument();
+    expect(screen.getByTestId("message-thread-row-thread-client-direct")).toBeInTheDocument();
+    expect(screen.queryByTestId("message-thread-row-thread-shop-direct")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Bookings" }));
+    expect(screen.getByTestId("message-thread-row-thread-client-booking")).toBeInTheDocument();
+    expect(screen.queryByTestId("message-thread-row-thread-client-direct")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("message-thread-row-thread-shop-direct")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Shops" }));
+    expect(screen.queryByTestId("message-thread-row-thread-client-booking")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("message-thread-row-thread-client-direct")).not.toBeInTheDocument();
+    expect(screen.getByTestId("message-thread-row-thread-shop-direct")).toBeInTheDocument();
+  });
+
   it("renders the shop owner inbox with owner-specific filters on the shared messaging layout", () => {
     const clientThread = buildThread({
       id: "thread-client-1",
@@ -2921,6 +3045,129 @@ describe("client messages screen", () => {
     expect(screen.getAllByText("Client").length).toBeGreaterThan(0);
     expect(screen.getAllByText("@jordanellis").length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/client/jordanellis");
+  });
+
+  it("shows shop owner client, barber, and team threads under the correct filter chips", () => {
+    const clientThread = buildThread({
+      id: "thread-owner-client",
+      threadType: "client_shop",
+      appointmentId: null,
+      locationId: null,
+      appointmentContext: null,
+      counterpart: {
+        profileId: "profile-client",
+        fullName: "@phillipmcgee",
+        role: "client",
+        avatarUrl: "https://cdn.bvrb3r.test/client-avatar.jpg",
+        publicUsername: "phillipmcgee",
+        publicContextLine: "Tampa, FL",
+        publicProfileHref: "/client/phillipmcgee",
+        bookingHref: null
+      },
+      updatedAt: "2026-05-19T13:00:00.000Z",
+      lastMessage: {
+        id: "message-owner-client",
+        body: "Shop to client thread",
+        messageType: "text",
+        createdAt: "2026-05-19T13:00:00.000Z",
+        senderName: "@phillipmcgee"
+      }
+    });
+    const barberThread = buildThread({
+      id: "thread-owner-barber",
+      threadType: "barber_shop",
+      appointmentId: null,
+      locationId: null,
+      appointmentContext: null,
+      counterpart: {
+        profileId: "profile-barber",
+        fullName: "@phillipforsure",
+        role: "barber_user",
+        avatarUrl: "https://cdn.bvrb3r.test/barber-avatar.jpg",
+        publicUsername: "phillipforsure",
+        publicContextLine: "8516 Island Breeze Ln - Temple Terrace, FL 33607",
+        publicProfileHref: "/barber/phillipforsure",
+        bookingHref: null
+      },
+      updatedAt: "2026-05-19T14:00:00.000Z",
+      lastMessage: {
+        id: "message-owner-barber",
+        body: "Shop to barber thread",
+        messageType: "text",
+        createdAt: "2026-05-19T14:00:00.000Z",
+        senderName: "@phillipforsure"
+      }
+    });
+    const teamThread = buildThread({
+      id: "thread-owner-team",
+      threadType: "barber_shop",
+      appointmentId: null,
+      locationId: "location-shop-1",
+      locationContext: {
+        locationId: "location-shop-1",
+        locationLabel: "The BVRB3R Shop"
+      },
+      appointmentContext: null,
+      counterpart: {
+        profileId: "profile-team-barber",
+        fullName: "@teambarber",
+        role: "barber_user",
+        avatarUrl: null,
+        publicUsername: "teambarber",
+        publicContextLine: "The BVRB3R Shop",
+        publicProfileHref: "/barber/teambarber",
+        bookingHref: null
+      },
+      updatedAt: "2026-05-19T15:00:00.000Z",
+      lastMessage: {
+        id: "message-owner-team",
+        body: "Team barber thread",
+        messageType: "text",
+        createdAt: "2026-05-19T15:00:00.000Z",
+        senderName: "@teambarber"
+      }
+    });
+
+    useMessageThreadsQueryMock.mockReturnValue({
+      data: {
+        available: true,
+        viewer: {
+          profileId: "profile-owner",
+          fullName: "BVRB3R Owner",
+          role: "owner"
+        },
+        threads: [clientThread, barberThread, teamThread],
+        eligibleAppointments: [],
+        eligibleContacts: [],
+        broadcastTargets: []
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="shop"
+        basePath="/dashboard/owner/messages"
+        title="Messages"
+        subtitle="Client, barber, team, booking, and support conversations."
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Clients" }));
+    expect(screen.getByTestId("message-thread-row-thread-owner-client")).toBeInTheDocument();
+    expect(screen.queryByTestId("message-thread-row-thread-owner-barber")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("message-thread-row-thread-owner-team")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Barbers" }));
+    expect(screen.queryByTestId("message-thread-row-thread-owner-client")).not.toBeInTheDocument();
+    expect(screen.getByTestId("message-thread-row-thread-owner-barber")).toBeInTheDocument();
+    expect(screen.getByTestId("message-thread-row-thread-owner-team")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Team" }));
+    expect(screen.queryByTestId("message-thread-row-thread-owner-client")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("message-thread-row-thread-owner-barber")).not.toBeInTheDocument();
+    expect(screen.getByTestId("message-thread-row-thread-owner-team")).toBeInTheDocument();
   });
 
   it("keeps support conversations compact without booking actions", () => {

@@ -239,37 +239,73 @@ function getRoleBadgeLabel(role?: string | null, threadType?: string) {
   return null;
 }
 
-function getSurfaceThreadFilter(thread: MessagingThreadSummary, surface: MessagingSurface): ThreadFilter {
+function getMessageThreadFilterTags(thread: MessagingThreadSummary, surface: MessagingSurface): Set<ThreadFilter> {
+  const tags = new Set<ThreadFilter>(["all"]);
+
   if (thread.lifecycleStatus === "request_pending") {
-    return "requests";
+    tags.add("requests");
   }
 
   if (surface !== "client" && isBookingRequestThread(thread)) {
-    return "requests";
+    tags.add("requests");
   }
 
-  if (surface !== "client" && thread.appointmentContext) {
-    return "bookings";
+  if (thread.appointmentContext) {
+    tags.add("bookings");
   }
 
   const role = thread.counterpart?.role;
   if (thread.threadType === "support" || role === "platform_admin") {
-    return "support";
+    tags.add("support");
+    return tags;
   }
 
-  if (role === "client") {
-    return "clients";
+  if (surface === "client") {
+    if (isBarberAccountRole(role) || thread.threadType === "client_barber") {
+      tags.add("barbers");
+    }
+
+    if (role === "owner" || role === "shop_owner_user" || role === "manager" || role === "front_desk" || thread.threadType === "client_shop") {
+      tags.add("shops");
+    }
+
+    return tags;
   }
 
-  if (isBarberAccountRole(role)) {
-    return "barbers";
+  if (surface === "barber") {
+    if (role === "client" || thread.threadType === "client_barber") {
+      tags.add("clients");
+    }
+
+    if (role === "owner" || role === "shop_owner_user" || role === "manager" || role === "front_desk" || thread.threadType === "barber_shop") {
+      tags.add("shops");
+    }
+
+    return tags;
   }
 
-  if (role === "owner" || role === "shop_owner_user" || role === "manager" || role === "front_desk") {
-    return surface === "shop" ? "team" : "shops";
+  if (surface === "shop") {
+    if (role === "client" || thread.threadType === "client_shop") {
+      tags.add("clients");
+    }
+
+    if (isBarberAccountRole(role) || thread.threadType === "barber_shop") {
+      tags.add("barbers");
+    }
+
+    if (thread.threadType === "barber_shop" && (thread.locationId || thread.locationContext)) {
+      tags.add("team");
+    }
+
+    if (role === "owner" || role === "shop_owner_user" || role === "manager" || role === "front_desk") {
+      tags.add("team");
+    }
+
+    return tags;
   }
 
-  return "other";
+  tags.add("other");
+  return tags;
 }
 
 function getInitials(name: string) {
@@ -473,10 +509,8 @@ function filterThreads(threads: MessagingThreadSummary[], activeFilter: ThreadFi
   const normalizedQuery = query.trim().toLowerCase();
 
   return threads.filter((thread) => {
-    const filterKey = getSurfaceThreadFilter(thread, surface);
-    const matchesFilter = activeFilter === "all"
-      || filterKey === activeFilter
-      || (activeFilter === "bookings" && Boolean(thread.appointmentContext));
+    const filterTags = getMessageThreadFilterTags(thread, surface);
+    const matchesFilter = filterTags.has(activeFilter);
     const searchable = [
       thread.counterpart?.fullName,
       thread.counterpart?.publicUsername,
