@@ -363,8 +363,8 @@ describe("messaging create or open conversation", () => {
     expect(payload.thread?.locationId).toBeNull();
     expect(supabase.state.inserts.message_threads).toBe(1);
     expect(supabase.state.thread_participants).toEqual(expect.arrayContaining([
-      expect.objectContaining({ thread_id: "thread-created-1", profile_id: "profile-owner" }),
-      expect.objectContaining({ thread_id: "thread-created-1", profile_id: "profile-barber" })
+      expect.objectContaining({ thread_id: "thread-created-1", profile_id: "profile-owner", thread_role: "owner" }),
+      expect.objectContaining({ thread_id: "thread-created-1", profile_id: "profile-barber", thread_role: "commission_barber" })
     ]));
     expect(supabase.state.messages).toHaveLength(1);
   });
@@ -388,8 +388,8 @@ describe("messaging create or open conversation", () => {
     expect(payload.thread?.threadType).toBe("client_shop");
     expect(payload.thread?.locationId).toBeNull();
     expect(supabase.state.thread_participants).toEqual(expect.arrayContaining([
-      expect.objectContaining({ thread_id: "thread-created-1", profile_id: "profile-owner" }),
-      expect.objectContaining({ thread_id: "thread-created-1", profile_id: "profile-client" })
+      expect.objectContaining({ thread_id: "thread-created-1", profile_id: "profile-owner", thread_role: "owner" }),
+      expect.objectContaining({ thread_id: "thread-created-1", profile_id: "profile-client", thread_role: "client" })
     ]));
   });
 

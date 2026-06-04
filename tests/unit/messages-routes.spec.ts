@@ -243,6 +243,28 @@ describe("phase 8 messaging routes", () => {
     });
   });
 
+  it("returns structured create/open failure details", async () => {
+    getSessionUserMock.mockResolvedValue(resolveDemoUser("owner@bvrb3r.demo"));
+    createMessagingThreadMock.mockRejectedValue(
+      new MessagingServiceError("Unable to attach messaging participants.", 500, "participant_insert_failed", "participant_insert")
+    );
+    const request = new NextRequest("https://bvrb3r.demo/api/messages/threads", {
+      method: "POST",
+      body: JSON.stringify({ threadType: "client_shop", profileId: "profile-client", locationId: "shop-the-bvrb3r-shop" })
+    });
+
+    const response = await postThreads(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body).toEqual(expect.objectContaining({
+      error: "Could not open conversation",
+      message: "Unable to attach messaging participants.",
+      code: "participant_insert_failed",
+      step: "participant_insert"
+    }));
+  });
+
   it("searches message participants through the canonical route", async () => {
     getSessionUserMock.mockResolvedValue(resolveDemoUser("client@bvrb3r.demo"));
     searchMessagingParticipantsMock.mockResolvedValue({

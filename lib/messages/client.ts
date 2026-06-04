@@ -12,6 +12,9 @@ import type {
 
 export interface MessagingApiError extends Error {
   status?: number;
+  code?: string;
+  step?: string;
+  responseBody?: Record<string, unknown>;
 }
 
 async function requestJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
@@ -25,8 +28,11 @@ async function requestJson<T>(input: RequestInfo, init?: RequestInit): Promise<T
 
   const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
   if (!response.ok) {
-    const error = new Error((body.error as string | undefined) ?? `Request failed with status ${response.status}`) as MessagingApiError;
+    const error = new Error((body.message as string | undefined) ?? (body.error as string | undefined) ?? `Request failed with status ${response.status}`) as MessagingApiError;
     error.status = response.status;
+    error.code = body.code as string | undefined;
+    error.step = body.step as string | undefined;
+    error.responseBody = body;
     throw error;
   }
 

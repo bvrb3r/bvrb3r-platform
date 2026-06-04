@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, FilterChip, SearchBar } from "@/design/components";
 import { isBarberAccountRole } from "@/lib/auth/roles";
+import type { MessagingApiError } from "@/lib/messages/client";
 import {
   useApprovePosPaymentRequestMutation,
   useCreateMessageThreadMutation,
@@ -145,6 +146,14 @@ function readableError(error: unknown, fallback: string) {
   }
 
   return fallback;
+}
+
+function getMessagingApiError(error: unknown): MessagingApiError | null {
+  if (error instanceof Error) {
+    return error as MessagingApiError;
+  }
+
+  return null;
 }
 
 function getSurfaceCopy(surface: MessagingSurface) {
@@ -1620,11 +1629,15 @@ export function MessagingInboxScreen({
         status: result.existingThreadId ? "reused" : "created"
       });
     } catch (error) {
-      console.warn("[messages] participant_result_open_failed", {
+      const apiError = getMessagingApiError(error);
+      console.warn("[messages:create-open-failed]", {
         resultType: result.resultType,
         participantType: result.participantType,
         targetId: result.participantId,
         threadType: result.createThreadInput && "threadType" in result.createThreadInput ? result.createThreadInput.threadType : null,
+        status: apiError?.status ?? null,
+        code: apiError?.code ?? null,
+        step: apiError?.step ?? null,
         errorMessage: error instanceof Error ? error.message : String(error)
       });
       const message = readableError(error, "Couldn't open conversation. Try again.");

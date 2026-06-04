@@ -470,6 +470,26 @@ function formatLocationLabel(location: LocationRow) {
   return area ? `${location.name} | ${area}` : [location.name, location.state].filter(Boolean).join(" | ");
 }
 
+function toDatabaseThreadRole(role: Role): Role {
+  if (isClientRole(role)) {
+    return "client";
+  }
+
+  if (isShopRole(role) || role === "platform_admin" || role === "architect") {
+    return "owner";
+  }
+
+  if (role === "booth_rent_barber") {
+    return "booth_rent_barber";
+  }
+
+  if (isBarberRole(role)) {
+    return "commission_barber";
+  }
+
+  return role;
+}
+
 function shopToLocationRow(shop: ShopPublicIdentityRow): LocationRow {
   return {
     id: shop.id,
@@ -2050,7 +2070,7 @@ async function ensureThreadParticipants(
     .map((profile) => ({
       thread_id: threadId,
       profile_id: profile.id,
-      thread_role: profile.role
+      thread_role: toDatabaseThreadRole(profile.role)
     }));
 
   if (!missingRows.length) {
@@ -2204,12 +2224,12 @@ async function createOrGetClientBarberThread(input: {
       {
         thread_id: threadId,
         profile_id: input.appointment.clientProfileId,
-        thread_role: "client_user"
+        thread_role: "client"
       },
       {
         thread_id: threadId,
         profile_id: input.appointment.barberProfileId,
-        thread_role: input.appointment.barberRole
+        thread_role: toDatabaseThreadRole(input.appointment.barberRole)
       }
     ]);
 
@@ -2276,12 +2296,12 @@ async function createOrGetDirectClientBarberThread(input: {
       {
         thread_id: threadId,
         profile_id: input.clientProfile.id,
-        thread_role: input.clientProfile.role
+        thread_role: toDatabaseThreadRole(input.clientProfile.role)
       },
       {
         thread_id: threadId,
         profile_id: input.barberProfile.id,
-        thread_role: input.barberProfile.role
+        thread_role: toDatabaseThreadRole(input.barberProfile.role)
       }
     ]);
 
