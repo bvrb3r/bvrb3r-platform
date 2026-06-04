@@ -1171,6 +1171,403 @@ describe("client messages screen", () => {
     expect(push).toHaveBeenCalledWith("/dashboard/client/messages/thread-new-barber", { scroll: false });
   });
 
+  it("clicking Message on a barber to shop result creates, closes compose, and opens the conversation feed", async () => {
+    const push = vi.fn();
+    const newThread = buildThread({
+      id: "thread-barber-shop-created",
+      threadType: "barber_shop",
+      appointmentId: null,
+      locationId: "shop-the-bvrb3r-shop",
+      counterpart: {
+        profileId: "profile-owner",
+        fullName: "@thebvrb3rshopuniversitymall",
+        role: "owner",
+        avatarUrl: "https://cdn.bvrb3r.test/shop-logo.jpg",
+        publicUsername: "thebvrb3rshopuniversitymall",
+        publicContextLine: "2172 University Square Mall - Tampa, FL 33612",
+        publicProfileHref: "/shop/thebvrb3rshopuniversitymall",
+        bookingHref: null
+      },
+      appointmentContext: null,
+      lastMessage: null
+    });
+    const mutateAsync = vi.fn().mockResolvedValue({
+      thread: {
+        id: "thread-barber-shop-created"
+      }
+    });
+    useRouterMock.mockReturnValue({
+      push,
+      replace: vi.fn()
+    });
+    useCreateMessageThreadMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync
+    });
+    useMessageThreadQueryMock.mockImplementation((threadId?: string) => ({
+      data: threadId === "thread-barber-shop-created"
+        ? {
+            available: true,
+            viewer: {
+              profileId: "profile-barber",
+              fullName: "@phillipforsure",
+              role: "barber_user"
+            },
+            thread: buildThreadDetail(newThread, "barber_user"),
+            messages: []
+          }
+        : {
+            available: true,
+            viewer: {
+              profileId: "profile-barber",
+              fullName: "@phillipforsure",
+              role: "barber_user"
+            },
+            thread: null,
+            messages: []
+          },
+      isLoading: false,
+      error: null
+    }));
+    useMessageParticipantSearchQueryMock.mockReturnValue({
+      data: {
+        results: [
+          {
+            id: "shop-the-bvrb3r-shop",
+            participantId: "shop-the-bvrb3r-shop",
+            displayName: "The BVRB3R Shop",
+            resultType: "shop",
+            participantType: "shop",
+            role: "shop_owner_user",
+            avatarUrl: "https://cdn.bvrb3r.test/shop-logo.jpg",
+            publicUsername: "thebvrb3rshopuniversitymall",
+            publicContextLine: "2172 University Square Mall - Tampa, FL 33612",
+            publicProfileHref: "/shop/thebvrb3rshopuniversitymall",
+            profileHref: "/shop/thebvrb3rshopuniversitymall",
+            existingThreadId: null,
+            createThreadInput: {
+              threadType: "barber_shop",
+              profileId: "profile-owner",
+              locationId: "shop-the-bvrb3r-shop"
+            },
+            subtitle: "Shop"
+          }
+        ]
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="barber"
+        basePath="/dashboard/barber/messages"
+        title="Messages"
+        subtitle="Clients, bookings, shop lines, and support."
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "New Message" }));
+    fireEvent.change(screen.getByPlaceholderText("Search @username, barber, shop, or client"), {
+      target: { value: "@thebvrb3rshopuniversitymall" }
+    });
+    fireEvent.click(within(screen.getByTestId("message-compose-modal")).getByRole("button", { name: "Message" }));
+
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledWith({
+        threadType: "barber_shop",
+        profileId: "profile-owner",
+        locationId: "shop-the-bvrb3r-shop"
+      });
+      expect(push).toHaveBeenCalledWith("/dashboard/barber/messages/thread-barber-shop-created", { scroll: false });
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId("message-compose-modal")).not.toBeInTheDocument();
+      expect(screen.getByRole("dialog", { name: "Message conversation" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Send message" })).toBeInTheDocument();
+    });
+  });
+
+  it("clicking Message on a shop owner to client result creates, closes compose, and opens the conversation feed", async () => {
+    const push = vi.fn();
+    const newThread = buildThread({
+      id: "thread-owner-client-created",
+      threadType: "client_shop",
+      appointmentId: null,
+      locationId: "shop-the-bvrb3r-shop",
+      counterpart: {
+        profileId: "profile-client",
+        fullName: "@phillipmcgee",
+        role: "client_user",
+        avatarUrl: "https://cdn.bvrb3r.test/client.jpg",
+        publicUsername: "phillipmcgee",
+        publicContextLine: "Tampa, FL",
+        publicProfileHref: "/client/phillipmcgee",
+        bookingHref: null
+      },
+      appointmentContext: null,
+      lastMessage: null
+    });
+    const mutateAsync = vi.fn().mockResolvedValue({
+      thread: {
+        id: "thread-owner-client-created"
+      }
+    });
+    useRouterMock.mockReturnValue({
+      push,
+      replace: vi.fn()
+    });
+    useCreateMessageThreadMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync
+    });
+    useMessageThreadQueryMock.mockImplementation((threadId?: string) => ({
+      data: threadId === "thread-owner-client-created"
+        ? {
+            available: true,
+            viewer: {
+              profileId: "profile-owner",
+              fullName: "@thebvrb3rshopuniversitymall",
+              role: "owner"
+            },
+            thread: buildThreadDetail(newThread, "owner"),
+            messages: []
+          }
+        : {
+            available: true,
+            viewer: {
+              profileId: "profile-owner",
+              fullName: "@thebvrb3rshopuniversitymall",
+              role: "owner"
+            },
+            thread: null,
+            messages: []
+          },
+      isLoading: false,
+      error: null
+    }));
+    useMessageParticipantSearchQueryMock.mockReturnValue({
+      data: {
+        results: [
+          {
+            id: "profile-client",
+            participantId: "profile-client",
+            displayName: "Phillip mcgee",
+            resultType: "client",
+            participantType: "client",
+            role: "client_user",
+            avatarUrl: "https://cdn.bvrb3r.test/client.jpg",
+            publicUsername: "phillipmcgee",
+            publicContextLine: "Tampa, FL",
+            publicProfileHref: "/client/phillipmcgee",
+            profileHref: "/client/phillipmcgee",
+            existingThreadId: null,
+            createThreadInput: {
+              threadType: "client_shop",
+              profileId: "profile-client",
+              locationId: "shop-the-bvrb3r-shop"
+            },
+            subtitle: "Client"
+          }
+        ]
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="shop"
+        basePath="/dashboard/owner/messages"
+        title="Messages"
+        subtitle="Clients, barbers, team, bookings, and support."
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "New Message" }));
+    fireEvent.change(screen.getByPlaceholderText("Search @username, barber, shop, or client"), {
+      target: { value: "@phillipmcgee" }
+    });
+    fireEvent.click(within(screen.getByTestId("message-compose-modal")).getByRole("button", { name: "Message" }));
+
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledWith({
+        threadType: "client_shop",
+        profileId: "profile-client",
+        locationId: "shop-the-bvrb3r-shop"
+      });
+      expect(push).toHaveBeenCalledWith("/dashboard/owner/messages/thread-owner-client-created", { scroll: false });
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId("message-compose-modal")).not.toBeInTheDocument();
+      expect(screen.getByRole("dialog", { name: "Message conversation" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Send message" })).toBeInTheDocument();
+    });
+  });
+
+  it("shows an in-modal error when create/open succeeds without a thread id", async () => {
+    const mutateAsync = vi.fn().mockResolvedValue({
+      thread: null
+    });
+    useCreateMessageThreadMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync
+    });
+    useMessageParticipantSearchQueryMock.mockReturnValue({
+      data: {
+        results: [
+          {
+            id: "profile-new-barber",
+            participantId: "profile-new-barber",
+            displayName: "Nova Blades",
+            resultType: "barber",
+            participantType: "barber",
+            role: "barber_user",
+            avatarUrl: null,
+            publicUsername: "nova",
+            publicProfileHref: "/barber/nova",
+            profileHref: "/barber/nova",
+            existingThreadId: null,
+            createThreadInput: {
+              threadType: "client_barber",
+              profileId: "profile-new-barber"
+            },
+            subtitle: "Barber"
+          }
+        ]
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="client"
+        basePath="/dashboard/client/messages"
+        title="Messages"
+        subtitle="Your conversations, appointments, and support."
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "New Message" }));
+    fireEvent.change(screen.getByPlaceholderText("Search @username, barber, shop, or client"), {
+      target: { value: "nova" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Message" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Couldn't open conversation. Try again.")).toBeInTheDocument();
+      expect(screen.getByTestId("message-compose-modal")).toBeInTheDocument();
+    });
+  });
+
+  it("shows an in-modal error when create/open fails", async () => {
+    const mutateAsync = vi.fn().mockRejectedValue(new Error("thread create failed"));
+    useCreateMessageThreadMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync
+    });
+    useMessageParticipantSearchQueryMock.mockReturnValue({
+      data: {
+        results: [
+          {
+            id: "profile-new-barber",
+            participantId: "profile-new-barber",
+            displayName: "Nova Blades",
+            resultType: "barber",
+            participantType: "barber",
+            role: "barber_user",
+            avatarUrl: null,
+            publicUsername: "nova",
+            publicProfileHref: "/barber/nova",
+            profileHref: "/barber/nova",
+            existingThreadId: null,
+            createThreadInput: {
+              threadType: "client_barber",
+              profileId: "profile-new-barber"
+            },
+            subtitle: "Barber"
+          }
+        ]
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="client"
+        basePath="/dashboard/client/messages"
+        title="Messages"
+        subtitle="Your conversations, appointments, and support."
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "New Message" }));
+    fireEvent.change(screen.getByPlaceholderText("Search @username, barber, shop, or client"), {
+      target: { value: "nova" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Message" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Couldn't open conversation. Try again.")).toBeInTheDocument();
+      expect(screen.getByTestId("message-compose-modal")).toBeInTheDocument();
+    });
+  });
+
+  it("guards double-clicks on Message while create/open is pending", async () => {
+    const mutateAsync = vi.fn().mockImplementation(() => new Promise(() => undefined));
+    useCreateMessageThreadMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync
+    });
+    useMessageParticipantSearchQueryMock.mockReturnValue({
+      data: {
+        results: [
+          {
+            id: "profile-new-barber",
+            participantId: "profile-new-barber",
+            displayName: "Nova Blades",
+            resultType: "barber",
+            participantType: "barber",
+            role: "barber_user",
+            avatarUrl: null,
+            publicUsername: "nova",
+            publicProfileHref: "/barber/nova",
+            profileHref: "/barber/nova",
+            existingThreadId: null,
+            createThreadInput: {
+              threadType: "client_barber",
+              profileId: "profile-new-barber"
+            },
+            subtitle: "Barber"
+          }
+        ]
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="client"
+        basePath="/dashboard/client/messages"
+        title="Messages"
+        subtitle="Your conversations, appointments, and support."
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "New Message" }));
+    fireEvent.change(screen.getByPlaceholderText("Search @username, barber, shop, or client"), {
+      target: { value: "nova" }
+    });
+    const messageButton = screen.getByRole("button", { name: "Message" });
+    fireEvent.click(messageButton);
+    fireEvent.click(messageButton);
+
+    expect(mutateAsync).toHaveBeenCalledTimes(1);
+  });
+
   it("lets a barber find a client public username from New Message", () => {
     useMessageParticipantSearchQueryMock.mockReturnValue({
       data: {

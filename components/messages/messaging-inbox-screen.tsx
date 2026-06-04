@@ -1177,6 +1177,7 @@ function ConversationModal({
 }
 
 function ComposeModal({
+  actionError,
   error,
   isLoading,
   onClose,
@@ -1186,6 +1187,7 @@ function ComposeModal({
   results,
   selectPending
 }: {
+  actionError?: string | null;
   error: unknown;
   isLoading: boolean;
   onClose: () => void;
@@ -1233,6 +1235,11 @@ function ComposeModal({
         <div className="flex-1 overflow-y-auto px-4 py-3">
           {error ? (
             <FeedbackBanner tone="error" message={readableError(error, "Unable to search message participants.")} />
+          ) : null}
+          {actionError ? (
+            <div className={error ? "mt-2" : undefined}>
+              <FeedbackBanner tone="error" message={actionError} />
+            </div>
           ) : null}
 
           {!hasSearch ? (
@@ -1294,6 +1301,7 @@ export function MessagingInboxScreen({
   const usesModalThreadView = true;
   const [modalThreadId, setModalThreadId] = useState<string | null>(selectedThreadId ?? null);
   const [composeOpen, setComposeOpen] = useState(false);
+  const [composeActionError, setComposeActionError] = useState<string | null>(null);
   const [participantSearch, setParticipantSearch] = useState("");
   const [composerBody, setComposerBody] = useState("");
   const [statusUpdate, setStatusUpdate] = useState<{ tone: "success" | "info" | "error"; message: string } | null>(null);
@@ -1307,6 +1315,7 @@ export function MessagingInboxScreen({
   const startersRef = useRef<HTMLDivElement | null>(null);
   const hasTriggeredSupportIntentRef = useRef(false);
   const markedReadThreadIdsRef = useRef<Set<string>>(new Set());
+  const pendingParticipantSelectionRef = useRef<string | null>(null);
 
   const available = threadsQuery.data?.available ?? false;
   const threadAggregation = useMemo(
@@ -1417,34 +1426,43 @@ export function MessagingInboxScreen({
     }
   }, [broadcastLocationId, broadcastTargets]);
 
+  const activateConversationThread = useCallback((threadId: string, options: { closeCompose?: boolean } = {}) => {
+    if (options.closeCompose) {
+      setComposeOpen(false);
+      setParticipantSearch("");
+      setComposeActionError(null);
+    }
+
+    setComposerBody("");
+    if (usesModalThreadView) {
+      setModalThreadId(threadId);
+    }
+    router.push(`${basePath}/${threadId}` as Route, { scroll: false });
+  }, [basePath, router, usesModalThreadView]);
+
   const handleStartThread = useCallback(async (payload: MessagingCreateThreadInput, successMessage: string) => {
     setStatusUpdate(null);
     try {
       const threadPayload = await createThreadMutation.mutateAsync(payload);
-      if (threadPayload.thread?.id) {
-        setStatusUpdate({ tone: "success", message: successMessage });
-        if (usesModalThreadView) {
-          setModalThreadId(threadPayload.thread.id);
-        }
-        router.push(`${basePath}/${threadPayload.thread.id}` as Route, { scroll: false });
+      const threadId = threadPayload.thread?.id;
+      if (!threadId) {
+        throw new Error("Conversation opened without a thread id.");
       }
+      setStatusUpdate({ tone: "success", message: successMessage });
+      activateConversationThread(threadId);
     } catch (error) {
       setStatusUpdate({ tone: "error", message: readableError(error, "Unable to open the conversation.") });
     }
-  }, [basePath, createThreadMutation, router, usesModalThreadView]);
+  }, [activateConversationThread, createThreadMutation]);
 
   const handleOpenThread = useCallback((threadId: string) => {
-    if (usesModalThreadView) {
-      setComposerBody("");
-      setComposeOpen(false);
-      setModalThreadId(threadId);
-      router.push(`${basePath}/${threadId}` as Route, { scroll: false });
-    }
-  }, [basePath, router, usesModalThreadView]);
+    activateConversationThread(threadId, { closeCompose: true });
+  }, [activateConversationThread]);
 
   const handleCloseCompose = useCallback(() => {
     setComposeOpen(false);
     setParticipantSearch("");
+    setComposeActionError(null);
   }, []);
 
   const handleCloseThread = useCallback(() => {
@@ -1554,34 +1572,73 @@ export function MessagingInboxScreen({
 
   async function handleSelectParticipant(result: MessagingParticipantSearchResult) {
     setStatusUpdate(null);
+    setComposeActionError(null);
+    const selectionKey = `${result.resultType}:${result.id}`;
+    if (pendingParticipantSelectionRef.current) {
+      return;
+    }
+
+    pendingParticipantSelectionRef.current = selectionKey;
     try {
+      console.info("[messages] participant_result_open_requested", {
+        resultType: result.resultType,
+        participantType: result.participantType,
+        targetId: result.participantId,
+        hasExistingThread: Boolean(result.existingThreadId),
+        threadType: result.createThreadInput && "threadType" in result.createThreadInput ? result.createThreadInput.threadType : null
+      });
+
       if (result.existingThreadId) {
-        handleCloseCompose();
         handleOpenThread(result.existingThreadId);
+        console.info("[messages] participant_result_opened", {
+          resultType: result.resultType,
+          targetId: result.participantId,
+          threadId: result.existingThreadId,
+          status: "reused"
+        });
         return;
       }
 
       if (!result.createThreadInput) {
         setStatusUpdate({ tone: "info", message: result.messageDisabledReason ?? "Messaging this profile is not available yet." });
+        setComposeActionError(result.messageDisabledReason ?? "Messaging this profile is not available yet.");
         return;
       }
 
       const threadPayload = await createThreadMutation.mutateAsync(result.createThreadInput);
-      if (threadPayload.thread?.id) {
-        handleCloseCompose();
-        setComposerBody("");
-        setModalThreadId(threadPayload.thread.id);
-        setStatusUpdate({ tone: "success", message: "Conversation ready." });
-        router.push(`${basePath}/${threadPayload.thread.id}` as Route, { scroll: false });
+      const threadId = threadPayload.thread?.id;
+      if (!threadId) {
+        throw new Error("Conversation opened without a thread id.");
       }
+
+      activateConversationThread(threadId, { closeCompose: true });
+      setStatusUpdate({ tone: "success", message: "Conversation ready." });
+      console.info("[messages] participant_result_opened", {
+        resultType: result.resultType,
+        targetId: result.participantId,
+        threadId,
+        status: result.existingThreadId ? "reused" : "created"
+      });
     } catch (error) {
-      setStatusUpdate({ tone: "error", message: readableError(error, "Unable to open the conversation.") });
+      console.warn("[messages] participant_result_open_failed", {
+        resultType: result.resultType,
+        participantType: result.participantType,
+        targetId: result.participantId,
+        threadType: result.createThreadInput && "threadType" in result.createThreadInput ? result.createThreadInput.threadType : null,
+        errorMessage: error instanceof Error ? error.message : String(error)
+      });
+      const message = readableError(error, "Couldn't open conversation. Try again.");
+      setStatusUpdate({ tone: "error", message });
+      setComposeActionError("Couldn't open conversation. Try again.");
+    } finally {
+      pendingParticipantSelectionRef.current = null;
     }
   }
 
   const handleNewMessage = () => {
     if (usesModalThreadView) {
       setStatusUpdate(null);
+      setComposeActionError(null);
       setComposeOpen(true);
       setParticipantSearch("");
       return;
@@ -1901,6 +1958,7 @@ export function MessagingInboxScreen({
 
       {available && usesModalThreadView && composeOpen ? (
         <ComposeModal
+          actionError={composeActionError}
           error={participantSearchQuery.error}
           isLoading={participantSearchQuery.isLoading}
           onClose={handleCloseCompose}
