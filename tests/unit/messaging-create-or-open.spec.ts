@@ -74,6 +74,7 @@ const productionLocationRow = {
 function createMessagingSupabaseMock(options: {
   actor: "client" | "barber" | "owner";
   existingShopThread?: boolean;
+  existingShopThreadType?: "client_shop" | "barber_shop";
   appointmentsError?: boolean;
   noOwnedShop?: boolean;
   readbackMembershipError?: boolean;
@@ -82,7 +83,7 @@ function createMessagingSupabaseMock(options: {
     message_threads: options.existingShopThread
       ? [{
           id: "thread-existing-shop",
-          thread_type: options.actor === "owner" ? "client_shop" : "barber_shop",
+          thread_type: options.existingShopThreadType ?? (options.actor === "owner" || options.actor === "client" ? "client_shop" : "barber_shop"),
           appointment_id: null,
           location_id: null,
           created_at: "2026-06-04T12:00:00.000Z",
@@ -103,8 +104,8 @@ function createMessagingSupabaseMock(options: {
           {
             id: "participant-existing-2",
             thread_id: "thread-existing-shop",
-            profile_id: options.actor === "owner" ? "profile-client" : "profile-barber",
-            thread_role: options.actor === "owner" ? "client_user" : "barber_user",
+            profile_id: options.actor === "owner" ? "profile-client" : options.actor === "client" ? "profile-client" : "profile-barber",
+            thread_role: options.actor === "owner" || options.actor === "client" ? "client_user" : "barber_user",
             created_at: "2026-06-04T12:00:00.000Z",
             last_read_at: null
           }
@@ -326,6 +327,9 @@ function createMessagingSupabaseMock(options: {
       if (this.table === "shops") {
         if (this.filters.get("owner_profile_id") === "profile-owner") {
           return options.noOwnedShop ? [] : [{ id: shopRow.id }];
+        }
+        if (this.inFilter?.column === "owner_profile_id" && this.inFilter.values.includes("profile-owner")) {
+          return [shopRow];
         }
         if (this.inFilter?.values.includes(shopRow.id) || this.inFilter?.values.includes(shopRow.public_username)) {
           return [shopRow];
@@ -612,6 +616,25 @@ describe("messaging create or open conversation", () => {
     expect(payload.thread?.id).toBe("thread-existing-shop");
     expect(supabase.state.inserts.message_threads).toBe(0);
     expect(supabase.state.inserts.message_thread_requests).toBe(0);
+  });
+
+  it("hydrates null-location shop threads from public shop identity", async () => {
+    const supabase = createMessagingSupabaseMock({ actor: "client", existingShopThread: true, existingShopThreadType: "client_shop" });
+    createSupabaseAdminClientMock.mockReturnValue(supabase.client);
+
+    const payload = await getMessagingInboxPayload({
+      role: "client_user",
+      email: "client@bvrb3r.test",
+      locationIds: []
+    } as never);
+
+    expect(payload.threads).toHaveLength(1);
+    expect(payload.threads[0]?.counterpart).toEqual(expect.objectContaining({
+      publicUsername: "thebvrb3rshopuniversitymall",
+      fullName: "@thebvrb3rshopuniversitymall",
+      avatarUrl: "https://cdn.bvrb3r.test/shop-logo.jpg",
+      publicProfileHref: "/shop/thebvrb3rshopuniversitymall"
+    }));
   });
 
   it("labels created thread readback failures with the thread_readback step", async () => {

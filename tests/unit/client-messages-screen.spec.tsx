@@ -2764,6 +2764,82 @@ describe("client messages screen", () => {
     expect(screen.getByRole("link", { name: "Book" })).toHaveAttribute("href", "/booking/new");
   });
 
+  it("collapses duplicate direct client conversations in the barber inbox", () => {
+    const clientCounterpart = {
+      profileId: "profile-client",
+      fullName: "@phillipmcgee",
+      role: "client",
+      avatarUrl: "https://cdn.bvrb3r.test/client-avatar.jpg",
+      publicUsername: "phillipmcgee",
+      publicContextLine: "Tampa, FL",
+      publicProfileHref: "/client/phillipmcgee",
+      bookingHref: null
+    };
+    useMessageThreadsQueryMock.mockReturnValue({
+      data: {
+        available: true,
+        viewer: {
+          profileId: "profile-barber",
+          fullName: "Phillip mcgee",
+          role: "barber_user"
+        },
+        threads: [
+          buildThread({
+            id: "thread-client-old",
+            threadType: "client_barber",
+            appointmentId: null,
+            locationId: null,
+            counterpart: clientCounterpart,
+            appointmentContext: null,
+            updatedAt: "2026-05-19T12:00:00.000Z",
+            lastMessage: {
+              id: "message-client-old",
+              body: "Older direct thread",
+              messageType: "text",
+              createdAt: "2026-05-19T12:00:00.000Z",
+              senderName: "@phillipmcgee"
+            }
+          }),
+          buildThread({
+            id: "thread-client-new",
+            threadType: "client_barber",
+            appointmentId: null,
+            locationId: null,
+            counterpart: clientCounterpart,
+            appointmentContext: null,
+            updatedAt: "2026-05-19T13:00:00.000Z",
+            lastMessage: {
+              id: "message-client-new",
+              body: "Newest direct thread",
+              messageType: "text",
+              createdAt: "2026-05-19T13:00:00.000Z",
+              senderName: "@phillipmcgee"
+            }
+          })
+        ],
+        eligibleAppointments: [],
+        eligibleContacts: [],
+        broadcastTargets: []
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="barber"
+        basePath="/dashboard/barber/messages"
+        title="Messages"
+        subtitle="Clients, bookings, shop lines, and support."
+      />
+    );
+
+    expect(screen.getByTestId("message-thread-row-thread-client-new")).toBeInTheDocument();
+    expect(screen.queryByTestId("message-thread-row-thread-client-old")).not.toBeInTheDocument();
+    expect(screen.getByText("Newest direct thread")).toBeInTheDocument();
+    expect(screen.queryByText("Older direct thread")).not.toBeInTheDocument();
+  });
+
   it("renders the shop owner inbox with owner-specific filters on the shared messaging layout", () => {
     const clientThread = buildThread({
       id: "thread-client-1",

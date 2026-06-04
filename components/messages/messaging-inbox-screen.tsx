@@ -501,17 +501,35 @@ function getThreadActivityTime(thread: MessagingThreadSummary) {
   return Number.isNaN(activityTime) ? 0 : activityTime;
 }
 
-function getClientConversationKey(thread: MessagingThreadSummary) {
+function getThreadLifecycleRank(thread: MessagingThreadSummary) {
+  if (!thread.lifecycleStatus || thread.lifecycleStatus === "active") {
+    return 0;
+  }
+
+  if (thread.lifecycleStatus === "request_pending") {
+    return 1;
+  }
+
+  return 2;
+}
+
+function getDirectConversationKey(thread: MessagingThreadSummary, surface: MessagingSurface) {
   if (thread.threadType === "support" || thread.counterpart?.role === "platform_admin") {
     return `support:${thread.counterpart?.profileId ?? "bvrb3r"}`;
   }
 
   if (thread.threadType === "client_barber" && thread.counterpart?.profileId) {
-    return `barber:${thread.counterpart.profileId}`;
+    return `${surface}:client_barber:${thread.counterpart.profileId}`;
   }
 
-  if (thread.threadType === "client_shop") {
-    return `shop:${thread.locationId ?? thread.counterpart?.profileId ?? thread.id}`;
+  if (thread.threadType === "client_shop" && thread.counterpart?.profileId) {
+    const targetKind = thread.counterpart.role === "client" ? "client" : "shop";
+    return `${surface}:client_shop:${targetKind}:${thread.counterpart.profileId}`;
+  }
+
+  if (thread.threadType === "barber_shop" && thread.counterpart?.profileId) {
+    const targetKind = isBarberAccountRole(thread.counterpart.role) ? "barber" : "shop";
+    return `${surface}:barber_shop:${targetKind}:${thread.counterpart.profileId}`;
   }
 
   return `thread:${thread.id}`;
@@ -535,13 +553,16 @@ function orderAndDedupeThreads(threads: MessagingThreadSummary[], surface: Messa
   const threadMap = new Map<string, MessagingThreadSummary[]>();
 
   for (const thread of threads) {
-    const key = surface === "client" ? getClientConversationKey(thread) : `thread:${thread.id}`;
+    const key = getDirectConversationKey(thread, surface);
     threadMap.set(key, [...(threadMap.get(key) ?? []), thread]);
   }
 
   const relatedAppointmentContextsByThreadId = new Map<string, AppointmentContextView[]>();
   const aggregatedThreads = Array.from(threadMap.values()).map((group) => {
-    const sortedGroup = [...group].sort((left, right) => getThreadActivityTime(right) - getThreadActivityTime(left));
+    const sortedGroup = [...group].sort(
+      (left, right) => getThreadLifecycleRank(left) - getThreadLifecycleRank(right)
+        || getThreadActivityTime(right) - getThreadActivityTime(left)
+    );
     const primaryThread = sortedGroup[0] as MessagingThreadSummary;
     const relatedAppointmentContexts = getUniqueAppointmentContexts(sortedGroup);
     relatedAppointmentContextsByThreadId.set(primaryThread.id, relatedAppointmentContexts);

@@ -997,10 +997,22 @@ function getThreadSearchKey(thread: MessagingThreadSummary) {
       : `shop:${thread.locationId}`;
   }
 
+  if (thread.threadType === "client_shop" && thread.counterpart?.profileId) {
+    return thread.counterpart && isClientRole(thread.counterpart.role)
+      ? `client:${thread.counterpart.profileId}`
+      : `shop-profile:${thread.counterpart.profileId}`;
+  }
+
   if (thread.threadType === "barber_shop" && thread.locationId) {
     return thread.counterpart && isBarberRole(thread.counterpart.role)
       ? `barber:${thread.counterpart.profileId}`
       : `shop:${thread.locationId}`;
+  }
+
+  if (thread.threadType === "barber_shop" && thread.counterpart?.profileId) {
+    return thread.counterpart && isBarberRole(thread.counterpart.role)
+      ? `barber:${thread.counterpart.profileId}`
+      : `shop-profile:${thread.counterpart.profileId}`;
   }
 
   return null;
@@ -1361,6 +1373,41 @@ async function readPublicShopMetadataByLocationIds(
       buildShopMessagingMetadata(supabase, shop)
     ])
   );
+}
+
+async function readPublicShopMetadataByOwnerProfileIds(
+  supabase: SupabaseClient,
+  profileIds: string[]
+): Promise<Map<string, PublicMessagingMetadata>> {
+  const uniqueProfileIds = unique(profileIds.filter(Boolean));
+  if (!uniqueProfileIds.length) {
+    return new Map();
+  }
+
+  const result = await supabase
+    .from("shops")
+    .select("id, name, public_username, profile_photo_path, profile_photo_url, address, city, state, zip_code, owner_profile_id")
+    .in("owner_profile_id", uniqueProfileIds);
+
+  if (result.error) {
+    console.warn("[messages] shop_owner_public_identity_read_failed", {
+      profileCount: uniqueProfileIds.length,
+      postgresCode: result.error.code ?? null,
+      postgresMessage: result.error.message ?? null
+    });
+    return new Map();
+  }
+
+  const metadataByOwnerProfileId = new Map<string, PublicMessagingMetadata>();
+  for (const shop of (result.data ?? []) as ShopPublicIdentityRow[]) {
+    if (!shop.owner_profile_id || metadataByOwnerProfileId.has(shop.owner_profile_id)) {
+      continue;
+    }
+
+    metadataByOwnerProfileId.set(shop.owner_profile_id, buildShopMessagingMetadata(supabase, shop));
+  }
+
+  return metadataByOwnerProfileId;
 }
 
 function toAppointmentContextView(context: HydratedAppointmentContext): NonNullable<MessagingThreadSummary["appointmentContext"]> {
@@ -1903,6 +1950,16 @@ async function readThreadBundle(supabase: SupabaseClient, currentProfileId: stri
     supabase,
     [...participantProfileIds, ...senderProfileIds, currentProfileId]
   );
+  const publicShopMetadataByOwnerProfileId = await readPublicShopMetadataByOwnerProfileIds(
+    supabase,
+    participantProfileIds
+      .map((profileId) => profilesById.get(profileId) ?? null)
+      .filter((profile): profile is ProfileRow => profile !== null && isShopRole(profile.role))
+      .map((profile) => profile.id)
+  );
+  for (const [profileId, metadata] of publicShopMetadataByOwnerProfileId) {
+    publicMetadataByProfileId.set(profileId, metadata);
+  }
   const publicMetadataByLocationId = await readPublicShopMetadataByLocationIds(
     supabase,
     threads.map((thread) => thread.location_id).filter((value): value is string => Boolean(value))
@@ -3678,7 +3735,7 @@ export async function searchMessagingParticipants(user: UserAccount, query: stri
         publicProfileHref: metadata.publicProfileHref,
         profileHref: metadata.publicProfileHref,
         bookingHref: null,
-        existingThreadId: threadLookup.get(`shop:${shop.id}`) ?? null,
+        existingThreadId: threadLookup.get(`shop:${shop.id}`) ?? threadLookup.get(`shop-profile:${profileId}`) ?? null,
         ...action,
         subtitle: metadata.publicContextLine ?? "Shop"
       });
