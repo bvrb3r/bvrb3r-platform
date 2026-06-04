@@ -61,6 +61,16 @@ const shopRow = {
   owner_profile_id: "profile-owner"
 };
 
+const productionShopReference = "shop-the-bvrb3r-shop-universi-a02c68";
+const productionLocationRow = {
+  id: "11111111-2222-4333-8444-555555555555",
+  reference_code: productionShopReference,
+  name: "The BVRB3R Shop (University Mall)",
+  neighborhood: "2172 University Square Mall",
+  city: "Tampa",
+  state: "FL"
+};
+
 function createMessagingSupabaseMock(options: {
   actor: "client" | "barber" | "owner";
   existingShopThread?: boolean;
@@ -105,7 +115,8 @@ function createMessagingSupabaseMock(options: {
       message_threads: 0,
       thread_participants: 0,
       messages: 0
-    }
+    },
+    inFilters: [] as Array<{ table: string; column: string; values: unknown[] }>
   };
   const actorProfile = options.actor === "owner" ? ownerProfile : options.actor === "barber" ? barberProfile : clientProfile;
 
@@ -131,6 +142,7 @@ function createMessagingSupabaseMock(options: {
 
     in(column: string, values: unknown[]) {
       this.inFilter = { column, values };
+      state.inFilters.push({ table: this.table, column, values });
       return this;
     }
 
@@ -277,6 +289,9 @@ function createMessagingSupabaseMock(options: {
       }
 
       if (this.table === "locations") {
+        if (this.inFilter?.column === "reference_code" && this.inFilter.values.includes(productionShopReference)) {
+          return [productionLocationRow];
+        }
         return [];
       }
 
@@ -291,6 +306,9 @@ function createMessagingSupabaseMock(options: {
       }
 
       if (this.table === "staff_locations") {
+        if (this.inFilter?.column === "location_id" && this.inFilter.values.includes(productionLocationRow.id)) {
+          return [{ location_id: productionLocationRow.id, profile_id: "profile-owner" }];
+        }
         return [];
       }
 
@@ -384,6 +402,42 @@ describe("messaging create or open conversation", () => {
       expect.objectContaining({ thread_id: "thread-created-1", profile_id: "profile-barber", thread_role: "commission_barber" })
     ]));
     expect(supabase.state.messages).toHaveLength(1);
+  });
+
+  it("normalizes a public shop reference before UUID-backed message creation queries", async () => {
+    const supabase = createMessagingSupabaseMock({ actor: "barber" });
+    createSupabaseAdminClientMock.mockReturnValue(supabase.client);
+
+    const payload = await createMessagingThread({
+      role: "barber_user",
+      email: "barber@bvrb3r.test",
+      locationIds: []
+    } as never, {
+      threadType: "barber_shop",
+      profileId: "profile-owner",
+      locationId: productionShopReference
+    });
+
+    expect(payload.thread?.id).toBe("thread-created-1");
+    expect(payload.thread?.locationId).toBe(productionLocationRow.id);
+    expect(supabase.state.message_threads).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "thread-created-1",
+        location_id: productionLocationRow.id
+      })
+    ]));
+    expect(supabase.state.inFilters).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        table: "shops",
+        column: "id",
+        values: expect.arrayContaining([productionShopReference])
+      }),
+      expect.objectContaining({
+        table: "staff_locations",
+        column: "location_id",
+        values: expect.arrayContaining([productionShopReference])
+      })
+    ]));
   });
 
   it("creates and opens a first-time shop to client public username conversation", async () => {

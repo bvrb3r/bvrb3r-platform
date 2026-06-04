@@ -6,6 +6,10 @@ const migration = readFileSync(
   join(process.cwd(), "supabase/migrations/20260604120000_fix_messaging_rls_policies.sql"),
   "utf8"
 );
+const metadataMigration = readFileSync(
+  join(process.cwd(), "supabase/migrations/20260604133000_messages_metadata_column.sql"),
+  "utf8"
+);
 
 describe("messaging RLS policy migration", () => {
   it("binds message_threads select to the outer message_threads row", () => {
@@ -29,5 +33,10 @@ describe("messaging RLS policy migration", () => {
     expect(migration).toContain("from public.thread_participants self");
     expect(migration).toContain("self.thread_id = p_thread_id");
     expect(migration).toContain("self.profile_id = auth.uid()");
+  });
+
+  it("keeps the messages metadata column explicit for production schema drift repair", () => {
+    expect(metadataMigration).toMatch(/alter table public\.messages\s+add column if not exists metadata jsonb not null default '\{\}'::jsonb;/i);
+    expect(metadataMigration).toContain("notify pgrst, 'reload schema'");
   });
 });

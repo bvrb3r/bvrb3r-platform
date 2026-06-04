@@ -113,6 +113,11 @@ type LocationRow = {
   source?: "location" | "shop";
 };
 
+type ResolvedMessageShopTarget = {
+  location: LocationRow;
+  participants: ProfileRow[];
+};
+
 type MessageThreadRow = {
   id: string;
   thread_type: MessagingThreadType;
@@ -1320,7 +1325,7 @@ async function readLocationsByValues(supabase: SupabaseClient, values: string[])
 
   const uuidValues = uniqueValues.filter(isUuidLike);
   const referenceValues = uniqueValues.filter((value) => !isUuidLike(value));
-  const [uuidResult, referenceResult, shopIdResult, shopUsernameResult] = await Promise.all([
+  const [uuidResult, referenceResult, shopIdResult, shopUsernameResult, shopNameResult] = await Promise.all([
     uuidValues.length
       ? supabase
           .from("locations")
@@ -1333,15 +1338,23 @@ async function readLocationsByValues(supabase: SupabaseClient, values: string[])
           .select("id, reference_code, name, neighborhood, city, state")
           .in("reference_code", referenceValues)
       : Promise.resolve({ data: [], error: null }),
-    supabase
-      .from("shops")
-      .select("id, name, public_username, profile_photo_path, profile_photo_url, address, city, state, zip_code, owner_profile_id")
-      .in("id", uniqueValues),
+    uuidValues.length
+      ? supabase
+          .from("shops")
+          .select("id, name, public_username, profile_photo_path, profile_photo_url, address, city, state, zip_code, owner_profile_id")
+          .in("id", uuidValues)
+      : Promise.resolve({ data: [], error: null }),
     referenceValues.length
       ? supabase
           .from("shops")
           .select("id, name, public_username, profile_photo_path, profile_photo_url, address, city, state, zip_code, owner_profile_id")
           .in("public_username", referenceValues)
+      : Promise.resolve({ data: [], error: null }),
+    referenceValues.length
+      ? supabase
+          .from("shops")
+          .select("id, name, public_username, profile_photo_path, profile_photo_url, address, city, state, zip_code, owner_profile_id")
+          .in("name", referenceValues)
       : Promise.resolve({ data: [], error: null })
   ]);
 
@@ -1353,14 +1366,18 @@ async function readLocationsByValues(supabase: SupabaseClient, values: string[])
   for (const row of [...((uuidResult.data ?? []) as LocationRow[]), ...((referenceResult.data ?? []) as LocationRow[])]) {
     rowById.set(row.id, row);
   }
-  if (!shopIdResult.error && !shopUsernameResult.error) {
-    for (const shop of [...((shopIdResult.data ?? []) as ShopPublicIdentityRow[]), ...((shopUsernameResult.data ?? []) as ShopPublicIdentityRow[])]) {
+  if (!shopIdResult.error && !shopUsernameResult.error && !shopNameResult.error) {
+    for (const shop of [
+      ...((shopIdResult.data ?? []) as ShopPublicIdentityRow[]),
+      ...((shopUsernameResult.data ?? []) as ShopPublicIdentityRow[]),
+      ...((shopNameResult.data ?? []) as ShopPublicIdentityRow[])
+    ]) {
       rowById.set(shop.id, shopToLocationRow(shop));
     }
   } else {
     console.warn("[messages] shop_location_identity_read_failed", {
-      postgresCode: shopIdResult.error?.code ?? shopUsernameResult.error?.code ?? null,
-      postgresMessage: shopIdResult.error?.message ?? shopUsernameResult.error?.message ?? null
+      postgresCode: shopIdResult.error?.code ?? shopUsernameResult.error?.code ?? shopNameResult.error?.code ?? null,
+      postgresMessage: shopIdResult.error?.message ?? shopUsernameResult.error?.message ?? shopNameResult.error?.message ?? null
     });
   }
 
@@ -1445,6 +1462,24 @@ async function readShopParticipantsByLocationIds(supabase: SupabaseClient, locat
   }
 
   return grouped;
+}
+
+async function resolveMessageShopTarget(
+  supabase: SupabaseClient,
+  value: string
+): Promise<ResolvedMessageShopTarget | null> {
+  const lookup = await readLocationsByValues(supabase, [value]);
+  const location = lookup.byValue.get(value);
+  if (!location) {
+    return null;
+  }
+
+  const participantsByLocation = await readShopParticipantsByLocationIds(supabase, [location.id]);
+  const participants = participantsByLocation.get(location.id) ?? [];
+  return {
+    location,
+    participants
+  };
 }
 
 async function readOwnedShopIdsForProfile(supabase: SupabaseClient, profileId: string) {
@@ -3614,18 +3649,18 @@ export async function createMessagingThread(user: UserAccount, input: MessagingC
       })
     : undefined;
 
-  let locationLookup: Awaited<ReturnType<typeof readLocationsByValues>>;
+  let shopTarget: ResolvedMessageShopTarget | null;
   try {
-    locationLookup = await readLocationsByValues(supabase, [input.locationId, ...(actor.locationIds ?? [])]);
+    shopTarget = await resolveMessageShopTarget(supabase, input.locationId);
   } catch (error) {
     const failureDiagnostics = markCreateOpenFailure(shopThreadDiagnostics, "target_resolution", error);
     throw new MessagingServiceError("Unable to resolve the messaging target.", 500, "target_resolution_failed", "target_resolution", failureDiagnostics);
   }
-  const location = locationLookup.byValue.get(input.locationId);
-  if (!location) {
+  if (!shopTarget) {
     const failureDiagnostics = markCreateOpenFailure(shopThreadDiagnostics, "target_resolution");
     throw new MessagingServiceError("Shop location not found for messaging.", 404, "target_not_found", "target_resolution", failureDiagnostics);
   }
+  const { location, participants: shopParticipants } = shopTarget;
   if (shopThreadDiagnostics) {
     shopThreadDiagnostics.targetIdKind = location.source === "shop" ? "public_shop_identity" : "location";
   }
@@ -3642,8 +3677,6 @@ export async function createMessagingThread(user: UserAccount, input: MessagingC
       failureDiagnostics
     );
   }
-  const shopParticipantsByLocation = await readShopParticipantsByLocationIds(supabase, [location.id]);
-  const shopParticipants = shopParticipantsByLocation.get(location.id) ?? [];
   if (!shopParticipants.length) {
     const failureDiagnostics = markCreateOpenFailure(shopThreadDiagnostics, "target_resolution");
     throw new MessagingServiceError("No shop-facing participants are available for this location.", 400, "target_participants_missing", "target_resolution", failureDiagnostics);
