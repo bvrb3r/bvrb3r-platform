@@ -19,6 +19,7 @@ import {
   useDeclinePosPaymentRequestMutation,
   useMarkMessageThreadReadMutation,
   useMessageParticipantSearchQuery,
+  useMessageRequestActionMutation,
   useMessageThreadQuery,
   useMessageThreadsQuery,
   useSendMessageBroadcastMutation,
@@ -174,7 +175,7 @@ function getSurfaceCopy(surface: MessagingSurface) {
       shellLabel: "MESSAGES",
       composerPlaceholder: "Message this thread.",
       emptyTitle: "No conversations yet.",
-      emptyThreadCopy: "Search a public username to start a message.",
+      emptyThreadCopy: "Search a client, barber, or team member to start a message.",
       emptyPanelCopy: "Pick a conversation or open a direct shop line.",
       starterTitle: "New lines",
       starterCopy: "Open a real client or barber thread tied to this location.",
@@ -186,9 +187,9 @@ function getSurfaceCopy(surface: MessagingSurface) {
   if (surface === "barber") {
     return {
       shellLabel: "MESSAGES",
-      composerPlaceholder: "Message the client.",
-      emptyTitle: "No client messages yet.",
-      emptyThreadCopy: "Booked clients, requests, shop lines, and support conversations will appear here.",
+      composerPlaceholder: "Message this thread.",
+      emptyTitle: "No conversations yet.",
+      emptyThreadCopy: "Search a client or shop to start a message.",
       emptyPanelCopy: "Pick a client conversation or open one from a booked appointment.",
       starterTitle: "New messages",
       starterCopy: "Start from appointment-linked clients or connected shop lines.",
@@ -199,9 +200,9 @@ function getSurfaceCopy(surface: MessagingSurface) {
 
   return {
     shellLabel: "MESSAGES",
-    composerPlaceholder: "Message your barber, shop, or support.",
-    emptyTitle: "No messages yet.",
-    emptyThreadCopy: "Your barber, shop, booking, and support conversations will appear here.",
+    composerPlaceholder: "Message this thread.",
+    emptyTitle: "No conversations yet.",
+    emptyThreadCopy: "Search a barber or shop to start a message.",
     emptyPanelCopy: "Pick a conversation or start one from an appointment.",
     starterTitle: "New messages",
     starterCopy: "Start from a booked appointment, shop line, or support.",
@@ -239,6 +240,10 @@ function getRoleBadgeLabel(role?: string | null, threadType?: string) {
 }
 
 function getSurfaceThreadFilter(thread: MessagingThreadSummary, surface: MessagingSurface): ThreadFilter {
+  if (thread.lifecycleStatus === "request_pending") {
+    return "requests";
+  }
+
   if (surface !== "client" && isBookingRequestThread(thread)) {
     return "requests";
   }
@@ -353,6 +358,94 @@ function getConversationContextLine(thread: ActiveThread) {
   }
 
   return thread.locationContext?.locationLabel ?? "Direct conversation";
+}
+
+function getConversationTypeLabel(thread: MessagingThreadSummary | ActiveThread) {
+  if (thread?.appointmentContext) {
+    return "Booking conversation";
+  }
+
+  if (thread?.threadType === "support") {
+    return "Support conversation";
+  }
+
+  return "Direct conversation";
+}
+
+function getTargetAwareComposerPlaceholder(thread: ActiveThread, surface: MessagingSurface) {
+  if (!thread) {
+    return "Message this thread.";
+  }
+
+  if (thread.threadType === "support") {
+    return "Message support.";
+  }
+
+  const role = thread.counterpart?.role;
+  if (role === "client") {
+    return "Message the client.";
+  }
+
+  if (isBarberAccountRole(role)) {
+    return surface === "client" ? "Message your barber." : "Message the barber.";
+  }
+
+  if (role === "owner" || role === "shop_owner_user" || role === "manager" || role === "front_desk") {
+    return "Message the shop.";
+  }
+
+  return "Message this thread.";
+}
+
+function getRequestBanner(thread: ActiveThread) {
+  if (!thread?.request) {
+    return null;
+  }
+
+  if (thread.lifecycleStatus === "request_pending") {
+    return {
+      tone: "info" as const,
+      message: "Message request pending."
+    };
+  }
+
+  if (thread.lifecycleStatus === "request_declined") {
+    return {
+      tone: "error" as const,
+      message: "Message request declined."
+    };
+  }
+
+  if (thread.lifecycleStatus === "blocked") {
+    return {
+      tone: "error" as const,
+      message: "You cannot message this user."
+    };
+  }
+
+  if (thread.lifecycleStatus === "reported") {
+    return {
+      tone: "info" as const,
+      message: "Report submitted."
+    };
+  }
+
+  if (thread.request.status === "accepted") {
+    return {
+      tone: "success" as const,
+      message: "Message request accepted."
+    };
+  }
+
+  return null;
+}
+
+function isComposerDisabledByLifecycle(thread: ActiveThread) {
+  return thread?.lifecycleStatus === "request_declined"
+    || thread?.lifecycleStatus === "blocked"
+    || thread?.lifecycleStatus === "reported"
+    || (thread?.lifecycleStatus === "request_pending" && Boolean(thread.request?.isRecipient))
+    || (thread?.lifecycleStatus === "request_pending" && Boolean(thread.request?.isRequester && thread.request.firstMessageId));
 }
 
 function getPublicUsernameLine(thread: MessagingThreadSummary | ActiveThread) {
@@ -905,6 +998,7 @@ function ConversationPanel({
   paymentRequestActionId,
   threadError,
   onApprovePaymentRequest,
+  onRequestAction,
   onComposerChange,
   onDeclinePaymentRequest,
   onSend
@@ -925,6 +1019,7 @@ function ConversationPanel({
   paymentRequestActionId?: string | null;
   threadError: unknown;
   onApprovePaymentRequest: (paymentRequestId: string) => void;
+  onRequestAction: (requestId: string, action: "accept" | "decline" | "block" | "report") => void;
   onComposerChange: (value: string) => void;
   onDeclinePaymentRequest: (paymentRequestId: string) => void;
   onSend: () => void;
@@ -938,6 +1033,12 @@ function ConversationPanel({
   const hasAppointment = Boolean(activeThread?.appointmentContext);
   const usernameLine = getSecondaryUsernameLine(activeThread, displayName);
   const publicContextLine = getPublicContextLine(activeThread);
+  const conversationTypeLabel = getConversationTypeLabel(activeThread);
+  const requestBanner = getRequestBanner(activeThread);
+  const composerDisabledByLifecycle = isComposerDisabledByLifecycle(activeThread);
+  const composerPlaceholder = composerDisabledByLifecycle
+    ? requestBanner?.message ?? copy.composerPlaceholder
+    : getTargetAwareComposerPlaceholder(activeThread, surface);
   const profileHref = activeThread?.threadType === "support"
     ? null
     : activeThread?.counterpart?.publicProfileHref ?? null;
@@ -996,7 +1097,7 @@ function ConversationPanel({
                   </div>
                   {usernameLine ? <p className="mt-0.5 truncate text-xs font-bold text-[#d7ffab]/85">{usernameLine}</p> : null}
                   <p className="mt-0.5 truncate text-xs text-white/46">
-                    {publicContextLine ?? (activeThread.threadType === "support" ? "Support" : "Direct conversation")}
+                    {[conversationTypeLabel, publicContextLine].filter(Boolean).join(" - ")}
                   </p>
                 </div>
               </div>
@@ -1031,6 +1132,35 @@ function ConversationPanel({
             <div className="rounded-lg border border-[#a3ff12]/18 bg-[#a3ff12]/8 px-3 py-2 text-xs font-semibold text-[#d7ffab]">
               {getConversationContextLine(activeThread)}
             </div>
+
+            {requestBanner ? (
+              <div className={[
+                "rounded-lg border px-3 py-2 text-xs font-semibold",
+                requestBanner.tone === "success"
+                  ? "border-[#a3ff12]/22 bg-[#a3ff12]/8 text-[#d7ffab]"
+                  : requestBanner.tone === "error"
+                    ? "border-red-400/20 bg-red-500/10 text-red-100"
+                    : "border-white/10 bg-white/[0.035] text-white/64"
+              ].join(" ")}>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <span>{requestBanner.message}</span>
+                  {activeThread.request?.isRecipient && activeThread.lifecycleStatus === "request_pending" ? (
+                    <div className="flex flex-wrap gap-2">
+                      {(["accept", "decline", "block", "report"] as const).map((action) => (
+                        <button
+                          key={action}
+                          type="button"
+                          className="rounded-lg border border-white/10 px-2.5 py-1 text-[11px] font-bold text-white/72 transition hover:border-[#a3ff12]/28 hover:text-white"
+                          onClick={() => onRequestAction(activeThread.request!.id, action)}
+                        >
+                          {action === "accept" ? "Accept" : action === "decline" ? "Decline" : action === "block" ? "Block" : "Report"}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
 
             {relatedAppointmentContexts.length > 1 ? (
               <div className="flex gap-2 overflow-x-auto pb-1" data-testid="related-appointment-contexts">
@@ -1099,12 +1229,13 @@ function ConversationPanel({
                 onChange={(event) => onComposerChange(event.target.value)}
                 rows={1}
                 className="max-h-28 min-h-10 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-white outline-none placeholder:text-white/34"
-                placeholder={copy.composerPlaceholder}
+                placeholder={composerPlaceholder}
+                disabled={composerDisabledByLifecycle}
               />
               <button
                 type="button"
                 aria-label="Send message"
-                disabled={sendPending || !composerBody.trim()}
+                disabled={sendPending || composerDisabledByLifecycle || !composerBody.trim()}
                 onClick={onSend}
                 className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#a3ff12] text-[#050505] transition active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
               >
@@ -1140,6 +1271,7 @@ function ConversationModal({
   onApprovePaymentRequest,
   onComposerChange,
   onDeclinePaymentRequest,
+  onRequestAction,
   onSend,
   paymentRequestActionId,
   relatedAppointmentContexts,
@@ -1158,6 +1290,7 @@ function ConversationModal({
   onApprovePaymentRequest: (paymentRequestId: string) => void;
   onComposerChange: (value: string) => void;
   onDeclinePaymentRequest: (paymentRequestId: string) => void;
+  onRequestAction: (requestId: string, action: "accept" | "decline" | "block" | "report") => void;
   onSend: () => void;
   paymentRequestActionId?: string | null;
   relatedAppointmentContexts: AppointmentContextView[];
@@ -1183,6 +1316,7 @@ function ConversationModal({
           mode="modal"
           onClose={onClose}
           onApprovePaymentRequest={onApprovePaymentRequest}
+          onRequestAction={onRequestAction}
           relatedAppointmentContexts={relatedAppointmentContexts}
           paymentRequestActionId={paymentRequestActionId}
           sendPending={sendPending}
@@ -1368,6 +1502,7 @@ export function MessagingInboxScreen({
   const contactStarters = useMemo(() => threadsQuery.data?.eligibleContacts ?? [], [threadsQuery.data?.eligibleContacts]);
   const broadcastTargets = useMemo(() => threadsQuery.data?.broadcastTargets ?? [], [threadsQuery.data?.broadcastTargets]);
   const activeThreadId = usesModalThreadView ? modalThreadId ?? undefined : selectedThreadId ?? threads[0]?.id;
+  const requestActionMutation = useMessageRequestActionMutation(activeThreadId);
   const threadQuery = useMessageThreadQuery(activeThreadId);
   const participantSearchQuery = useMessageParticipantSearchQuery(participantSearch, composeOpen && available);
   const isUnifiedSearchActive = threadSearch.trim().length >= 2;
@@ -1391,6 +1526,10 @@ export function MessagingInboxScreen({
     [threads]
   );
   const activeThreadFilters = surface === "barber" ? barberThreadFilters : surface === "shop" ? shopThreadFilters : threadFilters;
+  const requestCount = useMemo(
+    () => threads.filter((thread) => thread.lifecycleStatus === "request_pending" && thread.request?.isRecipient).length,
+    [threads]
+  );
   const displayedThreads = useMemo(
     () => filterThreads(threads, threadFilter, threadSearch, surface),
     [surface, threadFilter, threadSearch, threads]
@@ -1566,6 +1705,29 @@ export function MessagingInboxScreen({
       setStatusUpdate({ tone: "error", message: readableError(error, "Unable to decline this payment request.") });
     } finally {
       setPaymentRequestActionId(null);
+    }
+  }
+
+  async function handleRequestAction(requestId: string, action: "accept" | "decline" | "block" | "report") {
+    setStatusUpdate(null);
+    try {
+      await requestActionMutation.mutateAsync({
+        requestId,
+        action,
+        reason: action === "report" ? "Message request report" : undefined
+      });
+      setStatusUpdate({
+        tone: action === "accept" ? "success" : action === "decline" ? "info" : "error",
+        message: action === "accept"
+          ? "Message request accepted."
+          : action === "decline"
+            ? "Message request declined."
+            : action === "block"
+              ? "You cannot message this user."
+              : "Report submitted."
+      });
+    } catch (error) {
+      setStatusUpdate({ tone: "error", message: readableError(error, "Unable to update message request.") });
     }
   }
 
@@ -1748,7 +1910,7 @@ export function MessagingInboxScreen({
                   className="h-8 rounded-lg px-3 text-xs"
                   onClick={() => setThreadFilter(filter.key)}
                 >
-                  {filter.label}
+                  {filter.key === "requests" && requestCount ? `${filter.label} ${requestCount}` : filter.label}
                 </FilterChip>
               ))}
             </div>
@@ -1948,6 +2110,7 @@ export function MessagingInboxScreen({
               isLoading={threadQuery.isLoading}
               messages={messages}
               onApprovePaymentRequest={(paymentRequestId) => void handleApprovePaymentRequest(paymentRequestId)}
+              onRequestAction={(requestId, action) => void handleRequestAction(requestId, action)}
               relatedAppointmentContexts={relatedAppointmentContexts}
               selectedThreadId={selectedThreadId}
               paymentRequestActionId={paymentRequestActionId}
@@ -1972,6 +2135,7 @@ export function MessagingInboxScreen({
           isLoading={threadQuery.isLoading}
           messages={messages}
           onApprovePaymentRequest={(paymentRequestId) => void handleApprovePaymentRequest(paymentRequestId)}
+          onRequestAction={(requestId, action) => void handleRequestAction(requestId, action)}
           relatedAppointmentContexts={relatedAppointmentContexts}
           paymentRequestActionId={paymentRequestActionId}
           sendPending={sendMessageMutation.isPending}

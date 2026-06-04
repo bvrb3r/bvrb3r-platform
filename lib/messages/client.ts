@@ -120,6 +120,27 @@ export function useSendMessageMutation(threadId?: string) {
   });
 }
 
+export function useMessageRequestActionMutation(threadId?: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ requestId, action, reason, details }: { requestId: string; action: "accept" | "decline" | "block" | "report"; reason?: string; details?: string }) =>
+      requestJson<MessagingThreadPayload>(`/api/messages/requests/${requestId}/${action}`, {
+        method: "POST",
+        body: JSON.stringify({ reason, details })
+      }),
+    onSuccess: async (payload) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["messages", "threads"] }),
+        queryClient.invalidateQueries({ queryKey: ["messages", "threads", threadId] }),
+        payload.thread?.id
+          ? queryClient.setQueryData(["messages", "threads", payload.thread.id], payload)
+          : Promise.resolve()
+      ]);
+    }
+  });
+}
+
 function invalidateMessageThreads(queryClient: ReturnType<typeof useQueryClient>, threadId?: string) {
   return Promise.all([
     queryClient.invalidateQueries({ queryKey: ["messages", "threads"] }),

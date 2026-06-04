@@ -147,6 +147,29 @@ type MessageRow = {
   created_at: string;
 };
 
+type MessageRequestStatus = "pending" | "accepted" | "declined" | "blocked" | "reported";
+type MessageThreadLifecycleStatus = "active" | "request_pending" | "request_declined" | "blocked" | "reported" | "closed";
+
+type MessageThreadRequestRow = {
+  id: string;
+  thread_id: string;
+  requested_by_profile_id: string;
+  requested_to_profile_id: string;
+  request_status: MessageRequestStatus;
+  first_message_id: string | null;
+  accepted_at: string | null;
+  accepted_by_profile_id: string | null;
+  declined_at: string | null;
+  declined_by_profile_id: string | null;
+  blocked_at: string | null;
+  blocked_by_profile_id: string | null;
+  reported_at: string | null;
+  reported_by_profile_id: string | null;
+  report_reason: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 type MessagingActorContext = {
   profile: ProfileRow;
   kind: "client" | "barber" | "shop";
@@ -256,6 +279,16 @@ export type MessagingThreadSummary = {
     senderName: string | null;
   } | null;
   hasUnread?: boolean;
+  lifecycleStatus?: MessageThreadLifecycleStatus;
+  request?: {
+    id: string;
+    status: MessageRequestStatus;
+    requestedByProfileId: string;
+    requestedToProfileId: string;
+    isRequester: boolean;
+    isRecipient: boolean;
+    firstMessageId: string | null;
+  } | null;
 };
 
 export type MessagingInboxCandidate = {
@@ -430,6 +463,7 @@ type ThreadBundle = {
   threads: MessageThreadRow[];
   participants: ThreadParticipantRow[];
   messages: MessageRow[];
+  requestsByThreadId: Map<string, MessageThreadRequestRow>;
   profilesById: Map<string, ProfileRow>;
   publicMetadataByProfileId: Map<string, PublicMessagingMetadata>;
   publicMetadataByLocationId: Map<string, PublicMessagingMetadata>;
@@ -547,6 +581,54 @@ function markCreateOpenFailure(
   diagnostics.supabaseMessage = supabaseDetails.supabaseMessage;
   diagnostics.supabaseDetails = supabaseDetails.supabaseDetails;
   return { ...diagnostics };
+}
+
+function isMissingMessageLifecycleTable(error: unknown) {
+  const candidate = error as { code?: string; message?: string } | null | undefined;
+  const message = candidate?.message ?? "";
+  return candidate?.code === "42P01"
+    || candidate?.code === "PGRST205"
+    || (/message_thread_requests|message_user_blocks|message_reports/i.test(message) && /schema cache|relation|table|could not find/i.test(message));
+}
+
+function toThreadLifecycleStatus(request: MessageThreadRequestRow | null): MessageThreadLifecycleStatus {
+  if (!request) {
+    return "active";
+  }
+
+  if (request.request_status === "pending") {
+    return "request_pending";
+  }
+
+  if (request.request_status === "declined") {
+    return "request_declined";
+  }
+
+  if (request.request_status === "blocked") {
+    return "blocked";
+  }
+
+  if (request.request_status === "reported") {
+    return "reported";
+  }
+
+  return "active";
+}
+
+function requestViewForThread(request: MessageThreadRequestRow | null, currentProfileId: string): MessagingThreadSummary["request"] {
+  if (!request) {
+    return null;
+  }
+
+  return {
+    id: request.id,
+    status: request.request_status,
+    requestedByProfileId: request.requested_by_profile_id,
+    requestedToProfileId: request.requested_to_profile_id,
+    isRequester: request.requested_by_profile_id === currentProfileId,
+    isRecipient: request.requested_to_profile_id === currentProfileId,
+    firstMessageId: request.first_message_id
+  };
 }
 
 function shopToLocationRow(shop: ShopPublicIdentityRow): LocationRow {
@@ -761,6 +843,48 @@ async function selectMessagesForThreads(input: {
     })),
     error: null
   };
+}
+
+async function readMessageThreadRequestsByThreadIds(supabase: SupabaseClient, threadIds: string[]) {
+  const uniqueThreadIds = unique(threadIds.filter(Boolean));
+  if (!uniqueThreadIds.length) {
+    return new Map<string, MessageThreadRequestRow>();
+  }
+
+  const result = await supabase
+    .from("message_thread_requests")
+    .select("id, thread_id, requested_by_profile_id, requested_to_profile_id, request_status, first_message_id, accepted_at, accepted_by_profile_id, declined_at, declined_by_profile_id, blocked_at, blocked_by_profile_id, reported_at, reported_by_profile_id, report_reason, created_at, updated_at")
+    .in("thread_id", uniqueThreadIds);
+
+  if (result.error) {
+    if (isMissingMessageLifecycleTable(result.error)) {
+      console.warn("[messages] message_request_lifecycle_table_missing", {
+        threadCount: uniqueThreadIds.length,
+        postgresCode: result.error.code ?? null,
+        postgresMessage: result.error.message ?? null
+      });
+      return new Map<string, MessageThreadRequestRow>();
+    }
+
+    throw new MessagingServiceError("Unable to load message request state.", 500);
+  }
+
+  return new Map(((result.data ?? []) as MessageThreadRequestRow[]).map((row) => [row.thread_id, row]));
+}
+
+async function readThreadMessagesForLifecycle(supabase: SupabaseClient, threadId: string) {
+  const result = await selectMessagesForThreads({
+    supabase,
+    threadIds: [threadId],
+    ascending: true,
+    errorMessage: "Unable to load thread messages."
+  });
+
+  if (result.error) {
+    throw new MessagingServiceError("Unable to load thread messages.", 500);
+  }
+
+  return (result.data ?? []) as MessageRow[];
 }
 
 async function readPosPaymentRequestSnapshots(
@@ -1658,6 +1782,7 @@ function buildThreadSummary(input: {
   latestMessageByThreadId: Map<string, MessageRow>;
   appointmentContexts: Map<string, HydratedAppointmentContext>;
   locationLabels: Map<string, string>;
+  requestsByThreadId: Map<string, MessageThreadRequestRow>;
 }): MessagingThreadSummary {
   const threadParticipants = input.participants.filter((participant) => participant.thread_id === input.thread.id);
   const currentParticipant = threadParticipants.find((participant) => participant.profile_id === input.currentProfileId) ?? null;
@@ -1682,6 +1807,7 @@ function buildThreadSummary(input: {
     currentProfileId: input.currentProfileId,
     lastReadAt: currentParticipant?.last_read_at ?? null
   });
+  const request = input.requestsByThreadId.get(input.thread.id) ?? null;
 
   return {
     id: input.thread.id,
@@ -1720,7 +1846,9 @@ function buildThreadSummary(input: {
             : null
         }
       : null,
-    hasUnread
+    hasUnread,
+    lifecycleStatus: toThreadLifecycleStatus(request),
+    request: requestViewForThread(request, input.currentProfileId)
   };
 }
 
@@ -1730,6 +1858,7 @@ async function readThreadBundle(supabase: SupabaseClient, currentProfileId: stri
       threads: [],
       participants: [],
       messages: [],
+      requestsByThreadId: new Map<string, MessageThreadRequestRow>(),
       profilesById: new Map<string, ProfileRow>(),
       publicMetadataByProfileId: new Map<string, PublicMessagingMetadata>(),
       publicMetadataByLocationId: new Map<string, PublicMessagingMetadata>(),
@@ -1739,7 +1868,7 @@ async function readThreadBundle(supabase: SupabaseClient, currentProfileId: stri
     };
   }
 
-  const [threadsResult, participantsResult, messagesResult] = await Promise.all([
+  const [threadsResult, participantsResult, messagesResult, requestsByThreadId] = await Promise.all([
     supabase
       .from("message_threads")
       .select("id, thread_type, appointment_id, location_id, created_at, updated_at, created_by_profile_id")
@@ -1754,7 +1883,8 @@ async function readThreadBundle(supabase: SupabaseClient, currentProfileId: stri
       threadIds,
       ascending: false,
       errorMessage: "Unable to load the messaging inbox."
-    })
+    }),
+    readMessageThreadRequestsByThreadIds(supabase, threadIds)
   ]);
 
   if (threadsResult.error || participantsResult.error || messagesResult.error) {
@@ -1811,6 +1941,7 @@ async function readThreadBundle(supabase: SupabaseClient, currentProfileId: stri
     threads,
     participants,
     messages,
+    requestsByThreadId,
     profilesById,
     publicMetadataByProfileId,
     publicMetadataByLocationId,
@@ -2211,6 +2342,83 @@ async function findSharedParticipantThreadIds(input: {
     .filter((threadId) => actorThreadIds.has(threadId)));
 }
 
+async function assertProfilesCanMessage(supabase: SupabaseClient, actorProfileId: string, targetProfileId: string) {
+  const [actorBlocksTarget, targetBlocksActor] = await Promise.all([
+    supabase
+      .from("message_user_blocks")
+      .select("id")
+      .eq("blocker_profile_id", actorProfileId)
+      .eq("blocked_profile_id", targetProfileId)
+      .maybeSingle(),
+    supabase
+      .from("message_user_blocks")
+      .select("id")
+      .eq("blocker_profile_id", targetProfileId)
+      .eq("blocked_profile_id", actorProfileId)
+      .maybeSingle()
+  ]);
+
+  const blockingError = actorBlocksTarget.error ?? targetBlocksActor.error ?? null;
+  if (blockingError) {
+    if (isMissingMessageLifecycleTable(blockingError)) {
+      return;
+    }
+
+    throw new MessagingServiceError("Unable to verify message block state.", 500);
+  }
+
+  if (actorBlocksTarget.data || targetBlocksActor.data) {
+    throw new MessagingServiceError("You cannot message this user.", 403, "message_blocked", "block_check");
+  }
+}
+
+async function ensureMessageThreadRequest(input: {
+  supabase: SupabaseClient;
+  threadId: string;
+  requestedByProfileId: string;
+  requestedToProfileId: string;
+}) {
+  const existing = await input.supabase
+    .from("message_thread_requests")
+    .select("id")
+    .eq("thread_id", input.threadId)
+    .maybeSingle();
+
+  if (existing.error) {
+    if (isMissingMessageLifecycleTable(existing.error)) {
+      console.warn("[messages] message_request_lifecycle_table_missing", {
+        threadId: input.threadId,
+        postgresCode: existing.error.code ?? null,
+        postgresMessage: existing.error.message ?? null
+      });
+      return;
+    }
+
+    throw new MessagingServiceError("Unable to resolve message request state.", 500);
+  }
+
+  if (existing.data) {
+    return;
+  }
+
+  const insert = await input.supabase
+    .from("message_thread_requests")
+    .insert({
+      thread_id: input.threadId,
+      requested_by_profile_id: input.requestedByProfileId,
+      requested_to_profile_id: input.requestedToProfileId,
+      request_status: "pending"
+    });
+
+  if (insert.error) {
+    if (isMissingMessageLifecycleTable(insert.error)) {
+      return;
+    }
+
+    throw new MessagingServiceError("Unable to create the message request.", 500);
+  }
+}
+
 async function readRelatedConversationThreadIds(input: {
   supabase: SupabaseClient;
   actorProfileId: string;
@@ -2343,6 +2551,11 @@ async function createOrGetDirectClientBarberThread(input: {
   barberProfile: ProfileRow;
   createdByProfileId: string;
 }) {
+  const requestedToProfileId = input.createdByProfileId === input.clientProfile.id
+    ? input.barberProfile.id
+    : input.clientProfile.id;
+  await assertProfilesCanMessage(input.supabase, input.createdByProfileId, requestedToProfileId);
+
   const sharedThreadIds = await findSharedParticipantThreadIds({
     supabase: input.supabase,
     actorProfileId: input.clientProfile.id,
@@ -2410,7 +2623,7 @@ async function createOrGetDirectClientBarberThread(input: {
     .insert({
       thread_id: threadId,
       sender_profile_id: null,
-      body: `Conversation opened with ${input.barberProfile.full_name ?? input.barberProfile.email}.`,
+      body: `Direct conversation opened with ${getPublicFallbackName(requestedToProfileId === input.barberProfile.id ? input.barberProfile.role : input.clientProfile.role)}.`,
       message_type: "system",
       created_at: createdAt
     });
@@ -2418,6 +2631,13 @@ async function createOrGetDirectClientBarberThread(input: {
   if (systemMessageInsert.error) {
     throw new MessagingServiceError("Unable to write the barber conversation system message.", 500);
   }
+
+  await ensureMessageThreadRequest({
+    supabase: input.supabase,
+    threadId,
+    requestedByProfileId: input.createdByProfileId,
+    requestedToProfileId
+  });
 
   return threadId;
 }
@@ -2486,6 +2706,10 @@ async function createOrGetShopThread(input: {
   shopParticipants: ProfileRow[];
   counterpartProfile: ProfileRow;
   createdByProfileId: string;
+  request?: {
+    requestedByProfileId: string;
+    requestedToProfileId: string;
+  } | null;
   diagnostics?: ReturnType<typeof buildCreateOpenDiagnostics>;
 }) {
   const dbLocationId = input.location && input.location.source !== "shop" ? input.location.id : null;
@@ -2541,6 +2765,10 @@ async function createOrGetShopThread(input: {
 
   const participantRows = (participantsResult.data ?? []) as ThreadParticipantRow[];
   const shopParticipantIds = new Set(input.shopParticipants.map((profile) => profile.id));
+  if (input.request) {
+    await assertProfilesCanMessage(input.supabase, input.request.requestedByProfileId, input.request.requestedToProfileId);
+  }
+
   const matchedThread = candidateThreads.find((thread) => {
     const threadParticipants = participantRows.filter((participant) => participant.thread_id === thread.id);
     const hasCounterpart = threadParticipants.some((participant) => participant.profile_id === input.counterpartProfile.id);
@@ -2635,6 +2863,16 @@ async function createOrGetShopThread(input: {
   if (input.diagnostics) {
     input.diagnostics.systemMessageInserted = true;
   }
+
+  if (input.request) {
+    await ensureMessageThreadRequest({
+      supabase: input.supabase,
+      threadId,
+      requestedByProfileId: input.request.requestedByProfileId,
+      requestedToProfileId: input.request.requestedToProfileId
+    });
+  }
+
   return threadId;
 }
 
@@ -2878,7 +3116,8 @@ export async function getMessagingInboxPayload(user: UserAccount): Promise<Messa
       publicMetadataByLocationId: bundle.publicMetadataByLocationId,
       latestMessageByThreadId: bundle.latestMessageByThreadId,
       appointmentContexts: bundle.appointmentContexts,
-      locationLabels: bundle.locationLabels
+      locationLabels: bundle.locationLabels,
+      requestsByThreadId: bundle.requestsByThreadId
     })
   );
   const [eligibleAppointments, contactData] = await Promise.all([
@@ -2967,7 +3206,8 @@ export async function getMessagingThreadPayload(user: UserAccount, threadId: str
     publicMetadataByLocationId: bundle.publicMetadataByLocationId,
     latestMessageByThreadId: bundle.latestMessageByThreadId,
     appointmentContexts: bundle.appointmentContexts,
-    locationLabels: bundle.locationLabels
+    locationLabels: bundle.locationLabels,
+    requestsByThreadId: bundle.requestsByThreadId
   });
 
   const relatedAppointmentContexts = unique(
@@ -3077,7 +3317,8 @@ export async function searchMessagingParticipants(user: UserAccount, query: stri
         publicMetadataByLocationId: bundle.publicMetadataByLocationId,
         latestMessageByThreadId: bundle.latestMessageByThreadId,
         appointmentContexts: bundle.appointmentContexts,
-        locationLabels: bundle.locationLabels
+        locationLabels: bundle.locationLabels,
+        requestsByThreadId: bundle.requestsByThreadId
       })
     ));
   } catch (error) {
@@ -3702,6 +3943,10 @@ export async function createMessagingThread(user: UserAccount, input: MessagingC
       shopParticipants,
       counterpartProfile,
       createdByProfileId: actor.profile.id,
+      request: {
+        requestedByProfileId: actor.profile.id,
+        requestedToProfileId: counterpartProfile.id
+      },
       diagnostics: shopThreadDiagnostics
     });
 
@@ -3753,6 +3998,10 @@ export async function createMessagingThread(user: UserAccount, input: MessagingC
     shopParticipants,
     counterpartProfile: actor.profile,
     createdByProfileId: actor.profile.id,
+    request: {
+      requestedByProfileId: actor.profile.id,
+      requestedToProfileId: primaryShopProfile.id
+    },
     diagnostics: shopThreadDiagnostics
   });
 
@@ -3883,6 +4132,32 @@ export async function sendThreadMessage(user: UserAccount, threadId: string, inp
     throw new MessagingServiceError("Only thread participants can send messages.", 403);
   }
 
+  const requestState = await readMessageThreadRequestsByThreadIds(supabase, [threadId]);
+  const request = requestState.get(threadId) ?? null;
+  if (request?.request_status === "declined") {
+    throw new MessagingServiceError("Message request declined.", 403, "message_request_declined", "request_lifecycle");
+  }
+  if (request?.request_status === "blocked") {
+    throw new MessagingServiceError("You cannot message this user.", 403, "message_blocked", "request_lifecycle");
+  }
+  if (request?.request_status === "reported") {
+    throw new MessagingServiceError("Report submitted.", 403, "message_reported", "request_lifecycle");
+  }
+  if (request?.request_status === "pending") {
+    if (request.requested_to_profile_id === actor.profile.id) {
+      throw new MessagingServiceError("Accept this message request before replying.", 403, "message_request_pending", "request_lifecycle");
+    }
+
+    const existingMessages = await readThreadMessagesForLifecycle(supabase, threadId);
+    const introMessages = existingMessages.filter((message) =>
+      message.sender_profile_id === actor.profile.id
+      && message.message_type === "text"
+    );
+    if (introMessages.length >= 1) {
+      throw new MessagingServiceError("Message request pending.", 403, "message_request_pending_intro_sent", "request_lifecycle");
+    }
+  }
+
   const normalizedBody = normalizeMessageBody(input.body);
   const createdAt = new Date().toISOString();
   const insertResult = await supabase
@@ -3911,6 +4186,20 @@ export async function sendThreadMessage(user: UserAccount, threadId: string, inp
   }
 
   const message = insertResult.data as MessageRow;
+  if (request?.request_status === "pending" && request.requested_by_profile_id === actor.profile.id && !request.first_message_id) {
+    const requestUpdate = await supabase
+      .from("message_thread_requests")
+      .update({
+        first_message_id: message.id,
+        updated_at: createdAt
+      })
+      .eq("id", request.id);
+
+    if (requestUpdate.error && !isMissingMessageLifecycleTable(requestUpdate.error)) {
+      throw new MessagingServiceError("Unable to update message request state.", 500);
+    }
+  }
+
   const senderMetadata = await readPublicMessagingMetadataByProfileIds(supabase, [actor.profile.id])
     .then((metadata) => metadata.get(actor.profile.id) ?? null)
     .catch(() => null);
@@ -3929,6 +4218,147 @@ export async function sendThreadMessage(user: UserAccount, threadId: string, inp
   };
 }
 
+async function readMessageRequestForAction(supabase: SupabaseClient, requestId: string, actorProfileId: string) {
+  const result = await supabase
+    .from("message_thread_requests")
+    .select("id, thread_id, requested_by_profile_id, requested_to_profile_id, request_status, first_message_id, accepted_at, accepted_by_profile_id, declined_at, declined_by_profile_id, blocked_at, blocked_by_profile_id, reported_at, reported_by_profile_id, report_reason, created_at, updated_at")
+    .eq("id", requestId)
+    .maybeSingle();
+
+  if (result.error) {
+    throw new MessagingServiceError("Unable to load the message request.", 500);
+  }
+
+  if (!result.data) {
+    throw new MessagingServiceError("Message request not found.", 404);
+  }
+
+  const request = result.data as MessageThreadRequestRow;
+  if (request.requested_by_profile_id !== actorProfileId && request.requested_to_profile_id !== actorProfileId) {
+    throw new MessagingServiceError("Only request participants can update this request.", 403);
+  }
+
+  return request;
+}
+
+export async function updateMessageThreadRequest(user: UserAccount, requestId: string, action: "accept" | "decline" | "block" | "report", input: { reason?: string | null; details?: string | null } = {}) {
+  const supabase = getSupabase();
+  if (!supabase) {
+    throw new MessagingServiceError("Messaging is available when Supabase is configured.", 503);
+  }
+
+  const actor = await resolveMessagingActor(user, supabase);
+  const request = await readMessageRequestForAction(supabase, requestId, actor.profile.id);
+  const now = new Date().toISOString();
+
+  if (action === "accept") {
+    if (request.requested_to_profile_id !== actor.profile.id) {
+      throw new MessagingServiceError("Only the recipient can accept this request.", 403);
+    }
+
+    const update = await supabase
+      .from("message_thread_requests")
+      .update({
+        request_status: "accepted",
+        accepted_at: now,
+        accepted_by_profile_id: actor.profile.id,
+        updated_at: now
+      })
+      .eq("id", request.id);
+
+    if (update.error) {
+      throw new MessagingServiceError("Unable to accept the message request.", 500);
+    }
+
+    return getMessagingThreadPayload(user, request.thread_id);
+  }
+
+  if (action === "decline") {
+    if (request.requested_to_profile_id !== actor.profile.id) {
+      throw new MessagingServiceError("Only the recipient can decline this request.", 403);
+    }
+
+    const update = await supabase
+      .from("message_thread_requests")
+      .update({
+        request_status: "declined",
+        declined_at: now,
+        declined_by_profile_id: actor.profile.id,
+        updated_at: now
+      })
+      .eq("id", request.id);
+
+    if (update.error) {
+      throw new MessagingServiceError("Unable to decline the message request.", 500);
+    }
+
+    return getMessagingThreadPayload(user, request.thread_id);
+  }
+
+  if (action === "block") {
+    const blockedProfileId = actor.profile.id === request.requested_by_profile_id
+      ? request.requested_to_profile_id
+      : request.requested_by_profile_id;
+    const [requestUpdate, blockInsert] = await Promise.all([
+      supabase
+        .from("message_thread_requests")
+        .update({
+          request_status: "blocked",
+          blocked_at: now,
+          blocked_by_profile_id: actor.profile.id,
+          updated_at: now
+        })
+        .eq("id", request.id),
+      supabase
+        .from("message_user_blocks")
+        .insert({
+          blocker_profile_id: actor.profile.id,
+          blocked_profile_id: blockedProfileId,
+          thread_id: request.thread_id,
+          reason: input.reason ?? null
+        })
+    ]);
+
+    if (requestUpdate.error || blockInsert.error) {
+      throw new MessagingServiceError("Unable to block this message request.", 500);
+    }
+
+    return getMessagingThreadPayload(user, request.thread_id);
+  }
+
+  const reportedProfileId = actor.profile.id === request.requested_by_profile_id
+    ? request.requested_to_profile_id
+    : request.requested_by_profile_id;
+  const reason = cleanText(input.reason) ?? "Message request report";
+  const [requestUpdate, reportInsert] = await Promise.all([
+    supabase
+      .from("message_thread_requests")
+      .update({
+        request_status: "reported",
+        reported_at: now,
+        reported_by_profile_id: actor.profile.id,
+        report_reason: reason,
+        updated_at: now
+      })
+      .eq("id", request.id),
+    supabase
+      .from("message_reports")
+      .insert({
+        thread_id: request.thread_id,
+        reported_by_profile_id: actor.profile.id,
+        reported_profile_id: reportedProfileId,
+        reason,
+        details: input.details ?? null
+      })
+  ]);
+
+  if (requestUpdate.error || reportInsert.error) {
+    throw new MessagingServiceError("Unable to report this message request.", 500);
+  }
+
+  return getMessagingThreadPayload(user, request.thread_id);
+}
+
 type ArchitectMessagingActor = Pick<UserAccount, "id" | "email" | "name" | "role">;
 
 function buildArchitectSupportThreadSummary(input: {
@@ -3941,6 +4371,7 @@ function buildArchitectSupportThreadSummary(input: {
   latestMessageByThreadId: Map<string, MessageRow>;
   appointmentContexts: Map<string, HydratedAppointmentContext>;
   locationLabels: Map<string, string>;
+  requestsByThreadId: Map<string, MessageThreadRequestRow>;
   messages: MessageRow[];
 }): ArchitectSupportThreadSummary {
   const summary = buildThreadSummary({
@@ -3952,7 +4383,8 @@ function buildArchitectSupportThreadSummary(input: {
     publicMetadataByLocationId: input.publicMetadataByLocationId,
     latestMessageByThreadId: input.latestMessageByThreadId,
     appointmentContexts: input.appointmentContexts,
-    locationLabels: input.locationLabels
+    locationLabels: input.locationLabels,
+    requestsByThreadId: input.requestsByThreadId
   });
   const supportParticipants = input.participants.filter((participant) => participant.thread_id === input.thread.id);
   const clientParticipant = supportParticipants.find((participant) => participant.profile_id !== input.supportProfileId) ?? null;
@@ -4028,6 +4460,7 @@ export async function getArchitectSupportInboxPayload(actor: ArchitectMessagingA
         latestMessageByThreadId: bundle.latestMessageByThreadId,
         appointmentContexts: bundle.appointmentContexts,
         locationLabels: bundle.locationLabels,
+        requestsByThreadId: bundle.requestsByThreadId,
         messages: bundle.messages
       })
     )
@@ -4081,6 +4514,7 @@ export async function getArchitectSupportThreadPayload(
     latestMessageByThreadId: bundle.latestMessageByThreadId,
     appointmentContexts: bundle.appointmentContexts,
     locationLabels: bundle.locationLabels,
+    requestsByThreadId: bundle.requestsByThreadId,
     messages: bundle.messages
   });
 

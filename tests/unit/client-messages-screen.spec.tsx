@@ -9,6 +9,7 @@ const {
   useMessageParticipantSearchQueryMock,
   useCreateMessageThreadMutationMock,
   useMarkMessageThreadReadMutationMock,
+  useMessageRequestActionMutationMock,
   useSendMessageMutationMock,
   useApprovePosPaymentRequestMutationMock,
   useDeclinePosPaymentRequestMutationMock,
@@ -20,6 +21,7 @@ const {
   useMessageParticipantSearchQueryMock: vi.fn(),
   useCreateMessageThreadMutationMock: vi.fn(),
   useMarkMessageThreadReadMutationMock: vi.fn(),
+  useMessageRequestActionMutationMock: vi.fn(),
   useSendMessageMutationMock: vi.fn(),
   useApprovePosPaymentRequestMutationMock: vi.fn(),
   useDeclinePosPaymentRequestMutationMock: vi.fn(),
@@ -59,6 +61,7 @@ vi.mock("@/lib/messages/client", () => ({
   useMessageParticipantSearchQuery: useMessageParticipantSearchQueryMock,
   useCreateMessageThreadMutation: useCreateMessageThreadMutationMock,
   useMarkMessageThreadReadMutation: useMarkMessageThreadReadMutationMock,
+  useMessageRequestActionMutation: useMessageRequestActionMutationMock,
   useSendMessageMutation: useSendMessageMutationMock,
   useApprovePosPaymentRequestMutation: useApprovePosPaymentRequestMutationMock,
   useDeclinePosPaymentRequestMutation: useDeclinePosPaymentRequestMutationMock,
@@ -163,6 +166,7 @@ describe("client messages screen", () => {
     useMessageParticipantSearchQueryMock.mockReset();
     useCreateMessageThreadMutationMock.mockReset();
     useMarkMessageThreadReadMutationMock.mockReset();
+    useMessageRequestActionMutationMock.mockReset();
     useSendMessageMutationMock.mockReset();
     useApprovePosPaymentRequestMutationMock.mockReset();
     useDeclinePosPaymentRequestMutationMock.mockReset();
@@ -217,6 +221,10 @@ describe("client messages screen", () => {
       isPending: false,
       mutateAsync: vi.fn().mockResolvedValue({ threadId: "thread-appointment-1", lastReadAt: "2026-05-19T13:31:00.000Z" })
     });
+    useMessageRequestActionMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: vi.fn()
+    });
     useSendMessageMutationMock.mockReturnValue({
       isPending: false,
       mutateAsync: vi.fn()
@@ -247,8 +255,8 @@ describe("client messages screen", () => {
 
     expect(screen.getByText("MESSAGES")).toBeInTheDocument();
     expect(screen.getByText("Barbers, shops, bookings, and support.")).toBeInTheDocument();
-    expect(screen.getByText("No messages yet.")).toBeInTheDocument();
-    expect(screen.getByText("Your barber, shop, booking, and support conversations will appear here.")).toBeInTheDocument();
+    expect(screen.getByText("No conversations yet.")).toBeInTheDocument();
+    expect(screen.getByText("Search a barber or shop to start a message.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "New Message" })).toBeInTheDocument();
     ["All", "Barbers", "Shops", "Bookings", "Support"].forEach((label) => {
       expect(screen.getByRole("button", { name: label })).toBeInTheDocument();

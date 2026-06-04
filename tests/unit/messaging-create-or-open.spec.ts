@@ -111,10 +111,16 @@ function createMessagingSupabaseMock(options: {
         ]
       : [] as Row[],
     messages: [] as Row[],
+    message_thread_requests: [] as Row[],
+    message_user_blocks: [] as Row[],
+    message_reports: [] as Row[],
     inserts: {
       message_threads: 0,
       thread_participants: 0,
-      messages: 0
+      messages: 0,
+      message_thread_requests: 0,
+      message_user_blocks: 0,
+      message_reports: 0
     },
     inFilters: [] as Array<{ table: string; column: string; values: unknown[] }>
   };
@@ -250,6 +256,28 @@ function createMessagingSupabaseMock(options: {
         return { data: null, error: null };
       }
 
+      if (this.table === "message_thread_requests") {
+        state.inserts.message_thread_requests += 1;
+        const row = {
+          id: `request-created-${state.inserts.message_thread_requests}`,
+          created_at: "2026-06-04T12:10:00.000Z",
+          updated_at: "2026-06-04T12:10:00.000Z",
+          accepted_at: null,
+          accepted_by_profile_id: null,
+          declined_at: null,
+          declined_by_profile_id: null,
+          blocked_at: null,
+          blocked_by_profile_id: null,
+          reported_at: null,
+          reported_by_profile_id: null,
+          report_reason: null,
+          first_message_id: null,
+          ...this.insertPayload
+        };
+        state.message_thread_requests.push(row);
+        return { data: single ? row : [row], error: null };
+      }
+
       return { data: null, error: null };
     }
 
@@ -354,6 +382,21 @@ function createMessagingSupabaseMock(options: {
         });
       }
 
+      if (this.table === "message_thread_requests") {
+        return state.message_thread_requests.filter((request) => {
+          for (const [column, value] of this.filters) {
+            if (request[column] !== value) {
+              return false;
+            }
+          }
+          return true;
+        });
+      }
+
+      if (this.table === "message_user_blocks" || this.table === "message_reports") {
+        return [];
+      }
+
       if (this.table === "appointments") {
         if (options.appointmentsError) {
           return [];
@@ -402,6 +445,14 @@ describe("messaging create or open conversation", () => {
       expect.objectContaining({ thread_id: "thread-created-1", profile_id: "profile-barber", thread_role: "commission_barber" })
     ]));
     expect(supabase.state.messages).toHaveLength(1);
+    expect(supabase.state.message_thread_requests).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        thread_id: "thread-created-1",
+        requested_by_profile_id: "profile-barber",
+        requested_to_profile_id: "profile-owner",
+        request_status: "pending"
+      })
+    ]));
   });
 
   it("creates a barber to shop conversation with null location when no shop location is supplied", async () => {
@@ -428,6 +479,14 @@ describe("messaging create or open conversation", () => {
     expect(supabase.state.thread_participants).toEqual(expect.arrayContaining([
       expect.objectContaining({ thread_id: "thread-created-1", profile_id: "profile-owner", thread_role: "owner" }),
       expect.objectContaining({ thread_id: "thread-created-1", profile_id: "profile-barber", thread_role: "commission_barber" })
+    ]));
+    expect(supabase.state.message_thread_requests).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        thread_id: "thread-created-1",
+        requested_by_profile_id: "profile-barber",
+        requested_to_profile_id: "profile-owner",
+        request_status: "pending"
+      })
     ]));
   });
 
@@ -489,6 +548,14 @@ describe("messaging create or open conversation", () => {
       expect.objectContaining({ thread_id: "thread-created-1", profile_id: "profile-owner", thread_role: "owner" }),
       expect.objectContaining({ thread_id: "thread-created-1", profile_id: "profile-client", thread_role: "client" })
     ]));
+    expect(supabase.state.message_thread_requests).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        thread_id: "thread-created-1",
+        requested_by_profile_id: "profile-owner",
+        requested_to_profile_id: "profile-client",
+        request_status: "pending"
+      })
+    ]));
   });
 
   it("creates a shop owner to client conversation with null location when no shop location is supplied", async () => {
@@ -517,6 +584,14 @@ describe("messaging create or open conversation", () => {
       expect.objectContaining({ thread_id: "thread-created-1", profile_id: "profile-owner", thread_role: "owner" }),
       expect.objectContaining({ thread_id: "thread-created-1", profile_id: "profile-client", thread_role: "client" })
     ]));
+    expect(supabase.state.message_thread_requests).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        thread_id: "thread-created-1",
+        requested_by_profile_id: "profile-owner",
+        requested_to_profile_id: "profile-client",
+        request_status: "pending"
+      })
+    ]));
   });
 
   it("opens an existing shop thread instead of creating a duplicate", async () => {
@@ -536,6 +611,7 @@ describe("messaging create or open conversation", () => {
     expect(payload.thread).toBeTruthy();
     expect(payload.thread?.id).toBe("thread-existing-shop");
     expect(supabase.state.inserts.message_threads).toBe(0);
+    expect(supabase.state.inserts.message_thread_requests).toBe(0);
   });
 
   it("labels created thread readback failures with the thread_readback step", async () => {
