@@ -1462,7 +1462,19 @@ describe("client messages screen", () => {
   });
 
   it("shows an in-modal error when create/open fails", async () => {
-    const mutateAsync = vi.fn().mockRejectedValue(new Error("thread create failed"));
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const createError = Object.assign(new Error("Unable to open the created conversation."), {
+      status: 500,
+      code: "thread_readback_failed",
+      step: "thread_readback",
+      responseBody: {
+        error: "Could not open conversation",
+        message: "Unable to open the created conversation.",
+        code: "thread_readback_failed",
+        step: "thread_readback"
+      }
+    });
+    const mutateAsync = vi.fn().mockRejectedValue(createError);
     useCreateMessageThreadMutationMock.mockReturnValue({
       isPending: false,
       mutateAsync
@@ -1512,7 +1524,22 @@ describe("client messages screen", () => {
     await waitFor(() => {
       expect(screen.getByText("Couldn't open conversation. Try again.")).toBeInTheDocument();
       expect(screen.getByTestId("message-compose-modal")).toBeInTheDocument();
+      expect(consoleWarn).toHaveBeenCalledWith("[messages:create-open-failed]", expect.objectContaining({
+        status: 500,
+        code: "thread_readback_failed",
+        step: "thread_readback",
+        message: "Unable to open the created conversation.",
+        targetType: "barber",
+        targetIdKind: "profile_id",
+        actorRole: "client",
+        actorProfileId: "profile-client",
+        responseBody: expect.objectContaining({
+          code: "thread_readback_failed",
+          step: "thread_readback"
+        })
+      }));
     });
+    consoleWarn.mockRestore();
   });
 
   it("guards double-clicks on Message while create/open is pending", async () => {

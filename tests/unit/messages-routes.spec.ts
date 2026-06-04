@@ -244,9 +244,25 @@ describe("phase 8 messaging routes", () => {
   });
 
   it("returns structured create/open failure details", async () => {
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     getSessionUserMock.mockResolvedValue(resolveDemoUser("owner@bvrb3r.demo"));
     createMessagingThreadMock.mockRejectedValue(
-      new MessagingServiceError("Unable to attach messaging participants.", 500, "participant_insert_failed", "participant_insert")
+      new MessagingServiceError("Unable to attach messaging participants.", 500, "participant_insert_failed", "participant_insert", {
+        route: "/api/messages/threads",
+        actorRole: "owner",
+        actorProfileId: "profile-owner",
+        targetType: "profile",
+        targetIdKind: "public_shop_identity",
+        resolvedThreadType: "client_shop",
+        failedStep: "participant_insert",
+        supabaseCode: "23503",
+        supabaseMessage: "insert or update on table thread_participants violates foreign key constraint",
+        supabaseDetails: "Key is not present in table profiles.",
+        threadInserted: true,
+        participantsInserted: false,
+        systemMessageInserted: false,
+        returnedThreadId: "thread-created-1"
+      })
     );
     const request = new NextRequest("https://bvrb3r.demo/api/messages/threads", {
       method: "POST",
@@ -263,6 +279,25 @@ describe("phase 8 messaging routes", () => {
       code: "participant_insert_failed",
       step: "participant_insert"
     }));
+    expect(consoleWarn).toHaveBeenCalledWith("[messages] create_thread_failed", expect.objectContaining({
+      route: "/api/messages/threads",
+      actorRole: "shop_owner_user",
+      targetIdKind: "uuid_or_public_shop_id",
+      failedStep: "participant_insert",
+      supabaseCode: "23503",
+      supabaseMessage: "insert or update on table thread_participants violates foreign key constraint",
+      supabaseDetails: "Key is not present in table profiles.",
+      threadInserted: true,
+      participantsInserted: false,
+      systemMessageInserted: false,
+      returnedThreadId: "thread-created-1",
+      diagnostics: expect.objectContaining({
+        actorRole: "owner",
+        failedStep: "participant_insert",
+        returnedThreadId: "thread-created-1"
+      })
+    }));
+    consoleWarn.mockRestore();
   });
 
   it("searches message participants through the canonical route", async () => {

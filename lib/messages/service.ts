@@ -437,12 +437,14 @@ export class MessagingServiceError extends Error {
   status: number;
   code: string;
   step: string;
+  diagnostics?: Record<string, unknown>;
 
-  constructor(message: string, status = 400, code = "messaging_error", step = "unknown") {
+  constructor(message: string, status = 400, code = "messaging_error", step = "unknown", diagnostics?: Record<string, unknown>) {
     super(message);
     this.status = status;
     this.code = code;
     this.step = step;
+    this.diagnostics = diagnostics;
   }
 }
 
@@ -488,6 +490,58 @@ function toDatabaseThreadRole(role: Role): Role {
   }
 
   return role;
+}
+
+function getSupabaseErrorDetails(error: unknown) {
+  const candidate = error as { code?: string; message?: string; details?: string; hint?: string } | null | undefined;
+  return {
+    supabaseCode: candidate?.code ?? null,
+    supabaseMessage: candidate?.message ?? null,
+    supabaseDetails: candidate?.details ?? null,
+    supabaseHint: candidate?.hint ?? null
+  };
+}
+
+function buildCreateOpenDiagnostics(input: {
+  actorRole: Role;
+  actorProfileId: string;
+  targetType: string;
+  targetIdKind: string;
+  resolvedThreadType: MessagingThreadType | "appointment" | "support";
+}) {
+  return {
+    route: "/api/messages/threads",
+    actorRole: input.actorRole,
+    actorProfileId: input.actorProfileId,
+    targetType: input.targetType,
+    targetIdKind: input.targetIdKind,
+    resolvedThreadType: input.resolvedThreadType,
+    failedStep: null as string | null,
+    supabaseCode: null as string | null,
+    supabaseMessage: null as string | null,
+    supabaseDetails: null as string | null,
+    threadInserted: false,
+    participantsInserted: false,
+    systemMessageInserted: false,
+    returnedThreadId: null as string | null
+  };
+}
+
+function markCreateOpenFailure(
+  diagnostics: ReturnType<typeof buildCreateOpenDiagnostics> | undefined,
+  step: string,
+  error?: unknown
+) {
+  if (!diagnostics) {
+    return undefined;
+  }
+
+  const supabaseDetails = getSupabaseErrorDetails(error);
+  diagnostics.failedStep = step;
+  diagnostics.supabaseCode = supabaseDetails.supabaseCode;
+  diagnostics.supabaseMessage = supabaseDetails.supabaseMessage;
+  diagnostics.supabaseDetails = supabaseDetails.supabaseDetails;
+  return { ...diagnostics };
 }
 
 function shopToLocationRow(shop: ShopPublicIdentityRow): LocationRow {
@@ -2062,7 +2116,8 @@ async function ensureThreadParticipants(
   supabase: SupabaseClient,
   threadId: string,
   existingParticipants: ThreadParticipantRow[],
-  profiles: ProfileRow[]
+  profiles: ProfileRow[],
+  diagnostics?: ReturnType<typeof buildCreateOpenDiagnostics>
 ) {
   const existingIds = new Set(existingParticipants.map((participant) => participant.profile_id));
   const missingRows = profiles
@@ -2079,13 +2134,19 @@ async function ensureThreadParticipants(
 
   const insertResult = await supabase.from("thread_participants").insert(missingRows);
   if (insertResult.error) {
+    const failureDiagnostics = markCreateOpenFailure(diagnostics, "participant_insert", insertResult.error);
     console.warn("[messages] thread_participant_insert_failed", {
       threadId,
       participantCount: missingRows.length,
       postgresCode: insertResult.error.code ?? null,
-      postgresMessage: insertResult.error.message ?? null
+      postgresMessage: insertResult.error.message ?? null,
+      diagnostics: failureDiagnostics ?? null
     });
-    throw new MessagingServiceError("Unable to attach messaging participants.", 500, "participant_insert_failed", "participant_insert");
+    throw new MessagingServiceError("Unable to attach messaging participants.", 500, "participant_insert_failed", "participant_insert", failureDiagnostics);
+  }
+
+  if (diagnostics) {
+    diagnostics.participantsInserted = true;
   }
 }
 
@@ -2390,6 +2451,7 @@ async function createOrGetShopThread(input: {
   shopParticipants: ProfileRow[];
   counterpartProfile: ProfileRow;
   createdByProfileId: string;
+  diagnostics?: ReturnType<typeof buildCreateOpenDiagnostics>;
 }) {
   const dbLocationId = input.location.source === "shop" ? null : input.location.id;
   let threadLookupQuery = input.supabase
@@ -2404,15 +2466,17 @@ async function createOrGetShopThread(input: {
   const threadLookupResult = await threadLookupQuery.order("updated_at", { ascending: false });
 
   if (threadLookupResult.error) {
+    const failureDiagnostics = markCreateOpenFailure(input.diagnostics, "existing_thread_lookup", threadLookupResult.error);
     console.warn("[messages] create_shop_thread_step_failed", {
       step: "existing_thread_lookup",
       threadType: input.threadType,
       publicShopReference: input.location.source === "shop" ? input.location.id : null,
       dbLocationId,
       postgresCode: threadLookupResult.error.code ?? null,
-      postgresMessage: threadLookupResult.error.message ?? null
+      postgresMessage: threadLookupResult.error.message ?? null,
+      diagnostics: failureDiagnostics ?? null
     });
-    throw new MessagingServiceError("Unable to look up the messaging conversation.", 500, "existing_thread_lookup_failed", "existing_thread_lookup");
+    throw new MessagingServiceError("Unable to look up the messaging conversation.", 500, "existing_thread_lookup_failed", "existing_thread_lookup", failureDiagnostics);
   }
 
   const candidateThreads = ((threadLookupResult.data ?? []) as MessageThreadRow[])
@@ -2426,6 +2490,7 @@ async function createOrGetShopThread(input: {
     : { data: [], error: null };
 
   if (participantsResult.error) {
+    const failureDiagnostics = markCreateOpenFailure(input.diagnostics, "existing_participant_lookup", participantsResult.error);
     console.warn("[messages] create_shop_thread_step_failed", {
       step: "existing_participant_lookup",
       threadType: input.threadType,
@@ -2433,9 +2498,10 @@ async function createOrGetShopThread(input: {
       dbLocationId,
       candidateThreadCount: candidateThreadIds.length,
       postgresCode: participantsResult.error.code ?? null,
-      postgresMessage: participantsResult.error.message ?? null
+      postgresMessage: participantsResult.error.message ?? null,
+      diagnostics: failureDiagnostics ?? null
     });
-    throw new MessagingServiceError("Unable to resolve existing shop thread participants.", 500, "existing_participant_lookup_failed", "existing_participant_lookup");
+    throw new MessagingServiceError("Unable to resolve existing shop thread participants.", 500, "existing_participant_lookup_failed", "existing_participant_lookup", failureDiagnostics);
   }
 
   const participantRows = (participantsResult.data ?? []) as ThreadParticipantRow[];
@@ -2449,7 +2515,10 @@ async function createOrGetShopThread(input: {
 
   if (matchedThread) {
     const threadParticipants = participantRows.filter((participant) => participant.thread_id === matchedThread.id);
-    await ensureThreadParticipants(input.supabase, matchedThread.id, threadParticipants, [...input.shopParticipants, input.counterpartProfile]);
+    await ensureThreadParticipants(input.supabase, matchedThread.id, threadParticipants, [...input.shopParticipants, input.counterpartProfile], input.diagnostics);
+    if (input.diagnostics) {
+      input.diagnostics.returnedThreadId = matchedThread.id;
+    }
     return matchedThread.id;
   }
 
@@ -2466,20 +2535,26 @@ async function createOrGetShopThread(input: {
     .single();
 
   if (threadInsert.error) {
+    const failureDiagnostics = markCreateOpenFailure(input.diagnostics, "thread_insert", threadInsert.error);
     console.warn("[messages] create_shop_thread_step_failed", {
       step: "thread_insert",
       threadType: input.threadType,
       publicShopReference: input.location.source === "shop" ? input.location.id : null,
       dbLocationId,
       postgresCode: threadInsert.error.code ?? null,
-      postgresMessage: threadInsert.error.message ?? null
+      postgresMessage: threadInsert.error.message ?? null,
+      diagnostics: failureDiagnostics ?? null
     });
-    throw new MessagingServiceError("Unable to create the shop conversation.", 500, "thread_insert_failed", "thread_insert");
+    throw new MessagingServiceError("Unable to create the shop conversation.", 500, "thread_insert_failed", "thread_insert", failureDiagnostics);
   }
 
   const threadId = threadInsert.data.id as string;
+  if (input.diagnostics) {
+    input.diagnostics.threadInserted = true;
+    input.diagnostics.returnedThreadId = threadId;
+  }
   try {
-    await ensureThreadParticipants(input.supabase, threadId, [], [...input.shopParticipants, input.counterpartProfile]);
+    await ensureThreadParticipants(input.supabase, threadId, [], [...input.shopParticipants, input.counterpartProfile], input.diagnostics);
   } catch (error) {
     console.warn("[messages] create_shop_thread_step_failed", {
       step: "participant_insert",
@@ -2488,7 +2563,8 @@ async function createOrGetShopThread(input: {
       publicShopReference: input.location.source === "shop" ? input.location.id : null,
       dbLocationId,
       errorCode: error instanceof MessagingServiceError ? error.code : null,
-      errorMessage: error instanceof Error ? error.message : String(error)
+      errorMessage: error instanceof Error ? error.message : String(error),
+      diagnostics: error instanceof MessagingServiceError ? error.diagnostics ?? null : input.diagnostics ?? null
     });
     throw error;
   }
@@ -2507,6 +2583,7 @@ async function createOrGetShopThread(input: {
     });
 
   if (systemMessageInsert.error) {
+    const failureDiagnostics = markCreateOpenFailure(input.diagnostics, "system_message_insert", systemMessageInsert.error);
     console.warn("[messages] create_shop_thread_step_failed", {
       step: "system_message_insert",
       threadType: input.threadType,
@@ -2514,11 +2591,15 @@ async function createOrGetShopThread(input: {
       publicShopReference: input.location.source === "shop" ? input.location.id : null,
       dbLocationId,
       postgresCode: systemMessageInsert.error.code ?? null,
-      postgresMessage: systemMessageInsert.error.message ?? null
+      postgresMessage: systemMessageInsert.error.message ?? null,
+      diagnostics: failureDiagnostics ?? null
     });
-    throw new MessagingServiceError("Unable to write the shop conversation system message.", 500, "system_message_insert_failed", "system_message_insert");
+    throw new MessagingServiceError("Unable to write the shop conversation system message.", 500, "system_message_insert_failed", "system_message_insert", failureDiagnostics);
   }
 
+  if (input.diagnostics) {
+    input.diagnostics.systemMessageInserted = true;
+  }
   return threadId;
 }
 
@@ -3375,6 +3456,40 @@ export async function markMessageThreadRead(user: UserAccount, threadId: string)
   };
 }
 
+async function readCreatedMessagingThreadPayload(
+  user: UserAccount,
+  threadId: string,
+  diagnostics?: ReturnType<typeof buildCreateOpenDiagnostics>
+) {
+  if (diagnostics) {
+    diagnostics.returnedThreadId = threadId;
+  }
+
+  try {
+    const payload = await getMessagingThreadPayload(user, threadId);
+    if (!payload.thread?.id) {
+      const failureDiagnostics = markCreateOpenFailure(diagnostics, "returned_payload");
+      throw new MessagingServiceError("Conversation opened without a thread id.", 500, "missing_thread_id", "returned_payload", failureDiagnostics);
+    }
+
+    return payload;
+  } catch (error) {
+    if (error instanceof MessagingServiceError && error.step === "returned_payload") {
+      throw error;
+    }
+
+    const failureDiagnostics = markCreateOpenFailure(diagnostics, "thread_readback", error);
+    console.warn("[messages] create_thread_readback_failed", {
+      threadId,
+      errorCode: error instanceof MessagingServiceError ? error.code : null,
+      errorStep: error instanceof MessagingServiceError ? error.step : null,
+      errorMessage: error instanceof Error ? error.message : String(error),
+      diagnostics: failureDiagnostics ?? null
+    });
+    throw new MessagingServiceError("Unable to open the created conversation.", 500, "thread_readback_failed", "thread_readback", failureDiagnostics);
+  }
+}
+
 export async function createMessagingThread(user: UserAccount, input: MessagingCreateThreadInput) {
   const supabase = getSupabase();
   if (!supabase) {
@@ -3489,21 +3604,59 @@ export async function createMessagingThread(user: UserAccount, input: MessagingC
     return getMessagingThreadPayload(user, threadId);
   }
 
-  const locationLookup = await readLocationsByValues(supabase, [input.locationId, ...(actor.locationIds ?? [])]);
+  const shopThreadDiagnostics = "threadType" in input && (input.threadType === "client_shop" || input.threadType === "barber_shop")
+    ? buildCreateOpenDiagnostics({
+        actorRole: actor.profile.role,
+        actorProfileId: actor.profile.id,
+        targetType: actor.kind === "shop" ? "profile" : "shop",
+        targetIdKind: isUuidLike(input.locationId) ? "uuid" : "public_reference",
+        resolvedThreadType: input.threadType
+      })
+    : undefined;
+
+  let locationLookup: Awaited<ReturnType<typeof readLocationsByValues>>;
+  try {
+    locationLookup = await readLocationsByValues(supabase, [input.locationId, ...(actor.locationIds ?? [])]);
+  } catch (error) {
+    const failureDiagnostics = markCreateOpenFailure(shopThreadDiagnostics, "target_resolution", error);
+    throw new MessagingServiceError("Unable to resolve the messaging target.", 500, "target_resolution_failed", "target_resolution", failureDiagnostics);
+  }
   const location = locationLookup.byValue.get(input.locationId);
   if (!location) {
-    throw new MessagingServiceError("Shop location not found for messaging.", 404);
+    const failureDiagnostics = markCreateOpenFailure(shopThreadDiagnostics, "target_resolution");
+    throw new MessagingServiceError("Shop location not found for messaging.", 404, "target_not_found", "target_resolution", failureDiagnostics);
+  }
+  if (shopThreadDiagnostics) {
+    shopThreadDiagnostics.targetIdKind = location.source === "shop" ? "public_shop_identity" : "location";
   }
 
-  await assertActorCanReachLocation(supabase, actor, location.id);
+  try {
+    await assertActorCanReachLocation(supabase, actor, location.id);
+  } catch (error) {
+    const failureDiagnostics = markCreateOpenFailure(shopThreadDiagnostics, "target_resolution", error);
+    throw new MessagingServiceError(
+      error instanceof Error ? error.message : "Unable to verify the messaging target.",
+      error instanceof MessagingServiceError ? error.status : 500,
+      error instanceof MessagingServiceError ? error.code : "target_scope_failed",
+      "target_resolution",
+      failureDiagnostics
+    );
+  }
   const shopParticipantsByLocation = await readShopParticipantsByLocationIds(supabase, [location.id]);
   const shopParticipants = shopParticipantsByLocation.get(location.id) ?? [];
   if (!shopParticipants.length) {
-    throw new MessagingServiceError("No shop-facing participants are available for this location.", 400);
+    const failureDiagnostics = markCreateOpenFailure(shopThreadDiagnostics, "target_resolution");
+    throw new MessagingServiceError("No shop-facing participants are available for this location.", 400, "target_participants_missing", "target_resolution", failureDiagnostics);
   }
 
   if (actor.kind === "shop") {
-    const counterpartProfile = await readProfileById(supabase, input.profileId);
+    let counterpartProfile: ProfileRow;
+    try {
+      counterpartProfile = await readProfileById(supabase, input.profileId);
+    } catch (error) {
+      const failureDiagnostics = markCreateOpenFailure(shopThreadDiagnostics, "target_resolution", error);
+      throw new MessagingServiceError("Unable to resolve the messaging target.", 500, "target_resolution_failed", "target_resolution", failureDiagnostics);
+    }
     assertActorCanCreateShopThread({
       actorRole: actor.profile.role,
       threadType: input.threadType,
@@ -3516,10 +3669,11 @@ export async function createMessagingThread(user: UserAccount, input: MessagingC
       location,
       shopParticipants,
       counterpartProfile,
-      createdByProfileId: actor.profile.id
+      createdByProfileId: actor.profile.id,
+      diagnostics: shopThreadDiagnostics
     });
 
-    return getMessagingThreadPayload(user, threadId);
+    return readCreatedMessagingThreadPayload(user, threadId, shopThreadDiagnostics);
   }
 
   const primaryShopProfile = pickPrimaryShopProfile(shopParticipants);
@@ -3551,10 +3705,11 @@ export async function createMessagingThread(user: UserAccount, input: MessagingC
     location,
     shopParticipants,
     counterpartProfile: actor.profile,
-    createdByProfileId: actor.profile.id
+    createdByProfileId: actor.profile.id,
+    diagnostics: shopThreadDiagnostics
   });
 
-  return getMessagingThreadPayload(user, threadId);
+  return readCreatedMessagingThreadPayload(user, threadId, shopThreadDiagnostics);
 }
 
 export async function sendMessagingBroadcast(

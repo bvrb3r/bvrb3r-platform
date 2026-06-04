@@ -66,6 +66,7 @@ function createMessagingSupabaseMock(options: {
   existingShopThread?: boolean;
   appointmentsError?: boolean;
   noOwnedShop?: boolean;
+  readbackMembershipError?: boolean;
 }) {
   const state = {
     message_threads: options.existingShopThread
@@ -165,6 +166,22 @@ function createMessagingSupabaseMock(options: {
     private async resolve(single: boolean) {
       if (this.insertPayload) {
         return this.resolveInsert(single);
+      }
+
+      if (
+        options.readbackMembershipError
+        && this.table === "thread_participants"
+        && this.filters.has("thread_id")
+        && this.filters.has("profile_id")
+      ) {
+        return {
+          data: null,
+          error: {
+            code: "PGRST301",
+            message: "readback blocked",
+            details: "participant row was not readable"
+          }
+        };
       }
 
       if (this.table === "appointments" && options.appointmentsError) {
@@ -410,6 +427,33 @@ describe("messaging create or open conversation", () => {
     expect(payload.thread).toBeTruthy();
     expect(payload.thread?.id).toBe("thread-existing-shop");
     expect(supabase.state.inserts.message_threads).toBe(0);
+  });
+
+  it("labels created thread readback failures with the thread_readback step", async () => {
+    const supabase = createMessagingSupabaseMock({ actor: "owner", readbackMembershipError: true });
+    createSupabaseAdminClientMock.mockReturnValue(supabase.client);
+
+    await expect(createMessagingThread({
+      role: "owner",
+      email: "owner@bvrb3r.test",
+      locationIds: ["shop-the-bvrb3r-shop"]
+    } as never, {
+      threadType: "client_shop",
+      profileId: "profile-client",
+      locationId: "shop-the-bvrb3r-shop"
+    })).rejects.toMatchObject({
+      code: "thread_readback_failed",
+      step: "thread_readback",
+      diagnostics: expect.objectContaining({
+        failedStep: "thread_readback",
+        threadInserted: true,
+        participantsInserted: true,
+        systemMessageInserted: true,
+        returnedThreadId: "thread-created-1",
+        supabaseCode: "messaging_error",
+        supabaseMessage: "Unable to verify thread access."
+      })
+    });
   });
 
   it("loads shop owner Messages with an owned shop and no legacy staff contacts", async () => {

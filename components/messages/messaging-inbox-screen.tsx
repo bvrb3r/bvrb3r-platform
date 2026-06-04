@@ -156,6 +156,18 @@ function getMessagingApiError(error: unknown): MessagingApiError | null {
   return null;
 }
 
+function getParticipantTargetIdKind(result: MessagingParticipantSearchResult) {
+  if (result.resultType === "support") {
+    return "support";
+  }
+
+  if (result.resultType === "shop") {
+    return "public_shop_identity";
+  }
+
+  return "profile_id";
+}
+
 function getSurfaceCopy(surface: MessagingSurface) {
   if (surface === "shop") {
     return {
@@ -1631,14 +1643,17 @@ export function MessagingInboxScreen({
     } catch (error) {
       const apiError = getMessagingApiError(error);
       console.warn("[messages:create-open-failed]", {
-        resultType: result.resultType,
-        participantType: result.participantType,
-        targetId: result.participantId,
-        threadType: result.createThreadInput && "threadType" in result.createThreadInput ? result.createThreadInput.threadType : null,
         status: apiError?.status ?? null,
         code: apiError?.code ?? null,
         step: apiError?.step ?? null,
-        errorMessage: error instanceof Error ? error.message : String(error)
+        message: error instanceof Error ? error.message : String(error),
+        targetType: result.resultType,
+        targetIdKind: getParticipantTargetIdKind(result),
+        actorRole: threadsQuery.data?.viewer.role ?? surface,
+        actorProfileId: threadsQuery.data?.viewer.profileId ?? null,
+        responseBody: apiError?.responseBody ?? null,
+        participantType: result.participantType,
+        threadType: result.createThreadInput && "threadType" in result.createThreadInput ? result.createThreadInput.threadType : null,
       });
       const message = readableError(error, "Couldn't open conversation. Try again.");
       setStatusUpdate({ tone: "error", message });

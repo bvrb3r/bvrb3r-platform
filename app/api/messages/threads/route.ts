@@ -73,6 +73,30 @@ function describeCreateThreadTarget(input: z.infer<typeof createThreadSchema>) {
   };
 }
 
+function getTargetIdKind(input: z.infer<typeof createThreadSchema> | null) {
+  if (!input) {
+    return null;
+  }
+
+  if ("appointmentId" in input) {
+    return "appointment_reference";
+  }
+
+  if (input.threadType === "support") {
+    return "support";
+  }
+
+  if ("locationId" in input) {
+    return input.locationId.includes("-") ? "uuid_or_public_shop_id" : "public_reference";
+  }
+
+  return "profile_id";
+}
+
+function getErrorDiagnostics(error: unknown) {
+  return error instanceof MessagingServiceError ? error.diagnostics ?? null : null;
+}
+
 export async function GET() {
   try {
     const user = await getSessionUser();
@@ -128,15 +152,29 @@ export async function POST(request: Request) {
       created: false
     }, { status: 201 });
   } catch (error) {
+    const diagnostics = getErrorDiagnostics(error);
+    const describedTarget = parsedInput ? describeCreateThreadTarget(parsedInput) : {
+      threadType: null,
+      targetType: null,
+      targetId: null,
+      locationId: null
+    };
     console.warn("[messages] create_thread_failed", {
+      route: "/api/messages/threads",
       actorUserId: user?.id ?? null,
       actorRole: user?.role ?? null,
-      ...(parsedInput ? describeCreateThreadTarget(parsedInput) : {
-        threadType: null,
-        targetType: null,
-        targetId: null,
-        locationId: null
-      }),
+      threadType: describedTarget.threadType,
+      targetType: describedTarget.targetType,
+      targetIdKind: getTargetIdKind(parsedInput),
+      failedStep: error instanceof MessagingServiceError ? error.step : "unexpected",
+      supabaseCode: diagnostics?.supabaseCode ?? null,
+      supabaseMessage: diagnostics?.supabaseMessage ?? null,
+      supabaseDetails: diagnostics?.supabaseDetails ?? null,
+      threadInserted: diagnostics?.threadInserted ?? false,
+      participantsInserted: diagnostics?.participantsInserted ?? false,
+      systemMessageInserted: diagnostics?.systemMessageInserted ?? false,
+      returnedThreadId: diagnostics?.returnedThreadId ?? null,
+      diagnostics,
       errorMessage: error instanceof Error ? error.message : String(error)
     });
     return toErrorResponse(error);
