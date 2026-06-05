@@ -191,13 +191,6 @@ function buildWeekStrip(anchorDateKey: string) {
   });
 }
 
-function buildDayHours(anchorDateKey: string) {
-  return Array.from({ length: 24 }, (_, hour) => {
-    const hourLabel = `${hour}`.padStart(2, "0");
-    return new Date(`${anchorDateKey}T${hourLabel}:00:00`);
-  });
-}
-
 function buildWorkingHoursForm(rows: BarberWorkingHoursView[], locationId: string | null) {
   const map = new Map(rows.filter((row) => row.locationId === locationId).map((row) => [row.weekday, row]));
   return weekdayLabels.map((_, weekday) => {
@@ -844,7 +837,7 @@ export function BarberScheduleWorkspace({
   const availabilityRef = useRef<HTMLDivElement>(null);
   const dateInputRef = useRef<HTMLInputElement>(null);
   const [scheduleView, setScheduleView] = useState<BarberScheduleViewMode>("day");
-  const [anchorDate, setAnchorDate] = useState("");
+  const [anchorDate, setAnchorDate] = useState(() => getTodayDateKey());
   const scheduleQuery = useBarberScheduleQuery({
     viewMode: scheduleView,
     anchorDate: anchorDate || undefined
@@ -869,7 +862,7 @@ export function BarberScheduleWorkspace({
   const payload = scheduleQuery.data;
   const locationOptions = useMemo(() => payload?.shops ?? [], [payload?.shops]);
   const timeline = payload?.timeline;
-  const selectedDateKey = anchorDate || timeline?.anchorDate || payload?.businessDate || getTodayDateKey();
+  const selectedDateKey = anchorDate || getTodayDateKey();
   const timelineAppointments = useMemo(
     () => [...(timeline?.appointments ?? payload?.todayAppointments ?? [])]
       .map((appointment) => mergeAppointmentOverride(appointment, appointmentOverrides[appointment.id]))
@@ -930,18 +923,6 @@ export function BarberScheduleWorkspace({
 
     return [...appointmentEntries, ...slotEntries].sort((left, right) => left.startsAt.getTime() - right.startsAt.getTime());
   }, [openSlots, visibleAppointments]);
-  const dayHourRows = useMemo(() => buildDayHours(selectedDateKey), [selectedDateKey]);
-  const timelineEntriesByHour = useMemo(() => {
-    const grouped = new Map<number, TimelineEntry[]>();
-    for (const entry of timelineEntries) {
-      const hour = entry.startsAt.getHours();
-      const existing = grouped.get(hour) ?? [];
-      existing.push(entry);
-      grouped.set(hour, existing);
-    }
-
-    return grouped;
-  }, [timelineEntries]);
   const weekStrip = useMemo(() => buildWeekStrip(selectedDateKey), [selectedDateKey]);
   const estimatedEarnings = revenueEligibleDayAppointments.reduce((sum, appointment) => sum + appointment.totalAmount, 0);
   const currentOrNextAppointmentId = visibleAppointments.find((appointment) => appointment.status === "checked_in" || appointment.status === "in_service")?.id
@@ -952,12 +933,6 @@ export function BarberScheduleWorkspace({
     ? timelineAppointments.find((appointment) => appointment.id === selectedAppointmentId) ?? null
     : null;
   const errorMessage = scheduleQuery.error ? getReadableActionError(scheduleQuery.error as BarberApiError) : null;
-
-  useEffect(() => {
-    if (!anchorDate && payload?.timeline.anchorDate) {
-      setAnchorDate(payload.timeline.anchorDate);
-    }
-  }, [anchorDate, payload?.timeline.anchorDate]);
 
   useEffect(() => {
     if (!payload) {
@@ -988,7 +963,7 @@ export function BarberScheduleWorkspace({
   }
 
   function jumpToToday() {
-    setAnchorDate(payload?.businessDate ?? getTodayDateKey());
+    setAnchorDate(getTodayDateKey());
   }
 
   function openAvailabilityControls() {
@@ -1451,52 +1426,10 @@ export function BarberScheduleWorkspace({
               <ScheduleSkeleton />
               <ScheduleSkeleton />
             </>
-          ) : scheduleView === "day" ? dayHourRows.map((hourDate) => {
-            const hourEntries = timelineEntriesByHour.get(hourDate.getHours()) ?? [];
-            const isCurrentHour = selectedDateKey === getTodayDateKey() && hourDate.getHours() === new Date().getHours();
-            return (
-              <div key={hourDate.toISOString()} className="relative grid gap-3 sm:grid-cols-[4.5rem_minmax(0,1fr)] sm:gap-4">
-                <div className="hidden justify-end pt-4 text-base font-semibold text-white/82 sm:flex">
-                  {isCurrentHour ? (
-                    <span className="rounded-full bg-[#a3ff12] px-3 py-1.5 text-xs font-black text-[#050505] shadow-[0_0_24px_rgba(163,255,18,0.30)]">
-                      {formatTime(new Date())}
-                    </span>
-                  ) : formatHour(hourDate)}
-                </div>
-                <span
-                  className={cn(
-                    "absolute left-[4.22rem] top-7 hidden h-2 w-2 rounded-full sm:block",
-                    isCurrentHour ? "bg-[#a3ff12] shadow-[0_0_18px_rgba(163,255,18,0.48)]" : "bg-white/55"
-                  )}
-                />
-                <div className="min-h-[72px] space-y-3">
-                  {hourEntries.length ? hourEntries.map((entry) => (
-                    entry.type === "appointment" ? (
-                      <AppointmentCard
-                        key={`${entry.type}-${entry.id}`}
-                        appointment={entry.appointment}
-                        viewMode={scheduleView}
-                        highlighted={entry.appointment.id === currentOrNextAppointmentId}
-                        onViewDetails={handleViewDetails}
-                        onMessage={handleMessage}
-                        isMessagePending={createThreadMutation.isPending}
-                      />
-                    ) : (
-                      <OpenSlotCard key={`${entry.type}-${entry.id}`} slot={entry.slot} onBookSlot={handleBookOpenSlot} />
-                    )
-                  )) : (
-                    <div
-                      aria-label={`No appointments at ${formatHour(hourDate)}`}
-                      className="min-h-[72px] rounded-[18px] border border-white/[0.045] bg-white/[0.012]"
-                    />
-                  )}
-                </div>
-              </div>
-            );
-          }) : timelineEntries.length ? timelineEntries.map((entry) => (
+          ) : timelineEntries.length ? timelineEntries.map((entry) => (
             <div key={`${entry.type}-${entry.id}`} className="relative grid gap-3 sm:grid-cols-[4.5rem_minmax(0,1fr)] sm:gap-4">
               <div className="hidden justify-end pt-4 text-base font-semibold text-white/82 sm:flex">
-                {formatShortDate(entry.startsAt)}
+                {scheduleView === "day" ? formatHour(entry.startsAt) : formatShortDate(entry.startsAt)}
               </div>
               <span className="absolute left-[4.22rem] top-7 hidden h-2 w-2 rounded-full bg-white/55 sm:block" />
               {entry.type === "appointment" ? (
@@ -1516,8 +1449,8 @@ export function BarberScheduleWorkspace({
             <div className="empty-state-panel rounded-[24px] p-6">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="text-xl font-extrabold text-white">No appointments on this day</p>
-                  <p className="mt-2 text-sm leading-6 text-white/58">Add a booking, update availability, or keep the chair open for walk-ins.</p>
+                  <p className="text-xl font-extrabold text-white">No chair activity on this day</p>
+                  <p className="mt-2 text-sm leading-6 text-white/58">No appointments or open slots are scheduled. Add a booking or update availability to open the chair.</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <ActionButton type="button" variant="secondary" onClick={openAvailabilityControls}>

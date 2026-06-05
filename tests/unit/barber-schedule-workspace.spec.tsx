@@ -16,6 +16,16 @@ const {
   useUpdateBarberScheduleMutationMock: vi.fn()
 }));
 
+function getLocalDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+const TEST_DATE_KEY = getLocalDateKey(new Date());
+const TEST_WEEKDAY = new Date(`${TEST_DATE_KEY}T12:00:00`).getDay();
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
     push: pushMock
@@ -40,7 +50,7 @@ function buildSchedulePayload() {
   return {
     barberId: "barber-1",
     barberName: "Blaze King",
-    businessDate: "2026-04-27",
+    businessDate: TEST_DATE_KEY,
     shops: [
       {
         id: "loc-ybor",
@@ -64,10 +74,10 @@ function buildSchedulePayload() {
     upcomingAppointments: [],
     timeline: {
       viewMode: "day",
-      anchorDate: "2026-04-27",
-      rangeStart: "2026-04-27T00:00:00.000Z",
-      rangeEnd: "2026-04-27T23:59:59.000Z",
-      rangeLabel: "Apr 27",
+      anchorDate: TEST_DATE_KEY,
+      rangeStart: `${TEST_DATE_KEY}T00:00:00.000Z`,
+      rangeEnd: `${TEST_DATE_KEY}T23:59:59.000Z`,
+      rangeLabel: "Today",
       appointments: []
     },
     workingHours: [],
@@ -107,8 +117,8 @@ function buildAppointment(
     status,
     source: "booking",
     bookingSource: "public_profile",
-    start: "2026-04-27T14:00:00.000Z",
-    end: "2026-04-27T14:15:00.000Z",
+    start: `${TEST_DATE_KEY}T14:00:00.000Z`,
+    end: `${TEST_DATE_KEY}T14:15:00.000Z`,
     chair: "Phils chair",
     addOnIds: [],
     depositAmount: 5,
@@ -123,7 +133,7 @@ function buildAppointment(
     tipAmount: 0,
     note: "",
     revision: status === "confirmed" ? 1 : 2,
-    updatedAt: "2026-04-27T13:55:00.000Z",
+    updatedAt: `${TEST_DATE_KEY}T13:55:00.000Z`,
     display: {
       clientName: "Phillip mcgee",
       clientProfilePhotoUrl: null,
@@ -145,10 +155,10 @@ function buildAppointment(
       paymentMethodBrand: "visa",
       paymentMethodLast4: "4242",
       receiptNumber: "Receipt 4242",
-      paidAt: "2026-04-27T13:55:00.000Z",
+      paidAt: `${TEST_DATE_KEY}T13:55:00.000Z`,
       payoutReadinessStatus: payoutEligible ? "eligible" : "needs_attention",
       moneyRoutingStatus: "pending",
-      eligibleAt: payoutEligible ? "2026-04-27T14:16:00.000Z" : null,
+      eligibleAt: payoutEligible ? `${TEST_DATE_KEY}T14:16:00.000Z` : null,
       releasedAt: null,
       barberPayoutAmount: payoutEligible ? 4.75 : null,
       platformFeeAmount: payoutEligible ? 0.25 : null,
@@ -198,7 +208,7 @@ describe("BarberScheduleWorkspace", () => {
     });
   });
 
-  it("renders a full 24-hour calendar timeline without availability controls", () => {
+  it("defaults the calendar to today and shows one clean empty state without blank hour cards", () => {
     render(
       <BarberScheduleWorkspace
         barberName="Blaze King"
@@ -206,8 +216,11 @@ describe("BarberScheduleWorkspace", () => {
       />
     );
 
-    expect(screen.getByText("12 AM")).toBeInTheDocument();
-    expect(screen.getByText("11 PM")).toBeInTheDocument();
+    expect(useBarberScheduleQueryMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      anchorDate: TEST_DATE_KEY
+    }));
+    expect(screen.getByText("No chair activity on this day")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/No appointments at/i)).not.toBeInTheDocument();
     expect(screen.queryByText("Working hours and blocked time")).not.toBeInTheDocument();
     expect(screen.queryByText("Availability control")).not.toBeInTheDocument();
   });
@@ -232,7 +245,7 @@ describe("BarberScheduleWorkspace", () => {
           {
             locationId: "loc-ybor",
             locationLabel: "The BVRB3R Shop",
-            weekday: 1,
+            weekday: TEST_WEEKDAY,
             startTime: "09:00",
             endTime: "10:00"
           }
@@ -266,7 +279,7 @@ describe("BarberScheduleWorkspace", () => {
           {
             locationId: "loc-ybor",
             locationLabel: "The BVRB3R Shop",
-            weekday: 1,
+            weekday: TEST_WEEKDAY,
             startTime: "10:00",
             endTime: "10:15"
           }
@@ -303,8 +316,8 @@ describe("BarberScheduleWorkspace", () => {
         timeline: {
           ...buildSchedulePayload().timeline,
           appointments: [
-            buildAppointment("cancelled", { id: "appt-cancelled-1", start: "2026-04-27T14:00:00.000Z", end: "2026-04-27T14:15:00.000Z" }),
-            buildAppointment("cancelled", { id: "appt-cancelled-2", start: "2026-04-27T15:00:00.000Z", end: "2026-04-27T15:15:00.000Z" })
+            buildAppointment("cancelled", { id: "appt-cancelled-1", start: `${TEST_DATE_KEY}T14:00:00.000Z`, end: `${TEST_DATE_KEY}T14:15:00.000Z` }),
+            buildAppointment("cancelled", { id: "appt-cancelled-2", start: `${TEST_DATE_KEY}T15:00:00.000Z`, end: `${TEST_DATE_KEY}T15:15:00.000Z` })
           ]
         }
       },
@@ -327,8 +340,8 @@ describe("BarberScheduleWorkspace", () => {
         timeline: {
           ...buildSchedulePayload().timeline,
           appointments: [
-            buildAppointment("completed", { id: "appt-completed-1", start: "2026-04-27T14:00:00.000Z", end: "2026-04-27T14:15:00.000Z" }),
-            buildAppointment("cancelled", { id: "appt-cancelled-1", start: "2026-04-27T15:00:00.000Z", end: "2026-04-27T15:15:00.000Z" })
+            buildAppointment("completed", { id: "appt-completed-1", start: `${TEST_DATE_KEY}T14:00:00.000Z`, end: `${TEST_DATE_KEY}T14:15:00.000Z` }),
+            buildAppointment("cancelled", { id: "appt-cancelled-1", start: `${TEST_DATE_KEY}T15:00:00.000Z`, end: `${TEST_DATE_KEY}T15:15:00.000Z` })
           ]
         }
       },
@@ -352,8 +365,8 @@ describe("BarberScheduleWorkspace", () => {
         timeline: {
           ...buildSchedulePayload().timeline,
           appointments: [
-            buildAppointment("confirmed", { id: "appt-confirmed-1", start: "2026-04-27T14:00:00.000Z", end: "2026-04-27T14:15:00.000Z" }),
-            buildAppointment("cancelled", { id: "appt-cancelled-1", start: "2026-04-27T15:00:00.000Z", end: "2026-04-27T15:15:00.000Z" })
+            buildAppointment("confirmed", { id: "appt-confirmed-1", start: `${TEST_DATE_KEY}T14:00:00.000Z`, end: `${TEST_DATE_KEY}T14:15:00.000Z` }),
+            buildAppointment("cancelled", { id: "appt-cancelled-1", start: `${TEST_DATE_KEY}T15:00:00.000Z`, end: `${TEST_DATE_KEY}T15:15:00.000Z` })
           ]
         }
       },
@@ -434,7 +447,7 @@ describe("BarberScheduleWorkspace", () => {
           status: "eligible",
           payoutReadinessStatus: "eligible",
           moneyRoutingStatus: "pending",
-          eligibleAt: "2026-04-27T14:16:00.000Z",
+          eligibleAt: `${TEST_DATE_KEY}T14:16:00.000Z`,
           releasedAt: null,
           barberAmountCents: 475,
           platformAmountCents: 25,

@@ -6,13 +6,9 @@ import {
   ArrowRight,
   CalendarDays,
   Clock3,
-  Images,
   MapPin,
-  MessageSquareText,
-  ReceiptText,
   Search,
   Store,
-  WalletCards
 } from "lucide-react";
 import { ClientActionLink } from "@/components/client-experience/client-action-link";
 import { ClientDiscoveryCard } from "@/components/client-experience/client-discovery-card";
@@ -251,29 +247,6 @@ export function ClientHomeScreen({
             </div>
           </div>
 
-          <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4" aria-label="Client quick tools">
-            {[
-              { href: CLIENT_PRIMARY_TAB_HREFS.activity, label: "Appointments", detail: "Receipts and history", icon: ReceiptText },
-              { href: CLIENT_PRIMARY_TAB_HREFS.profile, label: "Account", detail: "Wallet and rewards", icon: WalletCards },
-              { href: CLIENT_PRIMARY_TAB_HREFS.messages, label: "Messages", detail: "Barbers and support", icon: MessageSquareText },
-              { href: CLIENT_PRIMARY_TAB_HREFS.culture, label: "Culture", detail: "Community feed", icon: Images }
-            ].map((tool) => {
-              const Icon = tool.icon;
-              return (
-                <Link
-                  key={tool.label}
-                  href={tool.href}
-                  className="group flex min-h-16 items-center justify-between gap-3 rounded-[22px] border border-white/8 bg-black/18 px-4 py-3 transition hover:border-[#d7ffab]/20 hover:bg-black/26"
-                >
-                  <span className="min-w-0">
-                    <span className="block text-sm font-semibold text-white">{tool.label}</span>
-                    <span className="mt-1 block text-xs text-white/48">{tool.detail}</span>
-                  </span>
-                  <Icon className="h-4 w-4 shrink-0 text-[#d7ffab] transition group-hover:scale-105" />
-                </Link>
-              );
-            })}
-          </div>
         </div>
       </Card>
 

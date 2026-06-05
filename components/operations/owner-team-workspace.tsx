@@ -11,7 +11,6 @@ import {
   Filter,
   Mail,
   MoreVertical,
-  Plus,
   Send,
   ShieldCheck,
   Star,
@@ -290,10 +289,9 @@ function getSortValue(barber: TeamBarberView, sortKey: SortKey) {
 
 function MetricSkeleton() {
   return (
-    <div className="rounded-[22px] border border-white/8 bg-white/[0.025] p-5">
-      <Skeleton className="mx-auto h-10 w-10 rounded-full" />
-      <Skeleton className="mx-auto mt-7 h-8 w-14" />
-      <Skeleton className="mx-auto mt-3 h-4 w-24" />
+    <div className="rounded-[18px] border border-white/8 bg-white/[0.025] p-4">
+      <Skeleton className="h-4 w-24" />
+      <Skeleton className="mt-3 h-7 w-14" />
     </div>
   );
 }
@@ -303,11 +301,11 @@ function MetricCard({ icon, value, label, tone = "green", onClick }: MetricCardP
     <button
       type="button"
       onClick={onClick}
-      className="group min-h-[11rem] rounded-[22px] border border-white/9 bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.018))] p-5 text-center shadow-[0_18px_50px_rgba(0,0,0,0.42),inset_0_1px_0_rgba(255,255,255,0.045)] transition hover:-translate-y-0.5 hover:border-[#A3FF12]/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/70"
+      className="group min-h-[6.75rem] rounded-[18px] border border-white/9 bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.018))] p-4 text-left shadow-[0_18px_50px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.045)] transition hover:-translate-y-0.5 hover:border-[#A3FF12]/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/70"
     >
       <span
         className={cn(
-          "mx-auto flex h-12 w-12 items-center justify-center rounded-[16px] border shadow-[0_0_20px_rgba(163,255,18,0.16)]",
+          "flex h-9 w-9 items-center justify-center rounded-[12px] border shadow-[0_0_20px_rgba(163,255,18,0.16)]",
           tone === "green" && "border-[#A3FF12]/25 bg-[#A3FF12]/12 text-[#A3FF12]",
           tone === "amber" && "border-amber-300/25 bg-amber-300/10 text-amber-300",
           tone === "neutral" && "border-white/12 bg-white/[0.04] text-white/65"
@@ -315,8 +313,8 @@ function MetricCard({ icon, value, label, tone = "green", onClick }: MetricCardP
       >
         {icon}
       </span>
-      <span className="mt-6 block text-4xl font-black tracking-[-0.055em] text-white">{value}</span>
-      <span className="mt-2 block text-base font-semibold text-white/70">{label}</span>
+      <span className="mt-3 block text-3xl font-black tracking-[-0.055em] text-white">{value}</span>
+      <span className="mt-1 block text-sm font-semibold text-white/66">{label}</span>
     </button>
   );
 }
@@ -518,6 +516,10 @@ export function OwnerTeamWorkspace() {
   const relationshipErrorMessage = relationshipDirectoryQuery.error ? getReadableActionError(relationshipDirectoryQuery.error) : null;
   const ownerShopProfile = shopProfileQuery.data?.shop ?? null;
   const publicShopHref = ownerShopProfile?.id ? `/shop/${encodeURIComponent(ownerShopProfile.id)}` : "/dashboard/client/search?type=shops";
+  const todayRevenue = appointments.reduce((sum, appointment) => sum + getCompletedAppointmentRevenue(appointment), 0);
+  const appointmentsToday = appointments.length;
+  const openChairCapacity = team.filter((barber) => barber.statusKind === "idle" || barber.statusKind === "offline").length;
+  const pendingActions = pendingOwnerInvites.length + incomingJoinRequests.length + team.filter((barber) => barber.statusKind === "pending").length;
 
   function updateShopProfileDraft(field: keyof ShopProfileDraft, value: string) {
     setShopProfileDraft((current) => ({ ...current, [field]: value }));
@@ -633,20 +635,39 @@ export function OwnerTeamWorkspace() {
             Invites, team status, schedule, money, and profile controls.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setInviteModalOpen(true)}
-          className="inline-flex min-h-14 shrink-0 items-center justify-center gap-3 rounded-full border border-[#A3FF12]/45 bg-[linear-gradient(135deg,#A3FF12_0%,#7DCE00_100%)] px-5 text-sm font-black text-black shadow-[0_16px_42px_rgba(163,255,18,0.3)] transition hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/70 sm:px-7 sm:text-base"
-        >
-          <Plus className="h-5 w-5" />
-          Invite Barber
-        </button>
       </header>
 
       {errorMessage ? <FeedbackBanner tone="error" message={getReadableActionError(errorMessage)} /> : null}
       {inviteFeedback && !inviteModalOpen ? <FeedbackBanner tone={inviteFeedback.tone} message={inviteFeedback.message} /> : null}
       {relationshipFeedback ? <FeedbackBanner tone={relationshipFeedback.tone} message={relationshipFeedback.message} /> : null}
       {relationshipErrorMessage ? <FeedbackBanner tone="error" message={relationshipErrorMessage} /> : null}
+
+      <GlassCard className="p-5 sm:p-6" data-testid="today-shop-snapshot">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Today Shop Snapshot</p>
+            <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-white">How the shop is doing today.</h2>
+          </div>
+          <Link href="/dashboard/owner/schedule" className="text-sm font-extrabold text-[#A3FF12] transition hover:text-[#d7ffab]">
+            Open Schedule
+          </Link>
+        </div>
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          {[
+            ["Today Revenue", currency(todayRevenue), "Completed services and tips"],
+            ["Appointments Today", appointmentsToday.toString(), "Booked, active, and completed"],
+            ["Active Barbers", activeCount.toString(), "Serving or ready now"],
+            ["Open Chair Capacity", openChairCapacity.toString(), "Idle or offline chairs"],
+            ["Pending Actions", pendingActions.toString(), "Invites, requests, or setup"]
+          ].map(([label, value, detail]) => (
+            <div key={label} className="rounded-[18px] border border-white/8 bg-black/24 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.14em] text-white/42">{label}</p>
+              <p className="mt-3 text-2xl font-black tracking-[-0.04em] text-white">{value}</p>
+              <p className="mt-1 text-xs leading-5 text-white/50">{detail}</p>
+            </div>
+          ))}
+        </div>
+      </GlassCard>
 
       <GlassCard className="overflow-hidden p-0">
         {ownerShopProfile?.cover_photo_url ? (
@@ -901,13 +922,15 @@ export function OwnerTeamWorkspace() {
               Active relationships are exclusive. Accepted requests connect the barber to this shop; declined and ended records stay auditable.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => setInviteModalOpen(true)}
-            className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 px-4 text-sm font-extrabold text-white/74 transition hover:border-[#A3FF12]/28 hover:text-[#A3FF12]"
-          >
-            Invite Barber
-          </button>
+          {team.length ? (
+            <button
+              type="button"
+              onClick={() => setInviteModalOpen(true)}
+              className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 px-4 text-sm font-extrabold text-white/74 transition hover:border-[#A3FF12]/28 hover:text-[#A3FF12]"
+            >
+              Invite Barber
+            </button>
+          ) : null}
         </div>
 
         <div className="mt-5 grid gap-4 lg:grid-cols-2">
@@ -1021,8 +1044,8 @@ export function OwnerTeamWorkspace() {
         ) : !team.length ? (
           <SectionEmptyState
             title="No barbers assigned yet."
-            detail="Invite barbers to connect your shop team."
-            action={
+            detail={pendingOwnerInvites.length ? "Pending invitations are waiting for barber approval." : "Invite your first barber to connect your shop team."}
+            action={!pendingOwnerInvites.length ? (
               <button
                 type="button"
                 onClick={() => setInviteModalOpen(true)}
@@ -1030,7 +1053,7 @@ export function OwnerTeamWorkspace() {
               >
                 Invite Barber
               </button>
-            }
+            ) : undefined}
           />
         ) : !filteredTeam.length ? (
           <SectionEmptyState title="No barbers match this filter." detail="Try another status or search term." />

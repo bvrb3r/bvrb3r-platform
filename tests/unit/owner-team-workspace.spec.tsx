@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -320,7 +320,12 @@ describe("owner team workspace", () => {
     expect(screen.getByText("Manage your shop, team, and public profile.")).toBeInTheDocument();
     expect(screen.getByText("Invites, team status, schedule, money, and profile controls.")).toBeInTheDocument();
     expect(screen.queryByText("Manage invites, join requests, active barbers, public team display, and shop presentation from one private owner surface.")).not.toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: /Invite Barber/i }).length).toBeGreaterThan(0);
+    const snapshot = within(screen.getByTestId("today-shop-snapshot"));
+    expect(screen.getByTestId("today-shop-snapshot")).toBeInTheDocument();
+    expect(screen.getByText("Today Shop Snapshot")).toBeInTheDocument();
+    expect(snapshot.getByText("Today Revenue")).toBeInTheDocument();
+    expect(snapshot.getByText("Appointments Today")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /Invite Barber/i })).toHaveLength(1);
     expect(screen.getByPlaceholderText("Search barbers...")).toBeInTheDocument();
     expect(screen.getAllByText("Maya Cole").length).toBeGreaterThan(0);
     expect(screen.getByText("Total Barbers")).toBeInTheDocument();
@@ -367,7 +372,73 @@ describe("owner team workspace", () => {
     render(<OwnerTeamWorkspace />);
 
     expect(screen.getByText("No barbers assigned yet.")).toBeInTheDocument();
-    expect(screen.getByText("Invite barbers to connect your shop team.")).toBeInTheDocument();
+    expect(screen.getByText("Invite your first barber to connect your shop team.")).toBeInTheDocument();
+  });
+
+  it("shows pending invitations once without repeating the invite CTA", () => {
+    useShopDashboardQueryMock.mockReturnValue({
+      isLoading: false,
+      error: null,
+      data: {
+        barbers: [],
+        appointments: []
+      }
+    });
+    useFintechManagementQueryMock.mockReturnValue({
+      isLoading: false,
+      error: null,
+      data: {
+        summary: {
+          totalAccounts: 0,
+          readyAccounts: 0,
+          blockedAccounts: 0,
+          needsAttentionAccounts: 0,
+          notReadyAccounts: 0,
+          blockedRoutingRecords: 0,
+          readyForPayoutAmount: 0
+        },
+        shops: [],
+        barbers: [],
+        memberships: [],
+        blockedPayments: []
+      }
+    });
+    useOwnerTeamInviteDirectoryQueryMock.mockReturnValue({
+      isLoading: false,
+      error: null,
+      data: {
+        shop: {
+          id: "shop-ybor",
+          label: "BVRB3R Ybor"
+        },
+        barbers: [
+          {
+            inviteId: "invite-pending",
+            barberId: "barber-jordan",
+            barberReference: "barber-jordan",
+            profileId: "profile-jordan",
+            name: "Jordan Fade",
+            email: "jordan@example.com",
+            username: "jordanfade",
+            serviceAreaLabel: "Ybor City",
+            compensationModel: "commission",
+            appApprovalStatus: "approved",
+            shopApprovalStatus: "approved",
+            visibilityState: "public",
+            acceptsInstantBookings: true,
+            alreadyAssigned: false,
+            inviteStatus: "invited",
+            canInvite: false
+          }
+        ]
+      }
+    });
+
+    render(<OwnerTeamWorkspace />);
+
+    expect(screen.getAllByText("Sent invitations")).toHaveLength(1);
+    expect(screen.getByText("Pending invitations are waiting for barber approval.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Invite Barber/i })).not.toBeInTheDocument();
   });
 
   it("opens the real invite directory and sends a canonical shop invite", async () => {
