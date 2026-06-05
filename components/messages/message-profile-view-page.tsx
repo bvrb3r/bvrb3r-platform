@@ -129,7 +129,7 @@ function renderShell(surface: ViewerSurface, user: UserAccount | null, children:
       activeHref={config.messagesHref}
       title={config.shellTitle}
       subtitle={config.shellSubtitle}
-      hidePageHeader
+      hidePageHeader={surface !== "shop"}
       hideShellContext={surface === "shop"}
     >
       {children}

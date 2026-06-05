@@ -37,14 +37,19 @@ vi.mock("@/components/dashboard/dashboard-shell", () => ({
   DashboardShell: ({
     activeHref,
     children,
+    hidePageHeader,
+    title,
     user
   }: {
     activeHref?: string;
     children: ReactNode;
+    hidePageHeader?: boolean;
+    title?: string;
     user: { role: string };
   }) => (
-    <div data-testid={`${user.role}-shell`} data-active-href={activeHref}>
+    <div data-testid={`${user.role}-shell`} data-active-href={activeHref} data-hide-page-header={String(Boolean(hidePageHeader))}>
       <header>{user.role === "owner" ? "Owner header" : "Barber header"}</header>
+      {!hidePageHeader ? <h1>{title}</h1> : null}
       {children}
       <nav>{user.role === "owner" ? "Owner bottom nav" : "Barber bottom nav"}</nav>
     </div>
@@ -120,6 +125,7 @@ describe("message profile view routes", () => {
     }));
 
     expect(screen.getByTestId("barber-shell")).toHaveAttribute("data-active-href", "/dashboard/barber/messages");
+    expect(screen.getByTestId("barber-shell")).toHaveAttribute("data-hide-page-header", "true");
     expect(screen.getByText("Barber header")).toBeInTheDocument();
     expect(screen.getByText("Barber bottom nav")).toBeInTheDocument();
     expect(screen.getByTestId("public-shop-profile")).toBeInTheDocument();
@@ -138,7 +144,9 @@ describe("message profile view routes", () => {
     }));
 
     expect(screen.getByTestId("owner-shell")).toHaveAttribute("data-active-href", "/dashboard/owner/messages");
+    expect(screen.getByTestId("owner-shell")).toHaveAttribute("data-hide-page-header", "false");
     expect(screen.getByText("Owner header")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Messages" })).toBeInTheDocument();
     expect(screen.getByText("Owner bottom nav")).toBeInTheDocument();
     expect(screen.getByTestId("public-client-profile")).toBeInTheDocument();
     expect(screen.getByText("@phillipmcgee")).toBeInTheDocument();
