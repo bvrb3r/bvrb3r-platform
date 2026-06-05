@@ -144,9 +144,9 @@ describe("message profile view routes", () => {
     }));
 
     expect(screen.getByTestId("owner-shell")).toHaveAttribute("data-active-href", "/dashboard/owner/messages");
-    expect(screen.getByTestId("owner-shell")).toHaveAttribute("data-hide-page-header", "false");
+    expect(screen.getByTestId("owner-shell")).toHaveAttribute("data-hide-page-header", "true");
     expect(screen.getByText("Owner header")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Messages" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Messages" })).not.toBeInTheDocument();
     expect(screen.getByText("Owner bottom nav")).toBeInTheDocument();
     expect(screen.getByTestId("public-client-profile")).toBeInTheDocument();
     expect(screen.getByText("@phillipmcgee")).toBeInTheDocument();
