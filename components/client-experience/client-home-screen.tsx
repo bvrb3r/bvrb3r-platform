@@ -46,8 +46,8 @@ function HeroSkeleton() {
       <Skeleton className="h-4 w-24" />
       <Skeleton className="mt-4 h-12 w-80 max-w-full" />
       <Skeleton className="mt-4 h-5 w-[32rem] max-w-full" />
-      <div className="mt-6 grid gap-3 lg:grid-cols-3">
-        {[0, 1, 2].map((index) => (
+      <div className="mt-6 grid gap-3 lg:grid-cols-2">
+        {[0, 1].map((index) => (
           <div key={index} className="rounded-[28px] border border-white/10 bg-black/20 p-4">
             <Skeleton className="h-5 w-36" />
             <Skeleton className="mt-3 h-10 w-full" />
@@ -192,7 +192,7 @@ export function ClientHomeScreen({
             subtitle={heroSubtitle}
           />
 
-          <div className="mt-6 grid gap-3 lg:grid-cols-[minmax(0,1fr)_0.72fr]">
+          <div className="mt-6 max-w-xl">
             <div className="rounded-[28px] border border-[#d7ffab]/14 bg-[linear-gradient(180deg,rgba(124,255,0,0.12),rgba(8,8,8,0.98))] p-4">
               <div className="inline-flex items-center gap-2 text-sm text-white/92">
                 <CalendarDays className="h-4 w-4 text-[#d7ffab]" />
@@ -209,12 +209,6 @@ export function ClientHomeScreen({
                   size="lg"
                 />
               </div>
-            </div>
-            <div className="rounded-[28px] border border-white/10 bg-black/20 p-4">
-              <p className="text-sm font-bold text-white/86">Home focus</p>
-              <p className="mt-3 text-sm leading-7 text-white/62">
-                Fast booking, trusted favorites, and curated updates. Search owns broader browsing.
-              </p>
             </div>
           </div>
 

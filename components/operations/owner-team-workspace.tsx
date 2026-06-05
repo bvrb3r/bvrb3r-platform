@@ -505,7 +505,10 @@ export function OwnerTeamWorkspace() {
             <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Today Shop Snapshot</p>
             <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-white">How the shop is doing today.</h2>
           </div>
-          <Link href="/dashboard/owner/schedule" className="text-sm font-extrabold text-[#A3FF12] transition hover:text-[#d7ffab]">
+          <Link
+            href="/dashboard/owner/schedule"
+            className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#A3FF12]/30 bg-[#A3FF12]/10 px-5 text-[11px] font-black uppercase tracking-[0.2em] text-[#d7ffab] transition hover:border-[#d7ffab]/55 hover:bg-[#A3FF12]/16"
+          >
             Open Schedule
           </Link>
         </div>

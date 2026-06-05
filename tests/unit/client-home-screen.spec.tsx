@@ -210,6 +210,8 @@ describe("client home screen", () => {
     expect(screen.getByRole("button", { name: "Get a Cut Now" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Find a Barber" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Find a Barber Shop" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Home focus")).not.toBeInTheDocument();
+    expect(screen.queryByText("Fast booking, trusted favorites, and curated updates. Search owns broader browsing.")).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Messages" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Culture" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Account" })).not.toBeInTheDocument();

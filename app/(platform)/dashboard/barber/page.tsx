@@ -8,8 +8,9 @@ export default async function BarberDashboardPage() {
     <DashboardShell
       user={user}
       activeHref="/dashboard/barber"
-      title="Home"
-      subtitle="Your calendar, chair status, money posture, and next move."
+      title=""
+      subtitle=""
+      hidePageHeader
     >
       <BarberCalendarScreen barberName={user.name} barberTitle={user.title} barberSubtype={user.barberSubtype} />
     </DashboardShell>

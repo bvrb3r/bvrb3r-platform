@@ -329,7 +329,10 @@ describe("owner team workspace", () => {
     expect(snapshot.getByText("Active Barbers")).toBeInTheDocument();
     expect(snapshot.getByText("Open Chair Capacity")).toBeInTheDocument();
     expect(snapshot.getByText("Pending Actions")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open Schedule" })).toHaveAttribute("href", "/dashboard/owner/schedule");
+    const openScheduleLink = screen.getByRole("link", { name: "Open Schedule" });
+    expect(openScheduleLink).toHaveAttribute("href", "/dashboard/owner/schedule");
+    expect(openScheduleLink).toHaveClass("rounded-full");
+    expect(openScheduleLink).toHaveClass("border-[#A3FF12]/30");
     expect(screen.getByText("Today Shop Snapshot").compareDocumentPosition(screen.getByText("Barbers Summary"))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(screen.getByText("Barbers Summary").compareDocumentPosition(screen.getByText("Team relationship queue"))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(screen.getByText("Team relationship queue").compareDocumentPosition(screen.getByText("Public Shop Profile"))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
