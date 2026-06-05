@@ -204,18 +204,22 @@ describe("client home screen", () => {
     });
   });
 
-  it("renders the refined hero, upcoming appointment, barber recommendations, and shop recommendations", () => {
+  it("renders fast booking, favorites, feed, and compact upcoming appointment without search-owned home CTAs", () => {
     render(<ClientHomeScreen isSignedInClient displayName="Jordan Ellis" />);
 
-    expect(screen.getByRole("link", { name: "Find a Barber" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Get a Cut Now" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Find a Barber Shop" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Find a Barber" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Find a Barber Shop" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Messages" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Culture" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Account" })).not.toBeInTheDocument();
     expect(screen.getByText("Upcoming Appointment")).toBeInTheDocument();
-    expect(screen.getByText("Recommended Barbers")).toBeInTheDocument();
-    expect(screen.getByText("Recommended Barber Shops")).toBeInTheDocument();
+    expect(screen.getByText("Favorite Barbers")).toBeInTheDocument();
+    expect(screen.getByText("Favorite Shops")).toBeInTheDocument();
+    expect(screen.getByText("Marketplace Feed")).toBeInTheDocument();
+    expect(screen.getByText("Favorite Barbers").compareDocumentPosition(screen.getByText("Marketplace Feed"))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(screen.getByText("Favorite Shops").compareDocumentPosition(screen.getByText("Marketplace Feed"))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(screen.getByText("Marketplace Feed").compareDocumentPosition(screen.getByText("Upcoming Appointment"))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(screen.getAllByText("wave").length).toBeGreaterThan(0);
     expect(screen.queryByText("Wave Carter")).not.toBeInTheDocument();
     expect(screen.queryByText("Search Availability")).not.toBeInTheDocument();
@@ -225,7 +229,6 @@ describe("client home screen", () => {
     expect(screen.queryByText("Open Wallet")).not.toBeInTheDocument();
     expect(screen.queryByText("Open Rewards")).not.toBeInTheDocument();
     expect(screen.queryByText("Add Card")).not.toBeInTheDocument();
-    expect(screen.getAllByRole("link", { name: "Find a Barber" })).toHaveLength(1);
     expect(screen.queryByRole("link", { name: "Add Location" })).not.toBeInTheDocument();
   });
 
@@ -266,7 +269,7 @@ describe("client home screen", () => {
     expect(screen.getByText("Add your location to find the next available barber near you.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Add Location" })).toBeInTheDocument();
     expect(screen.getByText("No upcoming appointment yet.")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Find a Barber" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Find a Barber" })).not.toBeInTheDocument();
   });
 
   it("falls back to search barbers when location exists but no next-available candidate is live", () => {
@@ -306,8 +309,8 @@ describe("client home screen", () => {
 
     expect(screen.getByText("No available barber near you right now.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Search Barbers" })).toBeInTheDocument();
-    expect(screen.getAllByText("Explore top barbers on BVRB3R.").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Explore barber shops on BVRB3R.").length).toBeGreaterThan(0);
+    expect(screen.getByText("No favorite barbers yet.")).toBeInTheDocument();
+    expect(screen.getByText("No favorite shops yet.")).toBeInTheDocument();
   });
 
   it("shows payment setup guidance before continuing a get-a-cut-now booking", () => {

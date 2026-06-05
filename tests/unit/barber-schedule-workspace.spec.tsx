@@ -219,6 +219,9 @@ describe("BarberScheduleWorkspace", () => {
     expect(useBarberScheduleQueryMock).toHaveBeenLastCalledWith(expect.objectContaining({
       anchorDate: TEST_DATE_KEY
     }));
+    expect(screen.queryByText("Your calendar, chair status, money posture, and next move.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Home")).not.toBeInTheDocument();
+    expect(screen.getByText("Today's chair plan")).toBeInTheDocument();
     expect(screen.getByText("No chair activity on this day")).toBeInTheDocument();
     expect(screen.queryByLabelText(/No appointments at/i)).not.toBeInTheDocument();
     expect(screen.queryByText("Working hours and blocked time")).not.toBeInTheDocument();

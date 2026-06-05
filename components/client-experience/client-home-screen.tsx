@@ -3,12 +3,9 @@
 import type { Route } from "next";
 import Link from "next/link";
 import {
-  ArrowRight,
   CalendarDays,
   Clock3,
-  MapPin,
-  Search,
-  Store,
+  MapPin
 } from "lucide-react";
 import { ClientActionLink } from "@/components/client-experience/client-action-link";
 import { ClientDiscoveryCard } from "@/components/client-experience/client-discovery-card";
@@ -150,15 +147,13 @@ export function ClientHomeScreen({
     : null;
   const defaultPaymentMethod = payload?.defaultPaymentMethod ?? bookingsPayload?.nextAppointmentPayment?.defaultPaymentMethod ?? null;
 
-  const barberSearchHref = `${CLIENT_PRIMARY_TAB_HREFS.search}?type=barbers` as Route;
-  const shopSearchHref = `${CLIENT_PRIMARY_TAB_HREFS.search}?type=shops` as Route;
   const viewDetailsHref = CLIENT_PRIMARY_TAB_HREFS.activity;
   const heroTitle = nextAppointment || hasBookingHistory
     ? `Welcome back, ${firstName}.`
-    : `Find your first barber, ${firstName}.`;
+    : `Book your first cut, ${firstName}.`;
   const heroSubtitle = nextAppointment || hasBookingHistory
-    ? "Book again, find the next available barber, or discover someone new."
-    : "Book a real barber near you or browse verified barbers and shops.";
+    ? "Book again, rebook a trusted chair, or jump into the next eligible cut."
+    : "Start with the fastest eligible chair near you.";
   const paymentStatusCopy = describeUpcomingPayment({
     outstandingBalance: bookingsPayload?.nextAppointmentPayment?.outstandingBalance ?? nextAppointment?.balanceDue ?? 0,
     paymentStatus: bookingsPayload?.nextAppointmentPayment?.latestBookingPayment?.paymentStatus ?? null
@@ -197,22 +192,7 @@ export function ClientHomeScreen({
             subtitle={heroSubtitle}
           />
 
-          <div className="mt-6 grid gap-3 lg:grid-cols-3">
-            <div className="rounded-[28px] border border-white/10 bg-black/20 p-4">
-              <div className="inline-flex items-center gap-2 text-sm text-white/86">
-                <Search className="h-4 w-4 text-[#d7ffab]" />
-                Find a Barber
-              </div>
-              <p className="mt-3 text-sm leading-7 text-white/62">
-                Browse verified barbers and choose the right chair.
-              </p>
-              <div className="mt-4">
-                <ClientActionLink href={barberSearchHref} size="lg">
-                  Find a Barber
-                </ClientActionLink>
-              </div>
-            </div>
-
+          <div className="mt-6 grid gap-3 lg:grid-cols-[minmax(0,1fr)_0.72fr]">
             <div className="rounded-[28px] border border-[#d7ffab]/14 bg-[linear-gradient(180deg,rgba(124,255,0,0.12),rgba(8,8,8,0.98))] p-4">
               <div className="inline-flex items-center gap-2 text-sm text-white/92">
                 <CalendarDays className="h-4 w-4 text-[#d7ffab]" />
@@ -230,20 +210,11 @@ export function ClientHomeScreen({
                 />
               </div>
             </div>
-
             <div className="rounded-[28px] border border-white/10 bg-black/20 p-4">
-              <div className="inline-flex items-center gap-2 text-sm text-white/86">
-                <Store className="h-4 w-4 text-[#d7ffab]" />
-                Find a Barber Shop
-              </div>
+              <p className="text-sm font-bold text-white/86">Home focus</p>
               <p className="mt-3 text-sm leading-7 text-white/62">
-                Start with the shop, then pick the barber.
+                Fast booking, trusted favorites, and curated updates. Search owns broader browsing.
               </p>
-              <div className="mt-4">
-                <ClientActionLink href={shopSearchHref} size="lg" variant="secondary">
-                  Find a Barber Shop
-                </ClientActionLink>
-              </div>
             </div>
           </div>
 
@@ -253,78 +224,11 @@ export function ClientHomeScreen({
       {errorMessage ? <FeedbackBanner tone="error" message={errorMessage} /> : null}
 
       <ClientSectionBlock
-        eyebrow="Upcoming"
-        title="Upcoming Appointment"
-        subtitle="Keep your next real appointment in view."
-      >
-        {nextAppointment ? (
-          <div className="rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(8,8,8,0.99))] p-5 shadow-[0_20px_42px_rgba(0,0,0,0.18)]">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="text-2xl font-semibold text-white" data-display="true">
-                  {nextAppointmentBarberName}
-                </p>
-                <p className="mt-2 text-sm text-white/66">
-                  {nextAppointment.view?.service?.name ?? "Service pending"} at {nextAppointment.view?.location?.name ?? "BVRB3R"}
-                </p>
-              </div>
-              <span className="rounded-full border border-white/10 bg-black/18 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-white/72">
-                {nextAppointment.status.replaceAll("_", " ")}
-              </span>
-            </div>
-
-            <div className="mt-5 grid gap-3 md:grid-cols-3">
-              <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-                <div className="inline-flex items-center gap-2 text-sm text-white/78">
-                  <CalendarDays className="h-4 w-4 text-[#baff69]" />
-                  Date
-                </div>
-                <p className="mt-3 text-lg font-semibold text-white">{formatDateLabel(nextAppointment.start)}</p>
-              </div>
-              <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-                <div className="inline-flex items-center gap-2 text-sm text-white/78">
-                  <Clock3 className="h-4 w-4 text-[#d7ffab]" />
-                  Time
-                </div>
-                <p className="mt-3 text-lg font-semibold text-white">{formatTimeLabel(nextAppointment.start)}</p>
-              </div>
-              <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
-                <div className="inline-flex items-center gap-2 text-sm text-white/78">
-                  <MapPin className="h-4 w-4 text-[#baff69]" />
-                  Payment
-                </div>
-                <p className="mt-3 text-lg font-semibold text-white">{paymentStatusCopy}</p>
-              </div>
-            </div>
-
-            <div className="mt-5 flex flex-wrap gap-3">
-              <ClientActionLink href={viewDetailsHref} size="lg">
-                View Details
-              </ClientActionLink>
-            </div>
-          </div>
-        ) : (
-          <div className="rounded-[30px] border border-dashed border-white/10 bg-[linear-gradient(180deg,rgba(19,19,19,0.96),rgba(8,8,8,0.98))] p-6 sm:p-7">
-            <h3 className="text-2xl font-semibold text-white" data-display="true">No upcoming appointment yet.</h3>
-            <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">
-              Find a barber or get a cut now when you are ready.
-            </p>
-          </div>
-        )}
-      </ClientSectionBlock>
-
-      <ClientSectionBlock
         eyebrow="Barbers"
-        title="Recommended Barbers"
+        title="Favorite Barbers"
         subtitle={recommendedBarbers.length
-          ? "Book fast from live barber profiles."
-          : "Explore top barbers on BVRB3R."}
-        action={recommendedBarbers.length ? (
-          <ClientActionLink href={barberSearchHref} size="md" variant="secondary">
-            Open Search
-            <ArrowRight className="h-4 w-4" />
-          </ClientActionLink>
-        ) : undefined}
+          ? "Saved, promoted, and high-performing chairs prioritized for fast booking."
+          : "Saved and eligible barbers will appear here."}
       >
         {recommendedBarbers.length ? (
           <div className="flex gap-4 overflow-x-auto pb-2 hide-scrollbar">
@@ -334,31 +238,20 @@ export function ClientHomeScreen({
           </div>
         ) : (
           <div className="rounded-[30px] border border-dashed border-white/10 bg-[linear-gradient(180deg,rgba(19,19,19,0.96),rgba(8,8,8,0.98))] p-6 sm:p-7">
-            <h3 className="text-2xl font-semibold text-white" data-display="true">Explore top barbers on BVRB3R.</h3>
+            <h3 className="text-2xl font-semibold text-white" data-display="true">No favorite barbers yet.</h3>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">
-              Live barbers appear here as soon as they are ready to book.
+              Save a barber from Search or book a cut to build your trusted chair list.
             </p>
-            <div className="mt-5">
-              <ClientActionLink href={barberSearchHref} size="lg" variant="secondary">
-                Open Search
-              </ClientActionLink>
-            </div>
           </div>
         )}
       </ClientSectionBlock>
 
       <ClientSectionBlock
         eyebrow="Shops"
-        title="Recommended Barber Shops"
+        title="Favorite Shops"
         subtitle={recommendedShops.length
-          ? "Choose the shop first, then the chair."
-          : "Explore barber shops on BVRB3R."}
-        action={recommendedShops.length ? (
-          <ClientActionLink href={shopSearchHref} size="md" variant="secondary">
-            Find Barber Shops
-            <ArrowRight className="h-4 w-4" />
-          </ClientActionLink>
-        ) : undefined}
+          ? "Saved, promoted, and high-performing shops near your booking flow."
+          : "Saved and eligible shops will appear here."}
       >
         {recommendedShops.length ? (
           <div className="flex gap-4 overflow-x-auto pb-2 hide-scrollbar">
@@ -375,15 +268,10 @@ export function ClientHomeScreen({
           </div>
         ) : (
           <div className="rounded-[30px] border border-dashed border-white/10 bg-[linear-gradient(180deg,rgba(19,19,19,0.96),rgba(8,8,8,0.98))] p-6 sm:p-7">
-            <h3 className="text-2xl font-semibold text-white" data-display="true">Explore barber shops on BVRB3R.</h3>
+            <h3 className="text-2xl font-semibold text-white" data-display="true">No favorite shops yet.</h3>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">
-              Live shops appear here as soon as their roster is ready.
+              Save a shop from Search or book from a shop roster to keep trusted locations close.
             </p>
-            <div className="mt-5">
-              <ClientActionLink href={shopSearchHref} size="lg" variant="secondary">
-                Find Barber Shops
-              </ClientActionLink>
-            </div>
           </div>
         )}
       </ClientSectionBlock>
@@ -421,6 +309,67 @@ export function ClientHomeScreen({
             <h3 className="text-2xl font-semibold text-white" data-display="true">No public work posted yet.</h3>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-white/62">
               Live barbers still appear in search and recommended barber cards. Public portfolio work will appear here when it is uploaded.
+            </p>
+          </div>
+        )}
+      </ClientSectionBlock>
+
+      <ClientSectionBlock
+        eyebrow="Upcoming"
+        title="Upcoming Appointment"
+        subtitle="Keep your next real appointment available without letting an empty schedule dominate Home."
+      >
+        {nextAppointment ? (
+          <div className="rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(8,8,8,0.99))] p-5 shadow-[0_20px_42px_rgba(0,0,0,0.18)]">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-2xl font-semibold text-white" data-display="true">
+                  {nextAppointmentBarberName}
+                </p>
+                <p className="mt-2 text-sm text-white/66">
+                  {nextAppointment.view?.service?.name ?? "Service pending"} at {nextAppointment.view?.location?.name ?? "BVRB3R"}
+                </p>
+              </div>
+              <span className="rounded-full border border-white/10 bg-black/18 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-white/72">
+                {nextAppointment.status.replaceAll("_", " ")}
+              </span>
+            </div>
+
+            <div className="mt-5 grid gap-3 md:grid-cols-3">
+              <div className="rounded-[18px] border border-white/8 bg-black/20 p-4">
+                <div className="inline-flex items-center gap-2 text-sm text-white/78">
+                  <CalendarDays className="h-4 w-4 text-[#baff69]" />
+                  Date
+                </div>
+                <p className="mt-3 text-lg font-semibold text-white">{formatDateLabel(nextAppointment.start)}</p>
+              </div>
+              <div className="rounded-[18px] border border-white/8 bg-black/20 p-4">
+                <div className="inline-flex items-center gap-2 text-sm text-white/78">
+                  <Clock3 className="h-4 w-4 text-[#d7ffab]" />
+                  Time
+                </div>
+                <p className="mt-3 text-lg font-semibold text-white">{formatTimeLabel(nextAppointment.start)}</p>
+              </div>
+              <div className="rounded-[18px] border border-white/8 bg-black/20 p-4">
+                <div className="inline-flex items-center gap-2 text-sm text-white/78">
+                  <MapPin className="h-4 w-4 text-[#baff69]" />
+                  Payment
+                </div>
+                <p className="mt-3 text-lg font-semibold text-white">{paymentStatusCopy}</p>
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-wrap gap-3">
+              <ClientActionLink href={viewDetailsHref} size="lg">
+                View Details
+              </ClientActionLink>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-[24px] border border-dashed border-white/10 bg-[linear-gradient(180deg,rgba(19,19,19,0.96),rgba(8,8,8,0.98))] p-5">
+            <h3 className="text-xl font-semibold text-white" data-display="true">No upcoming appointment yet.</h3>
+            <p className="mt-3 max-w-2xl text-sm leading-7 text-white/62">
+              Get a cut now or rebook a trusted chair when you are ready.
             </p>
           </div>
         )}

@@ -5,21 +5,16 @@ import Link from "next/link";
 import type { Route } from "next";
 import {
   BriefcaseBusiness,
-  ChevronDown,
   ChevronRight,
-  Clock3,
-  Filter,
   Mail,
   MoreVertical,
   Send,
   ShieldCheck,
-  Star,
-  Users,
   X
 } from "lucide-react";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Avatar, FilterChip, GlassCard, SearchBar } from "@/design/components";
+import { Avatar, GlassCard, SearchBar } from "@/design/components";
 import { useFintechManagementQuery } from "@/lib/fintech/client";
 import {
   useCreateOwnerTeamInviteMutation,
@@ -37,8 +32,6 @@ import { cn, currency } from "@/lib/utils";
 import { getReadableActionError } from "@/lib/utils/feedback";
 
 type StatusKind = "active" | "idle" | "offline" | "pending";
-type TeamFilter = "all" | "active" | "idle" | "offline";
-type SortKey = "top" | "revenue" | "bookings" | "utilization" | "rating" | "status";
 
 type TeamBarberView = {
   id: string;
@@ -61,7 +54,6 @@ type TeamBarberView = {
   publicTeamVisible: boolean;
   publicTeamOrder: number;
   featuredOnShopProfile: boolean;
-  searchText: string;
 };
 
 type RelationshipUpdatePayload = {
@@ -92,30 +84,6 @@ type ShopProfileDraft = {
   publicHours: string;
   policies: string;
 };
-
-type MetricCardProps = {
-  icon: ReactNode;
-  value: ReactNode;
-  label: string;
-  tone?: "green" | "amber" | "neutral";
-  onClick?: () => void;
-};
-
-const filterOptions: Array<{ key: TeamFilter; label: string }> = [
-  { key: "all", label: "All" },
-  { key: "active", label: "Active" },
-  { key: "idle", label: "Idle" },
-  { key: "offline", label: "Offline" }
-];
-
-const sortOptions: Array<{ key: SortKey; label: string }> = [
-  { key: "top", label: "Top Performers" },
-  { key: "revenue", label: "Revenue" },
-  { key: "bookings", label: "Bookings" },
-  { key: "utilization", label: "Utilization" },
-  { key: "rating", label: "Rating" },
-  { key: "status", label: "Status" }
-];
 
 function formatTime(iso: string | null) {
   if (!iso) {
@@ -254,71 +222,6 @@ function getStatusClasses(kind: StatusKind) {
   }
 }
 
-function getUtilizationTone(value: number | null, statusKind: StatusKind) {
-  if (statusKind === "pending" || value === null) {
-    return "neutral";
-  }
-
-  if (value >= 65) {
-    return "green";
-  }
-
-  if (value >= 40) {
-    return "amber";
-  }
-
-  return "neutral";
-}
-
-function getSortValue(barber: TeamBarberView, sortKey: SortKey) {
-  switch (sortKey) {
-    case "revenue":
-      return barber.todayPostedAmount ?? -1;
-    case "bookings":
-      return barber.todayBookings ?? -1;
-    case "utilization":
-      return barber.utilization ?? -1;
-    case "rating":
-      return barber.rating ?? -1;
-    case "status":
-      return ["active", "idle", "pending", "offline"].indexOf(barber.statusKind);
-    case "top":
-      return (barber.todayPostedAmount ?? 0) + (barber.todayBookings ?? 0) * 100 + (barber.utilization ?? 0);
-  }
-}
-
-function MetricSkeleton() {
-  return (
-    <div className="rounded-[18px] border border-white/8 bg-white/[0.025] p-4">
-      <Skeleton className="h-4 w-24" />
-      <Skeleton className="mt-3 h-7 w-14" />
-    </div>
-  );
-}
-
-function MetricCard({ icon, value, label, tone = "green", onClick }: MetricCardProps) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="group min-h-[6.75rem] rounded-[18px] border border-white/9 bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.018))] p-4 text-left shadow-[0_18px_50px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.045)] transition hover:-translate-y-0.5 hover:border-[#A3FF12]/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/70"
-    >
-      <span
-        className={cn(
-          "flex h-9 w-9 items-center justify-center rounded-[12px] border shadow-[0_0_20px_rgba(163,255,18,0.16)]",
-          tone === "green" && "border-[#A3FF12]/25 bg-[#A3FF12]/12 text-[#A3FF12]",
-          tone === "amber" && "border-amber-300/25 bg-amber-300/10 text-amber-300",
-          tone === "neutral" && "border-white/12 bg-white/[0.04] text-white/65"
-        )}
-      >
-        {icon}
-      </span>
-      <span className="mt-3 block text-3xl font-black tracking-[-0.055em] text-white">{value}</span>
-      <span className="mt-1 block text-sm font-semibold text-white/66">{label}</span>
-    </button>
-  );
-}
-
 function SectionEmptyState({
   title,
   detail,
@@ -358,11 +261,8 @@ export function OwnerTeamWorkspace() {
   const shopQuery = useShopDashboardQuery();
   const shopProfileQuery = useOwnerShopProfileQuery();
   const fintechQuery = useFintechManagementQuery();
-  const [searchValue, setSearchValue] = useState("");
   const [inviteSearch, setInviteSearch] = useState("");
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
-  const [activeFilter, setActiveFilter] = useState<TeamFilter>("all");
-  const [sortKey, setSortKey] = useState<SortKey>("top");
   const [selectedBarberId, setSelectedBarberId] = useState<string | null>(null);
   const [shopProfileEditorOpen, setShopProfileEditorOpen] = useState(false);
   const [shopProfileDraft, setShopProfileDraft] = useState<ShopProfileDraft>({
@@ -472,44 +372,13 @@ export function OwnerTeamWorkspace() {
         relationshipId: typeof membership?.id === "string" ? membership.id : null,
         publicTeamVisible: membershipRecord.publicTeamVisible !== false && membershipRecord.public_team_visible !== false,
         publicTeamOrder: getOptionalNumericField(membershipRecord, ["publicTeamOrder", "public_team_order"]) ?? 0,
-        featuredOnShopProfile: membershipRecord.featuredOnShopProfile === true || membershipRecord.featured_on_shop_profile === true,
-        searchText: `${barber.name} ${roleLabel} ${statusLabel} ${currentShopLabel ?? ""}`.toLowerCase()
+        featuredOnShopProfile: membershipRecord.featuredOnShopProfile === true || membershipRecord.featured_on_shop_profile === true
       };
     });
   }, [activeBarbers, appointments, barberAccounts, barbers, memberships]);
 
-  const filteredTeam = useMemo(() => {
-    const search = searchValue.trim().toLowerCase();
-
-    return team
-      .filter((barber) => {
-        if (activeFilter !== "all" && barber.statusKind !== activeFilter) {
-          return false;
-        }
-
-        return search ? barber.searchText.includes(search) : true;
-      })
-      .sort((left, right) => {
-        const leftValue = getSortValue(left, sortKey);
-        const rightValue = getSortValue(right, sortKey);
-
-        if (sortKey === "status") {
-          return leftValue - rightValue || left.name.localeCompare(right.name);
-        }
-
-        return rightValue - leftValue || left.name.localeCompare(right.name);
-      });
-  }, [activeFilter, searchValue, sortKey, team]);
-
   const selectedBarber = team.find((barber) => barber.id === selectedBarberId) ?? null;
-  const ratings = team.map((barber) => barber.rating).filter((rating): rating is number => rating !== null);
-  const averageRating = ratings.length
-    ? (ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length).toFixed(1)
-    : "-";
   const activeCount = team.filter((barber) => barber.statusKind === "active").length;
-  const idleCount = team.filter((barber) => barber.statusKind === "idle").length;
-  const offlineCount = team.filter((barber) => barber.statusKind === "offline").length;
-  const activeSortLabel = sortOptions.find((option) => option.key === sortKey)?.label ?? "Top Performers";
   const relationshipDirectory = relationshipDirectoryQuery.data?.barbers ?? [];
   const pendingOwnerInvites = relationshipDirectory.filter((barber) => barber.inviteStatus === "invited");
   const incomingJoinRequests = relationshipDirectory.filter((barber) => barber.inviteStatus === "requested");
@@ -625,18 +494,6 @@ export function OwnerTeamWorkspace() {
 
   return (
     <div className="space-y-7" data-testid="owner-team-workspace">
-      <header className="flex items-start justify-between gap-5">
-        <div>
-          <h1 className="text-5xl font-black leading-none tracking-[-0.055em] text-white sm:text-6xl" data-display="true">
-            Home
-          </h1>
-          <p className="mt-3 text-lg font-medium text-white/68">Manage your shop, team, and public profile.</p>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-white/52">
-            Invites, team status, schedule, money, and profile controls.
-          </p>
-        </div>
-      </header>
-
       {errorMessage ? <FeedbackBanner tone="error" message={getReadableActionError(errorMessage)} /> : null}
       {inviteFeedback && !inviteModalOpen ? <FeedbackBanner tone={inviteFeedback.tone} message={inviteFeedback.message} /> : null}
       {relationshipFeedback ? <FeedbackBanner tone={relationshipFeedback.tone} message={relationshipFeedback.message} /> : null}
@@ -666,6 +523,343 @@ export function OwnerTeamWorkspace() {
               <p className="mt-1 text-xs leading-5 text-white/50">{detail}</p>
             </div>
           ))}
+        </div>
+      </GlassCard>
+
+      <GlassCard className="p-5 sm:p-6" data-testid="barbers-summary">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Barbers Summary</p>
+            <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-white">Connected barbers and today&apos;s performance.</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-white/56">
+              Active shop relationships stay separate from pending invitations so the owner view stays operational.
+            </p>
+          </div>
+          {team.length ? (
+            <Link href="/dashboard/owner/team" className="text-sm font-extrabold text-[#A3FF12] transition hover:text-[#d7ffab]">
+              View Team
+            </Link>
+          ) : null}
+        </div>
+
+        <div className="mt-5 space-y-3">
+          {isInitialLoading ? (
+            <>
+              <Skeleton className="h-28 rounded-[22px]" />
+              <Skeleton className="h-28 rounded-[22px]" />
+            </>
+          ) : !team.length ? (
+            <SectionEmptyState
+              title="No active barbers yet."
+              detail={pendingOwnerInvites.length ? "Pending invitations are waiting for barber approval before they join the active summary." : "Invite or approve a barber to build your shop team."}
+              action={!pendingOwnerInvites.length ? (
+                <button
+                  type="button"
+                  onClick={() => setInviteModalOpen(true)}
+                  className="inline-flex min-h-12 items-center justify-center rounded-full border border-[#A3FF12]/40 px-5 text-sm font-extrabold text-[#A3FF12] transition hover:bg-[#A3FF12]/10"
+                >
+                  Invite Barber
+                </button>
+              ) : undefined}
+            />
+          ) : (
+            team.map((barber) => {
+              const statusClasses = getStatusClasses(barber.statusKind);
+              const isSelected = selectedBarber?.id === barber.id;
+
+              return (
+                <div key={barber.id} className="rounded-[22px] border border-white/8 bg-black/24">
+                  <div className="grid gap-4 p-4 lg:grid-cols-[minmax(15rem,1.25fr)_0.75fr_0.65fr_0.75fr_0.65fr_auto] lg:items-center">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedBarberId(isSelected ? null : barber.id)}
+                      className="flex min-w-0 items-center gap-4 rounded-[16px] text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/70"
+                    >
+                      <Avatar
+                        alt={barber.name}
+                        initials={barber.initials}
+                        className={cn(
+                          "h-16 w-16 border-2 text-base",
+                          barber.statusKind === "active" && "border-[#A3FF12]/80 shadow-[0_0_18px_rgba(163,255,18,0.18)]",
+                          barber.statusKind === "idle" && "border-amber-300/65",
+                          barber.statusKind === "offline" && "border-white/18",
+                          barber.statusKind === "pending" && "border-sky-400/70"
+                        )}
+                      />
+                      <span className="min-w-0">
+                        <span className="block truncate text-xl font-extrabold tracking-[-0.035em] text-white">{barber.name}</span>
+                        <span className="mt-1 block truncate text-sm font-semibold text-white/62">Service: {barber.roleLabel}</span>
+                      </span>
+                    </button>
+
+                    <Link
+                      href={barber.statusKind === "pending" ? "/dashboard/owner/more?section=verification" : "/dashboard/owner/team"}
+                      className={cn("inline-flex items-center gap-2 text-base font-extrabold", statusClasses.split(" ")[1])}
+                    >
+                      <span className={cn("h-3 w-3 rounded-full shadow-[0_0_12px_currentColor]", statusClasses.split(" ")[0])} />
+                      {barber.statusLabel}
+                    </Link>
+
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.14em] text-white/42">Today</p>
+                      <p className="mt-1 text-xl font-black text-white">{barber.todayPostedAmount === null ? "-" : currency(barber.todayPostedAmount)}</p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.14em] text-white/42">Appointments</p>
+                      <p className="mt-1 text-xl font-black text-white">{barber.todayBookings ?? "-"}</p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.14em] text-white/42">Performance</p>
+                      <p className="mt-1 text-xl font-black text-white">{barber.utilization === null ? "-" : `${barber.utilization}%`}</p>
+                    </div>
+
+                    <details className="relative justify-self-start lg:justify-self-end">
+                      <summary className="inline-flex h-11 w-11 cursor-pointer list-none items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-white/62 transition hover:border-[#A3FF12]/30 hover:text-[#A3FF12]" aria-label={`Open actions for ${barber.name}`}>
+                        <MoreVertical className="h-5 w-5" />
+                      </summary>
+                      <GlassCard className="absolute right-0 z-20 mt-2 w-56 p-2">
+                        <TeamActionLink href={`/dashboard/owner/schedule?barberId=${encodeURIComponent(barber.id)}`}>
+                          View Schedule
+                        </TeamActionLink>
+                        <TeamActionLink href={`/dashboard/owner/messages?threadWith=${encodeURIComponent(barber.id)}`}>
+                          Message Barber
+                        </TeamActionLink>
+                        <TeamActionLink href={`/dashboard/owner/team?barber=${encodeURIComponent(barber.id)}`}>
+                          View Profile
+                        </TeamActionLink>
+                      </GlassCard>
+                    </details>
+                  </div>
+
+                  {isSelected ? (
+                    <div className="border-t border-white/8 px-4 pb-4">
+                      <div className="grid gap-3 rounded-[20px] border border-white/8 bg-black/24 p-4 text-sm text-white/62 md:grid-cols-[1fr_1fr_auto] md:items-center">
+                        <div>
+                          <p className="font-bold text-white">{barber.statusDetail}</p>
+                          <p className="mt-1">Next up: {formatTime(barber.nextAppointmentStart)}</p>
+                        </div>
+                        <div>
+                          <p className="font-bold text-white">Account health: {barber.payoutStatus}</p>
+                          <p className="mt-1">{barber.payoutBlockReason ?? `Payout readiness ${barber.payoutReadinessStatus}.`}</p>
+                        </div>
+                        <Link href={`/dashboard/owner/money?barberId=${encodeURIComponent(barber.id)}`} className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#A3FF12]/40 px-4 text-sm font-extrabold text-[#A3FF12] transition hover:bg-[#A3FF12]/10">
+                          Inspect
+                        </Link>
+                      </div>
+                      <div className="mt-3 grid gap-3 rounded-[20px] border border-[#A3FF12]/14 bg-[#A3FF12]/6 p-4 md:grid-cols-[1fr_1fr]">
+                        <div>
+                          <p className="text-xs font-black uppercase tracking-[0.16em] text-[#A3FF12]">Operating model</p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {(["freelance", "booth_rent", "commission"] as const).map((model) => (
+                              <button
+                                key={`${barber.id}-${model}`}
+                                type="button"
+                                disabled={!barber.relationshipId || updateRelationshipMutation.isPending}
+                                onClick={() => void handleRelationshipUpdate(
+                                  barber,
+                                  model === "commission"
+                                    ? { routingModel: model, barberPercent: 0.7, shopPercent: 0.3 }
+                                    : model === "booth_rent"
+                                      ? { routingModel: model, boothRentAmount: 250, boothRentFrequency: "weekly", barberPercent: null, shopPercent: null }
+                                      : { routingModel: model, boothRentAmount: null, boothRentFrequency: null, barberPercent: null, shopPercent: null },
+                                  `${barber.name}'s operating model was set to ${formatRoutingLabel(model)}.`
+                                )}
+                                className={cn(
+                                  "inline-flex min-h-10 items-center rounded-full border px-4 text-xs font-black transition",
+                                  barber.roleLabel.toLowerCase() === formatRoutingLabel(model).toLowerCase()
+                                    ? "border-[#A3FF12]/38 bg-[#A3FF12] text-black"
+                                    : "border-white/10 bg-black/20 text-white/68 hover:border-[#A3FF12]/28 hover:text-[#A3FF12]",
+                                  (!barber.relationshipId || updateRelationshipMutation.isPending) && "cursor-not-allowed opacity-55"
+                                )}
+                              >
+                                {formatRoutingLabel(model)}
+                              </button>
+                            ))}
+                          </div>
+                          <p className="mt-3 text-xs leading-5 text-white/48">Commission defaults to 70/30. Booth rent terms can be refined in Money after the relationship is saved.</p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-black uppercase tracking-[0.16em] text-[#A3FF12]">Public shop profile</p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              disabled={!barber.relationshipId || updateRelationshipMutation.isPending}
+                              onClick={() => void handleRelationshipUpdate(
+                                barber,
+                                { publicTeamVisible: !barber.publicTeamVisible },
+                                barber.publicTeamVisible ? `${barber.name} is hidden from the public shop team.` : `${barber.name} is visible on the public shop team.`
+                              )}
+                              className="inline-flex min-h-10 items-center rounded-full border border-white/10 bg-black/20 px-4 text-xs font-black text-white/72 transition hover:border-[#A3FF12]/28 hover:text-[#A3FF12] disabled:cursor-not-allowed disabled:opacity-55"
+                            >
+                              {barber.publicTeamVisible ? "Hide publicly" : "Show publicly"}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={!barber.relationshipId || updateRelationshipMutation.isPending}
+                              onClick={() => void handleRelationshipUpdate(
+                                barber,
+                                { featuredOnShopProfile: !barber.featuredOnShopProfile },
+                                barber.featuredOnShopProfile ? `${barber.name} is no longer featured.` : `${barber.name} is featured on the shop profile.`
+                              )}
+                              className="inline-flex min-h-10 items-center rounded-full border border-white/10 bg-black/20 px-4 text-xs font-black text-white/72 transition hover:border-[#A3FF12]/28 hover:text-[#A3FF12] disabled:cursor-not-allowed disabled:opacity-55"
+                            >
+                              {barber.featuredOnShopProfile ? "Unfeature" : "Feature"}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={!barber.relationshipId || updateRelationshipMutation.isPending}
+                              onClick={() => void handleRelationshipUpdate(
+                                barber,
+                                { publicTeamOrder: Math.max(0, barber.publicTeamOrder - 1) },
+                                `${barber.name} was moved earlier on the public shop team.`
+                              )}
+                              className="inline-flex min-h-10 items-center rounded-full border border-white/10 bg-black/20 px-4 text-xs font-black text-white/72 transition hover:border-[#A3FF12]/28 hover:text-[#A3FF12] disabled:cursor-not-allowed disabled:opacity-55"
+                            >
+                              Move up
+                            </button>
+                            <button
+                              type="button"
+                              disabled={!barber.relationshipId || updateRelationshipMutation.isPending}
+                              onClick={() => void handleRelationshipUpdate(
+                                barber,
+                                { publicTeamOrder: barber.publicTeamOrder + 1 },
+                                `${barber.name} was moved later on the public shop team.`
+                              )}
+                              className="inline-flex min-h-10 items-center rounded-full border border-white/10 bg-black/20 px-4 text-xs font-black text-white/72 transition hover:border-[#A3FF12]/28 hover:text-[#A3FF12] disabled:cursor-not-allowed disabled:opacity-55"
+                            >
+                              Move down
+                            </button>
+                            <button
+                              type="button"
+                              disabled={!barber.relationshipId || releaseRelationshipMutation.isPending}
+                              onClick={() => void handleReleaseRelationship(barber)}
+                              className="inline-flex min-h-10 items-center rounded-full border border-red-300/20 bg-red-400/10 px-4 text-xs font-black text-red-100 transition hover:border-red-200/36 hover:bg-red-400/14 disabled:cursor-not-allowed disabled:opacity-55"
+                            >
+                              Release barber
+                            </button>
+                          </div>
+                          <p className="mt-3 text-xs leading-5 text-white/48">Public controls only affect the shop profile team surface. Barber accounts and past history stay intact.</p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })
+          )}
+        </div>
+      </GlassCard>
+
+      <GlassCard className="p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Team relationship queue</p>
+            <h2 className="mt-2 text-2xl font-black tracking-[-0.035em] text-white">Invites and join requests</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-white/56">
+              Active relationships are exclusive. Accepted requests connect the barber to this shop; declined and ended records stay auditable.
+            </p>
+          </div>
+          {team.length ? (
+            <button
+              type="button"
+              onClick={() => setInviteModalOpen(true)}
+              className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 px-4 text-sm font-extrabold text-white/74 transition hover:border-[#A3FF12]/28 hover:text-[#A3FF12]"
+            >
+              Invite Barber
+            </button>
+          ) : null}
+        </div>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-black uppercase tracking-[0.16em] text-white/48">Incoming requests</p>
+              <span className="rounded-full border border-[#A3FF12]/20 bg-[#A3FF12]/10 px-3 py-1 text-xs font-black text-[#A3FF12]">
+                {incomingJoinRequests.length}
+              </span>
+            </div>
+            <div className="mt-4 space-y-3">
+              {relationshipDirectoryQuery.isLoading ? (
+                <>
+                  <Skeleton className="h-20 rounded-[18px]" />
+                  <Skeleton className="h-20 rounded-[18px]" />
+                </>
+              ) : incomingJoinRequests.length ? (
+                incomingJoinRequests.slice(0, 4).map((barber) => (
+                  <div key={barber.inviteId ?? barber.barberId} className="rounded-[18px] border border-white/8 bg-white/[0.035] p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <p className="truncate text-lg font-extrabold text-white">{barber.name}</p>
+                        <p className="mt-1 text-sm text-white/56">{formatRoutingLabel(barber.compensationModel)} request</p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          disabled={!barber.inviteId || respondJoinRequestMutation.isPending}
+                          onClick={() => barber.inviteId ? void handleJoinRequestResponse(barber.inviteId, "accepted", barber.name) : undefined}
+                          className="inline-flex min-h-10 items-center justify-center rounded-full border border-[#A3FF12]/38 bg-[#A3FF12] px-4 text-sm font-black text-black transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:border-white/8 disabled:bg-white/[0.04] disabled:text-white/34"
+                        >
+                          Accept
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!barber.inviteId || respondJoinRequestMutation.isPending}
+                          onClick={() => barber.inviteId ? void handleJoinRequestResponse(barber.inviteId, "rejected", barber.name) : undefined}
+                          className="inline-flex min-h-10 items-center justify-center rounded-full border border-white/10 px-4 text-sm font-extrabold text-white/68 transition hover:border-white/20 hover:text-white disabled:cursor-not-allowed disabled:text-white/34"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                    <p className="mt-3 text-xs font-bold uppercase tracking-[0.13em] text-white/38">One active shop relationship at a time</p>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-[18px] border border-dashed border-white/10 bg-white/[0.025] p-4">
+                  <p className="text-base font-extrabold text-white">No join requests waiting.</p>
+                  <p className="mt-1 text-sm leading-6 text-white/54">Barbers who request this shop will appear here for owner approval.</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-black uppercase tracking-[0.16em] text-white/48">Sent invitations</p>
+              <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-3 py-1 text-xs font-black text-amber-100">
+                {pendingOwnerInvites.length}
+              </span>
+            </div>
+            <div className="mt-4 space-y-3">
+              {relationshipDirectoryQuery.isLoading ? (
+                <>
+                  <Skeleton className="h-20 rounded-[18px]" />
+                  <Skeleton className="h-20 rounded-[18px]" />
+                </>
+              ) : pendingOwnerInvites.length ? (
+                pendingOwnerInvites.slice(0, 4).map((barber) => (
+                  <div key={barber.inviteId ?? barber.barberId} className="rounded-[18px] border border-white/8 bg-white/[0.035] p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-lg font-extrabold text-white">{barber.name}</p>
+                        <p className="mt-1 text-sm text-white/56">{barber.email || barber.username || "Waiting for barber response"}</p>
+                      </div>
+                      <span className="rounded-full border border-amber-300/18 bg-amber-300/10 px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-amber-100">
+                        Pending barber approval
+                      </span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-[18px] border border-dashed border-white/10 bg-white/[0.025] p-4">
+                  <p className="text-base font-extrabold text-white">No open invitations.</p>
+                  <p className="mt-1 text-sm leading-6 text-white/54">Invite barbers when you are ready to connect your shop team.</p>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </GlassCard>
 
@@ -793,481 +987,6 @@ export function OwnerTeamWorkspace() {
           </div>
         ) : null}
       </GlassCard>
-
-      <section className="grid gap-3 sm:grid-cols-[1fr_auto]">
-        <SearchBar
-          aria-label="Search barbers"
-          placeholder="Search barbers..."
-          value={searchValue}
-          onChange={(event) => setSearchValue(event.target.value)}
-          className="min-h-[4.25rem] rounded-[22px] px-5 text-lg"
-        />
-        <details className="group relative">
-          <summary className="inline-flex min-h-[4.25rem] w-full cursor-pointer list-none items-center justify-center rounded-[22px] border border-white/10 bg-white/[0.035] px-5 text-white/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition hover:border-[#A3FF12]/35 hover:text-[#A3FF12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/70 sm:w-[4.875rem]" aria-label="Open team filters">
-            <Filter className="h-6 w-6" />
-          </summary>
-          <GlassCard className="absolute right-0 z-20 mt-3 w-72 p-4">
-            <p className="px-2 text-xs font-extrabold uppercase tracking-[0.18em] text-[#A3FF12]">Status</p>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              {filterOptions.map((option) => (
-                <button
-                  key={`sheet-${option.key}`}
-                  type="button"
-                  onClick={() => setActiveFilter(option.key)}
-                  className={cn(
-                    "rounded-[14px] border px-3 py-3 text-sm font-bold transition",
-                    activeFilter === option.key
-                      ? "border-[#A3FF12]/45 bg-[#A3FF12] text-black"
-                      : "border-white/10 bg-black/20 text-white/72 hover:border-[#A3FF12]/25 hover:text-white"
-                  )}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-            <p className="mt-5 px-2 text-xs font-extrabold uppercase tracking-[0.18em] text-[#A3FF12]">Sort by</p>
-            <div className="mt-3 space-y-1">
-              {sortOptions.map((option) => (
-                <button
-                  key={`sheet-sort-${option.key}`}
-                  type="button"
-                  onClick={() => setSortKey(option.key)}
-                  className="flex w-full items-center justify-between rounded-[14px] px-3 py-2.5 text-sm font-bold text-white/72 transition hover:bg-white/[0.05] hover:text-white"
-                >
-                  {option.label}
-                  {sortKey === option.key ? <span className="h-2 w-2 rounded-full bg-[#A3FF12]" /> : null}
-                </button>
-              ))}
-            </div>
-          </GlassCard>
-        </details>
-      </section>
-
-      <section className="flex flex-wrap gap-3">
-        {filterOptions.map((option) => (
-          <FilterChip
-            key={option.key}
-            active={activeFilter === option.key}
-            onClick={() => setActiveFilter(option.key)}
-            className="h-12 px-6 text-base"
-          >
-            {option.label}
-          </FilterChip>
-        ))}
-        <details className="group relative">
-          <summary className="inline-flex h-12 min-w-[13.75rem] cursor-pointer list-none items-center justify-between gap-3 rounded-full border border-white/10 bg-white/[0.035] px-6 text-base font-bold text-white/78 transition hover:border-[#A3FF12]/28 hover:text-white">
-            {activeSortLabel}
-            <ChevronDown className="h-5 w-5" />
-          </summary>
-          <GlassCard className="absolute left-0 z-20 mt-3 w-64 p-3">
-            {sortOptions.map((option) => (
-              <button
-                key={option.key}
-                type="button"
-                onClick={() => setSortKey(option.key)}
-                className="flex w-full items-center justify-between rounded-[14px] px-3 py-3 text-sm font-bold text-white/74 transition hover:bg-white/[0.05] hover:text-white"
-              >
-                {option.label}
-                {sortKey === option.key ? <span className="h-2 w-2 rounded-full bg-[#A3FF12]" /> : null}
-              </button>
-            ))}
-          </GlassCard>
-        </details>
-      </section>
-
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        {isInitialLoading ? (
-          <>
-            <MetricSkeleton />
-            <MetricSkeleton />
-            <MetricSkeleton />
-            <MetricSkeleton />
-            <MetricSkeleton />
-          </>
-        ) : (
-          <>
-            <MetricCard icon={<Users className="h-6 w-6" />} value={team.length} label="Total Barbers" onClick={() => setActiveFilter("all")} />
-            <MetricCard icon={<span className="h-6 w-6 rounded-full bg-[#A3FF12]" />} value={activeCount} label="Active" onClick={() => setActiveFilter("active")} />
-            <MetricCard icon={<Clock3 className="h-6 w-6" />} value={idleCount} label="Idle" tone="amber" onClick={() => setActiveFilter("idle")} />
-            <MetricCard icon={<span className="h-6 w-6 rounded-full bg-white/50" />} value={offlineCount} label="Offline" tone="neutral" onClick={() => setActiveFilter("offline")} />
-            <MetricCard icon={<Star className="h-6 w-6 fill-current" />} value={averageRating} label="Avg Rating" onClick={() => setSortKey("rating")} />
-          </>
-        )}
-      </section>
-
-      <GlassCard className="grid gap-4 p-5 md:grid-cols-3">
-        <div>
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Relationship posture</p>
-          <p className="mt-3 text-lg font-extrabold text-white">Commission / Booth Rent / Freelance</p>
-          <p className="mt-2 text-sm leading-6 text-white/56">Operating models are relationship settings. Barbers without an active shop stay freelance by default.</p>
-        </div>
-        <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
-          <p className="text-xs font-black uppercase tracking-[0.16em] text-white/42">Needs setup</p>
-          <p className="mt-3 text-2xl font-black text-amber-300">{team.filter((barber) => barber.statusKind === "pending").length}</p>
-          <p className="mt-2 text-sm leading-6 text-white/56">Verification, payout, or invite readiness.</p>
-        </div>
-        <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
-          <p className="text-xs font-black uppercase tracking-[0.16em] text-white/42">Connected team</p>
-          <p className="mt-3 text-2xl font-black text-white">{team.length}</p>
-          <p className="mt-2 text-sm leading-6 text-white/56">Visible in the owner scope today.</p>
-        </div>
-      </GlassCard>
-
-      <GlassCard className="p-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Team relationship queue</p>
-            <h2 className="mt-2 text-2xl font-black tracking-[-0.035em] text-white">Invites and join requests</h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-white/56">
-              Active relationships are exclusive. Accepted requests connect the barber to this shop; declined and ended records stay auditable.
-            </p>
-          </div>
-          {team.length ? (
-            <button
-              type="button"
-              onClick={() => setInviteModalOpen(true)}
-              className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 px-4 text-sm font-extrabold text-white/74 transition hover:border-[#A3FF12]/28 hover:text-[#A3FF12]"
-            >
-              Invite Barber
-            </button>
-          ) : null}
-        </div>
-
-        <div className="mt-5 grid gap-4 lg:grid-cols-2">
-          <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-sm font-black uppercase tracking-[0.16em] text-white/48">Incoming requests</p>
-              <span className="rounded-full border border-[#A3FF12]/20 bg-[#A3FF12]/10 px-3 py-1 text-xs font-black text-[#A3FF12]">
-                {incomingJoinRequests.length}
-              </span>
-            </div>
-            <div className="mt-4 space-y-3">
-              {relationshipDirectoryQuery.isLoading ? (
-                <>
-                  <Skeleton className="h-20 rounded-[18px]" />
-                  <Skeleton className="h-20 rounded-[18px]" />
-                </>
-              ) : incomingJoinRequests.length ? (
-                incomingJoinRequests.slice(0, 4).map((barber) => (
-                  <div key={barber.inviteId ?? barber.barberId} className="rounded-[18px] border border-white/8 bg-white/[0.035] p-4">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="min-w-0">
-                        <p className="truncate text-lg font-extrabold text-white">{barber.name}</p>
-                        <p className="mt-1 text-sm text-white/56">{formatRoutingLabel(barber.compensationModel)} request</p>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          disabled={!barber.inviteId || respondJoinRequestMutation.isPending}
-                          onClick={() => barber.inviteId ? void handleJoinRequestResponse(barber.inviteId, "accepted", barber.name) : undefined}
-                          className="inline-flex min-h-10 items-center justify-center rounded-full border border-[#A3FF12]/38 bg-[#A3FF12] px-4 text-sm font-black text-black transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:border-white/8 disabled:bg-white/[0.04] disabled:text-white/34"
-                        >
-                          Accept
-                        </button>
-                        <button
-                          type="button"
-                          disabled={!barber.inviteId || respondJoinRequestMutation.isPending}
-                          onClick={() => barber.inviteId ? void handleJoinRequestResponse(barber.inviteId, "rejected", barber.name) : undefined}
-                          className="inline-flex min-h-10 items-center justify-center rounded-full border border-white/10 px-4 text-sm font-extrabold text-white/68 transition hover:border-white/20 hover:text-white disabled:cursor-not-allowed disabled:text-white/34"
-                        >
-                          Reject
-                        </button>
-                      </div>
-                    </div>
-                    <p className="mt-3 text-xs font-bold uppercase tracking-[0.13em] text-white/38">One active shop relationship at a time</p>
-                  </div>
-                ))
-              ) : (
-                <div className="rounded-[18px] border border-dashed border-white/10 bg-white/[0.025] p-4">
-                  <p className="text-base font-extrabold text-white">No join requests waiting.</p>
-                  <p className="mt-1 text-sm leading-6 text-white/54">Barbers who request this shop will appear here for owner approval.</p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="rounded-[20px] border border-white/8 bg-black/24 p-4">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-sm font-black uppercase tracking-[0.16em] text-white/48">Sent invitations</p>
-              <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-3 py-1 text-xs font-black text-amber-100">
-                {pendingOwnerInvites.length}
-              </span>
-            </div>
-            <div className="mt-4 space-y-3">
-              {relationshipDirectoryQuery.isLoading ? (
-                <>
-                  <Skeleton className="h-20 rounded-[18px]" />
-                  <Skeleton className="h-20 rounded-[18px]" />
-                </>
-              ) : pendingOwnerInvites.length ? (
-                pendingOwnerInvites.slice(0, 4).map((barber) => (
-                  <div key={barber.inviteId ?? barber.barberId} className="rounded-[18px] border border-white/8 bg-white/[0.035] p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-lg font-extrabold text-white">{barber.name}</p>
-                        <p className="mt-1 text-sm text-white/56">{barber.email || barber.username || "Waiting for barber response"}</p>
-                      </div>
-                      <span className="rounded-full border border-amber-300/18 bg-amber-300/10 px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-amber-100">
-                        Pending barber approval
-                      </span>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="rounded-[18px] border border-dashed border-white/10 bg-white/[0.025] p-4">
-                  <p className="text-base font-extrabold text-white">No open invitations.</p>
-                  <p className="mt-1 text-sm leading-6 text-white/54">Invite barbers when you are ready to connect your shop team.</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </GlassCard>
-
-      <section id="team-roster" className="space-y-3">
-        <div className="hidden grid-cols-[minmax(13rem,1.5fr)_0.8fr_0.7fr_0.85fr_0.9fr_0.6fr_2.25rem] gap-4 px-4 text-xs font-black uppercase tracking-[0.12em] text-white/46 md:grid">
-          <span>Barber</span>
-          <span>Status</span>
-          <span className="text-center">Today Bookings</span>
-          <span className="text-center">Today Revenue</span>
-          <span>Utilization</span>
-          <span>Rating</span>
-          <span />
-        </div>
-
-        {isInitialLoading ? (
-          <div className="space-y-3">
-            <Skeleton className="h-24 rounded-[22px]" />
-            <Skeleton className="h-24 rounded-[22px]" />
-            <Skeleton className="h-24 rounded-[22px]" />
-          </div>
-        ) : !team.length ? (
-          <SectionEmptyState
-            title="No barbers assigned yet."
-            detail={pendingOwnerInvites.length ? "Pending invitations are waiting for barber approval." : "Invite your first barber to connect your shop team."}
-            action={!pendingOwnerInvites.length ? (
-              <button
-                type="button"
-                onClick={() => setInviteModalOpen(true)}
-                className="inline-flex min-h-12 items-center justify-center rounded-full border border-[#A3FF12]/40 px-5 text-sm font-extrabold text-[#A3FF12] transition hover:bg-[#A3FF12]/10"
-              >
-                Invite Barber
-              </button>
-            ) : undefined}
-          />
-        ) : !filteredTeam.length ? (
-          <SectionEmptyState title="No barbers match this filter." detail="Try another status or search term." />
-        ) : (
-          filteredTeam.map((barber) => {
-            const statusClasses = getStatusClasses(barber.statusKind);
-            const utilizationTone = getUtilizationTone(barber.utilization, barber.statusKind);
-            const isSelected = selectedBarber?.id === barber.id;
-
-            return (
-              <GlassCard key={barber.id} active={isSelected} className="p-0">
-                <div className="grid gap-4 p-4 md:grid-cols-[minmax(13rem,1.5fr)_0.8fr_0.7fr_0.85fr_0.9fr_0.6fr_2.25rem] md:items-center">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedBarberId(isSelected ? null : barber.id)}
-                    className="flex min-w-0 items-center gap-4 rounded-[16px] text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/70"
-                  >
-                    <Avatar
-                      alt={barber.name}
-                      initials={barber.initials}
-                      className={cn(
-                        "h-16 w-16 border-2 text-base",
-                        barber.statusKind === "active" && "border-[#A3FF12]/80 shadow-[0_0_18px_rgba(163,255,18,0.18)]",
-                        barber.statusKind === "idle" && "border-amber-300/65",
-                        barber.statusKind === "offline" && "border-white/18",
-                        barber.statusKind === "pending" && "border-sky-400/70"
-                      )}
-                    />
-                    <span className="min-w-0">
-                      <span className="block truncate text-xl font-extrabold tracking-[-0.035em] text-white">{barber.name}</span>
-                      <span className="mt-1 block truncate text-base font-medium text-white/62">{barber.roleLabel}</span>
-                    </span>
-                  </button>
-
-                  <Link
-                    href={barber.statusKind === "pending" ? "/dashboard/owner/more?section=verification" : "/dashboard/owner/team"}
-                    className={cn("inline-flex items-center gap-2 text-base font-extrabold", statusClasses.split(" ")[1])}
-                  >
-                    <span className={cn("h-3 w-3 rounded-full shadow-[0_0_12px_currentColor]", statusClasses.split(" ")[0])} />
-                    {barber.statusLabel}
-                  </Link>
-
-                  <Link href={`/dashboard/owner/schedule?barberId=${encodeURIComponent(barber.id)}`} className="rounded-[14px] px-2 py-2 text-left text-xl font-bold text-white transition hover:bg-white/[0.04] md:text-center">
-                    {barber.todayBookings ?? "-"}
-                  </Link>
-
-                  <Link href={`/dashboard/owner/money?barberId=${encodeURIComponent(barber.id)}`} className="rounded-[14px] px-2 py-2 text-left text-xl font-bold text-white transition hover:bg-white/[0.04] md:text-center">
-                    {barber.todayPostedAmount === null ? "-" : currency(barber.todayPostedAmount)}
-                  </Link>
-
-                  <Link href={`/dashboard/owner/schedule?barberId=${encodeURIComponent(barber.id)}&view=utilization`} className="rounded-[14px] px-2 py-2 transition hover:bg-white/[0.04]">
-                    <span className="block text-xl font-bold text-white">{barber.utilization === null ? "-" : `${barber.utilization}%`}</span>
-                    <span className="mt-2 block h-2.5 overflow-hidden rounded-full bg-white/14">
-                      <span
-                        className={cn(
-                          "block h-full rounded-full",
-                          utilizationTone === "green" && "bg-[#A3FF12]",
-                          utilizationTone === "amber" && "bg-amber-300",
-                          utilizationTone === "neutral" && "bg-white/45"
-                        )}
-                        style={{ width: `${barber.utilization ?? 0}%` }}
-                      />
-                    </span>
-                  </Link>
-
-                  <Link href={`/dashboard/owner/team?barber=${encodeURIComponent(barber.id)}`} className="inline-flex items-center gap-2 rounded-[14px] px-2 py-2 text-xl font-bold text-white transition hover:bg-white/[0.04]">
-                    {barber.rating === null ? (
-                      "-"
-                    ) : (
-                      <>
-                        <Star className="h-5 w-5 fill-amber-300 text-amber-300" />
-                        {barber.rating.toFixed(1)}
-                      </>
-                    )}
-                  </Link>
-
-                  <details className="relative justify-self-start md:justify-self-end">
-                    <summary className="inline-flex h-11 w-11 cursor-pointer list-none items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-white/62 transition hover:border-[#A3FF12]/30 hover:text-[#A3FF12]" aria-label={`Open actions for ${barber.name}`}>
-                      <MoreVertical className="h-5 w-5" />
-                    </summary>
-                    <GlassCard className="absolute right-0 z-20 mt-2 w-56 p-2">
-                      <TeamActionLink href={`/dashboard/owner/schedule?barberId=${encodeURIComponent(barber.id)}`}>
-                        View Schedule
-                      </TeamActionLink>
-                      <TeamActionLink href={`/dashboard/owner/money?barberId=${encodeURIComponent(barber.id)}`}>
-                        View Transactions
-                      </TeamActionLink>
-                      <TeamActionLink href={`/dashboard/owner/messages?threadWith=${encodeURIComponent(barber.id)}`}>
-                        Message Barber
-                      </TeamActionLink>
-                      <TeamActionLink href={`/dashboard/owner/more?section=compensation&barberId=${encodeURIComponent(barber.id)}`}>
-                        Edit Role / Permissions
-                      </TeamActionLink>
-                    </GlassCard>
-                  </details>
-                </div>
-
-                {isSelected ? (
-                  <div className="border-t border-white/8 px-4 pb-4">
-                    <div className="grid gap-3 rounded-[20px] border border-white/8 bg-black/24 p-4 text-sm text-white/62 md:grid-cols-[1fr_1fr_auto] md:items-center">
-                      <div>
-                        <p className="font-bold text-white">{barber.statusDetail}</p>
-                        <p className="mt-1">Next up: {formatTime(barber.nextAppointmentStart)}</p>
-                      </div>
-                      <div>
-                        <p className="font-bold text-white">Account health: {barber.payoutStatus}</p>
-                        <p className="mt-1">{barber.payoutBlockReason ?? `Payout readiness ${barber.payoutReadinessStatus}.`}</p>
-                      </div>
-                      <Link href={`/dashboard/owner/money?barberId=${encodeURIComponent(barber.id)}`} className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#A3FF12]/40 px-4 text-sm font-extrabold text-[#A3FF12] transition hover:bg-[#A3FF12]/10">
-                        Inspect
-                      </Link>
-                    </div>
-                    <div className="mt-3 grid gap-3 rounded-[20px] border border-[#A3FF12]/14 bg-[#A3FF12]/6 p-4 md:grid-cols-[1fr_1fr]">
-                      <div>
-                        <p className="text-xs font-black uppercase tracking-[0.16em] text-[#A3FF12]">Operating model</p>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {(["freelance", "booth_rent", "commission"] as const).map((model) => (
-                            <button
-                              key={`${barber.id}-${model}`}
-                              type="button"
-                              disabled={!barber.relationshipId || updateRelationshipMutation.isPending}
-                              onClick={() => void handleRelationshipUpdate(
-                                barber,
-                                model === "commission"
-                                  ? { routingModel: model, barberPercent: 0.7, shopPercent: 0.3 }
-                                  : model === "booth_rent"
-                                    ? { routingModel: model, boothRentAmount: 250, boothRentFrequency: "weekly", barberPercent: null, shopPercent: null }
-                                    : { routingModel: model, boothRentAmount: null, boothRentFrequency: null, barberPercent: null, shopPercent: null },
-                                `${barber.name}'s operating model was set to ${formatRoutingLabel(model)}.`
-                              )}
-                              className={cn(
-                                "inline-flex min-h-10 items-center rounded-full border px-4 text-xs font-black transition",
-                                barber.roleLabel.toLowerCase() === formatRoutingLabel(model).toLowerCase()
-                                  ? "border-[#A3FF12]/38 bg-[#A3FF12] text-black"
-                                  : "border-white/10 bg-black/20 text-white/68 hover:border-[#A3FF12]/28 hover:text-[#A3FF12]",
-                                (!barber.relationshipId || updateRelationshipMutation.isPending) && "cursor-not-allowed opacity-55"
-                              )}
-                            >
-                              {formatRoutingLabel(model)}
-                            </button>
-                          ))}
-                        </div>
-                        <p className="mt-3 text-xs leading-5 text-white/48">Commission defaults to 70/30. Booth rent terms can be refined in Money after the relationship is saved.</p>
-                      </div>
-                      <div>
-                        <p className="text-xs font-black uppercase tracking-[0.16em] text-[#A3FF12]">Public shop profile</p>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            disabled={!barber.relationshipId || updateRelationshipMutation.isPending}
-                            onClick={() => void handleRelationshipUpdate(
-                              barber,
-                              { publicTeamVisible: !barber.publicTeamVisible },
-                              barber.publicTeamVisible ? `${barber.name} is hidden from the public shop team.` : `${barber.name} is visible on the public shop team.`
-                            )}
-                            className="inline-flex min-h-10 items-center rounded-full border border-white/10 bg-black/20 px-4 text-xs font-black text-white/72 transition hover:border-[#A3FF12]/28 hover:text-[#A3FF12] disabled:cursor-not-allowed disabled:opacity-55"
-                          >
-                            {barber.publicTeamVisible ? "Hide publicly" : "Show publicly"}
-                          </button>
-                          <button
-                            type="button"
-                            disabled={!barber.relationshipId || updateRelationshipMutation.isPending}
-                            onClick={() => void handleRelationshipUpdate(
-                              barber,
-                              { featuredOnShopProfile: !barber.featuredOnShopProfile },
-                              barber.featuredOnShopProfile ? `${barber.name} is no longer featured.` : `${barber.name} is featured on the shop profile.`
-                            )}
-                            className="inline-flex min-h-10 items-center rounded-full border border-white/10 bg-black/20 px-4 text-xs font-black text-white/72 transition hover:border-[#A3FF12]/28 hover:text-[#A3FF12] disabled:cursor-not-allowed disabled:opacity-55"
-                          >
-                            {barber.featuredOnShopProfile ? "Unfeature" : "Feature"}
-                          </button>
-                          <button
-                            type="button"
-                            disabled={!barber.relationshipId || updateRelationshipMutation.isPending}
-                            onClick={() => void handleRelationshipUpdate(
-                              barber,
-                              { publicTeamOrder: Math.max(0, barber.publicTeamOrder - 1) },
-                              `${barber.name} was moved earlier on the public shop team.`
-                            )}
-                            className="inline-flex min-h-10 items-center rounded-full border border-white/10 bg-black/20 px-4 text-xs font-black text-white/72 transition hover:border-[#A3FF12]/28 hover:text-[#A3FF12] disabled:cursor-not-allowed disabled:opacity-55"
-                          >
-                            Move up
-                          </button>
-                          <button
-                            type="button"
-                            disabled={!barber.relationshipId || updateRelationshipMutation.isPending}
-                            onClick={() => void handleRelationshipUpdate(
-                              barber,
-                              { publicTeamOrder: barber.publicTeamOrder + 1 },
-                              `${barber.name} was moved later on the public shop team.`
-                            )}
-                            className="inline-flex min-h-10 items-center rounded-full border border-white/10 bg-black/20 px-4 text-xs font-black text-white/72 transition hover:border-[#A3FF12]/28 hover:text-[#A3FF12] disabled:cursor-not-allowed disabled:opacity-55"
-                          >
-                            Move down
-                          </button>
-                          <button
-                            type="button"
-                            disabled={!barber.relationshipId || releaseRelationshipMutation.isPending}
-                            onClick={() => void handleReleaseRelationship(barber)}
-                            className="inline-flex min-h-10 items-center rounded-full border border-red-300/20 bg-red-400/10 px-4 text-xs font-black text-red-100 transition hover:border-red-200/36 hover:bg-red-400/14 disabled:cursor-not-allowed disabled:opacity-55"
-                          >
-                            Release barber
-                          </button>
-                        </div>
-                        <p className="mt-3 text-xs leading-5 text-white/48">Public controls only affect the shop profile team surface. Barber accounts and past history stay intact.</p>
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-              </GlassCard>
-            );
-          })
-        )}
-      </section>
 
       <Link href="/dashboard/owner/money" className="group block">
         <GlassCard className="grid gap-4 p-5 sm:grid-cols-[auto_1fr_auto] sm:items-center sm:p-6">

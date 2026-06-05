@@ -316,22 +316,30 @@ describe("owner team workspace", () => {
   it("renders the owner home lane from scoped canonical barber and payout truth", () => {
     render(<OwnerTeamWorkspace />);
 
-    expect(screen.getByText("Home")).toBeInTheDocument();
-    expect(screen.getByText("Manage your shop, team, and public profile.")).toBeInTheDocument();
-    expect(screen.getByText("Invites, team status, schedule, money, and profile controls.")).toBeInTheDocument();
+    expect(screen.queryByText("Home")).not.toBeInTheDocument();
+    expect(screen.queryByText("Manage your shop, team, and public profile.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Invites, team status, schedule, money, and profile controls.")).not.toBeInTheDocument();
     expect(screen.queryByText("Manage invites, join requests, active barbers, public team display, and shop presentation from one private owner surface.")).not.toBeInTheDocument();
     const snapshot = within(screen.getByTestId("today-shop-snapshot"));
+    const barbersSummary = within(screen.getByTestId("barbers-summary"));
     expect(screen.getByTestId("today-shop-snapshot")).toBeInTheDocument();
     expect(screen.getByText("Today Shop Snapshot")).toBeInTheDocument();
     expect(snapshot.getByText("Today Revenue")).toBeInTheDocument();
     expect(snapshot.getByText("Appointments Today")).toBeInTheDocument();
+    expect(snapshot.getByText("Active Barbers")).toBeInTheDocument();
+    expect(snapshot.getByText("Open Chair Capacity")).toBeInTheDocument();
+    expect(snapshot.getByText("Pending Actions")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open Schedule" })).toHaveAttribute("href", "/dashboard/owner/schedule");
+    expect(screen.getByText("Today Shop Snapshot").compareDocumentPosition(screen.getByText("Barbers Summary"))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(screen.getByText("Barbers Summary").compareDocumentPosition(screen.getByText("Team relationship queue"))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(screen.getByText("Team relationship queue").compareDocumentPosition(screen.getByText("Public Shop Profile"))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(screen.getByText("Public Shop Profile").compareDocumentPosition(screen.getByText("Team Insights"))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(screen.getAllByRole("button", { name: /Invite Barber/i })).toHaveLength(1);
-    expect(screen.getByPlaceholderText("Search barbers...")).toBeInTheDocument();
     expect(screen.getAllByText("Maya Cole").length).toBeGreaterThan(0);
-    expect(screen.getByText("Total Barbers")).toBeInTheDocument();
+    expect(barbersSummary.getByText("Service: Commission")).toBeInTheDocument();
+    expect(barbersSummary.getAllByText("Appointments").length).toBeGreaterThan(0);
+    expect(barbersSummary.getAllByText("Performance").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Active").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Idle").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Offline").length).toBeGreaterThan(0);
     expect(screen.getAllByText("$105").length).toBeGreaterThan(0);
     expect(screen.getByText("Pending Verification")).toBeInTheDocument();
 
@@ -371,8 +379,8 @@ describe("owner team workspace", () => {
 
     render(<OwnerTeamWorkspace />);
 
-    expect(screen.getByText("No barbers assigned yet.")).toBeInTheDocument();
-    expect(screen.getByText("Invite your first barber to connect your shop team.")).toBeInTheDocument();
+    expect(screen.getByText("No active barbers yet.")).toBeInTheDocument();
+    expect(screen.getByText("Invite or approve a barber to build your shop team.")).toBeInTheDocument();
   });
 
   it("shows pending invitations once without repeating the invite CTA", () => {
@@ -437,7 +445,7 @@ describe("owner team workspace", () => {
     render(<OwnerTeamWorkspace />);
 
     expect(screen.getAllByText("Sent invitations")).toHaveLength(1);
-    expect(screen.getByText("Pending invitations are waiting for barber approval.")).toBeInTheDocument();
+    expect(screen.getByText("Pending invitations are waiting for barber approval before they join the active summary.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Invite Barber/i })).not.toBeInTheDocument();
   });
 
