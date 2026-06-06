@@ -222,6 +222,8 @@ describe("client home screen", () => {
     expect(screen.getByText("Favorite Barbers").compareDocumentPosition(screen.getByText("Marketplace Feed"))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(screen.getByText("Favorite Shops").compareDocumentPosition(screen.getByText("Marketplace Feed"))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(screen.getByText("Marketplace Feed").compareDocumentPosition(screen.getByText("Upcoming Appointment"))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(screen.queryByRole("link", { name: "View barbers" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Book Next Available" })).toHaveAttribute("href", "/booking/new?barberId=barber-wave&locationId=loc-ybor");
     expect(screen.getAllByText("wave").length).toBeGreaterThan(0);
     expect(screen.queryByText("Wave Carter")).not.toBeInTheDocument();
     expect(screen.queryByText("Search Availability")).not.toBeInTheDocument();

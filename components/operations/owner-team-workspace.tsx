@@ -1,15 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ComponentProps, type ReactNode } from "react";
+import { useMemo, useState, type ComponentProps, type ReactNode } from "react";
 import Link from "next/link";
 import type { Route } from "next";
 import {
-  BriefcaseBusiness,
-  ChevronRight,
-  Mail,
   MoreVertical,
-  Send,
-  ShieldCheck,
   X
 } from "lucide-react";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
@@ -19,15 +14,14 @@ import { useFintechManagementQuery } from "@/lib/fintech/client";
 import {
   useCreateOwnerTeamInviteMutation,
   useOwnerTeamInviteDirectoryQuery,
-  useOwnerShopProfileQuery,
   useReleaseOwnerTeamRelationshipMutation,
   useRespondOwnerTeamJoinRequestMutation,
   useShopDashboardQuery,
-  useUpdateOwnerShopProfileMutation,
   useUpdateOwnerTeamRelationshipMutation,
   type ShopDashboardAppointment,
   type ShopDashboardBarberSummary
 } from "@/lib/operations/barber-client";
+import type { ShopTeamInviteDirectoryBarber } from "@/lib/operations/shop-team-invites";
 import { cn, currency } from "@/lib/utils";
 import { getReadableActionError } from "@/lib/utils/feedback";
 
@@ -67,22 +61,6 @@ type RelationshipUpdatePayload = {
   publicTeamVisible?: boolean;
   publicTeamOrder?: number;
   featuredOnShopProfile?: boolean;
-};
-
-type ShopProfileDraft = {
-  name: string;
-  shopUsername: string;
-  brandLine: string;
-  publicBio: string;
-  profilePhotoUrl: string;
-  coverPhotoUrl: string;
-  address: string;
-  neighborhood: string;
-  city: string;
-  state: string;
-  phone: string;
-  publicHours: string;
-  policies: string;
 };
 
 function formatTime(iso: string | null) {
@@ -222,6 +200,30 @@ function getStatusClasses(kind: StatusKind) {
   }
 }
 
+function getInviteRelationshipState(barber: ShopTeamInviteDirectoryBarber) {
+  if (barber.alreadyAssigned || barber.inviteStatus === "active") {
+    return "Already on team";
+  }
+
+  if (barber.inviteStatus === "invited") {
+    return "Invite pending";
+  }
+
+  if (barber.inviteStatus === "requested") {
+    return "Requested";
+  }
+
+  if (barber.inviteStatus === "rejected" || barber.inviteStatus === "declined") {
+    return "Declined";
+  }
+
+  if (barber.inviteStatus === "ended") {
+    return "Ended";
+  }
+
+  return "Not connected";
+}
+
 function SectionEmptyState({
   title,
   detail,
@@ -259,67 +261,26 @@ function TeamActionLink({
 
 export function OwnerTeamWorkspace() {
   const shopQuery = useShopDashboardQuery();
-  const shopProfileQuery = useOwnerShopProfileQuery();
   const fintechQuery = useFintechManagementQuery();
   const [inviteSearch, setInviteSearch] = useState("");
-  const [inviteModalOpen, setInviteModalOpen] = useState(false);
+  const [pendingInviteBarber, setPendingInviteBarber] = useState<ShopTeamInviteDirectoryBarber | null>(null);
   const [selectedBarberId, setSelectedBarberId] = useState<string | null>(null);
-  const [shopProfileEditorOpen, setShopProfileEditorOpen] = useState(false);
-  const [shopProfileDraft, setShopProfileDraft] = useState<ShopProfileDraft>({
-    name: "",
-    shopUsername: "",
-    brandLine: "",
-    publicBio: "",
-    profilePhotoUrl: "",
-    coverPhotoUrl: "",
-    address: "",
-    neighborhood: "",
-    city: "",
-    state: "",
-    phone: "",
-    publicHours: "",
-    policies: ""
-  });
-  const [shopProfileFeedback, setShopProfileFeedback] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(null);
   const [inviteFeedback, setInviteFeedback] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(null);
   const [relationshipFeedback, setRelationshipFeedback] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(null);
   const relationshipDirectoryQuery = useOwnerTeamInviteDirectoryQuery("", true);
-  const inviteDirectoryQuery = useOwnerTeamInviteDirectoryQuery(inviteSearch, inviteModalOpen);
+  const normalizedInviteSearch = inviteSearch.trim().replace(/^@+/, "").replace(/\s+/g, "");
+  const inviteSearchReady = normalizedInviteSearch.length >= 2;
+  const inviteDirectoryQuery = useOwnerTeamInviteDirectoryQuery(normalizedInviteSearch, inviteSearchReady);
   const createInviteMutation = useCreateOwnerTeamInviteMutation();
   const respondJoinRequestMutation = useRespondOwnerTeamJoinRequestMutation();
   const updateRelationshipMutation = useUpdateOwnerTeamRelationshipMutation();
   const releaseRelationshipMutation = useReleaseOwnerTeamRelationshipMutation();
-  const updateShopProfileMutation = useUpdateOwnerShopProfileMutation();
-
-  useEffect(() => {
-    const shop = shopProfileQuery.data?.shop;
-    if (!shop) {
-      return;
-    }
-
-    setShopProfileDraft({
-      name: shop.name ?? "",
-      shopUsername: shop.shop_username ?? "",
-      brandLine: shop.brand_line ?? "",
-      publicBio: shop.public_bio ?? "",
-      profilePhotoUrl: shop.profile_photo_url ?? shop.profile_photo_path ?? "",
-      coverPhotoUrl: shop.cover_photo_url ?? "",
-      address: shop.address ?? "",
-      neighborhood: shop.neighborhood ?? "",
-      city: shop.city ?? "",
-      state: shop.state ?? "",
-      phone: shop.phone ?? "",
-      publicHours: typeof shop.public_hours === "string" ? shop.public_hours : "",
-      policies: shop.policies ?? ""
-    });
-  }, [shopProfileQuery.data?.shop]);
 
   const isInitialLoading =
     (shopQuery.isLoading && !shopQuery.data)
     || (fintechQuery.isLoading && !fintechQuery.data);
 
-  const errorMessage = shopQuery.error ?? fintechQuery.error ?? shopProfileQuery.error;
-  const inviteErrorMessage = inviteDirectoryQuery.error ? getReadableActionError(inviteDirectoryQuery.error) : null;
+  const errorMessage = shopQuery.error ?? fintechQuery.error;
 
   const barbers = useMemo(() => shopQuery.data?.barbers ?? [], [shopQuery.data?.barbers]);
   const activeBarbers = useMemo(() => shopQuery.data?.activeBarbers ?? [], [shopQuery.data?.activeBarbers]);
@@ -383,59 +344,24 @@ export function OwnerTeamWorkspace() {
   const pendingOwnerInvites = relationshipDirectory.filter((barber) => barber.inviteStatus === "invited");
   const incomingJoinRequests = relationshipDirectory.filter((barber) => barber.inviteStatus === "requested");
   const relationshipErrorMessage = relationshipDirectoryQuery.error ? getReadableActionError(relationshipDirectoryQuery.error) : null;
-  const ownerShopProfile = shopProfileQuery.data?.shop ?? null;
-  const publicShopHref = ownerShopProfile?.id ? `/shop/${encodeURIComponent(ownerShopProfile.id)}` : "/dashboard/client/search?type=shops";
   const todayRevenue = appointments.reduce((sum, appointment) => sum + getCompletedAppointmentRevenue(appointment), 0);
   const appointmentsToday = appointments.length;
   const openChairCapacity = team.filter((barber) => barber.statusKind === "idle" || barber.statusKind === "offline").length;
   const pendingActions = pendingOwnerInvites.length + incomingJoinRequests.length + team.filter((barber) => barber.statusKind === "pending").length;
 
-  function updateShopProfileDraft(field: keyof ShopProfileDraft, value: string) {
-    setShopProfileDraft((current) => ({ ...current, [field]: value }));
-  }
-
-  async function handleShopProfileSave() {
-    if (!ownerShopProfile?.id) {
-      setShopProfileFeedback({ tone: "error", message: "Owner shop profile is not available yet." });
-      return;
-    }
-
-    setShopProfileFeedback(null);
-    try {
-      await updateShopProfileMutation.mutateAsync({
-        shopId: ownerShopProfile.id,
-        name: shopProfileDraft.name,
-        shopUsername: shopProfileDraft.shopUsername || null,
-        brandLine: shopProfileDraft.brandLine || null,
-        publicBio: shopProfileDraft.publicBio || null,
-        profilePhotoUrl: shopProfileDraft.profilePhotoUrl || null,
-        coverPhotoUrl: shopProfileDraft.coverPhotoUrl || null,
-        address: shopProfileDraft.address || null,
-        neighborhood: shopProfileDraft.neighborhood || null,
-        city: shopProfileDraft.city || null,
-        state: shopProfileDraft.state || null,
-        phone: shopProfileDraft.phone || null,
-        publicHours: shopProfileDraft.publicHours || null,
-        policies: shopProfileDraft.policies || null
-      });
-      setShopProfileFeedback({ tone: "success", message: "Public shop profile saved." });
-      setShopProfileEditorOpen(false);
-    } catch (error) {
-      setShopProfileFeedback({ tone: "error", message: getReadableActionError(error as { message?: string; status?: number; code?: string }) });
-    }
-  }
-
-  async function handleCreateInvite(barberId: string) {
+  async function handleCreateInvite(barber: ShopTeamInviteDirectoryBarber) {
     setInviteFeedback(null);
     try {
       const response = await createInviteMutation.mutateAsync({
-        barberId,
+        barberId: barber.barberId,
         shopId: inviteDirectoryQuery.data?.shop.id
       });
+      const usernameLabel = barber.username ? `@${barber.username}` : response.invite.barberName;
       setInviteFeedback({
         tone: "success",
-        message: `Invite sent to ${response.invite.barberName}. They can accept or decline it from their Barber More tab.`
+        message: `Invite sent to ${usernameLabel}.`
       });
+      setPendingInviteBarber(null);
     } catch (error) {
       setInviteFeedback({ tone: "error", message: getReadableActionError(error as { message?: string; status?: number; code?: string }) });
     }
@@ -495,7 +421,7 @@ export function OwnerTeamWorkspace() {
   return (
     <div className="space-y-7" data-testid="owner-team-workspace">
       {errorMessage ? <FeedbackBanner tone="error" message={getReadableActionError(errorMessage)} /> : null}
-      {inviteFeedback && !inviteModalOpen ? <FeedbackBanner tone={inviteFeedback.tone} message={inviteFeedback.message} /> : null}
+      {inviteFeedback ? <FeedbackBanner tone={inviteFeedback.tone} message={inviteFeedback.message} /> : null}
       {relationshipFeedback ? <FeedbackBanner tone={relationshipFeedback.tone} message={relationshipFeedback.message} /> : null}
       {relationshipErrorMessage ? <FeedbackBanner tone="error" message={relationshipErrorMessage} /> : null}
 
@@ -555,15 +481,6 @@ export function OwnerTeamWorkspace() {
             <SectionEmptyState
               title="No active barbers yet."
               detail={pendingOwnerInvites.length ? "Pending invitations are waiting for barber approval before they join the active summary." : "Invite or approve a barber to build your shop team."}
-              action={!pendingOwnerInvites.length ? (
-                <button
-                  type="button"
-                  onClick={() => setInviteModalOpen(true)}
-                  className="inline-flex min-h-12 items-center justify-center rounded-full border border-[#A3FF12]/40 px-5 text-sm font-extrabold text-[#A3FF12] transition hover:bg-[#A3FF12]/10"
-                >
-                  Invite Barber
-                </button>
-              ) : undefined}
             />
           ) : (
             team.map((barber) => {
@@ -755,7 +672,7 @@ export function OwnerTeamWorkspace() {
         </div>
       </GlassCard>
 
-      <GlassCard className="p-5">
+      <GlassCard className="p-5" data-testid="team-relationship-queue">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Team relationship queue</p>
@@ -764,15 +681,102 @@ export function OwnerTeamWorkspace() {
               Active relationships are exclusive. Accepted requests connect the barber to this shop; declined and ended records stay auditable.
             </p>
           </div>
-          {team.length ? (
-            <button
-              type="button"
-              onClick={() => setInviteModalOpen(true)}
-              className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 px-4 text-sm font-extrabold text-white/74 transition hover:border-[#A3FF12]/28 hover:text-[#A3FF12]"
-            >
-              Invite Barber
-            </button>
-          ) : null}
+        </div>
+
+        <div className="mt-5 rounded-[22px] border border-white/8 bg-black/24 p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-sm font-black uppercase tracking-[0.16em] text-white/48">Find a barber</p>
+              <p className="mt-1 text-sm leading-6 text-white/56">Search public barber usernames and send a team invitation after confirmation.</p>
+            </div>
+            <SearchBar
+              aria-label="Search barber public username"
+              placeholder="Search @barber username"
+              value={inviteSearch}
+              onChange={(event) => setInviteSearch(event.target.value)}
+              className="min-h-12 rounded-[18px] px-4 lg:w-[22rem]"
+            />
+          </div>
+
+          <div className="mt-4 space-y-3">
+            {!inviteSearchReady ? (
+              <div className="rounded-[18px] border border-dashed border-white/10 bg-white/[0.025] p-4">
+                <p className="text-base font-extrabold text-white">Search a public barber username.</p>
+                <p className="mt-1 text-sm leading-6 text-white/54">Use at least two characters, with or without @.</p>
+              </div>
+            ) : inviteDirectoryQuery.isLoading ? (
+              <Skeleton className="h-24 rounded-[18px]" />
+            ) : inviteDirectoryQuery.data?.barbers.length ? inviteDirectoryQuery.data.barbers.map((barber) => {
+              const usernameLabel = barber.username ? `@${barber.username}` : "@barber";
+              const relationshipState = getInviteRelationshipState(barber);
+              const inviteDisabled = !barber.canInvite || createInviteMutation.isPending;
+              const inviteLabel = barber.alreadyAssigned || barber.inviteStatus === "active"
+                ? "Already on team"
+                : barber.inviteStatus === "invited" || barber.inviteStatus === "requested"
+                  ? "Invite pending"
+                  : barber.canInvite
+                    ? "Invite"
+                    : "Unavailable";
+
+              return (
+                <div key={barber.barberId} className="grid gap-4 rounded-[20px] border border-white/8 bg-white/[0.035] p-4 md:grid-cols-[1fr_auto] md:items-center">
+                  <div className="flex min-w-0 gap-4">
+                    <Avatar
+                      alt={barber.name}
+                      initials={getInitials(barber.name)}
+                      className="h-14 w-14 shrink-0 border-2 border-[#A3FF12]/45 bg-[#A3FF12]/10"
+                    />
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="truncate text-xl font-black tracking-[-0.03em] text-white">{usernameLabel}</p>
+                        <span className="rounded-full border border-[#A3FF12]/20 bg-[#A3FF12]/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-[#A3FF12]">Barber</span>
+                        <span className="rounded-full border border-white/10 bg-black/28 px-3 py-1 text-xs font-extrabold text-white/58">{relationshipState}</span>
+                      </div>
+                      <p className="mt-1 truncate text-sm font-bold text-white/62">{barber.name}</p>
+                      <div className="mt-2 flex flex-wrap gap-2 text-sm text-white/54">
+                        {barber.serviceAreaLabel ? <span>{barber.serviceAreaLabel}</span> : null}
+                        <span>{formatRoutingLabel(barber.compensationModel)}</span>
+                        <span>{barber.marketplaceStatusLabel}</span>
+                      </div>
+                      {!barber.canInvite && barber.inviteDisabledReason ? (
+                        <p className="mt-3 rounded-[14px] border border-amber-300/18 bg-amber-300/8 px-3 py-2 text-xs font-bold leading-5 text-amber-100">
+                          {barber.inviteDisabledReason}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 md:justify-end">
+                    {barber.username ? (
+                      <Link
+                        href={`/barber/${encodeURIComponent(barber.username)}` as Route}
+                        className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 px-4 text-sm font-extrabold text-white/72 transition hover:border-[#A3FF12]/28 hover:text-[#A3FF12]"
+                      >
+                        View Profile
+                      </Link>
+                    ) : null}
+                    <button
+                      type="button"
+                      disabled={inviteDisabled}
+                      onClick={() => setPendingInviteBarber(barber)}
+                      className={cn(
+                        "inline-flex min-h-11 items-center justify-center rounded-full px-4 text-sm font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/70",
+                        inviteDisabled
+                          ? "cursor-not-allowed border border-white/8 bg-white/[0.035] text-white/38"
+                          : "border border-[#A3FF12]/42 bg-[#A3FF12] text-black shadow-[0_14px_32px_rgba(163,255,18,0.22)] hover:-translate-y-0.5"
+                      )}
+                    >
+                      {inviteLabel}
+                    </button>
+                  </div>
+                </div>
+              );
+            }) : (
+              <div className="rounded-[18px] border border-dashed border-white/10 bg-white/[0.025] p-4">
+                <p className="text-base font-extrabold text-white">No inviteable barber found.</p>
+                <p className="mt-1 text-sm leading-6 text-white/54">Only eligible public barber accounts can be invited from Owner Home.</p>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="mt-5 grid gap-4 lg:grid-cols-2">
@@ -866,295 +870,44 @@ export function OwnerTeamWorkspace() {
         </div>
       </GlassCard>
 
-      <GlassCard className="overflow-hidden p-0">
-        {ownerShopProfile?.cover_photo_url ? (
-          <div className="h-36 overflow-hidden border-b border-white/8">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={ownerShopProfile.cover_photo_url} alt={`${ownerShopProfile.name} cover`} className="h-full w-full object-cover opacity-85" />
-          </div>
-        ) : null}
-        <div className="grid gap-5 p-5 sm:p-6 lg:grid-cols-[auto_1fr_auto] lg:items-center">
-          <Avatar
-            src={ownerShopProfile?.profile_photo_url ?? ownerShopProfile?.profile_photo_path ?? undefined}
-            alt={ownerShopProfile?.name ?? "Shop profile"}
-            initials={getInitials(ownerShopProfile?.name ?? "Shop")}
-            className="h-20 w-20 rounded-[24px] border-2 border-[#A3FF12]/45 bg-[#A3FF12]/10"
-          />
-          <div className="min-w-0">
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Public Shop Profile</p>
-            <h2 className="mt-2 truncate text-3xl font-black tracking-[-0.045em] text-white">{ownerShopProfile?.name ?? "Finish shop profile"}</h2>
-            <p className="mt-1 text-sm font-bold text-white/54">{ownerShopProfile?.shop_username ? `@${ownerShopProfile.shop_username}` : "Set your public shop handle"}</p>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-white/60">
-              {ownerShopProfile?.public_bio ?? ownerShopProfile?.brand_line ?? "Set your shop name, handle, address, photos, hours, and policies."}
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold uppercase tracking-[0.13em] text-white/44">
-              <span>{formatStatusLabel(ownerShopProfile?.app_approval_status ?? "pending")}</span>
-              <span>{[ownerShopProfile?.address, ownerShopProfile?.city, ownerShopProfile?.state].filter(Boolean).join(", ") || "Address not set"}</span>
-              <span>{team.filter((barber) => barber.publicTeamVisible).length} public barber{team.filter((barber) => barber.publicTeamVisible).length === 1 ? "" : "s"}</span>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2 lg:justify-end">
-            <Link
-              href="/dashboard/owner/public-profile"
-              className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#A3FF12]/38 bg-[#A3FF12] px-4 text-sm font-black text-black shadow-[0_14px_32px_rgba(163,255,18,0.2)] transition hover:-translate-y-0.5"
-            >
-              Public Profile
-            </Link>
-            <button
-              type="button"
-              onClick={() => setShopProfileEditorOpen((current) => !current)}
-              className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-sm font-extrabold text-white/72 transition hover:border-[#A3FF12]/28 hover:text-[#A3FF12]"
-            >
-              Quick edit
-            </button>
-            {ownerShopProfile?.id ? (
-              <Link
-                href={publicShopHref as Route}
-                className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 text-sm font-extrabold text-white/72 transition hover:border-[#A3FF12]/28 hover:text-[#A3FF12]"
-              >
-                Preview public profile
-              </Link>
-            ) : null}
-          </div>
-        </div>
-        {shopProfileFeedback ? <div className="px-5 pb-5 sm:px-6"><FeedbackBanner tone={shopProfileFeedback.tone} message={shopProfileFeedback.message} /></div> : null}
-        {shopProfileEditorOpen ? (
-          <div className="border-t border-white/8 p-5 sm:p-6">
-            <div className="grid gap-3 md:grid-cols-2">
-              {([
-                ["name", "Shop name"],
-                ["shopUsername", "Public handle"],
-                ["profilePhotoUrl", "Logo / profile photo URL"],
-                ["coverPhotoUrl", "Cover photo URL"],
-                ["brandLine", "Brand line"],
-                ["phone", "Phone"],
-                ["address", "Address"],
-                ["neighborhood", "Neighborhood"],
-                ["city", "City"],
-                ["state", "State"]
-              ] as Array<[keyof ShopProfileDraft, string]>).map(([field, label]) => (
-                <label key={field} className="space-y-2">
-                  <span className="text-xs font-black uppercase tracking-[0.14em] text-white/42">{label}</span>
-                  <input
-                    value={shopProfileDraft[field]}
-                    onChange={(event) => updateShopProfileDraft(field, event.target.value)}
-                    className="min-h-12 w-full rounded-[16px] border border-white/10 bg-black/28 px-4 text-sm font-bold text-white outline-none transition placeholder:text-white/28 focus:border-[#A3FF12]/50"
-                  />
-                </label>
-              ))}
-              <label className="space-y-2 md:col-span-2">
-                <span className="text-xs font-black uppercase tracking-[0.14em] text-white/42">Public bio</span>
-                <textarea
-                  value={shopProfileDraft.publicBio}
-                  onChange={(event) => updateShopProfileDraft("publicBio", event.target.value)}
-                  rows={3}
-                  className="w-full rounded-[16px] border border-white/10 bg-black/28 px-4 py-3 text-sm font-bold text-white outline-none transition placeholder:text-white/28 focus:border-[#A3FF12]/50"
-                />
-              </label>
-              <label className="space-y-2">
-                <span className="text-xs font-black uppercase tracking-[0.14em] text-white/42">Hours</span>
-                <textarea
-                  value={shopProfileDraft.publicHours}
-                  onChange={(event) => updateShopProfileDraft("publicHours", event.target.value)}
-                  rows={3}
-                  className="w-full rounded-[16px] border border-white/10 bg-black/28 px-4 py-3 text-sm font-bold text-white outline-none transition placeholder:text-white/28 focus:border-[#A3FF12]/50"
-                />
-              </label>
-              <label className="space-y-2">
-                <span className="text-xs font-black uppercase tracking-[0.14em] text-white/42">Policies</span>
-                <textarea
-                  value={shopProfileDraft.policies}
-                  onChange={(event) => updateShopProfileDraft("policies", event.target.value)}
-                  rows={3}
-                  className="w-full rounded-[16px] border border-white/10 bg-black/28 px-4 py-3 text-sm font-bold text-white outline-none transition placeholder:text-white/28 focus:border-[#A3FF12]/50"
-                />
-              </label>
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <button
-                type="button"
-                disabled={updateShopProfileMutation.isPending}
-                onClick={() => void handleShopProfileSave()}
-                className="inline-flex min-h-11 items-center rounded-full bg-[#A3FF12] px-5 text-sm font-black text-black transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-55"
-              >
-                Save public profile
-              </button>
-              <button
-                type="button"
-                onClick={() => setShopProfileEditorOpen(false)}
-                className="inline-flex min-h-11 items-center rounded-full border border-white/10 bg-black/20 px-5 text-sm font-black text-white/66 transition hover:border-[#A3FF12]/30 hover:text-[#A3FF12]"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        ) : null}
-      </GlassCard>
-
-      <Link href="/dashboard/owner/money" className="group block">
-        <GlassCard className="grid gap-4 p-5 sm:grid-cols-[auto_1fr_auto] sm:items-center sm:p-6">
-          <span className="flex h-16 w-16 items-center justify-center rounded-[18px] border border-[#A3FF12]/22 bg-[#A3FF12]/12 text-[#A3FF12] shadow-[0_0_24px_rgba(163,255,18,0.16)]">
-            <BriefcaseBusiness className="h-7 w-7" />
-          </span>
-          <span>
-            <span className="block text-2xl font-extrabold tracking-[-0.04em] text-white">Team Insights</span>
-            <span className="mt-1 block text-base font-medium text-white/58">View performance trends & analytics</span>
-          </span>
-          <span className="inline-flex items-center gap-2 text-lg font-extrabold text-[#A3FF12]">
-            View Insights
-            <ChevronRight className="h-5 w-5 transition group-hover:translate-x-1" />
-          </span>
-        </GlassCard>
-      </Link>
-
-      {inviteModalOpen ? (
-        <div className="fixed inset-0 z-50 flex items-end bg-black/78 px-4 py-5 backdrop-blur-xl sm:items-center sm:justify-center" role="dialog" aria-modal="true" aria-labelledby="owner-team-invite-title">
-          <GlassCard className="max-h-[88vh] w-full max-w-3xl overflow-hidden p-0">
-            <div className="flex items-start justify-between gap-4 border-b border-white/8 p-5 sm:p-6">
+      {pendingInviteBarber ? (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/78 px-4 py-5 backdrop-blur-xl sm:items-center sm:justify-center" role="dialog" aria-modal="true" aria-labelledby="owner-team-invite-confirm-title">
+          <GlassCard className="w-full max-w-lg p-5 sm:p-6">
+            <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.2em] text-[#A3FF12]">Team invite</p>
-                <h2 id="owner-team-invite-title" className="mt-2 text-3xl font-black tracking-[-0.045em] text-white">Invite a barber</h2>
-                <p className="mt-2 text-sm leading-6 text-white/58">
-                  Search real barber accounts and send a canonical shop invite. Barbers join the team only after accepting.
+                <h2 id="owner-team-invite-confirm-title" className="mt-2 text-3xl font-black tracking-[-0.045em] text-white">
+                  Invite {pendingInviteBarber.username ? `@${pendingInviteBarber.username}` : pendingInviteBarber.name} to your team?
+                </h2>
+                <p className="mt-3 text-sm leading-6 text-white/58">
+                  This sends a team invitation for the barber to approve.
                 </p>
               </div>
               <button
                 type="button"
-                aria-label="Close invite barber dialog"
-                onClick={() => setInviteModalOpen(false)}
+                aria-label="Close invite confirmation"
+                onClick={() => setPendingInviteBarber(null)}
                 className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-white/70 transition hover:border-[#A3FF12]/35 hover:text-[#A3FF12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/70"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
-
-            <div className="max-h-[calc(88vh-9rem)] overflow-y-auto p-5 sm:p-6">
-              {inviteFeedback ? <FeedbackBanner tone={inviteFeedback.tone} message={inviteFeedback.message} /> : null}
-              {inviteErrorMessage ? <FeedbackBanner tone="error" message={inviteErrorMessage} /> : null}
-
-              <SearchBar
-                aria-label="Search app barbers to invite"
-                placeholder="Search by name, email, username, or city"
-                value={inviteSearch}
-                onChange={(event) => setInviteSearch(event.target.value)}
-                className="min-h-[4rem] rounded-[22px] px-5 text-base"
-              />
-
-              {inviteDirectoryQuery.data?.shop ? (
-                <div className="mt-4 rounded-[20px] border border-[#A3FF12]/18 bg-[#A3FF12]/8 p-4 text-sm text-white/70">
-                  Invites will be sent for <span className="font-extrabold text-white">{inviteDirectoryQuery.data.shop.label}</span>.
-                  {inviteDirectoryQuery.data.shop.setupNote ? (
-                    <p className="mt-2 text-xs leading-5 text-amber-100">{inviteDirectoryQuery.data.shop.setupNote}</p>
-                  ) : null}
-                </div>
-              ) : null}
-
-              <div className="mt-5 space-y-3">
-                {inviteDirectoryQuery.isLoading ? (
-                  <>
-                    <Skeleton className="h-24 rounded-[22px]" />
-                    <Skeleton className="h-24 rounded-[22px]" />
-                    <Skeleton className="h-24 rounded-[22px]" />
-                  </>
-                ) : inviteDirectoryQuery.data?.barbers.length ? inviteDirectoryQuery.data.barbers.map((barber) => {
-                  const statusText = barber.alreadyAssigned
-                    ? "Assigned"
-                    : barber.inviteStatus === "invited" || barber.inviteStatus === "requested"
-                      ? "Invite pending"
-                      : barber.canInvite
-                        ? "Ready to invite"
-                        : formatStatusLabel(barber.inviteStatus ?? "Unavailable");
-                  const statusTone = barber.alreadyAssigned || barber.inviteStatus === "active" ? "text-[#A3FF12]" : barber.inviteStatus === "invited" || barber.inviteStatus === "requested" ? "text-amber-200" : "text-white/58";
-
-                  return (
-                    <div key={barber.barberId} className="grid gap-4 rounded-[24px] border border-white/8 bg-black/28 p-4 sm:grid-cols-[1fr_auto] sm:items-center">
-                      <div className="flex min-w-0 gap-4">
-                        <Avatar
-                          alt={barber.name}
-                          initials={getInitials(barber.name)}
-                          className="h-14 w-14 shrink-0 border-2 border-[#A3FF12]/45 bg-[#A3FF12]/10"
-                        />
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-3">
-                            <p className="truncate text-xl font-extrabold tracking-[-0.03em] text-white">{barber.name}</p>
-                            <span className={cn("inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-extrabold", statusTone)}>
-                              <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
-                              {statusText}
-                            </span>
-                          </div>
-                        <div className="mt-2 flex flex-wrap gap-2 text-sm text-white/56">
-                          {barber.email ? (
-                            <span className="inline-flex items-center gap-1.5">
-                              <Mail className="h-3.5 w-3.5 text-[#A3FF12]" aria-hidden="true" />
-                              {barber.email}
-                            </span>
-                          ) : null}
-                          {barber.username ? <span>@{barber.username}</span> : null}
-                          {barber.serviceAreaLabel ? <span>{barber.serviceAreaLabel}</span> : null}
-                        </div>
-                        <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold uppercase tracking-[0.13em] text-white/42">
-                          <span>App {formatStatusLabel(barber.appApprovalStatus)}</span>
-                          <span>Shop {formatStatusLabel(barber.shopApprovalStatus)}</span>
-                          <span>{formatStatusLabel(barber.compensationModel)}</span>
-                          <span>{barber.acceptsInstantBookings ? "Instant booking on" : "Instant booking off"}</span>
-                        </div>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {(barber.readinessLabels ?? []).map((label) => (
-                            <span
-                              key={label}
-                              className={cn(
-                                "inline-flex min-h-7 items-center rounded-full border px-3 py-1 text-xs font-extrabold",
-                                label.includes("Bookable") || label.includes("Approved") || label.includes("team")
-                                  ? "border-[#A3FF12]/25 bg-[#A3FF12]/10 text-[#A3FF12]"
-                                  : label.includes("incomplete") || label.includes("invited") || label.includes("Not approved")
-                                    ? "border-amber-300/25 bg-amber-300/10 text-amber-100"
-                                    : "border-white/10 bg-white/[0.05] text-white/62"
-                              )}
-                            >
-                              {label}
-                            </span>
-                          ))}
-                        </div>
-                        {!barber.canInvite && barber.inviteDisabledReason ? (
-                          <p className="mt-3 rounded-[14px] border border-amber-300/18 bg-amber-300/8 px-3 py-2 text-xs font-bold leading-5 text-amber-100">
-                            {barber.inviteDisabledReason}
-                          </p>
-                        ) : null}
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap gap-2 sm:justify-end">
-                        {barber.username ? (
-                          <Link
-                            href={`/barber/${encodeURIComponent(barber.username)}`}
-                            className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 px-4 text-sm font-extrabold text-white/72 transition hover:border-[#A3FF12]/28 hover:text-[#A3FF12]"
-                          >
-                            View Profile
-                          </Link>
-                        ) : null}
-                        <button
-                          type="button"
-                          disabled={!barber.canInvite || createInviteMutation.isPending}
-                          onClick={() => void handleCreateInvite(barber.barberId)}
-                          className={cn(
-                            "inline-flex min-h-11 items-center justify-center gap-2 rounded-full px-4 text-sm font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/70",
-                            barber.canInvite
-                              ? "border border-[#A3FF12]/42 bg-[#A3FF12] text-black shadow-[0_14px_32px_rgba(163,255,18,0.22)] hover:-translate-y-0.5"
-                              : "cursor-not-allowed border border-white/8 bg-white/[0.035] text-white/38"
-                          )}
-                        >
-                          <Send className="h-4 w-4" />
-                          {barber.inviteStatus === "invited" || barber.inviteStatus === "requested" ? "Pending" : barber.alreadyAssigned ? "Assigned" : "Send Invite"}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                }) : (
-                  <div className="rounded-[24px] border border-dashed border-white/10 bg-black/28 p-6">
-                    <p className="text-xl font-extrabold text-white">No matching barbers found.</p>
-                    <p className="mt-2 text-sm leading-6 text-white/58">Try a different name, email, username, or service area.</p>
-                  </div>
-                )}
-              </div>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={createInviteMutation.isPending}
+                onClick={() => void handleCreateInvite(pendingInviteBarber)}
+                className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#A3FF12]/42 bg-[#A3FF12] px-5 text-sm font-black text-black shadow-[0_14px_32px_rgba(163,255,18,0.22)] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-55"
+              >
+                Yes, send invite
+              </button>
+              <button
+                type="button"
+                onClick={() => setPendingInviteBarber(null)}
+                className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/20 px-5 text-sm font-black text-white/66 transition hover:border-[#A3FF12]/30 hover:text-[#A3FF12]"
+              >
+                No, cancel
+              </button>
             </div>
           </GlassCard>
         </div>

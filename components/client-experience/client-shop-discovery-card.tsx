@@ -60,7 +60,7 @@ export function ClientShopDiscoveryCard({
   const favoriteMutation = useSaveFavoriteShopMutation();
   const searchHref = (location.viewHref ?? `/shop/${encodeURIComponent(location.id)}`) as Route;
   const primaryCtaHref = (location.bookHref ?? searchHref) as Route;
-  const primaryCtaLabel = location.bookHref ? "Book" : "View barbers";
+  const primaryCtaLabel = "Book Next Available";
   const imageUrl = location.coverPhotoUrl ?? location.profilePhotoUrl;
   const ratingLabel = typeof location.rating === "number" ? location.rating.toFixed(1) : "Verified";
   const reviewLabel = typeof location.reviewCount === "number" && location.reviewCount > 0

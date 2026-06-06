@@ -335,9 +335,10 @@ describe("owner team workspace", () => {
     expect(openScheduleLink).toHaveClass("border-[#A3FF12]/30");
     expect(screen.getByText("Today Shop Snapshot").compareDocumentPosition(screen.getByText("Barbers Summary"))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(screen.getByText("Barbers Summary").compareDocumentPosition(screen.getByText("Team relationship queue"))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(screen.getByText("Team relationship queue").compareDocumentPosition(screen.getByText("Public Shop Profile"))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(screen.getByText("Public Shop Profile").compareDocumentPosition(screen.getByText("Team Insights"))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(screen.getAllByRole("button", { name: /Invite Barber/i })).toHaveLength(1);
+    expect(screen.queryByText("Public Shop Profile")).not.toBeInTheDocument();
+    expect(screen.queryByText("Team Insights")).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Search @barber username")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Invite Barber/i })).not.toBeInTheDocument();
     expect(screen.getAllByText("Maya Cole").length).toBeGreaterThan(0);
     expect(barbersSummary.getByText("Service: Commission")).toBeInTheDocument();
     expect(barbersSummary.getAllByText("Appointments").length).toBeGreaterThan(0);
@@ -452,17 +453,27 @@ describe("owner team workspace", () => {
     expect(screen.queryByRole("button", { name: /Invite Barber/i })).not.toBeInTheDocument();
   });
 
-  it("opens the real invite directory and sends a canonical shop invite", async () => {
+  it("searches public barber usernames and sends a canonical shop invite after confirmation", async () => {
     render(<OwnerTeamWorkspace />);
 
-    fireEvent.click(screen.getAllByRole("button", { name: /Invite Barber/i })[0]);
-
-    expect(screen.getByRole("dialog", { name: /Invite a barber/i })).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText("Search @barber username"), {
+      target: { value: "@jordanfade" }
+    });
     expect(screen.getByText("Jordan Fade")).toBeInTheDocument();
-    expect(screen.getByText("jordan@example.com")).toBeInTheDocument();
-    expect(screen.getAllByText("Instant booking on").length).toBeGreaterThan(0);
+    expect(screen.getByText("@jordanfade")).toBeInTheDocument();
+    expect(screen.getAllByText("Barber").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Ybor City").length).toBeGreaterThan(0);
 
-    fireEvent.click(screen.getByRole("button", { name: /Send Invite/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Invite" }));
+    expect(screen.getByRole("dialog", { name: /Invite @jordanfade to your team/i })).toBeInTheDocument();
+    expect(screen.getByText("This sends a team invitation for the barber to approve.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "No, cancel" }));
+    expect(createOwnerTeamInviteMock).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog", { name: /Invite @jordanfade to your team/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Invite" }));
+    fireEvent.click(screen.getByRole("button", { name: "Yes, send invite" }));
 
     await waitFor(() => {
       expect(createOwnerTeamInviteMock).toHaveBeenCalledWith({
@@ -470,17 +481,110 @@ describe("owner team workspace", () => {
         shopId: "shop-ybor"
       });
     });
-    expect(await screen.findByText(/Invite sent to Jordan Fade/i)).toBeInTheDocument();
+    expect(await screen.findByText("Invite sent to @jordanfade.")).toBeInTheDocument();
+  });
+
+  it("does not show clients as inviteable team search results", () => {
+    useOwnerTeamInviteDirectoryQueryMock.mockImplementation((search?: string) => ({
+      isLoading: false,
+      error: null,
+      data: {
+        shop: {
+          id: "shop-ybor",
+          label: "BVRB3R Ybor"
+        },
+        barbers: search === "clientusername" ? [] : [
+          {
+            inviteId: null,
+            barberId: "barber-jordan",
+            barberReference: "barber-jordan",
+            profileId: "profile-jordan",
+            name: "Jordan Fade",
+            email: "jordan@example.com",
+            username: "jordanfade",
+            serviceAreaLabel: "Ybor City",
+            compensationModel: "commission",
+            appApprovalStatus: "approved",
+            shopApprovalStatus: "approved",
+            visibilityState: "public",
+            acceptsInstantBookings: true,
+            alreadyAssigned: false,
+            inviteStatus: null,
+            marketplaceStatusLabel: "Approved barber",
+            readinessLabels: [],
+            canInvite: true,
+            inviteDisabledReason: null
+          }
+        ]
+      }
+    }));
+
+    render(<OwnerTeamWorkspace />);
+
+    fireEvent.change(screen.getByPlaceholderText("Search @barber username"), {
+      target: { value: "@clientusername" }
+    });
+
+    expect(screen.getByText("No inviteable barber found.")).toBeInTheDocument();
+    expect(screen.queryByText("@clientusername")).not.toBeInTheDocument();
+  });
+
+  it("prevents duplicate pending team invitations from username search", () => {
+    useOwnerTeamInviteDirectoryQueryMock.mockImplementation(() => ({
+      isLoading: false,
+      error: null,
+      data: {
+        shop: {
+          id: "shop-ybor",
+          label: "BVRB3R Ybor"
+        },
+        barbers: [
+          {
+            inviteId: "invite-pending",
+            barberId: "barber-jordan",
+            barberReference: "barber-jordan",
+            profileId: "profile-jordan",
+            name: "Jordan Fade",
+            email: "jordan@example.com",
+            username: "jordanfade",
+            serviceAreaLabel: "Ybor City",
+            compensationModel: "commission",
+            appApprovalStatus: "approved",
+            shopApprovalStatus: "approved",
+            visibilityState: "public",
+            acceptsInstantBookings: true,
+            alreadyAssigned: false,
+            inviteStatus: "invited",
+            marketplaceStatusLabel: "Approved barber",
+            readinessLabels: [],
+            canInvite: false,
+            inviteDisabledReason: "Invite already pending."
+          }
+        ]
+      }
+    }));
+
+    render(<OwnerTeamWorkspace />);
+
+    fireEvent.change(screen.getByPlaceholderText("Search @barber username"), {
+      target: { value: "jordanfade" }
+    });
+
+    expect(screen.getAllByText("Invite pending").length).toBeGreaterThan(0);
+    expect(screen.getByText("Invite already pending.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Invite pending" })).toBeDisabled();
   });
 
   it("shows disabled invite reasons for barbers already active with another shop", () => {
     render(<OwnerTeamWorkspace />);
 
-    fireEvent.click(screen.getAllByRole("button", { name: /Invite Barber/i })[0]);
+    fireEvent.change(screen.getByPlaceholderText("Search @barber username"), {
+      target: { value: "tiedbarber" }
+    });
 
     expect(screen.getByText("Tied Barber")).toBeInTheDocument();
     expect(screen.getByText("This barber is already connected to another shop.")).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: /Assigned/i }).some((button) => button.hasAttribute("disabled"))).toBe(true);
+    expect(screen.getAllByRole("button", { name: /Already on team/i }).some((button) => button.hasAttribute("disabled"))).toBe(true);
   });
 
   it("lets owners set operating model, public visibility, and release an active barber", async () => {
@@ -512,35 +616,6 @@ describe("owner team workspace", () => {
         relationshipId: "membership-maya",
         reason: "Owner released barber from team."
       });
-    });
-  });
-
-  it("lets owners edit the public shop profile from Home", async () => {
-    render(<OwnerTeamWorkspace />);
-
-    expect(screen.getByText("Public Shop Profile")).toBeInTheDocument();
-    expect(screen.getByText("@bvrb3rybor")).toBeInTheDocument();
-
-    expect(screen.getByRole("link", { name: "Public Profile" })).toHaveAttribute("href", "/dashboard/owner/public-profile");
-    fireEvent.click(screen.getByRole("button", { name: "Quick edit" }));
-    fireEvent.change(screen.getByLabelText("Shop name"), {
-      target: { value: "BVRB3R Ybor Lab" }
-    });
-    fireEvent.change(screen.getByLabelText("Public bio"), {
-      target: { value: "A sharper public team profile." }
-    });
-    fireEvent.change(screen.getByLabelText("Policies"), {
-      target: { value: "Deposits may apply." }
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Save public profile" }));
-
-    await waitFor(() => {
-      expect(updateOwnerShopProfileMock).toHaveBeenCalledWith(expect.objectContaining({
-        shopId: "shop-ybor",
-        name: "BVRB3R Ybor Lab",
-        publicBio: "A sharper public team profile.",
-        policies: "Deposits may apply."
-      }));
     });
   });
 
