@@ -40,28 +40,37 @@ const productionShop = {
   id: "shop-the-bvrb3r-shop-universi-a02c68",
   name: "The BVRB3R Shop (University Mall)",
   public_username: "thebvrb3rshopuniversitymall",
-  shop_username: "thebvrb3rshopuniversitymall",
+  owner_profile_id: "a02c6841-cfbc-4059-8564-96f052c16c26",
   neighborhood: null,
   city: "Tampa",
   state: "FL",
   address: "2172 University Square Mall",
   profile_photo_path: null,
   profile_photo_url: "https://cdn.example.com/shop.jpg",
+  cover_photo_url: null,
   app_approval_status: "approved"
 };
 
+const shopSelects: string[] = [];
+const shopFilters: string[] = [];
+
 function createQuery(table: string) {
   return {
-    select() {
+    select(columns: string) {
+      if (table === "shops") {
+        shopSelects.push(columns);
+      }
       return this;
     },
     or(filter: string) {
+      if (table === "shops") {
+        shopFilters.push(filter);
+      }
       return {
         maybeSingle: async () => {
           if (table === "shops") {
             const targetMatchesId = filter.includes(`id.eq.${productionShop.id}`);
-            const targetMatchesUsername = filter.includes("public_username.ilike.thebvrb3rshopuniversitymall")
-              || filter.includes("shop_username.ilike.thebvrb3rshopuniversitymall");
+            const targetMatchesUsername = filter.includes("public_username.ilike.thebvrb3rshopuniversitymall");
             return {
               data: targetMatchesId || targetMatchesUsername ? productionShop : null,
               error: null
@@ -100,6 +109,8 @@ function mockQueuePayload() {
 describe("shop kiosk resolution", () => {
   beforeEach(() => {
     createSupabaseAdminClientMock.mockReset();
+    shopSelects.length = 0;
+    shopFilters.length = 0;
     getQueueWorkspacePayloadForShopsMock.mockReset();
     readPlatformShopControlStateMock.mockReset();
     readShopProfileMediaMock.mockReset();
@@ -123,6 +134,8 @@ describe("shop kiosk resolution", () => {
     expect(payload.shop.shopName).toBe("The BVRB3R Shop (University Mall)");
     expect(payload.shop.locationLabel).toContain("2172 University Square Mall");
     expect(getQueueWorkspacePayloadForShopsMock).toHaveBeenCalledWith(["shop-the-bvrb3r-shop-universi-a02c68"]);
+    expect(shopSelects.join(" ")).not.toContain("shop_username");
+    expect(shopFilters.join(" ")).not.toContain("shop_username");
   });
 
   it("resolves a shop public username with or without @", async () => {

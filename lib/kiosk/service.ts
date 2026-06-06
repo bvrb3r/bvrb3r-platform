@@ -28,13 +28,14 @@ type ShopBrandRow = {
   id: string;
   name: string;
   public_username: string | null;
-  shop_username: string | null;
+  owner_profile_id: string | null;
   neighborhood: string | null;
   city: string | null;
   state: string | null;
   address: string | null;
   profile_photo_path: string | null;
   profile_photo_url: string | null;
+  cover_photo_url: string | null;
   app_approval_status: string | null;
 };
 
@@ -87,10 +88,11 @@ function formatLocationLabel(input: {
 
 async function resolveSupabaseShopTarget(supabase: NonNullable<ReturnType<typeof getSupabase>>, shopTarget: string): Promise<ResolvedShopKioskTarget> {
   const normalizedTarget = normalizePublicTarget(shopTarget);
+  const shopSelect = "id, name, public_username, owner_profile_id, neighborhood, city, state, address, profile_photo_path, profile_photo_url, cover_photo_url, app_approval_status";
   let shopResult = await supabase
     .from("shops")
-    .select("id, name, public_username, shop_username, neighborhood, city, state, address, profile_photo_path, profile_photo_url, app_approval_status")
-    .or(`id.eq.${shopTarget},public_username.ilike.${normalizedTarget},shop_username.ilike.${normalizedTarget}`)
+    .select(shopSelect)
+    .or(`id.eq.${shopTarget},public_username.ilike.${normalizedTarget}`)
     .maybeSingle();
 
   if (shopResult.error) {
@@ -102,7 +104,7 @@ async function resolveSupabaseShopTarget(supabase: NonNullable<ReturnType<typeof
     if (session?.authenticated && session.user.id !== "guest-user") {
       shopResult = await supabase
         .from("shops")
-        .select("id, name, public_username, shop_username, neighborhood, city, state, address, profile_photo_path, profile_photo_url, app_approval_status")
+        .select(shopSelect)
         .eq("owner_profile_id", session.user.id)
         .maybeSingle();
 
@@ -121,7 +123,7 @@ async function resolveSupabaseShopTarget(supabase: NonNullable<ReturnType<typeof
     ? await supabase
       .from("locations")
       .select("id, reference_code, name, neighborhood, city, state")
-      .or(`reference_code.eq.${shop.id},reference_code.eq.${shop.public_username ?? shop.id},reference_code.eq.${shop.shop_username ?? shop.id}`)
+      .or(`reference_code.eq.${shop.id},reference_code.eq.${shop.public_username ?? shop.id}`)
       .maybeSingle()
     : await supabase
       .from("locations")
