@@ -1,7 +1,7 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
 import { canonicalLocationUuid } from "@/lib/booking/canonical-booking";
-import { getBarberAvailabilityPayload } from "@/lib/booking/platform-service";
+import { getBarberAvailabilityPayload, getBarberDetailsPayload } from "@/lib/booking/platform-service";
 import { demoLocations } from "@/lib/data/demo";
 import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
 import { readPlatformShopControlState } from "@/lib/platform-admin/service";
@@ -58,7 +58,8 @@ async function readShopBranding(shopId: string) {
       shopName: location.name,
       subtitle: "Check in or book your appointment",
       locationLabel: `${location.neighborhood}, ${location.city}`,
-      profilePhotoUrl: media?.profilePhotoUrl
+      profilePhotoUrl: media?.profilePhotoUrl,
+      mode: "shop" as const
     };
   }
 
@@ -85,7 +86,8 @@ async function readShopBranding(shopId: string) {
     shopName: row.name,
     subtitle: "Check in or book your appointment",
     locationLabel: `${row.neighborhood}, ${row.city}`,
-    profilePhotoUrl: media?.profilePhotoUrl
+    profilePhotoUrl: media?.profilePhotoUrl,
+    mode: "shop" as const
   };
 }
 
@@ -221,7 +223,61 @@ export async function getKioskPayload(shopId: string): Promise<KioskPayload> {
     },
     defaults: {
       autoResetSeconds: KIOSK_AUTO_RESET_SECONDS,
-      bookingMode: "next_available"
+      bookingMode: "next_available",
+      appointmentSource: "shop_kiosk",
+      allowChooseBarber: true
+    }
+  };
+}
+
+export async function getBarberKioskPayload(barberId: string): Promise<KioskPayload> {
+  const profile = await getBarberDetailsPayload(barberId);
+  if (!profile) {
+    throw new KioskServiceError("This barber kiosk could not be found.", 404);
+  }
+
+  const barberReference = profile.profile.barberId || profile.barber.id || barberId;
+  const barberName = profile.barber.name || barberReference;
+  const services = profile.services
+    .filter((item) => item.service.id && item.service.name)
+    .map((item) => ({
+      id: item.service.id,
+      name: item.service.name,
+      category: item.service.category || "Service"
+    }));
+
+  const selectedServiceId = services[0]?.id;
+  const availability = selectedServiceId
+    ? await getBarberAvailabilityPayload(barberReference, { serviceId: selectedServiceId, days: 2 })
+    : null;
+
+  return {
+    shop: {
+      shopId: barberReference,
+      shopName: barberName,
+      subtitle: "Book your cut with this barber",
+      locationLabel: profile.profile.serviceAreaLabel ?? profile.shop?.name ?? "Barber kiosk",
+      profilePhotoUrl: profile.profile.profilePhotoUrl ?? undefined,
+      mode: "barber"
+    },
+    services,
+    barbers: [{
+      id: barberReference,
+      name: barberName,
+      liveStatusLabel: availability?.slots.length ? "Bookable" : "Availability soon",
+      nextAvailableAt: availability?.slots[0]?.startsAt ?? null,
+      acceptsWalkIns: true
+    }],
+    queue: {
+      activeCount: 0,
+      averageWaitMinutes: availability?.slots.length ? 0 : 10,
+      kioskEntriesToday: 0
+    },
+    defaults: {
+      autoResetSeconds: KIOSK_AUTO_RESET_SECONDS,
+      bookingMode: "next_available",
+      appointmentSource: "barber_kiosk",
+      allowChooseBarber: false
     }
   };
 }
@@ -294,7 +350,7 @@ export async function createKioskBooking(input: {
     clientName: input.fullName,
     clientPhone: input.phone,
     actorRole: "front_desk",
-    bookingSource: "kiosk",
+    bookingSource: "shop_kiosk",
     source: "front_desk",
     internalNotes: input.email?.trim() ? `Kiosk intake email: ${input.email.trim().toLowerCase()}` : "Created from kiosk intake."
   });
@@ -308,5 +364,55 @@ export async function createKioskBooking(input: {
     serviceName: candidate.service?.name ?? queuePayload.services.find((service) => service.id === input.serviceId)?.name ?? input.serviceId,
     startsAt: candidate.slot.startsAt,
     shopLabel: queuePayload.shops[0]?.label ?? input.shopId
+  };
+}
+
+export async function createBarberKioskBooking(input: {
+  barberId: string;
+  fullName: string;
+  phone: string;
+  email?: string;
+  serviceId: string;
+}): Promise<KioskBookingResult> {
+  const profile = await getBarberDetailsPayload(input.barberId);
+  if (!profile) {
+    throw new KioskServiceError("This barber kiosk could not be found.", 404);
+  }
+
+  const barberReference = profile.profile.barberId || profile.barber.id || input.barberId;
+  const barberName = profile.barber.name || barberReference;
+  const availability = await getBarberAvailabilityPayload(barberReference, {
+    serviceId: input.serviceId,
+    days: 2
+  });
+  const slot = availability.slots[0];
+  if (!slot || !availability.locationId) {
+    throw new KioskServiceError("No bookable kiosk slot is available right now.", 409);
+  }
+
+  const provider = await getLiveOperationsProvider();
+  const result = await provider.createBooking({
+    locationId: availability.locationId,
+    barberId: barberReference,
+    serviceId: input.serviceId,
+    addOnIds: [],
+    appointmentTime: slot.startsAt,
+    clientName: input.fullName,
+    clientPhone: input.phone,
+    actorRole: "front_desk",
+    bookingSource: "barber_kiosk",
+    source: "front_desk",
+    internalNotes: input.email?.trim() ? `Barber kiosk intake email: ${input.email.trim().toLowerCase()}` : "Created from barber kiosk intake."
+  });
+
+  return {
+    appointmentId: result.appointment.id,
+    confirmationCode: result.appointment.confirmationCode,
+    barberId: barberReference,
+    barberName,
+    serviceId: input.serviceId,
+    serviceName: availability.service?.name ?? profile.services.find((item) => item.service.id === input.serviceId)?.service.name ?? input.serviceId,
+    startsAt: slot.startsAt,
+    shopLabel: availability.locationId
   };
 }

@@ -18,6 +18,7 @@ import {
   Scissors,
   ShieldCheck,
   Store,
+  TabletSmartphone,
   Users,
   WalletCards
 } from "lucide-react";
@@ -36,6 +37,7 @@ import { Button } from "@/components/ui/button";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Input } from "@/components/ui/input";
 import { ServiceCatalogWorkspace } from "@/components/marketplace/service-catalog-workspace";
+import { KioskSettingsCard } from "@/components/kiosk/kiosk-actions";
 import { GalleryManagerCard, ProfilePhotoManagerCard } from "@/components/profile/profile-media-manager";
 import { GlassCard } from "@/design/components";
 import { useFintechManagementQuery } from "@/lib/fintech/client";
@@ -517,6 +519,12 @@ export function OwnerSettingsWorkspace({
       tone: membershipCount ? "green" : "muted"
     },
     {
+      title: "Kiosk Settings",
+      subtitle: "4-digit PIN, shop kiosk mode, and eligible active barbers",
+      href: "/dashboard/owner/more?section=kiosk",
+      icon: <TabletSmartphone className="h-5 w-5" />
+    },
+    {
       title: "Commission & Fees",
       subtitle: "Set shop commission & platform fees",
       href: "/dashboard/owner/money?view=fintech",
@@ -771,6 +779,14 @@ export function OwnerSettingsWorkspace({
 
       <section className="space-y-3">
         <MoreSectionGroup group={ownerMoreSections[1]} />
+        {ownerShopId ? (
+          <KioskSettingsCard
+            scope="shop"
+            targetReference={ownerShopId}
+            title="Shop kiosk PIN"
+            subtitle="Set the PIN required to launch or exit the locked shop kiosk booking surface."
+          />
+        ) : null}
         {selectedServiceManager ? (
           <div className="pt-1">
             <ServiceCatalogWorkspace role="owner" />

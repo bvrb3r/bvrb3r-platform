@@ -4,6 +4,7 @@ export interface KioskShopBranding {
   subtitle: string;
   locationLabel: string;
   profilePhotoUrl?: string;
+  mode?: "shop" | "barber";
 }
 
 export interface KioskServiceOption {
@@ -32,6 +33,8 @@ export interface KioskPayload {
   defaults: {
     autoResetSeconds: number;
     bookingMode: "next_available";
+    appointmentSource?: "shop_kiosk" | "barber_kiosk";
+    allowChooseBarber?: boolean;
   };
 }
 

@@ -7,6 +7,7 @@ const {
   searchParamsState,
   useKioskPayloadQueryMock,
   useKioskBookingMutationMock,
+  useVerifyKioskPinMutationMock,
   useKioskWaitlistMutationMock,
   useKioskDeviceStateMock
 } = vi.hoisted(() => ({
@@ -15,6 +16,7 @@ const {
   searchParamsState: { value: "" },
   useKioskPayloadQueryMock: vi.fn(),
   useKioskBookingMutationMock: vi.fn(),
+  useVerifyKioskPinMutationMock: vi.fn(),
   useKioskWaitlistMutationMock: vi.fn(),
   useKioskDeviceStateMock: vi.fn()
 }));
@@ -30,6 +32,7 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/kiosk/client", () => ({
   useKioskPayloadQuery: useKioskPayloadQueryMock,
   useKioskBookingMutation: useKioskBookingMutationMock,
+  useVerifyKioskPinMutation: useVerifyKioskPinMutationMock,
   useKioskWaitlistMutation: useKioskWaitlistMutationMock,
   useKioskDeviceState: useKioskDeviceStateMock
 }));
@@ -51,6 +54,7 @@ describe("kiosk mode screen", () => {
     });
     useKioskPayloadQueryMock.mockReset();
     useKioskBookingMutationMock.mockReset();
+    useVerifyKioskPinMutationMock.mockReset();
     useKioskWaitlistMutationMock.mockReset();
     useKioskDeviceStateMock.mockReset();
 
@@ -92,6 +96,11 @@ describe("kiosk mode screen", () => {
       error: null,
       mutateAsync: vi.fn()
     });
+    useVerifyKioskPinMutationMock.mockReturnValue({
+      isPending: false,
+      error: null,
+      mutateAsync: vi.fn().mockResolvedValue({ ok: true })
+    });
     useKioskWaitlistMutationMock.mockReturnValue({
       isPending: false,
       error: null,
@@ -124,11 +133,82 @@ describe("kiosk mode screen", () => {
     expect(pushMock).toHaveBeenCalledWith("/kiosk/loc-ybor?mode=booking");
   });
 
-  it("routes staff unlock through login", () => {
+  it("renders barber kiosk mode as a one-barber locked booking flow", () => {
+    useKioskPayloadQueryMock.mockReturnValue({
+      isLoading: false,
+      error: null,
+      data: {
+        shop: {
+          shopId: "barber-blaze",
+          shopName: "Blaze King",
+          subtitle: "Book your cut with this barber",
+          locationLabel: "Ybor City",
+          mode: "barber"
+        },
+        services: [
+          { id: "srv-cut", name: "Signature Cut", category: "Cut" }
+        ],
+        barbers: [
+          {
+            id: "barber-blaze",
+            name: "Blaze King",
+            liveStatusLabel: "Bookable",
+            nextAvailableAt: "2026-03-27T15:00:00.000Z",
+            acceptsWalkIns: true
+          }
+        ],
+        queue: {
+          activeCount: 0,
+          averageWaitMinutes: 10,
+          kioskEntriesToday: 0
+        },
+        defaults: {
+          autoResetSeconds: 10,
+          bookingMode: "next_available",
+          appointmentSource: "barber_kiosk",
+          allowChooseBarber: false
+        }
+      }
+    });
+
+    render(<KioskModeScreen shopId="barber-blaze" scope="barber" />);
+
+    expect(screen.getByText("Barber kiosk")).toBeInTheDocument();
+    expect(screen.queryByText("Walk-in")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Book appointment").closest("button") as HTMLButtonElement);
+
+    expect(screen.queryByText("Preferred barber")).not.toBeInTheDocument();
+    expect(pushMock).toHaveBeenCalledWith("/kiosk/barber/barber-blaze?mode=booking");
+  });
+
+  it("requires kiosk PIN before staff unlock exits", async () => {
+    const deactivateMock = vi.fn();
+    const verifyPinMock = vi.fn().mockResolvedValue({ ok: true });
+    useVerifyKioskPinMutationMock.mockReturnValue({
+      isPending: false,
+      error: null,
+      mutateAsync: verifyPinMock
+    });
+    useKioskDeviceStateMock.mockReturnValue({
+      state: {},
+      isActive: false,
+      activate: vi.fn(),
+      deactivate: deactivateMock
+    });
     render(<KioskModeScreen shopId="loc-ybor" />);
 
     fireEvent.click(screen.getByRole("button", { name: "Staff unlock" }));
 
+    expect(screen.getByText("Exit requires the 4-digit kiosk PIN.")).toBeInTheDocument();
+    expect(pushMock).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText("Exit kiosk PIN"), { target: { value: "2468" } });
+    fireEvent.click(screen.getByRole("button", { name: "Exit" }));
+
+    expect(await screen.findByText("Exit requires the 4-digit kiosk PIN.")).toBeInTheDocument();
+    expect(verifyPinMock).toHaveBeenCalledWith({ scope: "shop", targetReference: "loc-ybor", pin: "2468" });
+    expect(deactivateMock).toHaveBeenCalledTimes(1);
     expect(pushMock).toHaveBeenCalledWith("/login?redirect=%2Fkiosk%2Floc-ybor&unlock=true");
   });
 

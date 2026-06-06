@@ -13,6 +13,7 @@ import type {
 
 export interface KioskApiError extends Error {
   status?: number;
+  code?: string;
 }
 
 const KIOSK_DEVICE_STORAGE_KEY = "bvrb3r-kiosk-device:v1";
@@ -30,32 +31,53 @@ async function requestJson<T>(input: RequestInfo, init?: RequestInit): Promise<T
   if (!response.ok) {
     const error = new Error((body.error as string | undefined) ?? `Request failed with status ${response.status}`) as KioskApiError;
     error.status = response.status;
+    error.code = body.code as string | undefined;
     throw error;
   }
 
   return body as T;
 }
 
-export function useKioskPayloadQuery(shopId?: string) {
+export function useSaveKioskPinMutation() {
+  return useMutation({
+    mutationFn: (payload: { scope: "shop" | "barber"; targetReference: string; pin: string }) =>
+      requestJson<{ pinSet: boolean; enabled: boolean }>("/api/kiosk/settings", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      })
+  });
+}
+
+export function useVerifyKioskPinMutation() {
+  return useMutation({
+    mutationFn: (payload: { scope: "shop" | "barber"; targetReference: string; pin: string }) =>
+      requestJson<{ ok: boolean }>("/api/kiosk/verify-pin", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      })
+  });
+}
+
+export function useKioskPayloadQuery(shopId?: string, scope: "shop" | "barber" = "shop") {
   return useQuery({
-    queryKey: ["kiosk", shopId],
+    queryKey: ["kiosk", scope, shopId],
     enabled: Boolean(shopId),
-    queryFn: () => requestJson<KioskPayload>(`/api/kiosk/${shopId}`),
+    queryFn: () => requestJson<KioskPayload>(scope === "barber" ? `/api/kiosk/barber/${shopId}` : `/api/kiosk/${shopId}`),
     staleTime: 10_000
   });
 }
 
-export function useKioskBookingMutation(shopId: string) {
+export function useKioskBookingMutation(shopId: string, scope: "shop" | "barber" = "shop") {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (payload: KioskBookingInput) =>
-      requestJson<KioskBookingResult>(`/api/kiosk/${shopId}/booking`, {
+      requestJson<KioskBookingResult>(scope === "barber" ? `/api/kiosk/barber/${shopId}/booking` : `/api/kiosk/${shopId}/booking`, {
         method: "POST",
         body: JSON.stringify(payload)
       }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["kiosk", shopId] });
+      await queryClient.invalidateQueries({ queryKey: ["kiosk", scope, shopId] });
     }
   });
 }

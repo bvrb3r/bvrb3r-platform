@@ -177,6 +177,8 @@ describe("owner More workspace", () => {
     expect(screen.getByText("Shop profile, branding, hours, and policies.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Shop Profile" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Business Setup" })).toBeInTheDocument();
+    expect(screen.getAllByText("Kiosk Settings").length).toBeGreaterThan(0);
+    expect(screen.getByText("4-digit PIN, shop kiosk mode, and eligible active barbers")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Payments & Banking" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Compliance & Security" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Support" })).toBeInTheDocument();

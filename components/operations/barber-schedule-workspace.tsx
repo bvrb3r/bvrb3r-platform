@@ -17,9 +17,11 @@ import {
   ReceiptText,
   Search,
   SlidersHorizontal,
+  TabletSmartphone,
   UsersRound
 } from "lucide-react";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
+import { KioskLaunchAction } from "@/components/kiosk/kiosk-actions";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ActionButton, Avatar, DataStatCard, GlassCard, StatusBadge } from "@/design/components";
 import { isAppointmentRevenueEligible, isAvailabilityBlockingAppointmentStatus } from "@/lib/appointments/domain";
@@ -828,6 +830,7 @@ function AppointmentDetailsModal({
 export type BarberScheduleWorkspaceSurface = "full" | "calendar" | "availability";
 
 export function BarberScheduleWorkspace({
+  barberName,
   surface = "full"
 }: {
   barberName: string;
@@ -1229,7 +1232,7 @@ export function BarberScheduleWorkspace({
                 Your booked clients, open slots, and availability controls in one operating view.
               </p>
             </div>
-            <div className="grid gap-2 sm:grid-cols-3 lg:min-w-[32rem]">
+            <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[38rem] xl:grid-cols-4">
               <button
                 type="button"
                 className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] bg-[#a3ff12] px-4 text-xs font-black text-[#050505] shadow-[0_0_26px_rgba(163,255,18,0.20)] transition hover:bg-[#d7ffab]"
@@ -1246,6 +1249,15 @@ export function BarberScheduleWorkspace({
                 <SlidersHorizontal className="h-4 w-4 text-[#a3ff12]" />
                 Availability
               </button>
+              <KioskLaunchAction
+                href={`/kiosk/barber/${encodeURIComponent(payload?.barberId ?? barberName)}` as Route}
+                scope="barber"
+                targetReference={payload?.barberId ?? barberName}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] border border-[#a3ff12]/24 bg-[#a3ff12]/10 px-4 text-xs font-extrabold text-[#d7ffab] transition hover:border-[#a3ff12]/40 hover:bg-[#a3ff12]/14"
+              >
+                <TabletSmartphone className="h-4 w-4" />
+                Kiosk Mode
+              </KioskLaunchAction>
               <button
                 type="button"
                 className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] border border-white/10 bg-white/[0.035] px-4 text-xs font-extrabold text-white/74 transition hover:border-[#a3ff12]/30 hover:text-white"

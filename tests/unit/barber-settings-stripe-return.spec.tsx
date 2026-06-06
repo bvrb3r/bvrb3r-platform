@@ -408,6 +408,8 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     expect(within(identityCard).getByText("Payouts connected")).toBeInTheDocument();
     expect(within(identityCard).getByText("@phillipforsure")).toBeInTheDocument();
     expect(within(identityCard).getByText("8516 Island Breeze Ln - Temple Terrace, FL 33607")).toBeInTheDocument();
+    expect(screen.getByText("Kiosk Settings")).toBeInTheDocument();
+    expect(screen.getByText("4-digit PIN, locked device mode, and walk-in booking rules")).toBeInTheDocument();
     expect(identityCard).not.toHaveTextContent("Independent barber");
     expect(identityCard).not.toHaveTextContent("Freelance service area");
     expect(identityCard).not.toHaveTextContent("Phils chair / 2172 University Square More / Tampa");

@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
+import type { Route } from "next";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LockKeyhole, Phone, TimerReset, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,7 @@ import {
   useKioskBookingMutation,
   useKioskDeviceState,
   useKioskPayloadQuery,
+  useVerifyKioskPinMutation,
   useKioskWaitlistMutation
 } from "@/lib/kiosk/client";
 import { getReadableActionError } from "@/lib/utils/feedback";
@@ -81,18 +83,22 @@ function getStepFromMode(mode: string | null): KioskStep {
   return "welcome";
 }
 
-export function KioskModeScreen({ shopId }: { shopId: string }) {
+export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; scope?: "shop" | "barber" }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const kioskQuery = useKioskPayloadQuery(shopId);
-  const bookingMutation = useKioskBookingMutation(shopId);
+  const kioskQuery = useKioskPayloadQuery(shopId, scope);
+  const bookingMutation = useKioskBookingMutation(shopId, scope);
   const waitlistMutation = useKioskWaitlistMutation(shopId);
+  const verifyPinMutation = useVerifyKioskPinMutation();
   const kioskDevice = useKioskDeviceState();
   const mode = searchParams.get("mode");
   const [step, setStep] = useState<KioskStep>("welcome");
   const [success, setSuccess] = useState<SuccessState>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [interactionError, setInteractionError] = useState<string | null>(null);
+  const [exitPromptOpen, setExitPromptOpen] = useState(false);
+  const [exitPin, setExitPin] = useState("");
+  const [exitError, setExitError] = useState<string | null>(null);
   const bookingFormRef = useRef<BookingFormState>({
     fullName: "",
     phone: "",
@@ -156,7 +162,7 @@ export function KioskModeScreen({ shopId }: { shopId: string }) {
           window.clearInterval(intervalId);
           setSuccess(null);
           setStep("welcome");
-          router.replace(`/kiosk/${shopId}`);
+          router.replace((scope === "barber" ? `/kiosk/barber/${shopId}` : `/kiosk/${shopId}`) as Route);
           return null;
         }
 
@@ -167,7 +173,7 @@ export function KioskModeScreen({ shopId }: { shopId: string }) {
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [autoResetSeconds, router, shopId, success]);
+  }, [autoResetSeconds, router, scope, shopId, success]);
 
   const queueLabel = useMemo(() => {
     if (!payload) {
@@ -185,18 +191,33 @@ export function KioskModeScreen({ shopId }: { shopId: string }) {
     setInteractionError(null);
     setSuccess(null);
     setStep("welcome");
-    router.replace(`/kiosk/${shopId}`);
+    router.replace((scope === "barber" ? `/kiosk/barber/${shopId}` : `/kiosk/${shopId}`) as Route);
   }
 
   function openStep(nextStep: Exclude<KioskStep, "welcome">) {
     setInteractionError(null);
     setSuccess(null);
     setStep(nextStep);
-    router.push(`/kiosk/${shopId}?mode=${nextStep === "walk_in" ? "walk-in" : "booking"}`);
+    const basePath = scope === "barber" ? `/kiosk/barber/${shopId}` : `/kiosk/${shopId}`;
+    router.push(`${basePath}?mode=${nextStep === "walk_in" ? "walk-in" : "booking"}` as Route);
   }
 
   function handleUnlock() {
-    router.push(`/login?redirect=${encodeURIComponent(`/kiosk/${shopId}`)}&unlock=true`);
+    setExitError(null);
+    setExitPin("");
+    setExitPromptOpen(true);
+  }
+
+  async function handleExitKiosk() {
+    setExitError(null);
+    try {
+      await verifyPinMutation.mutateAsync({ scope, targetReference: shopId, pin: exitPin });
+      kioskDevice.deactivate();
+      const basePath = scope === "barber" ? `/kiosk/barber/${shopId}` : `/kiosk/${shopId}`;
+      router.push(`/login?redirect=${encodeURIComponent(basePath)}&unlock=true` as Route);
+    } catch (error) {
+      setExitError(getReadableActionError(error as { message?: string; status?: number; code?: string }));
+    }
   }
 
   async function handleBookingSubmit() {
@@ -285,7 +306,7 @@ export function KioskModeScreen({ shopId }: { shopId: string }) {
         <Card className="overflow-hidden rounded-[38px] border border-white/8 bg-[linear-gradient(180deg,rgba(15,15,15,0.98),rgba(7,7,7,0.98))] p-6 sm:p-8">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0">
-              <p className="text-[11px] uppercase tracking-[0.26em] text-[#cfff93]">Shop kiosk</p>
+              <p className="text-[11px] uppercase tracking-[0.26em] text-[#cfff93]">{scope === "barber" ? "Barber kiosk" : "Shop kiosk"}</p>
               <h1 className="mt-3 wrap-safe text-4xl font-semibold sm:text-6xl" data-display="true">{payload.shop.shopName}</h1>
               <p className="mt-4 max-w-2xl wrap-safe text-base leading-8 text-white/66">{payload.shop.subtitle}</p>
               <div className="mt-4 flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.22em]">
@@ -308,6 +329,39 @@ export function KioskModeScreen({ shopId }: { shopId: string }) {
               <LockKeyhole className="h-4 w-4" />
             </button>
           </div>
+
+          {exitPromptOpen ? (
+            <div className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/76 px-4 py-5 backdrop-blur-sm sm:items-center" role="dialog" aria-modal="true" aria-label="Exit kiosk mode">
+              <div className="w-full max-w-sm rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(4,4,4,0.98))] p-5 text-white shadow-[0_24px_70px_rgba(0,0,0,0.58)]">
+                <div className="flex items-start gap-3">
+                  <span className="rounded-[12px] border border-[#A3FF12]/20 bg-[#A3FF12]/10 p-2 text-[#A3FF12]">
+                    <LockKeyhole className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Staff unlock</p>
+                    <h2 className="mt-1 text-2xl font-black tracking-[-0.04em]">Enter kiosk PIN</h2>
+                    <p className="mt-2 text-sm leading-6 text-white/58">Exit requires the 4-digit kiosk PIN.</p>
+                  </div>
+                </div>
+                <Input
+                  className="mt-5 text-center text-2xl tracking-[0.45em]"
+                  inputMode="numeric"
+                  maxLength={4}
+                  value={exitPin}
+                  onChange={(event) => setExitPin(event.target.value.replace(/\D/g, "").slice(0, 4))}
+                  placeholder="0000"
+                  aria-label="Exit kiosk PIN"
+                />
+                {exitError ? <div className="mt-4"><FeedbackBanner tone="error" message={exitError} /></div> : null}
+                <div className="mt-5 grid grid-cols-2 gap-2">
+                  <Button type="button" variant="secondary" onClick={() => setExitPromptOpen(false)}>Cancel</Button>
+                  <Button type="button" disabled={verifyPinMutation.isPending || exitPin.length !== 4} onClick={() => void handleExitKiosk()}>
+                    {verifyPinMutation.isPending ? "Checking..." : "Exit"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           {success ? (
             <div className="mt-8 rounded-[30px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-6 text-center">
@@ -346,18 +400,24 @@ export function KioskModeScreen({ shopId }: { shopId: string }) {
                   >
                     <p className="surface-label text-[#d7ffab]">Book appointment</p>
                     <h2 className="mt-3 wrap-safe text-3xl font-semibold">Reserve the next open chair</h2>
-                    <p className="mt-4 wrap-safe text-sm leading-7 text-white/66">Enter your info, pick your service, and the shop will place you into the fastest available booking slot.</p>
+                    <p className="mt-4 wrap-safe text-sm leading-7 text-white/66">
+                      {scope === "barber"
+                        ? "Enter your info, pick your service, and reserve the next available time with this barber."
+                        : "Enter your info, pick your service, and the shop will place you into the fastest available booking slot."}
+                    </p>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => openStep("walk_in")}
-                    className="rounded-[32px] border border-white/8 bg-black/20 p-6 text-left transition hover:-translate-y-0.5 hover:border-[#7CFF00]/16 hover:bg-black/28"
-                    style={{ pointerEvents: "auto" }}
-                  >
-                    <p className="surface-label">Walk-in</p>
-                    <h2 className="mt-3 wrap-safe text-3xl font-semibold">Join the live waitlist</h2>
-                    <p className="mt-4 wrap-safe text-sm leading-7 text-white/66">Check in quickly, see the current wait, and let the shop route you to the fastest chair.</p>
-                  </button>
+                  {scope === "shop" ? (
+                    <button
+                      type="button"
+                      onClick={() => openStep("walk_in")}
+                      className="rounded-[32px] border border-white/8 bg-black/20 p-6 text-left transition hover:-translate-y-0.5 hover:border-[#7CFF00]/16 hover:bg-black/28"
+                      style={{ pointerEvents: "auto" }}
+                    >
+                      <p className="surface-label">Walk-in</p>
+                      <h2 className="mt-3 wrap-safe text-3xl font-semibold">Join the live waitlist</h2>
+                      <p className="mt-4 wrap-safe text-sm leading-7 text-white/66">Check in quickly, see the current wait, and let the shop route you to the fastest chair.</p>
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
 
@@ -398,6 +458,7 @@ export function KioskModeScreen({ shopId }: { shopId: string }) {
                         ))}
                       </Select>
                     </div>
+                    {payload.defaults.allowChooseBarber !== false ? (
                     <div>
                       <label className="mb-3 block surface-label">Preferred barber</label>
                       <Select value={bookingForm.preferredBarberId} onChange={(event) => {
@@ -410,8 +471,9 @@ export function KioskModeScreen({ shopId }: { shopId: string }) {
                         ))}
                       </Select>
                     </div>
+                    ) : null}
                     <div className="rounded-[24px] border border-white/8 bg-black/20 p-4 text-sm leading-6 text-white/62">
-                      Booking stays on the existing shop booking rail and places you into the next available service window.
+                      Booking stays on the existing booking rail, requires this confirmation step, and uses canonical availability before creating an appointment.
                     </div>
                   </div>
                   <div className="lg:col-span-2 flex flex-wrap gap-2">

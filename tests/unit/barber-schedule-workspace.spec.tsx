@@ -222,10 +222,26 @@ describe("BarberScheduleWorkspace", () => {
     expect(screen.queryByText("Your calendar, chair status, money posture, and next move.")).not.toBeInTheDocument();
     expect(screen.queryByText("Home")).not.toBeInTheDocument();
     expect(screen.getByText("Today's chair plan")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Kiosk Mode/i })).toBeInTheDocument();
     expect(screen.getByText("No chair activity on this day")).toBeInTheDocument();
     expect(screen.queryByLabelText(/No appointments at/i)).not.toBeInTheDocument();
     expect(screen.queryByText("Working hours and blocked time")).not.toBeInTheDocument();
     expect(screen.queryByText("Availability control")).not.toBeInTheDocument();
+  });
+
+  it("asks for a kiosk PIN before routing into the barber kiosk screen", () => {
+    render(
+      <BarberScheduleWorkspace
+        barberName="Blaze King"
+        surface="calendar"
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Kiosk Mode/i }));
+
+    expect(screen.getByRole("dialog", { name: "Enter kiosk PIN" })).toBeInTheDocument();
+    expect(screen.getByLabelText("4-digit kiosk PIN")).toBeInTheDocument();
+    expect(pushMock).not.toHaveBeenCalledWith("/kiosk/barber/barber-1");
   });
 
   it("renders availability controls only on the More surface", () => {

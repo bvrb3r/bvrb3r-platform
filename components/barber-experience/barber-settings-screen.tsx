@@ -28,6 +28,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Store,
+  TabletSmartphone,
   UserCheck,
   WalletCards,
   XCircle,
@@ -46,6 +47,7 @@ import {
 } from "@/components/dashboard/more/more-components";
 import { BarberEarningsWorkspace } from "@/components/operations/barber-earnings-workspace";
 import { BarberScheduleWorkspace } from "@/components/operations/barber-schedule-workspace";
+import { KioskSettingsCard } from "@/components/kiosk/kiosk-actions";
 import { Button } from "@/components/ui/button";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Input } from "@/components/ui/input";
@@ -125,6 +127,7 @@ type BusinessToolKey =
   | "services"
   | "availability"
   | "booking"
+  | "kiosk"
   | "notifications"
   | "transactions"
   | "reports"
@@ -1148,6 +1151,7 @@ export function BarberSettingsScreen({
     { key: "services", title: "Services", subtitle: "Manage pricing & offerings", icon: Scissors },
     { key: "availability", title: "Availability", subtitle: "Working hours & blocked time", icon: Clock3 },
     { key: "booking", title: "Booking Settings", subtitle: "Online booking preferences", icon: CalendarDays },
+    { key: "kiosk", title: "Kiosk Settings", subtitle: "4-digit PIN, locked device mode, and walk-in booking rules", icon: TabletSmartphone },
     { key: "notifications", title: "Notifications", subtitle: "Alerts & reminders", icon: BellRing },
     { key: "transactions", title: "Transactions", subtitle: "Sales & receipts", icon: ArrowLeftRight },
     { key: "reports", title: "Reports", subtitle: "Performance overview", icon: BarChart3 },
@@ -1188,6 +1192,7 @@ export function BarberSettingsScreen({
         { title: "Services", subtitle: "Manage pricing and offerings", href: "#barber-settings-business", icon: <Scissors className="h-5 w-5" /> },
         { title: "Availability", subtitle: "Working hours and blocked time", href: "#barber-settings-business", icon: <Clock3 className="h-5 w-5" /> },
         { title: "Booking Settings", subtitle: "Online booking rules and preferences", href: "#barber-settings-business", icon: <CalendarDays className="h-5 w-5" /> },
+        { title: "Kiosk Settings", subtitle: "4-digit PIN, locked device mode, and walk-in booking rules", href: "#barber-settings-business", icon: <TabletSmartphone className="h-5 w-5" /> },
         { title: "Shop Relationship", subtitle: "Freelance, booth rent, or commission connection", href: "#barber-settings-shop-invites", status: pendingShopInvites.length ? `${pendingShopInvites.length} invite${pendingShopInvites.length === 1 ? "" : "s"}` : subtypeLabel, tone: pendingShopInvites.length ? "yellow" : "muted", icon: <Store className="h-5 w-5" /> }
       ]
     },
@@ -2177,6 +2182,35 @@ export function BarberSettingsScreen({
                     Scheduling rules are coming next. No placeholder preferences are saved yet.
                   </div>
                 </BusinessToolPanel>
+              ) : null}
+
+              {activeBusinessTool === "kiosk" ? (
+                <div className="space-y-3">
+                  <KioskSettingsCard
+                    scope="barber"
+                    targetReference={user.barberId ?? user.id}
+                    title="Barber kiosk PIN"
+                    subtitle="Set the PIN required to enter or exit locked barber kiosk mode on this device."
+                  />
+                  <BusinessToolRow
+                    icon={TabletSmartphone}
+                    title="Enable Kiosk Mode"
+                    subtitle="Launch a locked booking screen from Barber Home after setting a 4-digit PIN."
+                    status={<StatusPill tone="amber">PIN required</StatusPill>}
+                  />
+                  <BusinessToolRow
+                    icon={ShieldCheck}
+                    title="Change 4-digit PIN"
+                    subtitle="PIN hashes are stored in kiosk settings; the main account password is never used as the kiosk PIN."
+                    status={<StatusPill tone="neutral">Secure hash</StatusPill>}
+                  />
+                  <BusinessToolRow
+                    icon={CalendarDays}
+                    title="Booking rules"
+                    subtitle="Kiosk bookings use your existing services, availability, payment, and conflict checks."
+                    status={<StatusPill tone="green">Canonical</StatusPill>}
+                  />
+                </div>
               ) : null}
 
               {activeBusinessTool === "notifications" ? (
