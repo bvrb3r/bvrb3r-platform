@@ -286,7 +286,7 @@ export function OwnerTeamWorkspace() {
   const barbers = useMemo(() => shopQuery.data?.barbers ?? [], [shopQuery.data?.barbers]);
   const activeBarbers = useMemo(() => shopQuery.data?.activeBarbers ?? [], [shopQuery.data?.activeBarbers]);
   const appointments = useMemo(() => shopQuery.data?.appointments ?? [], [shopQuery.data?.appointments]);
-  const ownerKioskShopId = shopQuery.data?.locations?.[0]?.id ?? relationshipDirectoryQuery.data?.shop.id ?? null;
+  const ownerKioskShopId = relationshipDirectoryQuery.data?.shop.id ?? shopQuery.data?.locations?.[0]?.id ?? null;
   const memberships = useMemo(() => fintechQuery.data?.memberships ?? [], [fintechQuery.data?.memberships]);
   const barberAccounts = useMemo(() => fintechQuery.data?.barbers ?? [], [fintechQuery.data?.barbers]);
 
@@ -438,6 +438,7 @@ export function OwnerTeamWorkspace() {
             href={`/kiosk/${encodeURIComponent(ownerKioskShopId)}` as Route}
             scope="shop"
             targetReference={ownerKioskShopId}
+            settingsHref="/dashboard/owner/more?section=kiosk"
             className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#A3FF12]/30 bg-[#A3FF12]/10 px-5 text-[11px] font-black uppercase tracking-[0.2em] text-[#d7ffab] transition hover:border-[#d7ffab]/55 hover:bg-[#A3FF12]/16"
           >
             Kiosk Mode

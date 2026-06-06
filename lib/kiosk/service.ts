@@ -24,6 +24,28 @@ type LocationBrandRow = {
   state: string;
 };
 
+type ShopBrandRow = {
+  id: string;
+  name: string;
+  public_username: string | null;
+  shop_username: string | null;
+  neighborhood: string | null;
+  city: string | null;
+  state: string | null;
+  address: string | null;
+  profile_photo_path: string | null;
+  profile_photo_url: string | null;
+  app_approval_status: string | null;
+};
+
+type ResolvedShopKioskTarget = {
+  requestedTarget: string;
+  shopId: string;
+  queueShopReference: string;
+  platformControlReference: string;
+  branding: KioskPayload["shop"];
+};
+
 const KIOSK_AUTO_RESET_SECONDS = 10;
 
 export class KioskServiceError extends Error {
@@ -44,7 +66,89 @@ function getSupabase() {
   return createSupabaseAdminClient();
 }
 
-async function readShopBranding(shopId: string) {
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function normalizePublicTarget(value: string) {
+  return value.trim().replace(/^@+/, "").toLowerCase();
+}
+
+function formatLocationLabel(input: {
+  neighborhood?: string | null;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+}) {
+  return [input.neighborhood || input.address, [input.city, input.state].filter(Boolean).join(", ")]
+    .filter(Boolean)
+    .join(" - ") || "Shop kiosk";
+}
+
+async function resolveSupabaseShopTarget(supabase: NonNullable<ReturnType<typeof getSupabase>>, shopTarget: string): Promise<ResolvedShopKioskTarget> {
+  const normalizedTarget = normalizePublicTarget(shopTarget);
+  const shopQuery = supabase
+    .from("shops")
+    .select("id, name, public_username, shop_username, neighborhood, city, state, address, profile_photo_path, profile_photo_url, app_approval_status");
+
+  const shopResult = isUuid(shopTarget)
+    ? await shopQuery.eq("id", shopTarget).maybeSingle()
+    : await shopQuery
+      .or(`id.eq.${canonicalLocationUuid(shopTarget)},public_username.ilike.${normalizedTarget},shop_username.ilike.${normalizedTarget}`)
+      .maybeSingle();
+
+  if (shopResult.error) {
+    throw new KioskServiceError("Unable to load this shop kiosk.", 500);
+  }
+
+  const shop = (shopResult.data ?? null) as ShopBrandRow | null;
+  const locationResult = shop
+    ? await supabase
+      .from("locations")
+      .select("id, reference_code, name, neighborhood, city, state")
+      .or(`reference_code.eq.${shop.id},reference_code.eq.${shop.public_username ?? shop.id},reference_code.eq.${shop.shop_username ?? shop.id}`)
+      .maybeSingle()
+    : await supabase
+      .from("locations")
+      .select("id, reference_code, name, neighborhood, city, state")
+      .or(`reference_code.eq.${shopTarget},reference_code.ilike.${normalizedTarget},id.eq.${canonicalLocationUuid(shopTarget)}`)
+      .maybeSingle();
+
+  if (locationResult.error) {
+    throw new KioskServiceError("Unable to load this shop kiosk.", 500);
+  }
+
+  if (!shop && !locationResult.data) {
+    throw new KioskServiceError("This shop kiosk could not be found.", 404);
+  }
+
+  const location = (locationResult.data ?? null) as LocationBrandRow | null;
+  const canonicalShopId = shop?.id ?? location?.reference_code ?? location?.id ?? shopTarget;
+  const queueShopReference = location?.reference_code ?? location?.id ?? canonicalShopId;
+  const media = await readShopProfileMedia(canonicalShopId).catch(() => null);
+
+  return {
+    requestedTarget: shopTarget,
+    shopId: canonicalShopId,
+    queueShopReference,
+    platformControlReference: canonicalShopId,
+    branding: {
+      shopId: canonicalShopId,
+      shopName: shop?.name ?? location?.name ?? "BVRB3R Shop",
+      subtitle: "Check in or book your appointment",
+      locationLabel: formatLocationLabel({
+        neighborhood: shop?.neighborhood ?? location?.neighborhood,
+        address: shop?.address,
+        city: shop?.city ?? location?.city,
+        state: shop?.state ?? location?.state
+      }),
+      profilePhotoUrl: media?.profilePhotoUrl ?? shop?.profile_photo_url ?? undefined,
+      mode: "shop"
+    }
+  };
+}
+
+async function resolveShopKioskTarget(shopId: string): Promise<ResolvedShopKioskTarget> {
   const supabase = getSupabase();
   if (!supabase) {
     const location = demoLocations.find((entry) => entry.id === shopId);
@@ -54,41 +158,22 @@ async function readShopBranding(shopId: string) {
 
     const media = await readShopProfileMedia(shopId).catch(() => null);
     return {
+      requestedTarget: shopId,
       shopId: location.id,
-      shopName: location.name,
-      subtitle: "Check in or book your appointment",
-      locationLabel: `${location.neighborhood}, ${location.city}`,
-      profilePhotoUrl: media?.profilePhotoUrl,
-      mode: "shop" as const
+      queueShopReference: location.id,
+      platformControlReference: location.id,
+      branding: {
+        shopId: location.id,
+        shopName: location.name,
+        subtitle: "Check in or book your appointment",
+        locationLabel: `${location.neighborhood}, ${location.city}`,
+        profilePhotoUrl: media?.profilePhotoUrl,
+        mode: "shop" as const
+      }
     };
   }
 
-  const shopUuid = canonicalLocationUuid(shopId);
-  const locationResult = await supabase
-    .from("locations")
-    .select("id, reference_code, name, neighborhood, city, state")
-    .or(`reference_code.eq.${shopId},id.eq.${shopUuid}`)
-    .maybeSingle();
-
-  if (locationResult.error) {
-    throw new KioskServiceError("Unable to load this shop kiosk.", 500);
-  }
-
-  if (!locationResult.data) {
-    throw new KioskServiceError("This shop kiosk could not be found.", 404);
-  }
-
-  const row = locationResult.data as LocationBrandRow;
-  const media = await readShopProfileMedia(row.reference_code ?? row.id).catch(() => null);
-
-  return {
-    shopId: row.reference_code ?? row.id,
-    shopName: row.name,
-    subtitle: "Check in or book your appointment",
-    locationLabel: `${row.neighborhood}, ${row.city}`,
-    profilePhotoUrl: media?.profilePhotoUrl,
-    mode: "shop" as const
-  };
+  return resolveSupabaseShopTarget(supabase, shopId);
 }
 
 function mapBarbers(payload: QueueWorkspacePayload): KioskBarberOption[] {
@@ -115,6 +200,22 @@ function sortFastestChairCandidates(barbers: QueueBarberOptionView[]) {
 
     return left.name.localeCompare(right.name);
   });
+}
+
+function emptyQueuePayload(): QueueWorkspacePayload {
+  return {
+    summary: {
+      activeCount: 0,
+      calledCount: 0,
+      assignedCount: 0,
+      averageWaitMinutes: 0
+    },
+    shops: [],
+    barbers: [],
+    services: [],
+    entries: [],
+    recentResolvedEntries: []
+  };
 }
 
 async function assertKioskEnabled(shopId: string) {
@@ -197,11 +298,16 @@ function estimateWaitMinutes(input: {
 }
 
 export async function getKioskPayload(shopId: string): Promise<KioskPayload> {
-  await assertKioskEnabled(shopId);
-  const [branding, queuePayload] = await Promise.all([
-    readShopBranding(shopId),
-    getQueueWorkspacePayloadForShops([shopId])
-  ]);
+  const target = await resolveShopKioskTarget(shopId);
+  await assertKioskEnabled(target.platformControlReference);
+  const branding = target.branding;
+  const queuePayload = await getQueueWorkspacePayloadForShops([target.queueShopReference]).catch((error) => {
+    if (error instanceof QueueServiceError && error.status === 404) {
+      return emptyQueuePayload();
+    }
+
+    throw error;
+  });
 
   const kioskEntriesToday = [
     ...queuePayload.entries,
@@ -289,17 +395,18 @@ export async function createKioskWaitlist(input: {
   email?: string;
   serviceId?: string;
 }): Promise<KioskWaitlistResult> {
-  await assertKioskEnabled(input.shopId);
+  const target = await resolveShopKioskTarget(input.shopId);
+  await assertKioskEnabled(target.platformControlReference);
   try {
     const result = await createKioskQueueEntry({
       clientName: input.fullName,
       clientPhone: input.phone,
       clientEmail: input.email,
-      shopId: input.shopId,
+      shopId: target.queueShopReference,
       serviceId: input.serviceId,
       queueSource: "kiosk"
     });
-    const payload = await getQueueWorkspacePayloadForShops([input.shopId]);
+    const payload = await getQueueWorkspacePayloadForShops([target.queueShopReference]);
     const position = payload.entries.findIndex((entry) => entry.id === result.entry.id) + 1;
 
     return {
@@ -332,17 +439,18 @@ export async function createKioskBooking(input: {
   serviceId: string;
   preferredBarberId?: string;
 }): Promise<KioskBookingResult> {
-  await assertKioskEnabled(input.shopId);
-  const queuePayload = await getQueueWorkspacePayloadForShops([input.shopId]);
+  const target = await resolveShopKioskTarget(input.shopId);
+  await assertKioskEnabled(target.platformControlReference);
+  const queuePayload = await getQueueWorkspacePayloadForShops([target.queueShopReference]);
   const candidate = await resolveFastestBookableSlot({
-    shopId: input.shopId,
+    shopId: target.queueShopReference,
     serviceId: input.serviceId,
     preferredBarberId: input.preferredBarberId,
     barbers: queuePayload.barbers
   });
   const provider = await getLiveOperationsProvider();
   const result = await provider.createBooking({
-    locationId: input.shopId,
+    locationId: target.queueShopReference,
     barberId: candidate.barber.id,
     serviceId: input.serviceId,
     addOnIds: [],

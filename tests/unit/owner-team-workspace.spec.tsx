@@ -57,6 +57,16 @@ vi.mock("@/lib/fintech/client", () => ({
 
 import { OwnerTeamWorkspace } from "@/components/operations/owner-team-workspace";
 
+const locationAssignMock = vi.fn();
+
+Object.defineProperty(window, "location", {
+  configurable: true,
+  value: {
+    ...window.location,
+    assign: locationAssignMock
+  }
+});
+
 describe("owner team workspace", () => {
   beforeEach(() => {
     useShopDashboardQueryMock.mockReset();
@@ -71,6 +81,11 @@ describe("owner team workspace", () => {
     updateOwnerRelationshipMock.mockReset();
     releaseOwnerRelationshipMock.mockReset();
     updateOwnerShopProfileMock.mockReset();
+    locationAssignMock.mockReset();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ pinSet: true, enabled: true })
+    }));
 
     useShopDashboardQueryMock.mockReturnValue({
       isLoading: false,
@@ -313,7 +328,7 @@ describe("owner team workspace", () => {
     });
   });
 
-  it("renders the owner home lane from scoped canonical barber and payout truth", () => {
+  it("renders the owner home lane from scoped canonical barber and payout truth", async () => {
     render(<OwnerTeamWorkspace />);
 
     expect(screen.queryByText("Home")).not.toBeInTheDocument();
@@ -333,7 +348,10 @@ describe("owner team workspace", () => {
     expect(kioskModeAction).toHaveClass("rounded-full");
     expect(kioskModeAction).toHaveClass("border-[#A3FF12]/30");
     fireEvent.click(kioskModeAction);
-    expect(screen.getByRole("dialog", { name: "Enter kiosk PIN" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(locationAssignMock).toHaveBeenCalledWith("/kiosk/shop-ybor");
+    });
+    expect(screen.queryByRole("dialog", { name: "Enter kiosk PIN" })).not.toBeInTheDocument();
     expect(screen.getByText("Today Shop Snapshot").compareDocumentPosition(screen.getByText("Barbers Summary"))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(screen.getByText("Barbers Summary").compareDocumentPosition(screen.getByText("Team relationship queue"))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(screen.queryByText("Public Shop Profile")).not.toBeInTheDocument();

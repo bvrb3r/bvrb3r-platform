@@ -1253,6 +1253,7 @@ export function BarberScheduleWorkspace({
                 href={`/kiosk/barber/${encodeURIComponent(payload?.barberId ?? barberName)}` as Route}
                 scope="barber"
                 targetReference={payload?.barberId ?? barberName}
+                settingsHref="/dashboard/barber/more?section=kiosk"
                 className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] border border-[#a3ff12]/24 bg-[#a3ff12]/10 px-4 text-xs font-extrabold text-[#d7ffab] transition hover:border-[#a3ff12]/40 hover:bg-[#a3ff12]/14"
               >
                 <TabletSmartphone className="h-4 w-4" />

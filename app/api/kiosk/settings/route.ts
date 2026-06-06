@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { saveKioskPin, KioskSettingsError } from "@/lib/kiosk/settings-service";
+import { getKioskSettingsStatus, saveKioskPin, KioskSettingsError } from "@/lib/kiosk/settings-service";
 
 const saveKioskPinSchema = z.object({
   scope: z.enum(["barber", "shop"]),
@@ -14,6 +14,24 @@ function toErrorResponse(error: unknown) {
   }
 
   return NextResponse.json({ error: "Unable to save kiosk settings.", code: "kiosk_settings_failed" }, { status: 500 });
+}
+
+export async function GET(request: Request) {
+  try {
+    const url = new URL(request.url);
+    const parsed = saveKioskPinSchema.omit({ pin: true }).safeParse({
+      scope: url.searchParams.get("scope"),
+      targetReference: url.searchParams.get("targetReference")
+    });
+    if (!parsed.success) {
+      return NextResponse.json({ error: "Invalid kiosk settings payload.", code: "invalid_payload" }, { status: 400 });
+    }
+
+    const result = await getKioskSettingsStatus(parsed.data);
+    return NextResponse.json(result);
+  } catch (error) {
+    return toErrorResponse(error);
+  }
 }
 
 export async function POST(request: Request) {

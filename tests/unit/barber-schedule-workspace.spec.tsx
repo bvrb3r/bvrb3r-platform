@@ -25,6 +25,15 @@ function getLocalDateKey(date: Date) {
 
 const TEST_DATE_KEY = getLocalDateKey(new Date());
 const TEST_WEEKDAY = new Date(`${TEST_DATE_KEY}T12:00:00`).getDay();
+const locationAssignMock = vi.fn();
+
+Object.defineProperty(window, "location", {
+  configurable: true,
+  value: {
+    ...window.location,
+    assign: locationAssignMock
+  }
+});
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -206,6 +215,11 @@ describe("BarberScheduleWorkspace", () => {
       mutateAsync: vi.fn(),
       isPending: false
     });
+    locationAssignMock.mockReset();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ pinSet: true, enabled: true })
+    }));
   });
 
   it("defaults the calendar to today and shows one clean empty state without blank hour cards", () => {
@@ -229,7 +243,7 @@ describe("BarberScheduleWorkspace", () => {
     expect(screen.queryByText("Availability control")).not.toBeInTheDocument();
   });
 
-  it("asks for a kiosk PIN before routing into the barber kiosk screen", () => {
+  it("opens barber kiosk directly when kiosk PIN is already set", async () => {
     render(
       <BarberScheduleWorkspace
         barberName="Blaze King"
@@ -239,9 +253,10 @@ describe("BarberScheduleWorkspace", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Kiosk Mode/i }));
 
-    expect(screen.getByRole("dialog", { name: "Enter kiosk PIN" })).toBeInTheDocument();
-    expect(screen.getByLabelText("4-digit kiosk PIN")).toBeInTheDocument();
-    expect(pushMock).not.toHaveBeenCalledWith("/kiosk/barber/barber-1");
+    await waitFor(() => {
+      expect(locationAssignMock).toHaveBeenCalledWith("/kiosk/barber/barber-1");
+    });
+    expect(screen.queryByRole("dialog", { name: "Enter kiosk PIN" })).not.toBeInTheDocument();
   });
 
   it("renders availability controls only on the More surface", () => {

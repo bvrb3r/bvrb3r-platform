@@ -119,6 +119,7 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
   const formError = bookingMutation.error || waitlistMutation.error;
   const autoResetSeconds = payload?.defaults.autoResetSeconds ?? 10;
   const isSubmitting = bookingMutation.isPending || waitlistMutation.isPending;
+  const hasBookableKioskOptions = Boolean(payload?.services.length && payload.barbers.length);
 
   useEffect(() => {
     setStep(getStepFromMode(mode));
@@ -391,34 +392,46 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
               ) : null}
 
               {step === "welcome" ? (
-                <div className="relative z-10 mt-8 grid gap-4 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    onClick={() => openStep("booking")}
-                    className="rounded-[32px] border border-[#cfff93]/28 bg-[linear-gradient(135deg,rgba(124,255,0,0.16),rgba(16,16,16,0.96))] p-6 text-left transition hover:-translate-y-0.5 hover:border-[#cfff93]/40"
-                    style={{ pointerEvents: "auto" }}
-                  >
-                    <p className="surface-label text-[#d7ffab]">Book appointment</p>
-                    <h2 className="mt-3 wrap-safe text-3xl font-semibold">Reserve the next open chair</h2>
-                    <p className="mt-4 wrap-safe text-sm leading-7 text-white/66">
-                      {scope === "barber"
-                        ? "Enter your info, pick your service, and reserve the next available time with this barber."
-                        : "Enter your info, pick your service, and the shop will place you into the fastest available booking slot."}
-                    </p>
-                  </button>
-                  {scope === "shop" ? (
+                hasBookableKioskOptions ? (
+                  <div className="relative z-10 mt-8 grid gap-4 sm:grid-cols-2">
                     <button
                       type="button"
-                      onClick={() => openStep("walk_in")}
-                      className="rounded-[32px] border border-white/8 bg-black/20 p-6 text-left transition hover:-translate-y-0.5 hover:border-[#7CFF00]/16 hover:bg-black/28"
+                      onClick={() => openStep("booking")}
+                      className="rounded-[32px] border border-[#cfff93]/28 bg-[linear-gradient(135deg,rgba(124,255,0,0.16),rgba(16,16,16,0.96))] p-6 text-left transition hover:-translate-y-0.5 hover:border-[#cfff93]/40"
                       style={{ pointerEvents: "auto" }}
                     >
-                      <p className="surface-label">Walk-in</p>
-                      <h2 className="mt-3 wrap-safe text-3xl font-semibold">Join the live waitlist</h2>
-                      <p className="mt-4 wrap-safe text-sm leading-7 text-white/66">Check in quickly, see the current wait, and let the shop route you to the fastest chair.</p>
+                      <p className="surface-label text-[#d7ffab]">Book appointment</p>
+                      <h2 className="mt-3 wrap-safe text-3xl font-semibold">Reserve the next open chair</h2>
+                      <p className="mt-4 wrap-safe text-sm leading-7 text-white/66">
+                        {scope === "barber"
+                          ? "Enter your info, pick your service, and reserve the next available time with this barber."
+                          : "Enter your info, pick your service, and the shop will place you into the fastest available booking slot."}
+                      </p>
                     </button>
-                  ) : null}
-                </div>
+                    {scope === "shop" ? (
+                      <button
+                        type="button"
+                        onClick={() => openStep("walk_in")}
+                        className="rounded-[32px] border border-white/8 bg-black/20 p-6 text-left transition hover:-translate-y-0.5 hover:border-[#7CFF00]/16 hover:bg-black/28"
+                        style={{ pointerEvents: "auto" }}
+                      >
+                        <p className="surface-label">Walk-in</p>
+                        <h2 className="mt-3 wrap-safe text-3xl font-semibold">Join the live waitlist</h2>
+                        <p className="mt-4 wrap-safe text-sm leading-7 text-white/66">Check in quickly, see the current wait, and let the shop route you to the fastest chair.</p>
+                      </button>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="mt-8 rounded-[30px] border border-white/8 bg-black/22 p-6">
+                    <p className="surface-label text-[#d7ffab]">Kiosk unavailable</p>
+                    <h2 className="mt-3 wrap-safe text-3xl font-semibold">
+                      {scope === "shop" ? "No active barbers available for kiosk booking." : "No services are available for kiosk booking."}
+                    </h2>
+                    <p className="mt-4 wrap-safe text-sm leading-7 text-white/62">
+                      Need help? Ask the barber or front desk.
+                    </p>
+                  </div>
+                )
               ) : null}
 
               {step === "booking" ? (

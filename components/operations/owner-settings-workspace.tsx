@@ -784,7 +784,7 @@ export function OwnerSettingsWorkspace({
             scope="shop"
             targetReference={ownerShopId}
             title="Shop kiosk PIN"
-            subtitle="Set the PIN required to launch or exit the locked shop kiosk booking surface."
+            subtitle="Set the PIN required to exit the locked shop kiosk booking surface."
           />
         ) : null}
         {selectedServiceManager ? (

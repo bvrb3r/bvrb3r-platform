@@ -2190,7 +2190,7 @@ export function BarberSettingsScreen({
                     scope="barber"
                     targetReference={user.barberId ?? user.id}
                     title="Barber kiosk PIN"
-                    subtitle="Set the PIN required to enter or exit locked barber kiosk mode on this device."
+                    subtitle="Set the PIN required to exit locked barber kiosk mode on this device."
                   />
                   <BusinessToolRow
                     icon={TabletSmartphone}

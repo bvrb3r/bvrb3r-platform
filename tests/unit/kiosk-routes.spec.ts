@@ -7,13 +7,15 @@ const {
   getBarberKioskPayloadMock,
   createKioskBookingMock,
   createBarberKioskBookingMock,
-  createKioskWaitlistMock
+  createKioskWaitlistMock,
+  getKioskSettingsStatusMock
 } = vi.hoisted(() => ({
   getKioskPayloadMock: vi.fn(),
   getBarberKioskPayloadMock: vi.fn(),
   createKioskBookingMock: vi.fn(),
   createBarberKioskBookingMock: vi.fn(),
-  createKioskWaitlistMock: vi.fn()
+  createKioskWaitlistMock: vi.fn(),
+  getKioskSettingsStatusMock: vi.fn()
 }));
 
 vi.mock("@/lib/kiosk/service", async () => {
@@ -33,6 +35,15 @@ import { POST as postKioskBooking } from "@/app/api/kiosk/[shopId]/booking/route
 import { POST as postKioskWaitlist } from "@/app/api/kiosk/[shopId]/waitlist/route";
 import { GET as getBarberKiosk } from "@/app/api/kiosk/barber/[barberId]/route";
 import { POST as postBarberKioskBooking } from "@/app/api/kiosk/barber/[barberId]/booking/route";
+import { GET as getKioskSettings } from "@/app/api/kiosk/settings/route";
+
+vi.mock("@/lib/kiosk/settings-service", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/kiosk/settings-service")>("@/lib/kiosk/settings-service");
+  return {
+    ...actual,
+    getKioskSettingsStatus: getKioskSettingsStatusMock
+  };
+});
 
 describe("kiosk routes", () => {
   beforeEach(() => {
@@ -41,6 +52,7 @@ describe("kiosk routes", () => {
     createKioskBookingMock.mockReset();
     createBarberKioskBookingMock.mockReset();
     createKioskWaitlistMock.mockReset();
+    getKioskSettingsStatusMock.mockReset();
   });
 
   it("returns the branded kiosk payload", async () => {
@@ -65,6 +77,44 @@ describe("kiosk routes", () => {
     expect(response.status).toBe(200);
     expect(body.shop.shopName).toBe("BVRB3R Ybor");
     expect(body.queue.kioskEntriesToday).toBe(4);
+  });
+
+  it("loads a shop kiosk payload by public shop username target", async () => {
+    getKioskPayloadMock.mockResolvedValue({
+      shop: {
+        shopId: "shop-ybor",
+        shopName: "BVRB3R Ybor",
+        subtitle: "Check in or book your appointment",
+        locationLabel: "Ybor City, Tampa",
+        mode: "shop"
+      },
+      services: [{ id: "srv-cut", name: "Signature Cut", category: "Cut" }],
+      barbers: [{ id: "barber-blaze", name: "Blaze King", liveStatusLabel: "Bookable", nextAvailableAt: null, acceptsWalkIns: true }],
+      queue: { activeCount: 0, averageWaitMinutes: 0, kioskEntriesToday: 0 },
+      defaults: { autoResetSeconds: 10, bookingMode: "next_available", appointmentSource: "shop_kiosk", allowChooseBarber: true }
+    });
+
+    const response = await getKiosk(new Request("https://bvrb3r.demo/api/kiosk/thebvrb3rshopuniversitymall"), {
+      params: Promise.resolve({ shopId: "thebvrb3rshopuniversitymall" })
+    });
+
+    expect(response.status).toBe(200);
+    expect(getKioskPayloadMock).toHaveBeenCalledWith("thebvrb3rshopuniversitymall");
+  });
+
+  it("returns kiosk settings status without requiring the PIN for entry", async () => {
+    getKioskSettingsStatusMock.mockResolvedValue({
+      scope: "shop",
+      targetReference: "shop-ybor",
+      enabled: true,
+      pinSet: true
+    });
+
+    const response = await getKioskSettings(new Request("https://bvrb3r.demo/api/kiosk/settings?scope=shop&targetReference=shop-ybor"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.pinSet).toBe(true);
   });
 
   it("rejects invalid kiosk booking payloads", async () => {

@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import type { Route } from "next";
-import { LockKeyhole, TabletSmartphone } from "lucide-react";
+import { TabletSmartphone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Input } from "@/components/ui/input";
@@ -30,17 +30,17 @@ export function KioskLaunchAction({
   href,
   scope,
   targetReference,
+  settingsHref,
   children,
   className
 }: {
   href: Route;
   scope: "shop" | "barber";
   targetReference: string;
+  settingsHref: Route;
   children: ReactNode;
   className: string;
 }) {
-  const [open, setOpen] = useState(false);
-  const [pin, setPin] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
 
@@ -48,8 +48,19 @@ export function KioskLaunchAction({
     setError(null);
     setIsPending(true);
     try {
-      await requestKioskJson("/api/kiosk/verify-pin", { scope, targetReference, pin });
-      setOpen(false);
+      const params = new URLSearchParams({ scope, targetReference });
+      const response = await fetch(`/api/kiosk/settings?${params.toString()}`);
+      const body = (await response.json().catch(() => ({}))) as { pinSet?: boolean; enabled?: boolean; error?: string; code?: string };
+      if (!response.ok) {
+        const launchError = new Error(body.error ?? `Request failed with status ${response.status}`) as Error & { status?: number; code?: string };
+        launchError.status = response.status;
+        launchError.code = body.code;
+        throw launchError;
+      }
+      if (!body.pinSet || body.enabled === false) {
+        window.location.assign(settingsHref);
+        return;
+      }
       window.location.assign(href);
     } catch (launchError) {
       setError(getReadableActionError(launchError as { message?: string; status?: number; code?: string }));
@@ -59,43 +70,12 @@ export function KioskLaunchAction({
   }
 
   return (
-    <>
-      <button type="button" className={className} onClick={() => setOpen(true)}>
+    <span className="inline-flex flex-col items-start gap-2">
+      <button type="button" className={className} disabled={isPending} onClick={() => void handleLaunch()}>
         {children}
       </button>
-      {open ? (
-        <div className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/74 px-4 py-5 backdrop-blur-sm sm:items-center" role="dialog" aria-modal="true" aria-label="Enter kiosk PIN">
-          <div className="w-full max-w-sm rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(4,4,4,0.98))] p-5 text-white shadow-[0_24px_70px_rgba(0,0,0,0.58)]">
-            <div className="flex items-start gap-3">
-              <span className="rounded-[12px] border border-[#A3FF12]/20 bg-[#A3FF12]/10 p-2 text-[#A3FF12]">
-                <LockKeyhole className="h-5 w-5" />
-              </span>
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Kiosk Mode</p>
-                <h2 className="mt-1 text-2xl font-black tracking-[-0.04em]">Enter kiosk PIN</h2>
-                <p className="mt-2 text-sm leading-6 text-white/58">This locks the device into public booking mode.</p>
-              </div>
-            </div>
-            <Input
-              className="mt-5 text-center text-2xl tracking-[0.45em]"
-              inputMode="numeric"
-              maxLength={4}
-              value={pin}
-              onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 4))}
-              placeholder="0000"
-              aria-label="4-digit kiosk PIN"
-            />
-            {error ? <div className="mt-4"><FeedbackBanner tone="error" message={error} /></div> : null}
-            <div className="mt-5 grid grid-cols-2 gap-2">
-              <Button type="button" variant="secondary" onClick={() => setOpen(false)}>Cancel</Button>
-              <Button type="button" disabled={isPending || pin.length !== 4} onClick={() => void handleLaunch()}>
-                {isPending ? "Opening..." : "Open"}
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-    </>
+      {error ? <FeedbackBanner tone="error" message={error} /> : null}
+    </span>
   );
 }
 

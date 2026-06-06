@@ -91,6 +91,44 @@ export async function saveKioskPin(input: {
   };
 }
 
+export async function getKioskSettingsStatus(input: {
+  scope: KioskSettingsScope;
+  targetReference: string;
+}) {
+  const targetReference = normalizeTargetReference(input.targetReference);
+  if (!targetReference) {
+    throw new KioskSettingsError("Kiosk target is required.", 400, "missing_target");
+  }
+
+  const supabase = getSupabaseAdmin();
+  if (!supabase) {
+    return {
+      scope: input.scope,
+      targetReference,
+      enabled: true,
+      pinSet: true
+    };
+  }
+
+  const result = await supabase
+    .from("kiosk_settings")
+    .select("enabled, pin_hash")
+    .eq("scope", input.scope)
+    .ilike("target_reference", targetReference)
+    .maybeSingle();
+
+  if (result.error) {
+    throw new KioskSettingsError("Unable to load kiosk settings.", 500, "settings_lookup_failed");
+  }
+
+  return {
+    scope: input.scope,
+    targetReference,
+    enabled: Boolean(result.data?.enabled),
+    pinSet: Boolean(result.data?.pin_hash)
+  };
+}
+
 export async function verifyKioskPin(input: {
   scope: KioskSettingsScope;
   targetReference: string;
