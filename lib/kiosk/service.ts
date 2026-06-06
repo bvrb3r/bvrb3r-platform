@@ -1,6 +1,6 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getCurrentUserFromServer } from "@/lib/auth/session";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
-import { canonicalLocationUuid } from "@/lib/booking/canonical-booking";
 import { getBarberAvailabilityPayload, getBarberDetailsPayload } from "@/lib/booking/platform-service";
 import { demoLocations } from "@/lib/data/demo";
 import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
@@ -87,21 +87,36 @@ function formatLocationLabel(input: {
 
 async function resolveSupabaseShopTarget(supabase: NonNullable<ReturnType<typeof getSupabase>>, shopTarget: string): Promise<ResolvedShopKioskTarget> {
   const normalizedTarget = normalizePublicTarget(shopTarget);
-  const shopQuery = supabase
+  let shopResult = await supabase
     .from("shops")
-    .select("id, name, public_username, shop_username, neighborhood, city, state, address, profile_photo_path, profile_photo_url, app_approval_status");
-
-  const shopResult = isUuid(shopTarget)
-    ? await shopQuery.eq("id", shopTarget).maybeSingle()
-    : await shopQuery
-      .or(`id.eq.${canonicalLocationUuid(shopTarget)},public_username.ilike.${normalizedTarget},shop_username.ilike.${normalizedTarget}`)
-      .maybeSingle();
+    .select("id, name, public_username, shop_username, neighborhood, city, state, address, profile_photo_path, profile_photo_url, app_approval_status")
+    .or(`id.eq.${shopTarget},public_username.ilike.${normalizedTarget},shop_username.ilike.${normalizedTarget}`)
+    .maybeSingle();
 
   if (shopResult.error) {
     throw new KioskServiceError("Unable to load this shop kiosk.", 500);
   }
 
+  if (!shopResult.data) {
+    const session = await getCurrentUserFromServer().catch(() => null);
+    if (session?.authenticated && session.user.id !== "guest-user") {
+      shopResult = await supabase
+        .from("shops")
+        .select("id, name, public_username, shop_username, neighborhood, city, state, address, profile_photo_path, profile_photo_url, app_approval_status")
+        .eq("owner_profile_id", session.user.id)
+        .maybeSingle();
+
+      if (shopResult.error) {
+        throw new KioskServiceError("Unable to load this shop kiosk.", 500);
+      }
+    }
+  }
+
   const shop = (shopResult.data ?? null) as ShopBrandRow | null;
+  const locationLookupFilter = isUuid(shopTarget)
+    ? `reference_code.eq.${shopTarget},reference_code.ilike.${normalizedTarget},id.eq.${shopTarget}`
+    : `reference_code.eq.${shopTarget},reference_code.ilike.${normalizedTarget}`;
+
   const locationResult = shop
     ? await supabase
       .from("locations")
@@ -111,7 +126,7 @@ async function resolveSupabaseShopTarget(supabase: NonNullable<ReturnType<typeof
     : await supabase
       .from("locations")
       .select("id, reference_code, name, neighborhood, city, state")
-      .or(`reference_code.eq.${shopTarget},reference_code.ilike.${normalizedTarget},id.eq.${canonicalLocationUuid(shopTarget)}`)
+      .or(locationLookupFilter)
       .maybeSingle();
 
   if (locationResult.error) {
