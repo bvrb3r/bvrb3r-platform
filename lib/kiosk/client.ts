@@ -18,6 +18,7 @@ export interface KioskApiError extends Error {
 }
 
 const KIOSK_DEVICE_STORAGE_KEY = "bvrb3r-kiosk-device:v1";
+const KIOSK_USERNAME_SEARCH_DELAY_MS = 300;
 
 async function requestJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
   const response = await fetch(input, {
@@ -68,12 +69,33 @@ export function useKioskPayloadQuery(shopId?: string, scope: "shop" | "barber" =
   });
 }
 
+function normalizeKioskUsernameQuery(value: string) {
+  return value.trim().replace(/^@+/, "").toLowerCase();
+}
+
+function useDebouncedValue(value: string, delayMs: number) {
+  const [debouncedValue, setDebouncedValue] = useState("");
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedValue(value);
+    }, delayMs);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [delayMs, value]);
+
+  return debouncedValue;
+}
+
 export function useKioskClientSearchQuery(query: string) {
-  const trimmedQuery = query.trim();
+  const normalizedQuery = normalizeKioskUsernameQuery(query);
+  const debouncedQuery = useDebouncedValue(normalizedQuery, KIOSK_USERNAME_SEARCH_DELAY_MS);
   return useQuery({
-    queryKey: ["kiosk-client-search", trimmedQuery],
-    enabled: trimmedQuery.replace(/^@+/, "").length >= 2,
-    queryFn: () => requestJson<{ results: KioskClientSearchResult[] }>(`/api/kiosk/client-search?q=${encodeURIComponent(trimmedQuery)}`),
+    queryKey: ["kiosk-client-search", debouncedQuery],
+    enabled: debouncedQuery.length >= 2,
+    queryFn: () => requestJson<{ results: KioskClientSearchResult[] }>(`/api/kiosk/client-search?q=${encodeURIComponent(debouncedQuery)}`),
     staleTime: 10_000
   });
 }

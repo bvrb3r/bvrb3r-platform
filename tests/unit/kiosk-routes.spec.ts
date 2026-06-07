@@ -146,6 +146,7 @@ describe("kiosk routes", () => {
         fullName: "Jordan Ellis",
         phone: "8135550101",
         email: "jordan@example.com",
+        publicUsername: "jordanellis",
         serviceId: "srv-cut"
       })
     }), {
@@ -200,6 +201,7 @@ describe("kiosk routes", () => {
         fullName: "Jordan Ellis",
         phone: "8135550101",
         email: "jordan@example.com",
+        publicUsername: "jordanellis",
         serviceId: "srv-cut"
       })
     }), {

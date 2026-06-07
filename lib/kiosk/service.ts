@@ -477,8 +477,8 @@ export async function createKioskWaitlist(input: {
 
 export async function createKioskBooking(input: {
   shopId: string;
-  fullName: string;
-  phone: string;
+  fullName?: string;
+  phone?: string;
   email?: string;
   publicUsername?: string;
   selectedProfileId?: string;
@@ -521,8 +521,8 @@ export async function createKioskBooking(input: {
     addOnIds: [],
     appointmentTime: candidate.slot.startsAt,
     clientId: client?.clientReference,
-    clientName: input.fullName,
-    clientPhone: input.phone,
+    clientName: client?.fullName ?? input.fullName ?? "Kiosk client",
+    clientPhone: client?.phone || input.phone || "",
     actorRole: "front_desk",
     bookingSource: "shop_kiosk",
     source: "front_desk",
@@ -553,8 +553,8 @@ export async function createKioskBooking(input: {
 
 export async function createBarberKioskBooking(input: {
   barberId: string;
-  fullName: string;
-  phone: string;
+  fullName?: string;
+  phone?: string;
   email?: string;
   publicUsername?: string;
   selectedProfileId?: string;
@@ -603,8 +603,8 @@ export async function createBarberKioskBooking(input: {
     addOnIds: [],
     appointmentTime: slot.startsAt,
     clientId: client?.clientReference,
-    clientName: input.fullName,
-    clientPhone: input.phone,
+    clientName: client?.fullName ?? input.fullName ?? "Kiosk client",
+    clientPhone: client?.phone || input.phone || "",
     actorRole: "front_desk",
     bookingSource: "barber_kiosk",
     source: "front_desk",

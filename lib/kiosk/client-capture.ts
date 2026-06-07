@@ -22,8 +22,8 @@ type ClientRow = {
 };
 
 export type KioskClientCaptureInput = {
-  fullName: string;
-  phone: string;
+  fullName?: string;
+  phone?: string;
   email?: string;
   publicUsername?: string;
   selectedProfileId?: string;
@@ -234,12 +234,6 @@ export async function resolveOrCreateKioskClient(input: KioskClientCaptureInput)
     return null;
   }
 
-  const fullName = cleanText(input.fullName);
-  const phone = cleanText(input.phone);
-  if (!fullName || !phone) {
-    throw new KioskClientCaptureError("Client name and phone are required.", 400, "missing_client_contact");
-  }
-
   if (input.selectedProfileId) {
     const profileResult = await supabase
       .from("profiles")
@@ -257,13 +251,20 @@ export async function resolveOrCreateKioskClient(input: KioskClientCaptureInput)
       profileId: profileResult.data.id as string,
       clientId: client.id,
       clientReference: client.reference_code ?? client.id,
-      fullName: (profileResult.data.full_name as string | null) ?? fullName,
-      phone: (profileResult.data.phone as string | null) ?? phone,
-      email: (profileResult.data.email as string | null) ?? guestEmail({ fullName, phone }),
+      fullName: (profileResult.data.full_name as string | null) ?? "BVRB3R Client",
+      phone: (profileResult.data.phone as string | null) ?? "",
+      email: (profileResult.data.email as string | null) ?? "",
       publicUsername: (profileResult.data.public_username as string | null) ?? undefined,
       created: false,
       activationInviteQueued: false
     };
+  }
+
+  const fullName = cleanText(input.fullName);
+  const phone = cleanText(input.phone);
+  const emailInput = cleanText(input.email);
+  if (!fullName || !phone || !emailInput) {
+    throw new KioskClientCaptureError("Name, phone, and email are required for new kiosk clients.", 400, "missing_client_contact");
   }
 
   const email = guestEmail({ fullName, phone, email: input.email });

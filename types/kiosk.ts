@@ -42,8 +42,8 @@ export interface KioskPayload {
 }
 
 export interface KioskBookingInput {
-  fullName: string;
-  phone: string;
+  fullName?: string;
+  phone?: string;
   email?: string;
   publicUsername?: string;
   selectedProfileId?: string;

@@ -133,6 +133,7 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
   const selectedBarber = payload?.barbers.find((barber) => barber.id === bookingForm.preferredBarberId) ?? payload?.barbers[0];
   const waitLabel = selectedBarber?.waitDisplayLabel ?? (payload?.queue.averageWaitMinutes ? `${payload.queue.averageWaitMinutes} min average wait` : "Ready now");
   const clientSearchResults = clientSearchQuery.data?.results ?? [];
+  const usernameSearchLength = bookingForm.publicUsername.trim().replace(/^@+/, "").length;
 
   useEffect(() => {
     setStep(getStepFromMode(mode));
@@ -240,8 +241,13 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
       return;
     }
 
-    if (!bookingForm.fullName.trim() || !bookingForm.phone.trim() || !bookingForm.serviceId) {
-      setInteractionError("Add your full name, phone number, and service before booking.");
+    if (!bookingForm.selectedProfileId && (!bookingForm.fullName.trim() || !bookingForm.phone.trim() || !bookingForm.email.trim())) {
+      setInteractionError("Add your full name, phone number, email, and service before booking.");
+      return;
+    }
+
+    if (!bookingForm.serviceId) {
+      setInteractionError("Choose your service before booking.");
       return;
     }
 
@@ -274,7 +280,7 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
       kind: "booking",
       title: "Appointment booked",
       detail: `${result.serviceName} with ${result.barberName} at ${formatTime(result.startsAt)}`,
-      helper: [result.confirmationCode ? `Confirmation ${result.confirmationCode}` : "Your appointment is confirmed.", result.waitDisplayLabel ? `Estimated wait ${result.waitDisplayLabel}` : null, result.activationInviteQueued ? "Your BVRB3R activation link is queued." : null].filter(Boolean).join(" ")
+      helper: [result.clientPublicUsername ? `Booking as @${result.clientPublicUsername.replace(/^@+/, "")}.` : null, result.confirmationCode ? `Confirmation ${result.confirmationCode}` : "Your appointment is confirmed.", result.waitDisplayLabel ? `Estimated wait ${result.waitDisplayLabel}` : null, result.activationInviteQueued ? "Your BVRB3R activation link is queued." : null].filter(Boolean).join(" ")
     });
   }
 
@@ -495,37 +501,19 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
                 <div className="mt-8 grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
                   <div className="space-y-4">
                     <div>
-                      <label className="mb-3 block surface-label">Full name</label>
-                      <Input value={bookingForm.fullName} onChange={(event) => {
-                        setInteractionError(null);
-                        setBookingForm((current) => ({ ...current, fullName: event.target.value }));
-                      }} placeholder="Jordan Ellis" />
-                    </div>
-                    <div>
-                      <label className="mb-3 block surface-label">Phone number</label>
-                      <Input value={bookingForm.phone} onChange={(event) => {
-                        setInteractionError(null);
-                        setBookingForm((current) => ({ ...current, phone: event.target.value }));
-                      }} placeholder="(813) 555-0101" />
-                    </div>
-                    <div>
-                      <label className="mb-3 block surface-label">Email</label>
-                      <Input value={bookingForm.email} onChange={(event) => {
-                        setInteractionError(null);
-                        setBookingForm((current) => ({ ...current, email: event.target.value }));
-                      }} placeholder="name@example.com" />
-                    </div>
-                    <div>
-                      <label className="mb-3 block surface-label">BVRB3R username</label>
-                      <Input value={bookingForm.publicUsername} onChange={(event) => {
+                      <label className="mb-3 block surface-label">BVRB3R Username</label>
+                      <Input aria-label="BVRB3R Username" value={bookingForm.publicUsername} onChange={(event) => {
                         setInteractionError(null);
                         setBookingForm((current) => ({
                           ...current,
                           publicUsername: event.target.value,
                           selectedProfileId: ""
                         }));
-                      }} placeholder="@yourusername" />
-                      <p className="mt-2 text-xs leading-5 text-white/46">New clients create a username here. Existing clients can search and select their profile.</p>
+                      }} placeholder="@yourusername" aria-describedby="kiosk-username-helper" />
+                      <p id="kiosk-username-helper" className="mt-2 text-sm leading-6 text-white/58">Search your @username or create one if you are new.</p>
+                      {clientSearchQuery.isLoading && usernameSearchLength >= 2 ? (
+                        <div className="mt-3 rounded-[18px] border border-white/8 bg-black/24 px-4 py-3 text-sm text-white/58">Searching BVRB3R profiles...</div>
+                      ) : null}
                       {clientSearchResults.length > 0 && !bookingForm.selectedProfileId ? (
                         <div className="mt-3 space-y-2">
                           {clientSearchResults.map((result) => (
@@ -546,16 +534,44 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
                             >
                               <span>
                                 <span className="block text-sm font-semibold text-white">{result.publicUsername ? `@${result.publicUsername}` : result.displayName}</span>
-                                <span className="block text-xs text-white/48">{[result.displayName, result.locationLabel].filter(Boolean).join(" - ")}</span>
+                                <span className="block text-xs text-white/48">{[result.displayName, result.locationLabel, result.roleLabel].filter(Boolean).join(" - ")}</span>
                               </span>
                               <span className="status-pill text-[#d7ffab]">This is me</span>
                             </button>
                           ))}
                         </div>
                       ) : null}
-                      {bookingForm.selectedProfileId ? (
-                        <p className="mt-3 rounded-[16px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 px-4 py-3 text-sm text-[#d7ffab]">Existing profile selected.</p>
+                      {usernameSearchLength >= 2 && !clientSearchQuery.isLoading && !clientSearchResults.length && !bookingForm.selectedProfileId ? (
+                        <p className="mt-3 rounded-[16px] border border-white/8 bg-black/24 px-4 py-3 text-sm leading-6 text-white/62">
+                          No profile found for {bookingForm.publicUsername.startsWith("@") ? bookingForm.publicUsername : `@${bookingForm.publicUsername}`}. New here? Keep this username and finish your info below.
+                        </p>
                       ) : null}
+                      {bookingForm.selectedProfileId ? (
+                        <p className="mt-3 rounded-[16px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 px-4 py-3 text-sm text-[#d7ffab]">
+                          Welcome back, {bookingForm.publicUsername}. We&apos;ll use your saved BVRB3R profile for this booking.
+                        </p>
+                      ) : null}
+                    </div>
+                    <div>
+                      <label className="mb-3 block surface-label">Full name</label>
+                      <Input value={bookingForm.fullName} onChange={(event) => {
+                        setInteractionError(null);
+                        setBookingForm((current) => ({ ...current, fullName: event.target.value }));
+                      }} placeholder="Jordan Ellis" />
+                    </div>
+                    <div>
+                      <label className="mb-3 block surface-label">Phone number</label>
+                      <Input value={bookingForm.phone} onChange={(event) => {
+                        setInteractionError(null);
+                        setBookingForm((current) => ({ ...current, phone: event.target.value }));
+                      }} placeholder="(813) 555-0101" />
+                    </div>
+                    <div>
+                      <label className="mb-3 block surface-label">Email</label>
+                      <Input value={bookingForm.email} onChange={(event) => {
+                        setInteractionError(null);
+                        setBookingForm((current) => ({ ...current, email: event.target.value }));
+                      }} placeholder="name@example.com" />
                     </div>
                   </div>
                   <div className="space-y-4">

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
@@ -137,11 +137,104 @@ describe("kiosk mode screen", () => {
 
     fireEvent.click(screen.getByText("Next available barber").closest("button") as HTMLButtonElement);
 
+    expect(screen.getByText("BVRB3R Username")).toBeInTheDocument();
     expect(screen.getByText("Full name")).toBeInTheDocument();
     expect(screen.getByText("Preferred barber")).toBeInTheDocument();
-    expect(screen.getByText("BVRB3R username")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Book next opening" })).toBeInTheDocument();
     expect(pushMock).toHaveBeenCalledWith("/kiosk/loc-ybor?mode=booking");
+  });
+
+  it("renders username before private intake fields", () => {
+    render(<KioskModeScreen shopId="loc-ybor" />);
+
+    fireEvent.click(screen.getByText("Next available barber").closest("button") as HTMLButtonElement);
+
+    const username = screen.getByText("BVRB3R Username");
+    const fullName = screen.getByText("Full name");
+    const phone = screen.getByText("Phone number");
+    const email = screen.getByText("Email");
+    const service = screen.getByText("Service");
+
+    expect(username.compareDocumentPosition(fullName) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(username.compareDocumentPosition(phone) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(username.compareDocumentPosition(email) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(email.compareDocumentPosition(service) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("shows public-safe autosuggest results and selects an existing profile", async () => {
+    const bookingMock = vi.fn().mockResolvedValue({
+      appointmentId: "appt-1",
+      confirmationCode: "BVR123",
+      barberId: "barber-blaze",
+      barberName: "Blaze King",
+      serviceId: "srv-cut",
+      serviceName: "Signature Cut",
+      startsAt: "2026-03-27T15:00:00.000Z",
+      shopLabel: "BVRB3R Ybor",
+      clientPublicUsername: "phillipmcgee",
+      waitDisplayLabel: "About 10 min"
+    });
+    useKioskClientSearchQueryMock.mockReturnValue({
+      data: {
+        results: [{
+          profileId: "profile-client",
+          displayName: "Phillip McGee",
+          publicUsername: "phillipmcgee",
+          locationLabel: "Tampa, FL",
+          roleLabel: "CLIENT"
+        }]
+      },
+      isLoading: false,
+      error: null
+    });
+    useKioskBookingMutationMock.mockReturnValue({
+      isPending: false,
+      error: null,
+      mutateAsync: bookingMock
+    });
+
+    render(<KioskModeScreen shopId="loc-ybor" />);
+
+    fireEvent.click(screen.getByText("Next available barber").closest("button") as HTMLButtonElement);
+
+    expect(screen.getByText("@phillipmcgee")).toBeInTheDocument();
+    expect(screen.getByText("Phillip McGee - Tampa, FL - CLIENT")).toBeInTheDocument();
+    expect(screen.queryByText("8135550101")).not.toBeInTheDocument();
+    expect(screen.queryByText("phillip@example.com")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("This is me").closest("button") as HTMLButtonElement);
+    fireEvent.click(screen.getByRole("button", { name: "Book next opening" }));
+
+    await waitFor(() => {
+      expect(bookingMock).toHaveBeenCalledWith(expect.objectContaining({
+        selectedProfileId: "profile-client",
+        publicUsername: "@phillipmcgee",
+        serviceId: "srv-cut"
+      }));
+    });
+  });
+
+  it("shows loading and no-match username states", () => {
+    useKioskClientSearchQueryMock.mockReturnValue({
+      data: { results: [] },
+      isLoading: true,
+      error: null
+    });
+
+    const { rerender } = render(<KioskModeScreen shopId="loc-ybor" />);
+    fireEvent.click(screen.getByText("Next available barber").closest("button") as HTMLButtonElement);
+    fireEvent.change(screen.getByLabelText("BVRB3R Username"), { target: { value: "@zz" } });
+
+    expect(screen.getByText("Searching BVRB3R profiles...")).toBeInTheDocument();
+
+    useKioskClientSearchQueryMock.mockReturnValue({
+      data: { results: [] },
+      isLoading: false,
+      error: null
+    });
+    rerender(<KioskModeScreen shopId="loc-ybor" />);
+
+    expect(screen.getByText("No profile found for @zz. New here? Keep this username and finish your info below.")).toBeInTheDocument();
   });
 
   it("renders barber kiosk mode as a one-barber locked booking flow", () => {
