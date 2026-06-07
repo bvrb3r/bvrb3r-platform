@@ -6,6 +6,7 @@ const {
   replaceMock,
   searchParamsState,
   useKioskPayloadQueryMock,
+  useKioskClientSearchQueryMock,
   useKioskBookingMutationMock,
   useVerifyKioskPinMutationMock,
   useKioskWaitlistMutationMock,
@@ -15,6 +16,7 @@ const {
   replaceMock: vi.fn(),
   searchParamsState: { value: "" },
   useKioskPayloadQueryMock: vi.fn(),
+  useKioskClientSearchQueryMock: vi.fn(),
   useKioskBookingMutationMock: vi.fn(),
   useVerifyKioskPinMutationMock: vi.fn(),
   useKioskWaitlistMutationMock: vi.fn(),
@@ -31,6 +33,7 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/kiosk/client", () => ({
   useKioskPayloadQuery: useKioskPayloadQueryMock,
+  useKioskClientSearchQuery: useKioskClientSearchQueryMock,
   useKioskBookingMutation: useKioskBookingMutationMock,
   useVerifyKioskPinMutation: useVerifyKioskPinMutationMock,
   useKioskWaitlistMutation: useKioskWaitlistMutationMock,
@@ -53,6 +56,7 @@ describe("kiosk mode screen", () => {
       searchParamsState.value = url.searchParams.toString();
     });
     useKioskPayloadQueryMock.mockReset();
+    useKioskClientSearchQueryMock.mockReset();
     useKioskBookingMutationMock.mockReset();
     useVerifyKioskPinMutationMock.mockReset();
     useKioskWaitlistMutationMock.mockReset();
@@ -91,6 +95,11 @@ describe("kiosk mode screen", () => {
         }
       }
     });
+    useKioskClientSearchQueryMock.mockReturnValue({
+      data: { results: [] },
+      isLoading: false,
+      error: null
+    });
     useKioskBookingMutationMock.mockReturnValue({
       isPending: false,
       error: null,
@@ -118,18 +127,20 @@ describe("kiosk mode screen", () => {
     render(<KioskModeScreen shopId="loc-ybor" />);
 
     expect(screen.getByText("BVRB3R Ybor")).toBeInTheDocument();
-    expect(screen.getByText("Book appointment")).toBeInTheDocument();
-    expect(screen.getByText("Walk-in")).toBeInTheDocument();
+    expect(screen.getByText("Next available barber")).toBeInTheDocument();
+    expect(screen.getByText("I already have a barber")).toBeInTheDocument();
+    expect(screen.getByText("I already have an appointment")).toBeInTheDocument();
   });
 
   it("moves into the booking intake flow", () => {
     render(<KioskModeScreen shopId="loc-ybor" />);
 
-    fireEvent.click(screen.getByText("Book appointment").closest("button") as HTMLButtonElement);
+    fireEvent.click(screen.getByText("Next available barber").closest("button") as HTMLButtonElement);
 
     expect(screen.getByText("Full name")).toBeInTheDocument();
     expect(screen.getByText("Preferred barber")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Book appointment" })).toBeInTheDocument();
+    expect(screen.getByText("BVRB3R username")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Book next opening" })).toBeInTheDocument();
     expect(pushMock).toHaveBeenCalledWith("/kiosk/loc-ybor?mode=booking");
   });
 
@@ -174,9 +185,9 @@ describe("kiosk mode screen", () => {
     render(<KioskModeScreen shopId="barber-blaze" scope="barber" />);
 
     expect(screen.getByText("Barber kiosk")).toBeInTheDocument();
-    expect(screen.queryByText("Walk-in")).not.toBeInTheDocument();
+    expect(screen.queryByText("I already have a barber")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByText("Book appointment").closest("button") as HTMLButtonElement);
+    fireEvent.click(screen.getByText("Book next opening").closest("button") as HTMLButtonElement);
 
     expect(screen.queryByText("Preferred barber")).not.toBeInTheDocument();
     expect(pushMock).toHaveBeenCalledWith("/kiosk/barber/barber-blaze?mode=booking");
@@ -215,9 +226,9 @@ describe("kiosk mode screen", () => {
   it("shows clear validation if required booking fields are missing", async () => {
     render(<KioskModeScreen shopId="loc-ybor" />);
 
-    fireEvent.click(screen.getByText("Book appointment").closest("button") as HTMLButtonElement);
-    fireEvent.click(screen.getByRole("button", { name: "Book appointment" }));
+    fireEvent.click(screen.getByText("Next available barber").closest("button") as HTMLButtonElement);
+    fireEvent.click(screen.getByRole("button", { name: "Book next opening" }));
 
-    expect(await screen.findByText("Add your full name, phone number, and service before booking.")).toBeInTheDocument();
+    expect(await screen.findByText("Choose your BVRB3R username before confirming.")).toBeInTheDocument();
   });
 });

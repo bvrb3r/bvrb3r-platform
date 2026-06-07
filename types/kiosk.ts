@@ -19,6 +19,8 @@ export interface KioskBarberOption {
   liveStatusLabel: string;
   nextAvailableAt: string | null;
   acceptsWalkIns: boolean;
+  waitDisplayLabel?: string;
+  estimatedWaitMinutes?: number | null;
 }
 
 export interface KioskPayload {
@@ -35,6 +37,7 @@ export interface KioskPayload {
     bookingMode: "next_available";
     appointmentSource?: "shop_kiosk" | "barber_kiosk";
     allowChooseBarber?: boolean;
+    supportedActions?: Array<"book_next_opening" | "choose_barber" | "check_in" | "schedule_ahead">;
   };
 }
 
@@ -42,8 +45,12 @@ export interface KioskBookingInput {
   fullName: string;
   phone: string;
   email?: string;
+  publicUsername?: string;
+  selectedProfileId?: string;
   serviceId: string;
   preferredBarberId?: string;
+  kioskAction?: "book_next_opening" | "schedule_ahead";
+  scheduledAt?: string;
 }
 
 export interface KioskWaitlistInput {
@@ -62,6 +69,20 @@ export interface KioskBookingResult {
   serviceName: string;
   startsAt: string;
   shopLabel: string;
+  clientPublicUsername?: string;
+  activationInviteQueued?: boolean;
+  estimatedWaitMinutes?: number | null;
+  estimatedStartTime?: string | null;
+  waitDisplayLabel?: string;
+}
+
+export interface KioskClientSearchResult {
+  profileId: string;
+  displayName: string;
+  publicUsername: string | null;
+  avatarUrl?: string;
+  locationLabel?: string;
+  roleLabel: "CLIENT";
 }
 
 export interface KioskWaitlistResult {

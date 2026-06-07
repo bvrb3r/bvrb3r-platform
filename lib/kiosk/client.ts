@@ -6,6 +6,7 @@ import { KIOSK_DEVICE_COOKIE, KIOSK_DEVICE_COOKIE_MAX_AGE, parseKioskDeviceCooki
 import type {
   KioskBookingInput,
   KioskBookingResult,
+  KioskClientSearchResult,
   KioskPayload,
   KioskWaitlistInput,
   KioskWaitlistResult
@@ -63,6 +64,16 @@ export function useKioskPayloadQuery(shopId?: string, scope: "shop" | "barber" =
     queryKey: ["kiosk", scope, shopId],
     enabled: Boolean(shopId),
     queryFn: () => requestJson<KioskPayload>(scope === "barber" ? `/api/kiosk/barber/${shopId}` : `/api/kiosk/${shopId}`),
+    staleTime: 10_000
+  });
+}
+
+export function useKioskClientSearchQuery(query: string) {
+  const trimmedQuery = query.trim();
+  return useQuery({
+    queryKey: ["kiosk-client-search", trimmedQuery],
+    enabled: trimmedQuery.replace(/^@+/, "").length >= 2,
+    queryFn: () => requestJson<{ results: KioskClientSearchResult[] }>(`/api/kiosk/client-search?q=${encodeURIComponent(trimmedQuery)}`),
     staleTime: 10_000
   });
 }

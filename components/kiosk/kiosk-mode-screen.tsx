@@ -12,6 +12,7 @@ import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   useKioskBookingMutation,
+  useKioskClientSearchQuery,
   useKioskDeviceState,
   useKioskPayloadQuery,
   useVerifyKioskPinMutation,
@@ -25,8 +26,12 @@ type BookingFormState = {
   fullName: string;
   phone: string;
   email: string;
+  publicUsername: string;
+  selectedProfileId: string;
   serviceId: string;
   preferredBarberId: string;
+  kioskAction: "book_next_opening" | "schedule_ahead";
+  scheduledAt: string;
 };
 
 type WalkInFormState = {
@@ -103,8 +108,12 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
     fullName: "",
     phone: "",
     email: "",
+    publicUsername: "",
+    selectedProfileId: "",
     serviceId: "",
-    preferredBarberId: ""
+    preferredBarberId: "",
+    kioskAction: "book_next_opening",
+    scheduledAt: ""
   });
   const walkInFormRef = useRef<WalkInFormState>({
     fullName: "",
@@ -114,12 +123,16 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
   });
   const [bookingForm, setBookingForm] = useState<BookingFormState>(bookingFormRef.current);
   const [walkInForm, setWalkInForm] = useState<WalkInFormState>(walkInFormRef.current);
+  const clientSearchQuery = useKioskClientSearchQuery(bookingForm.publicUsername);
 
   const payload = kioskQuery.data;
   const formError = bookingMutation.error || waitlistMutation.error;
   const autoResetSeconds = payload?.defaults.autoResetSeconds ?? 10;
   const isSubmitting = bookingMutation.isPending || waitlistMutation.isPending;
   const hasBookableKioskOptions = Boolean(payload?.services.length && payload.barbers.length);
+  const selectedBarber = payload?.barbers.find((barber) => barber.id === bookingForm.preferredBarberId) ?? payload?.barbers[0];
+  const waitLabel = selectedBarber?.waitDisplayLabel ?? (payload?.queue.averageWaitMinutes ? `${payload.queue.averageWaitMinutes} min average wait` : "Ready now");
+  const clientSearchResults = clientSearchQuery.data?.results ?? [];
 
   useEffect(() => {
     setStep(getStepFromMode(mode));
@@ -182,7 +195,7 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
     }
 
     if (payload.queue.activeCount) {
-      return `${payload.queue.activeCount} guests waiting • ${payload.queue.averageWaitMinutes} min average wait`;
+      return `${payload.queue.activeCount} guests waiting - ${payload.queue.averageWaitMinutes} min average wait`;
     }
 
     return "Fastest chair routing is ready right now";
@@ -222,6 +235,11 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
   }
 
   async function handleBookingSubmit() {
+    if (!bookingForm.selectedProfileId && !bookingForm.publicUsername.trim()) {
+      setInteractionError("Choose your BVRB3R username before confirming.");
+      return;
+    }
+
     if (!bookingForm.fullName.trim() || !bookingForm.phone.trim() || !bookingForm.serviceId) {
       setInteractionError("Add your full name, phone number, and service before booking.");
       return;
@@ -232,8 +250,12 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
       fullName: bookingForm.fullName.trim(),
       phone: bookingForm.phone.trim(),
       email: bookingForm.email.trim() || undefined,
+      publicUsername: bookingForm.publicUsername.trim() || undefined,
+      selectedProfileId: bookingForm.selectedProfileId || undefined,
       serviceId: bookingForm.serviceId,
-      preferredBarberId: bookingForm.preferredBarberId || undefined
+      preferredBarberId: bookingForm.preferredBarberId || undefined,
+      kioskAction: bookingForm.kioskAction,
+      scheduledAt: bookingForm.scheduledAt || undefined
     });
 
     bookingFormRef.current = {
@@ -241,14 +263,18 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
       fullName: "",
       phone: "",
       email: "",
-      preferredBarberId: ""
+      publicUsername: "",
+      selectedProfileId: "",
+      preferredBarberId: "",
+      kioskAction: "book_next_opening",
+      scheduledAt: ""
     };
     setBookingForm(bookingFormRef.current);
     setSuccess({
       kind: "booking",
       title: "Appointment booked",
       detail: `${result.serviceName} with ${result.barberName} at ${formatTime(result.startsAt)}`,
-      helper: result.confirmationCode ? `Confirmation ${result.confirmationCode}` : "Your appointment is confirmed."
+      helper: [result.confirmationCode ? `Confirmation ${result.confirmationCode}` : "Your appointment is confirmed.", result.waitDisplayLabel ? `Estimated wait ${result.waitDisplayLabel}` : null, result.activationInviteQueued ? "Your BVRB3R activation link is queued." : null].filter(Boolean).join(" ")
     });
   }
 
@@ -396,12 +422,15 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
                   <div className="relative z-10 mt-8 grid gap-4 sm:grid-cols-2">
                     <button
                       type="button"
-                      onClick={() => openStep("booking")}
+                      onClick={() => {
+                        setBookingForm((current) => ({ ...current, kioskAction: "book_next_opening", preferredBarberId: "" }));
+                        openStep("booking");
+                      }}
                       className="rounded-[32px] border border-[#cfff93]/28 bg-[linear-gradient(135deg,rgba(124,255,0,0.16),rgba(16,16,16,0.96))] p-6 text-left transition hover:-translate-y-0.5 hover:border-[#cfff93]/40"
                       style={{ pointerEvents: "auto" }}
                     >
-                      <p className="surface-label text-[#d7ffab]">Book appointment</p>
-                      <h2 className="mt-3 wrap-safe text-3xl font-semibold">Reserve the next open chair</h2>
+                      <p className="surface-label text-[#d7ffab]">{scope === "barber" ? "Book next opening" : "Next available barber"}</p>
+                      <h2 className="mt-3 wrap-safe text-3xl font-semibold">Reserve the fastest open chair</h2>
                       <p className="mt-4 wrap-safe text-sm leading-7 text-white/66">
                         {scope === "barber"
                           ? "Enter your info, pick your service, and reserve the next available time with this barber."
@@ -411,13 +440,41 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
                     {scope === "shop" ? (
                       <button
                         type="button"
+                        onClick={() => {
+                          setBookingForm((current) => ({ ...current, kioskAction: "book_next_opening" }));
+                          openStep("booking");
+                        }}
+                        className="rounded-[32px] border border-white/8 bg-black/20 p-6 text-left transition hover:-translate-y-0.5 hover:border-[#7CFF00]/16 hover:bg-black/28"
+                        style={{ pointerEvents: "auto" }}
+                      >
+                        <p className="surface-label">I already have a barber</p>
+                        <h2 className="mt-3 wrap-safe text-3xl font-semibold">Choose a barber</h2>
+                        <p className="mt-4 wrap-safe text-sm leading-7 text-white/66">Pick from active shop barbers, then confirm your service and wait time.</p>
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBookingForm((current) => ({ ...current, kioskAction: "schedule_ahead" }));
+                        openStep("booking");
+                      }}
+                      className="rounded-[32px] border border-white/8 bg-black/20 p-6 text-left transition hover:-translate-y-0.5 hover:border-[#7CFF00]/16 hover:bg-black/28"
+                      style={{ pointerEvents: "auto" }}
+                    >
+                      <p className="surface-label">Schedule {scope === "shop" ? "for later" : "ahead"}</p>
+                      <h2 className="mt-3 wrap-safe text-3xl font-semibold">Pick a future time</h2>
+                      <p className="mt-4 wrap-safe text-sm leading-7 text-white/66">Choose your service and confirm a future slot before anything is booked.</p>
+                    </button>
+                    {scope === "shop" ? (
+                      <button
+                        type="button"
                         onClick={() => openStep("walk_in")}
                         className="rounded-[32px] border border-white/8 bg-black/20 p-6 text-left transition hover:-translate-y-0.5 hover:border-[#7CFF00]/16 hover:bg-black/28"
                         style={{ pointerEvents: "auto" }}
                       >
-                        <p className="surface-label">Walk-in</p>
-                        <h2 className="mt-3 wrap-safe text-3xl font-semibold">Join the live waitlist</h2>
-                        <p className="mt-4 wrap-safe text-sm leading-7 text-white/66">Check in quickly, see the current wait, and let the shop route you to the fastest chair.</p>
+                        <p className="surface-label">I already have an appointment</p>
+                        <h2 className="mt-3 wrap-safe text-3xl font-semibold">Check in</h2>
+                        <p className="mt-4 wrap-safe text-sm leading-7 text-white/66">Find today&apos;s appointment or ask the front desk for help if it cannot be found.</p>
                       </button>
                     ) : null}
                   </div>
@@ -458,6 +515,48 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
                         setBookingForm((current) => ({ ...current, email: event.target.value }));
                       }} placeholder="name@example.com" />
                     </div>
+                    <div>
+                      <label className="mb-3 block surface-label">BVRB3R username</label>
+                      <Input value={bookingForm.publicUsername} onChange={(event) => {
+                        setInteractionError(null);
+                        setBookingForm((current) => ({
+                          ...current,
+                          publicUsername: event.target.value,
+                          selectedProfileId: ""
+                        }));
+                      }} placeholder="@yourusername" />
+                      <p className="mt-2 text-xs leading-5 text-white/46">New clients create a username here. Existing clients can search and select their profile.</p>
+                      {clientSearchResults.length > 0 && !bookingForm.selectedProfileId ? (
+                        <div className="mt-3 space-y-2">
+                          {clientSearchResults.map((result) => (
+                            <button
+                              key={result.profileId}
+                              type="button"
+                              onClick={() => {
+                                setInteractionError(null);
+                                setBookingForm((current) => ({
+                                  ...current,
+                                  selectedProfileId: result.profileId,
+                                  publicUsername: result.publicUsername ? `@${result.publicUsername}` : current.publicUsername,
+                                  fullName: result.displayName
+                                }));
+                              }}
+                              className="flex w-full items-center justify-between rounded-[18px] border border-white/8 bg-black/24 px-4 py-3 text-left transition hover:border-[#7CFF00]/22"
+                              style={{ pointerEvents: "auto" }}
+                            >
+                              <span>
+                                <span className="block text-sm font-semibold text-white">{result.publicUsername ? `@${result.publicUsername}` : result.displayName}</span>
+                                <span className="block text-xs text-white/48">{[result.displayName, result.locationLabel].filter(Boolean).join(" - ")}</span>
+                              </span>
+                              <span className="status-pill text-[#d7ffab]">This is me</span>
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                      {bookingForm.selectedProfileId ? (
+                        <p className="mt-3 rounded-[16px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 px-4 py-3 text-sm text-[#d7ffab]">Existing profile selected.</p>
+                      ) : null}
+                    </div>
                   </div>
                   <div className="space-y-4">
                     <div>
@@ -485,13 +584,31 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
                       </Select>
                     </div>
                     ) : null}
+                    {bookingForm.kioskAction === "schedule_ahead" ? (
+                      <div>
+                        <label className="mb-3 block surface-label">Preferred time</label>
+                        <Input
+                          type="datetime-local"
+                          value={bookingForm.scheduledAt}
+                          onChange={(event) => {
+                            setInteractionError(null);
+                            setBookingForm((current) => ({ ...current, scheduledAt: event.target.value }));
+                          }}
+                        />
+                      </div>
+                    ) : null}
+                    <div className="rounded-[24px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 p-4 text-sm leading-6 text-white/70">
+                      <p className="surface-label text-[#d7ffab]">Estimated wait</p>
+                      <p className="mt-2 text-2xl font-semibold text-white">{waitLabel}</p>
+                      <p className="mt-2 wrap-safe text-white/56">You will review and confirm before an appointment is created.</p>
+                    </div>
                     <div className="rounded-[24px] border border-white/8 bg-black/20 p-4 text-sm leading-6 text-white/62">
                       Booking stays on the existing booking rail, requires this confirmation step, and uses canonical availability before creating an appointment.
                     </div>
                   </div>
                   <div className="lg:col-span-2 flex flex-wrap gap-2">
                     <Button disabled={isSubmitting} onClick={() => void handleBookingSubmit()}>
-                      {bookingMutation.isPending ? "Booking..." : "Book appointment"}
+                      {bookingMutation.isPending ? "Booking..." : bookingForm.kioskAction === "schedule_ahead" ? "Schedule appointment" : "Book next opening"}
                     </Button>
                     <Button variant="secondary" disabled={isSubmitting} onClick={resetToWelcome}>Back</Button>
                   </div>

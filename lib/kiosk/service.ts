@@ -8,6 +8,8 @@ import { readPlatformShopControlState } from "@/lib/platform-admin/service";
 import { createKioskQueueEntry, getQueueWorkspacePayloadForShops, QueueServiceError } from "@/lib/queue/service";
 import { readShopProfileMedia } from "@/lib/profile/service";
 import { formatPublicShopLocation } from "@/lib/shops/public-identity";
+import { resolveOrCreateKioskClient } from "@/lib/kiosk/client-capture";
+import { calculateKioskWaitTime } from "@/lib/kiosk/wait-time";
 import type { QueueBarberOptionView, QueueWorkspacePayload } from "@/lib/queue/service";
 import type {
   KioskBarberOption,
@@ -208,7 +210,13 @@ function mapBarbers(payload: QueueWorkspacePayload): KioskBarberOption[] {
     name: barber.name,
     liveStatusLabel: barber.liveStatusLabel,
     nextAvailableAt: barber.nextAvailableAt,
-    acceptsWalkIns: barber.acceptsWalkIns
+    acceptsWalkIns: barber.acceptsWalkIns,
+    ...calculateKioskWaitTime({
+      queueDepth: payload.summary.activeCount,
+      nextAvailableAt: barber.nextAvailableAt,
+      barberStatus: barber.liveStatusLabel,
+      acceptsWalkIns: barber.acceptsWalkIns
+    })
   }));
 }
 
@@ -264,6 +272,7 @@ async function resolveFastestBookableSlot(input: {
   serviceId: string;
   preferredBarberId?: string;
   barbers: QueueBarberOptionView[];
+  scheduledAt?: string;
 }) {
   const candidates = input.preferredBarberId
     ? input.barbers.filter((barber) => barber.id === input.preferredBarberId)
@@ -286,7 +295,9 @@ async function resolveFastestBookableSlot(input: {
 
   const candidate = slotPayloads
     .flatMap((entry) => {
-      const slot = entry.availability.slots[0];
+      const slot = input.scheduledAt
+        ? entry.availability.slots.find((candidateSlot) => candidateSlot.startsAt === input.scheduledAt) ?? entry.availability.slots.find((candidateSlot) => new Date(candidateSlot.startsAt).getTime() >= new Date(input.scheduledAt ?? "").getTime())
+        : entry.availability.slots[0];
       return slot
         ? [{
             barber: entry.barber,
@@ -357,7 +368,8 @@ export async function getKioskPayload(shopId: string): Promise<KioskPayload> {
       autoResetSeconds: KIOSK_AUTO_RESET_SECONDS,
       bookingMode: "next_available",
       appointmentSource: "shop_kiosk",
-      allowChooseBarber: true
+      allowChooseBarber: true,
+      supportedActions: ["book_next_opening", "choose_barber", "check_in", "schedule_ahead"]
     }
   };
 }
@@ -398,7 +410,12 @@ export async function getBarberKioskPayload(barberId: string): Promise<KioskPayl
       name: barberName,
       liveStatusLabel: availability?.slots.length ? "Bookable" : "Availability soon",
       nextAvailableAt: availability?.slots[0]?.startsAt ?? null,
-      acceptsWalkIns: true
+      acceptsWalkIns: true,
+      ...calculateKioskWaitTime({
+        nextAvailableAt: availability?.slots[0]?.startsAt ?? null,
+        barberStatus: availability?.slots.length ? "available" : "not_available",
+        acceptsWalkIns: true
+      })
     }],
     queue: {
       activeCount: 0,
@@ -409,7 +426,8 @@ export async function getBarberKioskPayload(barberId: string): Promise<KioskPayl
       autoResetSeconds: KIOSK_AUTO_RESET_SECONDS,
       bookingMode: "next_available",
       appointmentSource: "barber_kiosk",
-      allowChooseBarber: false
+      allowChooseBarber: false,
+      supportedActions: ["book_next_opening", "check_in", "schedule_ahead"]
     }
   };
 }
@@ -462,8 +480,12 @@ export async function createKioskBooking(input: {
   fullName: string;
   phone: string;
   email?: string;
+  publicUsername?: string;
+  selectedProfileId?: string;
   serviceId: string;
   preferredBarberId?: string;
+  kioskAction?: "book_next_opening" | "schedule_ahead";
+  scheduledAt?: string;
 }): Promise<KioskBookingResult> {
   const target = await resolveShopKioskTarget(input.shopId);
   await assertKioskEnabled(target.platformControlReference);
@@ -472,8 +494,25 @@ export async function createKioskBooking(input: {
     shopId: target.queueShopReference,
     serviceId: input.serviceId,
     preferredBarberId: input.preferredBarberId,
-    barbers: queuePayload.barbers
+    barbers: queuePayload.barbers,
+    scheduledAt: input.kioskAction === "schedule_ahead" ? input.scheduledAt : undefined
   });
+  const client = await resolveOrCreateKioskClient({
+    fullName: input.fullName,
+    phone: input.phone,
+    email: input.email,
+    publicUsername: input.publicUsername,
+    selectedProfileId: input.selectedProfileId,
+    source: "shop_kiosk"
+  });
+  const waitEstimate = calculateKioskWaitTime({
+    queueDepth: queuePayload.summary.activeCount,
+    nextAvailableAt: candidate.slot.startsAt,
+    serviceDurationMinutes: candidate.service?.durationMin,
+    barberStatus: candidate.barber.liveStatusLabel,
+    acceptsWalkIns: candidate.barber.acceptsWalkIns
+  });
+  const action = input.kioskAction ?? "book_next_opening";
   const provider = await getLiveOperationsProvider();
   const result = await provider.createBooking({
     locationId: target.queueShopReference,
@@ -481,12 +520,18 @@ export async function createKioskBooking(input: {
     serviceId: input.serviceId,
     addOnIds: [],
     appointmentTime: candidate.slot.startsAt,
+    clientId: client?.clientReference,
     clientName: input.fullName,
     clientPhone: input.phone,
     actorRole: "front_desk",
     bookingSource: "shop_kiosk",
     source: "front_desk",
-    internalNotes: input.email?.trim() ? `Kiosk intake email: ${input.email.trim().toLowerCase()}` : "Created from kiosk intake."
+    internalNotes: [
+      `Created from shop kiosk intake.`,
+      `Kiosk action: ${action}.`,
+      `Wait shown: ${waitEstimate.waitDisplayLabel}.`,
+      input.email?.trim() ? `Kiosk intake email: ${input.email.trim().toLowerCase()}` : null
+    ].filter(Boolean).join(" ")
   });
 
   return {
@@ -497,7 +542,12 @@ export async function createKioskBooking(input: {
     serviceId: input.serviceId,
     serviceName: candidate.service?.name ?? queuePayload.services.find((service) => service.id === input.serviceId)?.name ?? input.serviceId,
     startsAt: candidate.slot.startsAt,
-    shopLabel: queuePayload.shops[0]?.label ?? input.shopId
+    shopLabel: queuePayload.shops[0]?.label ?? input.shopId,
+    clientPublicUsername: client?.publicUsername,
+    activationInviteQueued: client?.activationInviteQueued ?? false,
+    estimatedWaitMinutes: waitEstimate.estimatedWaitMinutes,
+    estimatedStartTime: waitEstimate.estimatedStartTime,
+    waitDisplayLabel: waitEstimate.waitDisplayLabel
   };
 }
 
@@ -506,7 +556,11 @@ export async function createBarberKioskBooking(input: {
   fullName: string;
   phone: string;
   email?: string;
+  publicUsername?: string;
+  selectedProfileId?: string;
   serviceId: string;
+  kioskAction?: "book_next_opening" | "schedule_ahead";
+  scheduledAt?: string;
 }): Promise<KioskBookingResult> {
   const profile = await getBarberDetailsPayload(input.barberId);
   if (!profile) {
@@ -519,11 +573,28 @@ export async function createBarberKioskBooking(input: {
     serviceId: input.serviceId,
     days: 2
   });
-  const slot = availability.slots[0];
+  const slot = input.kioskAction === "schedule_ahead" && input.scheduledAt
+    ? availability.slots.find((candidateSlot) => candidateSlot.startsAt === input.scheduledAt) ?? availability.slots.find((candidateSlot) => new Date(candidateSlot.startsAt).getTime() >= new Date(input.scheduledAt ?? "").getTime())
+    : availability.slots[0];
   if (!slot || !availability.locationId) {
     throw new KioskServiceError("No bookable kiosk slot is available right now.", 409);
   }
 
+  const client = await resolveOrCreateKioskClient({
+    fullName: input.fullName,
+    phone: input.phone,
+    email: input.email,
+    publicUsername: input.publicUsername,
+    selectedProfileId: input.selectedProfileId,
+    source: "barber_kiosk"
+  });
+  const waitEstimate = calculateKioskWaitTime({
+    nextAvailableAt: slot.startsAt,
+    serviceDurationMinutes: availability.service?.durationMin,
+    barberStatus: availability.slots.length ? "available" : "not_available",
+    acceptsWalkIns: true
+  });
+  const action = input.kioskAction ?? "book_next_opening";
   const provider = await getLiveOperationsProvider();
   const result = await provider.createBooking({
     locationId: availability.locationId,
@@ -531,12 +602,18 @@ export async function createBarberKioskBooking(input: {
     serviceId: input.serviceId,
     addOnIds: [],
     appointmentTime: slot.startsAt,
+    clientId: client?.clientReference,
     clientName: input.fullName,
     clientPhone: input.phone,
     actorRole: "front_desk",
     bookingSource: "barber_kiosk",
     source: "front_desk",
-    internalNotes: input.email?.trim() ? `Barber kiosk intake email: ${input.email.trim().toLowerCase()}` : "Created from barber kiosk intake."
+    internalNotes: [
+      `Created from barber kiosk intake.`,
+      `Kiosk action: ${action}.`,
+      `Wait shown: ${waitEstimate.waitDisplayLabel}.`,
+      input.email?.trim() ? `Barber kiosk intake email: ${input.email.trim().toLowerCase()}` : null
+    ].filter(Boolean).join(" ")
   });
 
   return {
@@ -547,6 +624,11 @@ export async function createBarberKioskBooking(input: {
     serviceId: input.serviceId,
     serviceName: availability.service?.name ?? profile.services.find((item) => item.service.id === input.serviceId)?.service.name ?? input.serviceId,
     startsAt: slot.startsAt,
-    shopLabel: availability.locationId
+    shopLabel: availability.locationId,
+    clientPublicUsername: client?.publicUsername,
+    activationInviteQueued: client?.activationInviteQueued ?? false,
+    estimatedWaitMinutes: waitEstimate.estimatedWaitMinutes,
+    estimatedStartTime: waitEstimate.estimatedStartTime,
+    waitDisplayLabel: waitEstimate.waitDisplayLabel
   };
 }
