@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { CreditCard, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -103,6 +103,7 @@ export function AccountQuickEditModal({
   const [validationError, setValidationError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const isSavingRef = useRef(false);
   const roleDescription = "Private account details and public username basics.";
   const normalizedOriginalEmail = (email ?? "").trim().toLowerCase();
   const normalizedOriginalPhone = (phone ?? "").trim();
@@ -175,6 +176,10 @@ export function AccountQuickEditModal({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isSavingRef.current) {
+      return;
+    }
+
     setValidationError(null);
     setStatusMessage(null);
 
@@ -205,6 +210,7 @@ export function AccountQuickEditModal({
       return;
     }
 
+    isSavingRef.current = true;
     setIsSaving(true);
     try {
       if (onSave) {
@@ -218,6 +224,7 @@ export function AccountQuickEditModal({
           defaultPaymentMethodId: draft.defaultPaymentMethodId ?? null
         });
         setStatusMessage("Account updates saved. Email or phone changes may still require verification.");
+        onClose();
         return;
       }
 
@@ -225,6 +232,7 @@ export function AccountQuickEditModal({
     } catch (error) {
       setValidationError(error instanceof Error ? error.message : "Unable to save account changes.");
     } finally {
+      isSavingRef.current = false;
       setIsSaving(false);
     }
   }
@@ -248,7 +256,7 @@ export function AccountQuickEditModal({
 
   return (
     <div
-      className="fixed inset-0 z-[70] flex items-end justify-center overflow-hidden bg-black/76 px-4 py-5 backdrop-blur-xl sm:items-center"
+      className="fixed inset-0 z-[1000] flex items-end justify-center overflow-hidden bg-black/76 px-4 py-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] backdrop-blur-xl sm:items-center"
       role="dialog"
       aria-modal="true"
       aria-labelledby="account-quick-edit-title"
@@ -256,7 +264,7 @@ export function AccountQuickEditModal({
     >
       <form
         onSubmit={(event) => void handleSubmit(event)}
-        className="flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-t-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(4,4,4,0.98))] text-white shadow-[0_24px_70px_rgba(0,0,0,0.6),0_0_34px_rgba(163,255,18,0.14)] sm:max-h-[92vh] sm:rounded-[28px]"
+        className="flex max-h-[calc(100dvh-1rem)] w-full max-w-2xl flex-col overflow-hidden rounded-t-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(4,4,4,0.98))] text-white shadow-[0_24px_70px_rgba(0,0,0,0.6),0_0_34px_rgba(163,255,18,0.14)] sm:max-h-[92vh] sm:rounded-[28px]"
       >
         <div className="flex items-start justify-between gap-4 p-5 pb-3 sm:p-6 sm:pb-4">
           <div>
@@ -276,7 +284,7 @@ export function AccountQuickEditModal({
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-5 pb-4 sm:px-6">
+        <div className="flex-1 overflow-y-auto px-5 pb-4 sm:px-6" data-testid="account-quick-edit-body">
         <div className="grid gap-4">
           <section className="rounded-[24px] border border-white/10 bg-black/24 p-4">
             <label className="block text-sm font-black uppercase tracking-[0.12em] text-[#A3FF12]">
@@ -420,7 +428,7 @@ export function AccountQuickEditModal({
 
         </div>
 
-        <div className="sticky bottom-0 flex flex-col gap-3 border-t border-white/10 bg-black/88 p-5 backdrop-blur-xl sm:flex-row sm:p-6">
+        <div className="sticky bottom-0 z-10 flex flex-col gap-3 border-t border-white/10 bg-black/88 p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] backdrop-blur-xl sm:flex-row sm:p-6" data-testid="account-quick-edit-footer">
           <Button type="button" variant="secondary" className="min-h-12 flex-1 rounded-2xl" onClick={onClose}>
             Cancel
           </Button>

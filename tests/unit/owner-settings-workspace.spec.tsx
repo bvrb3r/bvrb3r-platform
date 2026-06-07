@@ -150,8 +150,10 @@ describe("owner More workspace", () => {
     expect(screen.getByRole("heading", { name: "More" })).toBeInTheDocument();
     expect(screen.getAllByRole("heading", { name: "More" })).toHaveLength(1);
     expect(screen.getByText("Manage your account, shop setup, payments, policies, and settings.")).toBeInTheDocument();
-    expect(screen.getByTestId("owner-more-identity-card")).toBeInTheDocument();
+    const ownerIdentityCard = screen.getByTestId("owner-more-identity-card");
+    expect(ownerIdentityCard).toBeInTheDocument();
     expect(screen.getByText("SHOP OWNER ACCOUNT")).toBeInTheDocument();
+    expect(within(ownerIdentityCard).getAllByText("owner@bvrb3r.demo")).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "Edit Account" }));
     expect(screen.getByRole("dialog", { name: "Edit Account" })).toBeInTheDocument();
     expect(screen.getByLabelText("BVRB3R Username")).toBeInTheDocument();

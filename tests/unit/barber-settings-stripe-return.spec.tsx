@@ -402,7 +402,7 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     expect(screen.queryByRole("link", { name: "View Public Profile" })).not.toBeInTheDocument();
     expect(within(identityCard).getByRole("heading", { name: "Blaze King" })).toBeInTheDocument();
     expect(within(identityCard).getByText("BARBER ACCOUNT")).toBeInTheDocument();
-    expect(within(identityCard).getAllByText("blaze@bvrb3r.demo").length).toBeGreaterThan(0);
+    expect(within(identityCard).getAllByText("blaze@bvrb3r.demo")).toHaveLength(1);
     expect(within(identityCard).queryByText("Freelance")).not.toBeInTheDocument();
     expect(within(identityCard).getByText("Account approved")).toBeInTheDocument();
     expect(within(identityCard).getByText("License approved")).toBeInTheDocument();

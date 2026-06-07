@@ -108,7 +108,6 @@ export function MoreIdentityReadinessCard({
   imageUrl,
   initials,
   title,
-  subtitle,
   roleLabel,
   badges,
   metaLines,
@@ -148,7 +147,6 @@ export function MoreIdentityReadinessCard({
               {roleLabel}
             </span>
           </div>
-          {subtitle ? <p className="mt-3 max-w-2xl text-base font-semibold leading-6 text-white/78">{subtitle}</p> : null}
           <div className="mt-4 flex flex-wrap gap-2">
             {badges.map((badge) => (
               <span key={badge.label} className={cn("rounded-full border px-3 py-1.5 text-xs font-extrabold", toneClasses(badge.tone))}>

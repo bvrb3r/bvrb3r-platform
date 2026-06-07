@@ -295,7 +295,7 @@ describe("client profile screen", () => {
     expect(identityCard).toBeInTheDocument();
     expect(within(identityCard).getByRole("heading", { name: "Jordan Ellis" })).toBeInTheDocument();
     expect(within(identityCard).getByText("CLIENT ACCOUNT")).toBeInTheDocument();
-    expect(within(identityCard).getAllByText("jordan@bvrb3r.app").length).toBeGreaterThan(0);
+    expect(within(identityCard).getAllByText("jordan@bvrb3r.app")).toHaveLength(1);
     expect(within(identityCard).getAllByText("Verified").length).toBeGreaterThan(0);
     expect(within(identityCard).getByText("Wallet ready")).toBeInTheDocument();
     expect(within(identityCard).getByText("Rewards setup")).toBeInTheDocument();

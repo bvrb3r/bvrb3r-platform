@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { AccountQuickEditModal } from "@/components/dashboard/account/account-quick-edit-modal";
@@ -52,6 +52,15 @@ describe("AccountQuickEditModal", () => {
     expect(screen.getByText("Choose a city where BVRB3R has active bookable supply.")).toBeInTheDocument();
     expect(screen.getByText("BVRB3R never collects raw card numbers in this account modal.")).toBeInTheDocument();
     expect(screen.getAllByDisplayValue("Tampa, FL")).toHaveLength(1);
+
+    const dialog = screen.getByRole("dialog", { name: "Edit Account" });
+    const body = screen.getByTestId("account-quick-edit-body");
+    const footer = screen.getByTestId("account-quick-edit-footer");
+    expect(dialog).toHaveClass("z-[1000]");
+    expect(body).toHaveClass("overflow-y-auto");
+    expect(footer).toHaveClass("sticky", "bottom-0", "pb-[calc(1.25rem+env(safe-area-inset-bottom))]");
+    expect(within(footer).getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+    expect(within(footer).getByRole("button", { name: "Save Changes" })).toBeInTheDocument();
   });
 
   it("validates required fields, normalizes username, and keeps payment management on the saved wallet rail", async () => {
@@ -105,6 +114,68 @@ describe("AccountQuickEditModal", () => {
         defaultPaymentMethodId: null
       });
     });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows saving state, prevents double submit, and closes after a successful save", async () => {
+    const onClose = vi.fn();
+    let resolveSave!: () => void;
+    const onSave = vi.fn(() => new Promise<void>((resolve) => {
+      resolveSave = resolve;
+    }));
+
+    render(
+      <AccountQuickEditModal
+        open
+        variant="client"
+        displayName="Jordan Ellis"
+        publicUsername="@jordan"
+        email="jordan@example.com"
+        phone="8135550190"
+        cityLocation="Tampa, FL"
+        defaultPaymentMethodLabel="Visa ending in 4242"
+        managePaymentHref="/dashboard/client/more?section=wallet"
+        onClose={onClose}
+        onSave={onSave}
+      />
+    );
+
+    const saveButton = screen.getByRole("button", { name: "Save Changes" });
+    fireEvent.click(saveButton);
+    fireEvent.click(saveButton);
+
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole("button", { name: "Saving..." })).toBeDisabled();
+    resolveSave();
+
+    await waitFor(() => {
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("keeps the modal open and shows an inline error when save fails", async () => {
+    render(
+      <AccountQuickEditModal
+        open
+        variant="client"
+        displayName="Jordan Ellis"
+        publicUsername="@jordan"
+        email="jordan@example.com"
+        phone="8135550190"
+        cityLocation="Tampa, FL"
+        defaultPaymentMethodLabel="Visa ending in 4242"
+        managePaymentHref="/dashboard/client/more?section=wallet"
+        onClose={vi.fn()}
+        onSave={vi.fn(async () => {
+          throw new Error("Unable to save account contact details.");
+        })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    expect(await screen.findByText("Unable to save account contact details.")).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Edit Account" })).toBeInTheDocument();
   });
 
   it("restricts client location to supported market options and keeps save visible", async () => {
