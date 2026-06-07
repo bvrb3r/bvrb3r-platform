@@ -44,6 +44,7 @@ const productionShop = {
   neighborhood: null,
   city: "Tampa",
   state: "FL",
+  zip_code: "33612",
   address: "2172 University Square Mall",
   profile_photo_path: null,
   profile_photo_url: "https://cdn.example.com/shop.jpg",
@@ -132,7 +133,7 @@ describe("shop kiosk resolution", () => {
 
     expect(payload.shop.shopId).toBe("shop-the-bvrb3r-shop-universi-a02c68");
     expect(payload.shop.shopName).toBe("The BVRB3R Shop (University Mall)");
-    expect(payload.shop.locationLabel).toContain("2172 University Square Mall");
+    expect(payload.shop.locationLabel).toBe("2172 University Square Mall - Tampa, FL 33612");
     expect(getQueueWorkspacePayloadForShopsMock).toHaveBeenCalledWith(["shop-the-bvrb3r-shop-universi-a02c68"]);
     expect(shopSelects.join(" ")).not.toContain("shop_username");
     expect(shopFilters.join(" ")).not.toContain("shop_username");

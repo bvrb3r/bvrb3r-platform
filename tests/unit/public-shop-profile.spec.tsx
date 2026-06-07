@@ -74,7 +74,7 @@ describe("public shop profile", () => {
     expect(screen.getByText("A public shop profile for Tampa.")).toBeInTheDocument();
     expect(screen.getByAltText("BVRB3R Tampa cover")).toHaveAttribute("src", "https://cdn.example.com/shop-cover.jpg");
     expect(screen.getByAltText("BVRB3R Tampa")).toHaveAttribute("src", "https://cdn.example.com/shop-logo.png");
-    expect(screen.getByText("1600 7th Ave, Tampa, FL - 33612")).toBeInTheDocument();
+    expect(screen.getByText("1600 7th Ave, Tampa, FL 33612")).toBeInTheDocument();
     expect(screen.getByText("1 approved barber")).toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: "Book" }).length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: "Message" })).toHaveAttribute("href", "/workspace/messages?shop=shop-tampa");

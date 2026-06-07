@@ -7,6 +7,7 @@ import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
 import { readPlatformShopControlState } from "@/lib/platform-admin/service";
 import { createKioskQueueEntry, getQueueWorkspacePayloadForShops, QueueServiceError } from "@/lib/queue/service";
 import { readShopProfileMedia } from "@/lib/profile/service";
+import { formatPublicShopLocation } from "@/lib/shops/public-identity";
 import type { QueueBarberOptionView, QueueWorkspacePayload } from "@/lib/queue/service";
 import type {
   KioskBarberOption,
@@ -32,6 +33,7 @@ type ShopBrandRow = {
   neighborhood: string | null;
   city: string | null;
   state: string | null;
+  zip_code?: string | null;
   address: string | null;
   profile_photo_path: string | null;
   profile_photo_url: string | null;
@@ -80,15 +82,21 @@ function formatLocationLabel(input: {
   address?: string | null;
   city?: string | null;
   state?: string | null;
+  zipCode?: string | null;
 }) {
-  return [input.neighborhood || input.address, [input.city, input.state].filter(Boolean).join(", ")]
+  return formatPublicShopLocation({
+    address: input.address,
+    city: input.city,
+    state: input.state,
+    zipCode: input.zipCode
+  }) || [input.neighborhood, [input.city, input.state].filter(Boolean).join(", ")]
     .filter(Boolean)
     .join(" - ") || "Shop kiosk";
 }
 
 async function resolveSupabaseShopTarget(supabase: NonNullable<ReturnType<typeof getSupabase>>, shopTarget: string): Promise<ResolvedShopKioskTarget> {
   const normalizedTarget = normalizePublicTarget(shopTarget);
-  const shopSelect = "id, name, public_username, owner_profile_id, neighborhood, city, state, address, profile_photo_path, profile_photo_url, cover_photo_url, app_approval_status";
+  const shopSelect = "id, name, public_username, owner_profile_id, neighborhood, city, state, zip_code, address, profile_photo_path, profile_photo_url, cover_photo_url, app_approval_status";
   let shopResult = await supabase
     .from("shops")
     .select(shopSelect)
@@ -157,7 +165,8 @@ async function resolveSupabaseShopTarget(supabase: NonNullable<ReturnType<typeof
         neighborhood: shop?.neighborhood ?? location?.neighborhood,
         address: shop?.address,
         city: shop?.city ?? location?.city,
-        state: shop?.state ?? location?.state
+        state: shop?.state ?? location?.state,
+        zipCode: shop?.zip_code
       }),
       profilePhotoUrl: media?.profilePhotoUrl ?? shop?.profile_photo_url ?? undefined,
       mode: "shop"

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowRight, Heart, MapPin, ShieldCheck, Star, Store, UsersRound } from "lucide-react";
 import { ClientActionLink } from "@/components/client-experience/client-action-link";
 import { useSaveFavoriteShopMutation } from "@/lib/booking/client";
+import { formatPublicShopLocation } from "@/lib/shops/public-identity";
 import { cn } from "@/lib/utils";
 
 type ClientShopCardData = {
@@ -14,6 +15,7 @@ type ClientShopCardData = {
   city: string;
   state: string;
   address?: string;
+  zipCode?: string;
   activeBarbersCount?: number;
   brandLine?: string;
   kind?: string;
@@ -37,7 +39,7 @@ function getInitials(name: string) {
 }
 
 function getLocationLabel(location: ClientShopCardData) {
-  return location.address || [location.neighborhood, location.city, location.state].filter(Boolean).join(", ") || "Shop location";
+  return formatPublicShopLocation(location) || "Shop location";
 }
 
 function getBarberCountLabel(count: number) {

@@ -32,7 +32,7 @@ describe("client shop discovery card", () => {
 
     const card = screen.getByTestId("compact-shop-card");
     expect(within(card).getByText("The BVRB3R Shop (University Mall)")).toBeInTheDocument();
-    expect(within(card).getByText("2200 E Fowler Ave")).toBeInTheDocument();
+    expect(within(card).getByText("2200 E Fowler Ave - Tampa, FL")).toBeInTheDocument();
     expect(within(card).getByText("Premium cuts by campus.")).toBeInTheDocument();
     expect(within(card).getByText("2 barbers")).toBeInTheDocument();
     expect(within(card).getAllByText("Verified shop").length).toBeGreaterThan(0);
@@ -57,5 +57,29 @@ describe("client shop discovery card", () => {
     );
 
     expect(screen.getByText("No active barbers yet")).toBeInTheDocument();
+  });
+
+  it("shows the public shop address instead of pending approval text as location", () => {
+    render(
+      <ClientShopDiscoveryCard
+        location={{
+          id: "shop-the-bvrb3r-shop-universi-a02c68",
+          name: "The BVRB3R Shop (University Mall)",
+          brandLine: "Public shop profile",
+          address: "2172 University Square Mall",
+          neighborhood: "Pending",
+          city: "Tampa",
+          state: "FL",
+          zipCode: "33612",
+          verifiedLabel: "Pending approval",
+          activeBarbersCount: 1
+        }}
+      />
+    );
+
+    const card = screen.getByTestId("compact-shop-card");
+    expect(within(card).getByText("2172 University Square Mall - Tampa, FL 33612")).toBeInTheDocument();
+    expect(within(card).getAllByText("Pending approval").length).toBeGreaterThan(0);
+    expect(within(card).queryByText("Pending, Tampa")).not.toBeInTheDocument();
   });
 });

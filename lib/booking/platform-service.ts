@@ -42,6 +42,7 @@ import { getLiveOperationsProvider } from "@/lib/operations/live-provider";
 import { readAppointmentPaymentSummary, readClientPaymentMethodsByClientId, type ClientPaymentMethodView } from "@/lib/payments/service";
 import { readBarberProfileMedia, readShopProfileMedia } from "@/lib/profile/service";
 import { toPublicMediaUrl } from "@/lib/profile/public-media-url";
+import { resolvePublicShopIdentity } from "@/lib/shops/public-identity";
 import type { LiveAppointmentRecord, LiveOperationsViewer } from "@/lib/operations/live-state";
 import { getBarberCompensationSummary, getManagerOperationsSummary, getOwnerAnalyticsSummary } from "@/lib/operations/metrics";
 import { getAppointmentViewModel } from "@/lib/utils/operations";
@@ -58,6 +59,7 @@ type ShopRecord = {
   neighborhood: string | null;
   city: string | null;
   state: string | null;
+  zip_code?: string | null;
   phone: string | null;
   address: string | null;
   profile_photo_path?: string | null;
@@ -76,6 +78,7 @@ type MarketplaceShopRecord = {
   neighborhood: string;
   city: string;
   state: string;
+  zipCode?: string;
   phone: string;
   address: string;
   profilePhotoUrl?: string;
@@ -739,23 +742,28 @@ async function readShops(supabase: SupabaseClient | null): Promise<MarketplaceSh
       });
     }
 
-    return shopRows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      brandLine: row.brand_line ?? "",
-      neighborhood: row.neighborhood ?? "",
-      city: row.city ?? "",
-      state: row.state ?? "",
-      phone: row.phone ?? "",
-      address: row.address ?? [row.neighborhood, row.city, row.state].filter(Boolean).join(", "),
-      profilePhotoUrl: toPublicMediaUrl(supabase, row.profile_photo_path, row.profile_photo_url),
-      coverPhotoUrl: coverByShopId.get(row.id),
-      shopUsername: row.public_username ?? undefined,
-      kind: row.kind,
-      latitude: row.latitude ?? undefined,
-      longitude: row.longitude ?? undefined,
-      appApprovalStatus: row.app_approval_status ?? undefined
-    }));
+    return shopRows.map((row) => {
+      const identity = resolvePublicShopIdentity(row);
+
+      return {
+        id: row.id,
+        name: identity.displayName,
+        brandLine: row.brand_line ?? "",
+        neighborhood: row.neighborhood ?? "",
+        city: identity.city ?? "",
+        state: identity.state ?? "",
+        zipCode: identity.zipCode ?? undefined,
+        phone: row.phone ?? "",
+        address: identity.formattedPublicLocation || row.address || [identity.city, identity.state].filter(Boolean).join(", "),
+        profilePhotoUrl: toPublicMediaUrl(supabase, row.profile_photo_path, row.profile_photo_url),
+        coverPhotoUrl: coverByShopId.get(row.id),
+        shopUsername: identity.publicUsername ?? undefined,
+        kind: row.kind,
+        latitude: row.latitude ?? undefined,
+        longitude: row.longitude ?? undefined,
+        appApprovalStatus: row.app_approval_status ?? undefined
+      };
+    });
   }
 
   const locationResult = await supabase
