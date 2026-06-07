@@ -163,7 +163,7 @@ describe("owner More workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.getByText("Your shop setup")).toBeInTheDocument();
     expect(screen.getAllByText("Needs setup").length).toBeGreaterThan(0);
-    expect(screen.queryByTestId("owner-public-shop-profile-card")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("owner-public-shop-identity-section")).not.toBeInTheDocument();
     expect(screen.queryByText("Public Shop Profile")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Quick edit" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Preview Public Profile" })).not.toBeInTheDocument();
@@ -223,12 +223,15 @@ describe("owner More workspace", () => {
     render(<OwnerSettingsWorkspace user={{ ...resolveDemoUser("owner@bvrb3r.demo"), name: "BVRB3R Owner" }} />);
 
     const ownerAccountCard = screen.getByTestId("owner-more-identity-card");
-    expect(within(ownerAccountCard).getByAltText("BVRB3R Owner profile photo")).toHaveAttribute("src", "https://cdn.example.com/shop-logo.png");
-    expect(within(ownerAccountCard).queryByText("BO")).not.toBeInTheDocument();
+    expect(within(ownerAccountCard).queryByAltText("BVRB3R Owner profile photo")).not.toBeInTheDocument();
+    expect(within(ownerAccountCard).getByText("BO")).toBeInTheDocument();
     expect(screen.getAllByTestId("owner-more-identity-card")).toHaveLength(1);
-    expect(screen.queryByTestId("owner-public-shop-profile-card")).not.toBeInTheDocument();
-    expect(screen.queryByAltText("The BVRB3R™ Shop (University Mall) logo")).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "The BVRB3R™ Shop (University Mall)" })).not.toBeInTheDocument();
+    expect(within(ownerAccountCard).queryByText("@thebvrb3rshopuniversitymall")).not.toBeInTheDocument();
+
+    const shopIdentity = screen.getByTestId("owner-public-shop-identity-section");
+    expect(within(shopIdentity).getByText("@thebvrb3rshopuniversitymall")).toBeInTheDocument();
+    expect(within(shopIdentity).getByRole("img")).toHaveAttribute("src", "https://cdn.example.com/shop-logo.png");
+    expect(within(shopIdentity).getByRole("heading", { name: /Shop \(University Mall\)/i })).toBeInTheDocument();
     expect(screen.queryByText(/Pending - Pending, Pending/i)).not.toBeInTheDocument();
     expect(screen.queryByText("Unable to resolve the signed-in profile.")).not.toBeInTheDocument();
     expect(screen.queryByText("Unable to load shop profile media.")).not.toBeInTheDocument();
@@ -276,13 +279,15 @@ describe("owner More workspace", () => {
     expect(within(ownerAccountCard).getByAltText("BVRB3R Owner profile photo")).toHaveAttribute("src", "https://cdn.example.com/owner-human.jpg");
     expect(within(ownerAccountCard).getByRole("heading", { name: "BVRB3R Owner" })).toBeInTheDocument();
     expect(within(ownerAccountCard).getByText("SHOP OWNER ACCOUNT")).toBeInTheDocument();
-    expect(within(ownerAccountCard).getByText("owner@bvrb3r.demo")).toBeInTheDocument();
-    expect(within(ownerAccountCard).getByText("@thebvrb3rshopuniversitymall")).toBeInTheDocument();
-    expect(within(ownerAccountCard).getByText("2200 E Fowler Ave - Tampa, FL 33612")).toBeInTheDocument();
+    expect(within(ownerAccountCard).getAllByText("owner@bvrb3r.demo").length).toBeGreaterThan(0);
+    expect(within(ownerAccountCard).queryByText("@thebvrb3rshopuniversitymall")).not.toBeInTheDocument();
+    expect(within(ownerAccountCard).queryByText("2200 E Fowler Ave - Tampa, FL 33612")).not.toBeInTheDocument();
     expect(within(ownerAccountCard).queryByText("Do not show me")).not.toBeInTheDocument();
     expect(within(ownerAccountCard).getByText("Payouts connected")).toBeInTheDocument();
     expect(screen.getAllByTestId("owner-more-identity-card")).toHaveLength(1);
-    expect(screen.queryByTestId("owner-public-shop-profile-card")).not.toBeInTheDocument();
+    const shopIdentity = screen.getByTestId("owner-public-shop-identity-section");
+    expect(within(shopIdentity).getByText("@thebvrb3rshopuniversitymall")).toBeInTheDocument();
+    expect(within(shopIdentity).getByText("2200 E Fowler Ave - Tampa, FL 33612")).toBeInTheDocument();
   });
 
   it("falls back to owner initials when neither shop nor viewer image exists", () => {

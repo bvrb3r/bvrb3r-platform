@@ -55,6 +55,7 @@ describe("AccountQuickEditModal", () => {
         fullName: "Jordan Ellis",
         email: "new@example.com",
         phone: "8135550202",
+        publicUsername: "",
         cityLocation: "Tampa, FL",
         defaultPaymentMethodId: null
       });

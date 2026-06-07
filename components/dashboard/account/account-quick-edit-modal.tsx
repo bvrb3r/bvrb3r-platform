@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 export type AccountQuickEditVariant = "client" | "barber" | "owner";
 
 export type AccountQuickEditInput = {
+  publicUsername: string;
   displayName: string;
   fullName: string;
   email: string;
@@ -32,10 +33,20 @@ export type AccountQuickEditPaymentOption = {
 const EMPTY_LOCATION_OPTIONS: AccountQuickEditLocationOption[] = [];
 const EMPTY_PAYMENT_OPTIONS: AccountQuickEditPaymentOption[] = [];
 
+function normalizePublicUsernameDraft(publicUsername?: string | null) {
+  const trimmed = publicUsername?.trim() ?? "";
+  if (!trimmed || /not set/i.test(trimmed)) {
+    return "";
+  }
+
+  return trimmed;
+}
+
 export function AccountQuickEditModal({
   open,
   variant,
   displayName,
+  publicUsername,
   fullName,
   email,
   phone,
@@ -55,6 +66,7 @@ export function AccountQuickEditModal({
   open: boolean;
   variant: AccountQuickEditVariant;
   displayName: string;
+  publicUsername?: string | null;
   fullName?: string | null;
   email?: string | null;
   phone?: string | null;
@@ -73,6 +85,7 @@ export function AccountQuickEditModal({
 }) {
   const [draft, setDraft] = useState<AccountQuickEditInput>(() => ({
     displayName,
+    publicUsername: normalizePublicUsernameDraft(publicUsername),
     fullName: fullName ?? displayName,
     email: email ?? "",
     phone: phone ?? "",
@@ -137,6 +150,7 @@ export function AccountQuickEditModal({
 
     setDraft({
       displayName,
+      publicUsername: normalizePublicUsernameDraft(publicUsername),
       fullName: fullName ?? displayName,
       email: email ?? "",
       phone: phone ?? "",
@@ -145,7 +159,7 @@ export function AccountQuickEditModal({
     });
     setValidationError(null);
     setStatusMessage(null);
-  }, [cityLocation, defaultPaymentMethodId, displayName, email, fullName, open, paymentOptions, phone]);
+  }, [cityLocation, defaultPaymentMethodId, displayName, email, fullName, open, paymentOptions, phone, publicUsername]);
 
   if (!open) {
     return null;
@@ -183,6 +197,7 @@ export function AccountQuickEditModal({
     try {
       if (onSave) {
         await onSave({
+          publicUsername: draft.publicUsername.trim().replace(/^@+/, ""),
           displayName: draft.displayName.trim(),
           fullName: draft.fullName.trim(),
           email: draft.email.trim(),
@@ -259,6 +274,19 @@ export function AccountQuickEditModal({
               onChange={(event) => setDraft((current) => ({ ...current, displayName: event.target.value }))}
               className="mt-2"
             />
+          </label>
+          <label className="block text-sm font-bold text-white/72">
+            Public username
+            <Input
+              aria-label="Public username"
+              value={draft.publicUsername}
+              onChange={(event) => setDraft((current) => ({ ...current, publicUsername: event.target.value }))}
+              className="mt-2"
+              placeholder="@username"
+            />
+            <span className="mt-2 block text-xs leading-5 text-white/42">
+              Public Profile publishes username changes across public surfaces.
+            </span>
           </label>
           <label className="block text-sm font-bold text-white/72">
             City/location

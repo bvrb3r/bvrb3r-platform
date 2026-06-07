@@ -30,6 +30,11 @@ export type MoreReadinessTile = {
   href?: MoreHref;
 };
 
+export type MoreIdentityDetail = string | {
+  label: string;
+  value?: string | null;
+};
+
 export type MoreSectionRow = {
   title: string;
   subtitle: string;
@@ -118,7 +123,7 @@ export function MoreIdentityReadinessCard({
   subtitle?: string;
   roleLabel: string;
   badges: MoreBadge[];
-  metaLines: string[];
+  metaLines: MoreIdentityDetail[];
   primaryAction?: MoreAction;
   secondaryAction?: MoreAction;
   tiles: MoreReadinessTile[];
@@ -152,8 +157,21 @@ export function MoreIdentityReadinessCard({
             ))}
           </div>
           {metaLines.length ? (
-            <div className="mt-4 flex flex-col gap-1.5 text-sm leading-6 text-white/54">
-              {metaLines.map((line) => <p key={line}>{line}</p>)}
+            <div className="mt-4 grid gap-2 text-sm leading-6 text-white/58 sm:grid-cols-2">
+              {metaLines.map((line) => {
+                const detail = typeof line === "string" ? { label: "", value: line } : line;
+                const value = detail.value?.trim();
+                if (!value) {
+                  return null;
+                }
+
+                return (
+                  <p key={`${detail.label}-${value}`} className="min-w-0">
+                    {detail.label ? <span className="mr-2 font-black uppercase tracking-[0.12em] text-white/34">{detail.label}</span> : null}
+                    <span className="break-words text-white/68">{value}</span>
+                  </p>
+                );
+              })}
             </div>
           ) : null}
         </div>

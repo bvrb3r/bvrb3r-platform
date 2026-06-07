@@ -619,8 +619,10 @@ export function ClientProfileScreen({
           { label: "Rewards setup", tone: rewardsPoints ? "green" : "muted" }
         ]}
         metaLines={[
-          clientPublicUsernameLine,
-          clientPublicLocationLine
+          { label: "Username", value: clientPublicUsernameLine },
+          { label: "Phone", value: clientPhone || "Phone not set" },
+          { label: "Contact email", value: clientEmail === "No email on file yet" ? "Email not set" : clientEmail },
+          { label: "Location", value: clientPublicLocationLine }
         ]}
         primaryAction={{ label: "Edit Account", onClick: () => setAccountEditorOpen(true) }}
         secondaryAction={{ label: "Public Profile", href: "/dashboard/client/public-profile" }}
@@ -1263,6 +1265,7 @@ export function ClientProfileScreen({
         open={accountEditorOpen}
         variant="client"
         displayName={clientName}
+        publicUsername={clientPublicUsernameLine}
         fullName={clientName}
         email={clientEmail === "No email on file yet" ? "" : clientEmail}
         phone={clientPhone}

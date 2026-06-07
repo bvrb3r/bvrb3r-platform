@@ -1762,7 +1762,12 @@ export function BarberSettingsScreen({
             { label: formatScopedStatusLabel("License", canonicalVerificationStatus), tone: moreToneForStatus(getStatusTone(canonicalVerificationStatus)) },
             { label: formatBarberPayoutChipLabel({ payoutsReady: payoutsConnectedForIdentity, payoutStatus }), tone: payoutsConnectedForIdentity ? "green" : "yellow" }
           ]}
-          metaLines={[barberPublicUsernameLine, barberIdentityLocationLabel]}
+          metaLines={[
+            { label: "Username", value: barberPublicUsernameLine },
+            { label: "Phone", value: user.phone ?? "Phone not set" },
+            { label: "Contact email", value: user.email },
+            { label: "Location", value: barberIdentityLocationLabel }
+          ]}
           primaryAction={{ label: "Edit Account", onClick: () => setAccountEditorOpen(true) }}
           secondaryAction={{ label: "Edit Public Profile", href: "/dashboard/barber/profile" }}
           tiles={statusItems.map((item) => ({
@@ -2936,6 +2941,7 @@ export function BarberSettingsScreen({
         open={accountEditorOpen}
         variant="barber"
         displayName={user.name}
+        publicUsername={barberPublicUsernameLine}
         fullName={user.canonicalFullName ?? user.name}
         email={user.email}
         phone={user.phone}
