@@ -56,11 +56,47 @@ describe("AccountQuickEditModal", () => {
     const dialog = screen.getByRole("dialog", { name: "Edit Account" });
     const body = screen.getByTestId("account-quick-edit-body");
     const footer = screen.getByTestId("account-quick-edit-footer");
-    expect(dialog).toHaveClass("z-[1000]");
+    const sheet = screen.getByTestId("account-quick-edit-sheet");
+    expect(dialog.parentElement).toBe(document.body);
+    expect(dialog).toHaveClass("fixed", "inset-0", "z-[9999]");
+    expect(sheet).toHaveClass("relative", "z-[10000]", "max-h-[calc(100dvh-1rem)]", "overflow-hidden");
     expect(body).toHaveClass("overflow-y-auto");
-    expect(footer).toHaveClass("sticky", "bottom-0", "pb-[calc(1.25rem+env(safe-area-inset-bottom))]");
+    expect(footer).toHaveClass("sticky", "bottom-0", "z-20", "pb-[calc(1.25rem+env(safe-area-inset-bottom))]");
     expect(within(footer).getByRole("button", { name: "Cancel" })).toBeInTheDocument();
     expect(within(footer).getByRole("button", { name: "Save Changes" })).toBeInTheDocument();
+  });
+
+  it("keeps the modal footer in a body-level layer above the mobile bottom nav", () => {
+    render(
+      <>
+        <nav data-testid="mobile-bottom-nav" className="fixed inset-x-2 bottom-3 z-50">
+          Bottom navigation
+        </nav>
+        <AccountQuickEditModal
+          open
+          variant="client"
+          displayName="Jordan Ellis"
+          publicUsername="@jordan"
+          email="jordan@example.com"
+          phone="8135550190"
+          cityLocation="Tampa, FL"
+          defaultPaymentMethodLabel="Visa ending in 4242"
+          managePaymentHref="/dashboard/client/more?section=wallet"
+          onClose={vi.fn()}
+        />
+      </>
+    );
+
+    const bottomNav = screen.getByTestId("mobile-bottom-nav");
+    const dialog = screen.getByRole("dialog", { name: "Edit Account" });
+    const footer = screen.getByTestId("account-quick-edit-footer");
+
+    expect(bottomNav).toHaveClass("z-50");
+    expect(dialog).toHaveClass("z-[9999]");
+    expect(dialog.parentElement).toBe(document.body);
+    expect(footer).toHaveClass("sticky", "bottom-0", "z-20");
+    expect(within(footer).getByRole("button", { name: "Cancel" })).toBeVisible();
+    expect(within(footer).getByRole("button", { name: "Save Changes" })).toBeVisible();
   });
 
   it("validates required fields, normalizes username, and keeps payment management on the saved wallet rail", async () => {
