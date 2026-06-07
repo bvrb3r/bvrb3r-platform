@@ -39,7 +39,15 @@ function normalizePublicUsernameDraft(publicUsername?: string | null) {
     return "";
   }
 
-  return trimmed;
+  return trimmed.startsWith("@") ? trimmed : `@${trimmed}`;
+}
+
+function normalizePublicUsernameValue(publicUsername: string) {
+  return publicUsername.trim().replace(/^@+/, "").toLowerCase();
+}
+
+function isValidPublicUsername(publicUsername: string) {
+  return /^[a-z0-9._]{3,30}$/.test(publicUsername);
 }
 
 export function AccountQuickEditModal({
@@ -95,11 +103,7 @@ export function AccountQuickEditModal({
   const [validationError, setValidationError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const roleDescription = variant === "owner"
-    ? "Private owner details stay separate from the public shop profile."
-    : variant === "barber"
-      ? "Account details stay separate from services, portfolio, and public barber profile content."
-      : "Account details stay separate from your Culture public profile.";
+  const roleDescription = "Private account details and public username basics.";
   const normalizedOriginalEmail = (email ?? "").trim().toLowerCase();
   const normalizedOriginalPhone = (phone ?? "").trim();
   const emailChanged = draft.email.trim().toLowerCase() !== normalizedOriginalEmail;
@@ -117,6 +121,7 @@ export function AccountQuickEditModal({
     return sortedLocationOptions.filter((option) => option.label.toLowerCase().includes(query)).slice(0, 6);
   }, [draft.cityLocation, sortedLocationOptions]);
   const selectedLocationOption = sortedLocationOptions.find((option) => option.label.toLowerCase() === draft.cityLocation.trim().toLowerCase()) ?? null;
+  const shouldShowLocationOptions = filteredLocationOptions.length > 0 && !selectedLocationOption;
   const selectedPaymentOption = paymentOptions.find((method) => method.id === draft.defaultPaymentMethodId) ?? null;
 
   const paymentCopy = useMemo(() => {
@@ -165,7 +170,7 @@ export function AccountQuickEditModal({
     return null;
   }
 
-  const paymentTitle = variant === "client" ? "Default payment method" : "Default payment method & Payout";
+  const paymentTitle = "Default Payment Method";
   const paymentActionLabel = variant === "client" ? "Manage Payment Method" : "Click here";
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -173,8 +178,15 @@ export function AccountQuickEditModal({
     setValidationError(null);
     setStatusMessage(null);
 
-    if (!draft.displayName.trim()) {
-      setValidationError("Public display name is required.");
+    const normalizedUsername = normalizePublicUsernameValue(draft.publicUsername);
+
+    if (!normalizedUsername) {
+      setValidationError("BVRB3R username is required.");
+      return;
+    }
+
+    if (!isValidPublicUsername(normalizedUsername)) {
+      setValidationError("Use 3-30 letters, numbers, dots, or underscores for your BVRB3R username.");
       return;
     }
 
@@ -197,8 +209,8 @@ export function AccountQuickEditModal({
     try {
       if (onSave) {
         await onSave({
-          publicUsername: draft.publicUsername.trim().replace(/^@+/, ""),
-          displayName: draft.displayName.trim(),
+          publicUsername: normalizedUsername,
+          displayName: draft.fullName.trim(),
           fullName: draft.fullName.trim(),
           email: draft.email.trim(),
           phone: draft.phone.trim(),
@@ -265,51 +277,86 @@ export function AccountQuickEditModal({
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 pb-4 sm:px-6">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className="block text-sm font-bold text-white/72">
-            Public display name
+        <div className="grid gap-4">
+          <section className="rounded-[24px] border border-white/10 bg-black/24 p-4">
+            <label className="block text-sm font-black uppercase tracking-[0.12em] text-[#A3FF12]">
+              BVRB3R Username
+            </label>
             <Input
-              aria-label="Public display name"
-              value={draft.displayName}
-              onChange={(event) => setDraft((current) => ({ ...current, displayName: event.target.value }))}
-              className="mt-2"
-            />
-          </label>
-          <label className="block text-sm font-bold text-white/72">
-            Public username
-            <Input
-              aria-label="Public username"
+              aria-label="BVRB3R Username"
               value={draft.publicUsername}
               onChange={(event) => setDraft((current) => ({ ...current, publicUsername: event.target.value }))}
               className="mt-2"
               placeholder="@username"
+              aria-describedby="account-username-helper"
             />
-            <span className="mt-2 block text-xs leading-5 text-white/42">
-              Public Profile publishes username changes across public surfaces.
+            <span id="account-username-helper" className="mt-2 block text-xs leading-5 text-white/42">
+              Your BVRB3R username is public and appears across booking, profile, search, messages, and kiosk surfaces.
             </span>
-          </label>
-          <label className="block text-sm font-bold text-white/72">
-            City/location
+          </section>
+
+          <section className="rounded-[24px] border border-white/10 bg-black/24 p-4">
+            <p className="text-xs font-black uppercase tracking-[0.14em] text-white/42">Private Identity</p>
+            <div className="mt-4 grid gap-4">
+              <label className="block text-sm font-bold text-white/72">
+                Full Name
+                <Input
+                  aria-label="Full Name"
+                  value={draft.fullName}
+                  onChange={(event) => setDraft((current) => ({ ...current, fullName: event.target.value }))}
+                  className="mt-2"
+                />
+                <span className="mt-2 block text-xs leading-5 text-white/42">
+                  Private. Used for account, booking, kiosk, support, and admin verification.
+                </span>
+              </label>
+              <label className="block text-sm font-bold text-white/72">
+                Phone Number
+                <Input
+                  aria-label="Phone Number"
+                  value={draft.phone}
+                  onChange={(event) => setDraft((current) => ({ ...current, phone: event.target.value }))}
+                  className="mt-2"
+                />
+                <span className={cn("mt-2 block text-xs leading-5", phoneChanged ? "text-amber-100" : "text-white/42")}>
+                  {phoneChanged ? "Phone changes require verification before this is marked verified." : phoneVerified ? "Phone verified. Private. Used for verification, booking updates, kiosk check-in, and support." : "Phone not verified. Private. Used for verification, booking updates, kiosk check-in, and support."}
+                </span>
+              </label>
+              <label className="block text-sm font-bold text-white/72">
+                Email
+                <Input
+                  aria-label="Email"
+                  type="email"
+                  value={draft.email}
+                  onChange={(event) => setDraft((current) => ({ ...current, email: event.target.value }))}
+                  className="mt-2"
+                />
+                <span className={cn("mt-2 block text-xs leading-5", emailChanged ? "text-amber-100" : "text-white/42")}>
+                  {emailChanged ? "Email changes require verification before this is marked verified." : emailVerified ? "Email verified. Private. Used for account access, booking receipts, kiosk activation, and support." : "Email not verified. Private. Used for account access, booking receipts, kiosk activation, and support."}
+                </span>
+              </label>
+            </div>
+          </section>
+
+          <section className="rounded-[24px] border border-white/10 bg-black/24 p-4">
+            <label className="block text-sm font-black uppercase tracking-[0.12em] text-[#A3FF12]">
+              Location
+            </label>
             <Input
-              aria-label="City/location"
+              aria-label="Location"
               value={draft.cityLocation}
               onChange={(event) => setDraft((current) => ({ ...current, cityLocation: event.target.value }))}
               className="mt-2"
               placeholder="City, state, or preferred area"
               aria-describedby="account-location-helper"
             />
-            {filteredLocationOptions.length ? (
+            {shouldShowLocationOptions ? (
               <div className="mt-2 grid gap-2" role="listbox" aria-label="Location suggestions">
                 {filteredLocationOptions.map((option) => (
                   <button
                     key={`${option.city}-${option.state}`}
                     type="button"
-                    className={cn(
-                      "min-h-10 rounded-2xl border px-3 text-left text-xs font-bold transition",
-                      selectedLocationOption?.label === option.label
-                        ? "border-[#A3FF12]/45 bg-[#A3FF12]/10 text-[#E7FFC6]"
-                        : "border-white/8 bg-black/20 text-white/58 hover:border-[#A3FF12]/28 hover:text-white"
-                    )}
+                    className="min-h-10 rounded-2xl border border-white/8 bg-black/20 px-3 text-left text-xs font-bold text-white/58 transition hover:border-[#A3FF12]/28 hover:text-white"
                     onClick={() => selectLocation(option)}
                   >
                     {option.label}
@@ -318,46 +365,12 @@ export function AccountQuickEditModal({
               </div>
             ) : null}
             <span id="account-location-helper" className="mt-2 block text-xs leading-5 text-white/42">
-              {requireLocationOption ? "Choose a city where BVRB3R has active bookable supply." : "Start typing to use known app city/state suggestions."}
+              Choose a city where BVRB3R has active bookable supply.
             </span>
-          </label>
-          <label className="block text-sm font-bold text-white/72">
-            Full name
-            <Input
-              aria-label="Full name"
-              value={draft.fullName}
-              onChange={(event) => setDraft((current) => ({ ...current, fullName: event.target.value }))}
-              className="mt-2"
-            />
-          </label>
-          <label className="block text-sm font-bold text-white/72">
-            Email
-            <Input
-              aria-label="Email"
-              type="email"
-              value={draft.email}
-              onChange={(event) => setDraft((current) => ({ ...current, email: event.target.value }))}
-              className="mt-2"
-            />
-            <span className={cn("mt-2 block text-xs leading-5", emailChanged ? "text-amber-100" : "text-white/42")}>
-              {emailChanged ? "Email changes require verification before this is marked verified." : emailVerified ? "Email verified." : "Email verification is still available from contact settings."}
-            </span>
-          </label>
-          <label className="block text-sm font-bold text-white/72">
-            Phone number
-            <Input
-              aria-label="Phone number"
-              value={draft.phone}
-              onChange={(event) => setDraft((current) => ({ ...current, phone: event.target.value }))}
-              className="mt-2"
-            />
-            <span className={cn("mt-2 block text-xs leading-5", phoneChanged ? "text-amber-100" : "text-white/42")}>
-              {phoneChanged ? "Phone changes require verification before this is marked verified." : phoneVerified ? "Phone verified." : "Phone verification is still available from contact settings."}
-            </span>
-          </label>
+          </section>
         </div>
 
-        <div className="mt-5 rounded-[22px] border border-white/10 bg-black/24 p-4">
+        <div className="mt-4 rounded-[24px] border border-white/10 bg-black/24 p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 items-start gap-3">
               <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] border border-[#A3FF12]/22 bg-[#A3FF12]/10 text-[#A3FF12]">
@@ -412,7 +425,7 @@ export function AccountQuickEditModal({
             Cancel
           </Button>
           <Button type="submit" className="min-h-12 flex-1 rounded-2xl bg-[#A3FF12] text-black hover:bg-[#8de300]" disabled={isSaving} aria-busy={isSaving}>
-            {isSaving ? "Saving..." : "Save"}
+            {isSaving ? "Saving..." : "Save Changes"}
           </Button>
         </div>
       </form>

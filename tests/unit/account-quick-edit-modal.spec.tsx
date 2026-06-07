@@ -10,7 +10,51 @@ vi.mock("next/link", () => ({
 }));
 
 describe("AccountQuickEditModal", () => {
-  it("validates required fields and keeps payment management on the saved wallet rail", async () => {
+  function expectTextOrder(...labels: string[]) {
+    const body = document.body.textContent ?? "";
+    const positions = labels.map((label) => body.indexOf(label));
+    positions.forEach((position, index) => {
+      expect(position, `${labels[index]} should be rendered`).toBeGreaterThanOrEqual(0);
+    });
+    for (let index = 1; index < positions.length; index += 1) {
+      expect(positions[index], `${labels[index]} should render after ${labels[index - 1]}`).toBeGreaterThan(positions[index - 1]);
+    }
+  }
+
+  it("renders the kiosk-style account field order and private/public helper copy", () => {
+    render(
+      <AccountQuickEditModal
+        open
+        variant="client"
+        displayName="Jordan Ellis"
+        publicUsername="@Jordan.Ellis"
+        email="jordan@example.com"
+        phone="8135550190"
+        cityLocation="Tampa, FL"
+        defaultPaymentMethodLabel="Visa ending in 4242"
+        managePaymentHref="/dashboard/client/more?section=wallet"
+        emailVerified
+        phoneVerified
+        onClose={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("dialog", { name: "Edit Account" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Public display name")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Public username")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("City/location")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("BVRB3R Username")).toHaveValue("@Jordan.Ellis");
+    expectTextOrder("BVRB3R Username", "Full Name", "Phone Number", "Email", "Location", "Default Payment Method");
+    expect(screen.getByText("Your BVRB3R username is public and appears across booking, profile, search, messages, and kiosk surfaces.")).toBeInTheDocument();
+    expect(screen.getByText("Private. Used for account, booking, kiosk, support, and admin verification.")).toBeInTheDocument();
+    expect(screen.getByText("Phone verified. Private. Used for verification, booking updates, kiosk check-in, and support.")).toBeInTheDocument();
+    expect(screen.getByText("Email verified. Private. Used for account access, booking receipts, kiosk activation, and support.")).toBeInTheDocument();
+    expect(screen.getByText("Choose a city where BVRB3R has active bookable supply.")).toBeInTheDocument();
+    expect(screen.getByText("BVRB3R never collects raw card numbers in this account modal.")).toBeInTheDocument();
+    expect(screen.getAllByDisplayValue("Tampa, FL")).toHaveLength(1);
+  });
+
+  it("validates required fields, normalizes username, and keeps payment management on the saved wallet rail", async () => {
     const onClose = vi.fn();
     const onSave = vi.fn();
 
@@ -19,6 +63,7 @@ describe("AccountQuickEditModal", () => {
         open
         variant="client"
         displayName="Jordan Ellis"
+        publicUsername="@Jordan.Ellis"
         email="jordan@example.com"
         phone="8135550190"
         cityLocation="Tampa, FL"
@@ -32,30 +77,30 @@ describe("AccountQuickEditModal", () => {
     );
 
     expect(screen.getByRole("dialog", { name: "Edit Account" })).toBeInTheDocument();
-    expect(screen.getByText("Default payment method")).toBeInTheDocument();
+    expect(screen.getByText("Default Payment Method")).toBeInTheDocument();
     expect(screen.getByText("Visa ending in 4242")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Manage Payment Method" })).toBeInTheDocument();
     expect(screen.queryByLabelText(/card number/i)).not.toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("Public display name"), { target: { value: "" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(await screen.findByText("Public display name is required.")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("BVRB3R Username"), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+    expect(await screen.findByText("BVRB3R username is required.")).toBeInTheDocument();
     expect(onSave).not.toHaveBeenCalled();
 
-    fireEvent.change(screen.getByLabelText("Public display name"), { target: { value: "Jordan" } });
+    fireEvent.change(screen.getByLabelText("BVRB3R Username"), { target: { value: "@Jordan.Ellis" } });
     fireEvent.change(screen.getByLabelText("Email"), { target: { value: "new@example.com" } });
-    fireEvent.change(screen.getByLabelText("Phone number"), { target: { value: "8135550202" } });
+    fireEvent.change(screen.getByLabelText("Phone Number"), { target: { value: "8135550202" } });
     expect(screen.getByText("Email changes require verification before this is marked verified.")).toBeInTheDocument();
     expect(screen.getByText("Phone changes require verification before this is marked verified.")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
 
     await waitFor(() => {
       expect(onSave).toHaveBeenCalledWith({
-        displayName: "Jordan",
+        displayName: "Jordan Ellis",
         fullName: "Jordan Ellis",
         email: "new@example.com",
         phone: "8135550202",
-        publicUsername: "",
+        publicUsername: "jordan.ellis",
         cityLocation: "Tampa, FL",
         defaultPaymentMethodId: null
       });
@@ -70,6 +115,7 @@ describe("AccountQuickEditModal", () => {
         open
         variant="client"
         displayName="Jordan Ellis"
+        publicUsername="@jordan"
         email="jordan@example.com"
         phone="8135550190"
         cityLocation=""
@@ -82,14 +128,14 @@ describe("AccountQuickEditModal", () => {
       />
     );
 
-    expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("City/location"), { target: { value: "Miami, FL" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(screen.getByRole("button", { name: "Save Changes" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Location"), { target: { value: "Miami, FL" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
     expect(await screen.findByText("Choose a supported barber-market city from the list.")).toBeInTheDocument();
     expect(onSave).not.toHaveBeenCalled();
-    fireEvent.change(screen.getByLabelText("City/location"), { target: { value: "Tam" } });
+    fireEvent.change(screen.getByLabelText("Location"), { target: { value: "Tam" } });
     fireEvent.click(screen.getByRole("button", { name: "Tampa, FL" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
 
     await waitFor(() => {
       expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ cityLocation: "Tampa, FL" }));
@@ -141,7 +187,7 @@ describe("AccountQuickEditModal", () => {
       />
     );
 
-    expect(screen.getByText("Default payment method & Payout")).toBeInTheDocument();
+    expect(screen.getByText("Default Payment Method")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Click here" }));
     expect(onPaymentAction).toHaveBeenCalledWith("/dashboard/barber/more#barber-settings-payouts");
   });

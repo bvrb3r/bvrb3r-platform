@@ -154,12 +154,13 @@ describe("owner More workspace", () => {
     expect(screen.getByText("SHOP OWNER ACCOUNT")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Edit Account" }));
     expect(screen.getByRole("dialog", { name: "Edit Account" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Public display name")).toBeInTheDocument();
+    expect(screen.getByLabelText("BVRB3R Username")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Public display name")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Email")).toBeInTheDocument();
-    expect(screen.getByLabelText("Phone number")).toBeInTheDocument();
-    expect(screen.getByText("Default payment method & Payout")).toBeInTheDocument();
+    expect(screen.getByLabelText("Phone Number")).toBeInTheDocument();
+    expect(screen.getByText("Default Payment Method")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Click here" })).toBeInTheDocument();
-    expect(screen.getByLabelText("City/location")).toBeInTheDocument();
+    expect(screen.getByLabelText("Location")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.getByText("Your shop setup")).toBeInTheDocument();
     expect(screen.getAllByText("Needs setup").length).toBeGreaterThan(0);
