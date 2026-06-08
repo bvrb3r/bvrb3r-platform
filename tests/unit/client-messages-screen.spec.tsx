@@ -171,6 +171,18 @@ describe("client messages screen", () => {
     useApprovePosPaymentRequestMutationMock.mockReset();
     useDeclinePosPaymentRequestMutationMock.mockReset();
     useSendMessageBroadcastMutationMock.mockReset();
+    Object.defineProperty(window, "requestAnimationFrame", {
+      configurable: true,
+      value: (callback: FrameRequestCallback) => window.setTimeout(() => callback(performance.now()), 0)
+    });
+    Object.defineProperty(window, "cancelAnimationFrame", {
+      configurable: true,
+      value: (handle: number) => window.clearTimeout(handle)
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: vi.fn()
+    });
 
     useRouterMock.mockReturnValue({
       push: vi.fn(),
@@ -2178,6 +2190,8 @@ describe("client messages screen", () => {
     const modal = screen.getByTestId("message-thread-modal");
     expect(within(modal).getByText("First appointment follow-up")).toBeInTheDocument();
     expect(within(modal).getByText("Second appointment update")).toBeInTheDocument();
+    expect(within(modal).getByTestId("message-thread-context-line")).toHaveTextContent("beard detail â€¢ May 21 â€¢ Completed");
+    expect(within(modal).getByTestId("message-thread-context-line")).not.toHaveTextContent("test cut â€¢ May 19 â€¢ Cancelled");
     expect(within(modal).getByTestId("related-appointment-contexts")).toHaveTextContent("beard detail");
     expect(within(modal).getByTestId("related-appointment-contexts")).toHaveTextContent("test cut");
   });
@@ -2306,13 +2320,171 @@ describe("client messages screen", () => {
     expect(screen.queryByText("Phillip mcgee")).not.toBeInTheDocument();
     expect(screen.getAllByText("Barber").length).toBeGreaterThan(0);
     expect(screen.getAllByText("8516 Island Breeze Ln - Temple Terrace, FL 33607").length).toBeGreaterThan(0);
-    expect(screen.getByText("test cut • May 19 • Cancelled")).toBeInTheDocument();
+    expect(screen.getByTestId("message-thread-context-line")).toHaveTextContent(/test cut.*May 19.*Cancelled/);
     expect(screen.getAllByText("Conversation opened...").length).toBeGreaterThan(1);
     expect(screen.getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/dashboard/client/profile-view/barber/phillipforsure?sourceThreadId=thread-appointment-1");
     expect(screen.getByRole("link", { name: "Book" })).toHaveAttribute("href", "/booking/new?barber=phillipforsure&barberId=barber-43b3cda2");
 
     const row = screen.getAllByText("Conversation opened...")[0]?.closest("a");
     expect(row?.className).toContain("min-h-[78px]");
+  });
+
+  it("opens a selected thread at the latest message and keeps the composer visible", async () => {
+    const thread = buildThread();
+    useMessageThreadsQueryMock.mockReturnValue({
+      data: {
+        available: true,
+        viewer: {
+          profileId: "profile-client",
+          fullName: "Jordan Ellis",
+          role: "client"
+        },
+        threads: [thread],
+        eligibleAppointments: [],
+        eligibleContacts: [],
+        broadcastTargets: []
+      },
+      isLoading: false,
+      error: null
+    });
+    useMessageThreadQueryMock.mockReturnValue({
+      data: {
+        available: true,
+        viewer: {
+          profileId: "profile-client",
+          fullName: "Jordan Ellis",
+          role: "client"
+        },
+        thread: buildThreadDetail(thread),
+        messages: [
+          {
+            id: "message-old",
+            body: "Old history",
+            messageType: "text",
+            createdAt: "2026-05-19T13:30:00.000Z",
+            senderName: "Phillip mcgee",
+            senderRole: "barber_user",
+            isOwn: false
+          },
+          {
+            id: "message-new",
+            body: "Conversation opened for Hair Cut on Jun 8, 4:30 PM",
+            messageType: "system",
+            createdAt: "2026-06-08T20:30:00.000Z",
+            senderName: "BVRB3R",
+            senderRole: "platform_admin",
+            isOwn: false
+          }
+        ]
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="client"
+        basePath="/dashboard/client/messages"
+        selectedThreadId="thread-appointment-1"
+        title="Messages"
+        subtitle="Your conversations, appointments, and support."
+      />
+    );
+
+    expect(screen.getByText("Conversation opened for Hair Cut on Jun 8, 4:30 PM")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Reply" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledWith({ block: "end", behavior: "auto" });
+    });
+  });
+
+  it("shows Jump to latest for new messages when the user has scrolled up", async () => {
+    const thread = buildThread();
+    let messages = [
+      {
+        id: "message-old",
+        body: "Old history",
+        messageType: "text",
+        createdAt: "2026-05-19T13:30:00.000Z",
+        senderName: "Phillip mcgee",
+        senderRole: "barber_user",
+        isOwn: false
+      }
+    ];
+    useMessageThreadsQueryMock.mockReturnValue({
+      data: {
+        available: true,
+        viewer: {
+          profileId: "profile-client",
+          fullName: "Jordan Ellis",
+          role: "client"
+        },
+        threads: [thread],
+        eligibleAppointments: [],
+        eligibleContacts: [],
+        broadcastTargets: []
+      },
+      isLoading: false,
+      error: null
+    });
+    useMessageThreadQueryMock.mockImplementation(() => ({
+      data: {
+        available: true,
+        viewer: {
+          profileId: "profile-client",
+          fullName: "Jordan Ellis",
+          role: "client"
+        },
+        thread: buildThreadDetail(thread),
+        messages
+      },
+      isLoading: false,
+      error: null
+    }));
+
+    const { rerender } = render(
+      <MessagingInboxScreen
+        surface="client"
+        basePath="/dashboard/client/messages"
+        selectedThreadId="thread-appointment-1"
+        title="Messages"
+        subtitle="Your conversations, appointments, and support."
+      />
+    );
+
+    const scrollContainer = screen.getByTestId("message-thread-scroll-container");
+    Object.defineProperty(scrollContainer, "scrollHeight", { configurable: true, value: 1000 });
+    Object.defineProperty(scrollContainer, "clientHeight", { configurable: true, value: 300 });
+    Object.defineProperty(scrollContainer, "scrollTop", { configurable: true, value: 0 });
+    fireEvent.scroll(scrollContainer);
+    vi.mocked(HTMLElement.prototype.scrollIntoView).mockClear();
+
+    messages = [
+      ...messages,
+      {
+        id: "message-new",
+        body: "Newest activity",
+        messageType: "text",
+        createdAt: "2026-06-08T20:30:00.000Z",
+        senderName: "Phillip mcgee",
+        senderRole: "barber_user",
+        isOwn: false
+      }
+    ];
+    rerender(
+      <MessagingInboxScreen
+        surface="client"
+        basePath="/dashboard/client/messages"
+        selectedThreadId="thread-appointment-1"
+        title="Messages"
+        subtitle="Your conversations, appointments, and support."
+      />
+    );
+
+    expect(await screen.findByRole("button", { name: "Jump to latest" })).toBeInTheDocument();
+    expect(HTMLElement.prototype.scrollIntoView).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Jump to latest" }));
+    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledWith({ block: "end", behavior: "smooth" });
   });
 
   it("opens a barber appointment thread in a modal and closes back to the inbox", () => {
@@ -2760,7 +2932,7 @@ describe("client messages screen", () => {
     expect(screen.getAllByText("@jordanellis").length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: "View Profile" })).toHaveAttribute("href", "/dashboard/barber/profile-view/client/jordanellis?sourceThreadId=thread-appointment-1");
     expect(screen.getAllByText("I am outside.").length).toBeGreaterThan(1);
-    expect(screen.getByText("test cut • May 19 • Cancelled")).toBeInTheDocument();
+    expect(screen.getByTestId("message-thread-context-line")).toHaveTextContent(/test cut.*May 19.*Cancelled/);
     expect(screen.getByRole("link", { name: "Book" })).toHaveAttribute("href", "/booking/new");
   });
 

@@ -400,6 +400,31 @@ function getConversationContextLine(thread: ActiveThread) {
   return thread.locationContext?.locationLabel ?? "Direct conversation";
 }
 
+function getFreshAppointmentContext(thread: ActiveThread, relatedAppointmentContexts: AppointmentContextView[] = []) {
+  if (relatedAppointmentContexts.length) {
+    return relatedAppointmentContexts[0] ?? null;
+  }
+
+  return thread?.appointmentContext ?? null;
+}
+
+function getConversationContextLineWithContext(thread: ActiveThread, appointmentContext: AppointmentContextView | null) {
+  if (!thread) {
+    return "";
+  }
+
+  if (appointmentContext) {
+    const date = formatContextDate(appointmentContext.startsAt);
+    return [
+      appointmentContext.serviceName,
+      date,
+      appointmentContext.statusLabel
+    ].filter(Boolean).join(" â€¢ ");
+  }
+
+  return getConversationContextLine(thread);
+}
+
 function getConversationTypeLabel(thread: MessagingThreadSummary | ActiveThread) {
   if (thread?.appointmentContext) {
     return "Booking conversation";
@@ -1182,7 +1207,8 @@ function ConversationPanel({
     .join(", ") ?? "";
   const displayName = getDisplayName(activeThread) || participantSummary || "Conversation";
   const roleBadgeLabel = getRoleBadgeLabel(activeThread?.counterpart?.role, activeThread?.threadType);
-  const hasAppointment = Boolean(activeThread?.appointmentContext);
+  const freshAppointmentContext = getFreshAppointmentContext(activeThread, relatedAppointmentContexts);
+  const hasAppointment = Boolean(freshAppointmentContext);
   const usernameLine = getSecondaryUsernameLine(activeThread, displayName);
   const publicContextLine = getPublicContextLine(activeThread);
   const conversationTypeLabel = getConversationTypeLabel(activeThread);
@@ -1193,6 +1219,62 @@ function ConversationPanel({
     : getTargetAwareComposerPlaceholder(activeThread, surface);
   const profileHref = getThreadProfileHref(activeThread, surface, activeThreadId ?? selectedThreadId ?? null);
   const bookingHref = activeThread?.counterpart?.bookingHref ?? "/booking/new";
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const bottomSentinelRef = useRef<HTMLDivElement | null>(null);
+  const previousThreadIdRef = useRef<string | undefined>(undefined);
+  const previousMessageCountRef = useRef(0);
+  const isNearBottomRef = useRef(true);
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+
+  const scrollToLatest = useCallback((behavior: ScrollBehavior = "auto") => {
+    const scrollContainer = scrollContainerRef.current;
+    const bottomSentinel = bottomSentinelRef.current;
+
+    if (!scrollContainer || !bottomSentinel) {
+      return;
+    }
+
+    bottomSentinel.scrollIntoView({ block: "end", behavior });
+    isNearBottomRef.current = true;
+    setShowJumpToLatest(false);
+  }, []);
+
+  const handleMessagesScroll = useCallback(() => {
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer) {
+      return;
+    }
+
+    const distanceFromBottom = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight;
+    const isNearBottom = distanceFromBottom <= 160;
+    isNearBottomRef.current = isNearBottom;
+    if (isNearBottom) {
+      setShowJumpToLatest(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!activeThreadId || isLoading) {
+      return;
+    }
+
+    const threadChanged = previousThreadIdRef.current !== activeThreadId;
+    const previousMessageCount = previousMessageCountRef.current;
+    const messageCountChanged = previousMessageCount !== messages.length;
+    const shouldScrollToLatest = threadChanged || (messageCountChanged && isNearBottomRef.current);
+
+    previousThreadIdRef.current = activeThreadId;
+    previousMessageCountRef.current = messages.length;
+
+    if (shouldScrollToLatest) {
+      const frame = window.requestAnimationFrame(() => scrollToLatest("auto"));
+      return () => window.cancelAnimationFrame(frame);
+    }
+
+    if (messageCountChanged && messages.length > previousMessageCount && !isNearBottomRef.current) {
+      setShowJumpToLatest(true);
+    }
+  }, [activeThreadId, isLoading, messages.length, scrollToLatest]);
 
   return (
     <section
@@ -1279,8 +1361,11 @@ function ConversationPanel({
               </div>
             </div>
 
-            <div className="rounded-lg border border-[#a3ff12]/18 bg-[#a3ff12]/8 px-3 py-2 text-xs font-semibold text-[#d7ffab]">
-              {getConversationContextLine(activeThread)}
+            <div
+              className="rounded-lg border border-[#a3ff12]/18 bg-[#a3ff12]/8 px-3 py-2 text-xs font-semibold text-[#d7ffab]"
+              data-testid="message-thread-context-line"
+            >
+              {getConversationContextLineWithContext(activeThread, freshAppointmentContext)}
             </div>
 
             {requestBanner ? (
@@ -1330,7 +1415,12 @@ function ConversationPanel({
 
       {activeThread ? (
         <>
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-4 scroll-smooth sm:px-4">
+          <div
+            ref={scrollContainerRef}
+            className="relative min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-4 scroll-smooth sm:px-4"
+            data-testid="message-thread-scroll-container"
+            onScroll={handleMessagesScroll}
+          >
             {messages.length ? messages.map((message) => {
               const paymentRequestMetadata = getPosPaymentRequestMetadata(message.metadata);
               return (
@@ -1368,6 +1458,16 @@ function ConversationPanel({
                 No messages yet.
               </div>
             )}
+            <div ref={bottomSentinelRef} data-testid="message-thread-bottom-sentinel" />
+            {showJumpToLatest ? (
+              <button
+                type="button"
+                className="sticky bottom-2 left-1/2 z-10 mx-auto flex -translate-x-0 items-center rounded-lg border border-[#a3ff12]/24 bg-[#0b0b0b]/92 px-3 py-2 text-xs font-black text-[#d7ffab] shadow-[0_12px_32px_rgba(0,0,0,0.36)] transition hover:border-[#a3ff12]/55"
+                onClick={() => scrollToLatest("smooth")}
+              >
+                Jump to latest
+              </button>
+            ) : null}
           </div>
 
           <div className="shrink-0 border-t border-white/8 p-3 pb-[calc(env(safe-area-inset-bottom)+12px)]">
