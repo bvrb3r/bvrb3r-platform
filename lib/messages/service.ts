@@ -92,6 +92,8 @@ type AppointmentRow = {
   confirmation_code: string | null;
   status: AppointmentStatus;
   starts_at: string;
+  created_at?: string | null;
+  updated_at?: string | null;
   client_id: string;
   barber_id: string;
   service_id: string;
@@ -469,6 +471,7 @@ type ThreadBundle = {
   publicMetadataByLocationId: Map<string, PublicMessagingMetadata>;
   latestMessageByThreadId: Map<string, MessageRow>;
   appointmentContexts: Map<string, HydratedAppointmentContext>;
+  latestAppointmentContextsByThreadId: Map<string, HydratedAppointmentContext>;
   locationLabels: Map<string, string>;
 };
 
@@ -1819,6 +1822,137 @@ async function readAppointmentContexts(supabase: SupabaseClient, appointments: A
   return appointmentMap;
 }
 
+function getAppointmentSortTime(appointment: AppointmentRow) {
+  const candidates = [appointment.starts_at, appointment.created_at, appointment.updated_at];
+  for (const candidate of candidates) {
+    const time = candidate ? new Date(candidate).getTime() : NaN;
+    if (Number.isFinite(time)) {
+      return time;
+    }
+  }
+
+  return 0;
+}
+
+function pickLatestAppointment(appointments: AppointmentRow[]) {
+  return [...appointments].sort((left, right) => getAppointmentSortTime(right) - getAppointmentSortTime(left))[0] ?? null;
+}
+
+async function readProfilesToClientsAndBarbers(supabase: SupabaseClient, profileIds: string[]) {
+  const uniqueProfileIds = unique(profileIds.filter(Boolean));
+  if (!uniqueProfileIds.length) {
+    return {
+      clientsByProfileId: new Map<string, ClientRow>(),
+      barbersByProfileId: new Map<string, BarberRow>()
+    };
+  }
+
+  const [clientsResult, barbersResult] = await Promise.all([
+    supabase.from("clients").select("id, profile_id").in("profile_id", uniqueProfileIds),
+    supabase.from("barbers").select("id, profile_id, reference_code, booking_slug").in("profile_id", uniqueProfileIds)
+  ]);
+
+  if (clientsResult.error || barbersResult.error) {
+    throw new MessagingServiceError("Unable to resolve latest appointment messaging context.", 500);
+  }
+
+  return {
+    clientsByProfileId: new Map(((clientsResult.data ?? []) as ClientRow[])
+      .filter((row) => row.profile_id)
+      .map((row) => [row.profile_id as string, row])),
+    barbersByProfileId: new Map(((barbersResult.data ?? []) as BarberRow[]).map((row) => [row.profile_id, row]))
+  };
+}
+
+async function readLatestAppointmentContextsByThreadId(input: {
+  supabase: SupabaseClient;
+  threads: MessageThreadRow[];
+  participants: ThreadParticipantRow[];
+  profilesById: Map<string, ProfileRow>;
+}) {
+  const latestByThreadId = new Map<string, HydratedAppointmentContext>();
+  if (!input.threads.length || !input.participants.length) {
+    return latestByThreadId;
+  }
+
+  const participantsByThreadId = new Map<string, ThreadParticipantRow[]>();
+  for (const participant of input.participants) {
+    participantsByThreadId.set(participant.thread_id, [...(participantsByThreadId.get(participant.thread_id) ?? []), participant]);
+  }
+
+  const profileIds = unique(input.participants.map((participant) => participant.profile_id));
+  const { clientsByProfileId, barbersByProfileId } = await readProfilesToClientsAndBarbers(input.supabase, profileIds);
+  const clientBarberPairs: Array<{ threadId: string; clientId: string; barberId: string }> = [];
+  const clientLocationPairs: Array<{ threadId: string; clientId: string; locationId: string }> = [];
+
+  for (const thread of input.threads) {
+    const threadParticipants = participantsByThreadId.get(thread.id) ?? [];
+    const clientParticipant = threadParticipants.find((participant) => {
+      const profile = input.profilesById.get(participant.profile_id) ?? null;
+      return clientsByProfileId.has(participant.profile_id) || (profile ? isClientRole(profile.role) : isClientRole(participant.thread_role));
+    }) ?? null;
+    const barberParticipant = threadParticipants.find((participant) => {
+      const profile = input.profilesById.get(participant.profile_id) ?? null;
+      return barbersByProfileId.has(participant.profile_id) || (profile ? isBarberRole(profile.role) : isBarberRole(participant.thread_role));
+    }) ?? null;
+    const client = clientParticipant ? clientsByProfileId.get(clientParticipant.profile_id) ?? null : null;
+    const barber = barberParticipant ? barbersByProfileId.get(barberParticipant.profile_id) ?? null : null;
+
+    if (thread.thread_type === "client_barber" && client?.id && barber?.id) {
+      clientBarberPairs.push({ threadId: thread.id, clientId: client.id, barberId: barber.id });
+      continue;
+    }
+
+    if (thread.thread_type === "client_shop" && client?.id && thread.location_id) {
+      clientLocationPairs.push({ threadId: thread.id, clientId: client.id, locationId: thread.location_id });
+    }
+  }
+
+  const clientIds = unique([
+    ...clientBarberPairs.map((pair) => pair.clientId),
+    ...clientLocationPairs.map((pair) => pair.clientId)
+  ]);
+  if (!clientIds.length) {
+    return latestByThreadId;
+  }
+
+  const appointmentsResult = await input.supabase
+    .from("appointments")
+    .select("id, reference_code, confirmation_code, status, starts_at, created_at, updated_at, client_id, barber_id, service_id, location_id")
+    .in("client_id", clientIds)
+    .order("starts_at", { ascending: false })
+    .limit(200);
+
+  if (appointmentsResult.error) {
+    throw new MessagingServiceError("Unable to load latest appointment messaging context.", 500);
+  }
+
+  const appointments = (appointmentsResult.data ?? []) as AppointmentRow[];
+  const appointmentContexts = await readAppointmentContexts(input.supabase, appointments);
+
+  for (const pair of clientBarberPairs) {
+    const latestAppointment = pickLatestAppointment(appointments.filter((appointment) =>
+      appointment.client_id === pair.clientId && appointment.barber_id === pair.barberId
+    ));
+    const context = latestAppointment ? appointmentContexts.get(latestAppointment.id) ?? null : null;
+    if (context) {
+      latestByThreadId.set(pair.threadId, context);
+    }
+  }
+
+  for (const pair of clientLocationPairs) {
+    const latestAppointment = pickLatestAppointment(appointments.filter((appointment) =>
+      appointment.client_id === pair.clientId && appointment.location_id === pair.locationId
+    ));
+    const context = latestAppointment ? appointmentContexts.get(latestAppointment.id) ?? null : null;
+    if (context) {
+      latestByThreadId.set(pair.threadId, context);
+    }
+  }
+
+  return latestByThreadId;
+}
+
 function buildThreadSummary(input: {
   thread: MessageThreadRow;
   currentProfileId: string;
@@ -1828,6 +1962,7 @@ function buildThreadSummary(input: {
   publicMetadataByLocationId: Map<string, PublicMessagingMetadata>;
   latestMessageByThreadId: Map<string, MessageRow>;
   appointmentContexts: Map<string, HydratedAppointmentContext>;
+  latestAppointmentContextsByThreadId: Map<string, HydratedAppointmentContext>;
   locationLabels: Map<string, string>;
   requestsByThreadId: Map<string, MessageThreadRequestRow>;
 }): MessagingThreadSummary {
@@ -1842,7 +1977,8 @@ function buildThreadSummary(input: {
     ? input.publicMetadataByLocationId.get(input.thread.location_id) ?? null
     : null;
   const publicMetadata = shopMetadata ?? counterpartMetadata;
-  const appointmentContext = input.thread.appointment_id ? input.appointmentContexts.get(input.thread.appointment_id) ?? null : null;
+  const appointmentContext = input.latestAppointmentContextsByThreadId.get(input.thread.id)
+    ?? (input.thread.appointment_id ? input.appointmentContexts.get(input.thread.appointment_id) ?? null : null);
   const latestMessage = input.latestMessageByThreadId.get(input.thread.id) ?? null;
   const latestSender = latestMessage?.sender_profile_id ? input.profilesById.get(latestMessage.sender_profile_id) ?? null : null;
   const latestSenderMetadata = latestMessage?.sender_profile_id
@@ -1911,6 +2047,7 @@ async function readThreadBundle(supabase: SupabaseClient, currentProfileId: stri
       publicMetadataByLocationId: new Map<string, PublicMessagingMetadata>(),
       latestMessageByThreadId: new Map<string, MessageRow>(),
       appointmentContexts: new Map<string, HydratedAppointmentContext>(),
+      latestAppointmentContextsByThreadId: new Map<string, HydratedAppointmentContext>(),
       locationLabels: new Map<string, string>()
     };
   }
@@ -1979,7 +2116,7 @@ async function readThreadBundle(supabase: SupabaseClient, currentProfileId: stri
   if (appointmentIds.length) {
     const appointmentResult = await supabase
       .from("appointments")
-      .select("id, reference_code, confirmation_code, status, starts_at, client_id, barber_id, service_id, location_id")
+      .select("id, reference_code, confirmation_code, status, starts_at, created_at, updated_at, client_id, barber_id, service_id, location_id")
       .in("id", appointmentIds);
 
     if (appointmentResult.error) {
@@ -1988,6 +2125,13 @@ async function readThreadBundle(supabase: SupabaseClient, currentProfileId: stri
 
     appointmentContexts = await readAppointmentContexts(supabase, (appointmentResult.data ?? []) as AppointmentRow[]);
   }
+
+  const latestAppointmentContextsByThreadId = await readLatestAppointmentContextsByThreadId({
+    supabase,
+    threads,
+    participants,
+    profilesById
+  });
 
   const locationRows = await readLocationsByValues(
     supabase,
@@ -2004,6 +2148,7 @@ async function readThreadBundle(supabase: SupabaseClient, currentProfileId: stri
     publicMetadataByLocationId,
     latestMessageByThreadId,
     appointmentContexts,
+    latestAppointmentContextsByThreadId,
     locationLabels: new Map(locationRows.rows.map((row) => [row.id, formatLocationLabel(row)]))
   };
 }
@@ -3173,6 +3318,7 @@ export async function getMessagingInboxPayload(user: UserAccount): Promise<Messa
       publicMetadataByLocationId: bundle.publicMetadataByLocationId,
       latestMessageByThreadId: bundle.latestMessageByThreadId,
       appointmentContexts: bundle.appointmentContexts,
+      latestAppointmentContextsByThreadId: bundle.latestAppointmentContextsByThreadId,
       locationLabels: bundle.locationLabels,
       requestsByThreadId: bundle.requestsByThreadId
     })
@@ -3263,17 +3409,22 @@ export async function getMessagingThreadPayload(user: UserAccount, threadId: str
     publicMetadataByLocationId: bundle.publicMetadataByLocationId,
     latestMessageByThreadId: bundle.latestMessageByThreadId,
     appointmentContexts: bundle.appointmentContexts,
+    latestAppointmentContextsByThreadId: bundle.latestAppointmentContextsByThreadId,
     locationLabels: bundle.locationLabels,
     requestsByThreadId: bundle.requestsByThreadId
   });
 
-  const relatedAppointmentContexts = unique(
-    bundle.threads
-      .map((row) => row.appointment_id)
-      .filter((value): value is string => Boolean(value))
-  )
-    .map((appointmentId) => bundle.appointmentContexts.get(appointmentId) ?? null)
-    .filter((context): context is HydratedAppointmentContext => Boolean(context))
+  const relatedAppointmentContextsById = new Map<string, HydratedAppointmentContext>();
+  for (const context of bundle.latestAppointmentContextsByThreadId.values()) {
+    relatedAppointmentContextsById.set(context.appointmentId, context);
+  }
+  for (const appointmentId of unique(bundle.threads.map((row) => row.appointment_id).filter((value): value is string => Boolean(value)))) {
+    const context = bundle.appointmentContexts.get(appointmentId) ?? null;
+    if (context) {
+      relatedAppointmentContextsById.set(context.appointmentId, context);
+    }
+  }
+  const relatedAppointmentContexts = Array.from(relatedAppointmentContextsById.values())
     .sort((left, right) => new Date(right.startsAt).getTime() - new Date(left.startsAt).getTime())
     .map(toAppointmentContextView);
   const messageRows = (messagesResult.data ?? []) as MessageRow[];
@@ -3374,6 +3525,7 @@ export async function searchMessagingParticipants(user: UserAccount, query: stri
         publicMetadataByLocationId: bundle.publicMetadataByLocationId,
         latestMessageByThreadId: bundle.latestMessageByThreadId,
         appointmentContexts: bundle.appointmentContexts,
+        latestAppointmentContextsByThreadId: bundle.latestAppointmentContextsByThreadId,
         locationLabels: bundle.locationLabels,
         requestsByThreadId: bundle.requestsByThreadId
       })
@@ -4427,6 +4579,7 @@ function buildArchitectSupportThreadSummary(input: {
   publicMetadataByLocationId: Map<string, PublicMessagingMetadata>;
   latestMessageByThreadId: Map<string, MessageRow>;
   appointmentContexts: Map<string, HydratedAppointmentContext>;
+  latestAppointmentContextsByThreadId: Map<string, HydratedAppointmentContext>;
   locationLabels: Map<string, string>;
   requestsByThreadId: Map<string, MessageThreadRequestRow>;
   messages: MessageRow[];
@@ -4440,6 +4593,7 @@ function buildArchitectSupportThreadSummary(input: {
     publicMetadataByLocationId: input.publicMetadataByLocationId,
     latestMessageByThreadId: input.latestMessageByThreadId,
     appointmentContexts: input.appointmentContexts,
+    latestAppointmentContextsByThreadId: input.latestAppointmentContextsByThreadId,
     locationLabels: input.locationLabels,
     requestsByThreadId: input.requestsByThreadId
   });
@@ -4516,6 +4670,7 @@ export async function getArchitectSupportInboxPayload(actor: ArchitectMessagingA
         publicMetadataByLocationId: bundle.publicMetadataByLocationId,
         latestMessageByThreadId: bundle.latestMessageByThreadId,
         appointmentContexts: bundle.appointmentContexts,
+        latestAppointmentContextsByThreadId: bundle.latestAppointmentContextsByThreadId,
         locationLabels: bundle.locationLabels,
         requestsByThreadId: bundle.requestsByThreadId,
         messages: bundle.messages
@@ -4570,6 +4725,7 @@ export async function getArchitectSupportThreadPayload(
     publicMetadataByLocationId: bundle.publicMetadataByLocationId,
     latestMessageByThreadId: bundle.latestMessageByThreadId,
     appointmentContexts: bundle.appointmentContexts,
+    latestAppointmentContextsByThreadId: bundle.latestAppointmentContextsByThreadId,
     locationLabels: bundle.locationLabels,
     requestsByThreadId: bundle.requestsByThreadId,
     messages: bundle.messages

@@ -8,7 +8,7 @@ vi.mock("@/lib/supabase/admin", () => ({
   createSupabaseAdminClient: createSupabaseAdminClientMock
 }));
 
-import { createMessagingThread, getMessagingInboxPayload } from "@/lib/messages/service";
+import { createMessagingThread, getMessagingInboxPayload, getMessagingThreadPayload } from "@/lib/messages/service";
 
 type Row = Record<string, unknown>;
 
@@ -75,13 +75,16 @@ function createMessagingSupabaseMock(options: {
   actor: "client" | "barber" | "owner";
   existingShopThread?: boolean;
   existingShopThreadType?: "client_shop" | "barber_shop";
+  existingClientBarberThread?: boolean;
+  latestClientBarberAppointment?: boolean;
   appointmentsError?: boolean;
   noOwnedShop?: boolean;
   readbackMembershipError?: boolean;
 }) {
   const state = {
-    message_threads: options.existingShopThread
-      ? [{
+    message_threads: [
+      ...(options.existingShopThread
+        ? [{
           id: "thread-existing-shop",
           thread_type: options.existingShopThreadType ?? (options.actor === "owner" || options.actor === "client" ? "client_shop" : "barber_shop"),
           appointment_id: null,
@@ -90,9 +93,22 @@ function createMessagingSupabaseMock(options: {
           updated_at: "2026-06-04T12:00:00.000Z",
           created_by_profile_id: "profile-owner"
         }]
-      : [] as Row[],
-    thread_participants: options.existingShopThread
-      ? [
+        : []),
+      ...(options.existingClientBarberThread
+        ? [{
+          id: "thread-client-barber",
+          thread_type: "client_barber",
+          appointment_id: "appointment-old-cancelled",
+          location_id: "location-1",
+          created_at: "2026-05-19T12:00:00.000Z",
+          updated_at: "2026-06-08T20:30:00.000Z",
+          created_by_profile_id: "profile-client"
+        }]
+        : [])
+    ] as Row[],
+    thread_participants: [
+      ...(options.existingShopThread
+        ? [
           {
             id: "participant-existing-1",
             thread_id: "thread-existing-shop",
@@ -110,8 +126,39 @@ function createMessagingSupabaseMock(options: {
             last_read_at: null
           }
         ]
+        : []),
+      ...(options.existingClientBarberThread
+        ? [
+          {
+            id: "participant-client-barber-1",
+            thread_id: "thread-client-barber",
+            profile_id: "profile-client",
+            thread_role: "client_user",
+            created_at: "2026-05-19T12:00:00.000Z",
+            last_read_at: null
+          },
+          {
+            id: "participant-client-barber-2",
+            thread_id: "thread-client-barber",
+            profile_id: "profile-barber",
+            thread_role: "barber_user",
+            created_at: "2026-05-19T12:00:00.000Z",
+            last_read_at: null
+          }
+        ]
+        : [])
+    ] as Row[],
+    messages: options.existingClientBarberThread
+      ? [{
+          id: "message-latest-hair-cut",
+          thread_id: "thread-client-barber",
+          sender_profile_id: null,
+          body: "Conversation opened for Hair Cut on Jun 8, 4:30 PM.",
+          message_type: "system",
+          metadata: null,
+          created_at: "2026-06-08T20:30:00.000Z"
+        }]
       : [] as Row[],
-    messages: [] as Row[],
     message_thread_requests: [] as Row[],
     message_user_blocks: [] as Row[],
     message_reports: [] as Row[],
@@ -300,6 +347,12 @@ function createMessagingSupabaseMock(options: {
         if (this.filters.get("profile_id") === "profile-client") {
           return [{ id: "client-1", profile_id: "profile-client" }];
         }
+        if (this.inFilter?.column === "profile_id" && this.inFilter.values.includes("profile-client")) {
+          return [{ id: "client-1", profile_id: "profile-client" }];
+        }
+        if (this.inFilter?.column === "id" && this.inFilter.values.includes("client-1")) {
+          return [{ id: "client-1", profile_id: "profile-client" }];
+        }
         return [];
       }
 
@@ -310,6 +363,9 @@ function createMessagingSupabaseMock(options: {
         if (this.inFilter?.column === "profile_id" && this.inFilter.values.includes("profile-barber")) {
           return [{ id: "barber-1", profile_id: "profile-barber", reference_code: "barber-1", booking_slug: "phillipforsure" }];
         }
+        if (this.inFilter?.column === "id" && this.inFilter.values.includes("barber-1")) {
+          return [{ id: "barber-1", profile_id: "profile-barber", reference_code: "barber-1", booking_slug: "phillipforsure" }];
+        }
         return [];
       }
 
@@ -318,8 +374,21 @@ function createMessagingSupabaseMock(options: {
       }
 
       if (this.table === "locations") {
+        if (this.inFilter?.column === "id" && (this.inFilter.values.includes("location-1") || this.inFilter.values.includes(productionLocationRow.id))) {
+          return [{ ...productionLocationRow, id: this.inFilter.values.includes("location-1") ? "location-1" : productionLocationRow.id }];
+        }
         if (this.inFilter?.column === "reference_code" && this.inFilter.values.includes(productionShopReference)) {
           return [productionLocationRow];
+        }
+        return [];
+      }
+
+      if (this.table === "services") {
+        if (this.inFilter?.column === "id") {
+          return [
+            { id: "service-old", name: "test cut" },
+            { id: "service-hair-cut", name: "Hair Cut" }
+          ].filter((service) => this.inFilter?.values.includes(service.id));
         }
         return [];
       }
@@ -404,6 +473,42 @@ function createMessagingSupabaseMock(options: {
       if (this.table === "appointments") {
         if (options.appointmentsError) {
           return [];
+        }
+        const appointments = [
+          {
+            id: "appointment-old-cancelled",
+            reference_code: "old-cancelled",
+            confirmation_code: "OLD1",
+            status: "cancelled",
+            starts_at: "2026-05-19T13:30:00.000Z",
+            created_at: "2026-05-18T12:00:00.000Z",
+            updated_at: "2026-05-19T13:45:00.000Z",
+            client_id: "client-1",
+            barber_id: "barber-1",
+            service_id: "service-old",
+            location_id: "location-1"
+          },
+          ...(options.latestClientBarberAppointment
+            ? [{
+              id: "appointment-hair-cut-completed",
+              reference_code: "hair-cut-completed",
+              confirmation_code: "NEW1",
+              status: "completed",
+              starts_at: "2026-06-08T16:30:00.000Z",
+              created_at: "2026-06-08T16:00:00.000Z",
+              updated_at: "2026-06-08T17:00:00.000Z",
+              client_id: "client-1",
+              barber_id: "barber-1",
+              service_id: "service-hair-cut",
+              location_id: "location-1"
+            }]
+            : [])
+        ];
+        if (this.inFilter?.column === "id") {
+          return appointments.filter((appointment) => this.inFilter?.values.includes(appointment.id));
+        }
+        if (this.inFilter?.column === "client_id") {
+          return appointments.filter((appointment) => this.inFilter?.values.includes(appointment.client_id));
         }
         return [];
       }
@@ -635,6 +740,68 @@ describe("messaging create or open conversation", () => {
       avatarUrl: "https://cdn.bvrb3r.test/shop-logo.jpg",
       publicProfileHref: "/shop/thebvrb3rshopuniversitymall"
     }));
+  });
+
+  it("hydrates inbox threads with the latest canonical client-barber appointment instead of stale thread metadata", async () => {
+    const supabase = createMessagingSupabaseMock({
+      actor: "barber",
+      existingClientBarberThread: true,
+      latestClientBarberAppointment: true
+    });
+    createSupabaseAdminClientMock.mockReturnValue(supabase.client);
+
+    const payload = await getMessagingInboxPayload({
+      role: "barber_user",
+      email: "barber@bvrb3r.test",
+      locationIds: []
+    } as never);
+
+    expect(payload.threads).toHaveLength(1);
+    expect(payload.threads[0]?.lastMessage?.body).toBe("Conversation opened for Hair Cut on Jun 8, 4:30 PM.");
+    expect(payload.threads[0]?.appointmentContext).toEqual(expect.objectContaining({
+      appointmentId: "appointment-hair-cut-completed",
+      serviceName: "Hair Cut",
+      status: "completed",
+      statusLabel: "Completed",
+      startsAt: "2026-06-08T16:30:00.000Z"
+    }));
+    expect(payload.threads[0]?.appointmentContext).not.toEqual(expect.objectContaining({
+      appointmentId: "appointment-old-cancelled",
+      statusLabel: "Cancelled"
+    }));
+  });
+
+  it("hydrates opened threads with latest appointment context before older related appointment history", async () => {
+    const supabase = createMessagingSupabaseMock({
+      actor: "barber",
+      existingClientBarberThread: true,
+      latestClientBarberAppointment: true
+    });
+    createSupabaseAdminClientMock.mockReturnValue(supabase.client);
+
+    const payload = await getMessagingThreadPayload({
+      role: "barber_user",
+      email: "barber@bvrb3r.test",
+      locationIds: []
+    } as never, "thread-client-barber");
+
+    expect(payload.thread?.appointmentContext).toEqual(expect.objectContaining({
+      appointmentId: "appointment-hair-cut-completed",
+      serviceName: "Hair Cut",
+      statusLabel: "Completed"
+    }));
+    expect(payload.relatedAppointmentContexts?.[0]).toEqual(expect.objectContaining({
+      appointmentId: "appointment-hair-cut-completed",
+      serviceName: "Hair Cut",
+      statusLabel: "Completed"
+    }));
+    expect(payload.relatedAppointmentContexts).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        appointmentId: "appointment-old-cancelled",
+        serviceName: "test cut",
+        statusLabel: "Cancelled"
+      })
+    ]));
   });
 
   it("labels created thread readback failures with the thread_readback step", async () => {

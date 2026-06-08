@@ -2190,8 +2190,8 @@ describe("client messages screen", () => {
     const modal = screen.getByTestId("message-thread-modal");
     expect(within(modal).getByText("First appointment follow-up")).toBeInTheDocument();
     expect(within(modal).getByText("Second appointment update")).toBeInTheDocument();
-    expect(within(modal).getByTestId("message-thread-context-line")).toHaveTextContent("beard detail â€¢ May 21 â€¢ Completed");
-    expect(within(modal).getByTestId("message-thread-context-line")).not.toHaveTextContent("test cut â€¢ May 19 â€¢ Cancelled");
+    expect(within(modal).getByTestId("message-thread-context-line")).toHaveTextContent("beard detail • May 21 • Completed");
+    expect(within(modal).getByTestId("message-thread-context-line")).not.toHaveTextContent("test cut • May 19 • Cancelled");
     expect(within(modal).getByTestId("related-appointment-contexts")).toHaveTextContent("beard detail");
     expect(within(modal).getByTestId("related-appointment-contexts")).toHaveTextContent("test cut");
   });
@@ -2396,6 +2396,71 @@ describe("client messages screen", () => {
     await waitFor(() => {
       expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledWith({ block: "end", behavior: "auto" });
     });
+  });
+
+  it("normalizes legacy mojibake separators in displayed message activity", () => {
+    const thread = buildThread({
+      lastMessage: {
+        id: "message-mojibake",
+        body: "test cut â€¢ May 19 â€¢ Cancelled",
+        messageType: "system",
+        createdAt: "2026-05-19T13:30:00.000Z",
+        senderName: "BVRB3R"
+      }
+    });
+    useMessageThreadsQueryMock.mockReturnValue({
+      data: {
+        available: true,
+        viewer: {
+          profileId: "profile-client",
+          fullName: "Jordan Ellis",
+          role: "client"
+        },
+        threads: [thread],
+        eligibleAppointments: [],
+        eligibleContacts: [],
+        broadcastTargets: []
+      },
+      isLoading: false,
+      error: null
+    });
+    useMessageThreadQueryMock.mockReturnValue({
+      data: {
+        available: true,
+        viewer: {
+          profileId: "profile-client",
+          fullName: "Jordan Ellis",
+          role: "client"
+        },
+        thread: buildThreadDetail(thread),
+        messages: [
+          {
+            id: "message-mojibake",
+            body: "test cut â€¢ May 19 â€¢ Cancelled",
+            messageType: "system",
+            createdAt: "2026-05-19T13:30:00.000Z",
+            senderName: "BVRB3R",
+            senderRole: "platform_admin",
+            isOwn: false
+          }
+        ]
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(
+      <MessagingInboxScreen
+        surface="client"
+        basePath="/dashboard/client/messages"
+        selectedThreadId="thread-appointment-1"
+        title="Messages"
+        subtitle="Your conversations, appointments, and support."
+      />
+    );
+
+    expect(screen.getAllByText("test cut • May 19 • Cancelled").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/â€¢/)).not.toBeInTheDocument();
   });
 
   it("shows Jump to latest for new messages when the user has scrolled up", async () => {

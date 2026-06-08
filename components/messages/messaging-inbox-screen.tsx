@@ -342,9 +342,17 @@ function isBookingRequestThread(thread: MessagingThreadSummary) {
   return Boolean(thread.appointmentContext && (statusText.includes("pending") || statusText.includes("request")));
 }
 
+function normalizeMessageDisplayText(value: string) {
+  return value
+    .replaceAll("â€¢", "•")
+    .replaceAll("â€™", "’")
+    .replaceAll("â€œ", "“")
+    .replaceAll("â€", "”");
+}
+
 function getThreadPreview(thread: MessagingThreadSummary) {
   if (thread.lastMessage?.body) {
-    return thread.lastMessage.body;
+    return normalizeMessageDisplayText(thread.lastMessage.body);
   }
 
   if (thread.appointmentContext) {
@@ -419,7 +427,7 @@ function getConversationContextLineWithContext(thread: ActiveThread, appointment
       appointmentContext.serviceName,
       date,
       appointmentContext.statusLabel
-    ].filter(Boolean).join(" â€¢ ");
+    ].filter(Boolean).join(" • ");
   }
 
   return getConversationContextLine(thread);
@@ -1445,7 +1453,7 @@ function ConversationPanel({
                         : "border border-white/8 bg-white/[0.06] text-white"
                   ].join(" ")}
                 >
-                  <p className="font-medium">{message.body}</p>
+                  <p className="font-medium">{normalizeMessageDisplayText(message.body)}</p>
                   <p className={["mt-1 text-[10px] font-bold", message.isOwn ? "text-black/52" : "text-white/38"].join(" ")}>
                     {message.messageType === "system" ? "System" : message.senderName ?? "Participant"} • {formatThreadTime(message.createdAt)}
                   </p>
