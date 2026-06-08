@@ -203,6 +203,13 @@ describe("kiosk mode screen", () => {
     expect(screen.queryByText("phillip@example.com")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByText("This is me").closest("button") as HTMLButtonElement);
+    expect(screen.getByText("Welcome back, @phillipmcgee.")).toBeInTheDocument();
+    expect(screen.getByText("Saved phone and email will be used privately for booking updates.")).toBeInTheDocument();
+    expect(screen.queryByText("(813) 555-0101")).not.toBeInTheDocument();
+    expect(screen.queryByText("name@example.com")).not.toBeInTheDocument();
+    expect(screen.queryByText("Phone number")).not.toBeInTheDocument();
+    expect(screen.queryByText("Email")).not.toBeInTheDocument();
+    expect(screen.getByText("Service")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Book next opening" }));
 
     await waitFor(() => {
@@ -212,6 +219,14 @@ describe("kiosk mode screen", () => {
         serviceId: "srv-cut"
       }));
     });
+    expect(bookingMock).toHaveBeenCalledWith(expect.not.objectContaining({
+      phone: "(813) 555-0101",
+      email: "name@example.com"
+    }));
+    expect(bookingMock).toHaveBeenCalledWith(expect.not.objectContaining({
+      phone: expect.any(String),
+      email: expect.any(String)
+    }));
   });
 
   it("shows loading and no-match username states", () => {

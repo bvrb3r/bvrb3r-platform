@@ -252,10 +252,15 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
     }
 
     setInteractionError(null);
+    const contactPayload = bookingForm.selectedProfileId
+      ? {}
+      : {
+          fullName: bookingForm.fullName.trim(),
+          phone: bookingForm.phone.trim(),
+          email: bookingForm.email.trim() || undefined
+        };
     const result = await bookingMutation.mutateAsync({
-      fullName: bookingForm.fullName.trim(),
-      phone: bookingForm.phone.trim(),
-      email: bookingForm.email.trim() || undefined,
+      ...contactPayload,
       publicUsername: bookingForm.publicUsername.trim() || undefined,
       selectedProfileId: bookingForm.selectedProfileId || undefined,
       serviceId: bookingForm.serviceId,
@@ -547,32 +552,55 @@ export function KioskModeScreen({ shopId, scope = "shop" }: { shopId: string; sc
                         </p>
                       ) : null}
                       {bookingForm.selectedProfileId ? (
-                        <p className="mt-3 rounded-[16px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 px-4 py-3 text-sm text-[#d7ffab]">
-                          Welcome back, {bookingForm.publicUsername}. We&apos;ll use your saved BVRB3R profile for this booking.
-                        </p>
+                        <div className="mt-3 rounded-[18px] border border-[#7CFF00]/18 bg-[#7CFF00]/8 px-4 py-3 text-sm leading-6 text-[#d7ffab]">
+                          <p className="font-semibold">Welcome back, {bookingForm.publicUsername}.</p>
+                          <p className="text-white/68">We&apos;ll use your saved BVRB3R profile for this booking.</p>
+                          <p className="mt-2 text-xs uppercase tracking-[0.18em] text-white/46">Contact on file</p>
+                          <p className="text-white/62">Saved phone and email will be used privately for booking updates.</p>
+                          <button
+                            type="button"
+                            className="mt-3 text-xs font-black uppercase tracking-[0.18em] text-white/58 underline decoration-white/20 underline-offset-4 transition hover:text-white"
+                            onClick={() => {
+                              setInteractionError(null);
+                              setBookingForm((current) => ({
+                                ...current,
+                                selectedProfileId: "",
+                                fullName: "",
+                                phone: "",
+                                email: ""
+                              }));
+                            }}
+                          >
+                            Use different info
+                          </button>
+                        </div>
                       ) : null}
                     </div>
-                    <div>
-                      <label className="mb-3 block surface-label">Full name</label>
-                      <Input value={bookingForm.fullName} onChange={(event) => {
-                        setInteractionError(null);
-                        setBookingForm((current) => ({ ...current, fullName: event.target.value }));
-                      }} placeholder="Jordan Ellis" />
-                    </div>
-                    <div>
-                      <label className="mb-3 block surface-label">Phone number</label>
-                      <Input value={bookingForm.phone} onChange={(event) => {
-                        setInteractionError(null);
-                        setBookingForm((current) => ({ ...current, phone: event.target.value }));
-                      }} placeholder="(813) 555-0101" />
-                    </div>
-                    <div>
-                      <label className="mb-3 block surface-label">Email</label>
-                      <Input value={bookingForm.email} onChange={(event) => {
-                        setInteractionError(null);
-                        setBookingForm((current) => ({ ...current, email: event.target.value }));
-                      }} placeholder="name@example.com" />
-                    </div>
+                    {bookingForm.selectedProfileId ? null : (
+                      <>
+                        <div>
+                          <label className="mb-3 block surface-label">Full name</label>
+                          <Input value={bookingForm.fullName} onChange={(event) => {
+                            setInteractionError(null);
+                            setBookingForm((current) => ({ ...current, fullName: event.target.value }));
+                          }} placeholder="Jordan Ellis" />
+                        </div>
+                        <div>
+                          <label className="mb-3 block surface-label">Phone number</label>
+                          <Input value={bookingForm.phone} onChange={(event) => {
+                            setInteractionError(null);
+                            setBookingForm((current) => ({ ...current, phone: event.target.value }));
+                          }} placeholder="(813) 555-0101" />
+                        </div>
+                        <div>
+                          <label className="mb-3 block surface-label">Email</label>
+                          <Input value={bookingForm.email} onChange={(event) => {
+                            setInteractionError(null);
+                            setBookingForm((current) => ({ ...current, email: event.target.value }));
+                          }} placeholder="name@example.com" />
+                        </div>
+                      </>
+                    )}
                   </div>
                   <div className="space-y-4">
                     <div>
