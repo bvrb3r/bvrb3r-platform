@@ -385,7 +385,7 @@ describe("BarberSettingsScreen Stripe return sync", () => {
 
     expect(screen.getAllByRole("heading", { name: "More" })).toHaveLength(1);
     const identityCard = screen.getByTestId("barber-more-identity-card");
-    const setupGate = screen.getByText("Your barber setup");
+    expect(screen.queryByText("Your barber setup")).not.toBeInTheDocument();
     expect(identityCard).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Edit Account" }));
     expect(screen.getByRole("dialog", { name: "Edit Account" })).toBeInTheDocument();
@@ -410,13 +410,13 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     expect(within(identityCard).getByText("@phillipforsure")).toBeInTheDocument();
     expect(within(identityCard).getByText("8516 Island Breeze Ln - Temple Terrace, FL 33607")).toBeInTheDocument();
     expect(screen.getByText("Kiosk Settings")).toBeInTheDocument();
-    expect(screen.getByText("4-digit PIN, locked device mode, and walk-in booking rules")).toBeInTheDocument();
+    expect(screen.getByText("4-digit PIN, walk-in booking, and kiosk mode")).toBeInTheDocument();
     expect(identityCard).not.toHaveTextContent("Independent barber");
     expect(identityCard).not.toHaveTextContent("Freelance service area");
     expect(identityCard).not.toHaveTextContent("Phils chair / 2172 University Square More / Tampa");
     expect(identityCard).not.toHaveTextContent("independent-barber-");
-    expect(screen.getByText("Business Control Hub")).toBeInTheDocument();
-    expect(identityCard.compareDocumentPosition(setupGate) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText("Your BVRB3R Settings")).toBeInTheDocument();
+    expect(screen.getByText("Barber Business Settings")).toBeInTheDocument();
     expect(screen.queryByText("Quick Actions")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Log out" })).toBeInTheDocument();
   });
@@ -490,7 +490,7 @@ describe("BarberSettingsScreen Stripe return sync", () => {
   });
 
   it("offers a manual refresh action near the payout blocker", async () => {
-    render(<BarberSettingsScreen user={resolveDemoUser("blaze@bvrb3r.demo")} embedded />);
+    render(<BarberSettingsScreen user={resolveDemoUser("blaze@bvrb3r.demo")} initialSection="payouts" embedded />);
 
     fireEvent.click(screen.getAllByRole("button", { name: "Refresh payout status" })[0]);
 
@@ -498,7 +498,7 @@ describe("BarberSettingsScreen Stripe return sync", () => {
   });
 
   it("shows the Stripe payout setup reason and resume action", () => {
-    render(<BarberSettingsScreen user={resolveDemoUser("blaze@bvrb3r.demo")} embedded />);
+    render(<BarberSettingsScreen user={resolveDemoUser("blaze@bvrb3r.demo")} initialSection="payouts" embedded />);
 
     expect(screen.getAllByText("Payout setup required").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Missing: individual.ssn_last_4.").length).toBeGreaterThan(0);
@@ -545,7 +545,7 @@ describe("BarberSettingsScreen Stripe return sync", () => {
       refetch: readinessRefetchMock
     });
 
-    render(<BarberSettingsScreen user={resolveDemoUser("blaze@bvrb3r.demo")} embedded />);
+    render(<BarberSettingsScreen user={resolveDemoUser("blaze@bvrb3r.demo")} initialSection="payouts" embedded />);
 
     expect(screen.getAllByText("Payout setup pending BVRB3R review").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Payout setup pending BVRB3R review.").length).toBeGreaterThan(0);
@@ -567,7 +567,7 @@ describe("BarberSettingsScreen Stripe return sync", () => {
       refetch: payoutsRefetchMock
     });
 
-    render(<BarberSettingsScreen user={resolveDemoUser("blaze@bvrb3r.demo")} embedded />);
+    render(<BarberSettingsScreen user={resolveDemoUser("blaze@bvrb3r.demo")} initialSection="payouts" embedded />);
 
     expect(screen.getByText("Eligible balance")).toBeInTheDocument();
     expect(screen.getAllByText("$4.75").length).toBeGreaterThan(0);
@@ -604,7 +604,7 @@ describe("BarberSettingsScreen Stripe return sync", () => {
       refetch: payoutsRefetchMock
     });
 
-    render(<BarberSettingsScreen user={resolveDemoUser("blaze@bvrb3r.demo")} embedded />);
+    render(<BarberSettingsScreen user={resolveDemoUser("blaze@bvrb3r.demo")} initialSection="payouts" embedded />);
 
     expect(screen.getByText("Cash Collected Today")).toBeInTheDocument();
     expect(screen.getByText("$35")).toBeInTheDocument();

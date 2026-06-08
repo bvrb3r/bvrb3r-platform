@@ -164,7 +164,6 @@ describe("owner More workspace", () => {
     expect(screen.getByRole("button", { name: "Click here" })).toBeInTheDocument();
     expect(screen.getByLabelText("Location")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(screen.getByText("Your shop setup")).toBeInTheDocument();
     expect(screen.getAllByText("Needs setup").length).toBeGreaterThan(0);
     expect(screen.queryByTestId("owner-public-shop-identity-section")).not.toBeInTheDocument();
     expect(screen.queryByText("Public Shop Profile")).not.toBeInTheDocument();
@@ -175,17 +174,19 @@ describe("owner More workspace", () => {
       "/dashboard/owner/public-profile",
     );
     expect(screen.queryByText("Unable to load shop profile")).not.toBeInTheDocument();
-    expect(screen.getByText("Your shop setup")).toBeInTheDocument();
-    expect(screen.getByText("Business Control Hub")).toBeInTheDocument();
-    expect(screen.getByText("Shop profile, branding, hours, and policies.")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Shop Profile" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Business Setup" })).toBeInTheDocument();
+    expect(screen.queryByText("Your shop setup")).not.toBeInTheDocument();
+    expect(screen.queryByText("Business Control Hub")).not.toBeInTheDocument();
+    expect(screen.getByText("Your BVRB3R Settings")).toBeInTheDocument();
+    expect(screen.getByText("Shop Business Settings")).toBeInTheDocument();
+    expect(screen.getByText("Shop profile, team, services, payouts, policies, and compliance controls.")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Shop Profile" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Business Setup" })).not.toBeInTheDocument();
     expect(screen.getAllByText("Kiosk Settings").length).toBeGreaterThan(0);
     expect(screen.getByText("4-digit PIN, shop kiosk mode, and eligible active barbers")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Payments & Banking" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Compliance & Security" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Payments & Banking" })).not.toBeInTheDocument();
+    expect(screen.getByText("Verification Status")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Support" })).toBeInTheDocument();
-    expect(screen.getByText("Ready amount $95")).toBeInTheDocument();
+    expect(screen.getByText("Payout Setup")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /log out/i })).toBeInTheDocument();
   });
 
@@ -337,10 +338,10 @@ describe("owner More workspace", () => {
     }} />);
 
     expect(screen.getAllByText("Verified").length).toBeGreaterThan(0);
-    expect(screen.getByText("Ready amount $210")).toBeInTheDocument();
+    expect(screen.getByText("Payouts connected")).toBeInTheDocument();
   });
 
-  it("opens the invite barber directory from the activation gate without routing back to overview", () => {
+  it("keeps team relationship controls as a settings row", () => {
     useOwnerTeamInviteDirectoryQueryMock.mockReturnValue({
       isLoading: false,
       data: {
@@ -369,9 +370,8 @@ describe("owner More workspace", () => {
 
     render(<OwnerSettingsWorkspace user={{ ...resolveDemoUser("owner@bvrb3r.demo"), appApprovalStatus: "approved", shopApprovalStatus: "approved" }} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Invite barber/i }));
-
-    expect(screen.getByRole("heading", { name: "Invite barber" })).toBeInTheDocument();
-    expect(screen.getByText("Wave Carter")).toBeInTheDocument();
+    expect(screen.getByText("Team & Roles")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Team & Roles/ })).toHaveAttribute("href", "/onboarding/owner/team");
+    expect(screen.queryByRole("heading", { name: "Invite barber" })).not.toBeInTheDocument();
   });
 });

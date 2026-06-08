@@ -22,10 +22,8 @@ import {
   Users,
   WalletCards
 } from "lucide-react";
-import { OwnerActivationGate } from "@/components/activation/tier1-activation-gates";
 import { AccountQuickEditModal, type AccountQuickEditInput, type AccountQuickEditLocationOption } from "@/components/dashboard/account/account-quick-edit-modal";
 import {
-  MoreActivationGate,
   MoreControlHub,
   MoreIdentityReadinessCard,
   MoreLogoutCard,
@@ -45,7 +43,7 @@ import { useCreateOwnerTeamInviteMutation, useOwnerTeamInviteDirectoryQuery } fr
 import { useMutateProfileMediaMutation, useProfileMediaWorkspaceQuery } from "@/lib/profile/client";
 import { formatPublicAddressLocation, formatPublicUsernameLine } from "@/lib/profile/public-identity-summary";
 import { uploadMediaAsset } from "@/lib/storage/media";
-import { cn, currency } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { getReadableActionError } from "@/lib/utils/feedback";
 import type { UserAccount } from "@/types/domain";
 
@@ -297,9 +295,6 @@ export function OwnerSettingsWorkspace({
     return accounts[0];
   }, [fintechQuery.data?.shops, ownerShopId]);
   const membershipCount = fintechQuery.data?.memberships.length ?? 0;
-  const hasBookableLinkedBarber = (fintechQuery.data?.barbers ?? []).some((account) => account.chargesEnabled && account.payoutsEnabled);
-  const readyForPayoutAmount = fintechQuery.data?.summary.readyForPayoutAmount ?? 0;
-  const needsAttentionCount = fintechQuery.data?.summary.needsAttentionAccounts ?? 0;
   const blockedRoutingCount = fintechQuery.data?.summary.blockedRoutingRecords ?? 0;
   const verificationStatus = user.shopApprovalStatus && user.shopApprovalStatus !== "not_required"
     ? user.shopApprovalStatus
@@ -603,48 +598,17 @@ export function OwnerSettingsWorkspace({
     }
   ];
 
-  const ownerGateActionHandlers = {
-    "owner-profile": () => window.location.assign("/dashboard/owner/public-profile"),
-    "owner-address": () => window.location.assign("/dashboard/owner/public-profile"),
-    "owner-hours": () => setQuickSetupModal("hours"),
-    "owner-payouts": () => window.location.assign("/dashboard/owner/money?view=fintech"),
-    "owner-invite": () => setQuickSetupModal("invite"),
-    "owner-accepted-barber": () => {
-      if (membershipCount > 0) {
-        setQuickSetupModal("invite");
-        return;
-      }
-
-      window.location.assign("/dashboard/owner/team");
-    },
-    "owner-bookable-barber": () => window.location.assign("/dashboard/owner/team"),
-    "owner-public-profile": () => setQuickSetupModal("visibility")
-  };
-
   const ownerMoreSections: MoreSectionGroupConfig[] = [
     {
       id: "owner-settings-shop-profile",
-      title: "Shop Profile",
-      subtitle: "Public shop information, branding, hours, and policies.",
-      rows: shopProfileRows
-    },
-    {
-      id: "owner-settings-business-setup",
-      title: "Business Setup",
-      subtitle: "Services, payout setup, team permissions, and commission controls.",
-      rows: businessSetupRows
-    },
-    {
-      id: "owner-settings-payments",
-      title: "Payments & Banking",
-      subtitle: "Bank accounts, payout schedule, and tax information.",
-      rows: paymentsRows
-    },
-    {
-      id: "owner-settings-compliance",
-      title: "Compliance & Security",
-      subtitle: "Verification, business documents, and secure access.",
-      rows: complianceRows
+      title: "Shop Business Settings",
+      subtitle: "Shop profile, team, services, payouts, policies, and compliance controls.",
+      rows: [
+        ...shopProfileRows,
+        ...businessSetupRows,
+        ...paymentsRows,
+        ...complianceRows
+      ]
     },
     {
       id: "owner-settings-support",
@@ -684,13 +648,7 @@ export function OwnerSettingsWorkspace({
         ]}
         primaryAction={{ label: "Edit Account", onClick: () => setAccountEditorOpen(true) }}
         secondaryAction={ownerShopId ? { label: "Public Profile", href: "/dashboard/owner/public-profile" } : undefined}
-        tiles={[
-          { label: "Shop Profile", value: ownerShopId && shopName !== "Shop profile incomplete" ? "Live" : "Needs setup", helper: "Public shop identity.", tone: ownerShopId ? "green" : "yellow", href: "#owner-settings-shop-profile" },
-          { label: "Verification", value: verificationLabel, helper: "Shop approval status.", tone: verificationTone, href: "#owner-settings-compliance" },
-          { label: "Payouts", value: stripeStatus.label, helper: `Ready amount ${currency(readyForPayoutAmount)}`, tone: stripeStatus.tone, href: "#owner-settings-payments" },
-          { label: "Team", value: membershipCount ? `${membershipCount} linked` : "No team yet", helper: "Barbers connected to this shop.", tone: membershipCount ? "green" : "muted", href: "/dashboard/owner" },
-          { label: "Booking", value: hasBookableLinkedBarber ? "Active" : "Setup needed", helper: needsAttentionCount ? `${needsAttentionCount} attention item${needsAttentionCount === 1 ? "" : "s"}` : "Shop profile readiness.", tone: hasBookableLinkedBarber ? "green" : "yellow", href: "/dashboard/owner/schedule" }
-        ]}
+        tiles={[]}
       />
 
       {primaryShop ? (
@@ -726,35 +684,15 @@ export function OwnerSettingsWorkspace({
         </GlassCard>
       ) : null}
 
-      <MoreActivationGate
-        title="Your shop setup"
-        subtitle="Finish these steps so your shop profile, team, bookings, and payouts are ready."
-      >
-        <OwnerActivationGate
-          input={{
-            approvalStatus: verificationStatus,
-            accountStatus: user.accountStatus,
-            hasShopProfile: Boolean(ownerShopId && shopName !== "Shop profile incomplete"),
-            hasAddress: user.locationIds.length > 0,
-            hasShopHours: user.locationIds.length > 0,
-            payoutsReady: Boolean(fintechShopAccount?.chargesEnabled && fintechShopAccount.payoutsEnabled),
-            hasInvitedBarber: membershipCount > 0,
-            hasAcceptedBarber: membershipCount > 0,
-            hasBookableBarber: hasBookableLinkedBarber,
-            publicProfileEnabled: true
-          }}
-          actionHandlers={ownerGateActionHandlers}
-        />
-      </MoreActivationGate>
-
       <MoreControlHub
-        title="Business Control Hub"
-        subtitle="Setup is grouped by decision, not paperwork."
+        title="Your BVRB3R Settings"
+        subtitle="Owner account settings, public profile links, notifications, privacy, and help."
         rows={[
-          { title: "Banking Status", subtitle: "Stripe and payout readiness.", href: "/dashboard/owner/money?view=fintech", status: stripeStatus.label, tone: stripeStatus.tone, icon: <WalletCards className="h-5 w-5" /> },
-          { title: "Team Permissions", subtitle: "Manage team roles and permissions.", href: "/dashboard/owner", status: membershipCount ? `${membershipCount} linked` : "Not set", tone: membershipCount ? "green" : "muted", icon: <Users className="h-5 w-5" /> },
-          { title: "Public Profile", subtitle: "Shop profile, branding, hours, and policies.", href: "/dashboard/owner/public-profile", icon: <Store className="h-5 w-5" /> },
-          { title: "Shop Readiness", subtitle: "Verification, documents, and compliance.", href: "#owner-settings-compliance", status: verificationLabel, tone: verificationTone, icon: <ShieldCheck className="h-5 w-5" /> }
+          { title: "Account", subtitle: "Owner name, contact, and profile photo", onClick: () => setAccountEditorOpen(true), needsAction: !(user.emailVerified || user.phoneVerified), icon: <Users className="h-5 w-5" /> },
+          { title: "Public Profile", subtitle: "Owner/shop public identity links", href: "/dashboard/owner/public-profile", icon: <Store className="h-5 w-5" /> },
+          { title: "Notifications", subtitle: "Messages and reminders", href: "/dashboard/owner/messages", icon: <MessageCircle className="h-5 w-5" /> },
+          { title: "Privacy", subtitle: "Contact and security", href: "/verify-contact", needsAction: !(user.emailVerified && user.phoneVerified), icon: <ShieldCheck className="h-5 w-5" /> },
+          { title: "Help", subtitle: "Support resources", href: "/contact", icon: <HelpCircle className="h-5 w-5" /> }
         ]}
       />
 
@@ -815,8 +753,7 @@ export function OwnerSettingsWorkspace({
       </section>
 
       <section className="space-y-3">
-        <MoreSectionGroup group={ownerMoreSections[1]} />
-        {ownerShopId ? (
+        {ownerShopId && initialSection === "kiosk" ? (
           <KioskSettingsCard
             scope="shop"
             targetReference={ownerShopId}
@@ -831,7 +768,7 @@ export function OwnerSettingsWorkspace({
         ) : null}
       </section>
 
-      {ownerMoreSections.slice(2).map((group) => <MoreSectionGroup key={group.title} group={group} />)}
+      {ownerMoreSections.slice(1).map((group) => <MoreSectionGroup key={group.title} group={group} />)}
 
       <section id="owner-settings-logout" className="scroll-mt-6">
         <MoreLogoutCard />

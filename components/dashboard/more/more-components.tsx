@@ -39,9 +39,12 @@ export type MoreSectionRow = {
   title: string;
   subtitle: string;
   href?: MoreHref;
+  onClick?: () => void;
   status?: string;
   tone?: MoreTone;
   icon?: ReactNode;
+  needsAction?: boolean;
+  testId?: string;
 };
 
 export type MoreSectionGroup = {
@@ -182,8 +185,9 @@ export function MoreIdentityReadinessCard({
         ) : null}
       </div>
 
-      <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        {tiles.map((tile) => {
+      {tiles.length ? (
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          {tiles.map((tile) => {
           const content = (
             <>
               <p className="text-[11px] font-black uppercase tracking-[0.18em] text-white/42">{tile.label}</p>
@@ -204,7 +208,8 @@ export function MoreIdentityReadinessCard({
             </div>
           );
         })}
-      </div>
+        </div>
+      ) : null}
     </GlassCard>
   );
 }
@@ -258,6 +263,12 @@ function MoreSectionRowLink({ row, compact = false }: { row: MoreSectionRow; com
         <span className="mt-1 block text-sm leading-5 text-white/52">{row.subtitle}</span>
       </span>
       {row.status ? <span className={cn("hidden rounded-full border px-3 py-1.5 text-xs font-extrabold sm:inline-flex", toneClasses(row.tone))}>{row.status}</span> : null}
+      {row.needsAction ? (
+        <span
+          className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#A3FF12] shadow-[0_0_14px_rgba(163,255,18,0.65)]"
+          aria-label={`${row.title} needs action`}
+        />
+      ) : null}
       <ChevronRight className="h-5 w-5 shrink-0 text-white/36 transition group-hover:translate-x-0.5 group-hover:text-[#A3FF12]" aria-hidden="true" />
     </>
   );
@@ -268,11 +279,15 @@ function MoreSectionRowLink({ row, compact = false }: { row: MoreSectionRow; com
   );
 
   return row.href ? (
-    <Link href={row.href as never} className={className}>
+    <Link href={row.href as never} className={className} data-testid={row.testId}>
       {body}
     </Link>
+  ) : row.onClick ? (
+    <button type="button" className={cn(className, "w-full text-left")} onClick={row.onClick} data-testid={row.testId}>
+      {body}
+    </button>
   ) : (
-    <div className={className}>{body}</div>
+    <div className={className} data-testid={row.testId}>{body}</div>
   );
 }
 

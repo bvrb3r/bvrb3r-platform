@@ -24,14 +24,12 @@ import {
   Trash2,
   UserRound,
 } from "lucide-react";
-import { ClientActivationGate } from "@/components/activation/tier1-activation-gates";
 import { ClientActionLink } from "@/components/client-experience/client-action-link";
 import { ClientPaymentMethodsPanel } from "@/components/client-experience/client-payment-methods-panel";
 import { ClientSectionBlock } from "@/components/client-experience/client-section-block";
 import { CLIENT_PRIMARY_TAB_HREFS } from "@/components/client-experience/client-tab-config";
 import { AccountQuickEditModal, type AccountQuickEditInput, type AccountQuickEditLocationOption } from "@/components/dashboard/account/account-quick-edit-modal";
 import {
-  MoreActivationGate,
   MoreControlHub,
   MoreIdentityReadinessCard,
   MoreLogoutCard,
@@ -283,7 +281,6 @@ export function ClientProfileScreen({
   const hasPhone = clientPhone.length > 0;
   const rewardsPoints = pointsBalance?.unlockedPoints ?? 0;
   const favoriteCount = (favoriteBarber ? 1 : 0) + preferredShops.length;
-  const bookingReady = Boolean(defaultPaymentMethod && (favoriteBarber || preferredShops.length || savedClientLocation));
   const supportedLocationOptions = (() => {
     const options = new Map<string, AccountQuickEditLocationOption>();
     preferredShops.forEach((shop) => addLocationOption(options, shop));
@@ -626,54 +623,27 @@ export function ClientProfileScreen({
         ]}
         primaryAction={{ label: "Edit Account", onClick: () => setAccountEditorOpen(true) }}
         secondaryAction={{ label: "Public Profile", href: "/dashboard/client/public-profile" }}
-        tiles={[
-          { label: "Account", value: emailVerified || phoneVerified ? "Verified" : "Needs setup", helper: "Email and phone readiness.", tone: emailVerified || phoneVerified ? "green" : "yellow", href: "#profile-account" },
-          { label: "Wallet", value: defaultPaymentMethod ? "Card ready" : "Add payment", helper: getPaymentMethodTitle(defaultPaymentMethod), tone: defaultPaymentMethod ? "green" : "yellow", href: "#profile-wallet" },
-          { label: "Rewards", value: `${rewardsPoints} pts`, helper: pointsBalance?.explanation.progressLabel ?? "Not active yet", tone: rewardsPoints ? "green" : "muted", href: "#profile-rewards" },
-          { label: "Favorites", value: favoriteCount ? `${favoriteCount} saved` : "Add favorites", helper: "Barbers and shops you trust.", tone: favoriteCount ? "green" : "muted", href: "#profile-preferences" },
-          { label: "Booking", value: bookingReady ? "Ready" : "Needs setup", helper: "Payment, favorites, and location.", tone: bookingReady ? "green" : "yellow", href: "#profile-activity" }
-        ]}
+        tiles={[]}
       />
 
-      <MoreActivationGate
-        title="Your BVRB3R setup"
-        subtitle="Finish these steps so booking, payments, rewards, and reminders work smoothly."
-      >
-        <ClientActivationGate
-          input={{
-            emailVerified,
-            phoneVerified: hasPhone && phoneVerified,
-            hasDefaultPaymentMethod: Boolean(defaultPaymentMethod),
-            hasLocation: Boolean(primaryShop ?? savedClientLocation ?? client?.favoriteShopReference),
-            hasPreferredSupply: Boolean(favoriteBarber ?? preferredShops.length)
-          }}
-          actionHandlers={{
-            "client-payment": () => scrollToSection("wallet"),
-            "client-location": openLocationModal,
-            "client-email": () => window.location.assign("/verify-contact"),
-            "client-phone": () => window.location.assign("/verify-contact"),
-            "client-preferred-supply": () => window.location.assign("/dashboard/client/search")
-          }}
-        />
-      </MoreActivationGate>
-
       <MoreControlHub
-        title="Personal Control Hub"
-        subtitle="Manage how BVRB3R knows you, bills you, reminds you, and tracks your activity."
+        title="Your BVRB3R Settings"
+        subtitle="This is where your BVRB3R account settings live. Items needing action show a green dot."
         rows={[
-          { href: "#profile-account", title: "Account", subtitle: "Name, contact, and profile photo", icon: <Camera className="h-5 w-5" /> },
-          { href: "#client-public-profile", title: "Public Profile", subtitle: "Culture profile and public identity", icon: <UserRound className="h-5 w-5" /> },
-          { href: "#profile-wallet", title: "Wallet", subtitle: "Cards and booking default", icon: <CreditCard className="h-5 w-5" /> },
+          { onClick: () => setAccountEditorOpen(true), title: "Account", subtitle: "Name, contact, and profile photo", icon: <Camera className="h-5 w-5" />, needsAction: !(emailVerified || phoneVerified) || !hasPhone },
+          { href: "/dashboard/client/public-profile", title: "Public Profile", subtitle: "Culture profile and public identity", icon: <UserRound className="h-5 w-5" /> },
+          { href: "/dashboard/client/more?section=wallet", title: "Wallet", subtitle: "Cards and booking default", icon: <CreditCard className="h-5 w-5" />, needsAction: !defaultPaymentMethod },
           { href: CLIENT_PRIMARY_TAB_HREFS.activity, title: "Activity", subtitle: "Appointments and receipts", icon: <ReceiptText className="h-5 w-5" /> },
-          { href: "#profile-rewards", title: "Rewards", subtitle: "Points and referrals", icon: <Gift className="h-5 w-5" /> },
-          { href: "#profile-preferences", title: "Favorites", subtitle: "Saved barbers and shops", icon: <Heart className="h-5 w-5" /> },
-          { href: "#profile-settings", title: "Notifications", subtitle: "Messages and reminders", icon: <BellRing className="h-5 w-5" /> },
-          { href: "/verify-contact", title: "Privacy", subtitle: "Contact and security", icon: <ShieldCheck className="h-5 w-5" /> },
+          { href: "/dashboard/client/more?section=rewards", title: "Rewards", subtitle: "Points and referrals", icon: <Gift className="h-5 w-5" /> },
+          { href: "/dashboard/client/more?section=preferences", title: "Favorites", subtitle: "Saved barbers and shops", icon: <Heart className="h-5 w-5" />, needsAction: favoriteCount === 0 },
+          { href: "/dashboard/client/more?section=settings", title: "Notifications", subtitle: "Messages and reminders", icon: <BellRing className="h-5 w-5" /> },
+          { href: "/verify-contact", title: "Privacy", subtitle: "Contact and security", icon: <ShieldCheck className="h-5 w-5" />, needsAction: !(emailVerified && phoneVerified) },
           { href: "/contact", title: "Help", subtitle: "Support resources", icon: <LifeBuoy className="h-5 w-5" /> }
         ]}
       />
 
-      <ClientSectionBlock
+      {selectedSection === "location" ? (
+        <ClientSectionBlock
         eyebrow="Account & Profile"
         title="Account & Profile"
         subtitle="Your identity, contact details, and payment default."
@@ -808,9 +778,11 @@ export function ClientProfileScreen({
             </div>
           </div>
         </div>
-      </ClientSectionBlock>
+        </ClientSectionBlock>
+      ) : null}
 
-      <ClientSectionBlock
+      {selectedSection === "activity" ? (
+        <ClientSectionBlock
         eyebrow="Public Profile"
         title="Client Public Profile"
         subtitle="Your culture profile for follows, posts, and social discovery inside BVRB3R."
@@ -858,9 +830,11 @@ export function ClientProfileScreen({
             </div>
           </div>
         </div>
-      </ClientSectionBlock>
+        </ClientSectionBlock>
+      ) : null}
 
-      <ClientSectionBlock
+      {selectedSection === "activity" ? (
+        <ClientSectionBlock
         eyebrow="Booking Activity"
         title="Booking Activity"
         subtitle="Appointments, receipts, history, and rebooking stay close to your account."
@@ -909,9 +883,11 @@ export function ClientProfileScreen({
             </ClientActionLink>
           </div>
         </div>
-      </ClientSectionBlock>
+        </ClientSectionBlock>
+      ) : null}
 
-      <ClientSectionBlock
+      {selectedSection === "preferences" ? (
+        <ClientSectionBlock
         eyebrow="Favorites"
         title="Favorites"
         subtitle="Keep the barbers and shops you want to get back to quickly."
@@ -993,9 +969,11 @@ export function ClientProfileScreen({
             </div>
           </div>
         </div>
-      </ClientSectionBlock>
+        </ClientSectionBlock>
+      ) : null}
 
-      <ClientSectionBlock
+      {selectedSection === "wallet" ? (
+        <ClientSectionBlock
         eyebrow="Wallet"
         title="Payments & Wallet"
         subtitle="Saved payment methods and the booking default stay here."
@@ -1013,9 +991,11 @@ export function ClientProfileScreen({
           </div>
           <ClientPaymentMethodsPanel initialMethods={paymentMethods} isSignedInClient={isSignedInClient} />
         </div>
-      </ClientSectionBlock>
+        </ClientSectionBlock>
+      ) : null}
 
-      <ClientSectionBlock
+      {selectedSection === "rewards" ? (
+        <ClientSectionBlock
         eyebrow="Rewards & Loyalty"
         title="Rewards & Loyalty"
         subtitle="BVR Points, progress, and membership stay compact here."
@@ -1067,9 +1047,11 @@ export function ClientProfileScreen({
             </div>
           </div>
         </div>
-      </ClientSectionBlock>
+        </ClientSectionBlock>
+      ) : null}
 
-      <ClientSectionBlock
+      {selectedSection === "rewards" ? (
+        <ClientSectionBlock
         eyebrow="Invite & Earn"
         title="Invite & Earn"
         subtitle="Share your code and earn when a qualified paid service closes."
@@ -1180,9 +1162,11 @@ export function ClientProfileScreen({
             </div>
           </div>
         </div>
-      </ClientSectionBlock>
+        </ClientSectionBlock>
+      ) : null}
 
-      <ClientSectionBlock
+      {selectedSection === "settings" ? (
+        <ClientSectionBlock
         eyebrow="Preferences"
         title="Preferences"
         subtitle="Notification controls and location preferences stay in one place."
@@ -1255,7 +1239,8 @@ export function ClientProfileScreen({
           </div>
 
         </div>
-      </ClientSectionBlock>
+        </ClientSectionBlock>
+      ) : null}
 
       {clientMoreSections.map((group) => <MoreSectionGroup key={group.title} group={group} />)}
 

@@ -322,51 +322,20 @@ describe("client profile screen", () => {
     expect(screen.queryByRole("dialog", { name: "Edit Account" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Public Profile" })).toHaveAttribute("href", "/dashboard/client/public-profile");
     expect(screen.queryByRole("link", { name: "View Activity" })).not.toBeInTheDocument();
-    expect(screen.getByText("Your BVRB3R setup")).toBeInTheDocument();
-    expect(screen.getByText("Personal Control Hub")).toBeInTheDocument();
-    const headings = [
-      screen.getByRole("heading", { name: "Account & Profile" }),
-      screen.getByRole("heading", { name: "Client Public Profile" }),
-      screen.getByRole("heading", { name: "Booking Activity" }),
-      screen.getByRole("heading", { name: "Payments & Wallet" }),
-      screen.getByRole("heading", { name: "Rewards & Loyalty" }),
-      screen.getByRole("heading", { name: "Invite & Earn" }),
-      screen.getByRole("heading", { name: "Preferences" }),
-      screen.getByRole("heading", { name: "Compliance & Security" }),
-      screen.getByRole("heading", { name: "Support" }),
-      screen.getAllByText("Account session")[0]
-    ];
-
-    for (let index = 1; index < headings.length; index += 1) {
-      expect(headings[index - 1].compareDocumentPosition(headings[index]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    }
-
-    expect(screen.getByLabelText("Edit profile photo")).toBeInTheDocument();
-    expect(screen.getByText("Client public profiles appear only in Culture, follow, and social surfaces. Barber and shop marketplace search stays reserved for bookable businesses.")).toBeInTheDocument();
-    expect(screen.queryByText("Quick profile sections")).not.toBeInTheDocument();
-    expect(screen.getByText("View appointments")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "View appointments" })).toHaveAttribute("href", "/dashboard/client/activity");
-    expect(screen.getByText("Rebook")).toBeInTheDocument();
-    expect(screen.getByText("View receipts")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "View receipts" })).toHaveAttribute("href", "/dashboard/client/activity");
-    expect(screen.queryByText("Preferred barber")).not.toBeInTheDocument();
-    expect(screen.queryByText("Standing routine")).not.toBeInTheDocument();
-    expect(screen.getByText("Preferred Barbers")).toBeInTheDocument();
-    expect(screen.getByText("wave")).toBeInTheDocument();
-    expect(screen.queryByText("Wave Carter")).not.toBeInTheDocument();
-    expect(screen.getByText("Preferred Shops")).toBeInTheDocument();
-    expect(screen.queryByText("Preferred Location")).not.toBeInTheDocument();
-    expect(screen.getByTestId("payment-methods-panel")).toHaveTextContent("Methods 2");
-    expect(screen.getByText("BVR Points")).toBeInTheDocument();
-    expect(screen.getByText("Shared")).toBeInTheDocument();
-    expect(screen.getByText("Signed up")).toBeInTheDocument();
-    expect(screen.getByText("Booked")).toBeInTheDocument();
-    expect(screen.getByText("Completed")).toBeInTheDocument();
-    expect(screen.getByText("Credited")).toBeInTheDocument();
-    expect(screen.getByText("In-app alerts")).toBeInTheDocument();
-    expect(screen.getByText("Text updates")).toBeInTheDocument();
-    expect(screen.getByText("Email updates")).toBeInTheDocument();
-    expect(screen.getByText("Push alerts")).toBeInTheDocument();
+    expect(screen.queryByText("Your BVRB3R setup")).not.toBeInTheDocument();
+    expect(screen.getByText("Your BVRB3R Settings")).toBeInTheDocument();
+    ["Account", "Public Profile", "Wallet", "Activity", "Rewards", "Favorites", "Notifications", "Privacy", "Help"].forEach((label) => {
+      expect(screen.getAllByText(label).length).toBeGreaterThan(0);
+    });
+    expect(screen.queryByRole("heading", { name: "Account & Profile" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Booking Activity" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Payments & Wallet" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Rewards & Loyalty" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Invite & Earn" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Preferences" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Preferred Barbers")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("payment-methods-panel")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Activity/ })).toHaveAttribute("href", "/dashboard/client/activity");
     expect(screen.getByRole("link", { name: /Contact Support/ })).toHaveAttribute("href", "/dashboard/client/messages?thread=support");
     expect(screen.queryByText("Settings & Support")).not.toBeInTheDocument();
     expect(screen.queryByText("Account settings")).not.toBeInTheDocument();
@@ -413,6 +382,7 @@ describe("client profile screen", () => {
     render(
       <ClientProfileScreen
         isSignedInClient
+        initialSection="preferences"
         authEmail="jordan@bvrb3r.app"
         authPhone="8135550190"
         payload={({
@@ -433,10 +403,9 @@ describe("client profile screen", () => {
 
     expect(screen.getByText("No preferred barbers yet")).toBeInTheDocument();
     expect(screen.getByText("No preferred shops yet")).toBeInTheDocument();
-    expect(screen.getByText("View appointments")).toBeInTheDocument();
-    expect(screen.getByText("No membership")).toBeInTheDocument();
-    expect(screen.getByText("Membership updates appear here when active.")).toBeInTheDocument();
-    expect(screen.getByText("No rewards activity yet.")).toBeInTheDocument();
+    expect(screen.queryByText("View appointments")).not.toBeInTheDocument();
+    expect(screen.queryByText("No membership")).not.toBeInTheDocument();
+    expect(screen.queryByText("No rewards activity yet.")).not.toBeInTheDocument();
     expect(screen.queryByText("Membership status could not be loaded right now.")).not.toBeInTheDocument();
   });
 
@@ -449,6 +418,7 @@ describe("client profile screen", () => {
     render(
       <ClientProfileScreen
         isSignedInClient
+        initialSection="rewards"
         authEmail="jordan@bvrb3r.app"
         authPhone="8135550190"
         payload={({
@@ -495,8 +465,8 @@ describe("client profile screen", () => {
     );
 
     expect(screen.getAllByText("jordan@bvrb3r.app").length).toBeGreaterThan(0);
-    expect(screen.getByText("Phone required")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Add Phone" })).toHaveAttribute("href", "/verify-contact");
+    expect(screen.getByText("Phone not set")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Add Phone" })).not.toBeInTheDocument();
   });
 
   it("treats the location section alias as profile account", () => {
@@ -540,6 +510,7 @@ describe("client profile screen", () => {
     render(
       <ClientProfileScreen
         isSignedInClient
+        initialSection="settings"
         authEmail="jordan@bvrb3r.app"
         authPhone="8135550190"
         payload={({
@@ -558,7 +529,7 @@ describe("client profile screen", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Set location/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Add Location|Edit Location/i }));
     expect(screen.getByRole("heading", { name: "Set location" })).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText(/City/i), { target: { value: "Charlotte" } });
     fireEvent.change(screen.getByLabelText(/State/i), { target: { value: "NC" } });
@@ -573,7 +544,7 @@ describe("client profile screen", () => {
       expect(screen.queryByRole("heading", { name: "Set location" })).not.toBeInTheDocument();
     });
     expect(screen.getAllByText("Charlotte, NC").length).toBeGreaterThan(0);
-    expect(screen.getByText("Location saved")).toBeInTheDocument();
+    expect(screen.getByText("Location saved for faster booking.")).toBeInTheDocument();
     expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ["client-home"] });
     expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ["marketplace"] });
     expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ["barber-search"] });
@@ -591,6 +562,7 @@ describe("client profile screen", () => {
     render(
       <ClientProfileScreen
         isSignedInClient
+        initialSection="settings"
         authEmail="jordan@bvrb3r.app"
         authPhone="8135550190"
         payload={({
@@ -609,7 +581,7 @@ describe("client profile screen", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Set location/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Add Location|Edit Location/i }));
     fireEvent.change(screen.getByLabelText(/City/i), { target: { value: "Tampa" } });
     fireEvent.change(screen.getByLabelText(/State/i), { target: { value: "FL" } });
     fireEvent.click(screen.getByRole("button", { name: /Save location/i }));
@@ -618,7 +590,7 @@ describe("client profile screen", () => {
       expect(screen.getAllByText("Client location update was denied by policy. (rls_denied)").length).toBeGreaterThan(0);
     });
     expect(screen.getByRole("heading", { name: "Set location" })).toBeInTheDocument();
-    expect(screen.getByText("Location missing")).toBeInTheDocument();
+    expect(screen.getAllByText("Client location update was denied by policy. (rls_denied)").length).toBeGreaterThan(0);
     expect(invalidateQueriesMock).not.toHaveBeenCalled();
   });
 
