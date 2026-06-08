@@ -102,6 +102,7 @@ function buildAppointment(
     end?: string;
     totalAmount?: number;
     grandTotal?: number;
+    balanceDue?: number;
     status?: string;
     display?: Record<string, unknown>;
     financial?: Record<string, unknown>;
@@ -386,7 +387,7 @@ describe("BarberScheduleWorkspace", () => {
 
     render(<BarberScheduleWorkspace barberName="Blaze King" surface="calendar" />);
 
-    expect(screen.getByText("Completed")).toBeInTheDocument();
+    expect(screen.getAllByText("Completed").length).toBeGreaterThan(0);
     expect(screen.getByText("Canceled")).toBeInTheDocument();
     expect(getStatCard("Est. Earnings").getByText("$5")).toBeInTheDocument();
     expect(getStatCard("Appointments").getByText("1")).toBeInTheDocument();
@@ -442,10 +443,182 @@ describe("BarberScheduleWorkspace", () => {
     expect(screen.getAllByText("test cut")[0]).toBeInTheDocument();
     expect(screen.getByText("Visa 4242")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /View Transaction/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Complete Service/i })).toBeInTheDocument();
+    expect(within(screen.getByRole("dialog", { name: "Appointment Details" })).getByRole("button", { name: /Complete Service/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Cancel Appointment/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Mark as No-Show/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Book Next/i })).toBeInTheDocument();
+  });
+
+  it("shows Complete Service directly on confirmed paid appointment cards", () => {
+    useBarberScheduleQueryMock.mockReturnValue({
+      data: {
+        ...buildSchedulePayload(),
+        timeline: {
+          ...buildSchedulePayload().timeline,
+          appointments: [buildAppointment("confirmed")]
+        }
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn()
+    });
+
+    render(<BarberScheduleWorkspace barberName="Blaze King" surface="calendar" />);
+
+    expect(screen.getByRole("button", { name: /^Complete Service$/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /View Details/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Message$/i })).toBeInTheDocument();
+  });
+
+  it("routes confirmed unpaid appointment cards to checkout instead of primary completion", () => {
+    useBarberScheduleQueryMock.mockReturnValue({
+      data: {
+        ...buildSchedulePayload(),
+        timeline: {
+          ...buildSchedulePayload().timeline,
+          appointments: [buildAppointment("confirmed", {
+            balanceDue: 35,
+            financial: {
+              capturedAmount: 0,
+              outstandingBalance: 35,
+              latestStatusLabel: "Payment due"
+            }
+          })]
+        }
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn()
+    });
+
+    render(<BarberScheduleWorkspace barberName="Blaze King" surface="calendar" />);
+
+    expect(screen.queryByRole("button", { name: /^Complete Service$/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^Checkout$/i }));
+    expect(pushMock).toHaveBeenCalledWith("/dashboard/barber/checkout?appointmentId=172b11d3-9319-536c-adb5-f548ae8fc775");
+  });
+
+  it("does not show active card completion for completed, canceled, or no-show appointments", () => {
+    useBarberScheduleQueryMock.mockReturnValue({
+      data: {
+        ...buildSchedulePayload(),
+        timeline: {
+          ...buildSchedulePayload().timeline,
+          appointments: [
+            buildAppointment("completed", { id: "appt-completed", start: `${TEST_DATE_KEY}T14:00:00.000Z`, end: `${TEST_DATE_KEY}T14:15:00.000Z` }),
+            buildAppointment("cancelled", { id: "appt-cancelled", start: `${TEST_DATE_KEY}T15:00:00.000Z`, end: `${TEST_DATE_KEY}T15:15:00.000Z` }),
+            buildAppointment("no_show", { id: "appt-no-show", start: `${TEST_DATE_KEY}T16:00:00.000Z`, end: `${TEST_DATE_KEY}T16:15:00.000Z` })
+          ]
+        }
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn()
+    });
+
+    render(<BarberScheduleWorkspace barberName="Blaze King" surface="calendar" />);
+
+    expect(screen.queryByRole("button", { name: /^Complete Service$/i })).not.toBeInTheDocument();
+    expect(screen.getAllByText("Completed").length).toBeGreaterThan(0);
+    expect(screen.getByText("Canceled")).toBeInTheDocument();
+    expect(screen.getByText("No-show")).toBeInTheDocument();
+  });
+
+  it("confirms and completes service directly from the appointment card", async () => {
+    let payload = {
+      ...buildSchedulePayload(),
+      timeline: {
+        ...buildSchedulePayload().timeline,
+        appointments: [buildAppointment("confirmed")]
+      }
+    };
+    const refetchMock = vi.fn(async () => {
+      payload = {
+        ...buildSchedulePayload(),
+        timeline: {
+          ...buildSchedulePayload().timeline,
+          appointments: [buildAppointment("completed")]
+        }
+      };
+      return { data: payload };
+    });
+    const mutateAsync = vi.fn(async () => ({
+      ok: true,
+      appointment: buildAppointment("completed"),
+      routing: {
+        status: "eligible",
+        payoutReadinessStatus: "eligible",
+        moneyRoutingStatus: "pending",
+        eligibleAt: `${TEST_DATE_KEY}T14:16:00.000Z`,
+        releasedAt: null,
+        barberAmountCents: 475,
+        platformAmountCents: 25,
+        shopAmountCents: 0,
+        barberPayoutAmount: 4.75,
+        platformFeeAmount: 0.25,
+        shopSplitAmount: 0
+      }
+    }));
+    useBarberScheduleQueryMock.mockImplementation(() => ({
+      data: payload,
+      isLoading: false,
+      error: null,
+      refetch: refetchMock
+    }));
+    useBarberLifecycleMutationMock.mockReturnValue({
+      mutateAsync,
+      isPending: false
+    });
+
+    render(<BarberScheduleWorkspace barberName="Blaze King" surface="calendar" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^Complete Service$/i }));
+    const dialog = await screen.findByRole("dialog", { name: "Complete this service?" });
+    expect(within(dialog).getByText("This will mark the appointment completed and make the payment eligible for routing according to BVRB3R rules.")).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: /^Complete Service$/i }));
+
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1));
+    expect(mutateAsync).toHaveBeenCalledWith({
+      appointmentId: "172b11d3-9319-536c-adb5-f548ae8fc775",
+      expectedRevision: 1,
+      action: "service_complete",
+      reason: undefined
+    });
+    await waitFor(() => expect(refetchMock).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Complete this service?" })).not.toBeInTheDocument());
+    expect(await screen.findByText("Service completed. Payout is now eligible.")).toBeInTheDocument();
+    expect(screen.getAllByText("Completed").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: /^Complete Service$/i })).not.toBeInTheDocument();
+  });
+
+  it("keeps the card unchanged and shows an error when card completion fails", async () => {
+    const payload = {
+      ...buildSchedulePayload(),
+      timeline: {
+        ...buildSchedulePayload().timeline,
+        appointments: [buildAppointment("confirmed")]
+      }
+    };
+    useBarberScheduleQueryMock.mockReturnValue({
+      data: payload,
+      isLoading: false,
+      error: null,
+      refetch: vi.fn()
+    });
+    useBarberLifecycleMutationMock.mockReturnValue({
+      mutateAsync: vi.fn().mockRejectedValue(new Error("Unable to write the payment routing ledger.")),
+      isPending: false
+    });
+
+    render(<BarberScheduleWorkspace barberName="Blaze King" surface="calendar" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^Complete Service$/i }));
+    const dialog = await screen.findByRole("dialog", { name: "Complete this service?" });
+    fireEvent.click(within(dialog).getByRole("button", { name: /^Complete Service$/i }));
+
+    expect(await screen.findByText("Couldn't complete service. Try again.")).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Complete this service?" })).toBeInTheDocument();
+    expect(screen.getByText("Confirmed")).toBeInTheDocument();
   });
 
   it("completes service directly from a confirmed appointment", async () => {
@@ -506,7 +679,7 @@ describe("BarberScheduleWorkspace", () => {
     render(<BarberScheduleWorkspace barberName="Blaze King" surface="calendar" />);
 
     fireEvent.click(screen.getByRole("button", { name: /View Details/i }));
-    fireEvent.click(await screen.findByRole("button", { name: /Complete Service/i }));
+    fireEvent.click(within(await screen.findByRole("dialog", { name: "Appointment Details" })).getByRole("button", { name: /Complete Service/i }));
 
     await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith({
       appointmentId: "172b11d3-9319-536c-adb5-f548ae8fc775",
@@ -517,7 +690,7 @@ describe("BarberScheduleWorkspace", () => {
     await waitFor(() => expect(refetchMock).toHaveBeenCalled());
     await waitFor(() => expect(screen.queryByText("Appointment Details")).not.toBeInTheDocument());
     expect(await screen.findByText("Service completed. Payout is now eligible.")).toBeInTheDocument();
-    expect(screen.getByText("Completed")).toBeInTheDocument();
+    expect(screen.getAllByText("Completed").length).toBeGreaterThan(0);
     expect(screen.getByText("Payout eligible")).toBeInTheDocument();
   });
 
@@ -558,7 +731,7 @@ describe("BarberScheduleWorkspace", () => {
     render(<BarberScheduleWorkspace barberName="Blaze King" surface="calendar" />);
 
     fireEvent.click(screen.getByRole("button", { name: /View Details/i }));
-    fireEvent.click(await screen.findByRole("button", { name: /Complete Service/i }));
+    fireEvent.click(within(await screen.findByRole("dialog", { name: "Appointment Details" })).getByRole("button", { name: /Complete Service/i }));
 
     await waitFor(() => expect(screen.queryByText("Appointment Details")).not.toBeInTheDocument());
     await waitFor(() => expect(refetchMock).toHaveBeenCalled());
@@ -587,11 +760,11 @@ describe("BarberScheduleWorkspace", () => {
     render(<BarberScheduleWorkspace barberName="Blaze King" surface="calendar" />);
 
     fireEvent.click(screen.getByRole("button", { name: /View Details/i }));
-    fireEvent.click(await screen.findByRole("button", { name: /Complete Service/i }));
+    fireEvent.click(within(await screen.findByRole("dialog", { name: "Appointment Details" })).getByRole("button", { name: /Complete Service/i }));
 
-    expect(await screen.findByText("Unable to write the payment routing ledger.")).toBeInTheDocument();
+    expect(await screen.findByText("Couldn't complete service. Try again.")).toBeInTheDocument();
     expect(screen.getByText("Appointment Details")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Complete Service/i })).toBeInTheDocument();
+    expect(within(screen.getByRole("dialog", { name: "Appointment Details" })).getByRole("button", { name: /Complete Service/i })).toBeInTheDocument();
   });
 
   it("hides Complete Service and shows payout state for completed details", async () => {

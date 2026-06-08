@@ -430,6 +430,10 @@ function canCompleteAppointment(appointment: BarberOperationalAppointment) {
   return appointment.status === "confirmed" || appointment.status === "checked_in" || appointment.status === "in_service";
 }
 
+function isAppointmentPaidForCardCompletion(appointment: BarberOperationalAppointment) {
+  return appointment.financial.capturedAmount > 0 || appointment.balanceDue <= 0 || appointment.financial.outstandingBalance <= 0;
+}
+
 function canCancelAppointment(appointment: BarberOperationalAppointment) {
   return appointment.status === "confirmed" || appointment.status === "checked_in" || appointment.status === "in_service";
 }
@@ -453,16 +457,26 @@ function AppointmentCard({
   viewMode,
   highlighted,
   onViewDetails,
+  onCompleteRequest,
+  onCheckout,
   onMessage,
+  isCompleting,
   isMessagePending
 }: {
   appointment: BarberOperationalAppointment;
   viewMode: BarberScheduleViewMode;
   highlighted: boolean;
   onViewDetails: (appointment: BarberOperationalAppointment) => void;
+  onCompleteRequest: (appointment: BarberOperationalAppointment) => void;
+  onCheckout: (appointment: BarberOperationalAppointment) => void;
   onMessage: (appointment: BarberOperationalAppointment) => Promise<void>;
+  isCompleting: boolean;
   isMessagePending: boolean;
 }) {
+  const canComplete = canCompleteAppointment(appointment);
+  const isPaid = isAppointmentPaidForCardCompletion(appointment);
+  const isCompleted = appointment.status === "completed";
+
   return (
     <GlassCard
       active={highlighted}
@@ -512,9 +526,37 @@ function AppointmentCard({
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2 border-t border-white/8 pt-4">
+        {canComplete && isPaid ? (
+          <ActionButton
+            type="button"
+            className="min-h-10 px-4"
+            disabled={isCompleting}
+            onClick={(event) => {
+              event.stopPropagation();
+              onCompleteRequest(appointment);
+            }}
+          >
+            {isCompleting ? "Completing..." : "Complete Service"}
+          </ActionButton>
+        ) : null}
+        {canComplete && !isPaid ? (
+          <ActionButton
+            type="button"
+            className="min-h-10 px-4"
+            variant="secondary"
+            onClick={(event) => {
+              event.stopPropagation();
+              onCheckout(appointment);
+            }}
+          >
+            Checkout
+          </ActionButton>
+        ) : null}
+        {isCompleted ? <span className="status-pill min-h-10 text-white/68">Completed</span> : null}
         <ActionButton
           type="button"
           className="min-h-10 px-4"
+          variant={canComplete && isPaid ? "secondary" : undefined}
           onClick={(event) => {
             event.stopPropagation();
             onViewDetails(appointment);
@@ -537,6 +579,45 @@ function AppointmentCard({
         </ActionButton>
       </div>
     </GlassCard>
+  );
+}
+
+function CompleteServiceConfirmation({
+  appointment,
+  isPending,
+  onCancel,
+  onConfirm
+}: {
+  appointment: BarberOperationalAppointment;
+  isPending: boolean;
+  onCancel: () => void;
+  onConfirm: () => Promise<void>;
+}) {
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/74 px-4 py-5 backdrop-blur-sm sm:items-center" role="dialog" aria-modal="true" aria-labelledby="complete-service-title">
+      <div className="w-full max-w-md rounded-[28px] border border-white/10 bg-[#070707] p-5 text-white shadow-[0_28px_90px_rgba(0,0,0,0.55)] sm:p-6">
+        <p className="bvr-section-label text-[#d7ffab]">Chair action</p>
+        <h3 id="complete-service-title" className="mt-3 text-2xl font-extrabold tracking-[-0.03em] text-white">
+          Complete this service?
+        </h3>
+        <p className="mt-3 text-sm leading-6 text-white/62">
+          This will mark the appointment completed and make the payment eligible for routing according to BVRB3R rules.
+        </p>
+        <div className="mt-4 rounded-[20px] border border-white/8 bg-black/24 p-4">
+          <p className="text-base font-extrabold text-white">{appointment.display.clientName}</p>
+          <p className="mt-1 text-sm text-white/58">{appointment.display.serviceName} - {formatTimeRange(appointment.start, appointment.end)}</p>
+          <p className="mt-2 text-sm font-bold text-[#d7ffab]">{appointment.financial.latestStatusLabel}</p>
+        </div>
+        <div className="mt-5 grid gap-2 sm:grid-cols-2">
+          <ActionButton type="button" variant="secondary" className="min-h-11 px-4" disabled={isPending} onClick={onCancel}>
+            Cancel
+          </ActionButton>
+          <ActionButton type="button" className="min-h-11 px-4" disabled={isPending} onClick={() => void onConfirm()}>
+            {isPending ? "Completing..." : "Complete Service"}
+          </ActionButton>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -856,6 +937,7 @@ export function BarberScheduleWorkspace({
   const [pendingAppointmentId, setPendingAppointmentId] = useState<string | null>(null);
   const [pendingDetailAction, setPendingDetailAction] = useState<AppointmentDetailAction | null>(null);
   const [selectedAppointmentId, setSelectedAppointmentId] = useState<string | null>(null);
+  const [completeConfirmationAppointmentId, setCompleteConfirmationAppointmentId] = useState<string | null>(null);
   const [appointmentDetailView, setAppointmentDetailView] = useState<"details" | "transaction">("details");
   const [appointmentOverrides, setAppointmentOverrides] = useState<Record<string, AppointmentLocalOverride>>({});
   const [statusUpdate, setStatusUpdate] = useState<{ tone: "success" | "error"; message: string } | null>(null);
@@ -934,6 +1016,9 @@ export function BarberScheduleWorkspace({
     ?? null;
   const selectedAppointment = selectedAppointmentId
     ? timelineAppointments.find((appointment) => appointment.id === selectedAppointmentId) ?? null
+    : null;
+  const completeConfirmationAppointment = completeConfirmationAppointmentId
+    ? timelineAppointments.find((appointment) => appointment.id === completeConfirmationAppointmentId) ?? null
     : null;
   const errorMessage = scheduleQuery.error ? getReadableActionError(scheduleQuery.error as BarberApiError) : null;
 
@@ -1042,12 +1127,7 @@ export function BarberScheduleWorkspace({
     setAppointmentDetailView("details");
   }
 
-  async function handleAppointmentDetailAction(action: AppointmentDetailAction) {
-    const appointment = selectedAppointment;
-    if (!appointment) {
-      return;
-    }
-
+  async function runAppointmentAction(appointment: BarberOperationalAppointment, action: AppointmentDetailAction, options: { closeDetailsOnComplete?: boolean; closeConfirmationOnComplete?: boolean } = {}) {
     const successMessage = action === "service_complete"
       ? "Service completed. Payout is now eligible."
       : action === "cancel"
@@ -1103,10 +1183,13 @@ export function BarberScheduleWorkspace({
         }
       }));
       let modalClosed = false;
-      if (action === "service_complete") {
+      if (action === "service_complete" && options.closeDetailsOnComplete) {
         setSelectedAppointmentId(null);
         setAppointmentDetailView("details");
         modalClosed = true;
+      }
+      if (action === "service_complete" && options.closeConfirmationOnComplete) {
+        setCompleteConfirmationAppointmentId(null);
       }
       let refetchSucceeded = false;
       try {
@@ -1131,6 +1214,9 @@ export function BarberScheduleWorkspace({
       console.warn(action === "service_complete" ? "[barber-calendar] complete_action_result" : "[barber-calendar] appointment_action_result", {
         action,
         appointmentId: appointment.id,
+        barberId: payload?.barberId ?? null,
+        failedStep: "appointment_lifecycle_mutation",
+        serverMessage: actionErrorMessage,
         ok: false,
         previousStatus: appointment.status,
         nextStatus: null,
@@ -1140,12 +1226,30 @@ export function BarberScheduleWorkspace({
       });
       setStatusUpdate({
         tone: "error",
-        message: actionErrorMessage
+        message: action === "service_complete" ? "Couldn't complete service. Try again." : actionErrorMessage
       });
     } finally {
       setPendingAppointmentId(null);
       setPendingDetailAction(null);
     }
+  }
+
+  async function handleAppointmentDetailAction(action: AppointmentDetailAction) {
+    const appointment = selectedAppointment;
+    if (!appointment) {
+      return;
+    }
+
+    await runAppointmentAction(appointment, action, { closeDetailsOnComplete: true });
+  }
+
+  async function handleAppointmentCardComplete() {
+    const appointment = completeConfirmationAppointment;
+    if (!appointment || pendingAppointmentId === appointment.id) {
+      return;
+    }
+
+    await runAppointmentAction(appointment, "service_complete", { closeConfirmationOnComplete: true });
   }
 
   async function handleMessage(appointment: BarberOperationalAppointment) {
@@ -1175,6 +1279,10 @@ export function BarberScheduleWorkspace({
     }
 
     router.push(`/booking/new?${params.toString()}`);
+  }
+
+  function handleCheckoutAppointment(appointment: BarberOperationalAppointment) {
+    router.push(`/dashboard/barber/checkout?appointmentId=${encodeURIComponent(appointment.id)}` as Route);
   }
 
   function handleAddAppointment() {
@@ -1212,6 +1320,14 @@ export function BarberScheduleWorkspace({
           onMessage={handleMessage}
           onBookNext={handleBookNext}
           isMessagePending={createThreadMutation.isPending}
+        />
+      ) : null}
+      {completeConfirmationAppointment ? (
+        <CompleteServiceConfirmation
+          appointment={completeConfirmationAppointment}
+          isPending={pendingAppointmentId === completeConfirmationAppointment.id && pendingDetailAction === "service_complete"}
+          onCancel={() => setCompleteConfirmationAppointmentId(null)}
+          onConfirm={handleAppointmentCardComplete}
         />
       ) : null}
       {!showCalendar && statusUpdate ? <FeedbackBanner tone={statusUpdate.tone} message={statusUpdate.message} /> : null}
@@ -1451,7 +1567,10 @@ export function BarberScheduleWorkspace({
                   viewMode={scheduleView}
                   highlighted={entry.appointment.id === currentOrNextAppointmentId}
                   onViewDetails={handleViewDetails}
+                  onCompleteRequest={(appointment) => setCompleteConfirmationAppointmentId(appointment.id)}
+                  onCheckout={handleCheckoutAppointment}
                   onMessage={handleMessage}
+                  isCompleting={pendingAppointmentId === entry.appointment.id && pendingDetailAction === "service_complete"}
                   isMessagePending={createThreadMutation.isPending}
                 />
               ) : (
