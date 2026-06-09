@@ -10,6 +10,7 @@ import {
   CalendarDays,
   Copy,
   CreditCard,
+  FileText,
   Gift,
   Heart,
   KeyRound,
@@ -20,9 +21,10 @@ import {
   ReceiptText,
   Repeat2,
   ShieldCheck,
+  SlidersHorizontal,
   Store,
   Trash2,
-  UserRound,
+  WalletCards,
 } from "lucide-react";
 import { ClientActionLink } from "@/components/client-experience/client-action-link";
 import { ClientPaymentMethodsPanel } from "@/components/client-experience/client-payment-methods-panel";
@@ -290,12 +292,23 @@ export function ClientProfileScreen({
   })();
   const clientMoreSections: MoreSectionGroupConfig[] = [
     {
+      title: "Payments & Banking",
+      subtitle: "Cards, receipts, rewards, credits, and payment history.",
+      rows: [
+        { href: "/dashboard/client/more?section=wallet", title: "Wallet", subtitle: "Cards and booking default", icon: <CreditCard className="h-5 w-5" />, needsAction: !defaultPaymentMethod },
+        { href: CLIENT_PRIMARY_TAB_HREFS.activity, title: "Receipts", subtitle: "Appointments and receipts", icon: <ReceiptText className="h-5 w-5" /> },
+        { href: "/dashboard/client/more?section=rewards", title: "Rewards", subtitle: "Points, credits, and referrals", icon: <Gift className="h-5 w-5" /> },
+        { href: CLIENT_PRIMARY_TAB_HREFS.activity, title: "Payment History", subtitle: "Charges, refunds, and credits", icon: <WalletCards className="h-5 w-5" /> }
+      ]
+    },
+    {
       title: "Compliance & Security",
       subtitle: "Login, privacy, and account protection controls.",
       rows: [
         { title: "Password & Login", subtitle: "Open the shared contact and sign-in verification flow.", href: "/verify-contact", icon: <KeyRound className="h-5 w-5" /> },
         { title: "Privacy", subtitle: "Review what BVRB3R uses for booking, rewards, and reminders.", href: "/contact", icon: <ShieldCheck className="h-5 w-5" /> },
-        { title: "Account Security", subtitle: "Keep email and phone verification current.", href: "/verify-contact", status: emailVerified || phoneVerified ? "Verified" : "Needs setup", tone: emailVerified || phoneVerified ? "green" : "yellow", icon: <ShieldCheck className="h-5 w-5" /> }
+        { title: "Account Security", subtitle: "Keep email and phone verification current.", href: "/verify-contact", status: emailVerified || phoneVerified ? "Verified" : "Needs setup", tone: emailVerified || phoneVerified ? "green" : "yellow", icon: <ShieldCheck className="h-5 w-5" /> },
+        { title: "Legal", subtitle: "Terms, policies, and agreements.", href: "/contact", icon: <FileText className="h-5 w-5" /> }
       ]
     },
     {
@@ -627,18 +640,13 @@ export function ClientProfileScreen({
       />
 
       <MoreControlHub
-        title="Your BVRB3R Settings"
-        subtitle="This is where your BVRB3R account settings live. Items needing action show a green dot."
+        title="BVRB3R App Settings"
+        subtitle="App-level behavior, saved items, activity, and personal preferences."
         rows={[
-          { onClick: () => setAccountEditorOpen(true), title: "Account", subtitle: "Name, contact, and profile photo", icon: <Camera className="h-5 w-5" />, needsAction: !(emailVerified || phoneVerified) || !hasPhone },
-          { href: "/dashboard/client/public-profile", title: "Public Profile", subtitle: "Culture profile and public identity", icon: <UserRound className="h-5 w-5" /> },
-          { href: "/dashboard/client/more?section=wallet", title: "Wallet", subtitle: "Cards and booking default", icon: <CreditCard className="h-5 w-5" />, needsAction: !defaultPaymentMethod },
-          { href: CLIENT_PRIMARY_TAB_HREFS.activity, title: "Activity", subtitle: "Appointments and receipts", icon: <ReceiptText className="h-5 w-5" /> },
-          { href: "/dashboard/client/more?section=rewards", title: "Rewards", subtitle: "Points and referrals", icon: <Gift className="h-5 w-5" /> },
-          { href: "/dashboard/client/more?section=preferences", title: "Favorites", subtitle: "Saved barbers and shops", icon: <Heart className="h-5 w-5" />, needsAction: favoriteCount === 0 },
           { href: "/dashboard/client/more?section=settings", title: "Notifications", subtitle: "Messages and reminders", icon: <BellRing className="h-5 w-5" /> },
-          { href: "/verify-contact", title: "Privacy", subtitle: "Contact and security", icon: <ShieldCheck className="h-5 w-5" />, needsAction: !(emailVerified && phoneVerified) },
-          { href: "/contact", title: "Help", subtitle: "Support resources", icon: <LifeBuoy className="h-5 w-5" /> }
+          { href: "/dashboard/client/more?section=settings", title: "Preferences", subtitle: "App experience, display, and default behavior", icon: <SlidersHorizontal className="h-5 w-5" /> },
+          { href: "/dashboard/client/more?section=preferences", title: "Saved / Favorites", subtitle: "Saved barbers, shops, and platform items", icon: <Heart className="h-5 w-5" />, needsAction: favoriteCount === 0 },
+          { href: CLIENT_PRIMARY_TAB_HREFS.activity, title: "Activity", subtitle: "App activity and visit history", icon: <ReceiptText className="h-5 w-5" /> }
         ]}
       />
 

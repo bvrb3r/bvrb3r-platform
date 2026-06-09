@@ -176,17 +176,24 @@ describe("owner More workspace", () => {
     expect(screen.queryByText("Unable to load shop profile")).not.toBeInTheDocument();
     expect(screen.queryByText("Your shop setup")).not.toBeInTheDocument();
     expect(screen.queryByText("Business Control Hub")).not.toBeInTheDocument();
-    expect(screen.getByText("Your BVRB3R Settings")).toBeInTheDocument();
+    expect(screen.getByText("BVRB3R App Settings")).toBeInTheDocument();
     expect(screen.getByText("Shop Business Settings")).toBeInTheDocument();
-    expect(screen.getByText("Shop profile, team, services, payouts, policies, and compliance controls.")).toBeInTheDocument();
+    expect(screen.getByText("Manage the tools that control your shop profile, team, services, hours, policies, kiosk, and operating model.")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Shop Profile" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Business Setup" })).not.toBeInTheDocument();
     expect(screen.getAllByText("Kiosk Settings").length).toBeGreaterThan(0);
     expect(screen.getByText("4-digit PIN, shop kiosk mode, and eligible active barbers")).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Payments & Banking" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Payments & Banking" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Compliance & Security" })).toBeInTheDocument();
     expect(screen.getByText("Verification Status")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Support" })).toBeInTheDocument();
-    expect(screen.getByText("Payout Setup")).toBeInTheDocument();
+    expect(screen.getByText("Stripe Connect")).toBeInTheDocument();
+    expect(screen.getByText("Transactions")).toBeInTheDocument();
+    expect(screen.queryByText("Payout Setup")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Account Owner name/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Public Profile Owner\/shop/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Help Support resources/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Help Center Guides/ })).toHaveAttribute("href", "/contact");
     expect(screen.getByRole("button", { name: /log out/i })).toBeInTheDocument();
   });
 

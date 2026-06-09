@@ -16,11 +16,11 @@ import {
   ReceiptText,
   Search,
   Scissors,
+  Settings2,
   ShieldCheck,
   Store,
   TabletSmartphone,
-  Users,
-  WalletCards
+  Users
 } from "lucide-react";
 import { AccountQuickEditModal, type AccountQuickEditInput, type AccountQuickEditLocationOption } from "@/components/dashboard/account/account-quick-edit-modal";
 import {
@@ -500,14 +500,6 @@ export function OwnerSettingsWorkspace({
       icon: <Scissors className="h-5 w-5" />
     },
     {
-      title: "Payout Setup",
-      subtitle: "Stripe Connect & payouts",
-      href: "/dashboard/owner/money?view=fintech",
-      icon: <WalletCards className="h-5 w-5" />,
-      status: stripeStatus.label,
-      tone: stripeStatus.tone
-    },
-    {
       title: "Team & Roles",
       subtitle: "Manage team roles & permissions",
       href: "/onboarding/owner/team",
@@ -523,7 +515,7 @@ export function OwnerSettingsWorkspace({
     },
     {
       title: "Commission & Fees",
-      subtitle: "Set shop commission & platform fees",
+      subtitle: "Shop commission and platform fee rules",
       href: "/dashboard/owner/money?view=fintech",
       icon: <CircleDollarSign className="h-5 w-5" />,
       status: blockedRoutingCount ? "Needs review" : "Protected",
@@ -547,6 +539,12 @@ export function OwnerSettingsWorkspace({
       icon: <CalendarDays className="h-5 w-5" />,
       status: "View schedule",
       tone: "muted"
+    },
+    {
+      title: "Transactions",
+      subtitle: "Shop sales and receipts",
+      href: "/dashboard/owner/money",
+      icon: <ReceiptText className="h-5 w-5" />
     },
     {
       title: "Tax Information",
@@ -580,6 +578,18 @@ export function OwnerSettingsWorkspace({
       subtitle: "Password, 2FA & login settings",
       href: "/dashboard/owner/more?section=logout",
       icon: <KeyRound className="h-5 w-5" />
+    },
+    {
+      title: "Privacy",
+      subtitle: "Shop data and communication preferences",
+      href: "/verify-contact",
+      icon: <ShieldCheck className="h-5 w-5" />
+    },
+    {
+      title: "Legal",
+      subtitle: "Business agreements and policies",
+      href: "/contact",
+      icon: <FileText className="h-5 w-5" />
     }
   ];
 
@@ -602,13 +612,23 @@ export function OwnerSettingsWorkspace({
     {
       id: "owner-settings-shop-profile",
       title: "Shop Business Settings",
-      subtitle: "Shop profile, team, services, payouts, policies, and compliance controls.",
+      subtitle: "Manage the tools that control your shop profile, team, services, hours, policies, kiosk, and operating model.",
       rows: [
         ...shopProfileRows,
-        ...businessSetupRows,
-        ...paymentsRows,
-        ...complianceRows
+        ...businessSetupRows
       ]
+    },
+    {
+      id: "owner-settings-payments-banking",
+      title: "Payments & Banking",
+      subtitle: "Money-side setup, payout schedules, transactions, and tax documents.",
+      rows: paymentsRows
+    },
+    {
+      id: "owner-settings-compliance",
+      title: "Compliance & Security",
+      subtitle: "Verification, documents, login security, privacy, and legal posture.",
+      rows: complianceRows
     },
     {
       id: "owner-settings-support",
@@ -685,14 +705,12 @@ export function OwnerSettingsWorkspace({
       ) : null}
 
       <MoreControlHub
-        title="Your BVRB3R Settings"
-        subtitle="Owner account settings, public profile links, notifications, privacy, and help."
+        title="BVRB3R App Settings"
+        subtitle="App-level behavior, saved items, activity, and personal preferences."
         rows={[
-          { title: "Account", subtitle: "Owner name, contact, and profile photo", onClick: () => setAccountEditorOpen(true), needsAction: !(user.emailVerified || user.phoneVerified), icon: <Users className="h-5 w-5" /> },
-          { title: "Public Profile", subtitle: "Owner/shop public identity links", href: "/dashboard/owner/public-profile", icon: <Store className="h-5 w-5" /> },
           { title: "Notifications", subtitle: "Messages and reminders", href: "/dashboard/owner/messages", icon: <MessageCircle className="h-5 w-5" /> },
-          { title: "Privacy", subtitle: "Contact and security", href: "/verify-contact", needsAction: !(user.emailVerified && user.phoneVerified), icon: <ShieldCheck className="h-5 w-5" /> },
-          { title: "Help", subtitle: "Support resources", href: "/contact", icon: <HelpCircle className="h-5 w-5" /> }
+          { title: "Preferences", subtitle: "App experience, display, and default behavior", href: "/dashboard/owner/more?section=settings", icon: <Settings2 className="h-5 w-5" /> },
+          { title: "Activity", subtitle: "App activity and visit history", href: "/dashboard/owner/schedule", icon: <CalendarDays className="h-5 w-5" /> }
         ]}
       />
 
