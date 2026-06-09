@@ -1209,6 +1209,25 @@ export function BarberSettingsScreen({
       throw new Error(body.error ?? "Unable to save account contact details.");
     }
 
+    const currentUsername = barberPublicUsernameLine.replace(/^@/, "").toLowerCase();
+    if (input.publicUsername && input.publicUsername !== currentUsername) {
+      await mediaMutation.mutateAsync({
+        action: "set_barber_public_username",
+        username: input.publicUsername
+      });
+    }
+
+    if (!hasShopControlledLocation && input.cityLocation.trim() && input.cityLocation !== barberIdentityLocationLabel) {
+      const [cityPart, statePart] = input.cityLocation.split(",").map((part) => part.trim());
+      await mediaMutation.mutateAsync({
+        action: "set_barber_public_location",
+        address: input.cityLocation.includes(",") ? "" : input.cityLocation.trim(),
+        city: cityPart ?? "",
+        state: statePart ?? "",
+        zip: ""
+      });
+    }
+
     setFeedback({ tone: "success", message: "Account details saved. Email or phone changes may still require verification." });
   }
 
@@ -2770,6 +2789,9 @@ export function BarberSettingsScreen({
         defaultPaymentMethodLabel="Managed through payout and checkout settings"
         managePaymentHref="/dashboard/barber/more#barber-settings-payouts"
         locationOptions={barberLocationOptions}
+        requireLocationOption={barberLocationOptions.length > 0 && !hasShopControlledLocation}
+        locationLocked={hasShopControlledLocation}
+        locationLockedCopy="Locked to shop address."
         emailVerified={user.emailVerified}
         phoneVerified={user.phoneVerified}
         onClose={() => setAccountEditorOpen(false)}

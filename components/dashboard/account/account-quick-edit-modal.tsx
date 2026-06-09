@@ -33,6 +33,20 @@ export type AccountQuickEditPaymentOption = {
 
 const EMPTY_LOCATION_OPTIONS: AccountQuickEditLocationOption[] = [];
 const EMPTY_PAYMENT_OPTIONS: AccountQuickEditPaymentOption[] = [];
+const RESERVED_PUBLIC_USERNAMES = new Set([
+  "admin",
+  "support",
+  "bvrb3r",
+  "payments",
+  "help",
+  "official",
+  "system",
+  "architect",
+  "owner",
+  "barber",
+  "client",
+  "shop"
+]);
 
 function normalizePublicUsernameDraft(publicUsername?: string | null) {
   const trimmed = publicUsername?.trim() ?? "";
@@ -40,7 +54,7 @@ function normalizePublicUsernameDraft(publicUsername?: string | null) {
     return "";
   }
 
-  return trimmed.startsWith("@") ? trimmed : `@${trimmed}`;
+  return normalizePublicUsernameValue(trimmed);
 }
 
 function normalizePublicUsernameValue(publicUsername: string) {
@@ -66,6 +80,9 @@ export function AccountQuickEditModal({
   managePaymentHref,
   locationOptions = EMPTY_LOCATION_OPTIONS,
   requireLocationOption = false,
+  usernameRequired = variant !== "owner",
+  locationLocked = false,
+  locationLockedCopy,
   emailVerified = false,
   phoneVerified = false,
   onClose,
@@ -86,6 +103,9 @@ export function AccountQuickEditModal({
   managePaymentHref: string;
   locationOptions?: AccountQuickEditLocationOption[];
   requireLocationOption?: boolean;
+  usernameRequired?: boolean;
+  locationLocked?: boolean;
+  locationLockedCopy?: string;
   emailVerified?: boolean;
   phoneVerified?: boolean;
   onClose: () => void;
@@ -177,8 +197,11 @@ export function AccountQuickEditModal({
     return null;
   }
 
-  const paymentTitle = "Default Payment Method";
-  const paymentActionLabel = variant === "client" ? "Manage Payment Method" : "Click here";
+  const paymentTitle = variant === "client" ? "Default Payment Method" : "Payout Method";
+  const paymentActionLabel = variant === "client" ? "Manage Payment Method" : "Manage Payout Method";
+  const paymentHelper = variant === "client"
+    ? "BVRB3R never collects raw card numbers in this account modal."
+    : "BVRB3R never collects raw bank or card numbers in this account modal.";
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -191,13 +214,18 @@ export function AccountQuickEditModal({
 
     const normalizedUsername = normalizePublicUsernameValue(draft.publicUsername);
 
-    if (!normalizedUsername) {
+    if (usernameRequired && !normalizedUsername) {
       setValidationError("BVRB3R username is required.");
       return;
     }
 
-    if (!isValidPublicUsername(normalizedUsername)) {
+    if (normalizedUsername && !isValidPublicUsername(normalizedUsername)) {
       setValidationError("Use 3-30 letters, numbers, dots, or underscores for your BVRB3R username.");
+      return;
+    }
+
+    if (RESERVED_PUBLIC_USERNAMES.has(normalizedUsername)) {
+      setValidationError("This BVRB3R username is reserved. Choose another username.");
       return;
     }
 
@@ -211,7 +239,7 @@ export function AccountQuickEditModal({
       return;
     }
 
-    if (requireLocationOption && sortedLocationOptions.length && !selectedLocationOption) {
+    if (!locationLocked && requireLocationOption && sortedLocationOptions.length && !selectedLocationOption) {
       setValidationError("Choose a supported barber-market city from the list.");
       return;
     }
@@ -226,7 +254,7 @@ export function AccountQuickEditModal({
           fullName: draft.fullName.trim(),
           email: draft.email.trim(),
           phone: draft.phone.trim(),
-          cityLocation: selectedLocationOption?.label ?? draft.cityLocation.trim(),
+          cityLocation: locationLocked ? (cityLocation?.trim() ?? "") : selectedLocationOption?.label ?? draft.cityLocation.trim(),
           defaultPaymentMethodId: draft.defaultPaymentMethodId ?? null
         });
         setStatusMessage("Account updates saved. Email or phone changes may still require verification.");
@@ -297,14 +325,17 @@ export function AccountQuickEditModal({
             <label className="block text-sm font-black uppercase tracking-[0.12em] text-[#A3FF12]">
               BVRB3R Username
             </label>
-            <Input
-              aria-label="BVRB3R Username"
-              value={draft.publicUsername}
-              onChange={(event) => setDraft((current) => ({ ...current, publicUsername: event.target.value }))}
-              className="mt-2"
-              placeholder="@username"
-              aria-describedby="account-username-helper"
-            />
+            <div className="mt-2 flex min-h-12 overflow-hidden rounded-2xl border border-white/10 bg-black/35 focus-within:border-[#A3FF12]/45 focus-within:ring-2 focus-within:ring-[#A3FF12]/18">
+              <span className="inline-flex min-w-12 items-center justify-center border-r border-white/10 bg-white/[0.04] text-lg font-black text-[#A3FF12]" aria-hidden="true" data-testid="account-username-prefix">@</span>
+              <Input
+                aria-label="BVRB3R Username"
+                value={draft.publicUsername}
+                onChange={(event) => setDraft((current) => ({ ...current, publicUsername: normalizePublicUsernameValue(event.target.value) }))}
+                className="min-h-12 rounded-none border-0 bg-transparent focus-visible:ring-0"
+                placeholder="username"
+                aria-describedby="account-username-helper"
+              />
+            </div>
             <span id="account-username-helper" className="mt-2 block text-xs leading-5 text-white/42">
               Your BVRB3R username is public and appears across booking, profile, search, messages, and kiosk surfaces.
             </span>
@@ -359,11 +390,13 @@ export function AccountQuickEditModal({
             </label>
             <Input
               aria-label="Location"
-              value={draft.cityLocation}
+              value={locationLocked ? (cityLocation ?? "") : draft.cityLocation}
               onChange={(event) => setDraft((current) => ({ ...current, cityLocation: event.target.value }))}
               className="mt-2"
               placeholder="City, state, or preferred area"
               aria-describedby="account-location-helper"
+              disabled={locationLocked}
+              readOnly={locationLocked}
             />
             {shouldShowLocationOptions ? (
               <div className="mt-2 grid gap-2" role="listbox" aria-label="Location suggestions">
@@ -380,7 +413,7 @@ export function AccountQuickEditModal({
               </div>
             ) : null}
             <span id="account-location-helper" className="mt-2 block text-xs leading-5 text-white/42">
-              Choose a city where BVRB3R has active bookable supply.
+              {locationLocked ? locationLockedCopy ?? "Locked to shop address." : "Choose a city where BVRB3R has active bookable supply."}
             </span>
           </section>
         </div>
@@ -394,7 +427,7 @@ export function AccountQuickEditModal({
               <div>
                 <p className="text-sm font-black text-white">{paymentTitle}</p>
                 <p className="mt-1 text-sm leading-5 text-white/56">{paymentCopy}</p>
-                <p className="mt-2 text-xs leading-5 text-white/40">BVRB3R never collects raw card numbers in this account modal.</p>
+                <p className="mt-2 text-xs leading-5 text-white/40">{paymentHelper}</p>
               </div>
             </div>
             {variant === "client" && paymentOptions.length > 1 ? (

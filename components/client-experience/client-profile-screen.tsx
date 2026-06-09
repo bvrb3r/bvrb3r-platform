@@ -574,6 +574,19 @@ export function ClientProfileScreen({
       }
       const savedLocation = locationBody.location ?? locationBody.client?.preferredLocation ?? { city, state };
       setSavedClientLocation(savedLocation);
+      await mediaMutation.mutateAsync({
+        action: "set_client_public_location",
+        city: savedLocation.city,
+        state: savedLocation.state
+      });
+    }
+
+    const currentUsername = clientPublicUsernameLine.replace(/^@/, "").toLowerCase();
+    if (input.publicUsername && input.publicUsername !== currentUsername) {
+      await mediaMutation.mutateAsync({
+        action: "set_client_public_username",
+        username: input.publicUsername
+      });
     }
 
     if (input.defaultPaymentMethodId && input.defaultPaymentMethodId !== defaultPaymentMethod?.id) {

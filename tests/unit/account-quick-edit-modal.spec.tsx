@@ -43,7 +43,8 @@ describe("AccountQuickEditModal", () => {
     expect(screen.queryByLabelText("Public display name")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Public username")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("City/location")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("BVRB3R Username")).toHaveValue("@Jordan.Ellis");
+    expect(screen.getByTestId("account-username-prefix")).toHaveTextContent("@");
+    expect(screen.getByLabelText("BVRB3R Username")).toHaveValue("jordan.ellis");
     expectTextOrder("BVRB3R Username", "Full Name", "Phone Number", "Email", "Location", "Default Payment Method");
     expect(screen.getByText("Your BVRB3R username is public and appears across booking, profile, search, messages, and kiosk surfaces.")).toBeInTheDocument();
     expect(screen.getByText("Private. Used for account, booking, kiosk, support, and admin verification.")).toBeInTheDocument();
@@ -133,6 +134,7 @@ describe("AccountQuickEditModal", () => {
     expect(onSave).not.toHaveBeenCalled();
 
     fireEvent.change(screen.getByLabelText("BVRB3R Username"), { target: { value: "@Jordan.Ellis" } });
+    expect(screen.getByLabelText("BVRB3R Username")).toHaveValue("jordan.ellis");
     fireEvent.change(screen.getByLabelText("Email"), { target: { value: "new@example.com" } });
     fireEvent.change(screen.getByLabelText("Phone Number"), { target: { value: "8135550202" } });
     expect(screen.getByText("Email changes require verification before this is marked verified.")).toBeInTheDocument();
@@ -187,6 +189,32 @@ describe("AccountQuickEditModal", () => {
     await waitFor(() => {
       expect(onClose).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("blocks reserved usernames before saving", async () => {
+    const onSave = vi.fn();
+
+    render(
+      <AccountQuickEditModal
+        open
+        variant="client"
+        displayName="Jordan Ellis"
+        publicUsername="@jordan"
+        email="jordan@example.com"
+        phone="8135550190"
+        cityLocation="Tampa, FL"
+        defaultPaymentMethodLabel="Visa ending in 4242"
+        managePaymentHref="/dashboard/client/more?section=wallet"
+        onClose={vi.fn()}
+        onSave={onSave}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText("BVRB3R Username"), { target: { value: "admin" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    expect(await screen.findByText("This BVRB3R username is reserved. Choose another username.")).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
   });
 
   it("keeps the modal open and shows an inline error when save fails", async () => {
@@ -294,8 +322,31 @@ describe("AccountQuickEditModal", () => {
       />
     );
 
-    expect(screen.getByText("Default Payment Method")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Click here" }));
+    expect(screen.getByText("Payout Method")).toBeInTheDocument();
+    expect(screen.getByText("BVRB3R never collects raw bank or card numbers in this account modal.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Manage Payout Method" }));
     expect(onPaymentAction).toHaveBeenCalledWith("/dashboard/barber/more#barber-settings-payouts");
+  });
+
+  it("locks shop-linked barber location to the shop address", () => {
+    render(
+      <AccountQuickEditModal
+        open
+        variant="barber"
+        displayName="Blaze King"
+        publicUsername="@blaze"
+        email="blaze@example.com"
+        phone="8135550190"
+        cityLocation="2172 University Square Mall - Tampa, FL 33612"
+        defaultPaymentMethodLabel="Managed through payout and checkout settings"
+        managePaymentHref="/dashboard/barber/more#barber-settings-payouts"
+        locationLocked
+        locationLockedCopy="Locked to shop address."
+        onClose={vi.fn()}
+      />
+    );
+
+    expect(screen.getByLabelText("Location")).toBeDisabled();
+    expect(screen.getByText("Locked to shop address.")).toBeInTheDocument();
   });
 });
