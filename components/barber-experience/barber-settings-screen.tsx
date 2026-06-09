@@ -211,6 +211,22 @@ function toLocationOption(location?: { city?: string | null; state?: string | nu
   };
 }
 
+function parseBarberServiceLocationLabel(label: string) {
+  const trimmed = label.trim();
+  const [addressPart, cityStatePart = ""] = trimmed.includes(" - ")
+    ? trimmed.split(" - ", 2).map((part) => part.trim())
+    : ["", trimmed];
+  const [cityPart = "", stateZipPart = ""] = cityStatePart.split(",").map((part) => part.trim());
+  const [statePart = "", ...zipParts] = stateZipPart.split(/\s+/).filter(Boolean);
+
+  return {
+    address: addressPart,
+    city: cityPart || (!addressPart ? trimmed : ""),
+    state: statePart,
+    zip: zipParts.join(" ")
+  };
+}
+
 function readableError(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
 }
@@ -1218,13 +1234,13 @@ export function BarberSettingsScreen({
     }
 
     if (!hasShopControlledLocation && input.cityLocation.trim() && input.cityLocation !== barberIdentityLocationLabel) {
-      const [cityPart, statePart] = input.cityLocation.split(",").map((part) => part.trim());
+      const parsedLocation = parseBarberServiceLocationLabel(input.cityLocation);
       await mediaMutation.mutateAsync({
         action: "set_barber_public_location",
-        address: input.cityLocation.includes(",") ? "" : input.cityLocation.trim(),
-        city: cityPart ?? "",
-        state: statePart ?? "",
-        zip: ""
+        address: parsedLocation.address,
+        city: parsedLocation.city,
+        state: parsedLocation.state,
+        zip: parsedLocation.zip
       });
     }
 
@@ -2789,7 +2805,6 @@ export function BarberSettingsScreen({
         defaultPaymentMethodLabel="Managed through payout and checkout settings"
         managePaymentHref="/dashboard/barber/more#barber-settings-payouts"
         locationOptions={barberLocationOptions}
-        requireLocationOption={barberLocationOptions.length > 0 && !hasShopControlledLocation}
         locationLocked={hasShopControlledLocation}
         locationLockedCopy="Locked to shop address."
         emailVerified={user.emailVerified}

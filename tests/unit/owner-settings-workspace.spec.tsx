@@ -248,6 +248,8 @@ describe("owner More workspace", () => {
     expect(screen.queryByTestId("owner-public-shop-identity-section")).not.toBeInTheDocument();
     expect(screen.queryByText(/Public shop identity/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Preview Public Profile" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Edit Account" }));
+    expect(screen.getByLabelText("BVRB3R Username")).toHaveValue("thebvrb3rshopuniversitymall");
     expect(screen.queryByText(/Pending - Pending, Pending/i)).not.toBeInTheDocument();
     expect(screen.queryByText("Unable to resolve the signed-in profile.")).not.toBeInTheDocument();
     expect(screen.queryByText("Unable to load shop profile media.")).not.toBeInTheDocument();

@@ -249,6 +249,7 @@ export function OwnerSettingsWorkspace({
   const [savedOwnerName, setSavedOwnerName] = useState<string | null>(null);
   const [savedOwnerEmail, setSavedOwnerEmail] = useState<string | null>(null);
   const [savedOwnerPhone, setSavedOwnerPhone] = useState<string | null>(null);
+  const [savedShopPublicUsername, setSavedShopPublicUsername] = useState<string | null>(null);
   const [quickSetupFeedback, setQuickSetupFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [shopHoursDraft, setShopHoursDraft] = useState({
     days: defaultOwnerWorkingDays,
@@ -269,7 +270,8 @@ export function OwnerSettingsWorkspace({
   const ownerShopId = primaryShop?.shopId ?? user.ownedShopId ?? user.locationIds[0] ?? null;
   const ownerAccountUsernameLine = "Username not set";
   const ownerAccountLocationLine = "Location not set";
-  const shopPublicUsernameLine = formatPublicUsernameLine(primaryShop?.publicUsername);
+  const shopPublicUsername = savedShopPublicUsername ?? primaryShop?.publicUsername ?? null;
+  const shopPublicUsernameLine = formatPublicUsernameLine(shopPublicUsername);
   const shopPublicLocationLine = formatPublicAddressLocation({
     address: primaryShop?.address,
     city: primaryShop?.city,
@@ -278,7 +280,7 @@ export function OwnerSettingsWorkspace({
     fallback: "Add shop address"
   });
   const ownerCardProfileImageUrl = primaryShop?.profilePhotoUrl ?? profileQuery.data?.viewer.profilePhotoUrl;
-  const ownerCardUsernameLine = primaryShop?.publicUsername ? shopPublicUsernameLine : ownerAccountUsernameLine;
+  const ownerCardUsernameLine = shopPublicUsername ? shopPublicUsernameLine : ownerAccountUsernameLine;
   const ownerCardPhone = primaryShop?.phone ?? ownerPhone ?? "Phone not set";
   const ownerCardEmail = (primaryShop as { businessEmail?: string | null } | null)?.businessEmail ?? ownerEmail ?? "Email not set";
   const ownerCardLocationLine = primaryShop && shopPublicLocationLine !== "Add shop address"
@@ -373,6 +375,16 @@ export function OwnerSettingsWorkspace({
     const body = (await response.json().catch(() => ({}))) as { error?: string };
     if (!response.ok) {
       throw new Error(body.error ?? "Unable to save account contact details.");
+    }
+
+    const currentShopUsername = (shopPublicUsername ?? "").toLowerCase();
+    if (primaryShop && input.publicUsername && input.publicUsername !== currentShopUsername) {
+      await mediaMutation.mutateAsync({
+        action: "set_shop_public_username",
+        shopId: primaryShop.shopId,
+        username: input.publicUsername
+      });
+      setSavedShopPublicUsername(input.publicUsername);
     }
 
     setSavedOwnerName(input.fullName);
@@ -771,7 +783,7 @@ export function OwnerSettingsWorkspace({
         open={accountEditorOpen}
         variant="owner"
         displayName={ownerDisplayName}
-        publicUsername={ownerAccountUsernameLine}
+        publicUsername={ownerCardUsernameLine}
         fullName={user.canonicalFullName ?? ownerDisplayName}
         email={ownerEmail}
         phone={ownerPhone}

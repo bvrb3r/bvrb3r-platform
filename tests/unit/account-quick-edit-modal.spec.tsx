@@ -277,6 +277,38 @@ describe("AccountQuickEditModal", () => {
     });
   });
 
+  it("allows freelance barber full service addresses without client market validation", async () => {
+    const onSave = vi.fn();
+
+    render(
+      <AccountQuickEditModal
+        open
+        variant="barber"
+        displayName="Blaze King"
+        publicUsername="@blaze"
+        email="blaze@example.com"
+        phone="8135550190"
+        cityLocation="8516 Island Breeze Ln - Temple Terrace, FL 33607"
+        defaultPaymentMethodLabel="Managed through payout and checkout settings"
+        managePaymentHref="/dashboard/barber/more#barber-settings-payouts"
+        locationOptions={[{ label: "Tampa, FL", city: "Tampa", state: "FL" }]}
+        onClose={vi.fn()}
+        onSave={onSave}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText("BVRB3R Username"), { target: { value: "@blaze.live" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+        publicUsername: "blaze.live",
+        cityLocation: "8516 Island Breeze Ln - Temple Terrace, FL 33607"
+      }));
+    });
+    expect(screen.queryByText("Choose a supported barber-market city from the list.")).not.toBeInTheDocument();
+  });
+
   it("closes without saving from cancel and close controls", () => {
     const onClose = vi.fn();
     const onSave = vi.fn();
