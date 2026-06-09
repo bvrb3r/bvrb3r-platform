@@ -37,7 +37,7 @@ import { Input } from "@/components/ui/input";
 import { ServiceCatalogWorkspace } from "@/components/marketplace/service-catalog-workspace";
 import { KioskSettingsCard } from "@/components/kiosk/kiosk-actions";
 import { GalleryManagerCard, ProfilePhotoManagerCard } from "@/components/profile/profile-media-manager";
-import { Avatar, GlassCard } from "@/design/components";
+import { GlassCard } from "@/design/components";
 import { useFintechManagementQuery } from "@/lib/fintech/client";
 import { useCreateOwnerTeamInviteMutation, useOwnerTeamInviteDirectoryQuery } from "@/lib/operations/barber-client";
 import { useMutateProfileMediaMutation, useProfileMediaWorkspaceQuery } from "@/lib/profile/client";
@@ -267,10 +267,8 @@ export function OwnerSettingsWorkspace({
   const ownerLocationOptions = [toLocationOption(primaryShop)]
     .filter((option): option is AccountQuickEditLocationOption => Boolean(option));
   const ownerShopId = primaryShop?.shopId ?? user.ownedShopId ?? user.locationIds[0] ?? null;
-  const shopName = primaryShop?.name ?? primaryShop?.label ?? user.ownedShopName ?? "Shop profile incomplete";
-  const ownerMoreProfileImageUrl = profileQuery.data?.viewer.profilePhotoUrl;
-  const ownerPublicUsernameLine = "Owner username not set";
-  const ownerPublicLocationLine = "Owner location not set";
+  const ownerAccountUsernameLine = "Username not set";
+  const ownerAccountLocationLine = "Location not set";
   const shopPublicUsernameLine = formatPublicUsernameLine(primaryShop?.publicUsername);
   const shopPublicLocationLine = formatPublicAddressLocation({
     address: primaryShop?.address,
@@ -279,6 +277,13 @@ export function OwnerSettingsWorkspace({
     zip: primaryShop?.zipCode,
     fallback: "Add shop address"
   });
+  const ownerCardProfileImageUrl = primaryShop?.profilePhotoUrl ?? profileQuery.data?.viewer.profilePhotoUrl;
+  const ownerCardUsernameLine = primaryShop?.publicUsername ? shopPublicUsernameLine : ownerAccountUsernameLine;
+  const ownerCardPhone = primaryShop?.phone ?? ownerPhone ?? "Phone not set";
+  const ownerCardEmail = (primaryShop as { businessEmail?: string | null } | null)?.businessEmail ?? ownerEmail ?? "Email not set";
+  const ownerCardLocationLine = primaryShop && shopPublicLocationLine !== "Add shop address"
+    ? shopPublicLocationLine
+    : ownerAccountLocationLine;
   const selectedSection = (initialSection && initialSection in sectionIdMap ? initialSection : null) as OwnerSettingsSectionKey | null;
   const selectedServiceManager = initialSection === "services";
   const selectedBrandingManager = initialSection === "branding";
@@ -611,7 +616,7 @@ export function OwnerSettingsWorkspace({
   const ownerMoreSections: MoreSectionGroupConfig[] = [
     {
       id: "owner-settings-shop-profile",
-      title: "Shop Business Settings",
+      title: "SHOP BUSINESS SETTINGS",
       subtitle: "Manage the tools that control your shop profile, team, services, hours, policies, kiosk, and operating model.",
       rows: [
         ...shopProfileRows,
@@ -650,59 +655,27 @@ export function OwnerSettingsWorkspace({
 
       <MoreIdentityReadinessCard
         variant="owner"
-        imageUrl={ownerMoreProfileImageUrl}
+        imageUrl={ownerCardProfileImageUrl}
         initials={getInitials(ownerDisplayName)}
         title={ownerDisplayName}
-        subtitle={ownerEmail ?? "Owner account"}
+        subtitle="Owner account"
         roleLabel="SHOP OWNER ACCOUNT"
         badges={[
           { label: verificationLabel, tone: verificationTone },
           { label: ownerPayoutChipLabel, tone: stripeStatus.tone },
-          { label: user.phone ? "Phone connected" : "Phone needed", tone: user.phone ? "green" : "yellow" }
+          { label: ownerCardPhone !== "Phone not set" ? "Phone connected" : "Phone needed", tone: ownerCardPhone !== "Phone not set" ? "green" : "yellow" },
+          { label: primaryShop ? "Shop profile ready" : "Shop profile incomplete", tone: primaryShop ? "green" : "yellow" }
         ]}
         metaLines={[
-          { label: "Username", value: ownerPublicUsernameLine },
-          { label: "Phone", value: ownerPhone ?? "Phone not set" },
-          { label: "Contact email", value: ownerEmail ?? "Email not set" },
-          { label: "Location", value: ownerPublicLocationLine }
+          { label: "Username", value: ownerCardUsernameLine },
+          { label: "Phone", value: ownerCardPhone },
+          { label: "Contact email", value: ownerCardEmail },
+          { label: "Location", value: ownerCardLocationLine }
         ]}
         primaryAction={{ label: "Edit Account", onClick: () => setAccountEditorOpen(true) }}
         secondaryAction={ownerShopId ? { label: "Public Profile", href: "/dashboard/owner/public-profile" } : undefined}
         tiles={[]}
       />
-
-      {primaryShop ? (
-        <GlassCard className="p-5 sm:p-6" data-testid="owner-public-shop-identity-section">
-          <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
-            <div className="flex min-w-0 gap-4">
-              <Avatar
-                src={primaryShop.profilePhotoUrl}
-                alt={`${shopName} logo`}
-                initials={getInitials(shopName)}
-                className="h-20 w-20 shrink-0 rounded-[24px] border border-[#A3FF12]/45"
-              />
-              <div className="min-w-0">
-                <p className="text-xs font-black uppercase tracking-[0.2em] text-[#A3FF12]">Public shop identity</p>
-                <h2 className="mt-2 break-words text-2xl font-black tracking-[-0.04em] text-white">{shopName}</h2>
-                <p className="mt-2 break-words text-sm font-bold text-white/72">{shopPublicUsernameLine}</p>
-                {primaryShop.publicBio ? <p className="mt-2 max-w-2xl text-sm leading-6 text-white/58">{primaryShop.publicBio}</p> : null}
-                <p className="mt-2 break-words text-sm leading-6 text-white/58">{shopPublicLocationLine}</p>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-3 md:flex-col">
-              <Link href="/dashboard/owner/public-profile" className="inline-flex min-h-12 items-center justify-center rounded-full border border-[#A3FF12]/35 bg-[#A3FF12]/10 px-5 text-sm font-extrabold text-[#A3FF12]">
-                Public Profile
-              </Link>
-              <Link href="/dashboard/owner/public-profile" className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] px-5 text-sm font-extrabold text-white/78">
-                Quick Edit
-              </Link>
-              <Link href={ownerShopId ? `/shop/${encodeURIComponent(ownerShopId)}` : "/dashboard/owner/public-profile"} className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] px-5 text-sm font-extrabold text-white/78">
-                Preview Public Profile
-              </Link>
-            </div>
-          </div>
-        </GlassCard>
-      ) : null}
 
       <MoreControlHub
         title="BVRB3R App Settings"
@@ -798,11 +771,11 @@ export function OwnerSettingsWorkspace({
         open={accountEditorOpen}
         variant="owner"
         displayName={ownerDisplayName}
-        publicUsername={ownerPublicUsernameLine}
+        publicUsername={ownerAccountUsernameLine}
         fullName={user.canonicalFullName ?? ownerDisplayName}
         email={ownerEmail}
         phone={ownerPhone}
-        cityLocation={toLocationOption(primaryShop)?.label ?? ""}
+        cityLocation={ownerAccountLocationLine === "Location not set" ? "" : ownerAccountLocationLine}
         defaultPaymentMethodLabel={stripeStatus.label === "Connected" ? "Owner payout setup connected" : "Payment setup managed in Money"}
         managePaymentHref="/dashboard/owner/money?view=fintech"
         locationOptions={ownerLocationOptions}

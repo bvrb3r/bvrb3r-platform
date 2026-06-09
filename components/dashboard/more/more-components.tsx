@@ -295,7 +295,7 @@ export function MoreSectionGroup({ group }: { group: MoreSectionGroup }) {
   return (
     <section id={group.id} className="scroll-mt-6 space-y-3">
       <div>
-        <h2 className="text-2xl font-black tracking-[-0.04em] text-white">{group.title}</h2>
+        <h2 className="text-xs font-black uppercase tracking-[0.2em] text-[#A3FF12]">{group.title}</h2>
         {group.subtitle ? <p className="mt-2 text-sm leading-6 text-white/54">{group.subtitle}</p> : null}
       </div>
       <GlassCard className="overflow-hidden p-0">
