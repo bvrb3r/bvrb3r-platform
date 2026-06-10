@@ -285,7 +285,9 @@ describe("owner More workspace", () => {
 
     fireEvent.click(screen.getByRole("link", { name: /Wallet \/ Billing Default payment method/ }));
     let dialog = screen.getByRole("dialog", { name: "Wallet / Billing" });
-    expect(screen.getByTestId("more-setting-modal-backdrop")).not.toHaveClass("absolute");
+    expect(screen.getByTestId("more-setting-modal-backdrop")).toHaveClass("fixed", "inset-0", "z-[9999]");
+    expect(screen.getByTestId("more-setting-modal-panel")).toHaveClass("relative", "z-[10000]");
+    expect(screen.getByTestId("more-setting-modal-footer")).toHaveClass("sticky", "bottom-0", "z-20");
     expect(within(dialog).getByLabelText("Close setting modal")).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Save Changes" })).toBeDisabled();

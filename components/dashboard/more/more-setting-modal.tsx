@@ -1,43 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { MoreSettingModalContent } from "@/components/dashboard/more/more-setting-modal-content";
 import type { MoreSettingModalSpec } from "@/components/dashboard/more/more-setting-modal-registry";
 import { cn } from "@/lib/utils";
-
-function resolveViewportOverlayStyle(root: HTMLElement | null): CSSProperties | null {
-  if (!root || typeof window === "undefined" || typeof document === "undefined") {
-    return null;
-  }
-
-  const rect = root.getBoundingClientRect();
-  const visualViewport = window.visualViewport;
-  const viewportLeft = visualViewport?.offsetLeft ?? 0;
-  const viewportTop = visualViewport?.offsetTop ?? 0;
-  const viewportWidth = visualViewport?.width ?? window.innerWidth ?? document.documentElement.clientWidth;
-  const viewportHeight = visualViewport?.height ?? window.innerHeight ?? document.documentElement.clientHeight;
-  const left = Math.max(viewportLeft, rect.left);
-  const top = Math.max(viewportTop, rect.top);
-  const right = Math.min(viewportLeft + viewportWidth, rect.right);
-  const bottom = Math.min(viewportTop + viewportHeight, rect.bottom);
-  const width = right - left;
-  const height = bottom - top;
-
-  if (width <= 0 || height <= 0) {
-    return null;
-  }
-
-  return {
-    position: "fixed",
-    left,
-    top,
-    width,
-    height
-  };
-}
 
 export function MoreSettingModal({
   open,
@@ -73,7 +42,6 @@ export function MoreSettingModal({
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
-  const [overlayStyle, setOverlayStyle] = useState<CSSProperties | null>(null);
 
   useEffect(() => {
     if (!open) {
@@ -81,38 +49,17 @@ export function MoreSettingModal({
       setConfirmDiscard(false);
       setIsSaving(false);
       setError(null);
-      setOverlayStyle(null);
     }
   }, [open]);
 
   useEffect(() => {
-    if (!open || !spec || typeof document === "undefined") {
+    if (!open || typeof document === "undefined") {
       setPortalRoot(null);
-      setOverlayStyle(null);
       return;
     }
 
-    const roleRoot = document.querySelector<HTMLElement>(`[data-more-modal-root="${spec?.roleScope ?? "shared"}"]`);
-    const nextPortalRoot = roleRoot ?? document.querySelector<HTMLElement>("[data-more-modal-root]");
-    setPortalRoot(nextPortalRoot);
-
-    function updateOverlayStyle() {
-      setOverlayStyle(resolveViewportOverlayStyle(nextPortalRoot));
-    }
-
-    updateOverlayStyle();
-    window.addEventListener("resize", updateOverlayStyle);
-    window.addEventListener("scroll", updateOverlayStyle, true);
-    window.visualViewport?.addEventListener("resize", updateOverlayStyle);
-    window.visualViewport?.addEventListener("scroll", updateOverlayStyle);
-
-    return () => {
-      window.removeEventListener("resize", updateOverlayStyle);
-      window.removeEventListener("scroll", updateOverlayStyle, true);
-      window.visualViewport?.removeEventListener("resize", updateOverlayStyle);
-      window.visualViewport?.removeEventListener("scroll", updateOverlayStyle);
-    };
-  }, [open, spec]);
+    setPortalRoot(document.body);
+  }, [open]);
 
   useEffect(() => {
     if (!open || typeof document === "undefined") {
@@ -170,11 +117,7 @@ export function MoreSettingModal({
 
   const modal = (
     <div
-      className={cn(
-        "z-[240] flex items-end justify-center bg-black/72 px-3 pb-[calc(env(safe-area-inset-bottom)+14px)] pt-6 backdrop-blur-md sm:items-center sm:p-6",
-        overlayStyle ? null : "fixed inset-0"
-      )}
-      style={overlayStyle ?? undefined}
+      className="fixed inset-0 z-[9999] flex items-end justify-center overflow-hidden bg-black/76 px-3 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-6 backdrop-blur-xl sm:items-center sm:p-6"
       role="presentation"
       data-testid="more-setting-modal-backdrop"
     >
@@ -182,13 +125,13 @@ export function MoreSettingModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="more-setting-modal-title"
-        data-testid={testId}
+        data-testid={testId ?? "more-setting-modal-panel"}
         className={cn(
-          "relative flex max-h-[calc(100dvh-32px)] w-full flex-col overflow-hidden rounded-[26px] border border-white/10 bg-[linear-gradient(180deg,rgba(16,16,16,0.98),rgba(3,3,3,0.99))] text-white shadow-[0_24px_80px_rgba(0,0,0,0.62)]",
+          "relative z-[10000] flex max-h-[calc(100dvh-1rem)] w-full flex-col overflow-hidden rounded-[26px] border border-white/10 bg-[linear-gradient(180deg,rgba(16,16,16,0.98),rgba(3,3,3,0.99))] text-white shadow-[0_24px_80px_rgba(0,0,0,0.62)]",
           maxWidthClassName
         )}
       >
-        <div className="sticky top-0 z-10 border-b border-white/10 bg-black/80 p-5 backdrop-blur-xl sm:p-6">
+        <div className="sticky top-0 z-20 border-b border-white/10 bg-black/80 p-5 backdrop-blur-xl sm:p-6">
           <button
             type="button"
             className="absolute right-4 top-4 flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.045] text-white/70 hover:border-[#A3FF12]/30 hover:text-[#A3FF12]"
@@ -217,7 +160,10 @@ export function MoreSettingModal({
           {error ? <p className="mt-4 rounded-[18px] border border-red-400/20 bg-red-500/10 p-4 text-sm text-red-100">{error}</p> : null}
         </div>
 
-        <footer className="sticky bottom-0 z-10 flex flex-col gap-3 border-t border-white/10 bg-black/86 p-4 pb-[calc(env(safe-area-inset-bottom)+16px)] backdrop-blur-xl sm:flex-row sm:justify-end sm:p-5">
+        <footer
+          className="sticky bottom-0 z-20 flex flex-col gap-3 border-t border-white/10 bg-black/86 p-4 pb-[calc(1.25rem+env(safe-area-inset-bottom))] backdrop-blur-xl sm:flex-row sm:justify-end sm:p-5"
+          data-testid="more-setting-modal-footer"
+        >
           <button
             type="button"
             className="min-h-12 rounded-full border border-white/10 bg-white/[0.035] px-5 text-sm font-extrabold text-white/74 hover:border-white/20"

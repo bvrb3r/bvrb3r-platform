@@ -453,51 +453,47 @@ describe("client profile screen", () => {
 
   it("opens focused More row modals in the visible viewport with cancel, save, and exit controls", async () => {
     render(
-      <ClientProfileScreen
-        isSignedInClient
-        authEmail="client@bvrb3r.demo"
-        authPhone="8135550100"
-        emailVerified
-        phoneVerified
-        payload={{
-          client: {
-            clientReference: "client-modal",
-            fullName: "Modal Client",
-            email: "client@bvrb3r.demo",
-            phone: "8135550100",
-            preferredLocation: { city: "Tampa", state: "FL" }
-          },
-          favoriteBarber: null,
-          preferredShops: [],
-          paymentMethods: [],
-          notificationPreference: null
-        } as unknown as ClientProfilePayload}
-      />
+      <>
+        <nav data-testid="mobile-bottom-nav" className="fixed inset-x-2 bottom-3 z-50">
+          <button type="button">Client nav item</button>
+        </nav>
+        <ClientProfileScreen
+          isSignedInClient
+          authEmail="client@bvrb3r.demo"
+          authPhone="8135550100"
+          emailVerified
+          phoneVerified
+          payload={{
+            client: {
+              clientReference: "client-modal",
+              fullName: "Modal Client",
+              email: "client@bvrb3r.demo",
+              phone: "8135550100",
+              preferredLocation: { city: "Tampa", state: "FL" }
+            },
+            favoriteBarber: null,
+            preferredShops: [],
+            paymentMethods: [],
+            notificationPreference: null
+          } as unknown as ClientProfilePayload}
+        />
+      </>
     );
 
     const scrollSpy = Element.prototype.scrollIntoView as ReturnType<typeof vi.fn>;
     scrollSpy.mockClear();
-    vi.spyOn(screen.getByTestId("client-profile-screen"), "getBoundingClientRect").mockReturnValue({
-      x: 32,
-      y: 96,
-      top: 96,
-      left: 32,
-      right: 452,
-      bottom: 760,
-      width: 420,
-      height: 664,
-      toJSON: () => ({})
-    } as DOMRect);
     const initialScrollY = window.scrollY;
 
     fireEvent.click(screen.getByRole("link", { name: /Notifications & Alerts Messages, reminders, booking updates, and app alerts/ }));
     let dialog = screen.getByRole("dialog", { name: "Notifications & Alerts" });
+    const bottomNav = screen.getByTestId("mobile-bottom-nav");
     const backdrop = screen.getByTestId("more-setting-modal-backdrop");
-    await waitFor(() => expect(backdrop).toHaveStyle("position: fixed"));
-    expect(backdrop).toHaveStyle("top: 96px");
-    expect(backdrop).toHaveStyle("left: 32px");
-    expect(backdrop).toHaveStyle("width: 420px");
-    expect(backdrop).toHaveStyle("height: 664px");
+    const panel = screen.getByTestId("more-setting-modal-panel");
+    const footer = screen.getByTestId("more-setting-modal-footer");
+    expect(bottomNav).toHaveClass("z-50");
+    expect(backdrop).toHaveClass("fixed", "inset-0", "z-[9999]");
+    expect(panel).toHaveClass("relative", "z-[10000]", "max-h-[calc(100dvh-1rem)]", "overflow-hidden");
+    expect(footer).toHaveClass("sticky", "bottom-0", "z-20", "pb-[calc(1.25rem+env(safe-area-inset-bottom))]");
     expect(backdrop).not.toHaveClass("absolute");
     expect(scrollSpy).not.toHaveBeenCalled();
     expect(window.scrollY).toBe(initialScrollY);
