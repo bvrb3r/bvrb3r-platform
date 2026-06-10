@@ -179,13 +179,23 @@ describe("owner More workspace", () => {
     expect(screen.queryByText("Your shop setup")).not.toBeInTheDocument();
     expect(screen.queryByText("Business Control Hub")).not.toBeInTheDocument();
     expect(screen.getByText("BVRB3R App Settings")).toBeInTheDocument();
+    expect(screen.getByText("Notifications & Alerts")).toBeInTheDocument();
+    expect(screen.getByText("Messages, reminders, shop alerts, payout alerts, and business alerts")).toBeInTheDocument();
     expect(screen.getByText("SHOP BUSINESS SETTINGS")).toBeInTheDocument();
     expect(screen.getByText("Manage the tools that control your shop profile, team, services, hours, policies, kiosk, and operating model.")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Shop Profile" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Business Setup" })).not.toBeInTheDocument();
+    ["Booth Rent, Commission & Fees", "Shop Hours", "Shop Policies", "Team & Roles", "Kiosk Settings", "Performance"].forEach((label) => {
+      expect(screen.getAllByText(label).length).toBeGreaterThan(0);
+    });
+    expect(screen.queryByText("Shop Information")).not.toBeInTheDocument();
+    expect(screen.queryByText("Branding")).not.toBeInTheDocument();
+    expect(screen.queryByText("Services")).not.toBeInTheDocument();
+    expect(screen.queryByText("Alerts")).not.toBeInTheDocument();
     expect(screen.getAllByText("Kiosk Settings").length).toBeGreaterThan(0);
-    expect(screen.getByText("4-digit PIN, shop kiosk mode, and eligible active barbers")).toBeInTheDocument();
+    expect(screen.getByText("4-digit PIN, shop kiosk mode, walk-in routing, and eligible active barbers")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Payments & Banking" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Wallet \/ Billing Default payment method/ })).toHaveAttribute("href", "/dashboard/owner/money?section=wallet");
     expect(screen.getByRole("heading", { name: "Compliance & Security" })).toBeInTheDocument();
     expect(screen.getByText("Verification Status")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Support" })).toBeInTheDocument();

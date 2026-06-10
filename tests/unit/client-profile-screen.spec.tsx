@@ -298,7 +298,7 @@ describe("client profile screen", () => {
     expect(within(identityCard).getAllByText("jordan@bvrb3r.app")).toHaveLength(1);
     expect(within(identityCard).getAllByText("Verified").length).toBeGreaterThan(0);
     expect(within(identityCard).getByText("Wallet ready")).toBeInTheDocument();
-    expect(within(identityCard).getByText("Rewards setup")).toBeInTheDocument();
+    expect(within(identityCard).getByText("Creator payouts locked")).toBeInTheDocument();
     expect(within(identityCard).getByText("@phillipmcgee")).toBeInTheDocument();
     expect(within(identityCard).getByText("Tampa, FL")).toBeInTheDocument();
     expect(within(identityCard).queryByText("813-555-0100")).not.toBeInTheDocument();
@@ -324,7 +324,7 @@ describe("client profile screen", () => {
     expect(screen.queryByRole("link", { name: "View Activity" })).not.toBeInTheDocument();
     expect(screen.queryByText("Your BVRB3R setup")).not.toBeInTheDocument();
     expect(screen.getByText("BVRB3R App Settings")).toBeInTheDocument();
-    ["Notifications", "Preferences", "Saved / Favorites", "Activity"].forEach((label) => {
+    ["Notifications & Alerts", "Preferences", "Saved / Favorites", "Activity"].forEach((label) => {
       expect(screen.getAllByText(label).length).toBeGreaterThan(0);
     });
     expect(screen.queryByRole("button", { name: /Account Name, contact, and profile photo/ })).not.toBeInTheDocument();
@@ -333,8 +333,11 @@ describe("client profile screen", () => {
     expect(screen.getByRole("heading", { name: "Payments & Banking" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Compliance & Security" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Support" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Wallet Cards and booking default/ })).toHaveAttribute("href", "/dashboard/client/more?section=wallet");
-    expect(screen.getByRole("link", { name: /Rewards Points, credits, and referrals/ })).toHaveAttribute("href", "/dashboard/client/more?section=rewards");
+    expect(screen.getByRole("link", { name: /Wallet Cards, booking default, auto-booking, subscriptions/ })).toHaveAttribute("href", "/dashboard/client/more?section=wallet");
+    expect(screen.getByRole("link", { name: /Rewards Points, credits, loyalty progress, and referrals/ })).toHaveAttribute("href", "/dashboard/client/more?section=rewards");
+    expect(screen.getByRole("link", { name: /Creator Payouts Locked until approved/ })).toHaveAttribute("href", "/dashboard/client/more?section=rewards");
+    expect(screen.queryByText("Barber Business Settings")).not.toBeInTheDocument();
+    expect(screen.queryByText("SHOP BUSINESS SETTINGS")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Privacy Review what BVRB3R uses/ })).toHaveAttribute("href", "/contact");
     expect(screen.getByRole("link", { name: /Help Center Guides and support resources/ })).toHaveAttribute("href", "/contact");
     expect(screen.queryByRole("heading", { name: "Account & Profile" })).not.toBeInTheDocument();

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type ComponentProps, type ReactNode } from "react";
 import Link from "next/link";
 import {
+  BarChart3,
   CalendarDays,
   CircleDollarSign,
   Clock3,
@@ -12,13 +13,10 @@ import {
   HelpCircle,
   KeyRound,
   MessageCircle,
-  Paintbrush,
   ReceiptText,
   Search,
-  Scissors,
   Settings2,
   ShieldCheck,
-  Store,
   TabletSmartphone,
   Users
 } from "lucide-react";
@@ -482,43 +480,30 @@ export function OwnerSettingsWorkspace({
     }
   }, [selectedSection]);
 
-  const shopProfileRows: SettingRow[] = [
+  const businessSetupRows: SettingRow[] = [
     {
-      title: "Shop Information",
-      subtitle: "Name, address, contact & business details",
-      href: "/onboarding/owner/shop",
-      icon: <Store className="h-5 w-5" />
-    },
-    {
-      title: "Branding",
-      subtitle: "Logo, cover photo & shop theme",
-      href: "/dashboard/owner/more?section=branding",
-      icon: <Paintbrush className="h-5 w-5" />
+      title: "Booth Rent, Commission & Fees",
+      subtitle: "Manage booth rent, commission splits, pricing rules, caps, and platform fees",
+      href: "/dashboard/owner/money?view=fintech",
+      icon: <CircleDollarSign className="h-5 w-5" />,
+      status: blockedRoutingCount ? "Needs review" : "Protected",
+      tone: blockedRoutingCount ? "yellow" : "green"
     },
     {
       title: "Shop Hours",
-      subtitle: "Operating hours & holidays",
+      subtitle: "Operating hours, holidays, open/closed status, and team coverage rules",
       href: "/onboarding/owner/structure",
       icon: <Clock3 className="h-5 w-5" />
     },
     {
       title: "Shop Policies",
-      subtitle: "Cancellation, no-show & reschedule rules",
+      subtitle: "Shop rules, client policies, barber agreements, cancellation/no-show rules, and shop contracts",
       href: "/onboarding/owner/structure",
       icon: <FileText className="h-5 w-5" />
-    }
-  ];
-
-  const businessSetupRows: SettingRow[] = [
-    {
-      title: "Services",
-      subtitle: "Manage services & pricing",
-      href: "/dashboard/owner/more?section=services",
-      icon: <Scissors className="h-5 w-5" />
     },
     {
       title: "Team & Roles",
-      subtitle: "Manage team roles & permissions",
+      subtitle: "Manage team roles, permissions, booth rent barbers, commission barbers, and active members",
       href: "/onboarding/owner/team",
       icon: <Users className="h-5 w-5" />,
       status: membershipCount ? `${membershipCount} linked` : "Not set",
@@ -526,21 +511,25 @@ export function OwnerSettingsWorkspace({
     },
     {
       title: "Kiosk Settings",
-      subtitle: "4-digit PIN, shop kiosk mode, and eligible active barbers",
+      subtitle: "4-digit PIN, shop kiosk mode, walk-in routing, and eligible active barbers",
       href: "/dashboard/owner/more?section=kiosk",
       icon: <TabletSmartphone className="h-5 w-5" />
     },
     {
-      title: "Commission & Fees",
-      subtitle: "Shop commission and platform fee rules",
-      href: "/dashboard/owner/money?view=fintech",
-      icon: <CircleDollarSign className="h-5 w-5" />,
-      status: blockedRoutingCount ? "Needs review" : "Protected",
-      tone: blockedRoutingCount ? "yellow" : "green"
+      title: "Performance",
+      subtitle: "Reports, trends, utilization, bookings, revenue, team activity, and shop health",
+      href: "/dashboard/owner/overview",
+      icon: <BarChart3 className="h-5 w-5" />
     }
   ];
 
   const paymentsRows: SettingRow[] = [
+    {
+      title: "Wallet / Billing",
+      subtitle: "Default payment method for shop subscriptions, tools, ads, and promotions",
+      href: "/dashboard/owner/money?section=wallet",
+      icon: <CreditCard className="h-5 w-5" />
+    },
     {
       title: "Stripe Connect",
       subtitle: "Manage bank accounts & payouts",
@@ -630,10 +619,7 @@ export function OwnerSettingsWorkspace({
       id: "owner-settings-shop-profile",
       title: "SHOP BUSINESS SETTINGS",
       subtitle: "Manage the tools that control your shop profile, team, services, hours, policies, kiosk, and operating model.",
-      rows: [
-        ...shopProfileRows,
-        ...businessSetupRows
-      ]
+      rows: businessSetupRows
     },
     {
       id: "owner-settings-payments-banking",
@@ -693,9 +679,9 @@ export function OwnerSettingsWorkspace({
         title="BVRB3R App Settings"
         subtitle="App-level behavior, saved items, activity, and personal preferences."
         rows={[
-          { title: "Notifications", subtitle: "Messages and reminders", href: "/dashboard/owner/messages", icon: <MessageCircle className="h-5 w-5" /> },
-          { title: "Preferences", subtitle: "App experience, display, and default behavior", href: "/dashboard/owner/more?section=settings", icon: <Settings2 className="h-5 w-5" /> },
-          { title: "Activity", subtitle: "App activity and visit history", href: "/dashboard/owner/schedule", icon: <CalendarDays className="h-5 w-5" /> }
+          { title: "Notifications & Alerts", subtitle: "Messages, reminders, shop alerts, payout alerts, and business alerts", href: "/dashboard/owner/messages", icon: <MessageCircle className="h-5 w-5" /> },
+          { title: "Preferences", subtitle: "App experience, display, dashboard defaults, and operating behavior", href: "/dashboard/owner/more?section=settings", icon: <Settings2 className="h-5 w-5" /> },
+          { title: "Activity", subtitle: "App activity, shop activity, team activity, and account history", href: "/dashboard/owner/schedule", icon: <CalendarDays className="h-5 w-5" /> }
         ]}
       />
 

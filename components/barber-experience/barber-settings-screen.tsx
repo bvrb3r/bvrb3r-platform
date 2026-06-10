@@ -12,6 +12,7 @@ import {
   ChevronRight,
   CircleDollarSign,
   Clock3,
+  CreditCard,
   FileText,
   Fingerprint,
   Headphones,
@@ -1111,6 +1112,7 @@ export function BarberSettingsScreen({
       title: "Payments & Banking",
       subtitle: "Payout account, eligible balance, transactions, and tax posture.",
       rows: [
+        { title: "Wallet / Billing", subtitle: "Default payment method for bookings, subscriptions, and tools", href: "/dashboard/barber/more?section=wallet", icon: <CreditCard className="h-5 w-5" /> },
         { title: "Stripe Connect", subtitle: "Payout account and readiness", href: "/dashboard/barber/more?section=payouts", status: payoutSetupStatusLabel, tone: payoutsReady ? "green" : "yellow", icon: <WalletCards className="h-5 w-5" />, needsAction: !payoutsReady },
         { title: "Payout Status", subtitle: "Eligible balance and payout routing", href: "/dashboard/barber/more?section=payouts", status: payoutCurrency(eligiblePayoutAmount ?? 0), tone: hasPayoutAmount ? "green" : "muted", icon: <CircleDollarSign className="h-5 w-5" /> },
         { title: "Transactions", subtitle: "Sales and receipts", onClick: () => openBusinessTool("transactions"), icon: <ReceiptText className="h-5 w-5" />, testId: "business-tool-transactions" },
@@ -1719,11 +1721,11 @@ export function BarberSettingsScreen({
 
         <MoreControlHub
           title="BVRB3R App Settings"
-          subtitle="App-level behavior, saved items, activity, and personal preferences."
+        subtitle="App-level behavior, saved items, activity, and personal preferences."
           rows={[
-            { title: "Notifications", subtitle: "Messages and reminders", onClick: () => openBusinessTool("notifications"), icon: <BellRing className="h-5 w-5" /> },
-            { title: "Preferences", subtitle: "App experience, display, and default behavior", onClick: () => openBusinessTool("notifications"), icon: <SlidersHorizontal className="h-5 w-5" /> },
-            { title: "Activity", subtitle: "App activity and visit history", href: "/dashboard/barber/calendar", icon: <CalendarDays className="h-5 w-5" /> }
+            { title: "Notifications & Alerts", subtitle: "Messages, reminders, booking alerts, payout alerts, and business alerts", onClick: () => openBusinessTool("notifications"), icon: <BellRing className="h-5 w-5" /> },
+            { title: "Preferences", subtitle: "App experience, display, dashboard defaults, and business behavior", onClick: () => openBusinessTool("notifications"), icon: <SlidersHorizontal className="h-5 w-5" /> },
+            { title: "Activity", subtitle: "App activity, client activity, sales activity, and visit history", href: "/dashboard/barber/calendar", icon: <CalendarDays className="h-5 w-5" /> }
           ]}
         />
 
@@ -1734,10 +1736,9 @@ export function BarberSettingsScreen({
           { title: "Service Library", subtitle: "Pricing and offerings", onClick: () => openBusinessTool("services"), needsAction: !hasActiveService, icon: <Scissors className="h-5 w-5" />, testId: "business-tool-services" },
           { title: "Hours", subtitle: "Working time and blocks", onClick: () => openBusinessTool("availability"), needsAction: !hasAvailability, icon: <Clock3 className="h-5 w-5" />, testId: "business-tool-availability" },
           { title: "Booking Rules", subtitle: "Online booking preferences", onClick: () => openBusinessTool("booking"), needsAction: !isBookingActive, icon: <CalendarDays className="h-5 w-5" />, testId: "business-tool-booking" },
-          { title: "Kiosk Settings", subtitle: "4-digit PIN, walk-in booking, and kiosk mode", onClick: () => openBusinessTool("kiosk"), icon: <TabletSmartphone className="h-5 w-5" />, testId: "business-tool-kiosk" },
           { title: "Shop Relationship", subtitle: "Invites and operating model", onClick: () => setQuickSetupModal("invites"), status: pendingShopInvites.length ? `${pendingShopInvites.length} pending` : subtypeLabel, tone: pendingShopInvites.length ? "yellow" : "muted", needsAction: pendingShopInvites.length > 0, icon: <Store className="h-5 w-5" /> },
-          { title: "Performance", subtitle: "Reports and trends", onClick: () => openBusinessTool("reports"), icon: <BarChart3 className="h-5 w-5" />, testId: "business-tool-reports" },
-          { title: "Alerts", subtitle: "Business alerts and reminders", onClick: () => openBusinessTool("notifications"), icon: <BellRing className="h-5 w-5" />, testId: "business-tool-notifications" }
+          { title: "Kiosk Settings", subtitle: "4-digit PIN, walk-in booking, chair kiosk, and public booking mode", onClick: () => openBusinessTool("kiosk"), icon: <TabletSmartphone className="h-5 w-5" />, testId: "business-tool-kiosk" },
+          { title: "Performance", subtitle: "Reports, trends, ratings, bookings, retention, and growth signals", onClick: () => openBusinessTool("reports"), icon: <BarChart3 className="h-5 w-5" />, testId: "business-tool-reports" }
         ]}
       />
 

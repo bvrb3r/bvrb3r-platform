@@ -8,6 +8,7 @@ import {
   BellRing,
   Camera,
   CalendarDays,
+  CircleDollarSign,
   Copy,
   CreditCard,
   FileText,
@@ -281,7 +282,6 @@ export function ClientProfileScreen({
   const selectedSection = (initialSection && initialSection in sectionIdMap ? initialSection : null) as ProfileSectionKey | null;
   const notificationPreference = mediaQuery.data?.viewer.notificationPreference ?? payload.notificationPreference;
   const hasPhone = clientPhone.length > 0;
-  const rewardsPoints = pointsBalance?.unlockedPoints ?? 0;
   const favoriteCount = (favoriteBarber ? 1 : 0) + preferredShops.length;
   const supportedLocationOptions = (() => {
     const options = new Map<string, AccountQuickEditLocationOption>();
@@ -293,12 +293,13 @@ export function ClientProfileScreen({
   const clientMoreSections: MoreSectionGroupConfig[] = [
     {
       title: "Payments & Banking",
-      subtitle: "Cards, receipts, rewards, credits, and payment history.",
+      subtitle: "How this account pays, earns rewards, and unlocks eligible creator payouts.",
       rows: [
-        { href: "/dashboard/client/more?section=wallet", title: "Wallet", subtitle: "Cards and booking default", icon: <CreditCard className="h-5 w-5" />, needsAction: !defaultPaymentMethod },
-        { href: CLIENT_PRIMARY_TAB_HREFS.activity, title: "Receipts", subtitle: "Appointments and receipts", icon: <ReceiptText className="h-5 w-5" /> },
-        { href: "/dashboard/client/more?section=rewards", title: "Rewards", subtitle: "Points, credits, and referrals", icon: <Gift className="h-5 w-5" /> },
-        { href: CLIENT_PRIMARY_TAB_HREFS.activity, title: "Payment History", subtitle: "Charges, refunds, and credits", icon: <WalletCards className="h-5 w-5" /> }
+        { href: "/dashboard/client/more?section=wallet", title: "Wallet", subtitle: "Cards, booking default, auto-booking, subscriptions", icon: <CreditCard className="h-5 w-5" />, needsAction: !defaultPaymentMethod },
+        { href: CLIENT_PRIMARY_TAB_HREFS.activity, title: "Receipts", subtitle: "Appointment receipts, service records, and proof of payment", icon: <ReceiptText className="h-5 w-5" /> },
+        { href: "/dashboard/client/more?section=rewards", title: "Rewards", subtitle: "Points, credits, loyalty progress, and referrals", icon: <Gift className="h-5 w-5" /> },
+        { href: CLIENT_PRIMARY_TAB_HREFS.activity, title: "Payment History", subtitle: "Charges, refunds, failed payments, and credits", icon: <WalletCards className="h-5 w-5" /> },
+        { href: "/dashboard/client/more?section=rewards", title: "Creator Payouts", subtitle: "Locked until approved. View requirements and manage payouts once eligible", icon: <CircleDollarSign className="h-5 w-5" />, status: "Locked", tone: "yellow", needsAction: true }
       ]
     },
     {
@@ -639,7 +640,7 @@ export function ClientProfileScreen({
         badges={[
           { label: emailVerified || phoneVerified ? "Verified" : "Verification needed", tone: emailVerified || phoneVerified ? "green" : "yellow" },
           { label: defaultPaymentMethod ? "Wallet ready" : "Add payment", tone: defaultPaymentMethod ? "green" : "yellow" },
-          { label: "Rewards setup", tone: rewardsPoints ? "green" : "muted" }
+          { label: "Creator payouts locked", tone: "yellow" }
         ]}
         metaLines={[
           { label: "Username", value: clientPublicUsernameLine },
@@ -656,10 +657,10 @@ export function ClientProfileScreen({
         title="BVRB3R App Settings"
         subtitle="App-level behavior, saved items, activity, and personal preferences."
         rows={[
-          { href: "/dashboard/client/more?section=settings", title: "Notifications", subtitle: "Messages and reminders", icon: <BellRing className="h-5 w-5" /> },
-          { href: "/dashboard/client/more?section=settings", title: "Preferences", subtitle: "App experience, display, and default behavior", icon: <SlidersHorizontal className="h-5 w-5" /> },
-          { href: "/dashboard/client/more?section=preferences", title: "Saved / Favorites", subtitle: "Saved barbers, shops, and platform items", icon: <Heart className="h-5 w-5" />, needsAction: favoriteCount === 0 },
-          { href: CLIENT_PRIMARY_TAB_HREFS.activity, title: "Activity", subtitle: "App activity and visit history", icon: <ReceiptText className="h-5 w-5" /> }
+          { href: "/dashboard/client/more?section=settings", title: "Notifications & Alerts", subtitle: "Messages, reminders, booking updates, and app alerts", icon: <BellRing className="h-5 w-5" /> },
+          { href: "/dashboard/client/more?section=settings", title: "Preferences", subtitle: "App experience, display, default behavior, and saved area", icon: <SlidersHorizontal className="h-5 w-5" /> },
+          { href: "/dashboard/client/more?section=preferences", title: "Saved / Favorites", subtitle: "Saved barbers, shops, styles, and platform items", icon: <Heart className="h-5 w-5" />, needsAction: favoriteCount === 0 },
+          { href: CLIENT_PRIMARY_TAB_HREFS.activity, title: "Activity", subtitle: "App activity, booking activity, and visit history", icon: <ReceiptText className="h-5 w-5" /> }
         ]}
       />
 

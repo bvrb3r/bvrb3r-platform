@@ -412,13 +412,19 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     expect(within(identityCard).getByText("@phillipforsure")).toBeInTheDocument();
     expect(within(identityCard).getByText("8516 Island Breeze Ln - Temple Terrace, FL 33607")).toBeInTheDocument();
     expect(screen.getByText("Kiosk Settings")).toBeInTheDocument();
-    expect(screen.getByText("4-digit PIN, walk-in booking, and kiosk mode")).toBeInTheDocument();
+    expect(screen.getByText("4-digit PIN, walk-in booking, chair kiosk, and public booking mode")).toBeInTheDocument();
     expect(identityCard).not.toHaveTextContent("Independent barber");
     expect(identityCard).not.toHaveTextContent("Freelance service area");
     expect(identityCard).not.toHaveTextContent("Phils chair / 2172 University Square More / Tampa");
     expect(identityCard).not.toHaveTextContent("independent-barber-");
     expect(screen.getByText("BVRB3R App Settings")).toBeInTheDocument();
+    expect(screen.getByText("Notifications & Alerts")).toBeInTheDocument();
+    expect(screen.getByText("Messages, reminders, booking alerts, payout alerts, and business alerts")).toBeInTheDocument();
     expect(screen.getByText("Barber Business Settings")).toBeInTheDocument();
+    ["Service Library", "Hours", "Booking Rules", "Shop Relationship", "Kiosk Settings", "Performance"].forEach((label) => {
+      expect(screen.getAllByText(label).length).toBeGreaterThan(0);
+    });
+    expect(screen.queryByText("Alerts")).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Public Profile" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Account Name, contact, and profile photo/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Public Profile Barber brand/ })).not.toBeInTheDocument();
@@ -426,6 +432,7 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     expect(screen.queryByText("Payout Balance")).not.toBeInTheDocument();
     expect(screen.queryByText("Receipts")).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Payments & Banking" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Wallet \/ Billing Default payment method/ })).toHaveAttribute("href", "/dashboard/barber/more?section=wallet");
     expect(screen.getByRole("heading", { name: "Compliance & Security" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Support" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Stripe Connect Payout account and readiness/ })).toHaveAttribute("href", "/dashboard/barber/more?section=payouts");
