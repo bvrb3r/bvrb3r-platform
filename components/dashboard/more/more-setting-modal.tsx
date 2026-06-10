@@ -1,12 +1,43 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { MoreSettingModalContent } from "@/components/dashboard/more/more-setting-modal-content";
 import type { MoreSettingModalSpec } from "@/components/dashboard/more/more-setting-modal-registry";
 import { cn } from "@/lib/utils";
+
+function resolveViewportOverlayStyle(root: HTMLElement | null): CSSProperties | null {
+  if (!root || typeof window === "undefined" || typeof document === "undefined") {
+    return null;
+  }
+
+  const rect = root.getBoundingClientRect();
+  const visualViewport = window.visualViewport;
+  const viewportLeft = visualViewport?.offsetLeft ?? 0;
+  const viewportTop = visualViewport?.offsetTop ?? 0;
+  const viewportWidth = visualViewport?.width ?? window.innerWidth ?? document.documentElement.clientWidth;
+  const viewportHeight = visualViewport?.height ?? window.innerHeight ?? document.documentElement.clientHeight;
+  const left = Math.max(viewportLeft, rect.left);
+  const top = Math.max(viewportTop, rect.top);
+  const right = Math.min(viewportLeft + viewportWidth, rect.right);
+  const bottom = Math.min(viewportTop + viewportHeight, rect.bottom);
+  const width = right - left;
+  const height = bottom - top;
+
+  if (width <= 0 || height <= 0) {
+    return null;
+  }
+
+  return {
+    position: "fixed",
+    left,
+    top,
+    width,
+    height
+  };
+}
 
 export function MoreSettingModal({
   open,
@@ -42,6 +73,7 @@ export function MoreSettingModal({
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
+  const [overlayStyle, setOverlayStyle] = useState<CSSProperties | null>(null);
 
   useEffect(() => {
     if (!open) {
@@ -49,18 +81,57 @@ export function MoreSettingModal({
       setConfirmDiscard(false);
       setIsSaving(false);
       setError(null);
+      setOverlayStyle(null);
     }
   }, [open]);
 
   useEffect(() => {
-    if (!open || typeof document === "undefined") {
+    if (!open || !spec || typeof document === "undefined") {
       setPortalRoot(null);
+      setOverlayStyle(null);
       return;
     }
 
     const roleRoot = document.querySelector<HTMLElement>(`[data-more-modal-root="${spec?.roleScope ?? "shared"}"]`);
-    setPortalRoot(roleRoot ?? document.querySelector<HTMLElement>("[data-more-modal-root]"));
-  }, [open, spec?.roleScope]);
+    const nextPortalRoot = roleRoot ?? document.querySelector<HTMLElement>("[data-more-modal-root]");
+    setPortalRoot(nextPortalRoot);
+
+    function updateOverlayStyle() {
+      setOverlayStyle(resolveViewportOverlayStyle(nextPortalRoot));
+    }
+
+    updateOverlayStyle();
+    window.addEventListener("resize", updateOverlayStyle);
+    window.addEventListener("scroll", updateOverlayStyle, true);
+    window.visualViewport?.addEventListener("resize", updateOverlayStyle);
+    window.visualViewport?.addEventListener("scroll", updateOverlayStyle);
+
+    return () => {
+      window.removeEventListener("resize", updateOverlayStyle);
+      window.removeEventListener("scroll", updateOverlayStyle, true);
+      window.visualViewport?.removeEventListener("resize", updateOverlayStyle);
+      window.visualViewport?.removeEventListener("scroll", updateOverlayStyle);
+    };
+  }, [open, spec]);
+
+  useEffect(() => {
+    if (!open || typeof document === "undefined") {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    const previousPaddingRight = document.body.style.paddingRight;
+    const scrollbarWidth = Math.max(0, (window.innerWidth ?? 0) - document.documentElement.clientWidth);
+    document.body.style.overflow = "hidden";
+    if (scrollbarWidth > 0) {
+      document.body.style.paddingRight = `${scrollbarWidth}px`;
+    }
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.body.style.paddingRight = previousPaddingRight;
+    };
+  }, [open]);
 
   if (!open || !spec) {
     return null;
@@ -91,7 +162,7 @@ export function MoreSettingModal({
       onSaved?.();
       onClose();
     } catch {
-      setError("Couldn’t save this setting. Try again.");
+      setError("Couldn't save this setting. Try again.");
     } finally {
       setIsSaving(false);
     }
@@ -101,8 +172,9 @@ export function MoreSettingModal({
     <div
       className={cn(
         "z-[240] flex items-end justify-center bg-black/72 px-3 pb-[calc(env(safe-area-inset-bottom)+14px)] pt-6 backdrop-blur-md sm:items-center sm:p-6",
-        portalRoot ? "absolute inset-0" : "fixed inset-0"
+        overlayStyle ? null : "fixed inset-0"
       )}
+      style={overlayStyle ?? undefined}
       role="presentation"
       data-testid="more-setting-modal-backdrop"
     >

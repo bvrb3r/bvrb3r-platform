@@ -522,7 +522,7 @@ describe("BarberSettingsScreen Stripe return sync", () => {
 
     fireEvent.click(screen.getByTestId("business-tool-services"));
     dialog = screen.getByRole("dialog", { name: "Services" });
-    expect(screen.getByTestId("more-setting-modal-backdrop")).toBeInTheDocument();
+    expect(screen.getByTestId("more-setting-modal-backdrop")).not.toHaveClass("absolute");
     expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Save Changes" })).toBeDisabled();
     expect(within(dialog).getByRole("button", { name: /Add service/ })).toBeInTheDocument();

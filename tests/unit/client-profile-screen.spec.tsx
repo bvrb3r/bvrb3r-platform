@@ -451,7 +451,7 @@ describe("client profile screen", () => {
     expect(screen.queryByText("Membership status could not be loaded right now.")).not.toBeInTheDocument();
   });
 
-  it("opens focused More row modals with cancel, save, and exit controls", () => {
+  it("opens focused More row modals in the visible viewport with cancel, save, and exit controls", async () => {
     render(
       <ClientProfileScreen
         isSignedInClient
@@ -475,13 +475,39 @@ describe("client profile screen", () => {
       />
     );
 
+    const scrollSpy = Element.prototype.scrollIntoView as ReturnType<typeof vi.fn>;
+    scrollSpy.mockClear();
+    vi.spyOn(screen.getByTestId("client-profile-screen"), "getBoundingClientRect").mockReturnValue({
+      x: 32,
+      y: 96,
+      top: 96,
+      left: 32,
+      right: 452,
+      bottom: 760,
+      width: 420,
+      height: 664,
+      toJSON: () => ({})
+    } as DOMRect);
+    const initialScrollY = window.scrollY;
+
     fireEvent.click(screen.getByRole("link", { name: /Notifications & Alerts Messages, reminders, booking updates, and app alerts/ }));
     let dialog = screen.getByRole("dialog", { name: "Notifications & Alerts" });
+    const backdrop = screen.getByTestId("more-setting-modal-backdrop");
+    await waitFor(() => expect(backdrop).toHaveStyle("position: fixed"));
+    expect(backdrop).toHaveStyle("top: 96px");
+    expect(backdrop).toHaveStyle("left: 32px");
+    expect(backdrop).toHaveStyle("width: 420px");
+    expect(backdrop).toHaveStyle("height: 664px");
+    expect(backdrop).not.toHaveClass("absolute");
+    expect(scrollSpy).not.toHaveBeenCalled();
+    expect(window.scrollY).toBe(initialScrollY);
+    expect(document.body.style.overflow).toBe("hidden");
     expect(within(dialog).getByLabelText("Close setting modal")).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Save Changes" })).toBeDisabled();
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     expect(screen.queryByRole("dialog", { name: "Notifications & Alerts" })).not.toBeInTheDocument();
+    await waitFor(() => expect(document.body.style.overflow).toBe(""));
 
     fireEvent.click(screen.getByRole("link", { name: /Creator Status Locked, eligible, pending review, approved, suspended, or banned. Creator tools locked/ }));
     dialog = screen.getByRole("dialog", { name: "Creator Status" });
