@@ -393,10 +393,10 @@ export function OwnerSettingsWorkspace({
     setQuickSetupFeedback({ tone: "success", message: "Account details saved. Email or phone changes may still require verification." });
   }
 
-  function handleAccountPaymentAction() {
+  function handleAccountPaymentAction(href: string) {
     setAccountEditorOpen(false);
     window.setTimeout(() => {
-      window.location.assign("/dashboard/owner/money?view=fintech");
+      window.location.assign(href);
     }, 0);
   }
 
@@ -788,8 +788,10 @@ export function OwnerSettingsWorkspace({
         email={ownerEmail}
         phone={ownerPhone}
         cityLocation={ownerAccountLocationLine === "Location not set" ? "" : ownerAccountLocationLine}
-        defaultPaymentMethodLabel={stripeStatus.label === "Connected" ? "Owner payout setup connected" : "Payment setup managed in Money"}
-        managePaymentHref="/dashboard/owner/money?view=fintech"
+        defaultPaymentMethodLabel="No saved default payment method"
+        payoutMethodLabel={stripeStatus.label === "Connected" ? "Payout setup connected" : "Payout setup not started"}
+        managePaymentHref="/dashboard/owner/money?section=wallet"
+        managePayoutHref="/dashboard/owner/money?view=fintech"
         locationOptions={ownerLocationOptions}
         emailVerified={user.emailVerified}
         phoneVerified={user.phoneVerified}

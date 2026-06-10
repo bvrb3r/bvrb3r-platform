@@ -1247,9 +1247,14 @@ export function BarberSettingsScreen({
     setFeedback({ tone: "success", message: "Account details saved. Email or phone changes may still require verification." });
   }
 
-  function handleAccountPaymentAction() {
+  function handleAccountPaymentAction(href: string) {
     setAccountEditorOpen(false);
     window.setTimeout(() => {
+      if (!href.includes("#barber-settings-payouts")) {
+        window.location.assign(href);
+        return;
+      }
+
       const target = document.getElementById("barber-settings-payouts");
       if (typeof target?.scrollIntoView === "function") {
         target.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -2802,8 +2807,10 @@ export function BarberSettingsScreen({
         email={user.email}
         phone={user.phone}
         cityLocation={barberIdentityLocationLabel}
-        defaultPaymentMethodLabel="Managed through payout and checkout settings"
-        managePaymentHref="/dashboard/barber/more#barber-settings-payouts"
+        defaultPaymentMethodLabel="No saved default payment method"
+        payoutMethodLabel={payoutSetupStatusLabel}
+        managePaymentHref="/dashboard/barber/more?section=wallet"
+        managePayoutHref="/dashboard/barber/more#barber-settings-payouts"
         locationOptions={barberLocationOptions}
         locationLocked={hasShopControlledLocation}
         locationLockedCopy="Locked to shop address."

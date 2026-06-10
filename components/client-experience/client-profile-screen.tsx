@@ -1284,6 +1284,9 @@ export function ClientProfileScreen({
         }))}
         defaultPaymentMethodId={defaultPaymentMethod?.id ?? null}
         managePaymentHref="/dashboard/client/more?section=wallet"
+        managePayoutHref="/dashboard/client/more?section=rewards"
+        creatorPayoutEligible={false}
+        creatorPayoutLockedReason="Unlocks after creator approval, loyalty history, and qualifying auto-book activity."
         locationOptions={supportedLocationOptions}
         requireLocationOption={supportedLocationOptions.length > 0}
         emailVerified={emailVerified}

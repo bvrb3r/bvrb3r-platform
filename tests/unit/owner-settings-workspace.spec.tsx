@@ -160,6 +160,8 @@ describe("owner More workspace", () => {
     expect(screen.queryByLabelText("Public display name")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Email")).toBeInTheDocument();
     expect(screen.getByLabelText("Phone Number")).toBeInTheDocument();
+    expect(screen.getByText("Default Payment Method")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Manage Payment Method" })).toBeInTheDocument();
     expect(screen.getByText("Payout Method")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Manage Payout Method" })).toBeInTheDocument();
     expect(screen.getByLabelText("Location")).toBeInTheDocument();

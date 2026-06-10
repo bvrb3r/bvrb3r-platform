@@ -126,6 +126,9 @@ describe("AccountQuickEditModal", () => {
     expect(screen.getByText("Default Payment Method")).toBeInTheDocument();
     expect(screen.getByText("Visa ending in 4242")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Manage Payment Method" })).toBeInTheDocument();
+    expect(screen.getByText("Creator Payout Method")).toBeInTheDocument();
+    expect(screen.getByText("Locked")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "View Requirements" })).toBeInTheDocument();
     expect(screen.queryByLabelText(/card number/i)).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("BVRB3R Username"), { target: { value: "" } });
@@ -153,6 +156,62 @@ describe("AccountQuickEditModal", () => {
       });
     });
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows creator payout requirements instead of payout setup when the client rail is locked", () => {
+    render(
+      <AccountQuickEditModal
+        open
+        variant="client"
+        displayName="Jordan Ellis"
+        publicUsername="@jordan"
+        email="jordan@example.com"
+        phone="8135550190"
+        cityLocation="Tampa, FL"
+        defaultPaymentMethodLabel="Visa ending in 4242"
+        managePaymentHref="/dashboard/client/more?section=wallet"
+        managePayoutHref="/dashboard/client/more?section=payouts"
+        onClose={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("Creator Payout Method")).toBeInTheDocument();
+    expect(screen.getByText("Locked")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "View Requirements" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Manage Payout Method" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "View Requirements" }));
+
+    expect(screen.getByText("Creator payout requirements")).toBeInTheDocument();
+    expect(screen.getByText("This setting is locked. No payout setup was started.")).toBeInTheDocument();
+  });
+
+  it("shows manage payout when the client creator payout rail is eligible", () => {
+    const onPayoutAction = vi.fn();
+
+    render(
+      <AccountQuickEditModal
+        open
+        variant="client"
+        displayName="Jordan Ellis"
+        publicUsername="@jordan"
+        email="jordan@example.com"
+        phone="8135550190"
+        cityLocation="Tampa, FL"
+        defaultPaymentMethodLabel="Visa ending in 4242"
+        payoutMethodLabel="Connected"
+        managePaymentHref="/dashboard/client/more?section=wallet"
+        managePayoutHref="/dashboard/client/more?section=payouts"
+        creatorPayoutEligible
+        onClose={vi.fn()}
+        onPayoutAction={onPayoutAction}
+      />
+    );
+
+    expect(screen.getByText("Creator Payout Method")).toBeInTheDocument();
+    expect(screen.getByText("Connected")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Manage Payout Method" }));
+    expect(onPayoutAction).toHaveBeenCalledWith("/dashboard/client/more?section=payouts");
   });
 
   it("shows saving state, prevents double submit, and closes after a successful save", async () => {
@@ -355,6 +414,8 @@ describe("AccountQuickEditModal", () => {
     );
 
     expect(screen.getByText("Payout Method")).toBeInTheDocument();
+    expect(screen.getByText("Default Payment Method")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Manage Payment Method" })).toBeInTheDocument();
     expect(screen.getByText("BVRB3R never collects raw bank or card numbers in this account modal.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Manage Payout Method" }));
     expect(onPaymentAction).toHaveBeenCalledWith("/dashboard/barber/more#barber-settings-payouts");
