@@ -30,6 +30,7 @@ import {
   MoreSectionGroup,
   type MoreSectionGroup as MoreSectionGroupConfig
 } from "@/components/dashboard/more/more-components";
+import { MoreSettingModal } from "@/components/dashboard/more/more-setting-modal";
 import { Button } from "@/components/ui/button";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Input } from "@/components/ui/input";
@@ -654,8 +655,30 @@ export function OwnerSettingsWorkspace({
     }
   ];
 
+  const quickSetupModalSpec = quickSetupModal
+    ? {
+        key: `owner-quick-setup-${quickSetupModal}`,
+        roleScope: "owner" as const,
+        sectionKey: "owner-quick-setup",
+        title:
+          quickSetupModal === "hours"
+            ? "Set shop hours"
+            : quickSetupModal === "invite"
+              ? "Invite barber"
+              : "Turn shop public?",
+        eyebrow: quickSetupModal === "invite" ? "Team setup" : "Quick setup",
+        helper:
+          quickSetupModal === "hours"
+            ? "These hours feed the owner schedule and public shop readiness."
+            : quickSetupModal === "invite"
+              ? "Search real barber accounts and send a canonical team invite."
+              : "This confirms public intent only. Approval, profile data, team, and bookable barber readiness still control marketplace visibility.",
+        mode: "read_only" as const
+      }
+    : null;
+
   return (
-    <div className="space-y-7" data-testid="owner-settings-workspace">
+    <div className="relative space-y-7 overflow-hidden" data-testid="owner-settings-workspace" data-more-modal-root="owner">
       {errorMessage ? <FeedbackBanner tone="error" message={getReadableActionError(errorMessage)} /> : null}
       {quickSetupFeedback ? <FeedbackBanner tone={quickSetupFeedback.tone} message={quickSetupFeedback.message} /> : null}
 
@@ -800,8 +823,13 @@ export function OwnerSettingsWorkspace({
       />
 
       {quickSetupModal ? (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/72 px-4 py-5 backdrop-blur-sm sm:items-center" role="dialog" aria-modal="true">
-          <div className="w-full max-w-2xl rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(4,4,4,0.98))] p-5 text-white shadow-[0_24px_70px_rgba(0,0,0,0.58),0_0_34px_rgba(163,255,18,0.12)]">
+        <MoreSettingModal
+          open
+          spec={quickSetupModalSpec}
+          onClose={closeQuickSetupModal}
+          closeLabel="Close owner quick setup"
+          maxWidthClassName="max-w-2xl"
+        >
             {quickSetupModal === "hours" ? (
               <div className="space-y-4">
                 <div>
@@ -919,8 +947,7 @@ export function OwnerSettingsWorkspace({
                 </div>
               </div>
             ) : null}
-          </div>
-        </div>
+        </MoreSettingModal>
       ) : null}
     </div>
   );

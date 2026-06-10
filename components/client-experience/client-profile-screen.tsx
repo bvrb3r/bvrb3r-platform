@@ -631,7 +631,7 @@ export function ClientProfileScreen({
   }
 
   return (
-    <div className="space-y-4" data-testid="client-profile-screen">
+    <div className="relative space-y-4 overflow-hidden" data-testid="client-profile-screen" data-more-modal-root="client">
       <MorePageHeader
         title="More"
         subtitle="Manage your account, booking activity, payments, rewards, and preferences."

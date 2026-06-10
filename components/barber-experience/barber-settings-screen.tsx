@@ -44,6 +44,7 @@ import {
   MoreSectionGroup,
   type MoreSectionGroup as MoreSectionGroupConfig
 } from "@/components/dashboard/more/more-components";
+import { MoreSettingModal } from "@/components/dashboard/more/more-setting-modal";
 import { BarberEarningsWorkspace } from "@/components/operations/barber-earnings-workspace";
 import { BarberScheduleWorkspace } from "@/components/operations/barber-schedule-workspace";
 import { KioskSettingsCard } from "@/components/kiosk/kiosk-actions";
@@ -381,37 +382,28 @@ function BusinessToolModal({
   onClose: () => void;
   children: ReactNode;
 }) {
+  const modalSpec = {
+    key: `barber-business-${title.toLowerCase().replace(/\s+/g, "-")}`,
+    roleScope: "barber" as const,
+    sectionKey: "barber-business-workspace",
+    title,
+    eyebrow: subtitle,
+    helper: description ?? "Focused barber business control.",
+    mode: "read_only" as const
+  };
+
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/72 px-4 py-5 backdrop-blur-sm sm:items-center"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="business-tool-modal-title"
-      data-testid="business-tool-modal"
+    <MoreSettingModal
+      open
+      spec={modalSpec}
+      onClose={onClose}
+      closeLabel="Close business tool"
+      testId="business-tool-modal"
+      maxWidthClassName="max-w-4xl"
+      bodyClassName="space-y-6"
     >
-      <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-t-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(4,4,4,0.98))] p-5 shadow-[0_24px_70px_rgba(0,0,0,0.58),0_0_34px_rgba(163,255,18,0.12)] sm:rounded-[28px] sm:p-6">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <SectionLabel>{subtitle}</SectionLabel>
-            <h2 id="business-tool-modal-title" className="mt-3 text-3xl font-black tracking-[-0.04em] text-white">
-              {title}
-            </h2>
-            {description ? <p className="mt-2 max-w-2xl text-sm leading-6 text-white/56">{description}</p> : null}
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/72 transition hover:border-[#a3ff12]/35 hover:text-[#a3ff12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a3ff12]/55"
-            aria-label="Close business tool"
-          >
-            <XCircle className="h-5 w-5" aria-hidden="true" />
-          </button>
-        </div>
-        <div className="mt-6">
-          {children}
-        </div>
-      </div>
-    </div>
+      {children}
+    </MoreSettingModal>
   );
 }
 
@@ -1648,8 +1640,38 @@ export function BarberSettingsScreen({
     }
   }
 
+  const quickSetupModalSpec = quickSetupModal
+    ? {
+        key: `barber-quick-setup-${quickSetupModal}`,
+        roleScope: "barber" as const,
+        sectionKey: "barber-quick-setup",
+        title:
+          quickSetupModal === "service"
+            ? "Add your first service"
+            : quickSetupModal === "availability"
+              ? "Set your working hours"
+              : quickSetupModal === "visibility"
+                ? "Make your profile visible to clients?"
+                : quickSetupModal === "booking"
+                  ? "Accept bookings"
+                  : "Shop invitations",
+        eyebrow: quickSetupModal === "invites" ? "Shop relationship" : "Quick setup",
+        helper:
+          quickSetupModal === "service"
+            ? "This creates a real marketplace service that can appear in booking, checkout, and your public profile."
+            : quickSetupModal === "availability"
+              ? "Set your hours first. Then choose where clients can book you."
+              : quickSetupModal === "visibility"
+                ? "Clients will be able to find your profile once your services and availability are ready."
+                : quickSetupModal === "booking"
+                  ? "This moves your live status to Active and lets the booking engine consider you once setup is complete."
+                  : "Accepting uses the existing team invite API and links you to the shop only after you confirm.",
+        mode: "read_only" as const
+      }
+    : null;
+
   return (
-    <div className="relative space-y-6 overflow-hidden pb-4 text-white" data-testid="barber-settings-screen">
+    <div className="relative space-y-6 overflow-hidden pb-4 text-white" data-testid="barber-settings-screen" data-more-modal-root="barber">
       <div className="pointer-events-none absolute inset-x-[-4rem] top-[-8rem] h-72 bg-[radial-gradient(circle_at_top_right,rgba(163,255,18,0.12),transparent_32%)]" aria-hidden="true" />
       <div className="pointer-events-none absolute inset-x-[-4rem] bottom-[-8rem] h-72 bg-[radial-gradient(circle_at_bottom_center,rgba(163,255,18,0.07),transparent_34%)]" aria-hidden="true" />
 
@@ -2835,8 +2857,13 @@ export function BarberSettingsScreen({
       ) : null}
 
       {quickSetupModal ? (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/72 px-4 py-5 backdrop-blur-sm sm:items-center" role="dialog" aria-modal="true">
-          <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(18,18,18,0.98),rgba(4,4,4,0.98))] p-5 shadow-[0_24px_70px_rgba(0,0,0,0.58),0_0_34px_rgba(163,255,18,0.12)]">
+        <MoreSettingModal
+          open
+          spec={quickSetupModalSpec}
+          onClose={closeQuickSetupModal}
+          closeLabel="Close barber quick setup"
+          maxWidthClassName="max-w-xl"
+        >
             {quickSetupModal === "service" ? (
               <div className="space-y-4">
                 <div>
@@ -3102,8 +3129,7 @@ export function BarberSettingsScreen({
                 <Button type="button" variant="secondary" className="min-h-12 w-full rounded-2xl" onClick={closeQuickSetupModal}>Close</Button>
               </div>
             ) : null}
-          </div>
-        </div>
+        </MoreSettingModal>
       ) : null}
     </div>
   );

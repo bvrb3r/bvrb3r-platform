@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { MoreSettingModalContent } from "@/components/dashboard/more/more-setting-modal-content";
 import type { MoreSettingModalSpec } from "@/components/dashboard/more/more-setting-modal-registry";
@@ -15,7 +16,12 @@ export function MoreSettingModal({
   onSaved,
   primaryLabel = "Save Changes",
   primaryEnabled = false,
-  footerPrimary
+  footerPrimary,
+  children,
+  closeLabel = "Close setting modal",
+  testId,
+  maxWidthClassName = "max-w-2xl",
+  bodyClassName
 }: {
   open: boolean;
   spec: MoreSettingModalSpec | null;
@@ -25,11 +31,17 @@ export function MoreSettingModal({
   primaryLabel?: string;
   primaryEnabled?: boolean;
   footerPrimary?: ReactNode;
+  children?: ReactNode;
+  closeLabel?: string;
+  testId?: string;
+  maxWidthClassName?: string;
+  bodyClassName?: string;
 }) {
   const [dirty, setDirty] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!open) {
@@ -39,6 +51,16 @@ export function MoreSettingModal({
       setError(null);
     }
   }, [open]);
+
+  useEffect(() => {
+    if (!open || typeof document === "undefined") {
+      setPortalRoot(null);
+      return;
+    }
+
+    const roleRoot = document.querySelector<HTMLElement>(`[data-more-modal-root="${spec?.roleScope ?? "shared"}"]`);
+    setPortalRoot(roleRoot ?? document.querySelector<HTMLElement>("[data-more-modal-root]"));
+  }, [open, spec?.roleScope]);
 
   if (!open || !spec) {
     return null;
@@ -75,20 +97,31 @@ export function MoreSettingModal({
     }
   }
 
-  return (
-    <div className="fixed inset-0 z-[240] flex items-end justify-center bg-black/72 px-3 pb-[calc(env(safe-area-inset-bottom)+14px)] pt-6 backdrop-blur-md sm:items-center sm:p-6" role="presentation">
+  const modal = (
+    <div
+      className={cn(
+        "z-[240] flex items-end justify-center bg-black/72 px-3 pb-[calc(env(safe-area-inset-bottom)+14px)] pt-6 backdrop-blur-md sm:items-center sm:p-6",
+        portalRoot ? "absolute inset-0" : "fixed inset-0"
+      )}
+      role="presentation"
+      data-testid="more-setting-modal-backdrop"
+    >
       <section
         role="dialog"
         aria-modal="true"
         aria-labelledby="more-setting-modal-title"
-        className="relative flex max-h-[calc(100dvh-32px)] w-full max-w-2xl flex-col overflow-hidden rounded-[26px] border border-white/10 bg-[linear-gradient(180deg,rgba(16,16,16,0.98),rgba(3,3,3,0.99))] text-white shadow-[0_24px_80px_rgba(0,0,0,0.62)]"
+        data-testid={testId}
+        className={cn(
+          "relative flex max-h-[calc(100dvh-32px)] w-full flex-col overflow-hidden rounded-[26px] border border-white/10 bg-[linear-gradient(180deg,rgba(16,16,16,0.98),rgba(3,3,3,0.99))] text-white shadow-[0_24px_80px_rgba(0,0,0,0.62)]",
+          maxWidthClassName
+        )}
       >
         <div className="sticky top-0 z-10 border-b border-white/10 bg-black/80 p-5 backdrop-blur-xl sm:p-6">
           <button
             type="button"
             className="absolute right-4 top-4 flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.045] text-white/70 hover:border-[#A3FF12]/30 hover:text-[#A3FF12]"
             onClick={requestClose}
-            aria-label="Close setting modal"
+            aria-label={closeLabel}
           >
             <X className="h-5 w-5" aria-hidden="true" />
           </button>
@@ -97,8 +130,8 @@ export function MoreSettingModal({
           <p className="mt-2 max-w-xl pr-12 text-sm leading-6 text-white/58">{spec.helper}</p>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-6">
-          <MoreSettingModalContent spec={spec} href={href} dirty={dirty} onDirtyChange={setDirty} />
+        <div className={cn("min-h-0 flex-1 overflow-y-auto p-5 sm:p-6", bodyClassName)}>
+          {children ?? <MoreSettingModalContent spec={spec} href={href} dirty={dirty} onDirtyChange={setDirty} />}
           {confirmDiscard ? (
             <div className="mt-5 rounded-[18px] border border-amber-300/20 bg-amber-300/[0.06] p-4">
               <p className="text-sm font-extrabold text-amber-100">Discard unsaved changes?</p>
@@ -139,4 +172,6 @@ export function MoreSettingModal({
       </section>
     </div>
   );
+
+  return portalRoot ? createPortal(modal, portalRoot) : modal;
 }
