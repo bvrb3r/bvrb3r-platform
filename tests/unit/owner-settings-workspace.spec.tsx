@@ -280,6 +280,29 @@ describe("owner More workspace", () => {
     expect(screen.queryByText("Unable to load shop profile media.")).not.toBeInTheDocument();
   });
 
+  it("opens focused More modals for owner rows and account session logout", () => {
+    render(<OwnerSettingsWorkspace user={resolveDemoUser("owner@bvrb3r.demo")} />);
+
+    fireEvent.click(screen.getByRole("link", { name: /Wallet \/ Billing Default payment method/ }));
+    let dialog = screen.getByRole("dialog", { name: "Wallet / Billing" });
+    expect(within(dialog).getByLabelText("Close setting modal")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Save Changes" })).toBeDisabled();
+    expect(within(dialog).getByRole("link", { name: "Open attached destination" })).toHaveAttribute("href", "/dashboard/owner/money?section=wallet");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    fireEvent.click(screen.getByRole("link", { name: /Business Verification Barber shop license, LLC\/business document/ }));
+    dialog = screen.getByRole("dialog", { name: "Business Verification" });
+    expect(within(dialog).getByText("Shop license")).toBeInTheDocument();
+    expect(within(dialog).getByText("LLC or business document")).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByLabelText("Close setting modal"));
+
+    fireEvent.click(screen.getByRole("button", { name: /log out/i }));
+    dialog = screen.getByRole("dialog", { name: "Log Out" });
+    expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Log out" })).toBeInTheDocument();
+  });
+
   it("falls back to the owner viewer photo when no shop profile image exists", () => {
     useProfileMediaWorkspaceQueryMock.mockReturnValue({
       isLoading: false,

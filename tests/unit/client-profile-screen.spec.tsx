@@ -451,6 +451,51 @@ describe("client profile screen", () => {
     expect(screen.queryByText("Membership status could not be loaded right now.")).not.toBeInTheDocument();
   });
 
+  it("opens focused More row modals with cancel, save, and exit controls", () => {
+    render(
+      <ClientProfileScreen
+        isSignedInClient
+        authEmail="client@bvrb3r.demo"
+        authPhone="8135550100"
+        emailVerified
+        phoneVerified
+        payload={{
+          client: {
+            clientReference: "client-modal",
+            fullName: "Modal Client",
+            email: "client@bvrb3r.demo",
+            phone: "8135550100",
+            preferredLocation: { city: "Tampa", state: "FL" }
+          },
+          favoriteBarber: null,
+          preferredShops: [],
+          paymentMethods: [],
+          notificationPreference: null
+        } as unknown as ClientProfilePayload}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: /Notifications & Alerts Messages, reminders, booking updates, and app alerts/ }));
+    let dialog = screen.getByRole("dialog", { name: "Notifications & Alerts" });
+    expect(within(dialog).getByLabelText("Close setting modal")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Save Changes" })).toBeDisabled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog", { name: "Notifications & Alerts" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("link", { name: /Creator Status Locked, eligible, pending review, approved, suspended, or banned. Creator tools locked/ }));
+    dialog = screen.getByRole("dialog", { name: "Creator Status" });
+    expect(within(dialog).getByText("Creator tools locked")).toBeInTheDocument();
+    expect(within(dialog).getByText("Verified account")).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByLabelText("Close setting modal"));
+    expect(screen.queryByRole("dialog", { name: "Creator Status" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Log out" }));
+    dialog = screen.getByRole("dialog", { name: "Log Out" });
+    expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Log out" })).toBeInTheDocument();
+  });
+
   it("keeps membership failures visible without blocking the rest of profile", () => {
     useClientMembershipQueryMock.mockReturnValue({
       data: null,

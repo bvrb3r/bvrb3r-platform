@@ -1,9 +1,12 @@
 "use client";
 
 import type { ComponentProps, ReactNode } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { ChevronRight, LogOut } from "lucide-react";
 import { LogoutButton } from "@/components/auth/logout-button";
+import { MoreSettingModal } from "@/components/dashboard/more/more-setting-modal";
+import { resolveMoreSettingModalSpec, type MoreSettingRoleScope } from "@/components/dashboard/more/more-setting-modal-registry";
 import { Avatar, GlassCard } from "@/design/components";
 import { cn } from "@/lib/utils";
 
@@ -52,6 +55,7 @@ export type MoreSectionGroup = {
   subtitle?: string;
   rows: MoreSectionRow[];
   id?: string;
+  roleScope?: MoreSettingRoleScope;
 };
 
 function toneClasses(tone: MoreTone = "muted") {
@@ -229,11 +233,13 @@ export function MoreActivationGate({ title, subtitle, children }: { title: strin
 export function MoreControlHub({
   title,
   subtitle,
-  rows
+  rows,
+  roleScope = "shared"
 }: {
   title: string;
   subtitle: string;
   rows: MoreSectionRow[];
+  roleScope?: MoreSettingRoleScope;
 }) {
   return (
     <GlassCard className="p-5 sm:p-6" data-testid="more-control-hub">
@@ -243,14 +249,31 @@ export function MoreControlHub({
       </div>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {rows.map((row) => (
-          <MoreSectionRowLink key={row.title} row={row} compact />
+          <MoreSectionRowLink key={row.title} row={row} compact sectionTitle={title} roleScope={roleScope} />
         ))}
       </div>
     </GlassCard>
   );
 }
 
-function MoreSectionRowLink({ row, compact = false }: { row: MoreSectionRow; compact?: boolean }) {
+function MoreSectionRowLink({
+  row,
+  compact = false,
+  sectionTitle,
+  roleScope = "shared"
+}: {
+  row: MoreSectionRow;
+  compact?: boolean;
+  sectionTitle?: string;
+  roleScope?: MoreSettingRoleScope;
+}) {
+  const [modalOpen, setModalOpen] = useState(false);
+  const href = typeof row.href === "string" ? row.href : undefined;
+  const modalSpec = resolveMoreSettingModalSpec({ row, roleScope, sectionTitle });
+  const handleOpen = () => setModalOpen(true);
+  const handleSaved = () => {
+    row.onClick?.();
+  };
   const body = (
     <>
       {row.icon ? (
@@ -278,16 +301,50 @@ function MoreSectionRowLink({ row, compact = false }: { row: MoreSectionRow; com
     compact ? "p-4" : "min-h-[76px] p-4 sm:p-5"
   );
 
-  return row.href ? (
-    <Link href={row.href as never} className={className} data-testid={row.testId}>
-      {body}
-    </Link>
-  ) : row.onClick ? (
-    <button type="button" className={cn(className, "w-full text-left")} onClick={row.onClick} data-testid={row.testId}>
-      {body}
-    </button>
-  ) : (
-    <div className={className} data-testid={row.testId}>{body}</div>
+  const modal = (
+    <MoreSettingModal
+      open={modalOpen}
+      spec={modalSpec}
+      href={href}
+      onClose={() => setModalOpen(false)}
+      onSaved={handleSaved}
+    />
+  );
+
+  if (row.href) {
+    return (
+      <>
+        <Link
+          href={row.href as never}
+          className={className}
+          data-testid={row.testId}
+          onClick={(event) => {
+            event.preventDefault();
+            handleOpen();
+          }}
+        >
+          {body}
+        </Link>
+        {modal}
+      </>
+    );
+  }
+
+  if (row.onClick) {
+    return (
+      <button type="button" className={cn(className, "w-full text-left")} onClick={row.onClick} data-testid={row.testId}>
+        {body}
+      </button>
+    );
+  }
+
+  return (
+    <>
+      <button type="button" className={cn(className, "w-full text-left")} onClick={handleOpen} data-testid={row.testId}>
+        {body}
+      </button>
+      {modal}
+    </>
   );
 }
 
@@ -302,7 +359,7 @@ export function MoreSectionGroup({ group }: { group: MoreSectionGroup }) {
         <div className="divide-y divide-white/8">
           {group.rows.map((row) => (
             <div key={row.title} className="p-2">
-              <MoreSectionRowLink row={row} />
+              <MoreSectionRowLink row={row} sectionTitle={group.title} roleScope={group.roleScope} />
             </div>
           ))}
         </div>
@@ -312,6 +369,17 @@ export function MoreSectionGroup({ group }: { group: MoreSectionGroup }) {
 }
 
 export function MoreLogoutCard() {
+  const [modalOpen, setModalOpen] = useState(false);
+  const logoutSpec = {
+    key: "shared-account-session-log-out",
+    roleScope: "shared" as const,
+    sectionKey: "account-session",
+    title: "Log Out",
+    eyebrow: "Account session",
+    helper: "End this session on the current device.",
+    mode: "read_only" as const
+  };
+
   return (
     <section className="scroll-mt-6" data-testid="more-logout-card">
       <GlassCard className="border-red-500/20 bg-red-500/[0.025] p-4">
@@ -319,8 +387,23 @@ export function MoreLogoutCard() {
           <LogOut className="h-5 w-5" aria-hidden="true" />
           Account session
         </div>
-        <LogoutButton className="[&_button]:min-h-[60px] [&_button]:justify-center [&_button]:rounded-[18px] [&_button]:border [&_button]:border-red-500/35 [&_button]:bg-red-500/[0.04] [&_button]:text-lg [&_button]:font-black [&_button]:text-red-300 [&_button]:shadow-none [&_button]:hover:bg-red-500/10 [&_button_svg]:text-red-300" />
+        <button
+          type="button"
+          className="min-h-[60px] w-full justify-center rounded-[18px] border border-red-500/35 bg-red-500/[0.04] text-lg font-black text-red-300 shadow-none hover:bg-red-500/10"
+          onClick={() => setModalOpen(true)}
+        >
+          Log out
+        </button>
       </GlassCard>
+      <MoreSettingModal
+        open={modalOpen}
+        spec={logoutSpec}
+        onClose={() => setModalOpen(false)}
+        primaryLabel="Log Out"
+        footerPrimary={
+          <LogoutButton className="[&_button]:min-h-12 [&_button]:rounded-full [&_button]:border [&_button]:border-red-500/35 [&_button]:bg-red-500/10 [&_button]:px-5 [&_button]:text-sm [&_button]:font-extrabold [&_button]:text-red-200 [&_button]:hover:bg-red-500/15" />
+        }
+      />
     </section>
   );
 }

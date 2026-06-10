@@ -509,6 +509,28 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     expect(identityCard).not.toHaveTextContent("Phils chair / 2172 University Square More / Tampa");
   });
 
+  it("opens shared More modals for route-backed barber rows and preserves business workspaces", () => {
+    render(<BarberSettingsScreen user={{ ...resolveDemoUser("blaze@bvrb3r.demo"), appApprovalStatus: "approved" }} />);
+
+    fireEvent.click(screen.getByRole("link", { name: /Wallet \/ Billing Default payment method/ }));
+    let dialog = screen.getByRole("dialog", { name: "Wallet / Billing" });
+    expect(within(dialog).getByLabelText("Close setting modal")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Save Changes" })).toBeDisabled();
+    expect(within(dialog).getByRole("link", { name: "Open attached destination" })).toHaveAttribute("href", "/dashboard/barber/more?section=wallet");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    fireEvent.click(screen.getByTestId("business-tool-services"));
+    dialog = screen.getByRole("dialog", { name: "Services" });
+    expect(within(dialog).getByRole("button", { name: /Add service/ })).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByLabelText("Close business tool"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Log out" }));
+    dialog = screen.getByRole("dialog", { name: "Log Out" });
+    expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Log out" })).toBeInTheDocument();
+  });
+
   it("syncs Stripe payout readiness when returning from Connect onboarding", async () => {
     render(<BarberSettingsScreen user={resolveDemoUser("blaze@bvrb3r.demo")} stripeReturnState="return" embedded />);
 
