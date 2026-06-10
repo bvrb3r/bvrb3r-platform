@@ -13,6 +13,7 @@ export function MoreSettingModal({
   spec,
   href,
   onClose,
+  onSave,
   onSaved,
   primaryLabel = "Save Changes",
   primaryEnabled = false,
@@ -27,6 +28,7 @@ export function MoreSettingModal({
   spec: MoreSettingModalSpec | null;
   href?: string;
   onClose: () => void;
+  onSave?: () => Promise<void> | void;
   onSaved?: () => void;
   primaryLabel?: string;
   primaryEnabled?: boolean;
@@ -84,7 +86,7 @@ export function MoreSettingModal({
     return null;
   }
 
-  const canSave = primaryEnabled || (spec.mode === "editable" && dirty);
+  const canSave = Boolean(onSave) && (primaryEnabled || (spec.mode === "editable" && dirty));
 
   function requestClose() {
     if (dirty) {
@@ -104,7 +106,7 @@ export function MoreSettingModal({
     setError(null);
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 180));
+      await onSave?.();
       setDirty(false);
       onSaved?.();
       onClose();

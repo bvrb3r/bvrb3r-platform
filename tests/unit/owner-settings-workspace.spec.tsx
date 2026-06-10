@@ -291,7 +291,11 @@ describe("owner More workspace", () => {
     expect(within(dialog).getByLabelText("Close setting modal")).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Save Changes" })).toBeDisabled();
-    expect(within(dialog).getByRole("link", { name: "Open attached destination" })).toHaveAttribute("href", "/dashboard/owner/money?section=wallet");
+    expect(within(dialog).getByText("Canonical save path required")).toBeInTheDocument();
+    expect(within(dialog).getByText("Source of truth")).toBeInTheDocument();
+    expect(within(dialog).getByText("Sync targets")).toBeInTheDocument();
+    expect(within(dialog).getByRole("link", { name: "Open full workspace" })).toHaveAttribute("href", "/dashboard/owner/money?section=wallet");
+    expect(within(dialog).queryByText("Open attached destination")).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
 
     fireEvent.click(screen.getByRole("link", { name: /Business Verification Barber shop license, LLC\/business document/ }));

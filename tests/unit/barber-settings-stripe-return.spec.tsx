@@ -517,7 +517,11 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     expect(within(dialog).getByLabelText("Close setting modal")).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Save Changes" })).toBeDisabled();
-    expect(within(dialog).getByRole("link", { name: "Open attached destination" })).toHaveAttribute("href", "/dashboard/barber/more?section=wallet");
+    expect(within(dialog).getByText("Canonical save path required")).toBeInTheDocument();
+    expect(within(dialog).getByText("Source of truth")).toBeInTheDocument();
+    expect(within(dialog).getByText("Sync targets")).toBeInTheDocument();
+    expect(within(dialog).getByRole("link", { name: "Open full workspace" })).toHaveAttribute("href", "/dashboard/barber/more?section=wallet");
+    expect(within(dialog).queryByText("Open attached destination")).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
 
     fireEvent.click(screen.getByTestId("business-tool-services"));

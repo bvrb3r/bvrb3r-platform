@@ -501,13 +501,18 @@ describe("client profile screen", () => {
     expect(within(dialog).getByLabelText("Close setting modal")).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Save Changes" })).toBeDisabled();
+    expect(within(dialog).getByText("Canonical save path required")).toBeInTheDocument();
+    expect(within(dialog).getByText("Source of truth")).toBeInTheDocument();
+    expect(within(dialog).getByText("Sync targets")).toBeInTheDocument();
+    expect(within(dialog).queryByText("Open attached destination")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("This focused control is being prepared. No changes were saved.")).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     expect(screen.queryByRole("dialog", { name: "Notifications & Alerts" })).not.toBeInTheDocument();
     await waitFor(() => expect(document.body.style.overflow).toBe(""));
 
     fireEvent.click(screen.getByRole("link", { name: /Creator Status Locked, eligible, pending review, approved, suspended, or banned. Creator tools locked/ }));
     dialog = screen.getByRole("dialog", { name: "Creator Status" });
-    expect(within(dialog).getByText("Creator tools locked")).toBeInTheDocument();
+    expect(within(dialog).getAllByText("Creator tools locked").length).toBeGreaterThan(0);
     expect(within(dialog).getByText("Verified account")).toBeInTheDocument();
     fireEvent.click(within(dialog).getByLabelText("Close setting modal"));
     expect(screen.queryByRole("dialog", { name: "Creator Status" })).not.toBeInTheDocument();
