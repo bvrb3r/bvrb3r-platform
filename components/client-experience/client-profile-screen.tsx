@@ -292,6 +292,18 @@ export function ClientProfileScreen({
   })();
   const clientMoreSections: MoreSectionGroupConfig[] = [
     {
+      title: "Client Content Creator Settings",
+      subtitle: "Manage your creator eligibility, Culture profile, content settings, performance, and creator safety.",
+      rows: [
+        { href: "/dashboard/client/more?section=rewards", title: "Creator Status", subtitle: "Locked, eligible, pending review, approved, suspended, or banned.", icon: <ShieldCheck className="h-5 w-5" />, status: "Creator tools locked", tone: "yellow", needsAction: true },
+        { href: "/dashboard/client/more?section=rewards", title: "Creator Requirements", subtitle: "Loyalty, account verification, auto-book activity, content rules, and payout eligibility.", icon: <FileText className="h-5 w-5" />, needsAction: true },
+        { href: "/dashboard/client/public-profile", title: "Culture Profile", subtitle: "Public creator identity, bio, interests, display style, and Culture profile visibility.", icon: <Camera className="h-5 w-5" /> },
+        { href: "/dashboard/client/public-profile", title: "Content Settings", subtitle: "Posting defaults, visibility, content categories, comments, sharing, and moderation preferences.", icon: <SlidersHorizontal className="h-5 w-5" /> },
+        { href: CLIENT_PRIMARY_TAB_HREFS.activity, title: "Performance", subtitle: "Posts, views, followers, engagement, shares, profile clicks, and booking influence.", icon: <ReceiptText className="h-5 w-5" /> },
+        { href: "/contact", title: "Creator Safety", subtitle: "Content rules, strikes, reports, appeal status, and platform standing.", icon: <ShieldCheck className="h-5 w-5" /> }
+      ]
+    },
+    {
       title: "Payments & Banking",
       subtitle: "How this account pays, earns rewards, and unlocks eligible creator payouts.",
       rows: [
