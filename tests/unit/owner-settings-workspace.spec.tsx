@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
@@ -99,6 +99,7 @@ describe("owner More workspace", () => {
     useProfileMediaWorkspaceQueryMock.mockReturnValue({
       isLoading: false,
       error: null,
+      refetch: vi.fn(),
       data: {
         viewer: {
           notificationPreference: {
@@ -280,7 +281,7 @@ describe("owner More workspace", () => {
     expect(screen.queryByText("Unable to load shop profile media.")).not.toBeInTheDocument();
   });
 
-  it("opens focused More modals for owner rows and account session logout", () => {
+  it("opens focused More modals for owner rows and account session logout", async () => {
     render(<OwnerSettingsWorkspace user={resolveDemoUser("owner@bvrb3r.demo")} />);
 
     fireEvent.click(screen.getByRole("link", { name: /Wallet \/ Billing Default payment method/ }));
@@ -297,6 +298,31 @@ describe("owner More workspace", () => {
     expect(within(dialog).getByRole("link", { name: "Open full workspace" })).toHaveAttribute("href", "/dashboard/owner/money?section=wallet");
     expect(within(dialog).queryByText("Open attached destination")).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    fireEvent.click(screen.getByRole("link", { name: /Booth Rent, Commission & Fees Manage booth rent/ }));
+    dialog = screen.getByRole("dialog", { name: "Booth Rent, Commission & Fees" });
+    expect(within(dialog).getByText("Default booth rent amount")).toBeInTheDocument();
+    expect(within(dialog).getByText("Booth rent frequency")).toBeInTheDocument();
+    expect(within(dialog).getByText("Barber commission percent")).toBeInTheDocument();
+    expect(within(dialog).getByText("Shop commission percent")).toBeInTheDocument();
+    expect(within(dialog).getByText(/Wire owner compensation settings to compensation_rules/)).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Save Changes" })).toBeDisabled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    fireEvent.click(screen.getByRole("button", { name: /Shop Hours Operating hours/ }));
+    dialog = screen.getByRole("dialog", { name: "Shop Hours" });
+    expect(within(dialog).getByLabelText("Start time")).toHaveValue("12:00");
+    expect(within(dialog).getByLabelText("End time")).toHaveValue("19:00");
+    fireEvent.change(within(dialog).getByLabelText("Start time"), { target: { value: "10:00" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save Changes" }));
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledWith("/api/owner/activation", expect.objectContaining({
+      method: "POST"
+    })));
+    const lastOwnerActivationRequest = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[1] as RequestInit | undefined;
+    expect(JSON.parse(String(lastOwnerActivationRequest?.body))).toEqual(expect.objectContaining({
+      action: "update_shop_hours",
+      hours: expect.arrayContaining([expect.objectContaining({ startTime: "10:00" })])
+    }));
 
     fireEvent.click(screen.getByRole("link", { name: /Business Verification Barber shop license, LLC\/business document/ }));
     dialog = screen.getByRole("dialog", { name: "Business Verification" });

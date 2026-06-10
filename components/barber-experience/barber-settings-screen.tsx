@@ -85,7 +85,8 @@ import {
   useUpdateBarberStatusMutation,
   type BarberApiError
 } from "@/lib/operations/barber-client";
-import { useCreateMarketplaceServiceMutation, useMarketplaceServiceCatalog } from "@/lib/marketplace/client";
+import { useCreateMarketplaceServiceMutation, useMarketplaceServiceCatalog, useUpdateMarketplaceServiceMutation } from "@/lib/marketplace/client";
+import type { ServiceCatalogItem } from "@/lib/marketplace/engine";
 import { useCreateMessageThreadMutation } from "@/lib/messages/client";
 import { cn, currency } from "@/lib/utils";
 import { getReadableActionError } from "@/lib/utils/feedback";
@@ -107,6 +108,30 @@ const payoutCurrencyFormatter = new Intl.NumberFormat("en-US", {
 function payoutCurrency(value: number) {
   return payoutCurrencyFormatter.format(value);
 }
+
+type InlineServiceEditorMode = "add" | "edit";
+type InlineServiceEditorDraft = {
+  name: string;
+  description: string;
+  price: string;
+  duration: string;
+  active: boolean;
+  bookable: boolean;
+};
+type InlineServiceEditorState = {
+  mode: InlineServiceEditorMode;
+  serviceId?: string;
+  draft: InlineServiceEditorDraft;
+};
+
+const defaultInlineServiceDraft: InlineServiceEditorDraft = {
+  name: "",
+  description: "",
+  price: "35",
+  duration: "45",
+  active: true,
+  bookable: true
+};
 
 const sectionIdMap = {
   account: "barber-settings-account",
@@ -885,6 +910,7 @@ export function BarberSettingsScreen({
   const saveSubtypeMutation = useSaveBarberSubtypeMutation();
   const respondTeamInviteMutation = useRespondBarberTeamInviteMutation();
   const createServiceMutation = useCreateMarketplaceServiceMutation();
+  const updateServiceMutation = useUpdateMarketplaceServiceMutation();
   const statusMutation = useUpdateBarberStatusMutation();
   const activationMutation = useUpdateBarberActivationMutation();
   const activationAvailabilityMutation = useUpdateBarberActivationAvailabilityMutation();
@@ -918,6 +944,7 @@ export function BarberSettingsScreen({
     duration: "45",
     active: true
   });
+  const [inlineServiceEditor, setInlineServiceEditor] = useState<InlineServiceEditorState | null>(null);
   const [availabilityDraft, setAvailabilityDraft] = useState({
     days: defaultActivationWorkingDays,
     startTime: "12:00",
@@ -1022,10 +1049,6 @@ export function BarberSettingsScreen({
     }
     return true;
   });
-  const serviceItems = [
-    ...(serviceCatalogQuery.data?.editableServices ?? []),
-    ...(serviceCatalogQuery.data?.readOnlyServices ?? [])
-  ];
   const weeklyHours = dayOptions.map((day) => {
     const schedule = overviewPayload?.workingHours.find((entry) => entry.weekday === day.value);
     return {
@@ -1263,6 +1286,7 @@ export function BarberSettingsScreen({
   function closeBusinessTool() {
     setActiveBusinessTool(null);
     setActiveBusinessPanel(null);
+    setInlineServiceEditor(null);
   }
 
   function toggleActivationDay(day: number) {
@@ -1305,6 +1329,82 @@ export function BarberSettingsScreen({
       setFeedback({ tone: "success", message: "Service added through the canonical marketplace service library." });
     } catch (error) {
       setFeedback({ tone: "error", message: readableError(error, "Unable to add service right now.") });
+    }
+  }
+
+  function openInlineServiceEditor(mode: InlineServiceEditorMode, item?: ServiceCatalogItem) {
+    setFeedback(null);
+    setInlineServiceEditor({
+      mode,
+      serviceId: item?.service.id,
+      draft: item
+        ? {
+            name: item.service.name,
+            description: item.service.description ?? "",
+            price: String(item.service.price ?? ""),
+            duration: String(item.service.durationMin ?? ""),
+            active: item.service.isActive !== false,
+            bookable: item.service.isBookable !== false
+          }
+        : defaultInlineServiceDraft
+    });
+  }
+
+  function updateInlineServiceDraft(patch: Partial<InlineServiceEditorDraft>) {
+    setInlineServiceEditor((current) => current ? {
+      ...current,
+      draft: {
+        ...current.draft,
+        ...patch
+      }
+    } : current);
+  }
+
+  async function handleInlineServiceSave() {
+    if (!inlineServiceEditor) {
+      return;
+    }
+
+    setFeedback(null);
+    const price = Number(inlineServiceEditor.draft.price);
+    const durationMin = Number(inlineServiceEditor.draft.duration);
+    if (!inlineServiceEditor.draft.name.trim() || !Number.isFinite(price) || price <= 0 || !Number.isFinite(durationMin) || durationMin < 15) {
+      setFeedback({ tone: "error", message: "Enter a service name, price greater than zero, and duration of at least 15 minutes." });
+      return;
+    }
+
+    const payload = {
+      category: "Haircuts",
+      name: inlineServiceEditor.draft.name.trim(),
+      description: inlineServiceEditor.draft.description.trim(),
+      durationMin,
+      bufferMin: 0,
+      price,
+      deposit: 0,
+      fullPrepay: false,
+      styleTagIds: []
+    };
+
+    try {
+      if (inlineServiceEditor.mode === "edit" && inlineServiceEditor.serviceId) {
+        await updateServiceMutation.mutateAsync({
+          serviceId: inlineServiceEditor.serviceId,
+          ...payload
+        });
+      } else {
+        await createServiceMutation.mutateAsync(payload);
+      }
+
+      await Promise.all([serviceCatalogQuery.refetch(), overviewQuery.refetch()]);
+      setInlineServiceEditor(null);
+      setFeedback({
+        tone: "success",
+        message: inlineServiceEditor.mode === "edit"
+          ? "Service updated through the canonical marketplace service library."
+          : "Service added through the canonical marketplace service library."
+      });
+    } catch (error) {
+      setFeedback({ tone: "error", message: readableError(error, "Unable to save service right now.") });
     }
   }
 
@@ -1971,38 +2071,6 @@ export function BarberSettingsScreen({
               description={getBusinessToolDescription(activeBusinessTool)}
               onClose={closeBusinessTool}
             >
-              {false && activeBusinessTool === "services" ? (
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    {serviceItems.length ? serviceItems.map((item) => (
-                      <BusinessToolRow
-                        key={item.service.id}
-                        icon={Scissors}
-                        title={item.service.name}
-                        subtitle={`${item.service.isActive === false ? "Inactive" : "Active"} | ${item.service.isBookable === false ? "Not bookable" : "Bookable"}`}
-                        status={(
-                          <StatusPill tone={item.service.isActive === false || item.service.isBookable === false ? "amber" : "green"}>
-                            {item.service.isActive === false || item.service.isBookable === false ? "Needs review" : "Live"}
-                          </StatusPill>
-                        )}
-                      />
-                    )) : (
-                      <div className="rounded-[20px] border border-dashed border-white/10 bg-black/24 p-4 text-sm leading-6 text-white/58">
-                        Add a service so clients can book a cut from your public profile.
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap gap-3">
-                    <Link href="/dashboard/barber/checkout?section=services" className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#a3ff12]/35 bg-[#a3ff12]/10 px-5 text-sm font-extrabold text-[#a3ff12] transition hover:border-[#a3ff12]/60 hover:bg-[#a3ff12]/14">
-                      Edit services
-                    </Link>
-                    <Button type="button" variant="secondary" className="h-11 px-5" onClick={() => setQuickSetupModal("service")}>
-                      Add service
-                    </Button>
-                  </div>
-                </div>
-              ) : null}
-
               {activeBusinessTool === "availability" ? (
                 <div className="space-y-4">
                   <div className="inline-flex rounded-full border border-white/10 bg-black/30 p-1">
@@ -2021,7 +2089,7 @@ export function BarberSettingsScreen({
                     ))}
                   </div>
                   {availabilityTab === "hours" ? (
-                    <div className="space-y-2" data-testid="availability-hours-tab">
+                    <div className="space-y-4" data-testid="availability-hours-tab">
                       {weeklyHours.map((day) => (
                         <div key={day.value} className="grid min-h-12 grid-cols-[92px_1fr_auto] items-center gap-3 rounded-[16px] border border-white/8 bg-black/24 px-4 py-3">
                           <p className="text-sm font-black text-white">{day.dayLabel}</p>
@@ -2029,7 +2097,50 @@ export function BarberSettingsScreen({
                           <StatusPill tone={day.schedule ? "green" : "neutral"}>{day.schedule ? "Open" : "Closed"}</StatusPill>
                         </div>
                       ))}
-                      <p className="text-xs leading-5 text-white/46">Detailed working-hour saves stay connected to the calendar availability workspace.</p>
+                      <div className="rounded-[20px] border border-[#A3FF12]/18 bg-[#A3FF12]/[0.045] p-4">
+                        <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Edit working hours</p>
+                        <p className="mt-2 text-sm leading-6 text-white/58">
+                          These fields use the existing barber activation availability endpoint so booking, search, and kiosk reads stay on the same schedule source.
+                        </p>
+                        <div className="mt-4 grid grid-cols-4 gap-2 sm:grid-cols-7">
+                          {dayOptions.map((day) => (
+                            <button
+                              key={day.value}
+                              type="button"
+                              onClick={() => toggleActivationDay(day.value)}
+                              className={cn(
+                                "min-h-11 rounded-2xl border text-xs font-black",
+                                availabilityDraft.days.includes(day.value)
+                                  ? "border-[#A3FF12]/55 bg-[#A3FF12] text-black"
+                                  : "border-white/10 bg-white/[0.035] text-white/62"
+                              )}
+                            >
+                              {day.label}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                          <label className="block text-sm font-bold text-white/72">
+                            Start time
+                            <Input type="time" value={availabilityDraft.startTime} onChange={(event) => setAvailabilityDraft((current) => ({ ...current, startTime: event.target.value }))} className="mt-2" />
+                          </label>
+                          <label className="block text-sm font-bold text-white/72">
+                            End time
+                            <Input type="time" value={availabilityDraft.endTime} onChange={(event) => setAvailabilityDraft((current) => ({ ...current, endTime: event.target.value }))} className="mt-2" />
+                          </label>
+                        </div>
+                        <div className="mt-4 rounded-[18px] border border-white/10 bg-black/24 p-4 text-sm leading-6 text-white/58">
+                          Canonical save path: <span className="font-extrabold text-white">availability_rules via /api/barber/activation</span>. Custom-location saves still require service location fields; use Save hours only just for onboarding draft hours.
+                        </div>
+                        <div className="mt-4 flex flex-wrap gap-3">
+                          <Button type="button" variant="secondary" className="h-11 px-5" onClick={() => setAvailabilityLocationMode("later")}>
+                            Save hours only
+                          </Button>
+                          <Button type="button" className="h-11 px-5 bg-[#A3FF12] text-black hover:bg-[#8de300]" disabled={activationAvailabilityMutation.isPending} onClick={() => void handleQuickSetAvailability()}>
+                            {activationAvailabilityMutation.isPending ? "Saving..." : "Save Changes"}
+                          </Button>
+                        </div>
+                      </div>
                     </div>
                   ) : (
                     <div className="space-y-3" data-testid="availability-blocked-tab">
@@ -2350,10 +2461,81 @@ export function BarberSettingsScreen({
                     <div>
                       <SectionLabel>Services</SectionLabel>
                       <h2 className="mt-3 text-2xl font-black tracking-[-0.03em] text-white">Active services</h2>
-                      <p className="mt-2 text-sm leading-6 text-white/56">Pricing and offerings stay connected to the marketplace service catalog.</p>
+                      <p className="mt-2 text-sm leading-6 text-white/56">Pricing and offerings stay connected to the canonical marketplace service catalog.</p>
                     </div>
                     <CircleIcon icon={Scissors} className="h-11 w-11 rounded-2xl" />
                   </div>
+
+                  {inlineServiceEditor ? (
+                    <div className="mt-5 space-y-4 rounded-[24px] border border-[#A3FF12]/18 bg-[#A3FF12]/[0.045] p-4">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">
+                          {inlineServiceEditor.mode === "edit" ? "Edit Service" : "Add Service"}
+                        </p>
+                        <h3 className="mt-2 text-xl font-black text-white">
+                          {inlineServiceEditor.mode === "edit" ? inlineServiceEditor.draft.name || "Service details" : "New service"}
+                        </h3>
+                        <p className="mt-1 text-sm leading-6 text-white/58">
+                          Name, description, price, and duration save through the marketplace service mutation and refresh booking/search/kiosk reads.
+                        </p>
+                      </div>
+                      <div className="grid gap-3">
+                        <label className="block text-sm font-bold text-white/72">
+                          Service Name
+                          <Input value={inlineServiceEditor.draft.name} onChange={(event) => updateInlineServiceDraft({ name: event.target.value })} className="mt-2" />
+                        </label>
+                        <label className="block text-sm font-bold text-white/72">
+                          Description
+                          <textarea
+                            value={inlineServiceEditor.draft.description}
+                            onChange={(event) => updateInlineServiceDraft({ description: event.target.value })}
+                            className="mt-2 min-h-24 w-full rounded-2xl border border-white/10 bg-black/35 px-3 py-3 text-sm font-semibold text-white outline-none placeholder:text-white/32"
+                            placeholder="Optional client-facing service details"
+                          />
+                        </label>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <label className="block text-sm font-bold text-white/72">
+                            Price
+                            <Input inputMode="decimal" value={inlineServiceEditor.draft.price} onChange={(event) => updateInlineServiceDraft({ price: event.target.value })} className="mt-2" />
+                          </label>
+                          <label className="block text-sm font-bold text-white/72">
+                            Duration minutes
+                            <Input inputMode="numeric" value={inlineServiceEditor.draft.duration} onChange={(event) => updateInlineServiceDraft({ duration: event.target.value })} className="mt-2" />
+                          </label>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <label className="flex min-h-12 items-center justify-between rounded-2xl border border-white/10 bg-black/24 px-4 text-sm font-bold text-white/72">
+                            Active
+                            <input type="checkbox" checked={inlineServiceEditor.draft.active} disabled className="h-5 w-5 accent-[#A3FF12] disabled:opacity-45" readOnly />
+                          </label>
+                          <label className="flex min-h-12 items-center justify-between rounded-2xl border border-white/10 bg-black/24 px-4 text-sm font-bold text-white/72">
+                            Bookable
+                            <input type="checkbox" checked={inlineServiceEditor.draft.bookable} disabled className="h-5 w-5 accent-[#A3FF12] disabled:opacity-45" readOnly />
+                          </label>
+                        </div>
+                        <div className="rounded-[18px] border border-amber-300/18 bg-amber-300/[0.045] p-4">
+                          <p className="text-sm font-extrabold text-amber-100">Canonical save path required for active/bookable toggles</p>
+                          <p className="mt-1 text-sm leading-6 text-amber-100/72">
+                            The current marketplace service mutation saves name, description, price, and duration. Persisting active/bookable requires wiring those flags through the service mutation read/write path before enabling these toggles.
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-3">
+                          <Button type="button" variant="secondary" className="h-11 px-5" onClick={() => setInlineServiceEditor(null)}>
+                            Cancel edit
+                          </Button>
+                          <Button
+                            type="button"
+                            className="h-11 px-5 bg-[#A3FF12] text-black hover:bg-[#8de300]"
+                            disabled={createServiceMutation.isPending || updateServiceMutation.isPending}
+                            onClick={() => void handleInlineServiceSave()}
+                          >
+                            {createServiceMutation.isPending || updateServiceMutation.isPending ? "Saving..." : "Save Changes"}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+
                   <div className="mt-5 space-y-3">
                     {[...(serviceCatalogQuery.data?.editableServices ?? []), ...(serviceCatalogQuery.data?.readOnlyServices ?? [])].length ? (
                       [...(serviceCatalogQuery.data?.editableServices ?? []), ...(serviceCatalogQuery.data?.readOnlyServices ?? [])].map((item) => (
@@ -2361,12 +2543,21 @@ export function BarberSettingsScreen({
                           <div>
                             <p className="text-lg font-black text-white">{item.service.name}</p>
                             <p className="mt-1 text-sm text-white/52">
-                              {item.service.isActive === false ? "Inactive" : "Active"} {item.service.isBookable === false ? "| Not bookable" : "| Bookable"}
+                              {currency(item.service.price)} | {item.service.durationMin} min | {item.service.isActive === false ? "Inactive" : "Active"} {item.service.isBookable === false ? "| Not bookable" : "| Bookable"}
                             </p>
                           </div>
-                          <StatusPill tone={item.service.isActive === false || item.service.isBookable === false ? "amber" : "green"}>
-                            {item.service.isActive === false || item.service.isBookable === false ? "Needs review" : "Live"}
-                          </StatusPill>
+                          <div className="flex flex-wrap items-center justify-end gap-2">
+                            <StatusPill tone={item.service.isActive === false || item.service.isBookable === false ? "amber" : "green"}>
+                              {item.service.isActive === false || item.service.isBookable === false ? "Needs review" : "Live"}
+                            </StatusPill>
+                            {item.canEdit ? (
+                              <Button type="button" variant="secondary" className="h-9 px-3 text-xs" onClick={() => openInlineServiceEditor("edit", item)} aria-label={`Edit service ${item.service.name}`}>
+                                Edit
+                              </Button>
+                            ) : (
+                              <StatusPill tone="neutral">Shop managed</StatusPill>
+                            )}
+                          </div>
                         </div>
                       ))
                     ) : (
@@ -2376,11 +2567,8 @@ export function BarberSettingsScreen({
                     )}
                   </div>
                   <div className="mt-5 flex flex-wrap gap-3">
-                    <Link href="/dashboard/barber/checkout?section=services" className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#a3ff12]/35 bg-[#a3ff12]/10 px-5 text-sm font-extrabold text-[#a3ff12] transition hover:border-[#a3ff12]/60 hover:bg-[#a3ff12]/14">
-                      Edit services
-                    </Link>
-                    <Button type="button" variant="secondary" className="h-11 px-5" onClick={() => setQuickSetupModal("service")}>
-                      Add service
+                    <Button type="button" variant="secondary" className="h-11 px-5" onClick={() => openInlineServiceEditor("add")}>
+                      Add Service
                     </Button>
                   </div>
                 </GlassCard>

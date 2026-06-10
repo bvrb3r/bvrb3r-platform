@@ -52,7 +52,8 @@ type SettingTone = "green" | "yellow" | "red" | "muted";
 type SettingRow = {
   title: string;
   subtitle: string;
-  href: ComponentProps<typeof Link>["href"];
+  href?: ComponentProps<typeof Link>["href"];
+  onClick?: () => void;
   icon: ReactNode;
   status?: string;
   tone?: SettingTone;
@@ -251,6 +252,7 @@ export function OwnerSettingsWorkspace({
   const [savedOwnerPhone, setSavedOwnerPhone] = useState<string | null>(null);
   const [savedShopPublicUsername, setSavedShopPublicUsername] = useState<string | null>(null);
   const [quickSetupFeedback, setQuickSetupFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
+  const [ownerHoursSaving, setOwnerHoursSaving] = useState(false);
   const [shopHoursDraft, setShopHoursDraft] = useState({
     days: defaultOwnerWorkingDays,
     startTime: "12:00",
@@ -423,6 +425,7 @@ export function OwnerSettingsWorkspace({
 
   async function handleQuickShopHoursSave() {
     setQuickSetupFeedback(null);
+    setOwnerHoursSaving(true);
     try {
       await postOwnerActivation({
         action: "update_shop_hours",
@@ -438,6 +441,8 @@ export function OwnerSettingsWorkspace({
       setQuickSetupFeedback({ tone: "success", message: "Shop hours saved to the canonical shop schedule source." });
     } catch (error) {
       setQuickSetupFeedback({ tone: "error", message: error instanceof Error ? error.message : "Unable to save shop hours." });
+    } finally {
+      setOwnerHoursSaving(false);
     }
   }
 
@@ -494,7 +499,7 @@ export function OwnerSettingsWorkspace({
     {
       title: "Shop Hours",
       subtitle: "Operating hours, holidays, open/closed status, and team coverage rules",
-      href: "/onboarding/owner/structure",
+      onClick: () => setQuickSetupModal("hours"),
       icon: <Clock3 className="h-5 w-5" />
     },
     {
@@ -633,24 +638,28 @@ export function OwnerSettingsWorkspace({
       id: "owner-settings-shop-profile",
       title: "SHOP BUSINESS SETTINGS",
       subtitle: "Manage the tools that control your shop profile, team, services, hours, policies, kiosk, and operating model.",
+      roleScope: "owner" as const,
       rows: businessSetupRows
     },
     {
       id: "owner-settings-payments-banking",
       title: "Payments & Banking",
       subtitle: "Money-side setup, payout schedules, transactions, and tax documents.",
+      roleScope: "owner" as const,
       rows: paymentsRows
     },
     {
       id: "owner-settings-compliance",
       title: "Compliance & Security",
       subtitle: "Verification, documents, login security, privacy, and legal posture.",
+      roleScope: "owner" as const,
       rows: complianceRows
     },
     {
       id: "owner-settings-support",
       title: "Support",
       subtitle: "Help and direct support for shop owner operations.",
+      roleScope: "owner" as const,
       rows: supportRows
     }
   ];
@@ -662,18 +671,18 @@ export function OwnerSettingsWorkspace({
         sectionKey: "owner-quick-setup",
         title:
           quickSetupModal === "hours"
-            ? "Set shop hours"
+            ? "Shop Hours"
             : quickSetupModal === "invite"
               ? "Invite barber"
               : "Turn shop public?",
-        eyebrow: quickSetupModal === "invite" ? "Team setup" : "Quick setup",
+        eyebrow: quickSetupModal === "hours" ? "Shop Business Settings" : quickSetupModal === "invite" ? "Team setup" : "Quick setup",
         helper:
           quickSetupModal === "hours"
             ? "These hours feed the owner schedule and public shop readiness."
             : quickSetupModal === "invite"
               ? "Search real barber accounts and send a canonical team invite."
               : "This confirms public intent only. Approval, profile data, team, and bookable barber readiness still control marketplace visibility.",
-        mode: "read_only" as const
+        mode: quickSetupModal === "hours" ? "editable" as const : "read_only" as const
       }
     : null;
 
@@ -829,6 +838,17 @@ export function OwnerSettingsWorkspace({
           onClose={closeQuickSetupModal}
           closeLabel="Close owner quick setup"
           maxWidthClassName="max-w-2xl"
+          primaryEnabled={quickSetupModal === "hours"}
+          footerPrimary={quickSetupModal === "hours" ? (
+            <button
+              type="button"
+              className="min-h-12 rounded-full border border-[#A3FF12]/45 bg-[#A3FF12] px-5 text-sm font-extrabold text-black hover:bg-[#8de300] disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.04] disabled:text-white/34"
+              disabled={ownerHoursSaving}
+              onClick={() => void handleQuickShopHoursSave()}
+            >
+              {ownerHoursSaving ? "Saving..." : "Save Changes"}
+            </button>
+          ) : undefined}
         >
             {quickSetupModal === "hours" ? (
               <div className="space-y-4">
@@ -863,12 +883,6 @@ export function OwnerSettingsWorkspace({
                     End time
                     <Input type="time" value={shopHoursDraft.endTime} onChange={(event) => setShopHoursDraft((current) => ({ ...current, endTime: event.target.value }))} className="mt-2" />
                   </label>
-                </div>
-                <div className="flex gap-3">
-                  <Button type="button" variant="secondary" className="min-h-12 flex-1 rounded-2xl" onClick={closeQuickSetupModal}>Cancel</Button>
-                  <Button type="button" className="min-h-12 flex-1 rounded-2xl bg-[#A3FF12] text-black hover:bg-[#8de300]" onClick={() => void handleQuickShopHoursSave()}>
-                    Save hours
-                  </Button>
                 </div>
               </div>
             ) : null}

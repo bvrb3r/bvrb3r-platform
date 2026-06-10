@@ -160,6 +160,18 @@ function fieldsFor(row: MoreSectionRow, roleScope: MoreSettingRoleScope): MoreSe
     ];
   }
 
+  if (roleScope === "owner" && (title.includes("booth rent") || title.includes("commission") || title.includes("fees"))) {
+    return [
+      { key: "default_booth_rent_amount", label: "Default booth rent amount", helper: "Shop-level default charged to booth-rent barbers when that operating model is enabled.", type: "money", value: 0, editable: false, private: true },
+      { key: "booth_rent_frequency", label: "Booth rent frequency", helper: "Allowed values should be daily, weekly, or monthly once compensation persistence is wired.", type: "select", value: "Not configured", editable: false, private: true, options: [{ label: "Not configured", value: "not_configured" }] },
+      { key: "barber_commission_percent", label: "Barber commission percent", helper: "Must pair with shop commission percent to equal 100 when fixed commission is enabled.", type: "number", value: 0, editable: false, private: true },
+      { key: "shop_commission_percent", label: "Shop commission percent", helper: "Must pair with barber commission percent to equal 100 when fixed commission is enabled.", type: "number", value: 0, editable: false, private: true },
+      { key: "commission_cap", label: "Commission cap", helper: "Optional cap if supported by the compensation rules table/service.", type: "money", value: "Not supported yet", editable: false, private: true },
+      { key: "platform_fee_display", label: "Platform fee display", helper: "Read-only platform fees must come from the Money/fintech source of truth.", type: "readonly", value: "Read-only", editable: false, private: true },
+      { key: "per_barber_overrides", label: "Per-barber override summary", helper: "Relationship-specific overrides belong on shop_barber_relationships/staff relationship records when available.", type: "readonly", value: "No canonical override editor wired", editable: false, private: true }
+    ];
+  }
+
   if (title.includes("saved") || title.includes("favorites")) {
     return [
       { key: "saved_barbers", label: "Saved barbers", helper: "Manage preferred barbers and default booking choices.", type: "readonly", value: "Saved items load from client favorites.", editable: false, private: true },
@@ -271,6 +283,10 @@ function dataSourcesFor(row: MoreSectionRow, roleScope: MoreSettingRoleScope): s
   const title = normalizeTitle(row);
   const base = ["profiles"];
 
+  if (roleScope === "owner" && (title.includes("booth rent") || title.includes("commission") || title.includes("fees"))) {
+    return [...base, "compensation_rules or canonical shop compensation settings", "shop_barber_relationships/staff relationship overrides", "fintech platform fee configuration"];
+  }
+
   if (title.includes("notifications") || title.includes("preferences") || title.includes("privacy")) {
     return [...base, "role app preferences", "notification preferences", "automation preferences"];
   }
@@ -305,6 +321,10 @@ function dataSourcesFor(row: MoreSectionRow, roleScope: MoreSettingRoleScope): s
 function syncTargetsFor(row: MoreSectionRow, roleScope: MoreSettingRoleScope): string[] {
   const title = normalizeTitle(row);
 
+  if (roleScope === "owner" && (title.includes("booth rent") || title.includes("commission") || title.includes("fees"))) {
+    return ["Owner More row state", "Owner Money", "barber shop relationship summaries", "future payout routing assumptions", "team relationship summaries"];
+  }
+
   if (title.includes("notifications") || title.includes("preferences")) {
     return ["More row state", "automation consent signals", "notification delivery rules"];
   }
@@ -338,6 +358,10 @@ function syncTargetsFor(row: MoreSectionRow, roleScope: MoreSettingRoleScope): s
 
 function validationsFor(row: MoreSectionRow): string[] {
   const title = normalizeTitle(row);
+
+  if (title.includes("booth rent") || title.includes("commission") || title.includes("fees")) {
+    return ["Owner must own the shop", "Booth rent amount must be non-negative", "Frequency must be daily, weekly, or monthly", "Barber percent plus shop percent must equal 100", "Platform fees stay read-only"];
+  }
 
   if (title.includes("notifications")) {
     return ["Channel consent must be explicit", "Quiet hours must be valid", "Automated outreach must respect frequency caps"];
@@ -403,6 +427,20 @@ function algorithmSignalsFor(row: MoreSectionRow): string[] | undefined {
 function missingSavePathFor(row: MoreSectionRow, mode: MoreSettingMode) {
   if (mode !== "editable") {
     return undefined;
+  }
+
+  const title = normalizeTitle(row);
+
+  if (title.includes("booth rent") || title.includes("commission") || title.includes("fees")) {
+    return "Wire owner compensation settings to compensation_rules or the canonical shop relationship compensation service before enabling Save Changes. Relationship-specific overrides should persist through shop_barber_relationships/staff relationship records, not local UI state.";
+  }
+
+  if (title.includes("notifications")) {
+    return "Wire this modal to the existing notification_preferences/profile notification service before enabling Save Changes. Until then, outreach consent, quiet hours, and channel preferences cannot be saved from this popup.";
+  }
+
+  if (title.includes("preferences")) {
+    return "Wire this modal to a canonical role app preferences source such as client_preferences or user_app_preferences before enabling Save Changes. Until then, dashboard defaults and algorithm signals cannot be saved from this popup.";
   }
 
   return `Wire ${slugify(row.title).replace(/-/g, "_")}_settings_save to the existing role-safe service before enabling Save Changes here.`;

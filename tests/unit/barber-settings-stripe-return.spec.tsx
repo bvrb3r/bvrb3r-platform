@@ -34,7 +34,9 @@ const {
   useUpdateBarberActivationMutationMock,
   useUpdateBarberStatusMutationMock,
   createMessageThreadMock,
+  updateMarketplaceServiceMutateMock,
   useCreateMarketplaceServiceMutationMock,
+  useUpdateMarketplaceServiceMutationMock,
   useCreateMessageThreadMutationMock,
   useMarketplaceServiceCatalogMock
 } = vi.hoisted(() => ({
@@ -68,7 +70,9 @@ const {
   useUpdateBarberActivationMutationMock: vi.fn(),
   useUpdateBarberStatusMutationMock: vi.fn(),
   createMessageThreadMock: vi.fn(),
+  updateMarketplaceServiceMutateMock: vi.fn(),
   useCreateMarketplaceServiceMutationMock: vi.fn(),
+  useUpdateMarketplaceServiceMutationMock: vi.fn(),
   useCreateMessageThreadMutationMock: vi.fn(),
   useMarketplaceServiceCatalogMock: vi.fn()
 }));
@@ -131,6 +135,7 @@ vi.mock("@/lib/operations/barber-client", () => ({
 
 vi.mock("@/lib/marketplace/client", () => ({
   useCreateMarketplaceServiceMutation: useCreateMarketplaceServiceMutationMock,
+  useUpdateMarketplaceServiceMutation: useUpdateMarketplaceServiceMutationMock,
   useMarketplaceServiceCatalog: useMarketplaceServiceCatalogMock
 }));
 
@@ -364,9 +369,11 @@ function setupHookMocks() {
   createMessageThreadMock.mockResolvedValue({ thread: { id: "thread-1" } });
   useCreateMessageThreadMutationMock.mockReturnValue({ mutateAsync: createMessageThreadMock, isPending: false });
   useCreateMarketplaceServiceMutationMock.mockReturnValue({ mutateAsync: vi.fn(), isPending: false });
+  updateMarketplaceServiceMutateMock.mockResolvedValue({ service: { id: "svc-1" } });
+  useUpdateMarketplaceServiceMutationMock.mockReturnValue({ mutateAsync: updateMarketplaceServiceMutateMock, isPending: false });
   useMarketplaceServiceCatalogMock.mockReturnValue({
     data: {
-      editableServices: [{ service: { id: "svc-1", name: "Haircut", isActive: true, isBookable: true } }],
+      editableServices: [{ canEdit: true, service: { id: "svc-1", category: "Haircuts", name: "Haircut", description: "Clean cut", price: 35, durationMin: 45, bufferMin: 0, deposit: 0, fullPrepay: false, addOnIds: [], isActive: true, isBookable: true } }],
       readOnlyServices: []
     },
     error: null,
@@ -509,7 +516,7 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     expect(identityCard).not.toHaveTextContent("Phils chair / 2172 University Square More / Tampa");
   });
 
-  it("opens shared More modals for route-backed barber rows and preserves business workspaces", () => {
+  it("opens shared More modals for route-backed barber rows and preserves business workspaces", async () => {
     render(<BarberSettingsScreen user={{ ...resolveDemoUser("blaze@bvrb3r.demo"), appApprovalStatus: "approved" }} />);
 
     fireEvent.click(screen.getByRole("link", { name: /Wallet \/ Billing Default payment method/ }));
@@ -531,7 +538,25 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     expect(screen.getByTestId("more-setting-modal-footer")).toHaveClass("sticky", "bottom-0", "z-20");
     expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Save Changes" })).toBeDisabled();
-    expect(within(dialog).getByRole("button", { name: /Add service/ })).toBeInTheDocument();
+    expect(within(dialog).queryByRole("link", { name: /Edit services/i })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("link", { name: /Checkout/i })).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: /Add Service/ })).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: /Edit service Haircut/ }));
+    expect(within(dialog).getByLabelText("Service Name")).toHaveValue("Haircut");
+    expect(within(dialog).getByLabelText("Description")).toHaveValue("Clean cut");
+    expect(within(dialog).getByLabelText("Price")).toHaveValue("35");
+    expect(within(dialog).getByLabelText("Duration minutes")).toHaveValue("45");
+    expect(within(dialog).getByText("Canonical save path required for active/bookable toggles")).toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText("Service Name"), { target: { value: "Signature Cut" } });
+    const serviceSaveButton = within(dialog).getAllByRole("button", { name: "Save Changes" }).find((button) => !button.hasAttribute("disabled"));
+    expect(serviceSaveButton).toBeDefined();
+    fireEvent.click(serviceSaveButton as HTMLElement);
+    await waitFor(() => expect(updateMarketplaceServiceMutateMock).toHaveBeenCalledWith(expect.objectContaining({
+      serviceId: "svc-1",
+      name: "Signature Cut",
+      price: 35,
+      durationMin: 45
+    })));
     fireEvent.click(within(dialog).getByLabelText("Close business tool"));
 
     fireEvent.click(screen.getByRole("button", { name: "Log out" }));
