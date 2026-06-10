@@ -10,6 +10,7 @@ import {
   CreditCard,
   FileCheck2,
   FileText,
+  Gift,
   HelpCircle,
   KeyRound,
   MessageCircle,
@@ -532,29 +533,35 @@ export function OwnerSettingsWorkspace({
     },
     {
       title: "Stripe Connect",
-      subtitle: "Manage bank accounts & payouts",
+      subtitle: "Manage bank accounts and payouts",
       href: "/dashboard/owner/money?view=fintech",
       icon: <CreditCard className="h-5 w-5" />,
       status: stripeStatus.label,
       tone: stripeStatus.tone
     },
     {
-      title: "Payout Schedule",
-      subtitle: "Review payout schedule in Money",
+      title: "Owner Payouts",
+      subtitle: "Shop payout schedule, commission payouts, payout status, release timing, and payout history",
       href: "/dashboard/owner/money?section=payouts",
       icon: <CalendarDays className="h-5 w-5" />,
       status: "View schedule",
       tone: "muted"
     },
     {
+      title: "Rewards",
+      subtitle: "Points, credits, loyalty progress, referrals, and owner/shop incentives",
+      href: "/rewards",
+      icon: <Gift className="h-5 w-5" />
+    },
+    {
       title: "Transactions",
-      subtitle: "Shop sales and receipts",
+      subtitle: "Shop sales, receipts, spending, subscriptions, refunds, failed payments, credits, and payout movement",
       href: "/dashboard/owner/money",
       icon: <ReceiptText className="h-5 w-5" />
     },
     {
       title: "Tax Information",
-      subtitle: "Manage tax forms & documents",
+      subtitle: "Tax forms and business payout documents",
       href: "/dashboard/owner/money?view=fintech",
       icon: <ReceiptText className="h-5 w-5" />,
       status: taxStatus.label,
@@ -564,36 +571,42 @@ export function OwnerSettingsWorkspace({
 
   const complianceRows: SettingRow[] = [
     {
-      title: "Verification Status",
-      subtitle: "Shop verification & compliance",
+      title: "Identity Verification",
+      subtitle: "Government ID or driver license proving who owns the owner account",
       href: verificationStatus === "approved" ? "/activation-status" : "/onboarding/owner/verification",
       icon: <ShieldCheck className="h-5 w-5" />,
       status: verificationLabel,
       tone: verificationTone
     },
     {
-      title: "Business Documents",
-      subtitle: "Manage licenses & documents",
+      title: "Business Verification",
+      subtitle: "Barber shop license, LLC/business document, EIN/tax details, and required uploads",
       href: "/onboarding/owner/verification",
       icon: <FileCheck2 className="h-5 w-5" />,
       status: verificationStatus === "approved" ? "View documents" : "Needs setup",
       tone: verificationStatus === "approved" ? "green" : "yellow"
     },
     {
-      title: "Security & Access",
-      subtitle: "Password, 2FA & login settings",
+      title: "Password & Login",
+      subtitle: "Password, sign-in method, email login, phone login, and connected access",
       href: "/dashboard/owner/more?section=logout",
       icon: <KeyRound className="h-5 w-5" />
     },
     {
       title: "Privacy",
-      subtitle: "Shop data and communication preferences",
+      subtitle: "Shop data, team data, client communication, public shop visibility, and owner/private visibility",
       href: "/verify-contact",
       icon: <ShieldCheck className="h-5 w-5" />
     },
     {
+      title: "Account Security",
+      subtitle: "Email verification, phone verification, device/session protection, owner access, and account status",
+      href: "/verify-contact",
+      icon: <KeyRound className="h-5 w-5" />
+    },
+    {
       title: "Legal",
-      subtitle: "Business agreements and policies",
+      subtitle: "Business agreements, shop policies, team agreements, payout terms, platform terms, and compliance terms",
       href: "/contact",
       icon: <FileText className="h-5 w-5" />
     }

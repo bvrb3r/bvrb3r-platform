@@ -295,21 +295,23 @@ export function ClientProfileScreen({
       title: "Payments & Banking",
       subtitle: "How this account pays, earns rewards, and unlocks eligible creator payouts.",
       rows: [
-        { href: "/dashboard/client/more?section=wallet", title: "Wallet", subtitle: "Cards, booking default, auto-booking, subscriptions", icon: <CreditCard className="h-5 w-5" />, needsAction: !defaultPaymentMethod },
-        { href: CLIENT_PRIMARY_TAB_HREFS.activity, title: "Receipts", subtitle: "Appointment receipts, service records, and proof of payment", icon: <ReceiptText className="h-5 w-5" /> },
+        { href: "/dashboard/client/more?section=wallet", title: "Wallet / Billing", subtitle: "Default payment method for bookings, auto-booking, subscriptions, tools, ads, and promotions.", icon: <CreditCard className="h-5 w-5" />, needsAction: !defaultPaymentMethod },
+        { href: "/dashboard/client/more?section=rewards", title: "Stripe Connect", subtitle: "Creator-only. Manage bank accounts and payout connection when creator payout eligibility unlocks.", icon: <WalletCards className="h-5 w-5" />, status: "Creator-only", tone: "yellow", needsAction: true },
+        { href: "/dashboard/client/more?section=rewards", title: "Creator Payouts", subtitle: "Locked until approved. All creator payout information for this account lives here.", icon: <CircleDollarSign className="h-5 w-5" />, status: "Locked", tone: "yellow", needsAction: true },
         { href: "/dashboard/client/more?section=rewards", title: "Rewards", subtitle: "Points, credits, loyalty progress, and referrals", icon: <Gift className="h-5 w-5" /> },
-        { href: CLIENT_PRIMARY_TAB_HREFS.activity, title: "Payment History", subtitle: "Charges, refunds, failed payments, and credits", icon: <WalletCards className="h-5 w-5" /> },
-        { href: "/dashboard/client/more?section=rewards", title: "Creator Payouts", subtitle: "Locked until approved. View requirements and manage payouts once eligible", icon: <CircleDollarSign className="h-5 w-5" />, status: "Locked", tone: "yellow", needsAction: true }
+        { href: CLIENT_PRIMARY_TAB_HREFS.activity, title: "Transactions", subtitle: "Charges, refunds, failed payments, credits, subscriptions, creator payouts, and all money movement.", icon: <ReceiptText className="h-5 w-5" /> },
+        { href: "/dashboard/client/more?section=rewards", title: "Tax Information", subtitle: "Creator tax forms and tax documents when this account becomes payout eligible.", icon: <FileText className="h-5 w-5" /> }
       ]
     },
     {
       title: "Compliance & Security",
       subtitle: "Login, privacy, and account protection controls.",
       rows: [
-        { title: "Password & Login", subtitle: "Open the shared contact and sign-in verification flow.", href: "/verify-contact", icon: <KeyRound className="h-5 w-5" /> },
-        { title: "Privacy", subtitle: "Review what BVRB3R uses for booking, rewards, and reminders.", href: "/contact", icon: <ShieldCheck className="h-5 w-5" /> },
-        { title: "Account Security", subtitle: "Keep email and phone verification current.", href: "/verify-contact", status: emailVerified || phoneVerified ? "Verified" : "Needs setup", tone: emailVerified || phoneVerified ? "green" : "yellow", icon: <ShieldCheck className="h-5 w-5" /> },
-        { title: "Legal", subtitle: "Terms, policies, and agreements.", href: "/contact", icon: <FileText className="h-5 w-5" /> }
+        { title: "Identity Verification", subtitle: "Required when this account becomes eligible to receive payouts, such as creator payouts. Not required for normal booking.", href: "/verify-contact", icon: <ShieldCheck className="h-5 w-5" /> },
+        { title: "Password & Login", subtitle: "Password, sign-in method, email login, phone login, and connected access.", href: "/verify-contact", icon: <KeyRound className="h-5 w-5" /> },
+        { title: "Privacy", subtitle: "Booking data, rewards data, location preference, public culture profile, and communication visibility.", href: "/contact", icon: <ShieldCheck className="h-5 w-5" /> },
+        { title: "Account Security", subtitle: "Email verification, phone verification, device/session protection, and account status.", href: "/verify-contact", status: emailVerified || phoneVerified ? "Verified" : "Needs setup", tone: emailVerified || phoneVerified ? "green" : "yellow", icon: <ShieldCheck className="h-5 w-5" /> },
+        { title: "Legal", subtitle: "Terms, privacy policy, creator terms, rewards terms, payout terms, and account agreements.", href: "/contact", icon: <FileText className="h-5 w-5" /> }
       ]
     },
     {

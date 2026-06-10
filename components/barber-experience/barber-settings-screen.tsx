@@ -15,7 +15,9 @@ import {
   CreditCard,
   FileText,
   Fingerprint,
+  Gift,
   Headphones,
+  KeyRound,
   LifeBuoy,
   MapPin,
   Plus,
@@ -1113,10 +1115,11 @@ export function BarberSettingsScreen({
       subtitle: "Payout account, eligible balance, transactions, and tax posture.",
       rows: [
         { title: "Wallet / Billing", subtitle: "Default payment method for bookings, subscriptions, and tools", href: "/dashboard/barber/more?section=wallet", icon: <CreditCard className="h-5 w-5" /> },
-        { title: "Stripe Connect", subtitle: "Payout account and readiness", href: "/dashboard/barber/more?section=payouts", status: payoutSetupStatusLabel, tone: payoutsReady ? "green" : "yellow", icon: <WalletCards className="h-5 w-5" />, needsAction: !payoutsReady },
-        { title: "Payout Status", subtitle: "Eligible balance and payout routing", href: "/dashboard/barber/more?section=payouts", status: payoutCurrency(eligiblePayoutAmount ?? 0), tone: hasPayoutAmount ? "green" : "muted", icon: <CircleDollarSign className="h-5 w-5" /> },
-        { title: "Transactions", subtitle: "Sales and receipts", onClick: () => openBusinessTool("transactions"), icon: <ReceiptText className="h-5 w-5" />, testId: "business-tool-transactions" },
-        { title: "Tax Information", subtitle: "Tax forms and documents", href: "/dashboard/barber/more?section=payouts", icon: <FileText className="h-5 w-5" /> }
+        { title: "Stripe Connect", subtitle: "Manage bank accounts and payouts", href: "/dashboard/barber/more?section=payouts", status: payoutSetupStatusLabel, tone: payoutsReady ? "green" : "yellow", icon: <WalletCards className="h-5 w-5" />, needsAction: !payoutsReady },
+        { title: "Barber Payouts", subtitle: "Eligible balance, payout routing, payout holds, release readiness, and payout history", href: "/dashboard/barber/more?section=payouts", status: payoutCurrency(eligiblePayoutAmount ?? 0), tone: hasPayoutAmount ? "green" : "muted", icon: <CircleDollarSign className="h-5 w-5" /> },
+        { title: "Rewards", subtitle: "Points, credits, loyalty progress, and referrals", href: "/rewards", icon: <Gift className="h-5 w-5" /> },
+        { title: "Transactions", subtitle: "Barber sales, receipts, spending, refunds, failed payments, subscriptions, and payout movement", onClick: () => openBusinessTool("transactions"), icon: <ReceiptText className="h-5 w-5" />, testId: "business-tool-transactions" },
+        { title: "Tax Information", subtitle: "Tax forms and documents for barber earnings", href: "/dashboard/barber/more?section=payouts", icon: <FileText className="h-5 w-5" /> }
       ]
     },
     {
@@ -1124,11 +1127,12 @@ export function BarberSettingsScreen({
       title: "Compliance & Security",
       subtitle: "Identity, license, account security, and privacy.",
       rows: [
-        { title: "Identity Verification", subtitle: "Identity review and account proofing", onClick: () => openBusinessTool("verification"), status: formatStatusLabel(canonicalVerificationStatus), tone: moreToneForStatus(getStatusTone(canonicalVerificationStatus)), icon: <Fingerprint className="h-5 w-5" />, testId: "business-tool-verification" },
-        { title: "License Verification", subtitle: "License upload and review status", onClick: () => openBusinessTool("verification"), icon: <ShieldCheck className="h-5 w-5" /> },
-        { title: "Account Security", subtitle: "Password, contact, and login settings", onClick: () => openBusinessTool("account"), icon: <Settings2 className="h-5 w-5" />, testId: "business-tool-account" },
+        { title: "Identity Verification", subtitle: "Government ID or driver license proving who owns this account", onClick: () => openBusinessTool("verification"), status: formatStatusLabel(canonicalVerificationStatus), tone: moreToneForStatus(getStatusTone(canonicalVerificationStatus)), icon: <Fingerprint className="h-5 w-5" />, testId: "business-tool-verification" },
+        { title: "License Verification", subtitle: "Barber license upload, license state, license review, and approval status", onClick: () => openBusinessTool("verification"), icon: <ShieldCheck className="h-5 w-5" /> },
+        { title: "Password & Login", subtitle: "Password, sign-in method, email login, phone login, and connected access", onClick: () => openBusinessTool("account"), icon: <KeyRound className="h-5 w-5" />, testId: "business-tool-account-login" },
         { title: "Privacy", subtitle: "Public profile and communication preferences", onClick: () => openBusinessTool("notifications"), icon: <SlidersHorizontal className="h-5 w-5" />, testId: "business-tool-privacy" },
-        { title: "Legal", subtitle: "Agreements and policies", onClick: () => openBusinessTool("legal"), icon: <FileText className="h-5 w-5" />, testId: "business-tool-legal" }
+        { title: "Account Security", subtitle: "Email verification, phone verification, device/session protection, and account status", onClick: () => openBusinessTool("account"), icon: <Settings2 className="h-5 w-5" />, testId: "business-tool-account" },
+        { title: "Legal", subtitle: "Barber terms, platform agreement, payout terms, shop relationship terms, and service policies", onClick: () => openBusinessTool("legal"), icon: <FileText className="h-5 w-5" />, testId: "business-tool-legal" }
       ]
     },
     {
