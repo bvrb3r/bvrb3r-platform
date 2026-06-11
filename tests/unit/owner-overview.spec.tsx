@@ -210,11 +210,21 @@ describe("owner overview", () => {
     expect(screen.getByText("Maya")).toBeInTheDocument();
     expect(screen.getByText("$120")).toBeInTheDocument();
     expect(screen.getByText(/financial anomal/i)).toBeInTheDocument();
+    expect(screen.getByTestId("owner-culture-entry")).toHaveTextContent("Culture Feed");
+    expect(screen.getByText("Show the shop, promote the team, discover barbers, and build community.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Open Culture/i })).toHaveAttribute("href", "/dashboard/owner/culture");
     expect(screen.getByRole("link", { name: /^View all$/i })).toHaveAttribute("href", "/dashboard/owner/team");
     expect(screen.getByRole("link", { name: /Assign Walk-in/i })).toHaveAttribute("href", "/dashboard/owner/schedule?action=assign-walkin");
     expect(screen.queryByTestId("shop-manager-panel-stub")).not.toBeInTheDocument();
     expect(screen.queryByText("Quick insights")).not.toBeInTheDocument();
     expect(screen.queryByText("Walk-in queue")).not.toBeInTheDocument();
+  });
+
+  it("keeps the owner Culture entry mobile-safe near the bottom of Home", () => {
+    render(<OwnerOverview />);
+
+    expect(screen.getByTestId("owner-culture-entry")).toHaveClass("pb-4");
+    expect(screen.getByRole("link", { name: /Culture Feed/i })).toHaveAttribute("href", "/dashboard/owner/culture");
   });
 
   it("shows a clean no-demo empty state for a fresh owner lane", () => {

@@ -43,6 +43,23 @@ export function ClientCultureScreen({
   const hasPosts = posts.length > 0;
   const discoverBarbersHref = surface === "client" ? CLIENT_PRIMARY_TAB_HREFS.search : "/discover";
   const viewShopsHref = surface === "client" ? `${CLIENT_PRIMARY_TAB_HREFS.search}?type=shops` : "/discover?type=shops";
+  const discoverTitle = surface === "barber" ? "Discover styles" : "Discover barbers";
+  const surfaceSubtitle = surface === "barber"
+    ? "Cuts, styles, barbers, shops, and community."
+    : surface === "shop"
+      ? "Shops, teams, styles, barbers, and community."
+      : "Cuts, shops, style, and community.";
+  const roleContext = surface === "barber" ? "Barber Culture" : surface === "shop" ? "Shop Owner Culture" : "Client Culture";
+  const profileTitle = surface === "barber"
+    ? "My culture profile"
+    : surface === "shop"
+      ? "Promote shop"
+      : "My culture profile";
+  const profileCopy = surface === "barber"
+    ? "Keep public barber identity, style, and Culture visibility connected."
+    : surface === "shop"
+      ? "Connect shop identity, team moments, and public shop profile visibility."
+      : "Manage public creator identity when Culture tools unlock.";
   const postingTitle = surface === "barber"
     ? "Share professional work"
     : surface === "shop"
@@ -60,8 +77,11 @@ export function ClientCultureScreen({
         <PageHeader
           label="Culture"
           title="Culture"
-          subtitle="Cuts, shops, style, and community."
+          subtitle={surfaceSubtitle}
         />
+        <div className="mt-4 inline-flex rounded-full border border-[#d7ffab]/16 bg-[#d7ffab]/8 px-3 py-2 text-xs font-black uppercase tracking-[0.18em] text-[#d7ffab]">
+          {roleContext}
+        </div>
       </Card>
 
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
@@ -114,23 +134,33 @@ export function ClientCultureScreen({
               </article>
             )) : (
               <div className="rounded-[24px] border border-dashed border-white/12 bg-black/18 p-5 text-sm text-white/58">
-                Culture posts will appear here soon.
+                Culture posts will appear here as the BVRB3R community grows.
               </div>
             )}
           </div>
         </div>
 
         <aside className="space-y-4">
+          <div className="rounded-[26px] border border-white/10 bg-black/20 p-5">
+            <UsersRound className="h-5 w-5 text-[#d7ffab]" />
+            <p className="mt-4 text-lg font-semibold text-white">{profileTitle}</p>
+            <p className="mt-2 text-sm leading-6 text-white/58">{profileCopy}</p>
+          </div>
           <Link href={discoverBarbersHref as Route} className="block rounded-[26px] border border-[#d7ffab]/16 bg-[#d7ffab]/8 p-5 transition hover:border-[#d7ffab]/34">
             <Search className="h-5 w-5 text-[#d7ffab]" />
-            <p className="mt-4 text-lg font-semibold text-white">Discover barbers</p>
-            <p className="mt-2 text-sm leading-6 text-white/58">Find your next cut from live client discovery.</p>
+            <p className="mt-4 text-lg font-semibold text-white">{discoverTitle}</p>
+            <p className="mt-2 text-sm leading-6 text-white/58">{surface === "shop" ? "Find barbers, styles, and team prospects." : "Find barbers, styles, and local Culture signals."}</p>
           </Link>
           <Link href={viewShopsHref as Route} className="block rounded-[26px] border border-white/10 bg-black/20 p-5 transition hover:border-white/18">
             <Store className="h-5 w-5 text-[#baff69]" />
             <p className="mt-4 text-lg font-semibold text-white">View shops</p>
             <p className="mt-2 text-sm leading-6 text-white/58">Browse shops, chairs, and local supply.</p>
           </Link>
+          <div className="rounded-[26px] border border-white/10 bg-black/20 p-5">
+            <Bookmark className="h-5 w-5 text-[#d7ffab]" />
+            <p className="mt-4 text-lg font-semibold text-white">Saved culture items</p>
+            <p className="mt-2 text-sm leading-6 text-white/58">Saved and followed Culture items will use the canonical engagement graph.</p>
+          </div>
           <div className="rounded-[26px] border border-white/10 bg-black/20 p-5">
             <Scissors className="h-5 w-5 text-[#d7ffab]" />
             <p className="mt-4 text-lg font-semibold text-white">{postingTitle}</p>
