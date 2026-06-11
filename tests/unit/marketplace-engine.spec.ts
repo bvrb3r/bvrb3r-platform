@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   MarketplacePermissionError,
   createServiceDefinition,
+  deleteServiceDefinition,
   getHaircutNowMatch,
   getPublicBarberProfileByUsername,
   searchMarketplace,
@@ -70,6 +71,20 @@ describe("marketplace engine", () => {
     expect(created.service.isBookable).toBe(false);
     expect(updated.service.isActive).toBe(false);
     expect(updated.service.isBookable).toBe(false);
+  });
+
+  it("archives services instead of hard-deleting them", () => {
+    const state = visibleMarketplaceState();
+    const result = deleteServiceDefinition(state, { role: "barber_user", barberSubtype: "booth_rent", barberId: "barber-real" }, "srv-real");
+
+    expect(result.service.isActive).toBe(false);
+    expect(result.service.isBookable).toBe(false);
+    expect(result.state.services.find((service) => service.id === "srv-real")).toMatchObject({
+      id: "srv-real",
+      isActive: false,
+      isBookable: false
+    });
+    expect(state.services.find((service) => service.id === "srv-real")).toBeDefined();
   });
 
   it("blocks commission barbers from creating services", () => {

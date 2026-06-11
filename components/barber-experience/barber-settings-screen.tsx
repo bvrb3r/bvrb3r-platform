@@ -122,6 +122,7 @@ type InlineServiceEditorState = {
   mode: InlineServiceEditorMode;
   serviceId?: string;
   draft: InlineServiceEditorDraft;
+  confirmingRemove?: boolean;
 };
 
 const defaultInlineServiceDraft: InlineServiceEditorDraft = {
@@ -946,6 +947,7 @@ export function BarberSettingsScreen({
     bookable: true
   });
   const [inlineServiceEditor, setInlineServiceEditor] = useState<InlineServiceEditorState | null>(null);
+  const [removingServiceId, setRemovingServiceId] = useState<string | null>(null);
   const [availabilityDraft, setAvailabilityDraft] = useState({
     days: defaultActivationWorkingDays,
     startTime: "12:00",
@@ -1098,6 +1100,12 @@ export function BarberSettingsScreen({
   const profileVisibilityState = mediaQuery.data?.barberProfile?.visibilityState ?? null;
   const isProfilePublic = profileVisibilityState === "public" || profileVisibilityState === "featured";
   const isBookingActive = Boolean(overviewPayload?.status.isOnline && overviewPayload.status.liveStatus === "available");
+  const serviceCatalogItems = [
+    ...(serviceCatalogQuery.data?.editableServices ?? []),
+    ...(serviceCatalogQuery.data?.readOnlyServices ?? [])
+  ];
+  const activeServiceCatalogItems = serviceCatalogItems.filter((item) => item.service.isActive !== false);
+  const archivedServiceCatalogItems = serviceCatalogItems.filter((item) => item.service.isActive === false);
 
   const businessControls = [
     { key: "services", title: "Services", subtitle: "Manage pricing & offerings", icon: Scissors },
@@ -1288,6 +1296,7 @@ export function BarberSettingsScreen({
     setActiveBusinessTool(null);
     setActiveBusinessPanel(null);
     setInlineServiceEditor(null);
+    setRemovingServiceId(null);
   }
 
   function toggleActivationDay(day: number) {
@@ -1356,6 +1365,7 @@ export function BarberSettingsScreen({
   function updateInlineServiceDraft(patch: Partial<InlineServiceEditorDraft>) {
     setInlineServiceEditor((current) => current ? {
       ...current,
+      confirmingRemove: false,
       draft: {
         ...current.draft,
         ...patch,
@@ -1412,6 +1422,40 @@ export function BarberSettingsScreen({
       });
     } catch (error) {
       setFeedback({ tone: "error", message: readableError(error, "Unable to save service right now.") });
+    }
+  }
+
+  function requestInlineServiceRemove() {
+    setFeedback(null);
+    setInlineServiceEditor((current) => current && current.mode === "edit" && current.serviceId
+      ? { ...current, confirmingRemove: true }
+      : current);
+  }
+
+  function cancelInlineServiceRemove() {
+    setInlineServiceEditor((current) => current ? { ...current, confirmingRemove: false } : current);
+  }
+
+  async function handleInlineServiceRemove() {
+    if (!inlineServiceEditor?.serviceId) {
+      return;
+    }
+
+    setFeedback(null);
+    setRemovingServiceId(inlineServiceEditor.serviceId);
+    try {
+      await updateServiceMutation.mutateAsync({
+        serviceId: inlineServiceEditor.serviceId,
+        active: false,
+        bookable: false
+      });
+      await Promise.all([serviceCatalogQuery.refetch(), overviewQuery.refetch()]);
+      setInlineServiceEditor(null);
+      setRemovingServiceId(null);
+      setFeedback({ tone: "success", message: "Service removed from new bookings, kiosk, public profile, and checkout. History stays intact." });
+    } catch (error) {
+      setRemovingServiceId(null);
+      setFeedback({ tone: "error", message: readableError(error, "Unable to remove service right now.") });
     }
   }
 
@@ -2486,6 +2530,29 @@ export function BarberSettingsScreen({
                           Name, description, price, and duration save through the marketplace service mutation and refresh booking/search/kiosk reads.
                         </p>
                       </div>
+                      {inlineServiceEditor.confirmingRemove ? (
+                        <div className="rounded-[22px] border border-red-400/25 bg-red-500/[0.08] p-4">
+                          <p className="text-xs font-black uppercase tracking-[0.18em] text-red-100/70">Remove Service</p>
+                          <h4 className="mt-2 text-lg font-black text-white">Remove {inlineServiceEditor.draft.name || "this service"}?</h4>
+                          <p className="mt-2 text-sm leading-6 text-red-50/78">
+                            This will hide the service from new bookings, kiosk, public profile, and checkout. Existing appointments and receipts will not be changed.
+                          </p>
+                          <div className="mt-4 flex flex-wrap gap-3">
+                            <Button type="button" variant="secondary" className="h-11 px-5" disabled={Boolean(removingServiceId) || updateServiceMutation.isPending} onClick={cancelInlineServiceRemove}>
+                              Cancel
+                            </Button>
+                            <Button
+                              type="button"
+                              className="h-11 px-5 border border-red-300/40 bg-red-500/18 text-red-50 hover:bg-red-500/28"
+                              disabled={Boolean(removingServiceId) || updateServiceMutation.isPending}
+                              onClick={() => void handleInlineServiceRemove()}
+                            >
+                              {removingServiceId === inlineServiceEditor.serviceId || updateServiceMutation.isPending ? "Removing..." : "Remove Service"}
+                            </Button>
+                          </div>
+                        </div>
+                      ) : null}
+                      {!inlineServiceEditor.confirmingRemove ? (
                       <div className="grid gap-3">
                         <label className="block text-sm font-bold text-white/72">
                           Service Name
@@ -2542,6 +2609,23 @@ export function BarberSettingsScreen({
                             Inactive services are preserved in your catalog but cannot stay publicly bookable. Saving will set Bookable off.
                           </div>
                         ) : null}
+                        {inlineServiceEditor.mode === "edit" ? (
+                          <div className="rounded-[22px] border border-red-400/18 bg-red-500/[0.045] p-4">
+                            <p className="text-xs font-black uppercase tracking-[0.18em] text-red-100/70">Service Management</p>
+                            <p className="mt-2 text-sm leading-6 text-red-50/72">
+                              Remove this service from your active service library. Existing appointments and receipts will keep their original service details.
+                            </p>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              className="mt-4 h-11 border-red-300/35 px-5 text-red-100 hover:border-red-300/60 hover:text-red-50"
+                              disabled={updateServiceMutation.isPending}
+                              onClick={requestInlineServiceRemove}
+                            >
+                              Remove Service
+                            </Button>
+                          </div>
+                        ) : null}
                         <div className="flex flex-wrap gap-3">
                           <Button type="button" variant="secondary" className="h-11 px-5" onClick={() => setInlineServiceEditor(null)}>
                             Cancel edit
@@ -2556,12 +2640,13 @@ export function BarberSettingsScreen({
                           </Button>
                         </div>
                       </div>
+                      ) : null}
                     </div>
                   ) : null}
 
                   <div className="mt-5 space-y-3">
-                    {[...(serviceCatalogQuery.data?.editableServices ?? []), ...(serviceCatalogQuery.data?.readOnlyServices ?? [])].length ? (
-                      [...(serviceCatalogQuery.data?.editableServices ?? []), ...(serviceCatalogQuery.data?.readOnlyServices ?? [])].map((item) => (
+                    {activeServiceCatalogItems.length ? (
+                      activeServiceCatalogItems.map((item) => (
                         <div key={item.service.id} className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-white/8 bg-black/24 p-4">
                           <div>
                             <p className="text-lg font-black text-white">{item.service.name}</p>
@@ -2589,6 +2674,33 @@ export function BarberSettingsScreen({
                       </div>
                     )}
                   </div>
+                  {archivedServiceCatalogItems.length ? (
+                    <div className="mt-5 rounded-[22px] border border-white/8 bg-black/20 p-4">
+                      <p className="text-xs font-black uppercase tracking-[0.18em] text-white/40">Archived services</p>
+                      <p className="mt-2 text-sm leading-6 text-white/52">
+                        Removed services stay preserved for appointments, receipts, and reporting, but are hidden from new checkout, booking, kiosk, and public profile use.
+                      </p>
+                      <div className="mt-4 space-y-2">
+                        {archivedServiceCatalogItems.map((item) => (
+                          <div key={item.service.id} className="flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-white/8 bg-black/24 px-4 py-3">
+                            <div>
+                              <p className="text-sm font-black text-white/76">{item.service.name}</p>
+                              <p className="mt-1 text-xs text-white/42">
+                                {currency(item.service.price)} | {item.service.durationMin} min | Archived
+                              </p>
+                            </div>
+                            {item.canEdit ? (
+                              <Button type="button" variant="secondary" className="h-9 px-3 text-xs" onClick={() => openInlineServiceEditor("edit", item)} aria-label={`Edit archived service ${item.service.name}`}>
+                                Edit
+                              </Button>
+                            ) : (
+                              <StatusPill tone="neutral">Shop managed</StatusPill>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                   <div className="mt-5 flex flex-wrap gap-3">
                     <Button type="button" variant="secondary" className="h-11 px-5" onClick={() => openInlineServiceEditor("add")}>
                       Add Service

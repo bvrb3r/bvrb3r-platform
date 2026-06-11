@@ -563,15 +563,21 @@ export function deleteServiceDefinition(state: MarketplaceState, actor: Marketpl
   }
 
   if (!canEditServiceDefinition(actor, target)) {
-    throw new MarketplacePermissionError("You do not have permission to delete this service.");
+    throw new MarketplacePermissionError("You do not have permission to remove this service.");
   }
+
+  const archivedService = normalizeService({
+    ...target,
+    isActive: false,
+    isBookable: false
+  });
 
   return {
     state: {
       ...state,
-      services: state.services.filter((service) => service.id !== serviceId)
+      services: state.services.map((service) => (service.id === serviceId ? archivedService : service))
     },
-    service: target
+    service: archivedService
   };
 }
 

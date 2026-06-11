@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveDemoUser } from "@/lib/auth/demo-auth";
@@ -554,10 +554,19 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     expect(activeToggle).toBeEnabled();
     expect(bookableToggle).toBeEnabled();
     expect(within(dialog).queryByText("Canonical save path required for active/bookable toggles")).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Remove Service" })).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove Service" }));
+    expect(within(dialog).getByText("Remove Haircut?")).toBeInTheDocument();
+    expect(within(dialog).getByText(/Existing appointments and receipts will not be changed/)).toBeInTheDocument();
+    fireEvent.click(within(dialog).getAllByRole("button", { name: "Cancel" })[0]);
+    expect(updateMarketplaceServiceMutateMock).not.toHaveBeenCalled();
+    expect(within(dialog).getByLabelText("Service Name")).toHaveValue("Haircut");
     fireEvent.change(within(dialog).getByLabelText("Service Name"), { target: { value: "Signature Cut" } });
-    fireEvent.click(activeToggle);
-    expect(bookableToggle).not.toBeChecked();
-    expect(bookableToggle).toBeDisabled();
+    const activeToggleAfterCancel = within(dialog).getByLabelText(/Active/);
+    const bookableToggleAfterCancel = within(dialog).getByLabelText(/Bookable/);
+    fireEvent.click(activeToggleAfterCancel);
+    expect(bookableToggleAfterCancel).not.toBeChecked();
+    expect(bookableToggleAfterCancel).toBeDisabled();
     const serviceSaveButton = within(dialog).getAllByRole("button", { name: "Save Changes" }).find((button) => !button.hasAttribute("disabled"));
     expect(serviceSaveButton).toBeDefined();
     fireEvent.click(serviceSaveButton as HTMLElement);
@@ -586,6 +595,28 @@ describe("BarberSettingsScreen Stripe return sync", () => {
       active: true,
       bookable: true
     })));
+
+    fireEvent.click(within(dialog).getByRole("button", { name: /Edit service Haircut/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove Service" }));
+    let resolveRemove!: () => void;
+    const removePromise = new Promise<void>((resolve) => {
+      resolveRemove = resolve;
+    });
+    updateMarketplaceServiceMutateMock.mockImplementationOnce(() => removePromise);
+    const removeButton = within(dialog).getByRole("button", { name: "Remove Service" });
+    fireEvent.click(removeButton);
+    expect(await within(dialog).findByRole("button", { name: "Removing..." })).toBeDisabled();
+    await act(async () => {
+      resolveRemove();
+      await removePromise;
+    });
+    await waitFor(() => expect(updateMarketplaceServiceMutateMock).toHaveBeenLastCalledWith({
+      serviceId: "svc-1",
+      active: false,
+      bookable: false
+    }));
+    await waitFor(() => expect(overviewRefetchMock).toHaveBeenCalled());
+    await waitFor(() => expect(within(dialog).queryByText("Remove Haircut?")).not.toBeInTheDocument());
     fireEvent.click(within(dialog).getByLabelText("Close business tool"));
 
     fireEvent.click(screen.getByRole("button", { name: "Log out" }));
