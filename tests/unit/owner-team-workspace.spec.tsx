@@ -358,6 +358,9 @@ describe("owner team workspace", () => {
     expect(ownerCultureEntry).toHaveTextContent("Culture Feed");
     expect(ownerCultureEntry).toHaveTextContent("Show the shop, promote the team, discover barbers, and build community.");
     expect(screen.getByRole("link", { name: /Open Culture/i })).toHaveAttribute("href", "/dashboard/owner/culture");
+    expect(screen.getByTestId("owner-home-culture-entry-cta")).toHaveClass("text-[#050505]");
+    expect(screen.getByTestId("owner-home-culture-entry-cta")).toHaveClass("shadow-none");
+    expect(screen.getByTestId("owner-home-culture-entry-cta")).toHaveClass("ring-black/10");
     expect(ownerCultureEntry).toHaveClass("mb-4");
     expect(screen.getByTestId("team-relationship-queue").compareDocumentPosition(ownerCultureEntry) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.queryByText("Public Shop Profile")).not.toBeInTheDocument();

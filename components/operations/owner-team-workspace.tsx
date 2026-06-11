@@ -4,10 +4,10 @@ import { useMemo, useState, type ComponentProps, type ReactNode } from "react";
 import Link from "next/link";
 import type { Route } from "next";
 import {
-  Images,
   MoreVertical,
   X
 } from "lucide-react";
+import { CultureHomeEntryCard } from "@/components/culture/culture-home-entry-card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, GlassCard, SearchBar } from "@/design/components";
@@ -885,25 +885,11 @@ export function OwnerTeamWorkspace() {
         </div>
       </GlassCard>
 
-      <GlassCard className="mb-4 border-[#A3FF12]/16 bg-[linear-gradient(135deg,rgba(163,255,18,0.08),rgba(8,8,8,0.94)_48%,rgba(0,0,0,0.98))] p-5 shadow-[0_22px_70px_rgba(0,0,0,0.35)] sm:p-6" data-testid="owner-home-culture-entry">
-        <Link href="/dashboard/owner/culture" className="group block">
-          <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-            <div className="max-w-3xl">
-              <div className="inline-flex h-11 w-11 items-center justify-center rounded-[14px] border border-[#A3FF12]/24 bg-[#A3FF12]/10 text-[#A3FF12]">
-                <Images className="h-5 w-5" />
-              </div>
-              <p className="mt-4 text-xs font-black uppercase tracking-[0.22em] text-[#A3FF12]">Culture</p>
-              <h2 className="mt-2 text-2xl font-extrabold tracking-[-0.04em] text-white">Culture Feed</h2>
-              <p className="mt-3 text-sm leading-6 text-white/62">
-                Show the shop, promote the team, discover barbers, and build community.
-              </p>
-            </div>
-            <span className="inline-flex min-h-12 items-center justify-center rounded-full bg-[#A3FF12] px-5 text-sm font-black text-black transition group-hover:bg-[#8de300]">
-              Open Culture
-            </span>
-          </div>
-        </Link>
-      </GlassCard>
+      <CultureHomeEntryCard
+        href="/dashboard/owner/culture"
+        subtitle="Show the shop, promote the team, discover barbers, and build community."
+        testId="owner-home-culture-entry"
+      />
 
       {pendingInviteBarber ? (
         <div className="fixed inset-0 z-50 flex items-end bg-black/78 px-4 py-5 backdrop-blur-xl sm:items-center sm:justify-center" role="dialog" aria-modal="true" aria-labelledby="owner-team-invite-confirm-title">
