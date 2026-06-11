@@ -11,13 +11,15 @@ const createServiceSchema = z.object({
   category: z.string().min(1),
   name: z.string().min(1),
   description: z.string().default(""),
-  durationMin: z.number().int().min(15),
+  durationMin: z.number().int().positive(),
   bufferMin: z.number().int().min(0),
-  price: z.number().positive(),
+  price: z.number().min(0),
   deposit: z.number().min(0),
   fullPrepay: z.boolean(),
   styleTagIds: z.array(z.string()).default([]),
-  shopId: z.string().optional()
+  shopId: z.string().optional(),
+  active: z.boolean().default(true),
+  bookable: z.boolean().default(true)
 });
 
 export async function GET() {

@@ -152,6 +152,8 @@ async function resolveLocationForService(supabase: SupabaseClient, shopId?: stri
 
 export async function syncServiceToCanonicalRows(supabase: SupabaseClient, service: Service) {
   const serviceReference = service.id;
+  const active = service.isActive !== false;
+  const bookable = active ? service.isBookable !== false : false;
   const marketplacePayload = {
     service_reference: serviceReference,
     category: service.category,
@@ -199,8 +201,8 @@ export async function syncServiceToCanonicalRows(supabase: SupabaseClient, servi
     currency: service.currency ?? "usd",
     deposit_amount: service.deposit,
     full_prepay_required: service.fullPrepay,
-    active: service.isActive !== false,
-    is_bookable: service.isBookable !== false,
+    active,
+    is_bookable: bookable,
     display_order: service.displayOrder ?? 0,
     service_owner_type: service.ownerType ?? "shop",
     barber_reference: service.barberId ?? null,

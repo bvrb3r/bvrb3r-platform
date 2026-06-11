@@ -942,7 +942,8 @@ export function BarberSettingsScreen({
     name: "Haircut",
     price: "35",
     duration: "45",
-    active: true
+    active: true,
+    bookable: true
   });
   const [inlineServiceEditor, setInlineServiceEditor] = useState<InlineServiceEditorState | null>(null);
   const [availabilityDraft, setAvailabilityDraft] = useState({
@@ -1322,7 +1323,9 @@ export function BarberSettingsScreen({
         price,
         deposit: 0,
         fullPrepay: false,
-        styleTagIds: []
+        styleTagIds: [],
+        active: serviceDraft.active,
+        bookable: serviceDraft.active ? serviceDraft.bookable : false
       });
       await Promise.all([serviceCatalogQuery.refetch(), overviewQuery.refetch()]);
       closeQuickSetupModal();
@@ -1355,7 +1358,8 @@ export function BarberSettingsScreen({
       ...current,
       draft: {
         ...current.draft,
-        ...patch
+        ...patch,
+        ...(patch.active === false ? { bookable: false } : {})
       }
     } : current);
   }
@@ -1368,11 +1372,12 @@ export function BarberSettingsScreen({
     setFeedback(null);
     const price = Number(inlineServiceEditor.draft.price);
     const durationMin = Number(inlineServiceEditor.draft.duration);
-    if (!inlineServiceEditor.draft.name.trim() || !Number.isFinite(price) || price <= 0 || !Number.isFinite(durationMin) || durationMin < 15) {
-      setFeedback({ tone: "error", message: "Enter a service name, price greater than zero, and duration of at least 15 minutes." });
+    if (!inlineServiceEditor.draft.name.trim() || !Number.isFinite(price) || price < 0 || !Number.isFinite(durationMin) || durationMin <= 0) {
+      setFeedback({ tone: "error", message: "Enter a service name, price of at least 0, and duration greater than zero." });
       return;
     }
 
+    const active = inlineServiceEditor.draft.active;
     const payload = {
       category: "Haircuts",
       name: inlineServiceEditor.draft.name.trim(),
@@ -1382,7 +1387,9 @@ export function BarberSettingsScreen({
       price,
       deposit: 0,
       fullPrepay: false,
-      styleTagIds: []
+      styleTagIds: [],
+      active,
+      bookable: active ? inlineServiceEditor.draft.bookable : false
     };
 
     try {
@@ -2504,21 +2511,37 @@ export function BarberSettingsScreen({
                           </label>
                         </div>
                         <div className="grid gap-3 sm:grid-cols-2">
-                          <label className="flex min-h-12 items-center justify-between rounded-2xl border border-white/10 bg-black/24 px-4 text-sm font-bold text-white/72">
-                            Active
-                            <input type="checkbox" checked={inlineServiceEditor.draft.active} disabled className="h-5 w-5 accent-[#A3FF12] disabled:opacity-45" readOnly />
+                          <label className="flex min-h-20 items-center justify-between gap-4 rounded-2xl border border-white/10 bg-black/24 px-4 py-3 text-sm font-bold text-white/72">
+                            <span>
+                              <span className="block text-white">Active</span>
+                              <span className="mt-1 block text-xs leading-5 text-white/48">Shows this service in your internal service library and checkout.</span>
+                            </span>
+                            <input
+                              type="checkbox"
+                              checked={inlineServiceEditor.draft.active}
+                              onChange={(event) => updateInlineServiceDraft({ active: event.target.checked })}
+                              className="h-5 w-5 shrink-0 accent-[#A3FF12]"
+                            />
                           </label>
-                          <label className="flex min-h-12 items-center justify-between rounded-2xl border border-white/10 bg-black/24 px-4 text-sm font-bold text-white/72">
-                            Bookable
-                            <input type="checkbox" checked={inlineServiceEditor.draft.bookable} disabled className="h-5 w-5 accent-[#A3FF12] disabled:opacity-45" readOnly />
+                          <label className="flex min-h-20 items-center justify-between gap-4 rounded-2xl border border-white/10 bg-black/24 px-4 py-3 text-sm font-bold text-white/72">
+                            <span>
+                              <span className="block text-white">Bookable</span>
+                              <span className="mt-1 block text-xs leading-5 text-white/48">Allows clients to book this service through public booking, kiosk, and profile surfaces.</span>
+                            </span>
+                            <input
+                              type="checkbox"
+                              checked={inlineServiceEditor.draft.active && inlineServiceEditor.draft.bookable}
+                              disabled={!inlineServiceEditor.draft.active}
+                              onChange={(event) => updateInlineServiceDraft({ bookable: event.target.checked })}
+                              className="h-5 w-5 shrink-0 accent-[#A3FF12] disabled:opacity-45"
+                            />
                           </label>
                         </div>
-                        <div className="rounded-[18px] border border-amber-300/18 bg-amber-300/[0.045] p-4">
-                          <p className="text-sm font-extrabold text-amber-100">Canonical save path required for active/bookable toggles</p>
-                          <p className="mt-1 text-sm leading-6 text-amber-100/72">
-                            The current marketplace service mutation saves name, description, price, and duration. Persisting active/bookable requires wiring those flags through the service mutation read/write path before enabling these toggles.
-                          </p>
-                        </div>
+                        {!inlineServiceEditor.draft.active ? (
+                          <div className="rounded-[18px] border border-amber-300/18 bg-amber-300/[0.045] p-4 text-sm leading-6 text-amber-100/80">
+                            Inactive services are preserved in your catalog but cannot stay publicly bookable. Saving will set Bookable off.
+                          </div>
+                        ) : null}
                         <div className="flex flex-wrap gap-3">
                           <Button type="button" variant="secondary" className="h-11 px-5" onClick={() => setInlineServiceEditor(null)}>
                             Cancel edit

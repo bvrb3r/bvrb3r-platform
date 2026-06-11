@@ -89,6 +89,8 @@ export interface ServiceMutationInput {
   fullPrepay: boolean;
   styleTagIds: string[];
   shopId?: string;
+  active?: boolean;
+  bookable?: boolean;
 }
 
 export interface ServiceCatalogItem {
@@ -184,10 +186,13 @@ function uniqueStrings(values: string[]) {
 }
 
 function normalizeService(service: Service): Service {
+  const isActive = service.isActive !== false;
   return {
     ...service,
     ownerType: service.ownerType ?? "shop",
-    styleTagIds: uniqueStrings(service.styleTagIds ?? DEFAULT_SERVICE_STYLE_TAGS[service.id] ?? [])
+    styleTagIds: uniqueStrings(service.styleTagIds ?? DEFAULT_SERVICE_STYLE_TAGS[service.id] ?? []),
+    isActive,
+    isBookable: isActive ? service.isBookable !== false : false
   };
 }
 
@@ -414,6 +419,13 @@ export function getServiceCatalogView(state: MarketplaceState, actor: Marketplac
   throw new MarketplacePermissionError("You do not have access to marketplace service management.");
 }
 
+function getBookableServicesForBarber(state: MarketplaceState, barber: Barber, profile: BarberProfile) {
+  return getServicesForBarber(state, barber, profile).filter((service) =>
+    service.isActive !== false
+    && service.isBookable !== false
+  );
+}
+
 function validateServiceMutation(input: ServiceMutationInput) {
   if (!input.name.trim()) {
     throw new MarketplaceValidationError("Service name is required.");
@@ -423,13 +435,23 @@ function validateServiceMutation(input: ServiceMutationInput) {
     throw new MarketplaceValidationError("Service category is required.");
   }
 
-  if (input.durationMin < 15) {
-    throw new MarketplaceValidationError("Service duration must be at least 15 minutes.");
+  if (input.durationMin <= 0) {
+    throw new MarketplaceValidationError("Service duration must be greater than zero.");
   }
 
-  if (input.price <= 0) {
-    throw new MarketplaceValidationError("Service price must be greater than zero.");
+  if (input.price < 0) {
+    throw new MarketplaceValidationError("Service price must be zero or greater.");
   }
+}
+
+function normalizeServiceStateFlags(input: Pick<ServiceMutationInput, "active" | "bookable">, target?: Service) {
+  const isActive = input.active ?? target?.isActive ?? true;
+  const requestedBookable = input.bookable ?? target?.isBookable ?? true;
+
+  return {
+    isActive,
+    isBookable: isActive ? requestedBookable : false
+  };
 }
 
 function getPreferredShopId(state: MarketplaceState, actor: MarketplaceActor, requestedShopId?: string) {
@@ -453,6 +475,7 @@ export function createServiceDefinition(state: MarketplaceState, actor: Marketpl
   validateServiceMutation(input);
 
   const ownerType: ServiceOwnerType = isShopOwnerRole(actor.role) ? "shop" : "barber";
+  const visibilityFlags = normalizeServiceStateFlags(input);
   const nextService: Service = normalizeService({
     id: `srv-${slugify(`${input.name}-${Date.now()}`)}`,
     category: input.category,
@@ -467,7 +490,8 @@ export function createServiceDefinition(state: MarketplaceState, actor: Marketpl
     ownerType,
     barberId: ownerType === "barber" ? actor.barberId : undefined,
     shopId: getPreferredShopId(state, actor, input.shopId),
-    styleTagIds: uniqueStrings(input.styleTagIds)
+    styleTagIds: uniqueStrings(input.styleTagIds),
+    ...visibilityFlags
   });
 
   return {
@@ -491,6 +515,7 @@ export function updateServiceDefinition(state: MarketplaceState, actor: Marketpl
     throw new MarketplacePermissionError("You do not have permission to edit this service.");
   }
 
+  const visibilityFlags = normalizeServiceStateFlags(input, target);
   const updatedService = normalizeService({
     ...target,
     category: input.category?.trim() || target.category,
@@ -501,7 +526,8 @@ export function updateServiceDefinition(state: MarketplaceState, actor: Marketpl
     price: input.price ?? target.price,
     deposit: input.deposit ?? target.deposit,
     fullPrepay: input.fullPrepay ?? target.fullPrepay,
-    styleTagIds: input.styleTagIds ? uniqueStrings(input.styleTagIds) : target.styleTagIds
+    styleTagIds: input.styleTagIds ? uniqueStrings(input.styleTagIds) : target.styleTagIds,
+    ...visibilityFlags
   });
 
   validateServiceMutation({
@@ -514,7 +540,9 @@ export function updateServiceDefinition(state: MarketplaceState, actor: Marketpl
     deposit: updatedService.deposit,
     fullPrepay: updatedService.fullPrepay,
     styleTagIds: updatedService.styleTagIds ?? [],
-    shopId: updatedService.shopId
+    shopId: updatedService.shopId,
+    active: updatedService.isActive,
+    bookable: updatedService.isBookable
   });
 
   return {
@@ -578,7 +606,7 @@ function toMarketplaceBadges(
 }
 
 function getServicesForPublicProfile(state: MarketplaceState, barber: Barber, profile: BarberProfile) {
-  return getServicesForBarber(state, barber, profile);
+  return getBookableServicesForBarber(state, barber, profile);
 }
 
 function getReviewsForBarber(state: MarketplaceState, barberId: string) {

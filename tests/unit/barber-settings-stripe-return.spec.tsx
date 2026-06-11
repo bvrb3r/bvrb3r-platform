@@ -34,6 +34,7 @@ const {
   useUpdateBarberActivationMutationMock,
   useUpdateBarberStatusMutationMock,
   createMessageThreadMock,
+  createMarketplaceServiceMutateMock,
   updateMarketplaceServiceMutateMock,
   useCreateMarketplaceServiceMutationMock,
   useUpdateMarketplaceServiceMutationMock,
@@ -70,6 +71,7 @@ const {
   useUpdateBarberActivationMutationMock: vi.fn(),
   useUpdateBarberStatusMutationMock: vi.fn(),
   createMessageThreadMock: vi.fn(),
+  createMarketplaceServiceMutateMock: vi.fn(),
   updateMarketplaceServiceMutateMock: vi.fn(),
   useCreateMarketplaceServiceMutationMock: vi.fn(),
   useUpdateMarketplaceServiceMutationMock: vi.fn(),
@@ -368,7 +370,8 @@ function setupHookMocks() {
   useUpdateBarberStatusMutationMock.mockReturnValue({ mutateAsync: vi.fn(), isPending: false });
   createMessageThreadMock.mockResolvedValue({ thread: { id: "thread-1" } });
   useCreateMessageThreadMutationMock.mockReturnValue({ mutateAsync: createMessageThreadMock, isPending: false });
-  useCreateMarketplaceServiceMutationMock.mockReturnValue({ mutateAsync: vi.fn(), isPending: false });
+  createMarketplaceServiceMutateMock.mockResolvedValue({ service: { id: "svc-created" } });
+  useCreateMarketplaceServiceMutationMock.mockReturnValue({ mutateAsync: createMarketplaceServiceMutateMock, isPending: false });
   updateMarketplaceServiceMutateMock.mockResolvedValue({ service: { id: "svc-1" } });
   useUpdateMarketplaceServiceMutationMock.mockReturnValue({ mutateAsync: updateMarketplaceServiceMutateMock, isPending: false });
   useMarketplaceServiceCatalogMock.mockReturnValue({
@@ -546,8 +549,15 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     expect(within(dialog).getByLabelText("Description")).toHaveValue("Clean cut");
     expect(within(dialog).getByLabelText("Price")).toHaveValue("35");
     expect(within(dialog).getByLabelText("Duration minutes")).toHaveValue("45");
-    expect(within(dialog).getByText("Canonical save path required for active/bookable toggles")).toBeInTheDocument();
+    const activeToggle = within(dialog).getByLabelText(/Active/);
+    const bookableToggle = within(dialog).getByLabelText(/Bookable/);
+    expect(activeToggle).toBeEnabled();
+    expect(bookableToggle).toBeEnabled();
+    expect(within(dialog).queryByText("Canonical save path required for active/bookable toggles")).not.toBeInTheDocument();
     fireEvent.change(within(dialog).getByLabelText("Service Name"), { target: { value: "Signature Cut" } });
+    fireEvent.click(activeToggle);
+    expect(bookableToggle).not.toBeChecked();
+    expect(bookableToggle).toBeDisabled();
     const serviceSaveButton = within(dialog).getAllByRole("button", { name: "Save Changes" }).find((button) => !button.hasAttribute("disabled"));
     expect(serviceSaveButton).toBeDefined();
     fireEvent.click(serviceSaveButton as HTMLElement);
@@ -555,7 +565,26 @@ describe("BarberSettingsScreen Stripe return sync", () => {
       serviceId: "svc-1",
       name: "Signature Cut",
       price: 35,
-      durationMin: 45
+      durationMin: 45,
+      active: false,
+      bookable: false
+    })));
+    await waitFor(() => expect(within(dialog).queryByLabelText("Service Name")).not.toBeInTheDocument());
+
+    fireEvent.click(within(dialog).getByRole("button", { name: /Add Service/ }));
+    expect(within(dialog).getByLabelText("Service Name")).toHaveValue("");
+    expect(within(dialog).getByLabelText(/Active/)).toBeEnabled();
+    expect(within(dialog).getByLabelText(/Bookable/)).toBeEnabled();
+    fireEvent.change(within(dialog).getByLabelText("Service Name"), { target: { value: "Line Up" } });
+    const addSaveButton = within(dialog).getAllByRole("button", { name: "Save Changes" }).find((button) => !button.hasAttribute("disabled"));
+    expect(addSaveButton).toBeDefined();
+    fireEvent.click(addSaveButton as HTMLElement);
+    await waitFor(() => expect(createMarketplaceServiceMutateMock).toHaveBeenCalledWith(expect.objectContaining({
+      name: "Line Up",
+      price: 35,
+      durationMin: 45,
+      active: true,
+      bookable: true
     })));
     fireEvent.click(within(dialog).getByLabelText("Close business tool"));
 

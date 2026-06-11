@@ -430,7 +430,7 @@ async function readSupabaseRuntime(supabase: SupabaseClient): Promise<Marketplac
     supabase.from("featured_profiles").select("id, barber_reference, label"),
     supabase.from("trending_styles").select("id, style_tag_slug, region_label, booking_count, rank"),
     supabase.from("location_search_index").select("id, location_reference, shop_reference, barber_reference, latitude, longitude, distance_miles"),
-    supabase.from("services").select("id, reference_code, location_id, category, name, description, duration_min, buffer_min, price, deposit_amount, full_prepay_required, active, service_owner_type, barber_reference, shop_reference, style_tag_ids").eq("active", true),
+    supabase.from("services").select("id, reference_code, location_id, category, name, description, duration_min, buffer_min, price, deposit_amount, full_prepay_required, active, is_bookable, service_owner_type, barber_reference, shop_reference, style_tag_ids"),
     supabase.from("availability_rules").select("barber_id, location_id, weekday, start_time, end_time"),
     supabase.from("blocked_times").select("barber_id, starts_at, ends_at, reason"),
     supabase.from("appointments").select("barber_id, location_id, status, starts_at, ends_at"),
@@ -540,7 +540,9 @@ async function readSupabaseRuntime(supabase: SupabaseClient): Promise<Marketplac
       ownerType: row.service_owner_type ?? "shop",
       barberId: row.barber_reference ?? undefined,
       shopId: row.shop_reference ?? locationReference,
-      styleTagIds: row.style_tag_ids ?? []
+      styleTagIds: row.style_tag_ids ?? [],
+      isActive: row.active !== false,
+      isBookable: row.active === false ? false : row.is_bookable !== false
     };
   });
   const marketplaceServiceState: Service[] = tableRows(services.data).map((row: any) => ({
@@ -557,9 +559,11 @@ async function readSupabaseRuntime(supabase: SupabaseClient): Promise<Marketplac
     ownerType: row.owner_type,
     barberId: row.barber_reference ?? undefined,
     shopId: row.shop_reference ?? undefined,
-    styleTagIds: row.style_tag_ids ?? []
+    styleTagIds: row.style_tag_ids ?? [],
+    isActive: true,
+    isBookable: true
   }));
-  const serviceState = [...new Map([...canonicalServiceState, ...marketplaceServiceState].map((service) => [service.id, service])).values()];
+  const serviceState = [...new Map([...marketplaceServiceState, ...canonicalServiceState].map((service) => [service.id, service])).values()];
   const nextAvailableByBarber = new Map<string, string>();
 
   tableRows(barbers.data).forEach((row: any) => {
@@ -568,8 +572,12 @@ async function readSupabaseRuntime(supabase: SupabaseClient): Promise<Marketplac
     const locationReferences = uniqueStrings([...(locationIdsByProfile.get(row.profile_id) ?? []), ...indexedLocationIds]);
     const canonicalServicesForBarber = canonicalServiceState
       .filter((service) =>
+        service.isActive !== false
+        && service.isBookable !== false
+        && (
         (service.ownerType === "barber" && service.barberId === barberReference)
         || (service.ownerType === "shop" && locationReferences.includes(service.shopId ?? ""))
+        )
       )
       .map((service) => ({
         durationMin: service.durationMin,

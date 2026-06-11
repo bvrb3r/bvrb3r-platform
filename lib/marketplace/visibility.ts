@@ -65,11 +65,13 @@ export function isFutureBookableIso(value: string | null | undefined, now = Date
   return Number.isFinite(timestamp) && timestamp > now;
 }
 
-export function isMarketplaceBookableService(service: Pick<Service, "name" | "category" | "durationMin" | "price">) {
+export function isMarketplaceBookableService(service: Pick<Service, "name" | "category" | "durationMin" | "price" | "isActive" | "isBookable">) {
   return hasRealMarketplaceText(service.name)
     && hasRealMarketplaceText(service.category)
     && service.durationMin >= 15
-    && service.price > 0;
+    && service.price > 0
+    && service.isActive !== false
+    && service.isBookable !== false;
 }
 
 export function isMarketplaceApprovedStatus(value: string | null | undefined) {

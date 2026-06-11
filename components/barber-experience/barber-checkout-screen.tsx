@@ -149,7 +149,9 @@ export function BarberCheckoutScreen({
   const [pendingRequestRetry, setPendingRequestRetry] = useState<{ saleId: string } | null>(null);
   const keypadAmount = digitsToAmount(chargeDigits);
   const serviceShortcuts = useMemo(
-    () => [...(serviceCatalogQuery.data?.editableServices ?? []), ...(serviceCatalogQuery.data?.readOnlyServices ?? [])].slice(0, 8),
+    () => [...(serviceCatalogQuery.data?.editableServices ?? []), ...(serviceCatalogQuery.data?.readOnlyServices ?? [])]
+      .filter((item) => item.service.isActive !== false)
+      .slice(0, 8),
     [serviceCatalogQuery.data]
   );
   const searchableClients = useMemo(() => {

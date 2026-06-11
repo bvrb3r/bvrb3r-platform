@@ -46,6 +46,32 @@ describe("marketplace engine", () => {
     expect(updated.service.description).toContain("hot towel");
   });
 
+  it("persists active and bookable state on service create and update", () => {
+    const state = visibleMarketplaceState();
+    const created = createServiceDefinition(state, { role: "barber_user", barberSubtype: "booth_rent", barberId: "barber-real" }, {
+      category: "Haircuts",
+      name: "Private Lineup",
+      description: "Internal-only service.",
+      durationMin: 30,
+      bufferMin: 0,
+      price: 25,
+      deposit: 0,
+      fullPrepay: false,
+      styleTagIds: [],
+      active: true,
+      bookable: false
+    });
+    const updated = updateServiceDefinition(created.state, { role: "barber_user", barberSubtype: "booth_rent", barberId: "barber-real" }, created.service.id, {
+      active: false,
+      bookable: true
+    });
+
+    expect(created.service.isActive).toBe(true);
+    expect(created.service.isBookable).toBe(false);
+    expect(updated.service.isActive).toBe(false);
+    expect(updated.service.isBookable).toBe(false);
+  });
+
   it("blocks commission barbers from creating services", () => {
     const state = visibleMarketplaceState();
 
@@ -77,6 +103,23 @@ describe("marketplace engine", () => {
     expect(profile).not.toBeNull();
     expect(profile?.barber.name).toBe("realbarber");
     expect(profile?.mostBookedService?.service.name).toBe("Real Cut");
+  });
+
+  it("excludes inactive or internal-only services from public profile and discovery", () => {
+    const state = visibleMarketplaceState();
+    state.services = state.services.map((service) =>
+      service.id === "srv-real"
+        ? { ...service, isActive: true, isBookable: false }
+        : service.id === "srv-shop-real"
+          ? { ...service, isActive: false, isBookable: true }
+          : service
+    );
+
+    const profile = getPublicBarberProfileByUsername(state, "realbarber", approvedMarketplaceTrustState());
+    const results = searchMarketplace(state, { query: "real cut" }, approvedMarketplaceTrustState());
+
+    expect(profile).toBeNull();
+    expect(results).toEqual([]);
   });
 
   it("uses persisted review data for barber profile ratings and review counts", () => {

@@ -8,13 +8,15 @@ const updateServiceSchema = z.object({
   category: z.string().min(1).optional(),
   name: z.string().min(1).optional(),
   description: z.string().optional(),
-  durationMin: z.number().int().min(15).optional(),
+  durationMin: z.number().int().positive().optional(),
   bufferMin: z.number().int().min(0).optional(),
-  price: z.number().positive().optional(),
+  price: z.number().min(0).optional(),
   deposit: z.number().min(0).optional(),
   fullPrepay: z.boolean().optional(),
   styleTagIds: z.array(z.string()).optional(),
-  shopId: z.string().optional()
+  shopId: z.string().optional(),
+  active: z.boolean().optional(),
+  bookable: z.boolean().optional()
 });
 
 export async function PATCH(request: Request, context: { params: Promise<{ serviceId: string }> }) {

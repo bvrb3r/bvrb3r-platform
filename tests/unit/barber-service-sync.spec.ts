@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { syncCheckoutLibraryServicesForBarber, syncOnboardingBarberService } from "@/lib/marketplace/service-sync";
+import { syncCheckoutLibraryServicesForBarber, syncOnboardingBarberService, syncServiceToCanonicalRows } from "@/lib/marketplace/service-sync";
 
 function createQuery<T extends Record<string, unknown>>(rows: T[], filters: Array<(row: T) => boolean> = []) {
   const resolve = () => Promise.resolve({
@@ -48,6 +48,43 @@ function createSupabaseMock(tables: Record<string, Array<Record<string, unknown>
 }
 
 describe("barber service sync", () => {
+  it("persists inactive and not-bookable state to canonical service rows", async () => {
+    const tables: Record<string, Array<Record<string, unknown>>> = {
+      locations: [{
+        id: "location-uuid",
+        reference_code: "independent-barber-43b3cda2"
+      }],
+      marketplace_services: [],
+      services: []
+    };
+
+    await syncServiceToCanonicalRows(createSupabaseMock(tables) as never, {
+      id: "srv-private-lineup",
+      category: "Haircuts",
+      name: "Private Lineup",
+      description: "",
+      durationMin: 30,
+      bufferMin: 0,
+      price: 25,
+      deposit: 0,
+      fullPrepay: false,
+      addOnIds: [],
+      ownerType: "barber",
+      barberId: "barber-phillip",
+      shopId: "independent-barber-43b3cda2",
+      styleTagIds: [],
+      isActive: false,
+      isBookable: true
+    });
+
+    expect(tables.services).toHaveLength(1);
+    expect(tables.services[0]).toMatchObject({
+      reference_code: "srv-private-lineup",
+      active: false,
+      is_bookable: false
+    });
+  });
+
   it("promotes real onboarding barber service data into marketplace and canonical booking services", async () => {
     const tables: Record<string, Array<Record<string, unknown>>> = {
       barbers: [{

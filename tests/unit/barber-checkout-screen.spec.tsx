@@ -92,6 +92,63 @@ describe("BarberCheckoutScreen", () => {
     expect(screen.getByText("$125.00")).toBeInTheDocument();
   });
 
+  it("loads only active service definitions into Checkout Library shortcuts", () => {
+    useMarketplaceServiceCatalogMock.mockReturnValue({
+      data: {
+        editableServices: [
+          {
+            canEdit: true,
+            ownerLabel: "Barber owns this service",
+            service: {
+              id: "svc-active",
+              category: "Haircuts",
+              name: "Active Cut",
+              description: "",
+              durationMin: 45,
+              bufferMin: 0,
+              price: 35,
+              deposit: 0,
+              fullPrepay: false,
+              addOnIds: [],
+              isActive: true,
+              isBookable: false
+            }
+          },
+          {
+            canEdit: true,
+            ownerLabel: "Barber owns this service",
+            service: {
+              id: "svc-inactive",
+              category: "Haircuts",
+              name: "Archived Cut",
+              description: "",
+              durationMin: 45,
+              bufferMin: 0,
+              price: 45,
+              deposit: 0,
+              fullPrepay: false,
+              addOnIds: [],
+              isActive: false,
+              isBookable: false
+            }
+          }
+        ],
+        readOnlyServices: []
+      }
+    });
+
+    render(
+      <BarberCheckoutScreen
+        barberName="Blaze King"
+        barberRole="booth_rent_barber"
+        initialSection="services"
+      />
+    );
+
+    expect(screen.getByRole("button", { name: /Active Cut/ })).toBeInTheDocument();
+    expect(screen.queryByText("Archived Cut")).not.toBeInTheDocument();
+  });
+
   it("opens a POS sale review quote from the standalone keypad", async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({
       ok: true,
