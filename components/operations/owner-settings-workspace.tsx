@@ -11,6 +11,7 @@ import {
   FileCheck2,
   FileText,
   Gift,
+  Heart,
   HelpCircle,
   KeyRound,
   MessageCircle,
@@ -723,9 +724,11 @@ export function OwnerSettingsWorkspace({
       <MoreControlHub
         title="BVRB3R App Settings"
         subtitle="App-level behavior, saved items, activity, and personal preferences."
+        roleScope="owner"
         rows={[
           { title: "Notifications & Alerts", subtitle: "Messages, reminders, shop alerts, payout alerts, and business alerts", href: "/dashboard/owner/messages", icon: <MessageCircle className="h-5 w-5" /> },
           { title: "Preferences", subtitle: "App experience, display, dashboard defaults, and operating behavior", href: "/dashboard/owner/more?section=settings", icon: <Settings2 className="h-5 w-5" /> },
+          { title: "Saved / Favorites", subtitle: "Saved barbers, team prospects, shops, clients, styles, services, and platform items", href: "/dashboard/owner/more?section=preferences", icon: <Heart className="h-5 w-5" /> },
           { title: "Activity", subtitle: "App activity, shop activity, team activity, and account history", href: "/dashboard/owner/schedule", icon: <CalendarDays className="h-5 w-5" /> }
         ]}
       />

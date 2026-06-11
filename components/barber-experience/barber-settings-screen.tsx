@@ -16,6 +16,7 @@ import {
   FileText,
   Fingerprint,
   Gift,
+  Heart,
   Headphones,
   KeyRound,
   LifeBuoy,
@@ -1897,10 +1898,12 @@ export function BarberSettingsScreen({
 
         <MoreControlHub
           title="BVRB3R App Settings"
-        subtitle="App-level behavior, saved items, activity, and personal preferences."
+          subtitle="App-level behavior, saved items, activity, and personal preferences."
+          roleScope="barber"
           rows={[
             { title: "Notifications & Alerts", subtitle: "Messages, reminders, booking alerts, payout alerts, and business alerts", onClick: () => openBusinessTool("notifications"), icon: <BellRing className="h-5 w-5" /> },
             { title: "Preferences", subtitle: "App experience, display, dashboard defaults, and business behavior", onClick: () => openBusinessTool("notifications"), icon: <SlidersHorizontal className="h-5 w-5" /> },
+            { title: "Saved / Favorites", subtitle: "Saved clients, barbers, shops, styles, services, and platform items", href: "/dashboard/barber/more?section=preferences", icon: <Heart className="h-5 w-5" /> },
             { title: "Activity", subtitle: "App activity, client activity, sales activity, and visit history", href: "/dashboard/barber/calendar", icon: <CalendarDays className="h-5 w-5" /> }
           ]}
         />

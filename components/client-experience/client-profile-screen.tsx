@@ -670,6 +670,7 @@ export function ClientProfileScreen({
       <MoreControlHub
         title="BVRB3R App Settings"
         subtitle="App-level behavior, saved items, activity, and personal preferences."
+        roleScope="client"
         rows={[
           { href: "/dashboard/client/more?section=settings", title: "Notifications & Alerts", subtitle: "Messages, reminders, booking updates, and app alerts", icon: <BellRing className="h-5 w-5" /> },
           { href: "/dashboard/client/more?section=settings", title: "Preferences", subtitle: "App experience, display, default behavior, and saved area", icon: <SlidersHorizontal className="h-5 w-5" /> },

@@ -433,6 +433,14 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     expect(screen.getByText("BVRB3R App Settings")).toBeInTheDocument();
     expect(screen.getByText("Notifications & Alerts")).toBeInTheDocument();
     expect(screen.getByText("Messages, reminders, booking alerts, payout alerts, and business alerts")).toBeInTheDocument();
+    expect(screen.getByText("Saved clients, barbers, shops, styles, services, and platform items")).toBeInTheDocument();
+    const barberNotificationRow = screen.getByRole("button", { name: /Notifications & Alerts Messages, reminders, booking alerts, payout alerts, and business alerts/ });
+    const barberPreferencesRow = screen.getByRole("button", { name: /Preferences App experience, display, dashboard defaults, and business behavior/ });
+    const barberSavedRow = screen.getByRole("link", { name: /Saved \/ Favorites Saved clients, barbers, shops, styles, services, and platform items/ });
+    const barberActivityRow = screen.getByRole("link", { name: /Activity App activity, client activity, sales activity, and visit history/ });
+    expect(barberNotificationRow.compareDocumentPosition(barberPreferencesRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(barberPreferencesRow.compareDocumentPosition(barberSavedRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(barberSavedRow.compareDocumentPosition(barberActivityRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByText("Barber Business Settings")).toBeInTheDocument();
     ["Service Library", "Hours", "Booking Rules", "Shop Relationship", "Kiosk Settings", "Performance"].forEach((label) => {
       expect(screen.getAllByText(label).length).toBeGreaterThan(0);
@@ -535,6 +543,18 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     expect(within(dialog).getByText("Sync targets")).toBeInTheDocument();
     expect(within(dialog).getByRole("link", { name: "Open full workspace" })).toHaveAttribute("href", "/dashboard/barber/more?section=wallet");
     expect(within(dialog).queryByText("Open attached destination")).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    fireEvent.click(screen.getByRole("link", { name: /Saved \/ Favorites Saved clients, barbers, shops, styles, services, and platform items/ }));
+    dialog = screen.getByRole("dialog", { name: "Saved / Favorites" });
+    expect(within(dialog).getByText("Saved clients")).toBeInTheDocument();
+    expect(within(dialog).getByText("Saved marketplace items")).toBeInTheDocument();
+    expect(within(dialog).getByText("Source of truth")).toBeInTheDocument();
+    expect(within(dialog).getByText("Sync targets")).toBeInTheDocument();
+    expect(within(dialog).getByText("Platform sync contract")).toBeInTheDocument();
+    expect(within(dialog).getByText("Canonical save path required")).toBeInTheDocument();
+    expect(within(dialog).getByText(/canonical role engagement graph/)).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Save Changes" })).toBeDisabled();
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
 
     fireEvent.click(screen.getByTestId("business-tool-services"));

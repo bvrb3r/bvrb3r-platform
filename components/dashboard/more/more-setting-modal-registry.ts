@@ -173,9 +173,26 @@ function fieldsFor(row: MoreSectionRow, roleScope: MoreSettingRoleScope): MoreSe
   }
 
   if (title.includes("saved") || title.includes("favorites")) {
+    if (roleScope === "barber") {
+      return [
+        { key: "saved_clients", label: "Saved clients", helper: "Private saved client connections for follow-up, notes, and future relationship signals.", type: "readonly", value: "Canonical barber saved-client graph required.", editable: false, private: true },
+        { key: "saved_marketplace_entities", label: "Saved marketplace items", helper: "Saved barbers, shops, styles, services, and platform items for discovery and marketplace recommendations.", type: "readonly", value: "Canonical barber favorites graph required.", editable: false, private: true },
+        { key: "follow_visibility", label: "Follow visibility", helper: "Follows must respect privacy controls, blocks, mutes, and reports before becoming public signals.", type: "readonly", value: "Private by default", editable: false, private: true }
+      ];
+    }
+
+    if (roleScope === "owner") {
+      return [
+        { key: "saved_barbers", label: "Saved barbers and team prospects", helper: "Private owner saves for recruiting, team planning, and future shop relationship signals.", type: "readonly", value: "Canonical owner engagement graph required.", editable: false, private: true },
+        { key: "saved_marketplace_entities", label: "Saved shops, clients, styles, services, and platform items", helper: "Private saved items for owner discovery, marketplace, and operations recommendations.", type: "readonly", value: "Canonical owner favorites graph required.", editable: false, private: true },
+        { key: "follow_visibility", label: "Follow visibility", helper: "Public follow/message actions must add block, mute, report, and privacy controls before launch.", type: "readonly", value: "Private by default", editable: false, private: true }
+      ];
+    }
+
     return [
       { key: "saved_barbers", label: "Saved barbers", helper: "Manage preferred barbers and default booking choices.", type: "readonly", value: "Saved items load from client favorites.", editable: false, private: true },
       { key: "saved_shops", label: "Saved shops", helper: "Manage preferred shops and location defaults.", type: "readonly", value: "Saved items load from client favorites.", editable: false, private: true },
+      { key: "saved_styles_items", label: "Saved styles and platform items", helper: "Private discovery and Culture saves for future recommendations.", type: "readonly", value: "Private by default", editable: false, private: true },
       { key: "default_saved_item", label: "Default favorite", helper: "Used by search, booking, and reminders when configured.", type: "readonly", value: "Not configured in this modal yet.", editable: false, private: true }
     ];
   }
@@ -292,7 +309,7 @@ function dataSourcesFor(row: MoreSectionRow, roleScope: MoreSettingRoleScope): s
   }
 
   if (title.includes("saved") || title.includes("favorites")) {
-    return [...base, "client_favorites", "client_preferences"];
+    return [...base, "role engagement graph", "favorites/saves/follows records", "privacy preferences", "block/mute/report records before public follow or message actions"];
   }
 
   if (title.includes("creator") || title.includes("culture") || title.includes("content")) {
@@ -323,6 +340,10 @@ function syncTargetsFor(row: MoreSectionRow, roleScope: MoreSettingRoleScope): s
 
   if (roleScope === "owner" && (title.includes("booth rent") || title.includes("commission") || title.includes("fees"))) {
     return ["Owner More row state", "Owner Money", "barber shop relationship summaries", "future payout routing assumptions", "team relationship summaries"];
+  }
+
+  if (title.includes("saved") || title.includes("favorites")) {
+    return ["More row state", "private saved/favorite graph", "discovery signals", "marketplace signals", "Culture signals", "messaging-safe relationship signals"];
   }
 
   if (title.includes("notifications") || title.includes("preferences")) {
@@ -377,6 +398,10 @@ function validationsFor(row: MoreSectionRow): string[] {
 
   if (title.includes("privacy")) {
     return ["Private phone/email stay private", "Public profile visibility must be role-safe", "Consent changes must sync before outreach"];
+  }
+
+  if (title.includes("saved") || title.includes("favorites")) {
+    return ["Favorites and saves remain private by default", "Follows require privacy controls before public display", "No phone, email, payment, payout, verification, or private identity data can sync to public graph surfaces"];
   }
 
   return ["Validate role permissions", "Save only to the canonical source of truth", "Refresh More state after save"];
@@ -441,6 +466,10 @@ function missingSavePathFor(row: MoreSectionRow, mode: MoreSettingMode) {
 
   if (title.includes("preferences")) {
     return "Wire this modal to a canonical role app preferences source such as client_preferences or user_app_preferences before enabling Save Changes. Until then, dashboard defaults and algorithm signals cannot be saved from this popup.";
+  }
+
+  if (title.includes("saved") || title.includes("favorites")) {
+    return "Wire this modal to the canonical role engagement graph for private saves, favorites, follows, likes/reactions, and privacy-controlled relationship signals before enabling Save Changes. Until then, saved items cannot be changed from this popup without risking fake local-only state.";
   }
 
   return `Wire ${slugify(row.title).replace(/-/g, "_")}_settings_save to the existing role-safe service before enabling Save Changes here.`;

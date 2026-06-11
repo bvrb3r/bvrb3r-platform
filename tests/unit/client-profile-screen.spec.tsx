@@ -327,6 +327,13 @@ describe("client profile screen", () => {
     ["Notifications & Alerts", "Preferences", "Saved / Favorites", "Activity"].forEach((label) => {
       expect(screen.getAllByText(label).length).toBeGreaterThan(0);
     });
+    const clientNotificationRow = screen.getByRole("link", { name: /Notifications & Alerts Messages, reminders, booking updates, and app alerts/ });
+    const clientPreferencesRow = screen.getByRole("link", { name: /Preferences App experience, display, default behavior, and saved area/ });
+    const clientSavedRow = screen.getByRole("link", { name: /Saved \/ Favorites Saved barbers, shops, styles, and platform items/ });
+    const clientActivityRow = screen.getByRole("link", { name: /Activity App activity, booking activity, and visit history/ });
+    expect(clientNotificationRow.compareDocumentPosition(clientPreferencesRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(clientPreferencesRow.compareDocumentPosition(clientSavedRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(clientSavedRow.compareDocumentPosition(clientActivityRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Account Name, contact, and profile photo/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Public Profile Culture profile/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Help Support resources/ })).not.toBeInTheDocument();
@@ -509,6 +516,18 @@ describe("client profile screen", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     expect(screen.queryByRole("dialog", { name: "Notifications & Alerts" })).not.toBeInTheDocument();
     await waitFor(() => expect(document.body.style.overflow).toBe(""));
+
+    fireEvent.click(screen.getByRole("link", { name: /Saved \/ Favorites Saved barbers, shops, styles, and platform items/ }));
+    dialog = screen.getByRole("dialog", { name: "Saved / Favorites" });
+    expect(within(dialog).getByText("Private account setting")).toBeInTheDocument();
+    expect(within(dialog).getByText("Source of truth")).toBeInTheDocument();
+    expect(within(dialog).getByText("Sync targets")).toBeInTheDocument();
+    expect(within(dialog).getByText("Platform sync contract")).toBeInTheDocument();
+    expect(within(dialog).getByText("Canonical save path required")).toBeInTheDocument();
+    expect(within(dialog).getByText(/canonical role engagement graph/)).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Save Changes" })).toBeDisabled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog", { name: "Saved / Favorites" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("link", { name: /Creator Status Locked, eligible, pending review, approved, suspended, or banned. Creator tools locked/ }));
     dialog = screen.getByRole("dialog", { name: "Creator Status" });
