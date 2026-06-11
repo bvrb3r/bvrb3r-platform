@@ -307,6 +307,30 @@ describe("owner More workspace", () => {
     expect(within(dialog).queryByText("Open attached destination")).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
 
+    fireEvent.click(screen.getByRole("link", { name: /Notifications & Alerts Messages, reminders, shop alerts, payout alerts, and business alerts/ }));
+    dialog = screen.getByRole("dialog", { name: "Notifications & Alerts" });
+    const ownerNotificationSave = within(dialog).getByRole("button", { name: "Save Changes" });
+    expect(ownerNotificationSave).toBeDisabled();
+    expect(within(dialog).getAllByText("Messages, shop alerts, payout alerts, team updates, and business alerts.").length).toBeGreaterThan(0);
+    expect(within(dialog).getByText("Payout/business alerts")).toBeInTheDocument();
+    expect(within(dialog).queryByText("Creator alerts")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("Rewards alerts")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("Quiet hours start")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("Quiet hours end")).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByLabelText(/SMS updates/));
+    expect(ownerNotificationSave).toBeEnabled();
+    fireEvent.click(ownerNotificationSave);
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledWith("/api/settings/more", expect.objectContaining({
+      method: "POST"
+    })));
+    const ownerSettingsRequest = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.find((call) => call[0] === "/api/settings/more")?.[1] as RequestInit | undefined;
+    const ownerSettingsValues = JSON.parse(String(ownerSettingsRequest?.body)).values as Record<string, unknown>;
+    expect(ownerSettingsValues).toEqual(expect.objectContaining({ sms_enabled: true, payout_alerts_enabled: true }));
+    expect(ownerSettingsValues).not.toHaveProperty("creator_alerts_enabled");
+    expect(ownerSettingsValues).not.toHaveProperty("rewards_alerts_enabled");
+    expect(ownerSettingsValues).not.toHaveProperty("quiet_hours_start");
+    expect(ownerSettingsValues).not.toHaveProperty("quiet_hours_end");
+
     fireEvent.click(screen.getByRole("link", { name: /Saved \/ Favorites Saved barbers, team prospects, shops, clients, styles, services, and platform items/ }));
     dialog = screen.getByRole("dialog", { name: "Saved / Favorites" });
     expect(within(dialog).getByText("Saved barbers and team prospects")).toBeInTheDocument();

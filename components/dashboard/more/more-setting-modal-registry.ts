@@ -146,19 +146,48 @@ function fieldsFor(row: MoreSectionRow, roleScope: MoreSettingRoleScope): MoreSe
   const status = row.status ?? "Current account state";
 
   if (title.includes("notifications")) {
-    return [
+    const sharedFields: MoreSettingField[] = [
       { key: "in_app_enabled", label: "In-app alerts", helper: "Messages, account notices, and role updates inside BVRB3R.", type: "toggle", value: true, editable: true, private: true },
       { key: "sms_enabled", label: "SMS updates", helper: "Booking, payout, support, and reminder texts only when consent is active.", type: "toggle", value: false, editable: true, private: true },
       { key: "email_enabled", label: "Email updates", helper: "Receipts, account notices, and role-safe operational email.", type: "toggle", value: true, editable: true, private: true },
       { key: "push_enabled", label: "Push reminders", helper: "Mobile-safe reminders and app alerts.", type: "toggle", value: false, editable: true, private: true },
       { key: "message_alerts_enabled", label: "Message alerts", helper: "Support and conversation updates.", type: "toggle", value: true, editable: true, private: true },
-      { key: "booking_alerts_enabled", label: "Booking alerts", helper: "Booking reminders, changes, and confirmations where this role supports bookings.", type: "toggle", value: true, editable: true, private: true },
-      { key: "payout_alerts_enabled", label: "Payout alerts", helper: "Private payout readiness and money movement notices.", type: "toggle", value: roleScope !== "client", editable: true, private: true },
-      { key: "creator_alerts_enabled", label: "Creator alerts", helper: "Culture creator and payout eligibility notices for client creator tools.", type: "toggle", value: roleScope === "client", editable: roleScope === "client", private: true },
-      { key: "rewards_alerts_enabled", label: "Rewards alerts", helper: "Points, credits, loyalty, and referral updates.", type: "toggle", value: true, editable: true, private: true },
-      { key: "quiet_hours_start", label: "Quiet hours start", helper: "Automation must respect this local start time before outreach.", type: "time_range", value: "21:00", editable: true, private: true },
-      { key: "quiet_hours_end", label: "Quiet hours end", helper: "Automation may resume after this local time.", type: "time_range", value: "08:00", editable: true, private: true },
-      { key: "preferred_contact_channel", label: "Preferred contact channel", helper: "Used only when consent allows outreach.", type: "select", value: "In-app first", editable: true, private: true, options: [{ label: "In-app first", value: "in_app" }, { label: "SMS", value: "sms" }, { label: "Email", value: "email" }, { label: "Push", value: "push" }] }
+      { key: "booking_alerts_enabled", label: roleScope === "owner" ? "Booking/shop alerts" : "Booking alerts", helper: roleScope === "owner" ? "Shop booking updates, schedule changes, and operational notices." : "Booking reminders, changes, and confirmations where this role supports bookings.", type: "toggle", value: true, editable: true, private: true }
+    ];
+
+    const contactField: MoreSettingField = {
+      key: "preferred_contact_channel",
+      label: "Preferred contact channel",
+      helper: "Used only when consent allows outreach.",
+      type: "select",
+      value: "In-app first",
+      editable: true,
+      private: true,
+      options: [{ label: "In-app first", value: "in_app" }, { label: "SMS", value: "sms" }, { label: "Email", value: "email" }, { label: "Push", value: "push" }]
+    };
+
+    if (roleScope === "client") {
+      return [
+        ...sharedFields,
+        { key: "rewards_alerts_enabled", label: "Rewards alerts", helper: "Points, credits, loyalty, and referral updates.", type: "toggle", value: true, editable: true, private: true },
+        { key: "creator_alerts_enabled", label: "Creator alerts", helper: "Culture creator and payout eligibility notices for client creator tools.", type: "toggle", value: true, editable: true, private: true },
+        { key: "payout_alerts_enabled", label: "Creator payout alerts", helper: "Private creator payout readiness and money movement notices when creator payout eligibility applies.", type: "toggle", value: false, editable: true, private: true },
+        contactField
+      ];
+    }
+
+    if (roleScope === "owner") {
+      return [
+        ...sharedFields,
+        { key: "payout_alerts_enabled", label: "Payout/business alerts", helper: "Private shop payout readiness, business notices, and money movement updates.", type: "toggle", value: true, editable: true, private: true },
+        contactField
+      ];
+    }
+
+    return [
+      ...sharedFields,
+      { key: "payout_alerts_enabled", label: "Payout alerts", helper: "Private payout readiness and money movement notices.", type: "toggle", value: true, editable: true, private: true },
+      contactField
     ];
   }
 
@@ -399,7 +428,7 @@ function validationsFor(row: MoreSectionRow): string[] {
   }
 
   if (title.includes("notifications")) {
-    return ["Channel consent must be explicit", "Quiet hours must be valid", "Automated outreach must respect frequency caps"];
+    return ["Channel consent must be explicit", "Only role-safe notification controls can be saved", "Delivery rules must respect consent and frequency caps"];
   }
 
   if (title.includes("wallet") || title.includes("stripe") || title.includes("payout")) {
@@ -445,7 +474,7 @@ function algorithmSignalsFor(row: MoreSectionRow): string[] | undefined {
   const title = normalizeTitle(row);
 
   if (title.includes("notifications")) {
-    return ["notification_preferences", "quiet_hours", "outreach_consent"];
+    return ["notification_preferences", "outreach_consent"];
   }
 
   if (title.includes("preferences") || title.includes("saved") || title.includes("favorites")) {
@@ -529,6 +558,28 @@ function loadEndpointFor(row: MoreSectionRow) {
   return undefined;
 }
 
+function helperFor(row: MoreSectionRow, roleScope: MoreSettingRoleScope) {
+  const title = normalizeTitle(row);
+
+  if (!title.includes("notifications")) {
+    return row.subtitle;
+  }
+
+  if (roleScope === "client") {
+    return "Messages, reminders, booking updates, rewards, and app alerts.";
+  }
+
+  if (roleScope === "barber") {
+    return "Messages, booking alerts, payout alerts, schedule updates, and business alerts.";
+  }
+
+  if (roleScope === "owner") {
+    return "Messages, shop alerts, payout alerts, team updates, and business alerts.";
+  }
+
+  return row.subtitle;
+}
+
 export function resolveMoreSettingModalSpec({
   row,
   roleScope = "shared",
@@ -549,7 +600,7 @@ export function resolveMoreSettingModalSpec({
     sectionKey,
     title: row.title,
     eyebrow: sectionTitle ?? "More settings",
-    helper: row.subtitle,
+    helper: helperFor(row, roleScope),
     mode,
     statusLabel: row.status,
     destinationLabel: row.href ? "Open the full workspace only for deeper workflows; this modal shows the current settings contract first." : undefined,

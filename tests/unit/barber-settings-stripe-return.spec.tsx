@@ -554,12 +554,25 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     const barberNotificationSave = within(dialog).getByRole("button", { name: "Save Changes" });
     expect(barberNotificationSave).toBeDisabled();
     expect(within(dialog).queryByText("Canonical save path required")).not.toBeInTheDocument();
+    expect(within(dialog).getAllByText("Messages, booking alerts, payout alerts, schedule updates, and business alerts.").length).toBeGreaterThan(0);
+    expect(within(dialog).getByText("Payout alerts")).toBeInTheDocument();
+    expect(within(dialog).queryByText("Creator alerts")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("Rewards alerts")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("Quiet hours start")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("Quiet hours end")).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByLabelText(/SMS updates/));
     expect(barberNotificationSave).toBeEnabled();
     fireEvent.click(barberNotificationSave);
     await waitFor(() => expect(global.fetch).toHaveBeenCalledWith("/api/settings/more", expect.objectContaining({
       method: "POST"
     })));
+    const barberSettingsRequest = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.find((call) => call[0] === "/api/settings/more")?.[1] as RequestInit | undefined;
+    const barberSettingsValues = JSON.parse(String(barberSettingsRequest?.body)).values as Record<string, unknown>;
+    expect(barberSettingsValues).toEqual(expect.objectContaining({ sms_enabled: true, payout_alerts_enabled: true }));
+    expect(barberSettingsValues).not.toHaveProperty("creator_alerts_enabled");
+    expect(barberSettingsValues).not.toHaveProperty("rewards_alerts_enabled");
+    expect(barberSettingsValues).not.toHaveProperty("quiet_hours_start");
+    expect(barberSettingsValues).not.toHaveProperty("quiet_hours_end");
 
     fireEvent.click(screen.getByRole("link", { name: /Saved \/ Favorites Saved clients, barbers, shops, styles, services, and platform items/ }));
     dialog = screen.getByRole("dialog", { name: "Saved / Favorites" });

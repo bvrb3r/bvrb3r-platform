@@ -510,6 +510,10 @@ describe("client profile screen", () => {
     const notificationSaveButton = within(dialog).getByRole("button", { name: "Save Changes" });
     expect(notificationSaveButton).toBeDisabled();
     expect(within(dialog).queryByText("Canonical save path required")).not.toBeInTheDocument();
+    expect(within(dialog).getAllByText("Messages, reminders, booking updates, rewards, and app alerts.").length).toBeGreaterThan(0);
+    expect(within(dialog).getByText("Rewards alerts")).toBeInTheDocument();
+    expect(within(dialog).queryByText("Quiet hours start")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("Quiet hours end")).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByLabelText(/SMS updates/));
     expect(notificationSaveButton).toBeEnabled();
     expect(within(dialog).getByText("Source of truth")).toBeInTheDocument();
@@ -525,6 +529,9 @@ describe("client profile screen", () => {
       action: "update_notification_preferences",
       values: expect.objectContaining({ sms_enabled: true })
     }));
+    const settingsValues = JSON.parse(String(settingsRequest?.body)).values as Record<string, unknown>;
+    expect(settingsValues).not.toHaveProperty("quiet_hours_start");
+    expect(settingsValues).not.toHaveProperty("quiet_hours_end");
     expect(screen.queryByRole("dialog", { name: "Notifications & Alerts" })).not.toBeInTheDocument();
     await waitFor(() => expect(document.body.style.overflow).toBe(""));
 

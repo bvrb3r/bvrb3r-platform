@@ -128,20 +128,30 @@ function boolValue(value: SettingValue, fallback: boolean) {
   return typeof value === "boolean" ? value : fallback;
 }
 
-function normalizeNotificationPreferences(values: SettingValues = {}): NotificationPreferencesPayload {
+function hasSettingValue(values: SettingValues, ...keys: string[]) {
+  return keys.some((key) => Object.prototype.hasOwnProperty.call(values, key));
+}
+
+function notificationValue(values: SettingValues, snakeKey: string, camelKey: string) {
+  return values[snakeKey] ?? values[camelKey];
+}
+
+function normalizeNotificationPreferences(values: SettingValues = {}, previous?: NotificationPreferencesPayload): NotificationPreferencesPayload {
+  const previousChannel = previous?.preferredContactChannel ?? "in_app";
+
   return {
-    inAppEnabled: boolValue(values.in_app_enabled ?? values.inAppEnabled, true),
-    smsEnabled: boolValue(values.sms_enabled ?? values.smsEnabled, false),
-    emailEnabled: boolValue(values.email_enabled ?? values.emailEnabled, true),
-    pushEnabled: boolValue(values.push_enabled ?? values.pushEnabled, false),
-    messageAlertsEnabled: boolValue(values.message_alerts_enabled ?? values.messageAlertsEnabled, true),
-    bookingAlertsEnabled: boolValue(values.booking_alerts_enabled ?? values.bookingAlertsEnabled, true),
-    payoutAlertsEnabled: boolValue(values.payout_alerts_enabled ?? values.payoutAlertsEnabled, true),
-    creatorAlertsEnabled: boolValue(values.creator_alerts_enabled ?? values.creatorAlertsEnabled, false),
-    rewardsAlertsEnabled: boolValue(values.rewards_alerts_enabled ?? values.rewardsAlertsEnabled, true),
-    quietHoursStart: cleanTime(values.quiet_hours_start ?? values.quietHoursStart),
-    quietHoursEnd: cleanTime(values.quiet_hours_end ?? values.quietHoursEnd),
-    preferredContactChannel: cleanChannel(values.preferred_contact_channel ?? values.preferredContactChannel)
+    inAppEnabled: boolValue(notificationValue(values, "in_app_enabled", "inAppEnabled"), previous?.inAppEnabled ?? true),
+    smsEnabled: boolValue(notificationValue(values, "sms_enabled", "smsEnabled"), previous?.smsEnabled ?? false),
+    emailEnabled: boolValue(notificationValue(values, "email_enabled", "emailEnabled"), previous?.emailEnabled ?? true),
+    pushEnabled: boolValue(notificationValue(values, "push_enabled", "pushEnabled"), previous?.pushEnabled ?? false),
+    messageAlertsEnabled: boolValue(notificationValue(values, "message_alerts_enabled", "messageAlertsEnabled"), previous?.messageAlertsEnabled ?? true),
+    bookingAlertsEnabled: boolValue(notificationValue(values, "booking_alerts_enabled", "bookingAlertsEnabled"), previous?.bookingAlertsEnabled ?? true),
+    payoutAlertsEnabled: boolValue(notificationValue(values, "payout_alerts_enabled", "payoutAlertsEnabled"), previous?.payoutAlertsEnabled ?? true),
+    creatorAlertsEnabled: boolValue(notificationValue(values, "creator_alerts_enabled", "creatorAlertsEnabled"), previous?.creatorAlertsEnabled ?? false),
+    rewardsAlertsEnabled: boolValue(notificationValue(values, "rewards_alerts_enabled", "rewardsAlertsEnabled"), previous?.rewardsAlertsEnabled ?? true),
+    quietHoursStart: hasSettingValue(values, "quiet_hours_start", "quietHoursStart") ? cleanTime(notificationValue(values, "quiet_hours_start", "quietHoursStart")) : previous?.quietHoursStart ?? null,
+    quietHoursEnd: hasSettingValue(values, "quiet_hours_end", "quietHoursEnd") ? cleanTime(notificationValue(values, "quiet_hours_end", "quietHoursEnd")) : previous?.quietHoursEnd ?? null,
+    preferredContactChannel: hasSettingValue(values, "preferred_contact_channel", "preferredContactChannel") ? cleanChannel(notificationValue(values, "preferred_contact_channel", "preferredContactChannel")) : previousChannel
   };
 }
 
@@ -207,6 +217,46 @@ function toNotificationRow(user: UserAccount, payload: NotificationPreferencesPa
     notification_preferences: payload,
     updated_at: nowIso()
   };
+}
+
+function notificationPayloadFromRow(row: Record<string, unknown> | null | undefined) {
+  if (!row) {
+    return undefined;
+  }
+
+  const storedPreferences = row.notification_preferences && typeof row.notification_preferences === "object" && !Array.isArray(row.notification_preferences)
+    ? row.notification_preferences as Record<string, SettingValue>
+    : {};
+
+  return normalizeNotificationPreferences({
+    in_app_enabled: (row.in_app_enabled as SettingValue) ?? storedPreferences.in_app_enabled ?? storedPreferences.inAppEnabled,
+    sms_enabled: (row.sms_enabled as SettingValue) ?? storedPreferences.sms_enabled ?? storedPreferences.smsEnabled,
+    email_enabled: (row.email_enabled as SettingValue) ?? storedPreferences.email_enabled ?? storedPreferences.emailEnabled,
+    push_enabled: (row.push_enabled as SettingValue) ?? storedPreferences.push_enabled ?? storedPreferences.pushEnabled,
+    message_alerts_enabled: (row.message_alerts_enabled as SettingValue) ?? storedPreferences.message_alerts_enabled ?? storedPreferences.messageAlertsEnabled,
+    booking_alerts_enabled: (row.booking_alerts_enabled as SettingValue) ?? storedPreferences.booking_alerts_enabled ?? storedPreferences.bookingAlertsEnabled,
+    payout_alerts_enabled: (row.payout_alerts_enabled as SettingValue) ?? storedPreferences.payout_alerts_enabled ?? storedPreferences.payoutAlertsEnabled,
+    creator_alerts_enabled: (row.creator_alerts_enabled as SettingValue) ?? storedPreferences.creator_alerts_enabled ?? storedPreferences.creatorAlertsEnabled,
+    rewards_alerts_enabled: (row.rewards_alerts_enabled as SettingValue) ?? storedPreferences.rewards_alerts_enabled ?? storedPreferences.rewardsAlertsEnabled,
+    quiet_hours_start: (row.quiet_hours_start as SettingValue) ?? storedPreferences.quiet_hours_start ?? storedPreferences.quietHoursStart,
+    quiet_hours_end: (row.quiet_hours_end as SettingValue) ?? storedPreferences.quiet_hours_end ?? storedPreferences.quietHoursEnd,
+    preferred_contact_channel: (row.preferred_contact_channel as SettingValue) ?? storedPreferences.preferred_contact_channel ?? storedPreferences.preferredContactChannel
+  });
+}
+
+async function loadExistingNotificationPreferences(supabase: SupabaseClient, user: UserAccount) {
+  const query = supabase
+    .from("notification_preferences")
+    .select("in_app_enabled, sms_enabled, email_enabled, push_enabled, message_alerts_enabled, booking_alerts_enabled, payout_alerts_enabled, creator_alerts_enabled, rewards_alerts_enabled, quiet_hours_start, quiet_hours_end, preferred_contact_channel, notification_preferences")
+    .eq("role", actorRole(user));
+  const scopedQuery = user.email ? query.eq("user_email", user.email) : query.eq("profile_id", user.id);
+  const result = await scopedQuery.maybeSingle();
+
+  if (result.error) {
+    throw result.error;
+  }
+
+  return notificationPayloadFromRow(result.data as Record<string, unknown> | null);
 }
 
 function toAppPreferencesRow(user: UserAccount, payload: AppPreferencesPayload) {
@@ -346,8 +396,11 @@ export async function recordActivityEvent(user: UserAccount, input: {
 
 export async function updateNotificationPreferences(user: UserAccount, values: SettingValues) {
   assertSignedIn(user);
-  const payload = normalizeNotificationPreferences(values);
   const supabase = await maybeSupabase();
+  const existing = supabase
+    ? await loadExistingNotificationPreferences(supabase, user)
+    : demoSettingsState.notificationPreferences.get(actorKey(user));
+  const payload = normalizeNotificationPreferences(values, existing);
 
   if (supabase) {
     const result = await supabase

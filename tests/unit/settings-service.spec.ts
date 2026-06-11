@@ -81,6 +81,26 @@ describe("canonical More settings service", () => {
     expect(activity.events[0]).toMatchObject({ eventType: "notification_preferences_updated" });
   });
 
+  it("preserves hidden quiet-hour notification values when visible fields are saved", async () => {
+    await updateNotificationPreferences(clientUser, {
+      sms_enabled: true,
+      quiet_hours_start: "21:00",
+      quiet_hours_end: "08:00",
+      preferred_contact_channel: "sms"
+    });
+
+    const result = await updateNotificationPreferences(clientUser, {
+      sms_enabled: false
+    });
+
+    expect(result.notificationPreferences).toMatchObject({
+      smsEnabled: false,
+      quietHoursStart: "21:00",
+      quietHoursEnd: "08:00",
+      preferredContactChannel: "sms"
+    });
+  });
+
   it("saves role-specific app preferences and privacy preferences", async () => {
     const app = await updateAppPreferences(barberUser, {
       default_view: "activity_first",
