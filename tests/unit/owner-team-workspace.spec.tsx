@@ -354,6 +354,12 @@ describe("owner team workspace", () => {
     expect(screen.queryByRole("dialog", { name: "Enter kiosk PIN" })).not.toBeInTheDocument();
     expect(screen.getByText("Today Shop Snapshot").compareDocumentPosition(screen.getByText("Barbers Summary"))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(screen.getByText("Barbers Summary").compareDocumentPosition(screen.getByText("Team relationship queue"))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    const ownerCultureEntry = screen.getByTestId("owner-home-culture-entry");
+    expect(ownerCultureEntry).toHaveTextContent("Culture Feed");
+    expect(ownerCultureEntry).toHaveTextContent("Show the shop, promote the team, discover barbers, and build community.");
+    expect(screen.getByRole("link", { name: /Open Culture/i })).toHaveAttribute("href", "/dashboard/owner/culture");
+    expect(ownerCultureEntry).toHaveClass("mb-4");
+    expect(screen.getByTestId("team-relationship-queue").compareDocumentPosition(ownerCultureEntry) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.queryByText("Public Shop Profile")).not.toBeInTheDocument();
     expect(screen.queryByText("Team Insights")).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText("Search @barber username")).toBeInTheDocument();
