@@ -28,7 +28,7 @@ export function MoreSettingModal({
   spec: MoreSettingModalSpec | null;
   href?: string;
   onClose: () => void;
-  onSave?: () => Promise<void> | void;
+  onSave?: (payload?: Record<string, unknown>) => Promise<void> | void;
   onSaved?: () => void;
   primaryLabel?: string;
   primaryEnabled?: boolean;
@@ -44,6 +44,7 @@ export function MoreSettingModal({
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
+  const [payload, setPayload] = useState<Record<string, unknown>>({});
 
   useEffect(() => {
     if (!open) {
@@ -51,6 +52,7 @@ export function MoreSettingModal({
       setConfirmDiscard(false);
       setIsSaving(false);
       setError(null);
+      setPayload({});
     }
   }, [open]);
 
@@ -106,7 +108,7 @@ export function MoreSettingModal({
     setError(null);
 
     try {
-      await onSave?.();
+      await onSave?.(payload);
       setDirty(false);
       onSaved?.();
       onClose();
@@ -148,7 +150,7 @@ export function MoreSettingModal({
         </div>
 
         <div className={cn("min-h-0 flex-1 overflow-y-auto p-5 sm:p-6", bodyClassName)}>
-          {children ?? <MoreSettingModalContent spec={spec} href={href} dirty={dirty} onDirtyChange={setDirty} />}
+          {children ?? <MoreSettingModalContent spec={spec} href={href} dirty={dirty} onDirtyChange={setDirty} onPayloadChange={setPayload} />}
           {confirmDiscard ? (
             <div className="mt-5 rounded-[18px] border border-amber-300/20 bg-amber-300/[0.06] p-4">
               <p className="text-sm font-extrabold text-amber-100">Discard unsaved changes?</p>

@@ -390,6 +390,10 @@ function setupHookMocks() {
 describe("BarberSettingsScreen Stripe return sync", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    global.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ ok: true, edges: [], events: [] })
+    })) as unknown as typeof fetch;
     setupHookMocks();
   });
 
@@ -434,8 +438,8 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     expect(screen.getByText("Notifications & Alerts")).toBeInTheDocument();
     expect(screen.getByText("Messages, reminders, booking alerts, payout alerts, and business alerts")).toBeInTheDocument();
     expect(screen.getByText("Saved clients, barbers, shops, styles, services, and platform items")).toBeInTheDocument();
-    const barberNotificationRow = screen.getByRole("button", { name: /Notifications & Alerts Messages, reminders, booking alerts, payout alerts, and business alerts/ });
-    const barberPreferencesRow = screen.getByRole("button", { name: /Preferences App experience, display, dashboard defaults, and business behavior/ });
+    const barberNotificationRow = screen.getByRole("link", { name: /Notifications & Alerts Messages, reminders, booking alerts, payout alerts, and business alerts/ });
+    const barberPreferencesRow = screen.getByRole("link", { name: /Preferences App experience, display, dashboard defaults, and business behavior/ });
     const barberSavedRow = screen.getByRole("link", { name: /Saved \/ Favorites Saved clients, barbers, shops, styles, services, and platform items/ });
     const barberActivityRow = screen.getByRole("link", { name: /Activity App activity, client activity, sales activity, and visit history/ });
     expect(barberNotificationRow.compareDocumentPosition(barberPreferencesRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -544,6 +548,18 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     expect(within(dialog).getByRole("link", { name: "Open full workspace" })).toHaveAttribute("href", "/dashboard/barber/more?section=wallet");
     expect(within(dialog).queryByText("Open attached destination")).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    fireEvent.click(screen.getByRole("link", { name: /Notifications & Alerts Messages, reminders, booking alerts, payout alerts, and business alerts/ }));
+    dialog = screen.getByRole("dialog", { name: "Notifications & Alerts" });
+    const barberNotificationSave = within(dialog).getByRole("button", { name: "Save Changes" });
+    expect(barberNotificationSave).toBeDisabled();
+    expect(within(dialog).queryByText("Canonical save path required")).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByLabelText(/SMS updates/));
+    expect(barberNotificationSave).toBeEnabled();
+    fireEvent.click(barberNotificationSave);
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledWith("/api/settings/more", expect.objectContaining({
+      method: "POST"
+    })));
 
     fireEvent.click(screen.getByRole("link", { name: /Saved \/ Favorites Saved clients, barbers, shops, styles, services, and platform items/ }));
     dialog = screen.getByRole("dialog", { name: "Saved / Favorites" });

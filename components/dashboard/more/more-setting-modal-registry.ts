@@ -43,6 +43,8 @@ export type MoreSettingModalSpec = {
   auditEventName?: string;
   algorithmSignals?: string[];
   missingSavePath?: string;
+  loadEndpoint?: string;
+  saveEndpoint?: string;
 };
 
 function slugify(value: string) {
@@ -145,18 +147,27 @@ function fieldsFor(row: MoreSectionRow, roleScope: MoreSettingRoleScope): MoreSe
 
   if (title.includes("notifications")) {
     return [
-      { key: "in_app_enabled", label: "In-app alerts", helper: "Messages, account notices, and role updates inside BVRB3R.", type: "toggle", value: true, editable: false, private: true },
-      { key: "sms_enabled", label: "SMS updates", helper: "Booking, payout, support, and reminder texts only when consent is active.", type: "toggle", value: false, editable: false, private: true },
-      { key: "email_enabled", label: "Email updates", helper: "Receipts, account notices, and role-safe operational email.", type: "toggle", value: true, editable: false, private: true },
-      { key: "quiet_hours", label: "Quiet hours", helper: "Automation must respect this window before outreach.", type: "time_range", value: "Not configured", editable: false, private: true }
+      { key: "in_app_enabled", label: "In-app alerts", helper: "Messages, account notices, and role updates inside BVRB3R.", type: "toggle", value: true, editable: true, private: true },
+      { key: "sms_enabled", label: "SMS updates", helper: "Booking, payout, support, and reminder texts only when consent is active.", type: "toggle", value: false, editable: true, private: true },
+      { key: "email_enabled", label: "Email updates", helper: "Receipts, account notices, and role-safe operational email.", type: "toggle", value: true, editable: true, private: true },
+      { key: "push_enabled", label: "Push reminders", helper: "Mobile-safe reminders and app alerts.", type: "toggle", value: false, editable: true, private: true },
+      { key: "message_alerts_enabled", label: "Message alerts", helper: "Support and conversation updates.", type: "toggle", value: true, editable: true, private: true },
+      { key: "booking_alerts_enabled", label: "Booking alerts", helper: "Booking reminders, changes, and confirmations where this role supports bookings.", type: "toggle", value: true, editable: true, private: true },
+      { key: "payout_alerts_enabled", label: "Payout alerts", helper: "Private payout readiness and money movement notices.", type: "toggle", value: roleScope !== "client", editable: true, private: true },
+      { key: "creator_alerts_enabled", label: "Creator alerts", helper: "Culture creator and payout eligibility notices for client creator tools.", type: "toggle", value: roleScope === "client", editable: roleScope === "client", private: true },
+      { key: "rewards_alerts_enabled", label: "Rewards alerts", helper: "Points, credits, loyalty, and referral updates.", type: "toggle", value: true, editable: true, private: true },
+      { key: "quiet_hours_start", label: "Quiet hours start", helper: "Automation must respect this local start time before outreach.", type: "time_range", value: "21:00", editable: true, private: true },
+      { key: "quiet_hours_end", label: "Quiet hours end", helper: "Automation may resume after this local time.", type: "time_range", value: "08:00", editable: true, private: true },
+      { key: "preferred_contact_channel", label: "Preferred contact channel", helper: "Used only when consent allows outreach.", type: "select", value: "In-app first", editable: true, private: true, options: [{ label: "In-app first", value: "in_app" }, { label: "SMS", value: "sms" }, { label: "Email", value: "email" }, { label: "Push", value: "push" }] }
     ];
   }
 
   if (title.includes("preferences")) {
     return [
-      { key: "default_view", label: "Default dashboard behavior", helper: "Controls how this role lands in BVRB3R.", type: "select", value: "Role default", editable: false, private: true, options: [{ label: "Role default", value: "role_default" }] },
-      { key: "preferred_contact_channel", label: "Preferred contact channel", helper: "Used by support and app automation when consent allows outreach.", type: "select", value: "In-app first", editable: false, private: true, options: [{ label: "In-app first", value: "in_app" }] },
-      { key: "automation_consent", label: "Useful suggestions", helper: "Allows role-safe reminders and next-best-action prompts.", type: "toggle", value: false, editable: false, private: true }
+      { key: "default_view", label: "Default dashboard behavior", helper: "Controls how this role lands in BVRB3R.", type: "select", value: "Role default", editable: true, private: true, options: [{ label: "Role default", value: "role_default" }, { label: "Activity first", value: "activity_first" }, { label: "Money first", value: "money_first" }] },
+      { key: "preferred_contact_channel", label: "Preferred contact channel", helper: "Used by support and app automation when consent allows outreach.", type: "select", value: "In-app first", editable: true, private: true, options: [{ label: "In-app first", value: "in_app" }, { label: "SMS", value: "sms" }, { label: "Email", value: "email" }, { label: "Push", value: "push" }] },
+      { key: "rebooking_reminders_enabled", label: "Rebooking reminders", helper: "Allows role-safe reminders when booking patterns and consent allow it.", type: "toggle", value: false, editable: true, private: true },
+      { key: "auto_book_suggestions_enabled", label: "Auto-book suggestions", helper: "Allows next-best booking suggestions without creating unauthorized bookings.", type: "toggle", value: false, editable: true, private: true }
     ];
   }
 
@@ -272,8 +283,11 @@ function fieldsFor(row: MoreSectionRow, roleScope: MoreSettingRoleScope): MoreSe
 
   if (title.includes("privacy")) {
     return [
-      { key: "public_visibility", label: "Public visibility", helper: "Controls profile/contact visibility by role.", type: "select", value: "Role-safe default", editable: false, public: true, options: [{ label: "Role-safe default", value: "role_safe" }] },
-      { key: "data_use", label: "Data use preferences", helper: "Booking, rewards, reminders, discovery, and communication visibility.", type: "multi_select", value: ["Booking data", "Reminder preferences"], editable: false, private: true }
+      { key: "public_profile_visibility", label: "Public profile visibility", helper: "Controls profile/contact visibility by role.", type: "select", value: "Role-safe default", editable: true, public: true, options: [{ label: "Role-safe default", value: "role_safe" }, { label: "Public profile enabled", value: "public" }, { label: "Private", value: "private" }] },
+      { key: "follow_visibility", label: "Follow visibility", helper: "Follows can become public only when privacy settings allow it.", type: "select", value: "Private", editable: true, private: true, options: [{ label: "Private", value: "private" }, { label: "Followers", value: "followers" }, { label: "Public", value: "public" }] },
+      { key: "marketing_consent", label: "Marketing consent", helper: "Promotional outreach requires explicit consent and must respect quiet hours.", type: "toggle", value: false, editable: true, private: true },
+      { key: "saved_items_visibility", label: "Saved items visibility", helper: "Saves and favorites stay private by default.", type: "readonly", value: "Private", editable: false, private: true },
+      { key: "activity_visibility", label: "Activity visibility", helper: "Activity remains private by default.", type: "readonly", value: "Private", editable: false, private: true }
     ];
   }
 
@@ -461,11 +475,15 @@ function missingSavePathFor(row: MoreSectionRow, mode: MoreSettingMode) {
   }
 
   if (title.includes("notifications")) {
-    return "Wire this modal to the existing notification_preferences/profile notification service before enabling Save Changes. Until then, outreach consent, quiet hours, and channel preferences cannot be saved from this popup.";
+    return undefined;
   }
 
   if (title.includes("preferences")) {
-    return "Wire this modal to a canonical role app preferences source such as client_preferences or user_app_preferences before enabling Save Changes. Until then, dashboard defaults and algorithm signals cannot be saved from this popup.";
+    return undefined;
+  }
+
+  if (title.includes("privacy")) {
+    return undefined;
   }
 
   if (title.includes("saved") || title.includes("favorites")) {
@@ -473,6 +491,42 @@ function missingSavePathFor(row: MoreSectionRow, mode: MoreSettingMode) {
   }
 
   return `Wire ${slugify(row.title).replace(/-/g, "_")}_settings_save to the existing role-safe service before enabling Save Changes here.`;
+}
+
+function saveActionFor(row: MoreSectionRow, mode: MoreSettingMode) {
+  if (mode !== "editable") {
+    return undefined;
+  }
+
+  const title = normalizeTitle(row);
+
+  if (title.includes("notifications")) {
+    return "update_notification_preferences";
+  }
+
+  if (title.includes("preferences")) {
+    return "update_app_preferences";
+  }
+
+  if (title.includes("privacy")) {
+    return "update_privacy_preferences";
+  }
+
+  return undefined;
+}
+
+function loadEndpointFor(row: MoreSectionRow) {
+  const title = normalizeTitle(row);
+
+  if (title.includes("saved") || title.includes("favorites")) {
+    return "/api/settings/more?kind=saved-favorites";
+  }
+
+  if (title.includes("activity")) {
+    return "/api/settings/more?kind=activity";
+  }
+
+  return undefined;
 }
 
 export function resolveMoreSettingModalSpec({
@@ -487,6 +541,7 @@ export function resolveMoreSettingModalSpec({
   const mode = inferMode(row, roleScope);
   const sectionKey = slugify(sectionTitle ?? "more");
   const fields = fieldsFor(row, roleScope);
+  const saveAction = saveActionFor(row, mode);
 
   return {
     key: `${roleScope}-${sectionKey}-${slugify(row.title)}`,
@@ -507,9 +562,11 @@ export function resolveMoreSettingModalSpec({
     syncTargets: syncTargetsFor(row, roleScope),
     privacyLevel: privacyLevelFor(row),
     loadAction: `${roleScope}_${sectionKey}_${slugify(row.title).replace(/-/g, "_")}_load`,
-    saveAction: undefined,
+    saveAction,
     auditEventName: auditEventFor(row),
     algorithmSignals: algorithmSignalsFor(row),
-    missingSavePath: missingSavePathFor(row, mode)
+    missingSavePath: missingSavePathFor(row, mode),
+    loadEndpoint: loadEndpointFor(row),
+    saveEndpoint: saveAction ? "/api/settings/more" : undefined
   };
 }

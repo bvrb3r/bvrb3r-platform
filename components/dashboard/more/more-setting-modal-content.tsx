@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { CheckCircle2, ExternalLink, LockKeyhole, Settings2, ShieldCheck } from "lucide-react";
 import type { MoreSettingField, MoreSettingModalSpec } from "@/components/dashboard/more/more-setting-modal-registry";
@@ -55,14 +56,29 @@ function formatFieldValue(value: MoreSettingField["value"]) {
   return String(value);
 }
 
+function initialFieldValue(field: MoreSettingField) {
+  if (field.type === "toggle") {
+    return Boolean(field.value);
+  }
+
+  if ((field.type === "select" || field.type === "multi_select") && field.options?.length) {
+    const current = typeof field.value === "string" ? field.value : undefined;
+    return field.options.some((option) => option.value === current) ? current : field.options[0]?.value ?? "current";
+  }
+
+  return formatFieldValue(field.value);
+}
+
 function FieldControl({
   field,
   canEdit,
-  onDirtyChange
+  value,
+  onValueChange
 }: {
   field: MoreSettingField;
   canEdit: boolean;
-  onDirtyChange: (dirty: boolean) => void;
+  value: unknown;
+  onValueChange: (value: unknown) => void;
 }) {
   const editable = canEdit && field.editable !== false;
   const baseLabel = (
@@ -84,9 +100,9 @@ function FieldControl({
         <input
           type="checkbox"
           className="h-5 w-5 shrink-0 accent-[#A3FF12] disabled:opacity-45"
-          defaultChecked={Boolean(field.value)}
+          checked={Boolean(value)}
           disabled={!editable}
-          onChange={(event) => onDirtyChange(event.target.checked !== Boolean(field.value))}
+          onChange={(event) => onValueChange(event.target.checked)}
         />
       </label>
     );
@@ -98,9 +114,9 @@ function FieldControl({
         {baseLabel}
         <textarea
           className="mt-3 min-h-24 w-full rounded-[14px] border border-white/10 bg-black/35 px-3 py-3 text-sm font-semibold text-white outline-none placeholder:text-white/32 disabled:text-white/44"
-          defaultValue={formatFieldValue(field.value)}
+          value={String(value ?? "")}
           disabled={!editable}
-          onChange={() => onDirtyChange(true)}
+          onChange={(event) => onValueChange(event.target.value)}
         />
       </label>
     );
@@ -112,9 +128,9 @@ function FieldControl({
         {baseLabel}
         <select
           className="mt-3 min-h-11 w-full rounded-[14px] border border-white/10 bg-black/35 px-3 text-sm font-semibold text-white outline-none disabled:text-white/44"
-          defaultValue={field.options?.[0]?.value ?? "current"}
+          value={String(value ?? field.options?.[0]?.value ?? "current")}
           disabled={!editable}
-          onChange={() => onDirtyChange(true)}
+          onChange={(event) => onValueChange(event.target.value)}
         >
           {(field.options?.length ? field.options : [{ label: formatFieldValue(field.value), value: "current" }]).map((option) => (
             <option key={option.value} value={option.value}>{option.label}</option>
@@ -131,9 +147,9 @@ function FieldControl({
         <input
           type={field.type === "number" || field.type === "money" ? "number" : "text"}
           className="mt-3 min-h-11 w-full rounded-[14px] border border-white/10 bg-black/35 px-3 text-sm font-semibold text-white outline-none placeholder:text-white/32 disabled:text-white/44"
-          defaultValue={formatFieldValue(field.value)}
+          value={String(value ?? "")}
           disabled={!editable}
-          onChange={() => onDirtyChange(true)}
+          onChange={(event) => onValueChange(field.type === "number" || field.type === "money" ? Number(event.target.value) : event.target.value)}
         />
       </label>
     );
@@ -172,20 +188,66 @@ function MetadataList({ title, items }: { title: string; items: string[] }) {
 export function MoreSettingModalContent({
   spec,
   href,
-  onDirtyChange
+  onDirtyChange,
+  onPayloadChange
 }: {
   spec: MoreSettingModalSpec;
   href?: MoreHref;
   dirty: boolean;
   onDirtyChange: (dirty: boolean) => void;
+  onPayloadChange?: (payload: Record<string, unknown>) => void;
 }) {
   const isLocked = spec.mode === "requirements";
   const canEdit = Boolean(spec.saveAction);
-  const fields = spec.fields ?? [];
+  const fields = useMemo(() => spec.fields ?? [], [spec.fields]);
   const dataSources = spec.dataSources ?? [];
   const syncTargets = spec.syncTargets ?? [];
   const validations = spec.validations ?? [];
   const permissions = spec.permissions ?? [];
+  const initialValues = useMemo(
+    () => Object.fromEntries(fields.map((field) => [field.key, initialFieldValue(field)])),
+    [fields]
+  );
+  const [values, setValues] = useState<Record<string, unknown>>(initialValues);
+  const [loadState, setLoadState] = useState<"idle" | "loading" | "loaded" | "error">("idle");
+  const [loadedSummary, setLoadedSummary] = useState<string | null>(null);
+
+  useEffect(() => {
+    setValues(initialValues);
+    onPayloadChange?.(initialValues);
+    setLoadState("idle");
+    setLoadedSummary(null);
+  }, [initialValues, onPayloadChange]);
+
+  function updateValue(key: string, value: unknown) {
+    const next = { ...values, [key]: value };
+    setValues(next);
+    onPayloadChange?.(next);
+    onDirtyChange(true);
+  }
+
+  async function loadCurrentRecords() {
+    if (!spec.loadEndpoint) {
+      return;
+    }
+
+    setLoadState("loading");
+    setLoadedSummary(null);
+
+    try {
+      const response = await fetch(spec.loadEndpoint);
+      if (!response.ok) {
+        throw new Error("Unable to load current records.");
+      }
+      const body = await response.json() as { edges?: unknown[]; events?: unknown[] };
+      const count = Array.isArray(body.edges) ? body.edges.length : Array.isArray(body.events) ? body.events.length : 0;
+      setLoadedSummary(`${count} current record${count === 1 ? "" : "s"} loaded from the canonical source.`);
+      setLoadState("loaded");
+    } catch {
+      setLoadedSummary("Current records could not be loaded from the canonical source.");
+      setLoadState("error");
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -221,9 +283,31 @@ export function MoreSettingModalContent({
           </div>
           <div className="grid gap-3">
             {fields.map((field) => (
-              <FieldControl key={field.key} field={field} canEdit={canEdit} onDirtyChange={onDirtyChange} />
+              <FieldControl key={field.key} field={field} canEdit={canEdit} value={values[field.key]} onValueChange={(value) => updateValue(field.key, value)} />
             ))}
           </div>
+        </div>
+      ) : null}
+
+      {spec.loadEndpoint ? (
+        <div className="rounded-[18px] border border-white/10 bg-black/24 p-4">
+          <p className="text-sm font-extrabold text-white">Canonical records</p>
+          <p className="mt-1 text-sm leading-6 text-white/54">
+            This modal reads current records from the settings and engagement foundation without exposing private data publicly.
+          </p>
+          <button
+            type="button"
+            className="mt-4 min-h-11 rounded-full border border-[#A3FF12]/30 bg-[#A3FF12]/10 px-4 text-sm font-extrabold text-[#A3FF12] disabled:opacity-50"
+            onClick={() => void loadCurrentRecords()}
+            disabled={loadState === "loading"}
+          >
+            {loadState === "loading" ? "Loading..." : "Load current records"}
+          </button>
+          {loadedSummary ? (
+            <p className={cn("mt-3 text-sm leading-6", loadState === "error" ? "text-red-100" : "text-white/62")}>
+              {loadedSummary}
+            </p>
+          ) : null}
         </div>
       ) : null}
 

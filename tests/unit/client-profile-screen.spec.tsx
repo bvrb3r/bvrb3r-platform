@@ -507,13 +507,24 @@ describe("client profile screen", () => {
     expect(document.body.style.overflow).toBe("hidden");
     expect(within(dialog).getByLabelText("Close setting modal")).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeInTheDocument();
-    expect(within(dialog).getByRole("button", { name: "Save Changes" })).toBeDisabled();
-    expect(within(dialog).getByText("Canonical save path required")).toBeInTheDocument();
+    const notificationSaveButton = within(dialog).getByRole("button", { name: "Save Changes" });
+    expect(notificationSaveButton).toBeDisabled();
+    expect(within(dialog).queryByText("Canonical save path required")).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByLabelText(/SMS updates/));
+    expect(notificationSaveButton).toBeEnabled();
     expect(within(dialog).getByText("Source of truth")).toBeInTheDocument();
     expect(within(dialog).getByText("Sync targets")).toBeInTheDocument();
     expect(within(dialog).queryByText("Open attached destination")).not.toBeInTheDocument();
     expect(within(dialog).queryByText("This focused control is being prepared. No changes were saved.")).not.toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    fireEvent.click(notificationSaveButton);
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledWith("/api/settings/more", expect.objectContaining({
+      method: "POST"
+    })));
+    const settingsRequest = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.find((call) => call[0] === "/api/settings/more")?.[1] as RequestInit | undefined;
+    expect(JSON.parse(String(settingsRequest?.body))).toEqual(expect.objectContaining({
+      action: "update_notification_preferences",
+      values: expect.objectContaining({ sms_enabled: true })
+    }));
     expect(screen.queryByRole("dialog", { name: "Notifications & Alerts" })).not.toBeInTheDocument();
     await waitFor(() => expect(document.body.style.overflow).toBe(""));
 

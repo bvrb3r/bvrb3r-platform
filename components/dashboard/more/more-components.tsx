@@ -274,6 +274,22 @@ function MoreSectionRowLink({
   const handleSaved = () => {
     row.onClick?.();
   };
+  const handleModalSave = modalSpec.saveEndpoint && modalSpec.saveAction
+    ? async (values?: Record<string, unknown>) => {
+      const response = await fetch(modalSpec.saveEndpoint as string, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: modalSpec.saveAction,
+          values: values ?? {}
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error("Unable to save More setting.");
+      }
+    }
+    : undefined;
   const body = (
     <>
       {row.icon ? (
@@ -307,6 +323,7 @@ function MoreSectionRowLink({
       spec={modalSpec}
       href={href}
       onClose={() => setModalOpen(false)}
+      onSave={handleModalSave}
       onSaved={handleSaved}
     />
   );
