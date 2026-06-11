@@ -549,6 +549,31 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     expect(within(dialog).queryByText("Open attached destination")).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
 
+    fireEvent.click(screen.getByRole("link", { name: /Preferences App experience, display, dashboard defaults, and business behavior/ }));
+    dialog = screen.getByRole("dialog", { name: "Preferences" });
+    const barberPreferenceSave = within(dialog).getByRole("button", { name: "Save Changes" });
+    expect(barberPreferenceSave).toBeDisabled();
+    expect(within(dialog).getAllByText("Dashboard defaults, chair workflow, client follow-up prompts, and business behavior.").length).toBeGreaterThan(0);
+    expect(within(dialog).getByText("Default dashboard behavior")).toBeInTheDocument();
+    expect(within(dialog).getByText("Client rebook prompts")).toBeInTheDocument();
+    expect(within(dialog).getByText("Open slot suggestions")).toBeInTheDocument();
+    expect(within(dialog).queryByText("Preferred contact channel")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("Auto-book suggestions")).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByLabelText(/Open slot suggestions/));
+    expect(barberPreferenceSave).toBeEnabled();
+    fireEvent.click(barberPreferenceSave);
+    await waitFor(() => {
+      const preferencesRequest = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.find((call) => {
+        const request = call[1] as RequestInit | undefined;
+        return call[0] === "/api/settings/more" && String(request?.body).includes("update_app_preferences");
+      })?.[1] as RequestInit | undefined;
+      expect(preferencesRequest).toBeDefined();
+      const preferencesValues = JSON.parse(String(preferencesRequest?.body)).values as Record<string, unknown>;
+      expect(preferencesValues).toEqual(expect.objectContaining({ open_slot_suggestions_enabled: true }));
+      expect(preferencesValues).not.toHaveProperty("preferred_contact_channel");
+      expect(preferencesValues).not.toHaveProperty("auto_book_suggestions_enabled");
+    });
+
     fireEvent.click(screen.getByRole("link", { name: /Notifications & Alerts Messages, reminders, booking alerts, payout alerts, and business alerts/ }));
     dialog = screen.getByRole("dialog", { name: "Notifications & Alerts" });
     const barberNotificationSave = within(dialog).getByRole("button", { name: "Save Changes" });
@@ -566,7 +591,10 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     await waitFor(() => expect(global.fetch).toHaveBeenCalledWith("/api/settings/more", expect.objectContaining({
       method: "POST"
     })));
-    const barberSettingsRequest = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.find((call) => call[0] === "/api/settings/more")?.[1] as RequestInit | undefined;
+    const barberSettingsRequest = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.find((call) => {
+      const request = call[1] as RequestInit | undefined;
+      return call[0] === "/api/settings/more" && String(request?.body).includes("update_notification_preferences");
+    })?.[1] as RequestInit | undefined;
     const barberSettingsValues = JSON.parse(String(barberSettingsRequest?.body)).values as Record<string, unknown>;
     expect(barberSettingsValues).toEqual(expect.objectContaining({ sms_enabled: true, payout_alerts_enabled: true }));
     expect(barberSettingsValues).not.toHaveProperty("creator_alerts_enabled");
@@ -584,6 +612,43 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     expect(within(dialog).getByText("Canonical save path required")).toBeInTheDocument();
     expect(within(dialog).getByText(/canonical role engagement graph/)).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Save Changes" })).toBeDisabled();
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        edges: [{ id: "edge-hidden", targetId: "client-raw-uuid" }],
+        sections: [
+          {
+            key: "barber-saved-clients",
+            title: "Saved clients",
+            emptyText: "No saved clients yet.",
+            items: [{ key: "safe-client", title: "Jordan Ellis", detail: "Private save record for a client.", meta: "Updated Jun 11, 2026" }]
+          },
+          { key: "barber-saved-marketplace", title: "Saved marketplace items", emptyText: "No saved marketplace items yet.", items: [] }
+        ]
+      })
+    } as Response);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Load current records" }));
+    expect(await within(dialog).findByText("Jordan Ellis")).toBeInTheDocument();
+    expect(within(dialog).getByText("No saved marketplace items yet.")).toBeInTheDocument();
+    expect(within(dialog).queryByText("client-raw-uuid")).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    fireEvent.click(screen.getByRole("link", { name: /Activity App activity, client activity, sales activity, and visit history/ }));
+    dialog = screen.getByRole("dialog", { name: "Activity" });
+    expect(within(dialog).getByRole("button", { name: "Save Changes" })).toBeDisabled();
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        events: [{ id: "activity-hidden", targetId: "service-raw-uuid" }],
+        items: [{ key: "safe-activity", title: "Service Edited", detail: "Service edited on service.", meta: "Recorded Jun 11, 2026" }],
+        emptyText: "No account activity yet."
+      })
+    } as Response);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Load current records" }));
+    expect(await within(dialog).findByText("Service Edited")).toBeInTheDocument();
+    expect(within(dialog).queryByText("service-raw-uuid")).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
 
     fireEvent.click(screen.getByTestId("business-tool-services"));

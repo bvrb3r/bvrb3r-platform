@@ -129,6 +129,26 @@ describe("canonical More settings service", () => {
     });
   });
 
+  it("preserves hidden app preference values when a role saves visible fields", async () => {
+    await updateAppPreferences(clientUser, {
+      default_view: "activity_first",
+      preferred_contact_channel: "email",
+      rebooking_reminders_enabled: true,
+      smart_booking_suggestions_enabled: true
+    });
+
+    const result = await updateAppPreferences(clientUser, {
+      default_view: "role_default"
+    });
+
+    expect(result.appPreferences).toMatchObject({
+      defaultView: "role_default",
+      preferredContactChannel: "email",
+      rebookingRemindersEnabled: true,
+      smartBookingSuggestionsEnabled: true
+    });
+  });
+
   it("creates and removes saved, favorite, and follow edges without duplicate active records", async () => {
     await saveTarget(clientUser, { targetType: "barber", targetId: "barber-blaze" });
     await saveTarget(clientUser, { targetType: "barber", targetId: "barber-blaze" });
@@ -138,6 +158,11 @@ describe("canonical More settings service", () => {
     let saved = await listSavedFavorites(clientUser);
     expect(saved.edges).toHaveLength(3);
     expect(saved.edges.filter((edge) => edge.targetId === "barber-blaze" && edge.edgeType === "save")).toHaveLength(1);
+    expect(saved.sections?.[0]).toMatchObject({
+      title: "Saved barbers",
+      items: expect.arrayContaining([expect.objectContaining({ title: "Saved barber" })])
+    });
+    expect(JSON.stringify(saved.sections)).not.toContain("barber-blaze");
 
     await unsaveTarget(clientUser, { targetType: "barber", targetId: "barber-blaze" });
     await unfavoriteTarget(clientUser, { targetType: "shop", targetId: "shop-ybor" });
@@ -155,6 +180,7 @@ describe("canonical More settings service", () => {
       "follow_created",
       "follow_removed"
     ]));
+    expect(activity.items.map((item) => item.title)).toContain("Save Created");
   });
 
   it("records explicit activity events for the account owner only", async () => {

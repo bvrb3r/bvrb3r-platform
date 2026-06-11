@@ -535,6 +535,31 @@ describe("client profile screen", () => {
     expect(screen.queryByRole("dialog", { name: "Notifications & Alerts" })).not.toBeInTheDocument();
     await waitFor(() => expect(document.body.style.overflow).toBe(""));
 
+    fireEvent.click(screen.getByRole("link", { name: /Preferences App experience, display, default behavior, and saved area/ }));
+    dialog = screen.getByRole("dialog", { name: "Preferences" });
+    const clientPreferenceSave = within(dialog).getByRole("button", { name: "Save Changes" });
+    expect(clientPreferenceSave).toBeDisabled();
+    expect(within(dialog).getAllByText("App experience, booking defaults, saved area, and smart rebooking behavior.").length).toBeGreaterThan(0);
+    expect(within(dialog).getByText("Default start screen")).toBeInTheDocument();
+    expect(within(dialog).getByText("Rebooking reminders")).toBeInTheDocument();
+    expect(within(dialog).getByText("Smart booking suggestions")).toBeInTheDocument();
+    expect(within(dialog).queryByText("Preferred contact channel")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("Auto-book suggestions")).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByLabelText(/Smart booking suggestions/));
+    expect(clientPreferenceSave).toBeEnabled();
+    fireEvent.click(clientPreferenceSave);
+    await waitFor(() => {
+      const preferencesRequest = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.find((call) => {
+        const request = call[1] as RequestInit | undefined;
+        return call[0] === "/api/settings/more" && String(request?.body).includes("update_app_preferences");
+      })?.[1] as RequestInit | undefined;
+      expect(preferencesRequest).toBeDefined();
+      const preferencesValues = JSON.parse(String(preferencesRequest?.body)).values as Record<string, unknown>;
+      expect(preferencesValues).toEqual(expect.objectContaining({ smart_booking_suggestions_enabled: true }));
+      expect(preferencesValues).not.toHaveProperty("preferred_contact_channel");
+      expect(preferencesValues).not.toHaveProperty("auto_book_suggestions_enabled");
+    });
+
     fireEvent.click(screen.getByRole("link", { name: /Saved \/ Favorites Saved barbers, shops, styles, and platform items/ }));
     dialog = screen.getByRole("dialog", { name: "Saved / Favorites" });
     expect(within(dialog).getByText("Private account setting")).toBeInTheDocument();
@@ -544,8 +569,47 @@ describe("client profile screen", () => {
     expect(within(dialog).getByText("Canonical save path required")).toBeInTheDocument();
     expect(within(dialog).getByText(/canonical role engagement graph/)).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Save Changes" })).toBeDisabled();
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        edges: [{ id: "edge-hidden", targetId: "barber-raw-uuid" }],
+        sections: [
+          {
+            key: "client-saved-barbers",
+            title: "Saved barbers",
+            emptyText: "No saved barbers yet.",
+            items: [{ key: "safe-barber", title: "Wave Carter", detail: "Private save record for a barber.", meta: "Updated Jun 11, 2026" }]
+          },
+          { key: "client-saved-shops", title: "Saved shops", emptyText: "No saved shops yet.", items: [] },
+          { key: "client-saved-items", title: "Saved styles and platform items", emptyText: "No saved styles or platform items yet.", items: [] }
+        ]
+      })
+    } as Response);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Load current records" }));
+    expect(await within(dialog).findByText("Wave Carter")).toBeInTheDocument();
+    expect(within(dialog).getByText("No saved shops yet.")).toBeInTheDocument();
+    expect(within(dialog).getByText("No saved styles or platform items yet.")).toBeInTheDocument();
+    expect(within(dialog).queryByText("barber-raw-uuid")).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     expect(screen.queryByRole("dialog", { name: "Saved / Favorites" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("link", { name: /Activity App activity, booking activity, and visit history/ }));
+    dialog = screen.getByRole("dialog", { name: "Activity" });
+    expect(within(dialog).getByRole("button", { name: "Save Changes" })).toBeDisabled();
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        events: [{ id: "activity-hidden", targetId: "appointment-raw-uuid" }],
+        items: [{ key: "safe-activity", title: "Setting Updated", detail: "Setting updated on settings.", meta: "Recorded Jun 11, 2026" }],
+        emptyText: "No account activity yet."
+      })
+    } as Response);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Load current records" }));
+    expect(await within(dialog).findByText("Setting Updated")).toBeInTheDocument();
+    expect(within(dialog).queryByText("appointment-raw-uuid")).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
 
     fireEvent.click(screen.getByRole("link", { name: /Creator Status Locked, eligible, pending review, approved, suspended, or banned. Creator tools locked/ }));
     dialog = screen.getByRole("dialog", { name: "Creator Status" });

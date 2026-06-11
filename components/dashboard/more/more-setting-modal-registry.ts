@@ -192,11 +192,37 @@ function fieldsFor(row: MoreSectionRow, roleScope: MoreSettingRoleScope): MoreSe
   }
 
   if (title.includes("preferences")) {
+    const defaultViewField: MoreSettingField = {
+      key: "default_view",
+      label: roleScope === "client" ? "Default start screen" : "Default dashboard behavior",
+      helper: "Controls how this role lands in BVRB3R.",
+      type: "select",
+      value: "Role default",
+      editable: true,
+      private: true,
+      options: [{ label: "Role default", value: "role_default" }, { label: "Activity first", value: "activity_first" }, { label: "Money first", value: "money_first" }]
+    };
+
+    if (roleScope === "client") {
+      return [
+        defaultViewField,
+        { key: "rebooking_reminders_enabled", label: "Rebooking reminders", helper: "Allows reminders when your booking patterns and notification consent allow it.", type: "toggle", value: false, editable: true, private: true },
+        { key: "smart_booking_suggestions_enabled", label: "Smart booking suggestions", helper: "Suggests useful booking options without creating unauthorized bookings.", type: "toggle", value: false, editable: true, private: true }
+      ];
+    }
+
+    if (roleScope === "barber") {
+      return [
+        defaultViewField,
+        { key: "client_rebook_prompts_enabled", label: "Client rebook prompts", helper: "Shows role-safe follow-up prompts for clients who may be due to rebook.", type: "toggle", value: false, editable: true, private: true },
+        { key: "open_slot_suggestions_enabled", label: "Open slot suggestions", helper: "Highlights schedule gaps and ChairFill opportunities without booking anyone automatically.", type: "toggle", value: false, editable: true, private: true }
+      ];
+    }
+
     return [
-      { key: "default_view", label: "Default dashboard behavior", helper: "Controls how this role lands in BVRB3R.", type: "select", value: "Role default", editable: true, private: true, options: [{ label: "Role default", value: "role_default" }, { label: "Activity first", value: "activity_first" }, { label: "Money first", value: "money_first" }] },
-      { key: "preferred_contact_channel", label: "Preferred contact channel", helper: "Used by support and app automation when consent allows outreach.", type: "select", value: "In-app first", editable: true, private: true, options: [{ label: "In-app first", value: "in_app" }, { label: "SMS", value: "sms" }, { label: "Email", value: "email" }, { label: "Push", value: "push" }] },
-      { key: "rebooking_reminders_enabled", label: "Rebooking reminders", helper: "Allows role-safe reminders when booking patterns and consent allow it.", type: "toggle", value: false, editable: true, private: true },
-      { key: "auto_book_suggestions_enabled", label: "Auto-book suggestions", helper: "Allows next-best booking suggestions without creating unauthorized bookings.", type: "toggle", value: false, editable: true, private: true }
+      defaultViewField,
+      { key: "shop_operating_view", label: "Shop operating view default", helper: "Controls the default shop operations view when supported.", type: "select", value: "Role default", editable: true, private: true, options: [{ label: "Role default", value: "role_default" }, { label: "Team first", value: "team_first" }, { label: "Schedule first", value: "schedule_first" }] },
+      { key: "owner_report_view", label: "Owner report view default", helper: "Controls the default owner report or shop health view when supported.", type: "select", value: "Role default", editable: true, private: true, options: [{ label: "Role default", value: "role_default" }, { label: "Revenue", value: "revenue" }, { label: "Team activity", value: "team_activity" }] }
     ];
   }
 
@@ -561,20 +587,32 @@ function loadEndpointFor(row: MoreSectionRow) {
 function helperFor(row: MoreSectionRow, roleScope: MoreSettingRoleScope) {
   const title = normalizeTitle(row);
 
-  if (!title.includes("notifications")) {
-    return row.subtitle;
+  if (title.includes("notifications")) {
+    if (roleScope === "client") {
+      return "Messages, reminders, booking updates, rewards, and app alerts.";
+    }
+
+    if (roleScope === "barber") {
+      return "Messages, booking alerts, payout alerts, schedule updates, and business alerts.";
+    }
+
+    if (roleScope === "owner") {
+      return "Messages, shop alerts, payout alerts, team updates, and business alerts.";
+    }
   }
 
-  if (roleScope === "client") {
-    return "Messages, reminders, booking updates, rewards, and app alerts.";
-  }
+  if (title.includes("preferences")) {
+    if (roleScope === "client") {
+      return "App experience, booking defaults, saved area, and smart rebooking behavior.";
+    }
 
-  if (roleScope === "barber") {
-    return "Messages, booking alerts, payout alerts, schedule updates, and business alerts.";
-  }
+    if (roleScope === "barber") {
+      return "Dashboard defaults, chair workflow, client follow-up prompts, and business behavior.";
+    }
 
-  if (roleScope === "owner") {
-    return "Messages, shop alerts, payout alerts, team updates, and business alerts.";
+    if (roleScope === "owner") {
+      return "Dashboard defaults, shop operating behavior, team view, and owner control preferences.";
+    }
   }
 
   return row.subtitle;

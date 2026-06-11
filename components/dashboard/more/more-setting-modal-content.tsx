@@ -7,6 +7,23 @@ import type { MoreSettingField, MoreSettingModalSpec } from "@/components/dashbo
 import { cn } from "@/lib/utils";
 
 type MoreHref = string;
+type LoadedRecordItem = {
+  key?: string;
+  title?: string;
+  detail?: string;
+  meta?: string;
+};
+type LoadedRecordSection = {
+  key?: string;
+  title?: string;
+  emptyText?: string;
+  items?: LoadedRecordItem[];
+};
+type LoadedRecordBody = {
+  sections?: LoadedRecordSection[];
+  items?: LoadedRecordItem[];
+  emptyText?: string;
+};
 
 function modeLabel(mode: MoreSettingModalSpec["mode"]) {
   switch (mode) {
@@ -185,6 +202,62 @@ function MetadataList({ title, items }: { title: string; items: string[] }) {
   );
 }
 
+function LoadedRecordList({ records }: { records: LoadedRecordBody | null }) {
+  if (!records) {
+    return null;
+  }
+
+  if (Array.isArray(records.sections) && records.sections.length) {
+    return (
+      <div className="mt-4 grid gap-3">
+        {records.sections.map((section, sectionIndex) => {
+          const items = Array.isArray(section.items) ? section.items : [];
+          return (
+            <div key={section.key ?? `${section.title}-${sectionIndex}`} className="rounded-[16px] border border-white/10 bg-white/[0.025] p-3">
+              <p className="text-sm font-extrabold text-white">{section.title ?? "Records"}</p>
+              {items.length ? (
+                <div className="mt-3 grid gap-2">
+                  {items.map((item, itemIndex) => (
+                    <div key={item.key ?? `${item.title}-${itemIndex}`} className="rounded-[14px] border border-white/8 bg-black/24 p-3">
+                      <p className="text-sm font-bold text-white/82">{item.title ?? "Saved record"}</p>
+                      {item.detail ? <p className="mt-1 text-sm leading-5 text-white/52">{item.detail}</p> : null}
+                      {item.meta ? <p className="mt-2 text-[11px] font-black uppercase tracking-[0.14em] text-white/34">{item.meta}</p> : null}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-3 rounded-[14px] border border-white/8 bg-black/24 p-3 text-sm leading-5 text-white/52">{section.emptyText ?? "No records yet."}</p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  const items = Array.isArray(records.items) ? records.items : [];
+
+  if (!items.length) {
+    return (
+      <p className="mt-4 rounded-[14px] border border-white/8 bg-black/24 p-3 text-sm leading-5 text-white/52">
+        {records.emptyText ?? "No records yet."}
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-4 grid gap-2">
+      {items.map((item, index) => (
+        <div key={item.key ?? `${item.title}-${index}`} className="rounded-[14px] border border-white/8 bg-black/24 p-3">
+          <p className="text-sm font-bold text-white/82">{item.title ?? "Activity record"}</p>
+          {item.detail ? <p className="mt-1 text-sm leading-5 text-white/52">{item.detail}</p> : null}
+          {item.meta ? <p className="mt-2 text-[11px] font-black uppercase tracking-[0.14em] text-white/34">{item.meta}</p> : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function MoreSettingModalContent({
   spec,
   href,
@@ -211,12 +284,14 @@ export function MoreSettingModalContent({
   const [values, setValues] = useState<Record<string, unknown>>(initialValues);
   const [loadState, setLoadState] = useState<"idle" | "loading" | "loaded" | "error">("idle");
   const [loadedSummary, setLoadedSummary] = useState<string | null>(null);
+  const [loadedRecords, setLoadedRecords] = useState<LoadedRecordBody | null>(null);
 
   useEffect(() => {
     setValues(initialValues);
     onPayloadChange?.(initialValues);
     setLoadState("idle");
     setLoadedSummary(null);
+    setLoadedRecords(null);
   }, [initialValues, onPayloadChange]);
 
   function updateValue(key: string, value: unknown) {
@@ -233,18 +308,28 @@ export function MoreSettingModalContent({
 
     setLoadState("loading");
     setLoadedSummary(null);
+    setLoadedRecords(null);
 
     try {
       const response = await fetch(spec.loadEndpoint);
       if (!response.ok) {
         throw new Error("Unable to load current records.");
       }
-      const body = await response.json() as { edges?: unknown[]; events?: unknown[] };
-      const count = Array.isArray(body.edges) ? body.edges.length : Array.isArray(body.events) ? body.events.length : 0;
+      const body = await response.json() as LoadedRecordBody & { edges?: unknown[]; events?: unknown[] };
+      const sectionCount = Array.isArray(body.sections)
+        ? body.sections.reduce((total, section) => total + (Array.isArray(section.items) ? section.items.length : 0), 0)
+        : 0;
+      const count = Array.isArray(body.edges) ? body.edges.length : Array.isArray(body.events) ? body.events.length : Array.isArray(body.items) ? body.items.length : sectionCount;
       setLoadedSummary(`${count} current record${count === 1 ? "" : "s"} loaded from the canonical source.`);
+      setLoadedRecords({
+        sections: body.sections,
+        items: body.items,
+        emptyText: body.emptyText
+      });
       setLoadState("loaded");
     } catch {
       setLoadedSummary("Current records could not be loaded from the canonical source.");
+      setLoadedRecords(null);
       setLoadState("error");
     }
   }
@@ -308,6 +393,7 @@ export function MoreSettingModalContent({
               {loadedSummary}
             </p>
           ) : null}
+          <LoadedRecordList records={loadedRecords} />
         </div>
       ) : null}
 

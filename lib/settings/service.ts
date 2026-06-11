@@ -28,6 +28,11 @@ export type AppPreferencesPayload = {
   preferredContactChannel: string;
   rebookingRemindersEnabled: boolean;
   autoBookSuggestionsEnabled: boolean;
+  smartBookingSuggestionsEnabled: boolean;
+  clientRebookPromptsEnabled: boolean;
+  openSlotSuggestionsEnabled: boolean;
+  shopOperatingView: string;
+  ownerReportView: string;
   preferences: Record<string, unknown>;
   automationPreferences: Record<string, unknown>;
 };
@@ -70,6 +75,20 @@ export type ActivityEventRecord = {
   engagementEdgeId?: string | null;
   metadata: Record<string, unknown>;
   occurredAt: string;
+};
+
+export type SettingsDisplayItem = {
+  key: string;
+  title: string;
+  detail: string;
+  meta?: string;
+};
+
+export type SettingsDisplaySection = {
+  key: string;
+  title: string;
+  emptyText: string;
+  items: SettingsDisplayItem[];
 };
 
 type DemoSettingsState = {
@@ -155,22 +174,40 @@ function normalizeNotificationPreferences(values: SettingValues = {}, previous?:
   };
 }
 
-function normalizeAppPreferences(values: SettingValues = {}): AppPreferencesPayload {
-  const defaultView = typeof values.default_view === "string" ? values.default_view : typeof values.defaultView === "string" ? values.defaultView : "role_default";
-  const rebookingRemindersEnabled = boolValue(values.rebooking_reminders_enabled ?? values.rebookingRemindersEnabled, false);
-  const autoBookSuggestionsEnabled = boolValue(values.auto_book_suggestions_enabled ?? values.autoBookSuggestionsEnabled, false);
+function normalizeAppPreferences(values: SettingValues = {}, previous?: AppPreferencesPayload): AppPreferencesPayload {
+  const defaultView = typeof values.default_view === "string" ? values.default_view : typeof values.defaultView === "string" ? values.defaultView : previous?.defaultView ?? "role_default";
+  const preferredContactChannel = hasSettingValue(values, "preferred_contact_channel", "preferredContactChannel")
+    ? cleanChannel(values.preferred_contact_channel ?? values.preferredContactChannel)
+    : previous?.preferredContactChannel ?? "in_app";
+  const rebookingRemindersEnabled = boolValue(values.rebooking_reminders_enabled ?? values.rebookingRemindersEnabled, previous?.rebookingRemindersEnabled ?? false);
+  const smartBookingSuggestionsEnabled = boolValue(values.smart_booking_suggestions_enabled ?? values.smartBookingSuggestionsEnabled, previous?.smartBookingSuggestionsEnabled ?? false);
+  const clientRebookPromptsEnabled = boolValue(values.client_rebook_prompts_enabled ?? values.clientRebookPromptsEnabled, previous?.clientRebookPromptsEnabled ?? rebookingRemindersEnabled);
+  const openSlotSuggestionsEnabled = boolValue(values.open_slot_suggestions_enabled ?? values.openSlotSuggestionsEnabled, previous?.openSlotSuggestionsEnabled ?? false);
+  const autoBookSuggestionsEnabled = boolValue(values.auto_book_suggestions_enabled ?? values.autoBookSuggestionsEnabled, previous?.autoBookSuggestionsEnabled ?? (smartBookingSuggestionsEnabled || openSlotSuggestionsEnabled));
+  const shopOperatingView = typeof values.shop_operating_view === "string" ? values.shop_operating_view : typeof values.shopOperatingView === "string" ? values.shopOperatingView : previous?.shopOperatingView ?? "role_default";
+  const ownerReportView = typeof values.owner_report_view === "string" ? values.owner_report_view : typeof values.ownerReportView === "string" ? values.ownerReportView : previous?.ownerReportView ?? "role_default";
 
   return {
     defaultView,
-    preferredContactChannel: cleanChannel(values.preferred_contact_channel ?? values.preferredContactChannel),
+    preferredContactChannel,
     rebookingRemindersEnabled,
     autoBookSuggestionsEnabled,
+    smartBookingSuggestionsEnabled,
+    clientRebookPromptsEnabled,
+    openSlotSuggestionsEnabled,
+    shopOperatingView,
+    ownerReportView,
     preferences: {
       defaultView,
-      preferredContactChannel: cleanChannel(values.preferred_contact_channel ?? values.preferredContactChannel)
+      preferredContactChannel,
+      shopOperatingView,
+      ownerReportView
     },
     automationPreferences: {
       allowRebookReminders: rebookingRemindersEnabled,
+      allowSmartBookingSuggestions: smartBookingSuggestionsEnabled,
+      allowClientRebookPrompts: clientRebookPromptsEnabled,
+      allowOpenSlotSuggestions: openSlotSuggestionsEnabled,
       allowAutoBookSuggestions: autoBookSuggestionsEnabled
     }
   };
@@ -273,6 +310,46 @@ function toAppPreferencesRow(user: UserAccount, payload: AppPreferencesPayload) 
   };
 }
 
+function appPreferencesPayloadFromRow(row: Record<string, unknown> | null | undefined) {
+  if (!row) {
+    return undefined;
+  }
+
+  const preferences = row.preferences && typeof row.preferences === "object" && !Array.isArray(row.preferences)
+    ? row.preferences as Record<string, SettingValue>
+    : {};
+  const automationPreferences = row.automation_preferences && typeof row.automation_preferences === "object" && !Array.isArray(row.automation_preferences)
+    ? row.automation_preferences as Record<string, SettingValue>
+    : {};
+
+  return normalizeAppPreferences({
+    default_view: (row.default_view as SettingValue) ?? preferences.defaultView ?? preferences.default_view,
+    preferred_contact_channel: (row.preferred_contact_channel as SettingValue) ?? preferences.preferredContactChannel ?? preferences.preferred_contact_channel,
+    rebooking_reminders_enabled: (row.rebooking_reminders_enabled as SettingValue) ?? automationPreferences.allowRebookReminders ?? automationPreferences.rebooking_reminders_enabled,
+    auto_book_suggestions_enabled: (row.auto_book_suggestions_enabled as SettingValue) ?? automationPreferences.allowAutoBookSuggestions ?? automationPreferences.auto_book_suggestions_enabled,
+    smart_booking_suggestions_enabled: automationPreferences.allowSmartBookingSuggestions ?? automationPreferences.smart_booking_suggestions_enabled,
+    client_rebook_prompts_enabled: automationPreferences.allowClientRebookPrompts ?? automationPreferences.client_rebook_prompts_enabled,
+    open_slot_suggestions_enabled: automationPreferences.allowOpenSlotSuggestions ?? automationPreferences.open_slot_suggestions_enabled,
+    shop_operating_view: preferences.shopOperatingView ?? preferences.shop_operating_view,
+    owner_report_view: preferences.ownerReportView ?? preferences.owner_report_view
+  });
+}
+
+async function loadExistingAppPreferences(supabase: SupabaseClient, user: UserAccount) {
+  const result = await supabase
+    .from("user_app_preferences")
+    .select("preferences, automation_preferences, default_view, preferred_contact_channel, rebooking_reminders_enabled, auto_book_suggestions_enabled")
+    .eq("profile_id", user.id)
+    .eq("role", actorRole(user))
+    .maybeSingle();
+
+  if (result.error) {
+    throw result.error;
+  }
+
+  return appPreferencesPayloadFromRow(result.data as Record<string, unknown> | null);
+}
+
 function toPrivacyPreferencesRow(user: UserAccount, payload: PrivacyPreferencesPayload) {
   return {
     profile_id: user.id,
@@ -316,6 +393,146 @@ function activityFromRow(row: Record<string, unknown>): ActivityEventRecord {
     engagementEdgeId: typeof row.engagement_edge_id === "string" ? row.engagement_edge_id : null,
     metadata: (row.metadata as Record<string, unknown>) ?? {},
     occurredAt: String(row.occurred_at)
+  };
+}
+
+function safeMetadataLabel(metadata: Record<string, unknown>) {
+  const label = metadata.label ?? metadata.title ?? metadata.name ?? metadata.displayName;
+  return typeof label === "string" && label.trim() ? label.trim() : null;
+}
+
+function titleCase(value: string) {
+  return value
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function targetTypeLabel(value?: string | null) {
+  if (!value) {
+    return "account";
+  }
+
+  switch (value) {
+    case "barber":
+      return "barber";
+    case "shop":
+      return "shop";
+    case "client":
+      return "client";
+    case "service":
+      return "service";
+    case "style":
+      return "style";
+    case "culture_post":
+      return "Culture item";
+    case "platform_item":
+      return "platform item";
+    default:
+      return titleCase(value).toLowerCase();
+  }
+}
+
+function edgeTitle(edge: EngagementEdgeRecord) {
+  const label = safeMetadataLabel(edge.metadata ?? {});
+  if (label) {
+    return label;
+  }
+
+  const action = edge.edgeType === "follow" ? "Followed" : edge.edgeType === "favorite" ? "Favorite" : "Saved";
+  return `${action} ${targetTypeLabel(edge.targetType)}`;
+}
+
+function edgeDetail(edge: EngagementEdgeRecord) {
+  const privacy = edge.visibility === "public" ? "Privacy-controlled follow" : "Private";
+  return `${privacy} ${edge.edgeType} record for a ${targetTypeLabel(edge.targetType)}.`;
+}
+
+function isClientSettingsRole(role: Role) {
+  return role === "client" || role === "client_user";
+}
+
+function isBarberSettingsRole(role: Role) {
+  return role === "barber" || role === "barber_user" || role === "freelance_barber" || role === "commission_barber" || role === "booth_rent_barber";
+}
+
+function savedSectionsFor(role: Role, edges: EngagementEdgeRecord[]): SettingsDisplaySection[] {
+  if (isClientSettingsRole(role)) {
+    return [
+      {
+        key: "client-saved-barbers",
+        title: "Saved barbers",
+        emptyText: "No saved barbers yet.",
+        items: edges.filter((edge) => edge.targetType === "barber").map(displayEdge)
+      },
+      {
+        key: "client-saved-shops",
+        title: "Saved shops",
+        emptyText: "No saved shops yet.",
+        items: edges.filter((edge) => edge.targetType === "shop").map(displayEdge)
+      },
+      {
+        key: "client-saved-items",
+        title: "Saved styles and platform items",
+        emptyText: "No saved styles or platform items yet.",
+        items: edges.filter((edge) => ["style", "service", "culture_post", "platform_item"].includes(edge.targetType)).map(displayEdge)
+      }
+    ];
+  }
+
+  if (isBarberSettingsRole(role)) {
+    return [
+      {
+        key: "barber-saved-clients",
+        title: "Saved clients",
+        emptyText: "No saved clients yet.",
+        items: edges.filter((edge) => edge.targetType === "client").map(displayEdge)
+      },
+      {
+        key: "barber-saved-marketplace",
+        title: "Saved marketplace items",
+        emptyText: "No saved marketplace items yet.",
+        items: edges.filter((edge) => edge.targetType !== "client").map(displayEdge)
+      }
+    ];
+  }
+
+  return [
+    {
+      key: "owner-saved-prospects",
+      title: "Saved barbers and team prospects",
+      emptyText: "No saved barber prospects yet.",
+      items: edges.filter((edge) => edge.targetType === "barber").map(displayEdge)
+    },
+    {
+      key: "owner-saved-marketplace",
+      title: "Saved shop and marketplace items",
+      emptyText: "No saved shop or marketplace items yet.",
+      items: edges.filter((edge) => edge.targetType !== "barber").map(displayEdge)
+    }
+  ];
+}
+
+function displayEdge(edge: EngagementEdgeRecord): SettingsDisplayItem {
+  return {
+    key: `${edge.edgeType}-${edge.targetType}-${edge.createdAt}`,
+    title: edgeTitle(edge),
+    detail: edgeDetail(edge),
+    meta: `Updated ${new Date(edge.updatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+  };
+}
+
+function displayActivity(event: ActivityEventRecord): SettingsDisplayItem {
+  const label = safeMetadataLabel(event.metadata ?? {});
+  const title = label ?? titleCase(event.eventType);
+  const detail = event.targetType
+    ? `${titleCase(event.eventType)} on ${targetTypeLabel(event.targetType)}.`
+    : `${titleCase(event.eventType)}.`;
+
+  return {
+    key: `${event.eventType}-${event.occurredAt}`,
+    title,
+    detail,
+    meta: `Recorded ${new Date(event.occurredAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
   };
 }
 
@@ -428,8 +645,11 @@ export async function updateNotificationPreferences(user: UserAccount, values: S
 
 export async function updateAppPreferences(user: UserAccount, values: SettingValues) {
   assertSignedIn(user);
-  const payload = normalizeAppPreferences(values);
   const supabase = await maybeSupabase();
+  const existing = supabase
+    ? await loadExistingAppPreferences(supabase, user)
+    : demoSettingsState.appPreferences.get(actorKey(user));
+  const payload = normalizeAppPreferences(values, existing);
 
   if (supabase) {
     const result = await supabase
@@ -584,6 +804,7 @@ export function unfavoriteTarget(user: UserAccount, input: EngagementTargetInput
 export async function listSavedFavorites(user: UserAccount) {
   assertSignedIn(user);
   const supabase = await maybeSupabase();
+  const role = actorRole(user);
 
   if (supabase) {
     const result = await supabase
@@ -599,13 +820,17 @@ export async function listSavedFavorites(user: UserAccount) {
       throw result.error;
     }
 
-    return { edges: (result.data ?? []).map((row) => edgeFromRow(row as Record<string, unknown>)) };
+    const edges = (result.data ?? []).map((row) => edgeFromRow(row as Record<string, unknown>));
+    return { edges, sections: savedSectionsFor(role, edges) };
   }
 
+  const edges = [...demoSettingsState.edges.values()]
+    .filter((edge) => edge.actorProfileId === user.id && edge.actorRole === role && edge.status === "active")
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+
   return {
-    edges: [...demoSettingsState.edges.values()]
-      .filter((edge) => edge.actorProfileId === user.id && edge.status === "active")
-      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+    edges,
+    sections: savedSectionsFor(role, edges)
   };
 }
 
@@ -625,13 +850,18 @@ export async function listActivity(user: UserAccount, limit = 50) {
       throw result.error;
     }
 
-    return { events: (result.data ?? []).map((row) => activityFromRow(row as Record<string, unknown>)) };
+    const events = (result.data ?? []).map((row) => activityFromRow(row as Record<string, unknown>));
+    return { events, items: events.map(displayActivity), emptyText: "No account activity yet." };
   }
 
+  const events = demoSettingsState.activity
+    .filter((event) => event.actorProfileId === user.id && event.actorRole === actorRole(user))
+    .slice(0, limit);
+
   return {
-    events: demoSettingsState.activity
-      .filter((event) => event.actorProfileId === user.id)
-      .slice(0, limit)
+    events,
+    items: events.map(displayActivity),
+    emptyText: "No account activity yet."
   };
 }
 
