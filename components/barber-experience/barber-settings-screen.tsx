@@ -1105,7 +1105,6 @@ export function BarberSettingsScreen({
     ...(serviceCatalogQuery.data?.readOnlyServices ?? [])
   ];
   const activeServiceCatalogItems = serviceCatalogItems.filter((item) => item.service.isActive !== false);
-  const archivedServiceCatalogItems = serviceCatalogItems.filter((item) => item.service.isActive === false);
 
   const businessControls = [
     { key: "services", title: "Services", subtitle: "Manage pricing & offerings", icon: Scissors },
@@ -2674,33 +2673,6 @@ export function BarberSettingsScreen({
                       </div>
                     )}
                   </div>
-                  {archivedServiceCatalogItems.length ? (
-                    <div className="mt-5 rounded-[22px] border border-white/8 bg-black/20 p-4">
-                      <p className="text-xs font-black uppercase tracking-[0.18em] text-white/40">Archived services</p>
-                      <p className="mt-2 text-sm leading-6 text-white/52">
-                        Removed services stay preserved for appointments, receipts, and reporting, but are hidden from new checkout, booking, kiosk, and public profile use.
-                      </p>
-                      <div className="mt-4 space-y-2">
-                        {archivedServiceCatalogItems.map((item) => (
-                          <div key={item.service.id} className="flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-white/8 bg-black/24 px-4 py-3">
-                            <div>
-                              <p className="text-sm font-black text-white/76">{item.service.name}</p>
-                              <p className="mt-1 text-xs text-white/42">
-                                {currency(item.service.price)} | {item.service.durationMin} min | Archived
-                              </p>
-                            </div>
-                            {item.canEdit ? (
-                              <Button type="button" variant="secondary" className="h-9 px-3 text-xs" onClick={() => openInlineServiceEditor("edit", item)} aria-label={`Edit archived service ${item.service.name}`}>
-                                Edit
-                              </Button>
-                            ) : (
-                              <StatusPill tone="neutral">Shop managed</StatusPill>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
                   <div className="mt-5 flex flex-wrap gap-3">
                     <Button type="button" variant="secondary" className="h-11 px-5" onClick={() => openInlineServiceEditor("add")}>
                       Add Service

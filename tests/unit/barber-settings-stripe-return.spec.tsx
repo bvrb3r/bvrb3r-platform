@@ -376,7 +376,10 @@ function setupHookMocks() {
   useUpdateMarketplaceServiceMutationMock.mockReturnValue({ mutateAsync: updateMarketplaceServiceMutateMock, isPending: false });
   useMarketplaceServiceCatalogMock.mockReturnValue({
     data: {
-      editableServices: [{ canEdit: true, service: { id: "svc-1", category: "Haircuts", name: "Haircut", description: "Clean cut", price: 35, durationMin: 45, bufferMin: 0, deposit: 0, fullPrepay: false, addOnIds: [], isActive: true, isBookable: true } }],
+      editableServices: [
+        { canEdit: true, service: { id: "svc-1", category: "Haircuts", name: "Haircut", description: "Clean cut", price: 35, durationMin: 45, bufferMin: 0, deposit: 0, fullPrepay: false, addOnIds: [], isActive: true, isBookable: true } },
+        { canEdit: true, service: { id: "svc-archived", category: "Haircuts", name: "Archived Cut", description: "Removed service", price: 45, durationMin: 45, bufferMin: 0, deposit: 0, fullPrepay: false, addOnIds: [], isActive: false, isBookable: false } }
+      ],
       readOnlyServices: []
     },
     error: null,
@@ -544,6 +547,8 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     expect(within(dialog).queryByRole("link", { name: /Edit services/i })).not.toBeInTheDocument();
     expect(within(dialog).queryByRole("link", { name: /Checkout/i })).not.toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: /Add Service/ })).toBeInTheDocument();
+    expect(within(dialog).queryByText("Archived services")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("Archived Cut")).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: /Edit service Haircut/ }));
     expect(within(dialog).getByLabelText("Service Name")).toHaveValue("Haircut");
     expect(within(dialog).getByLabelText("Description")).toHaveValue("Clean cut");
