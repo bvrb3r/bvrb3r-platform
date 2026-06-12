@@ -102,6 +102,7 @@ export function BarberProfileScreen({
   const [localFeedback, setLocalFeedback] = useProfileStudioFeedback();
   const [usernameDraft, setUsernameDraft] = useState("");
   const [isSavingUsername, setIsSavingUsername] = useState(false);
+  const [isSharingMediaToCulture, setIsSharingMediaToCulture] = useState(false);
   const barberMedia = mediaQuery.data?.barberProfile ?? null;
   const profile = profileQuery.data ?? null;
   const verificationDecision = trustQuery.data?.verificationDecision;
@@ -258,6 +259,37 @@ export function BarberProfileScreen({
       const message = readableError(error, "Unable to set featured image.");
       setLocalFeedback({ tone: "error", message });
       throw new Error(message);
+    }
+  }
+
+  async function handleShareMediaToCulture(assetId: string) {
+    setLocalFeedback(null);
+    setIsSharingMediaToCulture(true);
+    try {
+      const response = await fetch("/api/culture/profile-media", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          role: "barber",
+          sourceType: "barber_portfolio",
+          sourceId: assetId
+        })
+      });
+      const payload = await response.json().catch(() => null) as { ok?: boolean; error?: string; composerHref?: string | null } | null;
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error ?? "Unable to share portfolio media to Culture.");
+      }
+
+      setLocalFeedback({ tone: "info", message: "Culture draft created from this portfolio image." });
+      if (payload.composerHref) {
+        window.location.assign(payload.composerHref);
+      }
+    } catch (error) {
+      const message = readableError(error, "Unable to share portfolio media to Culture.");
+      setLocalFeedback({ tone: "error", message });
+      throw new Error(message);
+    } finally {
+      setIsSharingMediaToCulture(false);
     }
   }
 
@@ -454,6 +486,8 @@ export function BarberProfileScreen({
         onDeleteMedia={(assetId) => void handleBarberGalleryRemove(assetId)}
         onSetFeaturedMedia={handleBarberFeaturedMediaSave}
         isSettingFeaturedMedia={mediaMutation.isPending}
+        onShareMediaToCulture={handleShareMediaToCulture}
+        isSharingMediaToCulture={isSharingMediaToCulture}
         photoControl={(
           <ProfileImageEditButton
             label="Update public barber photo"

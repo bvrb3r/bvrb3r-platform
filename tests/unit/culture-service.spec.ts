@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __resetDemoCultureStateForTests,
   createCulturePostDraft,
+  createCulturePostFromProfileMedia,
   attachCulturePostImageMedia,
   getCulturePostSafeDisplay,
   listCultureFeed,
@@ -498,6 +499,215 @@ describe("Culture service", () => {
       moderation_status: "pending"
     });
     expect(result.media.url).toMatch(/^https:\/\/signed\.bvrb3r\.test\/culture\//);
+  });
+
+  it("creates a barber Culture draft from owned Profile Studio portfolio media without duplicating binary media", async () => {
+    const supabase = createSupabaseStub({
+      barbers: [{
+        id: publishedPost.barber_id,
+        profile_id: barberUser.id,
+        reference_code: barberUser.barberId,
+        app_approval_status: "approved"
+      }],
+      barber_portfolios: [{
+        id: "portfolio-profile-studio-1",
+        barber_reference: barberUser.barberId,
+        storage_path: "profiles/barbers/barber-blaze/gallery/work.jpg",
+        image_url: "https://cdn.bvrb3r.test/work.jpg",
+        caption: "Low taper from Profile Studio.",
+        featured: false
+      }],
+      culture_posts: [],
+      culture_media: []
+    });
+
+    const result = await createCulturePostFromProfileMedia(barberUser, {
+      role: "barber",
+      sourceType: "barber_portfolio",
+      sourceId: "portfolio-profile-studio-1"
+    }, { supabase: supabase.client });
+
+    expect(result.post).toMatchObject({
+      author_profile_id: barberUser.id,
+      author_role: "barber_user",
+      barber_id: publishedPost.barber_id,
+      post_type: "barber_cut",
+      publishing_status: "draft",
+      visibility: "private"
+    });
+    expect(supabase.writes.culture_media[0]).toMatchObject({
+      post_id: result.post.id,
+      media_asset_id: null,
+      media_url: "https://cdn.bvrb3r.test/work.jpg",
+      thumbnail_url: "https://cdn.bvrb3r.test/work.jpg",
+      metadata: {
+        source_surface: "profile_studio",
+        source_table: "barber_portfolio",
+        source_id: "portfolio-profile-studio-1",
+        source_barber_reference: barberUser.barberId
+      }
+    });
+    expect(supabase.storage.uploadMock).not.toHaveBeenCalled();
+  });
+
+  it("can submit owned Profile Studio portfolio media for review without making it public", async () => {
+    const supabase = createSupabaseStub({
+      barbers: [{
+        id: publishedPost.barber_id,
+        profile_id: barberUser.id,
+        reference_code: barberUser.barberId,
+        app_approval_status: "approved"
+      }],
+      barber_portfolios: [{
+        id: "portfolio-submit-profile-studio-1",
+        barber_reference: barberUser.barberId,
+        storage_path: "profiles/barbers/barber-blaze/gallery/review.jpg",
+        image_url: "https://cdn.bvrb3r.test/review.jpg",
+        caption: "Ready for review.",
+        featured: false
+      }],
+      culture_posts: [],
+      culture_media: []
+    });
+
+    const result = await createCulturePostFromProfileMedia(barberUser, {
+      role: "barber",
+      sourceType: "barber_portfolio",
+      sourceId: "portfolio-submit-profile-studio-1",
+      submitForReview: true
+    }, { supabase: supabase.client });
+
+    expect(result.post).toMatchObject({
+      publishing_status: "published",
+      moderation_status: "pending",
+      visibility: "unlisted"
+    });
+    expect(result.post.metadata).toMatchObject({
+      createdFrom: "profile_studio_media",
+      submittedForReview: true,
+      source_surface: "profile_studio"
+    });
+    expect(result.message).toBe("Culture post submitted for review from Profile Studio media.");
+  });
+
+  it("blocks barbers from sharing another barber's portfolio media to Culture", async () => {
+    const supabase = createSupabaseStub({
+      barbers: [{
+        id: publishedPost.barber_id,
+        profile_id: barberUser.id,
+        reference_code: barberUser.barberId,
+        app_approval_status: "approved"
+      }],
+      barber_portfolios: [{
+        id: "portfolio-other-barber",
+        barber_reference: "barber-other",
+        storage_path: "profiles/barbers/other/gallery/work.jpg",
+        image_url: "https://cdn.bvrb3r.test/other.jpg",
+        caption: "Not owned."
+      }],
+      culture_posts: [],
+      culture_media: []
+    });
+
+    await expect(createCulturePostFromProfileMedia(barberUser, {
+      role: "barber",
+      sourceType: "barber_portfolio",
+      sourceId: "portfolio-other-barber"
+    }, { supabase: supabase.client })).rejects.toThrow("their own portfolio media");
+    expect(supabase.writes.culture_posts ?? []).toHaveLength(0);
+    expect(supabase.writes.culture_media ?? []).toHaveLength(0);
+  });
+
+  it("creates an owner Culture draft from owned shop gallery media", async () => {
+    const supabase = createSupabaseStub({
+      shops: [{
+        id: "shop-ybor",
+        owner_profile_id: ownerUser.id,
+        app_approval_status: "approved"
+      }],
+      shop_media_assets: [{
+        id: "shop-media-profile-studio-1",
+        shop_reference: "shop-ybor",
+        storage_path: "profiles/shops/shop-ybor/gallery/front.jpg",
+        image_url: "https://cdn.bvrb3r.test/shop-front.jpg",
+        caption: "Front chair wall.",
+        featured: false
+      }],
+      culture_posts: [],
+      culture_media: []
+    });
+
+    const result = await createCulturePostFromProfileMedia(ownerUser, {
+      role: "owner",
+      sourceType: "shop_media_asset",
+      sourceId: "shop-media-profile-studio-1"
+    }, { supabase: supabase.client });
+
+    expect(result.post).toMatchObject({
+      author_profile_id: ownerUser.id,
+      author_role: "shop_owner_user",
+      shop_id: "shop-ybor",
+      post_type: "shop_update",
+      publishing_status: "draft",
+      visibility: "private"
+    });
+    expect(supabase.writes.culture_media[0]).toMatchObject({
+      media_url: "https://cdn.bvrb3r.test/shop-front.jpg",
+      metadata: {
+        source_surface: "profile_studio",
+        source_table: "shop_media_asset",
+        source_id: "shop-media-profile-studio-1",
+        source_shop_reference: "shop-ybor"
+      }
+    });
+    expect(supabase.storage.uploadMock).not.toHaveBeenCalled();
+  });
+
+  it("blocks owners from sharing another shop's media to Culture", async () => {
+    const supabase = createSupabaseStub({
+      shops: [{
+        id: "shop-ybor",
+        owner_profile_id: ownerUser.id,
+        app_approval_status: "approved"
+      }],
+      shop_media_assets: [{
+        id: "shop-media-unowned",
+        shop_reference: "shop-other",
+        storage_path: "profiles/shops/shop-other/gallery/front.jpg",
+        image_url: "https://cdn.bvrb3r.test/shop-other.jpg",
+        caption: "Other shop."
+      }],
+      culture_posts: [],
+      culture_media: []
+    });
+
+    await expect(createCulturePostFromProfileMedia(ownerUser, {
+      role: "owner",
+      sourceType: "shop_media_asset",
+      sourceId: "shop-media-unowned"
+    }, { supabase: supabase.client })).rejects.toThrow("their own shop");
+    expect(supabase.writes.culture_posts ?? []).toHaveLength(0);
+    expect(supabase.writes.culture_media ?? []).toHaveLength(0);
+  });
+
+  it("keeps client Profile Studio media sharing gated", async () => {
+    const supabase = createSupabaseStub({
+      media_assets: [{
+        id: "client-profile-media-1",
+        owner_profile_id: clientUser.id,
+        asset_type: "client_profile_post",
+        storage_path: "profiles/client/client-1/posts/image.jpg"
+      }],
+      culture_posts: [],
+      culture_media: []
+    });
+
+    await expect(createCulturePostFromProfileMedia(clientUser, {
+      role: "client",
+      sourceType: "client_profile_post",
+      sourceId: "client-profile-media-1"
+    }, { supabase: supabase.client })).rejects.toThrow("Client Culture posting unlocks later.");
+    expect(supabase.writes.culture_posts ?? []).toHaveLength(0);
   });
 
   it("rejects unsupported Culture image mime types before storage upload", async () => {

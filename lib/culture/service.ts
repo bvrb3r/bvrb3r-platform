@@ -44,6 +44,8 @@ export type CultureFeedResponse = {
 };
 
 export type CultureComposerRole = "barber" | "owner";
+export type CultureProfileMediaRole = CultureComposerRole | "client";
+export type CultureProfileMediaSourceType = "client_profile_post" | "barber_portfolio" | "shop_media_asset";
 
 export type CultureComposerPostTypeOption = {
   label: string;
@@ -55,6 +57,7 @@ export type CultureComposerAccess = {
   actorRole: Extract<CultureActorRole, "barber_user" | "shop_owner_user">;
   authorProfileId: string;
   barberId: string | null;
+  barberReference?: string | null;
   shopId: string | null;
   canCompose: boolean;
   blockedReason: string | null;
@@ -79,6 +82,14 @@ export type CultureMediaUploadInput = {
   contentType: string;
   size: number;
   bytes: ArrayBuffer;
+};
+
+export type CultureProfileMediaInput = {
+  role: CultureProfileMediaRole;
+  sourceType: CultureProfileMediaSourceType;
+  sourceId: string;
+  caption?: string | null;
+  submitForReview?: boolean;
 };
 
 export type CultureMyPostSummary = {
@@ -153,6 +164,24 @@ type PublicShopRow = {
 type PublicServiceRow = {
   id: string;
   name?: string | null;
+};
+
+type BarberPortfolioSourceRow = {
+  id: string;
+  barber_reference: string;
+  storage_path: string | null;
+  image_url?: string | null;
+  caption?: string | null;
+  featured?: boolean | null;
+};
+
+type ShopMediaSourceRow = {
+  id: string;
+  shop_reference: string;
+  storage_path: string | null;
+  image_url?: string | null;
+  caption?: string | null;
+  featured?: boolean | null;
 };
 
 type QueryResult<T> = {
@@ -633,6 +662,7 @@ export async function resolveCultureComposerAccess(
     actorRole,
     authorProfileId: user.id,
     barberId: null,
+    barberReference: null,
     shopId: null,
     canCompose: false,
     blockedReason: null
@@ -664,6 +694,7 @@ export async function resolveCultureComposerAccess(
     return {
       ...base,
       barberId: role === "barber" ? user.barberId ?? null : null,
+      barberReference: role === "barber" ? user.barberId ?? null : null,
       shopId: role === "owner" ? user.ownedShopId ?? null : null,
       blockedReason: "Culture posting requires the canonical Supabase Culture writer."
     };
@@ -683,6 +714,7 @@ export async function resolveCultureComposerAccess(
       return {
         ...base,
         barberId: resolved.barberId,
+        barberReference: resolved.referenceCode ?? user.barberId ?? resolved.barberId,
         blockedReason: "Culture posting opens after barber approval is complete."
       };
     }
@@ -690,6 +722,7 @@ export async function resolveCultureComposerAccess(
     return {
       ...base,
       barberId: resolved.barberId,
+      barberReference: resolved.referenceCode ?? user.barberId ?? resolved.barberId,
       canCompose: true
     };
   }
@@ -802,6 +835,216 @@ async function readOwnCulturePost(supabase: SupabaseLike, user: UserAccount, pos
 
   throwIfError(result as QueryResult<unknown>, "Unable to load Culture post.");
   return result.data ?? null;
+}
+
+function profileMediaSourceMetadata(sourceTable: CultureProfileMediaSourceType, sourceId: string, extra: Record<string, unknown> = {}) {
+  return {
+    source_surface: "profile_studio",
+    source_table: sourceTable,
+    source_id: sourceId,
+    ...extra
+  };
+}
+
+function resolveSourceMediaUrl(supabase: SupabaseLike, storagePath?: string | null, imageUrl?: string | null) {
+  return toPublicMediaUrl(supabase.storage ? { storage: supabase.storage } : null, storagePath, imageUrl) ?? null;
+}
+
+async function readBarberProfileMediaSource(
+  supabase: SupabaseLike,
+  access: CultureComposerAccess,
+  user: UserAccount,
+  sourceId: string
+) {
+  const result = await supabase
+    .from("barber_portfolios")
+    .select("id, barber_reference, storage_path, image_url, caption, featured")
+    .eq("id", sourceId)
+    .maybeSingle() as QueryResult<BarberPortfolioSourceRow>;
+
+  throwIfError(result as QueryResult<unknown>, "Unable to load barber Profile Studio media.");
+  if (!result.data) {
+    return null;
+  }
+
+  const allowedReferences = new Set([access.barberId, access.barberReference, user.barberId].filter(Boolean));
+  if (!allowedReferences.has(result.data.barber_reference)) {
+    throw new CultureComposerError("Barbers can only share their own portfolio media to Culture.", 403);
+  }
+
+  return result.data;
+}
+
+async function readShopProfileMediaSource(
+  supabase: SupabaseLike,
+  access: CultureComposerAccess,
+  user: UserAccount,
+  sourceId: string
+) {
+  const result = await supabase
+    .from("shop_media_assets")
+    .select("id, shop_reference, storage_path, image_url, caption, featured")
+    .eq("id", sourceId)
+    .maybeSingle() as QueryResult<ShopMediaSourceRow>;
+
+  throwIfError(result as QueryResult<unknown>, "Unable to load shop Profile Studio media.");
+  if (!result.data) {
+    return null;
+  }
+
+  const allowedShops = new Set([access.shopId, user.ownedShopId].filter(Boolean));
+  if (!allowedShops.has(result.data.shop_reference)) {
+    throw new CultureComposerError("Shop owners can only share media from their own shop.", 403);
+  }
+
+  return result.data;
+}
+
+export async function createCulturePostFromProfileMedia(
+  user: UserAccount,
+  input: CultureProfileMediaInput,
+  deps?: CultureServiceDeps
+) {
+  if (input.role === "client") {
+    throw new CultureComposerError("Client Culture posting unlocks later.", 403);
+  }
+
+  const access = await resolveCultureComposerAccess(user, input.role, deps);
+  assertCanCompose(access);
+
+  const supabase = maybeSupabase(deps);
+  if (!supabase) {
+    throw new CultureComposerError("Culture posting requires the canonical Supabase Culture writer.", 503);
+  }
+
+  const sourceId = normalizeOptionalText(input.sourceId);
+  if (!sourceId) {
+    throw new CultureComposerError("Choose Profile Studio media to share to Culture.", 400);
+  }
+
+  let postType: string;
+  let sourceCaption = "";
+  let sourceStoragePath: string | null = null;
+  let sourceImageUrl: string | null = null;
+  let sourceMetadata: Record<string, unknown>;
+
+  if (input.role === "barber") {
+    if (input.sourceType !== "barber_portfolio") {
+      throw new CultureComposerError("Barber Culture posts can only share barber portfolio media.", 400);
+    }
+
+    const source = await readBarberProfileMediaSource(supabase, access, user, sourceId);
+    if (!source) {
+      throw new CultureComposerError("Barber portfolio media was not found.", 404);
+    }
+
+    postType = "barber_cut";
+    sourceCaption = source.caption ?? "";
+    sourceStoragePath = source.storage_path ?? null;
+    sourceImageUrl = resolveSourceMediaUrl(supabase, source.storage_path, source.image_url);
+    sourceMetadata = profileMediaSourceMetadata("barber_portfolio", source.id, {
+      source_barber_reference: source.barber_reference,
+      source_storage_path: source.storage_path ?? null
+    });
+  } else {
+    if (input.sourceType !== "shop_media_asset") {
+      throw new CultureComposerError("Shop Culture posts can only share shop gallery media.", 400);
+    }
+
+    const source = await readShopProfileMediaSource(supabase, access, user, sourceId);
+    if (!source) {
+      throw new CultureComposerError("Shop gallery media was not found.", 404);
+    }
+
+    postType = "shop_update";
+    sourceCaption = source.caption ?? "";
+    sourceStoragePath = source.storage_path ?? null;
+    sourceImageUrl = resolveSourceMediaUrl(supabase, source.storage_path, source.image_url);
+    sourceMetadata = profileMediaSourceMetadata("shop_media_asset", source.id, {
+      source_shop_reference: source.shop_reference,
+      source_storage_path: source.storage_path ?? null
+    });
+  }
+
+  if (!sourceImageUrl && !sourceStoragePath) {
+    throw new CultureComposerError("Profile Studio media is missing a renderable image.", 400);
+  }
+
+  const caption = normalizeCaption(input.caption ?? sourceCaption);
+  if (input.submitForReview && !caption) {
+    throw new CultureComposerError("Caption is required before submitting for review.", 400);
+  }
+
+  const isSubmittedForReview = Boolean(input.submitForReview);
+  const postInsert = await supabase
+    .from("culture_posts")
+    .insert({
+      author_profile_id: user.id,
+      author_role: access.actorRole,
+      barber_id: access.barberId,
+      shop_id: access.shopId,
+      client_id: null,
+      appointment_id: null,
+      service_id: null,
+      post_type: postType,
+      caption,
+      visibility: isSubmittedForReview ? "unlisted" : "private",
+      moderation_status: "pending",
+      publishing_status: isSubmittedForReview ? "published" : "draft",
+      is_bookable: false,
+      allow_comments: false,
+      metadata: {
+        composerVersion: 1,
+        createdFrom: "profile_studio_media",
+        ...(isSubmittedForReview ? { submittedForReview: true, submittedAt: new Date().toISOString() } : {}),
+        ...sourceMetadata
+      }
+    })
+    .select("id, author_profile_id, author_role, barber_id, shop_id, client_id, appointment_id, service_id, post_type, caption, visibility, moderation_status, publishing_status, is_bookable, allow_comments, metadata, created_at, deleted_at")
+    .single() as QueryResult<CulturePostRow>;
+
+  throwIfError(postInsert as QueryResult<unknown>, "Unable to create Culture draft from Profile Studio media.");
+  if (!postInsert.data) {
+    throw new CultureComposerError("Culture draft was not returned after save.", 500);
+  }
+
+  const mediaInsert = await supabase
+    .from("culture_media")
+    .insert({
+      post_id: postInsert.data.id,
+      media_asset_id: null,
+      media_url: sourceImageUrl ?? sourceStoragePath,
+      thumbnail_url: sourceImageUrl ?? sourceStoragePath,
+      media_type: "image",
+      sort_order: 0,
+      processing_status: "ready",
+      moderation_status: "pending",
+      metadata: sourceMetadata
+    })
+    .select("id, post_id, media_url, thumbnail_url, media_type, width, height, duration_seconds, sort_order, processing_status, moderation_status, metadata")
+    .single() as QueryResult<CultureMediaRow>;
+
+  throwIfError(mediaInsert as QueryResult<unknown>, "Unable to attach Profile Studio media to Culture draft.");
+  if (!mediaInsert.data) {
+    throw new CultureComposerError("Culture media was not returned after save.", 500);
+  }
+
+  return {
+    post: postInsert.data,
+    summary: summarizeOwnPost(postInsert.data),
+    media: {
+      id: mediaInsert.data.id,
+      url: safeNullableText(mediaInsert.data.media_url),
+      thumbnailUrl: safeNullableText(mediaInsert.data.thumbnail_url),
+      mediaType: "image" as const,
+      width: mediaInsert.data.width ?? null,
+      height: mediaInsert.data.height ?? null,
+      durationSeconds: mediaInsert.data.duration_seconds ?? null
+    },
+    message: isSubmittedForReview
+      ? "Culture post submitted for review from Profile Studio media."
+      : "Culture draft created from Profile Studio media."
+  };
 }
 
 export async function submitCulturePostForReview(

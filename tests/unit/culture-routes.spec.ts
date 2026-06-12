@@ -5,6 +5,7 @@ const {
   getCurrentUserFromServerMock,
   createCulturePostDraftMock,
   attachCulturePostImageMediaMock,
+  createCulturePostFromProfileMediaMock,
   listCultureFeedMock,
   listMyCulturePostsMock,
   recordCultureFeedEventMock,
@@ -14,6 +15,7 @@ const {
   getCurrentUserFromServerMock: vi.fn(),
   createCulturePostDraftMock: vi.fn(),
   attachCulturePostImageMediaMock: vi.fn(),
+  createCulturePostFromProfileMediaMock: vi.fn(),
   listCultureFeedMock: vi.fn(),
   listMyCulturePostsMock: vi.fn(),
   recordCultureFeedEventMock: vi.fn(),
@@ -31,6 +33,7 @@ vi.mock("@/lib/culture/service", async () => {
   return {
     ...actual,
     attachCulturePostImageMedia: attachCulturePostImageMediaMock,
+    createCulturePostFromProfileMedia: createCulturePostFromProfileMediaMock,
     createCulturePostDraft: createCulturePostDraftMock,
     listCultureFeed: listCultureFeedMock,
     listMyCulturePosts: listMyCulturePostsMock,
@@ -44,8 +47,10 @@ import { GET as getCultureFeed } from "@/app/api/culture/feed/route";
 import { POST as postCultureEvent } from "@/app/api/culture/events/route";
 import { GET as getMyCulturePosts } from "@/app/api/culture/my-posts/route";
 import { POST as createCulturePost } from "@/app/api/culture/posts/route";
+import { POST as shareProfileMediaToCulture } from "@/app/api/culture/profile-media/route";
 import { POST as attachCultureMedia } from "@/app/api/culture/posts/[postId]/media/route";
 import { POST as submitCulturePost } from "@/app/api/culture/posts/[postId]/submit/route";
+import { CultureComposerError } from "@/lib/culture/service";
 
 type FormDataLike = {
   get(name: string): FormDataEntryValue | null;
@@ -76,6 +81,7 @@ describe("Culture API routes", () => {
   beforeEach(() => {
     getCurrentUserFromServerMock.mockReset();
     attachCulturePostImageMediaMock.mockReset();
+    createCulturePostFromProfileMediaMock.mockReset();
     createCulturePostDraftMock.mockReset();
     listCultureFeedMock.mockReset();
     listMyCulturePostsMock.mockReset();
@@ -97,6 +103,20 @@ describe("Culture API routes", () => {
         height: null,
         durationSeconds: null
       }
+    });
+    createCulturePostFromProfileMediaMock.mockResolvedValue({
+      post: { id: "post-profile-media-1" },
+      summary: { id: "post-profile-media-1", caption: "Profile Studio media", postType: "barber_cut" },
+      media: {
+        id: "culture-media-1",
+        url: "https://cdn.bvrb3r.test/profile-media.jpg",
+        thumbnailUrl: "https://cdn.bvrb3r.test/profile-media.jpg",
+        mediaType: "image",
+        width: null,
+        height: null,
+        durationSeconds: null
+      },
+      message: "Culture draft created from Profile Studio media."
     });
     listCultureFeedMock.mockResolvedValue({ items: [], cursor: null, hasMore: false });
     listMyCulturePostsMock.mockResolvedValue({ drafts: [], pendingReview: [], published: [], archived: [] });
@@ -334,5 +354,65 @@ describe("Culture API routes", () => {
 
     expect(response.status).toBe(400);
     expect(attachCulturePostImageMediaMock).not.toHaveBeenCalled();
+  });
+
+  it("shares owned Profile Studio media to a Culture draft through the service", async () => {
+    getCurrentUserFromServerMock.mockResolvedValue({
+      authenticated: true,
+      user: {
+        id: "22222222-2222-4222-8222-222222222222",
+        role: "barber_user",
+        email: "blaze@bvrb3r.demo",
+        password: "",
+        name: "Blaze",
+        title: "Barber",
+        locationIds: [],
+        barberId: "barber-blaze"
+      }
+    });
+
+    const response = await shareProfileMediaToCulture(new NextRequest("https://bvrb3r.test/api/culture/profile-media", {
+      method: "POST",
+      body: JSON.stringify({
+        role: "barber",
+        sourceType: "barber_portfolio",
+        sourceId: "portfolio-1"
+      })
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      ok: true,
+      postId: "post-profile-media-1",
+      composerHref: "/dashboard/barber/culture/new?draft=post-profile-media-1"
+    });
+    expect(createCulturePostFromProfileMediaMock).toHaveBeenCalledWith(expect.objectContaining({ role: "barber_user" }), {
+      role: "barber",
+      sourceType: "barber_portfolio",
+      sourceId: "portfolio-1"
+    });
+  });
+
+  it("rejects client Profile Studio media sharing before service writes", async () => {
+    createCulturePostFromProfileMediaMock.mockRejectedValueOnce(
+      new CultureComposerError("Client Culture posting unlocks later.", 403)
+    );
+
+    const response = await shareProfileMediaToCulture(new NextRequest("https://bvrb3r.test/api/culture/profile-media", {
+      method: "POST",
+      body: JSON.stringify({
+        role: "client",
+        sourceType: "client_profile_post",
+        sourceId: "client-media-1"
+      })
+    }));
+
+    expect(response.status).toBe(403);
+    expect(createCulturePostFromProfileMediaMock).toHaveBeenCalledWith(expect.objectContaining({ role: "client_user" }), {
+      role: "client",
+      sourceType: "client_profile_post",
+      sourceId: "client-media-1"
+    });
   });
 });

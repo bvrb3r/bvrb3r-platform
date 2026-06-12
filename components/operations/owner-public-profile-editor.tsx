@@ -101,6 +101,7 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
   const [draft, setDraft] = useState<ShopPublicProfileDraft>(emptyDraft);
   const [localShop, setLocalShop] = useState<OwnerShopProfileResponse["shop"] | null>(null);
   const [feedback, setFeedback] = useProfileStudioFeedback();
+  const [isSharingMediaToCulture, setIsSharingMediaToCulture] = useState(false);
   const shop = localShop ?? profileQuery.data?.shop ?? null;
   const loadErrorStatus = profileQuery.error && typeof profileQuery.error === "object" && "status" in profileQuery.error
     ? Number((profileQuery.error as { status?: number }).status)
@@ -307,6 +308,37 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
     }
   }
 
+  async function handleShareMediaToCulture(assetId: string) {
+    setFeedback(null);
+    setIsSharingMediaToCulture(true);
+    try {
+      const response = await fetch("/api/culture/profile-media", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          role: "owner",
+          sourceType: "shop_media_asset",
+          sourceId: assetId
+        })
+      });
+      const payload = await response.json().catch(() => null) as { ok?: boolean; error?: string; composerHref?: string | null } | null;
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error ?? "Unable to share shop media to Culture.");
+      }
+
+      setFeedback({ tone: "success", message: "Culture draft created from this shop image." });
+      if (payload.composerHref) {
+        window.location.assign(payload.composerHref);
+      }
+    } catch (errorValue) {
+      const message = readableError(errorValue, "Unable to share shop media to Culture.");
+      setFeedback({ tone: "error", message });
+      throw new Error(message);
+    } finally {
+      setIsSharingMediaToCulture(false);
+    }
+  }
+
   async function handleShopBioSave(publicBio: string) {
     const shopId = effectiveShop?.id ?? shopMedia?.shopId;
 
@@ -436,6 +468,8 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
         onDeleteMedia={(assetId) => void handleShopGalleryRemove(assetId)}
         onSetFeaturedMedia={handleShopFeaturedMediaSave}
         isSettingFeaturedMedia={mediaMutation.isPending}
+        onShareMediaToCulture={handleShareMediaToCulture}
+        isSharingMediaToCulture={isSharingMediaToCulture}
         onBioSave={handleShopBioSave}
         isSavingBio={shopProfileMutation.isPending}
         contextFields={effectiveShop ? [

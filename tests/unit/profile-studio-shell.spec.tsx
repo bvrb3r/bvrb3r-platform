@@ -217,6 +217,24 @@ describe("ProfileStudioShell", () => {
     expect(await screen.findByText("Featured image saved.")).toBeInTheDocument();
   });
 
+  it("shares an eligible media card to Culture through the provided handler", async () => {
+    const onShareMediaToCulture = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ProfileStudioShell
+        model={model}
+        backHref="/dashboard/client/more"
+        backLabel="Back to More"
+        usernameValue="jordan"
+        onShareMediaToCulture={onShareMediaToCulture}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Share Culture post to Culture" }));
+
+    await waitFor(() => expect(onShareMediaToCulture).toHaveBeenCalledWith("post-1"));
+    expect(await screen.findByText("Culture draft created.")).toBeInTheDocument();
+  });
+
   it("renders the username editor as a top-layer portal with usable actions", async () => {
     mockUsernameAvailability();
     const onUsernameSave = vi.fn();

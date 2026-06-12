@@ -129,10 +129,12 @@ type ProfileStudioShellProps = {
   contextFields?: ProfileContextField[];
   onDeleteMedia?: (id: string) => void;
   onSetFeaturedMedia?: (id: string) => void | Promise<void>;
+  onShareMediaToCulture?: (id: string) => void | Promise<void>;
   isSavingUsername?: boolean;
   isSavingBio?: boolean;
   isSavingContext?: boolean;
   isSettingFeaturedMedia?: boolean;
+  isSharingMediaToCulture?: boolean;
 };
 
 type StudioFolder = {
@@ -178,10 +180,12 @@ export function ProfileStudioShell({
   contextFields,
   onDeleteMedia,
   onSetFeaturedMedia,
+  onShareMediaToCulture,
   isSavingUsername,
   isSavingBio,
   isSavingContext,
-  isSettingFeaturedMedia
+  isSettingFeaturedMedia,
+  isSharingMediaToCulture
 }: ProfileStudioShellProps) {
   const publicName = model.hero.publicName || model.hero.emptyTitle || "Finish profile";
   const workSectionRef = useRef<HTMLElement | null>(null);
@@ -214,6 +218,8 @@ export function ProfileStudioShell({
   const [mediaFolderAssignments, setMediaFolderAssignments] = useState<Record<string, string>>({});
   const [featuredMediaFeedback, setFeaturedMediaFeedback] = useState<string | null>(null);
   const [pendingFeaturedMediaId, setPendingFeaturedMediaId] = useState<string | null>(null);
+  const [cultureShareFeedback, setCultureShareFeedback] = useState<string | null>(null);
+  const [pendingCultureMediaId, setPendingCultureMediaId] = useState<string | null>(null);
   const usernameModalTitle = model.username.modalTitle ?? (model.role === "shop_owner" ? "Edit public shop username" : "Edit public username");
   const usernameModalHelper = model.username.modalHelper ?? "This is how people find and share this public profile.";
   const bioModalTitle = model.hero.bioModalTitle ?? (model.role === "barber" ? "Edit public barber bio" : model.role === "shop_owner" ? "Edit public shop bio" : "Edit public bio");
@@ -559,6 +565,23 @@ export function ProfileStudioShell({
     }
   }
 
+  async function handleShareMediaToCulture(itemId: string) {
+    if (!onShareMediaToCulture) {
+      return;
+    }
+
+    setCultureShareFeedback(null);
+    setPendingCultureMediaId(itemId);
+    try {
+      await onShareMediaToCulture(itemId);
+      setCultureShareFeedback("Culture draft created.");
+    } catch (error) {
+      setCultureShareFeedback(error instanceof Error && error.message ? error.message : "Unable to share media to Culture.");
+    } finally {
+      setPendingCultureMediaId(null);
+    }
+  }
+
   return (
     <div className="space-y-6" data-testid={`profile-studio-${model.role}`}>
       <GlassCard className="flex flex-wrap items-start justify-between gap-4 rounded-[22px] p-5 sm:p-6">
@@ -746,6 +769,7 @@ export function ProfileStudioShell({
             <h3 className="text-2xl font-black tracking-[-0.03em] text-white">{model.work.title}</h3>
             <p className="mt-1 text-lg font-medium text-white/60">{model.work.countLabel}</p>
             {featuredMediaFeedback ? <p className="mt-1 text-sm font-bold text-[#a3ff12]">{featuredMediaFeedback}</p> : null}
+            {cultureShareFeedback ? <p className="mt-1 text-sm font-bold text-[#a3ff12]">{cultureShareFeedback}</p> : null}
           </div>
           <button type="button" aria-label={mediaButtonLabel} className="inline-flex min-h-11 items-center gap-2 rounded-[8px] border border-[#a3ff12]/25 bg-[#a3ff12]/10 px-4 text-sm font-black text-[#a3ff12] transition hover:bg-[#a3ff12]/16" onClick={handleAddMediaAction}>
             <Plus className="h-5 w-5" />
@@ -792,6 +816,17 @@ export function ProfileStudioShell({
                   onClick={() => void handleSetFeaturedMedia(item.id)}
                 >
                   <Heart className={cn("h-4 w-4", item.featured && "fill-current")} />
+                </button>
+              ) : null}
+              {onShareMediaToCulture ? (
+                <button
+                  type="button"
+                  aria-label={`Share ${item.alt} to Culture`}
+                  disabled={Boolean(isSharingMediaToCulture) || pendingCultureMediaId === item.id}
+                  className="absolute bottom-2 right-2 inline-flex h-9 w-9 items-center justify-center rounded-full border border-black/40 bg-black/72 text-white shadow-lg transition hover:border-[#a3ff12]/40 hover:text-[#a3ff12] disabled:cursor-wait disabled:opacity-70"
+                  onClick={() => void handleShareMediaToCulture(item.id)}
+                >
+                  <Share2 className="h-4 w-4" />
                 </button>
               ) : null}
             </div>
