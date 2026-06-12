@@ -24,10 +24,11 @@ describe("client culture screen", () => {
   });
 
   it("renders a safe empty feed state without requiring a feed table", () => {
-    render(<ClientCultureScreen posts={[]} />);
+    render(<ClientCultureScreen feed={{ items: [], cursor: null, hasMore: false }} />);
 
     expect(screen.getByText("Culture posts will appear here as the BVRB3R community grows.")).toBeInTheDocument();
     expect(screen.getByText("Coming soon")).toBeInTheDocument();
+    expect(screen.queryByTestId("culture-post-card")).not.toBeInTheDocument();
     expect(screen.queryByText(/views:|followers:|likes:|engagement rate|1\.2k/i)).not.toBeInTheDocument();
   });
 
@@ -40,8 +41,9 @@ describe("client culture screen", () => {
     expect(screen.getByText("My culture profile")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Discover styles/i })).toHaveAttribute("href", "/discover");
     expect(screen.getByRole("link", { name: /View shops/i })).toHaveAttribute("href", "/discover?type=shops");
-    expect(screen.getByText("Share professional work")).toBeInTheDocument();
-    expect(screen.getByText("Posting as a barber profile is available when your public profile is live and approved.")).toBeInTheDocument();
+    expect(screen.getByText("Post your work")).toBeInTheDocument();
+    expect(screen.getByText("Posting opens after Culture Feed publishing rules are fully wired.")).toBeInTheDocument();
+    expect(screen.getByText("Barber posts, tutorials, and shop culture will appear here as the BVRB3R community grows.")).toBeInTheDocument();
     expect(screen.queryByText("Posting is coming soon.")).not.toBeInTheDocument();
     expect(screen.queryByText(/fake|metrics|views:|followers:|1\.2k/i)).not.toBeInTheDocument();
   });
@@ -53,8 +55,38 @@ describe("client culture screen", () => {
     expect(screen.getByText("Shops, teams, styles, barbers, and community.")).toBeInTheDocument();
     expect(screen.getByText("Shop Owner Culture")).toBeInTheDocument();
     expect(screen.getByText("Promote shop")).toBeInTheDocument();
-    expect(screen.getByText("Share shop moments")).toBeInTheDocument();
-    expect(screen.getByText("Posting as a shop brand is available when your public shop profile is live and approved.")).toBeInTheDocument();
+    expect(screen.getByText("Shop posting opens after Culture Feed publishing rules are fully wired.")).toBeInTheDocument();
+    expect(screen.getByText("Shop posts, team highlights, and local barber culture will appear here as the BVRB3R community grows.")).toBeInTheDocument();
     expect(screen.queryByText(/fake|metrics|views:|followers:|1\.2k/i)).not.toBeInTheDocument();
+  });
+
+  it("renders real Culture feed items without fake counts or active dead buttons", () => {
+    render(<ClientCultureScreen feed={{
+      cursor: null,
+      hasMore: false,
+      items: [{
+        id: "post-1",
+        authorDisplayName: "Blaze King",
+        authorUsername: "@blaze",
+        authorRoleLabel: "Barber",
+        caption: "Low taper transformation.",
+        postType: "barber_cut",
+        media: null,
+        createdAt: "2026-06-12T12:00:00.000Z",
+        canLike: true,
+        canSave: true,
+        canShare: true,
+        canReport: true,
+        canBook: false,
+        canComment: false
+      }]
+    }} />);
+
+    expect(screen.getByTestId("culture-post-card")).toHaveTextContent("Blaze King");
+    expect(screen.getByText("@blaze")).toBeInTheDocument();
+    expect(screen.getByText("Low taper transformation.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Like" })).toBeDisabled();
+    expect(screen.getByText("Culture actions are connected to the backend foundation and will activate in the next interaction pass.")).toBeInTheDocument();
+    expect(screen.queryByText(/1\.2k|views:|followers:|engagement rate/i)).not.toBeInTheDocument();
   });
 });

@@ -3,9 +3,10 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveDemoUser } from "@/lib/auth/demo-auth";
 
-const { getAuthorizedUserMock, getClientExperienceContextMock, redirectMock } = vi.hoisted(() => ({
+const { getAuthorizedUserMock, getClientExperienceContextMock, listCultureFeedMock, redirectMock } = vi.hoisted(() => ({
   getAuthorizedUserMock: vi.fn(),
   getClientExperienceContextMock: vi.fn(),
+  listCultureFeedMock: vi.fn(),
   redirectMock: vi.fn((path: string) => {
     throw new Error(`REDIRECT:${path}`);
   })
@@ -17,6 +18,10 @@ vi.mock("@/lib/auth/guards", () => ({
 
 vi.mock("@/lib/client-experience/session", () => ({
   getClientExperienceContext: getClientExperienceContextMock
+}));
+
+vi.mock("@/lib/culture/service", () => ({
+  listCultureFeed: listCultureFeedMock
 }));
 
 vi.mock("next/navigation", () => ({
@@ -165,6 +170,8 @@ describe("dashboard role pages", () => {
       clientId: "client-jordan",
       viewer: resolveDemoUser("client@bvrb3r.demo")
     });
+    listCultureFeedMock.mockReset();
+    listCultureFeedMock.mockResolvedValue({ items: [], cursor: null, hasMore: false });
   });
 
   it("renders the owner control center for the owner route", async () => {
@@ -275,6 +282,7 @@ describe("dashboard role pages", () => {
     render(await BarberCulturePage());
 
     expect(getAuthorizedUserMock).toHaveBeenCalledWith(["barber_user"]);
+    expect(listCultureFeedMock).toHaveBeenCalledWith({ role: "barber", viewerProfileId: "user-blaze" });
     expect(screen.getByTestId("client-culture-screen-stub")).toHaveTextContent("Culture|barber");
   });
 
@@ -323,6 +331,7 @@ describe("dashboard role pages", () => {
     render(await ClientCultureDashboardPage());
 
     expect(screen.getByTestId("client-app-shell-stub")).toBeInTheDocument();
+    expect(listCultureFeedMock).toHaveBeenCalledWith({ role: "client" });
     expect(screen.getByTestId("client-culture-screen-stub")).toHaveTextContent("Culture|client");
   });
 
@@ -367,6 +376,7 @@ describe("dashboard role pages", () => {
     render(await OwnerCulturePage());
 
     expect(getAuthorizedUserMock).toHaveBeenCalledWith(["shop_owner_user"]);
+    expect(listCultureFeedMock).toHaveBeenCalledWith({ role: "owner", viewerProfileId: "user-owner" });
     expect(screen.getByTestId("client-culture-screen-stub")).toHaveTextContent("Culture|shop");
   });
 
