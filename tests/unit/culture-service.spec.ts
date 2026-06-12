@@ -229,6 +229,7 @@ describe("Culture service", () => {
         id: publishedPost.author_profile_id,
         full_name: "Blaze King",
         public_username: "blaze",
+        profile_photo_url: "https://cdn.bvrb3r.test/avatar.jpg",
         email: "private@example.com",
         phone: "555-0100"
       }],
@@ -243,7 +244,9 @@ describe("Culture service", () => {
       id: publishedPost.id,
       authorDisplayName: "Blaze King",
       authorUsername: "@blaze",
+      authorAvatarUrl: "https://cdn.bvrb3r.test/avatar.jpg",
       authorRoleLabel: "Barber",
+      authorVerified: false,
       caption: "Clean taper.",
       serviceName: "Signature Cut",
       shopName: "BVRB3R Ybor",

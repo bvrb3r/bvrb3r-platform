@@ -17,6 +17,12 @@ describe("client culture screen", () => {
     expect(screen.getByRole("heading", { name: "Culture" })).toBeInTheDocument();
     expect(screen.getByText("Cuts, shops, style, and community.")).toBeInTheDocument();
     expect(screen.getByText("Client Culture")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "For You" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Near You" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Available Today" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Fades" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Beards" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Shops" })).toBeInTheDocument();
     expect(screen.getByText("Community pulse")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Discover barbers/i })).toHaveAttribute("href", "/dashboard/client/search");
     expect(screen.getByRole("link", { name: /View shops/i })).toHaveAttribute("href", "/dashboard/client/search?type=shops");
@@ -38,6 +44,9 @@ describe("client culture screen", () => {
     expect(screen.getByTestId("client-culture-screen")).toBeInTheDocument();
     expect(screen.getByText("Cuts, styles, barbers, shops, and community.")).toBeInTheDocument();
     expect(screen.getByText("Barber Culture")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Inspiration" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Tutorials" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "My Posts" })).toBeInTheDocument();
     expect(screen.getByText("My culture profile")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Discover styles/i })).toHaveAttribute("href", "/discover");
     expect(screen.getByRole("link", { name: /View shops/i })).toHaveAttribute("href", "/discover?type=shops");
@@ -54,6 +63,9 @@ describe("client culture screen", () => {
     expect(screen.getByTestId("client-culture-screen")).toBeInTheDocument();
     expect(screen.getByText("Shops, teams, styles, barbers, and community.")).toBeInTheDocument();
     expect(screen.getByText("Shop Owner Culture")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Team" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open Chairs" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Events" })).toBeInTheDocument();
     expect(screen.getByText("Promote shop")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Share Shop Culture/i })).toHaveAttribute("href", "/dashboard/owner/culture/new");
     expect(screen.getByText("Share shop updates, walk-ins, team moments, and local culture.")).toBeInTheDocument();
@@ -69,11 +81,23 @@ describe("client culture screen", () => {
         id: "post-1",
         authorDisplayName: "Blaze King",
         authorUsername: "@blaze",
+        authorAvatarUrl: "https://cdn.bvrb3r.test/blaze.jpg",
         authorRoleLabel: "Barber",
+        authorVerified: true,
         caption: "Low taper transformation.",
         postType: "barber_cut",
-        media: null,
+        media: {
+          id: "media-1",
+          url: "https://cdn.bvrb3r.test/post.jpg",
+          thumbnailUrl: "https://cdn.bvrb3r.test/post-thumb.jpg",
+          mediaType: "image",
+          width: 1200,
+          height: 900,
+          durationSeconds: null
+        },
         createdAt: "2026-06-12T12:00:00.000Z",
+        serviceName: "Signature Cut",
+        shopName: "BVRB3R Ybor",
         canLike: true,
         canSave: true,
         canShare: true,
@@ -83,11 +107,15 @@ describe("client culture screen", () => {
       }]
     }} />);
 
-    expect(screen.getByTestId("culture-post-card")).toHaveTextContent("Blaze King");
-    expect(screen.getByText("@blaze")).toBeInTheDocument();
+    const card = screen.getByTestId("culture-post-card");
+    expect(card).toHaveTextContent("Blaze King");
+    expect(card).toHaveTextContent("@blaze");
+    expect(screen.getByText("Verified")).toBeInTheDocument();
+    expect(screen.getByText("Signature Cut")).toBeInTheDocument();
+    expect(screen.getByText("BVRB3R Ybor")).toBeInTheDocument();
     expect(screen.getByText("Low taper transformation.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Like" })).toBeDisabled();
-    expect(screen.getByText("Culture actions are connected to the backend foundation and will activate in the next interaction pass.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Like is connected to the Culture backend foundation/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Comment is not available for this post yet/i })).toBeDisabled();
     expect(screen.queryByText(/1\.2k|views:|followers:|engagement rate/i)).not.toBeInTheDocument();
   });
 });

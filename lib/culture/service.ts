@@ -1,5 +1,6 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { isBarberAccountRole, isShopOwnerRole, normalizeAccountRole } from "@/lib/auth/roles";
+import { toPublicMediaUrl } from "@/lib/profile/public-media-url";
 import type { Role, UserAccount } from "@/types/domain";
 
 export type CultureSurfaceRole = "client" | "barber" | "owner" | "shop";
@@ -19,7 +20,9 @@ export type CultureFeedItem = {
   id: string;
   authorDisplayName: string;
   authorUsername: string | null;
+  authorAvatarUrl: string | null;
   authorRoleLabel: string;
+  authorVerified: boolean;
   caption: string;
   postType: string;
   media: CultureMediaItem | null;
@@ -125,6 +128,8 @@ type PublicProfileRow = {
   id: string;
   full_name?: string | null;
   public_username?: string | null;
+  profile_photo_path?: string | null;
+  profile_photo_url?: string | null;
   role?: Role | string | null;
 };
 
@@ -162,6 +167,11 @@ type QueryLike<T = unknown> = PromiseLike<QueryResult<T>> & {
 
 type SupabaseLike = {
   from: (table: string) => QueryLike;
+  storage?: {
+    from: (bucket: string) => {
+      getPublicUrl: (path: string) => { data: { publicUrl: string } };
+    };
+  };
 };
 
 type CultureServiceDeps = {
@@ -173,6 +183,13 @@ type LookupMaps = {
   profilesById?: Map<string, PublicProfileRow>;
   shopsById?: Map<string, PublicShopRow>;
   servicesById?: Map<string, PublicServiceRow>;
+  storageClient?: {
+    storage: {
+      from: (bucket: string) => {
+        getPublicUrl: (path: string) => { data: { publicUrl: string } };
+      };
+    };
+  } | null;
 };
 
 const allowedFeedEvents = new Set([
@@ -439,7 +456,7 @@ async function loadFeedLookups(supabase: SupabaseLike, posts: CulturePostRow[]):
       ? fetchRows<PublicProfileRow>(
         supabase
           .from("profiles")
-          .select("id, full_name, public_username, role")
+          .select("id, full_name, public_username, profile_photo_path, profile_photo_url, role")
           .in("id", authorIds),
         "Unable to load Culture authors."
       )
@@ -468,7 +485,8 @@ async function loadFeedLookups(supabase: SupabaseLike, posts: CulturePostRow[]):
     mediaByPost: groupMedia(mediaRows),
     profilesById: buildMap(profileRows),
     shopsById: buildMap(shopRows),
-    servicesById: buildMap(serviceRows)
+    servicesById: buildMap(serviceRows),
+    storageClient: supabase.storage ? { storage: supabase.storage } : null
   };
 }
 
@@ -815,12 +833,15 @@ export function mapCulturePostToSafeFeedItem(post: CulturePostRow, lookups: Look
   const username = safeText(profile?.public_username);
   const mediaUrl = safeNullableText(media?.media_url);
   const thumbnailUrl = safeNullableText(media?.thumbnail_url);
+  const authorAvatarUrl = toPublicMediaUrl(lookups.storageClient ?? null, profile?.profile_photo_path, profile?.profile_photo_url) ?? null;
 
   return {
     id: post.id,
     authorDisplayName,
     authorUsername: username ? `@${username.replace(/^@/, "")}` : null,
+    authorAvatarUrl,
     authorRoleLabel: roleLabel(post.author_role),
+    authorVerified: false,
     caption: safeText(post.caption, ""),
     postType: post.post_type,
     media: media ? {
