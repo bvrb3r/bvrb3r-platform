@@ -266,6 +266,11 @@ describe("profile media service Culture auto-share", () => {
     expect(supabase.writes.culture_media[0]).toMatchObject({
       post_id: "culture_posts-write-1",
       media_url: "https://cdn.bvrb3r.test/work.jpg",
+      source_table: "barber_portfolio",
+      source_id: "barber_portfolios-write-1",
+      source_surface: "profile_studio",
+      processing_status: "ready",
+      moderation_status: "approved",
       metadata: {
         source_surface: "profile_studio",
         source_table: "barber_portfolio",
@@ -346,6 +351,11 @@ describe("profile media service Culture auto-share", () => {
     expect(supabase.writes.culture_media[0]).toMatchObject({
       post_id: "culture_posts-write-1",
       media_url: "https://cdn.bvrb3r.test/shop.jpg",
+      source_table: "shop_media_asset",
+      source_id: "shop_media_assets-write-1",
+      source_surface: "profile_studio",
+      processing_status: "ready",
+      moderation_status: "approved",
       metadata: {
         source_surface: "profile_studio",
         source_table: "shop_media_asset",

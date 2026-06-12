@@ -10,6 +10,10 @@ const mediaStorageMigration = readFileSync(
   join(process.cwd(), "supabase/migrations/20260612153000_culture_media_private_storage.sql"),
   "utf8"
 );
+const mediaSourceKeysMigration = readFileSync(
+  join(process.cwd(), "supabase/migrations/20260612170000_culture_media_source_keys.sql"),
+  "utf8"
+);
 
 const cultureTables = [
   "culture_posts",
@@ -74,5 +78,30 @@ describe("Culture Feed foundation migration", () => {
     expect(mediaStorageMigration).not.toContain("create policy");
     expect(mediaStorageMigration).not.toContain("on storage.objects");
     expect(mediaStorageMigration).not.toMatch(/culture-media'[\s\S]{0,120}true/);
+  });
+
+  it("adds canonical Profile Studio source keys for Culture media duplicate prevention", () => {
+    expect(mediaSourceKeysMigration).toContain("add column if not exists source_table text");
+    expect(mediaSourceKeysMigration).toContain("add column if not exists source_id text");
+    expect(mediaSourceKeysMigration).toContain("add column if not exists source_surface text");
+    expect(mediaSourceKeysMigration).toContain("metadata->>'source_table'");
+    expect(mediaSourceKeysMigration).toContain("metadata->>'source_id'");
+    expect(mediaSourceKeysMigration).toContain("metadata->>'source_surface'");
+    expect(mediaSourceKeysMigration).toContain("duplicate_source_key_unindexed");
+    expect(mediaSourceKeysMigration).toContain("culture_media_source_unique_idx");
+    expect(mediaSourceKeysMigration).toMatch(/unique index[\s\S]*source_table[\s\S]*source_id[\s\S]*source_surface/i);
+    expect(mediaSourceKeysMigration).toMatch(/where source_table is not null[\s\S]*source_id is not null[\s\S]*source_surface is not null/i);
+  });
+
+  it("backfills approved Barber and Owner Profile Studio media into public Culture feed state", () => {
+    expect(mediaSourceKeysMigration).toContain("source_table in ('barber_portfolio', 'shop_media_asset')");
+    expect(mediaSourceKeysMigration).toContain("cp.author_role = 'barber_user'::public.app_role");
+    expect(mediaSourceKeysMigration).toContain("cp.author_role = 'shop_owner_user'::public.app_role");
+    expect(mediaSourceKeysMigration).toContain("app_approval_status = 'approved'::public.approval_status");
+    expect(mediaSourceKeysMigration).toContain("publishing_status = 'published'");
+    expect(mediaSourceKeysMigration).toContain("moderation_status = 'approved'");
+    expect(mediaSourceKeysMigration).toContain("visibility = 'public'");
+    expect(mediaSourceKeysMigration).toContain("processing_status = 'ready'");
+    expect(mediaSourceKeysMigration).toContain("autoLiveBackfilled");
   });
 });

@@ -292,6 +292,93 @@ describe("Culture service", () => {
     expect(supabase.client.from).toHaveBeenCalledWith("culture_posts");
   });
 
+  it("returns approved auto-created Barber and Owner Profile Studio posts in the public feed", async () => {
+    const barberAutoPost = {
+      ...publishedPost,
+      id: "auto-feed-barber",
+      author_profile_id: barberUser.id,
+      barber_id: publishedPost.barber_id,
+      shop_id: null,
+      caption: "Auto-live barber portfolio media.",
+      metadata: {
+        createdFrom: "profile_studio_media",
+        source_surface: "profile_studio",
+        source_table: "barber_portfolio",
+        source_id: "portfolio-feed-auto"
+      }
+    } satisfies CulturePostRow;
+    const ownerAutoPost = {
+      ...publishedPost,
+      id: "auto-feed-owner",
+      author_profile_id: ownerUser.id,
+      author_role: "shop_owner_user",
+      barber_id: null,
+      shop_id: "shop-ybor",
+      service_id: null,
+      post_type: "shop_update",
+      caption: "Auto-live shop gallery media.",
+      created_at: "2026-06-12T11:55:00.000Z",
+      metadata: {
+        createdFrom: "profile_studio_media",
+        source_surface: "profile_studio",
+        source_table: "shop_media_asset",
+        source_id: "shop-feed-auto"
+      }
+    } satisfies CulturePostRow;
+    const supabase = createSupabaseStub({
+      culture_posts: [barberAutoPost, ownerAutoPost],
+      culture_media: [
+        {
+          id: "auto-feed-barber-media",
+          post_id: "auto-feed-barber",
+          media_url: "https://cdn.bvrb3r.test/barber-auto.jpg",
+          thumbnail_url: "https://cdn.bvrb3r.test/barber-auto.jpg",
+          media_type: "image",
+          processing_status: "ready",
+          moderation_status: "approved",
+          sort_order: 0,
+          source_table: "barber_portfolio",
+          source_id: "portfolio-feed-auto",
+          source_surface: "profile_studio"
+        },
+        {
+          id: "auto-feed-owner-media",
+          post_id: "auto-feed-owner",
+          media_url: "https://cdn.bvrb3r.test/owner-auto.jpg",
+          thumbnail_url: "https://cdn.bvrb3r.test/owner-auto.jpg",
+          media_type: "image",
+          processing_status: "ready",
+          moderation_status: "approved",
+          sort_order: 0,
+          source_table: "shop_media_asset",
+          source_id: "shop-feed-auto",
+          source_surface: "profile_studio"
+        }
+      ],
+      profiles: [
+        { id: barberUser.id, full_name: "Blaze King", public_username: "blaze" },
+        { id: ownerUser.id, full_name: "Owner Pat", public_username: "ownerpat" }
+      ],
+      shops: [{ id: "shop-ybor", name: "Ybor Shop" }],
+      services: []
+    });
+
+    const feed = await listCultureFeed({ role: "client", limit: 10 }, { supabase: supabase.client });
+
+    expect(feed.items.map((item) => item.id)).toEqual(["auto-feed-barber", "auto-feed-owner"]);
+    expect(feed.items[0]).toMatchObject({
+      authorDisplayName: "Blaze King",
+      authorRoleLabel: "Barber",
+      media: { url: "https://cdn.bvrb3r.test/barber-auto.jpg" }
+    });
+    expect(feed.items[1]).toMatchObject({
+      authorDisplayName: "Owner Pat",
+      authorRoleLabel: "Shop Owner",
+      shopName: "Ybor Shop",
+      media: { url: "https://cdn.bvrb3r.test/owner-auto.jpg" }
+    });
+  });
+
   it("sets a stable cursor without duplicating the final page item", async () => {
     const supabase = createSupabaseStub({
       culture_posts: [
@@ -515,7 +602,7 @@ describe("Culture service", () => {
     expect(result.media.url).toMatch(/^https:\/\/signed\.bvrb3r\.test\/culture\//);
   });
 
-  it("creates a barber Culture draft from owned Profile Studio portfolio media without duplicating binary media", async () => {
+  it("creates a live barber Culture post from approved Profile Studio portfolio media without duplicating binary media", async () => {
     const supabase = createSupabaseStub({
       barbers: [{
         id: publishedPost.barber_id,
@@ -546,19 +633,24 @@ describe("Culture service", () => {
       author_role: "barber_user",
       barber_id: publishedPost.barber_id,
       post_type: "barber_cut",
-      publishing_status: "draft",
-      visibility: "private"
+      publishing_status: "published",
+      moderation_status: "approved",
+      visibility: "public"
     });
     expect(supabase.writes.culture_media[0]).toMatchObject({
       post_id: result.post.id,
       media_asset_id: null,
       media_url: "https://cdn.bvrb3r.test/work.jpg",
       thumbnail_url: "https://cdn.bvrb3r.test/work.jpg",
+      processing_status: "ready",
+      moderation_status: "approved",
+      source_table: "barber_portfolio",
+      source_id: "portfolio-profile-studio-1",
+      source_surface: "profile_studio",
       metadata: {
         source_surface: "profile_studio",
         source_table: "barber_portfolio",
-        source_id: "portfolio-profile-studio-1",
-        source_barber_reference: barberUser.barberId
+        source_id: "portfolio-profile-studio-1"
       }
     });
     expect(supabase.storage.uploadMock).not.toHaveBeenCalled();
@@ -632,7 +724,7 @@ describe("Culture service", () => {
     expect(supabase.writes.culture_media ?? []).toHaveLength(0);
   });
 
-  it("creates an owner Culture draft from owned shop gallery media", async () => {
+  it("creates a live owner Culture post from approved shop gallery media", async () => {
     const supabase = createSupabaseStub({
       shops: [{
         id: "shop-ybor",
@@ -662,16 +754,21 @@ describe("Culture service", () => {
       author_role: "shop_owner_user",
       shop_id: "shop-ybor",
       post_type: "shop_update",
-      publishing_status: "draft",
-      visibility: "private"
+      publishing_status: "published",
+      moderation_status: "approved",
+      visibility: "public"
     });
     expect(supabase.writes.culture_media[0]).toMatchObject({
       media_url: "https://cdn.bvrb3r.test/shop-front.jpg",
+      processing_status: "ready",
+      moderation_status: "approved",
+      source_table: "shop_media_asset",
+      source_id: "shop-media-profile-studio-1",
+      source_surface: "profile_studio",
       metadata: {
         source_surface: "profile_studio",
         source_table: "shop_media_asset",
-        source_id: "shop-media-profile-studio-1",
-        source_shop_reference: "shop-ybor"
+        source_id: "shop-media-profile-studio-1"
       }
     });
     expect(supabase.storage.uploadMock).not.toHaveBeenCalled();
@@ -758,6 +855,9 @@ describe("Culture service", () => {
     });
     expect(supabase.writes.culture_media[0]).toMatchObject({
       media_url: "https://cdn.bvrb3r.test/auto.jpg",
+      source_table: "barber_portfolio",
+      source_id: "portfolio-auto-1",
+      source_surface: "profile_studio",
       moderation_status: "approved",
       metadata: {
         source_surface: "profile_studio",
@@ -796,6 +896,31 @@ describe("Culture service", () => {
     expect(supabase.writes.culture_media ?? []).toHaveLength(0);
   });
 
+  it("does not auto-publish shop media until the owner shop is approved", async () => {
+    const supabase = createSupabaseStub({
+      shops: [{
+        id: "shop-ybor",
+        owner_profile_id: ownerUser.id,
+        app_approval_status: "pending"
+      }],
+      culture_posts: [],
+      culture_media: []
+    });
+
+    const result = await autoCreateCulturePostFromProfileMedia(ownerUser, {
+      role: "owner",
+      sourceTable: "shop_media_asset",
+      sourceId: "shop-pending-1",
+      shopId: "shop-ybor",
+      storagePath: "profiles/shops/shop-ybor/gallery/pending.jpg",
+      imageUrl: "https://cdn.bvrb3r.test/pending-shop.jpg"
+    }, { supabase: supabase.client });
+
+    expect(result.status).toBe("skipped");
+    expect(supabase.writes.culture_posts ?? []).toHaveLength(0);
+    expect(supabase.writes.culture_media ?? []).toHaveLength(0);
+  });
+
   it("updates an existing auto-shared Culture post instead of duplicating it", async () => {
     const existingPosts = [{
       ...publishedPost,
@@ -819,6 +944,9 @@ describe("Culture service", () => {
       media_type: "image",
       processing_status: "ready",
       moderation_status: "approved",
+      source_table: "barber_portfolio",
+      source_id: "portfolio-auto-existing",
+      source_surface: "profile_studio",
       metadata: {
         source_surface: "profile_studio",
         source_table: "barber_portfolio",
@@ -861,6 +989,68 @@ describe("Culture service", () => {
     });
   });
 
+  it("returns an existing Profile Studio Culture post from the manual bridge instead of duplicating it", async () => {
+    const existingPost = {
+      ...publishedPost,
+      id: "existing-manual-bridge-post",
+      author_profile_id: barberUser.id,
+      barber_id: publishedPost.barber_id,
+      caption: "Already live.",
+      visibility: "public",
+      moderation_status: "approved",
+      publishing_status: "published",
+      metadata: {
+        source_surface: "profile_studio",
+        source_table: "barber_portfolio",
+        source_id: "portfolio-manual-existing"
+      }
+    };
+    const existingMedia = {
+      id: "existing-manual-bridge-media",
+      post_id: "existing-manual-bridge-post",
+      media_url: "https://cdn.bvrb3r.test/existing.jpg",
+      thumbnail_url: "https://cdn.bvrb3r.test/existing.jpg",
+      media_type: "image",
+      processing_status: "ready",
+      moderation_status: "approved",
+      source_table: "barber_portfolio",
+      source_id: "portfolio-manual-existing",
+      source_surface: "profile_studio",
+      metadata: {
+        source_surface: "profile_studio",
+        source_table: "barber_portfolio",
+        source_id: "portfolio-manual-existing"
+      }
+    };
+    const supabase = createSupabaseStub({
+      barbers: [{
+        id: publishedPost.barber_id,
+        profile_id: barberUser.id,
+        reference_code: barberUser.barberId,
+        app_approval_status: "approved"
+      }],
+      barber_portfolios: [{
+        id: "portfolio-manual-existing",
+        barber_reference: barberUser.barberId,
+        storage_path: "profiles/barbers/barber-blaze/gallery/existing.jpg",
+        image_url: "https://cdn.bvrb3r.test/existing.jpg",
+        caption: "Existing source."
+      }],
+      culture_posts: [existingPost],
+      culture_media: [existingMedia]
+    });
+
+    const result = await createCulturePostFromProfileMedia(barberUser, {
+      role: "barber",
+      sourceType: "barber_portfolio",
+      sourceId: "portfolio-manual-existing"
+    }, { supabase: supabase.client });
+
+    expect(result.post.id).toBe("existing-manual-bridge-post");
+    expect(supabase.writes.culture_posts ?? []).toHaveLength(0);
+    expect(supabase.writes.culture_media ?? []).toHaveLength(0);
+  });
+
   it("auto-publishes approved shop gallery media to Culture", async () => {
     const supabase = createSupabaseStub({
       shops: [{
@@ -894,6 +1084,9 @@ describe("Culture service", () => {
     });
     expect(supabase.writes.culture_media[0]).toMatchObject({
       media_url: "https://cdn.bvrb3r.test/wall.jpg",
+      source_table: "shop_media_asset",
+      source_id: "shop-auto-1",
+      source_surface: "profile_studio",
       metadata: {
         source_surface: "profile_studio",
         source_table: "shop_media_asset",

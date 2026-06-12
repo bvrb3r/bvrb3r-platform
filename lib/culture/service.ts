@@ -156,6 +156,7 @@ export type CulturePostRow = {
 type CultureMediaRow = {
   id: string;
   post_id: string;
+  media_asset_id?: string | null;
   media_url?: string | null;
   thumbnail_url?: string | null;
   media_type: string;
@@ -165,6 +166,9 @@ type CultureMediaRow = {
   sort_order?: number | null;
   processing_status?: string | null;
   moderation_status?: string | null;
+  source_table?: string | null;
+  source_id?: string | null;
+  source_surface?: string | null;
   metadata?: Record<string, unknown> | null;
 };
 
@@ -935,17 +939,30 @@ async function readCultureMediaForProfileSource(
   sourceTable: CultureProfileMediaSourceType,
   sourceId: string
 ) {
-  const result = await supabase
+  const sourceColumnResult = await supabase
     .from("culture_media")
-    .select("id, post_id, media_url, thumbnail_url, media_type, width, height, duration_seconds, sort_order, processing_status, moderation_status, metadata")
+    .select("id, post_id, media_asset_id, media_url, thumbnail_url, media_type, width, height, duration_seconds, sort_order, processing_status, moderation_status, source_table, source_id, source_surface, metadata")
+    .eq("source_surface", "profile_studio")
+    .eq("source_table", sourceTable)
+    .eq("source_id", sourceId)
+    .limit(1)
+    .maybeSingle() as QueryResult<CultureMediaRow>;
+
+  if (!sourceColumnResult.error && sourceColumnResult.data) {
+    return sourceColumnResult.data;
+  }
+
+  const metadataResult = await supabase
+    .from("culture_media")
+    .select("id, post_id, media_asset_id, media_url, thumbnail_url, media_type, width, height, duration_seconds, sort_order, processing_status, moderation_status, metadata")
     .eq("metadata->>source_surface", "profile_studio")
     .eq("metadata->>source_table", sourceTable)
     .eq("metadata->>source_id", sourceId)
     .limit(1)
     .maybeSingle() as QueryResult<CultureMediaRow>;
 
-  throwIfError(result as QueryResult<unknown>, "Unable to check existing Profile Studio Culture media.");
-  return result.data ?? null;
+  throwIfError(metadataResult as QueryResult<unknown>, "Unable to check existing Profile Studio Culture media.");
+  return metadataResult.data ?? null;
 }
 
 function mapCultureMediaRow(row: CultureMediaRow): CultureMediaItem {
@@ -1069,6 +1086,9 @@ async function upsertCulturePostFromProfileSource({
     sort_order: 0,
     processing_status: "ready",
     moderation_status: "approved",
+    source_table: sourceTable,
+    source_id: sourceId,
+    source_surface: "profile_studio",
     metadata: sourceMetadata
   };
 
@@ -1077,12 +1097,12 @@ async function upsertCulturePostFromProfileSource({
         .from("culture_media")
         .update(mediaPayload)
         .eq("id", existingMedia.id)
-        .select("id, post_id, media_url, thumbnail_url, media_type, width, height, duration_seconds, sort_order, processing_status, moderation_status, metadata")
+        .select("id, post_id, media_asset_id, media_url, thumbnail_url, media_type, width, height, duration_seconds, sort_order, processing_status, moderation_status, source_table, source_id, source_surface, metadata")
         .single() as QueryResult<CultureMediaRow>
     : await supabase
         .from("culture_media")
         .insert(mediaPayload)
-        .select("id, post_id, media_url, thumbnail_url, media_type, width, height, duration_seconds, sort_order, processing_status, moderation_status, metadata")
+        .select("id, post_id, media_asset_id, media_url, thumbnail_url, media_type, width, height, duration_seconds, sort_order, processing_status, moderation_status, source_table, source_id, source_surface, metadata")
         .single() as QueryResult<CultureMediaRow>;
 
   throwIfError(mediaResult as QueryResult<unknown>, existingMedia ? "Unable to update auto-shared Culture media." : "Unable to attach auto-shared Culture media.");
@@ -1247,6 +1267,31 @@ export async function createCulturePostFromProfileMedia(
   }
 
   const isSubmittedForReview = Boolean(input.submitForReview);
+  if (!isSubmittedForReview && isAutoPublishApproved(access)) {
+    const liveResult = await upsertCulturePostFromProfileSource({
+      user,
+      access,
+      sourceTable: input.sourceType,
+      sourceId,
+      caption,
+      storagePath: sourceStoragePath,
+      imageUrl: sourceImageUrl,
+      mediaAssetId: null,
+      postType,
+      serviceId: null,
+      autoShared: false
+    }, deps);
+
+    if (liveResult.post && liveResult.summary && liveResult.media) {
+      return {
+        post: liveResult.post,
+        summary: liveResult.summary,
+        media: liveResult.media,
+        message: "Culture post settings opened from Profile Studio media."
+      };
+    }
+  }
+
   const postInsert = await supabase
     .from("culture_posts")
     .insert({
@@ -1290,9 +1335,12 @@ export async function createCulturePostFromProfileMedia(
       sort_order: 0,
       processing_status: "ready",
       moderation_status: "pending",
+      source_table: input.sourceType,
+      source_id: sourceId,
+      source_surface: "profile_studio",
       metadata: sourceMetadata
     })
-    .select("id, post_id, media_url, thumbnail_url, media_type, width, height, duration_seconds, sort_order, processing_status, moderation_status, metadata")
+    .select("id, post_id, media_asset_id, media_url, thumbnail_url, media_type, width, height, duration_seconds, sort_order, processing_status, moderation_status, source_table, source_id, source_surface, metadata")
     .single() as QueryResult<CultureMediaRow>;
 
   throwIfError(mediaInsert as QueryResult<unknown>, "Unable to attach Profile Studio media to Culture draft.");
