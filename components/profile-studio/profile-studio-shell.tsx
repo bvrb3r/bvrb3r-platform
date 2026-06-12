@@ -574,7 +574,7 @@ export function ProfileStudioShell({
     setPendingCultureMediaId(itemId);
     try {
       await onShareMediaToCulture(itemId);
-      setCultureShareFeedback("Culture draft created.");
+      setCultureShareFeedback("Culture post settings opened.");
     } catch (error) {
       setCultureShareFeedback(error instanceof Error && error.message ? error.message : "Unable to share media to Culture.");
     } finally {
@@ -821,7 +821,7 @@ export function ProfileStudioShell({
               {onShareMediaToCulture ? (
                 <button
                   type="button"
-                  aria-label={`Share ${item.alt} to Culture`}
+                  aria-label={`Edit Culture Post for ${item.alt}`}
                   disabled={Boolean(isSharingMediaToCulture) || pendingCultureMediaId === item.id}
                   className="absolute bottom-2 right-2 inline-flex h-9 w-9 items-center justify-center rounded-full border border-black/40 bg-black/72 text-white shadow-lg transition hover:border-[#a3ff12]/40 hover:text-[#a3ff12] disabled:cursor-wait disabled:opacity-70"
                   onClick={() => void handleShareMediaToCulture(item.id)}

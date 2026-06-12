@@ -59,6 +59,7 @@ export type CultureComposerAccess = {
   barberId: string | null;
   barberReference?: string | null;
   shopId: string | null;
+  approvalStatus?: string | null;
   canCompose: boolean;
   blockedReason: string | null;
 };
@@ -90,6 +91,28 @@ export type CultureProfileMediaInput = {
   sourceId: string;
   caption?: string | null;
   submitForReview?: boolean;
+};
+
+export type AutoCultureProfileMediaInput = {
+  role: CultureProfileMediaRole;
+  sourceTable: CultureProfileMediaSourceType;
+  sourceId: string;
+  caption?: string | null;
+  storagePath?: string | null;
+  imageUrl?: string | null;
+  mediaAssetId?: string | null;
+  barberId?: string | null;
+  shopId?: string | null;
+  serviceId?: string | null;
+  postType?: string | null;
+};
+
+export type AutoCultureProfileMediaResult = {
+  status: "created" | "updated" | "skipped";
+  reason?: string;
+  post?: CulturePostRow;
+  summary?: CultureMyPostSummary;
+  media?: CultureMediaItem;
 };
 
 export type CultureMyPostSummary = {
@@ -218,6 +241,8 @@ type SupabaseLike = {
     };
   };
 };
+
+export type CultureServiceSupabaseClient = SupabaseLike;
 
 type CultureServiceDeps = {
   supabase?: SupabaseLike | null;
@@ -664,6 +689,7 @@ export async function resolveCultureComposerAccess(
     barberId: null,
     barberReference: null,
     shopId: null,
+    approvalStatus: null,
     canCompose: false,
     blockedReason: null
   };
@@ -715,6 +741,7 @@ export async function resolveCultureComposerAccess(
         ...base,
         barberId: resolved.barberId,
         barberReference: resolved.referenceCode ?? user.barberId ?? resolved.barberId,
+        approvalStatus,
         blockedReason: "Culture posting opens after barber approval is complete."
       };
     }
@@ -723,6 +750,7 @@ export async function resolveCultureComposerAccess(
       ...base,
       barberId: resolved.barberId,
       barberReference: resolved.referenceCode ?? user.barberId ?? resolved.barberId,
+      approvalStatus,
       canCompose: true
     };
   }
@@ -740,6 +768,7 @@ export async function resolveCultureComposerAccess(
     return {
       ...base,
       shopId: resolved.shopId,
+      approvalStatus,
       blockedReason: "Shop Culture posting opens after shop approval is complete."
     };
   }
@@ -747,6 +776,7 @@ export async function resolveCultureComposerAccess(
   return {
     ...base,
     shopId: resolved.shopId,
+    approvalStatus,
     canCompose: true
   };
 }
@@ -900,6 +930,234 @@ async function readShopProfileMediaSource(
   return result.data;
 }
 
+async function readCultureMediaForProfileSource(
+  supabase: SupabaseLike,
+  sourceTable: CultureProfileMediaSourceType,
+  sourceId: string
+) {
+  const result = await supabase
+    .from("culture_media")
+    .select("id, post_id, media_url, thumbnail_url, media_type, width, height, duration_seconds, sort_order, processing_status, moderation_status, metadata")
+    .eq("metadata->>source_surface", "profile_studio")
+    .eq("metadata->>source_table", sourceTable)
+    .eq("metadata->>source_id", sourceId)
+    .limit(1)
+    .maybeSingle() as QueryResult<CultureMediaRow>;
+
+  throwIfError(result as QueryResult<unknown>, "Unable to check existing Profile Studio Culture media.");
+  return result.data ?? null;
+}
+
+function mapCultureMediaRow(row: CultureMediaRow): CultureMediaItem {
+  return {
+    id: row.id,
+    url: safeNullableText(row.media_url),
+    thumbnailUrl: safeNullableText(row.thumbnail_url),
+    mediaType: row.media_type === "video" ? "video" : "image",
+    width: row.width ?? null,
+    height: row.height ?? null,
+    durationSeconds: row.duration_seconds ?? null
+  };
+}
+
+function isAutoPublishApproved(access: CultureComposerAccess) {
+  return access.canCompose && access.approvalStatus === "approved";
+}
+
+function normalizeAutoPostType(role: CultureComposerRole, postType?: string | null) {
+  if (postType) {
+    return normalizeComposerPostType(role, postType);
+  }
+
+  return role === "barber" ? "barber_cut" : "shop_update";
+}
+
+async function upsertCulturePostFromProfileSource({
+  user,
+  access,
+  sourceTable,
+  sourceId,
+  caption,
+  storagePath,
+  imageUrl,
+  mediaAssetId,
+  postType,
+  serviceId,
+  autoShared
+}: {
+  user: UserAccount;
+  access: CultureComposerAccess;
+  sourceTable: CultureProfileMediaSourceType;
+  sourceId: string;
+  caption?: string | null;
+  storagePath?: string | null;
+  imageUrl?: string | null;
+  mediaAssetId?: string | null;
+  postType: string;
+  serviceId?: string | null;
+  autoShared: boolean;
+}, deps?: CultureServiceDeps) {
+  const supabase = maybeSupabase(deps);
+  if (!supabase) {
+    throw new CultureComposerError("Culture posting requires the canonical Supabase Culture writer.", 503);
+  }
+
+  const sourceImageUrl = resolveSourceMediaUrl(supabase, storagePath, imageUrl);
+  const safeStoragePath = normalizeOptionalText(storagePath);
+  if (!sourceImageUrl && !safeStoragePath && !mediaAssetId) {
+    throw new CultureComposerError("Profile Studio media is missing a renderable image.", 400);
+  }
+
+  const now = new Date().toISOString();
+  const sourceMetadata = profileMediaSourceMetadata(sourceTable, sourceId, {
+    source_storage_path: safeStoragePath,
+    autoShared,
+    ...(autoShared ? { autoSharedAt: now } : {}),
+    roleContext: access.role
+  });
+  const existingMedia = await readCultureMediaForProfileSource(supabase, sourceTable, sourceId);
+  const postPayload = {
+    author_profile_id: user.id,
+    author_role: access.actorRole,
+    barber_id: access.barberId,
+    shop_id: access.shopId,
+    client_id: null,
+    appointment_id: null,
+    service_id: normalizeOptionalText(serviceId),
+    post_type: postType,
+    caption: normalizeCaption(caption),
+    visibility: "public",
+    moderation_status: "approved",
+    publishing_status: "published",
+    is_bookable: Boolean(access.role === "barber" && serviceId),
+    allow_comments: false,
+    metadata: {
+      composerVersion: 1,
+      createdFrom: "profile_studio_media",
+      autoShared,
+      ...(autoShared ? { autoSharedAt: now } : {}),
+      ...sourceMetadata
+    },
+    updated_at: now
+  };
+
+  const postResult = existingMedia?.post_id
+    ? await supabase
+        .from("culture_posts")
+        .update(postPayload)
+        .eq("id", existingMedia.post_id)
+        .eq("author_profile_id", user.id)
+        .select("id, author_profile_id, author_role, barber_id, shop_id, client_id, appointment_id, service_id, post_type, caption, visibility, moderation_status, publishing_status, is_bookable, allow_comments, metadata, created_at, deleted_at")
+        .single() as QueryResult<CulturePostRow>
+    : await supabase
+        .from("culture_posts")
+        .insert(postPayload)
+        .select("id, author_profile_id, author_role, barber_id, shop_id, client_id, appointment_id, service_id, post_type, caption, visibility, moderation_status, publishing_status, is_bookable, allow_comments, metadata, created_at, deleted_at")
+        .single() as QueryResult<CulturePostRow>;
+
+  throwIfError(postResult as QueryResult<unknown>, existingMedia ? "Unable to update auto-shared Culture post." : "Unable to create auto-shared Culture post.");
+  if (!postResult.data) {
+    throw new CultureComposerError("Culture post was not returned after Profile Studio auto-share.", 500);
+  }
+
+  const mediaPayload = {
+    post_id: postResult.data.id,
+    media_asset_id: mediaAssetId ?? null,
+    media_url: sourceImageUrl ?? safeStoragePath,
+    thumbnail_url: sourceImageUrl ?? safeStoragePath,
+    media_type: "image",
+    sort_order: 0,
+    processing_status: "ready",
+    moderation_status: "approved",
+    metadata: sourceMetadata
+  };
+
+  const mediaResult = existingMedia
+    ? await supabase
+        .from("culture_media")
+        .update(mediaPayload)
+        .eq("id", existingMedia.id)
+        .select("id, post_id, media_url, thumbnail_url, media_type, width, height, duration_seconds, sort_order, processing_status, moderation_status, metadata")
+        .single() as QueryResult<CultureMediaRow>
+    : await supabase
+        .from("culture_media")
+        .insert(mediaPayload)
+        .select("id, post_id, media_url, thumbnail_url, media_type, width, height, duration_seconds, sort_order, processing_status, moderation_status, metadata")
+        .single() as QueryResult<CultureMediaRow>;
+
+  throwIfError(mediaResult as QueryResult<unknown>, existingMedia ? "Unable to update auto-shared Culture media." : "Unable to attach auto-shared Culture media.");
+  if (!mediaResult.data) {
+    throw new CultureComposerError("Culture media was not returned after Profile Studio auto-share.", 500);
+  }
+
+  return {
+    status: existingMedia ? "updated" as const : "created" as const,
+    post: postResult.data,
+    summary: summarizeOwnPost(postResult.data),
+    media: mapCultureMediaRow(mediaResult.data)
+  };
+}
+
+export async function autoCreateCulturePostFromProfileMedia(
+  user: UserAccount,
+  input: AutoCultureProfileMediaInput,
+  deps?: CultureServiceDeps
+): Promise<AutoCultureProfileMediaResult> {
+  const sourceId = normalizeOptionalText(input.sourceId);
+  if (!sourceId) {
+    throw new CultureComposerError("Choose Profile Studio media to publish to Culture.", 400);
+  }
+
+  if (input.role === "client") {
+    return { status: "skipped", reason: "Client Culture posting unlocks later." };
+  }
+
+  if (input.role === "barber" && input.sourceTable !== "barber_portfolio") {
+    throw new CultureComposerError("Barber Culture auto-share requires barber portfolio media.", 400);
+  }
+
+  if (input.role === "owner" && input.sourceTable !== "shop_media_asset") {
+    throw new CultureComposerError("Shop Culture auto-share requires shop gallery media.", 400);
+  }
+
+  const access = await resolveCultureComposerAccess(user, input.role, deps);
+  if (!access.canCompose) {
+    return { status: "skipped", reason: access.blockedReason ?? "Culture posting is not available for this account." };
+  }
+
+  if (!isAutoPublishApproved(access)) {
+    return { status: "skipped", reason: "Culture auto-publishing requires an approved account." };
+  }
+
+  if (input.role === "barber") {
+    const allowedReferences = new Set([access.barberId, access.barberReference, user.barberId].filter(Boolean));
+    if (input.barberId && !allowedReferences.has(input.barberId)) {
+      throw new CultureComposerError("Barbers can only auto-share their own portfolio media to Culture.", 403);
+    }
+  }
+
+  if (input.role === "owner") {
+    const allowedShops = new Set([access.shopId, user.ownedShopId].filter(Boolean));
+    if (input.shopId && !allowedShops.has(input.shopId)) {
+      throw new CultureComposerError("Shop owners can only auto-share media from their own shop.", 403);
+    }
+  }
+
+  return upsertCulturePostFromProfileSource({
+    user,
+    access,
+    sourceTable: input.sourceTable,
+    sourceId,
+    caption: input.caption,
+    storagePath: input.storagePath,
+    imageUrl: input.imageUrl,
+    mediaAssetId: input.mediaAssetId,
+    postType: normalizeAutoPostType(input.role, input.postType),
+    serviceId: input.serviceId,
+    autoShared: true
+  }, deps);
+}
+
 export async function createCulturePostFromProfileMedia(
   user: UserAccount,
   input: CultureProfileMediaInput,
@@ -968,6 +1226,19 @@ export async function createCulturePostFromProfileMedia(
 
   if (!sourceImageUrl && !sourceStoragePath) {
     throw new CultureComposerError("Profile Studio media is missing a renderable image.", 400);
+  }
+
+  const existingMedia = await readCultureMediaForProfileSource(supabase, input.sourceType, sourceId);
+  if (existingMedia?.post_id) {
+    const existingPost = await readOwnCulturePost(supabase, user, existingMedia.post_id);
+    if (existingPost) {
+      return {
+        post: existingPost,
+        summary: summarizeOwnPost(existingPost),
+        media: mapCultureMediaRow(existingMedia),
+        message: "Culture post settings opened from Profile Studio media."
+      };
+    }
   }
 
   const caption = normalizeCaption(input.caption ?? sourceCaption);

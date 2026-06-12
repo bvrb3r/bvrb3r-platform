@@ -326,7 +326,7 @@ export function OwnerPublicProfileEditor({ user }: { user: UserAccount }) {
         throw new Error(payload?.error ?? "Unable to share shop media to Culture.");
       }
 
-      setFeedback({ tone: "success", message: "Culture draft created from this shop image." });
+      setFeedback({ tone: "success", message: "Culture post settings opened for this shop image." });
       if (payload.composerHref) {
         window.location.assign(payload.composerHref);
       }

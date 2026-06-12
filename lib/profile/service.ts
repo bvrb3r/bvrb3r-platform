@@ -1,6 +1,7 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { isBarberAccountRole, isClientRole, isShopOwnerRole } from "@/lib/auth/roles";
 import { isSupabaseEnabled } from "@/lib/config/runtime";
+import { autoCreateCulturePostFromProfileMedia, type CultureServiceSupabaseClient } from "@/lib/culture/service";
 import { demoLocations } from "@/lib/data/demo";
 import { getEngagementState, setEngagementState } from "@/lib/engagement/state";
 import { getMarketplaceState, setMarketplaceState } from "@/lib/marketplace/state";
@@ -89,6 +90,10 @@ type ClientProfileMediaRow = {
 };
 
 type ShopIdRow = {
+  id: string;
+};
+
+type InsertedMediaIdRow = {
   id: string;
 };
 
@@ -1368,6 +1373,7 @@ export async function mutateProfileMedia(user: UserAccount, input: ProfileMediaM
   }
 
   const profile = await resolveProfileRow(user, supabase);
+  const cultureSupabase = supabase as unknown as CultureServiceSupabaseClient;
   const managedShopIds = (isShopOwnerRole(user.role) || user.role === "manager" || user.role === "front_desk")
     ? await listSupabaseManagedShopIds(user, supabase)
     : [];
@@ -1579,11 +1585,23 @@ export async function mutateProfileMedia(user: UserAccount, input: ProfileMediaM
           caption: input.caption?.trim() ?? "",
           featured: Boolean(input.featured),
           updated_at: new Date().toISOString()
-        });
+        })
+        .select("id")
+        .single();
 
-      if (result.error) {
+      const insertedMedia = result.data as InsertedMediaIdRow | null;
+      if (result.error || !insertedMedia?.id) {
         throw new ProfileMediaServiceError("Unable to add the barber gallery image.", 500);
       }
+      await autoCreateCulturePostFromProfileMedia(user, {
+        role: "barber",
+        sourceTable: "barber_portfolio",
+        sourceId: insertedMedia.id,
+        caption: input.caption?.trim() ?? "",
+        storagePath: input.storagePath,
+        imageUrl: input.imageUrl,
+        barberId
+      }, { supabase: cultureSupabase });
       break;
     }
     case "set_barber_featured_media": {
@@ -1746,11 +1764,23 @@ export async function mutateProfileMedia(user: UserAccount, input: ProfileMediaM
           featured: Boolean(input.featured),
           created_by_profile_id: profile.id,
           updated_at: new Date().toISOString()
-        });
+        })
+        .select("id")
+        .single();
 
-      if (result.error) {
+      const insertedMedia = result.data as InsertedMediaIdRow | null;
+      if (result.error || !insertedMedia?.id) {
         throw new ProfileMediaServiceError("Unable to add the shop gallery image.", 500);
       }
+      await autoCreateCulturePostFromProfileMedia(user, {
+        role: "owner",
+        sourceTable: "shop_media_asset",
+        sourceId: insertedMedia.id,
+        caption: input.caption?.trim() ?? "",
+        storagePath: input.storagePath,
+        imageUrl: input.imageUrl,
+        shopId
+      }, { supabase: cultureSupabase });
       break;
     }
     case "set_shop_featured_media": {

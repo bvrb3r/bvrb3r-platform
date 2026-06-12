@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __resetDemoCultureStateForTests,
+  autoCreateCulturePostFromProfileMedia,
   createCulturePostDraft,
   createCulturePostFromProfileMedia,
   attachCulturePostImageMedia,
@@ -43,19 +44,32 @@ function createQuery(rows: Row[], tableWrites: Row[]) {
   let writeRow: Row | null = null;
   let updateRow: Row | null = null;
 
+  function readColumn(row: Row, column: string) {
+    const metadataMatch = column.match(/^metadata->>(.+)$/);
+    if (metadataMatch) {
+      const metadata = row.metadata as Record<string, unknown> | undefined;
+      return metadata?.[metadataMatch[1] ?? ""];
+    }
+
+    return row[column];
+  }
+
   const chain = {} as QueryChain;
   Object.assign(chain, {
     select: vi.fn(() => chain),
     eq: vi.fn((column: string, value: unknown) => {
-      filters.push((row) => row[column] === value);
+      filters.push((row) => readColumn(row, column) === value);
       return chain;
     }),
     in: vi.fn((column: string, values: unknown[]) => {
-      filters.push((row) => values.includes(row[column]));
+      filters.push((row) => values.includes(readColumn(row, column)));
       return chain;
     }),
     is: vi.fn((column: string, value: unknown) => {
-      filters.push((row) => (value === null ? row[column] == null : row[column] === value));
+      filters.push((row) => {
+        const columnValue = readColumn(row, column);
+        return value === null ? columnValue == null : columnValue === value;
+      });
       return chain;
     }),
     or: vi.fn(() => chain),
@@ -708,6 +722,208 @@ describe("Culture service", () => {
       sourceId: "client-profile-media-1"
     }, { supabase: supabase.client })).rejects.toThrow("Client Culture posting unlocks later.");
     expect(supabase.writes.culture_posts ?? []).toHaveLength(0);
+  });
+
+  it("auto-publishes approved barber portfolio media to Culture", async () => {
+    const supabase = createSupabaseStub({
+      barbers: [{
+        id: publishedPost.barber_id,
+        profile_id: barberUser.id,
+        reference_code: barberUser.barberId,
+        app_approval_status: "approved"
+      }],
+      culture_posts: [],
+      culture_media: []
+    });
+
+    const result = await autoCreateCulturePostFromProfileMedia(barberUser, {
+      role: "barber",
+      sourceTable: "barber_portfolio",
+      sourceId: "portfolio-auto-1",
+      barberId: barberUser.barberId,
+      caption: "Auto shared cut.",
+      storagePath: "profiles/barbers/barber-blaze/gallery/auto.jpg",
+      imageUrl: "https://cdn.bvrb3r.test/auto.jpg"
+    }, { supabase: supabase.client });
+
+    expect(result.status).toBe("created");
+    expect(result.post).toMatchObject({
+      author_profile_id: barberUser.id,
+      author_role: "barber_user",
+      barber_id: publishedPost.barber_id,
+      post_type: "barber_cut",
+      publishing_status: "published",
+      moderation_status: "approved",
+      visibility: "public"
+    });
+    expect(supabase.writes.culture_media[0]).toMatchObject({
+      media_url: "https://cdn.bvrb3r.test/auto.jpg",
+      moderation_status: "approved",
+      metadata: {
+        source_surface: "profile_studio",
+        source_table: "barber_portfolio",
+        source_id: "portfolio-auto-1",
+        autoShared: true,
+        roleContext: "barber"
+      }
+    });
+    expect(supabase.storage.uploadMock).not.toHaveBeenCalled();
+  });
+
+  it("does not auto-publish barber media until the barber is approved", async () => {
+    const supabase = createSupabaseStub({
+      barbers: [{
+        id: publishedPost.barber_id,
+        profile_id: barberUser.id,
+        reference_code: barberUser.barberId,
+        app_approval_status: "pending"
+      }],
+      culture_posts: [],
+      culture_media: []
+    });
+
+    const result = await autoCreateCulturePostFromProfileMedia(barberUser, {
+      role: "barber",
+      sourceTable: "barber_portfolio",
+      sourceId: "portfolio-pending-1",
+      barberId: barberUser.barberId,
+      storagePath: "profiles/barbers/barber-blaze/gallery/pending.jpg",
+      imageUrl: "https://cdn.bvrb3r.test/pending.jpg"
+    }, { supabase: supabase.client });
+
+    expect(result.status).toBe("skipped");
+    expect(supabase.writes.culture_posts ?? []).toHaveLength(0);
+    expect(supabase.writes.culture_media ?? []).toHaveLength(0);
+  });
+
+  it("updates an existing auto-shared Culture post instead of duplicating it", async () => {
+    const existingPosts = [{
+      ...publishedPost,
+      id: "existing-auto-post",
+      author_profile_id: barberUser.id,
+      caption: "Old caption",
+      visibility: "public",
+      moderation_status: "approved",
+      publishing_status: "published",
+      metadata: {
+        source_surface: "profile_studio",
+        source_table: "barber_portfolio",
+        source_id: "portfolio-auto-existing"
+      }
+    }];
+    const existingMedia = [{
+      id: "existing-auto-media",
+      post_id: "existing-auto-post",
+      media_url: "https://cdn.bvrb3r.test/old.jpg",
+      thumbnail_url: "https://cdn.bvrb3r.test/old.jpg",
+      media_type: "image",
+      processing_status: "ready",
+      moderation_status: "approved",
+      metadata: {
+        source_surface: "profile_studio",
+        source_table: "barber_portfolio",
+        source_id: "portfolio-auto-existing"
+      }
+    }];
+    const supabase = createSupabaseStub({
+      barbers: [{
+        id: publishedPost.barber_id,
+        profile_id: barberUser.id,
+        reference_code: barberUser.barberId,
+        app_approval_status: "approved"
+      }],
+      culture_posts: existingPosts,
+      culture_media: existingMedia
+    });
+
+    const result = await autoCreateCulturePostFromProfileMedia(barberUser, {
+      role: "barber",
+      sourceTable: "barber_portfolio",
+      sourceId: "portfolio-auto-existing",
+      barberId: barberUser.barberId,
+      caption: "Updated caption",
+      storagePath: "profiles/barbers/barber-blaze/gallery/new.jpg",
+      imageUrl: "https://cdn.bvrb3r.test/new.jpg"
+    }, { supabase: supabase.client });
+
+    expect(result.status).toBe("updated");
+    expect(supabase.writes.culture_posts ?? []).toHaveLength(0);
+    expect(supabase.writes.culture_media ?? []).toHaveLength(0);
+    expect(existingPosts[0]).toMatchObject({
+      caption: "Updated caption",
+      publishing_status: "published",
+      moderation_status: "approved",
+      visibility: "public"
+    });
+    expect(existingMedia[0]).toMatchObject({
+      media_url: "https://cdn.bvrb3r.test/new.jpg",
+      thumbnail_url: "https://cdn.bvrb3r.test/new.jpg"
+    });
+  });
+
+  it("auto-publishes approved shop gallery media to Culture", async () => {
+    const supabase = createSupabaseStub({
+      shops: [{
+        id: "shop-ybor",
+        owner_profile_id: ownerUser.id,
+        app_approval_status: "approved"
+      }],
+      culture_posts: [],
+      culture_media: []
+    });
+
+    const result = await autoCreateCulturePostFromProfileMedia(ownerUser, {
+      role: "owner",
+      sourceTable: "shop_media_asset",
+      sourceId: "shop-auto-1",
+      shopId: "shop-ybor",
+      caption: "Shop wall.",
+      storagePath: "profiles/shops/shop-ybor/gallery/wall.jpg",
+      imageUrl: "https://cdn.bvrb3r.test/wall.jpg"
+    }, { supabase: supabase.client });
+
+    expect(result.status).toBe("created");
+    expect(result.post).toMatchObject({
+      author_profile_id: ownerUser.id,
+      author_role: "shop_owner_user",
+      shop_id: "shop-ybor",
+      post_type: "shop_update",
+      publishing_status: "published",
+      moderation_status: "approved",
+      visibility: "public"
+    });
+    expect(supabase.writes.culture_media[0]).toMatchObject({
+      media_url: "https://cdn.bvrb3r.test/wall.jpg",
+      metadata: {
+        source_surface: "profile_studio",
+        source_table: "shop_media_asset",
+        source_id: "shop-auto-1",
+        autoShared: true,
+        roleContext: "owner"
+      }
+    });
+  });
+
+  it("keeps client Profile Studio media out of auto-published Culture", async () => {
+    const supabase = createSupabaseStub({
+      culture_posts: [],
+      culture_media: []
+    });
+
+    const result = await autoCreateCulturePostFromProfileMedia(clientUser, {
+      role: "client",
+      sourceTable: "client_profile_post",
+      sourceId: "client-auto-1",
+      storagePath: "profiles/client/client-1/posts/image.jpg",
+      imageUrl: "https://cdn.bvrb3r.test/client.jpg"
+    }, { supabase: supabase.client });
+
+    expect(result).toMatchObject({
+      status: "skipped",
+      reason: "Client Culture posting unlocks later."
+    });
+    expect(supabase.writes.culture_posts ?? []).toHaveLength(0);
+    expect(supabase.writes.culture_media ?? []).toHaveLength(0);
   });
 
   it("rejects unsupported Culture image mime types before storage upload", async () => {

@@ -280,7 +280,7 @@ export function BarberProfileScreen({
         throw new Error(payload?.error ?? "Unable to share portfolio media to Culture.");
       }
 
-      setLocalFeedback({ tone: "info", message: "Culture draft created from this portfolio image." });
+      setLocalFeedback({ tone: "info", message: "Culture post settings opened for this portfolio image." });
       if (payload.composerHref) {
         window.location.assign(payload.composerHref);
       }

@@ -229,10 +229,10 @@ describe("ProfileStudioShell", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Share Culture post to Culture" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit Culture Post for Culture post" }));
 
     await waitFor(() => expect(onShareMediaToCulture).toHaveBeenCalledWith("post-1"));
-    expect(await screen.findByText("Culture draft created.")).toBeInTheDocument();
+    expect(await screen.findByText("Culture post settings opened.")).toBeInTheDocument();
   });
 
   it("renders the username editor as a top-layer portal with usable actions", async () => {
