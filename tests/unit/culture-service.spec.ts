@@ -453,6 +453,53 @@ describe("Culture service", () => {
     expect(result.media.url).toMatch(/^https:\/\/signed\.bvrb3r\.test\/culture\//);
   });
 
+  it("attaches valid image media to an owned shop draft through Culture storage", async () => {
+    const draftPost = {
+      ...publishedPost,
+      id: "own-shop-draft-media",
+      author_profile_id: ownerUser.id,
+      author_role: "shop_owner_user",
+      barber_id: null,
+      shop_id: "shop-ybor",
+      service_id: null,
+      post_type: "shop_update",
+      publishing_status: "draft",
+      moderation_status: "pending",
+      visibility: "private"
+    };
+    const supabase = createSupabaseStub({
+      shops: [{
+        id: "shop-ybor",
+        owner_profile_id: ownerUser.id,
+        app_approval_status: "approved"
+      }],
+      culture_posts: [draftPost],
+      culture_media: []
+    });
+
+    const result = await attachCulturePostImageMedia(ownerUser, {
+      role: "owner",
+      postId: draftPost.id,
+      fileName: "shop.png",
+      contentType: "image/png",
+      size: 4,
+      bytes: new Uint8Array([1, 2, 3, 4]).buffer
+    }, { supabase: supabase.client });
+
+    expect(supabase.storage.uploadMock).toHaveBeenCalledWith(
+      expect.stringMatching(/^culture\/66666666-6666-4666-8666-666666666666\/own-shop-draft-media\/.+\.png$/),
+      expect.any(ArrayBuffer),
+      { contentType: "image/png", upsert: false }
+    );
+    expect(supabase.writes.culture_media[0]).toMatchObject({
+      post_id: draftPost.id,
+      media_type: "image",
+      processing_status: "ready",
+      moderation_status: "pending"
+    });
+    expect(result.media.url).toMatch(/^https:\/\/signed\.bvrb3r\.test\/culture\//);
+  });
+
   it("rejects unsupported Culture image mime types before storage upload", async () => {
     const draftPost = {
       ...publishedPost,
@@ -535,6 +582,37 @@ describe("Culture service", () => {
       size: 4,
       bytes: new Uint8Array([1, 2, 3, 4]).buffer
     }, { supabase: supabase.client })).rejects.toThrow("Culture post was not found for this account.");
+    expect(supabase.storage.uploadMock).not.toHaveBeenCalled();
+  });
+
+  it("does not allow owners to attach media to an unowned shop post", async () => {
+    const supabase = createSupabaseStub({
+      shops: [{
+        id: "shop-ybor",
+        owner_profile_id: ownerUser.id,
+        app_approval_status: "approved"
+      }],
+      culture_posts: [{
+        ...publishedPost,
+        id: "unowned-shop-draft",
+        author_profile_id: ownerUser.id,
+        author_role: "shop_owner_user",
+        barber_id: null,
+        shop_id: "shop-unowned",
+        publishing_status: "draft",
+        visibility: "private"
+      }],
+      culture_media: []
+    });
+
+    await expect(attachCulturePostImageMedia(ownerUser, {
+      role: "owner",
+      postId: "unowned-shop-draft",
+      fileName: "shop.webp",
+      contentType: "image/webp",
+      size: 4,
+      bytes: new Uint8Array([1, 2, 3, 4]).buffer
+    }, { supabase: supabase.client })).rejects.toThrow("own shop Culture posts");
     expect(supabase.storage.uploadMock).not.toHaveBeenCalled();
   });
 

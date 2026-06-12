@@ -209,6 +209,7 @@ type LookupMaps = {
   } | null;
 };
 
+// Culture media storage is server-only; browsers upload through the API route after role checks.
 const cultureMediaBucket = process.env.CULTURE_MEDIA_BUCKET ?? "culture-media";
 const maxCultureImageBytes = 10 * 1024 * 1024;
 const allowedCultureImageTypes = new Map([

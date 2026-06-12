@@ -66,11 +66,13 @@ describe("Culture Feed foundation migration", () => {
     expect(migration).toContain("primary_onboarding_role::text = 'platform_admin'");
   });
 
-  it("adds a private Culture media storage bucket scoped to author paths", () => {
+  it("adds a private Culture media storage bucket without direct client storage policies", () => {
     expect(mediaStorageMigration).toContain("values ('culture-media', 'culture-media', false)");
-    expect(mediaStorageMigration).toContain("culture media storage author read");
-    expect(mediaStorageMigration).toContain("culture media storage author insert");
-    expect(mediaStorageMigration).toContain("(storage.foldername(name))[2] = auth.uid()::text");
+    expect(mediaStorageMigration).toContain("server-side Supabase service client");
+    expect(mediaStorageMigration).toContain("set public = false");
+    expect(mediaStorageMigration).toContain("cannot own or alter the storage.objects relation");
+    expect(mediaStorageMigration).not.toContain("create policy");
+    expect(mediaStorageMigration).not.toContain("on storage.objects");
     expect(mediaStorageMigration).not.toMatch(/culture-media'[\s\S]{0,120}true/);
   });
 });

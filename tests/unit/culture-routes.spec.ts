@@ -311,6 +311,20 @@ describe("Culture API routes", () => {
     expect(attachCulturePostImageMediaMock).not.toHaveBeenCalled();
   });
 
+  it("rejects client-role Culture media upload requests", async () => {
+    const formData = createFormDataLike({
+      role: "client",
+      file: createUploadFile("work.jpg", "image/jpeg", 5)
+    });
+
+    const response = await attachCultureMedia(createFormDataRequest(formData), {
+      params: Promise.resolve({ postId: "post-draft-1" })
+    });
+
+    expect(response.status).toBe(400);
+    expect(attachCulturePostImageMediaMock).not.toHaveBeenCalled();
+  });
+
   it("rejects malformed Culture media payloads before calling the service", async () => {
     const formData = createFormDataLike({ role: "barber" });
 
