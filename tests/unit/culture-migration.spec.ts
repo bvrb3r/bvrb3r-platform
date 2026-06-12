@@ -6,6 +6,10 @@ const migration = readFileSync(
   join(process.cwd(), "supabase/migrations/20260612120000_culture_feed_foundation.sql"),
   "utf8"
 );
+const mediaStorageMigration = readFileSync(
+  join(process.cwd(), "supabase/migrations/20260612153000_culture_media_private_storage.sql"),
+  "utf8"
+);
 
 const cultureTables = [
   "culture_posts",
@@ -60,5 +64,13 @@ describe("Culture Feed foundation migration", () => {
     expect(migration).toContain("culture reports reporter admin read");
     expect(migration).toContain("reporter_profile_id = auth.uid()");
     expect(migration).toContain("primary_onboarding_role::text = 'platform_admin'");
+  });
+
+  it("adds a private Culture media storage bucket scoped to author paths", () => {
+    expect(mediaStorageMigration).toContain("values ('culture-media', 'culture-media', false)");
+    expect(mediaStorageMigration).toContain("culture media storage author read");
+    expect(mediaStorageMigration).toContain("culture media storage author insert");
+    expect(mediaStorageMigration).toContain("(storage.foldername(name))[2] = auth.uid()::text");
+    expect(mediaStorageMigration).not.toMatch(/culture-media'[\s\S]{0,120}true/);
   });
 });

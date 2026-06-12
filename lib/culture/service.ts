@@ -72,6 +72,15 @@ export type CultureComposerInput = {
   cta?: string | null;
 };
 
+export type CultureMediaUploadInput = {
+  role: CultureComposerRole;
+  postId: string;
+  fileName: string;
+  contentType: string;
+  size: number;
+  bytes: ArrayBuffer;
+};
+
 export type CultureMyPostSummary = {
   id: string;
   caption: string;
@@ -122,6 +131,7 @@ type CultureMediaRow = {
   sort_order?: number | null;
   processing_status?: string | null;
   moderation_status?: string | null;
+  metadata?: Record<string, unknown> | null;
 };
 
 type PublicProfileRow = {
@@ -170,6 +180,12 @@ type SupabaseLike = {
   storage?: {
     from: (bucket: string) => {
       getPublicUrl: (path: string) => { data: { publicUrl: string } };
+      createSignedUrl?: (path: string, expiresIn: number) => Promise<{ data: { signedUrl?: string } | null; error: Error | { message?: string } | null }>;
+      upload?: (
+        path: string,
+        body: ArrayBuffer | Uint8Array | Blob,
+        options?: { contentType?: string; upsert?: boolean }
+      ) => Promise<{ data: unknown; error: Error | { message?: string } | null }>;
     };
   };
 };
@@ -187,10 +203,19 @@ type LookupMaps = {
     storage: {
       from: (bucket: string) => {
         getPublicUrl: (path: string) => { data: { publicUrl: string } };
+        createSignedUrl?: (path: string, expiresIn: number) => Promise<{ data: { signedUrl?: string } | null; error: Error | { message?: string } | null }>;
       };
     };
   } | null;
 };
+
+const cultureMediaBucket = process.env.CULTURE_MEDIA_BUCKET ?? "culture-media";
+const maxCultureImageBytes = 10 * 1024 * 1024;
+const allowedCultureImageTypes = new Map([
+  ["image/jpeg", "jpg"],
+  ["image/png", "png"],
+  ["image/webp", "webp"]
+]);
 
 const allowedFeedEvents = new Set([
   "feed_loaded",
@@ -315,6 +340,10 @@ function safeNullableText(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function isAbsoluteMediaUrl(value: string) {
+  return /^https?:\/\//i.test(value) || value.startsWith("/mock-storage/");
+}
+
 function normalizeCaption(value: unknown) {
   return typeof value === "string" ? value.trim().slice(0, 2200) : "";
 }
@@ -344,6 +373,24 @@ function cleanTags(tags?: string[]) {
     .map((tag) => tag.trim().toLowerCase())
     .filter((tag) => /^[a-z0-9 _-]{2,40}$/.test(tag))
     .slice(0, 8))];
+}
+
+function validateCultureImageUpload(input: Pick<CultureMediaUploadInput, "contentType" | "size">) {
+  const normalizedType = input.contentType.trim().toLowerCase();
+  const extension = allowedCultureImageTypes.get(normalizedType);
+  if (!extension) {
+    throw new CultureComposerError("Only JPEG, PNG, and WebP Culture images are supported.", 400);
+  }
+
+  if (!Number.isFinite(input.size) || input.size <= 0) {
+    throw new CultureComposerError("Choose a real image to upload.", 400);
+  }
+
+  if (input.size > maxCultureImageBytes) {
+    throw new CultureComposerError("Culture image uploads must be 10MB or smaller.", 400);
+  }
+
+  return { contentType: normalizedType, extension };
 }
 
 function isApprovalBlocked(status?: string | null) {
@@ -429,6 +476,44 @@ function groupMedia(rows: CultureMediaRow[] | null | undefined) {
   return grouped;
 }
 
+async function signCultureMediaPath(
+  supabase: SupabaseLike,
+  path: string | null | undefined,
+  metadata?: Record<string, unknown> | null
+) {
+  const cleanPath = safeNullableText(path);
+  if (!cleanPath) {
+    return null;
+  }
+
+  if (isAbsoluteMediaUrl(cleanPath)) {
+    return cleanPath;
+  }
+
+  const bucket = typeof metadata?.storageBucket === "string" && metadata.storageBucket.trim()
+    ? metadata.storageBucket.trim()
+    : cultureMediaBucket;
+  const signer = supabase.storage?.from(bucket).createSignedUrl;
+  if (!signer) {
+    return null;
+  }
+
+  const result = await signer(cleanPath, 60 * 60);
+  if (result.error) {
+    return null;
+  }
+
+  return result.data?.signedUrl ?? null;
+}
+
+async function prepareCultureMediaRows(supabase: SupabaseLike, rows: CultureMediaRow[]) {
+  return Promise.all(rows.map(async (row) => ({
+    ...row,
+    media_url: await signCultureMediaPath(supabase, row.media_url, row.metadata),
+    thumbnail_url: await signCultureMediaPath(supabase, row.thumbnail_url, row.metadata)
+  })));
+}
+
 async function fetchRows<T>(query: QueryLike, fallback: string) {
   const result = await query as QueryResult<T[]>;
   throwIfError(result as QueryResult<unknown>, fallback);
@@ -441,12 +526,12 @@ async function loadFeedLookups(supabase: SupabaseLike, posts: CulturePostRow[]):
   const shopIds = [...new Set(posts.map((post) => post.shop_id).filter(Boolean))] as string[];
   const serviceIds = [...new Set(posts.map((post) => post.service_id).filter(Boolean))] as string[];
 
-  const [mediaRows, profileRows, shopRows, serviceRows] = await Promise.all([
+  const [rawMediaRows, profileRows, shopRows, serviceRows] = await Promise.all([
     postIds.length
       ? fetchRows<CultureMediaRow>(
         supabase
           .from("culture_media")
-          .select("id, post_id, media_url, thumbnail_url, media_type, width, height, duration_seconds, sort_order, processing_status, moderation_status")
+          .select("id, post_id, media_url, thumbnail_url, media_type, width, height, duration_seconds, sort_order, processing_status, moderation_status, metadata")
           .in("post_id", postIds)
           .order("sort_order", { ascending: true }),
         "Unable to load Culture media."
@@ -480,6 +565,7 @@ async function loadFeedLookups(supabase: SupabaseLike, posts: CulturePostRow[]):
       )
       : Promise.resolve([])
   ]);
+  const mediaRows = await prepareCultureMediaRows(supabase, rawMediaRows);
 
   return {
     mediaByPost: groupMedia(mediaRows),
@@ -774,6 +860,93 @@ export async function submitCulturePostForReview(
     post: result.data,
     summary: summarizeOwnPost(result.data),
     message: "Post submitted for review."
+  };
+}
+
+export async function attachCulturePostImageMedia(
+  user: UserAccount,
+  input: CultureMediaUploadInput,
+  deps?: CultureServiceDeps
+) {
+  const access = await resolveCultureComposerAccess(user, input.role, deps);
+  assertCanCompose(access);
+
+  const supabase = maybeSupabase(deps);
+  if (!supabase) {
+    throw new CultureComposerError("Culture media uploads require the canonical Supabase Culture writer.", 503);
+  }
+
+  const existing = await readOwnCulturePost(supabase, user, input.postId);
+  if (!existing) {
+    throw new CultureComposerError("Culture post was not found for this account.", 404);
+  }
+
+  if (existing.deleted_at || existing.publishing_status === "archived" || existing.publishing_status === "deleted") {
+    throw new CultureComposerError("Archived or deleted Culture posts cannot accept media.", 400);
+  }
+
+  if (input.role === "barber" && existing.barber_id !== access.barberId) {
+    throw new CultureComposerError("Barbers can only attach media to their own Culture posts.", 403);
+  }
+
+  if (input.role === "owner" && existing.shop_id !== access.shopId) {
+    throw new CultureComposerError("Shop owners can only attach media to their own shop Culture posts.", 403);
+  }
+
+  const { contentType, extension } = validateCultureImageUpload(input);
+  const storage = supabase.storage?.from(cultureMediaBucket);
+  if (!storage?.upload) {
+    throw new CultureComposerError("Culture media storage is not configured.", 503);
+  }
+
+  const mediaId = crypto.randomUUID();
+  const storagePath = `culture/${user.id}/${existing.id}/${mediaId}.${extension}`;
+  const upload = await storage.upload(storagePath, input.bytes, { contentType, upsert: false });
+  if (upload.error) {
+    throw new CultureComposerError(upload.error instanceof Error ? upload.error.message : upload.error.message ?? "Unable to upload Culture media.", 500);
+  }
+
+  const metadata = {
+    storageBucket: cultureMediaBucket,
+    storagePath,
+    originalFileName: safeText(input.fileName, "culture-image"),
+    mimeType: contentType,
+    fileSizeBytes: input.size
+  };
+  const insert = await supabase
+    .from("culture_media")
+    .insert({
+      post_id: existing.id,
+      media_url: storagePath,
+      thumbnail_url: storagePath,
+      media_type: "image",
+      sort_order: 0,
+      processing_status: "ready",
+      moderation_status: "pending",
+      metadata
+    })
+    .select("id, post_id, media_url, thumbnail_url, media_type, width, height, duration_seconds, sort_order, processing_status, moderation_status, metadata")
+    .single() as QueryResult<CultureMediaRow>;
+
+  throwIfError(insert as QueryResult<unknown>, "Unable to attach Culture media.");
+  if (!insert.data) {
+    throw new CultureComposerError("Culture media was not returned after upload.", 500);
+  }
+
+  const mediaUrl = await signCultureMediaPath(supabase, insert.data.media_url, insert.data.metadata);
+  const thumbnailUrl = await signCultureMediaPath(supabase, insert.data.thumbnail_url, insert.data.metadata);
+
+  return {
+    row: insert.data,
+    media: {
+      id: insert.data.id,
+      url: mediaUrl,
+      thumbnailUrl,
+      mediaType: "image" as const,
+      width: insert.data.width ?? null,
+      height: insert.data.height ?? null,
+      durationSeconds: null
+    }
   };
 }
 

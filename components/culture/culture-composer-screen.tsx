@@ -9,10 +9,11 @@ import { PageHeader, StatusBadge } from "@/design/components";
 import type {
   CultureComposerPostTypeOption,
   CultureComposerRole,
+  CultureMediaItem,
   CultureMyPosts
 } from "@/lib/culture/service";
 
-type ComposerState = "idle" | "saving" | "submitting" | "success" | "error";
+type ComposerState = "idle" | "saving" | "uploading" | "submitting" | "success" | "error";
 
 type CultureComposerScreenProps = {
   role: CultureComposerRole;
@@ -38,7 +39,7 @@ function roleCopy(role: CultureComposerRole) {
       backLabel: "Cancel",
       postTypeLabel: "Post type",
       mediaTitle: "Media slot",
-      mediaCopy: "Image upload is coming next. This v1 composer saves text drafts against the canonical Culture post table.",
+      mediaCopy: "Attach one real image to your Culture draft. Video remains locked for a later pass.",
       selectorTitle: "Optional service selector",
       selectorCopy: "Service attachment will activate after Culture-to-service selection is wired.",
       ctaTitle: "Book button",
@@ -55,7 +56,7 @@ function roleCopy(role: CultureComposerRole) {
     backLabel: "Cancel",
     postTypeLabel: "Post type",
     mediaTitle: "Media slot",
-    mediaCopy: "Image upload is coming next. This v1 composer saves text drafts against the canonical Culture post table.",
+    mediaCopy: "Attach one real shop image to your Culture draft. Video remains locked for a later pass.",
     selectorTitle: "CTA selector",
     selectorCopy: "View Shop is planned as the first supported CTA. Unsupported paid promotion controls are not active here.",
     ctaTitle: "Promotion status",
@@ -112,11 +113,13 @@ export function CultureComposerScreen({
   const [caption, setCaption] = useState("");
   const [tags, setTags] = useState("");
   const [draftId, setDraftId] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [attachedMedia, setAttachedMedia] = useState<CultureMediaItem | null>(null);
   const [posts, setPosts] = useState<CultureMyPosts>(initialPosts ?? emptyPosts);
   const [state, setState] = useState<ComposerState>("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const isBusy = state === "saving" || state === "submitting";
+  const isBusy = state === "saving" || state === "uploading" || state === "submitting";
   const canSubmit = Boolean(caption.trim()) && !blockedReason && !isBusy;
   const tagValues = useMemo(
     () => tags.split(",").map((tag) => tag.trim()).filter(Boolean),
@@ -159,6 +162,46 @@ export function CultureComposerScreen({
     setMessage("Draft saved.");
     await reloadMyPosts();
     return payload.postId;
+  }
+
+  async function uploadSelectedMedia() {
+    if (!selectedFile) {
+      setState("error");
+      setError("Choose an image to upload.");
+      return;
+    }
+
+    setState("uploading");
+    setError(null);
+    setMessage(null);
+
+    const nextDraftId = draftId ?? await saveDraft();
+    if (!nextDraftId) {
+      return;
+    }
+
+    setState("uploading");
+    const formData = new FormData();
+    formData.set("role", role);
+    formData.set("file", selectedFile);
+
+    const response = await fetch(`/api/culture/posts/${encodeURIComponent(nextDraftId)}/media`, {
+      method: "POST",
+      body: formData
+    });
+    const payload = await response.json().catch(() => null) as { ok?: boolean; media?: CultureMediaItem; error?: string } | null;
+
+    if (!response.ok || !payload?.ok || !payload.media) {
+      setState("error");
+      setError(payload?.error ?? "Unable to attach Culture media.");
+      return;
+    }
+
+    setAttachedMedia(payload.media);
+    setSelectedFile(null);
+    setState("success");
+    setMessage("Image attached to draft.");
+    await reloadMyPosts();
   }
 
   async function submitForReview() {
@@ -268,6 +311,44 @@ export function CultureComposerScreen({
               <ImagePlus className="h-5 w-5 text-[#d7ffab]" />
               <p className="mt-3 text-sm font-semibold text-white">{copy.mediaTitle}</p>
               <p className="mt-2 text-sm leading-6 text-white/54">{copy.mediaCopy}</p>
+              <div className="mt-4 space-y-3">
+                <label className="block">
+                  <span className="sr-only">Culture image upload input</span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    disabled={Boolean(blockedReason) || isBusy}
+                    onChange={(event) => {
+                      setSelectedFile(event.target.files?.[0] ?? null);
+                      setError(null);
+                      setMessage(null);
+                    }}
+                    className="block w-full rounded-[14px] border border-white/10 bg-black/40 px-3 py-3 text-sm text-white/72 file:mr-4 file:rounded-full file:border-0 file:bg-[#d7ffab] file:px-4 file:py-2 file:text-xs file:font-black file:uppercase file:tracking-[0.12em] file:text-[#050505] disabled:cursor-not-allowed disabled:opacity-50"
+                  />
+                </label>
+                {selectedFile ? (
+                  <p className="text-xs text-white/46">
+                    Selected: {selectedFile.name}
+                  </p>
+                ) : null}
+                {attachedMedia?.url || attachedMedia?.thumbnailUrl ? (
+                  <div className="overflow-hidden rounded-[18px] border border-[#d7ffab]/16 bg-black/30">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={attachedMedia.url ?? attachedMedia.thumbnailUrl ?? ""} alt="" className="aspect-[4/3] w-full object-cover" />
+                  </div>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={uploadSelectedMedia}
+                  disabled={!selectedFile || Boolean(blockedReason) || isBusy}
+                  className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#d7ffab]/24 bg-[#d7ffab]/10 px-4 text-xs font-black uppercase tracking-[0.14em] text-[#d7ffab] disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  {state === "uploading" ? "Uploading..." : "Attach Image"}
+                </button>
+                <p className="text-xs leading-5 text-white/38">
+                  JPEG, PNG, or WebP. Max 10MB. Draft media stays private until the post and media are approved.
+                </p>
+              </div>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
@@ -326,7 +407,12 @@ export function CultureComposerScreen({
             <Sparkles className="h-5 w-5 text-[#d7ffab]" />
             <p className="mt-4 text-lg font-semibold text-white">Preview card</p>
             <div className="mt-4 overflow-hidden rounded-[22px] border border-white/10 bg-black/30">
-              <div className="aspect-[4/3] bg-[linear-gradient(135deg,rgba(124,255,0,0.16),rgba(255,255,255,0.06)_42%,rgba(0,0,0,0.78))]" />
+              <div className="aspect-[4/3] bg-[linear-gradient(135deg,rgba(124,255,0,0.16),rgba(255,255,255,0.06)_42%,rgba(0,0,0,0.78))]">
+                {attachedMedia?.url || attachedMedia?.thumbnailUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={attachedMedia.url ?? attachedMedia.thumbnailUrl ?? ""} alt="" className="h-full w-full object-cover" />
+                ) : null}
+              </div>
               <div className="p-4">
                 <p className="text-xs uppercase tracking-[0.16em] text-white/42">
                   {role === "barber" ? "Barber" : "Shop Owner"} - draft

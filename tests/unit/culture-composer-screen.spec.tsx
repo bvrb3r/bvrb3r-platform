@@ -115,6 +115,57 @@ describe("CultureComposerScreen", () => {
     expect(await screen.findByText("Post submitted for review.")).toBeInTheDocument();
   });
 
+  it("uploads selected image media to a saved draft", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true, postId: "post-draft-1", post: { id: "post-draft-1" } })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true, posts: emptyPosts })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          ok: true,
+          media: {
+            id: "media-1",
+            url: "https://signed.bvrb3r.test/culture/work.jpg",
+            thumbnailUrl: "https://signed.bvrb3r.test/culture/work.jpg",
+            mediaType: "image",
+            width: null,
+            height: null,
+            durationSeconds: null
+          }
+        })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true, posts: emptyPosts })
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <CultureComposerScreen
+        role="barber"
+        postTypeOptions={[{ label: "Fresh Cut", value: "barber_cut" }]}
+        initialPosts={emptyPosts}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText("Culture image upload input"), {
+      target: { files: [new File(["image"], "work.jpg", { type: "image/jpeg" })] }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Attach Image" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/culture/posts/post-draft-1/media", expect.objectContaining({
+      method: "POST",
+      body: expect.any(FormData)
+    })));
+    expect(await screen.findByText("Image attached to draft.")).toBeInTheDocument();
+  });
+
   it("renders owner copy without paid promotion controls", () => {
     render(
       <CultureComposerScreen

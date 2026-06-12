@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   getCurrentUserFromServerMock,
   createCulturePostDraftMock,
+  attachCulturePostImageMediaMock,
   listCultureFeedMock,
   listMyCulturePostsMock,
   recordCultureFeedEventMock,
@@ -12,6 +13,7 @@ const {
 } = vi.hoisted(() => ({
   getCurrentUserFromServerMock: vi.fn(),
   createCulturePostDraftMock: vi.fn(),
+  attachCulturePostImageMediaMock: vi.fn(),
   listCultureFeedMock: vi.fn(),
   listMyCulturePostsMock: vi.fn(),
   recordCultureFeedEventMock: vi.fn(),
@@ -28,6 +30,7 @@ vi.mock("@/lib/culture/service", async () => {
 
   return {
     ...actual,
+    attachCulturePostImageMedia: attachCulturePostImageMediaMock,
     createCulturePostDraft: createCulturePostDraftMock,
     listCultureFeed: listCultureFeedMock,
     listMyCulturePosts: listMyCulturePostsMock,
@@ -41,11 +44,38 @@ import { GET as getCultureFeed } from "@/app/api/culture/feed/route";
 import { POST as postCultureEvent } from "@/app/api/culture/events/route";
 import { GET as getMyCulturePosts } from "@/app/api/culture/my-posts/route";
 import { POST as createCulturePost } from "@/app/api/culture/posts/route";
+import { POST as attachCultureMedia } from "@/app/api/culture/posts/[postId]/media/route";
 import { POST as submitCulturePost } from "@/app/api/culture/posts/[postId]/submit/route";
+
+type FormDataLike = {
+  get(name: string): FormDataEntryValue | null;
+};
+
+function createFormDataRequest(formData: FormDataLike): Request {
+  return {
+    formData: async () => formData
+  } as Request;
+}
+
+function createFormDataLike(entries: Record<string, FormDataEntryValue>): FormDataLike {
+  return {
+    get: (name: string) => entries[name] ?? null
+  };
+}
+
+function createUploadFile(name: string, type: string, size: number): FormDataEntryValue {
+  return {
+    name,
+    type,
+    size,
+    arrayBuffer: async () => new ArrayBuffer(size)
+  } as unknown as FormDataEntryValue;
+}
 
 describe("Culture API routes", () => {
   beforeEach(() => {
     getCurrentUserFromServerMock.mockReset();
+    attachCulturePostImageMediaMock.mockReset();
     createCulturePostDraftMock.mockReset();
     listCultureFeedMock.mockReset();
     listMyCulturePostsMock.mockReset();
@@ -56,6 +86,17 @@ describe("Culture API routes", () => {
     createCulturePostDraftMock.mockResolvedValue({
       post: { id: "post-draft-1" },
       summary: { id: "post-draft-1", caption: "Draft", postType: "barber_cut" }
+    });
+    attachCulturePostImageMediaMock.mockResolvedValue({
+      media: {
+        id: "media-1",
+        url: "https://signed.bvrb3r.test/media.jpg",
+        thumbnailUrl: "https://signed.bvrb3r.test/media.jpg",
+        mediaType: "image",
+        width: null,
+        height: null,
+        durationSeconds: null
+      }
     });
     listCultureFeedMock.mockResolvedValue({ items: [], cursor: null, hasMore: false });
     listMyCulturePostsMock.mockResolvedValue({ drafts: [], pendingReview: [], published: [], archived: [] });
@@ -215,5 +256,69 @@ describe("Culture API routes", () => {
     expect(response.status).toBe(200);
     expect(body).toMatchObject({ ok: true, posts: { drafts: [] } });
     expect(listMyCulturePostsMock).toHaveBeenCalledWith(expect.any(Object), "owner");
+  });
+
+  it("attaches valid Culture image media through the service", async () => {
+    getCurrentUserFromServerMock.mockResolvedValue({
+      authenticated: true,
+      user: {
+        id: "22222222-2222-4222-8222-222222222222",
+        role: "barber_user",
+        email: "blaze@bvrb3r.demo",
+        password: "",
+        name: "Blaze",
+        title: "Barber",
+        locationIds: [],
+        barberId: "barber-blaze"
+      }
+    });
+    const formData = createFormDataLike({
+      role: "barber",
+      file: createUploadFile("work.jpg", "image/jpeg", 5)
+    });
+
+    const response = await attachCultureMedia(createFormDataRequest(formData), {
+      params: Promise.resolve({ postId: "post-draft-1" })
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ ok: true, media: { id: "media-1", mediaType: "image" } });
+    expect(attachCulturePostImageMediaMock).toHaveBeenCalledWith(expect.objectContaining({ role: "barber_user" }), expect.objectContaining({
+      role: "barber",
+      postId: "post-draft-1",
+      fileName: "work.jpg",
+      contentType: "image/jpeg",
+      size: 5
+    }));
+  });
+
+  it("rejects unauthenticated Culture media upload", async () => {
+    getCurrentUserFromServerMock.mockResolvedValue({
+      authenticated: false,
+      user: { id: "guest-user" }
+    });
+    const formData = createFormDataLike({
+      role: "barber",
+      file: createUploadFile("work.jpg", "image/jpeg", 5)
+    });
+
+    const response = await attachCultureMedia(createFormDataRequest(formData), {
+      params: Promise.resolve({ postId: "post-draft-1" })
+    });
+
+    expect(response.status).toBe(401);
+    expect(attachCulturePostImageMediaMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed Culture media payloads before calling the service", async () => {
+    const formData = createFormDataLike({ role: "barber" });
+
+    const response = await attachCultureMedia(createFormDataRequest(formData), {
+      params: Promise.resolve({ postId: "post-draft-1" })
+    });
+
+    expect(response.status).toBe(400);
+    expect(attachCulturePostImageMediaMock).not.toHaveBeenCalled();
   });
 });

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __resetDemoCultureStateForTests,
   createCulturePostDraft,
+  attachCulturePostImageMedia,
   getCulturePostSafeDisplay,
   listCultureFeed,
   listMyCulturePosts,
@@ -129,10 +130,28 @@ function createQuery(rows: Row[], tableWrites: Row[]) {
 
 function createSupabaseStub(tables: Record<string, Row[]>) {
   const writes: Record<string, Row[]> = {};
+  const uploadMock = vi.fn((_path: string) => Promise.resolve({ data: { path: _path }, error: null }));
+  const createSignedUrlMock = vi.fn((path: string) => Promise.resolve({
+    data: { signedUrl: `https://signed.bvrb3r.test/${path}` },
+    error: null
+  }));
+  const getPublicUrlMock = vi.fn((path: string) => ({ data: { publicUrl: `https://public.bvrb3r.test/${path}` } }));
 
   return {
     writes,
+    storage: {
+      uploadMock,
+      createSignedUrlMock,
+      getPublicUrlMock
+    },
     client: {
+      storage: {
+        from: vi.fn(() => ({
+          upload: uploadMock,
+          createSignedUrl: createSignedUrlMock,
+          getPublicUrl: getPublicUrlMock
+        }))
+      },
       from: vi.fn((table: string) => {
         writes[table] ??= [];
         return createQuery(tables[table] ?? [], writes[table]);
@@ -295,6 +314,32 @@ describe("Culture service", () => {
     expect(JSON.stringify(item)).not.toMatch(/email|phone|stripe|tax/i);
   });
 
+  it("signs approved private Culture media for safe feed display", async () => {
+    const supabase = createSupabaseStub({
+      culture_posts: [publishedPost],
+      culture_media: [{
+        id: "media-private-1",
+        post_id: publishedPost.id,
+        media_url: "culture/22222222-2222-4222-8222-222222222222/post/media.jpg",
+        thumbnail_url: "culture/22222222-2222-4222-8222-222222222222/post/media.jpg",
+        media_type: "image",
+        processing_status: "ready",
+        moderation_status: "approved",
+        sort_order: 0,
+        metadata: { storageBucket: "culture-media" }
+      }],
+      profiles: [{ id: publishedPost.author_profile_id, full_name: "Blaze King", public_username: "blaze" }],
+      shops: [],
+      services: []
+    });
+
+    const feed = await listCultureFeed({ role: "client", limit: 10 }, { supabase: supabase.client });
+
+    expect(feed.items[0]?.media?.url).toBe("https://signed.bvrb3r.test/culture/22222222-2222-4222-8222-222222222222/post/media.jpg");
+    expect(JSON.stringify(feed.items[0])).not.toContain("\"media_url\"");
+    expect(supabase.storage.createSignedUrlMock).toHaveBeenCalledWith("culture/22222222-2222-4222-8222-222222222222/post/media.jpg", 3600);
+  });
+
   it("loads one safe display post by id", async () => {
     const supabase = createSupabaseStub({
       culture_posts: [publishedPost],
@@ -362,6 +407,159 @@ describe("Culture service", () => {
       moderation_status: "pending"
     });
     expect(supabase.writes.culture_post_tags).toHaveLength(2);
+  });
+
+  it("attaches valid image media to an owned barber draft through Culture storage", async () => {
+    const draftPost = {
+      ...publishedPost,
+      id: "own-draft-media",
+      author_profile_id: barberUser.id,
+      barber_id: publishedPost.barber_id,
+      publishing_status: "draft",
+      moderation_status: "pending",
+      visibility: "private"
+    };
+    const supabase = createSupabaseStub({
+      barbers: [{
+        id: publishedPost.barber_id,
+        profile_id: barberUser.id,
+        reference_code: barberUser.barberId,
+        app_approval_status: "approved"
+      }],
+      culture_posts: [draftPost],
+      culture_media: []
+    });
+
+    const result = await attachCulturePostImageMedia(barberUser, {
+      role: "barber",
+      postId: draftPost.id,
+      fileName: "work.jpg",
+      contentType: "image/jpeg",
+      size: 4,
+      bytes: new Uint8Array([1, 2, 3, 4]).buffer
+    }, { supabase: supabase.client });
+
+    expect(supabase.storage.uploadMock).toHaveBeenCalledWith(
+      expect.stringMatching(/^culture\/22222222-2222-4222-8222-222222222222\/own-draft-media\/.+\.jpg$/),
+      expect.any(ArrayBuffer),
+      { contentType: "image/jpeg", upsert: false }
+    );
+    expect(supabase.writes.culture_media[0]).toMatchObject({
+      post_id: draftPost.id,
+      media_type: "image",
+      processing_status: "ready",
+      moderation_status: "pending"
+    });
+    expect(result.media.url).toMatch(/^https:\/\/signed\.bvrb3r\.test\/culture\//);
+  });
+
+  it("rejects unsupported Culture image mime types before storage upload", async () => {
+    const draftPost = {
+      ...publishedPost,
+      id: "own-draft-invalid-media",
+      author_profile_id: barberUser.id,
+      publishing_status: "draft",
+      moderation_status: "pending",
+      visibility: "private"
+    };
+    const supabase = createSupabaseStub({
+      barbers: [{
+        id: publishedPost.barber_id,
+        profile_id: barberUser.id,
+        reference_code: barberUser.barberId,
+        app_approval_status: "approved"
+      }],
+      culture_posts: [draftPost],
+      culture_media: []
+    });
+
+    await expect(attachCulturePostImageMedia(barberUser, {
+      role: "barber",
+      postId: draftPost.id,
+      fileName: "clip.gif",
+      contentType: "image/gif",
+      size: 4,
+      bytes: new Uint8Array([1, 2, 3, 4]).buffer
+    }, { supabase: supabase.client })).rejects.toThrow("Only JPEG, PNG, and WebP Culture images are supported.");
+    expect(supabase.storage.uploadMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects oversized Culture images before storage upload", async () => {
+    const draftPost = {
+      ...publishedPost,
+      id: "own-draft-large-media",
+      author_profile_id: barberUser.id,
+      publishing_status: "draft",
+      moderation_status: "pending",
+      visibility: "private"
+    };
+    const supabase = createSupabaseStub({
+      barbers: [{
+        id: publishedPost.barber_id,
+        profile_id: barberUser.id,
+        reference_code: barberUser.barberId,
+        app_approval_status: "approved"
+      }],
+      culture_posts: [draftPost],
+      culture_media: []
+    });
+
+    await expect(attachCulturePostImageMedia(barberUser, {
+      role: "barber",
+      postId: draftPost.id,
+      fileName: "large.jpg",
+      contentType: "image/jpeg",
+      size: 10 * 1024 * 1024 + 1,
+      bytes: new Uint8Array([1, 2, 3, 4]).buffer
+    }, { supabase: supabase.client })).rejects.toThrow("Culture image uploads must be 10MB or smaller.");
+    expect(supabase.storage.uploadMock).not.toHaveBeenCalled();
+  });
+
+  it("does not allow media attachment to another author's Culture post", async () => {
+    const supabase = createSupabaseStub({
+      barbers: [{
+        id: publishedPost.barber_id,
+        profile_id: barberUser.id,
+        reference_code: barberUser.barberId,
+        app_approval_status: "approved"
+      }],
+      culture_posts: [{ ...publishedPost, id: "someone-else-draft", author_profile_id: "another-profile", publishing_status: "draft", visibility: "private" }],
+      culture_media: []
+    });
+
+    await expect(attachCulturePostImageMedia(barberUser, {
+      role: "barber",
+      postId: "someone-else-draft",
+      fileName: "work.jpg",
+      contentType: "image/jpeg",
+      size: 4,
+      bytes: new Uint8Array([1, 2, 3, 4]).buffer
+    }, { supabase: supabase.client })).rejects.toThrow("Culture post was not found for this account.");
+    expect(supabase.storage.uploadMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps draft media out of the public Culture feed", async () => {
+    const supabase = createSupabaseStub({
+      culture_posts: [{ ...publishedPost, id: "draft-with-media", publishing_status: "draft", moderation_status: "pending", visibility: "private" }],
+      culture_media: [{
+        id: "media-draft",
+        post_id: "draft-with-media",
+        media_url: "culture/user/post/media.jpg",
+        thumbnail_url: "culture/user/post/media.jpg",
+        media_type: "image",
+        processing_status: "ready",
+        moderation_status: "approved",
+        sort_order: 0
+      }],
+      profiles: [],
+      shops: [],
+      services: []
+    });
+
+    const feed = await listCultureFeed({ role: "client", limit: 10 }, { supabase: supabase.client });
+
+    expect(feed.items).toEqual([]);
+    expect(supabase.storage.createSignedUrlMock).not.toHaveBeenCalled();
   });
 
   it("blocks clients from creating barber drafts", async () => {
