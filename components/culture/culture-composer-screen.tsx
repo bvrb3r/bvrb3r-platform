@@ -57,7 +57,7 @@ function roleCopy(role: CultureComposerRole) {
     mediaTitle: "Media slot",
     mediaCopy: "Image upload is coming next. This v1 composer saves text drafts against the canonical Culture post table.",
     selectorTitle: "CTA selector",
-      selectorCopy: "View Shop is planned as the first supported CTA. Unsupported paid promotion controls are not active here.",
+    selectorCopy: "View Shop is planned as the first supported CTA. Unsupported paid promotion controls are not active here.",
     ctaTitle: "Promotion status",
     ctaCopy: "This is organic shop posting only. Paid promotions remain locked.",
     submitLabel: "Submit for Review"

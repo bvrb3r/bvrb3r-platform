@@ -371,6 +371,16 @@ describe("Culture service", () => {
     }, { supabase: supabase.client })).rejects.toThrow("Only barber accounts");
   });
 
+  it("blocks clients from creating owner drafts", async () => {
+    const supabase = createSupabaseStub({ shops: [], culture_posts: [] });
+
+    await expect(createCulturePostDraft(clientUser, {
+      role: "owner",
+      postType: "shop_update",
+      caption: "No owner access."
+    }, { supabase: supabase.client })).rejects.toThrow("Only shop owner accounts");
+  });
+
   it("blocks barbers from creating a draft for another barber id", async () => {
     const supabase = createSupabaseStub({
       barbers: [{
@@ -416,6 +426,25 @@ describe("Culture service", () => {
       visibility: "private",
       publishing_status: "draft"
     });
+  });
+
+  it("blocks owners from creating a draft for an unowned shop id", async () => {
+    const supabase = createSupabaseStub({
+      shops: [{
+        id: "shop-ybor",
+        owner_profile_id: ownerUser.id,
+        app_approval_status: "approved",
+        created_at: "2026-06-10T12:00:00.000Z"
+      }],
+      culture_posts: []
+    });
+
+    await expect(createCulturePostDraft(ownerUser, {
+      role: "owner",
+      postType: "shop_update",
+      caption: "Wrong shop.",
+      shopId: "shop-unowned"
+    }, { supabase: supabase.client })).rejects.toThrow("own shop");
   });
 
   it("submits an owned draft for review without making it public feed eligible", async () => {

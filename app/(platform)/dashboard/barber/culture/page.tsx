@@ -1,4 +1,5 @@
 import { ClientCultureScreen } from "@/components/client-experience/client-culture-screen";
+import { BARBER_PRIMARY_TAB_HREFS } from "@/components/barber-experience/barber-tab-config";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { getAuthorizedUser } from "@/lib/auth/guards";
 import { listCultureFeed, type CultureFeedResponse } from "@/lib/culture/service";
@@ -18,7 +19,7 @@ export default async function BarberCulturePage() {
   return (
     <DashboardShell
       user={user}
-      activeHref="/dashboard/barber/messages"
+      activeHref={BARBER_PRIMARY_TAB_HREFS.home}
       title="Culture"
       subtitle="Cuts, shops, style, and community."
       hidePageHeader

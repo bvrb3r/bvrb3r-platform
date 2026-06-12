@@ -181,6 +181,18 @@ import OwnerCulturePage from "@/app/(platform)/dashboard/owner/culture/page";
 import OwnerCultureComposerPage from "@/app/(platform)/dashboard/owner/culture/new/page";
 import SettingsPage from "@/app/(platform)/settings/page";
 
+function linksForHref(href: string) {
+  return screen.getAllByRole("link").filter((link) => link.getAttribute("href") === href);
+}
+
+function expectHrefActive(href: string) {
+  expect(linksForHref(href).some((link) => link.getAttribute("aria-current") === "page")).toBe(true);
+}
+
+function expectHrefNotActive(href: string) {
+  expect(linksForHref(href).every((link) => link.getAttribute("aria-current") !== "page")).toBe(true);
+}
+
 describe("dashboard role pages", () => {
   beforeEach(() => {
     getAuthorizedUserMock.mockReset();
@@ -320,6 +332,8 @@ describe("dashboard role pages", () => {
     expect(getAuthorizedUserMock).toHaveBeenCalledWith(["barber_user"]);
     expect(listCultureFeedMock).toHaveBeenCalledWith({ role: "barber", viewerProfileId: "user-blaze" });
     expect(screen.getByTestId("client-culture-screen-stub")).toHaveTextContent("Culture|barber");
+    expectHrefActive("/dashboard/barber");
+    expectHrefNotActive("/dashboard/barber/messages");
   });
 
   it("renders the barber Culture composer route behind the barber guard", async () => {
@@ -331,6 +345,16 @@ describe("dashboard role pages", () => {
     expect(resolveCultureComposerAccessMock).toHaveBeenCalledWith(expect.objectContaining({ id: "user-blaze" }), "barber");
     expect(listMyCulturePostsMock).toHaveBeenCalledWith(expect.objectContaining({ id: "user-blaze" }), "barber");
     expect(screen.getByTestId("culture-composer-screen-stub")).toHaveTextContent("barber|open");
+    expectHrefActive("/dashboard/barber");
+    expectHrefNotActive("/dashboard/barber/messages");
+  });
+
+  it("blocks client sessions from the barber Culture composer route", async () => {
+    getAuthorizedUserMock.mockRejectedValueOnce(new Error("REDIRECT:/dashboard/client"));
+
+    await expect(BarberCultureComposerPage()).rejects.toThrow("REDIRECT:/dashboard/client");
+    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["barber_user"]);
+    expect(resolveCultureComposerAccessMock).not.toHaveBeenCalled();
   });
 
   it("renders the barber more route", async () => {
@@ -425,6 +449,8 @@ describe("dashboard role pages", () => {
     expect(getAuthorizedUserMock).toHaveBeenCalledWith(["shop_owner_user"]);
     expect(listCultureFeedMock).toHaveBeenCalledWith({ role: "owner", viewerProfileId: "user-owner" });
     expect(screen.getByTestId("client-culture-screen-stub")).toHaveTextContent("Culture|shop");
+    expectHrefActive("/dashboard/owner");
+    expectHrefNotActive("/dashboard/owner/messages");
   });
 
   it("renders the owner Culture composer route behind the owner guard", async () => {
@@ -445,6 +471,16 @@ describe("dashboard role pages", () => {
     expect(resolveCultureComposerAccessMock).toHaveBeenCalledWith(expect.objectContaining({ id: "user-owner" }), "owner");
     expect(listMyCulturePostsMock).toHaveBeenCalledWith(expect.objectContaining({ id: "user-owner" }), "owner");
     expect(screen.getByTestId("culture-composer-screen-stub")).toHaveTextContent("owner|open");
+    expectHrefActive("/dashboard/owner");
+    expectHrefNotActive("/dashboard/owner/messages");
+  });
+
+  it("blocks client sessions from the owner Culture composer route", async () => {
+    getAuthorizedUserMock.mockRejectedValueOnce(new Error("REDIRECT:/dashboard/client"));
+
+    await expect(OwnerCultureComposerPage()).rejects.toThrow("REDIRECT:/dashboard/client");
+    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["shop_owner_user"]);
+    expect(resolveCultureComposerAccessMock).not.toHaveBeenCalled();
   });
 
   it("renders account settings and logout surface for the canonical owner settings tab", async () => {

@@ -1,5 +1,6 @@
 import { ClientCultureScreen } from "@/components/client-experience/client-culture-screen";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
+import { OWNER_PRIMARY_TAB_HREFS } from "@/components/owner-experience/owner-tab-config";
 import { getAuthorizedUser } from "@/lib/auth/guards";
 import { listCultureFeed, type CultureFeedResponse } from "@/lib/culture/service";
 
@@ -18,7 +19,7 @@ export default async function OwnerCulturePage() {
   return (
     <DashboardShell
       user={user}
-      activeHref="/dashboard/owner/messages"
+      activeHref={OWNER_PRIMARY_TAB_HREFS.home}
       title="Culture"
       subtitle="Cuts, shops, style, and community."
       hidePageHeader

@@ -1,5 +1,6 @@
 import { CultureComposerScreen } from "@/components/culture/culture-composer-screen";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
+import { OWNER_PRIMARY_TAB_HREFS } from "@/components/owner-experience/owner-tab-config";
 import { getAuthorizedUser } from "@/lib/auth/guards";
 import {
   getCultureComposerPostTypeOptions,
@@ -33,7 +34,7 @@ export default async function OwnerCultureComposerPage() {
   return (
     <DashboardShell
       user={user}
-      activeHref="/dashboard/owner/messages"
+      activeHref={OWNER_PRIMARY_TAB_HREFS.home}
       title="Create Culture Post"
       subtitle="Create a Shop Culture post."
       hidePageHeader

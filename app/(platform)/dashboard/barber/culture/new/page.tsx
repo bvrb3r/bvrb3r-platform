@@ -1,4 +1,5 @@
 import { CultureComposerScreen } from "@/components/culture/culture-composer-screen";
+import { BARBER_PRIMARY_TAB_HREFS } from "@/components/barber-experience/barber-tab-config";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { getAuthorizedUser } from "@/lib/auth/guards";
 import {
@@ -33,7 +34,7 @@ export default async function BarberCultureComposerPage() {
   return (
     <DashboardShell
       user={user}
-      activeHref="/dashboard/barber/messages"
+      activeHref={BARBER_PRIMARY_TAB_HREFS.home}
       title="Create Culture Post"
       subtitle="Create a Barber Culture post."
       hidePageHeader

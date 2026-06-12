@@ -145,4 +145,26 @@ describe("CultureComposerScreen", () => {
     expect(screen.getByRole("button", { name: "Save Draft" })).toBeDisabled();
     expect(screen.getByRole("button", { name: /Submit for Review/i })).toBeDisabled();
   });
+
+  it("keeps the composer open and shows an error when save fails", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: false,
+      json: async () => ({ ok: false, error: "Culture posting opens after barber approval is complete." })
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <CultureComposerScreen
+        role="barber"
+        postTypeOptions={[{ label: "Fresh Cut", value: "barber_cut" }]}
+        initialPosts={emptyPosts}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText("Caption"), { target: { value: "Fresh taper." } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Draft" }));
+
+    expect(await screen.findByText("Culture posting opens after barber approval is complete.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Create Barber Culture Post" })).toBeInTheDocument();
+  });
 });
