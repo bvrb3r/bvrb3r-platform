@@ -137,7 +137,13 @@ vi.mock("@/components/client-experience/client-home-screen", () => ({
 }));
 
 vi.mock("@/components/client-experience/client-culture-screen", () => ({
-  ClientCultureScreen: ({ surface = "client" }: { surface?: string }) => <div data-testid="client-culture-screen-stub">Culture|{surface}</div>
+  ClientCultureScreen: ({
+    surface = "client",
+    feed
+  }: {
+    surface?: string;
+    feed?: { error?: string };
+  }) => <div data-testid="client-culture-screen-stub" data-error={feed?.error ?? ""}>Culture|{surface}</div>
 }));
 
 vi.mock("@/components/culture/culture-composer-screen", () => ({
@@ -404,6 +410,23 @@ describe("dashboard role pages", () => {
     expect(screen.getByTestId("client-app-shell-stub")).toBeInTheDocument();
     expect(listCultureFeedMock).toHaveBeenCalledWith({ role: "client" });
     expect(screen.getByTestId("client-culture-screen-stub")).toHaveTextContent("Culture|client");
+  });
+
+  it("surfaces client culture feed load errors instead of rendering a fake empty feed", async () => {
+    getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("client@bvrb3r.demo"));
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    listCultureFeedMock.mockRejectedValueOnce(new Error("shop_username column missing"));
+
+    try {
+      render(await ClientCultureDashboardPage());
+
+      expect(screen.getByTestId("client-culture-screen-stub")).toHaveAttribute(
+        "data-error",
+        "Unable to load Culture feed. Try again."
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 
   it("keeps the client activity route available by direct URL", async () => {

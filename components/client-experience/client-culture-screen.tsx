@@ -86,6 +86,7 @@ export function ClientCultureScreen({
   surface?: CultureSurface;
 }) {
   const feedItems = feed?.items ?? posts.map(legacyPostToFeedItem);
+  const feedError = feed?.error;
   const hasPosts = feedItems.length > 0;
   const discoverBarbersHref = surface === "client" ? CLIENT_PRIMARY_TAB_HREFS.search : "/discover";
   const viewShopsHref = surface === "client" ? `${CLIENT_PRIMARY_TAB_HREFS.search}?type=shops` : "/discover?type=shops";
@@ -147,11 +148,15 @@ export function ClientCultureScreen({
                 Style drops, shop moments, and client proof will collect here as the BVRB3R community grows.
               </p>
             </div>
-            <StatusBadge tone={hasPosts ? "green" : "neutral"}>{hasPosts ? "Live shell" : "Coming soon"}</StatusBadge>
+            <StatusBadge tone={feedError ? "danger" : hasPosts ? "green" : "neutral"}>{feedError ? "Feed error" : hasPosts ? "Live shell" : "Coming soon"}</StatusBadge>
           </div>
 
           <div className="mt-5 space-y-4">
-            {hasPosts ? feedItems.map((post) => (
+            {feedError ? (
+              <div className="rounded-[24px] border border-red-400/20 bg-red-500/10 p-5 text-sm text-red-100">
+                {feedError}
+              </div>
+            ) : hasPosts ? feedItems.map((post) => (
               <CulturePostCard key={post.id} post={post} />
             )) : (
               <div className="rounded-[24px] border border-dashed border-white/12 bg-black/18 p-5 text-sm text-white/58">

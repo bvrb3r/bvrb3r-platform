@@ -149,6 +149,19 @@ describe("Culture API routes", () => {
     expect(listCultureFeedMock).toHaveBeenCalledWith({ role: "barber", cursor: null, limit: 8 });
   });
 
+  it("returns a clear Culture feed API error without pretending the feed is empty", async () => {
+    listCultureFeedMock.mockRejectedValueOnce(new Error("Unable to load Culture feed."));
+
+    const response = await getCultureFeed(new NextRequest("https://bvrb3r.test/api/culture/feed?role=client"));
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body).toMatchObject({
+      ok: false,
+      error: "Unable to load Culture feed."
+    });
+  });
+
   it("records signed-in Culture feed events", async () => {
     const response = await postCultureEvent(new NextRequest("https://bvrb3r.test/api/culture/events", {
       method: "POST",

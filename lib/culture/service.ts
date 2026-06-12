@@ -29,6 +29,7 @@ export type CultureFeedItem = {
   createdAt: string;
   serviceName?: string | null;
   shopName?: string | null;
+  shopUsername?: string | null;
   canLike: boolean;
   canSave: boolean;
   canShare: boolean;
@@ -41,6 +42,7 @@ export type CultureFeedResponse = {
   items: CultureFeedItem[];
   cursor: string | null;
   hasMore: boolean;
+  error?: string;
 };
 
 export type CultureComposerRole = "barber" | "owner";
@@ -185,7 +187,6 @@ type PublicShopRow = {
   id: string;
   name?: string | null;
   public_username?: string | null;
-  shop_username?: string | null;
 };
 
 type PublicServiceRow = {
@@ -573,10 +574,37 @@ async function prepareCultureMediaRows(supabase: SupabaseLike, rows: CultureMedi
   })));
 }
 
-async function fetchRows<T>(query: QueryLike, fallback: string) {
-  const result = await query as QueryResult<T[]>;
-  throwIfError(result as QueryResult<unknown>, fallback);
-  return result.data ?? [];
+function cultureLookupErrorMessage(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (error && typeof error === "object" && "message" in error && typeof error.message === "string") {
+    return error.message;
+  }
+
+  return "Unknown Culture feed lookup error.";
+}
+
+async function fetchOptionalRows<T>(query: QueryLike, lookup: string) {
+  try {
+    const result = await query as QueryResult<T[]>;
+    if (result.error) {
+      console.error("[culture-feed] optional_lookup_failed", {
+        lookup,
+        error: cultureLookupErrorMessage(result.error)
+      });
+      return [];
+    }
+
+    return result.data ?? [];
+  } catch (error) {
+    console.error("[culture-feed] optional_lookup_failed", {
+      lookup,
+      error: cultureLookupErrorMessage(error)
+    });
+    return [];
+  }
 }
 
 async function loadFeedLookups(supabase: SupabaseLike, posts: CulturePostRow[]): Promise<LookupMaps> {
@@ -587,40 +615,40 @@ async function loadFeedLookups(supabase: SupabaseLike, posts: CulturePostRow[]):
 
   const [rawMediaRows, profileRows, shopRows, serviceRows] = await Promise.all([
     postIds.length
-      ? fetchRows<CultureMediaRow>(
+      ? fetchOptionalRows<CultureMediaRow>(
         supabase
           .from("culture_media")
           .select("id, post_id, media_url, thumbnail_url, media_type, width, height, duration_seconds, sort_order, processing_status, moderation_status, metadata")
           .in("post_id", postIds)
           .order("sort_order", { ascending: true }),
-        "Unable to load Culture media."
+        "media"
       )
       : Promise.resolve([]),
     authorIds.length
-      ? fetchRows<PublicProfileRow>(
+      ? fetchOptionalRows<PublicProfileRow>(
         supabase
           .from("profiles")
           .select("id, full_name, public_username, profile_photo_path, profile_photo_url, role")
           .in("id", authorIds),
-        "Unable to load Culture authors."
+        "profiles"
       )
       : Promise.resolve([]),
     shopIds.length
-      ? fetchRows<PublicShopRow>(
+      ? fetchOptionalRows<PublicShopRow>(
         supabase
           .from("shops")
-          .select("id, name, public_username, shop_username")
+          .select("id, name, public_username")
           .in("id", shopIds),
-        "Unable to load Culture shops."
+        "shops"
       )
       : Promise.resolve([]),
     serviceIds.length
-      ? fetchRows<PublicServiceRow>(
+      ? fetchOptionalRows<PublicServiceRow>(
         supabase
           .from("services")
           .select("id, name")
           .in("id", serviceIds),
-        "Unable to load Culture services."
+        "services"
       )
       : Promise.resolve([])
   ]);
@@ -1592,6 +1620,7 @@ export function mapCulturePostToSafeFeedItem(post: CulturePostRow, lookups: Look
     createdAt: post.created_at,
     serviceName: service?.name ?? null,
     shopName: shop?.name ?? null,
+    shopUsername: safeNullableText(shop?.public_username),
     canLike: true,
     canSave: true,
     canShare: true,

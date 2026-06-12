@@ -38,6 +38,20 @@ describe("client culture screen", () => {
     expect(screen.queryByText(/views:|followers:|likes:|engagement rate|1\.2k/i)).not.toBeInTheDocument();
   });
 
+  it("renders a feed error state separately from the real empty state", () => {
+    render(<ClientCultureScreen feed={{
+      items: [],
+      cursor: null,
+      hasMore: false,
+      error: "Unable to load Culture feed. Try again."
+    }} />);
+
+    expect(screen.getByText("Unable to load Culture feed. Try again.")).toBeInTheDocument();
+    expect(screen.getByText("Feed error")).toBeInTheDocument();
+    expect(screen.queryByText("Culture posts will appear here as the BVRB3R community grows.")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("culture-post-card")).not.toBeInTheDocument();
+  });
+
   it("renders a barber-safe Culture shell without client-only posting copy", () => {
     render(<ClientCultureScreen surface="barber" />);
 

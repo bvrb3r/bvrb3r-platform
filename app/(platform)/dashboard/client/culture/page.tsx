@@ -6,8 +6,16 @@ import { getClientExperienceContext } from "@/lib/client-experience/session";
 async function loadClientCultureFeed(): Promise<CultureFeedResponse> {
   try {
     return await listCultureFeed({ role: "client" });
-  } catch {
-    return { items: [], cursor: null, hasMore: false };
+  } catch (error) {
+    console.error("[culture-feed] client_feed_failed", {
+      error: error instanceof Error ? error.message : "Unknown Culture feed error."
+    });
+    return {
+      items: [],
+      cursor: null,
+      hasMore: false,
+      error: "Unable to load Culture feed. Try again."
+    };
   }
 }
 

@@ -7,8 +7,16 @@ import { listCultureFeed, type CultureFeedResponse } from "@/lib/culture/service
 async function loadBarberCultureFeed(viewerProfileId: string): Promise<CultureFeedResponse> {
   try {
     return await listCultureFeed({ role: "barber", viewerProfileId });
-  } catch {
-    return { items: [], cursor: null, hasMore: false };
+  } catch (error) {
+    console.error("[culture-feed] barber_feed_failed", {
+      error: error instanceof Error ? error.message : "Unknown Culture feed error."
+    });
+    return {
+      items: [],
+      cursor: null,
+      hasMore: false,
+      error: "Unable to load Culture feed. Try again."
+    };
   }
 }
 

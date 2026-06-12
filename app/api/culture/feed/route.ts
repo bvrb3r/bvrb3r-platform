@@ -24,7 +24,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: true, ...feed });
   } catch (error) {
     return NextResponse.json({
+      ok: false,
       error: error instanceof Error ? error.message : "Unable to load Culture feed."
-    }, { status: 400 });
+    }, { status: 500 });
   }
 }

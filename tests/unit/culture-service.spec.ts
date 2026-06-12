@@ -30,13 +30,13 @@ type QueryChain = {
   upsert: ReturnType<typeof vi.fn>;
   single: ReturnType<typeof vi.fn>;
   maybeSingle: ReturnType<typeof vi.fn>;
-  then: <TResult1 = { data: unknown; error: null }, TResult2 = never>(
-    onfulfilled?: ((value: { data: unknown; error: null }) => TResult1 | PromiseLike<TResult1>) | null,
+  then: <TResult1 = { data: unknown; error: Error | null }, TResult2 = never>(
+    onfulfilled?: ((value: { data: unknown; error: Error | null }) => TResult1 | PromiseLike<TResult1>) | null,
     onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
   ) => PromiseLike<TResult1 | TResult2>;
 };
 
-function createQuery(rows: Row[], tableWrites: Row[]) {
+function createQuery(rows: Row[], tableWrites: Row[], error: Error | null = null, selectCalls?: string[]) {
   const filters: Array<(row: Row) => boolean> = [];
   let limitCount: number | null = null;
   let singleMode = false;
@@ -56,7 +56,12 @@ function createQuery(rows: Row[], tableWrites: Row[]) {
 
   const chain = {} as QueryChain;
   Object.assign(chain, {
-    select: vi.fn(() => chain),
+    select: vi.fn((columns?: string) => {
+      if (columns) {
+        selectCalls?.push(columns);
+      }
+      return chain;
+    }),
     eq: vi.fn((column: string, value: unknown) => {
       filters.push((row) => readColumn(row, column) === value);
       return chain;
@@ -104,10 +109,15 @@ function createQuery(rows: Row[], tableWrites: Row[]) {
       maybeSingleMode = true;
       return chain;
     }),
-    then: <TResult1 = { data: unknown; error: null }, TResult2 = never>(
-      onfulfilled?: ((value: { data: unknown; error: null }) => TResult1 | PromiseLike<TResult1>) | null,
+    then: <TResult1 = { data: unknown; error: Error | null }, TResult2 = never>(
+      onfulfilled?: ((value: { data: unknown; error: Error | null }) => TResult1 | PromiseLike<TResult1>) | null,
       onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
     ) => {
+      if (error) {
+        const result = { data: null, error };
+        return Promise.resolve(result).then(onfulfilled ?? undefined, onrejected ?? undefined);
+      }
+
       if (updateRow) {
         const matchedRows = rows.filter((row) => filters.every((filter) => filter(row)));
         for (const row of matchedRows) {
@@ -143,8 +153,9 @@ function createQuery(rows: Row[], tableWrites: Row[]) {
   return chain;
 }
 
-function createSupabaseStub(tables: Record<string, Row[]>) {
+function createSupabaseStub(tables: Record<string, Row[]>, tableErrors: Record<string, Error> = {}) {
   const writes: Record<string, Row[]> = {};
+  const selects: Record<string, string[]> = {};
   const uploadMock = vi.fn((_path: string) => Promise.resolve({ data: { path: _path }, error: null }));
   const createSignedUrlMock = vi.fn((path: string) => Promise.resolve({
     data: { signedUrl: `https://signed.bvrb3r.test/${path}` },
@@ -154,6 +165,7 @@ function createSupabaseStub(tables: Record<string, Row[]>) {
 
   return {
     writes,
+    selects,
     storage: {
       uploadMock,
       createSignedUrlMock,
@@ -169,7 +181,8 @@ function createSupabaseStub(tables: Record<string, Row[]>) {
       },
       from: vi.fn((table: string) => {
         writes[table] ??= [];
-        return createQuery(tables[table] ?? [], writes[table]);
+        selects[table] ??= [];
+        return createQuery(tables[table] ?? [], writes[table], tableErrors[table] ?? null, selects[table]);
       })
     }
   };
@@ -267,7 +280,7 @@ describe("Culture service", () => {
         email: "private@example.com",
         phone: "555-0100"
       }],
-      shops: [{ id: "shop-ybor", name: "BVRB3R Ybor" }],
+      shops: [{ id: "shop-ybor", name: "BVRB3R Ybor", public_username: "bvrb3r-ybor" }],
       services: [{ id: publishedPost.service_id, name: "Signature Cut" }]
     });
 
@@ -284,12 +297,15 @@ describe("Culture service", () => {
       caption: "Clean taper.",
       serviceName: "Signature Cut",
       shopName: "BVRB3R Ybor",
+      shopUsername: "bvrb3r-ybor",
       canBook: true,
       canReport: true
     });
     expect(JSON.stringify(feed.items[0])).not.toContain("private@example.com");
     expect(JSON.stringify(feed.items[0])).not.toContain("555-0100");
     expect(supabase.client.from).toHaveBeenCalledWith("culture_posts");
+    expect(supabase.selects.shops.join(" ")).toContain("public_username");
+    expect(supabase.selects.shops.join(" ")).not.toContain("shop_username");
   });
 
   it("returns approved auto-created Barber and Owner Profile Studio posts in the public feed", async () => {
@@ -377,6 +393,48 @@ describe("Culture service", () => {
       shopName: "Ybor Shop",
       media: { url: "https://cdn.bvrb3r.test/owner-auto.jpg" }
     });
+  });
+
+  it.each([
+    ["culture_media", "media", { media: null }],
+    ["profiles", "profiles", { authorDisplayName: "Barber", authorUsername: null }],
+    ["shops", "shops", { shopName: null }],
+    ["services", "services", { serviceName: null }]
+  ] as const)("keeps public posts visible when optional %s lookup fails", async (table, lookup, expectedFallback) => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const supabase = createSupabaseStub({
+      culture_posts: [publishedPost],
+      culture_media: [{
+        id: "media-optional-failure",
+        post_id: publishedPost.id,
+        media_url: "https://cdn.bvrb3r.test/post.jpg",
+        thumbnail_url: "https://cdn.bvrb3r.test/post.jpg",
+        media_type: "image",
+        processing_status: "ready",
+        moderation_status: "approved",
+        sort_order: 0
+      }],
+      profiles: [{ id: publishedPost.author_profile_id, full_name: "Blaze King", public_username: "blaze" }],
+      shops: [{ id: "shop-ybor", name: "BVRB3R Ybor", public_username: "bvrb3r-ybor" }],
+      services: [{ id: publishedPost.service_id, name: "Signature Cut" }]
+    }, {
+      [table]: new Error(`${table} lookup failed`)
+    });
+
+    try {
+      const feed = await listCultureFeed({ role: "client", limit: 10 }, { supabase: supabase.client });
+
+      expect(feed.items).toHaveLength(1);
+      expect(feed.items[0]).toMatchObject({
+        id: publishedPost.id,
+        ...expectedFallback
+      });
+      expect(consoleError).toHaveBeenCalledWith("[culture-feed] optional_lookup_failed", expect.objectContaining({
+        lookup
+      }));
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 
   it("sets a stable cursor without duplicating the final page item", async () => {
