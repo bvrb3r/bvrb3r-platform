@@ -3,13 +3,24 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveDemoUser } from "@/lib/auth/demo-auth";
 
-const { getAuthorizedUserMock, getClientExperienceContextMock, listCultureFeedMock, redirectMock } = vi.hoisted(() => ({
+const {
+  getAuthorizedUserMock,
+  getClientExperienceContextMock,
+  getCultureComposerPostTypeOptionsMock,
+  listCultureFeedMock,
+  listMyCulturePostsMock,
+  redirectMock,
+  resolveCultureComposerAccessMock
+} = vi.hoisted(() => ({
   getAuthorizedUserMock: vi.fn(),
   getClientExperienceContextMock: vi.fn(),
+  getCultureComposerPostTypeOptionsMock: vi.fn(),
   listCultureFeedMock: vi.fn(),
+  listMyCulturePostsMock: vi.fn(),
   redirectMock: vi.fn((path: string) => {
     throw new Error(`REDIRECT:${path}`);
-  })
+  }),
+  resolveCultureComposerAccessMock: vi.fn()
 }));
 
 vi.mock("@/lib/auth/guards", () => ({
@@ -21,7 +32,10 @@ vi.mock("@/lib/client-experience/session", () => ({
 }));
 
 vi.mock("@/lib/culture/service", () => ({
-  listCultureFeed: listCultureFeedMock
+  getCultureComposerPostTypeOptions: getCultureComposerPostTypeOptionsMock,
+  listCultureFeed: listCultureFeedMock,
+  listMyCulturePosts: listMyCulturePostsMock,
+  resolveCultureComposerAccess: resolveCultureComposerAccessMock
 }));
 
 vi.mock("next/navigation", () => ({
@@ -126,6 +140,12 @@ vi.mock("@/components/client-experience/client-culture-screen", () => ({
   ClientCultureScreen: ({ surface = "client" }: { surface?: string }) => <div data-testid="client-culture-screen-stub">Culture|{surface}</div>
 }));
 
+vi.mock("@/components/culture/culture-composer-screen", () => ({
+  CultureComposerScreen: ({ role, blockedReason }: { role: string; blockedReason?: string | null }) => (
+    <div data-testid="culture-composer-screen-stub">{role}|{blockedReason ?? "open"}</div>
+  )
+}));
+
 vi.mock("@/components/client-experience/client-bookings-screen", () => ({
   ClientBookingsScreen: () => <div data-testid="client-bookings-screen-stub">Activity</div>
 }));
@@ -146,6 +166,7 @@ import BarberDashboardPage from "@/app/(platform)/dashboard/barber/page";
 import BarberCalendarPage from "@/app/(platform)/dashboard/barber/calendar/page";
 import BarberCheckoutPage from "@/app/(platform)/dashboard/barber/checkout/page";
 import BarberCulturePage from "@/app/(platform)/dashboard/barber/culture/page";
+import BarberCultureComposerPage from "@/app/(platform)/dashboard/barber/culture/new/page";
 import BarberMessagesPage from "@/app/(platform)/dashboard/barber/messages/page";
 import BarberMorePage from "@/app/(platform)/dashboard/barber/more/page";
 import BarberProfilePage from "@/app/(platform)/dashboard/barber/profile/page";
@@ -157,6 +178,7 @@ import ClientCultureDashboardPage from "@/app/(platform)/dashboard/client/cultur
 import ClientMessagesDashboardPage from "@/app/(platform)/dashboard/client/messages/page";
 import ClientMessageThreadDashboardPage from "@/app/(platform)/dashboard/client/messages/[threadId]/page";
 import OwnerCulturePage from "@/app/(platform)/dashboard/owner/culture/page";
+import OwnerCultureComposerPage from "@/app/(platform)/dashboard/owner/culture/new/page";
 import SettingsPage from "@/app/(platform)/settings/page";
 
 describe("dashboard role pages", () => {
@@ -172,6 +194,20 @@ describe("dashboard role pages", () => {
     });
     listCultureFeedMock.mockReset();
     listCultureFeedMock.mockResolvedValue({ items: [], cursor: null, hasMore: false });
+    getCultureComposerPostTypeOptionsMock.mockReset();
+    getCultureComposerPostTypeOptionsMock.mockReturnValue([{ label: "Fresh Cut", value: "barber_cut" }]);
+    listMyCulturePostsMock.mockReset();
+    listMyCulturePostsMock.mockResolvedValue({ drafts: [], pendingReview: [], published: [], archived: [] });
+    resolveCultureComposerAccessMock.mockReset();
+    resolveCultureComposerAccessMock.mockResolvedValue({
+      canCompose: true,
+      blockedReason: null,
+      role: "barber",
+      actorRole: "barber_user",
+      authorProfileId: "user-blaze",
+      barberId: "barber-blaze",
+      shopId: null
+    });
   });
 
   it("renders the owner control center for the owner route", async () => {
@@ -286,6 +322,17 @@ describe("dashboard role pages", () => {
     expect(screen.getByTestId("client-culture-screen-stub")).toHaveTextContent("Culture|barber");
   });
 
+  it("renders the barber Culture composer route behind the barber guard", async () => {
+    getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("blaze@bvrb3r.demo"));
+
+    render(await BarberCultureComposerPage());
+
+    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["barber_user"]);
+    expect(resolveCultureComposerAccessMock).toHaveBeenCalledWith(expect.objectContaining({ id: "user-blaze" }), "barber");
+    expect(listMyCulturePostsMock).toHaveBeenCalledWith(expect.objectContaining({ id: "user-blaze" }), "barber");
+    expect(screen.getByTestId("culture-composer-screen-stub")).toHaveTextContent("barber|open");
+  });
+
   it("renders the barber more route", async () => {
     getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("blaze@bvrb3r.demo"));
 
@@ -378,6 +425,26 @@ describe("dashboard role pages", () => {
     expect(getAuthorizedUserMock).toHaveBeenCalledWith(["shop_owner_user"]);
     expect(listCultureFeedMock).toHaveBeenCalledWith({ role: "owner", viewerProfileId: "user-owner" });
     expect(screen.getByTestId("client-culture-screen-stub")).toHaveTextContent("Culture|shop");
+  });
+
+  it("renders the owner Culture composer route behind the owner guard", async () => {
+    getAuthorizedUserMock.mockResolvedValue(resolveDemoUser("owner@bvrb3r.demo"));
+    resolveCultureComposerAccessMock.mockResolvedValueOnce({
+      canCompose: true,
+      blockedReason: null,
+      role: "owner",
+      actorRole: "shop_owner_user",
+      authorProfileId: "user-owner",
+      barberId: null,
+      shopId: "shop-ybor"
+    });
+
+    render(await OwnerCultureComposerPage());
+
+    expect(getAuthorizedUserMock).toHaveBeenCalledWith(["shop_owner_user"]);
+    expect(resolveCultureComposerAccessMock).toHaveBeenCalledWith(expect.objectContaining({ id: "user-owner" }), "owner");
+    expect(listMyCulturePostsMock).toHaveBeenCalledWith(expect.objectContaining({ id: "user-owner" }), "owner");
+    expect(screen.getByTestId("culture-composer-screen-stub")).toHaveTextContent("owner|open");
   });
 
   it("renders account settings and logout surface for the canonical owner settings tab", async () => {

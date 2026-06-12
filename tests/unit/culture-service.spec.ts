@@ -1,13 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __resetDemoCultureStateForTests,
+  createCulturePostDraft,
   getCulturePostSafeDisplay,
   listCultureFeed,
+  listMyCulturePosts,
   mapCulturePostToSafeFeedItem,
   recordCultureEngagement,
   recordCultureFeedEvent,
+  submitCulturePostForReview,
   type CulturePostRow
 } from "@/lib/culture/service";
+import type { UserAccount } from "@/types/domain";
 
 type Row = Record<string, unknown>;
 type QueryChain = {
@@ -19,6 +23,7 @@ type QueryChain = {
   order: ReturnType<typeof vi.fn>;
   limit: ReturnType<typeof vi.fn>;
   insert: ReturnType<typeof vi.fn>;
+  update: ReturnType<typeof vi.fn>;
   upsert: ReturnType<typeof vi.fn>;
   single: ReturnType<typeof vi.fn>;
   maybeSingle: ReturnType<typeof vi.fn>;
@@ -34,6 +39,7 @@ function createQuery(rows: Row[], tableWrites: Row[]) {
   let singleMode = false;
   let maybeSingleMode = false;
   let writeRow: Row | null = null;
+  let updateRow: Row | null = null;
 
   const chain = {} as QueryChain;
   Object.assign(chain, {
@@ -58,7 +64,15 @@ function createQuery(rows: Row[], tableWrites: Row[]) {
     }),
     insert: vi.fn((value: Row) => {
       writeRow = value;
-      tableWrites.push(value);
+      if (Array.isArray(value)) {
+        tableWrites.push(...value);
+      } else {
+        tableWrites.push(value);
+      }
+      return chain;
+    }),
+    update: vi.fn((value: Row) => {
+      updateRow = value;
       return chain;
     }),
     upsert: vi.fn((value: Row) => {
@@ -78,6 +92,22 @@ function createQuery(rows: Row[], tableWrites: Row[]) {
       onfulfilled?: ((value: { data: unknown; error: null }) => TResult1 | PromiseLike<TResult1>) | null,
       onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
     ) => {
+      if (updateRow) {
+        const matchedRows = rows.filter((row) => filters.every((filter) => filter(row)));
+        for (const row of matchedRows) {
+          Object.assign(row, updateRow);
+        }
+        const data = matchedRows
+          .sort((left, right) => String(right.created_at ?? "").localeCompare(String(left.created_at ?? "")))
+          .slice(0, limitCount ?? undefined);
+        const result = {
+          data: singleMode || maybeSingleMode ? data[0] ?? null : data,
+          error: null
+        };
+
+        return Promise.resolve(result).then(onfulfilled ?? undefined, onrejected ?? undefined);
+      }
+
       const data = writeRow
         ? { id: "write-row", ...writeRow, created_at: "2026-06-12T12:00:00.000Z" }
         : rows
@@ -127,6 +157,41 @@ const publishedPost: CulturePostRow = {
   allow_comments: false,
   created_at: "2026-06-12T12:00:00.000Z",
   deleted_at: null
+};
+
+const barberUser: UserAccount = {
+  id: "22222222-2222-4222-8222-222222222222",
+  role: "barber_user",
+  email: "blaze@bvrb3r.demo",
+  password: "",
+  name: "Blaze King",
+  title: "Barber",
+  locationIds: [],
+  barberId: "barber-blaze",
+  accountStatus: "active" as const
+};
+
+const ownerUser: UserAccount = {
+  id: "66666666-6666-4666-8666-666666666666",
+  role: "shop_owner_user",
+  email: "owner@bvrb3r.demo",
+  password: "",
+  name: "Owner",
+  title: "Shop Owner",
+  locationIds: [],
+  ownedShopId: "shop-ybor",
+  accountStatus: "active" as const
+};
+
+const clientUser: UserAccount = {
+  id: "77777777-7777-4777-8777-777777777777",
+  role: "client_user",
+  email: "client@bvrb3r.demo",
+  password: "",
+  name: "Client",
+  title: "Client",
+  locationIds: [],
+  accountStatus: "active" as const
 };
 
 describe("Culture service", () => {
@@ -262,5 +327,160 @@ describe("Culture service", () => {
       post_id: publishedPost.id,
       engagement_type: "save"
     });
+  });
+
+  it("lets a barber create an owned draft without publishing it to the public feed", async () => {
+    const supabase = createSupabaseStub({
+      barbers: [{
+        id: publishedPost.barber_id,
+        profile_id: barberUser.id,
+        reference_code: "barber-blaze",
+        app_approval_status: "approved",
+        created_at: "2026-06-10T12:00:00.000Z"
+      }],
+      culture_posts: [],
+      culture_post_tags: []
+    });
+
+    const result = await createCulturePostDraft(barberUser, {
+      role: "barber",
+      postType: "Fresh Cut",
+      caption: "Fresh taper.",
+      tags: ["fade", "fade", "Ybor"]
+    }, { supabase: supabase.client });
+
+    expect(result.post).toMatchObject({
+      author_profile_id: barberUser.id,
+      author_role: "barber_user",
+      barber_id: publishedPost.barber_id,
+      post_type: "barber_cut",
+      visibility: "private",
+      publishing_status: "draft",
+      moderation_status: "pending"
+    });
+    expect(supabase.writes.culture_post_tags).toHaveLength(2);
+  });
+
+  it("blocks clients from creating barber drafts", async () => {
+    const supabase = createSupabaseStub({ barbers: [], culture_posts: [] });
+
+    await expect(createCulturePostDraft(clientUser, {
+      role: "barber",
+      postType: "barber_cut",
+      caption: "No access."
+    }, { supabase: supabase.client })).rejects.toThrow("Only barber accounts");
+  });
+
+  it("blocks barbers from creating a draft for another barber id", async () => {
+    const supabase = createSupabaseStub({
+      barbers: [{
+        id: publishedPost.barber_id,
+        profile_id: barberUser.id,
+        reference_code: "barber-blaze",
+        app_approval_status: "approved",
+        created_at: "2026-06-10T12:00:00.000Z"
+      }],
+      culture_posts: []
+    });
+
+    await expect(createCulturePostDraft(barberUser, {
+      role: "barber",
+      postType: "barber_cut",
+      caption: "Wrong owner.",
+      barberId: "33333333-3333-4333-8333-999999999999"
+    }, { supabase: supabase.client })).rejects.toThrow("own barber record");
+  });
+
+  it("lets an owner create an owned shop draft", async () => {
+    const supabase = createSupabaseStub({
+      shops: [{
+        id: "shop-ybor",
+        owner_profile_id: ownerUser.id,
+        app_approval_status: "approved",
+        created_at: "2026-06-10T12:00:00.000Z"
+      }],
+      culture_posts: []
+    });
+
+    const result = await createCulturePostDraft(ownerUser, {
+      role: "owner",
+      postType: "Walk-Ins Open",
+      caption: "Walk-ins open this afternoon."
+    }, { supabase: supabase.client });
+
+    expect(result.post).toMatchObject({
+      author_profile_id: ownerUser.id,
+      author_role: "shop_owner_user",
+      shop_id: "shop-ybor",
+      post_type: "shop_walkins",
+      visibility: "private",
+      publishing_status: "draft"
+    });
+  });
+
+  it("submits an owned draft for review without making it public feed eligible", async () => {
+    const draftPost = {
+      ...publishedPost,
+      id: "draft-review",
+      author_profile_id: barberUser.id,
+      publishing_status: "draft",
+      moderation_status: "pending",
+      visibility: "private",
+      caption: "Ready for review."
+    };
+    const supabase = createSupabaseStub({
+      barbers: [{
+        id: publishedPost.barber_id,
+        profile_id: barberUser.id,
+        reference_code: "barber-blaze",
+        app_approval_status: "approved",
+        created_at: "2026-06-10T12:00:00.000Z"
+      }],
+      culture_posts: [draftPost],
+      culture_media: [],
+      profiles: [],
+      shops: [],
+      services: []
+    });
+
+    const submitted = await submitCulturePostForReview(barberUser, {
+      role: "barber",
+      postId: "draft-review"
+    }, { supabase: supabase.client });
+    const feed = await listCultureFeed({ role: "client" }, { supabase: supabase.client });
+
+    expect(submitted.message).toBe("Post submitted for review.");
+    expect(submitted.post).toMatchObject({
+      publishing_status: "published",
+      moderation_status: "pending",
+      visibility: "unlisted"
+    });
+    expect(feed.items).toHaveLength(0);
+  });
+
+  it("lists own drafts, pending review, published, and archived Culture posts", async () => {
+    const supabase = createSupabaseStub({
+      barbers: [{
+        id: publishedPost.barber_id,
+        profile_id: barberUser.id,
+        reference_code: "barber-blaze",
+        app_approval_status: "approved",
+        created_at: "2026-06-10T12:00:00.000Z"
+      }],
+      culture_posts: [
+        { ...publishedPost, id: "own-draft", author_profile_id: barberUser.id, publishing_status: "draft", moderation_status: "pending", visibility: "private" },
+        { ...publishedPost, id: "own-pending", author_profile_id: barberUser.id, publishing_status: "published", moderation_status: "pending", visibility: "unlisted" },
+        { ...publishedPost, id: "own-published", author_profile_id: barberUser.id, publishing_status: "published", moderation_status: "approved", visibility: "public" },
+        { ...publishedPost, id: "own-archived", author_profile_id: barberUser.id, publishing_status: "archived", moderation_status: "approved", visibility: "private" },
+        { ...publishedPost, id: "someone-else", author_profile_id: "another-profile", publishing_status: "draft", moderation_status: "pending", visibility: "private" }
+      ]
+    });
+
+    const posts = await listMyCulturePosts(barberUser, "barber", { supabase: supabase.client });
+
+    expect(posts.drafts.map((post) => post.id)).toEqual(["own-draft"]);
+    expect(posts.pendingReview.map((post) => post.id)).toEqual(["own-pending"]);
+    expect(posts.published.map((post) => post.id)).toEqual(["own-published"]);
+    expect(posts.archived.map((post) => post.id)).toEqual(["own-archived"]);
   });
 });

@@ -1,5 +1,5 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { normalizeAccountRole } from "@/lib/auth/roles";
+import { isBarberAccountRole, isShopOwnerRole, normalizeAccountRole } from "@/lib/auth/roles";
 import type { Role, UserAccount } from "@/types/domain";
 
 export type CultureSurfaceRole = "client" | "barber" | "owner" | "shop";
@@ -38,6 +38,52 @@ export type CultureFeedResponse = {
   items: CultureFeedItem[];
   cursor: string | null;
   hasMore: boolean;
+};
+
+export type CultureComposerRole = "barber" | "owner";
+
+export type CultureComposerPostTypeOption = {
+  label: string;
+  value: string;
+};
+
+export type CultureComposerAccess = {
+  role: CultureComposerRole;
+  actorRole: Extract<CultureActorRole, "barber_user" | "shop_owner_user">;
+  authorProfileId: string;
+  barberId: string | null;
+  shopId: string | null;
+  canCompose: boolean;
+  blockedReason: string | null;
+};
+
+export type CultureComposerInput = {
+  role: CultureComposerRole;
+  postType: string;
+  caption?: string | null;
+  barberId?: string | null;
+  shopId?: string | null;
+  serviceId?: string | null;
+  isBookable?: boolean;
+  tags?: string[];
+  cta?: string | null;
+};
+
+export type CultureMyPostSummary = {
+  id: string;
+  caption: string;
+  postType: string;
+  visibility: string;
+  moderationStatus: string;
+  publishingStatus: string;
+  createdAt: string;
+};
+
+export type CultureMyPosts = {
+  drafts: CultureMyPostSummary[];
+  pendingReview: CultureMyPostSummary[];
+  published: CultureMyPostSummary[];
+  archived: CultureMyPostSummary[];
 };
 
 export type CulturePostRow = {
@@ -108,6 +154,7 @@ type QueryLike<T = unknown> = PromiseLike<QueryResult<T>> & {
   order: (column: string, options?: Record<string, unknown>) => QueryLike<T>;
   limit: (count: number) => QueryLike<T>;
   insert: (values: unknown) => QueryLike<T>;
+  update: (values: unknown) => QueryLike<T>;
   upsert: (values: unknown, options?: Record<string, unknown>) => QueryLike<T>;
   single: () => QueryLike<T>;
   maybeSingle: () => QueryLike<T>;
@@ -159,8 +206,38 @@ const allowedEngagements = new Set([
   "report"
 ]);
 
+const barberComposerPostTypes: CultureComposerPostTypeOption[] = [
+  { label: "Fresh Cut", value: "barber_cut" },
+  { label: "Before / After", value: "barber_before_after" },
+  { label: "Availability", value: "barber_availability" },
+  { label: "Tutorial", value: "barber_tutorial" },
+  { label: "Portfolio Highlight", value: "barber_cut" },
+  { label: "Service Spotlight", value: "barber_cut" }
+];
+
+const ownerComposerPostTypes: CultureComposerPostTypeOption[] = [
+  { label: "Shop Update", value: "shop_update" },
+  { label: "Walk-Ins Open", value: "shop_walkins" },
+  { label: "Team Highlight", value: "shop_team" },
+  { label: "Event", value: "shop_update" },
+  { label: "Open Chair", value: "shop_open_chair" },
+  { label: "Hiring", value: "shop_open_chair" },
+  { label: "Offer", value: "shop_update" },
+  { label: "Shop Culture", value: "shop_update" }
+];
+
 const demoCultureEvents: Array<Record<string, unknown>> = [];
 const demoCultureEngagements = new Map<string, Record<string, unknown>>();
+
+export class CultureComposerError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status = 400) {
+    super(message);
+    this.name = "CultureComposerError";
+    this.status = status;
+  }
+}
 
 function maybeSupabase(deps?: CultureServiceDeps) {
   return (deps?.supabase ?? createSupabaseAdminClient()) as SupabaseLike | null;
@@ -190,6 +267,10 @@ function dbRoleForUser(user: UserAccount): CultureActorRole {
   return dbRoleForSurface(normalizeAccountRole(user.role));
 }
 
+export function getCultureComposerPostTypeOptions(role: CultureComposerRole) {
+  return role === "barber" ? barberComposerPostTypes : ownerComposerPostTypes;
+}
+
 function roleLabel(role: CultureActorRole | Role | string) {
   switch (role) {
     case "barber_user":
@@ -215,6 +296,68 @@ function safeText(value: unknown, fallback = "") {
 
 function safeNullableText(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function normalizeCaption(value: unknown) {
+  return typeof value === "string" ? value.trim().slice(0, 2200) : "";
+}
+
+function normalizeOptionalText(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function normalizeComposerPostType(role: CultureComposerRole, input: string) {
+  const normalized = input.trim();
+  const options = getCultureComposerPostTypeOptions(role);
+  const byValue = options.find((option) => option.value === normalized);
+  if (byValue) {
+    return byValue.value;
+  }
+
+  const byLabel = options.find((option) => option.label.toLowerCase() === normalized.toLowerCase());
+  if (byLabel) {
+    return byLabel.value;
+  }
+
+  throw new CultureComposerError("Unsupported Culture post type.", 400);
+}
+
+function cleanTags(tags?: string[]) {
+  return [...new Set((tags ?? [])
+    .map((tag) => tag.trim().toLowerCase())
+    .filter((tag) => /^[a-z0-9 _-]{2,40}$/.test(tag))
+    .slice(0, 8))];
+}
+
+function isApprovalBlocked(status?: string | null) {
+  return status === "pending" || status === "under_review" || status === "rejected";
+}
+
+function assertCanCompose(access: CultureComposerAccess) {
+  if (!access.canCompose) {
+    throw new CultureComposerError(access.blockedReason ?? "Culture posting is not available for this account.", 403);
+  }
+}
+
+function summarizeOwnPost(row: CulturePostRow): CultureMyPostSummary {
+  return {
+    id: row.id,
+    caption: safeText(row.caption, "Untitled Culture post"),
+    postType: row.post_type,
+    visibility: row.visibility,
+    moderationStatus: row.moderation_status,
+    publishingStatus: row.publishing_status,
+    createdAt: row.created_at
+  };
+}
+
+function emptyMyPosts(): CultureMyPosts {
+  return {
+    drafts: [],
+    pendingReview: [],
+    published: [],
+    archived: []
+  };
 }
 
 function encodeCursor(post: CulturePostRow) {
@@ -327,6 +470,340 @@ async function loadFeedLookups(supabase: SupabaseLike, posts: CulturePostRow[]):
     shopsById: buildMap(shopRows),
     servicesById: buildMap(serviceRows)
   };
+}
+
+async function readOwnedBarberId(user: UserAccount, supabase: SupabaseLike) {
+  const result = await supabase
+    .from("barbers")
+    .select("id, reference_code, app_approval_status")
+    .eq("profile_id", user.id)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle() as QueryResult<{ id?: string | null; reference_code?: string | null; app_approval_status?: string | null }>;
+
+  throwIfError(result as QueryResult<unknown>, "Unable to resolve barber Culture ownership.");
+  if (!result.data?.id) {
+    return { barberId: null, approvalStatus: null };
+  }
+
+  return {
+    barberId: result.data.id,
+    approvalStatus: result.data.app_approval_status ?? user.appApprovalStatus ?? null,
+    referenceCode: result.data.reference_code ?? user.barberId ?? null
+  };
+}
+
+async function readOwnedShopId(user: UserAccount, supabase: SupabaseLike) {
+  const ownedShopId = user.ownedShopId ?? null;
+  const baseQuery = supabase
+    .from("shops")
+    .select("id, app_approval_status")
+    .eq("owner_profile_id", user.id)
+    .order("created_at", { ascending: true })
+    .limit(1);
+
+  const result = ownedShopId
+    ? await baseQuery.eq("id", ownedShopId).maybeSingle() as QueryResult<{ id?: string | null; app_approval_status?: string | null }>
+    : await baseQuery.maybeSingle() as QueryResult<{ id?: string | null; app_approval_status?: string | null }>;
+
+  throwIfError(result as QueryResult<unknown>, "Unable to resolve shop Culture ownership.");
+  if (!result.data?.id) {
+    return { shopId: null, approvalStatus: null };
+  }
+
+  return {
+    shopId: result.data.id,
+    approvalStatus: result.data.app_approval_status ?? user.appApprovalStatus ?? null
+  };
+}
+
+export async function resolveCultureComposerAccess(
+  user: UserAccount,
+  role: CultureComposerRole,
+  deps?: CultureServiceDeps
+): Promise<CultureComposerAccess> {
+  const actorRole = role === "barber" ? "barber_user" : "shop_owner_user";
+  const base: CultureComposerAccess = {
+    role,
+    actorRole,
+    authorProfileId: user.id,
+    barberId: null,
+    shopId: null,
+    canCompose: false,
+    blockedReason: null
+  };
+
+  if (user.accountStatus && user.accountStatus !== "active") {
+    return {
+      ...base,
+      blockedReason: "Culture posting is locked until this account is active."
+    };
+  }
+
+  if (role === "barber" && !isBarberAccountRole(user.role)) {
+    return {
+      ...base,
+      blockedReason: "Only barber accounts can create Barber Culture posts."
+    };
+  }
+
+  if (role === "owner" && !isShopOwnerRole(user.role)) {
+    return {
+      ...base,
+      blockedReason: "Only shop owner accounts can create Shop Culture posts."
+    };
+  }
+
+  const supabase = maybeSupabase(deps);
+  if (!supabase) {
+    return {
+      ...base,
+      barberId: role === "barber" ? user.barberId ?? null : null,
+      shopId: role === "owner" ? user.ownedShopId ?? null : null,
+      blockedReason: "Culture posting requires the canonical Supabase Culture writer."
+    };
+  }
+
+  if (role === "barber") {
+    const resolved = await readOwnedBarberId(user, supabase);
+    if (!resolved.barberId) {
+      return {
+        ...base,
+        blockedReason: "A verified barber record is required before posting to Culture."
+      };
+    }
+
+    const approvalStatus = resolved.approvalStatus ?? user.appApprovalStatus ?? null;
+    if (isApprovalBlocked(approvalStatus)) {
+      return {
+        ...base,
+        barberId: resolved.barberId,
+        blockedReason: "Culture posting opens after barber approval is complete."
+      };
+    }
+
+    return {
+      ...base,
+      barberId: resolved.barberId,
+      canCompose: true
+    };
+  }
+
+  const resolved = await readOwnedShopId(user, supabase);
+  if (!resolved.shopId) {
+    return {
+      ...base,
+      blockedReason: "An owned shop record is required before posting to Culture."
+    };
+  }
+
+  const approvalStatus = resolved.approvalStatus ?? user.appApprovalStatus ?? null;
+  if (isApprovalBlocked(approvalStatus)) {
+    return {
+      ...base,
+      shopId: resolved.shopId,
+      blockedReason: "Shop Culture posting opens after shop approval is complete."
+    };
+  }
+
+  return {
+    ...base,
+    shopId: resolved.shopId,
+    canCompose: true
+  };
+}
+
+export async function createCulturePostDraft(
+  user: UserAccount,
+  input: CultureComposerInput,
+  deps?: CultureServiceDeps
+) {
+  const access = await resolveCultureComposerAccess(user, input.role, deps);
+  assertCanCompose(access);
+
+  const supabase = maybeSupabase(deps);
+  if (!supabase) {
+    throw new CultureComposerError("Culture posting requires the canonical Supabase Culture writer.", 503);
+  }
+
+  if (input.role === "barber" && input.barberId && input.barberId !== access.barberId && input.barberId !== user.barberId) {
+    throw new CultureComposerError("Barbers can only create Culture posts for their own barber record.", 403);
+  }
+
+  if (input.role === "owner" && input.shopId && input.shopId !== access.shopId && input.shopId !== user.ownedShopId) {
+    throw new CultureComposerError("Shop owners can only create Culture posts for their own shop.", 403);
+  }
+
+  const postType = normalizeComposerPostType(input.role, input.postType);
+  const caption = normalizeCaption(input.caption);
+  const serviceId = input.role === "barber" ? normalizeOptionalText(input.serviceId) : null;
+  const tags = cleanTags(input.tags);
+  const metadata = {
+    composerVersion: 1,
+    cta: normalizeOptionalText(input.cta),
+    tags
+  };
+
+  const row = {
+    author_profile_id: access.authorProfileId,
+    author_role: access.actorRole,
+    barber_id: access.barberId,
+    shop_id: access.shopId,
+    service_id: serviceId,
+    post_type: postType,
+    caption,
+    visibility: "private",
+    moderation_status: "pending",
+    publishing_status: "draft",
+    is_bookable: Boolean(input.isBookable && input.role === "barber" && serviceId),
+    allow_comments: false,
+    metadata
+  };
+
+  const result = await supabase
+    .from("culture_posts")
+    .insert(row)
+    .select("id, author_profile_id, author_role, barber_id, shop_id, client_id, appointment_id, service_id, post_type, caption, visibility, moderation_status, publishing_status, is_bookable, allow_comments, metadata, created_at, deleted_at")
+    .single() as QueryResult<CulturePostRow>;
+
+  throwIfError(result as QueryResult<unknown>, "Unable to create Culture draft.");
+  if (!result.data) {
+    throw new CultureComposerError("Culture draft was not returned after save.", 500);
+  }
+
+  if (tags.length) {
+    const tagRows = tags.map((tag) => ({
+      post_id: result.data?.id,
+      tag,
+      tag_type: "style"
+    }));
+    const tagResult = await supabase.from("culture_post_tags").insert(tagRows) as QueryResult<unknown>;
+    throwIfError(tagResult, "Unable to save Culture post tags.");
+  }
+
+  return {
+    post: result.data,
+    summary: summarizeOwnPost(result.data)
+  };
+}
+
+async function readOwnCulturePost(supabase: SupabaseLike, user: UserAccount, postId: string) {
+  const result = await supabase
+    .from("culture_posts")
+    .select("id, author_profile_id, author_role, barber_id, shop_id, client_id, appointment_id, service_id, post_type, caption, visibility, moderation_status, publishing_status, is_bookable, allow_comments, metadata, created_at, deleted_at")
+    .eq("id", postId)
+    .eq("author_profile_id", user.id)
+    .maybeSingle() as QueryResult<CulturePostRow>;
+
+  throwIfError(result as QueryResult<unknown>, "Unable to load Culture post.");
+  return result.data ?? null;
+}
+
+export async function submitCulturePostForReview(
+  user: UserAccount,
+  input: { role: CultureComposerRole; postId: string },
+  deps?: CultureServiceDeps
+) {
+  const access = await resolveCultureComposerAccess(user, input.role, deps);
+  assertCanCompose(access);
+
+  const supabase = maybeSupabase(deps);
+  if (!supabase) {
+    throw new CultureComposerError("Culture posting requires the canonical Supabase Culture writer.", 503);
+  }
+
+  const existing = await readOwnCulturePost(supabase, user, input.postId);
+  if (!existing) {
+    throw new CultureComposerError("Culture post was not found for this account.", 404);
+  }
+
+  if (input.role === "barber" && existing.barber_id !== access.barberId) {
+    throw new CultureComposerError("Barbers can only submit their own Culture posts.", 403);
+  }
+
+  if (input.role === "owner" && existing.shop_id !== access.shopId) {
+    throw new CultureComposerError("Shop owners can only submit posts for their own shop.", 403);
+  }
+
+  normalizeComposerPostType(input.role, existing.post_type);
+  if (!normalizeCaption(existing.caption)) {
+    throw new CultureComposerError("Caption is required before submitting for review.", 400);
+  }
+
+  const result = await supabase
+    .from("culture_posts")
+    .update({
+      publishing_status: "published",
+      moderation_status: "pending",
+      visibility: "unlisted",
+      metadata: {
+        ...(existing.metadata ?? {}),
+        submittedForReview: true,
+        submittedAt: new Date().toISOString()
+      }
+    })
+    .eq("id", existing.id)
+    .eq("author_profile_id", user.id)
+    .select("id, author_profile_id, author_role, barber_id, shop_id, client_id, appointment_id, service_id, post_type, caption, visibility, moderation_status, publishing_status, is_bookable, allow_comments, metadata, created_at, deleted_at")
+    .single() as QueryResult<CulturePostRow>;
+
+  throwIfError(result as QueryResult<unknown>, "Unable to submit Culture post for review.");
+  if (!result.data) {
+    throw new CultureComposerError("Culture post was not returned after submit.", 500);
+  }
+
+  return {
+    post: result.data,
+    summary: summarizeOwnPost(result.data),
+    message: "Post submitted for review."
+  };
+}
+
+export async function listMyCulturePosts(
+  user: UserAccount,
+  role: CultureComposerRole,
+  deps?: CultureServiceDeps
+): Promise<CultureMyPosts> {
+  const access = await resolveCultureComposerAccess(user, role, deps);
+  if (!access.canCompose) {
+    return emptyMyPosts();
+  }
+
+  const supabase = maybeSupabase(deps);
+  if (!supabase) {
+    return emptyMyPosts();
+  }
+
+  let query = supabase
+    .from("culture_posts")
+    .select("id, author_profile_id, author_role, barber_id, shop_id, client_id, appointment_id, service_id, post_type, caption, visibility, moderation_status, publishing_status, is_bookable, allow_comments, metadata, created_at, deleted_at")
+    .eq("author_profile_id", user.id)
+    .eq("author_role", access.actorRole)
+    .order("created_at", { ascending: false })
+    .limit(40);
+
+  query = role === "barber"
+    ? query.eq("barber_id", access.barberId)
+    : query.eq("shop_id", access.shopId);
+
+  const result = await query as QueryResult<CulturePostRow[]>;
+  throwIfError(result as QueryResult<unknown>, "Unable to load your Culture posts.");
+
+  const grouped = emptyMyPosts();
+  for (const post of result.data ?? []) {
+    const summary = summarizeOwnPost(post);
+    if (post.deleted_at || post.publishing_status === "archived" || post.publishing_status === "deleted") {
+      grouped.archived.push(summary);
+    } else if (post.publishing_status === "draft") {
+      grouped.drafts.push(summary);
+    } else if (post.publishing_status === "published" && post.moderation_status === "approved" && post.visibility === "public") {
+      grouped.published.push(summary);
+    } else {
+      grouped.pendingReview.push(summary);
+    }
+  }
+
+  return grouped;
 }
 
 export function mapCulturePostToSafeFeedItem(post: CulturePostRow, lookups: LookupMaps = {}): CultureFeedItem {

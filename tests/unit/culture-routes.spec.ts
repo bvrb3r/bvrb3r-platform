@@ -3,14 +3,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   getCurrentUserFromServerMock,
+  createCulturePostDraftMock,
   listCultureFeedMock,
+  listMyCulturePostsMock,
   recordCultureFeedEventMock,
-  recordCultureEngagementMock
+  recordCultureEngagementMock,
+  submitCulturePostForReviewMock
 } = vi.hoisted(() => ({
   getCurrentUserFromServerMock: vi.fn(),
+  createCulturePostDraftMock: vi.fn(),
   listCultureFeedMock: vi.fn(),
+  listMyCulturePostsMock: vi.fn(),
   recordCultureFeedEventMock: vi.fn(),
-  recordCultureEngagementMock: vi.fn()
+  recordCultureEngagementMock: vi.fn(),
+  submitCulturePostForReviewMock: vi.fn()
 }));
 
 vi.mock("@/lib/auth/session", () => ({
@@ -22,25 +28,43 @@ vi.mock("@/lib/culture/service", async () => {
 
   return {
     ...actual,
+    createCulturePostDraft: createCulturePostDraftMock,
     listCultureFeed: listCultureFeedMock,
+    listMyCulturePosts: listMyCulturePostsMock,
     recordCultureFeedEvent: recordCultureFeedEventMock,
-    recordCultureEngagement: recordCultureEngagementMock
+    recordCultureEngagement: recordCultureEngagementMock,
+    submitCulturePostForReview: submitCulturePostForReviewMock
   };
 });
 
 import { GET as getCultureFeed } from "@/app/api/culture/feed/route";
 import { POST as postCultureEvent } from "@/app/api/culture/events/route";
+import { GET as getMyCulturePosts } from "@/app/api/culture/my-posts/route";
+import { POST as createCulturePost } from "@/app/api/culture/posts/route";
+import { POST as submitCulturePost } from "@/app/api/culture/posts/[postId]/submit/route";
 
 describe("Culture API routes", () => {
   beforeEach(() => {
     getCurrentUserFromServerMock.mockReset();
+    createCulturePostDraftMock.mockReset();
     listCultureFeedMock.mockReset();
+    listMyCulturePostsMock.mockReset();
     recordCultureFeedEventMock.mockReset();
     recordCultureEngagementMock.mockReset();
+    submitCulturePostForReviewMock.mockReset();
 
+    createCulturePostDraftMock.mockResolvedValue({
+      post: { id: "post-draft-1" },
+      summary: { id: "post-draft-1", caption: "Draft", postType: "barber_cut" }
+    });
     listCultureFeedMock.mockResolvedValue({ items: [], cursor: null, hasMore: false });
+    listMyCulturePostsMock.mockResolvedValue({ drafts: [], pendingReview: [], published: [], archived: [] });
     recordCultureFeedEventMock.mockResolvedValue({ id: "event-1", event_type: "feed_loaded" });
     recordCultureEngagementMock.mockResolvedValue({ id: "engagement-1", engagement_type: "save" });
+    submitCulturePostForReviewMock.mockResolvedValue({
+      summary: { id: "post-draft-1", caption: "Draft", postType: "barber_cut" },
+      message: "Post submitted for review."
+    });
     getCurrentUserFromServerMock.mockResolvedValue({
       authenticated: true,
       user: {
@@ -118,5 +142,78 @@ describe("Culture API routes", () => {
 
     expect(response.status).toBe(401);
     expect(recordCultureFeedEventMock).not.toHaveBeenCalled();
+  });
+
+  it("creates a barber Culture draft through the service", async () => {
+    getCurrentUserFromServerMock.mockResolvedValue({
+      authenticated: true,
+      user: {
+        id: "22222222-2222-4222-8222-222222222222",
+        role: "barber_user",
+        email: "blaze@bvrb3r.demo",
+        password: "",
+        name: "Blaze",
+        title: "Barber",
+        locationIds: [],
+        barberId: "barber-blaze"
+      }
+    });
+
+    const response = await createCulturePost(new NextRequest("https://bvrb3r.test/api/culture/posts", {
+      method: "POST",
+      body: JSON.stringify({
+        role: "barber",
+        postType: "barber_cut",
+        caption: "Fresh work."
+      })
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ ok: true, postId: "post-draft-1" });
+    expect(createCulturePostDraftMock).toHaveBeenCalledWith(expect.objectContaining({ role: "barber_user" }), expect.objectContaining({
+      role: "barber",
+      postType: "barber_cut",
+      caption: "Fresh work."
+    }));
+  });
+
+  it("rejects unauthenticated Culture draft creation", async () => {
+    getCurrentUserFromServerMock.mockResolvedValue({
+      authenticated: false,
+      user: { id: "guest-user" }
+    });
+
+    const response = await createCulturePost(new NextRequest("https://bvrb3r.test/api/culture/posts", {
+      method: "POST",
+      body: JSON.stringify({ role: "barber", postType: "barber_cut" })
+    }));
+
+    expect(response.status).toBe(401);
+    expect(createCulturePostDraftMock).not.toHaveBeenCalled();
+  });
+
+  it("submits a Culture draft for review through the service", async () => {
+    const response = await submitCulturePost(new NextRequest("https://bvrb3r.test/api/culture/posts/post-draft-1/submit", {
+      method: "POST",
+      body: JSON.stringify({ role: "barber" })
+    }), { params: Promise.resolve({ postId: "post-draft-1" }) });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ ok: true, message: "Post submitted for review." });
+    expect(submitCulturePostForReviewMock).toHaveBeenCalledWith(expect.any(Object), {
+      role: "barber",
+      postId: "post-draft-1"
+    });
+  });
+
+  it("lists current user's Culture posts through the service", async () => {
+    const response = await getMyCulturePosts(new NextRequest("https://bvrb3r.test/api/culture/my-posts?role=owner"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ ok: true, posts: { drafts: [] } });
+    expect(listMyCulturePostsMock).toHaveBeenCalledWith(expect.any(Object), "owner");
   });
 });

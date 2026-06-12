@@ -41,8 +41,8 @@ describe("client culture screen", () => {
     expect(screen.getByText("My culture profile")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Discover styles/i })).toHaveAttribute("href", "/discover");
     expect(screen.getByRole("link", { name: /View shops/i })).toHaveAttribute("href", "/discover?type=shops");
-    expect(screen.getByText("Post your work")).toBeInTheDocument();
-    expect(screen.getByText("Posting opens after Culture Feed publishing rules are fully wired.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Post your work/i })).toHaveAttribute("href", "/dashboard/barber/culture/new");
+    expect(screen.getByText("Create a draft and submit barber work for review.")).toBeInTheDocument();
     expect(screen.getByText("Barber posts, tutorials, and shop culture will appear here as the BVRB3R community grows.")).toBeInTheDocument();
     expect(screen.queryByText("Posting is coming soon.")).not.toBeInTheDocument();
     expect(screen.queryByText(/fake|metrics|views:|followers:|1\.2k/i)).not.toBeInTheDocument();
@@ -55,7 +55,8 @@ describe("client culture screen", () => {
     expect(screen.getByText("Shops, teams, styles, barbers, and community.")).toBeInTheDocument();
     expect(screen.getByText("Shop Owner Culture")).toBeInTheDocument();
     expect(screen.getByText("Promote shop")).toBeInTheDocument();
-    expect(screen.getByText("Shop posting opens after Culture Feed publishing rules are fully wired.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Share Shop Culture/i })).toHaveAttribute("href", "/dashboard/owner/culture/new");
+    expect(screen.getByText("Share shop updates, walk-ins, team moments, and local culture.")).toBeInTheDocument();
     expect(screen.getByText("Shop posts, team highlights, and local barber culture will appear here as the BVRB3R community grows.")).toBeInTheDocument();
     expect(screen.queryByText(/fake|metrics|views:|followers:|1\.2k/i)).not.toBeInTheDocument();
   });

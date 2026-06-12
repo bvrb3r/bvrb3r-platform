@@ -177,13 +177,29 @@ export function ClientCultureScreen({
   const postingTitle = surface === "barber"
     ? "Post your work"
     : surface === "shop"
-      ? "Promote your shop"
+      ? "Share Shop Culture"
       : "Share your next cut";
   const postingCopy = surface === "barber"
-    ? "Posting opens after Culture Feed publishing rules are fully wired."
+    ? "Create a draft and submit barber work for review."
     : surface === "shop"
-      ? "Shop posting opens after Culture Feed publishing rules are fully wired."
+      ? "Share shop updates, walk-ins, team moments, and local culture."
       : "Posting is coming soon.";
+  const postingHref = surface === "barber"
+    ? "/dashboard/barber/culture/new"
+    : surface === "shop"
+      ? "/dashboard/owner/culture/new"
+      : null;
+  const postingCard = (
+    <>
+      <Scissors className="h-5 w-5 text-[#d7ffab]" />
+      <p className="mt-4 text-lg font-semibold text-white">{postingTitle}</p>
+      <p className="mt-2 text-sm leading-6 text-white/58">{postingCopy}</p>
+      <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/24 px-3 py-2 text-xs uppercase tracking-[0.16em] text-white/54">
+        <UsersRound className="h-3.5 w-3.5" />
+        {postingHref ? "Open composer" : "Community ready"}
+      </div>
+    </>
+  );
 
   return (
     <div className="space-y-4" data-testid="client-culture-screen">
@@ -243,15 +259,15 @@ export function ClientCultureScreen({
             <p className="mt-4 text-lg font-semibold text-white">Saved culture items</p>
             <p className="mt-2 text-sm leading-6 text-white/58">Saved and followed Culture items will use the canonical engagement graph.</p>
           </div>
-          <div className="rounded-[26px] border border-white/10 bg-black/20 p-5">
-            <Scissors className="h-5 w-5 text-[#d7ffab]" />
-            <p className="mt-4 text-lg font-semibold text-white">{postingTitle}</p>
-            <p className="mt-2 text-sm leading-6 text-white/58">{postingCopy}</p>
-            <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/24 px-3 py-2 text-xs uppercase tracking-[0.16em] text-white/54">
-              <UsersRound className="h-3.5 w-3.5" />
-              Community ready
+          {postingHref ? (
+            <Link href={postingHref as Route} className="block rounded-[26px] border border-[#d7ffab]/16 bg-[#d7ffab]/8 p-5 transition hover:border-[#d7ffab]/34">
+              {postingCard}
+            </Link>
+          ) : (
+            <div className="rounded-[26px] border border-white/10 bg-black/20 p-5">
+              {postingCard}
             </div>
-          </div>
+          )}
         </aside>
       </section>
     </div>
