@@ -9,6 +9,8 @@ import {
   listCultureFeed,
   listMyCulturePosts,
   mapCulturePostToSafeFeedItem,
+  performCultureFollowAction,
+  performCulturePostEngagementAction,
   recordCultureEngagement,
   recordCultureFeedEvent,
   submitCulturePostForReview,
@@ -28,6 +30,7 @@ type QueryChain = {
   insert: ReturnType<typeof vi.fn>;
   update: ReturnType<typeof vi.fn>;
   upsert: ReturnType<typeof vi.fn>;
+  delete: ReturnType<typeof vi.fn>;
   single: ReturnType<typeof vi.fn>;
   maybeSingle: ReturnType<typeof vi.fn>;
   then: <TResult1 = { data: unknown; error: Error | null }, TResult2 = never>(
@@ -43,6 +46,7 @@ function createQuery(rows: Row[], tableWrites: Row[], error: Error | null = null
   let maybeSingleMode = false;
   let writeRow: Row | null = null;
   let updateRow: Row | null = null;
+  let deleteMode = false;
 
   function readColumn(row: Row, column: string) {
     const metadataMatch = column.match(/^metadata->>(.+)$/);
@@ -101,6 +105,10 @@ function createQuery(rows: Row[], tableWrites: Row[], error: Error | null = null
       tableWrites.push(value);
       return chain;
     }),
+    delete: vi.fn(() => {
+      deleteMode = true;
+      return chain;
+    }),
     single: vi.fn(() => {
       singleMode = true;
       return chain;
@@ -115,6 +123,16 @@ function createQuery(rows: Row[], tableWrites: Row[], error: Error | null = null
     ) => {
       if (error) {
         const result = { data: null, error };
+        return Promise.resolve(result).then(onfulfilled ?? undefined, onrejected ?? undefined);
+      }
+
+      if (deleteMode) {
+        for (let index = rows.length - 1; index >= 0; index -= 1) {
+          if (filters.every((filter) => filter(rows[index] ?? {}))) {
+            rows.splice(index, 1);
+          }
+        }
+        const result = { data: null, error: null };
         return Promise.resolve(result).then(onfulfilled ?? undefined, onrejected ?? undefined);
       }
 
@@ -535,6 +553,195 @@ describe("Culture service", () => {
       post_id: publishedPost.id,
       engagement_type: "save"
     });
+  });
+
+  it("lets a client like and unlike a public Culture post", async () => {
+    const engagementRows: Row[] = [{
+      id: "like-row",
+      post_id: publishedPost.id,
+      actor_profile_id: clientUser.id,
+      actor_role: "client_user",
+      engagement_type: "like",
+      metadata: {}
+    }];
+    const supabase = createSupabaseStub({
+      culture_posts: [publishedPost],
+      culture_engagements: engagementRows,
+      culture_feed_events: []
+    });
+
+    const liked = await performCulturePostEngagementAction(clientUser, {
+      postId: publishedPost.id,
+      action: "like"
+    }, { supabase: supabase.client });
+
+    expect(liked).toMatchObject({ ok: true, action: "like", liked: true });
+    expect(supabase.writes.culture_engagements[0]).toMatchObject({
+      post_id: publishedPost.id,
+      actor_profile_id: clientUser.id,
+      engagement_type: "like"
+    });
+    expect(supabase.writes.culture_feed_events[0]).toMatchObject({
+      event_type: "like_clicked",
+      post_id: publishedPost.id
+    });
+
+    const unliked = await performCulturePostEngagementAction(clientUser, {
+      postId: publishedPost.id,
+      action: "unlike"
+    }, { supabase: supabase.client });
+
+    expect(unliked).toMatchObject({ ok: true, action: "unlike", liked: false });
+    expect(engagementRows).toHaveLength(0);
+  });
+
+  it("lets a client save and unsave a public Culture post", async () => {
+    const engagementRows: Row[] = [{
+      id: "save-row",
+      post_id: publishedPost.id,
+      actor_profile_id: clientUser.id,
+      actor_role: "client_user",
+      engagement_type: "save",
+      metadata: {}
+    }];
+    const supabase = createSupabaseStub({
+      culture_posts: [publishedPost],
+      culture_engagements: engagementRows,
+      culture_feed_events: []
+    });
+
+    const saved = await performCulturePostEngagementAction(clientUser, {
+      postId: publishedPost.id,
+      action: "save"
+    }, { supabase: supabase.client });
+    const unsaved = await performCulturePostEngagementAction(clientUser, {
+      postId: publishedPost.id,
+      action: "unsave"
+    }, { supabase: supabase.client });
+
+    expect(saved).toMatchObject({ ok: true, action: "save", saved: true });
+    expect(unsaved).toMatchObject({ ok: true, action: "unsave", saved: false });
+    expect(supabase.writes.culture_engagements[0]).toMatchObject({
+      engagement_type: "save"
+    });
+    expect(engagementRows).toHaveLength(0);
+  });
+
+  it.each([
+    ["barber", barberUser],
+    ["owner", ownerUser]
+  ] as const)("lets a %s account like and save public Culture posts", async (_role, user) => {
+    const supabase = createSupabaseStub({
+      culture_posts: [publishedPost],
+      culture_engagements: [],
+      culture_feed_events: []
+    });
+
+    await performCulturePostEngagementAction(user, { postId: publishedPost.id, action: "like" }, { supabase: supabase.client });
+    await performCulturePostEngagementAction(user, { postId: publishedPost.id, action: "save" }, { supabase: supabase.client });
+
+    expect(supabase.writes.culture_engagements).toEqual(expect.arrayContaining([
+      expect.objectContaining({ actor_profile_id: user.id, engagement_type: "like" }),
+      expect.objectContaining({ actor_profile_id: user.id, engagement_type: "save" })
+    ]));
+  });
+
+  it("rejects Culture engagement for guest users and non-public posts", async () => {
+    const supabase = createSupabaseStub({
+      culture_posts: [{ ...publishedPost, id: "private-post", visibility: "private" }],
+      culture_engagements: [],
+      culture_feed_events: []
+    });
+
+    await expect(performCulturePostEngagementAction({
+      ...clientUser,
+      id: "guest-user"
+    }, {
+      postId: publishedPost.id,
+      action: "like"
+    }, { supabase: supabase.client })).rejects.toThrow("signed-in account");
+
+    await expect(performCulturePostEngagementAction(clientUser, {
+      postId: "private-post",
+      action: "save"
+    }, { supabase: supabase.client })).rejects.toThrow("public approved posts");
+  });
+
+  it("records Culture share, profile click, and report actions safely", async () => {
+    const supabase = createSupabaseStub({
+      culture_posts: [publishedPost],
+      culture_engagements: [],
+      culture_feed_events: [],
+      culture_reports: []
+    });
+
+    await performCulturePostEngagementAction(clientUser, {
+      postId: publishedPost.id,
+      action: "share"
+    }, { supabase: supabase.client });
+    await performCulturePostEngagementAction(clientUser, {
+      postId: publishedPost.id,
+      action: "profile_click"
+    }, { supabase: supabase.client });
+    const reported = await performCulturePostEngagementAction(clientUser, {
+      postId: publishedPost.id,
+      action: "report",
+      reason: "spam"
+    }, { supabase: supabase.client });
+
+    expect(reported).toMatchObject({ ok: true, action: "report", reported: true });
+    expect(supabase.writes.culture_engagements).toEqual(expect.arrayContaining([
+      expect.objectContaining({ engagement_type: "share" }),
+      expect.objectContaining({ engagement_type: "profile_click" }),
+      expect.objectContaining({ engagement_type: "report" })
+    ]));
+    expect(supabase.writes.culture_reports[0]).toMatchObject({
+      post_id: publishedPost.id,
+      reporter_profile_id: clientUser.id,
+      reason: "spam"
+    });
+    expect(supabase.writes.culture_feed_events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ event_type: "share_clicked" }),
+      expect.objectContaining({ event_type: "profile_clicked" }),
+      expect.objectContaining({ event_type: "report_clicked" })
+    ]));
+    expect(JSON.stringify(supabase.writes)).not.toMatch(/phone|email|stripe/i);
+  });
+
+  it("creates and removes a private Culture follow edge for a post author", async () => {
+    const supabase = createSupabaseStub({
+      culture_posts: [publishedPost],
+      user_engagement_edges: []
+    });
+
+    const followed = await performCultureFollowAction(clientUser, {
+      targetProfileId: publishedPost.author_profile_id,
+      action: "follow",
+      sourcePostId: publishedPost.id
+    }, { supabase: supabase.client });
+    const unfollowed = await performCultureFollowAction(clientUser, {
+      targetProfileId: publishedPost.author_profile_id,
+      action: "unfollow",
+      sourcePostId: publishedPost.id
+    }, { supabase: supabase.client });
+
+    expect(followed).toMatchObject({ ok: true, following: true });
+    expect(unfollowed).toMatchObject({ ok: true, following: false });
+    expect(supabase.writes.user_engagement_edges).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        actor_profile_id: clientUser.id,
+        edge_type: "follow",
+        target_type: "profile",
+        target_id: publishedPost.author_profile_id,
+        visibility: "private",
+        status: "active"
+      }),
+      expect.objectContaining({
+        actor_profile_id: clientUser.id,
+        edge_type: "follow",
+        status: "removed"
+      })
+    ]));
   });
 
   it("lets a barber create an owned draft without publishing it to the public feed", async () => {

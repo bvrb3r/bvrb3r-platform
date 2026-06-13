@@ -50,6 +50,9 @@ function emptyFeedCopy(surface: CultureSurface) {
 function legacyPostToFeedItem(post: ClientCulturePost): CultureFeedItem {
   return {
     id: post.id,
+    authorProfileId: post.id,
+    authorTargetKind: post.creatorRole === "shop" ? "shop" : post.creatorRole === "barber" ? "barber" : "client",
+    authorTarget: null,
     authorDisplayName: post.creatorName,
     authorUsername: null,
     authorAvatarUrl: null,
@@ -157,7 +160,7 @@ export function ClientCultureScreen({
                 {feedError}
               </div>
             ) : hasPosts ? feedItems.map((post) => (
-              <CulturePostCard key={post.id} post={post} />
+              <CulturePostCard key={post.id} post={post} surface={surface} />
             )) : (
               <div className="rounded-[24px] border border-dashed border-white/12 bg-black/18 p-5 text-sm text-white/58">
                 {emptyFeedCopy(surface)}

@@ -18,6 +18,9 @@ export type CultureMediaItem = {
 
 export type CultureFeedItem = {
   id: string;
+  authorProfileId: string;
+  authorTargetKind: "client" | "barber" | "shop";
+  authorTarget: string | null;
   authorDisplayName: string;
   authorUsername: string | null;
   authorAvatarUrl: string | null;
@@ -44,6 +47,9 @@ export type CultureFeedResponse = {
   hasMore: boolean;
   error?: string;
 };
+
+export type CulturePostEngagementAction = "like" | "unlike" | "save" | "unsave" | "share" | "report" | "profile_click";
+export type CultureFollowAction = "follow" | "unfollow";
 
 export type CultureComposerRole = "barber" | "owner";
 export type CultureProfileMediaRole = CultureComposerRole | "client";
@@ -228,6 +234,7 @@ type QueryLike<T = unknown> = PromiseLike<QueryResult<T>> & {
   insert: (values: unknown) => QueryLike<T>;
   update: (values: unknown) => QueryLike<T>;
   upsert: (values: unknown, options?: Record<string, unknown>) => QueryLike<T>;
+  delete: () => QueryLike<T>;
   single: () => QueryLike<T>;
   maybeSingle: () => QueryLike<T>;
 };
@@ -390,6 +397,27 @@ function roleLabel(role: CultureActorRole | Role | string) {
     default:
       return "Client";
   }
+}
+
+function authorTargetKindForPost(post: CulturePostRow): "client" | "barber" | "shop" {
+  if (post.shop_id || post.author_role === "shop_owner_user" || post.author_role === "owner") {
+    return "shop";
+  }
+
+  if (post.barber_id || roleLabel(post.author_role) === "Barber") {
+    return "barber";
+  }
+
+  return "client";
+}
+
+function authorTargetForPost(post: CulturePostRow, profile?: PublicProfileRow | null, shop?: PublicShopRow | null) {
+  const targetKind = authorTargetKindForPost(post);
+  if (targetKind === "shop") {
+    return safeNullableText(shop?.public_username) ?? safeNullableText(post.shop_id);
+  }
+
+  return safeNullableText(profile?.public_username);
 }
 
 function safeText(value: unknown, fallback = "") {
@@ -1595,12 +1623,17 @@ export function mapCulturePostToSafeFeedItem(post: CulturePostRow, lookups: Look
   const service = post.service_id ? lookups.servicesById?.get(post.service_id) : null;
   const authorDisplayName = safeText(profile?.full_name, roleLabel(post.author_role));
   const username = safeText(profile?.public_username);
+  const authorTargetKind = authorTargetKindForPost(post);
+  const authorTarget = authorTargetForPost(post, profile, shop);
   const mediaUrl = safeNullableText(media?.media_url);
   const thumbnailUrl = safeNullableText(media?.thumbnail_url);
   const authorAvatarUrl = toPublicMediaUrl(lookups.storageClient ?? null, profile?.profile_photo_path, profile?.profile_photo_url) ?? null;
 
   return {
     id: post.id,
+    authorProfileId: post.author_profile_id,
+    authorTargetKind,
+    authorTarget,
     authorDisplayName,
     authorUsername: username ? `@${username.replace(/^@/, "")}` : null,
     authorAvatarUrl,
@@ -1730,6 +1763,311 @@ export async function getCulturePostSafeDisplay(postId: string, deps?: CultureSe
 
   const lookups = await loadFeedLookups(supabase, [result.data]);
   return mapCulturePostToSafeFeedItem(result.data, lookups);
+}
+
+function assertCultureEngagementUser(user: UserAccount) {
+  if (!user?.id || user.id === "guest-user") {
+    throw new CultureComposerError("A signed-in account is required for Culture engagement.", 401);
+  }
+}
+
+async function readPublicCulturePostForAction(supabase: SupabaseLike, postId: string) {
+  const result = await supabase
+    .from("culture_posts")
+    .select("id, author_profile_id, author_role, barber_id, shop_id, client_id, appointment_id, service_id, post_type, caption, visibility, moderation_status, publishing_status, is_bookable, allow_comments, metadata, created_at, deleted_at")
+    .eq("id", postId)
+    .eq("publishing_status", "published")
+    .eq("moderation_status", "approved")
+    .eq("visibility", "public")
+    .is("deleted_at", null)
+    .maybeSingle() as QueryResult<CulturePostRow>;
+
+  throwIfError(result as QueryResult<unknown>, "Unable to load Culture post for engagement.");
+  if (!result.data) {
+    throw new CultureComposerError("Culture engagement is only available for public approved posts.", 404);
+  }
+
+  return result.data;
+}
+
+function cultureEngagementTypeForAction(action: CulturePostEngagementAction) {
+  switch (action) {
+    case "unlike":
+      return "like";
+    case "unsave":
+      return "save";
+    case "profile_click":
+      return "profile_click";
+    default:
+      return action;
+  }
+}
+
+function cultureFeedEventTypeForAction(action: CulturePostEngagementAction) {
+  switch (action) {
+    case "like":
+    case "unlike":
+      return "like_clicked";
+    case "save":
+    case "unsave":
+      return "save_clicked";
+    case "share":
+      return "share_clicked";
+    case "report":
+      return "report_clicked";
+    case "profile_click":
+      return "profile_clicked";
+    default:
+      return "post_click";
+  }
+}
+
+async function deleteCultureEngagement(payload: {
+  postId: string;
+  actorProfileId: string;
+  engagementType: string;
+}, deps?: CultureServiceDeps) {
+  const supabase = maybeSupabase(deps);
+  if (!supabase) {
+    demoCultureEngagements.delete(`${payload.postId}:${payload.actorProfileId}:${payload.engagementType}`);
+    return { removed: true };
+  }
+
+  const result = await supabase
+    .from("culture_engagements")
+    .delete()
+    .eq("post_id", payload.postId)
+    .eq("actor_profile_id", payload.actorProfileId)
+    .eq("engagement_type", payload.engagementType) as QueryResult<unknown>;
+
+  throwIfError(result, "Unable to remove Culture engagement.");
+  return { removed: true };
+}
+
+async function recordCultureReport(payload: {
+  postId: string;
+  reporterProfileId: string;
+  reporterRole: CultureActorRole;
+  reason: string;
+  details?: string | null;
+  metadata?: Record<string, unknown>;
+}, deps?: CultureServiceDeps) {
+  const supabase = maybeSupabase(deps);
+  const row = {
+    post_id: payload.postId,
+    reporter_profile_id: payload.reporterProfileId,
+    reporter_role: payload.reporterRole,
+    reason: payload.reason,
+    details: payload.details ?? null,
+    status: "open",
+    metadata: payload.metadata ?? {}
+  };
+
+  if (!supabase) {
+    return { id: crypto.randomUUID(), ...row, created_at: new Date().toISOString() };
+  }
+
+  const result = await supabase
+    .from("culture_reports")
+    .insert(row)
+    .select("id, post_id, reporter_profile_id, reporter_role, reason, details, status, metadata, created_at")
+    .single() as QueryResult<Record<string, unknown>>;
+
+  throwIfError(result as QueryResult<unknown>, "Unable to submit Culture report.");
+  return result.data;
+}
+
+export async function performCulturePostEngagementAction(
+  user: UserAccount,
+  input: {
+    postId: string;
+    action: CulturePostEngagementAction;
+    reason?: string | null;
+    metadata?: Record<string, unknown>;
+  },
+  deps?: CultureServiceDeps
+) {
+  assertCultureEngagementUser(user);
+  const supabase = maybeSupabase(deps);
+  if (!supabase) {
+    throw new CultureComposerError("Culture engagement requires the canonical Supabase Culture writer.", 503);
+  }
+
+  const postId = normalizeOptionalText(input.postId);
+  if (!postId) {
+    throw new CultureComposerError("Culture engagement requires a post id.", 400);
+  }
+
+  const action = input.action;
+  const actorRole = dbRoleForUser(user);
+  const post = await readPublicCulturePostForAction(supabase, postId);
+  const engagementType = cultureEngagementTypeForAction(action);
+  const eventType = cultureFeedEventTypeForAction(action);
+  const metadata = {
+    source: "culture_feed",
+    action,
+    ...(input.metadata ?? {})
+  };
+
+  if (action === "report") {
+    const reason = normalizeOptionalText(input.reason);
+    if (!reason) {
+      throw new CultureComposerError("Choose a reason before reporting this Culture post.", 400);
+    }
+
+    const [engagement, report, event] = await Promise.all([
+      recordCultureEngagement({
+        postId,
+        actorProfileId: user.id,
+        actorRole,
+        engagementType,
+        metadata: { ...metadata, reason }
+      }, deps),
+      recordCultureReport({
+        postId,
+        reporterProfileId: user.id,
+        reporterRole: actorRole,
+        reason,
+        metadata
+      }, deps),
+      recordCultureFeedEvent({
+        actorProfileId: user.id,
+        actorRole,
+        eventType,
+        postId,
+        metadata: { ...metadata, reason }
+      }, deps)
+    ]);
+
+    return { ok: true, action, postId, engagement, report, event, reported: true };
+  }
+
+  if (action === "unlike" || action === "unsave") {
+    const [removed, event] = await Promise.all([
+      deleteCultureEngagement({
+        postId,
+        actorProfileId: user.id,
+        engagementType
+      }, deps),
+      recordCultureFeedEvent({
+        actorProfileId: user.id,
+        actorRole,
+        eventType,
+        postId,
+        metadata
+      }, deps)
+    ]);
+
+    return {
+      ok: true,
+      action,
+      postId,
+      removed,
+      event,
+      liked: action === "unlike" ? false : undefined,
+      saved: action === "unsave" ? false : undefined
+    };
+  }
+
+  const [engagement, event] = await Promise.all([
+    recordCultureEngagement({
+      postId,
+      actorProfileId: user.id,
+      actorRole,
+      engagementType,
+      metadata
+    }, deps),
+    recordCultureFeedEvent({
+      actorProfileId: user.id,
+      actorRole,
+      eventType,
+      postId,
+      metadata
+    }, deps)
+  ]);
+
+  return {
+    ok: true,
+    action,
+    postId,
+    targetProfileId: post.author_profile_id,
+    engagement,
+    event,
+    liked: action === "like" ? true : undefined,
+    saved: action === "save" ? true : undefined,
+    shared: action === "share" ? true : undefined
+  };
+}
+
+export async function performCultureFollowAction(
+  user: UserAccount,
+  input: {
+    targetProfileId: string;
+    action: CultureFollowAction;
+    sourcePostId?: string | null;
+    metadata?: Record<string, unknown>;
+  },
+  deps?: CultureServiceDeps
+) {
+  assertCultureEngagementUser(user);
+  const supabase = maybeSupabase(deps);
+  if (!supabase) {
+    throw new CultureComposerError("Culture follows require the canonical Supabase engagement graph.", 503);
+  }
+
+  const targetProfileId = normalizeOptionalText(input.targetProfileId);
+  if (!targetProfileId) {
+    throw new CultureComposerError("Choose a profile to follow.", 400);
+  }
+
+  if (targetProfileId === user.id) {
+    throw new CultureComposerError("You cannot follow your own Culture profile.", 400);
+  }
+
+  const sourcePostId = normalizeOptionalText(input.sourcePostId);
+  let sourcePost: CulturePostRow | null = null;
+  if (sourcePostId) {
+    sourcePost = await readPublicCulturePostForAction(supabase, sourcePostId);
+    if (sourcePost.author_profile_id !== targetProfileId) {
+      throw new CultureComposerError("Culture follow target does not match the source post author.", 400);
+    }
+  }
+
+  const now = new Date().toISOString();
+  const status = input.action === "follow" ? "active" : "removed";
+  const row = {
+    actor_profile_id: user.id,
+    actor_role: dbRoleForUser(user),
+    edge_type: "follow",
+    target_type: "profile",
+    target_id: targetProfileId,
+    target_profile_id: targetProfileId,
+    visibility: "private",
+    status,
+    metadata: {
+      source: "culture_feed",
+      sourcePostId,
+      sourcePostRole: sourcePost?.author_role ?? null,
+      ...(input.metadata ?? {})
+    },
+    updated_at: now,
+    deleted_at: status === "removed" ? now : null
+  };
+
+  const result = await supabase
+    .from("user_engagement_edges")
+    .upsert(row, { onConflict: "actor_profile_id,edge_type,target_type,target_id" })
+    .select("id, actor_profile_id, actor_role, edge_type, target_type, target_id, target_profile_id, visibility, status, metadata, created_at, updated_at, deleted_at")
+    .single() as QueryResult<Record<string, unknown>>;
+
+  throwIfError(result as QueryResult<unknown>, input.action === "follow" ? "Unable to follow Culture profile." : "Unable to unfollow Culture profile.");
+  return {
+    ok: true,
+    action: input.action,
+    following: status === "active",
+    targetProfileId,
+    edge: result.data
+  };
 }
 
 export async function recordCultureFeedEvent(payload: {

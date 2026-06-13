@@ -8,6 +8,8 @@ const {
   createCulturePostFromProfileMediaMock,
   listCultureFeedMock,
   listMyCulturePostsMock,
+  performCultureFollowActionMock,
+  performCulturePostEngagementActionMock,
   recordCultureFeedEventMock,
   recordCultureEngagementMock,
   submitCulturePostForReviewMock
@@ -18,6 +20,8 @@ const {
   createCulturePostFromProfileMediaMock: vi.fn(),
   listCultureFeedMock: vi.fn(),
   listMyCulturePostsMock: vi.fn(),
+  performCultureFollowActionMock: vi.fn(),
+  performCulturePostEngagementActionMock: vi.fn(),
   recordCultureFeedEventMock: vi.fn(),
   recordCultureEngagementMock: vi.fn(),
   submitCulturePostForReviewMock: vi.fn()
@@ -37,6 +41,8 @@ vi.mock("@/lib/culture/service", async () => {
     createCulturePostDraft: createCulturePostDraftMock,
     listCultureFeed: listCultureFeedMock,
     listMyCulturePosts: listMyCulturePostsMock,
+    performCultureFollowAction: performCultureFollowActionMock,
+    performCulturePostEngagementAction: performCulturePostEngagementActionMock,
     recordCultureFeedEvent: recordCultureFeedEventMock,
     recordCultureEngagement: recordCultureEngagementMock,
     submitCulturePostForReview: submitCulturePostForReviewMock
@@ -44,7 +50,9 @@ vi.mock("@/lib/culture/service", async () => {
 });
 
 import { GET as getCultureFeed } from "@/app/api/culture/feed/route";
+import { POST as postCultureEngagement } from "@/app/api/culture/engagements/route";
 import { POST as postCultureEvent } from "@/app/api/culture/events/route";
+import { POST as postCultureFollow } from "@/app/api/culture/follow/route";
 import { GET as getMyCulturePosts } from "@/app/api/culture/my-posts/route";
 import { POST as createCulturePost } from "@/app/api/culture/posts/route";
 import { POST as shareProfileMediaToCulture } from "@/app/api/culture/profile-media/route";
@@ -85,6 +93,8 @@ describe("Culture API routes", () => {
     createCulturePostDraftMock.mockReset();
     listCultureFeedMock.mockReset();
     listMyCulturePostsMock.mockReset();
+    performCultureFollowActionMock.mockReset();
+    performCulturePostEngagementActionMock.mockReset();
     recordCultureFeedEventMock.mockReset();
     recordCultureEngagementMock.mockReset();
     submitCulturePostForReviewMock.mockReset();
@@ -120,6 +130,8 @@ describe("Culture API routes", () => {
     });
     listCultureFeedMock.mockResolvedValue({ items: [], cursor: null, hasMore: false });
     listMyCulturePostsMock.mockResolvedValue({ drafts: [], pendingReview: [], published: [], archived: [] });
+    performCulturePostEngagementActionMock.mockResolvedValue({ ok: true, action: "like", liked: true });
+    performCultureFollowActionMock.mockResolvedValue({ ok: true, action: "follow", following: true });
     recordCultureFeedEventMock.mockResolvedValue({ id: "event-1", event_type: "feed_loaded" });
     recordCultureEngagementMock.mockResolvedValue({ id: "engagement-1", engagement_type: "save" });
     submitCulturePostForReviewMock.mockResolvedValue({
@@ -201,6 +213,89 @@ describe("Culture API routes", () => {
       actorRole: "client_user",
       engagementType: "save"
     }));
+  });
+
+  it("runs signed-in Culture post engagement actions through the service", async () => {
+    const postId = "11111111-1111-4111-8111-111111111111";
+
+    const response = await postCultureEngagement(new NextRequest("https://bvrb3r.test/api/culture/engagements", {
+      method: "POST",
+      body: JSON.stringify({
+        postId,
+        action: "like"
+      })
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ ok: true, action: "like", liked: true });
+    expect(performCulturePostEngagementActionMock).toHaveBeenCalledWith(expect.objectContaining({
+      id: "22222222-2222-4222-8222-222222222222"
+    }), {
+      postId,
+      action: "like"
+    });
+  });
+
+  it("rejects unauthenticated Culture post engagement actions", async () => {
+    getCurrentUserFromServerMock.mockResolvedValue({
+      authenticated: false,
+      user: { id: "guest-user" }
+    });
+
+    const response = await postCultureEngagement(new NextRequest("https://bvrb3r.test/api/culture/engagements", {
+      method: "POST",
+      body: JSON.stringify({
+        postId: "11111111-1111-4111-8111-111111111111",
+        action: "save"
+      })
+    }));
+
+    expect(response.status).toBe(401);
+    expect(performCulturePostEngagementActionMock).not.toHaveBeenCalled();
+  });
+
+  it("runs Culture follow actions through the engagement graph service", async () => {
+    const targetProfileId = "33333333-3333-4333-8333-333333333333";
+    const sourcePostId = "11111111-1111-4111-8111-111111111111";
+
+    const response = await postCultureFollow(new NextRequest("https://bvrb3r.test/api/culture/follow", {
+      method: "POST",
+      body: JSON.stringify({
+        targetProfileId,
+        action: "follow",
+        sourcePostId
+      })
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ ok: true, action: "follow", following: true });
+    expect(performCultureFollowActionMock).toHaveBeenCalledWith(expect.objectContaining({
+      id: "22222222-2222-4222-8222-222222222222"
+    }), {
+      targetProfileId,
+      action: "follow",
+      sourcePostId
+    });
+  });
+
+  it("rejects unauthenticated Culture follow actions", async () => {
+    getCurrentUserFromServerMock.mockResolvedValue({
+      authenticated: false,
+      user: { id: "guest-user" }
+    });
+
+    const response = await postCultureFollow(new NextRequest("https://bvrb3r.test/api/culture/follow", {
+      method: "POST",
+      body: JSON.stringify({
+        targetProfileId: "33333333-3333-4333-8333-333333333333",
+        action: "follow"
+      })
+    }));
+
+    expect(response.status).toBe(401);
+    expect(performCultureFollowActionMock).not.toHaveBeenCalled();
   });
 
   it("rejects unauthenticated Culture event writes", async () => {
