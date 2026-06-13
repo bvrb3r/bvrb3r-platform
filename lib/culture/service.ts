@@ -86,6 +86,7 @@ export type CultureFeedItem = {
   reasonCodes?: CultureFeedReasonCode[];
   reasonLabel?: string | null;
   displayActor?: CultureDisplayActor;
+  commentSummary?: CultureCommentSummary;
 };
 
 export type CultureFeedResponse = {
@@ -108,6 +109,11 @@ export type CultureCommentItem = {
   body: string;
   createdAt: string;
   canHide: boolean;
+};
+
+export type CultureCommentSummary = {
+  count: number;
+  preview?: CultureCommentItem;
 };
 
 export type CultureDisplayActor = {
@@ -398,6 +404,7 @@ type LookupMaps = {
   barberProfilesByReference?: Map<string, PublicBarberProfileRow>;
   servicesById?: Map<string, PublicServiceRow>;
   promotionsByPost?: Map<string, CulturePromotionRow>;
+  commentSummaryByPost?: Map<string, CultureCommentSummary>;
   storageClient?: {
     storage: {
       from: (bucket: string) => {
@@ -895,6 +902,53 @@ function buildBarberProfileReferenceMap(rows: PublicBarberProfileRow[] | null | 
     .filter((entry): entry is [string, PublicBarberProfileRow] => Boolean(entry[0])));
 }
 
+function groupCommentsByPost(rows: CultureCommentRow[] | null | undefined) {
+  const grouped = new Map<string, CultureCommentRow[]>();
+  for (const row of rows ?? []) {
+    grouped.set(row.post_id, [...(grouped.get(row.post_id) ?? []), row]);
+  }
+
+  for (const values of grouped.values()) {
+    values.sort((left, right) => String(right.created_at ?? "").localeCompare(String(left.created_at ?? "")));
+  }
+
+  return grouped;
+}
+
+async function buildCommentSummaryByPost(
+  supabase: SupabaseLike,
+  rows: CultureCommentRow[],
+  storageClient: LookupMaps["storageClient"]
+) {
+  const grouped = groupCommentsByPost(rows);
+  if (!grouped.size) {
+    return new Map<string, CultureCommentSummary>();
+  }
+
+  const previewRows = [...grouped.values()]
+    .map((comments) => comments[0])
+    .filter(Boolean) as CultureCommentRow[];
+  const profilesById = await hydrateCommentProfiles(supabase, previewRows);
+  const summaries = new Map<string, CultureCommentSummary>();
+
+  for (const [postId, comments] of grouped.entries()) {
+    const previewRow = comments[0] ?? null;
+    summaries.set(postId, {
+      count: comments.length,
+      preview: previewRow
+        ? mapCultureCommentToSafeItem(
+          previewRow,
+          profilesById.get(previewRow.actor_profile_id),
+          null,
+          storageClient
+        )
+        : undefined
+    });
+  }
+
+  return summaries;
+}
+
 function isActiveCulturePromotion(row: CulturePromotionRow, now = new Date()) {
   if (row.status !== "active" && row.status !== "approved") {
     return false;
@@ -1029,7 +1083,7 @@ async function loadFeedLookups(supabase: SupabaseLike, posts: CulturePostRow[]):
   const barberIds = [...new Set(posts.map((post) => post.barber_id).filter(Boolean))] as string[];
   const serviceIds = [...new Set(posts.map((post) => post.service_id).filter(Boolean))] as string[];
 
-  const [rawMediaRows, profileRows, shopRows, barberRows, serviceRows, promotionRows] = await Promise.all([
+  const [rawMediaRows, profileRows, shopRows, barberRows, serviceRows, promotionRows, commentRows] = await Promise.all([
     postIds.length
       ? fetchOptionalRows<CultureMediaRow>(
         supabase
@@ -1084,6 +1138,18 @@ async function loadFeedLookups(supabase: SupabaseLike, posts: CulturePostRow[]):
           .in("post_id", postIds),
         "promotions"
       )
+      : Promise.resolve([]),
+    postIds.length
+      ? fetchOptionalRows<CultureCommentRow>(
+        supabase
+          .from("culture_comments")
+          .select("id, post_id, actor_profile_id, actor_role, body, moderation_status, parent_comment_id, created_at, updated_at, deleted_at")
+          .in("post_id", postIds)
+          .eq("moderation_status", "approved")
+          .is("deleted_at", null)
+          .order("created_at", { ascending: false }),
+        "comment_summary"
+      )
       : Promise.resolve([])
   ]);
   const barberProfileReferences = [...new Set([
@@ -1105,6 +1171,8 @@ async function loadFeedLookups(supabase: SupabaseLike, posts: CulturePostRow[]):
     )
     : [];
   const mediaRows = await prepareCultureMediaRows(supabase, rawMediaRows);
+  const storageClient = supabase.storage ? { storage: supabase.storage } : null;
+  const commentSummaryByPost = await buildCommentSummaryByPost(supabase, commentRows, storageClient);
 
   return {
     mediaByPost: groupMedia(mediaRows),
@@ -1114,7 +1182,8 @@ async function loadFeedLookups(supabase: SupabaseLike, posts: CulturePostRow[]):
     barberProfilesByReference: buildBarberProfileReferenceMap(barberProfileRows),
     servicesById: buildMap(serviceRows),
     promotionsByPost: groupActivePromotions(promotionRows),
-    storageClient: supabase.storage ? { storage: supabase.storage } : null
+    commentSummaryByPost,
+    storageClient
   };
 }
 
@@ -2364,6 +2433,7 @@ export function mapCulturePostToSafeFeedItem(
   const mediaUrl = safeNullableText(media?.media_url);
   const thumbnailUrl = safeNullableText(media?.thumbnail_url);
   const isPromoted = Boolean(lookups.promotionsByPost?.has(post.id));
+  const commentSummary = lookups.commentSummaryByPost?.get(post.id);
 
   return {
     id: post.id,
@@ -2410,7 +2480,8 @@ export function mapCulturePostToSafeFeedItem(
     promotionLabel: isPromoted ? "Promoted" : null,
     reasonCodes,
     reasonLabel: cultureReasonLabel(reasonCodes),
-    displayActor
+    displayActor,
+    commentSummary: commentSummary?.count ? commentSummary : { count: 0 }
   };
 }
 

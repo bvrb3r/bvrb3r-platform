@@ -294,6 +294,7 @@ describe("client culture screen", () => {
     fireEvent.click(screen.getByRole("button", { name: /Comment this Culture post/i }));
     expect(await screen.findByTestId("culture-comments-section")).toBeInTheDocument();
     expect(screen.getByText("No comments yet.")).toBeInTheDocument();
+    expect(screen.queryByTestId("culture-comment-preview")).not.toBeInTheDocument();
     expect(screen.queryByText(/1\.2k|views:|followers:|engagement rate|Top Rated|from \$45/i)).not.toBeInTheDocument();
 
     expect(screen.getByRole("dialog", { name: "Culture post detail" })).toBeInTheDocument();
@@ -304,6 +305,69 @@ describe("client culture screen", () => {
       method: "POST",
       body: JSON.stringify({ postId: "post-1", action: "like" })
     })));
+  });
+
+  it("renders real comment preview social proof and opens the comment sheet from the preview", async () => {
+    render(<ClientCultureScreen feed={{
+      cursor: null,
+      hasMore: false,
+      items: [culturePost("post-1", {
+        commentSummary: {
+          count: 1,
+          preview: {
+            id: "comment-preview",
+            postId: "post-1",
+            authorProfileId: "client-1",
+            authorUsername: "@phillipmcgee1",
+            authorDisplayName: "Phillip McGee",
+            authorAvatarUrl: "https://cdn.bvrb3r.test/phillip.jpg",
+            authorRoleLabel: "Client",
+            body: "Best Shop",
+            createdAt: "2026-06-12T13:00:00.000Z",
+            canHide: false
+          }
+        }
+      })]
+    }} />);
+
+    const preview = screen.getByTestId("culture-comment-preview");
+    expect(preview).toHaveTextContent("@phillipmcgee1 Best Shop");
+    expect(preview).toHaveTextContent("View 1 comment");
+    expect(preview.querySelector('img[src="https://cdn.bvrb3r.test/phillip.jpg"]')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Culture comments" }));
+    expect(await screen.findByTestId("culture-comments-section")).toBeInTheDocument();
+  });
+
+  it("renders plural comment preview labels and truncates long preview bodies safely", () => {
+    const longBody = "This cut has a very clean taper and the shop energy looks dialed in for the whole community right now.";
+    render(<ClientCultureScreen feed={{
+      cursor: null,
+      hasMore: false,
+      items: [culturePost("post-1", {
+        commentSummary: {
+          count: 4,
+          preview: {
+            id: "comment-preview",
+            postId: "post-1",
+            authorProfileId: "client-1",
+            authorUsername: null,
+            authorDisplayName: "Client Viewer",
+            authorAvatarUrl: null,
+            authorRoleLabel: "Client",
+            body: `${longBody} ${longBody}`,
+            createdAt: "2026-06-12T13:00:00.000Z",
+            canHide: false
+          }
+        }
+      })]
+    }} />);
+
+    const preview = screen.getByTestId("culture-comment-preview");
+    expect(preview).toHaveTextContent("Client Viewer");
+    expect(preview).toHaveTextContent("View all 4 comments");
+    expect(preview).toHaveTextContent("...");
+    expect(preview).not.toHaveTextContent(`${longBody} ${longBody}`);
   });
 
   it("loads and submits real Culture comments from the post detail sheet", async () => {
@@ -357,6 +421,10 @@ describe("client culture screen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Post comment" }));
 
     expect(await screen.findByText("Clean work.")).toBeInTheDocument();
+    const preview = screen.getByTestId("culture-comment-preview");
+    expect(preview).toHaveTextContent("@clientviewer Clean work.");
+    expect(preview).toHaveTextContent("View 1 comment");
+    expect(screen.getByRole("status")).toHaveTextContent("Comment posted.");
     expect(fetchMock).toHaveBeenCalledWith("/api/culture/comments", expect.objectContaining({
       method: "POST",
       body: JSON.stringify({

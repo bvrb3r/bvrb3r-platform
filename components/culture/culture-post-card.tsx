@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { Route } from "next";
 import { Bookmark, EyeOff, Flag, Heart, ImageIcon, Info, MessageCircle, MoreHorizontal, Scissors, Share2, ShieldCheck, X } from "lucide-react";
-import type { CultureCommentItem, CultureFeedItem, CultureFeedReasonCode } from "@/lib/culture/service";
+import type { CultureCommentItem, CultureCommentSummary, CultureFeedItem, CultureFeedReasonCode } from "@/lib/culture/service";
 
 type CultureSurface = "client" | "barber" | "shop";
 type CulturePostAction = "like" | "unlike" | "save" | "unsave" | "share" | "report" | "profile_click" | "book_click" | "shop_click" | "not_interested";
@@ -196,6 +196,62 @@ function commentAuthorLabel(comment: CultureCommentItem) {
   return comment.authorUsername ?? comment.authorDisplayName;
 }
 
+function truncateCommentPreview(body: string) {
+  const cleanBody = body.replace(/\s+/g, " ").trim();
+  return cleanBody.length > 110 ? `${cleanBody.slice(0, 107).trim()}...` : cleanBody;
+}
+
+function commentCountLabel(count: number) {
+  if (count === 1) {
+    return "View 1 comment";
+  }
+
+  return `View all ${count} comments`;
+}
+
+function buildCommentSummaryFromList(comments: CultureCommentItem[]): CultureCommentSummary {
+  return {
+    count: comments.length,
+    preview: comments.length ? comments[comments.length - 1] : undefined
+  };
+}
+
+function CultureCommentPreview({
+  summary,
+  onOpen
+}: {
+  summary: CultureCommentSummary;
+  onOpen: () => void;
+}) {
+  if (!summary.count || !summary.preview) {
+    return null;
+  }
+
+  const label = commentAuthorLabel(summary.preview);
+
+  return (
+    <div className="mt-4 rounded-[18px] border border-white/10 bg-white/[0.035] p-3" data-testid="culture-comment-preview">
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex w-full items-start gap-3 text-left"
+        aria-label="Open Culture comments"
+      >
+        <CultureAvatar imageUrl={summary.preview.authorAvatarUrl} name={summary.preview.authorDisplayName} size="small" />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm leading-6 text-white/74">
+            <span className="font-black text-white">{label}</span>{" "}
+            <span>{truncateCommentPreview(summary.preview.body)}</span>
+          </p>
+          <p className="mt-2 text-xs font-black uppercase tracking-[0.12em] text-white/40">
+            {commentCountLabel(summary.count)}
+          </p>
+        </div>
+      </button>
+    </div>
+  );
+}
+
 function CultureCommentRow({ comment }: { comment: CultureCommentItem }) {
   const label = commentAuthorLabel(comment);
 
@@ -240,6 +296,7 @@ export function CulturePostCard({
   const [commentsLoaded, setCommentsLoaded] = useState(false);
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [comments, setComments] = useState<CultureCommentItem[]>([]);
+  const [commentSummary, setCommentSummary] = useState<CultureCommentSummary>(() => post.commentSummary ?? { count: 0 });
   const [commentBody, setCommentBody] = useState("");
   const [commentSubmitting, setCommentSubmitting] = useState(false);
   const [commentError, setCommentError] = useState<string | null>(null);
@@ -264,6 +321,10 @@ export function CulturePostCard({
     [post.reasonCodes, post.reasonLabel]
   );
   const tags = [post.serviceName, post.shopName, postTypeLabel(post.postType)].filter(Boolean);
+
+  useEffect(() => {
+    setCommentSummary(post.commentSummary ?? { count: 0 });
+  }, [post.id, post.commentSummary]);
 
   async function runPostAction(action: CulturePostAction, extra?: Record<string, unknown>) {
     setLoadingAction(action);
@@ -368,7 +429,9 @@ export function CulturePostCard({
         throw new Error(typeof body?.error === "string" ? body.error : "Unable to load Culture comments.");
       }
 
-      setComments(Array.isArray(body.comments) ? body.comments : []);
+      const nextComments = Array.isArray(body.comments) ? body.comments as CultureCommentItem[] : [];
+      setComments(nextComments);
+      setCommentSummary(buildCommentSummaryFromList(nextComments));
       setCommentsLoaded(true);
     } catch (commentsError) {
       setCommentError(commentsError instanceof Error ? commentsError.message : "Unable to load Culture comments.");
@@ -407,7 +470,12 @@ export function CulturePostCard({
       }
 
       if (result.comment) {
-        setComments((current) => [...current, result.comment as CultureCommentItem]);
+        const nextComment = result.comment as CultureCommentItem;
+        setComments((current) => [...current, nextComment]);
+        setCommentSummary((current) => ({
+          count: (current?.count ?? comments.length) + 1,
+          preview: nextComment
+        }));
         setCommentsLoaded(true);
       } else {
         await loadComments(true);
@@ -699,6 +767,10 @@ export function CulturePostCard({
                 </span>
               ))}
             </div>
+          ) : null}
+
+          {post.canComment ? (
+            <CultureCommentPreview summary={commentSummary} onOpen={openComments} />
           ) : null}
 
           {post.canViewProfile || post.canBook || post.canViewShop ? (

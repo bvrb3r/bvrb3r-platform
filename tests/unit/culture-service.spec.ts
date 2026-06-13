@@ -334,6 +334,86 @@ describe("Culture service", () => {
     expect(supabase.selects.shops.join(" ")).not.toContain("shop_username");
   });
 
+  it("includes approved comment count and newest safe comment preview in feed items", async () => {
+    const supabase = createSupabaseStub({
+      culture_posts: [publishedPost],
+      culture_comments: [
+        {
+          id: "comment-oldest",
+          post_id: publishedPost.id,
+          actor_profile_id: clientUser.id,
+          actor_role: "client_user",
+          body: "Oldest approved.",
+          moderation_status: "approved",
+          created_at: "2026-06-12T12:05:00.000Z",
+          deleted_at: null
+        },
+        {
+          id: "comment-newest",
+          post_id: publishedPost.id,
+          actor_profile_id: clientUser.id,
+          actor_role: "client_user",
+          body: "Newest approved.",
+          moderation_status: "approved",
+          created_at: "2026-06-12T12:10:00.000Z",
+          deleted_at: null
+        },
+        {
+          id: "comment-pending",
+          post_id: publishedPost.id,
+          actor_profile_id: clientUser.id,
+          actor_role: "client_user",
+          body: "Pending should not count.",
+          moderation_status: "pending",
+          created_at: "2026-06-12T12:12:00.000Z",
+          deleted_at: null
+        },
+        {
+          id: "comment-deleted",
+          post_id: publishedPost.id,
+          actor_profile_id: clientUser.id,
+          actor_role: "client_user",
+          body: "Deleted should not count.",
+          moderation_status: "approved",
+          created_at: "2026-06-12T12:14:00.000Z",
+          deleted_at: "2026-06-12T12:15:00.000Z"
+        }
+      ],
+      profiles: [
+        {
+          id: publishedPost.author_profile_id,
+          full_name: "Blaze King",
+          public_username: "blaze"
+        },
+        {
+          id: clientUser.id,
+          full_name: "Client Viewer",
+          public_username: "clientviewer",
+          profile_photo_url: "https://cdn.bvrb3r.test/client.jpg",
+          email: "private@example.com"
+        }
+      ],
+      shops: [{ id: "shop-ybor", name: "BVRB3R Ybor", public_username: "bvrb3r-ybor" }],
+      services: []
+    });
+
+    const feed = await listCultureFeed({ role: "client", limit: 10 }, { supabase: supabase.client });
+
+    expect(feed.items[0].commentSummary).toMatchObject({
+      count: 2,
+      preview: {
+        id: "comment-newest",
+        authorUsername: "@clientviewer",
+        authorDisplayName: "Client Viewer",
+        authorAvatarUrl: "https://cdn.bvrb3r.test/client.jpg",
+        body: "Newest approved."
+      }
+    });
+    expect(JSON.stringify(feed.items[0].commentSummary)).not.toContain("private@example.com");
+    expect(JSON.stringify(feed.items[0].commentSummary)).not.toContain("Pending should not count.");
+    expect(JSON.stringify(feed.items[0].commentSummary)).not.toContain("Deleted should not count.");
+  });
+
   it("returns approved auto-created Barber and Owner Profile Studio posts in the public feed", async () => {
     const barberAutoPost = {
       ...publishedPost,
