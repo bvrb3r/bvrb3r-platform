@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { Route } from "next";
 import { Bookmark, EyeOff, Flag, Heart, ImageIcon, Info, MessageCircle, MoreHorizontal, Scissors, Share2, ShieldCheck, X } from "lucide-react";
-import type { CultureFeedItem, CultureFeedReasonCode } from "@/lib/culture/service";
+import type { CultureCommentItem, CultureFeedItem, CultureFeedReasonCode } from "@/lib/culture/service";
 
 type CultureSurface = "client" | "barber" | "shop";
 type CulturePostAction = "like" | "unlike" | "save" | "unsave" | "share" | "report" | "profile_click" | "book_click" | "shop_click" | "not_interested";
@@ -34,26 +34,6 @@ function actionTitle(label: string, available: boolean) {
   }
 
   return `${label} is not available for this post yet.`;
-}
-
-function profileRoutePrefix(surface: CultureSurface) {
-  if (surface === "barber") {
-    return "/dashboard/barber/profile-view";
-  }
-
-  if (surface === "shop") {
-    return "/dashboard/owner/profile-view";
-  }
-
-  return "/dashboard/client/profile-view";
-}
-
-function profileHrefForPost(post: CultureFeedItem, surface: CultureSurface) {
-  if (!post.authorTarget) {
-    return null;
-  }
-
-  return `${profileRoutePrefix(surface)}/${post.authorTargetKind}/${encodeURIComponent(post.authorTarget)}`;
 }
 
 function safeReasonLabel(reason: CultureFeedReasonCode) {
@@ -187,9 +167,58 @@ function CultureMedia({
   );
 }
 
+function CultureAvatar({
+  imageUrl,
+  name,
+  size = "large"
+}: {
+  imageUrl: string | null;
+  name: string;
+  size?: "large" | "small";
+}) {
+  const dimensions = size === "small" ? "h-9 w-9 text-xs" : "h-12 w-12 text-sm";
+
+  return (
+    <div className={`${dimensions} shrink-0 overflow-hidden rounded-full border border-[#d7ffab]/18 bg-[#d7ffab]/10 text-[#d7ffab]`}>
+      {imageUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={imageUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center font-black">
+          {initialsFor(name)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function commentAuthorLabel(comment: CultureCommentItem) {
+  return comment.authorUsername ?? comment.authorDisplayName;
+}
+
+function CultureCommentRow({ comment }: { comment: CultureCommentItem }) {
+  const label = commentAuthorLabel(comment);
+
+  return (
+    <article className="flex gap-3 rounded-[18px] border border-white/10 bg-white/[0.04] p-3">
+      <CultureAvatar imageUrl={comment.authorAvatarUrl} name={comment.authorDisplayName} size="small" />
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="truncate text-sm font-black text-white">{label}</p>
+          <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-white/34">{comment.authorRoleLabel}</span>
+        </div>
+        {comment.authorUsername && comment.authorDisplayName !== comment.authorUsername ? (
+          <p className="mt-0.5 truncate text-xs text-white/42">{comment.authorDisplayName}</p>
+        ) : null}
+        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-white/72">{comment.body}</p>
+        <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-white/30">{formatCultureDate(comment.createdAt)}</p>
+      </div>
+    </article>
+  );
+}
+
 export function CulturePostCard({
   post,
-  surface = "client",
   feedSessionId = null,
   position = 0,
   onPostVisibilityChange
@@ -208,6 +237,12 @@ export function CulturePostCard({
   const [reportOpen, setReportOpen] = useState(false);
   const [whyOpen, setWhyOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [commentsLoaded, setCommentsLoaded] = useState(false);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [comments, setComments] = useState<CultureCommentItem[]>([]);
+  const [commentBody, setCommentBody] = useState("");
+  const [commentSubmitting, setCommentSubmitting] = useState(false);
+  const [commentError, setCommentError] = useState<string | null>(null);
   const [reportReason, setReportReason] = useState("spam");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -215,7 +250,9 @@ export function CulturePostCard({
   const impressionSentRef = useRef(false);
   const impressionTimerRef = useRef<number | null>(null);
   const mediaUrl = post.media?.url ?? post.media?.thumbnailUrl ?? null;
-  const profileHref = useMemo(() => post.profileUrl ?? profileHrefForPost(post, surface), [post, surface]);
+  const authorHref = post.authorTargetKind === "shop" ? post.shopUrl : post.profileUrl;
+  const authorPrimaryLabel = post.authorUsername ?? post.authorDisplayName;
+  const authorSecondaryLabel = post.authorUsername ? post.authorDisplayName : null;
   const reasonLabels = useMemo(
     () => (post.reasonCodes?.length ? post.reasonCodes.map(safeReasonLabel) : [post.reasonLabel ?? "Recent Culture post"]),
     [post.reasonCodes, post.reasonLabel]
@@ -310,6 +347,74 @@ export function CulturePostCard({
     }).catch(() => undefined);
   }, [feedSessionId, position, post.id, post.reasonCodes]);
 
+  const loadComments = useCallback(async (force = false) => {
+    if (!post.canComment || (commentsLoaded && !force)) {
+      return;
+    }
+
+    setCommentsLoading(true);
+    setCommentError(null);
+
+    try {
+      const response = await fetch(`/api/culture/comments?postId=${encodeURIComponent(post.id)}`);
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok || body?.ok === false) {
+        throw new Error(typeof body?.error === "string" ? body.error : "Unable to load Culture comments.");
+      }
+
+      setComments(Array.isArray(body.comments) ? body.comments : []);
+      setCommentsLoaded(true);
+    } catch (commentsError) {
+      setCommentError(commentsError instanceof Error ? commentsError.message : "Unable to load Culture comments.");
+    } finally {
+      setCommentsLoading(false);
+    }
+  }, [commentsLoaded, post.canComment, post.id]);
+
+  async function submitComment() {
+    const body = commentBody.trim();
+    if (!body) {
+      setCommentError("Enter a comment before posting.");
+      return;
+    }
+
+    if (body.length > 500) {
+      setCommentError("Culture comments must be 500 characters or fewer.");
+      return;
+    }
+
+    setCommentSubmitting(true);
+    setCommentError(null);
+
+    try {
+      const response = await fetch("/api/culture/comments", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          postId: post.id,
+          body
+        })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result?.ok === false) {
+        throw new Error(typeof result?.error === "string" ? result.error : "Comment could not be posted.");
+      }
+
+      if (result.comment) {
+        setComments((current) => [...current, result.comment as CultureCommentItem]);
+        setCommentsLoaded(true);
+      } else {
+        await loadComments(true);
+      }
+      setCommentBody("");
+      setMessage("Comment posted.");
+    } catch (submitError) {
+      setCommentError(submitError instanceof Error ? submitError.message : "Comment could not be posted.");
+    } finally {
+      setCommentSubmitting(false);
+    }
+  }
+
   function recordProfileClick() {
     void runPostAction("profile_click", {
       metadata: {
@@ -334,11 +439,28 @@ export function CulturePostCard({
     }).catch(() => undefined);
   }
 
+  function recordAuthorClick() {
+    if (post.authorTargetKind === "shop") {
+      recordShopClick();
+      return;
+    }
+
+    recordProfileClick();
+  }
+
   function openDetail() {
     setDetailOpen(true);
     recordFeedEvent("post_view", {
       opened_from: "post_card"
     });
+  }
+
+  function openComments() {
+    setDetailOpen(true);
+    recordFeedEvent("post_view", {
+      opened_from: "comment_button"
+    });
+    void loadComments();
   }
 
   async function sharePost() {
@@ -379,6 +501,12 @@ export function CulturePostCard({
       onPostVisibilityChange?.(post.id, false);
     }
   }
+
+  useEffect(() => {
+    if (detailOpen && post.canComment) {
+      void loadComments();
+    }
+  }, [detailOpen, loadComments, post.canComment]);
 
   useEffect(() => {
     if (!feedSessionId || impressionSentRef.current || typeof IntersectionObserver === "undefined") {
@@ -429,44 +557,60 @@ export function CulturePostCard({
         data-testid="culture-post-card"
       >
         <header className="flex items-start justify-between gap-3 p-4">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="h-12 w-12 shrink-0 overflow-hidden rounded-full border border-[#d7ffab]/18 bg-[#d7ffab]/10 text-[#d7ffab]">
-              {post.authorAvatarUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={post.authorAvatarUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center text-sm font-black">
-                  {initialsFor(post.authorDisplayName)}
+          {authorHref ? (
+            <Link
+              href={authorHref as Route}
+              onClick={recordAuthorClick}
+              className="flex min-w-0 items-center gap-3 rounded-[18px] pr-2 transition hover:bg-white/[0.03]"
+              aria-label={`Open ${authorPrimaryLabel} Culture profile`}
+            >
+              <CultureAvatar imageUrl={post.authorAvatarUrl} name={post.authorDisplayName} />
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="truncate text-sm font-black text-white">{authorPrimaryLabel}</p>
+                  {post.authorVerified ? (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-[#d7ffab]/20 bg-[#d7ffab]/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#d7ffab]">
+                      <ShieldCheck className="h-3 w-3" />
+                      Verified
+                    </span>
+                  ) : null}
+                  {post.isPromoted ? (
+                    <span className="inline-flex items-center rounded-full border border-white/12 bg-white/[0.06] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white/70">
+                      {post.promotionLabel ?? "Promoted"}
+                    </span>
+                  ) : null}
                 </div>
-              )}
-            </div>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                {profileHref ? (
-                  <Link href={profileHref as Route} onClick={recordProfileClick} className="truncate text-sm font-black text-white transition hover:text-[#d7ffab]">
-                    {post.authorDisplayName}
-                  </Link>
-                ) : (
-                  <p className="truncate text-sm font-black text-white">{post.authorDisplayName}</p>
-                )}
-                {post.authorVerified ? (
-                  <span className="inline-flex items-center gap-1 rounded-full border border-[#d7ffab]/20 bg-[#d7ffab]/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#d7ffab]">
-                    <ShieldCheck className="h-3 w-3" />
-                    Verified
-                  </span>
-                ) : null}
-                {post.isPromoted ? (
-                  <span className="inline-flex items-center rounded-full border border-white/12 bg-white/[0.06] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white/70">
-                    {post.promotionLabel ?? "Promoted"}
-                  </span>
-                ) : null}
+                {authorSecondaryLabel ? <p className="mt-1 truncate text-xs text-white/48">{authorSecondaryLabel}</p> : null}
+                <p className="mt-1 truncate text-[11px] font-semibold uppercase tracking-[0.14em] text-white/34">
+                  {[post.authorRoleLabel, formatCultureDate(post.createdAt)].filter(Boolean).join(" - ")}
+                </p>
               </div>
-              <p className="mt-1 truncate text-xs text-white/48">
-                {[post.authorUsername, post.authorRoleLabel].filter(Boolean).join(" - ")}
-              </p>
-              <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/34">{formatCultureDate(post.createdAt)}</p>
+            </Link>
+          ) : (
+            <div className="flex min-w-0 items-center gap-3">
+              <CultureAvatar imageUrl={post.authorAvatarUrl} name={post.authorDisplayName} />
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="truncate text-sm font-black text-white">{authorPrimaryLabel}</p>
+                  {post.authorVerified ? (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-[#d7ffab]/20 bg-[#d7ffab]/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#d7ffab]">
+                      <ShieldCheck className="h-3 w-3" />
+                      Verified
+                    </span>
+                  ) : null}
+                  {post.isPromoted ? (
+                    <span className="inline-flex items-center rounded-full border border-white/12 bg-white/[0.06] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white/70">
+                      {post.promotionLabel ?? "Promoted"}
+                    </span>
+                  ) : null}
+                </div>
+                {authorSecondaryLabel ? <p className="mt-1 truncate text-xs text-white/48">{authorSecondaryLabel}</p> : null}
+                <p className="mt-1 truncate text-[11px] font-semibold uppercase tracking-[0.14em] text-white/34">
+                  {[post.authorRoleLabel, formatCultureDate(post.createdAt)].filter(Boolean).join(" - ")}
+                </p>
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="flex shrink-0 items-center gap-2">
             <button
@@ -510,7 +654,12 @@ export function CulturePostCard({
               label={liked ? "Liked" : "Like"}
               onClick={() => void runPostAction(liked ? "unlike" : "like").catch(() => undefined)}
             />
-            <CultureActionButton available={post.canComment} icon={<MessageCircle className="h-4 w-4" />} label="Comment" />
+            <CultureActionButton
+              available={post.canComment}
+              icon={<MessageCircle className="h-4 w-4" />}
+              label="Comment"
+              onClick={openComments}
+            />
             <CultureActionButton
               available={post.canShare}
               loading={loadingAction === "share"}
@@ -676,19 +825,13 @@ export function CulturePostCard({
           <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-[26px] border border-white/10 bg-[#080808] shadow-2xl">
             <div className="flex items-center justify-between gap-3 border-b border-white/10 p-4">
               <div className="flex min-w-0 items-center gap-3">
-                <div className="h-10 w-10 shrink-0 overflow-hidden rounded-full border border-[#d7ffab]/18 bg-[#d7ffab]/10 text-[#d7ffab]">
-                  {post.authorAvatarUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={post.authorAvatarUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-xs font-black">
-                      {initialsFor(post.authorDisplayName)}
-                    </div>
-                  )}
-                </div>
+                <CultureAvatar imageUrl={post.authorAvatarUrl} name={post.authorDisplayName} size="small" />
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-black text-white">{post.authorDisplayName}</p>
-                  <p className="truncate text-xs text-white/46">{[post.authorUsername, post.authorRoleLabel].filter(Boolean).join(" - ")}</p>
+                  <p className="truncate text-sm font-black text-white">{authorPrimaryLabel}</p>
+                  {authorSecondaryLabel ? <p className="truncate text-xs text-white/46">{authorSecondaryLabel}</p> : null}
+                  <p className="truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-white/34">
+                    {[post.authorRoleLabel, formatCultureDate(post.createdAt)].filter(Boolean).join(" - ")}
+                  </p>
                 </div>
               </div>
               <button
@@ -712,7 +855,12 @@ export function CulturePostCard({
                   label={liked ? "Liked" : "Like"}
                   onClick={() => void runPostAction(liked ? "unlike" : "like").catch(() => undefined)}
                 />
-                <CultureActionButton available={post.canComment} icon={<MessageCircle className="h-4 w-4" />} label="Comment" />
+                <CultureActionButton
+                  available={post.canComment}
+                  icon={<MessageCircle className="h-4 w-4" />}
+                  label="Comment"
+                  onClick={() => void loadComments(true)}
+                />
                 <CultureActionButton available={post.canShare} loading={loadingAction === "share"} icon={<Share2 className="h-4 w-4" />} label="Share" onClick={() => void sharePost()} />
                 <CultureActionButton
                   available={post.canSave}
@@ -736,6 +884,57 @@ export function CulturePostCard({
                   </Link>
                 ) : null}
               </div>
+              {post.canComment ? (
+                <section className="mt-4 rounded-[18px] border border-white/10 bg-white/[0.04] p-4" data-testid="culture-comments-section">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.14em] text-white/46">Comments</p>
+                      <p className="mt-1 text-sm text-white/52">Real comments from signed-in BVRB3R profiles.</p>
+                    </div>
+                    {commentsLoading ? <span className="text-xs font-semibold text-white/42">Loading...</span> : null}
+                  </div>
+
+                  <div className="mt-4 space-y-3">
+                    {commentsLoading && !commentsLoaded ? (
+                      <div className="rounded-[18px] border border-white/10 bg-black/24 p-3">
+                        <div className="h-3 w-1/3 animate-pulse rounded-full bg-white/10" />
+                        <div className="mt-3 h-3 w-2/3 animate-pulse rounded-full bg-white/10" />
+                      </div>
+                    ) : comments.length ? comments.map((comment) => (
+                      <CultureCommentRow key={comment.id} comment={comment} />
+                    )) : (
+                      <p className="rounded-[18px] border border-dashed border-white/12 bg-black/20 p-4 text-sm text-white/48">No comments yet.</p>
+                    )}
+                  </div>
+
+                  <div className="mt-4">
+                    <label className="block text-xs font-black uppercase tracking-[0.14em] text-white/46" htmlFor={`culture-comment-${post.id}`}>
+                      Add a comment
+                    </label>
+                    <textarea
+                      id={`culture-comment-${post.id}`}
+                      value={commentBody}
+                      onChange={(event) => setCommentBody(event.target.value)}
+                      maxLength={500}
+                      rows={3}
+                      className="mt-2 w-full resize-none rounded-[16px] border border-white/10 bg-black/44 px-3 py-3 text-sm leading-6 text-white outline-none transition placeholder:text-white/26 focus:border-[#d7ffab]/30"
+                      placeholder="Write a comment..."
+                    />
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs text-white/34">{commentBody.trim().length}/500</p>
+                      <button
+                        type="button"
+                        disabled={commentSubmitting}
+                        onClick={() => void submitComment()}
+                        className="inline-flex min-h-10 items-center justify-center rounded-full border border-[#d7ffab]/28 bg-[#d7ffab] px-4 text-xs font-black uppercase tracking-[0.12em] text-[#050505] transition hover:bg-[#c6f79b] disabled:cursor-not-allowed disabled:opacity-55"
+                      >
+                        {commentSubmitting ? "Posting" : "Post comment"}
+                      </button>
+                    </div>
+                    {commentError ? <p className="mt-3 text-xs font-semibold text-red-100" role="alert">{commentError}</p> : null}
+                  </div>
+                </section>
+              ) : null}
               <div className="mt-4 rounded-[18px] border border-white/10 bg-white/[0.04] p-4">
                 <p className="text-xs font-black uppercase tracking-[0.14em] text-white/46">Why this post</p>
                 <ul className="mt-2 space-y-1 text-sm text-white/68">

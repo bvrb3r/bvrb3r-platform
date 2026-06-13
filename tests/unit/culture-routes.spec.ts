@@ -4,9 +4,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   getCurrentUserFromServerMock,
   createCulturePostDraftMock,
+  createCultureCommentMock,
   attachCulturePostImageMediaMock,
   createCulturePostFromProfileMediaMock,
   listCultureFeedMock,
+  listCultureCommentsMock,
   listMyCulturePostsMock,
   performCultureFollowActionMock,
   performCulturePostEngagementActionMock,
@@ -16,9 +18,11 @@ const {
 } = vi.hoisted(() => ({
   getCurrentUserFromServerMock: vi.fn(),
   createCulturePostDraftMock: vi.fn(),
+  createCultureCommentMock: vi.fn(),
   attachCulturePostImageMediaMock: vi.fn(),
   createCulturePostFromProfileMediaMock: vi.fn(),
   listCultureFeedMock: vi.fn(),
+  listCultureCommentsMock: vi.fn(),
   listMyCulturePostsMock: vi.fn(),
   performCultureFollowActionMock: vi.fn(),
   performCulturePostEngagementActionMock: vi.fn(),
@@ -37,8 +41,10 @@ vi.mock("@/lib/culture/service", async () => {
   return {
     ...actual,
     attachCulturePostImageMedia: attachCulturePostImageMediaMock,
+    createCultureComment: createCultureCommentMock,
     createCulturePostFromProfileMedia: createCulturePostFromProfileMediaMock,
     createCulturePostDraft: createCulturePostDraftMock,
+    listCultureComments: listCultureCommentsMock,
     listCultureFeed: listCultureFeedMock,
     listMyCulturePosts: listMyCulturePostsMock,
     performCultureFollowAction: performCultureFollowActionMock,
@@ -51,6 +57,7 @@ vi.mock("@/lib/culture/service", async () => {
 
 import { GET as getCultureFeed } from "@/app/api/culture/feed/route";
 import { POST as postCultureEngagement } from "@/app/api/culture/engagements/route";
+import { GET as getCultureComments, POST as postCultureComment } from "@/app/api/culture/comments/route";
 import { POST as postCultureEvent } from "@/app/api/culture/events/route";
 import { POST as postCultureFollow } from "@/app/api/culture/follow/route";
 import { GET as getMyCulturePosts } from "@/app/api/culture/my-posts/route";
@@ -89,8 +96,10 @@ describe("Culture API routes", () => {
   beforeEach(() => {
     getCurrentUserFromServerMock.mockReset();
     attachCulturePostImageMediaMock.mockReset();
+    createCultureCommentMock.mockReset();
     createCulturePostFromProfileMediaMock.mockReset();
     createCulturePostDraftMock.mockReset();
+    listCultureCommentsMock.mockReset();
     listCultureFeedMock.mockReset();
     listMyCulturePostsMock.mockReset();
     performCultureFollowActionMock.mockReset();
@@ -128,9 +137,38 @@ describe("Culture API routes", () => {
       },
       message: "Culture draft created from Profile Studio media."
     });
+    listCultureCommentsMock.mockResolvedValue({
+      comments: [{
+        id: "comment-1",
+        postId: "11111111-1111-4111-8111-111111111111",
+        authorProfileId: "22222222-2222-4222-8222-222222222222",
+        authorUsername: "@client",
+        authorDisplayName: "Client",
+        authorAvatarUrl: null,
+        authorRoleLabel: "Client",
+        body: "Clean work.",
+        createdAt: "2026-06-12T12:00:00.000Z",
+        canHide: true
+      }]
+    });
     listCultureFeedMock.mockResolvedValue({ items: [], cursor: null, hasMore: false });
     listMyCulturePostsMock.mockResolvedValue({ drafts: [], pendingReview: [], published: [], archived: [] });
     performCulturePostEngagementActionMock.mockResolvedValue({ ok: true, action: "like", liked: true });
+    createCultureCommentMock.mockResolvedValue({
+      ok: true,
+      comment: {
+        id: "comment-1",
+        postId: "11111111-1111-4111-8111-111111111111",
+        authorProfileId: "22222222-2222-4222-8222-222222222222",
+        authorUsername: "@client",
+        authorDisplayName: "Client",
+        authorAvatarUrl: null,
+        authorRoleLabel: "Client",
+        body: "Clean work.",
+        createdAt: "2026-06-12T12:00:00.000Z",
+        canHide: true
+      }
+    });
     performCultureFollowActionMock.mockResolvedValue({ ok: true, action: "follow", following: true });
     recordCultureFeedEventMock.mockResolvedValue({ id: "event-1", event_type: "feed_loaded" });
     recordCultureEngagementMock.mockResolvedValue({ id: "engagement-1", engagement_type: "save" });
@@ -178,6 +216,58 @@ describe("Culture API routes", () => {
       ok: false,
       error: "Unable to load Culture feed."
     });
+  });
+
+  it("loads approved Culture comments through the comments service", async () => {
+    const postId = "11111111-1111-4111-8111-111111111111";
+    const response = await getCultureComments(new NextRequest(`https://bvrb3r.test/api/culture/comments?postId=${postId}`));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ ok: true, comments: [{ id: "comment-1", body: "Clean work." }] });
+    expect(listCultureCommentsMock).toHaveBeenCalledWith({
+      postId,
+      viewerProfileId: "22222222-2222-4222-8222-222222222222"
+    });
+  });
+
+  it("creates signed-in Culture comments through the canonical comments service", async () => {
+    const postId = "11111111-1111-4111-8111-111111111111";
+    const response = await postCultureComment(new NextRequest("https://bvrb3r.test/api/culture/comments", {
+      method: "POST",
+      body: JSON.stringify({
+        postId,
+        body: "Clean work."
+      })
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ ok: true, comment: { id: "comment-1" } });
+    expect(createCultureCommentMock).toHaveBeenCalledWith(expect.objectContaining({
+      id: "22222222-2222-4222-8222-222222222222"
+    }), {
+      postId,
+      body: "Clean work."
+    });
+  });
+
+  it("rejects unauthenticated Culture comments", async () => {
+    getCurrentUserFromServerMock.mockResolvedValue({
+      authenticated: false,
+      user: { id: "guest-user" }
+    });
+
+    const response = await postCultureComment(new NextRequest("https://bvrb3r.test/api/culture/comments", {
+      method: "POST",
+      body: JSON.stringify({
+        postId: "11111111-1111-4111-8111-111111111111",
+        body: "Clean work."
+      })
+    }));
+
+    expect(response.status).toBe(401);
+    expect(createCultureCommentMock).not.toHaveBeenCalled();
   });
 
   it("records signed-in Culture feed events", async () => {

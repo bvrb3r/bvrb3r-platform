@@ -52,7 +52,7 @@ function culturePost(id: string, overrides: Partial<CultureFeedItem> = {}): Cult
     canShare: true,
     canReport: true,
     canBook: true,
-    canComment: false,
+    canComment: true,
     isPromoted: false,
     promotionLabel: null,
     reasonCodes: ["barber_work", "bookable_barber", "recent_public_post"],
@@ -282,17 +282,20 @@ describe("client culture screen", () => {
     }} />);
 
     const card = screen.getByTestId("culture-post-card");
-    expect(card).toHaveTextContent("Blaze King");
     expect(card).toHaveTextContent("@blaze");
+    expect(card).toHaveTextContent("Blaze King");
     expect(screen.getByText("Verified")).toBeInTheDocument();
     expect(screen.getByText("Low taper transformation.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Open Culture post detail" })).toBeInTheDocument();
+    expect(card.querySelector('img[src="https://cdn.bvrb3r.test/blaze.jpg"]')).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Open @blaze Culture profile/i })).toHaveAttribute("href", expect.stringContaining("/barber/blaze?source=culture"));
     expect(screen.getByRole("link", { name: "View Profile" })).toHaveAttribute("href", expect.stringContaining("/barber/blaze?source=culture"));
     expect(screen.getByRole("link", { name: /Book Signature Cut/i })).toHaveAttribute("href", expect.stringContaining("/booking/new?source=culture"));
-    expect(screen.getByRole("button", { name: /Comment is not available for this post yet/i })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: /Comment this Culture post/i }));
+    expect(await screen.findByTestId("culture-comments-section")).toBeInTheDocument();
+    expect(screen.getByText("No comments yet.")).toBeInTheDocument();
     expect(screen.queryByText(/1\.2k|views:|followers:|engagement rate|Top Rated|from \$45/i)).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Open Culture post detail" }));
     expect(screen.getByRole("dialog", { name: "Culture post detail" })).toBeInTheDocument();
     expect(screen.getByText("Why this post")).toBeInTheDocument();
 
@@ -301,6 +304,111 @@ describe("client culture screen", () => {
       method: "POST",
       body: JSON.stringify({ postId: "post-1", action: "like" })
     })));
+  });
+
+  it("loads and submits real Culture comments from the post detail sheet", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith("/api/culture/comments") && init?.method !== "POST") {
+        return {
+          ok: true,
+          json: async () => ({ ok: true, comments: [] })
+        };
+      }
+
+      if (url === "/api/culture/comments" && init?.method === "POST") {
+        return {
+          ok: true,
+          json: async () => ({
+            ok: true,
+            comment: {
+              id: "comment-1",
+              postId: "post-1",
+              authorProfileId: "client-1",
+              authorUsername: "@clientviewer",
+              authorDisplayName: "Client Viewer",
+              authorAvatarUrl: null,
+              authorRoleLabel: "Client",
+              body: "Clean work.",
+              createdAt: "2026-06-12T13:00:00.000Z",
+              canHide: true
+            }
+          })
+        };
+      }
+
+      return {
+        ok: true,
+        json: async () => ({ ok: true, items: [], cursor: null, hasMore: false })
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ClientCultureScreen feed={{
+      cursor: null,
+      hasMore: false,
+      items: [culturePost("post-1")]
+    }} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Comment this Culture post/i }));
+    expect(await screen.findByText("No comments yet.")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Add a comment"), { target: { value: "Clean work." } });
+    fireEvent.click(screen.getByRole("button", { name: "Post comment" }));
+
+    expect(await screen.findByText("Clean work.")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith("/api/culture/comments", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({
+        postId: "post-1",
+        body: "Clean work."
+      })
+    }));
+  });
+
+  it("routes shop author rows to the public shop route and leaves invalid author routes unlinked", () => {
+    const { unmount } = render(<ClientCultureScreen feed={{
+      cursor: null,
+      hasMore: false,
+      items: [culturePost("shop-post", {
+        authorTargetKind: "shop",
+        authorTarget: "bvrb3r-ybor",
+        authorDisplayName: "The BVRB3R Shop",
+        authorUsername: "@thebvrb3rshopuniversitymall",
+        authorRoleLabel: "Shop",
+        barberId: null,
+        serviceId: null,
+        profileUrl: null,
+        shopUrl: "/shop/bvrb3r-ybor?source=culture&culturePostId=shop-post&cta=view_shop",
+        canViewProfile: false,
+        canViewShop: true,
+        canBook: false,
+        bookingUrl: null,
+        bookLabel: null
+      })]
+    }} />);
+
+    expect(screen.getByRole("link", { name: /Open @thebvrb3rshopuniversitymall Culture profile/i })).toHaveAttribute(
+      "href",
+      expect.stringContaining("/shop/bvrb3r-ybor?source=culture")
+    );
+
+    unmount();
+    render(<ClientCultureScreen feed={{
+      cursor: null,
+      hasMore: false,
+      items: [culturePost("unlinked-post", {
+        authorDisplayName: "Profile Only",
+        authorUsername: "@profileonly",
+        profileUrl: null,
+        shopUrl: null,
+        canViewProfile: false,
+        canViewShop: false
+      })]
+    }} />);
+
+    expect(screen.getByText("@profileonly")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Open @profileonly Culture profile/i })).not.toBeInTheDocument();
   });
 
   it("keeps Why This Post and Not Interested safe", async () => {

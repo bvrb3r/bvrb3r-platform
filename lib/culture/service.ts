@@ -96,6 +96,19 @@ export type CultureFeedResponse = {
   error?: string;
 };
 
+export type CultureCommentItem = {
+  id: string;
+  postId: string;
+  authorProfileId: string;
+  authorUsername: string | null;
+  authorDisplayName: string;
+  authorAvatarUrl: string | null;
+  authorRoleLabel: string;
+  body: string;
+  createdAt: string;
+  canHide: boolean;
+};
+
 export type CulturePostEngagementAction = "like" | "unlike" | "save" | "unsave" | "share" | "report" | "profile_click" | "book_click" | "shop_click" | "not_interested";
 export type CultureFollowAction = "follow" | "unfollow";
 
@@ -251,6 +264,19 @@ type CulturePromotionRow = {
   ends_at?: string | null;
   metadata?: Record<string, unknown> | null;
   created_at?: string | null;
+};
+
+type CultureCommentRow = {
+  id: string;
+  post_id: string;
+  actor_profile_id: string;
+  actor_role: CultureActorRole | Role | string;
+  body: string;
+  moderation_status: string;
+  parent_comment_id?: string | null;
+  created_at: string;
+  updated_at?: string | null;
+  deleted_at?: string | null;
 };
 
 type PublicProfileRow = {
@@ -665,6 +691,33 @@ function normalizeCaption(value: unknown) {
 
 function normalizeOptionalText(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function normalizeCommentBody(value: unknown) {
+  const body = typeof value === "string" ? value.trim() : "";
+  if (!body) {
+    throw new CultureComposerError("Enter a comment before posting.", 400);
+  }
+
+  if (body.length > 500) {
+    throw new CultureComposerError("Culture comments must be 500 characters or fewer.", 400);
+  }
+
+  return body;
+}
+
+function assertCanCommentAsUser(user: UserAccount) {
+  assertCultureEngagementUser(user);
+  if (user.accountStatus && user.accountStatus !== "active") {
+    throw new CultureComposerError("Culture comments are not available for this account.", 403);
+  }
+}
+
+function isPublicApprovedCulturePost(post: CulturePostRow) {
+  return post.publishing_status === "published"
+    && post.moderation_status === "approved"
+    && post.visibility === "public"
+    && !post.deleted_at;
 }
 
 function normalizeComposerPostType(role: CultureComposerRole, input: string) {
@@ -1623,7 +1676,7 @@ async function upsertCulturePostFromProfileSource({
     moderation_status: "approved",
     publishing_status: "published",
     is_bookable: Boolean(access.role === "barber" && serviceId),
-    allow_comments: false,
+    allow_comments: true,
     metadata: {
       composerVersion: 1,
       createdFrom: "profile_studio_media",
@@ -2196,7 +2249,7 @@ export function mapCulturePostToSafeFeedItem(
     canShare: true,
     canReport: true,
     canBook: ctaState.canBook,
-    canComment: Boolean(post.allow_comments),
+    canComment: isPublicApprovedCulturePost(post),
     isPromoted,
     promotionLabel: isPromoted ? "Promoted" : null,
     reasonCodes,
@@ -2311,6 +2364,161 @@ export async function getCulturePostSafeDisplay(postId: string, deps?: CultureSe
 
   const lookups = await loadFeedLookups(supabase, [result.data]);
   return mapCulturePostToSafeFeedItem(result.data, lookups);
+}
+
+function mapCultureCommentToSafeItem(
+  row: CultureCommentRow,
+  profile: PublicProfileRow | null | undefined,
+  viewerProfileId?: string | null,
+  storageClient?: LookupMaps["storageClient"]
+): CultureCommentItem {
+  const username = safeNullableText(profile?.public_username);
+  return {
+    id: row.id,
+    postId: row.post_id,
+    authorProfileId: row.actor_profile_id,
+    authorUsername: username ? `@${username.replace(/^@/, "")}` : null,
+    authorDisplayName: safeText(profile?.full_name, roleLabel(row.actor_role)),
+    authorAvatarUrl: toPublicMediaUrl(storageClient ?? null, profile?.profile_photo_path, profile?.profile_photo_url) ?? null,
+    authorRoleLabel: roleLabel(row.actor_role),
+    body: safeText(row.body, ""),
+    createdAt: row.created_at,
+    canHide: Boolean(viewerProfileId && viewerProfileId === row.actor_profile_id)
+  };
+}
+
+async function hydrateCommentProfiles(
+  supabase: SupabaseLike,
+  rows: CultureCommentRow[]
+) {
+  const authorIds = [...new Set(rows.map((row) => row.actor_profile_id).filter(Boolean))];
+  if (!authorIds.length) {
+    return new Map<string, PublicProfileRow>();
+  }
+
+  const profiles = await fetchOptionalRows<PublicProfileRow>(
+    supabase
+      .from("profiles")
+      .select("id, full_name, public_username, profile_photo_path, profile_photo_url, role")
+      .in("id", authorIds),
+    "comment_profiles"
+  );
+
+  return buildMap(profiles);
+}
+
+export async function listCultureComments(input: {
+  postId: string;
+  viewerProfileId?: string | null;
+  limit?: number;
+}, deps?: CultureServiceDeps): Promise<{ comments: CultureCommentItem[] }> {
+  const supabase = maybeSupabase(deps);
+  if (!supabase) {
+    return { comments: [] };
+  }
+
+  const postId = normalizeOptionalText(input.postId);
+  if (!postId) {
+    throw new CultureComposerError("Culture comments require a post id.", 400);
+  }
+
+  await readPublicCulturePostForAction(supabase, postId);
+
+  const result = await supabase
+    .from("culture_comments")
+    .select("id, post_id, actor_profile_id, actor_role, body, moderation_status, parent_comment_id, created_at, updated_at, deleted_at")
+    .eq("post_id", postId)
+    .eq("moderation_status", "approved")
+    .is("deleted_at", null)
+    .order("created_at", { ascending: true })
+    .limit(cleanLimit(input.limit ?? 50)) as QueryResult<CultureCommentRow[]>;
+
+  throwIfError(result as QueryResult<unknown>, "Unable to load Culture comments.");
+  const rows = result.data ?? [];
+  const profilesById = await hydrateCommentProfiles(supabase, rows);
+  const storageClient = supabase.storage ? { storage: supabase.storage } : null;
+
+  return {
+    comments: rows.map((row) => mapCultureCommentToSafeItem(
+      row,
+      profilesById.get(row.actor_profile_id),
+      input.viewerProfileId,
+      storageClient
+    ))
+  };
+}
+
+export async function createCultureComment(
+  user: UserAccount,
+  input: {
+    postId: string;
+    body: string;
+  },
+  deps?: CultureServiceDeps
+): Promise<{ ok: true; comment: CultureCommentItem }> {
+  assertCanCommentAsUser(user);
+  const supabase = maybeSupabase(deps);
+  if (!supabase) {
+    throw new CultureComposerError("Culture comments require the canonical Supabase Culture writer.", 503);
+  }
+
+  const postId = normalizeOptionalText(input.postId);
+  if (!postId) {
+    throw new CultureComposerError("Culture comments require a post id.", 400);
+  }
+
+  const post = await readPublicCulturePostForAction(supabase, postId);
+  if (!isPublicApprovedCulturePost(post)) {
+    throw new CultureComposerError("Culture comments are only available for public approved posts.", 404);
+  }
+
+  const body = normalizeCommentBody(input.body);
+  const actorRole = dbRoleForUser(user);
+  const result = await supabase
+    .from("culture_comments")
+    .insert({
+      post_id: postId,
+      actor_profile_id: user.id,
+      actor_role: actorRole,
+      body,
+      moderation_status: "approved"
+    })
+    .select("id, post_id, actor_profile_id, actor_role, body, moderation_status, parent_comment_id, created_at, updated_at, deleted_at")
+    .single() as QueryResult<CultureCommentRow>;
+
+  throwIfError(result as QueryResult<unknown>, "Comment could not be posted.");
+  if (!result.data) {
+    throw new CultureComposerError("Comment could not be posted.", 500);
+  }
+
+  await recordCultureEngagement({
+    postId,
+    actorProfileId: user.id,
+    actorRole,
+    engagementType: "comment",
+    metadata: {
+      source: "culture",
+      surface: "culture_feed",
+      post_id: postId
+    }
+  }, deps).catch((error) => {
+    console.error("[culture-comments] engagement_record_failed", {
+      error: cultureLookupErrorMessage(error)
+    });
+  });
+
+  const profilesById = await hydrateCommentProfiles(supabase, [result.data]);
+  const storageClient = supabase.storage ? { storage: supabase.storage } : null;
+
+  return {
+    ok: true,
+    comment: mapCultureCommentToSafeItem(
+      result.data,
+      profilesById.get(user.id),
+      user.id,
+      storageClient
+    )
+  };
 }
 
 function assertCultureEngagementUser(user: UserAccount) {

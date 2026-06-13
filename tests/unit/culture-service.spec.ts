@@ -2,12 +2,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __resetDemoCultureStateForTests,
   autoCreateCulturePostFromProfileMedia,
+  createCultureComment,
   createCulturePostDraft,
   createCulturePostFromProfileMedia,
   attachCulturePostImageMedia,
   getCulturePostSafeDisplay,
   getCulturePostCtaState,
   getCulturePostTargetRoutes,
+  listCultureComments,
   listCultureFeed,
   listMyCulturePosts,
   mapCulturePostToSafeFeedItem,
@@ -225,7 +227,7 @@ const publishedPost: CulturePostRow = {
   moderation_status: "approved",
   publishing_status: "published",
   is_bookable: true,
-  allow_comments: false,
+  allow_comments: true,
   created_at: "2026-06-12T12:00:00.000Z",
   deleted_at: null
 };
@@ -733,16 +735,159 @@ describe("Culture service", () => {
         id: publishedPost.author_profile_id,
         full_name: "Blaze King",
         public_username: "blaze",
+        profile_photo_url: "https://cdn.bvrb3r.test/blaze.jpg",
         role: "barber_user"
       }]])
     });
 
     expect(item.authorDisplayName).toBe("Blaze King");
     expect(item.authorUsername).toBe("@blaze");
+    expect(item.authorAvatarUrl).toBe("https://cdn.bvrb3r.test/blaze.jpg");
     expect(item.profileUrl).toContain("/barber/blaze?source=culture");
     expect(item.canLike).toBe(true);
-    expect(item.canComment).toBe(false);
+    expect(item.canComment).toBe(true);
     expect(JSON.stringify(item)).not.toMatch(/email|phone|stripe|tax/i);
+  });
+
+  it("hydrates Culture author identity from latest safe profile fields", () => {
+    const item = mapCulturePostToSafeFeedItem(publishedPost, {
+      profilesById: new Map([[publishedPost.author_profile_id, {
+        id: publishedPost.author_profile_id,
+        full_name: "Updated Blaze",
+        public_username: "updatedblaze",
+        profile_photo_url: "https://cdn.bvrb3r.test/updated.jpg",
+        role: "barber_user"
+      }]])
+    });
+
+    expect(item.authorDisplayName).toBe("Updated Blaze");
+    expect(item.authorUsername).toBe("@updatedblaze");
+    expect(item.authorAvatarUrl).toBe("https://cdn.bvrb3r.test/updated.jpg");
+    expect(item.profileUrl).toContain("/barber/updatedblaze?source=culture");
+  });
+
+  it("lists only approved comments with safe profile identity", async () => {
+    const supabase = createSupabaseStub({
+      culture_posts: [publishedPost],
+      culture_comments: [
+        {
+          id: "comment-approved",
+          post_id: publishedPost.id,
+          actor_profile_id: clientUser.id,
+          actor_role: "client_user",
+          body: "Clean work.",
+          moderation_status: "approved",
+          created_at: "2026-06-12T12:05:00.000Z",
+          deleted_at: null
+        },
+        {
+          id: "comment-pending",
+          post_id: publishedPost.id,
+          actor_profile_id: clientUser.id,
+          actor_role: "client_user",
+          body: "Pending.",
+          moderation_status: "pending",
+          created_at: "2026-06-12T12:06:00.000Z",
+          deleted_at: null
+        }
+      ],
+      profiles: [{
+        id: clientUser.id,
+        full_name: "Client Viewer",
+        public_username: "clientviewer",
+        profile_photo_url: "https://cdn.bvrb3r.test/client.jpg",
+        email: "private@example.com"
+      }]
+    });
+
+    const result = await listCultureComments({
+      postId: publishedPost.id,
+      viewerProfileId: clientUser.id
+    }, { supabase: supabase.client });
+
+    expect(result.comments).toHaveLength(1);
+    expect(result.comments[0]).toMatchObject({
+      id: "comment-approved",
+      postId: publishedPost.id,
+      authorProfileId: clientUser.id,
+      authorUsername: "@clientviewer",
+      authorDisplayName: "Client Viewer",
+      authorAvatarUrl: "https://cdn.bvrb3r.test/client.jpg",
+      body: "Clean work.",
+      canHide: true
+    });
+    expect(JSON.stringify(result.comments[0])).not.toMatch(/email|phone|stripe|payment/i);
+  });
+
+  it("creates approved comments tied to the viewer profile and public Culture post", async () => {
+    const supabase = createSupabaseStub({
+      culture_posts: [publishedPost],
+      culture_comments: [],
+      culture_engagements: [],
+      profiles: [{
+        id: clientUser.id,
+        full_name: "Client Viewer",
+        public_username: "clientviewer",
+        role: "client_user"
+      }]
+    });
+
+    const result = await createCultureComment(clientUser, {
+      postId: publishedPost.id,
+      body: "  Clean work.  "
+    }, { supabase: supabase.client });
+
+    expect(supabase.writes.culture_comments[0]).toMatchObject({
+      post_id: publishedPost.id,
+      actor_profile_id: clientUser.id,
+      actor_role: "client_user",
+      body: "Clean work.",
+      moderation_status: "approved"
+    });
+    expect(supabase.writes.culture_engagements[0]).toMatchObject({
+      post_id: publishedPost.id,
+      actor_profile_id: clientUser.id,
+      engagement_type: "comment"
+    });
+    expect(result.comment).toMatchObject({
+      postId: publishedPost.id,
+      authorProfileId: clientUser.id,
+      authorUsername: "@clientviewer",
+      body: "Clean work."
+    });
+  });
+
+  it("rejects empty, overlong, restricted, and non-public Culture comments", async () => {
+    const supabase = createSupabaseStub({
+      culture_posts: [publishedPost],
+      culture_comments: [],
+      profiles: []
+    });
+
+    await expect(createCultureComment(clientUser, {
+      postId: publishedPost.id,
+      body: "   "
+    }, { supabase: supabase.client })).rejects.toThrow("Enter a comment before posting.");
+
+    await expect(createCultureComment(clientUser, {
+      postId: publishedPost.id,
+      body: "x".repeat(501)
+    }, { supabase: supabase.client })).rejects.toThrow("500 characters or fewer");
+
+    await expect(createCultureComment({ ...clientUser, accountStatus: "suspended" }, {
+      postId: publishedPost.id,
+      body: "Clean work."
+    }, { supabase: supabase.client })).rejects.toThrow("not available for this account");
+
+    await expect(createCultureComment(clientUser, {
+      postId: publishedPost.id,
+      body: "Clean work."
+    }, {
+      supabase: createSupabaseStub({
+        culture_posts: [{ ...publishedPost, publishing_status: "draft", visibility: "private" }],
+        culture_comments: []
+      }).client
+    })).rejects.toThrow("public approved posts");
   });
 
   it("builds safe Culture profile, booking, and shop CTA routes with attribution", () => {
@@ -1293,7 +1438,8 @@ describe("Culture service", () => {
       post_type: "barber_cut",
       publishing_status: "published",
       moderation_status: "approved",
-      visibility: "public"
+      visibility: "public",
+      allow_comments: true
     });
     expect(supabase.writes.culture_media[0]).toMatchObject({
       post_id: result.post.id,
@@ -1414,7 +1560,8 @@ describe("Culture service", () => {
       post_type: "shop_update",
       publishing_status: "published",
       moderation_status: "approved",
-      visibility: "public"
+      visibility: "public",
+      allow_comments: true
     });
     expect(supabase.writes.culture_media[0]).toMatchObject({
       media_url: "https://cdn.bvrb3r.test/shop-front.jpg",
@@ -1509,7 +1656,8 @@ describe("Culture service", () => {
       post_type: "barber_cut",
       publishing_status: "published",
       moderation_status: "approved",
-      visibility: "public"
+      visibility: "public",
+      allow_comments: true
     });
     expect(supabase.writes.culture_media[0]).toMatchObject({
       media_url: "https://cdn.bvrb3r.test/auto.jpg",
@@ -1738,7 +1886,8 @@ describe("Culture service", () => {
       post_type: "shop_update",
       publishing_status: "published",
       moderation_status: "approved",
-      visibility: "public"
+      visibility: "public",
+      allow_comments: true
     });
     expect(supabase.writes.culture_media[0]).toMatchObject({
       media_url: "https://cdn.bvrb3r.test/wall.jpg",
