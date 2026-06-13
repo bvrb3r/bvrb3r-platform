@@ -366,16 +366,32 @@ describe("client culture screen", () => {
     }));
   });
 
-  it("routes shop author rows to the public shop route and leaves invalid author routes unlinked", () => {
+  it("routes shop author rows to the public shop route and leaves invalid author routes unlinked", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ ok: true, items: [], cursor: null, hasMore: false })
+    }));
+    vi.stubGlobal("fetch", fetchMock);
     const { unmount } = render(<ClientCultureScreen feed={{
       cursor: null,
       hasMore: false,
       items: [culturePost("shop-post", {
         authorTargetKind: "shop",
         authorTarget: "bvrb3r-ybor",
-        authorDisplayName: "The BVRB3R Shop",
-        authorUsername: "@thebvrb3rshopuniversitymall",
-        authorRoleLabel: "Shop",
+        authorDisplayName: "Owner Pat",
+        authorUsername: "@ownerpat",
+        authorRoleLabel: "Shop Owner",
+        authorAvatarUrl: "https://cdn.bvrb3r.test/owner.jpg",
+        displayActor: {
+          id: "shop-ybor",
+          type: "shop",
+          username: "thebvrb3rshopuniversitymall",
+          displayName: "The BVRB3R Shop",
+          avatarUrl: "https://cdn.bvrb3r.test/shop-logo.jpg",
+          roleLabel: "Shop",
+          publicRoute: "/shop/bvrb3r-ybor?source=culture&culturePostId=shop-post&cta=view_shop",
+          verifiedLabel: null
+        },
         barberId: null,
         serviceId: null,
         profileUrl: null,
@@ -388,10 +404,28 @@ describe("client culture screen", () => {
       })]
     }} />);
 
-    expect(screen.getByRole("link", { name: /Open @thebvrb3rshopuniversitymall Culture profile/i })).toHaveAttribute(
+    const shopAuthorLink = screen.getByRole("link", { name: /Open @thebvrb3rshopuniversitymall Culture profile/i });
+    expect(shopAuthorLink).toHaveAttribute(
       "href",
       expect.stringContaining("/shop/bvrb3r-ybor?source=culture")
     );
+    expect(screen.getByText("The BVRB3R Shop")).toBeInTheDocument();
+    expect(screen.getByText("Shop - Jun 12, 2026")).toBeInTheDocument();
+    expect(screen.queryByText("Owner Pat")).not.toBeInTheDocument();
+    expect(document.querySelector('img[src="https://cdn.bvrb3r.test/shop-logo.jpg"]')).toBeTruthy();
+    shopAuthorLink.addEventListener("click", (event) => event.preventDefault());
+    fireEvent.click(shopAuthorLink);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/culture/engagements", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({
+        postId: "shop-post",
+        action: "shop_click",
+        metadata: {
+          cta: "view_shop",
+          targetRoute: "/shop/bvrb3r-ybor?source=culture&culturePostId=shop-post&cta=view_shop"
+        }
+      })
+    })));
 
     unmount();
     render(<ClientCultureScreen feed={{

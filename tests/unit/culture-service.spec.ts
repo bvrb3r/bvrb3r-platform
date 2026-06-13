@@ -401,7 +401,24 @@ describe("Culture service", () => {
         { id: barberUser.id, full_name: "Blaze King", public_username: "blaze" },
         { id: ownerUser.id, full_name: "Owner Pat", public_username: "ownerpat" }
       ],
-      shops: [{ id: "shop-ybor", name: "Ybor Shop" }],
+      barbers: [{
+        id: publishedPost.barber_id,
+        profile_id: barberUser.id,
+        reference_code: "barber-blaze",
+        booking_slug: "blaze-slug"
+      }],
+      barber_profiles: [{
+        barber_reference: "barber-blaze",
+        username: "blazecuts",
+        display_name: "Blaze Cuts",
+        profile_photo_url: "https://cdn.bvrb3r.test/blaze-public.jpg"
+      }],
+      shops: [{
+        id: "shop-ybor",
+        name: "Ybor Shop",
+        public_username: "yborshop",
+        profile_photo_url: "https://cdn.bvrb3r.test/shop-logo.jpg"
+      }],
       services: []
     });
 
@@ -409,16 +426,23 @@ describe("Culture service", () => {
 
     expect(feed.items.map((item) => item.id)).toEqual(["auto-feed-barber", "auto-feed-owner"]);
     expect(feed.items[0]).toMatchObject({
-      authorDisplayName: "Blaze King",
+      authorDisplayName: "Blaze Cuts",
+      authorUsername: "@blazecuts",
+      authorAvatarUrl: "https://cdn.bvrb3r.test/blaze-public.jpg",
       authorRoleLabel: "Barber",
+      profileUrl: expect.stringContaining("/barber/blazecuts?source=culture"),
       media: { url: "https://cdn.bvrb3r.test/barber-auto.jpg" }
     });
     expect(feed.items[1]).toMatchObject({
-      authorDisplayName: "Owner Pat",
-      authorRoleLabel: "Shop Owner",
+      authorDisplayName: "Ybor Shop",
+      authorUsername: "@yborshop",
+      authorAvatarUrl: "https://cdn.bvrb3r.test/shop-logo.jpg",
+      authorRoleLabel: "Shop",
       shopName: "Ybor Shop",
+      shopUrl: expect.stringContaining("/shop/yborshop?source=culture"),
       media: { url: "https://cdn.bvrb3r.test/owner-auto.jpg" }
     });
+    expect(JSON.stringify(feed.items[1])).not.toContain("Owner Pat");
   });
 
   it("builds Discovery Grid modules only from real approved Barber and Shop posts with media and routes", async () => {
@@ -744,6 +768,13 @@ describe("Culture service", () => {
     expect(item.authorUsername).toBe("@blaze");
     expect(item.authorAvatarUrl).toBe("https://cdn.bvrb3r.test/blaze.jpg");
     expect(item.profileUrl).toContain("/barber/blaze?source=culture");
+    expect(item.displayActor).toMatchObject({
+      type: "barber",
+      username: "blaze",
+      displayName: "Blaze King",
+      avatarUrl: "https://cdn.bvrb3r.test/blaze.jpg",
+      roleLabel: "Barber"
+    });
     expect(item.canLike).toBe(true);
     expect(item.canComment).toBe(true);
     expect(JSON.stringify(item)).not.toMatch(/email|phone|stripe|tax/i);
@@ -764,6 +795,79 @@ describe("Culture service", () => {
     expect(item.authorUsername).toBe("@updatedblaze");
     expect(item.authorAvatarUrl).toBe("https://cdn.bvrb3r.test/updated.jpg");
     expect(item.profileUrl).toContain("/barber/updatedblaze?source=culture");
+  });
+
+  it("prefers barber public profile identity over personal profile identity when available", () => {
+    const item = mapCulturePostToSafeFeedItem(publishedPost, {
+      profilesById: new Map([[publishedPost.author_profile_id, {
+        id: publishedPost.author_profile_id,
+        full_name: "Phillip McGee",
+        public_username: null,
+        profile_photo_url: null,
+        role: "barber_user"
+      }]]),
+      barbersById: new Map([[publishedPost.barber_id ?? "", {
+        id: publishedPost.barber_id ?? "",
+        profile_id: publishedPost.author_profile_id,
+        reference_code: "barber-phillip",
+        booking_slug: null
+      }]]),
+      barberProfilesByReference: new Map([["barber-phillip", {
+        barber_reference: "barber-phillip",
+        username: "phillipforsure",
+        display_name: "Phillip For Sure",
+        profile_photo_url: "https://cdn.bvrb3r.test/phillip-public.jpg"
+      }]])
+    });
+
+    expect(item.authorUsername).toBe("@phillipforsure");
+    expect(item.authorDisplayName).toBe("Phillip For Sure");
+    expect(item.authorAvatarUrl).toBe("https://cdn.bvrb3r.test/phillip-public.jpg");
+    expect(item.profileUrl).toContain("/barber/phillipforsure?source=culture");
+    expect(item.displayActor).toMatchObject({
+      type: "barber",
+      username: "phillipforsure",
+      displayName: "Phillip For Sure"
+    });
+  });
+
+  it("maps shop posts to the public shop actor instead of the owner profile", () => {
+    const shopPost: CulturePostRow = {
+      ...publishedPost,
+      author_profile_id: ownerUser.id,
+      author_role: "shop_owner_user",
+      barber_id: null,
+      shop_id: "shop-ybor",
+      service_id: null,
+      post_type: "shop_update"
+    };
+    const item = mapCulturePostToSafeFeedItem(shopPost, {
+      profilesById: new Map([[ownerUser.id, {
+        id: ownerUser.id,
+        full_name: "Owner Pat",
+        public_username: "ownerpat",
+        profile_photo_url: "https://cdn.bvrb3r.test/owner.jpg",
+        role: "shop_owner_user"
+      }]]),
+      shopsById: new Map([["shop-ybor", {
+        id: "shop-ybor",
+        name: "The BVRB3R Shop",
+        public_username: "thebvrb3rshopuniversitymall",
+        profile_photo_url: "https://cdn.bvrb3r.test/shop-logo.jpg"
+      }]])
+    });
+
+    expect(item.authorUsername).toBe("@thebvrb3rshopuniversitymall");
+    expect(item.authorDisplayName).toBe("The BVRB3R Shop");
+    expect(item.authorAvatarUrl).toBe("https://cdn.bvrb3r.test/shop-logo.jpg");
+    expect(item.authorRoleLabel).toBe("Shop");
+    expect(item.shopUrl).toContain("/shop/thebvrb3rshopuniversitymall?source=culture");
+    expect(JSON.stringify(item)).not.toContain("Owner Pat");
+    expect(item.displayActor).toMatchObject({
+      type: "shop",
+      username: "thebvrb3rshopuniversitymall",
+      displayName: "The BVRB3R Shop"
+    });
   });
 
   it("lists only approved comments with safe profile identity", async () => {

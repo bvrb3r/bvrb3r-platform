@@ -250,9 +250,15 @@ export function CulturePostCard({
   const impressionSentRef = useRef(false);
   const impressionTimerRef = useRef<number | null>(null);
   const mediaUrl = post.media?.url ?? post.media?.thumbnailUrl ?? null;
-  const authorHref = post.authorTargetKind === "shop" ? post.shopUrl : post.profileUrl;
-  const authorPrimaryLabel = post.authorUsername ?? post.authorDisplayName;
-  const authorSecondaryLabel = post.authorUsername ? post.authorDisplayName : null;
+  const actorUsernameLabel = post.displayActor?.username
+    ? `@${post.displayActor.username.replace(/^@/, "")}`
+    : post.authorUsername;
+  const actorDisplayName = post.displayActor?.displayName ?? post.authorDisplayName;
+  const actorAvatarUrl = post.displayActor?.avatarUrl ?? post.authorAvatarUrl;
+  const actorRoleLabel = post.displayActor?.roleLabel ?? post.authorRoleLabel;
+  const authorHref = post.displayActor?.publicRoute ?? (post.authorTargetKind === "shop" ? post.shopUrl : post.profileUrl);
+  const authorPrimaryLabel = actorUsernameLabel ?? actorDisplayName;
+  const authorSecondaryLabel = actorUsernameLabel ? actorDisplayName : null;
   const reasonLabels = useMemo(
     () => (post.reasonCodes?.length ? post.reasonCodes.map(safeReasonLabel) : [post.reasonLabel ?? "Recent Culture post"]),
     [post.reasonCodes, post.reasonLabel]
@@ -418,7 +424,8 @@ export function CulturePostCard({
   function recordProfileClick() {
     void runPostAction("profile_click", {
       metadata: {
-        cta: "view_profile"
+        cta: "view_profile",
+        targetRoute: authorHref ?? post.profileUrl
       }
     }).catch(() => undefined);
   }
@@ -434,7 +441,8 @@ export function CulturePostCard({
   function recordShopClick() {
     void runPostAction("shop_click", {
       metadata: {
-        cta: "view_shop"
+        cta: "view_shop",
+        targetRoute: authorHref ?? post.shopUrl
       }
     }).catch(() => undefined);
   }
@@ -475,7 +483,7 @@ export function CulturePostCard({
 
       if (navigator.share) {
         await navigator.share({
-          title: `BVRB3R Culture: ${post.authorDisplayName}`,
+          title: `BVRB3R Culture: ${actorDisplayName}`,
           text: post.caption || "Culture post from BVRB3R.",
           url: href
         });
@@ -564,7 +572,7 @@ export function CulturePostCard({
               className="flex min-w-0 items-center gap-3 rounded-[18px] pr-2 transition hover:bg-white/[0.03]"
               aria-label={`Open ${authorPrimaryLabel} Culture profile`}
             >
-              <CultureAvatar imageUrl={post.authorAvatarUrl} name={post.authorDisplayName} />
+              <CultureAvatar imageUrl={actorAvatarUrl} name={actorDisplayName} />
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="truncate text-sm font-black text-white">{authorPrimaryLabel}</p>
@@ -582,13 +590,13 @@ export function CulturePostCard({
                 </div>
                 {authorSecondaryLabel ? <p className="mt-1 truncate text-xs text-white/48">{authorSecondaryLabel}</p> : null}
                 <p className="mt-1 truncate text-[11px] font-semibold uppercase tracking-[0.14em] text-white/34">
-                  {[post.authorRoleLabel, formatCultureDate(post.createdAt)].filter(Boolean).join(" - ")}
+                  {[actorRoleLabel, formatCultureDate(post.createdAt)].filter(Boolean).join(" - ")}
                 </p>
               </div>
             </Link>
           ) : (
             <div className="flex min-w-0 items-center gap-3">
-              <CultureAvatar imageUrl={post.authorAvatarUrl} name={post.authorDisplayName} />
+              <CultureAvatar imageUrl={actorAvatarUrl} name={actorDisplayName} />
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="truncate text-sm font-black text-white">{authorPrimaryLabel}</p>
@@ -606,7 +614,7 @@ export function CulturePostCard({
                 </div>
                 {authorSecondaryLabel ? <p className="mt-1 truncate text-xs text-white/48">{authorSecondaryLabel}</p> : null}
                 <p className="mt-1 truncate text-[11px] font-semibold uppercase tracking-[0.14em] text-white/34">
-                  {[post.authorRoleLabel, formatCultureDate(post.createdAt)].filter(Boolean).join(" - ")}
+                  {[actorRoleLabel, formatCultureDate(post.createdAt)].filter(Boolean).join(" - ")}
                 </p>
               </div>
             </div>
@@ -641,7 +649,7 @@ export function CulturePostCard({
         </header>
 
         <div className="px-3 sm:px-4">
-          <CultureMedia mediaUrl={mediaUrl} authorDisplayName={post.authorDisplayName} onOpen={openDetail} />
+          <CultureMedia mediaUrl={mediaUrl} authorDisplayName={actorDisplayName} onOpen={openDetail} />
         </div>
 
         <div className="p-4">
@@ -825,12 +833,12 @@ export function CulturePostCard({
           <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-[26px] border border-white/10 bg-[#080808] shadow-2xl">
             <div className="flex items-center justify-between gap-3 border-b border-white/10 p-4">
               <div className="flex min-w-0 items-center gap-3">
-                <CultureAvatar imageUrl={post.authorAvatarUrl} name={post.authorDisplayName} size="small" />
+                <CultureAvatar imageUrl={actorAvatarUrl} name={actorDisplayName} size="small" />
                 <div className="min-w-0">
                   <p className="truncate text-sm font-black text-white">{authorPrimaryLabel}</p>
                   {authorSecondaryLabel ? <p className="truncate text-xs text-white/46">{authorSecondaryLabel}</p> : null}
                   <p className="truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-white/34">
-                    {[post.authorRoleLabel, formatCultureDate(post.createdAt)].filter(Boolean).join(" - ")}
+                    {[actorRoleLabel, formatCultureDate(post.createdAt)].filter(Boolean).join(" - ")}
                   </p>
                 </div>
               </div>
@@ -844,7 +852,7 @@ export function CulturePostCard({
               </button>
             </div>
             <div className="p-4">
-              <CultureMedia mediaUrl={mediaUrl} authorDisplayName={post.authorDisplayName} onOpen={() => undefined} />
+              <CultureMedia mediaUrl={mediaUrl} authorDisplayName={actorDisplayName} onOpen={() => undefined} />
               {post.caption ? <p className="mt-4 text-sm leading-6 text-white/78">{post.caption}</p> : null}
               <div className="mt-4 flex flex-wrap gap-2">
                 <CultureActionButton

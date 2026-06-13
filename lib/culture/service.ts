@@ -85,6 +85,7 @@ export type CultureFeedItem = {
   promotionLabel?: string | null;
   reasonCodes?: CultureFeedReasonCode[];
   reasonLabel?: string | null;
+  displayActor?: CultureDisplayActor;
 };
 
 export type CultureFeedResponse = {
@@ -107,6 +108,17 @@ export type CultureCommentItem = {
   body: string;
   createdAt: string;
   canHide: boolean;
+};
+
+export type CultureDisplayActor = {
+  id: string;
+  type: "barber" | "shop" | "profile";
+  username: string | null;
+  displayName: string;
+  avatarUrl: string | null;
+  roleLabel: string;
+  publicRoute: string | null;
+  verifiedLabel: string | null;
 };
 
 export type CulturePostEngagementAction = "like" | "unlike" | "save" | "unsave" | "share" | "report" | "profile_click" | "book_click" | "shop_click" | "not_interested";
@@ -292,6 +304,8 @@ type PublicShopRow = {
   id: string;
   name?: string | null;
   public_username?: string | null;
+  profile_photo_path?: string | null;
+  profile_photo_url?: string | null;
 };
 
 type PublicServiceRow = {
@@ -299,6 +313,21 @@ type PublicServiceRow = {
   name?: string | null;
   active?: boolean | null;
   is_bookable?: boolean | null;
+};
+
+type PublicBarberRow = {
+  id: string;
+  profile_id?: string | null;
+  reference_code?: string | null;
+  booking_slug?: string | null;
+};
+
+type PublicBarberProfileRow = {
+  barber_reference: string;
+  username?: string | null;
+  display_name?: string | null;
+  profile_photo_path?: string | null;
+  profile_photo_url?: string | null;
 };
 
 type BarberPortfolioSourceRow = {
@@ -365,6 +394,8 @@ type LookupMaps = {
   mediaByPost?: Map<string, CultureMediaRow[]>;
   profilesById?: Map<string, PublicProfileRow>;
   shopsById?: Map<string, PublicShopRow>;
+  barbersById?: Map<string, PublicBarberRow>;
+  barberProfilesByReference?: Map<string, PublicBarberProfileRow>;
   servicesById?: Map<string, PublicServiceRow>;
   promotionsByPost?: Map<string, CulturePromotionRow>;
   storageClient?: {
@@ -520,10 +551,44 @@ function authorTargetKindForPost(post: CulturePostRow): "client" | "barber" | "s
   return "client";
 }
 
-function authorTargetForPost(post: CulturePostRow, profile?: PublicProfileRow | null, shop?: PublicShopRow | null) {
+function barberReferenceCandidates(post: CulturePostRow, barber?: PublicBarberRow | null) {
+  return [
+    barber?.reference_code,
+    barber?.booking_slug,
+    barber?.id,
+    barber?.profile_id,
+    post.barber_id
+  ].map((value) => safeNullableText(value)).filter(Boolean) as string[];
+}
+
+function findBarberProfileForPost(
+  post: CulturePostRow,
+  lookups: Pick<LookupMaps, "barbersById" | "barberProfilesByReference"> = {}
+) {
+  const barber = post.barber_id ? lookups.barbersById?.get(post.barber_id) : null;
+  for (const reference of barberReferenceCandidates(post, barber)) {
+    const profile = lookups.barberProfilesByReference?.get(reference);
+    if (profile) {
+      return profile;
+    }
+  }
+
+  return null;
+}
+
+function authorTargetForPost(
+  post: CulturePostRow,
+  profile?: PublicProfileRow | null,
+  shop?: PublicShopRow | null,
+  barberProfile?: PublicBarberProfileRow | null
+) {
   const targetKind = authorTargetKindForPost(post);
   if (targetKind === "shop") {
     return safeNullableText(shop?.public_username) ?? safeNullableText(post.shop_id);
+  }
+
+  if (targetKind === "barber") {
+    return safeNullableText(barberProfile?.username) ?? safeNullableText(profile?.public_username);
   }
 
   return safeNullableText(profile?.public_username);
@@ -583,13 +648,14 @@ function buildCultureBookingUrl(post: CulturePostRow, authorTarget: string | nul
 
 export function getCulturePostTargetRoutes(
   post: CulturePostRow,
-  lookups: Pick<LookupMaps, "profilesById" | "shopsById" | "servicesById"> = {}
+  lookups: Pick<LookupMaps, "profilesById" | "shopsById" | "servicesById" | "barbersById" | "barberProfilesByReference"> = {}
 ) {
   const profile = lookups.profilesById?.get(post.author_profile_id);
   const shop = post.shop_id ? lookups.shopsById?.get(post.shop_id) : null;
+  const barberProfile = findBarberProfileForPost(post, lookups);
   const service = post.service_id ? lookups.servicesById?.get(post.service_id) : null;
   const authorTargetKind = authorTargetKindForPost(post);
-  const authorTarget = authorTargetForPost(post, profile, shop);
+  const authorTarget = authorTargetForPost(post, profile, shop, barberProfile);
   const serviceBookable = Boolean(post.service_id && service && service.active !== false && service.is_bookable !== false);
   const barberProfileTarget = authorTargetKind === "barber" ? authorTarget ?? safeNullableText(post.barber_id) : null;
   const shopTarget = authorTargetKind === "shop"
@@ -615,7 +681,7 @@ export function getCulturePostTargetRoutes(
 
 export function getCulturePostCtaState(
   post: CulturePostRow,
-  lookups: Pick<LookupMaps, "profilesById" | "shopsById" | "servicesById"> = {}
+  lookups: Pick<LookupMaps, "profilesById" | "shopsById" | "servicesById" | "barbersById" | "barberProfilesByReference"> = {}
 ): CulturePostCtaState {
   const service = post.service_id ? lookups.servicesById?.get(post.service_id) : null;
   const routes = getCulturePostTargetRoutes(post, lookups);
@@ -823,6 +889,12 @@ function buildMap<T extends { id: string }>(rows: T[] | null | undefined) {
   return new Map((rows ?? []).map((row) => [row.id, row]));
 }
 
+function buildBarberProfileReferenceMap(rows: PublicBarberProfileRow[] | null | undefined) {
+  return new Map((rows ?? [])
+    .map((row) => [safeNullableText(row.barber_reference), row] as const)
+    .filter((entry): entry is [string, PublicBarberProfileRow] => Boolean(entry[0])));
+}
+
 function isActiveCulturePromotion(row: CulturePromotionRow, now = new Date()) {
   if (row.status !== "active" && row.status !== "approved") {
     return false;
@@ -954,9 +1026,10 @@ async function loadFeedLookups(supabase: SupabaseLike, posts: CulturePostRow[]):
   const postIds = posts.map((post) => post.id);
   const authorIds = [...new Set(posts.map((post) => post.author_profile_id).filter(Boolean))];
   const shopIds = [...new Set(posts.map((post) => post.shop_id).filter(Boolean))] as string[];
+  const barberIds = [...new Set(posts.map((post) => post.barber_id).filter(Boolean))] as string[];
   const serviceIds = [...new Set(posts.map((post) => post.service_id).filter(Boolean))] as string[];
 
-  const [rawMediaRows, profileRows, shopRows, serviceRows, promotionRows] = await Promise.all([
+  const [rawMediaRows, profileRows, shopRows, barberRows, serviceRows, promotionRows] = await Promise.all([
     postIds.length
       ? fetchOptionalRows<CultureMediaRow>(
         supabase
@@ -980,9 +1053,18 @@ async function loadFeedLookups(supabase: SupabaseLike, posts: CulturePostRow[]):
       ? fetchOptionalRows<PublicShopRow>(
         supabase
           .from("shops")
-          .select("id, name, public_username")
+          .select("id, name, public_username, profile_photo_path, profile_photo_url")
           .in("id", shopIds),
         "shops"
+      )
+      : Promise.resolve([]),
+    barberIds.length
+      ? fetchOptionalRows<PublicBarberRow>(
+        supabase
+          .from("barbers")
+          .select("id, profile_id, reference_code, booking_slug")
+          .in("id", barberIds),
+        "barbers"
       )
       : Promise.resolve([]),
     serviceIds.length
@@ -1004,12 +1086,32 @@ async function loadFeedLookups(supabase: SupabaseLike, posts: CulturePostRow[]):
       )
       : Promise.resolve([])
   ]);
+  const barberProfileReferences = [...new Set([
+    ...barberIds,
+    ...barberRows.flatMap((barber) => [
+      barber.reference_code,
+      barber.booking_slug,
+      barber.profile_id,
+      barber.id
+    ])
+  ].map((value) => safeNullableText(value)).filter(Boolean))] as string[];
+  const barberProfileRows = barberProfileReferences.length
+    ? await fetchOptionalRows<PublicBarberProfileRow>(
+      supabase
+        .from("barber_profiles")
+        .select("barber_reference, username, display_name, profile_photo_path, profile_photo_url")
+        .in("barber_reference", barberProfileReferences),
+      "barber_profiles"
+    )
+    : [];
   const mediaRows = await prepareCultureMediaRows(supabase, rawMediaRows);
 
   return {
     mediaByPost: groupMedia(mediaRows),
     profilesById: buildMap(profileRows),
     shopsById: buildMap(shopRows),
+    barbersById: buildMap(barberRows),
+    barberProfilesByReference: buildBarberProfileReferenceMap(barberProfileRows),
     servicesById: buildMap(serviceRows),
     promotionsByPost: groupActivePromotions(promotionRows),
     storageClient: supabase.storage ? { storage: supabase.storage } : null
@@ -2189,6 +2291,61 @@ export async function listMyCulturePosts(
   return grouped;
 }
 
+function legacyUsernameLabel(username: string | null) {
+  return username ? `@${username.replace(/^@/, "")}` : null;
+}
+
+function buildCultureDisplayActor(
+  post: CulturePostRow,
+  lookups: LookupMaps,
+  ctaState: CulturePostCtaState
+): CultureDisplayActor {
+  const profile = lookups.profilesById?.get(post.author_profile_id);
+  const shop = post.shop_id ? lookups.shopsById?.get(post.shop_id) : null;
+  const barberProfile = findBarberProfileForPost(post, lookups);
+  const authorTargetKind = authorTargetKindForPost(post);
+  const profileAvatarUrl = toPublicMediaUrl(lookups.storageClient ?? null, profile?.profile_photo_path, profile?.profile_photo_url) ?? null;
+
+  if (authorTargetKind === "shop") {
+    const shopAvatarUrl = toPublicMediaUrl(lookups.storageClient ?? null, shop?.profile_photo_path, shop?.profile_photo_url) ?? null;
+    return {
+      id: safeText(post.shop_id, post.author_profile_id),
+      type: "shop",
+      username: safeNullableText(shop?.public_username),
+      displayName: safeText(shop?.name, safeText(profile?.full_name, "Shop")),
+      avatarUrl: shopAvatarUrl ?? (shop ? null : profileAvatarUrl),
+      roleLabel: "Shop",
+      publicRoute: ctaState.shopUrl,
+      verifiedLabel: null
+    };
+  }
+
+  if (authorTargetKind === "barber") {
+    const barberAvatarUrl = toPublicMediaUrl(lookups.storageClient ?? null, barberProfile?.profile_photo_path, barberProfile?.profile_photo_url) ?? null;
+    return {
+      id: safeText(post.barber_id, post.author_profile_id),
+      type: "barber",
+      username: safeNullableText(barberProfile?.username) ?? safeNullableText(profile?.public_username),
+      displayName: safeText(barberProfile?.display_name, safeText(profile?.full_name, "Barber")),
+      avatarUrl: barberAvatarUrl ?? profileAvatarUrl,
+      roleLabel: "Barber",
+      publicRoute: ctaState.profileUrl,
+      verifiedLabel: null
+    };
+  }
+
+  return {
+    id: post.author_profile_id,
+    type: "profile",
+    username: safeNullableText(profile?.public_username),
+    displayName: safeText(profile?.full_name, roleLabel(post.author_role)),
+    avatarUrl: profileAvatarUrl,
+    roleLabel: roleLabel(post.author_role),
+    publicRoute: ctaState.profileUrl,
+    verifiedLabel: null
+  };
+}
+
 export function mapCulturePostToSafeFeedItem(
   post: CulturePostRow,
   lookups: LookupMaps = {},
@@ -2198,15 +2355,14 @@ export function mapCulturePostToSafeFeedItem(
   const media = lookups.mediaByPost?.get(post.id)?.[0] ?? null;
   const shop = post.shop_id ? lookups.shopsById?.get(post.shop_id) : null;
   const service = post.service_id ? lookups.servicesById?.get(post.service_id) : null;
-  const authorDisplayName = safeText(profile?.full_name, roleLabel(post.author_role));
-  const username = safeText(profile?.public_username);
   const authorTargetKind = authorTargetKindForPost(post);
-  const authorTarget = authorTargetForPost(post, profile, shop);
+  const barberProfile = findBarberProfileForPost(post, lookups);
+  const authorTarget = authorTargetForPost(post, profile, shop, barberProfile);
   const ctaState = getCulturePostCtaState(post, lookups);
+  const displayActor = buildCultureDisplayActor(post, lookups, ctaState);
   const reasonCodes = buildCultureReasonCodes(post, lookups, signals);
   const mediaUrl = safeNullableText(media?.media_url);
   const thumbnailUrl = safeNullableText(media?.thumbnail_url);
-  const authorAvatarUrl = toPublicMediaUrl(lookups.storageClient ?? null, profile?.profile_photo_path, profile?.profile_photo_url) ?? null;
   const isPromoted = Boolean(lookups.promotionsByPost?.has(post.id));
 
   return {
@@ -2217,10 +2373,10 @@ export function mapCulturePostToSafeFeedItem(
     barberId: post.barber_id ?? null,
     shopId: post.shop_id ?? null,
     serviceId: post.service_id ?? null,
-    authorDisplayName,
-    authorUsername: username ? `@${username.replace(/^@/, "")}` : null,
-    authorAvatarUrl,
-    authorRoleLabel: roleLabel(post.author_role),
+    authorDisplayName: displayActor.displayName,
+    authorUsername: legacyUsernameLabel(displayActor.username),
+    authorAvatarUrl: displayActor.avatarUrl,
+    authorRoleLabel: displayActor.roleLabel,
     authorVerified: false,
     caption: safeText(post.caption, ""),
     postType: post.post_type,
@@ -2253,7 +2409,8 @@ export function mapCulturePostToSafeFeedItem(
     isPromoted,
     promotionLabel: isPromoted ? "Promoted" : null,
     reasonCodes,
-    reasonLabel: cultureReasonLabel(reasonCodes)
+    reasonLabel: cultureReasonLabel(reasonCodes),
+    displayActor
   };
 }
 
