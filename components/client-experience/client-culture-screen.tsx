@@ -1,11 +1,12 @@
 import type { Route } from "next";
 import Link from "next/link";
+import { Fragment } from "react";
 import { Bookmark, Scissors, Search, Store, UsersRound } from "lucide-react";
 import { StatusBadge } from "@/design/components";
 import { CultureFeedHeader } from "@/components/culture/culture-feed-header";
 import { CulturePostCard } from "@/components/culture/culture-post-card";
 import { CLIENT_PRIMARY_TAB_HREFS } from "@/components/client-experience/client-tab-config";
-import type { CultureFeedItem, CultureFeedResponse } from "@/lib/culture/service";
+import type { CultureFeedItem, CultureFeedModule, CultureFeedResponse } from "@/lib/culture/service";
 
 export type CultureCreatorRole = "client" | "barber" | "shop" | "architect";
 type CultureSurface = "client" | "barber" | "shop";
@@ -87,8 +88,48 @@ function legacyPostToFeedItem(post: ClientCulturePost): CultureFeedItem {
     canShare: true,
     canReport: true,
     canBook: Boolean(post.bookingHref),
-    canComment: false
+    canComment: false,
+    isPromoted: false,
+    promotionLabel: null,
+    reasonCodes: ["recent_public_post"],
+    reasonLabel: "Recent from BVRB3R"
   };
+}
+
+function CultureDiscoveryGrid({ module }: { module: CultureFeedModule }) {
+  return (
+    <section className="overflow-hidden rounded-[28px] border border-white/10 bg-black/24 p-4" data-testid="culture-discovery-grid">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-[#d7ffab]">Explore</p>
+          <h3 className="mt-2 text-xl font-extrabold text-white">{module.moduleTitle}</h3>
+          <p className="mt-2 max-w-xl text-sm leading-6 text-white/54">{module.moduleSubtitle}</p>
+        </div>
+        <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-[11px] font-black uppercase tracking-[0.12em] text-white/50">
+          {module.reason}
+        </span>
+      </div>
+      <div className="-mx-1 mt-4 flex gap-3 overflow-x-auto px-1 pb-1 [scrollbar-width:none]">
+        {module.items.map((item) => (
+          <Link
+            key={item.id}
+            href={item.route as Route}
+            className="block w-44 shrink-0 overflow-hidden rounded-[22px] border border-white/10 bg-white/[0.04] transition hover:border-[#d7ffab]/28"
+          >
+            <div className="aspect-[4/5] bg-black/40">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={item.imageUrl} alt="" className="h-full w-full object-cover" />
+            </div>
+            <div className="p-3">
+              <p className="truncate text-sm font-black text-white">{item.title}</p>
+              <p className="mt-1 line-clamp-2 min-h-9 text-xs leading-5 text-white/48">{item.subtitle}</p>
+              <p className="mt-3 text-[11px] font-black uppercase tracking-[0.12em] text-[#d7ffab]">{item.ctaLabel}</p>
+            </div>
+          </Link>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 export function ClientCultureScreen({
@@ -101,6 +142,7 @@ export function ClientCultureScreen({
   surface?: CultureSurface;
 }) {
   const feedItems = feed?.items ?? posts.map(legacyPostToFeedItem);
+  const feedModules = feed?.modules ?? [];
   const feedError = feed?.error;
   const hasPosts = feedItems.length > 0;
   const discoverBarbersHref = surface === "client" ? CLIENT_PRIMARY_TAB_HREFS.search : "/discover";
@@ -171,8 +213,13 @@ export function ClientCultureScreen({
               <div className="rounded-[24px] border border-red-400/20 bg-red-500/10 p-5 text-sm text-red-100">
                 {feedError}
               </div>
-            ) : hasPosts ? feedItems.map((post) => (
-              <CulturePostCard key={post.id} post={post} surface={surface} />
+            ) : hasPosts ? feedItems.map((post, index) => (
+              <Fragment key={post.id}>
+                <CulturePostCard post={post} surface={surface} />
+                {index === 0 ? feedModules.map((module) => (
+                  <CultureDiscoveryGrid key={module.id} module={module} />
+                )) : null}
+              </Fragment>
             )) : (
               <div className="rounded-[24px] border border-dashed border-white/12 bg-black/18 p-5 text-sm text-white/58">
                 {emptyFeedCopy(surface)}

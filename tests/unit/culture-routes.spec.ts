@@ -158,7 +158,12 @@ describe("Culture API routes", () => {
 
     expect(response.status).toBe(200);
     expect(body).toMatchObject({ ok: true, items: [], hasMore: false });
-    expect(listCultureFeedMock).toHaveBeenCalledWith({ role: "barber", cursor: null, limit: 8 });
+    expect(listCultureFeedMock).toHaveBeenCalledWith({
+      role: "barber",
+      cursor: null,
+      limit: 8,
+      viewerProfileId: "22222222-2222-4222-8222-222222222222"
+    });
   });
 
   it("returns a clear Culture feed API error without pretending the feed is empty", async () => {

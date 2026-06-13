@@ -269,11 +269,19 @@ export function CulturePostCard({
                   Verified
                 </span>
               ) : null}
+              {post.isPromoted ? (
+                <span className="inline-flex items-center rounded-full border border-white/12 bg-white/[0.06] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white/70">
+                  {post.promotionLabel ?? "Promoted"}
+                </span>
+              ) : null}
             </div>
             <p className="mt-1 truncate text-xs text-white/48">
               {[post.authorUsername, post.authorRoleLabel, post.shopName].filter(Boolean).join(" - ")}
             </p>
             <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/34">{formatCultureDate(post.createdAt)}</p>
+            {post.reasonLabel ? (
+              <p className="mt-1 text-[11px] font-semibold text-white/38">{post.reasonLabel}</p>
+            ) : null}
           </div>
         </div>
 

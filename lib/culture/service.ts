@@ -16,6 +16,38 @@ export type CultureMediaItem = {
   durationSeconds: number | null;
 };
 
+export type CultureFeedReasonCode =
+  | "following_author"
+  | "saved_similar"
+  | "barber_work"
+  | "shop_culture"
+  | "popular_saved"
+  | "recent_public_post"
+  | "promoted_native"
+  | "bookable_barber";
+
+export type CultureDiscoveryModuleItem = {
+  id: string;
+  postId: string;
+  title: string;
+  subtitle: string;
+  imageUrl: string;
+  route: string;
+  ctaLabel: string;
+  itemType: "barber_work" | "shop_culture";
+  reasonCodes: CultureFeedReasonCode[];
+};
+
+export type CultureFeedModule = {
+  id: string;
+  type: "discovery_grid";
+  moduleTitle: string;
+  moduleSubtitle: string;
+  reason: string;
+  reasonCodes: CultureFeedReasonCode[];
+  items: CultureDiscoveryModuleItem[];
+};
+
 export type CultureFeedItem = {
   id: string;
   authorProfileId: string;
@@ -49,10 +81,15 @@ export type CultureFeedItem = {
   canReport: boolean;
   canBook: boolean;
   canComment: boolean;
+  isPromoted?: boolean;
+  promotionLabel?: string | null;
+  reasonCodes?: CultureFeedReasonCode[];
+  reasonLabel?: string | null;
 };
 
 export type CultureFeedResponse = {
   items: CultureFeedItem[];
+  modules?: CultureFeedModule[];
   cursor: string | null;
   hasMore: boolean;
   error?: string;
@@ -201,6 +238,20 @@ type CultureMediaRow = {
   metadata?: Record<string, unknown> | null;
 };
 
+type CulturePromotionRow = {
+  id: string;
+  post_id: string;
+  promoter_profile_id?: string | null;
+  promoter_role?: CultureActorRole | Role | string | null;
+  status: string;
+  goal?: string | null;
+  budget_cents?: number | null;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  metadata?: Record<string, unknown> | null;
+  created_at?: string | null;
+};
+
 type PublicProfileRow = {
   id: string;
   full_name?: string | null;
@@ -288,6 +339,7 @@ type LookupMaps = {
   profilesById?: Map<string, PublicProfileRow>;
   shopsById?: Map<string, PublicShopRow>;
   servicesById?: Map<string, PublicServiceRow>;
+  promotionsByPost?: Map<string, CulturePromotionRow>;
   storageClient?: {
     storage: {
       from: (bucket: string) => {
@@ -296,6 +348,13 @@ type LookupMaps = {
       };
     };
   } | null;
+};
+
+type CulturePersonalizationSignals = {
+  followedAuthorIds: Set<string>;
+  savedPostIds: Set<string>;
+  likedPostIds: Set<string>;
+  suppressedPostIds: Set<string>;
 };
 
 // Culture media storage is server-only; browsers upload through the API route after role checks.
@@ -561,6 +620,40 @@ function safeNullableText(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function pushUniqueReason(reasons: CultureFeedReasonCode[], reason: CultureFeedReasonCode) {
+  if (!reasons.includes(reason)) {
+    reasons.push(reason);
+  }
+}
+
+function cultureReasonLabel(reasons: CultureFeedReasonCode[]) {
+  if (reasons.includes("promoted_native")) {
+    return "Promoted";
+  }
+
+  if (reasons.includes("following_author")) {
+    return "Because you follow this creator";
+  }
+
+  if (reasons.includes("bookable_barber")) {
+    return "Bookable barber work";
+  }
+
+  if (reasons.includes("shop_culture")) {
+    return "Shop culture";
+  }
+
+  if (reasons.includes("barber_work")) {
+    return "Barber work";
+  }
+
+  if (reasons.includes("saved_similar")) {
+    return "Based on saved Culture signals";
+  }
+
+  return "Recent from BVRB3R";
+}
+
 function isAbsoluteMediaUrl(value: string) {
   return /^https?:\/\//i.test(value) || value.startsWith("/mock-storage/");
 }
@@ -676,6 +769,41 @@ function buildMap<T extends { id: string }>(rows: T[] | null | undefined) {
   return new Map((rows ?? []).map((row) => [row.id, row]));
 }
 
+function isActiveCulturePromotion(row: CulturePromotionRow, now = new Date()) {
+  if (row.status !== "active" && row.status !== "approved") {
+    return false;
+  }
+
+  const startsAt = safeNullableText(row.starts_at);
+  const endsAt = safeNullableText(row.ends_at);
+  const nowMs = now.getTime();
+  if (startsAt && new Date(startsAt).getTime() > nowMs) {
+    return false;
+  }
+
+  if (endsAt && new Date(endsAt).getTime() < nowMs) {
+    return false;
+  }
+
+  return true;
+}
+
+function groupActivePromotions(rows: CulturePromotionRow[] | null | undefined) {
+  const grouped = new Map<string, CulturePromotionRow>();
+  for (const row of rows ?? []) {
+    if (!safeNullableText(row.post_id) || !isActiveCulturePromotion(row)) {
+      continue;
+    }
+
+    const current = grouped.get(row.post_id);
+    if (!current || String(row.created_at ?? "").localeCompare(String(current.created_at ?? "")) > 0) {
+      grouped.set(row.post_id, row);
+    }
+  }
+
+  return grouped;
+}
+
 function groupMedia(rows: CultureMediaRow[] | null | undefined) {
   const grouped = new Map<string, CultureMediaRow[]>();
   for (const row of rows ?? []) {
@@ -774,7 +902,7 @@ async function loadFeedLookups(supabase: SupabaseLike, posts: CulturePostRow[]):
   const shopIds = [...new Set(posts.map((post) => post.shop_id).filter(Boolean))] as string[];
   const serviceIds = [...new Set(posts.map((post) => post.service_id).filter(Boolean))] as string[];
 
-  const [rawMediaRows, profileRows, shopRows, serviceRows] = await Promise.all([
+  const [rawMediaRows, profileRows, shopRows, serviceRows, promotionRows] = await Promise.all([
     postIds.length
       ? fetchOptionalRows<CultureMediaRow>(
         supabase
@@ -811,6 +939,15 @@ async function loadFeedLookups(supabase: SupabaseLike, posts: CulturePostRow[]):
           .in("id", serviceIds),
         "services"
       )
+      : Promise.resolve([]),
+    postIds.length
+      ? fetchOptionalRows<CulturePromotionRow>(
+        supabase
+          .from("culture_promotions")
+          .select("id, post_id, promoter_profile_id, promoter_role, status, goal, budget_cents, starts_at, ends_at, metadata, created_at")
+          .in("post_id", postIds),
+        "promotions"
+      )
       : Promise.resolve([])
   ]);
   const mediaRows = await prepareCultureMediaRows(supabase, rawMediaRows);
@@ -820,8 +957,257 @@ async function loadFeedLookups(supabase: SupabaseLike, posts: CulturePostRow[]):
     profilesById: buildMap(profileRows),
     shopsById: buildMap(shopRows),
     servicesById: buildMap(serviceRows),
+    promotionsByPost: groupActivePromotions(promotionRows),
     storageClient: supabase.storage ? { storage: supabase.storage } : null
   };
+}
+
+function emptyCulturePersonalizationSignals(): CulturePersonalizationSignals {
+  return {
+    followedAuthorIds: new Set(),
+    savedPostIds: new Set(),
+    likedPostIds: new Set(),
+    suppressedPostIds: new Set()
+  };
+}
+
+export async function getCulturePersonalizationSignals(
+  supabase: SupabaseLike,
+  viewerProfileId?: string | null
+): Promise<CulturePersonalizationSignals> {
+  const profileId = safeNullableText(viewerProfileId);
+  if (!profileId) {
+    return emptyCulturePersonalizationSignals();
+  }
+
+  const [edgeRows, engagementRows, reportRows] = await Promise.all([
+    fetchOptionalRows<Record<string, unknown>>(
+      supabase
+        .from("user_engagement_edges")
+        .select("target_profile_id, target_id, target_type, edge_type, status, deleted_at")
+        .eq("actor_profile_id", profileId),
+      "viewer_edges"
+    ),
+    fetchOptionalRows<Record<string, unknown>>(
+      supabase
+        .from("culture_engagements")
+        .select("post_id, engagement_type, metadata")
+        .eq("actor_profile_id", profileId),
+      "viewer_culture_engagements"
+    ),
+    fetchOptionalRows<Record<string, unknown>>(
+      supabase
+        .from("culture_reports")
+        .select("post_id, status")
+        .eq("reporter_profile_id", profileId),
+      "viewer_culture_reports"
+    )
+  ]);
+
+  const signals = emptyCulturePersonalizationSignals();
+  for (const edge of edgeRows) {
+    if (edge.edge_type !== "follow" || edge.status === "removed" || edge.deleted_at) {
+      continue;
+    }
+
+    const targetProfileId = safeNullableText(edge.target_profile_id) ?? (edge.target_type === "profile" ? safeNullableText(edge.target_id) : null);
+    if (targetProfileId) {
+      signals.followedAuthorIds.add(targetProfileId);
+    }
+  }
+
+  for (const engagement of engagementRows) {
+    const postId = safeNullableText(engagement.post_id);
+    if (!postId) {
+      continue;
+    }
+
+    if (engagement.engagement_type === "save") {
+      signals.savedPostIds.add(postId);
+    } else if (engagement.engagement_type === "like") {
+      signals.likedPostIds.add(postId);
+    } else if (engagement.engagement_type === "not_interested" || engagement.engagement_type === "report") {
+      signals.suppressedPostIds.add(postId);
+    }
+  }
+
+  for (const report of reportRows) {
+    const postId = safeNullableText(report.post_id);
+    if (postId && report.status !== "resolved") {
+      signals.suppressedPostIds.add(postId);
+    }
+  }
+
+  return signals;
+}
+
+export function buildCultureReasonCodes(
+  post: CulturePostRow,
+  lookups: Pick<LookupMaps, "promotionsByPost" | "profilesById" | "shopsById" | "servicesById"> = {},
+  signals: CulturePersonalizationSignals = emptyCulturePersonalizationSignals()
+): CultureFeedReasonCode[] {
+  const reasons: CultureFeedReasonCode[] = [];
+  const ctaState = getCulturePostCtaState(post, lookups);
+
+  if (lookups.promotionsByPost?.has(post.id)) {
+    pushUniqueReason(reasons, "promoted_native");
+  }
+
+  if (signals.followedAuthorIds.has(post.author_profile_id)) {
+    pushUniqueReason(reasons, "following_author");
+  }
+
+  if (signals.savedPostIds.has(post.id) || signals.likedPostIds.has(post.id)) {
+    pushUniqueReason(reasons, "saved_similar");
+  }
+
+  if (authorTargetKindForPost(post) === "barber") {
+    pushUniqueReason(reasons, "barber_work");
+  } else if (authorTargetKindForPost(post) === "shop") {
+    pushUniqueReason(reasons, "shop_culture");
+  }
+
+  if (ctaState.canBook) {
+    pushUniqueReason(reasons, "bookable_barber");
+  }
+
+  pushUniqueReason(reasons, "recent_public_post");
+  return reasons;
+}
+
+function culturePostPersonalizationScore(post: CulturePostRow, lookups: LookupMaps, signals: CulturePersonalizationSignals) {
+  let score = 0;
+  if (lookups.promotionsByPost?.has(post.id)) {
+    score += 100;
+  }
+
+  if (signals.followedAuthorIds.has(post.author_profile_id)) {
+    score += 50;
+  }
+
+  if (signals.savedPostIds.has(post.id)) {
+    score += 20;
+  }
+
+  if (signals.likedPostIds.has(post.id)) {
+    score += 10;
+  }
+
+  return score;
+}
+
+export function rankCultureFeedItems(
+  posts: CulturePostRow[],
+  lookups: LookupMaps = {},
+  signals: CulturePersonalizationSignals = emptyCulturePersonalizationSignals()
+) {
+  return [...posts]
+    .filter((post) => !signals.suppressedPostIds.has(post.id))
+    .sort((left, right) => {
+      const scoreDelta = culturePostPersonalizationScore(right, lookups, signals) - culturePostPersonalizationScore(left, lookups, signals);
+      if (scoreDelta !== 0) {
+        return scoreDelta;
+      }
+
+      const createdDelta = String(right.created_at ?? "").localeCompare(String(left.created_at ?? ""));
+      if (createdDelta !== 0) {
+        return createdDelta;
+      }
+
+      return String(right.id).localeCompare(String(left.id));
+    });
+}
+
+function discoveryItemImage(item: CultureFeedItem) {
+  return item.media?.thumbnailUrl ?? item.media?.url ?? null;
+}
+
+function barberDiscoveryRoute(item: CultureFeedItem) {
+  if (item.canBook && item.bookingUrl) {
+    return { route: item.bookingUrl, ctaLabel: item.bookLabel ?? "Book This Barber" };
+  }
+
+  if (item.canViewProfile && item.profileUrl) {
+    return { route: item.profileUrl, ctaLabel: "View Profile" };
+  }
+
+  return null;
+}
+
+function shopDiscoveryRoute(item: CultureFeedItem) {
+  if (item.canViewShop && item.shopUrl) {
+    return { route: item.shopUrl, ctaLabel: "View Shop" };
+  }
+
+  return null;
+}
+
+export function buildCultureDiscoveryModules(items: CultureFeedItem[], role: CultureSurfaceRole | Role | string = "client"): CultureFeedModule[] {
+  const barberItems: CultureDiscoveryModuleItem[] = items
+    .filter((item) => item.authorTargetKind === "barber" && discoveryItemImage(item) && barberDiscoveryRoute(item))
+    .slice(0, 6)
+    .map((item) => {
+      const route = barberDiscoveryRoute(item);
+      return {
+        id: `barber-work-${item.id}`,
+        postId: item.id,
+        title: item.authorDisplayName,
+        subtitle: item.serviceName ?? item.caption,
+        imageUrl: discoveryItemImage(item) ?? "",
+        route: route?.route ?? "",
+        ctaLabel: route?.ctaLabel ?? "View Profile",
+        itemType: "barber_work" as const,
+        reasonCodes: item.canBook ? ["barber_work", "bookable_barber"] : ["barber_work"]
+      };
+    });
+
+  const shopItems: CultureDiscoveryModuleItem[] = items
+    .filter((item) => item.authorTargetKind === "shop" && discoveryItemImage(item) && shopDiscoveryRoute(item))
+    .slice(0, 6)
+    .map((item) => {
+      const route = shopDiscoveryRoute(item);
+      return {
+        id: `shop-culture-${item.id}`,
+        postId: item.id,
+        title: item.shopName ?? item.authorDisplayName,
+        subtitle: item.caption,
+        imageUrl: discoveryItemImage(item) ?? "",
+        route: route?.route ?? "",
+        ctaLabel: route?.ctaLabel ?? "View Shop",
+        itemType: "shop_culture" as const,
+        reasonCodes: ["shop_culture"]
+      };
+    });
+
+  const modules: CultureFeedModule[] = [];
+  const shopModule = shopItems.length ? {
+    id: "shop-culture",
+    type: "discovery_grid" as const,
+    moduleTitle: "Shop Culture",
+    moduleSubtitle: "Real shop moments from the BVRB3R community.",
+    reason: "Shop culture",
+    reasonCodes: ["shop_culture" as const],
+    items: shopItems
+  } : null;
+  const barberModule = barberItems.length ? {
+    id: "barber-work",
+    type: "discovery_grid" as const,
+    moduleTitle: "Barber Work",
+    moduleSubtitle: "Approved barber work from the BVRB3R community.",
+    reason: "Barber work",
+    reasonCodes: ["barber_work" as const],
+    items: barberItems
+  } : null;
+
+  if (role === "owner" || role === "shop" || role === "shop_owner_user") {
+    if (shopModule) modules.push(shopModule);
+    if (barberModule) modules.push(barberModule);
+  } else {
+    if (barberModule) modules.push(barberModule);
+    if (shopModule) modules.push(shopModule);
+  }
+
+  return modules;
 }
 
 async function readOwnedBarberId(user: UserAccount, supabase: SupabaseLike) {
@@ -1749,7 +2135,11 @@ export async function listMyCulturePosts(
   return grouped;
 }
 
-export function mapCulturePostToSafeFeedItem(post: CulturePostRow, lookups: LookupMaps = {}): CultureFeedItem {
+export function mapCulturePostToSafeFeedItem(
+  post: CulturePostRow,
+  lookups: LookupMaps = {},
+  signals: CulturePersonalizationSignals = emptyCulturePersonalizationSignals()
+): CultureFeedItem {
   const profile = lookups.profilesById?.get(post.author_profile_id);
   const media = lookups.mediaByPost?.get(post.id)?.[0] ?? null;
   const shop = post.shop_id ? lookups.shopsById?.get(post.shop_id) : null;
@@ -1759,9 +2149,11 @@ export function mapCulturePostToSafeFeedItem(post: CulturePostRow, lookups: Look
   const authorTargetKind = authorTargetKindForPost(post);
   const authorTarget = authorTargetForPost(post, profile, shop);
   const ctaState = getCulturePostCtaState(post, lookups);
+  const reasonCodes = buildCultureReasonCodes(post, lookups, signals);
   const mediaUrl = safeNullableText(media?.media_url);
   const thumbnailUrl = safeNullableText(media?.thumbnail_url);
   const authorAvatarUrl = toPublicMediaUrl(lookups.storageClient ?? null, profile?.profile_photo_path, profile?.profile_photo_url) ?? null;
+  const isPromoted = Boolean(lookups.promotionsByPost?.has(post.id));
 
   return {
     id: post.id,
@@ -1803,7 +2195,11 @@ export function mapCulturePostToSafeFeedItem(post: CulturePostRow, lookups: Look
     canShare: true,
     canReport: true,
     canBook: ctaState.canBook,
-    canComment: Boolean(post.allow_comments)
+    canComment: Boolean(post.allow_comments),
+    isPromoted,
+    promotionLabel: isPromoted ? "Promoted" : null,
+    reasonCodes,
+    reasonLabel: cultureReasonLabel(reasonCodes)
   };
 }
 
@@ -1876,9 +2272,13 @@ export async function listCultureFeed(input: {
   }
 
   const lookups = await loadFeedLookups(supabase, result.posts);
+  const signals = await getCulturePersonalizationSignals(supabase, input.viewerProfileId);
+  const rankedPosts = rankCultureFeedItems(result.posts, lookups, signals);
+  const items = rankedPosts.map((post) => mapCulturePostToSafeFeedItem(post, lookups, signals));
 
   return {
-    items: result.posts.map((post) => mapCulturePostToSafeFeedItem(post, lookups)),
+    items,
+    modules: buildCultureDiscoveryModules(items, input.role),
     cursor: result.cursor,
     hasMore: result.hasMore
   };

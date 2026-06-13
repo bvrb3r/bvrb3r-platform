@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -195,6 +195,84 @@ describe("client culture screen", () => {
       })
     })));
     expect(screen.queryByText(/1\.2k|views:|followers:|engagement rate/i)).not.toBeInTheDocument();
+  });
+
+  it("renders real Discovery Grid modules and promoted labels without fake ranking copy", () => {
+    render(<ClientCultureScreen feed={{
+      cursor: null,
+      hasMore: false,
+      modules: [{
+        id: "barber-work",
+        type: "discovery_grid",
+        moduleTitle: "Barber Work",
+        moduleSubtitle: "Approved barber work from the BVRB3R community.",
+        reason: "Barber work",
+        reasonCodes: ["barber_work"],
+        items: [{
+          id: "barber-work-post-1",
+          postId: "post-1",
+          title: "Blaze King",
+          subtitle: "Signature Cut",
+          imageUrl: "https://cdn.bvrb3r.test/post-thumb.jpg",
+          route: "/booking/new?source=culture&culturePostId=post-1&cta=book_service",
+          ctaLabel: "Book Signature Cut",
+          itemType: "barber_work",
+          reasonCodes: ["barber_work", "bookable_barber"]
+        }]
+      }],
+      items: [{
+        id: "post-1",
+        authorProfileId: "22222222-2222-4222-8222-222222222222",
+        authorTargetKind: "barber",
+        authorTarget: "blaze",
+        barberId: "33333333-3333-4333-8333-333333333333",
+        shopId: null,
+        serviceId: "44444444-4444-4444-8444-444444444444",
+        authorDisplayName: "Blaze King",
+        authorUsername: "@blaze",
+        authorAvatarUrl: null,
+        authorRoleLabel: "Barber",
+        authorVerified: false,
+        caption: "Promoted barber work.",
+        postType: "barber_cut",
+        media: {
+          id: "media-1",
+          url: "https://cdn.bvrb3r.test/post.jpg",
+          thumbnailUrl: "https://cdn.bvrb3r.test/post-thumb.jpg",
+          mediaType: "image",
+          width: 1200,
+          height: 900,
+          durationSeconds: null
+        },
+        createdAt: "2026-06-12T12:00:00.000Z",
+        serviceName: "Signature Cut",
+        shopName: null,
+        profileUrl: "/barber/blaze?source=culture",
+        bookingUrl: "/booking/new?source=culture&culturePostId=post-1&cta=book_service",
+        shopUrl: null,
+        canViewProfile: true,
+        canViewShop: false,
+        bookLabel: "Book Signature Cut",
+        bookingDisabledReason: null,
+        canLike: true,
+        canSave: true,
+        canShare: true,
+        canReport: true,
+        canBook: true,
+        canComment: false,
+        isPromoted: true,
+        promotionLabel: "Promoted",
+        reasonCodes: ["promoted_native", "barber_work", "bookable_barber", "recent_public_post"],
+        reasonLabel: "Promoted"
+      }]
+    }} />);
+
+    expect(screen.getAllByText("Promoted").length).toBeGreaterThanOrEqual(1);
+    const grid = screen.getByTestId("culture-discovery-grid");
+    expect(grid).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Barber Work" })).toBeInTheDocument();
+    expect(within(grid).getByRole("link", { name: /Blaze King Signature Cut Book Signature Cut/i })).toHaveAttribute("href", expect.stringContaining("/booking/new?source=culture"));
+    expect(within(grid).queryByText(/Available Today|Top Rated|Near You|1\.2k|rating|from \$45/i)).not.toBeInTheDocument();
   });
 
   it("shows a clear action error when a Culture engagement write fails", async () => {

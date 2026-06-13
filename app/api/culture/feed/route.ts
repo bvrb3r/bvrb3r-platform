@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listCultureFeed, type CultureSurfaceRole } from "@/lib/culture/service";
+import { getCurrentUserFromServer } from "@/lib/auth/session";
 
 function parseRole(value: string | null): CultureSurfaceRole {
   if (value === "barber" || value === "owner" || value === "shop") {
@@ -19,7 +20,9 @@ export async function GET(request: NextRequest) {
     const role = parseRole(request.nextUrl.searchParams.get("role"));
     const cursor = request.nextUrl.searchParams.get("cursor");
     const limit = parseLimit(request.nextUrl.searchParams.get("limit"));
-    const feed = await listCultureFeed({ role, cursor, limit });
+    const session = await getCurrentUserFromServer().catch(() => null);
+    const viewerProfileId = session?.authenticated && session.user.id !== "guest-user" ? session.user.id : undefined;
+    const feed = await listCultureFeed({ role, cursor, limit, viewerProfileId });
 
     return NextResponse.json({ ok: true, ...feed });
   } catch (error) {

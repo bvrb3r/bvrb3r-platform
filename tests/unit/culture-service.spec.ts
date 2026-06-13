@@ -13,6 +13,7 @@ import {
   mapCulturePostToSafeFeedItem,
   performCultureFollowAction,
   performCulturePostEngagementAction,
+  rankCultureFeedItems,
   recordCultureBookClick,
   recordCultureEngagement,
   recordCultureFeedEvent,
@@ -416,6 +417,252 @@ describe("Culture service", () => {
       shopName: "Ybor Shop",
       media: { url: "https://cdn.bvrb3r.test/owner-auto.jpg" }
     });
+  });
+
+  it("builds Discovery Grid modules only from real approved Barber and Shop posts with media and routes", async () => {
+    const barberPost = {
+      ...publishedPost,
+      id: "barber-grid-post",
+      author_profile_id: barberUser.id,
+      barber_id: "33333333-3333-4333-8333-333333333333",
+      shop_id: null,
+      service_id: null,
+      is_bookable: true,
+      caption: "Grid barber work."
+    } satisfies CulturePostRow;
+    const shopPost = {
+      ...publishedPost,
+      id: "shop-grid-post",
+      author_profile_id: ownerUser.id,
+      author_role: "shop_owner_user",
+      barber_id: null,
+      shop_id: "shop-ybor",
+      service_id: null,
+      post_type: "shop_update",
+      caption: "Grid shop culture.",
+      created_at: "2026-06-12T11:58:00.000Z"
+    } satisfies CulturePostRow;
+    const noMediaPost = {
+      ...publishedPost,
+      id: "no-media-grid-post",
+      author_profile_id: "99999999-9999-4999-8999-999999999999",
+      created_at: "2026-06-12T11:57:00.000Z"
+    } satisfies CulturePostRow;
+    const supabase = createSupabaseStub({
+      culture_posts: [barberPost, shopPost, noMediaPost],
+      culture_media: [
+        {
+          id: "barber-grid-media",
+          post_id: barberPost.id,
+          media_url: "https://cdn.bvrb3r.test/barber-grid.jpg",
+          thumbnail_url: "https://cdn.bvrb3r.test/barber-grid-thumb.jpg",
+          media_type: "image",
+          processing_status: "ready",
+          moderation_status: "approved",
+          sort_order: 0
+        },
+        {
+          id: "shop-grid-media",
+          post_id: shopPost.id,
+          media_url: "https://cdn.bvrb3r.test/shop-grid.jpg",
+          thumbnail_url: "https://cdn.bvrb3r.test/shop-grid-thumb.jpg",
+          media_type: "image",
+          processing_status: "ready",
+          moderation_status: "approved",
+          sort_order: 0
+        }
+      ],
+      profiles: [
+        { id: barberPost.author_profile_id, full_name: "Blaze King", public_username: "blaze" },
+        { id: shopPost.author_profile_id, full_name: "Owner Pat", public_username: "ownerpat" },
+        { id: noMediaPost.author_profile_id, full_name: "No Media Barber", public_username: "nomedia" }
+      ],
+      shops: [{ id: "shop-ybor", name: "Ybor Shop", public_username: "bvrb3r-ybor" }],
+      services: [],
+      culture_promotions: []
+    });
+
+    const feed = await listCultureFeed({ role: "client", limit: 10 }, { supabase: supabase.client });
+
+    expect(feed.modules?.map((module) => module.id)).toEqual(["barber-work", "shop-culture"]);
+    expect(feed.modules?.[0]).toMatchObject({
+      moduleTitle: "Barber Work",
+      reasonCodes: ["barber_work"],
+      items: [expect.objectContaining({
+        postId: barberPost.id,
+        imageUrl: "https://cdn.bvrb3r.test/barber-grid-thumb.jpg",
+        route: expect.stringContaining("/booking/new?source=culture"),
+        ctaLabel: "Book This Barber"
+      })]
+    });
+    expect(feed.modules?.[1]).toMatchObject({
+      moduleTitle: "Shop Culture",
+      items: [expect.objectContaining({
+        postId: shopPost.id,
+        route: expect.stringContaining("/shop/bvrb3r-ybor?source=culture"),
+        ctaLabel: "View Shop"
+      })]
+    });
+    expect(JSON.stringify(feed.modules)).not.toMatch(/available today|top rated|rating|1\.2k|from \$45/i);
+    expect(feed.modules?.flatMap((module) => module.items).map((item) => item.postId)).not.toContain(noMediaPost.id);
+  });
+
+  it("labels only active approved native promotions without exposing paid controls", async () => {
+    const promotedPost = {
+      ...publishedPost,
+      id: "promoted-post",
+      created_at: "2026-06-12T12:00:00.000Z"
+    } satisfies CulturePostRow;
+    const draftPromotionPost = {
+      ...publishedPost,
+      id: "draft-promotion-post",
+      author_profile_id: "88888888-8888-4888-8888-888888888888",
+      created_at: "2026-06-12T11:59:00.000Z"
+    } satisfies CulturePostRow;
+    const endedPromotionPost = {
+      ...publishedPost,
+      id: "ended-promotion-post",
+      author_profile_id: "99999999-9999-4999-8999-999999999999",
+      created_at: "2026-06-12T11:58:00.000Z"
+    } satisfies CulturePostRow;
+    const supabase = createSupabaseStub({
+      culture_posts: [draftPromotionPost, endedPromotionPost, promotedPost],
+      culture_media: [],
+      profiles: [
+        { id: promotedPost.author_profile_id, full_name: "Blaze King", public_username: "blaze" },
+        { id: draftPromotionPost.author_profile_id, full_name: "Draft Promoter", public_username: "draftpromo" },
+        { id: endedPromotionPost.author_profile_id, full_name: "Ended Promoter", public_username: "endedpromo" }
+      ],
+      shops: [],
+      services: [],
+      culture_promotions: [
+        {
+          id: "promotion-active",
+          post_id: promotedPost.id,
+          promoter_profile_id: promotedPost.author_profile_id,
+          promoter_role: "barber_user",
+          status: "active",
+          goal: "profile_clicks",
+          budget_cents: 2500,
+          starts_at: "2026-01-01T00:00:00.000Z",
+          ends_at: "2027-01-01T00:00:00.000Z",
+          created_at: "2026-06-12T12:01:00.000Z"
+        },
+        {
+          id: "promotion-draft",
+          post_id: draftPromotionPost.id,
+          promoter_profile_id: draftPromotionPost.author_profile_id,
+          promoter_role: "barber_user",
+          status: "draft",
+          created_at: "2026-06-12T12:00:00.000Z"
+        },
+        {
+          id: "promotion-ended",
+          post_id: endedPromotionPost.id,
+          promoter_profile_id: endedPromotionPost.author_profile_id,
+          promoter_role: "barber_user",
+          status: "ended",
+          starts_at: "2026-01-01T00:00:00.000Z",
+          ends_at: "2026-01-02T00:00:00.000Z",
+          created_at: "2026-06-12T12:00:00.000Z"
+        }
+      ]
+    });
+
+    const feed = await listCultureFeed({ role: "client", limit: 10 }, { supabase: supabase.client });
+    const promoted = feed.items.find((item) => item.id === promotedPost.id);
+    const draft = feed.items.find((item) => item.id === draftPromotionPost.id);
+    const ended = feed.items.find((item) => item.id === endedPromotionPost.id);
+
+    expect(promoted).toMatchObject({
+      isPromoted: true,
+      promotionLabel: "Promoted",
+      reasonCodes: expect.arrayContaining(["promoted_native"]),
+      reasonLabel: "Promoted"
+    });
+    expect(draft?.isPromoted).toBe(false);
+    expect(ended?.isPromoted).toBe(false);
+    expect(JSON.stringify(feed.items)).not.toMatch(/budget_cents|stripe|payment|paid promotion setup/i);
+  });
+
+  it("keeps recent public ordering when personalization signals are absent", () => {
+    const olderPost = {
+      ...publishedPost,
+      id: "older-post",
+      created_at: "2026-06-12T10:00:00.000Z"
+    } satisfies CulturePostRow;
+
+    const ranked = rankCultureFeedItems([olderPost, publishedPost], {}, undefined);
+
+    expect(ranked.map((post) => post.id)).toEqual([publishedPost.id, olderPost.id]);
+  });
+
+  it("boosts followed and saved Culture signals while suppressing reported or hidden posts", async () => {
+    const followedPost = {
+      ...publishedPost,
+      id: "followed-post",
+      author_profile_id: "88888888-8888-4888-8888-888888888888",
+      created_at: "2026-06-12T10:00:00.000Z"
+    } satisfies CulturePostRow;
+    const savedPost = {
+      ...publishedPost,
+      id: "saved-post",
+      author_profile_id: "99999999-9999-4999-8999-999999999999",
+      created_at: "2026-06-12T09:00:00.000Z"
+    } satisfies CulturePostRow;
+    const hiddenPost = {
+      ...publishedPost,
+      id: "hidden-post",
+      author_profile_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      created_at: "2026-06-12T13:00:00.000Z"
+    } satisfies CulturePostRow;
+    const supabase = createSupabaseStub({
+      culture_posts: [hiddenPost, publishedPost, followedPost, savedPost],
+      culture_media: [],
+      profiles: [
+        { id: publishedPost.author_profile_id, full_name: "Recent Barber", public_username: "recent" },
+        { id: followedPost.author_profile_id, full_name: "Followed Barber", public_username: "followed" },
+        { id: savedPost.author_profile_id, full_name: "Saved Barber", public_username: "saved" },
+        { id: hiddenPost.author_profile_id, full_name: "Hidden Barber", public_username: "hidden" }
+      ],
+      shops: [],
+      services: [],
+      culture_promotions: [],
+      user_engagement_edges: [{
+        actor_profile_id: clientUser.id,
+        edge_type: "follow",
+        target_type: "profile",
+        target_id: followedPost.author_profile_id,
+        target_profile_id: followedPost.author_profile_id,
+        status: "active",
+        deleted_at: null
+      }],
+      culture_engagements: [
+        {
+          post_id: savedPost.id,
+          actor_profile_id: clientUser.id,
+          actor_role: "client_user",
+          engagement_type: "save",
+          metadata: {}
+        },
+        {
+          post_id: hiddenPost.id,
+          actor_profile_id: clientUser.id,
+          actor_role: "client_user",
+          engagement_type: "not_interested",
+          metadata: {}
+        }
+      ],
+      culture_reports: []
+    });
+
+    const feed = await listCultureFeed({ role: "client", viewerProfileId: clientUser.id, limit: 10 }, { supabase: supabase.client });
+
+    expect(feed.items.map((item) => item.id)).toEqual([followedPost.id, savedPost.id, publishedPost.id]);
+    expect(feed.items[0].reasonCodes).toEqual(expect.arrayContaining(["following_author"]));
+    expect(feed.items[1].reasonCodes).toEqual(expect.arrayContaining(["saved_similar"]));
+    expect(feed.items.map((item) => item.id)).not.toContain(hiddenPost.id);
+    expect(JSON.stringify(feed.items)).not.toMatch(/email|phone|stripe|payment|bank/i);
   });
 
   it.each([
