@@ -2,13 +2,9 @@
 
 import type { Route } from "next";
 import Link from "next/link";
-import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bookmark, RefreshCw, Scissors, Search, Store, UsersRound } from "lucide-react";
 import { StatusBadge } from "@/design/components";
-import { CultureFeedHeader } from "@/components/culture/culture-feed-header";
 import { CulturePostCard } from "@/components/culture/culture-post-card";
-import { CLIENT_PRIMARY_TAB_HREFS } from "@/components/client-experience/client-tab-config";
 import type { CultureFeedItem, CultureFeedModule, CultureFeedResponse } from "@/lib/culture/service";
 
 export type CultureCreatorRole = "client" | "barber" | "shop" | "architect";
@@ -165,42 +161,6 @@ function CultureDiscoveryGrid({ module }: { module: CultureFeedModule }) {
   );
 }
 
-function QuickActionLink({
-  href,
-  icon,
-  title,
-  subtitle
-}: {
-  href?: string | null;
-  icon: ReactNode;
-  title: string;
-  subtitle: string;
-}) {
-  const content = (
-    <>
-      <div className="text-[#d7ffab]">{icon}</div>
-      <div className="min-w-0">
-        <p className="truncate text-sm font-black text-white">{title}</p>
-        <p className="mt-1 line-clamp-2 text-xs leading-5 text-white/46">{subtitle}</p>
-      </div>
-    </>
-  );
-
-  if (!href) {
-    return (
-      <div className="flex min-w-[14rem] flex-1 items-center gap-3 rounded-[20px] border border-white/10 bg-black/20 p-4">
-        {content}
-      </div>
-    );
-  }
-
-  return (
-    <Link href={href as Route} className="flex min-w-[14rem] flex-1 items-center gap-3 rounded-[20px] border border-white/10 bg-black/20 p-4 transition hover:border-[#d7ffab]/28">
-      {content}
-    </Link>
-  );
-}
-
 export function ClientCultureScreen({
   feed,
   posts = [],
@@ -219,43 +179,23 @@ export function ClientCultureScreen({
   const [hiddenPostIds, setHiddenPostIds] = useState<Set<string>>(() => new Set());
   const [loadingMore, setLoadingMore] = useState(false);
   const [paginationError, setPaginationError] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
-  const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
   const [pendingTopItems, setPendingTopItems] = useState<CultureFeedItem[]>([]);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const feedItemsRef = useRef<CultureFeedItem[]>(initialItems);
+  const refreshingRef = useRef(false);
   const feedError = feed?.error ?? null;
   const apiRole = apiRoleForSurface(surface);
-  const discoverBarbersHref = surface === "client" ? CLIENT_PRIMARY_TAB_HREFS.search : "/discover";
-  const viewShopsHref = surface === "client" ? `${CLIENT_PRIMARY_TAB_HREFS.search}?type=shops` : "/discover?type=shops";
-  const discoverTitle = surface === "barber" ? "Discover styles" : "Discover barbers";
-  const surfaceSubtitle = surface === "barber"
-    ? "Cuts, styles, barbers, shops, and community."
-    : surface === "shop"
-      ? "Shops, teams, styles, barbers, and community."
-      : "Cuts, shops, style, and community.";
-  const roleContext = surface === "barber" ? "Barber Culture" : surface === "shop" ? "Shop Owner Culture" : "Client Culture";
-  const postingTitle = surface === "barber"
-    ? "Post your work"
-    : surface === "shop"
-      ? "Share Shop Culture"
-      : "Share your next cut";
-  const postingCopy = surface === "barber"
-    ? "Create or edit Culture posts from approved barber media."
-    : surface === "shop"
-      ? "Share shop updates, walk-ins, team moments, and local culture."
-      : "Client posting unlocks later.";
-  const postingHref = surface === "barber"
-    ? "/dashboard/barber/culture/new"
-    : surface === "shop"
-      ? "/dashboard/owner/culture/new"
-      : null;
   const visibleFeedItems = useMemo(
     () => feedItems.filter((item) => !hiddenPostIds.has(item.id)),
     [feedItems, hiddenPostIds]
   );
   const hasPosts = visibleFeedItems.length > 0;
   const showDiscoveryModules = visibleFeedItems.length >= 5 && feedModules.length > 0;
+
+  useEffect(() => {
+    feedItemsRef.current = feedItems;
+  }, [feedItems]);
 
   function updatePostVisibility(postId: string, hidden: boolean) {
     setHiddenPostIds((current) => {
@@ -311,40 +251,47 @@ export function ClientCultureScreen({
     }
   }, [cursor, feedError, fetchFeedPage, hasMore, loadingMore]);
 
-  async function refreshTop() {
-    if (refreshing || feedError) {
+  const refreshTop = useCallback(async () => {
+    if (refreshingRef.current || feedError) {
       return;
     }
 
-    setRefreshing(true);
+    refreshingRef.current = true;
     setRefreshError(null);
-    setRefreshMessage(null);
 
     try {
       const refreshed = await fetchFeedPage(null, 8);
-      const existingIds = new Set(feedItems.map((item) => item.id));
+      const currentItems = feedItemsRef.current;
+      const existingIds = new Set(currentItems.map((item) => item.id));
       const nextNewItems = (refreshed.items ?? []).filter((item) => !existingIds.has(item.id));
       setFeedModules((current) => refreshed.modules ?? current);
       setFeedSessionId((current) => createFeedSessionId(refreshed.feedSessionId ?? current));
 
-      if (!feedItems.length) {
+      if (!currentItems.length) {
         setFeedItems(refreshed.items ?? []);
         setCursor(refreshed.cursor ?? null);
         setHasMore(Boolean(refreshed.hasMore));
+        setPendingTopItems([]);
+        return;
       }
 
       if (nextNewItems.length) {
-        setPendingTopItems(nextNewItems);
-        setRefreshMessage("New Culture posts");
-      } else {
-        setRefreshMessage("You're all caught up.");
+        const nearTop = typeof window === "undefined" || window.scrollY < 240;
+        if (nearTop) {
+          setFeedItems((current) => mergeFeedItems(nextNewItems, current));
+          setCursor(refreshed.cursor ?? null);
+          setHasMore(Boolean(refreshed.hasMore));
+          setPendingTopItems([]);
+        } else {
+          setPendingTopItems((current) => mergeFeedItems(current, nextNewItems));
+        }
       }
     } catch (error) {
       setRefreshError(error instanceof Error ? error.message : "Unable to load Culture feed. Try again.");
     } finally {
-      setRefreshing(false);
+      refreshingRef.current = false;
     }
-  }
+  }, [feedError, fetchFeedPage]);
 
   function applyPendingTopItems() {
     if (!pendingTopItems.length) {
@@ -353,8 +300,28 @@ export function ClientCultureScreen({
 
     setFeedItems((current) => mergeFeedItems(pendingTopItems, current));
     setPendingTopItems([]);
-    setRefreshMessage(null);
   }
+
+  useEffect(() => {
+    void refreshTop();
+
+    const handleFocus = () => {
+      void refreshTop();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void refreshTop();
+      }
+    };
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [refreshTop]);
 
   useEffect(() => {
     if (!hasMore || loadingMore || feedError || typeof IntersectionObserver === "undefined") {
@@ -378,34 +345,6 @@ export function ClientCultureScreen({
 
   return (
     <div className="space-y-4 pb-[calc(env(safe-area-inset-bottom)+1.5rem)]" data-testid="client-culture-screen">
-      <CultureFeedHeader surface={surface} subtitle={surfaceSubtitle} roleContext={roleContext} />
-
-      <section className="flex gap-3 overflow-x-auto pb-1 [scrollbar-width:none]" aria-label="Culture shortcuts">
-        <QuickActionLink
-          href={discoverBarbersHref}
-          icon={<Search className="h-5 w-5" />}
-          title={discoverTitle}
-          subtitle={surface === "shop" ? "Find barbers, styles, and team prospects." : "Find barbers, styles, and Culture signals."}
-        />
-        <QuickActionLink
-          href={viewShopsHref}
-          icon={<Store className="h-5 w-5" />}
-          title="View shops"
-          subtitle="Browse real shops and local Culture."
-        />
-        <QuickActionLink
-          icon={<Bookmark className="h-5 w-5" />}
-          title="Saved culture"
-          subtitle="Saved and followed items use the engagement graph."
-        />
-        <QuickActionLink
-          href={postingHref}
-          icon={surface === "client" ? <UsersRound className="h-5 w-5" /> : <Scissors className="h-5 w-5" />}
-          title={postingTitle}
-          subtitle={postingCopy}
-        />
-      </section>
-
       <section className="mx-auto max-w-2xl">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -422,24 +361,10 @@ export function ClientCultureScreen({
                 New Culture posts
               </button>
             ) : null}
-            <button
-              type="button"
-              onClick={() => void refreshTop()}
-              disabled={refreshing}
-              className="inline-flex min-h-10 items-center gap-2 rounded-full border border-white/10 bg-black/24 px-4 text-xs font-black uppercase tracking-[0.12em] text-white/62 transition hover:border-[#d7ffab]/24 hover:text-[#d7ffab] disabled:opacity-60"
-            >
-              <RefreshCw className={["h-4 w-4", refreshing ? "animate-spin" : ""].join(" ")} />
-              {refreshing ? "Refreshing" : "Refresh"}
-            </button>
             <StatusBadge tone={feedError ? "danger" : hasPosts ? "green" : "neutral"}>{feedError ? "Feed error" : hasPosts ? "Live feed" : "Empty"}</StatusBadge>
           </div>
         </div>
 
-        {refreshMessage && !pendingTopItems.length ? (
-          <p className="mb-3 rounded-full border border-white/10 bg-black/20 px-4 py-2 text-xs font-semibold text-white/50" role="status">
-            {refreshMessage}
-          </p>
-        ) : null}
         {refreshError ? (
           <p className="mb-3 rounded-[18px] border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100" role="alert">
             {refreshError}

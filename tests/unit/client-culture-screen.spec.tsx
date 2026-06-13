@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CultureFeedItem, CultureFeedModule } from "@/lib/culture/service";
 
 vi.mock("next/link", () => ({
@@ -87,25 +87,49 @@ function feedDomEntries(container: HTMLElement) {
   return Array.from(container.querySelectorAll('[data-testid="culture-post-card"],[data-testid="culture-discovery-grid"]'));
 }
 
+function mockEmptyFeedFetch() {
+  const fetchMock = vi.fn(async () => ({
+    ok: true,
+    json: async () => ({
+      ok: true,
+      items: [],
+      cursor: null,
+      hasMore: false
+    })
+  }));
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
 describe("client culture screen", () => {
+  beforeEach(() => {
+    mockEmptyFeedFetch();
+  });
+
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.useRealTimers();
   });
 
-  it("renders the social Culture shell and role filter rail", () => {
-    render(<ClientCultureScreen />);
+  it("renders only the minimal social pulse header above the feed", () => {
+    render(<ClientCultureScreen feed={{ items: [culturePost("post-1")], cursor: null, hasMore: false }} />);
 
-    expect(screen.getByRole("heading", { name: "Culture" })).toBeInTheDocument();
-    expect(screen.getByText("Cuts, shops, style, and community.")).toBeInTheDocument();
-    expect(screen.getByText("Client Culture")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "For You" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("button", { name: "Near You" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Available Today" })).toBeInTheDocument();
-    expect(screen.getByText("Culture pulse")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Discover barbers/i })).toHaveAttribute("href", "/dashboard/client/search");
-    expect(screen.getByRole("link", { name: /View shops/i })).toHaveAttribute("href", "/dashboard/client/search?type=shops");
-    expect(screen.getByText("Share your next cut")).toBeInTheDocument();
+    expect(screen.getByText("Feed")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Culture pulse" })).toBeInTheDocument();
+    expect(screen.getByText("Live feed")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Culture" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Client Culture")).not.toBeInTheDocument();
+    expect(screen.queryByText("Barber Culture")).not.toBeInTheDocument();
+    expect(screen.queryByText("Shop Owner Culture")).not.toBeInTheDocument();
+    expect(screen.queryByText("Cuts, shops, style, and community.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "For You" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Near You" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Available Today" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Discover barbers/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /View shops/i })).not.toBeInTheDocument();
+    expect(screen.queryByText("Saved culture")).not.toBeInTheDocument();
+    expect(screen.queryByText("Share your next cut")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Refresh/i })).not.toBeInTheDocument();
   });
 
   it("renders a safe empty feed state distinct from a feed error", () => {
@@ -127,25 +151,83 @@ describe("client culture screen", () => {
     expect(screen.queryByText("Culture posts will appear here as the BVRB3R community grows.")).not.toBeInTheDocument();
   });
 
-  it("keeps barber and owner composer access while client posting remains gated", () => {
-    const { rerender } = render(<ClientCultureScreen surface="barber" />);
+  it("auto-loads the latest feed on mount without a manual refresh button", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        items: [culturePost("post-loaded", { caption: "Loaded automatically" })],
+        cursor: null,
+        hasMore: false,
+        feedSessionId: "11111111-1111-4111-8111-111111111111"
+      })
+    }));
+    vi.stubGlobal("fetch", fetchMock);
 
-    expect(screen.getByText("Barber Culture")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Inspiration" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "My Posts" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Post your work/i })).toHaveAttribute("href", "/dashboard/barber/culture/new");
-    expect(screen.getByText("Create or edit Culture posts from approved barber media.")).toBeInTheDocument();
+    render(<ClientCultureScreen feed={{ items: [], cursor: null, hasMore: false, feedSessionId: "11111111-1111-4111-8111-111111111111" }} />);
 
-    rerender(<ClientCultureScreen surface="shop" />);
-
-    expect(screen.getByText("Shop Owner Culture")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Team" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Open Chairs" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Share Shop Culture/i })).toHaveAttribute("href", "/dashboard/owner/culture/new");
-    expect(screen.getByText("Share shop updates, walk-ins, team moments, and local culture.")).toBeInTheDocument();
+    expect(await screen.findByText("Loaded automatically")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Refresh/i })).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/api/culture/feed?role=client"));
   });
 
-  it("makes full posts dominate before compact discovery modules", () => {
+  it("checks for updates when the page regains focus and inserts naturally near the top", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true, items: [culturePost("post-1")], cursor: null, hasMore: false })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true, items: [culturePost("post-new", { caption: "New focused post" }), culturePost("post-1")], cursor: null, hasMore: false })
+      });
+    vi.stubGlobal("fetch", fetchMock);
+    Object.defineProperty(window, "scrollY", { value: 0, configurable: true });
+
+    render(<ClientCultureScreen feed={{ items: [culturePost("post-1")], cursor: null, hasMore: false }} />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByText("New focused post")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "New Culture posts" })).not.toBeInTheDocument();
+  });
+
+  it("queues new posts while deep in the feed without resetting scroll", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true, items: [culturePost("post-1")], cursor: null, hasMore: false })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true, items: [culturePost("post-new", { caption: "Queued Culture post" }), culturePost("post-1")], cursor: null, hasMore: false })
+      });
+    vi.stubGlobal("fetch", fetchMock);
+    Object.defineProperty(window, "scrollY", { value: 900, configurable: true });
+
+    render(<ClientCultureScreen feed={{ items: [culturePost("post-1")], cursor: null, hasMore: false }} />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByRole("button", { name: "New Culture posts" })).toBeInTheDocument();
+    expect(screen.queryByText("Queued Culture post")).not.toBeInTheDocument();
+    expect(window.scrollY).toBe(900);
+
+    fireEvent.click(screen.getByRole("button", { name: "New Culture posts" }));
+    expect(screen.getByText("Queued Culture post")).toBeInTheDocument();
+  });
+
+  it("keeps full posts first and discovery modules lower in the feed only", () => {
     const gridModule = discoveryModule();
     const fourPosts = ["post-1", "post-2", "post-3", "post-4"].map((id) => culturePost(id));
     const fivePosts = [...fourPosts, culturePost("post-5")];
@@ -182,13 +264,13 @@ describe("client culture screen", () => {
       "culture-post-card",
       "culture-discovery-grid"
     ]);
-    expect(screen.queryByText(/Top Rated|rating|from \$45/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Top Rated|rating|from \$45|Available Today|Near You/i)).not.toBeInTheDocument();
   });
 
-  it("renders a social post card with dominant media, real actions, detail sheet, and no fake counts", async () => {
+  it("renders a social post card with real actions, book CTA, detail sheet, and no fake counts", async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,
-      json: async () => ({ ok: true })
+      json: async () => ({ ok: true, items: [], cursor: null, hasMore: false })
     }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -221,10 +303,10 @@ describe("client culture screen", () => {
     })));
   });
 
-  it("records Why This Post and Not Interested without exposing raw ranking data", async () => {
+  it("keeps Why This Post and Not Interested safe", async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,
-      json: async () => ({ ok: true })
+      json: async () => ({ ok: true, items: [], cursor: null, hasMore: false })
     }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -269,16 +351,22 @@ describe("client culture screen", () => {
       disconnect = vi.fn();
     }
     vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
-    const fetchMock = vi.fn(async () => ({
-      ok: true,
-      json: async () => ({
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
         ok: true,
-        items: [culturePost("post-1"), culturePost("post-2", { caption: "Second page post" })],
-        cursor: null,
-        hasMore: false,
-        feedSessionId: "11111111-1111-4111-8111-111111111111"
+        json: async () => ({ ok: true, items: [culturePost("post-1")], cursor: "cursor-1", hasMore: true })
       })
-    }));
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          ok: true,
+          items: [culturePost("post-1"), culturePost("post-2", { caption: "Second page post" })],
+          cursor: null,
+          hasMore: false,
+          feedSessionId: "11111111-1111-4111-8111-111111111111"
+        })
+      });
     vi.stubGlobal("fetch", fetchMock);
 
     render(<ClientCultureScreen feed={{
@@ -287,6 +375,7 @@ describe("client culture screen", () => {
       feedSessionId: "11111111-1111-4111-8111-111111111111",
       items: [culturePost("post-1")]
     }} />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 
     act(() => {
       observed.get("culture-feed-sentinel")?.([{ isIntersecting: true } as IntersectionObserverEntry]);
@@ -298,65 +387,20 @@ describe("client culture screen", () => {
     expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("sessionId=11111111-1111-4111-8111-111111111111"));
   });
 
-  it("keeps current posts visible when pagination fails", async () => {
-    const observed = new Map<string, (entries: IntersectionObserverEntry[]) => void>();
-    class MockIntersectionObserver {
-      callback: (entries: IntersectionObserverEntry[]) => void;
-      constructor(callback: (entries: IntersectionObserverEntry[]) => void) {
-        this.callback = callback;
-      }
-      observe = vi.fn((node: Element) => {
-        observed.set(node.getAttribute("data-testid") ?? "unknown", this.callback);
-      });
-      disconnect = vi.fn();
-    }
-    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
+  it("keeps current posts visible when a background update fails", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => ({
       ok: false,
-      json: async () => ({ ok: false, error: "Unable to load more Culture posts. Try again." })
+      json: async () => ({ ok: false, error: "Unable to load Culture feed. Try again." })
     })));
 
     render(<ClientCultureScreen feed={{
-      cursor: "cursor-1",
-      hasMore: true,
+      cursor: null,
+      hasMore: false,
       items: [culturePost("post-1")]
     }} />);
 
-    act(() => {
-      observed.get("culture-feed-sentinel")?.([{ isIntersecting: true } as IntersectionObserverEntry]);
-    });
-
-    expect(await screen.findByRole("alert")).toHaveTextContent("Unable to load more Culture posts. Try again.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Unable to load Culture feed. Try again.");
     expect(screen.getByText("Culture caption post-1")).toBeInTheDocument();
-  });
-
-  it("refreshes from the top through a new-post pill without auto-jumping content", async () => {
-    const fetchMock = vi.fn(async () => ({
-      ok: true,
-      json: async () => ({
-        ok: true,
-        items: [culturePost("post-new", { caption: "Fresh Culture post" }), culturePost("post-1")],
-        cursor: "cursor-2",
-        hasMore: true
-      })
-    }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    render(<ClientCultureScreen feed={{
-      cursor: "cursor-1",
-      hasMore: true,
-      items: [culturePost("post-1")]
-    }} />);
-
-    fireEvent.click(screen.getByRole("button", { name: /Refresh/i }));
-
-    expect(await screen.findByRole("button", { name: "New Culture posts" })).toBeInTheDocument();
-    expect(screen.queryByText("Fresh Culture post")).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "New Culture posts" }));
-
-    expect(screen.getByText("Fresh Culture post")).toBeInTheDocument();
-    expect(screen.getAllByTestId("culture-post-card")).toHaveLength(2);
   });
 
   it("records one real impression after visibility threshold and dwell time", async () => {
@@ -372,7 +416,7 @@ describe("client culture screen", () => {
     vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
     const fetchMock = vi.fn(async () => ({
       ok: true,
-      json: async () => ({ ok: true })
+      json: async () => ({ ok: true, items: [], cursor: null, hasMore: false })
     }));
     vi.stubGlobal("fetch", fetchMock);
 
