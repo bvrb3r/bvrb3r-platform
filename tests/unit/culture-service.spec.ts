@@ -6,13 +6,18 @@ import {
   createCulturePostFromProfileMedia,
   attachCulturePostImageMedia,
   getCulturePostSafeDisplay,
+  getCulturePostCtaState,
+  getCulturePostTargetRoutes,
   listCultureFeed,
   listMyCulturePosts,
   mapCulturePostToSafeFeedItem,
   performCultureFollowAction,
   performCulturePostEngagementAction,
+  recordCultureBookClick,
   recordCultureEngagement,
   recordCultureFeedEvent,
+  recordCultureProfileClick,
+  recordCultureShopClick,
   submitCulturePostForReview,
   type CulturePostRow
 } from "@/lib/culture/service";
@@ -487,9 +492,106 @@ describe("Culture service", () => {
 
     expect(item.authorDisplayName).toBe("Blaze King");
     expect(item.authorUsername).toBe("@blaze");
+    expect(item.profileUrl).toContain("/barber/blaze?source=culture");
     expect(item.canLike).toBe(true);
     expect(item.canComment).toBe(false);
     expect(JSON.stringify(item)).not.toMatch(/email|phone|stripe|tax/i);
+  });
+
+  it("builds safe Culture profile, booking, and shop CTA routes with attribution", () => {
+    const item = mapCulturePostToSafeFeedItem(publishedPost, {
+      profilesById: new Map([[publishedPost.author_profile_id, {
+        id: publishedPost.author_profile_id,
+        full_name: "Blaze King",
+        public_username: "blaze",
+        role: "barber_user"
+      }]]),
+      shopsById: new Map([["shop-ybor", { id: "shop-ybor", name: "BVRB3R Ybor", public_username: "bvrb3r-ybor" }]]),
+      servicesById: new Map([[publishedPost.service_id ?? "", {
+        id: publishedPost.service_id ?? "",
+        name: "Signature Cut",
+        active: true,
+        is_bookable: true
+      }]])
+    });
+
+    expect(item).toMatchObject({
+      barberId: publishedPost.barber_id,
+      shopId: "shop-ybor",
+      serviceId: publishedPost.service_id,
+      canViewProfile: true,
+      canViewShop: false,
+      canBook: true,
+      bookLabel: "Book Signature Cut"
+    });
+    expect(item.profileUrl).toContain("/barber/blaze?source=culture");
+    expect(item.bookingUrl).toContain("/booking/new?source=culture");
+    expect(item.bookingUrl).toContain(`culturePostId=${publishedPost.id}`);
+    expect(item.bookingUrl).toContain(`cultureAuthorId=${publishedPost.author_profile_id}`);
+    expect(item.bookingUrl).toContain(`serviceId=${publishedPost.service_id}`);
+    expect(item.bookingUrl).toContain("cta=book_service");
+    expect(JSON.stringify(item)).not.toMatch(/phone|email|stripe|payment/i);
+  });
+
+  it("hides direct booking for client posts and falls back from inactive service to barber booking", () => {
+    const clientPost = {
+      ...publishedPost,
+      id: "client-culture-post",
+      author_role: "client_user",
+      barber_id: null,
+      shop_id: null,
+      service_id: null,
+      is_bookable: false
+    };
+    const inactiveServiceState = getCulturePostCtaState(publishedPost, {
+      profilesById: new Map([[publishedPost.author_profile_id, {
+        id: publishedPost.author_profile_id,
+        public_username: "blaze"
+      }]]),
+      servicesById: new Map([[publishedPost.service_id ?? "", {
+        id: publishedPost.service_id ?? "",
+        name: "Archived Cut",
+        active: false,
+        is_bookable: false
+      }]])
+    });
+    const clientState = getCulturePostCtaState(clientPost);
+
+    expect(inactiveServiceState).toMatchObject({
+      canBook: true,
+      bookLabel: "Book This Barber"
+    });
+    expect(inactiveServiceState.bookingUrl).not.toContain(`serviceId=${publishedPost.service_id}`);
+    expect(clientState).toMatchObject({
+      canViewProfile: false,
+      canViewShop: false,
+      canBook: false
+    });
+  });
+
+  it("builds View Shop routes without enabling direct shop booking", () => {
+    const shopPost = {
+      ...publishedPost,
+      id: "shop-culture-post",
+      author_role: "shop_owner_user",
+      barber_id: null,
+      service_id: null,
+      is_bookable: true
+    };
+    const routes = getCulturePostTargetRoutes(shopPost, {
+      shopsById: new Map([["shop-ybor", { id: "shop-ybor", name: "BVRB3R Ybor", public_username: "bvrb3r-ybor" }]])
+    });
+    const cta = getCulturePostCtaState(shopPost, {
+      shopsById: new Map([["shop-ybor", { id: "shop-ybor", name: "BVRB3R Ybor", public_username: "bvrb3r-ybor" }]])
+    });
+
+    expect(routes.shopUrl).toContain("/shop/bvrb3r-ybor?source=culture");
+    expect(cta).toMatchObject({
+      canViewProfile: false,
+      canViewShop: true,
+      canBook: false,
+      bookLabel: null
+    });
   });
 
   it("signs approved private Culture media for safe feed display", async () => {
@@ -667,9 +769,18 @@ describe("Culture service", () => {
     }, { supabase: supabase.client })).rejects.toThrow("public approved posts");
   });
 
-  it("records Culture share, profile click, and report actions safely", async () => {
+  it("records Culture share, profile, book, shop, and report actions safely", async () => {
+    const shopPost = {
+      ...publishedPost,
+      id: "99999999-9999-4999-8999-999999999999",
+      author_profile_id: ownerUser.id,
+      author_role: "shop_owner_user",
+      barber_id: null,
+      service_id: null,
+      is_bookable: false
+    } satisfies CulturePostRow;
     const supabase = createSupabaseStub({
-      culture_posts: [publishedPost],
+      culture_posts: [publishedPost, shopPost],
       culture_engagements: [],
       culture_feed_events: [],
       culture_reports: []
@@ -683,6 +794,16 @@ describe("Culture service", () => {
       postId: publishedPost.id,
       action: "profile_click"
     }, { supabase: supabase.client });
+    await recordCultureBookClick(clientUser, {
+      postId: publishedPost.id,
+      metadata: { cta: "book_service" }
+    }, { supabase: supabase.client });
+    await recordCultureProfileClick(clientUser, {
+      postId: publishedPost.id
+    }, { supabase: supabase.client });
+    await recordCultureShopClick(clientUser, {
+      postId: shopPost.id
+    }, { supabase: supabase.client });
     const reported = await performCulturePostEngagementAction(clientUser, {
       postId: publishedPost.id,
       action: "report",
@@ -693,6 +814,8 @@ describe("Culture service", () => {
     expect(supabase.writes.culture_engagements).toEqual(expect.arrayContaining([
       expect.objectContaining({ engagement_type: "share" }),
       expect.objectContaining({ engagement_type: "profile_click" }),
+      expect.objectContaining({ engagement_type: "book_click" }),
+      expect.objectContaining({ engagement_type: "shop_click" }),
       expect.objectContaining({ engagement_type: "report" })
     ]));
     expect(supabase.writes.culture_reports[0]).toMatchObject({
@@ -703,9 +826,24 @@ describe("Culture service", () => {
     expect(supabase.writes.culture_feed_events).toEqual(expect.arrayContaining([
       expect.objectContaining({ event_type: "share_clicked" }),
       expect.objectContaining({ event_type: "profile_clicked" }),
+      expect.objectContaining({ event_type: "book_clicked" }),
+      expect.objectContaining({ event_type: "shop_clicked" }),
       expect.objectContaining({ event_type: "report_clicked" })
     ]));
+    expect(supabase.writes.culture_feed_events).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          source: "culture",
+          surface: "culture_feed",
+          target_author_profile_id: publishedPost.author_profile_id,
+          target_barber_id: publishedPost.barber_id,
+          target_shop_id: publishedPost.shop_id,
+          service_id: publishedPost.service_id
+        })
+      })
+    ]));
     expect(JSON.stringify(supabase.writes)).not.toMatch(/phone|email|stripe/i);
+    expect(JSON.stringify(supabase.writes)).not.toMatch(/appointment|payment_intent/i);
   });
 
   it("creates and removes a private Culture follow edge for a post author", async () => {

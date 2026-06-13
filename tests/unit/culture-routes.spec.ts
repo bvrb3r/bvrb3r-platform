@@ -217,23 +217,26 @@ describe("Culture API routes", () => {
 
   it("runs signed-in Culture post engagement actions through the service", async () => {
     const postId = "11111111-1111-4111-8111-111111111111";
+    performCulturePostEngagementActionMock.mockResolvedValueOnce({ ok: true, action: "book_click", booked: true });
 
     const response = await postCultureEngagement(new NextRequest("https://bvrb3r.test/api/culture/engagements", {
       method: "POST",
       body: JSON.stringify({
         postId,
-        action: "like"
+        action: "book_click",
+        metadata: { cta: "book_service" }
       })
     }));
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body).toMatchObject({ ok: true, action: "like", liked: true });
+    expect(body).toMatchObject({ ok: true, action: "book_click" });
     expect(performCulturePostEngagementActionMock).toHaveBeenCalledWith(expect.objectContaining({
       id: "22222222-2222-4222-8222-222222222222"
     }), {
       postId,
-      action: "like"
+      action: "book_click",
+      metadata: { cta: "book_service" }
     });
   });
 

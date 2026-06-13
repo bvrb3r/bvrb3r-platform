@@ -8,7 +8,7 @@ import { Bookmark, Heart, ImageIcon, MessageCircle, MoreHorizontal, Scissors, Sh
 import type { CultureFeedItem } from "@/lib/culture/service";
 
 type CultureSurface = "client" | "barber" | "shop";
-type CulturePostAction = "like" | "unlike" | "save" | "unsave" | "share" | "report" | "profile_click";
+type CulturePostAction = "like" | "unlike" | "save" | "unsave" | "share" | "report" | "profile_click" | "book_click" | "shop_click";
 
 function formatCultureDate(value: string) {
   const date = new Date(value);
@@ -124,7 +124,7 @@ export function CulturePostCard({
   const [error, setError] = useState<string | null>(null);
   const mediaUrl = post.media?.url ?? post.media?.thumbnailUrl ?? null;
   const hasAttachedContext = Boolean(post.serviceName || post.shopName);
-  const profileHref = useMemo(() => profileHrefForPost(post, surface), [post, surface]);
+  const profileHref = useMemo(() => post.profileUrl ?? profileHrefForPost(post, surface), [post, surface]);
 
   async function runPostAction(action: CulturePostAction, extra?: Record<string, unknown>) {
     setLoadingAction(action);
@@ -155,6 +155,12 @@ export function CulturePostCard({
         setMessage("Report submitted.");
       } else if (action === "share") {
         setMessage("Share recorded.");
+      } else if (action === "book_click") {
+        setMessage("Opening booking.");
+      } else if (action === "profile_click") {
+        setMessage("Opening profile.");
+      } else if (action === "shop_click") {
+        setMessage("Opening shop.");
       }
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "Culture action failed.");
@@ -186,7 +192,27 @@ export function CulturePostCard({
   }
 
   function recordProfileClick() {
-    void runPostAction("profile_click").catch(() => undefined);
+    void runPostAction("profile_click", {
+      metadata: {
+        cta: "view_profile"
+      }
+    }).catch(() => undefined);
+  }
+
+  function recordBookClick() {
+    void runPostAction("book_click", {
+      metadata: {
+        cta: post.serviceId ? "book_service" : "book_barber"
+      }
+    }).catch(() => undefined);
+  }
+
+  function recordShopClick() {
+    void runPostAction("shop_click", {
+      metadata: {
+        cta: "view_shop"
+      }
+    }).catch(() => undefined);
   }
 
   async function sharePost() {
@@ -321,18 +347,6 @@ export function CulturePostCard({
             label={saved ? "Saved" : "Save"}
             onClick={() => void runPostAction(saved ? "unsave" : "save").catch(() => undefined)}
           />
-          {post.canBook ? (
-            <button
-              type="button"
-              disabled
-              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-full border border-[#d7ffab]/28 bg-[#d7ffab] px-4 text-xs font-black uppercase tracking-[0.12em] text-[#050505]"
-              aria-label="Book from Culture post is not active yet"
-              title="Book-from-post will activate when Culture-to-booking routing is wired."
-            >
-              <Scissors className="h-4 w-4" />
-              Book
-            </button>
-          ) : null}
         </div>
 
         {reportOpen ? (
@@ -373,6 +387,39 @@ export function CulturePostCard({
 
         {message ? <p className="mt-3 text-xs font-semibold text-[#d7ffab]" role="status">{message}</p> : null}
         {error ? <p className="mt-3 text-xs font-semibold text-red-100" role="alert">{error}</p> : null}
+
+        {post.canViewProfile || post.canBook || post.canViewShop ? (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {post.canViewProfile && post.profileUrl ? (
+              <Link
+                href={post.profileUrl as Route}
+                onClick={recordProfileClick}
+                className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/24 px-4 text-xs font-black uppercase tracking-[0.12em] text-white transition hover:border-[#d7ffab]/28 hover:text-[#d7ffab]"
+              >
+                View Profile
+              </Link>
+            ) : null}
+            {post.canBook && post.bookingUrl ? (
+              <Link
+                href={post.bookingUrl as Route}
+                onClick={recordBookClick}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-[#d7ffab]/30 bg-[#d7ffab] px-4 text-xs font-black uppercase tracking-[0.12em] text-[#050505] transition hover:bg-[#c6f79b]"
+              >
+                <Scissors className="h-4 w-4" />
+                {post.bookLabel ?? "Book This Barber"}
+              </Link>
+            ) : null}
+            {post.canViewShop && post.shopUrl ? (
+              <Link
+                href={post.shopUrl as Route}
+                onClick={recordShopClick}
+                className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/24 px-4 text-xs font-black uppercase tracking-[0.12em] text-white transition hover:border-[#d7ffab]/28 hover:text-[#d7ffab]"
+              >
+                View Shop
+              </Link>
+            ) : null}
+          </div>
+        ) : null}
 
         {hasAttachedContext ? (
           <div className="mt-4 rounded-[18px] border border-[#d7ffab]/16 bg-[#d7ffab]/8 px-4 py-3">

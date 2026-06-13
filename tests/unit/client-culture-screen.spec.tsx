@@ -106,6 +106,9 @@ describe("client culture screen", () => {
         authorProfileId: "22222222-2222-4222-8222-222222222222",
         authorTargetKind: "barber",
         authorTarget: "blaze",
+        barberId: "33333333-3333-4333-8333-333333333333",
+        shopId: "shop-ybor",
+        serviceId: "44444444-4444-4444-8444-444444444444",
         authorDisplayName: "Blaze King",
         authorUsername: "@blaze",
         authorAvatarUrl: "https://cdn.bvrb3r.test/blaze.jpg",
@@ -125,11 +128,18 @@ describe("client culture screen", () => {
         createdAt: "2026-06-12T12:00:00.000Z",
         serviceName: "Signature Cut",
         shopName: "BVRB3R Ybor",
+        profileUrl: "/barber/blaze?source=culture&culturePostId=post-1&cultureAuthorId=22222222-2222-4222-8222-222222222222&cultureSurface=client_culture&cta=view_profile",
+        bookingUrl: "/booking/new?source=culture&culturePostId=post-1&cultureAuthorId=22222222-2222-4222-8222-222222222222&cultureSurface=client_culture&barberId=33333333-3333-4333-8333-333333333333&barber=blaze&locationId=shop-ybor&shopId=shop-ybor&serviceId=44444444-4444-4444-8444-444444444444&cta=book_service&query=Signature+Cut",
+        shopUrl: null,
+        canViewProfile: true,
+        canViewShop: false,
+        bookLabel: "Book Signature Cut",
+        bookingDisabledReason: null,
         canLike: true,
         canSave: true,
         canShare: true,
         canReport: true,
-        canBook: false,
+        canBook: true,
         canComment: false
       }]
     }} />);
@@ -141,7 +151,10 @@ describe("client culture screen", () => {
     expect(screen.getByText("Signature Cut")).toBeInTheDocument();
     expect(screen.getByText("BVRB3R Ybor")).toBeInTheDocument();
     expect(screen.getByText("Low taper transformation.")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Blaze King" })).toHaveAttribute("href", "/dashboard/client/profile-view/barber/blaze");
+    expect(screen.getByRole("link", { name: "Blaze King" })).toHaveAttribute("href", expect.stringContaining("/barber/blaze?source=culture"));
+    expect(screen.getByRole("link", { name: "View Profile" })).toHaveAttribute("href", expect.stringContaining("cta=view_profile"));
+    expect(screen.getByRole("link", { name: /Book Signature Cut/i })).toHaveAttribute("href", expect.stringContaining("/booking/new?source=culture"));
+    expect(screen.getByRole("link", { name: /Book Signature Cut/i })).toHaveAttribute("href", expect.stringContaining("serviceId=44444444-4444-4444-8444-444444444444"));
     expect(screen.getByRole("button", { name: /Like this Culture post/i })).not.toBeDisabled();
     expect(screen.getByRole("button", { name: /Save this Culture post/i })).not.toBeDisabled();
     expect(screen.getByRole("button", { name: /Comment is not available for this post yet/i })).toBeDisabled();
@@ -171,6 +184,16 @@ describe("client culture screen", () => {
       })
     })));
     expect(screen.getByRole("status")).toHaveTextContent("Following.");
+
+    fireEvent.click(screen.getByRole("link", { name: /Book Signature Cut/i }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/culture/engagements", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({
+        postId: "post-1",
+        action: "book_click",
+        metadata: { cta: "book_service" }
+      })
+    })));
     expect(screen.queryByText(/1\.2k|views:|followers:|engagement rate/i)).not.toBeInTheDocument();
   });
 
@@ -189,6 +212,9 @@ describe("client culture screen", () => {
         authorProfileId: "22222222-2222-4222-8222-222222222222",
         authorTargetKind: "barber",
         authorTarget: "blaze",
+        barberId: "33333333-3333-4333-8333-333333333333",
+        shopId: null,
+        serviceId: null,
         authorDisplayName: "Blaze King",
         authorUsername: "@blaze",
         authorAvatarUrl: null,
@@ -200,6 +226,13 @@ describe("client culture screen", () => {
         createdAt: "2026-06-12T12:00:00.000Z",
         serviceName: null,
         shopName: null,
+        profileUrl: "/barber/blaze?source=culture",
+        bookingUrl: null,
+        shopUrl: null,
+        canViewProfile: true,
+        canViewShop: false,
+        bookLabel: null,
+        bookingDisabledReason: "Book-from-post requires a public approved bookable barber or service.",
         canLike: true,
         canSave: true,
         canShare: true,
@@ -213,6 +246,101 @@ describe("client culture screen", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("A signed-in account is required for Culture engagement.");
     expect(screen.queryByText(/1\.2k|views:|followers:|engagement rate/i)).not.toBeInTheDocument();
+  });
+
+  it("renders shop entry CTAs without fake shop booking and keeps client posts non-bookable", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ ok: true })
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ClientCultureScreen feed={{
+      cursor: null,
+      hasMore: false,
+      items: [
+        {
+          id: "shop-post",
+          authorProfileId: "66666666-6666-4666-8666-666666666666",
+          authorTargetKind: "shop",
+          authorTarget: "bvrb3r-ybor",
+          barberId: null,
+          shopId: "shop-ybor",
+          serviceId: null,
+          authorDisplayName: "BVRB3R Ybor",
+          authorUsername: "@bvrb3r-ybor",
+          authorAvatarUrl: null,
+          authorRoleLabel: "Shop Owner",
+          authorVerified: false,
+          caption: "Team culture.",
+          postType: "shop_update",
+          media: null,
+          createdAt: "2026-06-12T12:00:00.000Z",
+          serviceName: null,
+          shopName: "BVRB3R Ybor",
+          profileUrl: null,
+          bookingUrl: null,
+          shopUrl: "/shop/bvrb3r-ybor?source=culture&culturePostId=shop-post&cultureAuthorId=66666666-6666-4666-8666-666666666666&cultureSurface=client_culture&cta=view_shop",
+          canViewProfile: false,
+          canViewShop: true,
+          bookLabel: null,
+          bookingDisabledReason: "Book-from-post requires a public approved bookable barber or service.",
+          canLike: true,
+          canSave: true,
+          canShare: true,
+          canReport: true,
+          canBook: false,
+          canComment: false
+        },
+        {
+          id: "client-post",
+          authorProfileId: "77777777-7777-4777-8777-777777777777",
+          authorTargetKind: "client",
+          authorTarget: "client-creator",
+          barberId: null,
+          shopId: null,
+          serviceId: null,
+          authorDisplayName: "Client Creator",
+          authorUsername: "@client-creator",
+          authorAvatarUrl: null,
+          authorRoleLabel: "Client",
+          authorVerified: false,
+          caption: "Style inspiration.",
+          postType: "style_inspiration",
+          media: null,
+          createdAt: "2026-06-12T12:00:00.000Z",
+          serviceName: null,
+          shopName: null,
+          profileUrl: null,
+          bookingUrl: null,
+          shopUrl: null,
+          canViewProfile: false,
+          canViewShop: false,
+          bookLabel: null,
+          bookingDisabledReason: "Client Culture posts do not support booking.",
+          canLike: true,
+          canSave: true,
+          canShare: true,
+          canReport: true,
+          canBook: false,
+          canComment: false
+        }
+      ]
+    }} />);
+
+    expect(screen.getByRole("link", { name: "View Shop" })).toHaveAttribute("href", expect.stringContaining("/shop/bvrb3r-ybor?source=culture"));
+    expect(screen.queryByRole("link", { name: /Book at Shop/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Book Client/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("link", { name: "View Shop" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/culture/engagements", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({
+        postId: "shop-post",
+        action: "shop_click",
+        metadata: { cta: "view_shop" }
+      })
+    })));
   });
 
   it("shows a loading state while a Culture engagement write is pending", async () => {
@@ -230,6 +358,9 @@ describe("client culture screen", () => {
         authorProfileId: "22222222-2222-4222-8222-222222222222",
         authorTargetKind: "barber",
         authorTarget: "blaze",
+        barberId: "33333333-3333-4333-8333-333333333333",
+        shopId: null,
+        serviceId: null,
         authorDisplayName: "Blaze King",
         authorUsername: "@blaze",
         authorAvatarUrl: null,
@@ -241,6 +372,13 @@ describe("client culture screen", () => {
         createdAt: "2026-06-12T12:00:00.000Z",
         serviceName: null,
         shopName: null,
+        profileUrl: "/barber/blaze?source=culture",
+        bookingUrl: null,
+        shopUrl: null,
+        canViewProfile: true,
+        canViewShop: false,
+        bookLabel: null,
+        bookingDisabledReason: "Book-from-post requires a public approved bookable barber or service.",
         canLike: true,
         canSave: true,
         canShare: true,

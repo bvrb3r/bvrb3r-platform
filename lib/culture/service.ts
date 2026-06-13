@@ -21,6 +21,9 @@ export type CultureFeedItem = {
   authorProfileId: string;
   authorTargetKind: "client" | "barber" | "shop";
   authorTarget: string | null;
+  barberId: string | null;
+  shopId: string | null;
+  serviceId: string | null;
   authorDisplayName: string;
   authorUsername: string | null;
   authorAvatarUrl: string | null;
@@ -33,6 +36,13 @@ export type CultureFeedItem = {
   serviceName?: string | null;
   shopName?: string | null;
   shopUsername?: string | null;
+  profileUrl: string | null;
+  bookingUrl: string | null;
+  shopUrl: string | null;
+  canViewProfile: boolean;
+  canViewShop: boolean;
+  bookLabel: string | null;
+  bookingDisabledReason: string | null;
   canLike: boolean;
   canSave: boolean;
   canShare: boolean;
@@ -48,8 +58,19 @@ export type CultureFeedResponse = {
   error?: string;
 };
 
-export type CulturePostEngagementAction = "like" | "unlike" | "save" | "unsave" | "share" | "report" | "profile_click";
+export type CulturePostEngagementAction = "like" | "unlike" | "save" | "unsave" | "share" | "report" | "profile_click" | "book_click" | "shop_click";
 export type CultureFollowAction = "follow" | "unfollow";
+
+export type CulturePostCtaState = {
+  profileUrl: string | null;
+  bookingUrl: string | null;
+  shopUrl: string | null;
+  canViewProfile: boolean;
+  canViewShop: boolean;
+  canBook: boolean;
+  bookLabel: string | null;
+  bookingDisabledReason: string | null;
+};
 
 export type CultureComposerRole = "barber" | "owner";
 export type CultureProfileMediaRole = CultureComposerRole | "client";
@@ -198,6 +219,8 @@ type PublicShopRow = {
 type PublicServiceRow = {
   id: string;
   name?: string | null;
+  active?: boolean | null;
+  is_bookable?: boolean | null;
 };
 
 type BarberPortfolioSourceRow = {
@@ -400,12 +423,12 @@ function roleLabel(role: CultureActorRole | Role | string) {
 }
 
 function authorTargetKindForPost(post: CulturePostRow): "client" | "barber" | "shop" {
-  if (post.shop_id || post.author_role === "shop_owner_user" || post.author_role === "owner") {
-    return "shop";
-  }
-
   if (post.barber_id || roleLabel(post.author_role) === "Barber") {
     return "barber";
+  }
+
+  if (post.shop_id || post.author_role === "shop_owner_user" || post.author_role === "owner") {
+    return "shop";
   }
 
   return "client";
@@ -418,6 +441,116 @@ function authorTargetForPost(post: CulturePostRow, profile?: PublicProfileRow | 
   }
 
   return safeNullableText(profile?.public_username);
+}
+
+function appendCultureAttribution(
+  href: string,
+  post: Pick<CulturePostRow, "id" | "author_profile_id">,
+  cta: string
+) {
+  const [path, queryString = ""] = href.split("?");
+  const params = new URLSearchParams(queryString);
+  params.set("source", "culture");
+  params.set("culturePostId", post.id);
+  params.set("cultureAuthorId", post.author_profile_id);
+  params.set("cultureSurface", "client_culture");
+  params.set("cta", cta);
+
+  const query = params.toString();
+  return query ? `${path}?${query}` : path;
+}
+
+function buildCultureBookingUrl(post: CulturePostRow, authorTarget: string | null, service: PublicServiceRow | null | undefined, serviceBookable: boolean) {
+  if (!post.barber_id || !post.is_bookable) {
+    return null;
+  }
+
+  const params = new URLSearchParams();
+  params.set("source", "culture");
+  params.set("culturePostId", post.id);
+  params.set("cultureAuthorId", post.author_profile_id);
+  params.set("cultureSurface", "client_culture");
+  params.set("barberId", post.barber_id);
+
+  if (authorTarget) {
+    params.set("barber", authorTarget);
+  }
+
+  if (post.shop_id) {
+    params.set("locationId", post.shop_id);
+    params.set("shopId", post.shop_id);
+  }
+
+  if (post.service_id && serviceBookable) {
+    params.set("serviceId", post.service_id);
+    params.set("cta", "book_service");
+  } else {
+    params.set("cta", "book_barber");
+  }
+
+  if (service?.name && serviceBookable) {
+    params.set("query", service.name);
+  }
+
+  return `/booking/new?${params.toString()}`;
+}
+
+export function getCulturePostTargetRoutes(
+  post: CulturePostRow,
+  lookups: Pick<LookupMaps, "profilesById" | "shopsById" | "servicesById"> = {}
+) {
+  const profile = lookups.profilesById?.get(post.author_profile_id);
+  const shop = post.shop_id ? lookups.shopsById?.get(post.shop_id) : null;
+  const service = post.service_id ? lookups.servicesById?.get(post.service_id) : null;
+  const authorTargetKind = authorTargetKindForPost(post);
+  const authorTarget = authorTargetForPost(post, profile, shop);
+  const serviceBookable = Boolean(post.service_id && service && service.active !== false && service.is_bookable !== false);
+  const barberProfileTarget = authorTargetKind === "barber" ? authorTarget ?? safeNullableText(post.barber_id) : null;
+  const shopTarget = authorTargetKind === "shop"
+    ? authorTarget ?? safeNullableText(post.shop_id)
+    : safeNullableText(shop?.public_username) ?? safeNullableText(post.shop_id);
+  const profileUrl = barberProfileTarget
+    ? appendCultureAttribution(`/barber/${encodeURIComponent(barberProfileTarget)}`, post, "view_profile")
+    : null;
+  const shopUrl = shopTarget
+    ? appendCultureAttribution(`/shop/${encodeURIComponent(shopTarget)}`, post, "view_shop")
+    : null;
+  const bookingUrl = buildCultureBookingUrl(post, barberProfileTarget, service, serviceBookable);
+
+  return {
+    profileUrl,
+    bookingUrl,
+    shopUrl,
+    authorTargetKind,
+    authorTarget,
+    serviceBookable
+  };
+}
+
+export function getCulturePostCtaState(
+  post: CulturePostRow,
+  lookups: Pick<LookupMaps, "profilesById" | "shopsById" | "servicesById"> = {}
+): CulturePostCtaState {
+  const service = post.service_id ? lookups.servicesById?.get(post.service_id) : null;
+  const routes = getCulturePostTargetRoutes(post, lookups);
+  const isBarberPost = routes.authorTargetKind === "barber";
+  const isShopPost = routes.authorTargetKind === "shop";
+  const bookLabel = routes.bookingUrl
+    ? routes.serviceBookable
+      ? `Book ${safeText(service?.name, "This Cut")}`
+      : "Book This Barber"
+    : null;
+
+  return {
+    profileUrl: isBarberPost ? routes.profileUrl : null,
+    bookingUrl: routes.bookingUrl,
+    shopUrl: isShopPost ? routes.shopUrl : null,
+    canViewProfile: Boolean(isBarberPost && routes.profileUrl),
+    canViewShop: Boolean(isShopPost && routes.shopUrl),
+    canBook: Boolean(routes.bookingUrl),
+    bookLabel,
+    bookingDisabledReason: routes.bookingUrl ? null : "Book-from-post requires a public approved bookable barber or service."
+  };
 }
 
 function safeText(value: unknown, fallback = "") {
@@ -674,7 +807,7 @@ async function loadFeedLookups(supabase: SupabaseLike, posts: CulturePostRow[]):
       ? fetchOptionalRows<PublicServiceRow>(
         supabase
           .from("services")
-          .select("id, name")
+          .select("id, name, active, is_bookable")
           .in("id", serviceIds),
         "services"
       )
@@ -1625,6 +1758,7 @@ export function mapCulturePostToSafeFeedItem(post: CulturePostRow, lookups: Look
   const username = safeText(profile?.public_username);
   const authorTargetKind = authorTargetKindForPost(post);
   const authorTarget = authorTargetForPost(post, profile, shop);
+  const ctaState = getCulturePostCtaState(post, lookups);
   const mediaUrl = safeNullableText(media?.media_url);
   const thumbnailUrl = safeNullableText(media?.thumbnail_url);
   const authorAvatarUrl = toPublicMediaUrl(lookups.storageClient ?? null, profile?.profile_photo_path, profile?.profile_photo_url) ?? null;
@@ -1634,6 +1768,9 @@ export function mapCulturePostToSafeFeedItem(post: CulturePostRow, lookups: Look
     authorProfileId: post.author_profile_id,
     authorTargetKind,
     authorTarget,
+    barberId: post.barber_id ?? null,
+    shopId: post.shop_id ?? null,
+    serviceId: post.service_id ?? null,
     authorDisplayName,
     authorUsername: username ? `@${username.replace(/^@/, "")}` : null,
     authorAvatarUrl,
@@ -1654,11 +1791,18 @@ export function mapCulturePostToSafeFeedItem(post: CulturePostRow, lookups: Look
     serviceName: service?.name ?? null,
     shopName: shop?.name ?? null,
     shopUsername: safeNullableText(shop?.public_username),
+    profileUrl: ctaState.profileUrl,
+    bookingUrl: ctaState.bookingUrl,
+    shopUrl: ctaState.shopUrl,
+    canViewProfile: ctaState.canViewProfile,
+    canViewShop: ctaState.canViewShop,
+    bookLabel: ctaState.bookLabel,
+    bookingDisabledReason: ctaState.bookingDisabledReason,
     canLike: true,
     canSave: true,
     canShare: true,
     canReport: true,
-    canBook: Boolean(post.is_bookable && (post.service_id || post.barber_id || post.shop_id)),
+    canBook: ctaState.canBook,
     canComment: Boolean(post.allow_comments)
   };
 }
@@ -1817,6 +1961,10 @@ function cultureFeedEventTypeForAction(action: CulturePostEngagementAction) {
       return "report_clicked";
     case "profile_click":
       return "profile_clicked";
+    case "book_click":
+      return "book_clicked";
+    case "shop_click":
+      return "shop_clicked";
     default:
       return "post_click";
   }
@@ -1901,11 +2049,31 @@ export async function performCulturePostEngagementAction(
   const action = input.action;
   const actorRole = dbRoleForUser(user);
   const post = await readPublicCulturePostForAction(supabase, postId);
+  const lookups = await loadFeedLookups(supabase, [post]);
+  const ctaState = getCulturePostCtaState(post, lookups);
+  if (action === "book_click" && !ctaState.canBook) {
+    throw new CultureComposerError("Book-from-post is not available for this Culture post.", 400);
+  }
+
+  if (action === "profile_click" && !ctaState.canViewProfile && authorTargetKindForPost(post) !== "barber") {
+    throw new CultureComposerError("Profile click is not available for this Culture post.", 400);
+  }
+
+  if (action === "shop_click" && !ctaState.canViewShop && authorTargetKindForPost(post) !== "shop") {
+    throw new CultureComposerError("Shop click is not available for this Culture post.", 400);
+  }
+
   const engagementType = cultureEngagementTypeForAction(action);
   const eventType = cultureFeedEventTypeForAction(action);
   const metadata = {
-    source: "culture_feed",
+    source: "culture",
+    surface: "culture_feed",
     action,
+    post_id: postId,
+    target_author_profile_id: post.author_profile_id,
+    target_barber_id: post.barber_id ?? null,
+    target_shop_id: post.shop_id ?? null,
+    service_id: post.service_id ?? null,
     ...(input.metadata ?? {})
   };
 
@@ -2068,6 +2236,51 @@ export async function performCultureFollowAction(
     targetProfileId,
     edge: result.data
   };
+}
+
+export function recordCultureBookClick(
+  user: UserAccount,
+  input: { postId: string; metadata?: Record<string, unknown> },
+  deps?: CultureServiceDeps
+) {
+  return performCulturePostEngagementAction(user, {
+    postId: input.postId,
+    action: "book_click",
+    metadata: {
+      cta: "book_from_post",
+      ...(input.metadata ?? {})
+    }
+  }, deps);
+}
+
+export function recordCultureProfileClick(
+  user: UserAccount,
+  input: { postId: string; metadata?: Record<string, unknown> },
+  deps?: CultureServiceDeps
+) {
+  return performCulturePostEngagementAction(user, {
+    postId: input.postId,
+    action: "profile_click",
+    metadata: {
+      cta: "view_profile",
+      ...(input.metadata ?? {})
+    }
+  }, deps);
+}
+
+export function recordCultureShopClick(
+  user: UserAccount,
+  input: { postId: string; metadata?: Record<string, unknown> },
+  deps?: CultureServiceDeps
+) {
+  return performCulturePostEngagementAction(user, {
+    postId: input.postId,
+    action: "shop_click",
+    metadata: {
+      cta: "view_shop",
+      ...(input.metadata ?? {})
+    }
+  }, deps);
 }
 
 export async function recordCultureFeedEvent(payload: {
