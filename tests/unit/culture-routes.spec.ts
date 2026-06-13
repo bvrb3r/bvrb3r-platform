@@ -162,6 +162,7 @@ describe("Culture API routes", () => {
       role: "barber",
       cursor: null,
       limit: 8,
+      feedSessionId: null,
       viewerProfileId: "22222222-2222-4222-8222-222222222222"
     });
   });
@@ -242,6 +243,31 @@ describe("Culture API routes", () => {
       postId,
       action: "book_click",
       metadata: { cta: "book_service" }
+    });
+  });
+
+  it("accepts Not Interested as a signed-in Culture post engagement action", async () => {
+    const postId = "11111111-1111-4111-8111-111111111111";
+    performCulturePostEngagementActionMock.mockResolvedValueOnce({ ok: true, action: "not_interested", notInterested: true });
+
+    const response = await postCultureEngagement(new NextRequest("https://bvrb3r.test/api/culture/engagements", {
+      method: "POST",
+      body: JSON.stringify({
+        postId,
+        action: "not_interested",
+        metadata: { cta: "not_interested" }
+      })
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ ok: true, action: "not_interested" });
+    expect(performCulturePostEngagementActionMock).toHaveBeenCalledWith(expect.objectContaining({
+      id: "22222222-2222-4222-8222-222222222222"
+    }), {
+      postId,
+      action: "not_interested",
+      metadata: { cta: "not_interested" }
     });
   });
 

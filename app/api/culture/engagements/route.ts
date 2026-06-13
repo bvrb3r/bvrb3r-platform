@@ -5,7 +5,7 @@ import { performCulturePostEngagementAction } from "@/lib/culture/service";
 
 const cultureEngagementActionSchema = z.object({
   postId: z.string().uuid(),
-  action: z.enum(["like", "unlike", "save", "unsave", "share", "report", "profile_click", "book_click", "shop_click"]),
+  action: z.enum(["like", "unlike", "save", "unsave", "share", "report", "profile_click", "book_click", "shop_click", "not_interested"]),
   reason: z.string().trim().min(1).max(120).optional(),
   metadata: z.record(z.unknown()).optional()
 });

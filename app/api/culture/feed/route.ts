@@ -20,9 +20,10 @@ export async function GET(request: NextRequest) {
     const role = parseRole(request.nextUrl.searchParams.get("role"));
     const cursor = request.nextUrl.searchParams.get("cursor");
     const limit = parseLimit(request.nextUrl.searchParams.get("limit"));
+    const feedSessionId = request.nextUrl.searchParams.get("sessionId");
     const session = await getCurrentUserFromServer().catch(() => null);
     const viewerProfileId = session?.authenticated && session.user.id !== "guest-user" ? session.user.id : undefined;
-    const feed = await listCultureFeed({ role, cursor, limit, viewerProfileId });
+    const feed = await listCultureFeed({ role, cursor, limit, viewerProfileId, feedSessionId });
 
     return NextResponse.json({ ok: true, ...feed });
   } catch (error) {

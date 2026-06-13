@@ -271,7 +271,7 @@ describe("Culture service", () => {
   });
 
   it("returns an empty feed when no Supabase client is configured", async () => {
-    await expect(listCultureFeed({ role: "client" }, { supabase: null })).resolves.toEqual({
+    await expect(listCultureFeed({ role: "client" }, { supabase: null })).resolves.toMatchObject({
       items: [],
       cursor: null,
       hasMore: false
@@ -1051,18 +1051,25 @@ describe("Culture service", () => {
     await recordCultureShopClick(clientUser, {
       postId: shopPost.id
     }, { supabase: supabase.client });
+    const hidden = await performCulturePostEngagementAction(clientUser, {
+      postId: publishedPost.id,
+      action: "not_interested",
+      metadata: { cta: "not_interested" }
+    }, { supabase: supabase.client });
     const reported = await performCulturePostEngagementAction(clientUser, {
       postId: publishedPost.id,
       action: "report",
       reason: "spam"
     }, { supabase: supabase.client });
 
+    expect(hidden).toMatchObject({ ok: true, action: "not_interested", notInterested: true });
     expect(reported).toMatchObject({ ok: true, action: "report", reported: true });
     expect(supabase.writes.culture_engagements).toEqual(expect.arrayContaining([
       expect.objectContaining({ engagement_type: "share" }),
       expect.objectContaining({ engagement_type: "profile_click" }),
       expect.objectContaining({ engagement_type: "book_click" }),
       expect.objectContaining({ engagement_type: "shop_click" }),
+      expect.objectContaining({ engagement_type: "not_interested" }),
       expect.objectContaining({ engagement_type: "report" })
     ]));
     expect(supabase.writes.culture_reports[0]).toMatchObject({
@@ -1075,6 +1082,7 @@ describe("Culture service", () => {
       expect.objectContaining({ event_type: "profile_clicked" }),
       expect.objectContaining({ event_type: "book_clicked" }),
       expect.objectContaining({ event_type: "shop_clicked" }),
+      expect.objectContaining({ event_type: "not_interested" }),
       expect.objectContaining({ event_type: "report_clicked" })
     ]));
     expect(supabase.writes.culture_feed_events).toEqual(expect.arrayContaining([

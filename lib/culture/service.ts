@@ -92,10 +92,11 @@ export type CultureFeedResponse = {
   modules?: CultureFeedModule[];
   cursor: string | null;
   hasMore: boolean;
+  feedSessionId?: string;
   error?: string;
 };
 
-export type CulturePostEngagementAction = "like" | "unlike" | "save" | "unsave" | "share" | "report" | "profile_click" | "book_click" | "shop_click";
+export type CulturePostEngagementAction = "like" | "unlike" | "save" | "unsave" | "share" | "report" | "profile_click" | "book_click" | "shop_click" | "not_interested";
 export type CultureFollowAction = "follow" | "unfollow";
 
 export type CulturePostCtaState = {
@@ -2254,10 +2255,12 @@ export async function listCultureFeed(input: {
   viewerProfileId?: string;
   cursor?: string | null;
   limit?: number;
+  feedSessionId?: string | null;
 } = {}, deps?: CultureServiceDeps): Promise<CultureFeedResponse> {
   const supabase = maybeSupabase(deps);
+  const feedSessionId = safeNullableText(input.feedSessionId) ?? crypto.randomUUID();
   if (!supabase) {
-    return { items: [], cursor: null, hasMore: false };
+    return { items: [], cursor: null, hasMore: false, feedSessionId };
   }
 
   const result = await listCulturePostsForFeed({
@@ -2268,7 +2271,7 @@ export async function listCultureFeed(input: {
   }, { supabase });
 
   if (!result.posts.length) {
-    return { items: [], cursor: null, hasMore: false };
+    return { items: [], cursor: null, hasMore: false, feedSessionId };
   }
 
   const lookups = await loadFeedLookups(supabase, result.posts);
@@ -2280,7 +2283,8 @@ export async function listCultureFeed(input: {
     items,
     modules: buildCultureDiscoveryModules(items, input.role),
     cursor: result.cursor,
-    hasMore: result.hasMore
+    hasMore: result.hasMore,
+    feedSessionId
   };
 }
 
@@ -2359,6 +2363,8 @@ function cultureFeedEventTypeForAction(action: CulturePostEngagementAction) {
       return "share_clicked";
     case "report":
       return "report_clicked";
+    case "not_interested":
+      return "not_interested";
     case "profile_click":
       return "profile_clicked";
     case "book_click":
@@ -2563,7 +2569,8 @@ export async function performCulturePostEngagementAction(
     event,
     liked: action === "like" ? true : undefined,
     saved: action === "save" ? true : undefined,
-    shared: action === "share" ? true : undefined
+    shared: action === "share" ? true : undefined,
+    notInterested: action === "not_interested" ? true : undefined
   };
 }
 
