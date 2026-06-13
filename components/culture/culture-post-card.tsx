@@ -10,6 +10,8 @@ import type { CultureCommentItem, CultureCommentSummary, CultureFeedItem, Cultur
 type CultureSurface = "client" | "barber" | "shop";
 type CulturePostAction = "like" | "unlike" | "save" | "unsave" | "share" | "report" | "profile_click" | "book_click" | "shop_click" | "not_interested";
 
+const cultureBookingCtaClassName = "inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-[#A3FF12]/40 bg-[#A3FF12] px-5 py-3 text-xs font-black uppercase tracking-[0.12em] text-[#050505] shadow-[0_14px_32px_rgba(163,255,18,0.22)] ring-1 ring-black/10 transition hover:bg-[#8de300] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d7ffab]/80 focus-visible:ring-offset-2 focus-visible:ring-offset-black";
+
 function formatCultureDate(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -811,9 +813,10 @@ export function CulturePostCard({
               <Link
                 href={post.bookingUrl as Route}
                 onClick={recordBookClick}
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-[#d7ffab]/30 bg-[#d7ffab] px-4 text-xs font-black uppercase tracking-[0.12em] text-[#050505] transition hover:bg-[#c6f79b]"
+                className={cultureBookingCtaClassName}
+                data-testid="culture-booking-cta"
               >
-                <Scissors className="h-4 w-4" />
+                <Scissors className="h-4 w-4 shrink-0" />
                 {post.bookLabel ?? "Book This Barber"}
               </Link>
             </div>
@@ -966,8 +969,8 @@ export function CulturePostCard({
               </div>
               {post.canBook && post.bookingUrl ? (
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <Link href={post.bookingUrl as Route} onClick={recordBookClick} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-[#d7ffab]/30 bg-[#d7ffab] px-4 text-xs font-black uppercase tracking-[0.12em] text-[#050505] transition hover:bg-[#c6f79b]">
-                    <Scissors className="h-4 w-4" />
+                  <Link href={post.bookingUrl as Route} onClick={recordBookClick} className={cultureBookingCtaClassName} data-testid="culture-booking-cta">
+                    <Scissors className="h-4 w-4 shrink-0" />
                     {post.bookLabel ?? "Book This Barber"}
                   </Link>
                 </div>

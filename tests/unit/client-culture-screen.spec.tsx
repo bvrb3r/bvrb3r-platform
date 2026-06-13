@@ -291,7 +291,9 @@ describe("client culture screen", () => {
     expect(screen.getByRole("link", { name: /Open @blaze Culture profile/i })).toHaveAttribute("href", expect.stringContaining("/barber/blaze?source=culture"));
     expect(screen.queryByRole("link", { name: "View Profile" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "View Shop" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Book Signature Cut/i })).toHaveAttribute("href", expect.stringContaining("/booking/new?source=culture"));
+    const serviceBookCta = screen.getByRole("link", { name: /Book Signature Cut/i });
+    expect(serviceBookCta).toHaveAttribute("href", expect.stringContaining("/booking/new?source=culture"));
+    expect(serviceBookCta).toHaveClass("bg-[#A3FF12]", "text-[#050505]", "font-black", "min-h-12");
     fireEvent.click(screen.getByRole("button", { name: /Comment this Culture post/i }));
     expect(await screen.findByTestId("culture-comments-section")).toBeInTheDocument();
     expect(screen.getByText("No comments yet.")).toBeInTheDocument();
@@ -414,6 +416,7 @@ describe("client culture screen", () => {
     bookLink.addEventListener("click", (event) => event.preventDefault());
 
     expect(bookLink).toHaveAttribute("href", bookingUrl);
+    expect(bookLink).toHaveClass("bg-[#A3FF12]", "text-[#050505]", "font-black", "min-h-12");
     expect(screen.queryByRole("link", { name: "View Profile" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "View Shop" })).not.toBeInTheDocument();
 
