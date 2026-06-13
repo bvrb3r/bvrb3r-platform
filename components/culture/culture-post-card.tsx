@@ -523,7 +523,14 @@ export function CulturePostCard({
   function recordBookClick() {
     void runPostAction("book_click", {
       metadata: {
-        cta: post.serviceId ? "book_service" : "book_barber"
+        cta: post.serviceId ? "book_service" : "book_barber",
+        culturePostId: post.id,
+        authorProfileId: post.authorProfileId,
+        barberId: post.barberId,
+        serviceId: post.serviceId,
+        targetRoute: post.bookingUrl,
+        source: "culture",
+        cultureSurface: "client_culture"
       }
     }).catch(() => undefined);
   }

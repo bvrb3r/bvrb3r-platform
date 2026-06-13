@@ -390,6 +390,54 @@ describe("client culture screen", () => {
     expect(screen.queryByRole("link", { name: /Book/i })).not.toBeInTheDocument();
   });
 
+  it("renders barber booking CTAs without restoring redundant profile or shop buttons", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ ok: true, items: [], cursor: null, hasMore: false })
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const bookingUrl = "/booking/new?source=culture&culturePostId=post-1&cultureAuthorId=22222222-2222-4222-8222-222222222222&cultureSurface=client_culture&barberId=33333333-3333-4333-8333-333333333333&cta=book_barber";
+
+    render(<ClientCultureScreen feed={{
+      cursor: null,
+      hasMore: false,
+      items: [culturePost("post-1", {
+        serviceId: null,
+        serviceName: null,
+        bookingUrl,
+        bookLabel: "Book This Barber",
+        canBook: true
+      })]
+    }} />);
+
+    const bookLink = screen.getByRole("link", { name: /Book This Barber/i });
+    bookLink.addEventListener("click", (event) => event.preventDefault());
+
+    expect(bookLink).toHaveAttribute("href", bookingUrl);
+    expect(screen.queryByRole("link", { name: "View Profile" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "View Shop" })).not.toBeInTheDocument();
+
+    fireEvent.click(bookLink);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/culture/engagements", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({
+        postId: "post-1",
+        action: "book_click",
+        metadata: {
+          cta: "book_barber",
+          culturePostId: "post-1",
+          authorProfileId: "22222222-2222-4222-8222-222222222222",
+          barberId: "33333333-3333-4333-8333-333333333333",
+          serviceId: null,
+          targetRoute: bookingUrl,
+          source: "culture",
+          cultureSurface: "client_culture"
+        }
+      })
+    })));
+  });
+
   it("turns action success messages into temporary feedback and keeps errors visible", async () => {
     vi.useFakeTimers();
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {

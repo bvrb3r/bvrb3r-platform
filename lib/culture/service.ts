@@ -619,7 +619,7 @@ function appendCultureAttribution(
 }
 
 function buildCultureBookingUrl(post: CulturePostRow, authorTarget: string | null, service: PublicServiceRow | null | undefined, serviceBookable: boolean) {
-  if (!post.barber_id || !post.is_bookable) {
+  if (!post.barber_id || !isPublicApprovedCulturePost(post)) {
     return null;
   }
 
@@ -674,7 +674,9 @@ export function getCulturePostTargetRoutes(
   const shopUrl = shopTarget
     ? appendCultureAttribution(`/shop/${encodeURIComponent(shopTarget)}`, post, "view_shop")
     : null;
-  const bookingUrl = buildCultureBookingUrl(post, barberProfileTarget, service, serviceBookable);
+  const bookingUrl = authorTargetKind === "barber"
+    ? buildCultureBookingUrl(post, barberProfileTarget, service, serviceBookable)
+    : null;
 
   return {
     profileUrl,
@@ -1846,7 +1848,7 @@ async function upsertCulturePostFromProfileSource({
     visibility: "public",
     moderation_status: "approved",
     publishing_status: "published",
-    is_bookable: Boolean(access.role === "barber" && serviceId),
+    is_bookable: access.role === "barber",
     allow_comments: true,
     metadata: {
       composerVersion: 1,

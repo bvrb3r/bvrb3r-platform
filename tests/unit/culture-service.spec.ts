@@ -1109,6 +1109,33 @@ describe("Culture service", () => {
     expect(JSON.stringify(item)).not.toMatch(/phone|email|stripe|payment/i);
   });
 
+  it("builds a barber-level booking CTA for approved barber posts without a service", () => {
+    const portfolioPost = {
+      ...publishedPost,
+      id: "barber-portfolio-post",
+      service_id: null,
+      is_bookable: false
+    } satisfies CulturePostRow;
+
+    const item = mapCulturePostToSafeFeedItem(portfolioPost, {
+      profilesById: new Map([[portfolioPost.author_profile_id, {
+        id: portfolioPost.author_profile_id,
+        public_username: "blaze"
+      }]])
+    });
+
+    expect(item).toMatchObject({
+      canBook: true,
+      bookLabel: "Book This Barber"
+    });
+    expect(item.bookingUrl).toContain("/booking/new?source=culture");
+    expect(item.bookingUrl).toContain(`culturePostId=${portfolioPost.id}`);
+    expect(item.bookingUrl).toContain(`cultureAuthorId=${portfolioPost.author_profile_id}`);
+    expect(item.bookingUrl).toContain(`barberId=${portfolioPost.barber_id}`);
+    expect(item.bookingUrl).toContain("cta=book_barber");
+    expect(item.bookingUrl).not.toContain("serviceId=");
+  });
+
   it("hides direct booking for client posts and falls back from inactive service to barber booking", () => {
     const clientPost = {
       ...publishedPost,
@@ -1623,6 +1650,7 @@ describe("Culture service", () => {
       publishing_status: "published",
       moderation_status: "approved",
       visibility: "public",
+      is_bookable: true,
       allow_comments: true
     });
     expect(supabase.writes.culture_media[0]).toMatchObject({
