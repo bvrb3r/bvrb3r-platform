@@ -289,7 +289,8 @@ describe("client culture screen", () => {
     expect(screen.getByRole("button", { name: "Open Culture post detail" })).toBeInTheDocument();
     expect(card.querySelector('img[src="https://cdn.bvrb3r.test/blaze.jpg"]')).toBeTruthy();
     expect(screen.getByRole("link", { name: /Open @blaze Culture profile/i })).toHaveAttribute("href", expect.stringContaining("/barber/blaze?source=culture"));
-    expect(screen.getByRole("link", { name: "View Profile" })).toHaveAttribute("href", expect.stringContaining("/barber/blaze?source=culture"));
+    expect(screen.queryByRole("link", { name: "View Profile" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "View Shop" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Book Signature Cut/i })).toHaveAttribute("href", expect.stringContaining("/booking/new?source=culture"));
     fireEvent.click(screen.getByRole("button", { name: /Comment this Culture post/i }));
     expect(await screen.findByTestId("culture-comments-section")).toBeInTheDocument();
@@ -370,6 +371,85 @@ describe("client culture screen", () => {
     expect(preview).not.toHaveTextContent(`${longBody} ${longBody}`);
   });
 
+  it("keeps profile navigation on the author row and hides redundant profile CTAs", () => {
+    render(<ClientCultureScreen feed={{
+      cursor: null,
+      hasMore: false,
+      items: [culturePost("post-1", {
+        bookingUrl: null,
+        canBook: false,
+        bookLabel: null
+      })]
+    }} />);
+
+    expect(screen.getByRole("link", { name: /Open @blaze Culture profile/i })).toHaveAttribute(
+      "href",
+      expect.stringContaining("/barber/blaze?source=culture")
+    );
+    expect(screen.queryByRole("link", { name: "View Profile" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Book/i })).not.toBeInTheDocument();
+  });
+
+  it("turns action success messages into temporary feedback and keeps errors visible", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === "/api/culture/engagements") {
+        return {
+          ok: true,
+          json: async () => ({ ok: true })
+        };
+      }
+
+      return {
+        ok: true,
+        json: async () => ({ ok: true, items: [], cursor: null, hasMore: false })
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ClientCultureScreen feed={{
+      cursor: null,
+      hasMore: false,
+      items: [culturePost("post-1")]
+    }} />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Share this Culture post/i }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("status")).toHaveTextContent("Share recorded.");
+    act(() => {
+      vi.advanceTimersByTime(2100);
+    });
+    expect(screen.queryByText("Share recorded.")).not.toBeInTheDocument();
+
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      if (String(input) === "/api/culture/engagements") {
+        return {
+          ok: false,
+          json: async () => ({ ok: false, error: "Share failed." })
+        };
+      }
+
+      return {
+        ok: true,
+        json: async () => ({ ok: true, items: [], cursor: null, hasMore: false })
+      };
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Share this Culture post/i }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent("Share failed.");
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent("Share failed.");
+  });
+
   it("loads and submits real Culture comments from the post detail sheet", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -418,13 +498,22 @@ describe("client culture screen", () => {
     expect(await screen.findByText("No comments yet.")).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Add a comment"), { target: { value: "Clean work." } });
-    fireEvent.click(screen.getByRole("button", { name: "Post comment" }));
+    vi.useFakeTimers();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Post comment" }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
-    expect(await screen.findByText("Clean work.")).toBeInTheDocument();
+    expect(screen.getAllByText("Clean work.").length).toBeGreaterThanOrEqual(2);
     const preview = screen.getByTestId("culture-comment-preview");
     expect(preview).toHaveTextContent("@clientviewer Clean work.");
     expect(preview).toHaveTextContent("View 1 comment");
     expect(screen.getByRole("status")).toHaveTextContent("Comment posted.");
+    act(() => {
+      vi.advanceTimersByTime(2100);
+    });
+    expect(screen.queryByText("Comment posted.")).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith("/api/culture/comments", expect.objectContaining({
       method: "POST",
       body: JSON.stringify({
@@ -432,6 +521,134 @@ describe("client culture screen", () => {
         body: "Clean work."
       })
     }));
+  });
+
+  it("posting a second comment updates the feed preview count without a refresh", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith("/api/culture/comments") && init?.method !== "POST") {
+        return {
+          ok: true,
+          json: async () => ({
+            ok: true,
+            comments: [{
+              id: "comment-1",
+              postId: "post-1",
+              authorProfileId: "client-1",
+              authorUsername: "@firstclient",
+              authorDisplayName: "First Client",
+              authorAvatarUrl: null,
+              authorRoleLabel: "Client",
+              body: "Already here.",
+              createdAt: "2026-06-12T13:00:00.000Z",
+              canHide: false
+            }]
+          })
+        };
+      }
+
+      if (url === "/api/culture/comments" && init?.method === "POST") {
+        return {
+          ok: true,
+          json: async () => ({
+            ok: true,
+            comment: {
+              id: "comment-2",
+              postId: "post-1",
+              authorProfileId: "client-2",
+              authorUsername: "@secondclient",
+              authorDisplayName: "Second Client",
+              authorAvatarUrl: null,
+              authorRoleLabel: "Client",
+              body: "Second comment.",
+              createdAt: "2026-06-12T13:05:00.000Z",
+              canHide: true
+            }
+          })
+        };
+      }
+
+      return {
+        ok: true,
+        json: async () => ({ ok: true, items: [], cursor: null, hasMore: false })
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ClientCultureScreen feed={{
+      cursor: null,
+      hasMore: false,
+      items: [culturePost("post-1", {
+        commentSummary: {
+          count: 1,
+          preview: {
+            id: "comment-1",
+            postId: "post-1",
+            authorProfileId: "client-1",
+            authorUsername: "@firstclient",
+            authorDisplayName: "First Client",
+            authorAvatarUrl: null,
+            authorRoleLabel: "Client",
+            body: "Already here.",
+            createdAt: "2026-06-12T13:00:00.000Z",
+            canHide: false
+          }
+        }
+      })]
+    }} />);
+
+    expect(screen.getByTestId("culture-comment-preview")).toHaveTextContent("View 1 comment");
+    fireEvent.click(screen.getByRole("button", { name: /Comment this Culture post/i }));
+    expect(await screen.findByText("Already here.")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Add a comment"), { target: { value: "Second comment." } });
+    fireEvent.click(screen.getByRole("button", { name: "Post comment" }));
+
+    expect(await screen.findByText("Second comment.")).toBeInTheDocument();
+    const preview = screen.getByTestId("culture-comment-preview");
+    expect(preview).toHaveTextContent("@secondclient Second comment.");
+    expect(preview).toHaveTextContent("View all 2 comments");
+    expect(screen.getByRole("status")).toHaveTextContent("Comment posted.");
+  });
+
+  it("failed comment post does not create fake preview or count", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith("/api/culture/comments") && init?.method !== "POST") {
+        return {
+          ok: true,
+          json: async () => ({ ok: true, comments: [] })
+        };
+      }
+
+      if (url === "/api/culture/comments" && init?.method === "POST") {
+        return {
+          ok: false,
+          json: async () => ({ ok: false, error: "Comment could not be posted." })
+        };
+      }
+
+      return {
+        ok: true,
+        json: async () => ({ ok: true, items: [], cursor: null, hasMore: false })
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ClientCultureScreen feed={{
+      cursor: null,
+      hasMore: false,
+      items: [culturePost("post-1")]
+    }} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Comment this Culture post/i }));
+    expect(await screen.findByText("No comments yet.")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Add a comment"), { target: { value: "Won't save." } });
+    fireEvent.click(screen.getByRole("button", { name: "Post comment" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Comment could not be posted.");
+    expect(screen.queryByTestId("culture-comment-preview")).not.toBeInTheDocument();
+    expect(screen.queryByText(/View 1 comment|View all/i)).not.toBeInTheDocument();
   });
 
   it("routes shop author rows to the public shop route and leaves invalid author routes unlinked", async () => {
@@ -480,6 +697,7 @@ describe("client culture screen", () => {
     expect(screen.getByText("The BVRB3R Shop")).toBeInTheDocument();
     expect(screen.getByText("Shop - Jun 12, 2026")).toBeInTheDocument();
     expect(screen.queryByText("Owner Pat")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "View Shop" })).not.toBeInTheDocument();
     expect(document.querySelector('img[src="https://cdn.bvrb3r.test/shop-logo.jpg"]')).toBeTruthy();
     shopAuthorLink.addEventListener("click", (event) => event.preventDefault());
     fireEvent.click(shopAuthorLink);

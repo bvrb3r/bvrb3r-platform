@@ -306,6 +306,7 @@ export function CulturePostCard({
   const cardRef = useRef<HTMLElement | null>(null);
   const impressionSentRef = useRef(false);
   const impressionTimerRef = useRef<number | null>(null);
+  const messageTimerRef = useRef<number | null>(null);
   const mediaUrl = post.media?.url ?? post.media?.thumbnailUrl ?? null;
   const actorUsernameLabel = post.displayActor?.username
     ? `@${post.displayActor.username.replace(/^@/, "")}`
@@ -326,10 +327,31 @@ export function CulturePostCard({
     setCommentSummary(post.commentSummary ?? { count: 0 });
   }, [post.id, post.commentSummary]);
 
+  const clearMessageTimer = useCallback(() => {
+    if (messageTimerRef.current) {
+      window.clearTimeout(messageTimerRef.current);
+      messageTimerRef.current = null;
+    }
+  }, []);
+
+  const clearMessage = useCallback(() => {
+    clearMessageTimer();
+    setMessage(null);
+  }, [clearMessageTimer]);
+
+  const showTemporaryMessage = useCallback((value: string) => {
+    clearMessageTimer();
+    setMessage(value);
+    messageTimerRef.current = window.setTimeout(() => {
+      setMessage(null);
+      messageTimerRef.current = null;
+    }, 2000);
+  }, [clearMessageTimer]);
+
   async function runPostAction(action: CulturePostAction, extra?: Record<string, unknown>) {
     setLoadingAction(action);
     setError(null);
-    setMessage(null);
+    clearMessage();
 
     try {
       await postJson("/api/culture/engagements", {
@@ -340,30 +362,30 @@ export function CulturePostCard({
 
       if (action === "like") {
         setLiked(true);
-        setMessage("Liked.");
+        showTemporaryMessage("Liked.");
       } else if (action === "unlike") {
         setLiked(false);
-        setMessage("Like removed.");
+        showTemporaryMessage("Like removed.");
       } else if (action === "save") {
         setSaved(true);
-        setMessage("Saved.");
+        showTemporaryMessage("Saved.");
       } else if (action === "unsave") {
         setSaved(false);
-        setMessage("Removed from saved.");
+        showTemporaryMessage("Removed from saved.");
       } else if (action === "report") {
         setReportOpen(false);
         setMoreOpen(false);
-        setMessage("Report submitted.");
+        showTemporaryMessage("Report submitted.");
       } else if (action === "share") {
-        setMessage("Share recorded.");
+        showTemporaryMessage("Share recorded.");
       } else if (action === "book_click") {
-        setMessage("Opening booking.");
+        showTemporaryMessage("Opening booking.");
       } else if (action === "profile_click") {
-        setMessage("Opening profile.");
+        showTemporaryMessage("Opening profile.");
       } else if (action === "shop_click") {
-        setMessage("Opening shop.");
+        showTemporaryMessage("Opening shop.");
       } else if (action === "not_interested") {
-        setMessage("Post hidden.");
+        showTemporaryMessage("Post hidden.");
       }
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "Culture action failed.");
@@ -377,7 +399,7 @@ export function CulturePostCard({
     const action = following ? "unfollow" : "follow";
     setLoadingAction(action);
     setError(null);
-    setMessage(null);
+    clearMessage();
 
     try {
       await postJson("/api/culture/follow", {
@@ -386,7 +408,7 @@ export function CulturePostCard({
         sourcePostId: post.id
       });
       setFollowing(action === "follow");
-      setMessage(action === "follow" ? "Following." : "Unfollowed.");
+      showTemporaryMessage(action === "follow" ? "Following." : "Unfollowed.");
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "Culture follow failed.");
     } finally {
@@ -481,7 +503,7 @@ export function CulturePostCard({
         await loadComments(true);
       }
       setCommentBody("");
-      setMessage("Comment posted.");
+      showTemporaryMessage("Comment posted.");
     } catch (submitError) {
       setCommentError(submitError instanceof Error ? submitError.message : "Comment could not be posted.");
     } finally {
@@ -557,7 +579,7 @@ export function CulturePostCard({
         });
       } else if (navigator.clipboard) {
         await navigator.clipboard.writeText(href);
-        setMessage("Culture post link copied.");
+        showTemporaryMessage("Culture post link copied.");
       }
     } catch {
       // runPostAction already renders the actionable error.
@@ -583,6 +605,10 @@ export function CulturePostCard({
       void loadComments();
     }
   }, [detailOpen, loadComments, post.canComment]);
+
+  useEffect(() => () => {
+    clearMessageTimer();
+  }, [clearMessageTimer]);
 
   useEffect(() => {
     if (!feedSessionId || impressionSentRef.current || typeof IntersectionObserver === "undefined") {
@@ -773,36 +799,16 @@ export function CulturePostCard({
             <CultureCommentPreview summary={commentSummary} onOpen={openComments} />
           ) : null}
 
-          {post.canViewProfile || post.canBook || post.canViewShop ? (
+          {post.canBook && post.bookingUrl ? (
             <div className="mt-4 flex flex-wrap gap-2">
-              {post.canViewProfile && post.profileUrl ? (
-                <Link
-                  href={post.profileUrl as Route}
-                  onClick={recordProfileClick}
-                  className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/24 px-4 text-xs font-black uppercase tracking-[0.12em] text-white transition hover:border-[#d7ffab]/28 hover:text-[#d7ffab]"
-                >
-                  {post.authorTargetKind === "shop" ? "View Shop" : "View Profile"}
-                </Link>
-              ) : null}
-              {post.canBook && post.bookingUrl ? (
-                <Link
-                  href={post.bookingUrl as Route}
-                  onClick={recordBookClick}
-                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-[#d7ffab]/30 bg-[#d7ffab] px-4 text-xs font-black uppercase tracking-[0.12em] text-[#050505] transition hover:bg-[#c6f79b]"
-                >
-                  <Scissors className="h-4 w-4" />
-                  {post.bookLabel ?? "Book This Barber"}
-                </Link>
-              ) : null}
-              {post.canViewShop && post.shopUrl ? (
-                <Link
-                  href={post.shopUrl as Route}
-                  onClick={recordShopClick}
-                  className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/24 px-4 text-xs font-black uppercase tracking-[0.12em] text-white transition hover:border-[#d7ffab]/28 hover:text-[#d7ffab]"
-                >
-                  View Shop
-                </Link>
-              ) : null}
+              <Link
+                href={post.bookingUrl as Route}
+                onClick={recordBookClick}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-[#d7ffab]/30 bg-[#d7ffab] px-4 text-xs font-black uppercase tracking-[0.12em] text-[#050505] transition hover:bg-[#c6f79b]"
+              >
+                <Scissors className="h-4 w-4" />
+                {post.bookLabel ?? "Book This Barber"}
+              </Link>
             </div>
           ) : null}
 
@@ -951,19 +957,14 @@ export function CulturePostCard({
                   onClick={() => void runPostAction(saved ? "unsave" : "save").catch(() => undefined)}
                 />
               </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {post.canViewProfile && post.profileUrl ? (
-                  <Link href={post.profileUrl as Route} onClick={recordProfileClick} className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-black/24 px-4 text-xs font-black uppercase tracking-[0.12em] text-white transition hover:border-[#d7ffab]/28 hover:text-[#d7ffab]">
-                    {post.authorTargetKind === "shop" ? "View Shop" : "View Profile"}
-                  </Link>
-                ) : null}
-                {post.canBook && post.bookingUrl ? (
+              {post.canBook && post.bookingUrl ? (
+                <div className="mt-4 flex flex-wrap gap-2">
                   <Link href={post.bookingUrl as Route} onClick={recordBookClick} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-[#d7ffab]/30 bg-[#d7ffab] px-4 text-xs font-black uppercase tracking-[0.12em] text-[#050505] transition hover:bg-[#c6f79b]">
                     <Scissors className="h-4 w-4" />
                     {post.bookLabel ?? "Book This Barber"}
                   </Link>
-                ) : null}
-              </div>
+                </div>
+              ) : null}
               {post.canComment ? (
                 <section className="mt-4 rounded-[18px] border border-white/10 bg-white/[0.04] p-4" data-testid="culture-comments-section">
                   <div className="flex flex-wrap items-center justify-between gap-2">
