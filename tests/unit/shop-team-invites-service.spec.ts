@@ -490,14 +490,6 @@ describe("shop team invite service", () => {
                 neighborhood: "Tampa",
                 city: "Tampa",
                 state: "FL"
-              },
-              {
-                id: "loc-shop-university",
-                reference_code: "shop-university",
-                name: "The BVRB3R Shop",
-                neighborhood: "University Mall",
-                city: "Tampa",
-                state: "FL"
               }
             ],
             error: null
@@ -567,7 +559,7 @@ describe("shop team invite service", () => {
       expect.objectContaining({
         profile_id: "profile-barber",
         shop_id: "shop-university",
-        location_id: "loc-shop-university",
+        location_id: null,
         relationship_status: "active",
         invited_by_profile_id: "profile-owner",
         approved_by_owner_at: expect.any(String),

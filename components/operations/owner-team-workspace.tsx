@@ -421,10 +421,9 @@ export function OwnerTeamWorkspace() {
   const ownerKioskShopId = relationshipDirectoryQuery.data?.shop.id ?? shopQuery.data?.locations?.[0]?.id ?? null;
   const memberships = useMemo(() => fintechQuery.data?.memberships ?? [], [fintechQuery.data?.memberships]);
   const barberAccounts = useMemo(() => fintechQuery.data?.barbers ?? [], [fintechQuery.data?.barbers]);
+  const activeBarberIds = useMemo(() => new Set(activeBarbers.map((barber) => barber.id)), [activeBarbers]);
 
   const team = useMemo(() => {
-    const activeBarberIds = new Set(activeBarbers.map((barber) => barber.id));
-
     return barbers.map((barber): TeamBarberView => {
       const membership = memberships.find((entry) => entry.barberId === barber.id);
       const account = barberAccounts.find((entry) => entry.barberId === barber.id);
@@ -476,7 +475,7 @@ export function OwnerTeamWorkspace() {
         availableMinutes
       };
     });
-  }, [activeBarbers, appointments, barberAccounts, barbers, memberships]);
+  }, [activeBarberIds, appointments, barberAccounts, barbers, memberships]);
 
   const selectedBarber = team.find((barber) => barber.id === selectedBarberId) ?? null;
   const relationshipDirectory = relationshipDirectoryQuery.data?.barbers ?? [];
@@ -484,8 +483,8 @@ export function OwnerTeamWorkspace() {
   const incomingJoinRequests = relationshipDirectory.filter((barber) => barber.inviteStatus === "requested");
   const relationshipErrorMessage = relationshipDirectoryQuery.error ? getReadableActionError(relationshipDirectoryQuery.error) : null;
   const activeTeam = useMemo(
-    () => team.filter((barber) => Boolean(barber.relationshipId)),
-    [team]
+    () => team.filter((barber) => activeBarberIds.has(barber.id)),
+    [activeBarberIds, team]
   );
   const activeTeamIds = useMemo(() => new Set(activeTeam.map((barber) => barber.id)), [activeTeam]);
   const activeTeamAppointments = useMemo(

@@ -526,6 +526,78 @@ describe("owner team workspace", () => {
     expect(within(screen.getByTestId("shop-command-calendar")).getByRole("button", { name: /Add Barbers/i })).toBeInTheDocument();
   });
 
+  it("counts accepted active shop relationships even when payout membership hydration is empty", () => {
+    useShopDashboardQueryMock.mockReturnValue({
+      isLoading: false,
+      error: null,
+      data: {
+        barbers: [
+          {
+            id: "barber-phillip",
+            name: "Phillip Forsure",
+            compensationModel: "commission",
+            activeAppointmentCount: 0,
+            liveAppointmentCount: 0,
+            bookedCount: 0,
+            completedCount: 0,
+            utilization: 0,
+            openSlots: 12,
+            bookedMinutes: 0,
+            availableMinutes: 420,
+            nextAppointmentStart: null
+          }
+        ],
+        activeBarbers: [
+          {
+            id: "barber-phillip",
+            name: "Phillip Forsure",
+            compensationModel: "commission",
+            activeAppointmentCount: 0,
+            liveAppointmentCount: 0,
+            bookedCount: 0,
+            completedCount: 0,
+            utilization: 0,
+            openSlots: 12,
+            bookedMinutes: 0,
+            availableMinutes: 420,
+            nextAppointmentStart: null
+          }
+        ],
+        appointments: [],
+        locations: [],
+        walkIns: [],
+        workflowEvents: []
+      }
+    });
+    useFintechManagementQueryMock.mockReturnValue({
+      isLoading: false,
+      error: null,
+      data: {
+        summary: {
+          totalAccounts: 0,
+          readyAccounts: 0,
+          blockedAccounts: 0,
+          needsAttentionAccounts: 0,
+          notReadyAccounts: 0,
+          blockedRoutingRecords: 0,
+          readyForPayoutAmount: 0
+        },
+        shops: [],
+        barbers: [],
+        memberships: [],
+        blockedPayments: []
+      }
+    });
+
+    render(<OwnerTeamWorkspace />);
+
+    const commandCalendar = screen.getByTestId("shop-command-calendar");
+    expect(within(commandCalendar).getByText("Active Barbers")).toBeInTheDocument();
+    expect(within(commandCalendar).getByText("1 active barber on the shop floor")).toBeInTheDocument();
+    expect(screen.getByTestId("barbers-summary")).toHaveTextContent("Phillip Forsure");
+    expect(screen.queryByText("No active barbers yet.")).not.toBeInTheDocument();
+  });
+
   it("shows pending invitations once without repeating the invite CTA", () => {
     useShopDashboardQueryMock.mockReturnValue({
       isLoading: false,

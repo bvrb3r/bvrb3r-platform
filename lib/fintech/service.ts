@@ -106,15 +106,29 @@ type LocationRow = {
   state: string;
 };
 
+type ShopIdentityRow = {
+  id: string;
+  name: string;
+  neighborhood: string | null;
+  city: string | null;
+  state: string | null;
+};
+
 type StaffMembershipRow = {
   id: string;
   profile_id: string;
-  location_id: string;
+  location_id: string | null;
+  shop_id?: string | null;
+  relationship_status?: string | null;
   routing_model: string | null;
   commission_rate: number | string | null;
   booth_rent_amount: number | string | null;
   booth_rent_frequency: BoothRentFrequency | null;
   payout_block_reason: string | null;
+  ended_at?: string | null;
+  public_team_visible?: boolean | null;
+  public_team_order?: number | string | null;
+  featured_on_shop_profile?: boolean | null;
   updated_at: string;
   fintech_updated_at: string;
 };
@@ -432,6 +446,9 @@ export type MembershipCompensationView = {
   boothRentAmount: number | null;
   boothRentFrequency: BoothRentFrequency | null;
   payoutBlockReason: string | null;
+  publicTeamVisible?: boolean | null;
+  publicTeamOrder?: number | null;
+  featuredOnShopProfile?: boolean | null;
   updatedAt: string;
 };
 
@@ -841,6 +858,8 @@ const PAYMENT_SELECT = "id, appointment_id, pos_sale_id, client_id, shop_id, bar
 const PAYMENT_ROUTING_SELECT = "id, payment_id, appointment_id, pos_sale_id, membership_id, routing_model, payout_recipient_type, provider_gross_amount, refunded_amount, provider_fee_amount, provider_net_amount, platform_fee_amount, barber_payout_amount, shop_split_amount, currency, payout_readiness_status, money_routing_status, blocked_reason, eligible_at, held_at, released_at, reversed_at, processor_charge_id, processor_balance_transaction_id, reconciliation_status, metadata, created_at, updated_at";
 const PAYOUT_EXECUTION_SELECT = "id, routing_record_id, payment_id, appointment_id, membership_id, target_subject_type, execution_type, target_connected_account_id, target_provider_account_id, amount, currency, execution_status, blocked_reason, failure_reason, processor_transfer_id, processor_reversal_id, idempotency_key, source_execution_id, source_refund_id, payout_reference, payout_speed, instant_payout_fee_amount, net_transfer_amount, processor_payout_id, reconciliation_status, metadata, initiated_by, attempt_count, last_attempted_at, executed_at, failed_at, reversed_at, created_at, updated_at";
 const POS_SALE_SELECT = "id, barber_id, shop_id, client_id, customer_name, customer_phone, customer_email, source, status, payment_method, payment_status, subtotal_cents, discount_cents, tip_cents, platform_fee_cents, client_fee_cents, total_cents, amount_cents, total_amount_cents, payment_id, note, cash_recorded_at, completed_at, created_at, updated_at";
+const STAFF_MEMBERSHIP_SELECT = "id, profile_id, location_id, shop_id, relationship_status, routing_model, commission_rate, booth_rent_amount, booth_rent_frequency, payout_block_reason, ended_at, public_team_visible, public_team_order, featured_on_shop_profile, updated_at, fintech_updated_at";
+const STAFF_MEMBERSHIP_LEGACY_SELECT = "id, profile_id, location_id, routing_model, commission_rate, booth_rent_amount, booth_rent_frequency, payout_block_reason, updated_at, fintech_updated_at";
 const POS_PAYMENT_REQUEST_SELECT = "id, pos_sale_id, barber_id, client_id, amount_cents, status, requested_at, approved_at, declined_at, expires_at, payment_id, message_thread_id, created_at, updated_at";
 
 function numeric(value: number | string | null | undefined) {
@@ -1144,9 +1163,43 @@ function isManagementRole(role: UserAccount["role"]) {
   return isShopOwnerRole(role) || role === "manager";
 }
 
+function isUuidLike(value?: string | null) {
+  return Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value));
+}
+
+function isSchemaColumnError(error: unknown) {
+  const candidate = error && typeof error === "object"
+    ? error as { code?: string | null; message?: string | null }
+    : null;
+  const message = `${candidate?.message ?? ""}`.toLowerCase();
+  return candidate?.code === "42703" || message.includes("schema cache") || message.includes("does not exist");
+}
+
 function formatShopLabel(location: Pick<LocationRow, "name" | "neighborhood" | "city" | "state">) {
   const area = [location.neighborhood, location.city].filter(Boolean).join(" / ");
   return area ? `${location.name} / ${area}` : [location.name, location.state].filter(Boolean).join(" / ");
+}
+
+function formatShopIdentityLabel(shop: ShopIdentityRow) {
+  const area = [shop.neighborhood, shop.city].filter(Boolean).join(" / ");
+  return area ? `${shop.name} / ${area}` : [shop.name, shop.state].filter(Boolean).join(" / ");
+}
+
+function isActiveMembership(row: StaffMembershipRow) {
+  return (!row.relationship_status || row.relationship_status === "active") && !row.ended_at;
+}
+
+function getMembershipShopScopeId(row: StaffMembershipRow) {
+  return row.shop_id ?? row.location_id ?? row.id;
+}
+
+function getMembershipPublicTeamOrder(row: StaffMembershipRow) {
+  if (row.public_team_order === null || row.public_team_order === undefined || row.public_team_order === "") {
+    return null;
+  }
+
+  const parsed = Number(row.public_team_order);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function mapAgreementView(row: LegalAcceptanceRow): LegalAcceptanceView {
@@ -1194,7 +1247,7 @@ async function resolveActor(user: UserAccount, supabase: SupabaseClient): Promis
   return {
     profile: profileResult.data as ProfileRow,
     role: user.role,
-    locationIds: user.locationIds,
+    locationIds: Array.from(new Set([user.ownedShopId, ...user.locationIds].filter((value): value is string => Boolean(value)))),
     barber
   };
 }
@@ -1213,6 +1266,13 @@ function assertBarberActor(actor: FintechActorContext) {
 
 function isLocationReadableByActor(actor: FintechActorContext, locationId: string) {
   return isShopOwnerRole(actor.role) || actor.locationIds.length === 0 || actor.locationIds.includes(locationId);
+}
+
+function isMembershipReadableByActor(actor: FintechActorContext, membership: StaffMembershipRow) {
+  return Boolean(
+    (membership.location_id && isLocationReadableByActor(actor, membership.location_id))
+    || (membership.shop_id && isLocationReadableByActor(actor, membership.shop_id))
+  );
 }
 
 type StripeConnectSubjectResolution = {
@@ -1315,36 +1375,209 @@ async function loadLocationsInScope(actor: FintechActorContext, supabase: Supaba
   return (result.data ?? []) as LocationRow[];
 }
 
-async function loadMembershipsForLocations(locationIds: string[], supabase: SupabaseClient) {
-  if (!locationIds.length) {
+async function runStaffMembershipQuery(query: unknown) {
+  const result = await query as { data: unknown; error: unknown };
+  if (!result.error || !isSchemaColumnError(result.error)) {
+    return result;
+  }
+
+  return null;
+}
+
+async function loadMembershipsForLocationScopes(input: { locationIds: string[]; shopIds?: string[] }, supabase: SupabaseClient) {
+  const locationIds = Array.from(new Set(input.locationIds.filter(Boolean)));
+  const shopIds = Array.from(new Set((input.shopIds ?? []).filter(Boolean)));
+  if (!locationIds.length && !shopIds.length) {
     return [] as StaffMembershipRow[];
   }
 
-  const result = await supabase
-    .from("staff_locations")
-    .select("id, profile_id, location_id, routing_model, commission_rate, booth_rent_amount, booth_rent_frequency, payout_block_reason, updated_at, fintech_updated_at")
-    .in("location_id", locationIds)
-    .order("updated_at", { ascending: false });
+  const results = await Promise.all([
+    locationIds.length
+      ? runStaffMembershipQuery(
+        supabase
+          .from("staff_locations")
+          .select(STAFF_MEMBERSHIP_SELECT)
+          .in("location_id", locationIds)
+          .eq("relationship_status", "active")
+          .is("ended_at", null)
+          .order("updated_at", { ascending: false })
+      )
+      : Promise.resolve({ data: [], error: null }),
+    shopIds.length
+      ? runStaffMembershipQuery(
+        supabase
+          .from("staff_locations")
+          .select(STAFF_MEMBERSHIP_SELECT)
+          .in("shop_id", shopIds)
+          .eq("relationship_status", "active")
+          .is("ended_at", null)
+          .order("updated_at", { ascending: false })
+      )
+      : Promise.resolve({ data: [], error: null })
+  ]);
 
-  if (result.error) {
+  if (results.some((result) => result?.error)) {
     throw new FintechServiceError("Unable to load shop compensation assignments.", 500);
   }
 
-  return (result.data ?? []) as StaffMembershipRow[];
+  if (results.some((result) => result === null)) {
+    const legacyResult = locationIds.length
+      ? await supabase
+        .from("staff_locations")
+        .select(STAFF_MEMBERSHIP_LEGACY_SELECT)
+        .in("location_id", locationIds)
+        .order("updated_at", { ascending: false })
+      : { data: [], error: null };
+
+    if (legacyResult.error) {
+      throw new FintechServiceError("Unable to load shop compensation assignments.", 500);
+    }
+
+    return ((legacyResult.data ?? []) as StaffMembershipRow[]).filter(isActiveMembership);
+  }
+
+  const rows = results.flatMap((result) => (result?.data ?? []) as StaffMembershipRow[]);
+  const byId = new Map<string, StaffMembershipRow>();
+  for (const row of rows.filter(isActiveMembership)) {
+    byId.set(row.id, row);
+  }
+
+  return [...byId.values()];
 }
 
 async function loadMembershipsForBarber(profileId: string, supabase: SupabaseClient) {
   const result = await supabase
     .from("staff_locations")
-    .select("id, profile_id, location_id, routing_model, commission_rate, booth_rent_amount, booth_rent_frequency, payout_block_reason, updated_at, fintech_updated_at")
+    .select(STAFF_MEMBERSHIP_SELECT)
     .eq("profile_id", profileId)
+    .eq("relationship_status", "active")
+    .is("ended_at", null)
     .order("updated_at", { ascending: false });
+
+  if (result.error && isSchemaColumnError(result.error)) {
+    const legacyResult = await supabase
+      .from("staff_locations")
+      .select(STAFF_MEMBERSHIP_LEGACY_SELECT)
+      .eq("profile_id", profileId)
+      .order("updated_at", { ascending: false });
+
+    if (legacyResult.error) {
+      throw new FintechServiceError("Unable to load the barber compensation assignments.", 500);
+    }
+
+    return ((legacyResult.data ?? []) as StaffMembershipRow[]).filter(isActiveMembership);
+  }
 
   if (result.error) {
     throw new FintechServiceError("Unable to load the barber compensation assignments.", 500);
   }
 
-  return (result.data ?? []) as StaffMembershipRow[];
+  return ((result.data ?? []) as StaffMembershipRow[]).filter(isActiveMembership);
+}
+
+type MembershipShopContext = {
+  id: string;
+  label: string;
+  location: LocationRow | null;
+  shop: ShopIdentityRow | null;
+};
+
+async function loadMembershipShopContexts(memberships: StaffMembershipRow[], supabase: SupabaseClient) {
+  const locationUuidIds = new Set<string>();
+  const locationReferences = new Set<string>();
+  const shopIds = new Set<string>();
+
+  for (const membership of memberships) {
+    if (membership.shop_id) {
+      shopIds.add(membership.shop_id);
+      locationReferences.add(membership.shop_id);
+    }
+
+    if (membership.location_id) {
+      if (isUuidLike(membership.location_id)) {
+        locationUuidIds.add(membership.location_id);
+      } else {
+        locationReferences.add(membership.location_id);
+        shopIds.add(membership.location_id);
+      }
+    }
+  }
+
+  const [locationsByIdResult, locationsByReferenceResult, shopsResult] = await Promise.all([
+    locationUuidIds.size
+      ? supabase.from("locations").select("id, reference_code, name, neighborhood, city, state").in("id", [...locationUuidIds])
+      : Promise.resolve({ data: [], error: null }),
+    locationReferences.size
+      ? supabase.from("locations").select("id, reference_code, name, neighborhood, city, state").in("reference_code", [...locationReferences])
+      : Promise.resolve({ data: [], error: null }),
+    shopIds.size
+      ? supabase.from("shops").select("id, name, neighborhood, city, state").in("id", [...shopIds])
+      : Promise.resolve({ data: [], error: null })
+  ]);
+
+  if (locationsByIdResult.error || locationsByReferenceResult.error || shopsResult.error) {
+    throw new FintechServiceError("Unable to load the barber shop labels.", 500);
+  }
+
+  const locations = [
+    ...((locationsByIdResult.data ?? []) as LocationRow[]),
+    ...((locationsByReferenceResult.data ?? []) as LocationRow[])
+  ];
+  const shops = (shopsResult.data ?? []) as ShopIdentityRow[];
+  const locationByKey = new Map<string, LocationRow>();
+  const shopById = new Map(shops.map((shop) => [shop.id, shop]));
+
+  for (const location of locations) {
+    locationByKey.set(location.id, location);
+    if (location.reference_code) {
+      locationByKey.set(location.reference_code, location);
+    }
+  }
+
+  const contexts = new Map<string, MembershipShopContext>();
+  for (const membership of memberships) {
+    const shop = membership.shop_id ? shopById.get(membership.shop_id) ?? null : null;
+    const location = membership.location_id
+      ? locationByKey.get(membership.location_id) ?? null
+      : membership.shop_id
+        ? locationByKey.get(membership.shop_id) ?? null
+        : null;
+    const id = membership.shop_id ?? location?.reference_code ?? location?.id ?? membership.location_id ?? membership.id;
+    const label = shop
+      ? formatShopIdentityLabel(shop)
+      : location
+        ? formatShopLabel(location)
+        : id;
+
+    contexts.set(membership.id, { id, label, location, shop });
+  }
+
+  return contexts;
+}
+
+function mapMembershipCompensationView(input: {
+  membership: StaffMembershipRow;
+  barber: BarberRow;
+  barberName: string;
+  context: MembershipShopContext | undefined;
+}) {
+  const context = input.context;
+  return {
+    id: input.membership.id,
+    barberId: input.barber.id,
+    barberName: input.barberName,
+    shopId: context?.id ?? getMembershipShopScopeId(input.membership),
+    shopLabel: context?.label ?? getMembershipShopScopeId(input.membership),
+    routingModel: normalizeRoutingModel(input.membership.routing_model, input.barber.compensation_model === "booth_rent" ? "booth_rent" : "commission"),
+    commissionRate: input.membership.commission_rate === null ? null : numeric(input.membership.commission_rate),
+    boothRentAmount: input.membership.booth_rent_amount === null ? null : numeric(input.membership.booth_rent_amount),
+    boothRentFrequency: input.membership.booth_rent_frequency,
+    payoutBlockReason: input.membership.payout_block_reason,
+    publicTeamVisible: input.membership.public_team_visible,
+    publicTeamOrder: getMembershipPublicTeamOrder(input.membership),
+    featuredOnShopProfile: input.membership.featured_on_shop_profile,
+    updatedAt: input.membership.updated_at
+  } satisfies MembershipCompensationView;
 }
 
 async function loadBarbersByProfileIds(profileIds: string[], supabase: SupabaseClient) {
@@ -6275,19 +6508,11 @@ export async function getBarberFintechReadiness(user: UserAccount): Promise<Barb
 
   const barber = actor.barber!;
   const memberships = await loadMembershipsForBarber(barber.profile_id, supabase);
-  const shopIds = [...new Set(memberships.map((membership) => membership.location_id))];
-  const locationsResult = shopIds.length
-    ? await supabase
-      .from("locations")
-      .select("id, reference_code, name, neighborhood, city, state")
-      .in("id", shopIds)
-    : { data: [], error: null };
-
-  if (locationsResult.error) {
-    throw new FintechServiceError("Unable to load the barber shop labels.", 500);
-  }
-
-  const locations = (locationsResult.data ?? []) as LocationRow[];
+  const membershipShopContexts = await loadMembershipShopContexts(memberships, supabase);
+  const shopIds = [...new Set(memberships.flatMap((membership) => [
+    membership.location_id,
+    membership.shop_id
+  ]).filter((value): value is string => Boolean(value)))];
   await ensureConnectedAccounts(supabase, {
     barberIds: [barber.id],
     shopIds,
@@ -6360,7 +6585,6 @@ export async function getBarberFintechReadiness(user: UserAccount): Promise<Barb
     ((posSalesResult.data ?? []) as Array<Pick<PosSaleRow, "id" | "status">>)
       .map((sale) => [sale.id, sale])
   );
-  const locationById = new Map(locations.map((location) => [location.id, location]));
   const paymentById = new Map(payments.map((payment) => [payment.id, payment]));
   const shopStateById = new Map(
     syncedStates
@@ -6368,20 +6592,16 @@ export async function getBarberFintechReadiness(user: UserAccount): Promise<Barb
       .map((state) => [state.row.shop_id as string, state])
   );
   const membershipsView = memberships.map((membership) => {
-    const location = locationById.get(membership.location_id);
-    return {
-      id: membership.id,
-      barberId: barber.id,
+    const context = membershipShopContexts.get(membership.id);
+    const view = mapMembershipCompensationView({
+      membership,
+      barber,
       barberName: actor.profile.full_name ?? actor.profile.email,
-      shopId: membership.location_id,
-      shopLabel: location ? formatShopLabel(location) : membership.location_id,
-      routingModel: normalizeRoutingModel(membership.routing_model, barber.compensation_model === "booth_rent" ? "booth_rent" : "commission"),
-      commissionRate: membership.commission_rate === null ? null : numeric(membership.commission_rate),
-      boothRentAmount: membership.booth_rent_amount === null ? null : numeric(membership.booth_rent_amount),
-      boothRentFrequency: membership.booth_rent_frequency,
-      payoutBlockReason: membership.payout_block_reason,
-      updatedAt: membership.updated_at,
-      shopAccount: shopStateById.get(membership.location_id) ? mapConnectedAccountView(shopStateById.get(membership.location_id)!) : null
+      context
+    });
+    return {
+      ...view,
+      shopAccount: shopStateById.get(view.shopId) ? mapConnectedAccountView(shopStateById.get(view.shopId)!) : null
     } satisfies BarberFintechMembershipView;
   });
   const latestBarberAcceptances = latestAcceptancesForSubject("barber", barber.id, acceptances).map(mapAgreementView);
@@ -6390,12 +6610,14 @@ export async function getBarberFintechReadiness(user: UserAccount): Promise<Barb
     .slice(0, 8)
     .map((row) => {
       const payment = paymentById.get(row.payment_id);
-      const shop = payment?.shop_id ? locationById.get(payment.shop_id) : undefined;
+      const shopContext = payment?.shop_id
+        ? [...membershipShopContexts.values()].find((context) => context.id === payment.shop_id)
+        : undefined;
       return mapRoutingView(
         row,
         payment,
         actor.profile.full_name ?? actor.profile.email,
-        shop ? formatShopLabel(shop) : null
+        shopContext?.label ?? null
       );
     });
   const eligibleRoutingRows = routingRows
@@ -6435,12 +6657,16 @@ export async function listFintechManagementPayload(user: UserAccount): Promise<F
   assertManagementActor(actor);
 
   const locations = await loadLocationsInScope(actor, supabase);
-  const memberships = await loadMembershipsForLocations(locations.map((location) => location.id), supabase);
+  const memberships = await loadMembershipsForLocationScopes({
+    locationIds: locations.map((location) => location.id),
+    shopIds: actor.locationIds
+  }, supabase);
   const barbers = await loadBarbersByProfileIds([...new Set(memberships.map((membership) => membership.profile_id))], supabase);
   const profiles = await loadProfiles(barbers.map((barber) => barber.profile_id), supabase);
   const profileNameById = new Map(profiles.map((profile) => [profile.id, profile.full_name ?? profile.email]));
   const locationById = new Map(locations.map((location) => [location.id, location]));
   const barberByProfileId = new Map(barbers.map((barber) => [barber.profile_id, barber]));
+  const membershipShopContexts = await loadMembershipShopContexts(memberships, supabase);
 
   await ensureConnectedAccounts(supabase, {
     barberIds: barbers.map((barber) => barber.id),
@@ -6532,24 +6758,16 @@ export async function listFintechManagementPayload(user: UserAccount): Promise<F
 
   const membershipsView = memberships.flatMap((membership) => {
     const barber = barberByProfileId.get(membership.profile_id);
-    const location = locationById.get(membership.location_id);
-    if (!barber || !location) {
+    if (!barber) {
       return [];
     }
 
-    return [{
-      id: membership.id,
-      barberId: barber.id,
+    return [mapMembershipCompensationView({
+      membership,
+      barber,
       barberName: profileNameById.get(barber.profile_id) ?? barber.reference_code ?? barber.id,
-      shopId: location.id,
-      shopLabel: formatShopLabel(location),
-      routingModel: normalizeRoutingModel(membership.routing_model, barber.compensation_model === "booth_rent" ? "booth_rent" : "commission"),
-      commissionRate: membership.commission_rate === null ? null : numeric(membership.commission_rate),
-      boothRentAmount: membership.booth_rent_amount === null ? null : numeric(membership.booth_rent_amount),
-      boothRentFrequency: membership.booth_rent_frequency,
-      payoutBlockReason: membership.payout_block_reason,
-      updatedAt: membership.updated_at
-    } satisfies MembershipCompensationView];
+      context: membershipShopContexts.get(membership.id)
+    })];
   });
 
   const shopViews = locations.map((location) => {
@@ -6575,13 +6793,13 @@ export async function listFintechManagementPayload(user: UserAccount): Promise<F
     }
 
     const primaryMembership = memberships.find((membership) => membership.profile_id === barber.profile_id);
-    const primaryLocation = primaryMembership ? locationById.get(primaryMembership.location_id) : null;
+    const primaryShopContext = primaryMembership ? membershipShopContexts.get(primaryMembership.id) : null;
 
     return {
       ...mapConnectedAccountView(state),
       displayName: profileNameById.get(barber.profile_id) ?? barber.reference_code ?? barber.id,
-      shopId: primaryMembership?.location_id ?? null,
-      shopLabel: primaryLocation ? formatShopLabel(primaryLocation) : null,
+      shopId: primaryShopContext?.id ?? primaryMembership?.shop_id ?? primaryMembership?.location_id ?? null,
+      shopLabel: primaryShopContext?.label ?? null,
       barberId: barber.id,
       barberName: profileNameById.get(barber.profile_id) ?? barber.reference_code ?? barber.id
     } satisfies FintechManagementAccountView;
@@ -7192,7 +7410,7 @@ export async function updateMembershipCompensation(
 
   const membershipResult = await supabase
     .from("staff_locations")
-    .select("id, profile_id, location_id, routing_model, commission_rate, booth_rent_amount, booth_rent_frequency, payout_block_reason, updated_at, fintech_updated_at")
+    .select(STAFF_MEMBERSHIP_SELECT)
     .eq("id", membershipId)
     .maybeSingle();
 
@@ -7205,7 +7423,7 @@ export async function updateMembershipCompensation(
   }
 
   const membership = membershipResult.data as StaffMembershipRow;
-  if (!isLocationReadableByActor(actor, membership.location_id)) {
+  if (!isMembershipReadableByActor(actor, membership)) {
     throw new FintechServiceError("This compensation assignment is outside the viewer's shop scope.", 403);
   }
 
@@ -7228,16 +7446,11 @@ export async function updateMembershipCompensation(
     throw new FintechServiceError("Unable to update the compensation assignment.", 500);
   }
 
-  const [barberResult, locationResult, profileResult] = await Promise.all([
+  const [barberResult, profileResult] = await Promise.all([
     supabase
       .from("barbers")
       .select("id, reference_code, profile_id, compensation_model, commission_rate, booth_rent_amount, booth_rent_frequency")
       .eq("profile_id", membership.profile_id)
-      .maybeSingle(),
-    supabase
-      .from("locations")
-      .select("id, reference_code, name, neighborhood, city, state")
-      .eq("id", membership.location_id)
       .maybeSingle(),
     supabase
       .from("profiles")
@@ -7246,28 +7459,31 @@ export async function updateMembershipCompensation(
       .maybeSingle()
   ]);
 
-  if (barberResult.error || locationResult.error || profileResult.error) {
+  if (barberResult.error || profileResult.error) {
     throw new FintechServiceError("Unable to rebuild the compensation response.", 500);
   }
 
-  if (!barberResult.data || !locationResult.data || !profileResult.data) {
+  if (!barberResult.data || !profileResult.data) {
     throw new FintechServiceError("The compensation assignment references missing records.", 500);
   }
+  const updatedMembership = { ...membership, ...normalized, updated_at: updatedAt };
+  const membershipShopContexts = await loadMembershipShopContexts([updatedMembership], supabase);
+  const barber = barberResult.data as BarberRow;
 
   return {
-    membership: {
-      id: membership.id,
-      barberId: (barberResult.data as BarberRow).id,
+    membership: mapMembershipCompensationView({
+      membership: {
+        ...updatedMembership,
+        routing_model: normalized.routingModel,
+        commission_rate: normalized.commissionRate,
+        booth_rent_amount: normalized.boothRentAmount,
+        booth_rent_frequency: normalized.boothRentFrequency,
+        payout_block_reason: normalized.payoutBlockReason
+      },
+      barber,
       barberName: (profileResult.data as ProfileRow).full_name ?? (profileResult.data as ProfileRow).email,
-      shopId: (locationResult.data as LocationRow).id,
-      shopLabel: formatShopLabel(locationResult.data as LocationRow),
-      routingModel: normalized.routingModel,
-      commissionRate: normalized.commissionRate,
-      boothRentAmount: normalized.boothRentAmount,
-      boothRentFrequency: normalized.boothRentFrequency,
-      payoutBlockReason: normalized.payoutBlockReason,
-      updatedAt
-    } satisfies MembershipCompensationView
+      context: membershipShopContexts.get(membership.id)
+    })
   };
 }
 

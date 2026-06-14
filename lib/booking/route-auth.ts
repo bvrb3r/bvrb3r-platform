@@ -42,6 +42,10 @@ export function toBarberViewer(user: UserAccount): LiveOperationsViewer | null {
   };
 }
 
+function getShopScopedLocationIds(user: UserAccount) {
+  return Array.from(new Set([user.ownedShopId, ...user.locationIds].filter((value): value is string => Boolean(value))));
+}
+
 export function toShopViewer(user: UserAccount): LiveOperationsViewer | null {
   if (!(isShopOwnerRole(user.role) || user.role === "manager")) {
     return null;
@@ -51,7 +55,7 @@ export function toShopViewer(user: UserAccount): LiveOperationsViewer | null {
     role: isShopOwnerRole(user.role) ? "owner" : user.role,
     barberId: user.barberId,
     clientId: user.clientId,
-    locationIds: user.locationIds,
+    locationIds: isShopOwnerRole(user.role) ? getShopScopedLocationIds(user) : user.locationIds,
     email: user.email
   };
 }
@@ -77,7 +81,7 @@ export function toBookingViewer(user: UserAccount): LiveOperationsViewer | null 
   if (isShopOwnerRole(user.role) || user.role === "manager" || user.role === "front_desk") {
     return {
       role: isShopOwnerRole(user.role) ? "owner" : user.role,
-      locationIds: user.locationIds,
+      locationIds: isShopOwnerRole(user.role) ? getShopScopedLocationIds(user) : user.locationIds,
       email: user.email
     };
   }
