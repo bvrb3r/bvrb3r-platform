@@ -210,9 +210,9 @@ describe("owner overview", () => {
     expect(screen.getByText("Maya")).toBeInTheDocument();
     expect(screen.getByText("$120")).toBeInTheDocument();
     expect(screen.getByText(/financial anomal/i)).toBeInTheDocument();
-    expect(screen.getByTestId("owner-culture-entry")).toHaveTextContent("Culture Feed");
-    expect(screen.getByText("Show the shop, promote the team, discover barbers, and build community.")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Open Culture/i })).toHaveAttribute("href", "/dashboard/owner/culture");
+    expect(screen.queryByTestId("owner-culture-entry")).not.toBeInTheDocument();
+    expect(screen.queryByText("Culture Feed")).not.toBeInTheDocument();
+    expect(screen.queryByText("Show the shop, promote the team, discover barbers, and build community.")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /^View all$/i })).toHaveAttribute("href", "/dashboard/owner/team");
     expect(screen.getByRole("link", { name: /Assign Walk-in/i })).toHaveAttribute("href", "/dashboard/owner/schedule?action=assign-walkin");
     expect(screen.queryByTestId("shop-manager-panel-stub")).not.toBeInTheDocument();
@@ -220,11 +220,11 @@ describe("owner overview", () => {
     expect(screen.queryByText("Walk-in queue")).not.toBeInTheDocument();
   });
 
-  it("keeps the owner Culture entry mobile-safe near the bottom of Home", () => {
+  it("does not render a duplicate lower Culture entry on Home", () => {
     render(<OwnerOverview />);
 
-    expect(screen.getByTestId("owner-culture-entry")).toHaveClass("pb-4");
-    expect(screen.getByRole("link", { name: /Culture Feed/i })).toHaveAttribute("href", "/dashboard/owner/culture");
+    expect(screen.queryByTestId("owner-culture-entry")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Culture Feed/i })).not.toBeInTheDocument();
   });
 
   it("shows a clean no-demo empty state for a fresh owner lane", () => {

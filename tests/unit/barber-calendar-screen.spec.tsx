@@ -15,19 +15,12 @@ vi.mock("@/components/operations/barber-schedule-workspace", () => ({
 import { BarberCalendarScreen } from "@/components/barber-experience/barber-calendar-screen";
 
 describe("barber calendar home", () => {
-  it("renders the role-scoped Culture entry after the home schedule content", () => {
+  it("renders the command schedule without a duplicate lower Culture card", () => {
     render(<BarberCalendarScreen barberName="Blaze King" barberTitle="Barber" />);
 
-    const schedule = screen.getByTestId("barber-schedule-workspace-stub");
-    const cultureEntry = screen.getByTestId("barber-home-culture-entry");
-
-    expect(cultureEntry).toHaveTextContent("Culture Feed");
-    expect(cultureEntry).toHaveTextContent("Post cuts, discover styles, follow barbers, and turn attention into bookings.");
-    expect(screen.getByRole("link", { name: /Open Culture/i })).toHaveAttribute("href", "/dashboard/barber/culture");
-    expect(screen.getByTestId("barber-home-culture-entry-cta")).toHaveClass("text-[#050505]");
-    expect(screen.getByTestId("barber-home-culture-entry-cta")).toHaveClass("shadow-none");
-    expect(screen.getByTestId("barber-home-culture-entry-cta")).toHaveClass("ring-black/10");
-    expect(cultureEntry).toHaveClass("mb-4");
-    expect(schedule.compareDocumentPosition(cultureEntry) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByTestId("barber-schedule-workspace-stub")).toBeInTheDocument();
+    expect(screen.queryByTestId("barber-home-culture-entry")).not.toBeInTheDocument();
+    expect(screen.queryByText("Culture Feed")).not.toBeInTheDocument();
+    expect(screen.queryByText("Post cuts, discover styles, follow barbers, and turn attention into bookings.")).not.toBeInTheDocument();
   });
 });

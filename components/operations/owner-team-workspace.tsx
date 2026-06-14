@@ -665,14 +665,13 @@ export function OwnerTeamWorkspace() {
                 <CalendarPlus className={commandButtonIconClassName} />
                 Add Appointment
               </Link>
-              <button
-                type="button"
-                onClick={() => setAddBarbersOpen(true)}
+              <Link
+                href="/dashboard/owner/culture"
                 className={commandButtonSecondaryClassName}
               >
-                <UserPlus className={commandButtonIconAccentClassName} />
-                Add Barbers
-              </button>
+                <Images className={commandButtonIconAccentClassName} />
+                Open Culture
+              </Link>
               {ownerKioskShopId ? (
                 <KioskLaunchAction
                   href={`/kiosk/${encodeURIComponent(ownerKioskShopId)}` as Route}
@@ -693,13 +692,14 @@ export function OwnerTeamWorkspace() {
                   Kiosk Mode
                 </Link>
               )}
-              <Link
-                href="/dashboard/owner/culture"
+              <button
+                type="button"
+                onClick={() => setAddBarbersOpen(true)}
                 className={commandButtonSecondaryClassName}
               >
-                <Images className={commandButtonIconAccentClassName} />
-                Open Culture
-              </Link>
+                <UserPlus className={commandButtonIconAccentClassName} />
+                Add Barbers
+              </button>
             </div>
           </div>
 

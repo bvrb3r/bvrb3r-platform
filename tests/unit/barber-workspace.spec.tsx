@@ -387,19 +387,17 @@ describe("barber workspace", () => {
     expect(screen.getByText("Today's schedule")).toBeInTheDocument();
     expect(screen.getByText("Chair status")).toBeInTheDocument();
     expect(screen.getByText("Quick actions")).toBeInTheDocument();
-    expect(screen.getByTestId("barber-culture-entry")).toHaveTextContent("Culture Feed");
-    expect(screen.getByText("Post cuts, discover styles, follow barbers, and turn attention into bookings.")).toBeInTheDocument();
+    expect(screen.queryByTestId("barber-culture-entry")).not.toBeInTheDocument();
+    expect(screen.queryByText("Culture Feed")).not.toBeInTheDocument();
+    expect(screen.queryByText("Post cuts, discover styles, follow barbers, and turn attention into bookings.")).not.toBeInTheDocument();
     expect(screen.queryByText("Home calendar")).not.toBeInTheDocument();
   });
 
-  it("opens role-scoped Culture from Barber Home without changing bottom navigation", () => {
+  it("does not render a duplicate lower Culture launcher", () => {
     render(<BarberWorkspace barberName="Blaze King" barberTitle="Booth-Rent Barber" barberSubtype="booth_rent" />);
 
-    const cultureEntry = screen.getByTestId("barber-culture-entry");
-    expect(cultureEntry).toHaveClass("mb-4");
-    fireEvent.click(screen.getByRole("button", { name: "Open Culture" }));
-
-    expect(pushMock).toHaveBeenCalledWith("/dashboard/barber/culture");
+    expect(screen.queryByTestId("barber-culture-entry")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open Culture" })).not.toBeInTheDocument();
   });
 
   it("saves live chair status from the barber home lane", async () => {

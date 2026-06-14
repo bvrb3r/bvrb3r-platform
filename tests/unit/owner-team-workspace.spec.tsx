@@ -401,9 +401,13 @@ describe("owner team workspace", () => {
     expect(ownerAddAppointment).toHaveClass("w-full");
     expect(ownerAddAppointment).toHaveClass("bg-[#A3FF12]");
     expect(ownerAddAppointment).toHaveClass("text-[#050505]");
-    expect(screen.getByRole("button", { name: /Add Barbers/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Open Culture/i })).toHaveAttribute("href", "/dashboard/owner/culture");
+    const ownerOpenCulture = screen.getByRole("link", { name: /Open Culture/i });
+    expect(ownerOpenCulture).toHaveAttribute("href", "/dashboard/owner/culture");
     const kioskModeAction = screen.getByRole("button", { name: "Kiosk Mode" });
+    const ownerAddBarbers = screen.getByRole("button", { name: /Add Barbers/i });
+    expect(ownerAddAppointment.compareDocumentPosition(ownerOpenCulture) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(ownerOpenCulture.compareDocumentPosition(kioskModeAction) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(kioskModeAction.compareDocumentPosition(ownerAddBarbers) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(kioskModeAction).toHaveClass("rounded-[8px]");
     expect(kioskModeAction).toHaveClass("min-h-11");
     expect(kioskModeAction).toHaveClass("w-full");
