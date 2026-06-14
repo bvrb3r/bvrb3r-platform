@@ -972,6 +972,9 @@ export function BarberSettingsScreen({
   });
   const [shopSearch, setShopSearch] = useState("");
   const [selectedJoinShopId, setSelectedJoinShopId] = useState<string | null>(null);
+  const [respondingTeamInvite, setRespondingTeamInvite] = useState<{ inviteId: string; status: "accepted" | "declined" } | null>(null);
+  const [handledTeamInviteIds, setHandledTeamInviteIds] = useState<Set<string>>(() => new Set());
+  const [recentConnectedShopLabel, setRecentConnectedShopLabel] = useState<string | null>(null);
   const shopDirectoryQuery = useBarberJoinableShopsQuery(
     shopSearch,
     quickSetupModal === "availability" && availabilityLocationMode === "shop"
@@ -1062,7 +1065,7 @@ export function BarberSettingsScreen({
       statusLabel: schedule ? `${formatTimeLabel(schedule.startTime)} - ${formatTimeLabel(schedule.endTime)}` : "Closed"
     };
   });
-  const pendingShopInvites = teamInvitesQuery.data?.invites ?? [];
+  const pendingShopInvites = (teamInvitesQuery.data?.invites ?? []).filter((invite) => !handledTeamInviteIds.has(invite.id));
   const activationSetup = overviewPayload?.activationSetup;
   const assignedLocationLabels = overviewPayload?.shops.length
     ? overviewPayload.shops.map((shop) => shop.label).join(", ")
@@ -1079,6 +1082,11 @@ export function BarberSettingsScreen({
   );
   const isFreelanceBarber = selectedSubtype === "freelance";
   const hasShopControlledLocation = !isFreelanceBarber && hasAcceptedShopLink;
+  const shopRelationshipStatusLabel = pendingShopInvites.length
+    ? `${pendingShopInvites.length} pending`
+    : hasAcceptedShopLink || recentConnectedShopLabel
+      ? "Connected"
+      : subtypeLabel;
   const barberPublicUsernameLine = formatPublicUsernameLine(mediaQuery.data?.barberProfile?.publicUsername);
   const structuredBarberLocationLabel = formatPublicAddressLocation({
     address: mediaQuery.data?.barberProfile?.publicAddress,
@@ -1716,16 +1724,31 @@ export function BarberSettingsScreen({
 
   async function handleTeamInviteResponse(inviteId: string, status: "accepted" | "declined") {
     setFeedback(null);
+    setRespondingTeamInvite({ inviteId, status });
     try {
       const result = await respondTeamInviteMutation.mutateAsync({ inviteId, status });
+      setHandledTeamInviteIds((current) => new Set(current).add(inviteId));
+      if (status === "accepted") {
+        setRecentConnectedShopLabel(result.invite.shopLabel);
+      }
+      await Promise.all([
+        teamInvitesQuery.refetch?.(),
+        overviewQuery.refetch?.(),
+        readinessQuery.refetch?.()
+      ]);
       setFeedback({
         tone: status === "accepted" ? "success" : "info",
         message: status === "accepted"
-          ? `You joined ${result.invite.shopLabel}. Owner team, schedule, and shop profile surfaces will update from the canonical team membership.`
+          ? `Shop connected. ${result.invite.shopLabel} is now active for your barber account.`
           : `Invite from ${result.invite.shopLabel} declined.`
       });
+      if (quickSetupModal === "invites") {
+        closeQuickSetupModal();
+      }
     } catch (error) {
       setFeedback({ tone: "error", message: getReadableActionError(error as BarberApiError) });
+    } finally {
+      setRespondingTeamInvite(null);
     }
   }
 
@@ -1915,7 +1938,7 @@ export function BarberSettingsScreen({
           { title: "Service Library", subtitle: "Pricing and offerings", onClick: () => openBusinessTool("services"), needsAction: !hasActiveService, icon: <Scissors className="h-5 w-5" />, testId: "business-tool-services" },
           { title: "Hours", subtitle: "Working time and blocks", onClick: () => openBusinessTool("availability"), needsAction: !hasAvailability, icon: <Clock3 className="h-5 w-5" />, testId: "business-tool-availability" },
           { title: "Booking Rules", subtitle: "Online booking preferences", onClick: () => openBusinessTool("booking"), needsAction: !isBookingActive, icon: <CalendarDays className="h-5 w-5" />, testId: "business-tool-booking" },
-          { title: "Shop Relationship", subtitle: "Invites and operating model", onClick: () => setQuickSetupModal("invites"), status: pendingShopInvites.length ? `${pendingShopInvites.length} pending` : subtypeLabel, tone: pendingShopInvites.length ? "yellow" : "muted", needsAction: pendingShopInvites.length > 0, icon: <Store className="h-5 w-5" /> },
+          { title: "Shop Relationship", subtitle: "Invites and operating model", onClick: () => setQuickSetupModal("invites"), status: shopRelationshipStatusLabel, tone: pendingShopInvites.length ? "yellow" : hasAcceptedShopLink || recentConnectedShopLabel ? "green" : "muted", needsAction: pendingShopInvites.length > 0, icon: <Store className="h-5 w-5" /> },
           { title: "Kiosk Settings", subtitle: "4-digit PIN, walk-in booking, chair kiosk, and public booking mode", onClick: () => openBusinessTool("kiosk"), icon: <TabletSmartphone className="h-5 w-5" />, testId: "business-tool-kiosk" },
           { title: "Performance", subtitle: "Reports, trends, ratings, bookings, retention, and growth signals", onClick: () => openBusinessTool("reports"), icon: <BarChart3 className="h-5 w-5" />, testId: "business-tool-reports" }
         ]}
@@ -1935,7 +1958,7 @@ export function BarberSettingsScreen({
               </div>
             </div>
             <StatusPill tone={pendingShopInvites.length ? "amber" : "green"}>
-              {pendingShopInvites.length ? `${pendingShopInvites.length} pending` : "No pending invites"}
+              {pendingShopInvites.length ? `${pendingShopInvites.length} pending` : hasAcceptedShopLink || recentConnectedShopLabel ? "Shop connected" : "No pending invites"}
             </StatusPill>
           </div>
 
@@ -1944,7 +1967,12 @@ export function BarberSettingsScreen({
               <div className="rounded-[24px] border border-white/8 bg-black/24 p-5 text-sm font-bold text-white/58">
                 Loading shop invitations...
               </div>
-            ) : pendingShopInvites.length ? pendingShopInvites.map((invite) => (
+            ) : pendingShopInvites.length ? pendingShopInvites.map((invite) => {
+              const isResponding = respondingTeamInvite?.inviteId === invite.id;
+              const isAccepting = isResponding && respondingTeamInvite?.status === "accepted";
+              const isDeclining = isResponding && respondingTeamInvite?.status === "declined";
+
+              return (
               <div key={invite.id} className="rounded-[24px] border border-white/8 bg-black/24 p-4">
                 <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-center">
                   <div>
@@ -1958,26 +1986,31 @@ export function BarberSettingsScreen({
                     <ActionButton
                       type="button"
                       className="min-h-11 px-4 text-xs"
-                      disabled={respondTeamInviteMutation.isPending}
+                      disabled={respondTeamInviteMutation.isPending || isResponding}
                       onClick={() => void handleTeamInviteResponse(invite.id, "accepted")}
                     >
                       <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-                      Accept
+                      {isAccepting ? "Accepting..." : "Accept"}
                     </ActionButton>
                     <ActionButton
                       type="button"
                       variant="secondary"
                       className="min-h-11 px-4 text-xs border-red-400/30 text-red-200 hover:border-red-300/50 hover:text-red-100"
-                      disabled={respondTeamInviteMutation.isPending}
+                      disabled={respondTeamInviteMutation.isPending || isResponding}
                       onClick={() => void handleTeamInviteResponse(invite.id, "declined")}
                     >
                       <XCircle className="h-4 w-4" aria-hidden="true" />
-                      Decline
+                      {isDeclining ? "Declining..." : "Decline"}
                     </ActionButton>
                   </div>
                 </div>
               </div>
-            )) : (
+              );
+            }) : hasAcceptedShopLink || recentConnectedShopLabel ? (
+              <div className="rounded-[24px] border border-[#A3FF12]/18 bg-[#A3FF12]/8 p-5 text-sm leading-7 text-[#d7ffab]">
+                Shop connected{recentConnectedShopLabel ? `: ${recentConnectedShopLabel}` : ""}. Owner team and shop-floor surfaces now read this relationship from the canonical membership.
+              </div>
+            ) : (
               <div className="rounded-[24px] border border-dashed border-white/10 bg-black/24 p-5 text-sm leading-7 text-white/58">
                 No shop invitations are waiting right now.
               </div>
@@ -3410,17 +3443,43 @@ export function BarberSettingsScreen({
                   <h2 className="text-2xl font-black tracking-[-0.04em] text-white">Shop invitations</h2>
                   <p className="mt-2 text-sm leading-6 text-white/58">Accepting uses the existing team invite API and links you to the shop only after you confirm.</p>
                 </div>
+                {feedback ? <FeedbackBanner tone={feedback.tone} message={feedback.message} /> : null}
                 <div className="space-y-3">
-                  {pendingShopInvites.length ? pendingShopInvites.map((invite) => (
+                  {pendingShopInvites.length ? pendingShopInvites.map((invite) => {
+                    const isResponding = respondingTeamInvite?.inviteId === invite.id;
+                    const isAccepting = isResponding && respondingTeamInvite?.status === "accepted";
+                    const isDeclining = isResponding && respondingTeamInvite?.status === "declined";
+
+                    return (
                     <div key={invite.id} className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
                       <p className="text-lg font-black text-white">{invite.shopLabel}</p>
                       <p className="mt-1 text-sm text-white/58">Pending team invitation</p>
                       <div className="mt-4 flex gap-3">
-                        <Button type="button" variant="secondary" className="min-h-11 flex-1 rounded-2xl" disabled={respondTeamInviteMutation.isPending} onClick={() => void handleTeamInviteResponse(invite.id, "declined")}>Decline</Button>
-                        <Button type="button" className="min-h-11 flex-1 rounded-2xl bg-[#A3FF12] text-black hover:bg-[#8de300]" disabled={respondTeamInviteMutation.isPending} onClick={() => void handleTeamInviteResponse(invite.id, "accepted")}>Accept</Button>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          className="min-h-11 flex-1 rounded-2xl"
+                          disabled={respondTeamInviteMutation.isPending || isResponding}
+                          onClick={() => void handleTeamInviteResponse(invite.id, "declined")}
+                        >
+                          {isDeclining ? "Declining..." : "Decline"}
+                        </Button>
+                        <Button
+                          type="button"
+                          className="min-h-11 flex-1 rounded-2xl bg-[#A3FF12] text-black hover:bg-[#8de300]"
+                          disabled={respondTeamInviteMutation.isPending || isResponding}
+                          onClick={() => void handleTeamInviteResponse(invite.id, "accepted")}
+                        >
+                          {isAccepting ? "Accepting..." : "Accept"}
+                        </Button>
                       </div>
                     </div>
-                  )) : (
+                    );
+                  }) : hasAcceptedShopLink || recentConnectedShopLabel ? (
+                    <div className="rounded-2xl border border-[#A3FF12]/18 bg-[#A3FF12]/8 p-4 text-sm leading-6 text-[#d7ffab]">
+                      Shop connected{recentConnectedShopLabel ? `: ${recentConnectedShopLabel}` : ""}.
+                    </div>
+                  ) : (
                     <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4 text-sm text-white/62">No pending shop invitations yet.</div>
                   )}
                 </div>

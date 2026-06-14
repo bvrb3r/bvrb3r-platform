@@ -167,7 +167,10 @@ type ServiceDirectoryRecord = {
 
 type LocationAssignmentRecord = {
   profile_id: string;
-  location_id: string;
+  location_id: string | null;
+  shop_id?: string | null;
+  relationship_status?: string | null;
+  ended_at?: string | null;
 };
 
 type OperationalBarberIdentity = {
@@ -621,6 +624,22 @@ async function readLocationDirectoryRows(supabase: SupabaseClient) {
   };
 }
 
+async function readActiveLocationAssignmentRows(supabase: SupabaseClient) {
+  const query = supabase
+    .from("staff_locations")
+    .select("profile_id, location_id, shop_id, relationship_status, ended_at")
+    .eq("relationship_status", "active");
+  const result = typeof query.is === "function"
+    ? await query.is("ended_at", null)
+    : await query;
+
+  if (!result.error || !isSchemaColumnError(result.error)) {
+    return result;
+  }
+
+  return supabase.from("staff_locations").select("profile_id, location_id");
+}
+
 async function readOperationalDirectories(supabase: SupabaseClient | null): Promise<OperationalDirectories> {
   if (!supabase) {
     return buildEmptyOperationalDirectories();
@@ -631,7 +650,7 @@ async function readOperationalDirectories(supabase: SupabaseClient | null): Prom
     supabase.from("profiles").select("id, full_name"),
     readServiceDirectoryRows(supabase),
     readLocationDirectoryRows(supabase),
-    supabase.from("staff_locations").select("profile_id, location_id")
+    readActiveLocationAssignmentRows(supabase)
   ]);
 
   if (barbersResult.error || profilesResult.error || servicesResult.error || locationsResult.error || assignmentsResult.error) {
@@ -694,14 +713,30 @@ async function readOperationalDirectories(supabase: SupabaseClient | null): Prom
   const barberAssignmentsByLocation = new Map<string, Set<string>>();
 
   for (const row of assignmentRows) {
-    const locationReference = locationReferenceByUuid.get(row.location_id) ?? row.location_id;
     const barberReference = barberReferenceByProfileId.get(row.profile_id);
     if (!barberReference) {
       continue;
     }
-    const existing = barberAssignmentsByLocation.get(locationReference) ?? new Set<string>();
-    existing.add(barberReference);
-    barberAssignmentsByLocation.set(locationReference, existing);
+
+    if (row.relationship_status && row.relationship_status !== "active") {
+      continue;
+    }
+
+    if (row.ended_at) {
+      continue;
+    }
+
+    const assignmentReferences = [
+      row.location_id ? locationReferenceByUuid.get(row.location_id) ?? row.location_id : null,
+      row.location_id ?? null,
+      row.shop_id ?? null
+    ].filter((value, index, values): value is string => Boolean(value) && values.indexOf(value) === index);
+
+    for (const locationReference of assignmentReferences) {
+      const existing = barberAssignmentsByLocation.get(locationReference) ?? new Set<string>();
+      existing.add(barberReference);
+      barberAssignmentsByLocation.set(locationReference, existing);
+    }
   }
 
   return {
@@ -3825,10 +3860,12 @@ export async function getShopDashboardPayload(viewer: LiveOperationsViewer) {
   });
   const locationRefsInScope = viewer.locationIds ?? [];
   const assignedBarberIds = new Set<string>();
+  const activeRelationshipBarberIds = new Set<string>();
 
   for (const locationId of locationRefsInScope) {
     for (const barberId of directories.barberAssignmentsByLocation.get(locationId) ?? []) {
       assignedBarberIds.add(barberId);
+      activeRelationshipBarberIds.add(barberId);
     }
   }
 
@@ -3869,7 +3906,7 @@ export async function getShopDashboardPayload(viewer: LiveOperationsViewer) {
       };
     })
     .sort((left, right) => right.liveAppointmentCount - left.liveAppointmentCount || right.completedCount - left.completedCount || left.name.localeCompare(right.name));
-  const activeBarbers = barbers.filter((barber) => barber.activeAppointmentCount > 0);
+  const activeBarbers = barbers.filter((barber) => activeRelationshipBarberIds.has(barber.id));
   const locations = locationRefsInScope
     .map((locationId) => directories.locationsByReference.get(locationId))
     .filter((location): location is OperationalLocationIdentity => Boolean(location))

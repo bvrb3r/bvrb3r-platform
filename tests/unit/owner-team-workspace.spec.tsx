@@ -135,6 +135,36 @@ describe("owner team workspace", () => {
             nextAppointmentStart: null
           }
         ],
+        activeBarbers: [
+          {
+            id: "barber-maya",
+            name: "Maya Cole",
+            compensationModel: "commission",
+            activeAppointmentCount: 1,
+            liveAppointmentCount: 0,
+            bookedCount: 2,
+            completedCount: 1,
+            utilization: 70,
+            openSlots: 6,
+            bookedMinutes: 120,
+            availableMinutes: 420,
+            nextAppointmentStart: `${TEST_DATE_KEY}T15:00:00.000Z`
+          },
+          {
+            id: "barber-ren",
+            name: "Ren Hale",
+            compensationModel: "booth_rent",
+            activeAppointmentCount: 0,
+            liveAppointmentCount: 0,
+            bookedCount: 1,
+            completedCount: 0,
+            utilization: 30,
+            openSlots: 8,
+            bookedMinutes: 30,
+            availableMinutes: 420,
+            nextAppointmentStart: null
+          }
+        ],
         appointments: [
           {
             id: "appt-1",
@@ -382,7 +412,7 @@ describe("owner team workspace", () => {
     expect(commandCalendar.getByText("Day Utilization")).toBeInTheDocument();
     expect(commandCalendar.getByText(TEST_MONTH_LABEL)).toBeInTheDocument();
     expect(commandCalendar.getByRole("button", { name: "Today" })).toBeInTheDocument();
-    expect(commandCalendar.getByText(TEST_DAY_NUMBER)).toBeInTheDocument();
+    expect(commandCalendar.getAllByText(TEST_DAY_NUMBER).length).toBeGreaterThan(0);
     expect(commandCalendar.getByRole("button", { name: "Day" })).toBeInTheDocument();
     expect(commandCalendar.getByRole("button", { name: "Week" })).toBeInTheDocument();
     expect(commandCalendar.getByRole("button", { name: "Previous" })).toBeInTheDocument();
@@ -390,11 +420,11 @@ describe("owner team workspace", () => {
     expect(commandCalendar.getByText("Active Barbers")).toBeInTheDocument();
     expect(commandCalendar.getByText("Pending Invites")).toBeInTheDocument();
     expect(commandCalendar.getByText("Incoming Requests")).toBeInTheDocument();
-    expect(commandCalendar.getAllByText("1").length).toBeGreaterThan(0);
-    expect(commandCalendar.getByText("$105")).toBeInTheDocument();
-    expect(commandCalendar.getByText("6")).toBeInTheDocument();
-    expect(commandCalendar.getByText("29%")).toBeInTheDocument();
-    expect(commandCalendar.queryByText("18%")).not.toBeInTheDocument();
+    expect(commandCalendar.getAllByText("2").length).toBeGreaterThan(0);
+    expect(commandCalendar.getByText("$160")).toBeInTheDocument();
+    expect(commandCalendar.getAllByText("14").length).toBeGreaterThan(0);
+    expect(commandCalendar.getByText("18%")).toBeInTheDocument();
+    expect(commandCalendar.queryByText("29%")).not.toBeInTheDocument();
     const ownerAddAppointment = screen.getByRole("link", { name: /Add Appointment/i });
     expect(ownerAddAppointment).toHaveAttribute("href", "/dashboard/owner/schedule?action=add-appointment");
     expect(ownerAddAppointment).toHaveClass("min-h-11");
@@ -430,20 +460,29 @@ describe("owner team workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close Add Barbers" }));
     expect(screen.queryByTestId("team-relationship-queue")).not.toBeInTheDocument();
     expect(screen.getAllByText("Maya Cole").length).toBeGreaterThan(0);
-    expect(barbersSummary.queryByText("Ren Hale")).not.toBeInTheDocument();
+    expect(barbersSummary.getByText("Ren Hale")).toBeInTheDocument();
     expect(barbersSummary.getByText("Service: Commission")).toBeInTheDocument();
+    expect(barbersSummary.getByText("Service: Booth rent")).toBeInTheDocument();
     expect(barbersSummary.getAllByText("Appointments").length).toBeGreaterThan(0);
     expect(barbersSummary.getAllByText("Day Utilization").length).toBeGreaterThan(0);
     expect(barbersSummary.getAllByText("Open Slots").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Active").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("$105").length).toBeGreaterThan(0);
-    expect(barbersSummary.queryByText("Pending Verification")).not.toBeInTheDocument();
+    expect(screen.getAllByText("$160").length).toBeGreaterThan(0);
+    expect(barbersSummary.getByText("Pending Verification")).toBeInTheDocument();
     expect(ownerTimeline.getByText("Daily Timeline")).toBeInTheDocument();
     expect(ownerTimeline.getByText("Precision fade")).toBeInTheDocument();
     expect(ownerTimeline.getByText("Maya Cole with Taylor Reed")).toBeInTheDocument();
-    expect(ownerTimeline.queryByText("Ren Hale with Jordan Price")).not.toBeInTheDocument();
-    expect(ownerTimeline.getByRole("link", { name: "View Details" })).toHaveAttribute("href", "/dashboard/owner/schedule?appointmentId=appt-1");
-    expect(ownerTimeline.getByRole("link", { name: /Message Barber/i })).toHaveAttribute("href", "/dashboard/owner/messages?threadWith=barber-maya");
+    expect(ownerTimeline.getByText("Ren Hale with Jordan Price")).toBeInTheDocument();
+    const ownerDetailLinks = ownerTimeline.getAllByRole("link", { name: "View Details" });
+    expect(ownerDetailLinks.map((link) => link.getAttribute("href"))).toEqual([
+      "/dashboard/owner/schedule?appointmentId=appt-1",
+      "/dashboard/owner/schedule?appointmentId=appt-2"
+    ]);
+    const ownerMessageLinks = ownerTimeline.getAllByRole("link", { name: /Message Barber/i });
+    expect(ownerMessageLinks.map((link) => link.getAttribute("href"))).toEqual([
+      "/dashboard/owner/messages?threadWith=barber-maya",
+      "/dashboard/owner/messages?threadWith=barber-ren"
+    ]);
     expect(ownerTimeline.queryByRole("button", { name: /Complete Service/i })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Maya Cole/i }));

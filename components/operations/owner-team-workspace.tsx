@@ -484,7 +484,7 @@ export function OwnerTeamWorkspace() {
   const incomingJoinRequests = relationshipDirectory.filter((barber) => barber.inviteStatus === "requested");
   const relationshipErrorMessage = relationshipDirectoryQuery.error ? getReadableActionError(relationshipDirectoryQuery.error) : null;
   const activeTeam = useMemo(
-    () => team.filter((barber) => barber.statusKind !== "pending" && Boolean(barber.relationshipId)),
+    () => team.filter((barber) => Boolean(barber.relationshipId)),
     [team]
   );
   const activeTeamIds = useMemo(() => new Set(activeTeam.map((barber) => barber.id)), [activeTeam]);

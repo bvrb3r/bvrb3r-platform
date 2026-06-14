@@ -474,6 +474,118 @@ describe("BarberSettingsScreen Stripe return sync", () => {
     expect(screen.getByRole("button", { name: "Log out" })).toBeInTheDocument();
   });
 
+  it("accepts a pending shop relationship invite with visible pending and connected states", async () => {
+    const inviteRefetchMock = vi.fn().mockResolvedValue({});
+    let resolveAccept!: (value: unknown) => void;
+    const acceptPromise = new Promise((resolve) => {
+      resolveAccept = resolve;
+    });
+    const respondInviteMock = vi.fn(() => acceptPromise);
+    useBarberTeamInvitesQueryMock.mockReturnValue({
+      data: {
+        invites: [{
+          id: "invite-shop",
+          shopId: "shop-university",
+          shopLabel: "The BVRB3R Shop | University Mall | Tampa",
+          barberId: "barber-blaze",
+          barberName: "Blaze King",
+          barberEmail: "blaze@bvrb3r.demo",
+          status: "invited",
+          source: "owner_invite",
+          message: null,
+          createdAt: "2026-06-14T10:00:00.000Z",
+          respondedAt: null,
+          operatingModel: "booth_rent",
+          boothRentAmount: 250,
+          boothRentFrequency: "weekly",
+          barberPercent: null,
+          shopPercent: null,
+          commissionCapAmount: null,
+          commissionCapFrequency: null
+        }]
+      },
+      isLoading: false,
+      error: null,
+      refetch: inviteRefetchMock
+    });
+    useRespondBarberTeamInviteMutationMock.mockReturnValue({ mutateAsync: respondInviteMock, isPending: false });
+
+    render(<BarberSettingsScreen user={{ ...resolveDemoUser("blaze@bvrb3r.demo"), appApprovalStatus: "approved" }} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Shop Relationship Invites and operating model/i }));
+    const dialog = screen.getByRole("dialog", { name: "Shop invitations" });
+    expect(within(dialog).getByText("The BVRB3R Shop | University Mall | Tampa")).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Accept" }));
+    expect(respondInviteMock).toHaveBeenCalledWith({ inviteId: "invite-shop", status: "accepted" });
+    expect(within(dialog).getByRole("button", { name: "Accepting..." })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Decline" })).toBeDisabled();
+
+    await act(async () => {
+      resolveAccept({
+        invite: {
+          id: "invite-shop",
+          shopLabel: "The BVRB3R Shop | University Mall | Tampa",
+          status: "active"
+        }
+      });
+      await acceptPromise;
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Shop invitations" })).not.toBeInTheDocument();
+    });
+    expect(screen.getByText("Shop connected. The BVRB3R Shop | University Mall | Tampa is now active for your barber account.")).toBeInTheDocument();
+    expect(inviteRefetchMock).toHaveBeenCalled();
+    expect(overviewRefetchMock).toHaveBeenCalled();
+    expect(readinessRefetchMock).toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Accept" })).not.toBeInTheDocument();
+  });
+
+  it("keeps shop invite errors visible and re-enables controls", async () => {
+    useBarberTeamInvitesQueryMock.mockReturnValue({
+      data: {
+        invites: [{
+          id: "invite-shop",
+          shopId: "shop-university",
+          shopLabel: "The BVRB3R Shop | University Mall | Tampa",
+          barberId: "barber-blaze",
+          barberName: "Blaze King",
+          barberEmail: "blaze@bvrb3r.demo",
+          status: "invited",
+          source: "owner_invite",
+          message: null,
+          createdAt: "2026-06-14T10:00:00.000Z",
+          respondedAt: null,
+          operatingModel: "booth_rent",
+          boothRentAmount: 250,
+          boothRentFrequency: "weekly",
+          barberPercent: null,
+          shopPercent: null,
+          commissionCapAmount: null,
+          commissionCapFrequency: null
+        }]
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn()
+    });
+    useRespondBarberTeamInviteMutationMock.mockReturnValue({
+      mutateAsync: vi.fn().mockRejectedValue(new Error("Unable to assign the barber to this shop.")),
+      isPending: false
+    });
+
+    render(<BarberSettingsScreen user={{ ...resolveDemoUser("blaze@bvrb3r.demo"), appApprovalStatus: "approved" }} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Shop Relationship Invites and operating model/i }));
+    const dialog = screen.getByRole("dialog", { name: "Shop invitations" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Accept" }));
+
+    expect(await within(dialog).findByText("Unable to assign the barber to this shop.")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Accept" })).not.toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Decline" })).not.toBeDisabled();
+  });
+
   it("keeps the canonical public location for freelance barbers even with an accepted shop link", () => {
     useBarberFintechReadinessQueryMock.mockReturnValue({
       data: {
