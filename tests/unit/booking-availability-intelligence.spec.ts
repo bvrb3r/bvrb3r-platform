@@ -97,6 +97,13 @@ function formatTime(date: Date) {
   return `${hours}:${minutes}:00`;
 }
 
+function formatDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 describe("canonical availability intelligence", () => {
   it("uses only active bookable canonical services and real slot constraints", async () => {
     const targetDay = new Date();
@@ -282,6 +289,126 @@ describe("canonical availability intelligence", () => {
     expect(payload?.slots.some((slot) => slot.startsAt === bookedStart.toISOString())).toBe(false);
     expect(payload?.slots.some((slot) => slot.startsAt === blockedStart.toISOString())).toBe(false);
     expect(payload?.gating).toBeNull();
+  });
+
+  it("uses the requested local start date as the availability window start", async () => {
+    const requestedDay = new Date();
+    requestedDay.setDate(requestedDay.getDate() + 8);
+    requestedDay.setHours(9, 0, 0, 0);
+    const requestedEnd = new Date(requestedDay);
+    requestedEnd.setHours(11, 0, 0, 0);
+
+    const supabase = createSupabaseMock({
+      barbers: [{
+        id: "barber-uuid",
+        reference_code: "barber-live",
+        profile_id: "profile-uuid",
+        compensation_model: "commission",
+        app_approval_status: "approved",
+        shop_approval_status: "approved",
+        commission_rate: 0.5,
+        booth_rent_amount: null,
+        booth_rent_frequency: null,
+        bio: "Sharp fades.",
+        booking_slug: "barber-live"
+      }],
+      barber_profiles: [{
+        barber_reference: "barber-live",
+        username: "barber-live",
+        display_name: "Phillip McGee",
+        bio: "Sharp fades.",
+        years_experience: 7,
+        shop_reference: "loc-live",
+        profile_photo_path: null,
+        profile_photo_url: "https://example.com/phillip.jpg",
+        specialties: ["Fade"],
+        badges: [],
+        service_area_label: "Ybor",
+        next_available_at: null,
+        visibility_state: "public"
+      }],
+      profiles: [{
+        id: "profile-uuid",
+        full_name: "Phillip McGee",
+        email: "phillip@example.com",
+        phone: "8135550101",
+        primary_onboarding_role: "barber"
+      }],
+      services: [{
+        id: "service-uuid",
+        reference_code: "srv-cut",
+        location_id: "location-uuid",
+        category: "Haircut",
+        name: "Precision Cut",
+        description: "Full cut and finish",
+        duration_min: 30,
+        buffer_min: 0,
+        price: 55,
+        currency: "usd",
+        deposit_amount: 15,
+        full_prepay_required: false,
+        active: true,
+        is_bookable: true,
+        display_order: 1,
+        created_at: requestedDay.toISOString(),
+        updated_at: requestedDay.toISOString(),
+        service_owner_type: "barber",
+        barber_reference: "barber-live",
+        shop_reference: "loc-live",
+        booking_count: 0,
+        popularity_rank: 1
+      }],
+      locations: [{
+        id: "location-uuid",
+        reference_code: "loc-live",
+        name: "BVRB3R Ybor",
+        neighborhood: "Ybor",
+        city: "Tampa",
+        state: "FL",
+        phone: "8135550000",
+        address: "1 Barber Way",
+        latitude: 27.960,
+        longitude: -82.440
+      }],
+      availability_rules: [{
+        barber_id: "barber-uuid",
+        location_id: "location-uuid",
+        weekday: requestedDay.getDay(),
+        start_time: formatTime(requestedDay),
+        end_time: formatTime(requestedEnd)
+      }],
+      blocked_times: [],
+      appointments: [],
+      reviews: [],
+      barber_portfolios: [],
+      marketplace_visibility: [{
+        barber_reference: "barber-live",
+        visibility_state: "public",
+        accepts_instant_bookings: true,
+        featured_rank: 1
+      }],
+      connected_accounts: [{
+        subject_type: "barber",
+        barber_id: "barber-uuid",
+        payout_readiness_status: "ready",
+        livemode: false,
+        charges_enabled: true,
+        payouts_enabled: true,
+        requirements_currently_due: [],
+        requirements_past_due: [],
+        disabled_reason: null
+      }]
+    });
+
+    const payload = await buildCanonicalAvailabilityPayload(supabase as never, "barber-live", {
+      serviceId: "srv-cut",
+      locationId: "loc-live",
+      days: 1,
+      startDate: formatDateKey(requestedDay)
+    });
+
+    expect(payload?.slots[0]?.startsAt).toBe(requestedDay.toISOString());
+    expect(payload?.slots.every((slot) => slot.startsAt.startsWith(formatDateKey(requestedDay)))).toBe(true);
   });
 
   it("builds client discovery cards with service, location, and time wired into booking hrefs", async () => {

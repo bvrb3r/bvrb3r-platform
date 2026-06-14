@@ -3110,7 +3110,7 @@ export async function getPublicShopProfilePayload(shopIdOrSlug: string): Promise
   };
 }
 
-export async function getBarberAvailabilityPayload(barberId: string, options: { serviceId?: string; locationId?: string; days?: number; }) {
+export async function getBarberAvailabilityPayload(barberId: string, options: { serviceId?: string; locationId?: string; days?: number; startDate?: string; }) {
   const supabase = getSupabase();
   if (supabase) {
     const trustState = await readTrustStateSafe();

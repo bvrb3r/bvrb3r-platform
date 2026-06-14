@@ -46,6 +46,7 @@ import type { AiRecommendationType } from "@/types/ai";
 import type { HaircutNowMatch, MarketplaceSourceKind, Service } from "@/types/domain";
 
 const BOOKING_DRAFT_STORAGE_KEY = "bvrb3r-booking-draft:v1";
+const AVAILABILITY_WINDOW_DAYS = 14;
 
 const bookingSchema = z.object({
   locationId: z.string().min(1),
@@ -89,7 +90,11 @@ function toAiRecommendationType(value: string | null): AiRecommendationType | un
   return undefined;
 }
 
-function getSourceLabel(sourceKind?: MarketplaceSourceKind) {
+function getSourceLabel(sourceKind?: MarketplaceSourceKind, isCultureSource = false) {
+  if (isCultureSource) {
+    return "Culture booking";
+  }
+
   switch (sourceKind) {
     case "public_profile":
       return "Barber profile booking";
@@ -183,17 +188,52 @@ function getSlotDateKey(iso: string) {
   return `${year}-${month}-${day}`;
 }
 
-function getSlotDayLabel(iso: string) {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) {
-    return "Available day";
+function getDateKeyFromDate(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getTodayDateKey() {
+  return getDateKeyFromDate(new Date());
+}
+
+function parseDateKey(value: string) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    return null;
   }
 
-  return new Intl.DateTimeFormat("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric"
-  }).format(date);
+  const [, year, month, day] = match;
+  const parsed = new Date(Number(year), Number(month) - 1, Number(day));
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function addDaysToDateKey(value: string, days: number) {
+  const parsed = parseDateKey(value) ?? new Date();
+  parsed.setDate(parsed.getDate() + days);
+  return getDateKeyFromDate(parsed);
+}
+
+function buildDateWindowKeys(anchorDateKey: string, days: number) {
+  return Array.from({ length: days }, (_, index) => addDaysToDateKey(anchorDateKey, index));
+}
+
+function compareDateKeys(left: string, right: string) {
+  return left.localeCompare(right);
+}
+
+function formatDateKeyLabel(value: string, format: "short" | "long" = "short") {
+  const parsed = parseDateKey(value);
+  if (!parsed) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("en-US", format === "long"
+    ? { weekday: "long", month: "long", day: "numeric", year: "numeric" }
+    : { weekday: "short", month: "short", day: "numeric" }
+  ).format(parsed);
 }
 
 function getSlotTimeLabel(iso: string) {
@@ -284,9 +324,25 @@ export function BookingForm() {
   const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState("");
   const [inlineSavedPaymentMethod, setInlineSavedPaymentMethod] = useState<ClientPaymentMethodView | null>(null);
   const [paymentSetupPending, setPaymentSetupPending] = useState(false);
-  const [selectedDateKey, setSelectedDateKey] = useState("");
+  const [selectedDateKey, setSelectedDateKey] = useState(() => getTodayDateKey());
+  const [dateTouched, setDateTouched] = useState(false);
 
-  const sourceKind = toMarketplaceSource(searchParams.get("source"));
+  const rawSource = searchParams.get("source");
+  const sourceKind = toMarketplaceSource(rawSource);
+  const isCultureSource = rawSource === "culture";
+  const culturePostId = searchParams.get("culturePostId") ?? undefined;
+  const cultureAuthorId = searchParams.get("cultureAuthorId") ?? undefined;
+  const cultureSurface = searchParams.get("cultureSurface") ?? undefined;
+  const cultureCta = searchParams.get("cta") ?? undefined;
+  const cultureAttribution = isCultureSource
+    ? {
+        source: "culture" as const,
+        ...(culturePostId ? { culturePostId } : {}),
+        ...(cultureAuthorId ? { cultureAuthorId } : {}),
+        ...(cultureSurface ? { cultureSurface } : {}),
+        ...(cultureCta ? { cta: cultureCta } : {})
+      }
+    : undefined;
   const matchedFrom = toMatchedFrom(searchParams.get("matchedFrom"));
   const aiRecommendationId = searchParams.get("aiRecommendationId") ?? undefined;
   const aiRecommendationType = toAiRecommendationType(searchParams.get("aiRecommendationType"));
@@ -473,12 +529,19 @@ export function BookingForm() {
   const availabilityQuery = useBarberAvailabilityQuery({
     barberId: resolvedBarberId || undefined,
     serviceId: resolvedServiceId || undefined,
-    locationId: resolvedLocationId || undefined
+    locationId: resolvedLocationId || undefined,
+    startDate: selectedDateKey || undefined,
+    days: AVAILABILITY_WINDOW_DAYS
   });
   const availableSlots = useMemo(() => availabilityQuery.data?.slots ?? [], [availabilityQuery.data?.slots]);
   const slotsByDate = useMemo(() => groupSlotsByDate(availableSlots), [availableSlots]);
-  const slotDateKeys = useMemo(() => Object.keys(slotsByDate), [slotsByDate]);
+  const dateWindowKeys = useMemo(
+    () => buildDateWindowKeys(selectedDateKey || getTodayDateKey(), AVAILABILITY_WINDOW_DAYS),
+    [selectedDateKey]
+  );
   const selectedDateSlots = selectedDateKey ? slotsByDate[selectedDateKey] ?? [] : [];
+  const selectedDateLabel = selectedDateKey ? formatDateKeyLabel(selectedDateKey, "long") : "Choose a date";
+  const canGoToPreviousDay = selectedDateKey ? compareDateKeys(selectedDateKey, getTodayDateKey()) > 0 : false;
   const timezoneLabel = useMemo(() => {
     try {
       return Intl.DateTimeFormat().resolvedOptions().timeZone || "local time";
@@ -512,32 +575,44 @@ export function BookingForm() {
   );
 
   useEffect(() => {
-    const nextSlot = resolveBookableSlot(
-      availableSlots,
-      preselectedAppointmentTime || form.getValues("appointmentTime")
-    )?.startsAt ?? availableSlots[0]?.startsAt;
-    if (!nextSlot) {
-      if (form.getValues("appointmentTime")) {
+    const currentAppointmentTime = form.getValues("appointmentTime");
+
+    if (!availableSlots.length) {
+      if (currentAppointmentTime) {
         form.setValue("appointmentTime", "");
       }
       return;
     }
 
-    if (!form.getValues("appointmentTime") || !availableSlots.some((slot) => slot.startsAt === form.getValues("appointmentTime"))) {
-      form.setValue("appointmentTime", nextSlot);
-    }
-  }, [availableSlots, form, preselectedAppointmentTime]);
-
-  useEffect(() => {
-    const activeSlot = availableSlots.find((slot) => slot.startsAt === form.getValues("appointmentTime")) ?? availableSlots[0];
-    if (!activeSlot) {
-      setSelectedDateKey("");
+    if (!dateTouched && !preselectedAppointmentTime) {
+      const firstSlot = availableSlots[0];
+      const firstDateKey = getSlotDateKey(firstSlot.startsAt);
+      if (selectedDateKey !== firstDateKey) {
+        setSelectedDateKey(firstDateKey);
+      }
+      if (currentAppointmentTime !== firstSlot.startsAt) {
+        form.setValue("appointmentTime", firstSlot.startsAt);
+      }
       return;
     }
 
-    const nextDateKey = getSlotDateKey(activeSlot.startsAt);
-    setSelectedDateKey((current) => current || nextDateKey);
-  }, [availableSlots, form, watchAppointmentTime]);
+    const candidateSlots = selectedDateKey ? slotsByDate[selectedDateKey] ?? [] : availableSlots;
+    const nextSlot = resolveBookableSlot(
+      candidateSlots,
+      preselectedAppointmentTime || currentAppointmentTime
+    )?.startsAt ?? candidateSlots[0]?.startsAt;
+
+    if (!nextSlot) {
+      if (currentAppointmentTime) {
+        form.setValue("appointmentTime", "");
+      }
+      return;
+    }
+
+    if (!currentAppointmentTime || !candidateSlots.some((slot) => slot.startsAt === currentAppointmentTime)) {
+      form.setValue("appointmentTime", nextSlot);
+    }
+  }, [availableSlots, dateTouched, form, preselectedAppointmentTime, selectedDateKey, slotsByDate]);
 
   useEffect(() => {
     if (!sourceKind || !resolvedBarberId) {
@@ -748,7 +823,8 @@ export function BookingForm() {
         aiRecommendationId,
         aiRecommendationType,
         promotionId: promotionSelection?.promotion.id,
-        promotionCode: promotionSelection?.promotion.code ?? (normalizedPromotionCode || undefined)
+        promotionCode: promotionSelection?.promotion.code ?? (normalizedPromotionCode || undefined),
+        ...(cultureAttribution ? { cultureAttribution } : {})
       });
 
       setConfirmationId(result.appointment.id);
@@ -757,7 +833,7 @@ export function BookingForm() {
       clearBookingDraft();
       setStatusUpdate({
         tone: "success",
-        message: sourceKind
+        message: sourceKind || isCultureSource
           ? "Booking confirmed and payment secured."
           : "Appointment confirmed and payment secured. The booking is now live across client, barber, and shop operations."
       });
@@ -799,6 +875,36 @@ export function BookingForm() {
     } catch (error) {
       setStatusUpdate({ tone: "error", message: getReadableActionError(error as BookingApiError) });
     }
+  }
+
+  function selectBookingDate(dateKey: string) {
+    if (!parseDateKey(dateKey)) {
+      return;
+    }
+
+    const safeDateKey = compareDateKeys(dateKey, getTodayDateKey()) < 0 ? getTodayDateKey() : dateKey;
+    setDateTouched(true);
+    setSelectedDateKey(safeDateKey);
+    const nextSlot = slotsByDate[safeDateKey]?.[0];
+    form.setValue("appointmentTime", nextSlot?.startsAt ?? "");
+    setStatusUpdate(null);
+  }
+
+  function handleFindNextAvailable() {
+    const nextSlot = availableSlots.find((slot) => compareDateKeys(getSlotDateKey(slot.startsAt), selectedDateKey) >= 0) ?? availableSlots[0];
+    if (!nextSlot) {
+      setStatusUpdate({
+        tone: "info",
+        message: "No available times found. Join the waitlist or try again later."
+      });
+      return;
+    }
+
+    const nextDateKey = getSlotDateKey(nextSlot.startsAt);
+    setDateTouched(true);
+    setSelectedDateKey(nextDateKey);
+    form.setValue("appointmentTime", nextSlot.startsAt);
+    setStatusUpdate(null);
   }
 
   const selectedSlot = resolveBookableSlot(availableSlots, watchAppointmentTime) ?? undefined;
@@ -888,7 +994,7 @@ export function BookingForm() {
       <Card className="overflow-hidden rounded-[34px] p-0">
         <div className="border-b border-white/8 px-5 py-6 sm:px-8">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge>{sourceKind ? getSourceLabel(sourceKind) : "Book appointment"}</Badge>
+            <Badge>{sourceKind || isCultureSource ? getSourceLabel(sourceKind, isCultureSource) : "Book appointment"}</Badge>
             {currentBarberResult ? <Badge>{clientFacingBarberName}</Badge> : null}
           </div>
           <h2 className="mt-4 text-balance text-3xl font-semibold sm:text-5xl" data-display="true">
@@ -1029,16 +1135,47 @@ export function BookingForm() {
                 <p className="mt-2 text-sm text-white/58">Times shown in {timezoneLabel}.</p>
               </div>
 
-              {availabilityQuery.isLoading && !availableSlots.length ? (
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <Skeleton className="h-16 rounded-[22px]" />
-                  <Skeleton className="h-16 rounded-[22px]" />
-                  <Skeleton className="h-16 rounded-[22px]" />
+              <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="surface-label text-white/42">Selected date</p>
+                    <p className="mt-1 text-lg font-semibold text-white">{selectedDateLabel}</p>
+                    <p className="mt-1 text-xs text-white/48">Times shown in {timezoneLabel}.</p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="h-10 px-4"
+                      disabled={!canGoToPreviousDay || availabilityQuery.isLoading}
+                      onClick={() => selectBookingDate(addDaysToDateKey(selectedDateKey, -1))}
+                    >
+                      Previous day
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="h-10 px-4"
+                      disabled={availabilityQuery.isLoading}
+                      onClick={() => selectBookingDate(addDaysToDateKey(selectedDateKey, 1))}
+                    >
+                      Next day
+                    </Button>
+                  </div>
                 </div>
-              ) : availableSlots.length ? (
-                <>
-                  <div className="flex gap-2 overflow-x-auto pb-1">
-                    {slotDateKeys.map((dateKey) => (
+                <label className="mt-4 block">
+                  <span className="surface-label mb-2 block">Choose another date</span>
+                  <Input
+                    type="date"
+                    value={selectedDateKey}
+                    min={getTodayDateKey()}
+                    onChange={(event) => selectBookingDate(event.target.value)}
+                  />
+                </label>
+                <div className="mt-4 flex gap-2 overflow-x-auto pb-1" aria-label="Booking date options">
+                  {dateWindowKeys.map((dateKey) => {
+                    const dateSlots = slotsByDate[dateKey] ?? [];
+                    return (
                       <button
                         key={dateKey}
                         type="button"
@@ -1048,65 +1185,77 @@ export function BookingForm() {
                             ? "border-[#7CFF00]/34 bg-[#7CFF00]/10 text-white"
                             : "border-white/8 bg-black/20 text-white/64 hover:border-[#7CFF00]/22"
                         )}
-                        onClick={() => {
-                          setSelectedDateKey(dateKey);
-                          const nextSlot = slotsByDate[dateKey]?.[0];
-                          if (nextSlot) {
-                            form.setValue("appointmentTime", nextSlot.startsAt);
-                          }
-                        }}
+                        onClick={() => selectBookingDate(dateKey)}
                       >
                         <span className="surface-label block text-white/42">Date</span>
-                        <span className="mt-1 block text-sm font-semibold">{getSlotDayLabel(slotsByDate[dateKey]?.[0]?.startsAt ?? dateKey)}</span>
+                        <span className="mt-1 block text-sm font-semibold">{formatDateKeyLabel(dateKey)}</span>
+                        <span className="mt-1 block text-xs text-white/44">
+                          {dateSlots.length === 1 ? "1 time" : dateSlots.length ? `${dateSlots.length} times` : "No times"}
+                        </span>
                       </button>
-                    ))}
-                  </div>
+                    );
+                  })}
+                </div>
+              </div>
 
-                  <div className="space-y-4">
-                    {(["Morning", "Afternoon", "Evening"] as const).map((period) => {
-                      const periodSlots = selectedDateSlots.filter((slot) => getSlotPeriod(slot.startsAt) === period);
-                      if (!periodSlots.length) {
-                        return null;
-                      }
+              {availabilityQuery.isLoading && !availableSlots.length ? (
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <Skeleton className="h-16 rounded-[22px]" />
+                  <Skeleton className="h-16 rounded-[22px]" />
+                  <Skeleton className="h-16 rounded-[22px]" />
+                </div>
+              ) : selectedDateSlots.length ? (
+                <div className="space-y-4">
+                  {(["Morning", "Afternoon", "Evening"] as const).map((period) => {
+                    const periodSlots = selectedDateSlots.filter((slot) => getSlotPeriod(slot.startsAt) === period);
+                    if (!periodSlots.length) {
+                      return null;
+                    }
 
-                      return (
-                        <div key={period} className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                          <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-white">
-                            <Clock3 className="h-4 w-4 text-[#d7ffab]" />
-                            {period}
-                          </div>
-                          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                            {periodSlots.map((slot) => {
-                              const selected = slot.startsAt === watchAppointmentTime;
-                              return (
-                                <button
-                                  key={slot.startsAt}
-                                  type="button"
-                                  className={cn(
-                                    "rounded-full border px-4 py-3 text-sm font-semibold transition",
-                                    selected
-                                      ? "border-[#7CFF00]/34 bg-[#7CFF00] text-black"
-                                      : "border-white/8 bg-black/24 text-white hover:border-[#7CFF00]/22 hover:text-[#d7ffab]"
-                                  )}
-                                  onClick={() => form.setValue("appointmentTime", slot.startsAt)}
-                                >
-                                  {getSlotTimeLabel(slot.startsAt)}
-                                </button>
-                              );
-                            })}
-                          </div>
+                    return (
+                      <div key={period} className="rounded-[24px] border border-white/8 bg-black/20 p-4">
+                        <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-white">
+                          <Clock3 className="h-4 w-4 text-[#d7ffab]" />
+                          {period}
                         </div>
-                      );
-                    })}
-                  </div>
-                </>
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                          {periodSlots.map((slot) => {
+                            const selected = slot.startsAt === watchAppointmentTime;
+                            return (
+                              <button
+                                key={slot.startsAt}
+                                type="button"
+                                className={cn(
+                                  "rounded-full border px-4 py-3 text-sm font-semibold transition",
+                                  selected
+                                    ? "border-[#7CFF00]/34 bg-[#7CFF00] text-black"
+                                    : "border-white/8 bg-black/24 text-white hover:border-[#7CFF00]/22 hover:text-[#d7ffab]"
+                                )}
+                                onClick={() => form.setValue("appointmentTime", slot.startsAt)}
+                              >
+                                {getSlotTimeLabel(slot.startsAt)}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               ) : (
                 <div className="empty-state-panel rounded-[24px] p-5">
-                  <p className="text-lg font-semibold text-white">No times available for this date.</p>
-                  <p className="mt-2 text-sm leading-7 text-white/58">Try another day, or join the waitlist.</p>
-                  <Button type="button" variant="secondary" className="mt-4 h-11 px-5" disabled={waitlistPending || !watchServiceId || !watchLocationId || !isOnline} onClick={() => void handleJoinWaitlist()}>
-                    {waitlistPending ? "Joining waitlist..." : "Join waitlist"}
-                  </Button>
+                  <p className="text-lg font-semibold text-white">
+                    {availabilityQuery.data?.service ? "No times available for this date." : "This barber has not opened times for this date."}
+                  </p>
+                  <p className="mt-2 text-sm leading-7 text-white/58">Choose another date, find the next available time, or join the waitlist.</p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Button type="button" variant="secondary" className="h-11 px-5" disabled={availabilityQuery.isLoading} onClick={handleFindNextAvailable}>
+                      Find next available
+                    </Button>
+                    <Button type="button" variant="secondary" className="h-11 px-5" disabled={waitlistPending || !watchServiceId || !watchLocationId || !isOnline} onClick={() => void handleJoinWaitlist()}>
+                      {waitlistPending ? "Joining waitlist..." : "Join waitlist"}
+                    </Button>
+                  </div>
                 </div>
               )}
 
@@ -1114,9 +1263,12 @@ export function BookingForm() {
                 <Button type="button" variant="secondary" className="h-12 px-6" onClick={() => setBookingStep("service")}>
                   Back
                 </Button>
-                <Button type="button" className="h-12 px-6" disabled={!timeReady || availabilityQuery.isLoading} onClick={continueToReview}>
-                  Continue to Review
-                </Button>
+                <div className="flex flex-1 flex-col gap-2 sm:items-start">
+                  <Button type="button" className="h-12 px-6" disabled={!serviceReady || !selectedDateKey || !timeReady || availabilityQuery.isLoading} onClick={continueToReview}>
+                    Continue to Review
+                  </Button>
+                  {!timeReady ? <p className="text-xs font-medium text-white/52">Choose a time to continue.</p> : null}
+                </div>
               </div>
             </section>
           ) : null}

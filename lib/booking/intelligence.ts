@@ -705,6 +705,17 @@ function withTime(day: Date, time: string) {
   return next;
 }
 
+function parseAvailabilityWindowStart(value?: string | null) {
+  const match = value?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    return null;
+  }
+
+  const [, year, month, day] = match;
+  const parsed = new Date(Number(year), Number(month) - 1, Number(day));
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 function overlapsRange(start: Date, end: Date, blockedRanges: Array<{ startsAt: string; endsAt: string }>) {
   return blockedRanges.some((entry) => {
     const blockedStart = new Date(entry.startsAt).getTime();
@@ -1777,6 +1788,7 @@ function listAvailabilitySlotsForBarber(params: {
   blockedTimes: CanonicalBlockedTimeRow[];
   days?: number;
   earliestAt?: string;
+  startDate?: string;
 }) {
   const {
     barberReference,
@@ -1788,7 +1800,8 @@ function listAvailabilitySlotsForBarber(params: {
     appointments,
     blockedTimes,
     days = 7,
-    earliestAt
+    earliestAt,
+    startDate
   } = params;
 
   const locationIds = new Set([locationReference, locationUuidByReference.get(locationReference)].filter((value): value is string => Boolean(value)));
@@ -1816,14 +1829,15 @@ function listAvailabilitySlotsForBarber(params: {
   const durationMinutes = service.durationMin + service.bufferMin;
   const slots: CanonicalSlot[] = [];
   const now = new Date();
+  const windowStart = parseAvailabilityWindowStart(startDate) ?? now;
   const earliestDate = earliestAt ? new Date(earliestAt) : null;
   const earliestThreshold = earliestDate && !Number.isNaN(earliestDate.getTime())
     ? Math.max(now.getTime() + 15 * 60_000, earliestDate.getTime())
     : now.getTime() + 15 * 60_000;
 
   for (let offset = 0; offset < days; offset += 1) {
-    const day = new Date(now);
-    day.setDate(now.getDate() + offset);
+    const day = new Date(windowStart);
+    day.setDate(windowStart.getDate() + offset);
     const weekday = day.getDay();
     const dayRules = rules.filter((entry) => entry.weekday === weekday);
 
@@ -2690,6 +2704,7 @@ export async function buildCanonicalAvailabilityPayload(
     locationId?: string;
     days?: number;
     earliestAt?: string;
+    startDate?: string;
     trustState?: TrustState;
   }
 ) {
@@ -2785,7 +2800,8 @@ export async function buildCanonicalAvailabilityPayload(
     appointments: snapshot.appointments,
     blockedTimes: snapshot.blockedTimes,
     days: options.days,
-    earliestAt: options.earliestAt
+    earliestAt: options.earliestAt,
+    startDate: options.startDate
   });
 
   return {

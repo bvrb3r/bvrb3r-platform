@@ -128,15 +128,25 @@ vi.mock("@stripe/react-stripe-js", async () => {
       onLoadError?: (event: { error?: { message?: string } }) => void;
     }) {
       const { onReady, onFocus, onBlur, onChange, onLoadError } = props;
+      const emittedRef = React.useRef(false);
 
       React.useEffect(() => {
-        const shouldFail = stripeMockState.loadError === field || (field === "cardNumber" && Boolean(stripeMockState.loadError));
-        if (shouldFail) {
-          onLoadError?.({ error: { message: stripeMockState.loadError ?? "Stripe iframe failed" } });
-        } else if (stripeMockState.autoReady) {
-          onReady?.(element);
-          onChange?.({ complete: stripeMockState.complete[field] });
+        if (emittedRef.current) {
+          return;
         }
+
+        emittedRef.current = true;
+        const timer = window.setTimeout(() => {
+          const shouldFail = stripeMockState.loadError === field || (field === "cardNumber" && Boolean(stripeMockState.loadError));
+          if (shouldFail) {
+            onLoadError?.({ error: { message: stripeMockState.loadError ?? "Stripe iframe failed" } });
+          } else if (stripeMockState.autoReady) {
+            onReady?.(element);
+            onChange?.({ complete: stripeMockState.complete[field] });
+          }
+        }, 0);
+
+        return () => window.clearTimeout(timer);
       }, [onChange, onLoadError, onReady]);
 
       return React.createElement(
@@ -177,6 +187,31 @@ vi.mock("@stripe/react-stripe-js", async () => {
 });
 
 import { BookingForm } from "@/components/booking/booking-form";
+
+function getDateKey(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function addDaysToDateKey(dateKey: string, days: number) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const next = new Date(year, month - 1, day);
+  next.setDate(next.getDate() + days);
+  return getDateKey(next);
+}
+
+function slotForDate(dateKey: string, hour = 14) {
+  return {
+    startsAt: `${dateKey}T${String(hour).padStart(2, "0")}:00:00.000Z`,
+    endsAt: `${dateKey}T${String(hour + 1).padStart(2, "0")}:00:00.000Z`,
+    label: `${dateKey} ${hour}:00`,
+    locationId: "loc-ybor",
+    barberId: "barber-wave",
+    serviceId: "srv-cut"
+  };
+}
 
 async function advanceToReview() {
   fireEvent.click(screen.getByRole("button", { name: "Continue" }));
@@ -415,8 +450,9 @@ describe("booking form", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
     expect(screen.getByRole("heading", { name: "Pick date and time" })).toBeInTheDocument();
+    expect(screen.getByText("Selected date")).toBeInTheDocument();
+    expect(screen.getByText("Choose another date")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /AM|PM/ })).toBeInTheDocument();
-    expect(screen.queryByText(/times$/i)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Continue to Review" }));
 
@@ -430,6 +466,164 @@ describe("booking form", () => {
     expect(screen.getByText("Exp 12/29")).toBeInTheDocument();
     expect(screen.queryByText("Add a payment method before booking.")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Book Appointment" })).toBeEnabled();
+  });
+
+  it("keeps date controls visible and review gated when the selected date has no slots", async () => {
+    useBarberAvailabilityQueryMock.mockReturnValue({
+      data: {
+        service: {
+          id: "srv-cut",
+          name: "Signature Precision Cut",
+          durationMin: 45,
+          bufferMin: 10,
+          price: 40,
+          deposit: 10,
+          fullPrepay: false
+        },
+        slots: []
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(<BookingForm />);
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    expect(screen.getByRole("heading", { name: "Pick date and time" })).toBeInTheDocument();
+    expect(screen.getByText("Selected date")).toBeInTheDocument();
+    expect(screen.getByText("Choose another date")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Next day" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Find next available" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Join waitlist" })).toBeInTheDocument();
+    expect(screen.getByText("No times available for this date.")).toBeInTheDocument();
+    expect(screen.getByText("Choose a time to continue.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue to Review" })).toBeDisabled();
+  });
+
+  it("reloads availability when the booking date changes and enables review after a real slot is selected", async () => {
+    const today = getDateKey();
+    const tomorrow = addDaysToDateKey(today, 1);
+    const availabilityByDate = new Map([
+      [tomorrow, [slotForDate(tomorrow, 15)]]
+    ]);
+
+    useBarberAvailabilityQueryMock.mockImplementation((params: { startDate?: string }) => ({
+      data: {
+        service: {
+          id: "srv-cut",
+          name: "Signature Precision Cut",
+          durationMin: 45,
+          bufferMin: 10,
+          price: 40,
+          deposit: 10,
+          fullPrepay: false
+        },
+        slots: availabilityByDate.get(params.startDate ?? "") ?? []
+      },
+      isLoading: false,
+      error: null
+    }));
+
+    render(<BookingForm />);
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(screen.getByRole("button", { name: "Continue to Review" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Next day" }));
+
+    await waitFor(() => {
+      expect(useBarberAvailabilityQueryMock).toHaveBeenCalledWith(expect.objectContaining({
+        startDate: tomorrow,
+        days: 14,
+        barberId: "barber-wave",
+        serviceId: "srv-cut",
+        locationId: "loc-ybor"
+      }));
+    });
+
+    expect(await screen.findByRole("button", { name: /AM|PM/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue to Review" })).toBeEnabled();
+  });
+
+  it("uses Find next available to move from an empty date to the next real slot", async () => {
+    const today = getDateKey();
+    const tomorrow = addDaysToDateKey(today, 1);
+    const nextAvailable = addDaysToDateKey(today, 2);
+
+    useBarberAvailabilityQueryMock.mockImplementation((params: { startDate?: string }) => ({
+      data: {
+        service: {
+          id: "srv-cut",
+          name: "Signature Precision Cut",
+          durationMin: 45,
+          bufferMin: 10,
+          price: 40,
+          deposit: 10,
+          fullPrepay: false
+        },
+        slots: params.startDate === tomorrow || params.startDate === nextAvailable ? [slotForDate(nextAvailable, 16)] : []
+      },
+      isLoading: false,
+      error: null
+    }));
+
+    render(<BookingForm />);
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    fireEvent.change(screen.getByLabelText("Choose another date"), {
+      target: { value: tomorrow }
+    });
+
+    expect(await screen.findByText("No times available for this date.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Find next available" }));
+
+    expect(await screen.findByRole("button", { name: /AM|PM/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue to Review" })).toBeEnabled();
+  });
+
+  it("preserves Culture attribution through service, date, and time selection", async () => {
+    const searchGet = vi.fn((key: string) => {
+      const params: Record<string, string> = {
+        source: "culture",
+        culturePostId: "post-culture-1",
+        cultureAuthorId: "author-profile-1",
+        cultureSurface: "client_culture",
+        cta: "book_barber",
+        barberId: "barber-wave",
+        serviceId: "srv-cut"
+      };
+      return params[key] ?? null;
+    });
+    const mutateBookingMock = vi.fn().mockResolvedValue({
+      appointment: {
+        id: "appt-culture"
+      }
+    });
+
+    useSearchParamsMock.mockReturnValue({ get: searchGet });
+    useCreateBookingMutationMock.mockReturnValue({
+      isPending: false,
+      mutateAsync: mutateBookingMock
+    });
+
+    render(<BookingForm />);
+    expect(screen.getByText("Culture booking")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Continue to Review" }));
+    expect(await screen.findByText("Payment method")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Book Appointment" }));
+
+    await waitFor(() => {
+      expect(mutateBookingMock).toHaveBeenCalledWith(expect.objectContaining({
+        barberId: "barber-wave",
+        serviceId: "srv-cut",
+        cultureAttribution: {
+          source: "culture",
+          culturePostId: "post-culture-1",
+          cultureAuthorId: "author-profile-1",
+          cultureSurface: "client_culture",
+          cta: "book_barber"
+        }
+      }));
+    });
   });
 
   it("auto-selects the only saved card during booking even if default metadata is missing", async () => {
@@ -751,7 +945,7 @@ describe("booking form", () => {
     expect(await screen.findByTestId("mock-stripe-card-number-element")).toBeInTheDocument();
     expect(screen.getByTestId("mock-stripe-card-expiry-element")).toBeInTheDocument();
     expect(screen.getByTestId("mock-stripe-card-cvc-element")).toBeInTheDocument();
-    await waitFor(() => expect(screen.queryByText("Loading secure card fields...")).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save card" })).toBeInTheDocument());
     expect(stripeMockState.elementsOptions.length).toBeGreaterThan(0);
     expect(stripeMockState.elementsOptions.every((options) => options === undefined)).toBe(true);
 

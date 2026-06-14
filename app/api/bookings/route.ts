@@ -29,7 +29,14 @@ const bookingSchema = z.object({
   aiRecommendationId: z.string().optional(),
   aiRecommendationType: z.enum(["rebooking_reminder", "available_now", "barber_gap_alert"]).optional(),
   promotionId: z.string().optional(),
-  promotionCode: z.string().optional()
+  promotionCode: z.string().optional(),
+  cultureAttribution: z.object({
+    source: z.literal("culture"),
+    culturePostId: z.string().optional(),
+    cultureAuthorId: z.string().optional(),
+    cultureSurface: z.string().optional(),
+    cta: z.string().optional()
+  }).optional()
 });
 
 function serializeBookingValidationError(error: LiveOperationValidationError) {
@@ -196,6 +203,7 @@ export async function POST(request: NextRequest) {
       serviceName,
       aiRecommendationId,
       aiRecommendationType,
+      cultureAttribution,
       ...bookingInput
     } = parsed.data;
     const clientContext = await getClientExperienceContext();
@@ -220,7 +228,7 @@ export async function POST(request: NextRequest) {
       actorEmail: clientContext.activeClient?.email ?? clientContext.viewer.email,
       actorProfileId: isClientRole(clientContext.viewer.role) ? clientContext.viewer.id : undefined,
       createdBy: clientContext.viewer.id,
-      bookingSource: sourceKind ?? "booking"
+      bookingSource: cultureAttribution ? "culture" : sourceKind ?? "booking"
     });
     await recordBookingCreatedPlatformEvent({
       appointment: result.appointment,
@@ -230,7 +238,8 @@ export async function POST(request: NextRequest) {
       route: "/api/bookings",
       context: {
         sourceKind: sourceKind ?? null,
-        matchedFrom: matchedFrom ?? null
+        matchedFrom: matchedFrom ?? null,
+        cultureAttribution: cultureAttribution ?? null
       }
     });
 
@@ -295,7 +304,8 @@ export async function POST(request: NextRequest) {
           },
           payload: {
             sourceKind: sourceKind ?? null,
-            matchedFrom: matchedFrom ?? null
+            matchedFrom: matchedFrom ?? null,
+            cultureAttribution: cultureAttribution ?? null
           }
         });
       } catch {}

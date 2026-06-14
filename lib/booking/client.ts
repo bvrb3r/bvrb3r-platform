@@ -281,6 +281,13 @@ export interface CreateBookingPayload {
   aiRecommendationType?: AiRecommendationType;
   promotionId?: string;
   promotionCode?: string;
+  cultureAttribution?: {
+    source: "culture";
+    culturePostId?: string;
+    cultureAuthorId?: string;
+    cultureSurface?: string;
+    cta?: string;
+  };
 }
 
 async function requestJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
@@ -388,12 +395,17 @@ export function useBarberProfileQuery(barberId?: string) {
   });
 }
 
-export function useBarberAvailabilityQuery(params: { barberId?: string; serviceId?: string; locationId?: string }) {
-  const queryString = toQueryString({ serviceId: params.serviceId, locationId: params.locationId });
+export function useBarberAvailabilityQuery(params: { barberId?: string; serviceId?: string; locationId?: string; startDate?: string; days?: number }) {
+  const queryString = toQueryString({
+    serviceId: params.serviceId,
+    locationId: params.locationId,
+    startDate: params.startDate,
+    days: params.days
+  });
   return useQuery({
     queryKey: ["barber-availability", params],
     queryFn: () => requestJson<BarberAvailabilityResponse>(`/api/barbers/${params.barberId}/availability${queryString ? `?${queryString}` : ""}`),
-    enabled: Boolean(params.barberId)
+    enabled: Boolean(params.barberId && params.serviceId)
   });
 }
 

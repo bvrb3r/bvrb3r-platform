@@ -159,6 +159,45 @@ describe("bookings route", () => {
     }));
   });
 
+  it("preserves Culture booking attribution without using marketplace source enums", async () => {
+    createBookingMock.mockResolvedValue({
+      appointment: {
+        ...appointmentFixture,
+        id: "appt-culture"
+      }
+    });
+
+    const cultureAttribution = {
+      source: "culture",
+      culturePostId: "post-culture-1",
+      cultureAuthorId: "author-profile-1",
+      cultureSurface: "client_culture",
+      cta: "book_barber"
+    };
+
+    const response = await postBooking(new NextRequest("https://bvrb3r.demo/api/bookings", {
+      method: "POST",
+      body: JSON.stringify({
+        locationId: "loc-ybor",
+        barberId: "barber-blaze",
+        serviceId: "srv-signature",
+        addOnIds: [],
+        appointmentTime: "2026-03-23T14:00:00-04:00",
+        clientName: "Jordan Ellis",
+        clientPhone: "(813) 555-0190",
+        cultureAttribution
+      })
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.appointment.id).toBe("appt-culture");
+    expect(createBookingMock).toHaveBeenCalledWith(expect.objectContaining({
+      bookingSource: "culture"
+    }));
+    expect(recordBookingCreatedMock).not.toHaveBeenCalled();
+  });
+
   it("keeps the booking successful when confirmation notification queueing fails", async () => {
     createBookingMock.mockResolvedValue({
       appointment: appointmentFixture
