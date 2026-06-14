@@ -459,7 +459,7 @@ describe("booking form", () => {
     expect(screen.getByText("Selected date")).toBeInTheDocument();
     expect(screen.getByText("Choose another date")).toBeInTheDocument();
     expect(screen.queryByText(/^Date$/)).not.toBeInTheDocument();
-    expect(screen.getByText("1 time")).toBeInTheDocument();
+    expect(screen.getByText("1 slot")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /AM|PM/ })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Continue to Review" }));
@@ -510,6 +510,36 @@ describe("booking form", () => {
     expect(continueButton).toBeDisabled();
     expect(continueButton.className).toContain("bg-[rgba(255,255,255,0.035)]");
     expect(continueButton.className).not.toContain("bg-[linear-gradient");
+  });
+
+  it("renders clean date rail availability states and selected time styling", async () => {
+    const today = getDateKey();
+    const tomorrow = addDaysToDateKey(today, 1);
+    useBarberAvailabilityQueryMock.mockReturnValue({
+      data: {
+        timezone: "America/New_York",
+        slots: [
+          slotForDate(today, 14),
+          slotForDate(today, 15),
+          slotForDate(tomorrow, 16)
+        ]
+      },
+      isLoading: false,
+      error: null
+    });
+
+    render(<BookingForm />);
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    const selectedDateOption = screen.getByRole("button", { name: /2 slots/i });
+    expect(selectedDateOption).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /1 slot/i })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /No slots/i }).length).toBeGreaterThan(0);
+    expect(screen.queryByText("DATE DATE DATE")).not.toBeInTheDocument();
+
+    const timeButtons = await screen.findAllByRole("button", { name: /AM|PM/ });
+    expect(timeButtons[0]).toHaveAttribute("aria-pressed", "true");
+    expect(timeButtons[0].className).toContain("bg-[#7CFF00]");
   });
 
   it("reloads availability when the booking date changes and enables review after a real slot is selected", async () => {
@@ -633,6 +663,10 @@ describe("booking form", () => {
           culturePostId: "post-culture-1",
           cultureAuthorId: "author-profile-1",
           cultureSurface: "client_culture",
+          barberId: "barber-wave",
+          serviceId: "srv-cut",
+          locationId: "loc-ybor",
+          targetRoute: expect.any(String),
           cta: "book_barber"
         }
       }));

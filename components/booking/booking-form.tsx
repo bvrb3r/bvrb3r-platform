@@ -320,6 +320,14 @@ function getSlotPeriod(iso: string, timeZone?: string): "Morning" | "Afternoon" 
   return "Evening";
 }
 
+function getCurrentBookingRoute() {
+  if (typeof window === "undefined") {
+    return undefined;
+  }
+
+  return `${window.location.pathname}${window.location.search}`;
+}
+
 function groupSlotsByDate<T extends { startsAt: string }>(slots: T[], timeZone?: string) {
   return slots.reduce<Record<string, T[]>>((groups, slot) => {
     const key = getSlotDateKey(slot.startsAt, timeZone);
@@ -877,6 +885,15 @@ export function BookingForm() {
         providerPaymentMethodPresent: null,
         providerCustomerPresent: null
       });
+      const finalCultureAttribution = cultureAttribution
+        ? {
+            ...cultureAttribution,
+            barberId: resolvedBarberId,
+            serviceId: resolvedServiceId,
+            locationId: resolvedLocationId,
+            targetRoute: getCurrentBookingRoute()
+          }
+        : undefined;
 
       const result = await bookingMutation.mutateAsync({
         locationId: resolvedLocationId,
@@ -898,7 +915,7 @@ export function BookingForm() {
         aiRecommendationType,
         promotionId: promotionSelection?.promotion.id,
         promotionCode: promotionSelection?.promotion.code ?? (normalizedPromotionCode || undefined),
-        ...(cultureAttribution ? { cultureAttribution } : {})
+        ...(finalCultureAttribution ? { cultureAttribution: finalCultureAttribution } : {})
       });
 
       setConfirmationId(result.appointment.id);
@@ -1209,18 +1226,18 @@ export function BookingForm() {
                 <p className="mt-2 text-sm text-white/58">Times shown in {timezoneLabel}.</p>
               </div>
 
-              <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
+              <div className="rounded-[28px] border border-white/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.075),rgba(255,255,255,0.025))] p-4 shadow-[0_18px_60px_rgba(0,0,0,0.22)]">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="surface-label text-white/42">Selected date</p>
-                    <p className="mt-1 text-lg font-semibold text-white">{selectedDateLabel}</p>
-                    <p className="mt-1 text-xs text-white/48">Times shown in {timezoneLabel}.</p>
+                  <div className="min-w-0">
+                    <p className="surface-label text-[#d7ffab]">Selected date</p>
+                    <p className="mt-1 truncate text-xl font-black tracking-[-0.03em] text-white">{selectedDateLabel}</p>
+                    <p className="mt-1 text-xs font-medium text-white/52">Times shown in {timezoneLabel}.</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <Button
                       type="button"
                       variant="secondary"
-                      className="h-10 px-4"
+                      className="h-10 rounded-full px-4 text-xs"
                       disabled={!canGoToPreviousDay || availabilityQuery.isLoading}
                       onClick={() => selectBookingDate(addDaysToDateKey(selectedDateKey, -1))}
                     >
@@ -1229,7 +1246,7 @@ export function BookingForm() {
                     <Button
                       type="button"
                       variant="secondary"
-                      className="h-10 px-4"
+                      className="h-10 rounded-full px-4 text-xs"
                       disabled={availabilityQuery.isLoading}
                       onClick={() => selectBookingDate(addDaysToDateKey(selectedDateKey, 1))}
                     >
@@ -1246,27 +1263,36 @@ export function BookingForm() {
                     onChange={(event) => selectBookingDate(event.target.value)}
                   />
                 </label>
-                <div className="mt-4 flex gap-2 overflow-x-auto pb-1" aria-label="Booking date options">
+                <div className="mt-4 flex snap-x gap-2 overflow-x-auto pb-2" aria-label="Booking date options">
                   {dateWindowKeys.map((dateKey) => {
                     const dateSlots = slotsByDate[dateKey] ?? [];
                     const dateCard = formatDateRailCard(dateKey);
                     const hasSlots = dateSlots.length > 0;
+                    const isSelected = selectedDateKey === dateKey;
+                    const slotLabel = dateSlots.length === 1 ? "1 slot" : hasSlots ? `${dateSlots.length} slots` : "No slots";
                     return (
                       <button
                         key={dateKey}
                         type="button"
+                        aria-pressed={isSelected}
+                        aria-label={`${dateCard.weekday}, ${dateCard.date}. ${slotLabel}.`}
                         className={cn(
-                          "min-w-[7.75rem] rounded-[20px] border px-4 py-3 text-left transition",
-                          selectedDateKey === dateKey
-                            ? "border-[#7CFF00]/38 bg-[#7CFF00]/12 text-white shadow-[0_14px_38px_rgba(124,255,0,0.10)]"
-                            : "border-white/8 bg-black/18 text-white/64 hover:border-[#7CFF00]/22 hover:text-white"
+                          "min-w-[7.9rem] snap-start rounded-[22px] border px-4 py-3 text-left transition",
+                          isSelected
+                            ? "border-[#7CFF00]/45 bg-[#7CFF00]/14 text-white shadow-[0_16px_42px_rgba(124,255,0,0.12)]"
+                            : hasSlots
+                              ? "border-white/10 bg-black/22 text-white/74 hover:border-[#7CFF00]/24 hover:text-white"
+                              : "border-white/[0.06] bg-black/14 text-white/38"
                         )}
                         onClick={() => selectBookingDate(dateKey)}
                       >
-                        <span className="block text-xs font-extrabold uppercase tracking-[0.16em] text-white/46">{dateCard.weekday}</span>
+                        <span className={cn("block text-[11px] font-extrabold uppercase tracking-[0.14em]", isSelected ? "text-[#d7ffab]" : "text-white/48")}>{dateCard.weekday}</span>
                         <span className="mt-1 block text-base font-black tracking-[-0.02em]">{dateCard.date}</span>
-                        <span className={cn("mt-2 inline-flex rounded-full px-2.5 py-1 text-[11px] font-extrabold", hasSlots ? "bg-[#7CFF00]/14 text-[#d7ffab]" : "bg-white/[0.06] text-white/44")}>
-                          {dateSlots.length === 1 ? "1 time" : hasSlots ? `${dateSlots.length} times` : "No times"}
+                        <span className={cn(
+                          "mt-3 inline-flex rounded-full px-2.5 py-1 text-[11px] font-extrabold",
+                          hasSlots ? "bg-[#7CFF00]/16 text-[#d7ffab]" : "bg-white/[0.045] text-white/40"
+                        )}>
+                          {slotLabel}
                         </span>
                       </button>
                     );
@@ -1289,7 +1315,7 @@ export function BookingForm() {
                     }
 
                     return (
-                      <div key={period} className="rounded-[24px] border border-white/8 bg-black/20 p-4">
+                      <div key={period} className="rounded-[26px] border border-white/8 bg-black/18 p-4">
                         <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-white">
                           <Clock3 className="h-4 w-4 text-[#d7ffab]" />
                           {period}
@@ -1301,11 +1327,12 @@ export function BookingForm() {
                               <button
                                 key={slot.startsAt}
                                 type="button"
+                                aria-pressed={selected}
                                 className={cn(
-                                  "rounded-full border px-4 py-3 text-sm font-semibold transition",
+                                  "min-h-12 rounded-full border px-4 py-3 text-sm font-extrabold transition",
                                   selected
-                                    ? "border-[#7CFF00]/34 bg-[#7CFF00] text-black"
-                                    : "border-white/8 bg-black/24 text-white hover:border-[#7CFF00]/22 hover:text-[#d7ffab]"
+                                    ? "border-[#7CFF00] bg-[#7CFF00] text-black shadow-[0_12px_34px_rgba(124,255,0,0.22)]"
+                                    : "border-white/8 bg-black/24 text-white/82 hover:border-[#7CFF00]/22 hover:text-[#d7ffab]"
                                 )}
                                 onClick={() => form.setValue("appointmentTime", slot.startsAt)}
                               >
@@ -1325,10 +1352,10 @@ export function BookingForm() {
                   </p>
                   <p className="mt-2 text-sm leading-7 text-white/58">Choose another date, find the next available time, or join the waitlist.</p>
                   <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                    <Button type="button" variant="secondary" className="h-11 px-5" disabled={availabilityQuery.isLoading} onClick={handleFindNextAvailable}>
+                    <Button type="button" variant="secondary" className="h-11 rounded-full px-5 text-xs" disabled={availabilityQuery.isLoading} onClick={handleFindNextAvailable}>
                       Find next available
                     </Button>
-                    <Button type="button" variant="secondary" className="h-11 px-5" disabled={waitlistPending || !resolvedServiceId || !resolvedLocationId || !isOnline} onClick={() => void handleJoinWaitlist()}>
+                    <Button type="button" variant="secondary" className="h-11 rounded-full px-5 text-xs" disabled={waitlistPending || !resolvedServiceId || !resolvedLocationId || !isOnline} onClick={() => void handleJoinWaitlist()}>
                       {waitlistPending ? "Joining waitlist..." : "Join waitlist"}
                     </Button>
                   </div>

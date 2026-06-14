@@ -1040,7 +1040,7 @@ describe("canonical availability intelligence", () => {
       barberKeyUsed: "profile-uuid"
     });
     expect(results).toHaveLength(1);
-    expect(results[0].barberName).toBe("Phillip McGee");
+    expect(results[0].barberName).toBe("philforsure");
     expect(results[0].mostBookedService).toBe("test cut");
     expect(diagnostic.eligible).toBe(true);
     expect(diagnostic.blockers).toEqual([]);
@@ -1288,11 +1288,11 @@ describe("canonical availability intelligence", () => {
     const results = await buildCanonicalDiscoveryResults(supabase as never, {
       locationId: "independent-live-123"
     });
-    const publicProfile = await buildCanonicalBarberProfile(supabase as never, "barber-live-123");
+    const publicProfile = await buildCanonicalBarberProfile(supabase as never, "live-123");
 
     expect(results).toHaveLength(1);
-    expect(results[0].username).toBe("barber-live-123");
-    expect(results[0].bookingHref).toContain("barber=barber-live-123");
-    expect(publicProfile?.profile.username).toBe("barber-live-123");
+    expect(results[0].username).toBe("live-123");
+    expect(results[0].bookingHref).toContain("barber=live-123");
+    expect(publicProfile?.profile.username).toBe("live-123");
   });
 });

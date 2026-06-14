@@ -10,6 +10,7 @@ const {
   trackAiRecommendationMock,
   createBookingMock,
   recordBookingCreatedMock,
+  recordBookingCreatedPlatformEventMock,
   queueBookingCreatedNotificationsMock
 } = vi.hoisted(() => ({
   getClientExperienceContextMock: vi.fn(),
@@ -19,6 +20,7 @@ const {
   trackAiRecommendationMock: vi.fn(),
   createBookingMock: vi.fn(),
   recordBookingCreatedMock: vi.fn(),
+  recordBookingCreatedPlatformEventMock: vi.fn(),
   queueBookingCreatedNotificationsMock: vi.fn()
 }));
 
@@ -44,6 +46,10 @@ vi.mock("@/lib/ai/service", () => ({
 
 vi.mock("@/lib/booking/notifications", () => ({
   queueBookingCreatedNotifications: queueBookingCreatedNotificationsMock
+}));
+
+vi.mock("@/lib/core/booking-events", () => ({
+  recordBookingCreatedPlatformEvent: recordBookingCreatedPlatformEventMock
 }));
 
 import { POST as postBooking } from "@/app/api/bookings/route";
@@ -78,6 +84,7 @@ describe("bookings route", () => {
     trackAiRecommendationMock.mockReset();
     createBookingMock.mockReset();
     recordBookingCreatedMock.mockReset();
+    recordBookingCreatedPlatformEventMock.mockReset();
     queueBookingCreatedNotificationsMock.mockReset();
 
     getClientExperienceContextMock.mockResolvedValue({
@@ -99,6 +106,7 @@ describe("bookings route", () => {
     });
     recordReferralBookingProgressMock.mockResolvedValue({ referralEvent: null });
     trackAiRecommendationMock.mockResolvedValue({ ok: true });
+    recordBookingCreatedPlatformEventMock.mockResolvedValue({ ok: true });
     queueBookingCreatedNotificationsMock.mockResolvedValue({ queued: 2, skipped: false });
   });
 
@@ -172,6 +180,10 @@ describe("bookings route", () => {
       culturePostId: "post-culture-1",
       cultureAuthorId: "author-profile-1",
       cultureSurface: "client_culture",
+      barberId: "barber-blaze",
+      serviceId: "srv-signature",
+      locationId: "loc-ybor",
+      targetRoute: "/booking/new?source=culture&culturePostId=post-culture-1&barberId=barber-blaze",
       cta: "book_barber"
     };
 
@@ -194,6 +206,17 @@ describe("bookings route", () => {
     expect(body.appointment.id).toBe("appt-culture");
     expect(createBookingMock).toHaveBeenCalledWith(expect.objectContaining({
       bookingSource: "culture"
+    }));
+    expect(recordBookingCreatedPlatformEventMock).toHaveBeenCalledWith(expect.objectContaining({
+      appointment: expect.objectContaining({
+        id: "appt-culture",
+        barberId: "barber-blaze",
+        serviceId: "srv-signature",
+        locationId: "loc-ybor"
+      }),
+      context: expect.objectContaining({
+        cultureAttribution
+      })
     }));
     expect(recordBookingCreatedMock).not.toHaveBeenCalled();
   });

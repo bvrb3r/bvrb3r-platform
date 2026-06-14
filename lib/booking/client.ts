@@ -287,6 +287,10 @@ export interface CreateBookingPayload {
     culturePostId?: string;
     cultureAuthorId?: string;
     cultureSurface?: string;
+    barberId?: string;
+    serviceId?: string;
+    locationId?: string;
+    targetRoute?: string;
     cta?: string;
   };
 }

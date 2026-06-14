@@ -35,6 +35,10 @@ const bookingSchema = z.object({
     culturePostId: z.string().optional(),
     cultureAuthorId: z.string().optional(),
     cultureSurface: z.string().optional(),
+    barberId: z.string().optional(),
+    serviceId: z.string().optional(),
+    locationId: z.string().optional(),
+    targetRoute: z.string().optional(),
     cta: z.string().optional()
   }).optional()
 });
@@ -206,6 +210,14 @@ export async function POST(request: NextRequest) {
       cultureAttribution,
       ...bookingInput
     } = parsed.data;
+    const normalizedCultureAttribution = cultureAttribution
+      ? {
+          ...cultureAttribution,
+          barberId: cultureAttribution.barberId ?? bookingInput.barberId,
+          serviceId: cultureAttribution.serviceId ?? bookingInput.serviceId,
+          locationId: cultureAttribution.locationId ?? bookingInput.locationId
+        }
+      : undefined;
     const clientContext = await getClientExperienceContext();
     logBookingRouteStage("auth_user_resolved", {
       authUserIdPresent: Boolean(clientContext.viewer.id),
@@ -228,7 +240,7 @@ export async function POST(request: NextRequest) {
       actorEmail: clientContext.activeClient?.email ?? clientContext.viewer.email,
       actorProfileId: isClientRole(clientContext.viewer.role) ? clientContext.viewer.id : undefined,
       createdBy: clientContext.viewer.id,
-      bookingSource: cultureAttribution ? "culture" : sourceKind ?? "booking"
+      bookingSource: normalizedCultureAttribution ? "culture" : sourceKind ?? "booking"
     });
     await recordBookingCreatedPlatformEvent({
       appointment: result.appointment,
@@ -239,7 +251,7 @@ export async function POST(request: NextRequest) {
       context: {
         sourceKind: sourceKind ?? null,
         matchedFrom: matchedFrom ?? null,
-        cultureAttribution: cultureAttribution ?? null
+        cultureAttribution: normalizedCultureAttribution ?? null
       }
     });
 
@@ -305,7 +317,7 @@ export async function POST(request: NextRequest) {
           payload: {
             sourceKind: sourceKind ?? null,
             matchedFrom: matchedFrom ?? null,
-            cultureAttribution: cultureAttribution ?? null
+            cultureAttribution: normalizedCultureAttribution ?? null
           }
         });
       } catch {}

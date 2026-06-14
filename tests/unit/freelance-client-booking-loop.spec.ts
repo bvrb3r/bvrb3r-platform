@@ -453,6 +453,7 @@ function appointmentRowsToDashboard(tables: Record<string, Row[]>) {
     tipAmount: Number(row.tip_amount ?? 0),
     note: "",
     source: "booking",
+    bookingSource: row.booking_source ?? row.source,
     revision: Number(row.lifecycle_revision ?? 1),
     updatedAt: String(row.updated_at ?? "2026-05-14T12:00:00.000Z"),
     display: { serviceName: "test cut" }
@@ -497,7 +498,7 @@ describe("freelance client booking loop", () => {
     reconcilePaymentPayoutExecutionsMock.mockReset();
   });
 
-  it("client can discover and book a freelance barber and barber sees appointment", async () => {
+  it("culture booking creates appointment visible on barber calendar", async () => {
     const tables = createTables();
     const supabase = createSupabaseMock(tables);
     createSupabaseAdminClientMock.mockReturnValue(supabase);
@@ -535,6 +536,12 @@ describe("freelance client booking loop", () => {
 
     expect(home.recommendedBarbers.some((barber) => barber.username === "philforsure")).toBe(true);
     expect(search.barbers.some((barber) => barber.username === "philforsure")).toBe(true);
+    const cultureBookingRoute = `/booking/new?source=culture&culturePostId=post-culture-loop&cultureAuthorId=${BARBER_PROFILE_ID}&cultureSurface=client_culture&barberId=barber-43b3cda2&serviceId=${SERVICE_REFERENCE}&locationId=independent-barber-43b3cda2`;
+    expect(cultureBookingRoute).toContain("source=culture");
+    expect(cultureBookingRoute).toContain("culturePostId=post-culture-loop");
+    expect(cultureBookingRoute).toContain("barberId=barber-43b3cda2");
+    expect(cultureBookingRoute).toContain(`serviceId=${SERVICE_REFERENCE}`);
+    expect(cultureBookingRoute).toContain("locationId=independent-barber-43b3cda2");
     expect(profile?.services.some((entry) => entry.service.name === "test cut")).toBe(true);
     expect(availability?.slots.length).toBeGreaterThan(0);
     expect(beforeMore.workingHours.length).toBeGreaterThan(0);
@@ -560,7 +567,8 @@ describe("freelance client booking loop", () => {
       actorRole: "client",
       actorEmail: "phillipmcgeeclient@outlook.com",
       actorProfileId: CLIENT_PROFILE_ID,
-      paymentMethodId: PAYMENT_METHOD_ID
+      paymentMethodId: PAYMENT_METHOD_ID,
+      bookingSource: "culture"
     });
 
     expect(booking.appointment.status).toBe("confirmed");
@@ -569,6 +577,7 @@ describe("freelance client booking loop", () => {
     expect(booking.appointment.serviceId).toBe(SERVICE_ID);
     expect(booking.appointment.locationId).toBe(LOCATION_ID);
     expect(booking.appointment.shopId).toBeUndefined();
+    expect(booking.appointment.bookingSource).toBe("culture");
 
     const insertedAppointment = tables.appointments[0] as {
       id: string;
@@ -582,7 +591,8 @@ describe("freelance client booking loop", () => {
       location_id: LOCATION_ID,
       shop_id: null,
       chair_label: "Phils chair",
-      status: "confirmed"
+      status: "confirmed",
+      booking_source: "culture"
     });
     expect(insertedPayment).toMatchObject({
       appointment_id: insertedAppointment.id,
@@ -630,7 +640,8 @@ describe("freelance client booking loop", () => {
       clientId: "client-1fd26b88",
       serviceId: SERVICE_REFERENCE,
       chair: "Phils chair",
-      status: "confirmed"
+      status: "confirmed",
+      bookingSource: "culture"
     });
 
     const clientActivity = await getClientBookingsPayload("client-1fd26b88");
@@ -652,7 +663,8 @@ describe("freelance client booking loop", () => {
       clientId: "client-1fd26b88",
       serviceId: SERVICE_REFERENCE,
       chair: "Phils chair",
-      status: "confirmed"
+      status: "confirmed",
+      bookingSource: "culture"
     });
     expect(afterCalendar.timeline.appointments[0].display.clientName).toBe("Phillip mcgee");
     expect(afterCalendar.timeline.appointments[0].display.serviceName).toBe("test cut");
@@ -662,6 +674,7 @@ describe("freelance client booking loop", () => {
     expect(JSON.stringify(tables.appointments)).not.toContain("client-1fd26b88");
     expect(JSON.stringify(tables.appointments)).not.toContain("barber-43b3cda2");
     expect(JSON.stringify(tables.appointments)).not.toContain(SERVICE_REFERENCE);
+    expect(tables.appointments).toHaveLength(1);
   });
 
   it("returns a safe appointment save failure and skips Stripe when appointment insert fails", async () => {
