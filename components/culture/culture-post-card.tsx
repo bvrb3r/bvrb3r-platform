@@ -60,31 +60,6 @@ function safeReasonLabel(reason: CultureFeedReasonCode) {
   }
 }
 
-function postTypeLabel(value: string) {
-  switch (value) {
-    case "barber_cut":
-      return "Fresh cut";
-    case "barber_before_after":
-      return "Before and after";
-    case "barber_availability":
-      return "Availability";
-    case "barber_tutorial":
-      return "Tutorial";
-    case "shop_update":
-      return "Shop update";
-    case "shop_walkins":
-      return "Walk-ins";
-    case "shop_team":
-      return "Team highlight";
-    case "shop_open_chair":
-      return "Open chair";
-    case "bvrb3r_official":
-      return "BVRB3R";
-    default:
-      return "Culture";
-  }
-}
-
 async function postJson<T>(url: string, payload: Record<string, unknown>): Promise<T> {
   const response = await fetch(url, {
     method: "POST",
@@ -103,6 +78,7 @@ function CultureActionButton({
   available,
   icon,
   label,
+  ariaLabel,
   loading = false,
   active = false,
   onClick
@@ -110,28 +86,31 @@ function CultureActionButton({
   available: boolean;
   icon: ReactNode;
   label: string;
+  ariaLabel: string;
   loading?: boolean;
   active?: boolean;
   onClick?: () => void;
 }) {
+  const title = available ? ariaLabel : actionTitle(label, false);
+
   return (
     <button
       type="button"
       disabled={!available || loading}
       onClick={onClick}
-      aria-label={actionTitle(label, available)}
-      title={actionTitle(label, available)}
+      aria-label={ariaLabel}
+      aria-busy={loading || undefined}
+      title={title}
       className={[
-        "inline-flex min-h-10 items-center justify-center gap-2 rounded-full border px-3 text-xs font-black uppercase tracking-[0.12em] transition",
+        "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d7ffab]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-black disabled:cursor-not-allowed",
         active
-          ? "border-[#d7ffab]/30 bg-[#d7ffab]/16 text-[#d7ffab]"
+          ? "bg-[#A3FF12]/14 text-[#A3FF12] shadow-[0_0_20px_rgba(163,255,18,0.12)]"
           : available
-            ? "border-white/12 bg-white/[0.05] text-white/70 hover:border-[#d7ffab]/24 hover:text-[#d7ffab]"
-            : "border-white/8 bg-white/[0.03] text-white/32"
+            ? "bg-transparent text-white/70 hover:bg-white/[0.06] hover:text-[#d7ffab]"
+            : "bg-transparent text-white/26"
       ].join(" ")}
     >
       {icon}
-      <span>{loading ? "Saving" : label}</span>
     </button>
   );
 }
@@ -323,7 +302,6 @@ export function CulturePostCard({
     () => (post.reasonCodes?.length ? post.reasonCodes.map(safeReasonLabel) : [post.reasonLabel ?? "Recent Culture post"]),
     [post.reasonCodes, post.reasonLabel]
   );
-  const tags = [post.serviceName, post.shopName, postTypeLabel(post.postType)].filter(Boolean);
 
   useEffect(() => {
     setCommentSummary(post.commentSummary ?? { count: 0 });
@@ -761,29 +739,33 @@ export function CulturePostCard({
               available={post.canLike}
               active={liked}
               loading={loadingAction === "like" || loadingAction === "unlike"}
-              icon={<Heart className="h-4 w-4" />}
+              icon={<Heart className="h-5 w-5" />}
               label={liked ? "Liked" : "Like"}
+              ariaLabel={liked ? "Unlike post" : "Like post"}
               onClick={() => void runPostAction(liked ? "unlike" : "like").catch(() => undefined)}
             />
             <CultureActionButton
               available={post.canComment}
-              icon={<MessageCircle className="h-4 w-4" />}
+              icon={<MessageCircle className="h-5 w-5" />}
               label="Comment"
+              ariaLabel="Comment on post"
               onClick={openComments}
             />
             <CultureActionButton
               available={post.canShare}
               loading={loadingAction === "share"}
-              icon={<Share2 className="h-4 w-4" />}
+              icon={<Share2 className="h-5 w-5" />}
               label="Share"
+              ariaLabel="Share post"
               onClick={() => void sharePost()}
             />
             <CultureActionButton
               available={post.canSave}
               active={saved}
               loading={loadingAction === "save" || loadingAction === "unsave"}
-              icon={<Bookmark className="h-4 w-4" />}
+              icon={<Bookmark className="h-5 w-5" />}
               label={saved ? "Saved" : "Save"}
+              ariaLabel={saved ? "Remove saved post" : "Save post"}
               onClick={() => void runPostAction(saved ? "unsave" : "save").catch(() => undefined)}
             />
           </div>
@@ -792,16 +774,6 @@ export function CulturePostCard({
             <button type="button" onClick={openDetail} className="mt-4 block w-full text-left text-sm leading-6 text-white/78">
               {post.caption}
             </button>
-          ) : null}
-
-          {tags.length ? (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {tags.map((tag) => (
-                <span key={tag} className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] font-bold text-white/52">
-                  {tag}
-                </span>
-              ))}
-            </div>
           ) : null}
 
           {post.canComment ? (
@@ -822,7 +794,7 @@ export function CulturePostCard({
             </div>
           ) : null}
 
-          <p className="mt-4 text-xs font-semibold text-white/38">{post.isPromoted ? "Promoted" : reasonLabels[0]}</p>
+          {post.isPromoted ? <p className="mt-4 text-xs font-semibold text-white/38">Promoted</p> : null}
 
           {moreOpen ? (
             <div className="mt-4 rounded-[20px] border border-white/10 bg-black/36 p-4" data-testid="culture-post-more-menu">
@@ -947,23 +919,26 @@ export function CulturePostCard({
                   available={post.canLike}
                   active={liked}
                   loading={loadingAction === "like" || loadingAction === "unlike"}
-                  icon={<Heart className="h-4 w-4" />}
+                  icon={<Heart className="h-5 w-5" />}
                   label={liked ? "Liked" : "Like"}
+                  ariaLabel={liked ? "Unlike post" : "Like post"}
                   onClick={() => void runPostAction(liked ? "unlike" : "like").catch(() => undefined)}
                 />
                 <CultureActionButton
                   available={post.canComment}
-                  icon={<MessageCircle className="h-4 w-4" />}
+                  icon={<MessageCircle className="h-5 w-5" />}
                   label="Comment"
+                  ariaLabel="Comment on post"
                   onClick={() => void loadComments(true)}
                 />
-                <CultureActionButton available={post.canShare} loading={loadingAction === "share"} icon={<Share2 className="h-4 w-4" />} label="Share" onClick={() => void sharePost()} />
+                <CultureActionButton available={post.canShare} loading={loadingAction === "share"} icon={<Share2 className="h-5 w-5" />} label="Share" ariaLabel="Share post" onClick={() => void sharePost()} />
                 <CultureActionButton
                   available={post.canSave}
                   active={saved}
                   loading={loadingAction === "save" || loadingAction === "unsave"}
-                  icon={<Bookmark className="h-4 w-4" />}
+                  icon={<Bookmark className="h-5 w-5" />}
                   label={saved ? "Saved" : "Save"}
+                  ariaLabel={saved ? "Remove saved post" : "Save post"}
                   onClick={() => void runPostAction(saved ? "unsave" : "save").catch(() => undefined)}
                 />
               </div>

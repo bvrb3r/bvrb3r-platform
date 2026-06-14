@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CultureFeedItem, CultureFeedModule } from "@/lib/culture/service";
@@ -294,7 +294,14 @@ describe("client culture screen", () => {
     const serviceBookCta = screen.getByRole("link", { name: /Book Signature Cut/i });
     expect(serviceBookCta).toHaveAttribute("href", expect.stringContaining("/booking/new?source=culture"));
     expect(serviceBookCta).toHaveClass("bg-[#A3FF12]", "text-[#050505]", "font-black", "min-h-12");
-    fireEvent.click(screen.getByRole("button", { name: /Comment this Culture post/i }));
+    expect(within(card).getByRole("button", { name: "Like post" })).not.toHaveTextContent(/like|saving/i);
+    expect(within(card).getByRole("button", { name: "Comment on post" })).not.toHaveTextContent(/comment/i);
+    expect(within(card).getByRole("button", { name: "Share post" })).not.toHaveTextContent(/share|saving/i);
+    expect(within(card).getByRole("button", { name: "Save post" })).not.toHaveTextContent(/save|saving/i);
+    expect(card).not.toHaveTextContent(/\bLIKE\b|\bCOMMENT\b|\bSHARE\b|\bSAVE\b/);
+    expect(card).not.toHaveTextContent("Fresh cut");
+    expect(card).not.toHaveTextContent("Recent barber work");
+    fireEvent.click(screen.getByRole("button", { name: "Comment on post" }));
     expect(await screen.findByTestId("culture-comments-section")).toBeInTheDocument();
     expect(screen.getByText("No comments yet.")).toBeInTheDocument();
     expect(screen.queryByTestId("culture-comment-preview")).not.toBeInTheDocument();
@@ -303,7 +310,7 @@ describe("client culture screen", () => {
     expect(screen.getByRole("dialog", { name: "Culture post detail" })).toBeInTheDocument();
     expect(screen.getByText("Why this post")).toBeInTheDocument();
 
-    fireEvent.click(screen.getAllByRole("button", { name: /Like this Culture post/i })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: "Like post" })[0]);
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/culture/engagements", expect.objectContaining({
       method: "POST",
       body: JSON.stringify({ postId: "post-1", action: "like" })
@@ -465,7 +472,7 @@ describe("client culture screen", () => {
     }} />);
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /Share this Culture post/i }));
+      fireEvent.click(screen.getByRole("button", { name: "Share post" }));
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -490,7 +497,7 @@ describe("client culture screen", () => {
     });
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /Share this Culture post/i }));
+      fireEvent.click(screen.getByRole("button", { name: "Share post" }));
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -545,7 +552,7 @@ describe("client culture screen", () => {
       items: [culturePost("post-1")]
     }} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Comment this Culture post/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Comment on post" }));
     expect(await screen.findByText("No comments yet.")).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Add a comment"), { target: { value: "Clean work." } });
@@ -649,7 +656,7 @@ describe("client culture screen", () => {
     }} />);
 
     expect(screen.getByTestId("culture-comment-preview")).toHaveTextContent("View 1 comment");
-    fireEvent.click(screen.getByRole("button", { name: /Comment this Culture post/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Comment on post" }));
     expect(await screen.findByText("Already here.")).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Add a comment"), { target: { value: "Second comment." } });
@@ -692,7 +699,7 @@ describe("client culture screen", () => {
       items: [culturePost("post-1")]
     }} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Comment this Culture post/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Comment on post" }));
     expect(await screen.findByText("No comments yet.")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Add a comment"), { target: { value: "Won't save." } });
     fireEvent.click(screen.getByRole("button", { name: "Post comment" }));
