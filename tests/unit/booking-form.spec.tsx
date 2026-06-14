@@ -202,14 +202,22 @@ function addDaysToDateKey(dateKey: string, days: number) {
   return getDateKey(next);
 }
 
-function slotForDate(dateKey: string, hour = 14) {
+function slotForDate(dateKey: string, hour = 14, overrides: Partial<{
+  startsAt: string;
+  endsAt: string;
+  label: string;
+  locationId: string;
+  barberId: string;
+  serviceId: string;
+}> = {}) {
   return {
     startsAt: `${dateKey}T${String(hour).padStart(2, "0")}:00:00.000Z`,
     endsAt: `${dateKey}T${String(hour + 1).padStart(2, "0")}:00:00.000Z`,
     label: `${dateKey} ${hour}:00`,
     locationId: "loc-ybor",
     barberId: "barber-wave",
-    serviceId: "srv-cut"
+    serviceId: "srv-cut",
+    ...overrides
   };
 }
 
@@ -324,7 +332,8 @@ describe("booking form", () => {
           {
             barberId: "barber-wave",
             barberName: "Wave Carter",
-            username: "wave"
+            username: "wave",
+            locationId: "loc-ybor"
           }
         ]
       },
@@ -355,7 +364,8 @@ describe("booking form", () => {
               bufferMin: 10,
               price: 40,
               deposit: 10,
-              fullPrepay: false
+              fullPrepay: false,
+              shopId: "loc-ybor"
             }
           }
         ]
@@ -496,7 +506,10 @@ describe("booking form", () => {
     expect(screen.getByRole("button", { name: "Join waitlist" })).toBeInTheDocument();
     expect(screen.getByText("No times available for this date.")).toBeInTheDocument();
     expect(screen.getByText("Choose a time to continue.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Continue to Review" })).toBeDisabled();
+    const continueButton = screen.getByRole("button", { name: "Continue to Review" });
+    expect(continueButton).toBeDisabled();
+    expect(continueButton.className).toContain("bg-[rgba(255,255,255,0.035)]");
+    expect(continueButton.className).not.toContain("bg-[linear-gradient");
   });
 
   it("reloads availability when the booking date changes and enables review after a real slot is selected", async () => {
@@ -624,6 +637,132 @@ describe("booking form", () => {
         }
       }));
     });
+  });
+
+  it("uses the locked barber canonical location when Culture entry omits locationId", async () => {
+    const today = getDateKey();
+    const independentLocationId = "independent-barber-43b3cda2";
+    const cultureServiceId = "srv-hair-cut-beard-1781175767997";
+    const searchGet = vi.fn((key: string) => {
+      const params: Record<string, string> = {
+        source: "culture",
+        culturePostId: "post-culture-1",
+        cultureAuthorId: "author-profile-1",
+        cultureSurface: "client_culture",
+        barberId: "barber-43b3cda2",
+        serviceId: cultureServiceId
+      };
+      return params[key] ?? null;
+    });
+
+    useSearchParamsMock.mockReturnValue({ get: searchGet });
+    useBookingStoreMock.mockReturnValue({
+      selectedLocationId: "generic-shop-location",
+      selectedBarberId: "barber-43b3cda2",
+      setLocation: vi.fn(),
+      setBarber: vi.fn()
+    });
+    useBarberSearchQueryMock.mockReturnValue({
+      data: {
+        shops: [
+          {
+            id: "generic-shop-location",
+            name: "Generic Shop",
+            city: "Tampa",
+            state: "FL",
+            address: "1 Generic Way"
+          }
+        ],
+        barbers: [
+          {
+            barberId: "barber-43b3cda2",
+            barberName: "Phillip McGee",
+            username: "phillipforsure",
+            locationId: independentLocationId
+          }
+        ]
+      },
+      isLoading: false,
+      error: null
+    });
+    useBarberProfileQueryMock.mockReturnValue({
+      data: {
+        profile: {
+          username: "phillipforsure",
+          shopId: independentLocationId
+        },
+        shopLocations: [
+          {
+            id: independentLocationId,
+            name: "Phils chair",
+            address: "2172 University Square More",
+            city: "Tampa",
+            state: "FL",
+            postalCode: "33607"
+          }
+        ],
+        services: [
+          {
+            service: {
+              id: cultureServiceId,
+              name: "Hair Cut & Beard",
+              category: "Haircuts",
+              description: "Hair Cut & Beard with everything line up.",
+              durationMin: 30,
+              bufferMin: 0,
+              price: 40,
+              deposit: 0,
+              fullPrepay: false,
+              shopId: independentLocationId
+            }
+          }
+        ]
+      },
+      isLoading: false,
+      error: null
+    });
+    useBarberAvailabilityQueryMock.mockImplementation((params: { locationId?: string; serviceId?: string }) => ({
+      data: {
+        timezone: "America/New_York",
+        service: {
+          id: cultureServiceId,
+          name: "Hair Cut & Beard",
+          durationMin: 30,
+          bufferMin: 0,
+          price: 40,
+          deposit: 0,
+          fullPrepay: false
+        },
+        slots: params.locationId === independentLocationId
+          ? [slotForDate(today, 16, {
+              locationId: independentLocationId,
+              barberId: "barber-43b3cda2",
+              serviceId: cultureServiceId
+            })]
+          : []
+      },
+      isLoading: false,
+      error: null
+    }));
+
+    render(<BookingForm />);
+
+    await waitFor(() => {
+      expect(useBarberAvailabilityQueryMock).toHaveBeenCalledWith(expect.objectContaining({
+        barberId: "barber-43b3cda2",
+        serviceId: cultureServiceId,
+        locationId: independentLocationId,
+        startDate: today,
+        days: 14,
+        timeZone: expect.any(String)
+      }));
+    });
+
+    expect(screen.getByText("Culture booking")).toBeInTheDocument();
+    expect(screen.getByText("Phils chair")).toBeInTheDocument();
+    expect(screen.queryByText("Generic Shop")).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /AM|PM/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue to Review" })).toBeEnabled();
   });
 
   it("auto-selects the only saved card during booking even if default metadata is missing", async () => {

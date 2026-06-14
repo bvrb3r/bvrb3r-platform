@@ -109,6 +109,36 @@ function getSourceLabel(sourceKind?: MarketplaceSourceKind, isCultureSource = fa
   }
 }
 
+function resolveCanonicalBookingLocationId(input: {
+  urlLocationId?: string | null;
+  barberLocationId?: string | null;
+  serviceLocationId?: string | null;
+  selectedLocationId?: string | null;
+  shopFallbackId?: string | null;
+  hasLockedBarber: boolean;
+}) {
+  const urlLocationId = input.urlLocationId?.trim();
+  if (urlLocationId) {
+    return urlLocationId;
+  }
+
+  const barberLocationId = input.barberLocationId?.trim();
+  if (barberLocationId) {
+    return barberLocationId;
+  }
+
+  const serviceLocationId = input.serviceLocationId?.trim();
+  if (serviceLocationId) {
+    return serviceLocationId;
+  }
+
+  if (input.hasLockedBarber) {
+    return "";
+  }
+
+  return input.selectedLocationId?.trim() || input.shopFallbackId?.trim() || "";
+}
+
 function splitServices(services: Service[]) {
   return {
     primary: services.filter((service) => service.category !== "Add-ons" && service.category !== "Treatments"),
@@ -378,7 +408,8 @@ export function BookingForm() {
   const aiRecommendationId = searchParams.get("aiRecommendationId") ?? undefined;
   const aiRecommendationType = toAiRecommendationType(searchParams.get("aiRecommendationType"));
   const query = searchParams.get("query") ?? undefined;
-  const preselectedLocationId = searchParams.get("locationId") ?? selectedLocationId;
+  const urlLocationId = searchParams.get("locationId") ?? "";
+  const preselectedLocationId = urlLocationId || selectedLocationId;
   const preselectedBarberId = searchParams.get("barberId") ?? selectedBarberId;
   const preselectedServiceId = searchParams.get("serviceId") ?? "";
   const preselectedAppointmentTime = searchParams.get("appointmentTime") ?? "";
@@ -461,14 +492,6 @@ export function BookingForm() {
   }, [form, profileClientName, profileClientPhone]);
 
   useEffect(() => {
-    const nextLocationId = preselectedLocationId || shops[0]?.id;
-    if (nextLocationId && form.getValues("locationId") !== nextLocationId) {
-      form.setValue("locationId", nextLocationId);
-      setLocation(nextLocationId);
-    }
-  }, [form, preselectedLocationId, setLocation, shops]);
-
-  useEffect(() => {
     const nextBarber = resolveBookableBarber(barbers, preselectedBarberId || form.getValues("barberId"));
     const nextBarberId = nextBarber?.barberId ?? "";
     if (form.getValues("barberId") !== nextBarberId) {
@@ -503,10 +526,20 @@ export function BookingForm() {
     }
   }, [addOns, form, watchAddOnId]);
 
-  const resolvedLocationId = watchLocationId || shops[0]?.id || "";
   const resolvedBarberId = currentBarberResult?.barberId ?? "";
   const currentService = resolveBookableService(primaryServices, watchServiceId) ?? undefined;
   const resolvedServiceId = currentService?.id ?? "";
+  const barberCanonicalLocationId = currentBarberResult?.locationId
+    ?? barberProfileQuery.data?.profile.shopId
+    ?? barberProfileQuery.data?.shopLocations[0]?.id;
+  const resolvedLocationId = resolveCanonicalBookingLocationId({
+    urlLocationId,
+    barberLocationId: barberCanonicalLocationId,
+    serviceLocationId: currentService?.shopId,
+    selectedLocationId: watchLocationId || selectedLocationId,
+    shopFallbackId: shops[0]?.id,
+    hasLockedBarber: Boolean(resolvedBarberId)
+  });
   const currentAddOn = resolveBookableAddOn(addOns, watchAddOnId) ?? undefined;
   const bookingAddOnIds = currentAddOn ? [currentAddOn.id] : [];
   const baseQuote = currentService ? calculateBookingQuote(currentService, currentAddOn ? [currentAddOn] : []) : {
@@ -520,6 +553,14 @@ export function BookingForm() {
     addOnIds: bookingAddOnIds,
     barberId: resolvedBarberId || undefined
   });
+
+  useEffect(() => {
+    if (resolvedLocationId && form.getValues("locationId") !== resolvedLocationId) {
+      form.setValue("locationId", resolvedLocationId);
+      setLocation(resolvedLocationId);
+    }
+  }, [form, resolvedLocationId, setLocation]);
+
   const applyPromotionMutation = useApplyPromotionMutation();
   const quoteBeforeMembership = appliedPromotion?.quote ?? promotionsQuery.data?.quote ?? {
     serviceTotal: currentService?.price ?? 0,
@@ -716,8 +757,8 @@ export function BookingForm() {
     });
   }, [watchAddOnId, watchAppointmentTime, watchBarberId, watchClientName, watchClientPhone, watchLocationId, watchServiceId]);
 
-  const currentShop = shops.find((shop) => shop.id === watchLocationId) ?? shops[0];
-  const profileLocation = barberProfileQuery.data?.shopLocations.find((location) => location.id === watchLocationId)
+  const currentShop = shops.find((shop) => shop.id === resolvedLocationId) ?? (!resolvedBarberId ? shops[0] : undefined);
+  const profileLocation = barberProfileQuery.data?.shopLocations.find((location) => location.id === resolvedLocationId)
     ?? barberProfileQuery.data?.shopLocations[0];
   const selectedLocationLines = getBookingLocationLines(
     profileLocation ?? currentShop ?? {
@@ -1287,7 +1328,7 @@ export function BookingForm() {
                     <Button type="button" variant="secondary" className="h-11 px-5" disabled={availabilityQuery.isLoading} onClick={handleFindNextAvailable}>
                       Find next available
                     </Button>
-                    <Button type="button" variant="secondary" className="h-11 px-5" disabled={waitlistPending || !watchServiceId || !watchLocationId || !isOnline} onClick={() => void handleJoinWaitlist()}>
+                    <Button type="button" variant="secondary" className="h-11 px-5" disabled={waitlistPending || !resolvedServiceId || !resolvedLocationId || !isOnline} onClick={() => void handleJoinWaitlist()}>
                       {waitlistPending ? "Joining waitlist..." : "Join waitlist"}
                     </Button>
                   </div>
@@ -1299,7 +1340,13 @@ export function BookingForm() {
                   Back
                 </Button>
                 <div className="flex flex-1 flex-col gap-2 sm:items-start">
-                  <Button type="button" className="h-12 px-6" disabled={!serviceReady || !selectedDateKey || !timeReady || availabilityQuery.isLoading} onClick={continueToReview}>
+                  <Button
+                    type="button"
+                    variant={timeReady ? "primary" : "secondary"}
+                    className={cn("h-12 px-6", !timeReady && "text-white/48")}
+                    disabled={!serviceReady || !selectedDateKey || !timeReady || availabilityQuery.isLoading}
+                    onClick={continueToReview}
+                  >
                     Continue to Review
                   </Button>
                   {!timeReady ? <p className="text-xs font-medium text-white/52">Choose a time to continue.</p> : null}
