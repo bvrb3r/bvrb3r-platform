@@ -365,12 +365,8 @@ describe("booking form", () => {
     });
     useBarberAvailabilityQueryMock.mockReturnValue({
       data: {
-        slots: [
-          {
-            startsAt: "2026-04-28T14:00:00.000Z",
-            label: "Tue, Apr 28 - 2:00 PM"
-          }
-        ]
+        timezone: "America/New_York",
+        slots: [slotForDate(getDateKey(), 14)]
       },
       isLoading: false,
       error: null
@@ -452,6 +448,8 @@ describe("booking form", () => {
     expect(screen.getByRole("heading", { name: "Pick date and time" })).toBeInTheDocument();
     expect(screen.getByText("Selected date")).toBeInTheDocument();
     expect(screen.getByText("Choose another date")).toBeInTheDocument();
+    expect(screen.queryByText(/^Date$/)).not.toBeInTheDocument();
+    expect(screen.getByText("1 time")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /AM|PM/ })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Continue to Review" }));
@@ -492,6 +490,7 @@ describe("booking form", () => {
     expect(screen.getByRole("heading", { name: "Pick date and time" })).toBeInTheDocument();
     expect(screen.getByText("Selected date")).toBeInTheDocument();
     expect(screen.getByText("Choose another date")).toBeInTheDocument();
+    expect(screen.queryByText(/^Date$/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Next day" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Find next available" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Join waitlist" })).toBeInTheDocument();
@@ -534,6 +533,7 @@ describe("booking form", () => {
       expect(useBarberAvailabilityQueryMock).toHaveBeenCalledWith(expect.objectContaining({
         startDate: tomorrow,
         days: 14,
+        timeZone: expect.any(String),
         barberId: "barber-wave",
         serviceId: "srv-cut",
         locationId: "loc-ybor"
@@ -798,7 +798,7 @@ describe("booking form", () => {
         locationId: "loc-ybor",
         barberId: "barber-wave",
         serviceId: "srv-cut",
-        appointmentTime: "2026-04-28T14:00:00.000Z",
+        appointmentTime: slotForDate(getDateKey(), 14).startsAt,
         clientName: "Jordan Ellis",
         clientPhone: "8135550190",
         paymentMethodId: "pm-default",

@@ -25,6 +25,7 @@ import { KioskLaunchAction } from "@/components/kiosk/kiosk-actions";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ActionButton, Avatar, DataStatCard, GlassCard, StatusBadge } from "@/design/components";
 import { isAppointmentRevenueEligible, isAvailabilityBlockingAppointmentStatus } from "@/lib/appointments/domain";
+import { DEFAULT_BOOKING_TIME_ZONE, buildCanonicalDateAvailability } from "@/lib/booking/availability-slot-engine";
 import { shiftBarberScheduleAnchorDate } from "@/lib/barber/domain";
 import { useCreateMessageThreadMutation } from "@/lib/messages/client";
 import {
@@ -250,6 +251,14 @@ function getAppointmentMinutes(appointment: BarberOperationalAppointment) {
   return Math.max(0, Math.round((endsAt.getTime() - startsAt.getTime()) / 60000));
 }
 
+function getScheduleTimeZone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || DEFAULT_BOOKING_TIME_ZONE;
+  } catch {
+    return DEFAULT_BOOKING_TIME_ZONE;
+  }
+}
+
 function buildOpenSlots({
   anchorDateKey,
   appointments,
@@ -263,65 +272,42 @@ function buildOpenSlots({
   workingHours: BarberWorkingHoursView[];
   selectedLocationId: string | null;
 }) {
-  const workingWindow = getWorkingWindow(anchorDateKey, workingHours, selectedLocationId);
+  const weekday = parseDateKey(anchorDateKey).getDay();
+  const locationWorkingHours = workingHours.filter((entry) => entry.weekday === weekday && entry.locationId === selectedLocationId);
+  const fallbackWorkingHours = workingHours.filter((entry) => entry.weekday === weekday);
+  const matchingWorkingHours = locationWorkingHours.length ? locationWorkingHours : fallbackWorkingHours;
+  const availability = buildCanonicalDateAvailability({
+    date: anchorDateKey,
+    timezone: getScheduleTimeZone(),
+    workingWindows: matchingWorkingHours.map((entry, index) => ({
+      startTime: entry.startTime,
+      endTime: entry.endTime,
+      sourceId: `${entry.locationId}-${index}`
+    })),
+    busyRanges: [
+      ...appointments
+        .filter((appointment) => isAvailabilityBlockingAppointmentStatus(appointment.status))
+        .map((appointment) => ({
+          startsAt: appointment.start,
+          endsAt: appointment.end
+        })),
+      ...blockedTimes
+        .map((blockedTime) => ({
+          startsAt: blockedTime.startsAt,
+          endsAt: blockedTime.endsAt
+        }))
+    ],
+    serviceDurationMinutes: 15,
+    slotIntervalMinutes: 15,
+    minimumOpenWindowMinutes: 15
+  });
 
-  if (!workingWindow) {
-    return [];
-  }
-
-  const busyWindows = [
-    ...appointments
-      .filter((appointment) => getDateKeyFromIso(appointment.start) === anchorDateKey)
-      .filter((appointment) => isAvailabilityBlockingAppointmentStatus(appointment.status))
-      .map((appointment) => ({
-        startsAt: new Date(appointment.start),
-        endsAt: new Date(appointment.end)
-      })),
-    ...blockedTimes
-      .filter((blockedTime) => getDateKeyFromIso(blockedTime.startsAt) === anchorDateKey)
-      .map((blockedTime) => ({
-        startsAt: new Date(blockedTime.startsAt),
-        endsAt: new Date(blockedTime.endsAt)
-      }))
-  ]
-    .map((window) => getOverlapWindow(window.startsAt, window.endsAt, workingWindow.startsAt, workingWindow.endsAt))
-    .filter((window): window is { startsAt: Date; endsAt: Date } => Boolean(window))
-    .sort((left, right) => left.startsAt.getTime() - right.startsAt.getTime());
-
-  const slots: OpenSlotView[] = [];
-  let cursor = workingWindow.startsAt;
-
-  for (const busyWindow of busyWindows) {
-    if (busyWindow.startsAt > cursor) {
-      const durationMinutes = Math.round((busyWindow.startsAt.getTime() - cursor.getTime()) / 60000);
-      if (durationMinutes >= 15) {
-        slots.push({
-          id: `${anchorDateKey}-${cursor.toISOString()}-${busyWindow.startsAt.toISOString()}`,
-          startsAt: cursor,
-          endsAt: busyWindow.startsAt,
-          durationMinutes
-        });
-      }
-    }
-
-    if (busyWindow.endsAt > cursor) {
-      cursor = busyWindow.endsAt;
-    }
-  }
-
-  if (workingWindow.endsAt > cursor) {
-    const durationMinutes = Math.round((workingWindow.endsAt.getTime() - cursor.getTime()) / 60000);
-    if (durationMinutes >= 15) {
-      slots.push({
-        id: `${anchorDateKey}-${cursor.toISOString()}-${workingWindow.endsAt.toISOString()}`,
-        startsAt: cursor,
-        endsAt: workingWindow.endsAt,
-        durationMinutes
-      });
-    }
-  }
-
-  return slots;
+  return availability.openWindows.map((slot) => ({
+    id: slot.id,
+    startsAt: new Date(slot.startsAt),
+    endsAt: new Date(slot.endsAt),
+    durationMinutes: slot.durationMinutes
+  }));
 }
 
 function getUtilization({

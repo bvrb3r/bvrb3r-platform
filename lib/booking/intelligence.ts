@@ -4,6 +4,15 @@ import { getClientFacingBarberName } from "@/lib/marketplace/client-facing";
 import { getCanonicalAccountRole, isBarberAccountRole } from "@/lib/auth/roles";
 import { isAvailabilityBlockingAppointmentStatus } from "@/lib/appointments/domain";
 import {
+  DEFAULT_BOOKING_TIME_ZONE,
+  addDaysToDateKey,
+  buildCanonicalDateAvailability,
+  getDateKeyInTimeZone,
+  getWeekdayForDateKey,
+  normalizeAvailabilityDateKey,
+  normalizeBookingTimeZone
+} from "@/lib/booking/availability-slot-engine";
+import {
   buildPublicTrustSignal,
   computeShopVerificationDecision,
   getVerificationGateDecision
@@ -703,25 +712,6 @@ function withTime(day: Date, time: string) {
   const next = new Date(day);
   next.setHours(hours, minutes, 0, 0);
   return next;
-}
-
-function parseAvailabilityWindowStart(value?: string | null) {
-  const match = value?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) {
-    return null;
-  }
-
-  const [, year, month, day] = match;
-  const parsed = new Date(Number(year), Number(month) - 1, Number(day));
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function overlapsRange(start: Date, end: Date, blockedRanges: Array<{ startsAt: string; endsAt: string }>) {
-  return blockedRanges.some((entry) => {
-    const blockedStart = new Date(entry.startsAt).getTime();
-    const blockedEnd = new Date(entry.endsAt).getTime();
-    return start.getTime() < blockedEnd && end.getTime() > blockedStart;
-  });
 }
 
 function toBadgeList(values: string[] | null | undefined, reviewCount: number, rating: number): MarketplaceBadge[] {
@@ -1789,6 +1779,7 @@ function listAvailabilitySlotsForBarber(params: {
   days?: number;
   earliestAt?: string;
   startDate?: string;
+  timeZone?: string;
 }) {
   const {
     barberReference,
@@ -1801,8 +1792,10 @@ function listAvailabilitySlotsForBarber(params: {
     blockedTimes,
     days = 7,
     earliestAt,
-    startDate
+    startDate,
+    timeZone = DEFAULT_BOOKING_TIME_ZONE
   } = params;
+  const bookingTimeZone = normalizeBookingTimeZone(timeZone);
 
   const locationIds = new Set([locationReference, locationUuidByReference.get(locationReference)].filter((value): value is string => Boolean(value)));
   if (!locationIds.size) {
@@ -1829,43 +1822,39 @@ function listAvailabilitySlotsForBarber(params: {
   const durationMinutes = service.durationMin + service.bufferMin;
   const slots: CanonicalSlot[] = [];
   const now = new Date();
-  const windowStart = parseAvailabilityWindowStart(startDate) ?? now;
-  const earliestDate = earliestAt ? new Date(earliestAt) : null;
-  const earliestThreshold = earliestDate && !Number.isNaN(earliestDate.getTime())
-    ? Math.max(now.getTime() + 15 * 60_000, earliestDate.getTime())
-    : now.getTime() + 15 * 60_000;
+  const windowStartDateKey = normalizeAvailabilityDateKey(startDate) ?? getDateKeyInTimeZone(now, bookingTimeZone);
 
   for (let offset = 0; offset < days; offset += 1) {
-    const day = new Date(windowStart);
-    day.setDate(windowStart.getDate() + offset);
-    const weekday = day.getDay();
+    const dateKey = addDaysToDateKey(windowStartDateKey, offset);
+    const weekday = getWeekdayForDateKey(dateKey);
+    if (weekday == null) {
+      continue;
+    }
     const dayRules = rules.filter((entry) => entry.weekday === weekday);
+    const availability = buildCanonicalDateAvailability({
+      date: dateKey,
+      timezone: bookingTimeZone,
+      workingWindows: dayRules.map((rule, index) => ({
+        startTime: rule.start_time,
+        endTime: rule.end_time,
+        sourceId: `${rule.location_id}-${index}`
+      })),
+      busyRanges: [...unavailableAppointments, ...blockedRanges],
+      serviceDurationMinutes: durationMinutes,
+      slotIntervalMinutes: 30,
+      currentTime: now,
+      earliestAt
+    });
 
-    for (const rule of dayRules) {
-      const cursor = withTime(day, rule.start_time);
-      const endBoundary = withTime(day, rule.end_time);
-
-      while (cursor.getTime() + durationMinutes * 60_000 <= endBoundary.getTime()) {
-        const slotStart = new Date(cursor);
-        const slotEnd = new Date(cursor.getTime() + durationMinutes * 60_000);
-        const isFuture = slotStart.getTime() >= earliestThreshold;
-        if (
-          isFuture &&
-          !overlapsRange(slotStart, slotEnd, unavailableAppointments) &&
-          !overlapsRange(slotStart, slotEnd, blockedRanges)
-        ) {
-          slots.push({
-            startsAt: slotStart.toISOString(),
-            endsAt: slotEnd.toISOString(),
-            label: createSlotLabel(slotStart),
-            locationId: locationReference,
-            barberId: barberReference,
-            serviceId: service.id
-          });
-        }
-
-        cursor.setMinutes(cursor.getMinutes() + 30);
-      }
+    for (const slot of availability.bookableSlots) {
+      slots.push({
+        startsAt: slot.startsAt,
+        endsAt: slot.endsAt,
+        label: slot.label,
+        locationId: locationReference,
+        barberId: barberReference,
+        serviceId: service.id
+      });
     }
   }
 
@@ -2600,6 +2589,7 @@ export async function findCanonicalBookableSlot(
     preferredLocationId?: string;
     days?: number;
     earliestAt?: string;
+    timeZone?: string;
     trustState?: TrustState;
   }
 ) {
@@ -2673,7 +2663,8 @@ export async function findCanonicalBookableSlot(
       appointments: snapshot.appointments,
       blockedTimes: snapshot.blockedTimes,
       days: options.days,
-      earliestAt: options.earliestAt
+      earliestAt: options.earliestAt,
+      timeZone: options.timeZone
     })
   ).sort((left, right) => new Date(left.startsAt).getTime() - new Date(right.startsAt).getTime());
   const slot = slots[0];
@@ -2705,6 +2696,7 @@ export async function buildCanonicalAvailabilityPayload(
     days?: number;
     earliestAt?: string;
     startDate?: string;
+    timeZone?: string;
     trustState?: TrustState;
   }
 ) {
@@ -2734,6 +2726,7 @@ export async function buildCanonicalAvailabilityPayload(
     return {
       barberId: barberReference,
       locationId: options.locationId ?? "",
+      timezone: normalizeBookingTimeZone(options.timeZone),
       service: null,
       slots: [],
       gating: getBarberBookingGate(options.trustState, barberReference)
@@ -2765,6 +2758,7 @@ export async function buildCanonicalAvailabilityPayload(
     return {
       barberId: barberReference,
       locationId: locationId ?? "",
+      timezone: normalizeBookingTimeZone(options.timeZone),
       service: null,
       slots: [],
       gating: bookingGate && !bookingGate.allowed ? bookingGate : locationGate
@@ -2775,6 +2769,7 @@ export async function buildCanonicalAvailabilityPayload(
     return {
       barberId: barberReference,
       locationId,
+      timezone: normalizeBookingTimeZone(options.timeZone),
       service: {
         id: selectedService.id,
         name: selectedService.name,
@@ -2801,12 +2796,14 @@ export async function buildCanonicalAvailabilityPayload(
     blockedTimes: snapshot.blockedTimes,
     days: options.days,
     earliestAt: options.earliestAt,
-    startDate: options.startDate
+    startDate: options.startDate,
+    timeZone: options.timeZone
   });
 
   return {
     barberId: barberReference,
     locationId,
+    timezone: normalizeBookingTimeZone(options.timeZone),
     service: {
       id: selectedService.id,
       name: selectedService.name,
@@ -2816,7 +2813,7 @@ export async function buildCanonicalAvailabilityPayload(
       deposit: selectedService.deposit,
       fullPrepay: selectedService.fullPrepay
     },
-    slots: slots.slice(0, 16),
+    slots: slots.slice(0, 128),
     gating: null
   };
 }

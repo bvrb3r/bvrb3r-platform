@@ -176,10 +176,20 @@ function getStepIndex(step: BookingStep) {
   return bookingSteps.findIndex((entry) => entry.id === step);
 }
 
-function getSlotDateKey(iso: string) {
+function getSlotDateKey(iso: string, timeZone?: string) {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) {
     return iso.slice(0, 10);
+  }
+
+  if (timeZone) {
+    const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).formatToParts(date).map((part) => [part.type, part.value]));
+    return `${parts.year}-${parts.month}-${parts.day}`;
   }
 
   const year = date.getFullYear();
@@ -236,20 +246,41 @@ function formatDateKeyLabel(value: string, format: "short" | "long" = "short") {
   ).format(parsed);
 }
 
-function getSlotTimeLabel(iso: string) {
+function formatDateRailCard(value: string) {
+  const parsed = parseDateKey(value);
+  if (!parsed) {
+    return {
+      weekday: "Day",
+      date: value
+    };
+  }
+
+  return {
+    weekday: new Intl.DateTimeFormat("en-US", { weekday: "short" }).format(parsed),
+    date: new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(parsed)
+  };
+}
+
+function getSlotTimeLabel(iso: string, timeZone?: string) {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) {
     return iso;
   }
 
   return new Intl.DateTimeFormat("en-US", {
+    timeZone,
     hour: "numeric",
     minute: "2-digit"
   }).format(date);
 }
 
-function getSlotPeriod(iso: string): "Morning" | "Afternoon" | "Evening" {
-  const hour = new Date(iso).getHours();
+function getSlotPeriod(iso: string, timeZone?: string): "Morning" | "Afternoon" | "Evening" {
+  const date = new Date(iso);
+  const hour = Number(new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour: "2-digit",
+    hourCycle: "h23"
+  }).format(date));
   if (hour < 12) {
     return "Morning";
   }
@@ -259,9 +290,9 @@ function getSlotPeriod(iso: string): "Morning" | "Afternoon" | "Evening" {
   return "Evening";
 }
 
-function groupSlotsByDate<T extends { startsAt: string }>(slots: T[]) {
+function groupSlotsByDate<T extends { startsAt: string }>(slots: T[], timeZone?: string) {
   return slots.reduce<Record<string, T[]>>((groups, slot) => {
-    const key = getSlotDateKey(slot.startsAt);
+    const key = getSlotDateKey(slot.startsAt, timeZone);
     groups[key] = [...(groups[key] ?? []), slot];
     return groups;
   }, {});
@@ -525,16 +556,25 @@ export function BookingForm() {
     blockedReason: pointsRedemptionPreview.blockedReason
   });
   const displayedQuote = applyPointsPreviewToQuote(quoteAfterMembership, pointsRedemptionPreview);
+  const clientTimeZone = useMemo(() => {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York";
+    } catch {
+      return "America/New_York";
+    }
+  }, []);
 
   const availabilityQuery = useBarberAvailabilityQuery({
     barberId: resolvedBarberId || undefined,
     serviceId: resolvedServiceId || undefined,
     locationId: resolvedLocationId || undefined,
     startDate: selectedDateKey || undefined,
-    days: AVAILABILITY_WINDOW_DAYS
+    days: AVAILABILITY_WINDOW_DAYS,
+    timeZone: clientTimeZone
   });
   const availableSlots = useMemo(() => availabilityQuery.data?.slots ?? [], [availabilityQuery.data?.slots]);
-  const slotsByDate = useMemo(() => groupSlotsByDate(availableSlots), [availableSlots]);
+  const timezoneLabel = availabilityQuery.data?.timezone || clientTimeZone;
+  const slotsByDate = useMemo(() => groupSlotsByDate(availableSlots, timezoneLabel), [availableSlots, timezoneLabel]);
   const dateWindowKeys = useMemo(
     () => buildDateWindowKeys(selectedDateKey || getTodayDateKey(), AVAILABILITY_WINDOW_DAYS),
     [selectedDateKey]
@@ -542,13 +582,6 @@ export function BookingForm() {
   const selectedDateSlots = selectedDateKey ? slotsByDate[selectedDateKey] ?? [] : [];
   const selectedDateLabel = selectedDateKey ? formatDateKeyLabel(selectedDateKey, "long") : "Choose a date";
   const canGoToPreviousDay = selectedDateKey ? compareDateKeys(selectedDateKey, getTodayDateKey()) > 0 : false;
-  const timezoneLabel = useMemo(() => {
-    try {
-      return Intl.DateTimeFormat().resolvedOptions().timeZone || "local time";
-    } catch {
-      return "local time";
-    }
-  }, []);
   const paymentMethods = useMemo(() => {
     const queriedPaymentMethods = paymentMethodsQuery.data?.methods ?? [];
     const methodsById = new Map<string, ClientPaymentMethodView>();
@@ -586,7 +619,7 @@ export function BookingForm() {
 
     if (!dateTouched && !preselectedAppointmentTime) {
       const firstSlot = availableSlots[0];
-      const firstDateKey = getSlotDateKey(firstSlot.startsAt);
+      const firstDateKey = getSlotDateKey(firstSlot.startsAt, timezoneLabel);
       if (selectedDateKey !== firstDateKey) {
         setSelectedDateKey(firstDateKey);
       }
@@ -612,7 +645,7 @@ export function BookingForm() {
     if (!currentAppointmentTime || !candidateSlots.some((slot) => slot.startsAt === currentAppointmentTime)) {
       form.setValue("appointmentTime", nextSlot);
     }
-  }, [availableSlots, dateTouched, form, preselectedAppointmentTime, selectedDateKey, slotsByDate]);
+  }, [availableSlots, dateTouched, form, preselectedAppointmentTime, selectedDateKey, slotsByDate, timezoneLabel]);
 
   useEffect(() => {
     if (!sourceKind || !resolvedBarberId) {
@@ -891,16 +924,16 @@ export function BookingForm() {
   }
 
   function handleFindNextAvailable() {
-    const nextSlot = availableSlots.find((slot) => compareDateKeys(getSlotDateKey(slot.startsAt), selectedDateKey) >= 0) ?? availableSlots[0];
+    const nextSlot = availableSlots.find((slot) => compareDateKeys(getSlotDateKey(slot.startsAt, timezoneLabel), selectedDateKey) >= 0) ?? availableSlots[0];
     if (!nextSlot) {
       setStatusUpdate({
         tone: "info",
-        message: "No available times found. Join the waitlist or try again later."
+        message: "No available times found. Join the waitlist or try another date."
       });
       return;
     }
 
-    const nextDateKey = getSlotDateKey(nextSlot.startsAt);
+    const nextDateKey = getSlotDateKey(nextSlot.startsAt, timezoneLabel);
     setDateTouched(true);
     setSelectedDateKey(nextDateKey);
     form.setValue("appointmentTime", nextSlot.startsAt);
@@ -908,7 +941,7 @@ export function BookingForm() {
   }
 
   const selectedSlot = resolveBookableSlot(availableSlots, watchAppointmentTime) ?? undefined;
-  const selectedSlotLabel = selectedSlot ? dateLabel(selectedSlot.startsAt) : "Choose a time";
+  const selectedSlotLabel = selectedSlot ? selectedSlot.label || dateLabel(selectedSlot.startsAt) : "Choose a time";
   const activeStepIndex = getStepIndex(bookingStep);
   const serviceReady = Boolean(currentService);
   const timeReady = Boolean(selectedSlot);
@@ -1175,22 +1208,24 @@ export function BookingForm() {
                 <div className="mt-4 flex gap-2 overflow-x-auto pb-1" aria-label="Booking date options">
                   {dateWindowKeys.map((dateKey) => {
                     const dateSlots = slotsByDate[dateKey] ?? [];
+                    const dateCard = formatDateRailCard(dateKey);
+                    const hasSlots = dateSlots.length > 0;
                     return (
                       <button
                         key={dateKey}
                         type="button"
                         className={cn(
-                          "min-w-[8.75rem] rounded-[22px] border px-4 py-3 text-left transition",
+                          "min-w-[7.75rem] rounded-[20px] border px-4 py-3 text-left transition",
                           selectedDateKey === dateKey
-                            ? "border-[#7CFF00]/34 bg-[#7CFF00]/10 text-white"
-                            : "border-white/8 bg-black/20 text-white/64 hover:border-[#7CFF00]/22"
+                            ? "border-[#7CFF00]/38 bg-[#7CFF00]/12 text-white shadow-[0_14px_38px_rgba(124,255,0,0.10)]"
+                            : "border-white/8 bg-black/18 text-white/64 hover:border-[#7CFF00]/22 hover:text-white"
                         )}
                         onClick={() => selectBookingDate(dateKey)}
                       >
-                        <span className="surface-label block text-white/42">Date</span>
-                        <span className="mt-1 block text-sm font-semibold">{formatDateKeyLabel(dateKey)}</span>
-                        <span className="mt-1 block text-xs text-white/44">
-                          {dateSlots.length === 1 ? "1 time" : dateSlots.length ? `${dateSlots.length} times` : "No times"}
+                        <span className="block text-xs font-extrabold uppercase tracking-[0.16em] text-white/46">{dateCard.weekday}</span>
+                        <span className="mt-1 block text-base font-black tracking-[-0.02em]">{dateCard.date}</span>
+                        <span className={cn("mt-2 inline-flex rounded-full px-2.5 py-1 text-[11px] font-extrabold", hasSlots ? "bg-[#7CFF00]/14 text-[#d7ffab]" : "bg-white/[0.06] text-white/44")}>
+                          {dateSlots.length === 1 ? "1 time" : hasSlots ? `${dateSlots.length} times` : "No times"}
                         </span>
                       </button>
                     );
@@ -1207,7 +1242,7 @@ export function BookingForm() {
               ) : selectedDateSlots.length ? (
                 <div className="space-y-4">
                   {(["Morning", "Afternoon", "Evening"] as const).map((period) => {
-                    const periodSlots = selectedDateSlots.filter((slot) => getSlotPeriod(slot.startsAt) === period);
+                    const periodSlots = selectedDateSlots.filter((slot) => getSlotPeriod(slot.startsAt, timezoneLabel) === period);
                     if (!periodSlots.length) {
                       return null;
                     }
@@ -1233,7 +1268,7 @@ export function BookingForm() {
                                 )}
                                 onClick={() => form.setValue("appointmentTime", slot.startsAt)}
                               >
-                                {getSlotTimeLabel(slot.startsAt)}
+                                {getSlotTimeLabel(slot.startsAt, timezoneLabel)}
                               </button>
                             );
                           })}
@@ -1243,12 +1278,12 @@ export function BookingForm() {
                   })}
                 </div>
               ) : (
-                <div className="empty-state-panel rounded-[24px] p-5">
-                  <p className="text-lg font-semibold text-white">
+                <div className="empty-state-panel rounded-[24px] p-5 text-center sm:text-left">
+                  <p className="text-xl font-black tracking-[-0.02em] text-white">
                     {availabilityQuery.data?.service ? "No times available for this date." : "This barber has not opened times for this date."}
                   </p>
                   <p className="mt-2 text-sm leading-7 text-white/58">Choose another date, find the next available time, or join the waitlist.</p>
-                  <div className="mt-4 flex flex-wrap gap-2">
+                  <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                     <Button type="button" variant="secondary" className="h-11 px-5" disabled={availabilityQuery.isLoading} onClick={handleFindNextAvailable}>
                       Find next available
                     </Button>

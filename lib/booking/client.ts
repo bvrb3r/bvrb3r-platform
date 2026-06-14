@@ -79,6 +79,7 @@ export interface BarberSearchResponse {
 export interface BarberAvailabilityResponse {
   barberId: string;
   locationId: string;
+  timezone?: string;
   service: {
     id: string;
     name: string;
@@ -395,12 +396,13 @@ export function useBarberProfileQuery(barberId?: string) {
   });
 }
 
-export function useBarberAvailabilityQuery(params: { barberId?: string; serviceId?: string; locationId?: string; startDate?: string; days?: number }) {
+export function useBarberAvailabilityQuery(params: { barberId?: string; serviceId?: string; locationId?: string; startDate?: string; days?: number; timeZone?: string }) {
   const queryString = toQueryString({
     serviceId: params.serviceId,
     locationId: params.locationId,
     startDate: params.startDate,
-    days: params.days
+    days: params.days,
+    timeZone: params.timeZone
   });
   return useQuery({
     queryKey: ["barber-availability", params],

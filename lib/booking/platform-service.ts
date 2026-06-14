@@ -3110,7 +3110,7 @@ export async function getPublicShopProfilePayload(shopIdOrSlug: string): Promise
   };
 }
 
-export async function getBarberAvailabilityPayload(barberId: string, options: { serviceId?: string; locationId?: string; days?: number; startDate?: string; }) {
+export async function getBarberAvailabilityPayload(barberId: string, options: { serviceId?: string; locationId?: string; days?: number; startDate?: string; timeZone?: string; }) {
   const supabase = getSupabase();
   if (supabase) {
     const trustState = await readTrustStateSafe();
@@ -3123,6 +3123,7 @@ export async function getBarberAvailabilityPayload(barberId: string, options: { 
   return {
     barberId,
     locationId: options.locationId ?? "",
+    timezone: options.timeZone,
     service: null,
     slots: [],
     gating: getVerificationGateDecision(undefined, "booking")
