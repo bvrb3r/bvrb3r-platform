@@ -5,26 +5,27 @@ import { usePathname } from "next/navigation";
 import { ARCHITECT_PRIMARY_NAV_ITEMS } from "@/components/architect-experience/architect-tab-config";
 import { cn } from "@/lib/utils";
 
-function isArchitectNavActive(pathname: string | null, href: string) {
+function isArchitectNavActive(pathname: string | null, href: string, itemId: string) {
   if (!pathname) {
     return false;
   }
 
-  if (href === "/architect") {
+  if (itemId === "ceo" && href === "/architect") {
     return pathname === href;
   }
 
-  return pathname === href || pathname.startsWith(`${href}/`);
+  const routePath = href.split("#")[0] ?? href;
+  return routePath !== "/architect" && (pathname === routePath || pathname.startsWith(`${routePath}/`));
 }
 
 export function ArchitectPrimaryNav() {
   const pathname = usePathname();
 
   return (
-    <nav aria-label="Architect primary navigation" className="flex gap-2 overflow-x-auto pb-1 hide-scrollbar xl:flex-wrap xl:justify-end xl:pb-0">
+    <nav aria-label="BVRB3R Mission Control Navigation" className="flex gap-2 overflow-x-auto pb-1 hide-scrollbar xl:flex-wrap xl:justify-end xl:pb-0">
       {ARCHITECT_PRIMARY_NAV_ITEMS.map((item) => {
         const Icon = item.icon;
-        const isActive = isArchitectNavActive(pathname, item.href);
+        const isActive = isArchitectNavActive(pathname, item.href, item.id);
 
         return (
           <Link

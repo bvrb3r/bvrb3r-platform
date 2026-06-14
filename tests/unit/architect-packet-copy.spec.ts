@@ -59,7 +59,27 @@ describe("architect packet copy", () => {
 
     expect(packet).toContain("DO NOT TOUCH");
     expect(packet).toContain("FILES TO INSPECT");
+    expect(packet).toContain("AFFECTED DEPARTMENTS");
+    expect(packet).toContain("AFFECTED TABLES");
     expect(packet).toContain("VALIDATION COMMANDS");
+    expect(packet).toContain("payout release");
+  });
+
+  it("builds Codex packets for new workflow failure classes without unsafe repairs", () => {
+    const packet = buildCodexPacket(snapshot, {
+      ...incident,
+      diagnosisCode: "owner_active_barber_sync_failed",
+      headline: "Accepted barber is missing from owner Home.",
+      analysis: {
+        ...incident.analysis,
+        failedInvariant: "Accepted active barber must appear in owner Home."
+      }
+    });
+
+    expect(packet).toContain("OWNER ACTIVE BARBER SYNC FAILURE");
+    expect(packet).toContain("shop_barber_relationships");
+    expect(packet).toContain("profiles.role");
+    expect(packet).not.toContain("accept shop relationship on behalf of barber");
   });
 
   it("builds a full incident packet with SQL snippets", () => {

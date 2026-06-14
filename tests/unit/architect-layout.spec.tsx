@@ -12,7 +12,7 @@ vi.mock("@/lib/auth/guards", () => ({
 }));
 
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/architect/money"
+  usePathname: () => "/architect"
 }));
 
 vi.mock("@/components/auth/logout-button", () => ({
@@ -52,14 +52,17 @@ describe("architect layout", () => {
 
     expect(screen.getByText("Architect session")).toBeInTheDocument();
     expect(screen.getByText("ops-admin@bvrb3r.app")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/architect");
-    expect(screen.getByRole("link", { name: "Users" })).toHaveAttribute("href", "/architect/users");
-    expect(screen.getByRole("link", { name: "Verifications" })).toHaveAttribute("href", "/architect/verifications");
-    expect(screen.getByRole("link", { name: "Money" })).toHaveAttribute("href", "/architect/money");
-    expect(screen.getByRole("link", { name: "Money" })).toHaveAttribute("aria-current", "page");
-    expect(screen.getByRole("link", { name: "Messages" })).toHaveAttribute("href", "/architect/messages");
-    expect(screen.getByRole("link", { name: "Reports" })).toHaveAttribute("href", "/architect/reports");
-    expect(screen.getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/architect/settings");
+    expect(screen.getByRole("navigation", { name: "BVRB3R Mission Control Navigation" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "CEO" })).toHaveAttribute("href", "/architect");
+    expect(screen.getByRole("link", { name: "CEO" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Product" })).toHaveAttribute("href", "/architect#product");
+    expect(screen.getByRole("link", { name: "Technology" })).toHaveAttribute("href", "/architect#technology");
+    expect(screen.getByRole("link", { name: "Operations" })).toHaveAttribute("href", "/architect#operations");
+    expect(screen.getByRole("link", { name: "Finance" })).toHaveAttribute("href", "/architect#finance");
+    expect(screen.getByRole("link", { name: "Marketing" })).toHaveAttribute("href", "/architect#marketing");
+    expect(screen.getByRole("link", { name: "Compliance" })).toHaveAttribute("href", "/architect#compliance");
+    expect(screen.getByRole("link", { name: "Security" })).toHaveAttribute("href", "/architect#security");
+    expect(screen.getByRole("link", { name: "Content & Community" })).toHaveAttribute("href", "/architect#content-community");
     expect(screen.queryByRole("link", { name: "Accounts" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Overview" })).not.toBeInTheDocument();
     expect(screen.getByTestId("architect-logout-control")).toHaveTextContent("Log out");

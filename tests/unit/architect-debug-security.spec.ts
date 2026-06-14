@@ -18,6 +18,7 @@ vi.mock("@/lib/supabase/admin", () => ({
 }));
 
 import { GET as getAppointmentDebug } from "@/app/api/architect/debug/appointment/route";
+import { GET as getMissionControl } from "@/app/api/architect/mission-control/route";
 import { POST as postRoutingRepair } from "@/app/api/architect/repairs/payment-routing/route";
 
 describe("architect debug security", () => {
@@ -52,6 +53,21 @@ describe("architect debug security", () => {
     }));
 
     expect(response.status).toBe(403);
+    expect(createSupabaseAdminClientMock).not.toHaveBeenCalled();
+  });
+
+  it("blocks public roles from Mission Control", async () => {
+    getCurrentUserFromServerMock.mockResolvedValue({
+      authenticated: true,
+      mode: "demo",
+      user: resolveDemoUser("client@bvrb3r.demo")
+    });
+
+    const response = await getMissionControl();
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.error).toMatch(/platform administrators/i);
     expect(createSupabaseAdminClientMock).not.toHaveBeenCalled();
   });
 

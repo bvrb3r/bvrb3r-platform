@@ -100,12 +100,34 @@ describe("architect mission control", () => {
     render(<ArchitectMissionControl />);
 
     await waitFor(() => expect(screen.getByText("BVRB3R Architect Operating System")).toBeInTheDocument());
-    expect(screen.getByText("Platform Health")).toBeInTheDocument();
+    expect(screen.getByText("BVRB3R Mission Control Navigation")).toBeInTheDocument();
+    expect(screen.getByText("CEO Command Center")).toBeInTheDocument();
+    expect(screen.getByText("Core Loop Validators")).toBeInTheDocument();
+    expect(screen.getByText("Source Vault")).toBeInTheDocument();
+    expect(screen.getByText("Action Registry")).toBeInTheDocument();
+    expect(screen.getByText("Hive AI / Agent Registry")).toBeInTheDocument();
     expect(screen.getByText("Active Incidents")).toBeInTheDocument();
     expect(screen.getAllByText("Completed paid appointment is missing payment routing.").length).toBeGreaterThan(0);
     expect(screen.getByText("The payout-routing ledger was never created or repaired after completion.")).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: /run safe repair/i }).length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: /copy chatgpt packet/i })).toBeInTheDocument();
+  });
+
+  it("renders the official Mission Control lanes with CEO as default", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => createSnapshot()
+    });
+
+    render(<ArchitectMissionControl />);
+
+    await waitFor(() => expect(screen.getByText("CEO lane is the default landing lane")).toBeInTheDocument());
+    for (const lane of ["CEO", "Product", "Technology", "Operations", "Finance", "Marketing", "Compliance", "Security", "Content & Community"]) {
+      expect(screen.getAllByText(lane).length).toBeGreaterThan(0);
+    }
+    expect(screen.getByRole("link", { name: /CEO/ })).toHaveAttribute("aria-current", "page");
+    expect(screen.queryByText(/sidebar/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/admin menu/i)).not.toBeInTheDocument();
   });
 
   it("copies generated packets", async () => {

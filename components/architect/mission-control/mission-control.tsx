@@ -6,7 +6,20 @@ import { AlertTriangle, Brain, CheckCircle2, Clipboard, FileCode2, RefreshCw, Ro
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import type { ArchitectRepairResult } from "@/lib/architect/debug/types";
-import type { ArchitectIncident, MissionControlSnapshot, MissionValidationResult } from "@/lib/architect/mission-control/types";
+import { buildMissionControlFoundation } from "@/lib/architect/mission-control/foundation";
+import type {
+  ActionRegistryEntry,
+  ArchitectIncident,
+  CoreLoopValidator,
+  HiveAgentEntry,
+  MissionControlFoundation,
+  MissionControlSnapshot,
+  MissionDepartmentLane,
+  MissionEvidenceCard,
+  MissionIncidentDefinition,
+  MissionValidationResult,
+  SourceVaultEntry
+} from "@/lib/architect/mission-control/types";
 import { cn } from "@/lib/utils";
 
 type ApiError = {
@@ -39,35 +52,251 @@ function statusClass(status?: string | null) {
   return "border-white/10 bg-white/[0.035] text-white/64";
 }
 
+function StatusPill({ status }: { status: string }) {
+  return (
+    <span className={cn("rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]", statusClass(status))}>
+      {status}
+    </span>
+  );
+}
+
 function severityRank(incident: ArchitectIncident) {
   if (incident.severity === "critical") return 0;
   if (incident.severity === "broken") return 1;
   return 2;
 }
 
-function HealthPanel({ snapshot }: { snapshot: MissionControlSnapshot }) {
+function EvidenceCard({ card }: { card: MissionEvidenceCard }) {
   return (
-    <section aria-labelledby="platform-health" className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
+    <article className="rounded-lg border border-white/10 bg-black/24 p-4">
+      <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-[0.22em] text-[#d7ffab]">Platform Health</p>
-          <h2 id="platform-health" className="mt-2 text-2xl font-semibold text-white">Core systems</h2>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/42">{card.department} / {card.workflow}</p>
+          <h3 className="mt-2 text-base font-semibold text-white">{card.label}</h3>
         </div>
-        <span className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/58">
-          {new Date(snapshot.checkedAt).toLocaleString()}
-        </span>
+        <StatusPill status={card.status} />
       </div>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-        {snapshot.health.map((item) => (
-          <div key={item.key} className="rounded-lg border border-white/10 bg-black/24 p-4">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/52">{item.label}</p>
-              <span className={cn("rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]", statusClass(item.status))}>
-                {item.status}
+      <p className="mt-3 text-sm leading-6 text-white/68">{card.summary}</p>
+      <ul className="mt-3 space-y-1 text-xs leading-5 text-white/48">
+        {card.evidence.slice(0, 4).map((item) => <li key={item}>{item}</li>)}
+      </ul>
+    </article>
+  );
+}
+
+function MissionControlNavigationPanel({ foundation }: { foundation: MissionControlFoundation }) {
+  return (
+    <section aria-labelledby="mission-control-navigation" className="rounded-lg border border-white/10 bg-black/25 p-5">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs uppercase tracking-[0.22em] text-[#d7ffab]">BVRB3R Mission Control Navigation</p>
+          <h2 id="mission-control-navigation" className="mt-2 text-2xl font-semibold text-white">CEO lane is the default landing lane</h2>
+        </div>
+        <StatusPill status="Needs Review" />
+      </div>
+      <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        {foundation.navigationLanes.map((lane) => (
+          <a
+            key={lane.id}
+            href={lane.href}
+            aria-current={lane.id === foundation.defaultLaneId ? "page" : undefined}
+            className={cn(
+              "rounded-lg border p-3 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/40",
+              lane.id === foundation.defaultLaneId
+                ? "border-[#7CFF00]/28 bg-[#7CFF00]/10"
+                : "border-white/10 bg-white/[0.025] hover:border-[#7CFF00]/20"
+            )}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <p className="font-semibold text-white">{lane.label}</p>
+              {lane.id === foundation.defaultLaneId ? <StatusPill status="Default" /> : null}
+            </div>
+            <p className="mt-2 text-xs leading-5 text-white/54">{lane.purpose}</p>
+          </a>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function CeoCommandCenter({ foundation }: { foundation: MissionControlFoundation }) {
+  return (
+    <section aria-labelledby="ceo-command-center" className="space-y-4">
+      <div>
+        <p className="text-xs uppercase tracking-[0.22em] text-[#d7ffab]">CEO Command Center</p>
+        <h2 id="ceo-command-center" className="mt-2 text-2xl font-semibold text-white">Health, risk, and next decisions</h2>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {foundation.ceoCommandCenter.map((card) => <EvidenceCard key={card.id} card={card} />)}
+      </div>
+    </section>
+  );
+}
+
+function DepartmentLanePanel({ lanes }: { lanes: MissionDepartmentLane[] }) {
+  return (
+    <section aria-labelledby="department-lanes" className="space-y-4">
+      <div>
+        <p className="text-xs uppercase tracking-[0.22em] text-[#d7ffab]">Department Lanes</p>
+        <h2 id="department-lanes" className="mt-2 text-2xl font-semibold text-white">Read-only evidence cards</h2>
+      </div>
+      <div className="space-y-4">
+        {lanes.filter((lane) => lane.id !== "ceo").map((lane) => (
+          <article key={lane.id} id={lane.id === "content_community" ? "content-community" : lane.id} className="rounded-lg border border-white/10 bg-black/25 p-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.18em] text-white/40">{lane.label}</p>
+                <h3 className="mt-2 text-xl font-semibold text-white">{lane.purpose}</h3>
+              </div>
+              <StatusPill status={lane.status} />
+            </div>
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {lane.cards.map((card) => <EvidenceCard key={card.id} card={card} />)}
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function CoreLoopValidatorPanel({ validators }: { validators: CoreLoopValidator[] }) {
+  return (
+    <section aria-labelledby="core-loop-validators" className="space-y-4">
+      <div>
+        <p className="text-xs uppercase tracking-[0.22em] text-[#d7ffab]">Core Loop Validators</p>
+        <h2 id="core-loop-validators" className="mt-2 text-2xl font-semibold text-white">Workflow truth checks</h2>
+      </div>
+      <div className="grid gap-3 lg:grid-cols-2">
+        {validators.map((validator) => (
+          <article key={validator.id} className="rounded-lg border border-white/10 bg-black/24 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.18em] text-white/40">{validator.department}</p>
+                <h3 className="mt-2 text-lg font-semibold text-white">{validator.label}</h3>
+              </div>
+              <StatusPill status={validator.status} />
+            </div>
+            <p className="mt-3 text-sm text-white/62">{validator.summary}</p>
+            <div className="mt-3 flex flex-wrap gap-2 text-[10px] uppercase tracking-[0.14em]">
+              <span className={cn("rounded-full border px-2 py-1", validator.safeRepairAvailable ? statusClass("warning") : statusClass("needs review"))}>
+                Safe repair: {validator.safeRepairAvailable ? "yes" : "no"}
+              </span>
+              <span className={cn("rounded-full border px-2 py-1", validator.codexPatchNeeded ? statusClass("warning") : statusClass("needs review"))}>
+                Codex patch: {validator.codexPatchNeeded ? "yes" : "no"}
               </span>
             </div>
-            <p className="mt-3 min-h-10 text-sm leading-5 text-white/70">{item.summary}</p>
-          </div>
+            <ul className="mt-3 space-y-1 text-xs leading-5 text-white/48">
+              {validator.validationChecklist.map((item) => <li key={item}>{item}</li>)}
+            </ul>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function IncidentTypePanel({ incidentTypes }: { incidentTypes: MissionIncidentDefinition[] }) {
+  return (
+    <section aria-labelledby="incident-types" className="space-y-4">
+      <div>
+        <p className="text-xs uppercase tracking-[0.22em] text-[#d7ffab]">Incident System</p>
+        <h2 id="incident-types" className="mt-2 text-2xl font-semibold text-white">Known failure classes</h2>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {incidentTypes.map((incidentType) => (
+          <article key={incidentType.type} className="rounded-lg border border-white/10 bg-black/24 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-mono text-xs text-white/42">{incidentType.type}</p>
+                <h3 className="mt-2 text-base font-semibold text-white">{incidentType.affectedWorkflow}</h3>
+              </div>
+              <StatusPill status={incidentType.severity === "warning" ? "Warning" : "Failed"} />
+            </div>
+            <p className="mt-3 text-sm leading-6 text-white/62">{incidentType.likelyRootCause}</p>
+            <p className="mt-3 text-xs text-white/44">Safe repair available: {incidentType.safeRepairAvailable ? "yes" : "no"} / Codex patch needed: {incidentType.codexPatchNeeded ? "yes" : "no"}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function SourceVaultPanel({ sources }: { sources: SourceVaultEntry[] }) {
+  return (
+    <section aria-labelledby="source-vault" className="space-y-4">
+      <div>
+        <p className="text-xs uppercase tracking-[0.22em] text-[#d7ffab]">Source Vault</p>
+        <h2 id="source-vault" className="mt-2 text-2xl font-semibold text-white">Registered, not ingested</h2>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {sources.map((source) => (
+          <article key={source.id} className="rounded-lg border border-white/10 bg-black/24 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <h3 className="text-base font-semibold text-white">{source.sourceName}</h3>
+              <StatusPill status={source.status} />
+            </div>
+            <p className="mt-2 text-xs uppercase tracking-[0.16em] text-white/40">{source.category} / {source.linkedSystemArea}</p>
+            <p className="mt-3 text-sm leading-6 text-white/62">{source.purpose}</p>
+            <p className="mt-3 text-xs text-white/44">{source.ingestionStatus}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ActionRegistryPanel({ actions }: { actions: ActionRegistryEntry[] }) {
+  return (
+    <section aria-labelledby="action-registry" className="space-y-4">
+      <div>
+        <p className="text-xs uppercase tracking-[0.22em] text-[#d7ffab]">Action Registry</p>
+        <h2 id="action-registry" className="mt-2 text-2xl font-semibold text-white">Boundaries before buttons</h2>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {actions.map((action) => (
+          <article key={action.id} className="rounded-lg border border-white/10 bg-black/24 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.18em] text-white/40">{action.riskClass}</p>
+                <h3 className="mt-2 text-base font-semibold text-white">{action.label}</h3>
+              </div>
+              <StatusPill status={action.status} />
+            </div>
+            <p className="mt-3 text-sm leading-6 text-white/62">{action.description}</p>
+            <p className="mt-3 text-xs text-white/44">Allowed: {action.allowed ? "yes" : "no"} / Approval: {action.approvalRequired ? "required" : "not required"}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function AgentRegistryPanel({ agents }: { agents: HiveAgentEntry[] }) {
+  return (
+    <section aria-labelledby="agent-registry" className="space-y-4">
+      <div>
+        <p className="text-xs uppercase tracking-[0.22em] text-[#d7ffab]">Hive AI / Agent Registry</p>
+        <h2 id="agent-registry" className="mt-2 text-2xl font-semibold text-white">Read-only workforce brain</h2>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {agents.map((agent) => (
+          <article key={agent.id} className="rounded-lg border border-white/10 bg-black/24 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.18em] text-white/40">{agent.department}</p>
+                <h3 className="mt-2 text-base font-semibold text-white">{agent.name}</h3>
+              </div>
+              <StatusPill status={agent.currentStatus} />
+            </div>
+            <p className="mt-3 text-sm leading-6 text-white/62">{agent.job}</p>
+            <div className="mt-3 rounded-lg border border-white/10 bg-black/20 p-3 text-xs leading-5 text-white/52">
+              <p>Autonomy: {agent.autonomyLevel}</p>
+              <p>Data: {agent.dataAccess}</p>
+              <p>Action: {agent.actionAccess}</p>
+              <p>Failure rule: {agent.failureRule}</p>
+            </div>
+          </article>
         ))}
       </div>
     </section>
@@ -103,9 +332,26 @@ function IncidentCard({
       </div>
       <div className="mt-4 grid gap-2 text-xs text-white/58 sm:grid-cols-3">
         <span>Code: <strong className="text-white/82">{incident.diagnosisCode}</strong></span>
-        <span>Table: <strong className="text-white/82">{incident.affectedTable ?? "none"}</strong></span>
+        <span>Dept: <strong className="text-white/82">{incident.affectedDepartment ?? incident.affectedRole}</strong></span>
         <span>Confidence: <strong className="text-white/82">{incident.confidence}</strong></span>
       </div>
+      <div className="mt-3 rounded-lg border border-white/10 bg-black/20 p-3 text-xs leading-5 text-white/56">
+        <p>Workflow: <strong className="text-white/82">{incident.affectedWorkflow ?? incident.analysis.affectedLayer}</strong></p>
+        <p>Table: <strong className="text-white/82">{incident.affectedTable ?? "none"}</strong></p>
+        <p>Safe repair available: <strong className="text-white/82">{incident.canRepair ? "yes" : "no"}</strong></p>
+        <p>Codex patch needed: <strong className="text-white/82">{incident.codexRequired ? "yes" : "no"}</strong></p>
+      </div>
+      <ul className="mt-3 space-y-1 text-xs leading-5 text-white/48">
+        {incident.evidence.slice(0, 4).map((item) => <li key={item}>{item}</li>)}
+      </ul>
+      {incident.validationChecklist?.length ? (
+        <details className="mt-3 rounded-lg border border-white/10 bg-black/20 p-3 text-xs text-white/56">
+          <summary className="cursor-pointer text-white/72">Validation checklist</summary>
+          <ul className="mt-2 space-y-1">
+            {incident.validationChecklist.map((item) => <li key={item}>{item}</li>)}
+          </ul>
+        </details>
+      ) : null}
       <p className="mt-3 text-sm text-white/70">{incident.recommendedAction}</p>
       <div className="mt-4 flex flex-wrap gap-2">
         <Button type="button" variant="secondary" onClick={onAnalyze}>Analyze</Button>
@@ -285,6 +531,10 @@ export function ArchitectMissionControl() {
 
   const incidents = useMemo(() => [...(snapshot?.incidents ?? [])].sort((a, b) => severityRank(a) - severityRank(b)), [snapshot]);
   const selectedIncident = incidents.find((incident) => incident.id === selectedIncidentId) ?? incidents[0] ?? null;
+  const foundation = useMemo(
+    () => snapshot?.foundation ?? buildMissionControlFoundation(snapshot?.incidents ?? [], snapshot?.checkedAt),
+    [snapshot]
+  );
 
   async function loadSnapshot() {
     setLoading(true);
@@ -404,7 +654,14 @@ export function ArchitectMissionControl() {
 
         {snapshot ? (
           <>
-            <HealthPanel snapshot={snapshot} />
+            <MissionControlNavigationPanel foundation={foundation} />
+            <CeoCommandCenter foundation={foundation} />
+            <DepartmentLanePanel lanes={foundation.departmentLanes} />
+            <CoreLoopValidatorPanel validators={foundation.coreLoopValidators} />
+            <IncidentTypePanel incidentTypes={foundation.incidentTypes} />
+            <SourceVaultPanel sources={foundation.sourceVault} />
+            <ActionRegistryPanel actions={foundation.actionRegistry} />
+            <AgentRegistryPanel agents={foundation.agentRegistry} />
 
             <section aria-labelledby="active-incidents" className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_24rem]">
               <div className="space-y-4">

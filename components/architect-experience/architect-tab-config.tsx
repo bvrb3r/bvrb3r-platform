@@ -1,53 +1,59 @@
-import { Bug, FileText, Home, MessageCircle, ShieldCheck, UserCog, WalletCards, Settings2 } from "lucide-react";
+import { BadgeDollarSign, BrainCircuit, Building2, Megaphone, Rocket, Scale, ShieldCheck, Siren, UsersRound } from "lucide-react";
 
 export const ARCHITECT_PRIMARY_NAV_ITEMS = [
   {
-    id: "home",
-    label: "Home",
+    id: "ceo",
+    label: "CEO",
     href: "/architect",
-    icon: Home
+    icon: Rocket
   },
   {
-    id: "users",
-    label: "Users",
-    href: "/architect/users",
-    icon: UserCog
+    id: "product",
+    label: "Product",
+    href: "/architect#product",
+    icon: BrainCircuit
   },
   {
-    id: "verifications",
-    label: "Verifications",
-    href: "/architect/verifications",
+    id: "technology",
+    label: "Technology",
+    href: "/architect#technology",
     icon: ShieldCheck
   },
   {
-    id: "money",
-    label: "Money",
-    href: "/architect/money",
-    icon: WalletCards
+    id: "operations",
+    label: "Operations",
+    href: "/architect#operations",
+    icon: Building2
   },
   {
-    id: "debug",
-    label: "Debug",
-    href: "/architect/debug",
-    icon: Bug
+    id: "finance",
+    label: "Finance",
+    href: "/architect#finance",
+    icon: BadgeDollarSign
   },
   {
-    id: "messages",
-    label: "Messages",
-    href: "/architect/messages",
-    icon: MessageCircle
+    id: "marketing",
+    label: "Marketing",
+    href: "/architect#marketing",
+    icon: Megaphone
   },
   {
-    id: "reports",
-    label: "Reports",
-    href: "/architect/reports",
-    icon: FileText
+    id: "compliance",
+    label: "Compliance",
+    href: "/architect#compliance",
+    icon: Scale
   },
   {
-    id: "settings",
-    label: "Settings",
-    href: "/architect/settings",
-    icon: Settings2
+    id: "security",
+    label: "Security",
+    href: "/architect#security",
+    icon: Siren
+  },
+  {
+    id: "content_community",
+    label: "Content & Community",
+    href: "/architect#content-community",
+    icon: UsersRound
   }
 ] as const;
 

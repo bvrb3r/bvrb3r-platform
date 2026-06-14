@@ -10,6 +10,7 @@ import {
 } from "@/lib/architect/mission-control/schema-constraints";
 import type { ArchitectIncident, MissionControlHealthItem, MissionControlSnapshot, MissionPacketSet } from "@/lib/architect/mission-control/types";
 import { buildChatGptPacket, buildCodexPacket, buildIncidentPacket } from "@/lib/architect/mission-control/packets";
+import { buildMissionControlFoundation, classifyArchitectIncident } from "@/lib/architect/mission-control/foundation";
 
 type SupabaseClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 
@@ -72,9 +73,14 @@ function hasRoutingConstraintFailure(audits: JsonRecord[], appointmentId: string
 
 function buildIncident(input: Omit<ArchitectIncident, "id" | "createdAt" | "sqlSnippets"> & { createdAt?: string; sqlSnippets?: ArchitectIncident["sqlSnippets"] }) {
   const id = `${input.diagnosisCode}:${input.targetType}:${input.targetId}`;
+  const classification = classifyArchitectIncident(input.diagnosisCode);
   return {
     ...input,
     id,
+    missionIncidentType: classification.type,
+    affectedDepartment: classification.affectedDepartment,
+    affectedWorkflow: classification.affectedWorkflow,
+    validationChecklist: input.validationChecklist ?? classification.validationChecklist,
     createdAt: input.createdAt ?? new Date().toISOString(),
     sqlSnippets: input.sqlSnippets ?? (input.targetType === "appointment" ? buildAppointmentSqlSnippets(input.targetId) : [])
   };
@@ -598,6 +604,7 @@ export async function buildMissionControlSnapshot(
   ]);
   const health = healthFromIncidents(incidents, checkedAt);
   const packets = Object.fromEntries(incidents.map((incident) => [incident.id, packetSet({ checkedAt, environment }, incident)]));
+  const foundation = buildMissionControlFoundation(incidents, checkedAt);
 
   return {
     ok: true,
@@ -607,6 +614,7 @@ export async function buildMissionControlSnapshot(
     incidents,
     selectedIncidentId: incidents[0]?.id ?? null,
     packets,
+    foundation,
     schemaEvidence: {
       paymentRouting: paymentRoutingConstraintEvidenceToJson(constraintEvidence)
     }

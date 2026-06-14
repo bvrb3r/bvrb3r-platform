@@ -1,4 +1,5 @@
 import type { ArchitectIncident, MissionControlSnapshot } from "@/lib/architect/mission-control/types";
+import { getCodexFailureClass } from "@/lib/architect/mission-control/foundation";
 
 type PacketEnvironment = Pick<MissionControlSnapshot, "checkedAt" | "environment">;
 
@@ -64,27 +65,27 @@ export function buildChatGptPacket(snapshot: PacketEnvironment, incident: Archit
 }
 
 export function buildCodexPacket(snapshot: PacketEnvironment, incident: ArchitectIncident) {
+  const failureClass = getCodexFailureClass(incident.diagnosisCode);
   return [
-    `TITLE\nBVRB3R ${incident.diagnosisCode.toUpperCase()} FIX`,
+    `TITLE\nBVRB3R ${failureClass.label.toUpperCase()} FIX`,
     `PROBLEM\n${incident.headline}`,
     `PRODUCTION EVIDENCE\n${evidenceLines(incident)}`,
     `ROOT CAUSE\n${incident.analysis.likelyRootCause}`,
     [
+      "AFFECTED DEPARTMENTS",
+      ...failureClass.affectedDepartments.map((department) => `- ${department}`)
+    ].join("\n"),
+    [
       "DO NOT TOUCH",
-      "- booking creation",
-      "- Stripe booking charge",
-      "- client discovery",
-      "- client activity read",
-      "- barber calendar read",
-      "- appointment details UI unless the incident specifically says UI"
+      ...failureClass.doNotTouch.map((item) => `- ${item}`)
     ].join("\n"),
     [
       "FILES TO INSPECT",
-      "- lib/architect/repairs/payment-routing-repair.ts",
-      "- lib/architect/mission-control/schema-constraints.ts",
-      "- lib/architect/debug/diagnosis.ts",
-      "- app/api/architect/repairs/payment-routing/route.ts",
-      "- tests/unit/architect-routing-repair.spec.ts"
+      ...failureClass.affectedFiles.map((item) => `- ${item}`)
+    ].join("\n"),
+    [
+      "AFFECTED TABLES",
+      ...(failureClass.affectedTables.length ? failureClass.affectedTables.map((item) => `- ${item}`) : ["- none known"])
     ].join("\n"),
     [
       "REQUIRED FIX",
@@ -101,20 +102,13 @@ export function buildCodexPacket(snapshot: PacketEnvironment, incident: Architec
     ].join("\n"),
     [
       "TESTS REQUIRED",
-      "- architect routing repair uses production-legal constraint values",
-      "- completed paid appointment missing routing is detected",
-      "- schema constraint mismatch generates a Codex-ready packet",
-      "- core booking loop regression still passes",
-      "- payout completion flow still passes"
+      ...failureClass.testsRequired.map((item) => `- ${item}`)
     ].join("\n"),
     [
       "VALIDATION COMMANDS",
-      "npm run typecheck",
-      "npx vitest run tests/unit/architect-routing-repair.spec.ts tests/unit/architect-incident-detection.spec.ts tests/unit/architect-schema-constraint-debug.spec.ts",
-      "npx vitest run tests/unit/core-booking-loop-regression.spec.ts tests/unit/payout-completion-flow.spec.ts tests/unit/barber-schedule-workspace.spec.tsx",
-      "npm run build"
+      ...failureClass.validationRequired.map((item) => `- ${item}`)
     ].join("\n"),
-    `EXPECTED RESULT\n${incident.analysis.failedInvariant} is restored without touching unrelated booking/payment surfaces.`,
+    `EXPECTED RESULT\n${incident.analysis.failedInvariant} is restored without touching unrelated surfaces.`,
     [
       "FINAL REPORT FORMAT",
       "- files changed",

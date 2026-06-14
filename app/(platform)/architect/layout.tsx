@@ -22,7 +22,7 @@ export default async function ArchitectLayout({ children }: { children: React.Re
                   <p className="text-lg font-semibold text-white">{user.name}</p>
                   <p className="mt-1 truncate text-sm text-white/60">{user.email}</p>
                 </div>
-                <p className="mt-3 max-w-3xl text-sm leading-6 text-white/58">Mission Control for users, verification, money, debug, reports, and platform settings.</p>
+                <p className="mt-3 max-w-3xl text-sm leading-6 text-white/58">BVRB3R Mission Control Navigation for executive truth, workflow health, source vault, action boundaries, and Hive AI agents.</p>
               </div>
 
               <div className="flex min-w-0 flex-col gap-3 xl:min-w-[31rem] xl:items-end">
