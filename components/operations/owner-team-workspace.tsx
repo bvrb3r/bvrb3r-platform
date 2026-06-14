@@ -4,10 +4,18 @@ import { useMemo, useState, type ComponentProps, type ReactNode } from "react";
 import Link from "next/link";
 import type { Route } from "next";
 import {
+  BarChart3,
+  CalendarDays,
+  CalendarPlus,
+  CircleDollarSign,
+  Clock3,
+  Images,
+  MessageSquareText,
   MoreVertical,
+  TabletSmartphone,
+  UserPlus,
   X
 } from "lucide-react";
-import { CultureHomeEntryCard } from "@/components/culture/culture-home-entry-card";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, GlassCard, SearchBar } from "@/design/components";
@@ -50,6 +58,9 @@ type TeamBarberView = {
   publicTeamVisible: boolean;
   publicTeamOrder: number;
   featuredOnShopProfile: boolean;
+  openSlots: number | null;
+  bookedMinutes: number | null;
+  availableMinutes: number | null;
 };
 
 type RelationshipUpdatePayload = {
@@ -119,12 +130,38 @@ function getOptionalNumericField(source: object, keys: string[]) {
   return null;
 }
 
-function getCompletedAppointmentRevenue(appointment: ShopDashboardAppointment) {
-  if (appointment.status !== "completed") {
+function getEstimatedAppointmentProduction(appointment: ShopDashboardAppointment) {
+  if (appointment.status === "cancelled" || appointment.status === "no_show") {
     return 0;
   }
 
   return appointment.totalAmount + appointment.tipAmount;
+}
+
+function getAppointmentTimestamp(appointment: ShopDashboardAppointment) {
+  const timestamp = new Date(appointment.start).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function formatAppointmentTimeRange(appointment: ShopDashboardAppointment) {
+  if (!appointment.start || !appointment.end) {
+    return "Time pending";
+  }
+
+  return `${formatTime(appointment.start)} - ${formatTime(appointment.end)}`;
+}
+
+function getAppointmentDisplayValue(
+  appointment: ShopDashboardAppointment,
+  key: "barberName" | "clientName" | "serviceName" | "statusLabel",
+  fallback: string
+) {
+  const value = appointment.display?.[key];
+  return value && value.trim() ? value : fallback;
+}
+
+function isOperationalAppointment(appointment: ShopDashboardAppointment) {
+  return appointment.status !== "cancelled" && appointment.status !== "no_show";
 }
 
 function getStatusKind({
@@ -264,6 +301,7 @@ function TeamActionLink({
 export function OwnerTeamWorkspace() {
   const shopQuery = useShopDashboardQuery();
   const fintechQuery = useFintechManagementQuery();
+  const [addBarbersOpen, setAddBarbersOpen] = useState(false);
   const [inviteSearch, setInviteSearch] = useState("");
   const [pendingInviteBarber, setPendingInviteBarber] = useState<ShopTeamInviteDirectoryBarber | null>(null);
   const [selectedBarberId, setSelectedBarberId] = useState<string | null>(null);
@@ -308,8 +346,11 @@ export function OwnerTeamWorkspace() {
       });
       const todayPostedAmount = appointments
         .filter((appointment) => appointment.barberId === barber.id)
-        .reduce((sum, appointment) => sum + getCompletedAppointmentRevenue(appointment), 0);
+        .reduce((sum, appointment) => sum + getEstimatedAppointmentProduction(appointment), 0);
       const rating = getOptionalNumericField(barber, ["averageRating", "rating", "reviewRating"]);
+      const openSlots = getOptionalNumericField(barber, ["openSlots", "openSlotCount", "remainingOpenSlots", "availableSlotCount"]);
+      const bookedMinutes = getOptionalNumericField(barber, ["bookedMinutes", "booked_minutes"]);
+      const availableMinutes = getOptionalNumericField(barber, ["availableMinutes", "available_minutes", "totalAvailableMinutes", "total_available_minutes"]);
       const todayBookings = barber.bookedCount + barber.activeAppointmentCount + barber.liveAppointmentCount + barber.completedCount;
       const roleLabel = formatRoutingLabel(membership?.routingModel ?? barber.compensationModel);
       const statusLabel = getStatusCopy(statusKind);
@@ -336,22 +377,59 @@ export function OwnerTeamWorkspace() {
         relationshipId: typeof membership?.id === "string" ? membership.id : null,
         publicTeamVisible: membershipRecord.publicTeamVisible !== false && membershipRecord.public_team_visible !== false,
         publicTeamOrder: getOptionalNumericField(membershipRecord, ["publicTeamOrder", "public_team_order"]) ?? 0,
-        featuredOnShopProfile: membershipRecord.featuredOnShopProfile === true || membershipRecord.featured_on_shop_profile === true
+        featuredOnShopProfile: membershipRecord.featuredOnShopProfile === true || membershipRecord.featured_on_shop_profile === true,
+        openSlots,
+        bookedMinutes,
+        availableMinutes
       };
     });
   }, [activeBarbers, appointments, barberAccounts, barbers, memberships]);
 
   const selectedBarber = team.find((barber) => barber.id === selectedBarberId) ?? null;
-  const activeCount = team.filter((barber) => barber.statusKind === "active").length;
   const relationshipDirectory = relationshipDirectoryQuery.data?.barbers ?? [];
   const pendingOwnerInvites = relationshipDirectory.filter((barber) => barber.inviteStatus === "invited");
   const incomingJoinRequests = relationshipDirectory.filter((barber) => barber.inviteStatus === "requested");
   const relationshipErrorMessage = relationshipDirectoryQuery.error ? getReadableActionError(relationshipDirectoryQuery.error) : null;
-  const todayRevenue = appointments.reduce((sum, appointment) => sum + getCompletedAppointmentRevenue(appointment), 0);
-  const appointmentsToday = appointments.length;
-  const openChairCapacity = team.filter((barber) => barber.statusKind === "idle" || barber.statusKind === "offline").length;
-  const pendingActions = pendingOwnerInvites.length + incomingJoinRequests.length + team.filter((barber) => barber.statusKind === "pending").length;
-
+  const activeTeam = useMemo(
+    () => team.filter((barber) => barber.statusKind !== "pending" && Boolean(barber.relationshipId)),
+    [team]
+  );
+  const activeTeamIds = useMemo(() => new Set(activeTeam.map((barber) => barber.id)), [activeTeam]);
+  const activeTeamAppointments = useMemo(
+    () => appointments.filter((appointment) => activeTeamIds.has(appointment.barberId) && isOperationalAppointment(appointment)),
+    [activeTeamIds, appointments]
+  );
+  const activeTeamOpenSlotCounts = activeTeam
+    .map((barber) => barber.openSlots)
+    .filter((value): value is number => typeof value === "number");
+  const activeTeamBookedMinutes = activeTeam.reduce((sum, barber) => sum + (barber.bookedMinutes ?? 0), 0);
+  const activeTeamAvailableMinutes = activeTeam.reduce((sum, barber) => sum + (barber.availableMinutes ?? 0), 0);
+  const todayRevenue = activeTeamAppointments.reduce((sum, appointment) => sum + getEstimatedAppointmentProduction(appointment), 0);
+  const appointmentsToday = activeTeamAppointments.length;
+  const openSlotsTotal = activeTeamOpenSlotCounts.length
+    ? activeTeamOpenSlotCounts.reduce((sum, value) => sum + value, 0)
+    : null;
+  const utilizationPercent = activeTeamAvailableMinutes > 0
+    ? Math.round((activeTeamBookedMinutes / activeTeamAvailableMinutes) * 100)
+    : activeTeam.length
+      ? Math.round(activeTeam.reduce((sum, barber) => sum + (barber.utilization ?? 0), 0) / activeTeam.length)
+      : null;
+  const sortedScoreboard = useMemo(
+    () => [...activeTeam].sort((left, right) => {
+      const leftProduction = left.todayPostedAmount ?? 0;
+      const rightProduction = right.todayPostedAmount ?? 0;
+      return (right.todayBookings ?? 0) - (left.todayBookings ?? 0)
+        || rightProduction - leftProduction
+        || (right.utilization ?? 0) - (left.utilization ?? 0)
+        || (right.openSlots ?? 0) - (left.openSlots ?? 0)
+        || left.name.localeCompare(right.name);
+    }),
+    [activeTeam]
+  );
+  const ownerTimeline = useMemo(
+    () => [...activeTeamAppointments].sort((left, right) => getAppointmentTimestamp(left) - getAppointmentTimestamp(right)).slice(0, 8),
+    [activeTeamAppointments]
+  );
   async function handleCreateInvite(barber: ShopTeamInviteDirectoryBarber) {
     setInviteFeedback(null);
     try {
@@ -428,45 +506,98 @@ export function OwnerTeamWorkspace() {
       {relationshipFeedback ? <FeedbackBanner tone={relationshipFeedback.tone} message={relationshipFeedback.message} /> : null}
       {relationshipErrorMessage ? <FeedbackBanner tone="error" message={relationshipErrorMessage} /> : null}
 
-      <GlassCard className="p-5 sm:p-6" data-testid="today-shop-snapshot">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Today Shop Snapshot</p>
-            <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-white">How the shop is doing today.</h2>
-          </div>
-          {ownerKioskShopId ? (
-          <KioskLaunchAction
-            href={`/kiosk/${encodeURIComponent(ownerKioskShopId)}` as Route}
-            scope="shop"
-            targetReference={ownerKioskShopId}
-            settingsHref="/dashboard/owner/more?section=kiosk"
-            className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#A3FF12]/30 bg-[#A3FF12]/10 px-5 text-[11px] font-black uppercase tracking-[0.2em] text-[#d7ffab] transition hover:border-[#d7ffab]/55 hover:bg-[#A3FF12]/16"
-          >
-            Kiosk Mode
-          </KioskLaunchAction>
-          ) : (
-            <Link
-              href="/dashboard/owner/more?section=kiosk"
-              className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#A3FF12]/30 bg-[#A3FF12]/10 px-5 text-[11px] font-black uppercase tracking-[0.2em] text-[#d7ffab] transition hover:border-[#d7ffab]/55 hover:bg-[#A3FF12]/16"
-            >
-              Kiosk Mode
-            </Link>
-          )}
-        </div>
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          {[
-            ["Today Revenue", currency(todayRevenue), "Completed services and tips"],
-            ["Appointments Today", appointmentsToday.toString(), "Booked, active, and completed"],
-            ["Active Barbers", activeCount.toString(), "Serving or ready now"],
-            ["Open Chair Capacity", openChairCapacity.toString(), "Idle or offline chairs"],
-            ["Pending Actions", pendingActions.toString(), "Invites, requests, or setup"]
-          ].map(([label, value, detail]) => (
-            <div key={label} className="rounded-[18px] border border-white/8 bg-black/24 p-4">
-              <p className="text-xs font-black uppercase tracking-[0.14em] text-white/42">{label}</p>
-              <p className="mt-3 text-2xl font-black tracking-[-0.04em] text-white">{value}</p>
-              <p className="mt-1 text-xs leading-5 text-white/50">{detail}</p>
+      <GlassCard className="relative overflow-hidden rounded-[28px] p-5 sm:p-6" data-testid="shop-command-calendar">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(163,255,18,0.10),transparent_30%),radial-gradient(circle_at_bottom_center,rgba(163,255,18,0.06),transparent_28%)]" />
+        <div className="relative space-y-6">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Shop Command Calendar</p>
+              <h2 className="mt-3 text-[2.35rem] font-black leading-none tracking-[-0.045em] text-white sm:text-5xl" data-display="true">
+                Shop Command Calendar
+              </h2>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-white/62">
+                Coordinate the shop floor across active barbers, today&apos;s appointments, and capacity signals.
+              </p>
             </div>
-          ))}
+            <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[38rem] xl:grid-cols-4">
+              <Link
+                href="/dashboard/owner/schedule?action=add-appointment"
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] bg-[#A3FF12] px-4 text-xs font-black text-[#050505] shadow-[0_0_26px_rgba(163,255,18,0.20)] transition hover:bg-[#d7ffab]"
+              >
+                <CalendarPlus className="h-4 w-4" />
+                Add Appointment
+              </Link>
+              <button
+                type="button"
+                onClick={() => setAddBarbersOpen(true)}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] border border-white/10 bg-white/[0.035] px-4 text-xs font-extrabold text-white/74 transition hover:border-[#A3FF12]/30 hover:text-white"
+              >
+                <UserPlus className="h-4 w-4 text-[#A3FF12]" />
+                Add Barbers
+              </button>
+              {ownerKioskShopId ? (
+                <KioskLaunchAction
+                  href={`/kiosk/${encodeURIComponent(ownerKioskShopId)}` as Route}
+                  scope="shop"
+                  targetReference={ownerKioskShopId}
+                  settingsHref="/dashboard/owner/more?section=kiosk"
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] border border-[#A3FF12]/24 bg-[#A3FF12]/10 px-4 text-xs font-extrabold text-[#d7ffab] transition hover:border-[#A3FF12]/40 hover:bg-[#A3FF12]/14"
+                >
+                  <TabletSmartphone className="h-4 w-4" />
+                  Kiosk Mode
+                </KioskLaunchAction>
+              ) : (
+                <Link
+                  href="/dashboard/owner/more?section=kiosk"
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] border border-[#A3FF12]/24 bg-[#A3FF12]/10 px-4 text-xs font-extrabold text-[#d7ffab] transition hover:border-[#A3FF12]/40 hover:bg-[#A3FF12]/14"
+                >
+                  <TabletSmartphone className="h-4 w-4" />
+                  Kiosk Mode
+                </Link>
+              )}
+              <Link
+                href="/dashboard/owner/culture"
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] border border-white/10 bg-white/[0.035] px-4 text-xs font-extrabold text-white/74 transition hover:border-[#A3FF12]/30 hover:text-white"
+              >
+                <Images className="h-4 w-4 text-[#A3FF12]" />
+                Open Culture
+              </Link>
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            {[
+              ["Active Barbers", activeTeam.length.toString(), "Connected and operational"],
+              ["Pending Invites", pendingOwnerInvites.length.toString(), "Waiting on barber approval"],
+              ["Incoming Requests", incomingJoinRequests.length.toString(), "Needs owner response"]
+            ].map(([label, value, detail]) => (
+              <div key={label} className="rounded-[18px] border border-white/8 bg-black/24 p-4">
+                <p className="text-xs font-black uppercase tracking-[0.14em] text-white/42">{label}</p>
+                <p className="mt-3 text-2xl font-black tracking-[-0.04em] text-white">{value}</p>
+                <p className="mt-1 text-xs leading-5 text-white/50">{detail}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {[
+              ["Appointments Today", appointmentsToday.toString(), "Across active shop barbers", <CalendarDays key="appointments" className="h-4 w-4" />],
+              ["Shop Production", currency(todayRevenue), "Estimated service production", <CircleDollarSign key="production" className="h-4 w-4" />],
+              ["Open Slots", openSlotsTotal === null ? "--" : openSlotsTotal.toString(), openSlotsTotal === null ? "Slot count unavailable" : "Remaining bookable slots", <Clock3 key="slots" className="h-4 w-4" />],
+              ["Day Utilization", utilizationPercent === null ? "--" : `${utilizationPercent}%`, activeTeamAvailableMinutes > 0 ? "Booked minutes / available minutes" : "Team utilization summary", <BarChart3 key="utilization" className="h-4 w-4" />]
+            ].map(([label, value, detail, icon]) => (
+              <div key={label as string} className="rounded-[18px] border border-white/8 bg-black/24 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.14em] text-white/42">{label}</p>
+                    <p className="mt-3 text-2xl font-black tracking-[-0.04em] text-white">{value}</p>
+                  </div>
+                  <span className="rounded-full border border-[#A3FF12]/18 bg-[#A3FF12]/10 p-2 text-[#A3FF12]">{icon}</span>
+                </div>
+                <p className="mt-1 text-xs leading-5 text-white/50">{detail}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </GlassCard>
 
@@ -474,12 +605,12 @@ export function OwnerTeamWorkspace() {
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Barbers Summary</p>
-            <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-white">Connected barbers and today&apos;s performance.</h2>
+            <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-white">Active barber scoreboard.</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-white/56">
-              Active shop relationships stay separate from pending invitations so the owner view stays operational.
+              Active shop barbers are sorted by appointments, production, utilization, and open capacity.
             </p>
           </div>
-          {team.length ? (
+          {sortedScoreboard.length ? (
             <Link href="/dashboard/owner/team" className="text-sm font-extrabold text-[#A3FF12] transition hover:text-[#d7ffab]">
               View Team
             </Link>
@@ -492,19 +623,28 @@ export function OwnerTeamWorkspace() {
               <Skeleton className="h-28 rounded-[22px]" />
               <Skeleton className="h-28 rounded-[22px]" />
             </>
-          ) : !team.length ? (
+          ) : !sortedScoreboard.length ? (
             <SectionEmptyState
               title="No active barbers yet."
-              detail={pendingOwnerInvites.length ? "Pending invitations are waiting for barber approval before they join the active summary." : "Invite or approve a barber to build your shop team."}
+              detail={pendingOwnerInvites.length ? "Pending invitations are waiting for barber approval before they join the active summary." : "Invite a barber to begin tracking team performance."}
+              action={
+                <button
+                  type="button"
+                  onClick={() => setAddBarbersOpen(true)}
+                  className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#A3FF12]/40 px-5 text-sm font-extrabold text-[#A3FF12] transition hover:bg-[#A3FF12]/10"
+                >
+                  Add Barbers
+                </button>
+              }
             />
           ) : (
-            team.map((barber) => {
+            sortedScoreboard.map((barber) => {
               const statusClasses = getStatusClasses(barber.statusKind);
               const isSelected = selectedBarber?.id === barber.id;
 
               return (
                 <div key={barber.id} className="rounded-[22px] border border-white/8 bg-black/24">
-                  <div className="grid gap-4 p-4 lg:grid-cols-[minmax(15rem,1.25fr)_0.75fr_0.65fr_0.75fr_0.65fr_auto] lg:items-center">
+                  <div className="grid gap-4 p-4 lg:grid-cols-[minmax(15rem,1.25fr)_0.75fr_0.8fr_0.7fr_0.8fr_0.65fr_auto] lg:items-center">
                     <button
                       type="button"
                       onClick={() => setSelectedBarberId(isSelected ? null : barber.id)}
@@ -536,7 +676,7 @@ export function OwnerTeamWorkspace() {
                     </Link>
 
                     <div>
-                      <p className="text-xs font-black uppercase tracking-[0.14em] text-white/42">Today</p>
+                      <p className="text-xs font-black uppercase tracking-[0.14em] text-white/42">Est. Production</p>
                       <p className="mt-1 text-xl font-black text-white">{barber.todayPostedAmount === null ? "-" : currency(barber.todayPostedAmount)}</p>
                     </div>
 
@@ -546,8 +686,13 @@ export function OwnerTeamWorkspace() {
                     </div>
 
                     <div>
-                      <p className="text-xs font-black uppercase tracking-[0.14em] text-white/42">Performance</p>
+                      <p className="text-xs font-black uppercase tracking-[0.14em] text-white/42">Day Utilization</p>
                       <p className="mt-1 text-xl font-black text-white">{barber.utilization === null ? "-" : `${barber.utilization}%`}</p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.14em] text-white/42">Open Slots</p>
+                      <p className="mt-1 text-xl font-black text-white">{barber.openSlots === null ? "--" : barber.openSlots}</p>
                     </div>
 
                     <details className="relative justify-self-start lg:justify-self-end">
@@ -686,6 +831,102 @@ export function OwnerTeamWorkspace() {
           )}
         </div>
       </GlassCard>
+
+      <GlassCard className="p-5 sm:p-6" data-testid="owner-daily-timeline">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-[#A3FF12]">Daily Timeline</p>
+            <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-white">Shop floor appointments.</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-white/56">
+              Owner view shows the team schedule without barber-only completion controls.
+            </p>
+          </div>
+          <Link href="/dashboard/owner/schedule" className="text-sm font-extrabold text-[#A3FF12] transition hover:text-[#d7ffab]">
+            Full Schedule
+          </Link>
+        </div>
+
+        <div className="mt-5 space-y-3">
+          {isInitialLoading ? (
+            <>
+              <Skeleton className="h-24 rounded-[22px]" />
+              <Skeleton className="h-24 rounded-[22px]" />
+            </>
+          ) : !ownerTimeline.length ? (
+            <SectionEmptyState
+              title="No active barber appointments yet."
+              detail={activeTeam.length ? "Appointments across active shop barbers will appear here." : "Invite a barber to begin tracking the shop floor."}
+            />
+          ) : (
+            ownerTimeline.map((appointment) => {
+              const production = getEstimatedAppointmentProduction(appointment);
+              const barberName = getAppointmentDisplayValue(
+                appointment,
+                "barberName",
+                sortedScoreboard.find((barber) => barber.id === appointment.barberId)?.name ?? "Assigned barber"
+              );
+              const clientName = getAppointmentDisplayValue(appointment, "clientName", "Client");
+              const serviceName = getAppointmentDisplayValue(appointment, "serviceName", "Service");
+              const statusLabel = getAppointmentDisplayValue(appointment, "statusLabel", formatStatusLabel(appointment.status));
+
+              return (
+                <div key={appointment.id} className="grid gap-4 rounded-[22px] border border-white/8 bg-black/24 p-4 md:grid-cols-[auto_1fr_auto] md:items-center">
+                  <div className="rounded-[18px] border border-[#A3FF12]/18 bg-[#A3FF12]/8 px-4 py-3 text-center">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-[#A3FF12]">Time</p>
+                    <p className="mt-2 text-sm font-black text-white">{formatAppointmentTimeRange(appointment)}</p>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-xl font-black tracking-[-0.035em] text-white">{serviceName}</p>
+                    <p className="mt-1 text-sm font-semibold text-white/62">{barberName} with {clientName}</p>
+                    <div className="mt-3 flex flex-wrap gap-2 text-xs font-black uppercase tracking-[0.12em]">
+                      <span className="rounded-full border border-white/10 bg-white/[0.035] px-3 py-1 text-white/56">{statusLabel}</span>
+                      <span className="rounded-full border border-[#A3FF12]/18 bg-[#A3FF12]/8 px-3 py-1 text-[#d7ffab]">{currency(production)}</span>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 md:justify-end">
+                    <Link
+                      href={`/dashboard/owner/schedule?appointmentId=${encodeURIComponent(appointment.id)}`}
+                      className="inline-flex min-h-10 items-center justify-center rounded-full border border-[#A3FF12]/40 px-4 text-sm font-extrabold text-[#A3FF12] transition hover:bg-[#A3FF12]/10"
+                    >
+                      View Details
+                    </Link>
+                    <Link
+                      href={`/dashboard/owner/messages?threadWith=${encodeURIComponent(appointment.barberId)}`}
+                      className="inline-flex min-h-10 items-center justify-center gap-2 rounded-full border border-white/10 px-4 text-sm font-extrabold text-white/68 transition hover:border-[#A3FF12]/28 hover:text-[#A3FF12]"
+                    >
+                      <MessageSquareText className="h-4 w-4" />
+                      Message Barber
+                    </Link>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </GlassCard>
+
+      {addBarbersOpen ? (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/78 px-4 py-5 backdrop-blur-xl sm:items-center sm:justify-center" role="dialog" aria-modal="true" aria-labelledby="owner-add-barbers-title">
+          <GlassCard className="max-h-[90vh] w-full max-w-6xl overflow-y-auto p-5 sm:p-6">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-[#A3FF12]">Add Barbers</p>
+                <h2 id="owner-add-barbers-title" className="mt-2 text-3xl font-black tracking-[-0.045em] text-white">
+                  Add Barbers
+                </h2>
+                <p className="mt-3 text-sm leading-6 text-white/58">
+                  Invite barbers, review incoming requests, and manage active relationships without mixing pending barbers into shop KPIs.
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close Add Barbers"
+                onClick={() => setAddBarbersOpen(false)}
+                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-white/70 transition hover:border-[#A3FF12]/35 hover:text-[#A3FF12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/70"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
 
       <GlassCard className="p-5" data-testid="team-relationship-queue">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -884,12 +1125,9 @@ export function OwnerTeamWorkspace() {
           </div>
         </div>
       </GlassCard>
-
-      <CultureHomeEntryCard
-        href="/dashboard/owner/culture"
-        subtitle="Show the shop, promote the team, discover barbers, and build community."
-        testId="owner-home-culture-entry"
-      />
+          </GlassCard>
+        </div>
+      ) : null}
 
       {pendingInviteBarber ? (
         <div className="fixed inset-0 z-50 flex items-end bg-black/78 px-4 py-5 backdrop-blur-xl sm:items-center sm:justify-center" role="dialog" aria-modal="true" aria-labelledby="owner-team-invite-confirm-title">

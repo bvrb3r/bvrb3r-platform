@@ -12,11 +12,11 @@ import {
   Clock3,
   CreditCard,
   FileText,
+  Images,
   MessageSquareText,
   Plus,
   ReceiptText,
   Search,
-  SlidersHorizontal,
   TabletSmartphone,
   UsersRound
 } from "lucide-react";
@@ -1326,9 +1326,9 @@ export function BarberScheduleWorkspace({
         <div className="relative space-y-6">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
-              <p className="bvr-section-label">Chair command calendar</p>
+              <p className="bvr-section-label">Chair Command Calendar</p>
               <h2 className="mt-3 text-[2.35rem] font-black leading-none tracking-[-0.045em] text-white sm:text-5xl">
-                Today&apos;s chair plan
+                Chair Command Calendar
               </h2>
               <p className="mt-3 text-sm leading-6 text-white/62">
                 Your booked clients, open slots, and availability controls in one operating view.
@@ -1341,15 +1341,15 @@ export function BarberScheduleWorkspace({
                 onClick={handleAddAppointment}
               >
                 <Plus className="h-4 w-4" />
-                Add appointment
+                Add Appointment
               </button>
               <button
                 type="button"
                 className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] border border-white/10 bg-white/[0.035] px-4 text-xs font-extrabold text-white/74 transition hover:border-[#a3ff12]/30 hover:text-white"
-                onClick={openAvailabilityControls}
+                onClick={() => router.push("/dashboard/barber/culture" as Route)}
               >
-                <SlidersHorizontal className="h-4 w-4 text-[#a3ff12]" />
-                Availability
+                <Images className="h-4 w-4 text-[#a3ff12]" />
+                Open Culture
               </button>
               <KioskLaunchAction
                 href={`/kiosk/barber/${encodeURIComponent(payload?.barberId ?? barberName)}` as Route}
@@ -1367,7 +1367,7 @@ export function BarberScheduleWorkspace({
                 onClick={openAvailabilityControls}
               >
                 <Clock3 className="h-4 w-4 text-[#a3ff12]" />
-                Block time
+                Block Time
               </button>
             </div>
           </div>

@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BarberScheduleWorkspace } from "@/components/operations/barber-schedule-workspace";
 
 const {
@@ -223,6 +223,10 @@ describe("BarberScheduleWorkspace", () => {
     }));
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("defaults the calendar to today and shows one clean empty state without blank hour cards", () => {
     render(
       <BarberScheduleWorkspace
@@ -236,12 +240,18 @@ describe("BarberScheduleWorkspace", () => {
     }));
     expect(screen.queryByText("Your calendar, chair status, money posture, and next move.")).not.toBeInTheDocument();
     expect(screen.queryByText("Home")).not.toBeInTheDocument();
-    expect(screen.getByText("Today's chair plan")).toBeInTheDocument();
+    expect(screen.getAllByText("Chair Command Calendar").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: /Add Appointment/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Kiosk Mode/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Open Culture/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Block Time$/i })).toBeInTheDocument();
     expect(screen.getByText("No chair activity on this day")).toBeInTheDocument();
     expect(screen.queryByLabelText(/No appointments at/i)).not.toBeInTheDocument();
     expect(screen.queryByText("Working hours and blocked time")).not.toBeInTheDocument();
     expect(screen.queryByText("Availability control")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Open Culture/i }));
+    expect(pushMock).toHaveBeenCalledWith("/dashboard/barber/culture");
   });
 
   it("opens barber kiosk directly when kiosk PIN is already set", async () => {
@@ -273,6 +283,7 @@ describe("BarberScheduleWorkspace", () => {
   });
 
   it("routes open slot booking through the canonical booking flow", () => {
+    vi.useFakeTimers({ now: new Date(`${TEST_DATE_KEY}T08:00:00`) });
     useBarberScheduleQueryMock.mockReturnValue({
       data: {
         ...buildSchedulePayload(),
@@ -307,6 +318,7 @@ describe("BarberScheduleWorkspace", () => {
   });
 
   it("keeps cancelled appointments visible while releasing their calendar slot", () => {
+    vi.useFakeTimers({ now: new Date(`${TEST_DATE_KEY}T08:00:00`) });
     useBarberScheduleQueryMock.mockReturnValue({
       data: {
         ...buildSchedulePayload(),
