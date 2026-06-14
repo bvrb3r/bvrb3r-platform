@@ -23,6 +23,13 @@ import {
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { KioskLaunchAction } from "@/components/kiosk/kiosk-actions";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  commandButtonIconAccentClassName,
+  commandButtonIconClassName,
+  commandButtonKioskClassName,
+  commandButtonPrimaryClassName,
+  commandButtonSecondaryClassName
+} from "@/components/operations/command-calendar-styles";
 import { ActionButton, Avatar, DataStatCard, GlassCard, StatusBadge } from "@/design/components";
 import { isAppointmentRevenueEligible, isAvailabilityBlockingAppointmentStatus } from "@/lib/appointments/domain";
 import { DEFAULT_BOOKING_TIME_ZONE, buildCanonicalDateAvailability } from "@/lib/booking/availability-slot-engine";
@@ -1337,18 +1344,18 @@ export function BarberScheduleWorkspace({
             <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[38rem] xl:grid-cols-4">
               <button
                 type="button"
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] bg-[#a3ff12] px-4 text-xs font-black text-[#050505] shadow-[0_0_26px_rgba(163,255,18,0.20)] transition hover:bg-[#d7ffab]"
+                className={commandButtonPrimaryClassName}
                 onClick={handleAddAppointment}
               >
-                <Plus className="h-4 w-4" />
+                <Plus className={commandButtonIconClassName} />
                 Add Appointment
               </button>
               <button
                 type="button"
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] border border-white/10 bg-white/[0.035] px-4 text-xs font-extrabold text-white/74 transition hover:border-[#a3ff12]/30 hover:text-white"
+                className={commandButtonSecondaryClassName}
                 onClick={() => router.push("/dashboard/barber/culture" as Route)}
               >
-                <Images className="h-4 w-4 text-[#a3ff12]" />
+                <Images className={commandButtonIconAccentClassName} />
                 Open Culture
               </button>
               <KioskLaunchAction
@@ -1356,17 +1363,17 @@ export function BarberScheduleWorkspace({
                 scope="barber"
                 targetReference={payload?.barberId ?? barberName}
                 settingsHref="/dashboard/barber/more?section=kiosk"
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] border border-[#a3ff12]/24 bg-[#a3ff12]/10 px-4 text-xs font-extrabold text-[#d7ffab] transition hover:border-[#a3ff12]/40 hover:bg-[#a3ff12]/14"
+                className={commandButtonKioskClassName}
               >
-                <TabletSmartphone className="h-4 w-4" />
+                <TabletSmartphone className={commandButtonIconClassName} />
                 Kiosk Mode
               </KioskLaunchAction>
               <button
                 type="button"
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] border border-white/10 bg-white/[0.035] px-4 text-xs font-extrabold text-white/74 transition hover:border-[#a3ff12]/30 hover:text-white"
+                className={commandButtonSecondaryClassName}
                 onClick={openAvailabilityControls}
               >
-                <Clock3 className="h-4 w-4 text-[#a3ff12]" />
+                <Clock3 className={commandButtonIconAccentClassName} />
                 Block Time
               </button>
             </div>

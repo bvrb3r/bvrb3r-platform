@@ -59,6 +59,20 @@ import { OwnerTeamWorkspace } from "@/components/operations/owner-team-workspace
 
 const locationAssignMock = vi.fn();
 
+function getLocalDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+const TEST_DATE_KEY = getLocalDateKey(new Date());
+const TEST_MONTH_LABEL = new Intl.DateTimeFormat("en-US", {
+  month: "long",
+  year: "numeric"
+}).format(new Date(`${TEST_DATE_KEY}T12:00:00`));
+const TEST_DAY_NUMBER = new Date(`${TEST_DATE_KEY}T12:00:00`).getDate().toString();
+
 Object.defineProperty(window, "location", {
   configurable: true,
   value: {
@@ -104,7 +118,7 @@ describe("owner team workspace", () => {
             openSlots: 6,
             bookedMinutes: 120,
             availableMinutes: 420,
-            nextAppointmentStart: "2026-04-21T15:00:00.000Z"
+            nextAppointmentStart: `${TEST_DATE_KEY}T15:00:00.000Z`
           },
           {
             id: "barber-ren",
@@ -126,8 +140,8 @@ describe("owner team workspace", () => {
             id: "appt-1",
             barberId: "barber-maya",
             status: "completed",
-            start: "2026-04-21T15:00:00.000Z",
-            end: "2026-04-21T15:30:00.000Z",
+            start: `${TEST_DATE_KEY}T15:00:00.000Z`,
+            end: `${TEST_DATE_KEY}T15:30:00.000Z`,
             totalAmount: 90,
             tipAmount: 15,
             display: {
@@ -141,8 +155,8 @@ describe("owner team workspace", () => {
             id: "appt-2",
             barberId: "barber-ren",
             status: "confirmed",
-            start: "2026-04-21T16:00:00.000Z",
-            end: "2026-04-21T16:30:00.000Z",
+            start: `${TEST_DATE_KEY}T16:00:00.000Z`,
+            end: `${TEST_DATE_KEY}T16:30:00.000Z`,
             totalAmount: 55,
             tipAmount: 0,
             display: {
@@ -366,6 +380,13 @@ describe("owner team workspace", () => {
     expect(commandCalendar.getByText("Shop Production")).toBeInTheDocument();
     expect(commandCalendar.getByText("Open Slots")).toBeInTheDocument();
     expect(commandCalendar.getByText("Day Utilization")).toBeInTheDocument();
+    expect(commandCalendar.getByText(TEST_MONTH_LABEL)).toBeInTheDocument();
+    expect(commandCalendar.getByRole("button", { name: "Today" })).toBeInTheDocument();
+    expect(commandCalendar.getByText(TEST_DAY_NUMBER)).toBeInTheDocument();
+    expect(commandCalendar.getByRole("button", { name: "Day" })).toBeInTheDocument();
+    expect(commandCalendar.getByRole("button", { name: "Week" })).toBeInTheDocument();
+    expect(commandCalendar.getByRole("button", { name: "Previous" })).toBeInTheDocument();
+    expect(commandCalendar.getByRole("button", { name: "Next" })).toBeInTheDocument();
     expect(commandCalendar.getByText("Active Barbers")).toBeInTheDocument();
     expect(commandCalendar.getByText("Pending Invites")).toBeInTheDocument();
     expect(commandCalendar.getByText("Incoming Requests")).toBeInTheDocument();
@@ -373,13 +394,19 @@ describe("owner team workspace", () => {
     expect(commandCalendar.getByText("$105")).toBeInTheDocument();
     expect(commandCalendar.getByText("6")).toBeInTheDocument();
     expect(commandCalendar.getByText("29%")).toBeInTheDocument();
-    expect(commandCalendar.queryByText("14")).not.toBeInTheDocument();
     expect(commandCalendar.queryByText("18%")).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Add Appointment/i })).toHaveAttribute("href", "/dashboard/owner/schedule?action=add-appointment");
+    const ownerAddAppointment = screen.getByRole("link", { name: /Add Appointment/i });
+    expect(ownerAddAppointment).toHaveAttribute("href", "/dashboard/owner/schedule?action=add-appointment");
+    expect(ownerAddAppointment).toHaveClass("min-h-11");
+    expect(ownerAddAppointment).toHaveClass("w-full");
+    expect(ownerAddAppointment).toHaveClass("bg-[#A3FF12]");
+    expect(ownerAddAppointment).toHaveClass("text-[#050505]");
     expect(screen.getByRole("button", { name: /Add Barbers/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Open Culture/i })).toHaveAttribute("href", "/dashboard/owner/culture");
     const kioskModeAction = screen.getByRole("button", { name: "Kiosk Mode" });
     expect(kioskModeAction).toHaveClass("rounded-[8px]");
+    expect(kioskModeAction).toHaveClass("min-h-11");
+    expect(kioskModeAction).toHaveClass("w-full");
     fireEvent.click(kioskModeAction);
     await waitFor(() => {
       expect(locationAssignMock).toHaveBeenCalledWith("/kiosk/shop-ybor");

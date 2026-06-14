@@ -241,8 +241,16 @@ describe("BarberScheduleWorkspace", () => {
     expect(screen.queryByText("Your calendar, chair status, money posture, and next move.")).not.toBeInTheDocument();
     expect(screen.queryByText("Home")).not.toBeInTheDocument();
     expect(screen.getAllByText("Chair Command Calendar").length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: /Add Appointment/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Kiosk Mode/i })).toBeInTheDocument();
+    const barberAddAppointment = screen.getByRole("button", { name: /Add Appointment/i });
+    expect(barberAddAppointment).toBeInTheDocument();
+    expect(barberAddAppointment).toHaveClass("min-h-11");
+    expect(barberAddAppointment).toHaveClass("w-full");
+    expect(barberAddAppointment).toHaveClass("bg-[#A3FF12]");
+    expect(barberAddAppointment).toHaveClass("text-[#050505]");
+    const barberKioskAction = screen.getByRole("button", { name: /Kiosk Mode/i });
+    expect(barberKioskAction).toBeInTheDocument();
+    expect(barberKioskAction).toHaveClass("min-h-11");
+    expect(barberKioskAction).toHaveClass("w-full");
     expect(screen.getByRole("button", { name: /Open Culture/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^Block Time$/i })).toBeInTheDocument();
     expect(screen.getByText("No chair activity on this day")).toBeInTheDocument();

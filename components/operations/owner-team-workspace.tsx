@@ -1,24 +1,34 @@
 "use client";
 
-import { useMemo, useState, type ComponentProps, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import Link from "next/link";
 import type { Route } from "next";
 import {
-  BarChart3,
+  CalendarCheck2,
   CalendarDays,
   CalendarPlus,
+  ChevronDown,
   CircleDollarSign,
   Clock3,
   Images,
   MessageSquareText,
   MoreVertical,
+  Search,
   TabletSmartphone,
   UserPlus,
+  UsersRound,
   X
 } from "lucide-react";
 import { FeedbackBanner } from "@/components/ui/feedback-banner";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Avatar, GlassCard, SearchBar } from "@/design/components";
+import {
+  commandButtonIconAccentClassName,
+  commandButtonIconClassName,
+  commandButtonKioskClassName,
+  commandButtonPrimaryClassName,
+  commandButtonSecondaryClassName
+} from "@/components/operations/command-calendar-styles";
+import { Avatar, DataStatCard, GlassCard, SearchBar } from "@/design/components";
 import { useFintechManagementQuery } from "@/lib/fintech/client";
 import {
   useCreateOwnerTeamInviteMutation,
@@ -75,6 +85,75 @@ type RelationshipUpdatePayload = {
   publicTeamOrder?: number;
   featuredOnShopProfile?: boolean;
 };
+
+type OwnerScheduleViewMode = "day" | "week";
+
+const shortWeekdayLabels = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+
+function getDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getTodayDateKey() {
+  return getDateKey(new Date());
+}
+
+function parseDateKey(dateKey: string) {
+  return new Date(`${dateKey}T12:00:00`);
+}
+
+function getDateKeyFromIso(iso?: string | null) {
+  if (!iso) {
+    return null;
+  }
+
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? null : getDateKey(date);
+}
+
+function formatMonthYear(dateKey: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    year: "numeric"
+  }).format(parseDateKey(dateKey));
+}
+
+function formatShortDate(date: string | Date) {
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    month: "short",
+    day: "numeric"
+  }).format(typeof date === "string" ? parseDateKey(date) : date);
+}
+
+function formatDuration(minutes: number) {
+  if (minutes < 60) {
+    return `${minutes} min`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return remainder ? `${hours}h ${remainder}m` : `${hours}h`;
+}
+
+function buildWeekStrip(anchorDateKey: string) {
+  const anchor = parseDateKey(anchorDateKey);
+  const start = new Date(anchor);
+  start.setDate(anchor.getDate() - anchor.getDay());
+
+  return Array.from({ length: 7 }, (_, index) => {
+    const day = new Date(start);
+    day.setDate(start.getDate() + index);
+    return {
+      key: getDateKey(day),
+      label: shortWeekdayLabels[day.getDay()],
+      dayNumber: day.getDate()
+    };
+  });
+}
 
 function formatTime(iso: string | null) {
   if (!iso) {
@@ -141,6 +220,16 @@ function getEstimatedAppointmentProduction(appointment: ShopDashboardAppointment
 function getAppointmentTimestamp(appointment: ShopDashboardAppointment) {
   const timestamp = new Date(appointment.start).getTime();
   return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function getAppointmentMinutes(appointment: ShopDashboardAppointment) {
+  const startsAt = new Date(appointment.start).getTime();
+  const endsAt = new Date(appointment.end).getTime();
+  if (!Number.isFinite(startsAt) || !Number.isFinite(endsAt) || endsAt <= startsAt) {
+    return 0;
+  }
+
+  return Math.round((endsAt - startsAt) / 60000);
 }
 
 function formatAppointmentTimeRange(appointment: ShopDashboardAppointment) {
@@ -301,6 +390,10 @@ function TeamActionLink({
 export function OwnerTeamWorkspace() {
   const shopQuery = useShopDashboardQuery();
   const fintechQuery = useFintechManagementQuery();
+  const ownerDateInputRef = useRef<HTMLInputElement | null>(null);
+  const todayDateKey = useMemo(() => getTodayDateKey(), []);
+  const [selectedDateKey, setSelectedDateKey] = useState(todayDateKey);
+  const [scheduleView, setScheduleView] = useState<OwnerScheduleViewMode>("day");
   const [addBarbersOpen, setAddBarbersOpen] = useState(false);
   const [inviteSearch, setInviteSearch] = useState("");
   const [pendingInviteBarber, setPendingInviteBarber] = useState<ShopTeamInviteDirectoryBarber | null>(null);
@@ -399,19 +492,50 @@ export function OwnerTeamWorkspace() {
     () => appointments.filter((appointment) => activeTeamIds.has(appointment.barberId) && isOperationalAppointment(appointment)),
     [activeTeamIds, appointments]
   );
+  const weekStrip = useMemo(() => buildWeekStrip(selectedDateKey), [selectedDateKey]);
+  const selectedWeekKeys = useMemo(() => new Set(weekStrip.map((day) => day.key)), [weekStrip]);
+  const activeTeamAppointmentCountsByDate = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const appointment of activeTeamAppointments) {
+      const dateKey = getDateKeyFromIso(appointment.start);
+      if (!dateKey) {
+        continue;
+      }
+      counts.set(dateKey, (counts.get(dateKey) ?? 0) + 1);
+    }
+    return counts;
+  }, [activeTeamAppointments]);
+  const selectedDayAppointments = useMemo(
+    () => activeTeamAppointments.filter((appointment) => getDateKeyFromIso(appointment.start) === selectedDateKey),
+    [activeTeamAppointments, selectedDateKey]
+  );
+  const scopedAppointments = useMemo(
+    () => scheduleView === "week"
+      ? activeTeamAppointments.filter((appointment) => {
+        const dateKey = getDateKeyFromIso(appointment.start);
+        return dateKey ? selectedWeekKeys.has(dateKey) : false;
+      })
+      : selectedDayAppointments,
+    [activeTeamAppointments, scheduleView, selectedDayAppointments, selectedWeekKeys]
+  );
   const activeTeamOpenSlotCounts = activeTeam
     .map((barber) => barber.openSlots)
     .filter((value): value is number => typeof value === "number");
   const activeTeamBookedMinutes = activeTeam.reduce((sum, barber) => sum + (barber.bookedMinutes ?? 0), 0);
   const activeTeamAvailableMinutes = activeTeam.reduce((sum, barber) => sum + (barber.availableMinutes ?? 0), 0);
-  const todayRevenue = activeTeamAppointments.reduce((sum, appointment) => sum + getEstimatedAppointmentProduction(appointment), 0);
-  const appointmentsToday = activeTeamAppointments.length;
+  const selectedAppointmentMinutes = scopedAppointments.reduce((sum, appointment) => sum + getAppointmentMinutes(appointment), 0);
+  const todayRevenue = scopedAppointments.reduce((sum, appointment) => sum + getEstimatedAppointmentProduction(appointment), 0);
+  const appointmentsToday = scopedAppointments.length;
   const openSlotsTotal = activeTeamOpenSlotCounts.length
     ? activeTeamOpenSlotCounts.reduce((sum, value) => sum + value, 0)
     : null;
-  const utilizationPercent = activeTeamAvailableMinutes > 0
-    ? Math.round((activeTeamBookedMinutes / activeTeamAvailableMinutes) * 100)
-    : activeTeam.length
+  const selectedDateHasCapacitySignals = selectedDateKey === todayDateKey && scheduleView === "day";
+  const selectedOpenSlotsTotal = selectedDateHasCapacitySignals ? openSlotsTotal : null;
+  const selectedAvailableMinutes = selectedDateHasCapacitySignals ? activeTeamAvailableMinutes : 0;
+  const selectedBookedMinutes = selectedDateHasCapacitySignals ? activeTeamBookedMinutes || selectedAppointmentMinutes : selectedAppointmentMinutes;
+  const utilizationPercent = selectedAvailableMinutes > 0
+    ? Math.round((selectedBookedMinutes / selectedAvailableMinutes) * 100)
+    : selectedDateHasCapacitySignals && activeTeam.length
       ? Math.round(activeTeam.reduce((sum, barber) => sum + (barber.utilization ?? 0), 0) / activeTeam.length)
       : null;
   const sortedScoreboard = useMemo(
@@ -427,9 +551,23 @@ export function OwnerTeamWorkspace() {
     [activeTeam]
   );
   const ownerTimeline = useMemo(
-    () => [...activeTeamAppointments].sort((left, right) => getAppointmentTimestamp(left) - getAppointmentTimestamp(right)).slice(0, 8),
-    [activeTeamAppointments]
+    () => [...selectedDayAppointments].sort((left, right) => getAppointmentTimestamp(left) - getAppointmentTimestamp(right)).slice(0, 8),
+    [selectedDayAppointments]
   );
+
+  function setOwnerAnchorDate(dateKey: string) {
+    setSelectedDateKey(dateKey);
+  }
+
+  function shiftOwnerAnchorDate(days: number) {
+    const nextDate = parseDateKey(selectedDateKey);
+    nextDate.setDate(nextDate.getDate() + days);
+    setSelectedDateKey(getDateKey(nextDate));
+  }
+
+  function jumpOwnerCalendarToToday() {
+    setSelectedDateKey(todayDateKey);
+  }
   async function handleCreateInvite(barber: ShopTeamInviteDirectoryBarber) {
     setInviteFeedback(null);
     try {
@@ -522,17 +660,17 @@ export function OwnerTeamWorkspace() {
             <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[38rem] xl:grid-cols-4">
               <Link
                 href="/dashboard/owner/schedule?action=add-appointment"
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] bg-[#A3FF12] px-4 text-xs font-black text-[#050505] shadow-[0_0_26px_rgba(163,255,18,0.20)] transition hover:bg-[#d7ffab]"
+                className={commandButtonPrimaryClassName}
               >
-                <CalendarPlus className="h-4 w-4" />
+                <CalendarPlus className={commandButtonIconClassName} />
                 Add Appointment
               </Link>
               <button
                 type="button"
                 onClick={() => setAddBarbersOpen(true)}
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] border border-white/10 bg-white/[0.035] px-4 text-xs font-extrabold text-white/74 transition hover:border-[#A3FF12]/30 hover:text-white"
+                className={commandButtonSecondaryClassName}
               >
-                <UserPlus className="h-4 w-4 text-[#A3FF12]" />
+                <UserPlus className={commandButtonIconAccentClassName} />
                 Add Barbers
               </button>
               {ownerKioskShopId ? (
@@ -541,28 +679,102 @@ export function OwnerTeamWorkspace() {
                   scope="shop"
                   targetReference={ownerKioskShopId}
                   settingsHref="/dashboard/owner/more?section=kiosk"
-                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] border border-[#A3FF12]/24 bg-[#A3FF12]/10 px-4 text-xs font-extrabold text-[#d7ffab] transition hover:border-[#A3FF12]/40 hover:bg-[#A3FF12]/14"
+                  className={commandButtonKioskClassName}
                 >
-                  <TabletSmartphone className="h-4 w-4" />
+                  <TabletSmartphone className={commandButtonIconClassName} />
                   Kiosk Mode
                 </KioskLaunchAction>
               ) : (
                 <Link
                   href="/dashboard/owner/more?section=kiosk"
-                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] border border-[#A3FF12]/24 bg-[#A3FF12]/10 px-4 text-xs font-extrabold text-[#d7ffab] transition hover:border-[#A3FF12]/40 hover:bg-[#A3FF12]/14"
+                  className={commandButtonKioskClassName}
                 >
-                  <TabletSmartphone className="h-4 w-4" />
+                  <TabletSmartphone className={commandButtonIconClassName} />
                   Kiosk Mode
                 </Link>
               )}
               <Link
                 href="/dashboard/owner/culture"
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] border border-white/10 bg-white/[0.035] px-4 text-xs font-extrabold text-white/74 transition hover:border-[#A3FF12]/30 hover:text-white"
+                className={commandButtonSecondaryClassName}
               >
-                <Images className="h-4 w-4 text-[#A3FF12]" />
+                <Images className={commandButtonIconAccentClassName} />
                 Open Culture
               </Link>
             </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-white/8 bg-black/20 p-3">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                aria-label="Focus shop calendar date"
+                className="inline-flex h-11 w-11 items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.035] text-white transition hover:border-[#A3FF12]/35 hover:shadow-[0_0_24px_rgba(163,255,18,0.12)]"
+                onClick={() => ownerDateInputRef.current?.focus()}
+              >
+                <Search className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                aria-label="Jump shop calendar to today"
+                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.035] text-white transition hover:border-[#A3FF12]/35 hover:text-[#A3FF12]"
+                onClick={jumpOwnerCalendarToToday}
+              >
+                <CalendarDays className="h-5 w-5" />
+              </button>
+            </div>
+
+            <button
+              type="button"
+              className="inline-flex min-w-0 items-center justify-center gap-1 text-center text-xl font-extrabold tracking-[-0.02em] text-white sm:text-2xl"
+              onClick={() => ownerDateInputRef.current?.showPicker?.()}
+            >
+              <span className="truncate">{formatMonthYear(selectedDateKey)}</span>
+              <ChevronDown className="h-5 w-5 shrink-0" />
+            </button>
+            <button
+              type="button"
+              className="inline-flex h-11 shrink-0 items-center justify-center rounded-[8px] border border-[#A3FF12]/24 bg-[#A3FF12]/10 px-4 text-sm font-extrabold text-[#A3FF12] transition hover:border-[#A3FF12]/40 hover:bg-[rgba(163,255,18,0.14)]"
+              onClick={jumpOwnerCalendarToToday}
+            >
+              Today
+            </button>
+          </div>
+
+          <input
+            ref={ownerDateInputRef}
+            type="date"
+            value={selectedDateKey}
+            onChange={(event) => setOwnerAnchorDate(event.target.value)}
+            className="sr-only"
+            aria-label="Select shop calendar date"
+          />
+
+          <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
+            {weekStrip.map((day) => {
+              const isSelected = day.key === selectedDateKey;
+              const appointmentCount = activeTeamAppointmentCountsByDate.get(day.key) ?? 0;
+              return (
+                <button
+                  key={day.key}
+                  type="button"
+                  className={cn(
+                    "flex min-h-[64px] flex-col items-center justify-center rounded-[14px] border border-transparent px-1.5 transition sm:min-h-[76px] sm:rounded-[18px] sm:px-2",
+                    isSelected
+                      ? "border-[#A3FF12] bg-[rgba(163,255,18,0.06)] text-[#A3FF12] shadow-[0_0_24px_rgba(163,255,18,0.12)]"
+                      : "text-white hover:border-white/10 hover:bg-white/[0.03]"
+                  )}
+                  onClick={() => setOwnerAnchorDate(day.key)}
+                >
+                  <span className={cn("text-xs font-bold tracking-[0.05em]", isSelected ? "text-[#A3FF12]" : "text-white/48")}>{day.label}</span>
+                  <span className={cn("mt-2 text-xl font-bold leading-none sm:text-2xl", isSelected && "text-2xl font-black sm:text-3xl")}>{day.dayNumber}</span>
+                  {appointmentCount > 0 ? (
+                    <span className="mt-2 rounded-full border border-[#A3FF12]/20 bg-[#A3FF12]/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.08em] text-[#d7ffab]">
+                      {appointmentCount} appt{appointmentCount === 1 ? "" : "s"}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3">
@@ -580,23 +792,80 @@ export function OwnerTeamWorkspace() {
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {[
-              ["Appointments Today", appointmentsToday.toString(), "Across active shop barbers", <CalendarDays key="appointments" className="h-4 w-4" />],
-              ["Shop Production", currency(todayRevenue), "Estimated service production", <CircleDollarSign key="production" className="h-4 w-4" />],
-              ["Open Slots", openSlotsTotal === null ? "--" : openSlotsTotal.toString(), openSlotsTotal === null ? "Slot count unavailable" : "Remaining bookable slots", <Clock3 key="slots" className="h-4 w-4" />],
-              ["Day Utilization", utilizationPercent === null ? "--" : `${utilizationPercent}%`, activeTeamAvailableMinutes > 0 ? "Booked minutes / available minutes" : "Team utilization summary", <BarChart3 key="utilization" className="h-4 w-4" />]
-            ].map(([label, value, detail, icon]) => (
-              <div key={label as string} className="rounded-[18px] border border-white/8 bg-black/24 p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-black uppercase tracking-[0.14em] text-white/42">{label}</p>
-                    <p className="mt-3 text-2xl font-black tracking-[-0.04em] text-white">{value}</p>
-                  </div>
-                  <span className="rounded-full border border-[#A3FF12]/18 bg-[#A3FF12]/10 p-2 text-[#A3FF12]">{icon}</span>
-                </div>
-                <p className="mt-1 text-xs leading-5 text-white/50">{detail}</p>
-              </div>
+            <DataStatCard
+              className="min-h-[112px] rounded-[18px]"
+              label="Appointments Today"
+              value={appointmentsToday}
+              detail={scheduleView === "day" ? "Selected day" : "Selected week"}
+              icon={<CalendarCheck2 className="h-4 w-4" />}
+            />
+            <DataStatCard
+              className="min-h-[112px] rounded-[18px]"
+              label="Shop Production"
+              value={currency(todayRevenue)}
+              detail="Est. earnings"
+              icon={<CircleDollarSign className="h-4 w-4" />}
+            />
+            <DataStatCard
+              className="min-h-[112px] rounded-[18px]"
+              label="Open Slots"
+              value={selectedOpenSlotsTotal === null ? "--" : selectedOpenSlotsTotal}
+              detail={selectedOpenSlotsTotal === null ? "Capacity unavailable" : "Remaining"}
+              icon={<Clock3 className="h-4 w-4" />}
+            />
+            <DataStatCard
+              className="min-h-[112px] rounded-[18px]"
+              label="Day Utilization"
+              value={utilizationPercent === null ? "--" : `${utilizationPercent}%`}
+              detail={<span className={utilizationPercent !== null && utilizationPercent >= 80 ? "font-bold text-[#A3FF12]" : undefined}>{selectedAvailableMinutes > 0 ? (utilizationPercent !== null && utilizationPercent >= 80 ? "Great" : `${formatDuration(Math.max(0, selectedAvailableMinutes - selectedBookedMinutes))} open`) : "Capacity unavailable"}</span>}
+              icon={<UsersRound className="h-4 w-4" />}
+            />
+          </div>
+
+          <div className="grid h-14 grid-cols-2 rounded-[18px] border border-white/8 bg-white/[0.025] p-1">
+            {([
+              ["day", "Day"],
+              ["week", "Week"]
+            ] as const).map(([viewMode, label]) => (
+              <button
+                key={viewMode}
+                type="button"
+                className={cn(
+                  "rounded-[14px] text-sm font-extrabold transition",
+                  scheduleView === viewMode
+                    ? "bg-[linear-gradient(135deg,#A3FF12,#7dce00)] text-[#050505] shadow-[0_0_30px_rgba(163,255,18,0.24)]"
+                    : "text-white/72 hover:text-white"
+                )}
+                onClick={() => setScheduleView(viewMode)}
+              >
+                {label}
+              </button>
             ))}
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-white/82">{formatShortDate(selectedDateKey)}</p>
+              <p className="mt-1 text-sm text-white/50">
+                {activeTeam.length ? `${activeTeam.length} active barber${activeTeam.length === 1 ? "" : "s"} on the shop floor` : "No active barbers yet"}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className="status-pill min-h-10 text-white/72 transition hover:border-[#A3FF12]/24 hover:text-white"
+                onClick={() => shiftOwnerAnchorDate(scheduleView === "week" ? -7 : -1)}
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                className="status-pill min-h-10 text-white/72 transition hover:border-[#A3FF12]/24 hover:text-white"
+                onClick={() => shiftOwnerAnchorDate(scheduleView === "week" ? 7 : 1)}
+              >
+                Next
+              </button>
+            </div>
           </div>
         </div>
       </GlassCard>
