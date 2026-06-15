@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, Clipboard, ShieldCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { buildArchitectCodexRepairPrompt } from "@/lib/architect/mission-control/codex-prompt-doctrine";
 import { buildMissionControlFoundation } from "@/lib/architect/mission-control/foundation";
 import type {
   ArchitectIncident,
@@ -183,13 +184,44 @@ function issueSuggestedFixDirection(card: MissionEvidenceCard, lane: MissionDepa
   return "Inspect future money-model gates and ensure booth-rent/commission rules remain disabled or approval-gated until explicit implementation.";
 }
 
+function issuePrimaryRepairTarget(card: MissionEvidenceCard, lane: MissionDepartmentLane) {
+  if (lane.id !== "finance") {
+    return `${lane.label} Mission Control evidence source for ${card.label}.`;
+  }
+
+  if (card.id === "finance-payment-health") {
+    return "Payment health validator and appointment/payment/routing evidence reconciliation.";
+  }
+
+  if (card.id === "finance-stripe") {
+    return "Read-only Stripe diagnostics and provider truth connection.";
+  }
+
+  if (card.id === "finance-routing") {
+    return "Payment routing evidence and guarded server-side routing repair path.";
+  }
+
+  if (card.id === "finance-payout") {
+    return "Payout readiness derivation and release-blocking guard evidence.";
+  }
+
+  if (card.id === "finance-fees") {
+    return "Platform fee evidence, routing math, and server-side revenue posture.";
+  }
+
+  return "Booth rent / commission readiness gates and future money-model evidence.";
+}
+
 function buildIssueDetail(card: MissionEvidenceCard, lane: MissionDepartmentLane): ArchitectIssueDetail {
   const status = issueStatusLabel(card);
   const evidenceRows = card.evidence.length ? card.evidence : ["No connected evidence source for this issue yet."];
+  const financeIssue = lane.id === "finance";
 
   return {
     issueName: card.label,
     lane,
+    affectedRole: financeIssue ? "Architect / Finance operator" : `${lane.label} operator`,
+    affectedFlow: financeIssue ? `${card.workflow} finance readiness` : `${card.workflow} readiness`,
     status,
     severity: issueSeverity(status),
     passRequirement: issuePassRequirement(card, lane),
@@ -200,86 +232,59 @@ function buildIssueDetail(card: MissionEvidenceCard, lane: MissionDepartmentLane
       ? "Finance posture controls trust, provider reconciliation, routing integrity, payout safety, and release readiness. Prompt generation is read-only and does not change money truth."
       : "This issue affects its department lane readiness and must stay evidence-backed.",
     suggestedFixDirection: issueSuggestedFixDirection(card, lane),
-    riskNotes: lane.id === "finance"
+    primaryRepairTarget: issuePrimaryRepairTarget(card, lane),
+    rolePermissionRules: financeIssue ? FINANCE_ROLE_PERMISSION_RULES : ["Keep role access scoped to the owning lane.", "Do not expose Architect repair controls to public users."],
+    dataSourceTruthRules: financeIssue ? FINANCE_DATA_SOURCE_RULES : ["Use server-owned evidence as source of truth.", "Missing evidence remains Needs Review / Not connected."],
+    actionRules: financeIssue ? FINANCE_ACTION_RULES : ["Generate a repair prompt only.", "Do not mutate data or mark Pass from prompt generation."],
+    moneyRules: financeIssue ? FINANCE_MONEY_RULES : undefined,
+    bookingRules: financeIssue ? FINANCE_BOOKING_RULES : undefined,
+    riskNotes: financeIssue
       ? [
         "Money fixes must respect Stripe, server, Supabase, and ledger truth.",
         "No UI component can calculate final money, release payout, refund money, or fake routing.",
         "Prompt generation alone must not change this issue status."
       ]
       : ["Prompt generation is read-only and must not change issue status."],
-    requiredValidation: lane.id === "finance" ? FINANCE_REQUIRED_VALIDATION : ["Validate the owning evidence source and keep missing evidence as Needs Review."],
-    requiredTests: lane.id === "finance" ? FINANCE_REQUIRED_TESTS : ["Targeted Architect lane tests", "npm run typecheck", "npm run build"],
-    inspectAreas: lane.id === "finance" ? FINANCE_REPAIR_INSPECT_AREAS : ["Owning lane data loader", "Mission Control foundation", "Relevant Architect tests"],
+    requiredValidation: financeIssue ? FINANCE_REQUIRED_VALIDATION : ["Validate the owning evidence source and keep missing evidence as Needs Review."],
+    requiredTests: financeIssue ? FINANCE_REQUIRED_TESTS : ["Targeted Architect lane tests", "npm run typecheck", "npm run build"],
+    inspectAreas: financeIssue ? FINANCE_REPAIR_INSPECT_AREAS : ["Owning lane data loader", "Mission Control foundation", "Relevant Architect tests"],
     acceptanceCriteria: [
       `${card.label} remains ${status} until real evidence changes.`,
       "No fake Pass state is introduced.",
       "The issue popup still shows evidence, risk, validation, and tests.",
       "Dirty/unrelated files remain untouched."
     ],
-    doNotTouch: lane.id === "finance" ? FINANCE_DO_NOT_TOUCH : ["unrelated dirty files"]
+    doNotTouch: financeIssue ? FINANCE_DO_NOT_TOUCH : ["unrelated dirty files"]
   };
 }
 
 function buildCodexRepairPrompt(issue: ArchitectIssueDetail) {
-  return [
-    `BVRB3R ARCHITECT ISSUE REPAIR - ${issue.issueName}`,
-    "",
-    "Goal:",
-    `Fix the exact Architect Mission Control issue without changing unrelated systems: ${issue.issueName}.`,
-    "",
-    "Issue:",
-    `Exact issue name: ${issue.issueName}`,
-    `Lane: ${issue.lane.label}`,
-    `Current status: ${issue.status}`,
-    `Severity / criticality: ${issue.severity}`,
-    "",
-    "Current truth:",
-    issue.currentTruth,
-    "",
-    "Evidence:",
-    ...issue.evidenceRows.map((row) => `- ${row}`),
-    "",
-    "Root-cause hypothesis:",
-    issue.missingOrFailed,
-    "",
-    "Files / areas to inspect:",
-    ...issue.inspectAreas.map((area) => `- ${area}`),
-    "",
-    "What not to touch:",
-    ...issue.doNotTouch.map((area) => `- ${area}`),
-    "",
-    "Acceptance criteria:",
-    `- ${issue.passRequirement}`,
-    ...issue.acceptanceCriteria.map((criterion) => `- ${criterion}`),
-    "",
-    "Required validation:",
-    ...issue.requiredValidation.map((validation) => `- ${validation}`),
-    "",
-    "Tests to run:",
-    ...issue.requiredTests.map((test) => `- ${test}`),
-    "",
-    "Typecheck / build requirements:",
-    "- npm run typecheck must pass.",
-    "- npm run build must pass.",
-    "",
-    "Final report requirements:",
-    "- Files changed",
-    "- Migration yes/no",
-    "- Root cause",
-    "- Fix behavior",
-    "- Tests run",
-    "- Typecheck result",
-    "- Build result",
-    "- Commit hash",
-    "- Pushed yes/no",
-    "- Dirty files untouched yes/no",
-    "",
-    "Safety rules:",
-    "- No fake Pass states.",
-    "- Failed stays Failed until real evidence changes after Codex fix, deploy, and production validation.",
-    "- Do not mutate money, payouts, refunds, routing, or database records from Architect UI.",
-    "- Do not stage unrelated dirty files."
-  ].join("\n");
+  return buildArchitectCodexRepairPrompt({
+    exactGoal: `Repair ${issue.issueName} inside Architect Mission Control without changing unrelated systems.`,
+    exactIssue: issue.issueName,
+    lane: issue.lane.label,
+    affectedRole: issue.affectedRole,
+    affectedFlow: issue.affectedFlow,
+    currentStatus: issue.status,
+    severity: issue.severity,
+    currentTruth: issue.currentTruth,
+    evidence: issue.evidenceRows,
+    rootCauseHypothesis: issue.missingOrFailed,
+    primaryRepairTarget: issue.primaryRepairTarget,
+    filesToInspect: issue.inspectAreas,
+    rolePermissionRules: issue.rolePermissionRules,
+    dataSourceTruthRules: issue.dataSourceTruthRules,
+    actionRules: issue.actionRules,
+    moneyRules: issue.moneyRules,
+    bookingRules: issue.bookingRules,
+    doNotTouch: issue.doNotTouch,
+    acceptanceCriteria: [
+      issue.passRequirement,
+      ...issue.acceptanceCriteria
+    ],
+    requiredValidation: issue.requiredValidation,
+    testsToRun: issue.requiredTests
+  });
 }
 
 type CompactCeoCard = {
@@ -311,6 +316,8 @@ type IssueStatusLabel = MissionControlStatus | "Not Connected";
 type ArchitectIssueDetail = {
   issueName: string;
   lane: MissionDepartmentLane;
+  affectedRole: string;
+  affectedFlow: string;
   status: IssueStatusLabel;
   severity: string;
   passRequirement: string;
@@ -319,6 +326,12 @@ type ArchitectIssueDetail = {
   evidenceRows: string[];
   whyItMatters: string;
   suggestedFixDirection: string;
+  primaryRepairTarget: string;
+  rolePermissionRules: string[];
+  dataSourceTruthRules: string[];
+  actionRules: string[];
+  moneyRules?: string[];
+  bookingRules?: string[];
   riskNotes: string[];
   requiredValidation: string[];
   requiredTests: string[];
@@ -391,6 +404,44 @@ const FINANCE_REQUIRED_VALIDATION = [
   "Confirm failed issue evidence remains Failed until real evidence changes after fix, deploy, and validation.",
   "Confirm routing/payment fixes include regression coverage.",
   "Confirm no fake routing or payout readiness state is introduced."
+];
+
+const FINANCE_ROLE_PERMISSION_RULES = [
+  "Architect is read-only for issue prompt generation.",
+  "Only approved server-side finance paths may inspect or repair payment/routing evidence.",
+  "Public client, barber, and owner UX must not receive Architect repair controls.",
+  "Prompt generation must not change permissions, roles, or account state."
+];
+
+const FINANCE_DATA_SOURCE_RULES = [
+  "Stripe, server, Supabase, and ledger truth are authoritative for money state.",
+  "Payment routing records and appointment status history must be reconciled server-side.",
+  "Missing finance evidence remains Needs Review / Not connected.",
+  "Failed finance evidence remains Failed until real validation changes."
+];
+
+const FINANCE_ACTION_RULES = [
+  "Generate a repair prompt only.",
+  "Do not auto-fix code from Architect UI.",
+  "Do not mutate database records from prompt generation.",
+  "Do not mark any issue Pass from prompt generation alone."
+];
+
+const FINANCE_MONEY_RULES = [
+  "Respect Stripe/server/Supabase/ledger truth.",
+  "No UI optimism for money state.",
+  "No payout guess.",
+  "No refund or dispute mutation unless explicitly required and approved.",
+  "Routing/payment fixes require regression coverage.",
+  "No UI component calculates final money.",
+  "No UI component releases payout."
+];
+
+const FINANCE_BOOKING_RULES = [
+  "Booking lifecycle truth must stay consistent with appointment/payment records.",
+  "Legal status transitions must be preserved.",
+  "Payment and appointment consistency must be verified.",
+  "Client, barber, and owner visibility checks must remain role-safe."
 ];
 
 const FINANCE_REQUIRED_TESTS = [
