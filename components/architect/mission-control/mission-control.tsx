@@ -63,9 +63,22 @@ function severityRank(incident: ArchitectIncident) {
   return 2;
 }
 
-function EvidenceCard({ card }: { card: MissionEvidenceCard }) {
+function EvidenceCard({ card, onOpenIssue }: { card: MissionEvidenceCard; onOpenIssue?: () => void }) {
+  const interactive = Boolean(onOpenIssue);
+
   return (
-    <article className="min-h-[11rem] rounded-[18px] border border-white/8 bg-black/24 p-4 shadow-[0_18px_42px_rgba(0,0,0,0.20)] transition hover:border-[#A3FF12]/18">
+    <article
+      role={interactive ? "button" : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      aria-label={interactive ? `Open ${card.label} issue detail` : undefined}
+      data-testid={`architect-issue-card-${card.id}`}
+      className={cn(
+        "min-h-[11rem] rounded-[18px] border border-white/8 bg-black/24 p-4 shadow-[0_18px_42px_rgba(0,0,0,0.20)] transition hover:border-[#A3FF12]/18",
+        interactive && "cursor-pointer text-left hover:bg-white/[0.035] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/55"
+      )}
+      onClick={onOpenIssue}
+      onKeyDown={interactive ? (event) => handleCardKeyboard(event, onOpenIssue as () => void) : undefined}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/42">{card.department} / {card.workflow}</p>
@@ -80,8 +93,193 @@ function EvidenceCard({ card }: { card: MissionEvidenceCard }) {
       <ul className="mt-3 space-y-1 text-xs leading-5 text-white/48">
         {card.evidence.slice(0, 4).map((item) => <li key={item}>{item}</li>)}
       </ul>
+      {interactive ? (
+        <p className="mt-3 text-[10px] font-black uppercase tracking-[0.16em] text-[#d7ffab]">Open issue detail</p>
+      ) : null}
     </article>
   );
+}
+
+function issueStatusLabel(card: MissionEvidenceCard): IssueStatusLabel {
+  if (card.status === "Needs Review" && card.metricValue === "Not connected") {
+    return "Not Connected";
+  }
+  return card.status;
+}
+
+function issueSeverity(status: IssueStatusLabel) {
+  if (status === "Failed") return "Critical blocker";
+  if (status === "Warning") return "Warning";
+  if (status === "Not Connected") return "Not connected";
+  if (status === "Needs Review") return "Evidence gap";
+  return "Monitoring";
+}
+
+function issuePassRequirement(card: MissionEvidenceCard, lane: MissionDepartmentLane) {
+  if (lane.id !== "finance") {
+    return `${card.label} must report Pass from connected Architect evidence before this issue can be considered resolved.`;
+  }
+
+  if (card.id === "finance-payment-health") {
+    return "Appointment, payment, status history, routing, and payout guard evidence must all pass from server, Supabase, Stripe, and ledger truth.";
+  }
+
+  if (card.id === "finance-stripe") {
+    return "Stripe provider truth must be readable and reconciled without any Architect UI money mutation.";
+  }
+
+  if (card.id === "finance-routing") {
+    return "Payment routing records must exist or expose a clear safe failure state for captured money, with regression coverage.";
+  }
+
+  if (card.id === "finance-payout") {
+    return "Payout readiness must be based on completed service, captured payment, routing, status history, and policy truth. Architect must not release payouts.";
+  }
+
+  if (card.id === "finance-fees") {
+    return "Platform fee posture must be backed by routing math evidence and cannot be inferred from UI totals.";
+  }
+
+  return "Booth rent and commission readiness must remain approval-gated and backed by explicit money-rule evidence.";
+}
+
+function issueMissingOrFailed(card: MissionEvidenceCard, status: IssueStatusLabel) {
+  if (status === "Pass") {
+    return "No missing or failed evidence is currently reported. Keep this issue under read-only monitoring.";
+  }
+
+  if (status === "Failed") {
+    return `${card.label} is Failed. Evidence: ${card.evidence.join(" ") || card.summary}`;
+  }
+
+  if (status === "Not Connected") {
+    return `${card.label} is not connected to required evidence yet. Do not mark it Pass from absence of data.`;
+  }
+
+  return `${card.label} needs review. ${card.summary}`;
+}
+
+function issueSuggestedFixDirection(card: MissionEvidenceCard, lane: MissionDepartmentLane) {
+  if (lane.id !== "finance") {
+    return "Inspect the owning lane data source, repair the missing evidence path, and add regression coverage before changing status.";
+  }
+
+  if (card.id === "finance-routing" || card.id === "finance-payment-health") {
+    return "Trace appointment -> payment -> status history -> payment_routing_records. Repair the server-side evidence or guarded repair path only if Stripe/Supabase truth confirms the missing row.";
+  }
+
+  if (card.id === "finance-stripe") {
+    return "Inspect read-only Stripe diagnostics and environment/provider configuration. Do not create charges, refunds, or payment status overrides.";
+  }
+
+  if (card.id === "finance-payout") {
+    return "Inspect payout readiness derivation and guards. Keep payout release blocked until completion, routing, and policy evidence pass.";
+  }
+
+  if (card.id === "finance-fees") {
+    return "Inspect routing math and platform-fee source fields. Add tests that prevent UI-derived revenue or fake totals.";
+  }
+
+  return "Inspect future money-model gates and ensure booth-rent/commission rules remain disabled or approval-gated until explicit implementation.";
+}
+
+function buildIssueDetail(card: MissionEvidenceCard, lane: MissionDepartmentLane): ArchitectIssueDetail {
+  const status = issueStatusLabel(card);
+  const evidenceRows = card.evidence.length ? card.evidence : ["No connected evidence source for this issue yet."];
+
+  return {
+    issueName: card.label,
+    lane,
+    status,
+    severity: issueSeverity(status),
+    passRequirement: issuePassRequirement(card, lane),
+    currentTruth: `${card.label} is currently ${status}. ${card.metricValue ? `Metric value: ${card.metricValue}. ` : ""}${card.summary}`,
+    missingOrFailed: issueMissingOrFailed(card, status),
+    evidenceRows,
+    whyItMatters: lane.id === "finance"
+      ? "Finance posture controls trust, provider reconciliation, routing integrity, payout safety, and release readiness. Prompt generation is read-only and does not change money truth."
+      : "This issue affects its department lane readiness and must stay evidence-backed.",
+    suggestedFixDirection: issueSuggestedFixDirection(card, lane),
+    riskNotes: lane.id === "finance"
+      ? [
+        "Money fixes must respect Stripe, server, Supabase, and ledger truth.",
+        "No UI component can calculate final money, release payout, refund money, or fake routing.",
+        "Prompt generation alone must not change this issue status."
+      ]
+      : ["Prompt generation is read-only and must not change issue status."],
+    requiredValidation: lane.id === "finance" ? FINANCE_REQUIRED_VALIDATION : ["Validate the owning evidence source and keep missing evidence as Needs Review."],
+    requiredTests: lane.id === "finance" ? FINANCE_REQUIRED_TESTS : ["Targeted Architect lane tests", "npm run typecheck", "npm run build"],
+    inspectAreas: lane.id === "finance" ? FINANCE_REPAIR_INSPECT_AREAS : ["Owning lane data loader", "Mission Control foundation", "Relevant Architect tests"],
+    acceptanceCriteria: [
+      `${card.label} remains ${status} until real evidence changes.`,
+      "No fake Pass state is introduced.",
+      "The issue popup still shows evidence, risk, validation, and tests.",
+      "Dirty/unrelated files remain untouched."
+    ],
+    doNotTouch: lane.id === "finance" ? FINANCE_DO_NOT_TOUCH : ["unrelated dirty files"]
+  };
+}
+
+function buildCodexRepairPrompt(issue: ArchitectIssueDetail) {
+  return [
+    `BVRB3R ARCHITECT ISSUE REPAIR - ${issue.issueName}`,
+    "",
+    "Goal:",
+    `Fix the exact Architect Mission Control issue without changing unrelated systems: ${issue.issueName}.`,
+    "",
+    "Issue:",
+    `Exact issue name: ${issue.issueName}`,
+    `Lane: ${issue.lane.label}`,
+    `Current status: ${issue.status}`,
+    `Severity / criticality: ${issue.severity}`,
+    "",
+    "Current truth:",
+    issue.currentTruth,
+    "",
+    "Evidence:",
+    ...issue.evidenceRows.map((row) => `- ${row}`),
+    "",
+    "Root-cause hypothesis:",
+    issue.missingOrFailed,
+    "",
+    "Files / areas to inspect:",
+    ...issue.inspectAreas.map((area) => `- ${area}`),
+    "",
+    "What not to touch:",
+    ...issue.doNotTouch.map((area) => `- ${area}`),
+    "",
+    "Acceptance criteria:",
+    `- ${issue.passRequirement}`,
+    ...issue.acceptanceCriteria.map((criterion) => `- ${criterion}`),
+    "",
+    "Required validation:",
+    ...issue.requiredValidation.map((validation) => `- ${validation}`),
+    "",
+    "Tests to run:",
+    ...issue.requiredTests.map((test) => `- ${test}`),
+    "",
+    "Typecheck / build requirements:",
+    "- npm run typecheck must pass.",
+    "- npm run build must pass.",
+    "",
+    "Final report requirements:",
+    "- Files changed",
+    "- Migration yes/no",
+    "- Root cause",
+    "- Fix behavior",
+    "- Tests run",
+    "- Typecheck result",
+    "- Build result",
+    "- Commit hash",
+    "- Pushed yes/no",
+    "- Dirty files untouched yes/no",
+    "",
+    "Safety rules:",
+    "- No fake Pass states.",
+    "- Failed stays Failed until real evidence changes after Codex fix, deploy, and production validation.",
+    "- Do not mutate money, payouts, refunds, routing, or database records from Architect UI.",
+    "- Do not stage unrelated dirty files."
+  ].join("\n");
 }
 
 type CompactCeoCard = {
@@ -106,6 +304,27 @@ type CompactCeoCard = {
 type CeoChartPoint = {
   label: string;
   value: number;
+};
+
+type IssueStatusLabel = MissionControlStatus | "Not Connected";
+
+type ArchitectIssueDetail = {
+  issueName: string;
+  lane: MissionDepartmentLane;
+  status: IssueStatusLabel;
+  severity: string;
+  passRequirement: string;
+  currentTruth: string;
+  missingOrFailed: string;
+  evidenceRows: string[];
+  whyItMatters: string;
+  suggestedFixDirection: string;
+  riskNotes: string[];
+  requiredValidation: string[];
+  requiredTests: string[];
+  inspectAreas: string[];
+  acceptanceCriteria: string[];
+  doNotTouch: string[];
 };
 
 type CeoReadinessSummary = {
@@ -138,6 +357,51 @@ const CEO_CHECKLIST_IDS = new Set([
   "hive-ai",
   "codex-packets"
 ]);
+
+const FINANCE_REPAIR_INSPECT_AREAS = [
+  "lib/architect/mission-control/foundation.ts",
+  "app/api/architect/debug/payment/route.ts",
+  "app/api/architect/debug/routing/route.ts",
+  "app/api/architect/repairs/payment-routing/route.ts",
+  "app/api/bookings/route.ts",
+  "payment_routing_records table",
+  "payments table",
+  "appointments/status history tables",
+  "Stripe provider reconciliation path"
+];
+
+const FINANCE_DO_NOT_TOUCH = [
+  "Client UX",
+  "Barber UX",
+  "Owner UX",
+  "Booking flow UI",
+  "Stripe mutation logic",
+  "Payout/release logic",
+  "Refund/dispute mutation logic",
+  "Kiosk",
+  "Culture feed",
+  "More settings",
+  "unrelated dirty files"
+];
+
+const FINANCE_REQUIRED_VALIDATION = [
+  "Use Stripe/server/Supabase/ledger truth as the source of record.",
+  "Confirm no UI component calculates final money.",
+  "Confirm no UI component releases payout or refunds money.",
+  "Confirm failed issue evidence remains Failed until real evidence changes after fix, deploy, and validation.",
+  "Confirm routing/payment fixes include regression coverage.",
+  "Confirm no fake routing or payout readiness state is introduced."
+];
+
+const FINANCE_REQUIRED_TESTS = [
+  "Targeted Architect Mission Control tests",
+  "Targeted payment/routing debug tests when touched",
+  "Targeted payment routing repair tests when touched",
+  "Targeted booking/payment regression tests when touched",
+  "Targeted ESLint on touched files",
+  "npm run typecheck",
+  "npm run build"
+];
 
 function findCeoCard(foundation: MissionControlFoundation, id: string) {
   return foundation.ceoCommandCenter.find((card) => card.id === id);
@@ -577,6 +841,151 @@ function CeoCardDetailModal({ card, onClose }: { card: CompactCeoCard; onClose: 
   );
 }
 
+function ArchitectIssueDetailModal({ card, lane, onClose }: { card: MissionEvidenceCard; lane: MissionDepartmentLane; onClose: () => void }) {
+  const issue = useMemo(() => buildIssueDetail(card, lane), [card, lane]);
+  const [promptState, setPromptState] = useState<"idle" | "building" | "ready">("idle");
+  const [generatedPrompt, setGeneratedPrompt] = useState("");
+  const [manualCopyRequired, setManualCopyRequired] = useState(false);
+  const [copyMessage, setCopyMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
+  async function copyPrompt(prompt: string) {
+    if (!navigator.clipboard?.writeText) {
+      throw new Error("Clipboard is not available.");
+    }
+    await navigator.clipboard.writeText(prompt);
+  }
+
+  async function handlePromptAction() {
+    const prompt = generatedPrompt || buildCodexRepairPrompt(issue);
+    setPromptState("building");
+    setCopyMessage(null);
+    setManualCopyRequired(false);
+    setGeneratedPrompt(prompt);
+    await new Promise((resolve) => window.setTimeout(resolve, 10));
+
+    try {
+      await copyPrompt(prompt);
+      setCopyMessage("Prompt copied to clipboard. Paste it into Codex.");
+    } catch {
+      setManualCopyRequired(true);
+      setCopyMessage("Clipboard unavailable. Copy the prompt manually.");
+    } finally {
+      setPromptState("ready");
+    }
+  }
+
+  const promptButtonLabel = promptState === "building"
+    ? "Building repair packet..."
+    : promptState === "ready"
+      ? "Copy & Paste in Codex"
+      : "Generate Codex Prompt";
+
+  return (
+    <div className="fixed inset-0 z-[95] flex items-end justify-center bg-black/76 px-3 py-4 backdrop-blur-xl sm:items-center sm:px-5" role="dialog" aria-modal="true" aria-labelledby="architect-issue-detail-title" onClick={onClose}>
+      <div className="flex max-h-[calc(100dvh-2rem)] w-full max-w-3xl flex-col overflow-hidden rounded-[28px] border border-white/10 bg-[#070707] text-white shadow-[0_34px_100px_rgba(0,0,0,0.62)]" onClick={(event) => event.stopPropagation()}>
+        <div className="flex items-start justify-between gap-4 border-b border-white/8 p-5">
+          <div className="min-w-0">
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#A3FF12]">Issue Detail</p>
+            <h3 id="architect-issue-detail-title" className="mt-2 text-2xl font-black tracking-[-0.04em] text-white">{issue.issueName}</h3>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="rounded-[8px] border border-white/10 bg-black/24 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white/58">{issue.lane.label}</span>
+              <StatusPill status={issue.status} />
+              <span className="rounded-[8px] border border-amber-300/20 bg-amber-300/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-amber-100">{issue.severity}</span>
+            </div>
+          </div>
+          <button type="button" aria-label="Close issue detail" className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.035] text-white/70 transition hover:border-[#A3FF12]/35 hover:text-[#A3FF12]" onClick={onClose}>
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto p-5">
+          <div className="grid gap-3 md:grid-cols-2">
+            <section className="rounded-[18px] border border-white/8 bg-black/24 p-4">
+              <h4 className="text-[10px] font-black uppercase tracking-[0.16em] text-white/42">What must be true for Pass</h4>
+              <p className="mt-3 text-sm leading-6 text-white/68">{issue.passRequirement}</p>
+            </section>
+            <section className="rounded-[18px] border border-white/8 bg-black/24 p-4">
+              <h4 className="text-[10px] font-black uppercase tracking-[0.16em] text-white/42">What is currently true</h4>
+              <p className="mt-3 text-sm leading-6 text-white/68">{issue.currentTruth}</p>
+            </section>
+            <section className="rounded-[18px] border border-white/8 bg-black/24 p-4">
+              <h4 className="text-[10px] font-black uppercase tracking-[0.16em] text-white/42">What is missing or failed</h4>
+              <p className="mt-3 text-sm leading-6 text-white/68">{issue.missingOrFailed}</p>
+            </section>
+            <section className="rounded-[18px] border border-white/8 bg-black/24 p-4">
+              <h4 className="text-[10px] font-black uppercase tracking-[0.16em] text-white/42">Why it matters</h4>
+              <p className="mt-3 text-sm leading-6 text-white/68">{issue.whyItMatters}</p>
+            </section>
+          </div>
+
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            <section className="rounded-[18px] border border-white/8 bg-black/24 p-4">
+              <h4 className="text-[10px] font-black uppercase tracking-[0.16em] text-white/42">Evidence rows</h4>
+              <ul className="mt-3 space-y-2 text-sm leading-6 text-white/62">
+                {issue.evidenceRows.map((row) => (
+                  <li key={row} className="border-l border-[#A3FF12]/22 pl-3">{row}</li>
+                ))}
+              </ul>
+            </section>
+            <section className="rounded-[18px] border border-white/8 bg-black/24 p-4">
+              <h4 className="text-[10px] font-black uppercase tracking-[0.16em] text-white/42">Suggested fix direction</h4>
+              <p className="mt-3 text-sm leading-6 text-white/68">{issue.suggestedFixDirection}</p>
+              <h4 className="mt-4 text-[10px] font-black uppercase tracking-[0.16em] text-white/42">Risk notes</h4>
+              <ul className="mt-3 space-y-2 text-sm leading-6 text-white/62">
+                {issue.riskNotes.map((note) => <li key={note}>{note}</li>)}
+              </ul>
+            </section>
+          </div>
+
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            <section className="rounded-[18px] border border-white/8 bg-black/24 p-4">
+              <h4 className="text-[10px] font-black uppercase tracking-[0.16em] text-white/42">Required validation</h4>
+              <ul className="mt-3 space-y-2 text-sm leading-6 text-white/62">
+                {issue.requiredValidation.map((item) => <li key={item}>{item}</li>)}
+              </ul>
+            </section>
+            <section className="rounded-[18px] border border-white/8 bg-black/24 p-4">
+              <h4 className="text-[10px] font-black uppercase tracking-[0.16em] text-white/42">Required tests</h4>
+              <ul className="mt-3 space-y-2 text-sm leading-6 text-white/62">
+                {issue.requiredTests.map((item) => <li key={item}>{item}</li>)}
+              </ul>
+            </section>
+          </div>
+
+          {manualCopyRequired && generatedPrompt ? (
+            <div className="mt-3 rounded-[18px] border border-amber-300/20 bg-amber-300/10 p-4">
+              <label htmlFor="architect-issue-repair-prompt" className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-100">Manual copy prompt</label>
+              <textarea id="architect-issue-repair-prompt" aria-label="Generated Codex repair prompt" className="mt-3 min-h-56 w-full rounded-[12px] border border-white/10 bg-black/42 p-3 font-mono text-xs leading-5 text-white/76" readOnly value={generatedPrompt} />
+            </div>
+          ) : null}
+
+          {copyMessage ? (
+            <p className="mt-3 rounded-[14px] border border-[#A3FF12]/18 bg-[#A3FF12]/8 p-3 text-sm text-[#d7ffab]">{copyMessage}</p>
+          ) : null}
+        </div>
+
+        <div className="flex flex-col-reverse gap-2 border-t border-white/8 p-5 sm:flex-row sm:justify-end">
+          <Button type="button" variant="secondary" className="min-h-11 rounded-[8px]" onClick={onClose}>Close</Button>
+          <Button type="button" className="min-h-11 rounded-[8px] border border-[#A3FF12]/42 bg-[#A3FF12] px-5 text-sm font-black text-black hover:bg-[#d7ffab]" onClick={() => void handlePromptAction()} disabled={promptState === "building"}>
+            {promptButtonLabel}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CeoCommandCenter({ foundation, snapshot, selectedIncident, onCopyCodexPacket }: { foundation: MissionControlFoundation; snapshot: MissionControlSnapshot; selectedIncident: ArchitectIncident | null; onCopyCodexPacket: () => void }) {
   const cards = buildCompactCeoCards(foundation, snapshot, selectedIncident);
   const readiness = buildCeoReadiness(cards);
@@ -609,6 +1018,10 @@ function CeoCommandCenter({ foundation, snapshot, selectedIncident, onCopyCodexP
 }
 
 function DepartmentLaneDetail({ lane }: { lane: MissionDepartmentLane }) {
+  const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
+  const selectedIssue = lane.cards.find((card) => card.id === selectedIssueId) ?? null;
+  const issueDetailsEnabled = lane.id === "finance";
+
   return (
     <section aria-labelledby={`${lane.id}-lane-heading`} className="space-y-4">
       <div>
@@ -624,9 +1037,18 @@ function DepartmentLaneDetail({ lane }: { lane: MissionDepartmentLane }) {
           <StatusPill status={lane.status} />
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {lane.cards.map((card) => <EvidenceCard key={card.id} card={card} />)}
+          {lane.cards.map((card) => (
+            <EvidenceCard
+              key={card.id}
+              card={card}
+              onOpenIssue={issueDetailsEnabled ? () => setSelectedIssueId(card.id) : undefined}
+            />
+          ))}
         </div>
       </article>
+      {issueDetailsEnabled && selectedIssue ? (
+        <ArchitectIssueDetailModal card={selectedIssue} lane={lane} onClose={() => setSelectedIssueId(null)} />
+      ) : null}
     </section>
   );
 }

@@ -376,6 +376,81 @@ describe("architect mission control", () => {
     expect(screen.queryByText("Product Mission Control")).not.toBeInTheDocument();
   });
 
+  it("opens Finance issue detail and copies a deterministic Codex repair prompt", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => createSnapshot()
+    });
+
+    render(<ArchitectMissionControl laneId="finance" />);
+
+    await waitFor(() => expect(screen.getByText("Finance Mission Control")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Open Payment health issue detail" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open Stripe status issue detail" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open Routing health issue detail" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Payment health issue detail" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Payment health" });
+    expect(within(dialog).getByText("Finance")).toBeInTheDocument();
+    expect(within(dialog).getAllByText("Failed").length).toBeGreaterThan(0);
+    expect(within(dialog).getByText("What must be true for Pass")).toBeInTheDocument();
+    expect(within(dialog).getByText("What is currently true")).toBeInTheDocument();
+    expect(within(dialog).getByText("What is missing or failed")).toBeInTheDocument();
+    expect(within(dialog).getByText("Evidence rows")).toBeInTheDocument();
+    expect(within(dialog).getByText("Why it matters")).toBeInTheDocument();
+    expect(within(dialog).getByText("Suggested fix direction")).toBeInTheDocument();
+    expect(within(dialog).getByText("Risk notes")).toBeInTheDocument();
+    expect(within(dialog).getByText("Required validation")).toBeInTheDocument();
+    expect(within(dialog).getByText("Required tests")).toBeInTheDocument();
+    expect(within(dialog).getByText(/Payment health is currently Failed\. Payment health uses appointment\/payment\/routing truth\./)).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Generate Codex Prompt" }));
+
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "Building repair packet..." })).toBeDisabled());
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "Copy & Paste in Codex" })).toBeInTheDocument());
+
+    const copiedPrompt = clipboardWriteTextMock.mock.calls.at(-1)?.[0] as string;
+    expect(copiedPrompt).toContain("Exact issue name: Payment health");
+    expect(copiedPrompt).toContain("Lane: Finance");
+    expect(copiedPrompt).toContain("Current status: Failed");
+    expect(copiedPrompt).toContain("Payment health uses appointment/payment/routing truth.");
+    expect(copiedPrompt).toContain("Files / areas to inspect:");
+    expect(copiedPrompt).toContain("payment_routing_records table");
+    expect(copiedPrompt).toContain("Acceptance criteria:");
+    expect(copiedPrompt).toContain("Tests to run:");
+    expect(copiedPrompt).toContain("npm run typecheck must pass.");
+    expect(copiedPrompt).toContain("npm run build must pass.");
+    expect(copiedPrompt).toContain("No fake Pass states.");
+    expect(copiedPrompt).toContain("Do not stage unrelated dirty files.");
+    expect(within(dialog).getAllByText("Failed").length).toBeGreaterThan(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows a manual copy textarea when Codex prompt clipboard copy fails", async () => {
+    clipboardWriteTextMock.mockRejectedValueOnce(new Error("clipboard blocked"));
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => createSnapshot()
+    });
+
+    render(<ArchitectMissionControl laneId="finance" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open Routing health issue detail" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Routing health" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Generate Codex Prompt" }));
+
+    const textarea = await within(dialog).findByRole("textbox", { name: "Generated Codex repair prompt" });
+    const promptValue = (textarea as HTMLTextAreaElement).value;
+    expect(promptValue).toContain("Exact issue name: Routing health");
+    expect(promptValue).toContain("No fake Pass states.");
+    expect(promptValue).toContain("Dirty files untouched");
+    expect(within(dialog).getByText("Clipboard unavailable. Copy the prompt manually.")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Copy & Paste in Codex" })).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("copies generated packets", async () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,
