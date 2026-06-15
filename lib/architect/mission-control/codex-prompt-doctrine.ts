@@ -29,6 +29,7 @@ export type ArchitectCodexPromptEvidenceGroups = {
   failed: string[];
   missing: string[];
   conflicting: string[];
+  neutral: string[];
   notInspected: string[];
 };
 
@@ -77,10 +78,26 @@ export function dedupePromptRows(rows: string[]) {
   return rows
     .map((row) => row.replace(/\s+/g, " ").trim())
     .filter((row) => {
-      if (!row || seen.has(row.toLowerCase())) return false;
-      seen.add(row.toLowerCase());
+      const key = evidenceDedupeKey(row);
+      if (!row || seen.has(key)) return false;
+      seen.add(key);
       return true;
     });
+}
+
+function evidenceDedupeKey(row: string) {
+  const normalized = row.toLowerCase().replace(/\s+/g, " ").trim();
+  if (normalized === "payment.status = captured" || normalized === "payment.status=captured" || normalized === "payment captured") {
+    return "payment.status=captured";
+  }
+  if (normalized === "appointment.status = cancelled" || normalized === "appointment.status=cancelled") {
+    return "appointment.status=cancelled";
+  }
+  if (normalized === "payment.status = captured while appointment.status = cancelled"
+    || normalized === "payment.status=captured + appointment.status=cancelled") {
+    return "payment.status=captured|appointment.status=cancelled";
+  }
+  return normalized.replace(/\s*=\s*/g, "=");
 }
 
 function bulletSection(title: string, rows: string[]) {
@@ -97,12 +114,79 @@ function emptyEvidenceGroups(): ArchitectCodexPromptEvidenceGroups {
     failed: [],
     missing: [],
     conflicting: [],
+    neutral: [],
     notInspected: []
   };
 }
 
 function isPaymentHealthPrompt(input: ArchitectCodexRepairPromptInput) {
   return input.lane.toLowerCase() === "finance" && input.exactIssue.toLowerCase() === "payment health";
+}
+
+function normalizePromptEvidenceRows(rows: string[], input: ArchitectCodexRepairPromptInput) {
+  const paymentHealth = isPaymentHealthPrompt(input);
+  const normalizedRows = rows.flatMap((row) => {
+    const normalized = row.toLowerCase().replace(/\s+/g, " ").trim();
+
+    if (!paymentHealth) return [row];
+
+    const hasCapturedPayment = normalized.includes("payment.status=captured")
+      || normalized.includes("payment.status = captured")
+      || normalized.includes("payment captured")
+      || normalized.includes("payment_status: captured");
+    const hasCancelledAppointment = normalized.includes("appointment.status=cancelled")
+      || normalized.includes("appointment.status = cancelled")
+      || normalized.includes("appointment cancelled")
+      || normalized.includes("appointments.status = cancelled");
+    const hasCompletedStatus = normalized.includes("appointments.status = completed")
+      || normalized.includes("appointments.status=completed")
+      || normalized.includes("appointment completed");
+    const hasCompletedAt = normalized.includes("appointments.completed_at is populated")
+      || normalized.includes("completed_at is populated")
+      || normalized.includes("completed_at populated");
+
+    const expanded: string[] = [];
+
+    if (hasCompletedStatus) expanded.push("appointments.status = completed");
+    if (hasCompletedAt) expanded.push("appointments.completed_at is populated");
+    if (hasCapturedPayment) expanded.push("payment.status = captured");
+    if (hasCancelledAppointment) expanded.push("appointment.status = cancelled");
+    if (normalized.includes("payment_routing_records lookup by appointment_id returned 0 rows")) {
+      expanded.push("payment_routing_records lookup by appointment_id returned 0 rows");
+    }
+    if (normalized.includes("no recent routing repair constraint failure was found")) {
+      expanded.push("No recent routing repair constraint failure was found.");
+    }
+    if (normalized.includes("appointment existence has not been inspected")) {
+      expanded.push("Appointment existence has not been inspected.");
+    }
+    if (normalized.includes("payment existence has not been inspected")) {
+      expanded.push("Payment existence has not been inspected.");
+    }
+    if (normalized.includes("status history has not been inspected")) {
+      expanded.push("Status history has not been inspected.");
+    }
+    if (normalized.includes("routing state has not been inspected")) {
+      expanded.push("Routing state has not been inspected.");
+    }
+    if (normalized.includes("payout release guard has not been inspected")) {
+      expanded.push("Payout release guard has not been inspected.");
+    }
+    if (normalized === "routing missing") {
+      expanded.push("payment_routing_records lookup by appointment_id returned 0 rows");
+    }
+
+    return expanded.length ? expanded : [row];
+  });
+
+  return dedupePromptRows(normalizedRows);
+}
+
+function removeEvidenceRow(groups: ArchitectCodexPromptEvidenceGroups, row: string) {
+  const targetKey = evidenceDedupeKey(row);
+  (Object.keys(groups) as Array<keyof ArchitectCodexPromptEvidenceGroups>).forEach((groupKey) => {
+    groups[groupKey] = groups[groupKey].filter((item) => evidenceDedupeKey(item) !== targetKey);
+  });
 }
 
 function classifyEvidenceRow(row: string, input: ArchitectCodexRepairPromptInput): keyof ArchitectCodexPromptEvidenceGroups {
@@ -121,16 +205,10 @@ function classifyEvidenceRow(row: string, input: ArchitectCodexRepairPromptInput
   if (normalized.includes("has not been inspected")) return "notInspected";
 
   if (paymentHealth) {
-    const completedAppointment = normalized.includes("appointments.status = completed")
-      || normalized.includes("appointments.status=completed")
-      || normalized.includes("appointment completed");
-    const completedAtPopulated = normalized.includes("appointments.completed_at is populated")
-      || normalized.includes("completed_at is populated")
-      || normalized.includes("completed_at populated")
-      || normalized.includes("appointment completed");
-
-    if (completedAppointment && completedAtPopulated) return "passing";
+    if (normalized.includes("no recent routing repair constraint failure was found")) return "neutral";
+    if (normalized.includes("appointments.status = completed") || normalized.includes("appointments.completed_at is populated")) return "passing";
     if (hasCapturedPayment) return "passing";
+    if (hasCancelledAppointment) return "missing";
     if (normalized.includes("payment_routing_records lookup by appointment_id returned 0 rows")) return "failed";
     if (normalized.includes("routing missing")) return "failed";
   }
@@ -169,16 +247,28 @@ export function groupArchitectCodexPromptEvidence(
   input: ArchitectCodexRepairPromptInput
 ): ArchitectCodexPromptEvidenceGroups {
   const groups = emptyEvidenceGroups();
+  const normalizedRows = normalizePromptEvidenceRows(rows, input);
 
-  dedupePromptRows(rows).forEach((row) => {
+  normalizedRows.forEach((row) => {
     groups[classifyEvidenceRow(row, input)].push(row);
   });
+
+  if (isPaymentHealthPrompt(input)) {
+    const hasCapturedPayment = groups.passing.some((row) => evidenceDedupeKey(row) === "payment.status=captured");
+    const hasCancelledAppointment = normalizedRows.some((row) => evidenceDedupeKey(row) === "appointment.status=cancelled");
+
+    if (hasCapturedPayment && hasCancelledAppointment) {
+      removeEvidenceRow(groups, "appointment.status = cancelled");
+      groups.conflicting.push("payment.status = captured while appointment.status = cancelled");
+    }
+  }
 
   return {
     passing: dedupePromptRows(groups.passing),
     failed: dedupePromptRows(groups.failed),
     missing: dedupePromptRows(groups.missing),
     conflicting: dedupePromptRows(groups.conflicting),
+    neutral: dedupePromptRows(groups.neutral),
     notInspected: dedupePromptRows(groups.notInspected)
   };
 }
@@ -300,6 +390,8 @@ export function buildArchitectCodexRepairPrompt(input: ArchitectCodexRepairPromp
     ...groupedEvidenceSection("Missing evidence", evidenceGroups.missing),
     "",
     ...groupedEvidenceSection("Conflicting evidence", evidenceGroups.conflicting),
+    "",
+    ...groupedEvidenceSection("Neutral / Context evidence", evidenceGroups.neutral),
     "",
     ...groupedEvidenceSection("Not inspected yet", evidenceGroups.notInspected),
     "",

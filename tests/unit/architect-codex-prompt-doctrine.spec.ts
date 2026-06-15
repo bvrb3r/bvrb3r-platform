@@ -32,16 +32,18 @@ const paymentHealthPromptInput = {
   affectedFlow: "Payments finance readiness",
   currentTruth: "Payment health is currently Failed. Payment health uses appointment/payment/routing truth.",
   evidence: [
-    "appointments.status = completed and appointments.completed_at is populated",
+    "appointments.status = completed",
+    "appointments.completed_at is populated",
     "payment.status = captured",
+    "payment.status=captured",
     "payment_routing_records lookup by appointment_id returned 0 rows",
-    "payment.status=captured + appointment.status=cancelled",
+    "appointment.status=cancelled",
+    "No recent routing repair constraint failure was found.",
     "Appointment existence has not been inspected",
     "Payment existence has not been inspected",
     "Status history has not been inspected",
     "Routing state has not been inspected",
-    "Payout release guard has not been inspected",
-    "payment.status = captured"
+    "Payout release guard has not been inspected"
   ],
   rootCauseHypothesis: [
     "appointments.status = completed and appointments.completed_at is populated",
@@ -106,18 +108,24 @@ describe("architect codex prompt doctrine", () => {
     expect(prompt.match(/- duplicate evidence row/g)).toHaveLength(1);
   });
 
-  it("groups Payment Health evidence into passing, failed, conflicting, and not-inspected sections", () => {
+  it("groups Payment Health evidence into passing, failed, conflicting, neutral, and not-inspected sections", () => {
     const prompt = buildArchitectCodexRepairPrompt(paymentHealthPromptInput);
 
     const passingSection = promptSection(prompt, "Passing evidence:", "Failed evidence:");
     const failedSection = promptSection(prompt, "Failed evidence:", "Missing evidence:");
-    const conflictSection = promptSection(prompt, "Conflicting evidence:", "Not inspected yet:");
+    const missingSection = promptSection(prompt, "Missing evidence:", "Conflicting evidence:");
+    const conflictSection = promptSection(prompt, "Conflicting evidence:", "Neutral / Context evidence:");
+    const neutralSection = promptSection(prompt, "Neutral / Context evidence:", "Not inspected yet:");
     const notInspectedSection = promptSection(prompt, "Not inspected yet:", "Root-cause hypothesis:");
 
-    expect(passingSection).toContain("appointments.status = completed and appointments.completed_at is populated");
+    expect(passingSection).toContain("appointments.status = completed");
+    expect(passingSection).toContain("appointments.completed_at is populated");
     expect(passingSection.match(/payment.status = captured/g)).toHaveLength(1);
     expect(failedSection).toContain("payment_routing_records lookup by appointment_id returned 0 rows");
-    expect(conflictSection).toContain("payment.status=captured + appointment.status=cancelled");
+    expect(missingSection).not.toContain("appointment.status=cancelled");
+    expect(conflictSection).toContain("payment.status = captured while appointment.status = cancelled");
+    expect(conflictSection).not.toContain("- None.");
+    expect(neutralSection).toContain("No recent routing repair constraint failure was found.");
     expect(notInspectedSection).toContain("Appointment existence has not been inspected");
     expect(notInspectedSection).toContain("Payment existence has not been inspected");
     expect(notInspectedSection).toContain("Status history has not been inspected");

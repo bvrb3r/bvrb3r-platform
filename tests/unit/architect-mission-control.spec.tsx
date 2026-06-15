@@ -48,7 +48,14 @@ function createSnapshot() {
       targetType: "appointment",
       targetId: APPOINTMENT_ID,
       headline: "Completed paid appointment is missing payment routing.",
-      evidence: ["appointment completed", "payment captured", "routing missing"],
+      evidence: [
+        "appointments.status = completed",
+        "appointments.completed_at is populated",
+        "payment.status=captured",
+        "appointment.status=cancelled",
+        "payment_routing_records lookup by appointment_id returned 0 rows",
+        "No recent routing repair constraint failure was found."
+      ],
       analysis: {
         likelyRootCause: "The payout-routing ledger was never created or repaired after completion.",
         confidence: 90,
@@ -428,12 +435,20 @@ describe("architect mission control", () => {
     expect(copiedPrompt).toContain("Payment health uses appointment/payment/routing truth.");
     expect(copiedPrompt).toContain("Evidence groups:");
     expect(copiedPrompt).toContain("Passing evidence:");
-    expect(copiedPrompt).toContain("- appointment completed");
-    expect(copiedPrompt).toContain("- payment captured");
+    expect(copiedPrompt).toContain("- appointments.status = completed");
+    expect(copiedPrompt).toContain("- appointments.completed_at is populated");
+    expect(copiedPrompt).toContain("- payment.status = captured");
+    const copiedPassingSection = copiedPrompt.split("Passing evidence:")[1].split("Failed evidence:")[0];
+    expect(copiedPassingSection.match(/- payment.status = captured/g)).toHaveLength(1);
     expect(copiedPrompt).toContain("Failed evidence:");
-    expect(copiedPrompt).toContain("- routing missing");
+    expect(copiedPrompt).toContain("- payment_routing_records lookup by appointment_id returned 0 rows");
     expect(copiedPrompt).toContain("Missing evidence:");
     expect(copiedPrompt).toContain("Conflicting evidence:");
+    expect(copiedPrompt).toContain("- payment.status = captured while appointment.status = cancelled");
+    expect(copiedPrompt.split("Conflicting evidence:")[1].split("Neutral / Context evidence:")[0]).not.toContain("- None.");
+    expect(copiedPrompt.split("Missing evidence:")[1].split("Conflicting evidence:")[0]).not.toContain("appointment.status=cancelled");
+    expect(copiedPrompt).toContain("Neutral / Context evidence:");
+    expect(copiedPrompt).toContain("- No recent routing repair constraint failure was found.");
     expect(copiedPrompt).toContain("Not inspected yet:");
     expect(copiedPrompt).toContain("- Appointment existence has not been inspected.");
     expect(copiedPrompt).toContain("- Payment existence has not been inspected.");
@@ -443,9 +458,9 @@ describe("architect mission control", () => {
     expect(copiedPrompt).toContain("Root-cause hypothesis:");
     const rootCauseSection = copiedPrompt.split("Root-cause hypothesis:")[1].split("Primary repair target:")[0];
     expect(rootCauseSection).toContain("Payment Health is failing because completed/captured money evidence is not reconciled to a payment routing record.");
-    expect(rootCauseSection).not.toContain("appointment completed");
-    expect(rootCauseSection).not.toContain("payment captured");
-    expect(rootCauseSection).not.toContain("routing missing");
+    expect(rootCauseSection).not.toContain("appointments.status = completed");
+    expect(rootCauseSection).not.toContain("payment.status = captured");
+    expect(rootCauseSection).not.toContain("payment_routing_records lookup by appointment_id returned 0 rows");
     expect(rootCauseSection).not.toContain("...");
     expect(copiedPrompt).toContain("Primary repair target:");
     expect(copiedPrompt).toContain("Server-side payment routing creation/reconciliation after payment capture and appointment completion.");
