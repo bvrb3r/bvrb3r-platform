@@ -10,12 +10,11 @@ function isArchitectNavActive(pathname: string | null, href: string, itemId: str
     return false;
   }
 
-  if (itemId === "ceo" && href === "/architect") {
-    return pathname === href;
+  if (itemId === "ceo") {
+    return pathname === "/architect" || pathname === "/architect/ceo";
   }
 
-  const routePath = href.split("#")[0] ?? href;
-  return routePath !== "/architect" && (pathname === routePath || pathname.startsWith(`${routePath}/`));
+  return pathname === href || pathname.startsWith(`${href}/`);
 }
 
 export function ArchitectPrimaryNav() {

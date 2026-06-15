@@ -51,6 +51,7 @@ export type MissionEvidenceCard = {
   status: MissionControlStatus;
   summary: string;
   evidence: string[];
+  metricValue?: string;
 };
 
 export type MissionDepartmentLane = {

@@ -25,6 +25,46 @@ describe("architect mission control foundation", () => {
       "Content & Community"
     ]);
     expect(foundation.defaultLaneId).toBe("ceo");
+    expect(MISSION_CONTROL_LANES.map((lane) => lane.href)).toEqual([
+      "/architect/ceo",
+      "/architect/product",
+      "/architect/technology",
+      "/architect/operations",
+      "/architect/finance",
+      "/architect/marketing",
+      "/architect/compliance",
+      "/architect/security",
+      "/architect/content-community"
+    ]);
+  });
+
+  it("keeps missing CEO platform metrics as Needs Review instead of fake values", () => {
+    const foundation = buildMissionControlFoundation([], "2026-06-14T12:00:00.000Z");
+    const totalUsers = foundation.ceoCommandCenter.find((card) => card.id === "ceo-total-users");
+
+    expect(totalUsers).toMatchObject({
+      label: "Total Users",
+      status: "Needs Review",
+      metricValue: "Not connected"
+    });
+  });
+
+  it("uses connected CEO metric evidence when supplied", () => {
+    const foundation = buildMissionControlFoundation([], "2026-06-14T12:00:00.000Z", [{
+      id: "ceo-total-users",
+      label: "Total Users",
+      department: "CEO",
+      workflow: "Audience",
+      status: "Pass",
+      metricValue: "3",
+      summary: "Profiles table is connected.",
+      evidence: ["3 profile rows counted."]
+    }]);
+
+    expect(foundation.ceoCommandCenter.find((card) => card.id === "ceo-total-users")).toMatchObject({
+      status: "Pass",
+      metricValue: "3"
+    });
   });
 
   it("keeps missing validator data as Needs Review instead of Pass", () => {

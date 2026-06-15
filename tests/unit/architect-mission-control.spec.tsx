@@ -103,6 +103,12 @@ describe("architect mission control", () => {
     expect(screen.getByTestId("architect-mission-control-root").className).not.toMatch(/min-h|h-screen|100svh|items-center|justify-end/);
     expect(screen.getByText("BVRB3R Mission Control Navigation")).toBeInTheDocument();
     expect(screen.getByText("CEO Command Center")).toBeInTheDocument();
+    expect(screen.getByText("Total Users")).toBeInTheDocument();
+    expect(screen.getByText("Clients")).toBeInTheDocument();
+    expect(screen.getByText("Barbers")).toBeInTheDocument();
+    expect(screen.getByText("Shop Owners")).toBeInTheDocument();
+    expect(screen.getByText("Payment Routing Health")).toBeInTheDocument();
+    expect(screen.getByText("Payout Readiness Health")).toBeInTheDocument();
     expect(screen.getByText("Core Loop Validators")).toBeInTheDocument();
     expect(screen.getByText("Source Vault")).toBeInTheDocument();
     expect(screen.getByText("Action Registry")).toBeInTheDocument();
@@ -137,13 +143,31 @@ describe("architect mission control", () => {
 
     render(<ArchitectMissionControl />);
 
-    await waitFor(() => expect(screen.getByText("CEO lane is the default landing lane")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("CEO lane is routed and active")).toBeInTheDocument());
     for (const lane of ["CEO", "Product", "Technology", "Operations", "Finance", "Marketing", "Compliance", "Security", "Content & Community"]) {
       expect(screen.getAllByText(lane).length).toBeGreaterThan(0);
     }
     expect(screen.getByRole("link", { name: /CEO/ })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: /Product/ })).toHaveAttribute("href", "/architect/product");
+    expect(screen.getByRole("link", { name: /Product/ }).getAttribute("href")).not.toContain("#");
     expect(screen.queryByText(/sidebar/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/admin menu/i)).not.toBeInTheDocument();
+  });
+
+  it("renders a routed department lane without the CEO scoreboard", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => createSnapshot()
+    });
+
+    render(<ArchitectMissionControl laneId="finance" />);
+
+    await waitFor(() => expect(screen.getByText("Finance lane is routed and active")).toBeInTheDocument());
+    expect(screen.getByText("Finance Mission Control")).toBeInTheDocument();
+    expect(screen.getByText("Payment health")).toBeInTheDocument();
+    expect(screen.queryByText("CEO Command Center")).not.toBeInTheDocument();
+    expect(screen.queryByText("Product Mission Control")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Finance/ })).toHaveAttribute("aria-current", "page");
   });
 
   it("copies generated packets", async () => {

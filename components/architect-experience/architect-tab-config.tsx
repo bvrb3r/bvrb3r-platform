@@ -4,55 +4,55 @@ export const ARCHITECT_PRIMARY_NAV_ITEMS = [
   {
     id: "ceo",
     label: "CEO",
-    href: "/architect",
+    href: "/architect/ceo",
     icon: Rocket
   },
   {
     id: "product",
     label: "Product",
-    href: "/architect#product",
+    href: "/architect/product",
     icon: BrainCircuit
   },
   {
     id: "technology",
     label: "Technology",
-    href: "/architect#technology",
+    href: "/architect/technology",
     icon: ShieldCheck
   },
   {
     id: "operations",
     label: "Operations",
-    href: "/architect#operations",
+    href: "/architect/operations",
     icon: Building2
   },
   {
     id: "finance",
     label: "Finance",
-    href: "/architect#finance",
+    href: "/architect/finance",
     icon: BadgeDollarSign
   },
   {
     id: "marketing",
     label: "Marketing",
-    href: "/architect#marketing",
+    href: "/architect/marketing",
     icon: Megaphone
   },
   {
     id: "compliance",
     label: "Compliance",
-    href: "/architect#compliance",
+    href: "/architect/compliance",
     icon: Scale
   },
   {
     id: "security",
     label: "Security",
-    href: "/architect#security",
+    href: "/architect/security",
     icon: Siren
   },
   {
     id: "content_community",
     label: "Content & Community",
-    href: "/architect#content-community",
+    href: "/architect/content-community",
     icon: UsersRound
   }
 ] as const;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { detectArchitectMissionIncidents } from "@/lib/architect/mission-control/incident-detection";
-import { APPOINTMENT_ID, BARBER_ID, createArchitectDebugTables, createSupabaseStub } from "@/tests/unit/architect-debug-test-utils";
+import { buildMissionControlSnapshot, detectArchitectMissionIncidents } from "@/lib/architect/mission-control/incident-detection";
+import { APPOINTMENT_ID, ARCHITECT_USER, BARBER_ID, createArchitectDebugTables, createSupabaseStub } from "@/tests/unit/architect-debug-test-utils";
 
 describe("architect mission incident detection", () => {
   it("detects completed captured appointments with missing routing", async () => {
@@ -154,5 +154,16 @@ describe("architect mission incident detection", () => {
     const incidents = await detectArchitectMissionIncidents(createSupabaseStub(tables) as never);
 
     expect(incidents.some((incident) => incident.diagnosisCode === "paid_pos_sale_missing_routing")).toBe(false);
+  });
+
+  it("adds connected CEO platform metrics to the Mission Control snapshot", async () => {
+    const snapshot = await buildMissionControlSnapshot(createSupabaseStub(createArchitectDebugTables()) as never, ARCHITECT_USER);
+    const totalUsers = snapshot.foundation.ceoCommandCenter.find((card) => card.id === "ceo-total-users");
+    const clients = snapshot.foundation.ceoCommandCenter.find((card) => card.id === "ceo-clients-total");
+    const routing = snapshot.foundation.ceoCommandCenter.find((card) => card.id === "ceo-payment-routing-health");
+
+    expect(totalUsers).toMatchObject({ label: "Total Users", status: "Pass", metricValue: "3" });
+    expect(clients).toMatchObject({ label: "Clients", status: "Pass", metricValue: "1" });
+    expect(routing).toMatchObject({ label: "Payment Routing Health", status: "Failed" });
   });
 });

@@ -78,15 +78,15 @@ type CoreLoopFixture = {
 };
 
 export const MISSION_CONTROL_LANES: MissionControlLane[] = [
-  { id: "ceo", label: "CEO", href: "/architect", purpose: "Global platform truth, risks, and executive decisions." },
-  { id: "product", label: "Product", href: "/architect#product", purpose: "Client, Barber, Owner, Culture, and booking readiness." },
-  { id: "technology", label: "Technology", href: "/architect#technology", purpose: "Deployments, tests, APIs, database health, and schema constraints." },
-  { id: "operations", label: "Operations", href: "/architect#operations", purpose: "Appointments, calendars, shop relationships, kiosks, and command calendars." },
-  { id: "finance", label: "Finance", href: "/architect#finance", purpose: "Payments, routing, payout readiness, fees, and money-risk posture." },
-  { id: "marketing", label: "Marketing", href: "/architect#marketing", purpose: "Culture demand, attribution, referrals, and campaign readiness." },
-  { id: "compliance", label: "Compliance", href: "/architect#compliance", purpose: "Verification, consent, integrity, trust gates, and policy visibility." },
-  { id: "security", label: "Security", href: "/architect#security", purpose: "Role access, route protection, unsafe action prevention, and audit coverage." },
-  { id: "content_community", label: "Content & Community", href: "/architect#content-community", purpose: "Culture moderation, reports, comments, creators, and community health." }
+  { id: "ceo", label: "CEO", href: "/architect/ceo", purpose: "Global platform truth, risks, and executive decisions." },
+  { id: "product", label: "Product", href: "/architect/product", purpose: "Client, Barber, Owner, Culture, and booking readiness." },
+  { id: "technology", label: "Technology", href: "/architect/technology", purpose: "Deployments, tests, APIs, database health, and schema constraints." },
+  { id: "operations", label: "Operations", href: "/architect/operations", purpose: "Appointments, calendars, shop relationships, kiosks, and command calendars." },
+  { id: "finance", label: "Finance", href: "/architect/finance", purpose: "Payments, routing, payout readiness, fees, and money-risk posture." },
+  { id: "marketing", label: "Marketing", href: "/architect/marketing", purpose: "Culture demand, attribution, referrals, and campaign readiness." },
+  { id: "compliance", label: "Compliance", href: "/architect/compliance", purpose: "Verification, consent, integrity, trust gates, and policy visibility." },
+  { id: "security", label: "Security", href: "/architect/security", purpose: "Role access, route protection, unsafe action prevention, and audit coverage." },
+  { id: "content_community", label: "Content & Community", href: "/architect/content-community", purpose: "Culture moderation, reports, comments, creators, and community health." }
 ];
 
 export const SOURCE_VAULT_REGISTRY: SourceVaultEntry[] = [
@@ -258,11 +258,15 @@ export function validateCoreLoopState(fixture: CoreLoopFixture = {}): CoreLoopVa
 
 export function buildMissionControlFoundation(
   incidents: ArchitectIncident[] = [],
-  checkedAt = new Date().toISOString()
+  checkedAt = new Date().toISOString(),
+  ceoPlatformMetrics: MissionEvidenceCard[] = []
 ): MissionControlFoundation {
   const coreLoopValidators = applyIncidentFailures(validateCoreLoopState(), incidents);
   const departmentLanes = buildDepartmentLanes(coreLoopValidators, incidents);
-  const ceoCommandCenter = buildCeoCards(coreLoopValidators, incidents, checkedAt);
+  const ceoCommandCenter = [
+    ...buildCeoPlatformMetricCards(ceoPlatformMetrics),
+    ...buildCeoCards(coreLoopValidators, incidents, checkedAt)
+  ];
 
   return {
     navigationLanes: MISSION_CONTROL_LANES,
@@ -276,6 +280,36 @@ export function buildMissionControlFoundation(
     agentRegistry: HIVE_AGENT_REGISTRY,
     codexFailureClasses: CODEX_FAILURE_CLASSES
   };
+}
+
+function buildCeoPlatformMetricCards(metrics: MissionEvidenceCard[]): MissionEvidenceCard[] {
+  const requestedMetrics = [
+    ["ceo-total-users", "Total Users", "Audience", "Total user count is not connected."],
+    ["ceo-clients-total", "Clients", "Audience", "Client count is not connected."],
+    ["ceo-barbers-total", "Barbers", "Supply", "Barber count is not connected."],
+    ["ceo-shop-owners-total", "Shop Owners", "Supply", "Shop owner count is not connected."],
+    ["ceo-total-bookings", "Total Bookings", "Bookings", "Booking count is not connected."],
+    ["ceo-todays-bookings", "Today's Bookings", "Bookings", "Today's booking count is not connected."],
+    ["ceo-completed-appointments", "Completed Appointments", "Operations", "Completed appointment count is not connected."],
+    ["ceo-gross-booked-volume", "Gross Booked Volume", "Finance", "Gross booked volume is not connected."],
+    ["ceo-platform-fees", "Platform Fees / App Revenue", "Finance", "Platform fee revenue is not connected."],
+    ["ceo-payments-captured", "Payments Captured", "Finance", "Captured payment count is not connected."],
+    ["ceo-payment-routing-health", "Payment Routing Health", "Finance", "Payment routing health is not connected."],
+    ["ceo-payout-readiness-health", "Payout Readiness Health", "Finance", "Payout readiness health is not connected."],
+    ["ceo-culture-health", "Culture Health", "Culture", "Culture health is not connected."],
+    ["ceo-active-shops", "Active Shops", "Operations", "Active shop count is not connected."],
+    ["ceo-active-barbers", "Active Barbers", "Operations", "Active barber count is not connected."],
+    ["ceo-pending-approvals", "Pending Barber/Shop Approvals", "Compliance", "Pending approval count is not connected."],
+    ["ceo-critical-incidents", "Critical Incidents", "Incidents", "Critical incident count is not connected."],
+    ["ceo-regression-deployment-health", "Regression / Deployment Health", "Technology", "Regression and deployment health are not connected."],
+    ["ceo-next-executive-decisions", "Next Executive Decisions", "Executive Decisions", "Executive decision queue is not connected."]
+  ] as const;
+  const byId = new Map(metrics.map((card) => [card.id, card]));
+
+  return requestedMetrics.map(([id, label, workflow, summary]) => byId.get(id) ?? {
+    ...evidenceCard(id, label, "CEO", workflow, "Needs Review", summary, ["Not connected."]),
+    metricValue: "Not connected"
+  });
 }
 
 function buildCeoCards(validators: CoreLoopValidator[], incidents: ArchitectIncident[], checkedAt: string): MissionEvidenceCard[] {

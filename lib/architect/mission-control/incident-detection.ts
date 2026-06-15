@@ -8,7 +8,7 @@ import {
   loadPaymentRoutingConstraintEvidence,
   paymentRoutingConstraintEvidenceToJson
 } from "@/lib/architect/mission-control/schema-constraints";
-import type { ArchitectIncident, MissionControlHealthItem, MissionControlSnapshot, MissionPacketSet } from "@/lib/architect/mission-control/types";
+import type { ArchitectIncident, MissionControlHealthItem, MissionControlSnapshot, MissionControlStatus, MissionEvidenceCard, MissionPacketSet } from "@/lib/architect/mission-control/types";
 import { buildChatGptPacket, buildCodexPacket, buildIncidentPacket } from "@/lib/architect/mission-control/packets";
 import { buildMissionControlFoundation, classifyArchitectIncident } from "@/lib/architect/mission-control/foundation";
 
@@ -44,6 +44,31 @@ async function selectRows<T extends JsonRecord>(
   }
 
   return ((result.data ?? []) as unknown as T[]) ?? [];
+}
+
+type TableRead = {
+  rows: JsonRecord[];
+  connected: boolean;
+  errorMessage?: string;
+};
+
+async function trySelectRows(
+  supabase: SupabaseClient,
+  table: string,
+  options: { column?: string; value?: unknown; orderColumn?: string; limit?: number } = {}
+): Promise<TableRead> {
+  try {
+    return {
+      rows: await selectRows<JsonRecord>(supabase, table, options),
+      connected: true
+    };
+  } catch (error) {
+    return {
+      rows: [],
+      connected: false,
+      errorMessage: error instanceof Error ? error.message : `${table} could not be read.`
+    };
+  }
 }
 
 function latest<T extends JsonRecord>(rows: T[]) {
@@ -587,6 +612,167 @@ function packetSet(snapshotBase: { environment: MissionControlSnapshot["environm
   };
 }
 
+function metricCard(
+  id: string,
+  label: string,
+  workflow: string,
+  status: MissionControlStatus,
+  metricValue: string,
+  summary: string,
+  evidence: string[]
+): MissionEvidenceCard {
+  return {
+    id,
+    label,
+    workflow,
+    status,
+    metricValue,
+    summary,
+    evidence,
+    department: "CEO"
+  };
+}
+
+function formatMetricMoney(value: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0
+  }).format(value);
+}
+
+function stringValue(value: unknown) {
+  return String(value ?? "").toLowerCase();
+}
+
+function hasRole(row: JsonRecord, roles: string[]) {
+  const values = [
+    row.role,
+    row.primary_onboarding_role,
+    row.user_role,
+    row.account_role,
+    row.profile_role
+  ].map(stringValue);
+  return roles.some((role) => values.includes(role));
+}
+
+function isActiveEntity(row: JsonRecord) {
+  const status = stringValue(row.status ?? row.account_status ?? row.lifecycle_status);
+  const approval = stringValue(row.app_approval_status ?? row.approval_status ?? row.verification_status);
+  return !["inactive", "suspended", "deleted", "ended", "declined", "rejected"].includes(status)
+    && !["rejected", "suspended", "denied"].includes(approval);
+}
+
+function isPendingApproval(row: JsonRecord) {
+  const approval = stringValue(row.app_approval_status ?? row.approval_status ?? row.verification_status ?? row.status);
+  return ["pending", "pending_review", "under_review", "needs_review", "submitted"].includes(approval);
+}
+
+function dateStringForRow(row: JsonRecord) {
+  return String(row.starts_at ?? row.start_time ?? row.scheduled_at ?? row.appointment_date ?? row.created_at ?? "");
+}
+
+function isSameIsoDate(row: JsonRecord, isoDate: string) {
+  return dateStringForRow(row).startsWith(isoDate);
+}
+
+function sumMoney(rows: JsonRecord[], fields: string[]) {
+  return rows.reduce((total, row) => {
+    const raw = fields.map((field) => row[field]).find((value) => typeof value === "number" || (typeof value === "string" && value.trim() !== ""));
+    const amount = Number(raw ?? 0);
+    return Number.isFinite(amount) ? total + amount : total;
+  }, 0);
+}
+
+function countCard(
+  id: string,
+  label: string,
+  workflow: string,
+  table: TableRead,
+  count: number,
+  connectedSummary: string
+) {
+  return metricCard(
+    id,
+    label,
+    workflow,
+    table.connected ? "Pass" : "Needs Review",
+    table.connected ? String(count) : "Not connected",
+    table.connected ? connectedSummary : `${label} cannot be verified because the source table is not connected.`,
+    table.connected ? [`${count} row(s) counted from connected production evidence.`] : [table.errorMessage ?? "Not connected."]
+  );
+}
+
+async function buildCeoPlatformMetrics(supabase: SupabaseClient, incidents: ArchitectIncident[], checkedAt: string) {
+  const [
+    profiles,
+    clients,
+    barbers,
+    shops,
+    appointments,
+    payments,
+    routingRows,
+    culturePosts
+  ] = await Promise.all([
+    trySelectRows(supabase, "profiles", { limit: 10000 }),
+    trySelectRows(supabase, "clients", { limit: 10000 }),
+    trySelectRows(supabase, "barbers", { limit: 10000 }),
+    trySelectRows(supabase, "shops", { limit: 10000 }),
+    trySelectRows(supabase, "appointments", { limit: 10000 }),
+    trySelectRows(supabase, "payments", { limit: 10000 }),
+    trySelectRows(supabase, "payment_routing_records", { limit: 10000 }),
+    trySelectRows(supabase, "culture_posts", { limit: 10000 })
+  ]);
+
+  const today = checkedAt.slice(0, 10);
+  const profileRows = profiles.rows;
+  const clientCount = clients.connected ? clients.rows.length : profileRows.filter((row) => hasRole(row, ["client_user", "client"])).length;
+  const barberCount = barbers.connected ? barbers.rows.length : profileRows.filter((row) => hasRole(row, ["barber_user", "barber"])).length;
+  const ownerCount = profileRows.filter((row) => hasRole(row, ["shop_owner_user", "shop_owner", "owner_user"])).length;
+  const completedAppointments = appointments.rows.filter((row) => stringValue(row.status) === "completed");
+  const capturedPayments = payments.rows.filter(isPaymentSuccessful);
+  const financeIncidents = incidents.filter((incident) => incident.affectedDepartment === "Finance" || incident.diagnosisCode.includes("payment") || incident.diagnosisCode.includes("routing"));
+  const publicCulturePosts = culturePosts.rows.filter((row) => {
+    const visibility = stringValue(row.visibility ?? row.audience ?? "public");
+    const status = stringValue(row.status ?? row.publish_status ?? "published");
+    const moderation = stringValue(row.moderation_status ?? row.approval_status ?? "approved");
+    return visibility === "public" && status === "published" && moderation === "approved" && row.deleted_at == null;
+  });
+  const activeBarbers = barbers.rows.filter((row) => isActiveEntity(row) && row.is_bookable !== false);
+  const activeShops = shops.rows.filter(isActiveEntity);
+  const pendingApprovals = [...barbers.rows, ...shops.rows].filter(isPendingApproval);
+  const grossBookedVolume = sumMoney(appointments.rows, ["grand_total", "total_amount", "price", "amount"]);
+  const platformFees = sumMoney(routingRows.rows, ["platform_fee_amount", "application_fee_amount", "app_fee_amount"]);
+  const routingHealth: MissionControlStatus = financeIncidents.length ? "Failed" : routingRows.connected && routingRows.rows.length ? "Pass" : "Needs Review";
+  const payoutReadiness: MissionControlStatus = financeIncidents.length
+    ? "Failed"
+    : routingRows.connected && routingRows.rows.some((row) => ["ready", "eligible"].includes(stringValue(row.payout_readiness_status)))
+      ? "Pass"
+      : "Needs Review";
+
+  return [
+    countCard("ceo-total-users", "Total Users", "Audience", profiles, profileRows.length, "Profiles table is connected and user count is read from production evidence."),
+    countCard("ceo-clients-total", "Clients", "Audience", clients.connected ? clients : profiles, clientCount, "Client count is read from connected client/profile evidence."),
+    countCard("ceo-barbers-total", "Barbers", "Supply", barbers.connected ? barbers : profiles, barberCount, "Barber count is read from connected barber/profile evidence."),
+    countCard("ceo-shop-owners-total", "Shop Owners", "Supply", profiles, ownerCount, "Shop owner count is read from connected profile evidence."),
+    countCard("ceo-total-bookings", "Total Bookings", "Bookings", appointments, appointments.rows.length, "Booking count is read from appointments."),
+    countCard("ceo-todays-bookings", "Today's Bookings", "Bookings", appointments, appointments.rows.filter((row) => isSameIsoDate(row, today)).length, `Today's booking count uses ${today}.`),
+    countCard("ceo-completed-appointments", "Completed Appointments", "Operations", appointments, completedAppointments.length, "Completed appointment count is read from appointments.status."),
+    metricCard("ceo-gross-booked-volume", "Gross Booked Volume", "Finance", appointments.connected ? "Pass" : "Needs Review", appointments.connected ? formatMetricMoney(grossBookedVolume) : "Not connected", appointments.connected ? "Gross booked volume is summed from appointment amount fields." : "Gross booked volume source is not connected.", appointments.connected ? ["Fields checked: grand_total, total_amount, price, amount."] : [appointments.errorMessage ?? "Not connected."]),
+    metricCard("ceo-platform-fees", "Platform Fees / App Revenue", "Finance", routingRows.connected && routingRows.rows.length ? "Pass" : "Needs Review", routingRows.connected && routingRows.rows.length ? formatMetricMoney(platformFees) : "Not connected", routingRows.connected && routingRows.rows.length ? "Platform fees are summed from routing rows." : "Platform fee truth needs payment routing evidence.", routingRows.connected ? ["Fields checked: platform_fee_amount, application_fee_amount, app_fee_amount."] : [routingRows.errorMessage ?? "Not connected."]),
+    countCard("ceo-payments-captured", "Payments Captured", "Finance", payments, capturedPayments.length, "Captured payment count uses successful payment status evidence."),
+    metricCard("ceo-payment-routing-health", "Payment Routing Health", "Finance", routingHealth, routingHealth, financeIncidents.length ? "Finance incident evidence is active." : "Routing health is derived from routing rows and finance incidents.", financeIncidents.length ? financeIncidents.map((incident) => incident.headline) : [`payment_routing_records rows=${routingRows.rows.length}`]),
+    metricCard("ceo-payout-readiness-health", "Payout Readiness Health", "Finance", payoutReadiness, payoutReadiness, payoutReadiness === "Pass" ? "At least one routing row is payout-ready." : "Payout readiness cannot be fully verified from current evidence.", routingRows.connected ? routingRows.rows.slice(0, 3).map((row) => `payout_readiness_status=${String(row.payout_readiness_status ?? "unknown")}`) : [routingRows.errorMessage ?? "Not connected."]),
+    metricCard("ceo-culture-health", "Culture Health", "Culture", culturePosts.connected && publicCulturePosts.length ? "Pass" : "Needs Review", culturePosts.connected ? `${publicCulturePosts.length} public post(s)` : "Not connected", culturePosts.connected && publicCulturePosts.length ? "Public approved Culture post evidence exists." : "Culture health needs public approved post or clean empty-state evidence.", culturePosts.connected ? [`culture_posts rows=${culturePosts.rows.length}`] : [culturePosts.errorMessage ?? "Not connected."]),
+    countCard("ceo-active-shops", "Active Shops", "Operations", shops, activeShops.length, "Active shop count is read from shops status evidence."),
+    countCard("ceo-active-barbers", "Active Barbers", "Operations", barbers, activeBarbers.length, "Active barber count is read from barber status/bookable evidence."),
+    metricCard("ceo-pending-approvals", "Pending Barber/Shop Approvals", "Compliance", barbers.connected || shops.connected ? "Pass" : "Needs Review", barbers.connected || shops.connected ? String(pendingApprovals.length) : "Not connected", "Pending approvals are counted from barber/shop approval status fields.", [`barber rows=${barbers.rows.length}`, `shop rows=${shops.rows.length}`]),
+    metricCard("ceo-critical-incidents", "Critical Incidents", "Incidents", incidents.some((incident) => incident.severity === "critical") ? "Failed" : "Needs Review", String(incidents.filter((incident) => incident.severity === "critical").length), "Absence of critical incidents does not prove full-platform health.", incidents.length ? incidents.map((incident) => incident.headline).slice(0, 4) : ["Automatic incident detector returned no incidents."]),
+    metricCard("ceo-regression-deployment-health", "Regression / Deployment Health", "Technology", "Needs Review", "Needs Review", "Deployment and regression truth require CI/deployment evidence beyond this database snapshot.", ["Commit fingerprint is displayed separately."]),
+    metricCard("ceo-next-executive-decisions", "Next Executive Decisions", "Executive Decisions", "Needs Review", "Needs Review", "Mission Control surfaces decisions; Phillip remains final executive decision maker.", ["Review Failed and Needs Review cards before release decisions."])
+  ];
+}
+
 export async function buildMissionControlSnapshot(
   supabase: SupabaseClient,
   actor: ArchitectActor
@@ -602,9 +788,10 @@ export async function buildMissionControlSnapshot(
     detectArchitectMissionIncidents(supabase),
     loadPaymentRoutingConstraintEvidence(supabase)
   ]);
+  const ceoPlatformMetrics = await buildCeoPlatformMetrics(supabase, incidents, checkedAt);
   const health = healthFromIncidents(incidents, checkedAt);
   const packets = Object.fromEntries(incidents.map((incident) => [incident.id, packetSet({ checkedAt, environment }, incident)]));
-  const foundation = buildMissionControlFoundation(incidents, checkedAt);
+  const foundation = buildMissionControlFoundation(incidents, checkedAt, ceoPlatformMetrics);
 
   return {
     ok: true,

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { Route } from "next";
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Brain, CheckCircle2, Clipboard, FileCode2, RefreshCw, Rocket, ShieldCheck, Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,7 @@ import type {
   MissionDepartmentLane,
   MissionEvidenceCard,
   MissionIncidentDefinition,
+  MissionLaneId,
   MissionValidationResult,
   SourceVaultEntry
 } from "@/lib/architect/mission-control/types";
@@ -76,6 +78,9 @@ function EvidenceCard({ card }: { card: MissionEvidenceCard }) {
         </div>
         <StatusPill status={card.status} />
       </div>
+      {card.metricValue ? (
+        <p className="mt-4 text-3xl font-semibold tracking-tight text-white">{card.metricValue}</p>
+      ) : null}
       <p className="mt-3 text-sm leading-6 text-white/68">{card.summary}</p>
       <ul className="mt-3 space-y-1 text-xs leading-5 text-white/48">
         {card.evidence.slice(0, 4).map((item) => <li key={item}>{item}</li>)}
@@ -84,35 +89,36 @@ function EvidenceCard({ card }: { card: MissionEvidenceCard }) {
   );
 }
 
-function MissionControlNavigationPanel({ foundation }: { foundation: MissionControlFoundation }) {
+function MissionControlNavigationPanel({ foundation, activeLaneId }: { foundation: MissionControlFoundation; activeLaneId: MissionLaneId }) {
+  const activeLane = foundation.navigationLanes.find((lane) => lane.id === activeLaneId) ?? foundation.navigationLanes[0];
   return (
     <section aria-labelledby="mission-control-navigation" className="rounded-lg border border-white/10 bg-black/25 p-5">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-xs uppercase tracking-[0.22em] text-[#d7ffab]">BVRB3R Mission Control Navigation</p>
-          <h2 id="mission-control-navigation" className="mt-2 text-2xl font-semibold text-white">CEO lane is the default landing lane</h2>
+          <h2 id="mission-control-navigation" className="mt-2 text-2xl font-semibold text-white">{activeLane.label} lane is routed and active</h2>
         </div>
-        <StatusPill status="Needs Review" />
+        <StatusPill status={activeLaneId === foundation.defaultLaneId ? "Default" : "Needs Review"} />
       </div>
       <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
         {foundation.navigationLanes.map((lane) => (
-          <a
+          <Link
             key={lane.id}
-            href={lane.href}
-            aria-current={lane.id === foundation.defaultLaneId ? "page" : undefined}
+            href={lane.href as Route}
+            aria-current={lane.id === activeLaneId ? "page" : undefined}
             className={cn(
               "rounded-lg border p-3 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/40",
-              lane.id === foundation.defaultLaneId
+              lane.id === activeLaneId
                 ? "border-[#7CFF00]/28 bg-[#7CFF00]/10"
                 : "border-white/10 bg-white/[0.025] hover:border-[#7CFF00]/20"
             )}
           >
             <div className="flex items-center justify-between gap-3">
               <p className="font-semibold text-white">{lane.label}</p>
-              {lane.id === foundation.defaultLaneId ? <StatusPill status="Default" /> : null}
+              {lane.id === activeLaneId ? <StatusPill status={lane.id === foundation.defaultLaneId ? "Default" : "Active"} /> : null}
             </div>
             <p className="mt-2 text-xs leading-5 text-white/54">{lane.purpose}</p>
-          </a>
+          </Link>
         ))}
       </div>
     </section>
@@ -133,29 +139,25 @@ function CeoCommandCenter({ foundation }: { foundation: MissionControlFoundation
   );
 }
 
-function DepartmentLanePanel({ lanes }: { lanes: MissionDepartmentLane[] }) {
+function DepartmentLaneDetail({ lane }: { lane: MissionDepartmentLane }) {
   return (
-    <section aria-labelledby="department-lanes" className="space-y-4">
+    <section aria-labelledby={`${lane.id}-lane-heading`} className="space-y-4">
       <div>
-        <p className="text-xs uppercase tracking-[0.22em] text-[#d7ffab]">Department Lanes</p>
-        <h2 id="department-lanes" className="mt-2 text-2xl font-semibold text-white">Read-only evidence cards</h2>
+        <p className="text-xs uppercase tracking-[0.22em] text-[#d7ffab]">{lane.label} Mission Control</p>
+        <h2 id={`${lane.id}-lane-heading`} className="mt-2 text-2xl font-semibold text-white">{lane.purpose}</h2>
       </div>
-      <div className="space-y-4">
-        {lanes.filter((lane) => lane.id !== "ceo").map((lane) => (
-          <article key={lane.id} id={lane.id === "content_community" ? "content-community" : lane.id} className="rounded-lg border border-white/10 bg-black/25 p-4">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <p className="text-[10px] uppercase tracking-[0.18em] text-white/40">{lane.label}</p>
-                <h3 className="mt-2 text-xl font-semibold text-white">{lane.purpose}</h3>
-              </div>
-              <StatusPill status={lane.status} />
-            </div>
-            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {lane.cards.map((card) => <EvidenceCard key={card.id} card={card} />)}
-            </div>
-          </article>
-        ))}
-      </div>
+      <article id={lane.id === "content_community" ? "content-community" : lane.id} className="rounded-lg border border-white/10 bg-black/25 p-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.18em] text-white/40">{lane.label}</p>
+            <h3 className="mt-2 text-xl font-semibold text-white">Read-only evidence cards</h3>
+          </div>
+          <StatusPill status={lane.status} />
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {lane.cards.map((card) => <EvidenceCard key={card.id} card={card} />)}
+        </div>
+      </article>
     </section>
   );
 }
@@ -519,7 +521,7 @@ function ValidationPanel({ validation }: { validation: MissionValidationResult |
   );
 }
 
-export function ArchitectMissionControl() {
+export function ArchitectMissionControl({ laneId = "ceo" }: { laneId?: MissionLaneId }) {
   const [snapshot, setSnapshot] = useState<MissionControlSnapshot | null>(null);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
   const [validation, setValidation] = useState<MissionValidationResult | null>(null);
@@ -535,6 +537,8 @@ export function ArchitectMissionControl() {
     () => snapshot?.foundation ?? buildMissionControlFoundation(snapshot?.incidents ?? [], snapshot?.checkedAt),
     [snapshot]
   );
+  const activeLane = foundation.navigationLanes.some((lane) => lane.id === laneId) ? laneId : foundation.defaultLaneId;
+  const selectedDepartmentLane = foundation.departmentLanes.find((lane) => lane.id === activeLane);
 
   async function loadSnapshot() {
     setLoading(true);
@@ -654,60 +658,65 @@ export function ArchitectMissionControl() {
 
         {snapshot ? (
           <>
-            <MissionControlNavigationPanel foundation={foundation} />
-            <CeoCommandCenter foundation={foundation} />
-            <DepartmentLanePanel lanes={foundation.departmentLanes} />
-            <CoreLoopValidatorPanel validators={foundation.coreLoopValidators} />
-            <IncidentTypePanel incidentTypes={foundation.incidentTypes} />
-            <SourceVaultPanel sources={foundation.sourceVault} />
-            <ActionRegistryPanel actions={foundation.actionRegistry} />
-            <AgentRegistryPanel agents={foundation.agentRegistry} />
+            <MissionControlNavigationPanel foundation={foundation} activeLaneId={activeLane} />
+            {activeLane === "ceo" ? (
+              <>
+                <CeoCommandCenter foundation={foundation} />
+                <CoreLoopValidatorPanel validators={foundation.coreLoopValidators} />
+                <IncidentTypePanel incidentTypes={foundation.incidentTypes} />
+                <SourceVaultPanel sources={foundation.sourceVault} />
+                <ActionRegistryPanel actions={foundation.actionRegistry} />
+                <AgentRegistryPanel agents={foundation.agentRegistry} />
 
-            <section aria-labelledby="active-incidents" className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_24rem]">
-              <div className="space-y-4">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.22em] text-[#d7ffab]">Active Incidents</p>
-                  <h2 id="active-incidents" className="mt-2 text-2xl font-semibold text-white">
-                    {incidents.length ? `${incidents.length} issue${incidents.length === 1 ? "" : "s"} found` : "No active incidents"}
-                  </h2>
-                </div>
-                {incidents.length ? incidents.map((incident) => (
-                  <IncidentCard
-                    key={incident.id}
-                    incident={incident}
-                    selected={selectedIncident?.id === incident.id}
-                    busy={busy}
-                    onAnalyze={() => setSelectedIncidentId(incident.id)}
-                    onRepair={() => {
-                      setSelectedIncidentId(incident.id);
-                      void runRepair(incident);
-                    }}
-                    onValidate={() => {
-                      setSelectedIncidentId(incident.id);
-                      void runValidation(incident);
-                    }}
-                  />
-                )) : (
-                  <Card className="border-white/10 bg-black/25 p-5">
-                    <p className="text-sm text-white/60">Mission Control found no automatic production incidents.</p>
-                  </Card>
-                )}
-              </div>
+                <section aria-labelledby="active-incidents" className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_24rem]">
+                  <div className="space-y-4">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.22em] text-[#d7ffab]">Active Incidents</p>
+                      <h2 id="active-incidents" className="mt-2 text-2xl font-semibold text-white">
+                        {incidents.length ? `${incidents.length} issue${incidents.length === 1 ? "" : "s"} found` : "No active incidents"}
+                      </h2>
+                    </div>
+                    {incidents.length ? incidents.map((incident) => (
+                      <IncidentCard
+                        key={incident.id}
+                        incident={incident}
+                        selected={selectedIncident?.id === incident.id}
+                        busy={busy}
+                        onAnalyze={() => setSelectedIncidentId(incident.id)}
+                        onRepair={() => {
+                          setSelectedIncidentId(incident.id);
+                          void runRepair(incident);
+                        }}
+                        onValidate={() => {
+                          setSelectedIncidentId(incident.id);
+                          void runValidation(incident);
+                        }}
+                      />
+                    )) : (
+                      <Card className="border-white/10 bg-black/25 p-5">
+                        <p className="text-sm text-white/60">Mission Control found no automatic production incidents.</p>
+                      </Card>
+                    )}
+                  </div>
 
-              <div className="space-y-5">
-                <AnalysisPanel incident={selectedIncident} />
-                <ActionsPanel
-                  snapshot={snapshot}
-                  incident={selectedIncident}
-                  busy={busy}
-                  onCopy={copyPacket}
-                  onRefresh={loadSnapshot}
-                  onRepair={() => void runRepair()}
-                  onValidate={() => void runValidation()}
-                />
-                <ValidationPanel validation={validation} />
-              </div>
-            </section>
+                  <div className="space-y-5">
+                    <AnalysisPanel incident={selectedIncident} />
+                    <ActionsPanel
+                      snapshot={snapshot}
+                      incident={selectedIncident}
+                      busy={busy}
+                      onCopy={copyPacket}
+                      onRefresh={loadSnapshot}
+                      onRepair={() => void runRepair()}
+                      onValidate={() => void runValidation()}
+                    />
+                    <ValidationPanel validation={validation} />
+                  </div>
+                </section>
+              </>
+            ) : selectedDepartmentLane ? (
+              <DepartmentLaneDetail lane={selectedDepartmentLane} />
+            ) : null}
           </>
         ) : null}
       </div>
