@@ -3,24 +3,18 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Brain, CheckCircle2, Clipboard, FileCode2, RefreshCw, Rocket, ShieldCheck, Wrench } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clipboard, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import type { ArchitectRepairResult } from "@/lib/architect/debug/types";
 import { buildMissionControlFoundation } from "@/lib/architect/mission-control/foundation";
 import type {
-  ActionRegistryEntry,
   ArchitectIncident,
-  CoreLoopValidator,
-  HiveAgentEntry,
   MissionControlFoundation,
   MissionControlSnapshot,
   MissionDepartmentLane,
   MissionEvidenceCard,
-  MissionIncidentDefinition,
-  MissionLaneId,
-  MissionValidationResult,
-  SourceVaultEntry
+  MissionControlStatus,
+  MissionLaneId
 } from "@/lib/architect/mission-control/types";
 import { cn } from "@/lib/utils";
 
@@ -89,51 +83,155 @@ function EvidenceCard({ card }: { card: MissionEvidenceCard }) {
   );
 }
 
-function MissionControlNavigationPanel({ foundation, activeLaneId }: { foundation: MissionControlFoundation; activeLaneId: MissionLaneId }) {
-  const activeLane = foundation.navigationLanes.find((lane) => lane.id === activeLaneId) ?? foundation.navigationLanes[0];
+type CompactCeoCard = {
+  id: string;
+  label: string;
+  status: MissionControlStatus;
+  value: string;
+  summary: string;
+  href?: Route;
+  actionLabel?: string;
+};
+
+function findCeoCard(foundation: MissionControlFoundation, id: string) {
+  return foundation.ceoCommandCenter.find((card) => card.id === id);
+}
+
+function statusRank(status: MissionControlStatus) {
+  if (status === "Failed") return 3;
+  if (status === "Warning") return 2;
+  if (status === "Needs Review") return 1;
+  return 0;
+}
+
+function worstStatus(...statuses: Array<MissionControlStatus | undefined>): MissionControlStatus {
+  return statuses.reduce<MissionControlStatus>((worst, status) => {
+    if (!status) return worst;
+    return statusRank(status) > statusRank(worst) ? status : worst;
+  }, "Pass");
+}
+
+function metricValue(card: MissionEvidenceCard | undefined) {
+  return card?.metricValue ?? "Not connected";
+}
+
+function metricSummary(card: MissionEvidenceCard | undefined) {
+  return card?.summary ?? "Missing data remains Needs Review.";
+}
+
+function compactCard(input: {
+  id: string;
+  label: string;
+  status?: MissionControlStatus;
+  value?: string;
+  summary?: string;
+  href?: Route;
+  actionLabel?: string;
+}): CompactCeoCard {
+  return {
+    id: input.id,
+    label: input.label,
+    status: input.status ?? "Needs Review",
+    value: input.value ?? "Not connected",
+    summary: input.summary ?? "Missing data remains Needs Review.",
+    href: input.href,
+    actionLabel: input.actionLabel
+  };
+}
+
+function buildCompactCeoCards(foundation: MissionControlFoundation, snapshot: MissionControlSnapshot, selectedIncident: ArchitectIncident | null): CompactCeoCard[] {
+  const platform = findCeoCard(foundation, "overall-platform-status");
+  const money = findCeoCard(foundation, "ceo-platform-fees");
+  const totalUsers = findCeoCard(foundation, "ceo-total-users");
+  const clients = findCeoCard(foundation, "ceo-clients-total");
+  const barbers = findCeoCard(foundation, "ceo-barbers-total");
+  const owners = findCeoCard(foundation, "ceo-shop-owners-total");
+  const bookings = findCeoCard(foundation, "ceo-total-bookings");
+  const todayBookings = findCeoCard(foundation, "ceo-todays-bookings");
+  const payments = findCeoCard(foundation, "ceo-payments-captured");
+  const routing = findCeoCard(foundation, "ceo-payment-routing-health");
+  const payout = findCeoCard(foundation, "ceo-payout-readiness-health");
+  const culture = findCeoCard(foundation, "ceo-culture-health");
+  const shops = findCeoCard(foundation, "ceo-active-shops");
+  const activeBarbers = findCeoCard(foundation, "ceo-active-barbers");
+  const incidents = findCeoCard(foundation, "ceo-critical-incidents");
+  const deployment = findCeoCard(foundation, "ceo-regression-deployment-health");
+  const sourceVault = findCeoCard(foundation, "source-vault-status");
+  const hiveAi = findCeoCard(foundation, "agent-status");
+  const unsafeActions = foundation.actionRegistry.filter((action) => action.riskClass === "Unsafe / blocked");
+  const unsafeBlocked = unsafeActions.length > 0 && unsafeActions.every((action) => !action.allowed);
+  const packetCount = Object.keys(snapshot.packets ?? {}).length;
+  const selectedPacket = selectedIncident ? snapshot.packets[selectedIncident.id]?.codexPacket : null;
+
+  return [
+    compactCard({ id: "platform-health", label: "Platform Health", status: platform?.status, value: platform?.status, summary: metricSummary(platform), href: "/architect/technology" }),
+    compactCard({ id: "money-revenue", label: "Money / App Revenue", status: money?.status, value: metricValue(money), summary: metricSummary(money), href: "/architect/finance" }),
+    compactCard({ id: "total-users", label: "Total Users", status: totalUsers?.status, value: metricValue(totalUsers), summary: metricSummary(totalUsers), href: "/architect/product" }),
+    compactCard({ id: "clients", label: "Clients", status: clients?.status, value: metricValue(clients), summary: metricSummary(clients), href: "/architect/product" }),
+    compactCard({ id: "barbers", label: "Barbers", status: barbers?.status, value: metricValue(barbers), summary: metricSummary(barbers), href: "/architect/operations" }),
+    compactCard({ id: "shop-owners", label: "Shop Owners", status: owners?.status, value: metricValue(owners), summary: metricSummary(owners), href: "/architect/operations" }),
+    compactCard({ id: "bookings", label: "Bookings", status: worstStatus(bookings?.status, todayBookings?.status), value: metricValue(bookings), summary: `Today: ${metricValue(todayBookings)}. ${metricSummary(bookings)}`, href: "/architect/operations" }),
+    compactCard({ id: "payments", label: "Payments", status: payments?.status, value: metricValue(payments), summary: metricSummary(payments), href: "/architect/finance" }),
+    compactCard({ id: "routing-payout", label: "Routing / Payout Readiness", status: worstStatus(routing?.status, payout?.status), value: `${metricValue(routing)} / ${metricValue(payout)}`, summary: "Payment routing and payout readiness stay separated from money mutation.", href: "/architect/finance" }),
+    compactCard({ id: "culture", label: "Culture", status: culture?.status, value: metricValue(culture), summary: metricSummary(culture), href: "/architect/content-community" }),
+    compactCard({ id: "active-supply", label: "Active Shops / Active Barbers", status: worstStatus(shops?.status, activeBarbers?.status), value: `${metricValue(shops)} / ${metricValue(activeBarbers)}`, summary: "Active supply is read from shop and barber evidence.", href: "/architect/operations" }),
+    compactCard({ id: "critical-incidents", label: "Critical Incidents", status: incidents?.status, value: metricValue(incidents), summary: metricSummary(incidents), href: "/architect/technology" }),
+    compactCard({ id: "deployment-regression", label: "Deployment / Regression", status: deployment?.status, value: metricValue(deployment), summary: metricSummary(deployment), href: "/architect/technology" }),
+    compactCard({ id: "source-vault", label: "Source Vault", status: sourceVault?.status, value: `${foundation.sourceVault.length} registered`, summary: "Sources are registered, not ingested.", href: "/architect/technology" }),
+    compactCard({ id: "action-registry", label: "Action Registry", status: unsafeBlocked ? "Pass" : "Failed", value: unsafeBlocked ? "Unsafe blocked" : "Review needed", summary: `${unsafeActions.length} unsafe action(s) blocked by registry.`, href: "/architect/security" }),
+    compactCard({ id: "hive-ai", label: "Hive AI", status: hiveAi?.status, value: `${foundation.agentRegistry.length} agents`, summary: "Hive AI remains Level 0/1 only.", href: "/architect/technology" }),
+    compactCard({ id: "codex-packets", label: "Codex Packets", status: selectedPacket ? "Pass" : "Needs Review", value: `${packetCount} packet(s)`, summary: selectedPacket ? "Codex packet is available for the selected incident." : "No active incident packet is selected.", href: "/architect/technology", actionLabel: selectedPacket ? "Copy Codex Packet" : undefined })
+  ];
+}
+
+function CompactCeoCard({ card, onAction }: { card: CompactCeoCard; onAction?: () => void }) {
   return (
-    <section aria-labelledby="mission-control-navigation" className="rounded-lg border border-white/10 bg-black/25 p-5">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-xs uppercase tracking-[0.22em] text-[#d7ffab]">BVRB3R Mission Control Navigation</p>
-          <h2 id="mission-control-navigation" className="mt-2 text-2xl font-semibold text-white">{activeLane.label} lane is routed and active</h2>
+    <article className="flex min-h-[8.25rem] flex-col justify-between rounded-lg border border-white/10 bg-black/28 p-3">
+      <div>
+        <div className="flex items-start justify-between gap-2">
+          <h3 className="text-sm font-semibold text-white">{card.label}</h3>
+          <StatusPill status={card.status} />
         </div>
-        <StatusPill status={activeLaneId === foundation.defaultLaneId ? "Default" : "Needs Review"} />
+        <p className="mt-2 text-2xl font-semibold tracking-tight text-white">{card.value}</p>
+        <p className="mt-1 text-xs leading-5 text-white/56">{card.summary}</p>
       </div>
-      <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-        {foundation.navigationLanes.map((lane) => (
-          <Link
-            key={lane.id}
-            href={lane.href as Route}
-            aria-current={lane.id === activeLaneId ? "page" : undefined}
-            className={cn(
-              "rounded-lg border p-3 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#A3FF12]/40",
-              lane.id === activeLaneId
-                ? "border-[#7CFF00]/28 bg-[#7CFF00]/10"
-                : "border-white/10 bg-white/[0.025] hover:border-[#7CFF00]/20"
-            )}
-          >
-            <div className="flex items-center justify-between gap-3">
-              <p className="font-semibold text-white">{lane.label}</p>
-              {lane.id === activeLaneId ? <StatusPill status={lane.id === foundation.defaultLaneId ? "Default" : "Active"} /> : null}
-            </div>
-            <p className="mt-2 text-xs leading-5 text-white/54">{lane.purpose}</p>
+      <div className="mt-3 flex items-center gap-2">
+        {card.href ? (
+          <Link href={card.href} className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#d7ffab] hover:text-white">
+            Open lane
           </Link>
-        ))}
+        ) : null}
+        {card.actionLabel && onAction ? (
+          <Button type="button" variant="secondary" onClick={onAction} className="min-h-8 px-3 text-[10px]">
+            <Clipboard className="h-3.5 w-3.5" />
+            {card.actionLabel}
+          </Button>
+        ) : null}
       </div>
-    </section>
+    </article>
   );
 }
 
-function CeoCommandCenter({ foundation }: { foundation: MissionControlFoundation }) {
+function CeoCommandCenter({ foundation, snapshot, selectedIncident, onCopyCodexPacket }: { foundation: MissionControlFoundation; snapshot: MissionControlSnapshot; selectedIncident: ArchitectIncident | null; onCopyCodexPacket: () => void }) {
+  const cards = buildCompactCeoCards(foundation, snapshot, selectedIncident);
+
   return (
-    <section aria-labelledby="ceo-command-center" className="space-y-4">
-      <div>
-        <p className="text-xs uppercase tracking-[0.22em] text-[#d7ffab]">CEO Command Center</p>
-        <h2 id="ceo-command-center" className="mt-2 text-2xl font-semibold text-white">Health, risk, and next decisions</h2>
+    <section aria-labelledby="ceo-command-center" className="space-y-3" data-testid="architect-ceo-one-screen">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs uppercase tracking-[0.22em] text-[#d7ffab]">CEO Command Center</p>
+          <h2 id="ceo-command-center" className="mt-1 text-2xl font-semibold text-white">One-screen platform posture</h2>
+        </div>
+        <p className="text-xs text-white/48">Missing data stays Needs Review. Failed evidence stays Failed.</p>
       </div>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {foundation.ceoCommandCenter.map((card) => <EvidenceCard key={card.id} card={card} />)}
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-6">
+        {cards.map((card) => (
+          <CompactCeoCard
+            key={card.id}
+            card={card}
+            onAction={card.id === "codex-packets" ? onCopyCodexPacket : undefined}
+          />
+        ))}
       </div>
     </section>
   );
@@ -162,374 +260,12 @@ function DepartmentLaneDetail({ lane }: { lane: MissionDepartmentLane }) {
   );
 }
 
-function CoreLoopValidatorPanel({ validators }: { validators: CoreLoopValidator[] }) {
-  return (
-    <section aria-labelledby="core-loop-validators" className="space-y-4">
-      <div>
-        <p className="text-xs uppercase tracking-[0.22em] text-[#d7ffab]">Core Loop Validators</p>
-        <h2 id="core-loop-validators" className="mt-2 text-2xl font-semibold text-white">Workflow truth checks</h2>
-      </div>
-      <div className="grid gap-3 lg:grid-cols-2">
-        {validators.map((validator) => (
-          <article key={validator.id} className="rounded-lg border border-white/10 bg-black/24 p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-[10px] uppercase tracking-[0.18em] text-white/40">{validator.department}</p>
-                <h3 className="mt-2 text-lg font-semibold text-white">{validator.label}</h3>
-              </div>
-              <StatusPill status={validator.status} />
-            </div>
-            <p className="mt-3 text-sm text-white/62">{validator.summary}</p>
-            <div className="mt-3 flex flex-wrap gap-2 text-[10px] uppercase tracking-[0.14em]">
-              <span className={cn("rounded-full border px-2 py-1", validator.safeRepairAvailable ? statusClass("warning") : statusClass("needs review"))}>
-                Safe repair: {validator.safeRepairAvailable ? "yes" : "no"}
-              </span>
-              <span className={cn("rounded-full border px-2 py-1", validator.codexPatchNeeded ? statusClass("warning") : statusClass("needs review"))}>
-                Codex patch: {validator.codexPatchNeeded ? "yes" : "no"}
-              </span>
-            </div>
-            <ul className="mt-3 space-y-1 text-xs leading-5 text-white/48">
-              {validator.validationChecklist.map((item) => <li key={item}>{item}</li>)}
-            </ul>
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function IncidentTypePanel({ incidentTypes }: { incidentTypes: MissionIncidentDefinition[] }) {
-  return (
-    <section aria-labelledby="incident-types" className="space-y-4">
-      <div>
-        <p className="text-xs uppercase tracking-[0.22em] text-[#d7ffab]">Incident System</p>
-        <h2 id="incident-types" className="mt-2 text-2xl font-semibold text-white">Known failure classes</h2>
-      </div>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {incidentTypes.map((incidentType) => (
-          <article key={incidentType.type} className="rounded-lg border border-white/10 bg-black/24 p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="font-mono text-xs text-white/42">{incidentType.type}</p>
-                <h3 className="mt-2 text-base font-semibold text-white">{incidentType.affectedWorkflow}</h3>
-              </div>
-              <StatusPill status={incidentType.severity === "warning" ? "Warning" : "Failed"} />
-            </div>
-            <p className="mt-3 text-sm leading-6 text-white/62">{incidentType.likelyRootCause}</p>
-            <p className="mt-3 text-xs text-white/44">Safe repair available: {incidentType.safeRepairAvailable ? "yes" : "no"} / Codex patch needed: {incidentType.codexPatchNeeded ? "yes" : "no"}</p>
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function SourceVaultPanel({ sources }: { sources: SourceVaultEntry[] }) {
-  return (
-    <section aria-labelledby="source-vault" className="space-y-4">
-      <div>
-        <p className="text-xs uppercase tracking-[0.22em] text-[#d7ffab]">Source Vault</p>
-        <h2 id="source-vault" className="mt-2 text-2xl font-semibold text-white">Registered, not ingested</h2>
-      </div>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {sources.map((source) => (
-          <article key={source.id} className="rounded-lg border border-white/10 bg-black/24 p-4">
-            <div className="flex items-start justify-between gap-3">
-              <h3 className="text-base font-semibold text-white">{source.sourceName}</h3>
-              <StatusPill status={source.status} />
-            </div>
-            <p className="mt-2 text-xs uppercase tracking-[0.16em] text-white/40">{source.category} / {source.linkedSystemArea}</p>
-            <p className="mt-3 text-sm leading-6 text-white/62">{source.purpose}</p>
-            <p className="mt-3 text-xs text-white/44">{source.ingestionStatus}</p>
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function ActionRegistryPanel({ actions }: { actions: ActionRegistryEntry[] }) {
-  return (
-    <section aria-labelledby="action-registry" className="space-y-4">
-      <div>
-        <p className="text-xs uppercase tracking-[0.22em] text-[#d7ffab]">Action Registry</p>
-        <h2 id="action-registry" className="mt-2 text-2xl font-semibold text-white">Boundaries before buttons</h2>
-      </div>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {actions.map((action) => (
-          <article key={action.id} className="rounded-lg border border-white/10 bg-black/24 p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-[10px] uppercase tracking-[0.18em] text-white/40">{action.riskClass}</p>
-                <h3 className="mt-2 text-base font-semibold text-white">{action.label}</h3>
-              </div>
-              <StatusPill status={action.status} />
-            </div>
-            <p className="mt-3 text-sm leading-6 text-white/62">{action.description}</p>
-            <p className="mt-3 text-xs text-white/44">Allowed: {action.allowed ? "yes" : "no"} / Approval: {action.approvalRequired ? "required" : "not required"}</p>
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function AgentRegistryPanel({ agents }: { agents: HiveAgentEntry[] }) {
-  return (
-    <section aria-labelledby="agent-registry" className="space-y-4">
-      <div>
-        <p className="text-xs uppercase tracking-[0.22em] text-[#d7ffab]">Hive AI / Agent Registry</p>
-        <h2 id="agent-registry" className="mt-2 text-2xl font-semibold text-white">Read-only workforce brain</h2>
-      </div>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {agents.map((agent) => (
-          <article key={agent.id} className="rounded-lg border border-white/10 bg-black/24 p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-[10px] uppercase tracking-[0.18em] text-white/40">{agent.department}</p>
-                <h3 className="mt-2 text-base font-semibold text-white">{agent.name}</h3>
-              </div>
-              <StatusPill status={agent.currentStatus} />
-            </div>
-            <p className="mt-3 text-sm leading-6 text-white/62">{agent.job}</p>
-            <div className="mt-3 rounded-lg border border-white/10 bg-black/20 p-3 text-xs leading-5 text-white/52">
-              <p>Autonomy: {agent.autonomyLevel}</p>
-              <p>Data: {agent.dataAccess}</p>
-              <p>Action: {agent.actionAccess}</p>
-              <p>Failure rule: {agent.failureRule}</p>
-            </div>
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function IncidentCard({
-  incident,
-  selected,
-  onAnalyze,
-  onRepair,
-  onValidate,
-  busy
-}: {
-  incident: ArchitectIncident;
-  selected: boolean;
-  onAnalyze: () => void;
-  onRepair: () => void;
-  onValidate: () => void;
-  busy: boolean;
-}) {
-  return (
-    <article className={cn("rounded-lg border bg-black/24 p-4 transition", selected ? "border-[#7CFF00]/35" : "border-white/10")}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="font-mono text-xs text-white/42">{incident.id}</p>
-          <h3 className="mt-2 text-lg font-semibold text-white">{incident.headline}</h3>
-          <p className="mt-1 text-sm text-white/58">{incident.affectedEntity}</p>
-        </div>
-        <span className={cn("rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]", statusClass(incident.severity))}>
-          {incident.severity}
-        </span>
-      </div>
-      <div className="mt-4 grid gap-2 text-xs text-white/58 sm:grid-cols-3">
-        <span>Code: <strong className="text-white/82">{incident.diagnosisCode}</strong></span>
-        <span>Dept: <strong className="text-white/82">{incident.affectedDepartment ?? incident.affectedRole}</strong></span>
-        <span>Confidence: <strong className="text-white/82">{incident.confidence}</strong></span>
-      </div>
-      <div className="mt-3 rounded-lg border border-white/10 bg-black/20 p-3 text-xs leading-5 text-white/56">
-        <p>Workflow: <strong className="text-white/82">{incident.affectedWorkflow ?? incident.analysis.affectedLayer}</strong></p>
-        <p>Table: <strong className="text-white/82">{incident.affectedTable ?? "none"}</strong></p>
-        <p>Safe repair available: <strong className="text-white/82">{incident.canRepair ? "yes" : "no"}</strong></p>
-        <p>Codex patch needed: <strong className="text-white/82">{incident.codexRequired ? "yes" : "no"}</strong></p>
-      </div>
-      <ul className="mt-3 space-y-1 text-xs leading-5 text-white/48">
-        {incident.evidence.slice(0, 4).map((item) => <li key={item}>{item}</li>)}
-      </ul>
-      {incident.validationChecklist?.length ? (
-        <details className="mt-3 rounded-lg border border-white/10 bg-black/20 p-3 text-xs text-white/56">
-          <summary className="cursor-pointer text-white/72">Validation checklist</summary>
-          <ul className="mt-2 space-y-1">
-            {incident.validationChecklist.map((item) => <li key={item}>{item}</li>)}
-          </ul>
-        </details>
-      ) : null}
-      <p className="mt-3 text-sm text-white/70">{incident.recommendedAction}</p>
-      <div className="mt-4 flex flex-wrap gap-2">
-        <Button type="button" variant="secondary" onClick={onAnalyze}>Analyze</Button>
-        {incident.canRepair ? (
-          <Button type="button" onClick={onRepair} disabled={busy}>
-            <Wrench className="h-4 w-4" />
-            {busy ? "Repairing" : "Run Safe Repair"}
-          </Button>
-        ) : null}
-        <Button type="button" variant="secondary" onClick={onValidate}>Validate</Button>
-      </div>
-    </article>
-  );
-}
-
-function AnalysisPanel({ incident }: { incident: ArchitectIncident | null }) {
-  if (!incident) {
-    return (
-      <Card className="border-white/10 bg-black/25 p-5">
-        <div className="flex items-center gap-2 text-white">
-          <Brain className="h-4 w-4" />
-          <h2 className="text-lg font-semibold">AI Analysis</h2>
-        </div>
-        <p className="mt-4 text-sm text-white/58">Select an incident to see the failure layer, ruled-out causes, and next action.</p>
-      </Card>
-    );
-  }
-
-  return (
-    <Card className="border-white/10 bg-black/25 p-5">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-white">
-          <Brain className="h-4 w-4" />
-          <h2 className="text-lg font-semibold">AI Analysis</h2>
-        </div>
-        <span className="rounded-full border border-[#7CFF00]/20 bg-[#7CFF00]/10 px-3 py-1 text-xs text-[#d7ffab]">
-          {incident.analysis.confidence}% confidence
-        </span>
-      </div>
-      <div className="mt-5 space-y-4">
-        <div>
-          <p className="text-xs uppercase tracking-[0.18em] text-white/40">Likely Root Cause</p>
-          <p className="mt-2 text-sm leading-6 text-white">{incident.analysis.likelyRootCause}</p>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="rounded-lg border border-white/10 bg-black/20 p-3">
-            <p className="text-xs uppercase tracking-[0.16em] text-white/40">Affected Layer</p>
-            <p className="mt-2 text-sm text-white">{incident.analysis.affectedLayer}</p>
-          </div>
-          <div className="rounded-lg border border-white/10 bg-black/20 p-3">
-            <p className="text-xs uppercase tracking-[0.16em] text-white/40">Failed Invariant</p>
-            <p className="mt-2 text-sm text-white">{incident.analysis.failedInvariant}</p>
-          </div>
-        </div>
-        <div>
-          <p className="text-xs uppercase tracking-[0.18em] text-white/40">Supporting Evidence</p>
-          <ul className="mt-2 space-y-2 text-sm text-white/68">
-            {incident.analysis.supportingEvidence.map((item) => <li key={item}>{item}</li>)}
-          </ul>
-        </div>
-        <div>
-          <p className="text-xs uppercase tracking-[0.18em] text-white/40">Ruled Out</p>
-          <p className="mt-2 text-sm text-white/68">{incident.analysis.ruledOut.join(", ") || "Nothing ruled out yet."}</p>
-        </div>
-        <div className={cn("rounded-lg border p-3 text-sm", statusClass(incident.analysis.safeRepairAvailable ? "warning" : incident.analysis.codexRequired ? "broken" : "healthy"))}>
-          {incident.analysis.nextBestAction}
-        </div>
-      </div>
-    </Card>
-  );
-}
-
-function ActionsPanel({
-  snapshot,
-  incident,
-  onCopy,
-  onRefresh,
-  onRepair,
-  onValidate,
-  busy
-}: {
-  snapshot: MissionControlSnapshot | null;
-  incident: ArchitectIncident | null;
-  onCopy: (kind: "chatGptPacket" | "codexPacket" | "incidentPacket") => void;
-  onRefresh: () => void;
-  onRepair: () => void;
-  onValidate: () => void;
-  busy: boolean;
-}) {
-  const disabled = !incident;
-  return (
-    <Card className="border-white/10 bg-black/25 p-5">
-      <div className="flex items-center gap-2 text-white">
-        <Rocket className="h-4 w-4" />
-        <h2 className="text-lg font-semibold">Actions</h2>
-      </div>
-      <div className="mt-4 grid gap-2">
-        <Button type="button" onClick={onRefresh} disabled={busy} variant="secondary">
-          <RefreshCw className="h-4 w-4" />
-          Re-run Detection
-        </Button>
-        <Button type="button" onClick={onRepair} disabled={busy || !incident?.canRepair}>
-          <Wrench className="h-4 w-4" />
-          Run Safe Repair
-        </Button>
-        <Button type="button" variant="secondary" onClick={() => onCopy("codexPacket")} disabled={disabled}>
-          <FileCode2 className="h-4 w-4" />
-          Generate Codex Patch
-        </Button>
-        <Button type="button" variant="secondary" onClick={() => onCopy("chatGptPacket")} disabled={disabled}>
-          <Clipboard className="h-4 w-4" />
-          Copy ChatGPT Packet
-        </Button>
-        <Button type="button" variant="secondary" onClick={() => onCopy("codexPacket")} disabled={disabled}>
-          <Clipboard className="h-4 w-4" />
-          Copy Codex Packet
-        </Button>
-        <Button type="button" variant="secondary" onClick={() => onCopy("incidentPacket")} disabled={disabled}>
-          <Clipboard className="h-4 w-4" />
-          Copy Incident Packet
-        </Button>
-        <Button type="button" variant="secondary" onClick={onValidate} disabled={disabled || busy}>
-          <CheckCircle2 className="h-4 w-4" />
-          Validate Production
-        </Button>
-        <Link
-          href={incident?.targetType === "appointment" ? `/architect/debug/appointment?appointmentId=${encodeURIComponent(incident.targetId)}` : "/architect/debug"}
-          className={cn("inline-flex min-h-[48px] items-center justify-center rounded-full border border-white/10 bg-white/[0.035] px-4 text-center text-[10px] font-extrabold uppercase tracking-[0.18em] text-white transition hover:border-[#A3FF12]/30", !snapshot && "pointer-events-none opacity-50")}
-        >
-          Open Deep Debug
-        </Link>
-      </div>
-    </Card>
-  );
-}
-
-function ValidationPanel({ validation }: { validation: MissionValidationResult | null }) {
-  return (
-    <Card className="border-white/10 bg-black/25 p-5">
-      <div className="flex items-center gap-2 text-white">
-        <ShieldCheck className="h-4 w-4" />
-        <h2 className="text-lg font-semibold">Validation</h2>
-      </div>
-      {!validation ? (
-        <p className="mt-4 text-sm text-white/58">Run production validation for the selected appointment.</p>
-      ) : (
-        <div className="mt-4 space-y-2">
-          <div className={cn("rounded-lg border p-3 text-sm", statusClass(validation.passed ? "pass" : "fail"))}>
-            {validation.passed ? "Validation passed." : "Validation found failed checks."}
-          </div>
-          {validation.checks.map((item) => (
-            <div key={item.stage} className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-black/20 p-3">
-              <div>
-                <p className="font-mono text-sm text-white">{item.stage}</p>
-                {item.reason ? <p className="mt-1 text-xs text-white/48">{item.reason}</p> : null}
-              </div>
-              <span className={cn("rounded-full border px-2 py-1 text-[10px] uppercase tracking-[0.14em]", statusClass(item.status))}>
-                {item.status}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-    </Card>
-  );
-}
-
 export function ArchitectMissionControl({ laneId = "ceo" }: { laneId?: MissionLaneId }) {
   const [snapshot, setSnapshot] = useState<MissionControlSnapshot | null>(null);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
-  const [validation, setValidation] = useState<MissionValidationResult | null>(null);
-  const [repairResult, setRepairResult] = useState<ArchitectRepairResult | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
 
   const incidents = useMemo(() => [...(snapshot?.incidents ?? [])].sort((a, b) => severityRank(a) - severityRank(b)), [snapshot]);
   const selectedIncident = incidents.find((incident) => incident.id === selectedIncidentId) ?? incidents[0] ?? null;
@@ -567,49 +303,6 @@ export function ArchitectMissionControl({ laneId = "ceo" }: { laneId?: MissionLa
     setNotice("Packet copied.");
   }
 
-  async function runRepair(incident = selectedIncident) {
-    if (!incident?.canRepair || incident.repairType !== "payment_routing") return;
-    setBusy(true);
-    setError(null);
-    setNotice(null);
-    try {
-      const response = await fetch("/api/architect/repairs/payment-routing", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ appointmentId: incident.targetId })
-      });
-      const body = await readJson<ArchitectRepairResult>(response);
-      setRepairResult(body);
-      setNotice(body.warning ?? (body.repaired ? "Safe repair completed." : "Routing was already repaired."));
-      await loadSnapshot();
-    } catch (repairError) {
-      setError(repairError instanceof Error ? repairError.message : "Safe repair failed.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function runValidation(incident = selectedIncident) {
-    if (!incident || incident.targetType !== "appointment") return;
-    setBusy(true);
-    setError(null);
-    setNotice(null);
-    try {
-      const response = await fetch("/api/architect/mission-control/validate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ appointmentId: incident.targetId })
-      });
-      const body = await readJson<MissionValidationResult>(response);
-      setValidation(body);
-      setNotice(body.passed ? "Production validation passed." : "Production validation found failed checks.");
-    } catch (validationError) {
-      setError(validationError instanceof Error ? validationError.message : "Validation failed.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   return (
     <main className="px-2 pb-12 pt-2 sm:px-3 sm:pt-3 lg:px-5" data-testid="architect-mission-control-root">
       <div className="mx-auto max-w-7xl space-y-4">
@@ -644,12 +337,6 @@ export function ArchitectMissionControl({ laneId = "ceo" }: { laneId?: MissionLa
             {notice}
           </div>
         ) : null}
-        {repairResult?.result === "failed" ? (
-          <div className="rounded-lg border border-rose-400/20 bg-rose-400/10 p-3 text-sm text-rose-100">
-            {repairResult.error ?? "Repair failed."}
-          </div>
-        ) : null}
-
         {loading && !snapshot ? (
           <Card className="border-white/10 bg-black/25 p-6">
             <p className="text-sm text-white/58">Collecting production evidence.</p>
@@ -658,62 +345,13 @@ export function ArchitectMissionControl({ laneId = "ceo" }: { laneId?: MissionLa
 
         {snapshot ? (
           <>
-            <MissionControlNavigationPanel foundation={foundation} activeLaneId={activeLane} />
             {activeLane === "ceo" ? (
-              <>
-                <CeoCommandCenter foundation={foundation} />
-                <CoreLoopValidatorPanel validators={foundation.coreLoopValidators} />
-                <IncidentTypePanel incidentTypes={foundation.incidentTypes} />
-                <SourceVaultPanel sources={foundation.sourceVault} />
-                <ActionRegistryPanel actions={foundation.actionRegistry} />
-                <AgentRegistryPanel agents={foundation.agentRegistry} />
-
-                <section aria-labelledby="active-incidents" className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_24rem]">
-                  <div className="space-y-4">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.22em] text-[#d7ffab]">Active Incidents</p>
-                      <h2 id="active-incidents" className="mt-2 text-2xl font-semibold text-white">
-                        {incidents.length ? `${incidents.length} issue${incidents.length === 1 ? "" : "s"} found` : "No active incidents"}
-                      </h2>
-                    </div>
-                    {incidents.length ? incidents.map((incident) => (
-                      <IncidentCard
-                        key={incident.id}
-                        incident={incident}
-                        selected={selectedIncident?.id === incident.id}
-                        busy={busy}
-                        onAnalyze={() => setSelectedIncidentId(incident.id)}
-                        onRepair={() => {
-                          setSelectedIncidentId(incident.id);
-                          void runRepair(incident);
-                        }}
-                        onValidate={() => {
-                          setSelectedIncidentId(incident.id);
-                          void runValidation(incident);
-                        }}
-                      />
-                    )) : (
-                      <Card className="border-white/10 bg-black/25 p-5">
-                        <p className="text-sm text-white/60">Mission Control found no automatic production incidents.</p>
-                      </Card>
-                    )}
-                  </div>
-
-                  <div className="space-y-5">
-                    <AnalysisPanel incident={selectedIncident} />
-                    <ActionsPanel
-                      snapshot={snapshot}
-                      incident={selectedIncident}
-                      busy={busy}
-                      onCopy={copyPacket}
-                      onRefresh={loadSnapshot}
-                      onRepair={() => void runRepair()}
-                      onValidate={() => void runValidation()}
-                    />
-                    <ValidationPanel validation={validation} />
-                  </div>
-                </section>
-              </>
+              <CeoCommandCenter
+                foundation={foundation}
+                snapshot={snapshot}
+                selectedIncident={selectedIncident}
+                onCopyCodexPacket={() => void copyPacket("codexPacket")}
+              />
             ) : selectedDepartmentLane ? (
               <DepartmentLaneDetail lane={selectedDepartmentLane} />
             ) : null}

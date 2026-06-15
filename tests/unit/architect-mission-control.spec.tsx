@@ -91,7 +91,7 @@ describe("architect mission control", () => {
     });
   });
 
-  it("renders health, incidents, analysis, and action buttons", async () => {
+  it("renders the CEO one-screen command center cards", async () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,
       json: async () => createSnapshot()
@@ -101,26 +101,29 @@ describe("architect mission control", () => {
 
     await waitFor(() => expect(screen.getByText("BVRB3R Architect Operating System")).toBeInTheDocument());
     expect(screen.getByTestId("architect-mission-control-root").className).not.toMatch(/min-h|h-screen|100svh|items-center|justify-end/);
-    expect(screen.getByText("BVRB3R Mission Control Navigation")).toBeInTheDocument();
     expect(screen.getByText("CEO Command Center")).toBeInTheDocument();
+    expect(screen.getByText("One-screen platform posture")).toBeInTheDocument();
+    expect(screen.getByText("Platform Health")).toBeInTheDocument();
+    expect(screen.getByText("Money / App Revenue")).toBeInTheDocument();
     expect(screen.getByText("Total Users")).toBeInTheDocument();
     expect(screen.getByText("Clients")).toBeInTheDocument();
     expect(screen.getByText("Barbers")).toBeInTheDocument();
     expect(screen.getByText("Shop Owners")).toBeInTheDocument();
-    expect(screen.getByText("Payment Routing Health")).toBeInTheDocument();
-    expect(screen.getByText("Payout Readiness Health")).toBeInTheDocument();
-    expect(screen.getByText("Core Loop Validators")).toBeInTheDocument();
+    expect(screen.getByText("Bookings")).toBeInTheDocument();
+    expect(screen.getByText("Payments")).toBeInTheDocument();
+    expect(screen.getByText("Routing / Payout Readiness")).toBeInTheDocument();
+    expect(screen.getByText("Culture")).toBeInTheDocument();
+    expect(screen.getByText("Active Shops / Active Barbers")).toBeInTheDocument();
+    expect(screen.getByText("Critical Incidents")).toBeInTheDocument();
+    expect(screen.getByText("Deployment / Regression")).toBeInTheDocument();
     expect(screen.getByText("Source Vault")).toBeInTheDocument();
     expect(screen.getByText("Action Registry")).toBeInTheDocument();
-    expect(screen.getByText("Hive AI / Agent Registry")).toBeInTheDocument();
-    expect(screen.getByText("Active Incidents")).toBeInTheDocument();
-    expect(screen.getAllByText("Completed paid appointment is missing payment routing.").length).toBeGreaterThan(0);
-    expect(screen.getByText("The payout-routing ledger was never created or repaired after completion.")).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: /run safe repair/i }).length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: /copy chatgpt packet/i })).toBeInTheDocument();
+    expect(screen.getByText("Hive AI")).toBeInTheDocument();
+    expect(screen.getByText("Codex Packets")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /copy codex packet/i })).toBeInTheDocument();
   });
 
-  it("places Mission Control Navigation immediately after the operating header", async () => {
+  it("does not render the duplicate body Mission Control Navigation", async () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,
       json: async () => createSnapshot()
@@ -128,14 +131,13 @@ describe("architect mission control", () => {
 
     render(<ArchitectMissionControl />);
 
-    const header = await screen.findByText("BVRB3R Architect Operating System");
-    const navigation = screen.getByText("BVRB3R Mission Control Navigation");
+    await screen.findByText("BVRB3R Architect Operating System");
 
-    expect(header.compareDocumentPosition(navigation) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByText("BVRB3R Mission Control Navigation")).not.toBeInTheDocument();
     expect(screen.getByText("CEO Command Center")).toBeInTheDocument();
   });
 
-  it("renders the official Mission Control lanes with CEO as default", async () => {
+  it("keeps missing CEO metrics as Needs Review and Not connected", async () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,
       json: async () => createSnapshot()
@@ -143,15 +145,10 @@ describe("architect mission control", () => {
 
     render(<ArchitectMissionControl />);
 
-    await waitFor(() => expect(screen.getByText("CEO lane is routed and active")).toBeInTheDocument());
-    for (const lane of ["CEO", "Product", "Technology", "Operations", "Finance", "Marketing", "Compliance", "Security", "Content & Community"]) {
-      expect(screen.getAllByText(lane).length).toBeGreaterThan(0);
-    }
-    expect(screen.getByRole("link", { name: /CEO/ })).toHaveAttribute("aria-current", "page");
-    expect(screen.getByRole("link", { name: /Product/ })).toHaveAttribute("href", "/architect/product");
-    expect(screen.getByRole("link", { name: /Product/ }).getAttribute("href")).not.toContain("#");
-    expect(screen.queryByText(/sidebar/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/admin menu/i)).not.toBeInTheDocument();
+    const totalUsersCard = (await screen.findByText("Total Users")).closest("article");
+    expect(totalUsersCard).toHaveTextContent("Needs Review");
+    expect(totalUsersCard).toHaveTextContent("Not connected");
+    expect(totalUsersCard).not.toHaveTextContent("Pass");
   });
 
   it("renders a routed department lane without the CEO scoreboard", async () => {
@@ -162,12 +159,11 @@ describe("architect mission control", () => {
 
     render(<ArchitectMissionControl laneId="finance" />);
 
-    await waitFor(() => expect(screen.getByText("Finance lane is routed and active")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Finance Mission Control")).toBeInTheDocument());
     expect(screen.getByText("Finance Mission Control")).toBeInTheDocument();
     expect(screen.getByText("Payment health")).toBeInTheDocument();
     expect(screen.queryByText("CEO Command Center")).not.toBeInTheDocument();
     expect(screen.queryByText("Product Mission Control")).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Finance/ })).toHaveAttribute("aria-current", "page");
   });
 
   it("copies generated packets", async () => {
